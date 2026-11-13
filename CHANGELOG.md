@@ -4,10 +4,31 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.37] - unreleased
+## [0.4.39] - unreleased
 
 ### Added
 
+- **Den tells Hub its projects (H5 sync).** Den sends Hub this install's
+  full project list (each project's key, name, repos, Hub project and
+  agents) at start, on connect, after a link, and whenever it changes:
+  checked every `hub.sync_check_seconds` (default 30, at least 5), retried
+  with backoff, never blocking the change. The server agent's scope is
+  never in it. Needs Hub's `PUT /api/installs/self/projects`.
+- **Den Hub's GitHub access.** When Hub says Den Hub's GitHub App can't
+  see a project's repo, Project setup › Hub project and the project's
+  header say "Den Hub can't see <repo>", with one button per GitHub org,
+  "Give Den Hub access to <org>", that opens Hub's github.com install
+  link. Settings › Distribution and Settings › Agents show what Den Hub
+  can read per org, live from Hub: all repos, N of M, or none, with Give
+  Den Hub access or Change repos. Back from the install (or when the
+  window gets focus), Den sends its projects again and the repos link by
+  themselves. Den opens only https github.com links. doctor warns too.
+  Needs Hub's `GET /api/installs/self/github`.
+- **Terminal (D73).** The rail's Terminal opens a plain shell in the
+  project's folder, in the same pane agents use, signed in like the rest
+  of the page; agents never get it. Each project's header has Terminal
+  here. Open several; a reload keeps them, and a shell outlives a Den
+  restart.
 - **Link a project to its Hub project (H5).** Each project records the
   Hub project its agents file their Hub work in (docs, mocks, comments),
   as `hub_project: {id, slug, name}` in `config/local/workspaces.yml`.
@@ -36,6 +57,52 @@ config and manifest changes a distribution must make to move to it under
   or session (agent). Flags, `code`, command names and "MCP server" stay.
   `npm run gate:words`; strings older than scripts/words-base.txt are a
   separate sweep.
+
+### Fixed
+
+- **One click is one action.** Start fresh, Resume, Relaunch, Stop and
+  Write handoff hold the agent's buttons ("Working…") until the server
+  answers, even when the list redraws; an error is shown and the buttons
+  come back. The server answers the same action on one agent, while the
+  first runs, with the first one's result.
+- **A second Allow on an approval gets the first one's result** (200),
+  instead of 409 "already decided"; it still runs once. A different
+  decision is still refused.
+- **`agents restart` (and `agents persona`) check the agent first.** An id
+  that isn't there says so at once, with the closest agent in that
+  project ("did you mean …?"), instead of waiting for a turn to end.
+
+## [0.4.38] - 2026-11-12
+
+### Fixed
+
+- **Relaunch, Start fresh and Resume take an agent's stored full model
+  name.** An agent brought in from a conversation kept the transcript's
+  model ("claude-opus-5-5"), and Relaunch then refused it: `model:
+  "claude-opus-5-5" is not one of den-claude's (opus, sonnet, haiku)`.
+  `agents start --model claude-opus-5-5` (the CLI keeps `--model` as
+  given) wrote the same. Den now takes a full model name: one its catalog
+  knows is its alias,
+  pinned to that version (opus, claude-opus-5-5); another one is kept as
+  given. Every start stores it that way, and a record written before is
+  fixed the next time the agent is used. The model it runs on is the
+  same.
+- **A project whose key has a space works.** A project made before
+  0.4.37 by the web's New project could have a key with a space ("den
+  hub"), which every page refused. 0.4.37 moved such keys to their slug
+  on read; now a slug already taken gets the next free one (`den-hub-2`)
+  instead of staying broken, and a folder found by the old key stays the
+  project's folder. The name people see keeps its space. Its agents
+  follow it too: an agent whose record named the old key showed under no
+  project ("their project was deleted"); it is now moved to the new key
+  the first time Den starts or lists agents.
+- **`workspace list` with a project written by hand without `services:`.**
+  It crashed ("Cannot convert undefined or null to object"); such a
+  project now reads as one with no services.
+
+## [0.4.37] - 2026-11-12
+
+### Added
 
 - **Projects, not workspaces.** Everything Den shows a person now says
   "project" (es "proyecto", ja "プロジェクト"): the pages, menus, dialogs,

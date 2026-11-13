@@ -481,6 +481,29 @@ describe("AG-17.1c: Bring in keeps the conversation's model, and says what chang
     expect(readRecord(r.stateDir, "fast-dev")?.model).toBe("claude-opus-4-5");
   });
 
+  it("a model the catalog knows is stored as its alias, pinned (Relaunch takes it)", async () => {
+    const r = await rig();
+    ownPersona(r, "fast-dev", "model: sonnet\n");
+    answered(r, r.wsDir("north"), "claude-opus-5-5");
+    expect(
+      await agents(
+        r,
+        "import",
+        "-w",
+        "north",
+        "--session",
+        TOKEN,
+        "--persona",
+        "fast-dev",
+      ),
+    ).toBe(0);
+    expect(argAfter(r.made[0].args, "--model")).toBe("claude-opus-5-5");
+    expect(readRecord(r.stateDir, "fast-dev")).toMatchObject({
+      model: "opus",
+      version: "claude-opus-5-5",
+    });
+  });
+
   it("--model (Advanced) changes it", async () => {
     const r = await rig();
     ownPersona(r, "fast-dev", "model: sonnet\n");

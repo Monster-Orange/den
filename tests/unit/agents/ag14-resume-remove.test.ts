@@ -192,6 +192,53 @@ describe("Resume keeps the conversation, the folder and the scope", () => {
     expect(record(r, "planner").persona).toBe("planner");
   });
 
+  // Ward, 0.4.36: relaunch refused `model: "claude-opus-5-5" is not one of
+  // den-claude's (opus, sonnet, haiku)` for agents whose record kept the
+  // transcript's full model name. The same choices go to Relaunch.
+  // #56: ten records on the 0.4.36 install came from a CLI start that
+  // named `--model claude-opus-5-5` (kept as given, no version) in a
+  // project with a default mode (the permission override).
+  it("agents start --model <full name> stores its alias, pinned; it runs on the same model", async () => {
+    const r = await rig();
+    const code = await agents(
+      r,
+      "start",
+      "-w",
+      "north",
+      "--persona",
+      "planner",
+      "--model",
+      "claude-opus-5-5",
+    );
+    expect([code, r.err.join("\n")]).toEqual([0, ""]);
+    const p = r.made[r.made.length - 1];
+    expect(p.args[p.args.indexOf("--model") + 1]).toBe("claude-opus-5-5");
+    expect(record(r, "planner")).toMatchObject({
+      model: "opus",
+      version: "claude-opus-5-5",
+    });
+    expect(record(r, "planner").overrides).toContain("model");
+  });
+
+  it("a record holding a full model name starts fresh on it, and is stored as its alias, pinned", async () => {
+    const r = await rig();
+    await prompted(r);
+    const rec = record(r, "planner");
+    writeRecord(r.stateDir, {
+      ...rec,
+      model: "claude-opus-5-5",
+      version: "latest",
+    } as never);
+    await r.restartHost();
+    await startFresh(ops(r), "planner");
+    const p = r.made[r.made.length - 1];
+    expect(p.args[p.args.indexOf("--model") + 1]).toBe("claude-opus-5-5");
+    expect(record(r, "planner")).toMatchObject({
+      model: "opus",
+      version: "claude-opus-5-5",
+    });
+  });
+
   it("a runtime that can't resume (codex) shows why, and Resume is refused", async () => {
     const r = await rig();
     writeRecord(r.stateDir, {

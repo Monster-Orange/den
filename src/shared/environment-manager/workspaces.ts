@@ -122,6 +122,13 @@ export function normalizeWorkspacesFileShape(parsed: {
   const workspaces = mig.workspaces;
   if (mig.moved.size) {
     changed = true;
+    // Its folder was found by its old key: keep it, by path.
+    for (const [from, to] of mig.moved) {
+      const cfg = workspaces[to];
+      const old = path.join(DEN_WORKSPACES_DIR, from);
+      if (cfg && !cfg.directory && fs.existsSync(old))
+        workspaces[to] = { ...cfg, directory: old };
+    }
     const to = (n: string) => mig.moved.get(n) ?? n;
     if (typeof parsed.active === "string") parsed.active = to(parsed.active);
     else if (Array.isArray(parsed.active))
@@ -208,6 +215,14 @@ export function readWorkspacesFile(): WorkspacesFile {
     };
     if (!parsed.workspaces || typeof parsed.workspaces !== "object") {
       parsed.workspaces = {};
+    }
+    // A project written by hand without `services:` (or as null) reads as
+    // one with none: every caller indexes it (`workspace list` crashed).
+    for (const [k, ws] of Object.entries(parsed.workspaces)) {
+      if (!ws || typeof ws !== "object")
+        parsed.workspaces[k] = { services: {} } as WorkspaceConfig;
+      else if (!ws.services || typeof ws.services !== "object")
+        ws.services = {};
     }
     // Normalize old mode values ("linked"/"managed") to current names.
     for (const ws of Object.values(parsed.workspaces ?? {})) {

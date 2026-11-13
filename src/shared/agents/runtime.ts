@@ -228,6 +228,12 @@ export interface Runtime {
    * release; none: it takes no model choice from Den.
    */
   models?(): RuntimeModel[];
+  /**
+   * A full model name its CLI also takes (den-claude: `claude-…`), besides
+   * the catalog's aliases. A known version is stored as its alias plus a
+   * pinned version; another full name is kept as given.
+   */
+  fullModel?: RegExp;
   /** How it expresses permission intents (AG-13); none: it can't yet. */
   permissions?: RuntimePermissions;
   /** Throws LaunchError when this persona or this machine can't run it. */
