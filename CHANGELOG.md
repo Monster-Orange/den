@@ -8,6 +8,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **The words gate.** CI fails a patch that adds a string people read
+  (en, es, ja; pages, CLI help, MCP text, errors) using a word they
+  never see: team, tenant or org (say company), server or "Den install"
+  (install), workspace or space (project), user or account (person), bot
+  or session (agent). Flags, `code`, command names and "MCP server" stay.
+  `npm run gate:words`; strings older than scripts/words-base.txt are a
+  separate sweep.
+
 - **Projects, not workspaces.** Everything Den shows a person now says
   "project" (es "proyecto", ja "プロジェクト"): the pages, menus, dialogs,
   CLI help and output, the server's error messages (toasts) and the MCP

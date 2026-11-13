@@ -1572,7 +1572,7 @@ export function hubHtml(b, flash) {
     state === "rejected"
       ? "Hub no longer accepts this install's token (revoked or expired). Reconnect signs you in again."
       : state === "forbidden"
-        ? "Your role on Hub no longer allows Den installs. Ask a Hub admin to change your role, then Reconnect."
+        ? "Your role on Hub no longer allows connecting installs. Ask a Hub admin to change your role, then Reconnect."
         : state === "unreachable"
           ? b.problem || "Hub didn't answer."
           : "";

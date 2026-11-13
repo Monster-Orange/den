@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.37-dev.4",
+  "version": "0.4.37-dev.5",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -43,6 +43,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.build.json",
     "test": "jest --forceExit",
     "gate:org-names": "node scripts/org-name-gate.mjs",
+    "gate:words": "node scripts/words-gate.mjs",
     "docs:shots": "node scripts/doc-shots.mjs",
     "docs:links": "node scripts/docs-links.js",
     "example:regen": "rm -rf examples/distribution && ./bin/den create acme examples/distribution --port 7777",

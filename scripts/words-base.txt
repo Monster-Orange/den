@@ -1,0 +1,4 @@
+# The words gate (scripts/words-gate.mjs) reads the strings added after this
+# commit. Strings before it are the sweep's (right after H5); the sweep sets
+# this to origin/main.
+7b8e8b524611fbe01a5e86b8753ff5902eb3099d

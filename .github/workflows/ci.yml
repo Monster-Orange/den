@@ -17,12 +17,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The words gate diffs against a base commit (scripts/words-base.txt).
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.14.0
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # LOGICAL-ERD.md "Words people see": no added string says workspace,
+      # org, user, session… (company, install, project, person, agent).
+      - run: node scripts/words-gate.mjs
       - run: npm run lint
       # The browser tests (tests/unit/server/*.browser.test.ts) need a real
       # chromium; this installs the one the pinned Playwright expects.
