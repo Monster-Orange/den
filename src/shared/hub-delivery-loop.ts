@@ -1,0 +1,289 @@
+/**
+ * 0.4.40 comment delivery, the loop (MENTION-DELIVERY-API §3, §4, §4b).
+ *
+ * Takes deliveries from Hub (the stream, else the list), de-dups them by
+ * id, and hands each to its agent:
+ * - no such agent here: ack `refused`;
+ * - stopped: ack `queued`; it goes in when the agent next runs;
+ * - mid-turn: kept until the turn ends;
+ * - waiting for its person: typed into its session (the same path as a
+ *   keystroke from the pane), then ack `delivered` and `working`.
+ * While the turn that took it runs: `working` again every heartbeat. When
+ * the turn ends: `done`. When the agent stops first: `failed`.
+ *
+ * Hub and the agents are injected (tests use fakes); no timers of its own
+ * but the ones `deps` gives.
+ */
+import {
+  ackBody,
+  deliveryText,
+  parseDelivery,
+  SseReader,
+  type AckState,
+  type Delivery,
+  type DeliveryOwner,
+  type SeenDeliveries,
+} from "./hub-delivery.js";
+
+export type AgentState = "missing" | "stopped" | "busy" | "idle";
+
+export interface DeliveryHub {
+  /** The stream's body as text chunks, from `lastId`; throws when it can't open. */
+  stream(lastId: string | null, signal: AbortSignal): AsyncIterable<string>;
+  list(after: string | null): Promise<unknown[]>;
+  ack(id: string, body: Record<string, unknown>): Promise<void>;
+}
+
+export interface DeliveryAgents {
+  /** busy: mid-turn, or Den can't tell (never typed into then). */
+  state(agent: string): Promise<AgentState>;
+  /** Type `text` into the agent's session, then Enter. False when it couldn't. */
+  type(agent: string, text: string): Promise<boolean>;
+}
+
+export interface DeliveryLoopDeps {
+  hub: DeliveryHub;
+  agents: DeliveryAgents;
+  owner: () => DeliveryOwner;
+  seen: SeenDeliveries;
+  /** hub.delivery_heartbeat_seconds (default 15), in ms. */
+  heartbeatMs?: number;
+  now?: () => number;
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** The stream's reconnect wait: first, and the cap. */
+  retryMs?: { first: number; max: number };
+  /** How often the list is read when Hub has no stream (404). */
+  pollMs?: number;
+  log?: (line: string) => void;
+}
+
+/** What an agent's card shows: "Working on N Hub comments · <artifact>". */
+export interface AgentHubWork {
+  working: number;
+  queued: number;
+  artifact?: string;
+  url?: string;
+}
+
+interface Active {
+  ids: string[];
+  artifact?: string;
+  url?: string;
+  /** Seen mid-turn since it was typed: the next idle ends it. */
+  sawBusy: boolean;
+  typedAt: number;
+  lastBeat: number;
+}
+
+/** A turn that never shows as started is over after this long. */
+const NO_START_MS = 2 * 60_000;
+
+export class DeliveryLoop {
+  private readonly queue = new Map<string, Delivery[]>();
+  private readonly active = new Map<string, Active>();
+  /** The last state each delivery was acked with (a repeat is re-acked). */
+  private readonly states = new Map<string, AckState>();
+  private readonly hb: number;
+  private readonly now: () => number;
+
+  constructor(private readonly d: DeliveryLoopDeps) {
+    this.hb = d.heartbeatMs ?? 15_000;
+    this.now = d.now ?? Date.now;
+  }
+
+  /** The card line's numbers for `agent`, or null when there's nothing. */
+  work(agent: string): AgentHubWork | null {
+    const a = this.active.get(agent);
+    const q = this.queue.get(agent)?.length ?? 0;
+    if (!a && !q) return null;
+    const first = a ?? undefined;
+    const next = this.queue.get(agent)?.[0];
+    return {
+      working: a?.ids.length ?? 0,
+      queued: q,
+      ...((first?.artifact ?? next?.thread.artifact)
+        ? { artifact: first?.artifact ?? next?.thread.artifact }
+        : {}),
+      ...((first?.url ?? next?.thread.url)
+        ? { url: first?.url ?? next?.thread.url }
+        : {}),
+    };
+  }
+
+  private async ack(
+    id: string,
+    state: AckState,
+    o: { reason?: string; version?: number } = {},
+  ): Promise<void> {
+    this.states.set(id, state);
+    try {
+      await this.d.hub.ack(id, ackBody(state, o));
+    } catch (e) {
+      // Unacked: Hub sends it again, and the repeat is re-acked.
+      this.d.log?.(
+        `hub delivery ${id}: ack ${state} failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+      );
+    }
+  }
+
+  /** One delivery from Hub (the stream or the list). */
+  async take(raw: unknown): Promise<void> {
+    const dv = parseDelivery(raw);
+    if (!dv) return;
+    if (this.d.seen.has(dv.id) || this.states.has(dv.id)) {
+      const st = this.states.get(dv.id);
+      // A repeat: Hub didn't get the ack; say it again (never twice to the agent).
+      if (st) await this.ack(dv.id, st);
+      return;
+    }
+    this.d.seen.add(dv.id);
+    const s = await this.d.agents.state(dv.agent);
+    if (s === "missing") {
+      await this.ack(dv.id, "refused", {
+        reason: "This install has no agent with that id.",
+      });
+      return;
+    }
+    const q = this.queue.get(dv.agent) ?? [];
+    q.push(dv);
+    this.queue.set(dv.agent, q);
+    if (s === "stopped") await this.ack(dv.id, "queued");
+    await this.pumpOne(dv.agent, s);
+  }
+
+  /** Every agent with work: hand over, beat, finish. Run on a tick. */
+  async pump(): Promise<void> {
+    const agents = new Set([...this.queue.keys(), ...this.active.keys()]);
+    for (const a of agents) await this.pumpOne(a, await this.d.agents.state(a));
+  }
+
+  private async pumpOne(agent: string, s: AgentState): Promise<void> {
+    const now = this.now();
+    const act = this.active.get(agent);
+    if (act) {
+      if (s === "busy") {
+        act.sawBusy = true;
+        if (now - act.lastBeat >= this.hb) {
+          act.lastBeat = now;
+          for (const id of act.ids) await this.ack(id, "working");
+        }
+        return;
+      }
+      if (s === "idle" && (act.sawBusy || now - act.typedAt >= NO_START_MS)) {
+        this.active.delete(agent);
+        for (const id of act.ids) await this.ack(id, "done");
+      } else if (s === "stopped" || s === "missing") {
+        this.active.delete(agent);
+        for (const id of act.ids)
+          await this.ack(id, "failed", {
+            reason: "The agent stopped before it finished.",
+          });
+        return;
+      } else return;
+    }
+    const q = this.queue.get(agent);
+    if (!q?.length) {
+      this.queue.delete(agent);
+      return;
+    }
+    if (s === "stopped") {
+      for (const dv of q)
+        if (this.states.get(dv.id) !== "queued")
+          await this.ack(dv.id, "queued");
+      return;
+    }
+    if (s !== "idle") return;
+    const o = this.d.owner();
+    const texts = q.map((dv) => deliveryText(dv, o));
+    const text =
+      q.length === 1
+        ? texts[0]
+        : [`${q.length} Hub comments:`, ...texts].join("\n\n---\n\n");
+    if (!(await this.d.agents.type(agent, text))) return;
+    this.queue.delete(agent);
+    this.active.set(agent, {
+      ids: q.map((dv) => dv.id),
+      artifact: q[0].thread.artifact,
+      url: q[0].thread.url || undefined,
+      sawBusy: false,
+      typedAt: now,
+      lastBeat: now,
+    });
+    for (const dv of q) {
+      await this.ack(dv.id, "delivered");
+      await this.ack(dv.id, "working");
+    }
+  }
+
+  /**
+   * Read Hub until `signal` aborts: the stream, reconnecting from the last
+   * id with backoff; when Hub has no stream (a 4xx refusal), the list
+   * every pollMs.
+   */
+  async run(signal: AbortSignal): Promise<void> {
+    const sleep =
+      this.d.sleep ??
+      ((ms: number, sig: AbortSignal) =>
+        new Promise<void>((r) => {
+          const t = setTimeout(r, ms);
+          t.unref?.();
+          sig.addEventListener("abort", () => (clearTimeout(t), r()), {
+            once: true,
+          });
+        }));
+    const first = this.d.retryMs?.first ?? 1000;
+    const max = this.d.retryMs?.max ?? 60_000;
+    let wait = first;
+    while (!signal.aborted) {
+      let refused = false;
+      try {
+        const reader = new SseReader();
+        for await (const chunk of this.d.hub.stream(this.d.seen.last, signal)) {
+          wait = first;
+          for (const ev of reader.feed(chunk)) {
+            if (ev.event !== "delivery") continue;
+            let v: unknown;
+            try {
+              v = JSON.parse(ev.data);
+            } catch {
+              continue;
+            }
+            await this.take(v);
+            const id = ev.id ?? parseDelivery(v)?.id;
+            if (id) this.d.seen.setLast(id);
+          }
+          if (signal.aborted) return;
+        }
+      } catch (e) {
+        if (signal.aborted) return;
+        refused = (e as { kind?: string })?.kind === "refused";
+        if (!refused)
+          this.d.log?.(
+            `hub deliveries: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+          );
+      }
+      if (refused) {
+        await this.poll();
+        await sleep(this.d.pollMs ?? 30_000, signal);
+        continue;
+      }
+      await sleep(wait, signal);
+      wait = Math.min(max, wait * 2);
+    }
+  }
+
+  /** The list after the last id, oldest first (Hub has no stream). */
+  async poll(): Promise<void> {
+    let list: unknown[];
+    try {
+      list = await this.d.hub.list(this.d.seen.last);
+    } catch {
+      return;
+    }
+    for (const v of list) {
+      await this.take(v);
+      const id = parseDelivery(v)?.id;
+      if (id) this.d.seen.setLast(id);
+    }
+  }
+}
