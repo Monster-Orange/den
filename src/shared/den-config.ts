@@ -1051,6 +1051,8 @@ export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 /** The keys of `agents:` that are not an agent id. */
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
+  // #70: an agent's token only from its own processes.
+  "token_binding",
   "persona_packs",
   "runtime_catalog",
   "default_pack",
@@ -1080,6 +1082,11 @@ export interface AgentGrantsConfig {
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  /**
+   * #70: an agent's token counts only from its own session's processes
+   * (agents.token_binding, default true). false: from any process here.
+   */
+  tokenBinding?: boolean;
   /** As configured (relative to the distribution root). */
   personaPacks: string[];
   /** Each pack's guardrails as configured, by index of personaPacks. */
@@ -1243,8 +1250,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   const raw = (config.agents ?? {}) as unknown;
   if (!isMapping(raw))
     throw new Error(`agents: must be a mapping (got ${JSON.stringify(raw)})`);
+  const tb = (raw as { token_binding?: unknown }).token_binding;
+  if (tb !== undefined && typeof tb !== "boolean")
+    throw new Error(
+      `agents.token_binding: true or false (got ${JSON.stringify(tb)})`,
+    );
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+    tokenBinding: tb !== false,
     personaPacks: [],
     packGuardrails: [],
     defaultPackGuardrails: guardrailsBlock(
@@ -1316,7 +1329,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

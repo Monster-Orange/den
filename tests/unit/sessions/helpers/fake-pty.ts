@@ -14,10 +14,14 @@ import type {
   PtySpawnOptions,
 } from "../../../../src/shared/sessions/pty.js";
 
-let nextPid = 40_000;
-
 export class ScriptedPty implements PtyProcess {
-  readonly pid = nextPid++;
+  /**
+   * #70: this test process. An agent's token counts only from its
+   * session's processes, and a test that calls as the agent calls from
+   * here: the scripted session's root. Nothing signals a session by its
+   * pid (kill() below only records), so this process is never signalled.
+   */
+  readonly pid = process.pid;
   readonly writes: Buffer[] = [];
   readonly resizes: Array<[number, number]> = [];
   readonly signals: string[] = [];

@@ -82,7 +82,7 @@ beforeAll(async () => {
       rows: 24,
     });
     sid[id] = info.ref.id;
-    pid[id] = info.pid;
+    ptys[id] = s.made[s.made.length - 1];
     s.seed({
       id,
       persona,
@@ -90,9 +90,7 @@ beforeAll(async () => {
       session: { backend: "den-pty", id: info.ref.id },
       sessionName: `acme-${ws}:${id}`,
     });
-    s.made
-      .find((p) => p.pid === info.pid)!
-      .emit(`${id} ready\r\n${"=".repeat(200)}\r\n$ `);
+    ptys[id].emit(`${id} ready\r\n${"=".repeat(200)}\r\n$ `);
   }
   if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 }, 60_000);
@@ -104,9 +102,9 @@ afterAll(async () => {
 });
 
 const skip = () => !browser;
-/** Agent `id`'s scripted PTY (what the page typed into it). */
-const pid: Record<string, number> = {};
-const ptyOf = (id: string) => s!.made.find((x) => x.pid === pid[id])!;
+/** Agent `id`'s scripted PTY (what the page typed into it). #70: by start order, as all carry this process's pid. */
+const ptys: Record<string, AgentsPageServer["made"][number]> = {};
+const ptyOf = (id: string) => ptys[id];
 const all = () => AGENTS.map(([id]) => sid[id]).join(",");
 
 async function page(

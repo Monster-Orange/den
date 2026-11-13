@@ -56,9 +56,12 @@ const start = async (ws: string, name: string) => {
     rows: 24,
   });
   sess[name] = info;
-  return s.made[s.made.length - 1];
+  ptys[name] = s.made[s.made.length - 1];
+  return ptys[name];
 };
-const pty = (name: string) => s.made.find((p) => p.pid === sess[name].pid)!;
+/** Each session's scripted PTY (#70: they all carry this process's pid). */
+const ptys: Record<string, AgentsPageServer["made"][number]> = {};
+const pty = (name: string) => ptys[name];
 
 beforeAll(async () => {
   // west: in workspaces.yml, not active (0.4.17: its sessions open too).

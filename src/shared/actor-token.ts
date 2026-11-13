@@ -220,6 +220,24 @@ export function lookupActorToken(
   return load(stateDir).tokens[actorTokenKey(token)] ?? null;
 }
 
+/** #70: the pid the session host recorded for session `id` (its root process), or null. */
+export function sessionPid(stateDir: string, id: string): number | null {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return null;
+  try {
+    const rec = JSON.parse(
+      fs.readFileSync(
+        path.join(sessionPaths(stateDir).dir, `${id}.json`),
+        "utf-8",
+      ),
+    ) as { pid?: unknown };
+    return Number.isInteger(rec.pid) && (rec.pid as number) > 0
+      ? (rec.pid as number)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether the session host lists session `id` as running (its own record). */
 export function sessionRunning(stateDir: string, id: string): boolean {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return false;

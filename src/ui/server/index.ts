@@ -126,6 +126,7 @@ import {
   readDenConfig,
   readMcpConfig,
   readServerAgentConfig,
+  readAgentsConfig,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
@@ -229,6 +230,7 @@ import {
 import {
   ACTOR_TOKEN_PREFIX,
   checkActorToken,
+  sessionPid,
   revokeAllActorTokens,
 } from "../../shared/actor-token.js";
 import {
@@ -878,6 +880,7 @@ import {
 } from "./approval-routes.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
+import { callerPid, tokenCaller } from "./token-binding.js";
 import {
   backMessage,
   takeRestartMarker,
@@ -1290,16 +1293,52 @@ function readEdgeNetworks(): void {
     })
     .catch(() => undefined);
 }
+/**
+ * #70: agents.token_binding (default on), read at most every 5 s. A bad
+ * agents block: on (doctor names the key).
+ */
+let BINDING = { at: 0, on: true };
+function tokenBindingOn(): boolean {
+  if (Date.now() - BINDING.at < 5_000) return BINDING.on;
+  let on = true;
+  try {
+    on = readAgentsConfig().tokenBinding !== false;
+  } catch {
+    on = true;
+  }
+  BINDING = { at: Date.now(), on };
+  return on;
+}
 const GUARD: GuardContext = {
   port: PORT,
   loopbackNames: loopbackNames(),
   edgeHosts: denEdgeHosts,
   lanHosts: () => LAN_HOSTS,
-  verifyBearer: (token) => {
+  verifyBearer: (token, req) => {
     // SEC-1c: an agent's actor token, live while its session runs.
     if (token.startsWith(ACTOR_TOKEN_PREFIX)) {
       const rec = checkActorToken(getStateDir(), token);
       if (rec === "revoked") return "revoked";
+      // #70: and only from its own session's processes.
+      if (rec && tokenBindingOn()) {
+        const root = rec.session.id
+          ? sessionPid(getStateDir(), rec.session.id)
+          : null;
+        const from = tokenCaller(req, root);
+        if (from !== "ok") {
+          recordAction(
+            null,
+            {
+              verb: "agent-token",
+              detail: `${rec.actor}'s token from ${from === "unknown" ? "a process Den couldn't place" : "outside its session"} (pid ${callerPid(req) ?? "?"}): ${req.method ?? "GET"} ${new URL(req.url ?? "/", "http://x").pathname}`,
+              outcome: "refused",
+              reason: `token_${from}`,
+            },
+            rec.actor,
+          );
+          return "elsewhere";
+        }
+      }
       return rec
         ? {
             kind: "agent",

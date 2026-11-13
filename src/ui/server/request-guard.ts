@@ -133,11 +133,14 @@ export interface GuardContext {
   /**
    * What a bearer token proves (a person token's `person:<user>`, an actor
    * token's agent), `"revoked"` for an actor token `web logout --all`
-   * revoked (SEC-1 §6c.2), or null when it doesn't verify.
+   * revoked (SEC-1 §6c.2), `"elsewhere"` for a live actor token sent from
+   * a process outside its agent's session (#70), or null when it doesn't
+   * verify.
    */
   verifyBearer: (
     token: string,
-  ) => `person:${string}` | AgentPrincipal | "revoked" | null;
+    req: http.IncomingMessage,
+  ) => `person:${string}` | AgentPrincipal | "revoked" | "elsewhere" | null;
   /** This server start's CSRF token (loopback, no session). */
   csrfToken: string;
   /** The live session the request's cookie names (SEC-1b), or null. */
@@ -193,6 +196,7 @@ export type GuardResult =
         | "misdirected"
         | "unauthorized"
         | "token_revoked"
+        | "agent_token_elsewhere"
         | "signin_required"
         | "origin_rejected"
         | "csrf"
@@ -548,7 +552,15 @@ export function checkRequest(
   const auth = header(req, "authorization");
   const bearer = auth ? /^Bearer\s+(\S+)\s*$/i.exec(auth) : null;
   if (bearer) {
-    const proved = ctx.verifyBearer(bearer[1]);
+    const proved = ctx.verifyBearer(bearer[1], req);
+    if (proved === "elsewhere")
+      return {
+        ok: false,
+        status: 403,
+        code: "agent_token_elsewhere",
+        error:
+          "This agent token works only from its own agent's processes, and this call came from another process. Nothing ran.",
+      };
     if (proved === "revoked")
       return {
         ok: false,
