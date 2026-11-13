@@ -23,8 +23,12 @@ export interface HubProjectLink {
   name: string;
 }
 
-/** A Hub project id, as Hub writes them. */
-export const HUB_PROJECT_ID_RE = /^proj_[a-z0-9]{1,40}$/;
+/**
+ * A Hub project id, as Hub writes them: opaque to Den, kept as Hub gave it.
+ * `proj_…` before Hub's Postgres port, a uuid after; Hub takes both.
+ */
+export const HUB_PROJECT_ID_RE =
+  /^(?:proj_[a-z0-9]{1,40}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 const plain = (v: unknown, max: number): string =>
   typeof v === "string"

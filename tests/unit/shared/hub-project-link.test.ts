@@ -73,3 +73,20 @@ describe("setHubProject / hubProjectOf (a real file)", () => {
     expect(m.hubProjectOf("north")).toBeNull();
   });
 });
+
+describe("a Hub project id (H5)", () => {
+  it("takes proj_… and a uuid (Hub's Postgres ids), nothing else", () => {
+    expect(
+      m.parseHubProjectLink({ id: "proj_back1", slug: "b", name: "B" })?.id,
+    ).toBe("proj_back1");
+    expect(
+      m.parseHubProjectLink({
+        id: "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f",
+        slug: "b",
+        name: "B",
+      })?.id,
+    ).toBe("3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f");
+    for (const id of ["../x", "proj_", "3f2a9c1e-7b4d", "proj_A B"])
+      expect(m.parseHubProjectLink({ id, slug: "b", name: "B" })).toBeNull();
+  });
+});
