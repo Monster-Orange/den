@@ -1016,6 +1016,8 @@
       "Elige una sesión a la izquierda para abrir su terminal. Abre más para verlas en mosaico (hasta 4).",
     "ag.none.scope": "Aún no hay sesiones ni agentes en {scope}",
     "ag.detach": "Cerrar panel",
+    "ag.to": "Para {name} · {ws}",
+    "ag.toName": "Para {name}",
     "ag.detachName": "Cerrar el panel de {id} (sigue en marcha)",
     "ag.detached": "Panel de {id} cerrado: sigue en marcha",
     "ag.open": "Abrir",

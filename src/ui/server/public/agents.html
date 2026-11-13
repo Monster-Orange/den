@@ -175,8 +175,12 @@
       .agr:hover {
         background: var(--sunken);
       }
+      /* 0.4.44: the accent marks the agent in front only (its tab);
+         other open ones are shaded. */
       .agr[aria-pressed="true"] {
         background: var(--sunken);
+      }
+      .agr[aria-current="true"] {
         border-left-color: var(--accent);
       }
       .agr .nm {
@@ -480,15 +484,21 @@
       .agtab .den-dot {
         margin: 0;
       }
+      /* 0.4.44: a long title loses its persona and project first; the
+         agent's name is cut only when it alone is too long. */
       .agtab .tn {
         overflow: hidden;
         text-overflow: ellipsis;
+        flex: 0 0 auto;
+        max-width: 100%;
       }
       .agtab .tm {
         color: var(--faint);
         font-size: 11px;
         overflow: hidden;
         text-overflow: ellipsis;
+        flex: 0 1 auto;
+        min-width: 0;
       }
       .agtab-x {
         position: absolute;
@@ -522,13 +532,25 @@
       }
       .pane {
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr) auto;
         border: 1px solid var(--border);
         border-radius: var(--radius);
         background: var(--sunken);
         min-height: 0;
         min-width: 0;
         overflow: hidden;
+      }
+      /* 0.4.44: who the keyboard types to, in the project's colour. */
+      .pane .agto {
+        padding: 3px 10px;
+        border-top: 1px solid var(--border);
+        border-left: 3px solid hsl(var(--ws-h, 210) 65% 50%);
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap; /* words-ok: a CSS property */
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .pane .bar2 {
         display: flex;

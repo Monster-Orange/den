@@ -1120,6 +1120,8 @@
       "Pick a session on the left to open its terminal. Open more to tile them (up to 4).",
     "ag.none.scope": "No sessions or agents in {scope} yet",
     "ag.detach": "Close pane",
+    "ag.to": "To {name} · {ws}",
+    "ag.toName": "To {name}",
     "ag.detachName": "Close {id}'s pane (it keeps running)",
     "ag.detached": "Closed {id}'s pane: it keeps running",
     "ag.open": "Open",

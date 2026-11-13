@@ -688,7 +688,7 @@ function rowHtml(r) {
       : "";
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
-    ` aria-pressed="${open}"${r.attachable ? "" : ' aria-disabled="true"'}` +
+    ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + (said ? ` · ${said}` : ""))}">` +
     `<span class="den-dot ${r.waiting ? "warn" : stateTone(r)}" aria-hidden="true"></span>` +
     `<span class="nm">${nm}</span>${right}` +
@@ -768,9 +768,12 @@ function paintList() {
   // D71: agents whose workspace was deleted, under its old name.
   const orphans = st.data.sessions.filter((s) => s.orphan);
   const shown = [
-    ...(st.data.sessions.some((s) => s.server) ? [SERVER_WS] : []),
-    ...viewWorkspaces(),
-    ...new Set(orphans.map((s) => s.workspace)),
+    ...new Set([
+      ...(st.data.sessions.some((s) => s.server) ? [SERVER_WS] : []),
+      ...viewWorkspaces(),
+      ...openWorkspaces(),
+      ...orphans.map((s) => s.workspace),
+    ]),
   ];
   if (orphans.length)
     notes.push(
@@ -877,8 +880,19 @@ function stoppedGroupHtml(rows) {
   );
 }
 
+/**
+ * 0.4.44: the workspaces of the open tabs, so the list always has the
+ * session in front (a message once went to a tab whose row ?ws= hid).
+ */
+function openWorkspaces() {
+  const ws = st.open
+    .map((id) => (st.data?.sessions ?? []).find((s) => s.id === id)?.workspace)
+    .filter(Boolean);
+  return [...new Set(ws)];
+}
+
 function visibleRows() {
-  const shown = new Set(viewWorkspaces());
+  const shown = new Set([...viewWorkspaces(), ...openWorkspaces()]);
   shown.add(SERVER_WS);
   // D71: an agent whose workspace was deleted shows in every view.
   return (st.data?.sessions ?? []).filter(
@@ -1518,7 +1532,7 @@ function paintBar(p) {
       : "";
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
-    `<b>${esc(name)}</b><span class="where mono">${where}</span>` +
+    `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
     (r && isStopped(r)
       ? `<span class="why" data-why title="${esc(stoppedTip(r))}">${esc(stopReason(r))}</span>`
       : "") +
@@ -1550,9 +1564,26 @@ function paintBar(p) {
     // own HTML never turns one off.
     for (const b of bar.querySelectorAll("button:disabled")) b.disabled = false;
   }
+  // 0.4.44: who the keyboard types to, under the terminal, in the
+  // project's colour (a message once went to the wrong agent's tab).
+  const to = p.el.querySelector(".agto");
+  if (to) {
+    const said = ws
+      ? t("ag.to", { name, ws })
+      : t("ag.toName", { name });
+    if (to.textContent !== said) to.textContent = said;
+    to.style.setProperty("--ws-h", String(wsHue(ws)));
+  }
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
   if (x) x.hidden = shownLayout() === "tabs";
+}
+
+/** A project's colour (0.4.44): a hue from its name, the same everywhere. */
+export function wsHue(ws) {
+  let h = 0;
+  for (const c of String(ws ?? "")) h = (h * 31 + c.codePointAt(0)) % 360;
+  return h;
 }
 
 function send(p, obj) {
@@ -2129,7 +2160,7 @@ async function openPane(id, { front = true } = {}) {
   // xterm opens in .tbox, the .term's content box: the fit measures its
   // parent's height and width as they are, so the .term's padding must
   // not be in it (AG-4b: every terminal fits its pane).
-  el.innerHTML = `<div class="bar2"></div><div class="term"><div class="tbox"></div></div>`;
+  el.innerHTML = `<div class="bar2"></div><div class="term"><div class="tbox"></div></div><div class="agto" data-to></div>`;
   const p = {
     id,
     el,

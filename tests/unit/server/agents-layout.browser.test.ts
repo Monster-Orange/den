@@ -640,6 +640,77 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     60_000,
   );
 
+  it("0.4.44: the list, the bar and the input all name the tab in front, never ?ws='s project", async () => {
+    if (skip()) return;
+    // ?ws=north, with a south agent's tab open too: a message once went to
+    // the tab in front while the list marked the URL's project's agent.
+    const p = await page(
+      `/agents?layout=tabs&ws=north&open=${sid.planner},${sid.builder}`,
+    );
+    await termsUp(p, 1);
+    const front = async () => ({
+      tab: await p
+        .locator('#agr [role="tab"][aria-selected="true"]')
+        .getAttribute("data-id"),
+      // The list's mark: one row, the tab in front's.
+      marked: await p.$$eval('#agl .agr[aria-current="true"]', (rs) =>
+        rs.map((r) => (r as HTMLElement).dataset.id),
+      ),
+      bar: (
+        await p
+          .locator(`#agr .pane[data-id] .bar2`)
+          .filter({ visible: true })
+          .innerText()
+      ).replace(/\s+/g, " "),
+      to: await p
+        .locator("#agr .pane .agto")
+        .filter({ visible: true })
+        .textContent(),
+    });
+    for (const [id, ws] of [
+      ["builder", "south"],
+      ["planner", "north"],
+      ["builder", "south"],
+    ] as const) {
+      await p.click(`#agr [role="tab"][data-id="${sid[id]}"]`);
+      await eventually(async () => (await front()).tab === sid[id]);
+      const f = await front();
+      expect(f.marked).toEqual([sid[id]]);
+      expect(f.bar).toMatch(new RegExp(`^${id} · ${ws}( · |$)`));
+      expect(f.to).toBe(`To ${id} · ${ws}`);
+    }
+    // A row's click brings its tab to the front, and the mark with it.
+    await p.click(`#agl .agr[data-id="${sid.planner}"]`);
+    await eventually(async () => (await front()).tab === sid.planner);
+    expect((await front()).marked).toEqual([sid.planner]);
+    // The input's line has the project's colour, a different one per project.
+    const hue = (id: string) =>
+      p.$eval(`#agr .pane[data-id="${sid[id]}"] .agto`, (e) =>
+        getComputedStyle(e).borderLeftColor,
+      );
+    expect(await hue("planner")).not.toBe(await hue("builder"));
+    await p.context().close();
+  }, 60_000);
+
+  it("0.4.44: a long tab title keeps the agent's name whole; its project goes first", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?layout=tabs&open=${sid.planner}`, {
+      width: 900,
+    });
+    await termsUp(p, 1);
+    const cut = await p.$eval(`#agr [role="tab"][data-id="${sid.planner}"]`, (tab) => {
+      const tn = tab.querySelector(".tn") as HTMLElement;
+      const tm = tab.querySelector(".tm") as HTMLElement;
+      tm.textContent = "a-very-long-persona-name · a-very-long-project-name-indeed";
+      return {
+        name: tn.scrollWidth <= tn.clientWidth,
+        meta: tm.scrollWidth > tm.clientWidth,
+      };
+    });
+    expect(cut).toEqual({ name: true, meta: true });
+    await p.context().close();
+  }, 60_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);
