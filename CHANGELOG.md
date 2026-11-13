@@ -4,6 +4,63 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.44] - unreleased
+
+### Added
+
+- **The server agent updates its own Den** (`den_update { version,
+  reason }`). Held for the person like `den_restart`, under
+  `server_agent.self_update`. Allowed, Den saves the version it runs,
+  installs the new one exactly from npm, runs `doctor --json` and
+  restarts. A watcher outside the server waits for it to come up
+  (`server_agent.update_wait_seconds`, default 180) and otherwise puts
+  the old version back and restarts on it; the agent is told it was
+  rolled back. Each step is a `server-update` row in the trail.
+- **Trust / Not now on the server agent's page.** When its runtime asks
+  whether to trust the folder, the page offers the two buttons. Trust
+  types the runtime's accept only if Den sees the same prompt again just
+  before; Not now types nothing. A person's click only: an agent's token
+  is refused (`POST /api/server-agent/trust`).
+- **The server agent works in the distribution's root**
+  (`server_agent.folder`), and its persona says how its changes leave:
+  `server_agent.git: pr` (default) or `push`.
+- **Agents sign their commits with a key of their own**
+  (`agents.git.signing_key`, an SSH key with no passphrase). It reaches
+  each agent as git's `GIT_CONFIG_*` env; no git config file changes.
+  `doctor` signs and verifies a test commit with it, and prints the
+  `gh ssh-key add --type signing` line.
+- **Config changes leave a trace.** Every `workspaces.yml` write is a
+  `config-write` row naming the writer and the change; every change of a
+  project's Hub project is a `hub-link` row with who made it. `doctor`
+  warns when a project's Hub link disappeared without an unlink.
+- **Hub says how to answer a comment** (`reply_with` on each delivery).
+  Den writes the agent's instruction from the tools Hub names, and keeps
+  the earlier one for a Hub that sends none.
+- The release job stops when a gated candidate (`v<version>-dev.N`) is
+  not in the release's history.
+
+### Fixed
+
+- **Agents: the agent you type to is the one named.** Only the row of
+  the tab in front is marked in the list; the bar says
+  "<agent> · <project>"; a "To <agent> · <project>" line in the
+  project's colour sits over the input. A cut tab title keeps the agent's
+  name whole and shortens the project first.
+- The edge's upstream idle limit now covers every route, Docker-label
+  ones included (the 502 after an idle connection). A running edge is
+  recreated once by `edge up`, which says why.
+- Hub calls file under the agent's own project link; the server agent's
+  scope is never a project.
+- Every `workspaces.yml` writer keeps `hub_project`; setting up the
+  default project no longer drops its other keys.
+- The bell's panel uses the shell's font on every page.
+
+### Migrations
+
+- None needed. To have agents sign commits, set
+  `agents.git.signing_key` and run `doctor`. A distribution whose server
+  agent should stay out of its root sets `server_agent.folder`.
+
 ## [0.4.43] - 2026-11-13
 
 ### Security

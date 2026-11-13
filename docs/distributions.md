@@ -1058,6 +1058,15 @@ hub:
   Hub sees the state: queued, delivered, working (again every
   `hub.delivery_heartbeat_seconds`, default 15), done, or failed. The
   agent's card says "Working on N Hub comments · <artifact>".
+- How to answer comes from Hub (0.4.44). Each delivery may carry
+  `reply_with`: a short list of `{ tool, args, when }`, where `when` is
+  `changed` (the agent edited the artifact) or `answer` (it only replies).
+  Den takes only `hub_*` tool names and flat one-line arguments, at most
+  eight entries, and writes the agent's instruction from them: "save the
+  new version with <tool> <args>. If you can't, say why with <answer>"
+  when it changes something, "Do it, then say what you did with <answer>"
+  otherwise. Anything else in the field is ignored. A Hub that sends no
+  `reply_with` gets the earlier instruction.
 - The install's token stays in Den's server. It is never in an agent's
   files (its MCP config included), its env, a command line, a record, a
   log, a page or an API answer.
@@ -2681,6 +2690,18 @@ authorise anything), and the MCP server's pid and session id. They travel as
 `acme/server` stream shows an agent's actions as `[agent]`, ending
 `· by agent <client> <version> (mcp pid <pid>, session <id>)`.
 
+**Config changes are in the trail too** (0.4.44). Every write of
+`workspaces.yml` adds a `config-write` row naming the writer and what
+changed ("workspaces.yml by <cli> hub link: …"), and every change of a
+project's Hub project a `hub-link` row ("project <name>: Hub project
+<old> → <new>, by <who>"): Settings, Agents' "Link projects to Hub" (with
+the person), or `<cli> hub link`. The running server records them as
+actions; a command run while it is down appends them to
+`<state>/audit.jsonl`. Den remembers each project's last Hub link
+(`<state>/hub/links-seen.json`); when a link disappears without an
+unlink, `doctor` warns, naming the project and the Hub project it had,
+even when Hub isn't connected.
+
 ## Notifications: the bell
 
 The bell in the top bar counts what needs the person, grouped by project,
@@ -2814,15 +2835,43 @@ workspace may take that name.
   Den, not one workspace, so it may use the onboarding tools a workspace's
   agent is refused. Every write (`workspace_create`, `repo_add`,
   `service_try`) is [held for the person](#onboarding-writes-held-for-the-person):
-  until they allow one in the browser, it only reads. It starts in an empty
-  folder of its own (`<state_dir>/server-agent`), with no checkout to edit,
-  and its runtime asks before every command (`permission_mode: ask`).
+  until they allow one in the browser, it only reads. Its runtime asks
+  before every command (`permission_mode: ask`).
+- **Its folder and its commits** (0.4.44). It starts in the distribution's
+  root (`server_agent.folder`, relative to the root; it must exist), so it
+  can read and change the distribution's own config. An agent started
+  before keeps the folder it was started in. Its persona has the folder's
+  rules and how its changes leave: `server_agent.git: pr` (the default)
+  means a branch and a pull request, `push` means a commit pushed to the
+  branch it is on.
   Den's own MCP tools are the exception, for this agent only: its settings
   file allows `mcp__<server>` (the `--mcp-config` server), so reads just
   run and each write asks once, in the browser. The org's immediate actions
-  (`mcp.actions`) stay in `permissions.ask`. On a fresh Den the page says
-  above its terminal: "Claude asks whether to trust this folder. Choose
-  Yes." Den doesn't answer that prompt for the person.
+  (`mcp.actions`) stay in `permissions.ask`.
+- **Trusting its folder is the person's click** (0.4.44). When its
+  runtime asks whether to trust the folder (den-claude: "Do you trust the
+  files in this folder?" or "Is this a project you created or one you
+  trust?"), the page shows Trust and Not now above the terminal. Trust
+  makes Den look at the agent's output again and type the runtime's
+  accept only if the same prompt is still there (409 when it isn't);
+  Not now types nothing. Each answer is in the activity trail. An
+  agent's token is refused, as for every route here. While the agent
+  starts, the page looks again every two seconds for about a minute and a
+  half.
+- **It updates Den** (0.4.44, `den_update { version, reason }`, the held
+  action `den_update`). Held for the person like `den_restart`, under
+  the same `server_agent.self_update`. Allowed, Den saves the version it
+  runs now, installs `<version>` exactly from npm in the distribution
+  (`npm install --save-exact`), runs `doctor --json`, and restarts. A
+  watcher outside the server waits for the new Den to answer
+  `/api/server-info`, up to `server_agent.update_wait_seconds` (default
+  180, at least 10). When it doesn't, the watcher puts the saved version
+  back and restarts on it, and the agent is told "Server is back on <old
+  version> (pid …), rolled back: <why>. Your update didn't take: commit no
+  pin change, and tell your person why." The trail has `server-update`
+  rows for each step. `GET /api/server-agent` returns the last update
+  (`update`: `from`, `to`, `at`, and `state`: `installing`, `watching`,
+  `good`, `rolling_back`, `rolled_back` or `rollback_failed`).
 - **Where it lives.** On a fresh Den (no repo in any workspace yet), the
   first page, `/`, is that agent in a terminal framed as the page, with
   Open in Agents as the way out. After setup it is one click away in the
@@ -2856,6 +2905,7 @@ workspace may take that name.
 | `POST /api/server-agent/start`   | `{ runtime? }`: start it, or resume or relaunch it                          |
 | `POST /api/server-agent/runtime` | `{ runtime: id \| null }`: the person's choice of runtime                   |
 | `POST /api/server-agent/model`   | `{ model: id \| null }`: the person's choice of model, one of the runtime's |
+| `POST /api/server-agent/trust`   | `{ answer: "yes" \| "no" }`: the person's answer to "trust this folder?"     |
 
 ## Agents
 
