@@ -17,6 +17,7 @@
  * agents count against agents.max_concurrent instead, never this one.
  */
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
+import { stopSession } from "../../shared/sessions/stop.js";
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -76,8 +77,9 @@ export const SESSIONS_HELP = {
     "{cli} sessions list [-w <ws>] [--json]",
     "{cli} sessions attach <name|id>",
     "    raw terminal; ctrl-] detaches and leaves it running",
-    "{cli} sessions kill <name|id> [--signal INT|TERM|KILL]",
-    "    default TERM; on an exited session, removes it and its scrollback",
+    "{cli} sessions kill <name|id> [--signal INT|TERM|HUP|KILL] [--grace <s>]",
+    "    default: HUP, as closing its terminal does, then KILL after --grace",
+    "    (sessions.close_grace_seconds, 5); an exited one: removes it and its scrollback",
     "{cli} sessions host [--stop]",
     "    run the host in the foreground, or stop it (its sessions end)",
     "",
@@ -106,6 +108,8 @@ export interface SessionsDeps {
   maxConcurrent?: () => number;
   /** sessions.max_concurrent: the plain sessions running at once. */
   maxSessions?: () => number;
+  /** sessions.close_grace_seconds: HUP, then KILL after this long. */
+  closeGrace?: () => number;
   invokeCwd?: () => string;
   env?: NodeJS.ProcessEnv;
   out?: (line: string) => void;
@@ -126,6 +130,7 @@ export interface Resolved {
   maxConcurrent: () => number;
   /** sessions.max_concurrent: the plain sessions running at once. */
   maxSessions: () => number;
+  closeGrace: () => number;
   invokeCwd: () => string;
   env: NodeJS.ProcessEnv;
   out: (line: string) => void;
@@ -219,6 +224,7 @@ export function resolveDeps(d: SessionsDeps): Resolved {
     workspaceExists: d.workspaceExists ?? defaultWorkspaceExists,
     maxConcurrent: d.maxConcurrent ?? (() => readAgentsConfig().maxConcurrent),
     maxSessions: d.maxSessions ?? (() => readSessionsConfig().maxConcurrent),
+    closeGrace: d.closeGrace ?? (() => readSessionsConfig().closeGraceSeconds),
     invokeCwd: d.invokeCwd ?? getInvokeCwd,
     env: d.env ?? process.env,
     out: d.out ?? ((l) => console.log(l)),
@@ -592,17 +598,27 @@ async function target(
 
 async function kill(args: string[], d: Resolved): Promise<number> {
   const where = "sessions kill";
-  const p = parseArgs(where, args, { "--workspace": true, "--signal": true });
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--signal": true,
+    "--grace": true,
+  });
   if (!p.positional.length) throw new UsageError(`${where} needs <name|id>`);
   noExtra(where, p, 1);
   const raw = p.flags["--signal"];
-  const sig = (
-    typeof raw === "string" ? raw.toUpperCase().replace(/^SIG/, "") : "TERM"
-  ) as SessionSignal;
-  if (!SESSION_SIGNALS.includes(sig))
+  const sig =
+    typeof raw === "string"
+      ? (raw.toUpperCase().replace(/^SIG/, "") as SessionSignal)
+      : null;
+  if (sig !== null && !SESSION_SIGNALS.includes(sig))
     throw new UsageError(
       `${where}: --signal takes ${SESSION_SIGNALS.join("|")}`,
     );
+  const rawGrace = p.flags["--grace"];
+  const grace =
+    typeof rawGrace === "string" ? Number(rawGrace) : d.closeGrace();
+  if (!Number.isFinite(grace) || grace < 0)
+    throw new UsageError(`${where}: --grace takes seconds, 0 or more`);
   return withClient(d, async (c) => {
     const s = await target(where, p, d, c);
     if (!s) return 1;
@@ -612,6 +628,16 @@ async function kill(args: string[], d: Resolved): Promise<number> {
       return 0;
     }
     try {
+      if (sig === null) {
+        // As closing its terminal does: HUP, then KILL if it ignores it.
+        const r = await stopSession(c, s.ref.id, grace * 1000);
+        d.out(
+          r === "killed"
+            ? `${s.name} ignored HUP for ${grace} s: sent KILL (pid ${s.pid})`
+            : `stopped ${s.name} (pid ${s.pid})`,
+        );
+        return 0;
+      }
       await c.kill(s.ref.id, sig);
     } catch (e) {
       if (!(e instanceof HostError)) throw e;

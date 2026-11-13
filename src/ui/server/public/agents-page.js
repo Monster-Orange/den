@@ -1466,6 +1466,11 @@ function paintBar(p) {
     r?.kind === "agent" && (r.state === "running" || r.state === "stopping")
       ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(t("ag.stopName", { id: r.agent }))}">${esc(t("ag.stop"))}</button>`
       : "";
+  // The 0.4.39 gate's note: a shell is closed here, not only with `exit`.
+  const closeShell =
+    r?.kind === "session" && !r.exited
+      ? `<button type="button" class="den-btn sm" data-act="close-shell" title="${esc(t("ag.closeShellTip"))}">${esc(t("ag.closeShell"))}</button>`
+      : "";
   // The mock's pane bar: Resume (primary) on an ended agent that can.
   const resume =
     r && isStopped(r) && r.resumable
@@ -1502,7 +1507,7 @@ function paintBar(p) {
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
   // changed, and never takes the keyboard off the bar: a button there that
   // had focus has it again after a redraw.
@@ -2303,6 +2308,25 @@ async function stopAgentNow(r, button) {
       }),
     );
   } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/**
+ * Close a shell: the server ends it as closing its terminal does (HUP,
+ * then KILL) and forgets it; its pane closes.
+ */
+async function closeShell(p, button) {
+  const r = rowOf(p.id);
+  if (!r || r.kind !== "session") return;
+  button.disabled = true;
+  try {
+    await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
+    window.denShell?.toast?.(t("ag.shellClosed", { id: r.label ?? r.name }));
+    closePane(p.id);
+  } catch (err) {
+    button.disabled = false;
     window.denShell?.errorToast?.(err);
   }
   await refresh();
@@ -4309,6 +4333,7 @@ export async function mountAgentsPage(root) {
       const r = rowOf(id);
       if (r) void openLink(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
+    else if (b.dataset.act === "close-shell") void closeShell(p, b);
     else if (b.dataset.act === "tools-restart") {
       const r = rowOf(id);
       if (r) void restartForTools(r, b);

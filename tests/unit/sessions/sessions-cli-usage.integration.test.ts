@@ -69,8 +69,13 @@ const usageErrors: Array<[string, string[], RegExp]> = [
   ["attach with no target", ["sessions", "attach"], /<name\|id>/],
   [
     "kill with an unknown signal",
-    ["sessions", "kill", "p", "--signal", "HUP"],
-    /INT\|TERM\|KILL/,
+    ["sessions", "kill", "p", "--signal", "USR1"],
+    /INT\|TERM\|HUP\|KILL/,
+  ],
+  [
+    "kill with a bad grace",
+    ["sessions", "kill", "p", "--grace", "soon"],
+    /--grace takes seconds/,
   ],
   ["agents list without -w", ["agents", "list"], /-w <project>/],
   [

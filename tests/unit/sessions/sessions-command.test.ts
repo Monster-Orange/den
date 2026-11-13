@@ -410,15 +410,46 @@ describe("sessions list", () => {
 });
 
 describe("sessions kill", () => {
-  it("sends TERM by default and --signal otherwise", async () => {
+  it("--signal sends just that one", async () => {
     const r = await rig();
     await start(r, "north", "planner");
-    expect(await cmdSessions(["kill", "planner"], r.deps)).toBe(0);
     expect(
-      await cmdSessions(["kill", "north:planner", "--signal", "KILL"], r.deps),
+      await cmdSessions(["kill", "north:planner", "--signal", "TERM"], r.deps),
+    ).toBe(0);
+    expect(
+      await cmdSessions(["kill", "north:planner", "--signal", "HUP"], r.deps),
     ).toBe(0);
     await new Promise((res) => setTimeout(res, 50));
-    expect(r.made[0].signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(r.made[0].signals).toEqual(["SIGTERM", "SIGHUP"]);
+  });
+
+  it("by default HUP, as closing a terminal does; one that ignores it gets KILL after --grace", async () => {
+    const r = await rig();
+    await start(r, "north", "planner");
+    // The scripted PTY ignores every signal, as a shell ignores TERM.
+    expect(
+      await cmdSessions(["kill", "planner", "--grace", "0.2"], r.deps),
+    ).toBe(0);
+    expect(r.made[0].signals).toEqual(["SIGHUP", "SIGKILL"]);
+    expect(r.out.join("\n")).toMatch(
+      /acme-north:planner ignored HUP for 0\.2 s: sent KILL/,
+    );
+  });
+
+  it("by default: one that ends on HUP gets nothing more", async () => {
+    const r = await rig();
+    await start(r, "north", "planner");
+    const pty = r.made[0];
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      if (sig === "SIGHUP") setTimeout(() => pty.exit(129), 10);
+    };
+    expect(await cmdSessions(["kill", "planner", "--grace", "2"], r.deps)).toBe(
+      0,
+    );
+    expect(pty.signals).toEqual(["SIGHUP"]);
+    expect(r.out.join("\n")).toMatch(/stopped acme-north:planner/);
   });
 
   it("removes a session that has exited", async () => {

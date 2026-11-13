@@ -568,6 +568,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/sessions/:id/close",
+    "stops a plain session as closing its terminal does (HUP, then KILL) and forgets it; a person's only, never an agent's session", // words-ok: the route register, not shown
+  ),
+  S(
+    ["POST"],
     "/api/sessions/:id/uploads",
     "writes a file dropped or pasted onto a session's terminal (AG-DROP), for its path to be typed there",
   ),
@@ -674,6 +679,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   ],
   "session-routes.ts:IO_PATH": ["/api/sessions/:id/io"],
   "session-routes.ts:UPLOAD_PATH": ["/api/sessions/:id/uploads"],
+  "session-routes.ts:CLOSE_PATH": ["/api/sessions/:id/close"],
   "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
   "pair-routes.ts:POLL_PATH": ["/api/signin/code/:id"],
