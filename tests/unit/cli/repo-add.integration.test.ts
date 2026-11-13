@@ -482,6 +482,28 @@ describe("repo add -w takes a workspace's name or its slug (D70); agents link se
   }, 180_000);
 });
 
+describe("workspace delete with no terminal (D71)", () => {
+  it("asks for --yes, by name or slug, instead of crashing; deletes nothing", () => {
+    const run = (...args: string[]) =>
+      spawnSync(path.join(dist, "bin", "acme"), args, {
+        cwd: dist,
+        env,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        input: "",
+        timeout: 90_000,
+      });
+    const r = run("workspace", "delete", "Back Office");
+    expect(`${r.stdout}${r.stderr}`).not.toMatch(/ERR_USE_AFTER_CLOSE/);
+    expect(r.stdout).toMatch(/--yes/);
+    expect(r.status).toBe(2);
+    expect(Object.keys(readWs().workspaces)).toContain("back-office");
+    const yes = run("workspace", "delete", "Back Office", "--yes");
+    expect(yes.status).toBe(0);
+    expect(Object.keys(readWs().workspaces)).not.toContain("back-office");
+  }, 180_000);
+});
+
 describe("doctor --json over the repos added above", () => {
   it("Docker is checked because a registered repo has a compose file; no web server is a fail with its fix", () => {
     // A stand-in docker whose daemon never answers, first on PATH: the

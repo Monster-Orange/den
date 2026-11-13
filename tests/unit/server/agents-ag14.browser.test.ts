@@ -990,8 +990,9 @@ describe("D72: Move to workspace…", () => {
     if (skip()) return;
     s!.seed({
       id: "stray",
+      // No name of its own: the note names the agent (its id), never its
+      // persona.
       persona: "planner",
-      displayName: "Stray",
       workspace: "gone",
       resumeToken: "66666666-6666-4666-8666-666666666666",
       stoppedAt: STOPPED_AT,
@@ -1000,7 +1001,7 @@ describe("D72: Move to workspace…", () => {
     const note = '#agl .agnote[data-note="orphan"]';
     await p.waitForSelector(note, { timeout: 15_000 });
     expect(await p.textContent(note)).toBe(
-      "Stray has no workspace: its workspace was deleted. Give it one with ⋯ › Move to workspace….",
+      "stray has no workspace: its workspace was deleted. Give it one with ⋯ › Move to workspace….",
     );
     const group = p.locator("#agl details[data-stopped]");
     if ((await group.getAttribute("open")) === null)

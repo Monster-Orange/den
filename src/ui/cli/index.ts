@@ -55,6 +55,7 @@ import {
   setActiveWorkspace,
   setFocusedWorkspace,
   createWorkspace,
+  resolveWorkspaceInput,
   deleteWorkspaceConfig,
   parseAddress,
   noAutostartRepos,
@@ -1717,16 +1718,17 @@ class DenCLI {
             break;
           }
           const name = await cliPrompts.promptSelectWorkspace(names, "");
-          const confirmed = await cliPrompts.confirm(
-            `Delete workspace "${name}"?`,
-            false,
-          );
-          if (!confirmed) break;
+          // D71: its agents first, so a refusal never follows a Yes.
           const kept = workspaceAgentsRefusal(name);
           if (kept) {
             console.log(chalk.red(`\n  ${kept}\n`));
             break;
           }
+          const confirmed = await cliPrompts.confirm(
+            `Delete workspace "${name}"?`,
+            false,
+          );
+          if (!confirmed) break;
           deleteWorkspaceDirectory(name);
           deleteWorkspaceConfig(name);
           console.log(chalk.green(`\n  ✓ Deleted workspace: ${name}\n`));
@@ -4839,27 +4841,38 @@ class DenCLI {
         break;
       }
       case "delete": {
-        const name = args[1];
+        // D70: its name or its slug.
+        const name = args[1] ? resolveWorkspaceInput(args[1]) : args[1];
         if (!name) {
           console.log(
             chalk.red(`Usage: ${product().cli} workspace delete <name>`),
           );
           return;
         }
-        const confirmed =
-          args.includes("--yes") ||
-          args.includes("-y") ||
-          (await cliPrompts.confirm(
-            `Delete workspace "${name}"? This will remove ${product().workspacesDir}/${name}/`,
-            false,
-          ));
-        if (!confirmed) return;
+        // D71: its agents first, so a refusal never follows a Yes.
         const kept = workspaceAgentsRefusal(name);
         if (kept) {
           console.log(chalk.red(`\n  ${kept}\n`));
           process.exitCode = 1;
           return;
         }
+        const yes = args.includes("--yes") || args.includes("-y");
+        if (!yes && !process.stdin.isTTY) {
+          console.log(
+            chalk.red(
+              `\n  Deleting a workspace asks first, and there is no terminal to ask in. Add --yes: ${product().cli} workspace delete ${JSON.stringify(args[1])} --yes\n`,
+            ),
+          );
+          process.exitCode = 2;
+          return;
+        }
+        const confirmed =
+          yes ||
+          (await cliPrompts.confirm(
+            `Delete workspace "${name}"? This will remove ${product().workspacesDir}/${name}/`,
+            false,
+          ));
+        if (!confirmed) return;
         deleteWorkspaceDirectory(name);
         deleteWorkspaceConfig(name);
         console.log(chalk.green(`\n  ✓ Deleted workspace: ${name}\n`));

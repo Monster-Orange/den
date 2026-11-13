@@ -727,7 +727,8 @@ function paintList() {
         esc(
           t(orphans.length === 1 ? "ag.orphan.one" : "ag.orphan.many", {
             n: orphans.length,
-            names: orphans.map((r) => displayName(r)).join(", "),
+            // The agent, not its persona: its given name, else its id.
+            names: orphans.map((r) => r.displayName || r.agent).join(", "),
           }),
         ) +
         `</div>`,

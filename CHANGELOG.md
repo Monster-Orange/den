@@ -70,6 +70,12 @@ config and manifest changes a distribution must make to move to it under
   always said the project "has no repo", because it didn't load the
   project's services first. `agents unlink` had the same gap. Both now
   load them, like every other agents command.
+- **Deleting a project checks its agents before it asks (D71).**
+  `workspace delete` refused only after you'd said Yes. Now it names the
+  agents first and asks nothing. With no terminal to ask in, it says to
+  add `--yes` instead of crashing. It takes the project's name or slug.
+  The Agents page's note about an agent whose project was deleted names
+  the agent (its name, else its id), not its persona.
 - **A move or restart that waits for the turn's end never guesses
   (D72).** When Den can't read an agent's transcript at all (another
   config folder, say), it used to treat the agent as idle and cut its
