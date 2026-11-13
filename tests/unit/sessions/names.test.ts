@@ -26,7 +26,7 @@ describe("session names", () => {
   });
 
   it("refuse a workspace or name outside the name rules", () => {
-    expect(() => sessionName("acme", "a b", "planner")).toThrow(/workspace/);
+    expect(() => sessionName("acme", "a b", "planner")).toThrow(/project/);
     expect(() => sessionName("acme", "north", "plan:ner")).toThrow(/name/);
     expect(() => sessionName("acme", "north", "")).toThrow(/name/);
   });

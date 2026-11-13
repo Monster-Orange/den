@@ -96,7 +96,7 @@ describe("bare validate in the distribution root", () => {
     expect(r.out).toMatch(/site\s+held\s+.*\(held only, no checkout\)/);
     expect(r.out).toMatch(/⚠\s+ghost\s+.*\(no checkout and no held manifest\)/);
     expect(r.out).toMatch(
-      /extra\s+held\s+manifests\/\s+\(held, in no workspace\)/,
+      /extra\s+held\s+manifests\/\s+\(held, in no project\)/,
     );
     expect(r.out).toMatch(/4 repos: all valid, 1 with no manifest to check/);
     expect(fs.existsSync(path.join(root, ".den-services"))).toBe(false);

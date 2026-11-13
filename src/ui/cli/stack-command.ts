@@ -227,7 +227,7 @@ export async function cmdStack(argv: string[]): Promise<void> {
           if (!r.stop) {
             console.log(
               chalk.cyan(
-                `▼ ${n}: detached workspace "${ctx.denWorkspace}" — ${projectName(n, ctx.workspace)} still running for [${r.remaining.join(", ")}]`,
+                `▼ ${n}: detached project "${ctx.denWorkspace}" — ${projectName(n, ctx.workspace)} still running for [${r.remaining.join(", ")}]`,
               ),
             );
             continue;

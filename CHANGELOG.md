@@ -8,6 +8,27 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Projects, not workspaces.** Everything Den shows a person now says
+  "project" (es "proyecto", ja "プロジェクト"): the pages, menus, dialogs,
+  CLI help and output, the server's error messages (toasts) and the MCP
+  tools' text. The settings for one install's project are "Project
+  setup". Flags, config keys, API paths, command names, MCP tool names,
+  JSON fields and codes are unchanged (`-w/--workspace`, `workspaces.yml`,
+  `den workspace …`, `workspace_create`). A test reads every message in
+  the source and fails on the old word.
+- **One address for this install (D80).** `web.url` in
+  `config/local/user.yml` is the address Den gives people: the start
+  banner, `web up`, sign-in and setup links, doctor and Hub's link back.
+  Set it with `<cli> web url <address>` or `create --url <address>`.
+  Nothing Den shows says localhost any more. With no address, each of
+  those says "address not set: run `<cli> web url <address>`" and prints
+  no link; doctor fails with that fix. An install with an edge route
+  takes that route's address once, at the next start, and doctor asks
+  you to confirm it. Agents' own MCP and API connections stay on loopback.
+- **Reachable from other devices is normal (D80).** With sign-in on, the
+  server log has a quiet note that each device signs in first; only
+  `web.edge_unattested: local` keeps the warning.
+
 - **Bring in a conversation started outside any project (D56).** A
   Claude Code conversation you started in your home folder (or any folder
   no project holds) now shows in Bring in under "Started outside any
@@ -169,7 +190,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- None needed.
+- Set this install's address once: `<cli> web url https://<name>.<your domain>`
+  (an install with an edge route gets it at the next start; confirm it
+  the same way). Scripts that matched "workspace" in Den's output
+  should match "project".
 
 ## [0.4.36] - 2026-11-12
 

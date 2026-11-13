@@ -38,6 +38,6 @@ export function composeStacksNotice(
     );
   }
   if (inUse.length)
-    parts.push(`in use by another workspace: ${inUse.join(", ")}`);
+    parts.push(`in use by another project: ${inUse.join(", ")}`);
   return parts.join("; ");
 }

@@ -245,6 +245,7 @@ import {
 } from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
+import { migrateWebUrl, notSetLine, readWebUrl } from "../../shared/web-url.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -918,6 +919,7 @@ import {
   webRouteHosts,
 } from "../../shared/edge/render.js";
 import {
+  EDGE_SIGNIN_NOTE,
   edgeExposedMessage,
   edgeExposure,
   edgeNetworkSubnets,
@@ -1521,6 +1523,13 @@ function checkEdgeExposure(): void {
   void edgeExposure(hosts, container)
     .then((why) => {
       if (!why) return;
+      // D80: reachable from other devices is the normal setup when each
+      // one signs in first: a quiet note in the log, no page-wide alarm.
+      // Only web.edge_unattested: local (no sign-in) is an alarm.
+      if (WEB_AUTH.edgeUnattested !== "local") {
+        pushLog("info", `  ℹ ${EDGE_SIGNIN_NOTE} (${why})`);
+        return;
+      }
       EDGE_EXPOSED = why;
       // The in-app log, and stderr, which is web.log even when `web up`
       // starts this --silent (stdout is not written then).
@@ -1960,7 +1969,7 @@ function approvalDeps(): {
       if (!resolved)
         return {
           ok: false,
-          error: `Den doesn't know a service "${service}"${ws ? ` in workspace "${ws}"` : ""}; the services tool lists what it runs`,
+          error: `Den doesn't know a service "${service}"${ws ? ` in project "${ws}"` : ""}; the services tool lists what it runs`,
         };
       const manifest = readManifest(resolved.repoPath);
       const refusal = placementRefusal(
@@ -3111,7 +3120,7 @@ async function handleRequest(
     const addressFilter = url.searchParams.get("address");
     const wsParam = url.searchParams.get("workspace");
     if (wsParam && !getWorkspaceByName(wsParam))
-      return send400(res, `unknown workspace "${wsParam}"`);
+      return send400(res, `unknown project "${wsParam}"`);
     if (addressFilter) {
       return sendJson(
         res,
@@ -3139,7 +3148,7 @@ async function handleRequest(
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const wsParam = url.searchParams.get("workspace");
     if (wsParam && !getWorkspaceByName(wsParam))
-      return send400(res, `unknown workspace "${wsParam}"`);
+      return send400(res, `unknown project "${wsParam}"`);
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -3238,7 +3247,7 @@ async function handleRequest(
 
     const wsParam = url.searchParams.get("workspace");
     if (wsParam && !isWorkspaceActive(wsParam)) {
-      return fail(`Workspace "${wsParam}" is not active — activate it first`);
+      return fail(`Project "${wsParam}" is not active — activate it first`);
     }
 
     // Resolve repo path via resolveService (handles single-service repos where
@@ -3370,7 +3379,7 @@ async function handleRequest(
       const ws = getActiveWorkspace();
       return fail(
         `Command "${cmdName}" not found for ${repoName}/${svcName} in env "${env}".` +
-          (!ws ? " No active workspace." : ` Active workspace: ${ws.name}.`) +
+          (!ws ? " No active project." : ` Active project: ${ws.name}.`) +
           ` resolved=${JSON.stringify(resolved ?? null)}`,
       );
     }
@@ -5820,14 +5829,28 @@ try {
 void initLoginPath();
 // AG-14: agents interrupted by a restart, and stopped ones to forget.
 startAgentUpkeep((line) => serverLog(line, "lifecycle"));
+// D80: the install's address (web.url), the one people are given. An
+// install made before it takes its edge route's once, before the server
+// answers (so the first `web up` reads it), for doctor to confirm. Never
+// localhost.
+const ADDRESS = migrateWebUrl(() => {
+  try {
+    const ports = new Set([readWebPort(), PORT]);
+    const urls = webRouteHosts(readEdgeConfig(), ports).map((r) => r.url);
+    const url =
+      urls.find((u) => u.startsWith("https:")) ??
+      urls.find((u) => /^http:\/\/[^/]+\.localhost(:\d+)?$/i.test(u));
+    return url ? { url, from: "the edge route to this server" } : undefined;
+  } catch {
+    return undefined; // no edge config: nothing to take
+  }
+});
 server.listen(PORT, BIND_HOST, () => {
-  const hosts = fs.existsSync("/etc/hosts")
-    ? fs.readFileSync("/etc/hosts", "utf-8")
-    : "";
-  const host = hosts.includes(`127.0.0.1 ${product().cli}`)
-    ? `${product().cli}`
-    : "localhost";
+  printBanner(ADDRESS ?? readWebUrl());
+});
 
+/** The start banner: the install's address (D80), never localhost. */
+function printBanner(address: { url: string } | null): void {
   const pkgVersion = engineVersion() ?? "?";
 
   console.log();
@@ -5838,13 +5861,15 @@ server.listen(PORT, BIND_HOST, () => {
   console.log(`  ${DEN_SUBTITLE.trim()}`);
   console.log(`  v${pkgVersion}`);
   console.log();
-  console.log(`  Web UI  →  http://${host}:${PORT}`);
+  console.log(
+    `  Web UI  →  ${address ? address.url : notSetLine(product().cli)}`,
+  );
   console.log();
   // Once per start: a secrets config that leaves Den's own features off.
   for (const w of secretsConfigWarnings()) serverLog(`  ⚠ ${w}`);
   checkEdgeExposure();
   readEdgeNetworks();
-});
+}
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 

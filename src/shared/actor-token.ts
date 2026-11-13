@@ -116,7 +116,7 @@ export function mintActorToken(
   if (!AGENT_ACTOR_RE.test(actor))
     throw new Error(`"${o.agentId}" is not an agent id`);
   if (!WORKSPACE_NAME_RE.test(o.workspace))
-    throw new Error(`"${o.workspace}" is not a workspace name`);
+    throw new Error(`"${o.workspace}" is not a project name`);
   const token = ACTOR_TOKEN_PREFIX + randomBytes(32).toString("base64url");
   const key = actorTokenKey(token);
   const data = load(stateDir);

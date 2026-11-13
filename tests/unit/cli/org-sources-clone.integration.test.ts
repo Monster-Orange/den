@@ -162,7 +162,7 @@ describe("an org with no source: a plain remote: clones and pulls", () => {
   it("setup --plan shows the remote as the clone URL, and clones nothing", () => {
     const r = den("setup", "--plan");
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(/Workspace lab {2}org: initech/);
+    expect(r.out).toMatch(/Project lab {2}org: initech/);
     expect(r.out).toContain(`widget  managed main  org: initech  ${bare}`);
     expect(fs.existsSync(clone())).toBe(false);
   }, 60_000);

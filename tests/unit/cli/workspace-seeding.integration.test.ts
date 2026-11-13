@@ -113,7 +113,7 @@ describe("auto-seeding only on a genuine fresh setup", () => {
     const before = fs.readFileSync(wsPath(), "utf-8");
     const { out } = den(["status"]);
     expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
-    expect(out).not.toMatch(/Seed the default workspace|workspace seed/);
+    expect(out).not.toMatch(/Seed the default project|project seed/);
   }, 60_000);
 
   it("with other workspaces: no seed and no top-up", () => {
@@ -151,9 +151,9 @@ describe("auto-seeding only on a genuine fresh setup", () => {
     config(SINGLE);
     const { out } = den(["status"]);
     expect(out).toMatch(
-      /default workspace is empty: run `den workspace seed` to fill it from the blueprint/,
+      /default project is empty: run `den workspace seed` to fill it from the blueprint/,
     );
-    expect(out).not.toMatch(/Default workspace ready/);
+    expect(out).not.toMatch(/Default project ready/);
     // Nothing seeded: no workspaces.yml with services was written.
     const ws = fs.existsSync(wsPath()) ? readWs() : null;
     expect(Object.keys(ws?.workspaces.default?.services ?? {})).toEqual([]);
@@ -219,7 +219,7 @@ describe("explicit seeding", () => {
     config(SINGLE);
     const { out, status } = den(["workspace", "seed"]);
     expect(status).toBe(0);
-    expect(out).toMatch(/Default workspace ready — 3 repos/);
+    expect(out).toMatch(/Default project ready — 3 repos/);
     const ws = readWs();
     expect(ws.active).toEqual(["default"]);
     expect(ws.focus).toBe("default");
@@ -261,12 +261,12 @@ describe("explicit seeding", () => {
     ]);
     const hint = den(["status"]);
     expect(hint.out).toMatch(
-      /no workspaces yet: run `den workspace seed` to create them from the blueprint/,
+      /no projects yet: run `den workspace seed` to create them from the blueprint/,
     );
 
     const { out, status } = den(["workspace", "seed"]);
     expect(status).toBe(0);
-    expect(out).toMatch(/3 workspaces ready \(web, data, tools\)/);
+    expect(out).toMatch(/3 projects ready \(web, data, tools\)/);
     const ws = readWs();
     expect(ws.active).toEqual(["web", "data", "tools"]);
     expect(ws.focus).toBe("data");
@@ -284,7 +284,7 @@ describe("explicit seeding", () => {
 
     // Seeded: later commands neither hint nor touch anything.
     const before = fs.readFileSync(wsPath(), "utf-8");
-    expect(den(["status"]).out).not.toMatch(/workspace seed/);
+    expect(den(["status"]).out).not.toMatch(/project seed/);
     expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
   }, 60_000);
 
@@ -323,9 +323,9 @@ describe("a repeat seed", () => {
     const { out, status } = den(["workspace", "seed"]);
     expect(status).toBe(0);
     expect(out).toMatch(
-      /Default workspace already seeded — 3 repos \(managed\): nothing changed/,
+      /Default project already seeded — 3 repos \(managed\): nothing changed/,
     );
-    expect(out).not.toMatch(/Default workspace ready/);
+    expect(out).not.toMatch(/Default project ready/);
     expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
   }, 60_000);
 
@@ -341,9 +341,9 @@ describe("a repeat seed", () => {
     const before = fs.readFileSync(wsPath(), "utf-8");
     const { out } = den(["workspace", "seed"]);
     expect(out).toMatch(
-      /2 workspaces already seeded \(web, data\): nothing changed/,
+      /2 projects already seeded \(web, data\): nothing changed/,
     );
-    expect(out).not.toMatch(/workspaces ready/);
+    expect(out).not.toMatch(/projects ready/);
     expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
   }, 60_000);
 
@@ -360,7 +360,7 @@ describe("a repeat seed", () => {
     for (const argv of [["workspace", "seed"], ["init"]]) {
       const { out, status } = den(argv);
       expect(status).toBe(1);
-      expect(out).toMatch(/Not resetting the default workspace/);
+      expect(out).toMatch(/Not resetting the default project/);
       // It names the command that was run.
       expect(out).toMatch(new RegExp(`den ${argv.join(" ")} --reset`));
       expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
@@ -375,11 +375,11 @@ describe("a repeat seed", () => {
     workspaces(ws);
     const viaInit = den(["init", "--reset"]);
     expect(viaInit.status).toBe(0);
-    expect(viaInit.out).toMatch(/Default workspace reset to the blueprint/);
+    expect(viaInit.out).toMatch(/Default project reset to the blueprint/);
     workspaces(ws);
     const { out, status } = den(["workspace", "seed", "--reset"]);
     expect(status).toBe(0);
-    expect(out).toMatch(/Default workspace reset to the blueprint — 3 repos/);
+    expect(out).toMatch(/Default project reset to the blueprint — 3 repos/);
     expect(out).not.toMatch(/already seeded/);
     expect(readWs().workspaces.default.services.beta).toEqual(managed);
   }, 60_000);
@@ -406,8 +406,8 @@ describe("a repeat seed", () => {
   it("one repo reads '1 repo', never '1 repos'", () => {
     config(["  workspace:", "    branch: main", "    repos: [alpha]"]);
     const first = den(["workspace", "seed"]);
-    expect(first.out).toMatch(/Default workspace — 1 repo, all managed/);
-    expect(first.out).toMatch(/Default workspace ready — 1 repo \(managed\)/);
+    expect(first.out).toMatch(/Default project — 1 repo, all managed/);
+    expect(first.out).toMatch(/Default project ready — 1 repo \(managed\)/);
     const again = den(["workspace", "seed"]);
     expect(again.out).toMatch(/already seeded — 1 repo \(managed\)/);
     expect(`${first.out}${again.out}`).not.toMatch(/\b1 repos\b/);

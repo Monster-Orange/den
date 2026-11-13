@@ -486,7 +486,7 @@
             msg.className = "ws-msg err";
             return;
           }
-          if (!confirm(`Delete workspace "${name}"?`)) return;
+          if (!confirm(`Delete project "${name}"?`)) return;
           // D71: its agents: stop them or move them, never left behind.
           let agentsChoice = {};
           const preview = await fetch(
@@ -669,7 +669,7 @@
             const hasCaps = usableCmds.length > 0 || s.logs;
             const emptyNote =
               s.cloned === false
-                ? "not cloned yet — run Sync in Workspaces"
+                ? "not cloned yet — run Sync in Projects"
                 : isSub
                   ? "managed by its system"
                   : "no commands for this env";
@@ -696,7 +696,7 @@
                 <div class="service-name"><button type="button" class="svc-name-btn" data-svpanel-open="${esc(isSub ? addr : s.repo)}" aria-haspopup="dialog" aria-expanded="false" title="${esc(window.denShell?.t?.("svp.more", { s: isSub ? addr : s.repo }) ?? addr)}">${esc(addr)}</button></div>
                 <div class="service-repo">${s.repo}${
                   ownersLabel(s.inWorkspaces)
-                    ? `<span class="owners" title="Shared: listed once for every workspace in view that defines it">${esc(ownersLabel(s.inWorkspaces))}</span>`
+                    ? `<span class="owners" title="Shared: listed once for every project in view that defines it">${esc(ownersLabel(s.inWorkspaces))}</span>`
                     : ""
                 }</div>
                 <a class="site-link" id="site-${s.repo}-${s.service}" target="_blank" rel="noopener" hidden></a>

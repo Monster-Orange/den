@@ -31,7 +31,6 @@ import { newConfirmCode } from "../../shared/confirm-code.js";
 import {
   checkLoginCode,
   ignoredConfigWarning,
-  localhostOrigin,
   loginLink,
   LOGIN_CODE_TTL_MS,
   mintLoginCode,
@@ -71,6 +70,13 @@ import {
 } from "./server-identity.js";
 
 import { product } from "../../shared/product.js";
+import { cmdWebUrl } from "./web-url-command.js";
+import {
+  notSetLine,
+  readWebUrl,
+  requireWebUrl,
+  type WebUrl,
+} from "../../shared/web-url.js";
 import { webServiceAction, type WebServiceDeps } from "./web-service.js";
 import {
   CLAIM_CODE_TTL_MS,
@@ -287,9 +293,15 @@ export function denWebUrlAliases(port: number): string[] {
   ];
 }
 
-export function isDenWebTabUrl(rawUrl: string, port: number): boolean {
+export function isDenWebTabUrl(
+  rawUrl: string,
+  port: number,
+  address: string | undefined = readWebUrl()?.url,
+): boolean {
   try {
     const parsed = new URL(rawUrl);
+    // D80: a tab on the install's address is this Den's too.
+    if (address && parsed.origin === new URL(address).origin) return true;
     return (
       parsed.protocol === "http:" &&
       [
@@ -895,7 +907,9 @@ function appleScriptString(value: string): string {
 }
 
 function appleScriptUrlPredicate(varName: string, port: number): string {
-  return denWebUrlAliases(port)
+  // D80: the install's address first: the tab a person has open.
+  const address = readWebUrl()?.url;
+  return [...(address ? [address] : []), ...denWebUrlAliases(port)]
     .flatMap((url) => [
       `${varName} is ${appleScriptString(url)}`,
       `${varName} starts with ${appleScriptString(`${url}/`)}`,
@@ -1156,6 +1170,7 @@ export const WEB_SUBCOMMANDS_WITH_HELP = [
   "owner",
   "approve",
   "claim-link",
+  "url",
 ] as const;
 
 export function displayWebHelp(): void {
@@ -1173,6 +1188,7 @@ export function displayWebHelp(): void {
     `  ${product().cli} web logout [<id prefix>] [--all] [--port <port>]`,
   );
   console.log(`  ${product().cli} web owner [link|show|unlink] [--json]`);
+  console.log(`  ${product().cli} web url [<address>] [--json]`);
   console.log(
     `  ${product().cli} web approve <code> | --list [--json] [--port <port>]`,
   );
@@ -1206,6 +1222,9 @@ export function displayWebHelp(): void {
   );
   console.log(
     "  claim-link         Print a one-time setup link (30 min) that signs this machine's browser in",
+  );
+  console.log(
+    "  url [<address>]    Show or set this install's address (web.url), the one people are given",
   );
   console.log("  (start/stop remain accepted as legacy aliases for up/down)");
   console.log();
@@ -1325,6 +1344,10 @@ async function runWeb(args: string[]): Promise<void> {
     process.exitCode = cmdWebClaimLink(args.slice(1));
     return;
   }
+  if (args[0] === "url") {
+    process.exitCode = cmdWebUrl(args.slice(1));
+    return;
+  }
   if (args.includes("--help") || args.includes("-h")) {
     displayWebHelp();
     return;
@@ -1336,7 +1359,10 @@ async function runWeb(args: string[]): Promise<void> {
     return;
   }
 
-  const url = webUpUrl(options.port);
+  // Probes and signals use the loopback address (webProbeTarget); what a
+  // person reads and opens is the install's address (D80), never localhost.
+  const addr = readWebUrl();
+  const shown = addr?.url ?? `(${notSetLine(product().cli)})`;
 
   // Never act on another distribution's server: not "already running", and
   // never a signal to it (down, restart).
@@ -1379,7 +1405,7 @@ async function runWeb(args: string[]): Promise<void> {
       );
     }
     console.log(
-      chalk.green(`\n  OK ${product().title} web is not running at ${url}\n`),
+      chalk.green(`\n  OK ${product().title} web is not running at ${shown}\n`),
     );
     return;
   }
@@ -1425,7 +1451,7 @@ async function runWeb(args: string[]): Promise<void> {
   if (apiRunning && !running) {
     console.log(
       chalk.yellow(
-        `\n  Existing ${product().title} web server on ${url} is responding, but the UI assets are not available.`,
+        `\n  Existing ${product().title} web server on ${shown} is responding, but the UI assets are not available.`,
       ),
     );
     console.log(chalk.gray(`  Restarting ${product().title} web...`));
@@ -1441,7 +1467,7 @@ async function runWeb(args: string[]): Promise<void> {
     // D20: started from an ssh (Background) shell, it lives there.
     const where = webUpWarning(launchdSession(), product().cli);
     if (where) console.log(chalk.yellow(`\n  ⚠ ${where}`));
-    console.log(chalk.cyan(`\n  Starting ${product().cli} web on ${url}...`));
+    console.log(chalk.cyan(`\n  Starting ${product().cli} web on ${shown}...`));
     try {
       started = startDenWebServer(options);
       running = await waitForDenWeb(options.port, started.pid);
@@ -1467,12 +1493,19 @@ async function runWeb(args: string[]): Promise<void> {
   } else if (!svc.handled) {
     recordRunningDenWebServer(options.port);
     console.log(
-      chalk.green(`\n  OK ${product().title} web is already running at ${url}`),
+      chalk.green(
+        `\n  OK ${product().title} web is already running at ${shown}`,
+      ),
     );
   }
 
   if (!options.openBrowser) {
-    console.log(chalk.gray(`  Browser open skipped. Visit: ${url}\n`));
+    console.log(chalk.gray(`  Browser open skipped. Visit: ${shown}\n`));
+    return;
+  }
+  if (!addr) {
+    // D80: nothing to open until the install has its address.
+    console.log(chalk.yellow(`  Nothing opened: ${shown.slice(1, -1)}\n`));
     return;
   }
 
@@ -1481,7 +1514,7 @@ async function runWeb(args: string[]): Promise<void> {
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
-  let link: string | null = personGrantRefusal(process.env) ? url : null;
+  let link: string | null = personGrantRefusal(process.env) ? addr.url : null;
   const signIn = () => (link ??= freshLoginLink(options.port));
   const browser = openOrFocusDenWebUrl(
     signIn,
@@ -1490,14 +1523,14 @@ async function runWeb(args: string[]): Promise<void> {
   );
   if (browser.status === "focused") {
     console.log(chalk.green(`  OK Focused existing ${browser.app} tab`));
-    console.log(chalk.gray(`  ${url}\n`));
+    console.log(chalk.gray(`  ${shown}\n`));
     return;
   }
   if (browser.status === "opened") {
     console.log(
       chalk.green(`  OK Opened ${product().cli} web in your browser`),
     );
-    console.log(chalk.gray(`  ${url}\n`));
+    console.log(chalk.gray(`  ${shown}\n`));
     return;
   }
 
@@ -1526,17 +1559,21 @@ async function runWeb(args: string[]): Promise<void> {
 
 // ── SEC-1b: sign-in (`web login`, `web sessions`, `web logout`) ─────────────
 
-/** A fresh one-time sign-in link for `origin` (localhost by default). */
+/**
+ * A fresh one-time sign-in link for `origin` (D80: the install's address,
+ * web.url, by default; an Error saying it isn't set when it isn't).
+ */
 export function freshLoginLink(
   port: number,
   next = "/",
-  origin: string = localhostOrigin(port),
+  origin?: string,
   stateDir: string = getStateDir(),
 ): string {
+  void port; // the link is on the address, whatever port serves it
   const refused = personGrantRefusal(process.env);
   if (refused) throw new Error(refused);
   return loginLink(
-    origin,
+    origin ?? requireWebUrl(product().cli),
     mintLoginCode(ensureWebSecret(stateDir), Date.now(), loginLinkTtl()),
     next,
   );
@@ -1579,8 +1616,17 @@ export function cmdWebClaimLink(args: string[], io: CliIo = stdIo): number {
     return 2;
   }
   const now = Date.now();
+  // D80: on the install's address, the one the person's browsers use.
+  let origin: string;
+  try {
+    origin = requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
+  } catch (e) {
+    io.err(`${product().cli}: ${(e as Error).message}\n`);
+    return 1;
+  }
+  void port;
   const url = claimLink(
-    localhostOrigin(port),
+    origin,
     mintClaimCode(ensureWebSecret(io.stateDir ?? getStateDir()), now),
   );
   if (asJson)
@@ -1600,6 +1646,8 @@ interface CliIo {
   out: (s: string) => void;
   err: (s: string) => void;
   stateDir?: string;
+  /** D80: the install's address (web.url); readWebUrl by default. */
+  webUrl?: () => WebUrl | null;
 }
 const stdIo: CliIo = {
   out: (s) => process.stdout.write(s),
@@ -1721,10 +1769,18 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
   }
   const a = parseLoginArgs(args, io);
   if (typeof a === "number") return a;
+  let origin: string;
+  try {
+    origin =
+      a.origin ?? requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
+  } catch (e) {
+    io.err(`${product().cli}: ${(e as Error).message}\n`);
+    return 1;
+  }
   const link = freshLoginLink(
     a.port,
     a.next,
-    a.origin ?? localhostOrigin(a.port),
+    origin,
     io.stateDir ?? getStateDir(),
   );
   io.err(
@@ -1795,6 +1851,15 @@ export async function cmdWebLoginWait(
       args.filter((x) => x !== "--no-wait"),
       io,
     );
+  // D80: the link is on the install's address (or --host/--origin's).
+  let origin: string;
+  try {
+    origin =
+      a.origin ?? requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
+  } catch (e) {
+    io.err(`${product().cli}: ${(e as Error).message}\n`);
+    return 1;
+  }
   const stateDir = io.stateDir ?? getStateDir();
   const secret = ensureWebSecret(stateDir);
   const now = Date.now();
@@ -1811,11 +1876,7 @@ export async function cmdWebLoginWait(
     code: confirm,
     expiresAt: checked.expiresAt,
   });
-  const link = loginLink(
-    a.origin ?? localhostOrigin(a.port),
-    loginCode,
-    a.next,
-  );
+  const link = loginLink(origin, loginCode, a.next);
   if (!reg) {
     io.err(
       `${product().cli}: no ${product().title} web server answers on port ${a.port}, so this ` +

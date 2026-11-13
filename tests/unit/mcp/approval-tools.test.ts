@@ -257,7 +257,7 @@ describe("a scoped server", () => {
       const { api, calls } = fakeApi([]);
       const r = await callTool(tool, args, ctx(api, true));
       expect(r.isError).toBe(true);
-      expect(r.text).toMatch(/scoped to workspace "north"/);
+      expect(r.text).toMatch(/scoped to project "north"/);
       expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
       expect(calls.some((c) => c.path === "/api/activity")).toBe(true);
     }

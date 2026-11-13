@@ -109,7 +109,7 @@ const envArg = z.enum(ENVS).optional().describe("Environment (default local)");
 const workspaceArg = z
   .string()
   .optional()
-  .describe("Den workspace (default: the focused one)");
+  .describe("Den project (default: the focused one)");
 
 const str = (v: unknown): string | undefined =>
   typeof v === "string" && v.length > 0 ? v : undefined;
@@ -227,10 +227,10 @@ const READ_TOOLS: DenTool[] = [
         ws = typeof focused?.focus === "string" ? focused.focus : undefined;
       }
       if (!ws || !NAME_RE.test(ws))
-        throw new Refusal("agent_helpers: name the agent's workspace");
+        throw new Refusal("agent_helpers: name the agent's project");
       if (scope && ws !== scope.workspace && !(scope.grants ?? []).includes(ws))
         throw new ScopeRefusal(
-          `agent_helpers: workspace "${ws}" is outside this agent's scope ("${scope.workspace}")`,
+          `agent_helpers: project "${ws}" is outside this agent's scope ("${scope.workspace}")`,
         );
       const base = `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(agent)}/helpers`;
       if (!helper) return api.get(base, a.all === true ? { all: "1" } : {});
@@ -245,7 +245,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "whoami",
     "Who you are to Den, and your tools",
-    "D44: your agent id and workspace, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (your session started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
+    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (your session started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
     {},
     async (_a, { api, scope }) => {
       const id = scope?.actor.startsWith("agent:")
@@ -277,7 +277,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "status",
     "Service health",
-    "Health of every service in the workspace (what `status` shows): `counts`, then each service's `state` (up, down, redirect, pending, unknown, not-checked; `why` when there is no plain verdict), mode, and what was checked: `url` for an HTTP check, `check` for a shell command or a container check (`container <project>/<service>`). A redirect (302 → /login) answers, so it is not down.",
+    "Health of every service in the project (what `status` shows): `counts`, then each service's `state` (up, down, redirect, pending, unknown, not-checked; `why` when there is no plain verdict), mode, and what was checked: `url` for an HTTP check, `check` for a shell command or a container check (`container <project>/<service>`). A redirect (302 → /login) answers, so it is not down.",
     { env: envArg, workspace: workspaceArg },
     async (a, { api, scope }) => {
       const env = envOf(a);
@@ -296,7 +296,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "services",
     "Services",
-    "The workspace's services: repo, service, mode (managed or dev-managed), lifecycle commands, dependencies.",
+    "The project's services: repo, service, mode (managed or dev-managed), lifecycle commands, dependencies.",
     { env: envArg, workspace: workspaceArg },
     async (a, { api, scope }) => {
       const list = await api.get("/api/services", {
@@ -317,7 +317,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "applications",
     "Applications",
-    "Org > Application > Repo > Services for a workspace (what `apps --json` shows).",
+    "Org > Application > Repo > Services for a project (what `apps --json` shows).",
     { workspace: workspaceArg },
     async (a, { api, scope }) => {
       const tree = await api.get("/api/applications", {
@@ -338,7 +338,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "graph",
     "Dependency graph",
-    "The derived dependency graph; `seed` narrows it to one repo's closure. Unscoped with no `workspace` it is the org-wide map (`map: \"org-wide\"`: every active workspace's repos and edges, `workspaces` naming them; `order` only when one is active), with `workspace` that workspace's (`map: \"workspace\"`, with its startup order). Scoped, the workspace's own repos and the edges out of them (`outside` names the repos they depend on elsewhere; the org-wide map is `org_summary.graph`).",
+    "The derived dependency graph; `seed` narrows it to one repo's closure. Unscoped with no `workspace` it is the org-wide map (`map: \"org-wide\"`: every active project's repos and edges, `projects` naming them; `order` only when one is active), with `project` that project's (`map: \"workspace\"`, with its startup order). Scoped, the project's own repos and the edges out of them (`outside` names the repos they depend on elsewhere; the org-wide map is `org_summary.graph`).",
     {
       seed: z.string().optional().describe("Repo whose closure to show"),
       workspace: workspaceArg,
@@ -378,8 +378,8 @@ const READ_TOOLS: DenTool[] = [
   ),
   read(
     "workspaces",
-    "Workspaces",
-    "Workspaces, which are active and which is focused.",
+    "Projects",
+    "Projects, which are active and which is focused.",
     {},
     async (_a, { api, scope }) => {
       const body = await api.get("/api/workspaces");
@@ -391,7 +391,7 @@ const READ_TOOLS: DenTool[] = [
           ...(filtered.scope as Record<string, unknown>),
           ...scopeBlock(scope, body, scope.workspace, {
             count: 1,
-            noun: "workspace",
+            noun: "project",
           }),
         },
       };
@@ -400,7 +400,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "org_summary",
     "Org summary",
-    'The whole org at a glance, for every agent: each workspace and repo with status counts (running, partial, stopped; up, down, redirect, not checked), the dependency graph (names and edge kinds), the edge (up, TLS, whether HTTPS serves) and the environments. Scoped, `yours` adds your own workspace\'s services in full. It never carries logs, env values, commands, URLs or check output from outside your workspace. Start here for "what are our servers?".',
+    'The whole org at a glance, for every agent: each project and repo with status counts (running, partial, stopped; up, down, redirect, not checked), the dependency graph (names and edge kinds), the edge (up, TLS, whether HTTPS serves) and the environments. Scoped, `yours` adds your own project\'s services in full. It never carries logs, env values, commands, URLs or check output from outside your project. Start here for "what are our servers?".',
     {},
     async (_a, { api, scope }) => {
       const workspaces = await api.get("/api/workspaces");
@@ -611,7 +611,7 @@ const READ_TOOLS: DenTool[] = [
       const why = stacks.length
         ? undefined
         : hiddenStacks
-          ? `no stacks in workspace "${shown}": the ${hiddenStacks} stack${hiddenStacks === 1 ? "" : "s"} listed belong to repos outside it`
+          ? `no stacks in project "${shown}": the ${hiddenStacks} stack${hiddenStacks === 1 ? "" : "s"} listed belong to repos outside it`
           : ((body?.why as string | undefined) ??
             "no stacks (the web server gave no reason; it predates 0.4.4)");
       return withScope(
@@ -627,14 +627,14 @@ const READ_TOOLS: DenTool[] = [
   read(
     "onboard_status",
     "Onboarding status",
-    "What's set up and the one next step: `checks` (distribution, node, git, docker, web, workspaces, repos, service, mcp), each `ok`, `warn` or `todo` with its `detail` and, when there is one, a `fix` command or an `ask` for the person; then `next`: the step in plain words and its `command`. Reads only. Start here when setting Den up.",
+    "What's set up and the one next step: `checks` (distribution, node, git, docker, web, `workspaces`, repos, service, mcp), each `ok`, `warn` or `todo` with its `detail` and, when there is one, a `fix` command or an `ask` for the person; then `next`: the step in plain words and its `command`. Reads only. Start here when setting Den up.",
     {},
     (_a, { api }) => api.get("/api/onboard/status"),
   ),
   read(
     "repos_detect",
     "Find repos in a folder",
-    "Scan one folder for git repos (the folder itself, or one or two levels down) and say how each runs: `manifest` (its own, a side-car, or none), `runs` (the commands Den detected) or `ask` and `choices` when there are several ways. `workspaces` suggests a grouping: the repos in one parent folder go in a workspace named after it. `path` is required: an absolute folder (or ~/…) inside the person's home, not Den's state folder. Reads only: it never writes, runs a repo's tools or follows a symlink. Skips node_modules, vendor and dot-folders; at most `max` repos (50).",
+    "Scan one folder for git repos (the folder itself, or one or two levels down) and say how each runs: `manifest` (its own, a side-car, or none), `runs` (the commands Den detected) or `ask` and `choices` when there are several ways. `projects` suggests a grouping: the repos in one parent folder go in a project named after it. `path` is required: an absolute folder (or ~/…) inside the person's home, not Den's state folder. Reads only: it never writes, runs a repo's tools or follows a symlink. Skips node_modules, vendor and dot-folders; at most `max` repos (50).",
     {
       path: z
         .string()
@@ -652,7 +652,7 @@ const READ_TOOLS: DenTool[] = [
       // (unscoped) agent does onboarding.
       if (scope)
         throw new ScopeRefusal(
-          `repos_detect: this MCP server is scoped to workspace "${scope.workspace}" (${scope.actor}), and scanning folders reaches outside any workspace; nothing was read. Den's own unscoped MCP server does onboarding.`,
+          `repos_detect: this MCP server is scoped to project "${scope.workspace}" (${scope.actor}), and scanning folders reaches outside any project; nothing was read. Den's own unscoped MCP server does onboarding.`,
         );
       const p = needPath("repos_detect", a);
       return refusedOn400("repos_detect", () =>
@@ -854,7 +854,7 @@ async function findService(
   if (!hit)
     throw new Refusal(
       inRepo.length === 0
-        ? `no service in repo "${repo}" in the workspace.`
+        ? `no service in repo "${repo}" in the project.`
         : `name the service: ${repo} has ${inRepo.map((s) => s.service).join(", ")}.`,
     );
   return hit;
@@ -931,7 +931,7 @@ const agentResumeTool: DenTool = {
   name: "agent_resume",
   title: "Resume an agent",
   description:
-    "Resume a stopped or interrupted agent in the same conversation, persona, workspace and folder. Never starts a new conversation: an agent whose runtime can't resume is refused. Never the caller itself. Answers with agent: its id, persona, runtime, workspace, cwd, session (the session handle, <dist>-<ws>:<id>), sessionId, displayName (a person's name for it) and sessionTitle (the name its session shows: Den's rename or the runtime's, the later), when set.",
+    "Resume a stopped or interrupted agent in the same conversation, persona, project and folder. Never starts a new conversation: an agent whose runtime can't resume is refused. Never the caller itself. Answers with agent: its id, persona, runtime, project, cwd, session (the session handle, <dist>-<ws>:<id>), sessionId, displayName (a person's name for it) and sessionTitle (the name its session shows: Den's rename or the runtime's, the later), when set.",
   action: true,
   shape: {
     agent: z.string().describe("The agent's id"),
@@ -949,12 +949,12 @@ const agentResumeTool: DenTool = {
       ws = typeof focused?.focus === "string" ? focused.focus : undefined;
     }
     if (!ws || !NAME_RE.test(ws))
-      throw new Refusal("agent_resume: name the agent's workspace");
+      throw new Refusal("agent_resume: name the agent's project");
     // Scoped: callTool's scopeArgs pinned `workspace` to the scope (or a
     // granted one, reported) before this runs.
     if (scope && ws !== scope.workspace && !(scope.grants ?? []).includes(ws))
       throw new ScopeRefusal(
-        `agent_resume: workspace "${ws}" is outside this agent's scope ("${scope.workspace}")`,
+        `agent_resume: project "${ws}" is outside this agent's scope ("${scope.workspace}")`,
       );
     if (scope && `agent:${agent}` === scope.actor)
       throw new Refusal("agent_resume: an agent can't resume itself");
@@ -979,7 +979,7 @@ const agentImportTool: DenTool = {
   name: "agent_import",
   title: "Bring in a conversation",
   description:
-    "Bring in a conversation started outside Den (in the workspace's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without session: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent). With session and persona: brings that one in and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.",
+    "Bring in a conversation started outside Den (in the project's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without session: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent). With session and persona: brings that one in and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.",
   action: true,
   shape: {
     session: z
@@ -999,10 +999,10 @@ const agentImportTool: DenTool = {
       ws = typeof focused?.focus === "string" ? focused.focus : undefined;
     }
     if (!ws || !NAME_RE.test(ws))
-      throw new Refusal("agent_import: name the workspace");
+      throw new Refusal("agent_import: name the project");
     if (scope && ws !== scope.workspace && !(scope.grants ?? []).includes(ws))
       throw new ScopeRefusal(
-        `agent_import: workspace "${ws}" is outside this agent's scope ("${scope.workspace}")`,
+        `agent_import: project "${ws}" is outside this agent's scope ("${scope.workspace}")`,
       );
     const runtime = str(a.runtime);
     if (runtime && !NAME_RE.test(runtime))
@@ -1233,7 +1233,7 @@ const noteArg = z
 function refuseScoped(tool: string, scope: McpScope | undefined): void {
   if (scope)
     throw new ScopeRefusal(
-      `${tool}: this MCP server is scoped to workspace "${scope.workspace}" (${scope.actor}), and ${tool} changes Den beyond it; nothing was asked. Den's own unscoped MCP server does onboarding.`,
+      `${tool}: this MCP server is scoped to project "${scope.workspace}" (${scope.actor}), and ${tool} changes Den beyond it; nothing was asked. Den's own unscoped MCP server does onboarding.`,
     );
 }
 
@@ -1243,22 +1243,22 @@ const HELD =
 const APPROVAL_TOOLS: DenTool[] = [
   {
     name: "workspace_create",
-    title: "Create a workspace",
+    title: "Create a project",
     description:
-      "Create an empty Den workspace named `name` and make it active, so service_try can start its services." +
+      "Create an empty Den project named `name` and make it active, so service_try can start its services." +
       HELD,
     action: true,
     shape: {
       name: z
         .string()
         .describe(
-          "The workspace name (no quotes, slashes or control characters)",
+          "The project name (no quotes, slashes or control characters)",
         ),
       note: noteArg,
     },
     async run(a, ctx) {
       refuseScoped("workspace_create", ctx.scope);
-      const name = needArg("workspace_create", a, "name", "the workspace name");
+      const name = needArg("workspace_create", a, "name", "the project name");
       return askPerson(
         "workspace_create",
         "workspace_create",
@@ -1272,7 +1272,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "repo_add",
     title: "Add a repo",
     description:
-      "Add the local repo at `path` to a workspace, as `repo add` does (manifest_draft first shows what it would write)." +
+      "Add the local repo at `path` to a project, as `repo add` does (manifest_draft first shows what it would write)." +
       HELD,
     action: true,
     shape: {
@@ -1414,9 +1414,9 @@ export function pinnedTool(t: DenTool, scope: McpScope): DenTool {
   if (!WORKSPACE_TOOLS.has(t.name)) return t;
   const grants = scope.grants ?? [];
   const only =
-    ` This workspace only ("${scope.workspace}"` +
+    ` This project only ("${scope.workspace}"` +
     (grants.length ? `, or a granted one: ${grants.join(", ")}` : "") +
-    "); every other workspace is in org_summary, names and counts only.";
+    "); every other project is in org_summary, names and counts only.";
   let shape = t.shape;
   if ("workspace" in t.shape) {
     const rest = { ...t.shape };
@@ -1431,7 +1431,7 @@ export function pinnedTool(t: DenTool, scope: McpScope): DenTool {
             .string()
             .optional()
             .describe(
-              `"${scope.workspace}" (the default) or a granted workspace: ${grants.map((g) => `"${g}"`).join(", ")}; any other is refused`,
+              `"${scope.workspace}" (the default) or a granted project: ${grants.map((g) => `"${g}"`).join(", ")}; any other is refused`,
             ),
         }
       : rest;

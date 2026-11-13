@@ -139,7 +139,7 @@ describe("one workspace in the View (0.4.17)", () => {
       );
       expect(await p.$('tr[data-svc="notes/notes"]')).toBeNull();
       expect(await p.textContent("#view-note")).toBe(
-        "Shows workspace south, as the top bar's View. Change it there.",
+        "Shows project south, as the top bar's View. Change it there.",
       );
       await p.context().close();
     } finally {
@@ -206,7 +206,7 @@ describe("one workspace in the View (0.4.17)", () => {
       );
       expect(repos).toEqual(["blog"]);
       expect(await p.textContent("#view-note")).toBe(
-        "Shows workspace south, as the top bar's View. Change it there.",
+        "Shows project south, as the top bar's View. Change it there.",
       );
       await p.context().close();
     } finally {

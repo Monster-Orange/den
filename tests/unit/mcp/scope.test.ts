@@ -161,7 +161,7 @@ describe("--workspace / --actor", () => {
     for (const bad of ["../north", "-north", "a b", "north;rm"])
       expect(() =>
         parseScopeFlags([`--workspace=${bad}`, "--actor", "agent:x"]),
-      ).toThrow(/is not a workspace name/);
+      ).toThrow(/is not a project name/);
     expect(() =>
       parseScopeFlags(["--workspace", "--actor", "agent:x"]),
     ).toThrow(/--workspace needs a value/);
@@ -182,7 +182,7 @@ describe("a scoped server refuses another workspace", () => {
       expect(r.isError).toBe(true);
       expect(r.text).toMatch(
         new RegExp(
-          `^Refused: ${tool}: this MCP server is scoped to workspace "north" \\(agent:planner; no grants\\); "south" is another workspace`,
+          `^Refused: ${tool}: this MCP server is scoped to project "north" \\(agent:planner; no grants\\); "south" is another project`,
         ),
       );
     }
@@ -202,7 +202,7 @@ describe("a scoped server refuses another workspace", () => {
     expect(report?.body).toMatchObject({
       tool: "service_up",
       repo: "billing",
-      reason: expect.stringMatching(/scoped to workspace "north".*"south"/),
+      reason: expect.stringMatching(/scoped to project "north".*"south"/),
     });
   });
 
@@ -239,7 +239,7 @@ describe("a scoped server refuses another workspace", () => {
       tool: "manifest_validate",
       path: "/repos/billing/.den.yml",
       reason: expect.stringMatching(
-        /is not inside a repo of workspace "north"/,
+        /is not inside a repo of project "north"/,
       ),
     });
   });
@@ -275,7 +275,7 @@ describe("a scoped server refuses another workspace", () => {
       ctx(api, SCOPE),
     );
     expect(tail.text).toMatch(
-      /^Refused: logs_tail: billing\/api is not a service of workspace "north"/,
+      /^Refused: logs_tail: billing\/api is not a service of project "north"/,
     );
     const search = await callTool(
       "logs_search",
@@ -295,7 +295,7 @@ describe("a scoped server refuses another workspace", () => {
       { path: "/repos/billing/.den.yml" },
       ctx(api, SCOPE),
     );
-    expect(man.text).toMatch(/is not inside a repo of workspace "north"/);
+    expect(man.text).toMatch(/is not inside a repo of project "north"/);
     const rel = await callTool(
       "manifest_validate",
       { path: "../billing" },
@@ -320,7 +320,7 @@ describe("a scoped server refuses another workspace", () => {
       const r = await callTool(tool, { ...args }, ctx(api, SCOPE));
       expect(r.text).toMatch(
         new RegExp(
-          `^Refused: ${tool}: tests run against the focused workspace \\("south"\\)`,
+          `^Refused: ${tool}: tests run against the focused project \\("south"\\)`,
         ),
       );
     }
@@ -334,7 +334,7 @@ describe("a scoped server refuses another workspace", () => {
       {},
       ctx(api, { workspace: "nope", actor: "agent:x" }),
     );
-    expect(r.text).toMatch(/scoped to workspace "nope", which does not exist/);
+    expect(r.text).toMatch(/scoped to project "nope", which does not exist/);
     expect(work(calls)).toEqual([]);
   });
 });
@@ -370,7 +370,7 @@ describe("a scoped server pins and filters", () => {
         actor: "agent:planner",
         otherWorkspaces: 1,
         hidden: { repos: 1 },
-        note: "1 workspace in north (your scope); 1 other workspace with 1 more repo: summary only, see org_summary",
+        note: "1 project in north (your scope); 1 other project with 1 more repo: summary only, see org_summary",
       },
     });
     expect(r.text).not.toContain("south");
@@ -531,10 +531,10 @@ describe("the actor is stamped", () => {
       workspace: "north",
     });
     expect(lines).toEqual([
-      `▶ run smoke/local · modules=all [abc123] · by agent:planner claude-code 2.0.0 (workspace north, mcp pid 4242, session ${info.session})`,
+      `▶ run smoke/local · modules=all [abc123] · by agent:planner claude-code 2.0.0 (project north, mcp pid 4242, session ${info.session})`,
     ]);
     expect(actorLabel({ kind: "agent", ...info })).toBe(
-      `agent:planner claude-code 2.0.0 (workspace north, mcp pid 4242, session ${info.session})`,
+      `agent:planner claude-code 2.0.0 (project north, mcp pid 4242, session ${info.session})`,
     );
   });
 });

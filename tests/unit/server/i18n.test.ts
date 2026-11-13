@@ -85,7 +85,7 @@ describe("the admin-password prompt (LK-0)", () => {
 describe("the catalogs", () => {
   it("en is shell.js's, and has the shell's words", () => {
     expect(Object.keys(EN).length).toBeGreaterThan(200);
-    expect(EN["n.workspaces"]).toBe("Workspaces");
+    expect(EN["n.workspaces"]).toBe("Projects");
   });
 
   it.each(NON_EN)("%s has every key en has", (lang) => {
@@ -122,7 +122,7 @@ describe("the catalogs", () => {
 
   it("en pluralizes: a count with a singular in any catalog has its en .one (0.3.0-dev.40)", () => {
     // The org menu said "1 workspaces".
-    expect(EN["org.n.one"]).toBe("{n} workspace");
+    expect(EN["org.n.one"]).toBe("{n} project");
     const counted = Object.keys(EN).filter(
       (k) => base(k) === k && vars(EN[k]).includes("n"),
     );

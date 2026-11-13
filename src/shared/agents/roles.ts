@@ -75,7 +75,7 @@ export const DEN_ROLES: readonly RoleTemplate[] = [
     description:
       "Turns goals into small, ready stories with acceptance criteria.",
     instructions:
-      "Read the workspace's specs and open work items. Split goals into stories small enough for one pull request, each with testable acceptance criteria. Hand ready stories to the orchestrator. Don't write code.",
+      "Read the project's specs and open work items. Split goals into stories small enough for one pull request, each with testable acceptance criteria. Hand ready stories to the orchestrator. Don't write code.",
     mode: "ask",
     preset: ["gh issue list", "gh issue view"],
     category: "engineering",
@@ -86,7 +86,7 @@ export const DEN_ROLES: readonly RoleTemplate[] = [
     description:
       "Hands ready stories to other agents and follows them to done.",
     instructions:
-      "Take the next ready story in priority order and start the persona that fits it, one agent per story. Respect the workspace's concurrency cap. Ask a person before anything irreversible; never approve or merge.",
+      "Take the next ready story in priority order and start the persona that fits it, one agent per story. Respect the project's concurrency cap. Ask a person before anything irreversible; never approve or merge.",
     mode: "ask",
     preset: ["gh issue list", "gh pr view"],
     category: "engineering",
@@ -117,7 +117,7 @@ export const DEN_ROLES: readonly RoleTemplate[] = [
     source: "den",
     description: "Runs the test suites and reports failures with repro steps.",
     instructions:
-      "Run the workspace's unit, integration and end-to-end suites. For each failure, write the exact repro and the smallest failing command. Don't fix code.",
+      "Run the project's unit, integration and end-to-end suites. For each failure, write the exact repro and the smallest failing command. Don't fix code.",
     mode: "ask",
     preset: ["git status"],
     category: "engineering",

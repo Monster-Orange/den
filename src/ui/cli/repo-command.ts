@@ -118,13 +118,13 @@ export interface RepoAddResult {
 }
 
 const USAGE = () =>
-  `${product().cli} repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>] ` +
+  `${product().cli} repo add <path|git-url> [--sidecar] [-w <project>] [--name <repo>] ` +
   `[--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>] [--dry-run] [--json]`;
 
 export const REPO_HELP = () =>
   [
     `\n  ${USAGE()}\n`,
-    "  Add a repo to a workspace, with no prompts and without changing the repo.",
+    "  Add a repo to a project, with no prompts and without changing the repo.",
     "  A path is your own checkout (dev-managed); a git URL is cloned where Den",
     "  keeps its managed clones. A repo with no manifest of its own, or with",
     "  --sidecar, gets a side-car manifest in this distribution's manifests/",
@@ -132,14 +132,14 @@ export const REPO_HELP = () =>
     "  compose file or its package.json scripts (dev, start, test). When that",
     '  cannot decide, nothing is written and --json answers with "ask" and',
     '  "choices": re-run with --run "<cmd>". --health <url> adds an HTTP health',
-    "  check. -w picks the workspace (default: the focused one, else a new",
+    "  check. -w picks the project (default: the focused one, else a new",
     "  `default`). Safe to re-run: the same repo answers existed: true.",
     "  --dry-run (a local folder only): detect and validate the side-car and",
-    '  print it ("draft"), writing nothing: no side-car, no workspace entry.\n',
+    '  print it ("draft"), writing nothing: no side-car, no project entry.\n',
     `\n  ${product().cli} repo detect <folder> [--json]\n`,
     "  Find the git repos in a folder inside your home (one or two levels deep),",
-    "  say how each one runs, and suggest workspaces: the repos in one parent",
-    "  folder go in one workspace named after it. Reads only: it never writes,",
+    "  say how each one runs, and suggest projects: the repos in one parent",
+    "  folder go in one project named after it. Reads only: it never writes,",
     "  never runs a repo's tools and never follows a symlink.\n",
   ].join("\n");
 
@@ -229,7 +229,7 @@ function workspaceTarget(
   const key = resolveWorkspaceKey(typed, file.workspaces);
   if (key) return { key, typed, exists: true };
   const refusal = workspaceNameRefusal(typed, file.workspaces);
-  if (refusal) return { error: `workspace "${typed}": ${refusal}` };
+  if (refusal) return { error: `project "${typed}": ${refusal}` };
   const slug = workspaceSlug(typed)!;
   const reserved =
     reservedWorkspaceError(slug) ?? reservedWorkspaceError(typed);
@@ -519,8 +519,8 @@ export function repoAdd(
   if (mine.length > 0)
     return {
       ok: false,
-      error: `workspace "${ws.name}" already has a different "${name}" (${mine.map((k) => entries[k].path ?? `managed ${entries[k].branch ?? "main"}`).join(", ")})`,
-      ask: `Replace the "${name}" in workspace "${ws.name}" with ${repoPath}, or add this one under another name?`,
+      error: `project "${ws.name}" already has a different "${name}" (${mine.map((k) => entries[k].path ?? `managed ${entries[k].branch ?? "main"}`).join(", ")})`,
+      ask: `Replace the "${name}" in project "${ws.name}" with ${repoPath}, or add this one under another name?`,
       fix: `${bin} relocate ${name} ${repoPath} -w ${ws.name}`,
       choices: [
         `${bin} relocate ${name} ${repoPath} -w ${ws.name}`,
@@ -546,7 +546,7 @@ export function repoAdd(
 function printHuman(r: RepoAddResult): void {
   if (r.dryRun && r.ok) {
     console.log(
-      `✓ Dry run: ${r.repo} would be added to workspace ${r.workspace} (${r.mode}, ${r.path}); nothing was written`,
+      `✓ Dry run: ${r.repo} would be added to project ${r.workspace} (${r.mode}, ${r.path}); nothing was written`,
     );
     if (r.manifest)
       console.log(
@@ -565,8 +565,8 @@ function printHuman(r: RepoAddResult): void {
   }
   console.log(
     r.existed
-      ? `✓ ${r.repo} is already in workspace ${r.workspace} (${r.mode}, ${r.path})`
-      : `✓ Added ${r.repo} to workspace ${r.workspace} (${r.mode}, ${r.path})`,
+      ? `✓ ${r.repo} is already in project ${r.workspace} (${r.mode}, ${r.path})`
+      : `✓ Added ${r.repo} to project ${r.workspace} (${r.mode}, ${r.path})`,
   );
   if (r.manifest)
     console.log(
@@ -621,7 +621,7 @@ async function cmdRepoDetect(argv: string[]): Promise<number> {
       console.log(`  ${x.name.padEnd(20)} ${how}${inWs}`);
     }
     if (r.workspaces.length) {
-      console.log("\n  Suggested workspaces:");
+      console.log("\n  Suggested projects:");
       for (const w of r.workspaces)
         console.log(`  ${w.name.padEnd(20)} ${w.repos.join(", ")}`);
     }

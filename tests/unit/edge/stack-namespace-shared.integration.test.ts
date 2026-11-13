@@ -241,7 +241,7 @@ describe("two workspaces with stack_namespace: main", () => {
     await stackCmd("ws-b", ["up", "shop"]);
     const first = await stackCmd("ws-a", ["down", "shop"]);
     expect(first).toMatch(
-      /detached workspace "ws-a" — shop-main still running for \[ws-b\]/,
+      /detached project "ws-a" — shop-main still running for \[ws-b\]/,
     );
     expect(composeProjects("down")).toEqual([]);
     expect(up.has("shop-main")).toBe(true);
@@ -299,7 +299,7 @@ describe("a different checkout in the same namespace", () => {
       `[ws-a] at ${path.join(repos, "shop")} (branch: n/a)`,
     );
     expect(error.message).toContain(
-      `differs from ${path.join(repos, "shop-other")} (branch: n/a) for workspace "ws-c"`,
+      `differs from ${path.join(repos, "shop-other")} (branch: n/a) for project "ws-c"`,
     );
     // Nothing was started or swapped.
     expect(composeProjects("up")).toEqual([]);

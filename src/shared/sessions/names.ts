@@ -16,7 +16,7 @@ export function sessionName(
 ): string {
   if (!WORKSPACE_NAME_RE.test(workspace))
     throw new Error(
-      `workspace "${workspace}" is not a workspace name (letters, digits, ".", "_", "-"; 1-64 long)`,
+      `project "${workspace}" is not a project name (letters, digits, ".", "_", "-"; 1-64 long)`,
     );
   if (!SESSION_NAME_RE.test(name))
     throw new Error(

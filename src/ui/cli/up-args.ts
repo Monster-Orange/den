@@ -6,10 +6,10 @@
  * that do: a repo, or `-a` for the whole workspace.
  */
 export function upNeedsTarget(cli: string, ws: string, plan: boolean): string {
-  const name = /^[A-Za-z0-9._-]{1,64}$/.test(ws) ? ws : "<workspace>";
+  const name = /^[A-Za-z0-9._-]{1,64}$/.test(ws) ? ws : "<project>";
   const p = plan ? " --plan" : "";
   return (
     `up -w ${name} needs what to start: \`${cli} up -a${p} -w ${name}\` ` +
-    `for the whole workspace, or \`${cli} up <repo>${p} -w ${name}\` for one repo and its dependencies.`
+    `for the whole project, or \`${cli} up <repo>${p} -w ${name}\` for one repo and its dependencies.`
   );
 }

@@ -159,7 +159,7 @@ function validateFlagScopes(parsed: ParsedCliArgs): void {
   if (parsed.flags.workspace && !WORKSPACE_COMMANDS.has(command)) {
     if (command === "workspace") {
       throw new Error(
-        `-w/--workspace is not valid with workspace mutations; use \`${product().cli} workspace use <name>\` instead`,
+        `-w/--workspace is not valid with project mutations; use \`${product().cli} workspace use <name>\` instead`,
       );
     }
     throw new Error(`-w/--workspace is not valid with ${command}`);
@@ -189,6 +189,7 @@ export const SUBCOMMAND_OWN_HELP: Readonly<Record<string, readonly string[]>> =
       "owner",
       "approve",
       "claim-link",
+      "url",
     ],
     mcp: ["connect", "disconnect", "clients", "config"],
     repo: ["add"],

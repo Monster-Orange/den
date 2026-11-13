@@ -339,7 +339,7 @@ describe("§6b.2: the streaming GETs take a declared command's id, never free-fo
       );
       expect([
         cmd,
-        /No services in this workspace have a/.test(r.body),
+        /No services in this project have a/.test(r.body),
       ]).toEqual([cmd, true]);
     }
     expect(fs.existsSync(marker())).toBe(false);
@@ -416,7 +416,7 @@ describe("the stdio MCP server Den starts for an agent (item 5: --actor)", () =>
   it("carries the agent's token (DEN_ACTOR_TOKEN, inherited): its refused call is audited as agent:<id>, verified", async () => {
     const r = mcp({ DEN_ACTOR_TOKEN: token, DEN_AGENT: "agent:planner" });
     expect(r.status).toBe(1);
-    expect(r.stdout).toMatch(/scoped to workspace "north"/);
+    expect(r.stdout).toMatch(/scoped to project "north"/);
     expect(`${r.stdout}${r.stderr}`.includes(token)).toBe(false);
     // The audit line (the server log the /logs page shows): the token's
     // agent, verified (no "(unverified)"). The server's output may lag.
@@ -428,7 +428,7 @@ describe("the stdio MCP server Den starts for an agent (item 5: --actor)", () =>
         .find((l) => /✗ services/.test(l));
       if (!line) await new Promise((res) => setTimeout(res, 100));
     }
-    expect(line).toMatch(/· by agent:planner .*\(workspace north,/);
+    expect(line).toMatch(/· by agent:planner .*\(project north,/);
     expect(line).not.toMatch(/unverified/);
   }, 90_000);
 

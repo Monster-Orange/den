@@ -87,7 +87,7 @@ export function countText(n) {
 export function scopeText(row, workspace) {
   if (row.scope === "distribution") return "Distribution · read-only";
   if (row.scope === "workspace")
-    return workspace ? `Workspace · ${workspace}` : "Workspace";
+    return workspace ? `Project setup · ${workspace}` : "Project setup";
   return "User";
 }
 
@@ -254,18 +254,18 @@ export async function mountSettings(deps) {
   function drawSection({ category: c, rows }) {
     const ws =
       rows.some((r) => r.scope === "workspace") && ctx.askWorkspace
-        ? `<div class="row set-ask"><label class="l" for="set-ws">Workspace</label>` +
+        ? `<div class="row set-ask"><label class="l" for="set-ws">Project</label>` +
           `<select id="set-ws" data-focus-key="set-ws">${ctx.workspaces
             .map(
               (w) =>
                 `<option value="${esc(w)}"${w === ctx.workspace ? " selected" : ""}>${esc(w)}</option>`,
             )
             .join("")}</select>` +
-          `<span class="set-note">You view All active: pick the workspace these are for.</span></div>`
+          `<span class="set-note">You view All active: pick the project these are for.</span></div>`
         : "";
     const none =
       rows.some((r) => r.scope === "workspace") && !ctx.workspace
-        ? '<p class="set-note">No active workspaces.</p>'
+        ? '<p class="set-note">No active projects.</p>'
         : "";
     return (
       `<section id="cat-${esc(c.id)}" data-cat="${esc(c.id)}" aria-labelledby="h-${esc(c.id)}">` +
@@ -455,7 +455,7 @@ export async function mountSettings(deps) {
   }
   function wsEditor(v, lid, cid, desc) {
     if (!ctx.workspace)
-      return `<output class="set-ro" aria-labelledby="${lid}" ${desc}>No workspace</output>`;
+      return `<output class="set-ro" aria-labelledby="${lid}" ${desc}>No project</output>`;
     const eds = ctx.data.editors || [];
     const def =
       eds.find(

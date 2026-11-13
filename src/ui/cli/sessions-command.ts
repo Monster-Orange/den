@@ -232,7 +232,7 @@ let workspacesModule:
   | typeof import("../../shared/environment-manager/workspaces.js")
   | null = null;
 function defaultWorkspaceExists(ws: string): boolean {
-  if (!workspacesModule) throw new Error("workspaces not loaded");
+  if (!workspacesModule) throw new Error("projects not loaded");
   return Boolean(workspacesModule.readWorkspacesFile().workspaces[ws]);
 }
 export async function loadWorkspaces(d: SessionsDeps): Promise<void> {
@@ -311,7 +311,7 @@ export function workspaceFlag(where: string, p: Parsed): string | undefined {
   // D70: a workspace's name or its slug.
   const name = resolveWorkspaceInput(String(ws));
   if (!WORKSPACE_NAME_RE.test(name))
-    throw new UsageError(`${where}: "${String(ws)}" is not a workspace`);
+    throw new UsageError(`${where}: "${String(ws)}" is not a project`);
   return name;
 }
 
@@ -416,7 +416,7 @@ async function start(args: string[], d: Resolved): Promise<number> {
       `${where}: give the command to run after --: -- <argv…>`,
     );
   if (!d.workspaceExists(ws))
-    throw new UsageError(`${where}: workspace "${ws}" does not exist`);
+    throw new UsageError(`${where}: project "${ws}" does not exist`);
   const cwdFlag = p.flags["--cwd"];
   const cwd =
     typeof cwdFlag === "string"

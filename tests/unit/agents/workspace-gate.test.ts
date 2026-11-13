@@ -113,7 +113,7 @@ describe("an agent's MCP is pinned to its workspace", () => {
     );
     expect(res.isError).toBe(true);
     expect(res.text).toMatch(
-      /scoped to workspace "north".*"south" is another workspace/,
+      /scoped to project "north".*"south" is another project/,
     );
     // The refusal says what the agent may reach: here, nothing more.
     expect(res.text).toMatch(/\(agent:planner; no grants\)/);
@@ -178,7 +178,7 @@ describe("an agent's MCP is pinned to its workspace", () => {
       verb: "services",
     });
     expect(lines[0]).toMatch(
-      /services in workspace south.*agent:planner.*workspace north/,
+      /services in project south.*agent:planner.*project north/,
     );
   });
 
@@ -192,7 +192,7 @@ describe("an agent's MCP is pinned to its workspace", () => {
       { workspace: "other" },
       ctx(api, scope),
     );
-    expect(res.text).toMatch(/^Refused: .*"other" is another workspace/);
+    expect(res.text).toMatch(/^Refused: .*"other" is another project/);
     expect(res.text).toMatch(/\(agent:planner; grants: south\)/);
     expect(calls.filter((c) => c.path === "/api/services")).toEqual([]);
   });
@@ -209,7 +209,7 @@ describe("an agent's MCP is pinned to its workspace", () => {
     );
     expect(() =>
       parseScopeFlags(["-w", "north", "--actor", "agent:a", "--grant", "../x"]),
-    ).toThrow(/--grant "\.\.\/x" is not a workspace name/);
+    ).toThrow(/--grant "\.\.\/x" is not a project name/);
   });
 
   it("recordCrossWorkspace refuses a report without a scoped actor or a target", () => {

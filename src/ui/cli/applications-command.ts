@@ -76,7 +76,7 @@ export function appRepos(apps: Application[], name: string): Set<string> {
     throw new Error(
       a.contributors.length
         ? `Application "${name}" has no runtime here, only modules/libraries: ${a.contributors.map((c) => c.repo).join(", ")}`
-        : `Application "${name}" has no repos in this workspace`,
+        : `Application "${name}" has no repos in this project`,
     );
   return new Set(a.repos);
 }
@@ -90,7 +90,7 @@ export function cmdApps(args: string[]): void {
   if (args.includes("-h") || args.includes("--help")) {
     console.log(
       `\n  ${product().cli} apps [--json]        (alias: applications)\n\n` +
-        "  Org > Application > Repo > Services for the focused workspace.\n" +
+        "  Org > Application > Repo > Services for the focused project.\n" +
         `  Applications come from \`applications:\` in ${product().configFile} and\n` +
         `  \`application:\` in a repo's ${product().manifestYml} (the repo wins). Any other\n` +
         "  repo is its own application, named after the repo.\n" +
@@ -108,7 +108,7 @@ export function cmdApps(args: string[]): void {
     `  ${chalk.bold(tree.org?.title ?? "Org")}${tree.org && tree.org.id !== tree.org.title ? chalk.gray(`  (${tree.org.id})`) : ""}`,
   );
   if (tree.applications.length === 0) {
-    console.log(chalk.yellow("    No repos in this workspace.\n"));
+    console.log(chalk.yellow("    No repos in this project.\n"));
     return;
   }
   for (const a of tree.applications) {
@@ -139,10 +139,10 @@ export function cmdApps(args: string[]): void {
       console.log(chalk.gray(`      ${describeContributor(c)}`));
     if (a.absent.length)
       console.log(
-        chalk.gray(`      not in this workspace: ${a.absent.join(", ")}`),
+        chalk.gray(`      not in this project: ${a.absent.join(", ")}`),
       );
     if (!a.repos.length && !a.contributors.length && !a.absent.length)
-      console.log(chalk.gray("      (no repos in this workspace)"));
+      console.log(chalk.gray("      (no repos in this project)"));
   }
   console.log();
 }

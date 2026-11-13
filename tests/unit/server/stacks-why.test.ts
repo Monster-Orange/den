@@ -22,7 +22,7 @@ describe("emptyStacksReason", () => {
         configStacks: 0,
       }),
     ).toMatch(
-      /^no stacks: the org config \(\S+\) declares no stacks:, and no repo of workspace "north" has a compose: block in its \S+$/,
+      /^no stacks: the org config \(\S+\) declares no stacks:, and no repo of project "north" has a compose: block in its \S+$/,
     );
   });
 
@@ -33,7 +33,7 @@ describe("emptyStacksReason", () => {
         workspaceExists: false,
         configStacks: 0,
       }),
-    ).toMatch(/^no stacks: workspace "default" does not exist here/);
+    ).toMatch(/^no stacks: project "default" does not exist here/);
   });
 });
 

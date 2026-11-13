@@ -335,7 +335,7 @@ describe("the gate: a scoped agent asks “what are our servers?”", () => {
         repos: [{ repo: "search", state: "inactive" }],
       },
     ]);
-    expect(s.summary).toMatch(/^3 workspaces \(2 active\), 5 repos\./);
+    expect(s.summary).toMatch(/^3 projects \(2 active\), 5 repos\./);
     // Every active workspace's graph, merged (here both answer the same);
     // a startup order is one workspace's, so a merged map has none.
     expect(s.graph).toEqual({
@@ -427,7 +427,7 @@ describe("scoped answers say so (MCP-2.2)", () => {
       actor: "agent:planner",
       otherWorkspaces: 2,
       hidden: { repos: 3 },
-      note: "4 services in north (your scope); 2 other workspaces with 3 more repos: summary only, see org_summary",
+      note: "4 services in north (your scope); 2 other projects with 3 more repos: summary only, see org_summary",
     });
     expect((s.counts as { services: number }).services).toBe(4);
   });
@@ -474,13 +474,13 @@ describe("scoped answers say so (MCP-2.2)", () => {
       "stacks",
     ]) {
       const t = tools.find((x) => x.name === name)!;
-      expect(t.description).toContain('This workspace only ("north")');
+      expect(t.description).toContain('This project only ("north")');
       expect(t.shape).not.toHaveProperty("workspace");
     }
     // The org's own tools are not workspace data.
     for (const name of ["environments", "edge_status", "org_summary"])
       expect(tools.find((x) => x.name === name)!.description).not.toContain(
-        "This workspace only",
+        "This project only",
       );
     // Unscoped, nothing changes.
     expect(
@@ -493,7 +493,7 @@ describe("scoped answers say so (MCP-2.2)", () => {
       (x) => x.name === "status",
     )!;
     expect(t.description).toContain(
-      'This workspace only ("north", or a granted one: south)',
+      'This project only ("north", or a granted one: south)',
     );
     const ws = t.shape.workspace as unknown as {
       safeParse: (v: unknown) => { success: boolean };
@@ -521,7 +521,7 @@ describe("scoped answers say so (MCP-2.2)", () => {
       const { tools } = await client.listTools();
       const status = tools.find((t) => t.name === "status")!;
       expect(Object.keys(status.inputSchema.properties ?? {})).toEqual(["env"]);
-      expect(status.description).toContain("This workspace only");
+      expect(status.description).toContain("This project only");
       expect(tools.map((t) => t.name)).toContain("org_summary");
     } finally {
       await client.close();
@@ -636,7 +636,7 @@ describe("honest health (MCP-2.4)", () => {
     const hidden = await call("stacks", {}, ctx(api2, NORTH));
     expect(hidden.stacks).toEqual([]);
     expect(hidden.why).toBe(
-      'no stacks in workspace "north": the 1 stack listed belong to repos outside it',
+      'no stacks in project "north": the 1 stack listed belong to repos outside it',
     );
     expect(hidden.scope).toMatchObject({ hidden: { repos: 3, stacks: 1 } });
 

@@ -11,7 +11,7 @@ import {
 } from "../../../src/ui/server/public/workspace-picker.js";
 
 const TIP =
-  "Picking a workspace here also makes it the CLI default, so __DEN_CLI__ commands run there.";
+  "Picking a project here also makes it the CLI default, so __DEN_CLI__ commands run there.";
 
 const payload = {
   workspaces: { "files-api": {}, "tasks-api": {}, default: {} },
@@ -38,8 +38,7 @@ describe("buildScopeMenuModel", () => {
         label: "All active (2)",
         checked: true,
         focused: false,
-        title:
-          "Every active workspace; a service several define is listed once",
+        title: "Every active project; a service several define is listed once",
       },
       {
         value: "files-api",

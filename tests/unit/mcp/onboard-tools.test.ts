@@ -170,7 +170,7 @@ describe("repos_detect", () => {
       ctx(api, true),
     );
     expect(r.isError).toBe(true);
-    expect(r.text).toMatch(/scoped to workspace "north"/);
+    expect(r.text).toMatch(/scoped to project "north"/);
     expect(calls.map((c) => c.path)).not.toContain("/api/onboard/repos");
     // The attempt lands in the activity trail.
     expect(
@@ -223,7 +223,7 @@ describe("manifest_draft", () => {
       ctx(outside.api, true),
     );
     expect(r.isError).toBe(true);
-    expect(r.text).toMatch(/not inside a repo of workspace "north"/);
+    expect(r.text).toMatch(/not inside a repo of project "north"/);
     expect(outside.calls.map((c) => c.path)).not.toContain(
       "/api/onboard/manifest",
     );

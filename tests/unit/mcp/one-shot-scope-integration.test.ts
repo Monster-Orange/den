@@ -111,7 +111,7 @@ describe("bin/den mcp --call, scoped", () => {
     expect(r.err).toContain("mcp --call: scoped to north as agent:scout");
     expect(r.code).toBe(1);
     expect(r.out).toMatch(
-      /^Refused: services: .*"south" is another workspace.*agents\.scout\.grants/,
+      /^Refused: services: .*"south" is another project.*agents\.scout\.grants/,
     );
     expect(r.out).not.toContain("bank");
     expect(r.out).not.toContain("/private/");

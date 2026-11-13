@@ -129,7 +129,7 @@ export function assertSyncableRepo(
 ): void {
   const entries = services.filter((s) => s.repo === repo);
   if (entries.length === 0)
-    throw new Refusal(`no repo named "${repo}" in the workspace.`);
+    throw new Refusal(`no repo named "${repo}" in the project.`);
   if (!entries.some((s) => s.mode === "managed"))
     throw new Refusal(
       `${repo} is dev-managed (your own checkout): sync only updates managed clones, never a dev-managed one.`,

@@ -101,7 +101,7 @@ describe("the resolution chain", () => {
     const r = resolveWorkspaceOrg("client", c);
     expect(r).toMatchObject({ org: "initech", source: "blueprint" });
     expect(r.warnings).toEqual([
-      "workspace client: repo acme-api belongs to acme, not the workspace's org initech",
+      "project client: repo acme-api belongs to acme, not the project's org initech",
     ]);
   });
 
@@ -114,7 +114,7 @@ describe("the resolution chain", () => {
     const r = resolveWorkspaceOrg("client", c);
     expect(r).toMatchObject({ org: "globex", source: "workspace" });
     expect(r.warnings).toEqual([
-      "workspace client: org Globex in workspaces.yml overrides the blueprint's org initech",
+      "project client: org Globex in workspaces.yml overrides the blueprint's org initech",
     ]);
   });
 
@@ -139,7 +139,7 @@ describe("the resolution chain", () => {
     const r = resolveWorkspaceOrg("mixed", c);
     expect(r).toMatchObject({ org: "acme", source: "default" });
     expect(r.warnings).toEqual([
-      "workspace mixed: its repos belong to several owners (acme, Globex); using acme. Set org: on the workspace to choose one",
+      "project mixed: its repos belong to several owners (acme, Globex); using acme. Set org: on the project to choose one",
     ]);
   });
 
@@ -151,7 +151,7 @@ describe("the resolution chain", () => {
     const r = resolveWorkspaceOrg("w", c);
     expect(r.org).toBe("example-org");
     expect(r.warnings).toEqual([
-      "workspace w: org example-org is not in orgs:, the catalog or github_org",
+      "project w: org example-org is not in orgs:, the catalog or github_org",
     ]);
   });
 

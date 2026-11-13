@@ -93,7 +93,7 @@ export function resolveStackNamespace(
   if (own) {
     if (bp && bp !== own)
       warnings.push(
-        `workspace ${name}: stack_namespace ${own} in workspaces.yml overrides the blueprint's stack_namespace ${bp}`,
+        `project ${name}: stack_namespace ${own} in workspaces.yml overrides the blueprint's stack_namespace ${bp}`,
       );
     return {
       workspace: name,

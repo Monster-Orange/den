@@ -26,7 +26,7 @@
       })();
     </script>
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
-    <title>__DEN_TITLE__ · Workspaces</title>
+    <title>__DEN_TITLE__ · Projects</title>
     <link rel="stylesheet" href="/graph.css" />
     <style>
       *,
@@ -1499,15 +1499,15 @@
         <!-- Sidebar: workspace list -->
         <aside class="sidebar">
           <div class="sidebar-header">
-            <span class="sidebar-title" id="ws-title">Workspaces</span>
+            <span class="sidebar-title" id="ws-title">Projects</span>
             <button
               type="button"
               class="ws-toggle"
               id="ws-toggle"
               aria-controls="ws-list"
               aria-expanded="true"
-              aria-label="Collapse the workspace list"
-              title="Collapse the workspace list"
+              aria-label="Collapse the project list"
+              title="Collapse the project list"
             >
               «
             </button>
@@ -1520,7 +1520,7 @@
           <form class="new-ws-form" onsubmit="createWorkspace(event)">
             <input
               id="new-ws-name"
-              placeholder="new-workspace"
+              placeholder="new-project"
               autocomplete="off"
             />
             <button type="submit">+</button>
@@ -1529,7 +1529,7 @@
 
         <!-- Content pane -->
         <div class="content" id="content">
-          <div class="empty-state">Select a workspace</div>
+          <div class="empty-state">Select a project</div>
         </div>
       </div>
 
@@ -1994,7 +1994,7 @@
           const ws = wsData?.workspaces?.[wsName];
           if (!ws) {
             content.innerHTML =
-              '<div class="empty-state">Workspace not found</div>';
+              '<div class="empty-state">Project not found</div>';
             return;
           }
 
@@ -2087,7 +2087,7 @@
 
           const masterDisabled = isActive
             ? ""
-            : 'disabled title="Activate this workspace first"';
+            : 'disabled title="Activate this project first"';
           // Membership is config-driven, not disk-driven: a managed entry
           // whose clone doesn't exist yet must still ENABLE Sync — Sync is the
           // control that creates the clone. Deriving this from svcList alone
@@ -2097,7 +2097,7 @@
           );
           const syncDisabled =
             !isActive || !hasManagedServices
-              ? 'disabled title="No managed services in this workspace"'
+              ? 'disabled title="No managed services in this project"'
               : "";
           const enc = encodeURIComponent(wsName);
           // "stacks: <ns>" only when this workspace's stacks run under a
@@ -2123,7 +2123,7 @@
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this workspace">⋯</button>
             <div class="action-dropdown" id="ws-more-menu" role="menu" style="display:none">
-              <a role="menuitem" href="/settings?ws=${enc}#workspace">Workspace settings</a>
+              <a role="menuitem" href="/settings?ws=${enc}#workspace">Project setup</a>
               <button type="button" role="menuitem" data-action="rename-ws">Rename…</button>
               ${wsName !== "default" ? `<button type="button" role="menuitem" class="danger" data-action="delete-ws">Delete…</button>` : ""}
             </div>
@@ -2131,7 +2131,7 @@
         </div>
 
         <div class="cmd-bar">
-          <span class="cmd-bar-label">Workspace</span>
+          <span class="cmd-bar-label">Project</span>
           <button class="master-btn up"      ${masterDisabled} onclick="runWorkspaceCmd('up')">▶ Up</button>
           <button class="master-btn down"    ${masterDisabled} onclick="runWorkspaceCmd('down')">⏹ Down</button>
           <button class="master-btn restart" ${masterDisabled} onclick="runWorkspaceCmd('restart')">↺ Restart</button>
@@ -2655,7 +2655,7 @@
                           ? `contributes: ${g.app.contributors.map((c) => c.repo).join(", ")}`
                           : "",
                         (g.app.absent || []).length
-                          ? `not in this workspace: ${g.app.absent.join(", ")}`
+                          ? `not in this project: ${g.app.absent.join(", ")}`
                           : "",
                       ]
                         .filter(Boolean)
@@ -4229,7 +4229,7 @@
           e.stopPropagation();
 
           // Step 1: confirm workspace removal
-          if (!confirm(`Delete workspace "${name}"?`)) return;
+          if (!confirm(`Delete project "${name}"?`)) return;
 
           // Fetch cleanup preview to know what qualifies for deletion
           const preview = await fetch(
@@ -4258,7 +4258,7 @@
           const wsDir = wsData?.resolvedDirs?.[name];
           if (wsDir) {
             cleanupDirectory = confirm(
-              `Also delete workspace directory from your machine?\n\n${wsDir}\n\nThis removes all files in the directory. Any unpushed commits will be lost.`,
+              `Also delete the project's directory from your machine?\n\n${wsDir}\n\nThis removes all files in the directory. Any unpushed commits will be lost.`,
             );
           }
 
@@ -4280,7 +4280,7 @@
               .map((r) => `  • ${r.address}`)
               .join("\n");
             cleanupDen = confirm(
-              `Also delete ${preview.denManaged.length} managed repo${preview.denManaged.length > 1 ? "s" : ""} only used by this workspace?\n\n${repoList}\n\nNo other workspace references these clones.`,
+              `Also delete ${preview.denManaged.length} managed repo${preview.denManaged.length > 1 ? "s" : ""} only used by this project?\n\n${repoList}\n\nNo other project uses these clones.`,
             );
           }
 
@@ -4301,7 +4301,7 @@
             if (activeWs === name) {
               activeWs = null;
               document.getElementById("content").innerHTML =
-                '<div class="empty-state">Select a workspace</div>';
+                '<div class="empty-state">Select a project</div>';
               // Remove the ?ws= param so a reload doesn't try to open the deleted workspace
               const params = new URLSearchParams(location.search);
               params.delete("ws");
@@ -4320,7 +4320,7 @@
         // D70: the name changes; the slug (oldName here) stays.
         async function renameWorkspace(oldName) {
           const shown = wsData?.workspaces?.[oldName]?.name || oldName;
-          const newName = prompt(`Rename workspace "${shown}" to:`, shown);
+          const newName = prompt(`Rename project "${shown}" to:`, shown);
           if (!newName || newName === shown) return;
           try {
             await window.denShell.api("POST", "/api/workspaces/rename", {
@@ -4595,8 +4595,8 @@
           const b = document.getElementById("ws-toggle");
           b.setAttribute("aria-expanded", String(!collapsed));
           const what = collapsed
-            ? "Expand the workspace list"
-            : "Collapse the workspace list";
+            ? "Expand the project list"
+            : "Collapse the project list";
           b.setAttribute("aria-label", what);
           b.title = what;
           b.textContent = collapsed ? "»" : "«";
@@ -4736,7 +4736,7 @@
           if (!wrap) return;
           if (!services || services.length === 0) {
             wrap.innerHTML =
-              '<div class="graph-empty">No services in workspace</div>';
+              '<div class="graph-empty">No services in this project</div>';
             // Open in Graph for a service in another workspace: say where.
             graphEmptyNote(wrap, GRAPH_HOOKS);
             return;
@@ -4836,7 +4836,7 @@
             `<div style="font-weight:600;margin-bottom:8px">Turn off auto-start for ${escHtml(repo)}?</div>` +
             `<div style="color:var(--muted);line-height:1.5">It is a hard dependency of: ` +
             `<strong style="color:var(--text)">${dependents.map(escHtml).join(", ")}</strong>. ` +
-            `Their workspace Up may fail readiness while it's off.</div>` +
+            `Their project's Up may fail readiness while it's off.</div>` +
             `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">` +
             `<button id="as-cancel" class="cmd-btn">Cancel</button>` +
             `<button id="as-confirm" class="cmd-btn" style="border-color:var(--warn);color:var(--warn)">Turn off</button>` +
@@ -4990,7 +4990,7 @@
                   data-sort="workspace"
                   onclick="setAddSvcLocalSort('workspace')"
                 >
-                  Workspace
+                  Project
                 </button>
               </div>
             </div>

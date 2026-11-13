@@ -136,7 +136,7 @@ export const MAX_REPOS = 50;
 export const MAX_ENTRIES = 5000;
 
 export const WORKSPACE_RULE =
-  "The repos in one parent folder go in one workspace named after that folder; " +
+  "The repos in one parent folder go in one project named after that folder; " +
   "a repo directly in the scanned folder gets the scanned folder's name.";
 
 /** A repo already in a workspace (a dev-managed entry's path). */
@@ -495,7 +495,7 @@ const STEPS: Record<string, string> = {
   git: "Install git.",
   docker: "Start Docker: some of your repos run in containers.",
   web: "Start the web server.",
-  workspaces: "Turn on a workspace, so Den runs its services.",
+  workspaces: "Turn on a project, so Den runs its services.",
   repos: "Add your first repo. Den can find the repos in a folder for you.",
   service: "Start one service.",
   mcp: "Connect your agent to Den's MCP, so it can see and run your services.",
@@ -535,20 +535,20 @@ export async function onboardStatus(
           id: "workspaces",
           status: "todo",
           detail:
-            "no workspaces yet (adding the first repo makes one named default)",
+            "no projects yet (adding the first repo makes one named default)",
           fix: `${d.bin} repo add <folder> --json`,
         }
       : ws.active.length === 0
         ? {
             id: "workspaces",
             status: "warn",
-            detail: `${ws.names.length} workspace${ws.names.length === 1 ? "" : "s"}, none active`,
+            detail: `${ws.names.length} project${ws.names.length === 1 ? "" : "s"}, none active`,
             fix: `${d.bin} workspace activate ${ws.names[0]}`,
           }
         : {
             id: "workspaces",
             status: "ok",
-            detail: `${ws.names.length} workspace${ws.names.length === 1 ? "" : "s"}, ${ws.active.length} active (${ws.active.join(", ")})`,
+            detail: `${ws.names.length} project${ws.names.length === 1 ? "" : "s"}, ${ws.active.length} active (${ws.active.join(", ")})`,
           },
     ws.repos.length === 0
       ? {

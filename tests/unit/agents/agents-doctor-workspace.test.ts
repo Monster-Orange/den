@@ -45,7 +45,7 @@ describe("agents doctor -w, with the CLI's own workspace lookup", () => {
       expect(body.workspace).toBe("north");
     }
     expect(await cmdAgents(["doctor", "-w", "nowhere"], deps)).toBe(2);
-    expect(r.err.join("\n")).toMatch(/workspace "nowhere" does not exist/);
+    expect(r.err.join("\n")).toMatch(/project "nowhere" does not exist/);
     expect(r.err.join("\n")).not.toMatch(/not loaded/);
   });
 });

@@ -226,13 +226,13 @@ describe("R24a/b: the page is Workspaces", () => {
   it("names the rail item, the title and the header Workspaces; / and /local-dev serve it; no tabs, no ⚙ Settings footer", async () => {
     if (!browser) return;
     const p = await open();
-    expect(await p.title()).toMatch(/· Workspaces$/);
+    expect(await p.title()).toMatch(/· Projects$/);
     expect(
       (await p.textContent('.den-rail [data-nav="local-dev"]'))?.trim(),
-    ).toBe("Workspaces");
+    ).toBe("Projects");
     expect(
       (await p.textContent("#den-page-header h1, .den-ph h1"))?.trim(),
-    ).toBe("Workspaces");
+    ).toBe("Projects");
     // R24d: the Graph, Applications and Config tabs are gone.
     expect(
       await p.$$eval(".ctab, [data-ctab], #ctab-list", (e) => e.length),
@@ -246,7 +246,7 @@ describe("R24a/b: the page is Workspaces", () => {
     // The old route still serves the page.
     await p.goto(api("/local-dev?ws=main"));
     await p.waitForSelector("#repo-table tbody tr.repo");
-    expect(await p.title()).toMatch(/· Workspaces$/);
+    expect(await p.title()).toMatch(/· Projects$/);
     await p.context().close();
   }, 45_000);
 
@@ -264,7 +264,7 @@ describe("R24a/b: the page is Workspaces", () => {
       '[role="listbox"] [role="option"], .den-pal [role="option"]',
       (es) => es.map((e) => e.textContent ?? ""),
     );
-    expect(options.some((o) => /^Workspaces/.test(o.trim()))).toBe(true);
+    expect(options.some((o) => /^Projects/.test(o.trim()))).toBe(true);
     await p.context().close();
   }, 30_000);
 });
@@ -288,7 +288,7 @@ describe("R24c: the workspace header", () => {
     await p.context().close();
   }, 45_000);
 
-  it("the ⋯ menu holds Workspace settings (to /settings?ws=<name>#workspace), Rename and Delete", async () => {
+  it("the ⋯ menu holds Project setup (to /settings?ws=<name>#workspace), Rename and Delete", async () => {
     if (!browser) return;
     const p = await open();
     const more = '#content .ws-more [data-action="toggle-svc-menu"]';
@@ -301,7 +301,7 @@ describe("R24c: the workspace header", () => {
       })),
     );
     expect(items).toEqual([
-      { text: "Workspace settings", href: "/settings?ws=main#workspace" },
+      { text: "Project setup", href: "/settings?ws=main#workspace" },
       { text: "Rename…", href: null },
       { text: "Delete…", href: null },
     ]);
@@ -815,7 +815,7 @@ describe("the CLI default is named, never a bare glyph", () => {
     expect(row.text).not.toMatch(/[●•◉○]/);
     expect(row.text).toContain("CLI default");
     expect(row.tip).toMatch(
-      /Picking a workspace in the top bar also makes it the CLI default/,
+      /Picking a project in the top bar also makes it the CLI default/,
     );
     const side = await p.$eval(
       '.ws-item[data-name="side"] > span:first-child',

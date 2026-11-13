@@ -140,6 +140,11 @@ function fixture(
     ].join("\n"),
   );
   fs.mkdirSync(path.join(dist, "config", "local"), { recursive: true });
+  // D80: this install's address (doctor fails without one).
+  fs.writeFileSync(
+    path.join(dist, "config", "local", "user.yml"),
+    "web:\n  url: https://acme.acme.example.com\n",
+  );
   fs.writeFileSync(
     path.join(dist, "config", "local", "service-catalog.yml"),
     "shop:\n  gh: example-org/shop\n",

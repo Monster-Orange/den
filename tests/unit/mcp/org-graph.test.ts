@@ -159,7 +159,7 @@ describe("an ungranted workspace gets Den's refusal (MCP-2.3)", () => {
     grants: ["east"],
   };
   const refusal =
-    /Refused: services: .*"south" is another workspace.*adds "south" to agents\.planner\.grants/s;
+    /Refused: services: .*"south" is another project.*adds "south" to agents\.planner\.grants/s;
 
   it("over the protocol, a scoped server with grants refuses it by name, not by schema", async () => {
     const { api, calls } = fakeApi();

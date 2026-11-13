@@ -68,7 +68,13 @@ async function login(args: string[]) {
   let err = "";
   const code = await cmdWebLoginWait(
     args,
-    { out: (s) => (out += s), err: (s) => (err += s), stateDir: tmp },
+    {
+      out: (s) => (out += s),
+      err: (s) => (err += s),
+      stateDir: tmp,
+      // D80: the install's address the link is on.
+      webUrl: () => ({ url: "https://den.acme.example.com", confirmed: true }),
+    },
     { pollMs: 1 },
   );
   return { code, out, err };

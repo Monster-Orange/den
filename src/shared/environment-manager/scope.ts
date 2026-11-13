@@ -119,9 +119,9 @@ export function parseScope(
 ): { ok: true; value: ViewScope } | { ok: false; error: string } {
   if (raw === ALL_ACTIVE) return { ok: true, value: ALL_ACTIVE };
   if (typeof raw !== "string" || !NAME.test(raw))
-    return { ok: false, error: `scope must be "all" or a workspace name` };
+    return { ok: false, error: `scope must be "all" or a project name` };
   if (!active.includes(raw))
-    return { ok: false, error: `workspace "${raw}" is not active` };
+    return { ok: false, error: `project "${raw}" is not active` };
   return { ok: true, value: raw };
 }
 
@@ -161,7 +161,7 @@ export function takeScopeFlag(argv: string[]): {
     if (a === "--scope") {
       const v = argv[i + 1];
       if (v === undefined || v.startsWith("-"))
-        return { scope: null, rest, error: "--scope needs all or a workspace" };
+        return { scope: null, rest, error: "--scope needs all or a project" };
       scope = v;
       i++;
     } else if (a.startsWith("--scope=")) scope = a.slice("--scope=".length);

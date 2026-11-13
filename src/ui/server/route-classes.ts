@@ -166,15 +166,15 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R(
     "/api/workspaces/:ws/conversations",
-    "lists a runtime's own conversations in the workspace's folder: titles only, the ends of each file (AG-17.1)",
+    "lists a runtime's own conversations in the project's folder: titles only, the ends of each file (AG-17.1)",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/paths",
-    "which paths an agent printed exist in its workspace (stat only, AG-4b)",
+    "which paths an agent printed exist in its project (stat only, AG-4b)",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/file",
-    "AG-DROP-2: a file in an agent's workspace, cwd or uploads, as a download (audited)",
+    "AG-DROP-2: a file in an agent's project, cwd or uploads, as a download (audited)",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/helpers",
@@ -190,7 +190,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R(
     "/api/agents/stale",
-    "D44: the running agents whose MCP servers are out of date (ids and workspaces)",
+    "D44: the running agents whose MCP servers are out of date (ids and projects)",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
@@ -252,12 +252,12 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["GET", "HEAD"],
     "/api/workspace/exec",
-    "runs a workspace's lifecycle command over its services",
+    "runs a project's lifecycle command over its services",
   ),
   M(
     ["GET", "HEAD", "POST"],
     "/api/workspace/sync",
-    "runs git in the workspace's checkouts (clone, pull)",
+    "runs git in the project's checkouts (clone, pull)",
   ),
   M(["GET", "HEAD"], "/api/aws/login", "runs `aws sso login`"),
 
@@ -404,7 +404,7 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/agents/clear-stopped",
-    "forgets every stopped agent of the workspaces named (AG-14.1b)",
+    "forgets every stopped agent of the projects named (AG-14.1b)",
   ),
   M(["POST"], "/api/agents/restore", "Undo: brings removed agents back"),
   M(
@@ -425,7 +425,7 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/workspaces/:ws/agents/:id/move",
-    "D72 move an agent to another workspace ({to, when}): same conversation, at its next idle by default; a person's only",
+    "D72 move an agent to another project ({to, when}): same conversation, at its next idle by default; a person's only",
   ),
   M(
     ["POST"],
@@ -531,7 +531,7 @@ export const ROUTES: readonly RouteEntry[] = [
   S(
     ["POST"],
     "/api/workspaces/:ws/sessions",
-    "starts a plain session: the person's login shell in the workspace (AG-10.1)",
+    "starts a plain session: the person's login shell in the project (AG-10.1)",
   ),
   S(
     ["POST"],

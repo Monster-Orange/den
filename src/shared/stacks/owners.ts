@@ -222,9 +222,9 @@ export function assertStackClaim(
     requested,
     message:
       `stack ${s.name}: Compose project ${project} (stack namespace "${ctx.workspace}") ` +
-      `is already running for workspace(s) [${others.join(", ")}] at ${record.repoPath} ` +
+      `is already running for project(s) [${others.join(", ")}] at ${record.repoPath} ` +
       `(branch: ${n(record.branch)}), which differs from ${requested.repoPath} ` +
-      `(branch: ${n(requested.branch)}) for workspace "${workspace}". ` +
+      `(branch: ${n(requested.branch)}) for project "${workspace}". ` +
       `Not swapping its containers: stop it there first, or give "${workspace}" its own stack_namespace`,
   });
 }

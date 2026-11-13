@@ -34,7 +34,7 @@ export function agentResumeRefusal(
   if (!actions.includes(AGENT_RESUME_ACTION))
     return `${p.actor} can't resume agents: the org config's mcp.actions doesn't list ${AGENT_RESUME_ACTION}.`;
   if (ws !== p.workspace && !p.grants.includes(ws))
-    return `${p.actor} can resume agents of workspace ${p.workspace} only${p.grants.length ? ` (or ${p.grants.join(", ")}, its grants)` : ""}, not ${ws}.`;
+    return `${p.actor} can resume agents of project ${p.workspace} only${p.grants.length ? ` (or ${p.grants.join(", ")}, its grants)` : ""}, not ${ws}.`;
   if (`agent:${id}` === p.actor) return `${p.actor} can't resume itself.`;
   return null;
 }
@@ -72,7 +72,7 @@ export function agentImportRefusal(
   if (!actions.includes(AGENT_IMPORT_ACTION))
     return `${p.actor} can't bring in conversations: the org config's mcp.actions doesn't list ${AGENT_IMPORT_ACTION}.`;
   if (ws !== p.workspace && !p.grants.includes(ws))
-    return `${p.actor} can bring in conversations of workspace ${p.workspace} only${p.grants.length ? ` (or ${p.grants.join(", ")}, its grants)` : ""}, not ${ws}.`;
+    return `${p.actor} can bring in conversations of project ${p.workspace} only${p.grants.length ? ` (or ${p.grants.join(", ")}, its grants)` : ""}, not ${ws}.`;
   return null;
 }
 

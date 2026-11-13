@@ -242,7 +242,7 @@ export function webDeps(over: AgentsDeps = {}): AgentsResolved {
     workspaceExists: (ws) => Boolean(readWorkspacesFile().workspaces[ws]),
     workspaceDir: (ws) => {
       const cfg = readWorkspacesFile().workspaces[ws];
-      if (!cfg) throw new AgentError(`workspace "${ws}" does not exist`);
+      if (!cfg) throw new AgentError(`project "${ws}" does not exist`);
       return resolveWorkspaceDir(ws, cfg, getReposRoot());
     },
     // AG-17.1: its folder and each by-path repo's, outside it too. A caller
@@ -252,7 +252,7 @@ export function webDeps(over: AgentsDeps = {}): AgentsResolved {
       : {
           workspaceFolders: (ws: string) => {
             const cfg = readWorkspacesFile().workspaces[ws];
-            if (!cfg) throw new AgentError(`workspace "${ws}" does not exist`);
+            if (!cfg) throw new AgentError(`project "${ws}" does not exist`);
             return conversationFolders(ws, cfg, getReposRoot());
           },
         }),
@@ -278,7 +278,7 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
     // From another workspace, an agent isn't there at all: no name of it.
     const error =
       e.code === NOT_IN_WORKSPACE && ws
-        ? `no agent here in workspace ${ws}`
+        ? `no agent here in project ${ws}`
         : e.message;
     sendJson(
       res,
@@ -588,7 +588,7 @@ export async function handleAgentRoutes(
   try {
     ws = decodeURIComponent(m[1]);
   } catch {
-    sendJson(res, { ok: false, error: "not a workspace name" }, 400);
+    sendJson(res, { ok: false, error: "not a project name" }, 400);
     return true;
   }
   const id = m[2] === undefined ? undefined : safeDecode(m[2]);
@@ -614,7 +614,7 @@ export async function handleAgentRoutes(
   if (!action && method === "GET") {
     try {
       if (!d.workspaceExists(ws))
-        throw new AgentError(`workspace "${ws}" does not exist`, {
+        throw new AgentError(`project "${ws}" does not exist`, {
           status: 404,
         });
       sendJson(res, {
@@ -684,7 +684,7 @@ export async function handleAgentRoutes(
           res,
           {
             ok: false,
-            error: `${given || "(no path)"} is not a file in ${rec.id}'s workspace or uploads`,
+            error: `${given || "(no path)"} is not a file in ${rec.id}'s project or uploads`,
             code: "not_found",
           },
           404,
@@ -1063,7 +1063,7 @@ export async function handleAgentRoutes(
             usage: true,
           });
       if (typeof body.to !== "string" || !body.to.trim())
-        throw new AgentError("to is required (the workspace to move it to)", {
+        throw new AgentError("to is required (the project to move it to)", {
           usage: true,
         });
       const to = resolveWorkspaceInput(body.to.trim());
@@ -1077,7 +1077,7 @@ export async function handleAgentRoutes(
       if (when === "after-turn") {
         // Checks first, so a bad move answers now; then it may wait.
         if (!d.workspaceExists(to))
-          throw new AgentError(`there is no workspace "${to}"`, {
+          throw new AgentError(`there is no project "${to}"`, {
             status: 404,
           });
         void go().then(
@@ -1308,7 +1308,7 @@ async function manyAgents(
     const wss = names(body.workspaces, "workspaces");
     for (const w of wss)
       if (!d.workspaceExists(w))
-        throw new AgentError(`workspace "${w}" does not exist`, {
+        throw new AgentError(`project "${w}" does not exist`, {
           status: 404,
         });
     if (verb === "clear-stopped") {
@@ -1345,7 +1345,7 @@ function queryWorkspace(
   const ws = new URL(req.url ?? "/", "http://x").searchParams.get("workspace");
   if (!ws) return undefined;
   if (!d.workspaceExists(ws))
-    throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+    throw new AgentError(`project "${ws}" does not exist`, { status: 404 });
   return ws;
 }
 
@@ -1798,7 +1798,7 @@ async function detailsRoute(
   const id = safeDecode(dp[2]);
   try {
     if (!d.workspaceExists(ws))
-      throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+      throw new AgentError(`project "${ws}" does not exist`, { status: 404 });
     sendJson(res, await agentDetails(d, id, ws));
   } catch (e) {
     sendError(res, e, ws);
@@ -1825,7 +1825,7 @@ async function toolsRoute(
   const id = safeDecode(tp[2]);
   try {
     if (!d.workspaceExists(ws))
-      throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+      throw new AgentError(`project "${ws}" does not exist`, { status: 404 });
     sendJson(res, await agentTools(d, id, ws));
   } catch (e) {
     sendError(res, e, ws);
@@ -1928,7 +1928,7 @@ async function helpersRoute(
   const helper = hp[3] === undefined ? undefined : safeDecode(hp[3]);
   try {
     if (!d.workspaceExists(ws))
-      throw new AgentError(`workspace "${ws}" does not exist`, { status: 404 });
+      throw new AgentError(`project "${ws}" does not exist`, { status: 404 });
     if (helper === undefined) {
       const r = await agentHelpers(d, id, ws);
       // D34: those "Clear done" hid are a count; ?all=1 lists them too.

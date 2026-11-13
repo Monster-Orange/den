@@ -214,7 +214,7 @@ describe("den-claude launch", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
     const prompt = out.argv[out.argv.length - 1];
-    expect(prompt).toMatch(/agent planner in workspace north/);
+    expect(prompt).toMatch(/agent planner in project north/);
     expect(prompt).toMatch(/docs\/specs/);
     expect(out.env).toEqual({});
     expect(Object.keys(out.files ?? {})).toEqual([mcpFile, settingsFile]);

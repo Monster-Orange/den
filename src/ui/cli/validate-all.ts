@@ -161,7 +161,7 @@ export function validateAll(opts: {
   }
   for (const key of heldKeys())
     if (!used.has(key))
-      out.push({ ...heldOnly(key, validate), note: "held, in no workspace" });
+      out.push({ ...heldOnly(key, validate), note: "held, in no project" });
   return out;
 }
 

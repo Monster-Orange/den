@@ -45,7 +45,7 @@ export function registerLocalRepo(
 
   const file = readWorkspacesFile();
   const ws = file.workspaces[workspaceName];
-  if (!ws) throw new Error(`Unknown workspace "${workspaceName}"`);
+  if (!ws) throw new Error(`Unknown project "${workspaceName}"`);
 
   // Replace every existing entry for this repo, keeping its auto-start toggle.
   let autostartOff = false;

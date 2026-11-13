@@ -11,6 +11,7 @@
  * one exists. examples/distribution/ is exactly `den create acme`; a unit
  * test regenerates it, so the two cannot drift.
  */
+import { checkWebUrl } from "../../shared/web-url-check.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -355,6 +356,8 @@ export interface ParsedCreateArgs extends Omit<CreateOptions, "denVersion"> {
   json: boolean;
   /** `--port <n>`: the web UI's port, taken as given (no search). */
   port?: number;
+  /** D80 `--url <address>`: this install's address (web.url). */
+  url?: string;
 }
 
 /** Where create finds web.allowed_github_org when --github-org isn't given. */
@@ -364,7 +367,7 @@ export interface CreateOrgOptions {
 }
 
 const CREATE_USAGE =
-  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--github-org <org>] [--yes] [--json]";
+  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--github-org <org>] [--url <address>] [--yes] [--json]";
 
 /** Parse `create` argv (after the word `create`). `cwd` resolves the dir. */
 export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
@@ -382,7 +385,9 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
       json = true;
       continue;
     }
-    const m = /^--(title|cli|env-prefix|port|github-org)(?:=(.*))?$/.exec(a);
+    const m = /^--(title|cli|env-prefix|port|github-org|url)(?:=(.*))?$/.exec(
+      a,
+    );
     if (m) {
       const value = m[2] ?? argv[++i];
       if (value === undefined)
@@ -407,7 +412,14 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
     yes,
     json,
     ...(flags.port !== undefined ? { port: parsePortFlag(flags.port) } : {}),
+    ...(flags.url !== undefined ? { url: parseUrlFlag(flags.url) } : {}),
   };
+}
+
+function parseUrlFlag(v: string): string {
+  const ok = checkWebUrl(v);
+  if (!("url" in ok)) throw new Error(`--url: ${ok.error}\n${CREATE_USAGE}`);
+  return ok.url;
 }
 
 function parsePortFlag(v: string): number {
@@ -432,6 +444,9 @@ config/environments/local.json, manifests/ and tests/pillars/.
   --github-org <org>     web.allowed_github_org: members of this GitHub org
                          connect their GitHub account to their own instance
                          (default: the owner of the GitHub repo [dir] is in)
+  --url <address>        this install's address (web.url), the one people
+                         open, for example https://<cli>.local.example.com.
+                         Without it, set it next: <cli> web url <address>
   --yes, -y              never prompt (create never does; for agents)
   --json                 print one JSON object: { ok, dir, cli, existed, port, next }
 
@@ -553,6 +568,12 @@ export async function createResult(
           `set web.allowed_github_org: <your GitHub org> in config/${args.name}.yml (who may claim an instance)`,
         ]
       : []),
+    // D80: this install's address, the one people open (a person's to give).
+    ...(args.url
+      ? []
+      : [
+          `./bin/${cli} web url https://${cli}.<your domain>   (this install's address, the one people open)`,
+        ]),
     `./bin/${cli} repo add <path|git-url> --json`,
   ];
   try {
@@ -592,21 +613,32 @@ export async function createResult(
     let portPicked: CreateJson["portPicked"];
     // Written when the port differs from what the distribution would use
     // anyway (an explicit --port that isn't the default, or a picked one).
-    if (port !== (args.port !== undefined ? DEFAULT_PORT : wanted)) {
+    const writePort =
+      port !== (args.port !== undefined ? DEFAULT_PORT : wanted);
+    if (writePort || args.url) {
       const rel = path.join("config", "local", "user.yml");
       const file = path.join(args.dir, rel);
       fs.mkdirSync(path.dirname(file), { recursive: true });
+      const why = [
+        ...(writePort
+          ? [
+              args.port !== undefined
+                ? "--port"
+                : `port ${wanted} was in use on this machine`,
+            ]
+          : []),
+        ...(args.url ? ["--url"] : []),
+      ].join(", ");
       fs.writeFileSync(
         file,
-        `# Yours, not the team's (gitignored). Set by create: ${
-          args.port !== undefined
-            ? "--port"
-            : `port ${wanted} was in use on this machine`
-        }.\nweb:\n  port: ${port}\n`,
+        `# Yours, not the team's (gitignored). Set by create: ${why}.\nweb:\n` +
+          (writePort ? `  port: ${port}\n` : "") +
+          (args.url ? `  url: ${args.url}\n` : ""),
         { encoding: "utf-8", flag: "wx" },
       );
       written.push(rel);
-      if (args.port === undefined) portPicked = { wanted, file: rel };
+      if (writePort && args.port === undefined)
+        portPicked = { wanted, file: rel };
     }
     return {
       ok: true,

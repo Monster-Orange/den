@@ -468,7 +468,7 @@ export async function handleWorkspaceRoutes(
         const act = parsed.action ?? "use";
         if (act === "rename") {
           if (!readWorkspacesFile().workspaces[name])
-            return send400(res, `no workspace "${parsed.name}"`);
+            return send400(res, `no project "${parsed.name}"`);
           renameWorkspace(name, String(parsed.to ?? ""));
           const file = readWorkspacesFile();
           return sendJson(res, {
@@ -527,7 +527,7 @@ export async function handleWorkspaceRoutes(
         // D70: by its name or its slug.
         const name = resolveWorkspaceInput(parsed.name);
         if (name === "default")
-          return send400(res, "cannot delete the default workspace");
+          return send400(res, "cannot delete the default project");
         if (
           parsed.agents !== undefined &&
           parsed.agents !== "stop" &&
@@ -662,7 +662,7 @@ export async function handleWorkspaceRoutes(
         return send400(res, "oldName and newName required");
       const slug = resolveWorkspaceInput(oldName);
       if (!readWorkspacesFile().workspaces[slug])
-        return send400(res, `Workspace "${oldName}" not found`);
+        return send400(res, `Project "${oldName}" not found`);
       renameWorkspace(slug, newName);
       return sendJson(res, { ok: true, slug, name: newName.trim() });
     } catch (e) {
@@ -751,18 +751,18 @@ export async function handleWorkspaceRoutes(
         repo?: string;
         autostart?: boolean;
       };
-      if (!workspace || !repo) return send400(res, "workspace, repo required");
+      if (!workspace || !repo) return send400(res, "a project and a repo are required");
       if (typeof autostart !== "boolean")
         return send400(res, '"autostart" boolean required');
       const file = readWorkspacesFile();
       const ws = file.workspaces[workspace];
-      if (!ws) return send400(res, `Unknown workspace "${workspace}"`);
+      if (!ws) return send400(res, `Unknown project "${workspace}"`);
       const catalog = readCatalog();
       const keys = Object.keys(ws.services).filter(
         (k) => parseAddress(k, catalog).repoName === repo,
       );
       if (keys.length === 0)
-        return send400(res, `"${repo}" is not in workspace "${workspace}"`);
+        return send400(res, `"${repo}" is not in project "${workspace}"`);
       for (const k of keys) {
         if (autostart) delete ws.services[k].autostart;
         else ws.services[k].autostart = false;
@@ -794,18 +794,18 @@ export async function handleWorkspaceRoutes(
         mode?: string;
         branch?: string;
       };
-      if (!workspace || !repo) return send400(res, "workspace, repo required");
+      if (!workspace || !repo) return send400(res, "a project and a repo are required");
       if (mode !== "dev-managed" && mode !== "managed")
         return send400(res, 'mode must be "dev-managed" or "managed"');
       const file = readWorkspacesFile();
       const wsCfg = file.workspaces[workspace];
-      if (!wsCfg) return send400(res, `Unknown workspace "${workspace}"`);
+      if (!wsCfg) return send400(res, `Unknown project "${workspace}"`);
       const catalog = readCatalog();
       const keys = Object.keys(wsCfg.services).filter(
         (k) => parseAddress(k, catalog).repoName === repo,
       );
       if (keys.length === 0)
-        return send400(res, `"${repo}" is not in workspace "${workspace}"`);
+        return send400(res, `"${repo}" is not in project "${workspace}"`);
 
       let localPath: string | undefined;
       if (mode === "dev-managed") {
@@ -898,7 +898,7 @@ export async function handleWorkspaceRoutes(
         const file = readWorkspacesFile();
         const wsName = workspace ?? file.focus ?? file.active[0];
         if (!wsName || !file.workspaces[wsName])
-          return send400(res, `workspace "${wsName ?? ""}" not found`);
+          return send400(res, `project "${wsName ?? ""}" not found`);
 
         let catalog = readCatalog();
         const { repoName } = parseAddress(address, catalog);
@@ -1040,7 +1040,7 @@ export async function handleWorkspaceRoutes(
         const file = readWorkspacesFile();
         const wsName = workspace ?? file.focus ?? file.active[0];
         if (!wsName || !file.workspaces[wsName])
-          return send400(res, `workspace "${wsName ?? ""}" not found`);
+          return send400(res, `project "${wsName ?? ""}" not found`);
 
         const services = file.workspaces[wsName].services;
         const catalog = readCatalog();
@@ -1089,10 +1089,10 @@ export async function handleWorkspaceRoutes(
           editor?: string | null;
         };
         const wsName = body.workspace ?? getActiveWorkspace()?.name;
-        if (!wsName) return send400(res, "workspace required");
+        if (!wsName) return send400(res, "a project is required");
         const file = readWorkspacesFile();
         const ws = file.workspaces[wsName];
-        if (!ws) return send400(res, `Workspace "${wsName}" not found`);
+        if (!ws) return send400(res, `Project "${wsName}" not found`);
         if (body.editor === null || body.editor === "") {
           delete ws.editor;
         } else if (body.editor !== undefined) {
@@ -1133,7 +1133,7 @@ export async function handleWorkspaceRoutes(
     // workspace may be graphed — reading a graph doesn't require activation.
     const wsParam = url.searchParams.get("workspace") ?? undefined;
     if (wsParam && !getWorkspaceByName(wsParam))
-      return send400(res, `unknown workspace "${wsParam}"`);
+      return send400(res, `unknown project "${wsParam}"`);
     try {
       const graph = seed
         ? deriveGraph({ scope: "closure", seed, workspace: wsParam })
@@ -1154,7 +1154,7 @@ export async function handleWorkspaceRoutes(
   if (pathname === "/api/applications" && req.method === "GET") {
     const wsParam = url.searchParams.get("workspace") ?? undefined;
     if (wsParam && !getWorkspaceByName(wsParam))
-      return send400(res, `unknown workspace "${wsParam}"`);
+      return send400(res, `unknown project "${wsParam}"`);
     try {
       return sendJson(res, loadApplicationTree(wsParam));
     } catch (e) {
@@ -1215,7 +1215,7 @@ export async function handleWorkspaceRoutes(
     if (wsParam && !isWorkspaceActive(wsParam)) {
       emit({
         type: "error",
-        text: `Workspace "${wsParam}" is not active — activate it first`,
+        text: `Project "${wsParam}" is not active — activate it first`,
       });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
@@ -1223,7 +1223,7 @@ export async function handleWorkspaceRoutes(
     }
     const ws = wsParam ? getWorkspaceByName(wsParam) : getActiveWorkspace();
     if (!ws) {
-      emit({ type: "error", text: "No active workspace" });
+      emit({ type: "error", text: "No active project" });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
       return;
@@ -1237,7 +1237,7 @@ export async function handleWorkspaceRoutes(
       ws.name,
     ).filter((s) => hasRuntime(repoKind(s.repoPath)));
     if (allServices.length === 0) {
-      emit({ type: "error", text: "No services in active workspace" });
+      emit({ type: "error", text: "No services in active project" });
       emit({ type: "done", exitCode: 1, duration: 0 });
       res.end();
       return;
@@ -1307,7 +1307,7 @@ export async function handleWorkspaceRoutes(
       if (missing.length > 0) {
         emit({
           type: "line",
-          text: `Not in this workspace, skipping: ${missing.join(", ")}`,
+          text: `Not in this project, skipping: ${missing.join(", ")}`,
         });
       }
     } else if (seedRepo) {
@@ -1322,7 +1322,7 @@ export async function handleWorkspaceRoutes(
       if (order.length === 0) {
         emit({
           type: "error",
-          text: `${seedRepo} has no derived dependency closure — is it in this workspace?`,
+          text: `${seedRepo} has no derived dependency closure — is it in this project?`,
         });
         emit({ type: "done", exitCode: 1, duration: 0 });
         res.end();
@@ -1350,7 +1350,7 @@ export async function handleWorkspaceRoutes(
       if (missing.length > 0) {
         emit({
           type: "line",
-          text: `Not in this workspace, skipping: ${missing.join(", ")}`,
+          text: `Not in this project, skipping: ${missing.join(", ")}`,
         });
       }
     }
@@ -1554,7 +1554,7 @@ export async function handleWorkspaceRoutes(
         if (ranCount === 0) {
           emit({
             type: "line",
-            text: `No services in this workspace have a "${cmd}" command.`,
+            text: `No services in this project have a "${cmd}" command.`,
           });
         }
         emit({
@@ -2104,7 +2104,7 @@ export async function handleWorkspaceRoutes(
 
     const ws = getActiveWorkspace();
     if (!ws) {
-      emit({ type: "error", text: "No active workspace" });
+      emit({ type: "error", text: "No active project" });
       emit({ type: "done" });
       res.end();
       return;
@@ -2141,7 +2141,7 @@ export async function handleWorkspaceRoutes(
       emit({
         type: "line",
         text: onlyRepo
-          ? `No managed repo named "${onlyRepo}" in this workspace — nothing to sync.`
+          ? `No managed repo named "${onlyRepo}" in this project — nothing to sync.`
           : "No managed services to sync.",
       });
       emit({ type: "done" });

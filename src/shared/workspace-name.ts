@@ -70,7 +70,7 @@ export function workspaceNameRefusal(
       key === slug ||
       workspaceDisplayName(key, cfg).toLowerCase() === n.toLowerCase()
     )
-      return `workspace "${workspaceDisplayName(key, cfg)}" already exists`;
+      return `project "${workspaceDisplayName(key, cfg)}" already exists`;
   }
   return null;
 }

@@ -487,14 +487,14 @@ export class CLIPrompts {
       {
         type: "list",
         name: "action",
-        message: "Workspaces:",
+        message: "Projects:",
         choices: [
-          { name: "📋 List Workspaces", value: "list" },
-          { name: "🔀 Switch Workspace", value: "use" },
-          { name: "➕ Create Workspace", value: "create" },
-          { name: "➕ Add Service to Workspace", value: "add-service" },
-          { name: "➖ Remove Service from Workspace", value: "remove-service" },
-          { name: "🗑  Delete Workspace", value: "delete" },
+          { name: "📋 List Projects", value: "list" },
+          { name: "🔀 Switch Project", value: "use" },
+          { name: "➕ Create Project", value: "create" },
+          { name: "➕ Add Service to Project", value: "add-service" },
+          { name: "➖ Remove Service from Project", value: "remove-service" },
+          { name: "🗑  Delete Project", value: "delete" },
           { name: "← Back", value: "back" },
         ],
       },
@@ -694,7 +694,7 @@ export class CLIPrompts {
       {
         type: "list",
         name: "name",
-        message: "Select workspace:",
+        message: "Select project:",
         choices: workspaces.map((w) => ({
           name: w === current ? `${w} (active)` : w,
           value: w,
@@ -709,11 +709,11 @@ export class CLIPrompts {
       {
         type: "input",
         name: "name",
-        message: "Workspace name:",
+        message: "Project name:",
         validate: (v: string) => {
           const n = v.trim();
           if (!n) return "Name is required";
-          if (existing.includes(n)) return `Workspace "${n}" already exists`;
+          if (existing.includes(n)) return `Project "${n}" already exists`;
           // eslint-disable-next-line no-control-regex
           if (/["'\\/<>\x00-\x1f]/.test(n))
             return "Name must not contain quotes, slashes, or control characters";

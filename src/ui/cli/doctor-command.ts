@@ -21,6 +21,7 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { readWebUrl } from "../../shared/web-url.js";
 import chalk from "chalk";
 import {
   readDenConfig,
@@ -513,6 +514,46 @@ export function hubLines(
 }
 
 /**
+ * D80: doctor's Address row. The install's address (web.url) is the one
+ * people are given; unset fails doctor with its one-line fix. One a
+ * migration took from what the install had is shown for the person to
+ * confirm.
+ */
+export function addressLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  title: string,
+  cli: string,
+): { lines: string[]; problem: boolean; check: OnboardCheck } {
+  if (!w) {
+    const detail = `not set: run \`${cli} web url <address>\` (for example https://${cli}.local.example.com)`;
+    return {
+      lines: ["", `${title} doctor: Address`, "", `  address  ✗  ${detail}`],
+      problem: true,
+      check: {
+        id: "address",
+        status: "fail",
+        detail,
+        // A person sets it (an agent's session can't): ask them.
+        ask: `What address do people open this ${title} at (for example https://${cli}.local.example.com)? Then run \`${cli} web url <address>\`.`,
+      },
+    };
+  }
+  const detail = w.confirmed
+    ? w.url
+    : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Address`,
+      "",
+      `  address  ${w.confirmed ? "✓" : "⚠"}  ${detail}`,
+    ],
+    problem: false,
+    check: { id: "address", status: w.confirmed ? "ok" : "warn", detail },
+  };
+}
+
+/**
  * `agents:` and `sessions:` (0.4.29): a bad key there stops only the agent
  * and session commands, so doctor names it, with its file and key path,
  * and carries on with every other row. Nothing is shown when both are fine.
@@ -631,6 +672,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
     if (cfg.problem) r.ok = false;
+    const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
+    r.checks.push(addr.check);
+    if (addr.problem) r.ok = false;
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -657,6 +701,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   }
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);
+  const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
+  for (const l of addr.lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
@@ -668,7 +714,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     return rows.some((r) => r.problem) ||
       held.problem ||
       ownerProblem ||
-      cfg.problem
+      cfg.problem ||
+      addr.problem
       ? 1
       : 0;
   }

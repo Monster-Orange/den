@@ -271,7 +271,7 @@ describe("bin/den mcp --call / --list (one shot)", () => {
       );
       expect(r.status).toBe(1);
       expect(r.stdout).toMatch(
-        /^Refused: status: this MCP server is scoped to workspace "north" \(agent:planner; no grants\); "south" is another workspace/,
+        /^Refused: status: this MCP server is scoped to project "north" \(agent:planner; no grants\); "south" is another project/,
       );
       expect(
         requests

@@ -166,7 +166,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       // D59: off, its persona's (tagged so).
       `${RR}persona's`,
       // D72.
-      "Move to workspace…",
+      "Move to project…",
       "Remove",
     ]);
     expect(
@@ -268,7 +268,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     expect(await acts(p, "lookout")).toEqual(["fresh", "row-more"]);
     expect(await menuOf(p, "lookout")).toEqual([
       `${RR}persona's`,
-      "Move to workspace…",
+      "Move to project…",
       "Remove",
     ]);
     expect(
@@ -935,7 +935,7 @@ describe("D37: Stopped (n), one line each, at the bottom", () => {
   }, 60_000);
 });
 
-describe("D72: Move to workspace…", () => {
+describe("D72: Move to project…", () => {
   it("moves a stopped agent from its ⋯ menu; it leaves this workspace's list and keeps its name", async () => {
     if (skip()) return;
     s!.seed({
@@ -953,7 +953,7 @@ describe("D72: Move to workspace…", () => {
     await row(p, "rover").locator('[data-act="row-more"]').click();
     await p
       .locator('.den-pop[role="menu"] .den-mi', {
-        hasText: "Move to workspace…",
+        hasText: "Move to project…",
       })
       .click();
     const dlg = p.locator("#ag-mv[open]");
@@ -1001,7 +1001,7 @@ describe("D72: Move to workspace…", () => {
     const note = '#agl .agnote[data-note="orphan"]';
     await p.waitForSelector(note, { timeout: 15_000 });
     expect(await p.textContent(note)).toBe(
-      "stray has no workspace: its workspace was deleted. Give it one with ⋯ › Move to workspace….",
+      "stray has no project: its project was deleted. Give it one with ⋯ › Move to project….",
     );
     const group = p.locator("#agl details[data-stopped]");
     if ((await group.getAttribute("open")) === null)
@@ -1010,7 +1010,7 @@ describe("D72: Move to workspace…", () => {
     await stray.locator('[data-act="row-more"]').click();
     await p
       .locator('.den-pop[role="menu"] .den-mi', {
-        hasText: "Move to workspace…",
+        hasText: "Move to project…",
       })
       .click();
     await p.waitForSelector("#ag-mv[open]");

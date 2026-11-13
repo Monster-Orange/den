@@ -61,7 +61,7 @@ describe("held actions activate the workspace they need", () => {
     expect(c.ok).toBe(true);
     if (!c.ok) return;
     expect(c.summary).toBe(
-      'start shop in workspace "repos" (this activates repos)',
+      'start shop in project "repos" (this activates repos)',
     );
     expect(c.params).toEqual({
       service: "shop",
@@ -78,7 +78,7 @@ describe("held actions activate the workspace they need", () => {
       service: "shop",
       workspace: "default",
     });
-    expect(c.ok && c.summary).toBe('start shop in workspace "default"');
+    expect(c.ok && c.summary).toBe('start shop in project "default"');
   });
 
   it("service_try on a workspace that doesn't exist is refused before anything waits", async () => {
@@ -87,6 +87,6 @@ describe("held actions activate the workspace they need", () => {
       service: "shop",
       workspace: "nope",
     });
-    expect(c).toEqual({ ok: false, error: 'there is no workspace "nope"' });
+    expect(c).toEqual({ ok: false, error: 'there is no project "nope"' });
   });
 });

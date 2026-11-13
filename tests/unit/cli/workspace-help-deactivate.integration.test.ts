@@ -162,7 +162,7 @@ describe("workspace deactivate", () => {
       ]),
     );
     expect(SHOP_PROJECT).toBe("shopdb-main");
-    expect(out).toMatch(/Deactivated workspace: default/);
+    expect(out).toMatch(/Deactivated project: default/);
     expect(out).toMatch(
       /compose stacks keep running \(shopdb-main, site\): stop them with `den down shop`, `den down site`/,
     );
@@ -222,7 +222,7 @@ describe("workspace deactivate", () => {
         { project: "unrelated", workingDir: path.join(tmp, "elsewhere") },
       ]),
     );
-    expect(out).toMatch(/Deactivated workspace: default/);
+    expect(out).toMatch(/Deactivated project: default/);
     expect(out).not.toMatch(/compose stacks/);
   }, 60_000);
 });
@@ -231,7 +231,7 @@ describe("workspace focus", () => {
   it("focuses an active workspace", () => {
     resetWorkspaces();
     expect(den(["workspace", "focus", "ws-a"])).toMatch(
-      /Focused workspace: ws-a/,
+      /Focused project: ws-a/,
     );
     expect(
       fs.readFileSync(

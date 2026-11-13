@@ -158,11 +158,11 @@ describe("D71: a workspace delete and its agents", () => {
     const r = await twoAgents();
     const d = resolveAgentsDeps(r.deps);
     await expect(disposeWorkspaceAgents(d, "north", "move")).rejects.toThrow(
-      /give the workspace/,
+      /give the project/,
     );
     await expect(
       disposeWorkspaceAgents(d, "north", "move", "north"),
-    ).rejects.toThrow(/another workspace/);
+    ).rejects.toThrow(/another project/);
     await expect(
       disposeWorkspaceAgents(d, "north", "move", "nowhere"),
     ).rejects.toMatchObject({

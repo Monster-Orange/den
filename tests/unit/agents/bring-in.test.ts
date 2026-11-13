@@ -219,7 +219,7 @@ describe("agents import (CLI)", () => {
     ).toBe(1);
     // AG-17.1: whose it is, by its folder (spec, dogfood on 0.4.14).
     expect(r.err.join("\n")).toContain(
-      `This conversation belongs to ${r.wsDir("south")}, not to workspace north`,
+      `This conversation belongs to ${r.wsDir("south")}, not to project north`,
     );
     expect(r.made).toHaveLength(0);
   });

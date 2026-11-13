@@ -102,10 +102,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       return {
         ok: true,
         args: { name },
-        summary: `create the workspace "${name}"`,
+        summary: `create the project "${name}"`,
         params: { name },
         details: [
-          `A new, empty workspace named "${name}", made active so its services can start.`,
+          `A new, empty project named "${name}", made active so its services can start.`,
         ],
       };
     },
@@ -153,7 +153,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const folder = shown(where.dir, rules.home);
       const details = [
         `Folder: ${folder} (your checkout; Den never changes the repo).`,
-        `Workspace: ${ws}${isNew ? " (new)" : ""}.`,
+        `Project: ${ws}${isNew ? " (new)" : ""}.`,
         draft.manifest?.source === "repo"
           ? `Manifest: the repo's own (${path.basename(draft.manifest.file)}).`
           : `Manifest: a side-car Den writes in this distribution's manifests/ folder${draft.manifest?.file ? ` (${path.basename(draft.manifest.file)})` : ""}:`,
@@ -174,7 +174,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           ...(workspace ? { workspace } : {}),
           ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v)),
         },
-        summary: `add the repo at ${folder} to workspace "${ws}"${isNew ? " (new)" : ""}`,
+        summary: `add the repo at ${folder} to project "${ws}"${isNew ? " (new)" : ""}`,
         params: {
           path: folder,
           workspace: ws,
@@ -211,10 +211,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       if (workspace !== undefined && !NAME_RE.test(workspace))
         return {
           ok: false,
-          error: `workspace "${str(a.workspace)}" needs at least one letter or digit`,
+          error: `project "${str(a.workspace)}" needs at least one letter or digit`,
         };
       if (workspace !== undefined && !d.workspaceExists(workspace))
-        return { ok: false, error: `there is no workspace "${workspace}"` };
+        return { ok: false, error: `there is no project "${workspace}"` };
       const t = d.serviceTarget(service, workspace);
       if (!t.ok) return { ok: false, error: t.error };
       const activates =
@@ -222,7 +222,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       return {
         ok: true,
         args: { service: t.address, ...(workspace ? { workspace } : {}) },
-        summary: `start ${t.address}${workspace ? ` in workspace "${workspace}"` : ""}${activates ? ` (this activates ${workspace})` : ""}`,
+        summary: `start ${t.address}${workspace ? ` in project "${workspace}"` : ""}${activates ? ` (this activates ${workspace})` : ""}`,
         params: {
           service: t.address,
           ...(workspace ? { workspace } : {}),
@@ -230,7 +230,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         },
         details: [
           ...(activates
-            ? [`Activates the workspace "${workspace}" first, so it can run.`]
+            ? [`Activates the project "${workspace}" first, so it can run.`]
             : []),
           `Runs the service's local "up", as the Services page's Start does.`,
           `Den reports the exit code and the last lines of its output.`,

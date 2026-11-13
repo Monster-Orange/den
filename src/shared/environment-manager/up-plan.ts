@@ -261,7 +261,7 @@ export function buildUpPlan(
         interactiveKind: "",
         defaultAction: "skip",
         flags: ["no-command"],
-        notes: ["not resolvable in the active workspace"],
+        notes: ["not resolvable in the active project"],
       };
     }
 

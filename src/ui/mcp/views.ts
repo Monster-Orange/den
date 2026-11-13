@@ -100,7 +100,7 @@ export function scopeBlock(
     hidden,
     note:
       `${what} in ${shown} (${yours}); ` +
-      `${others} other workspace${others === 1 ? "" : "s"}` +
+      `${others} other project${others === 1 ? "" : "s"}` +
       (hiddenRepos
         ? ` with ${hiddenRepos} more repo${hiddenRepos === 1 ? "" : "s"}`
         : "") +
@@ -423,12 +423,12 @@ export function orgSummary(input: OrgSummaryInput, scope?: McpScope): Rec {
   const activeCount = workspaces.filter((w) => w.active).length;
   const out: Rec = {
     summary:
-      `${names.length} workspace${names.length === 1 ? "" : "s"} ` +
+      `${names.length} project${names.length === 1 ? "" : "s"} ` +
       `(${activeCount} active), ${repoCount} repo${repoCount === 1 ? "" : "s"}. ` +
-      "Counts are local health; an inactive workspace is not checked." +
+      "Counts are local health; an inactive project is not checked." +
       (scope
         ? ` Your scope: ${scope.workspace} (its services are in "yours"); ` +
-          "other workspaces are names and counts only."
+          "other projects are names and counts only."
         : ""),
     workspaces,
     graph: graphSummary(input.graph),

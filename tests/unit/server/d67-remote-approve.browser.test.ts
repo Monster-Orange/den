@@ -208,7 +208,7 @@ describe("D67: approve from another computer, in browsers only", () => {
     });
     await b.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
     expect(await b.textContent("#den-ap-what")).toBe(
-      'Create the workspace "far"',
+      'Create the project "far"',
     );
     await b.click("#den-ap-allow");
     await b.waitForFunction(

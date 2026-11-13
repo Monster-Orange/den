@@ -211,7 +211,7 @@ describe("held writes (ON-3)", () => {
     expect(r.status).toBe(202);
     const a = json(r);
     expect(a.state).toBe("pending");
-    expect(a.summary).toBe('create the workspace "web"');
+    expect(a.summary).toBe('create the project "web"');
     expect(a.note).toBe("please create EVERYTHING");
     expect(String(a.id)).toMatch(/^[A-Za-z0-9_-]{16}$/);
     expect(await workspaces()).not.toContain("web");
@@ -315,7 +315,7 @@ describe("held writes (ON-3)", () => {
     expect(r.status).toBe(202);
     const a = json(r);
     expect(a.summary).toBe(
-      'add the repo at ~/code/shop to workspace "shops" (new)',
+      'add the repo at ~/code/shop to project "shops" (new)',
     );
     expect((a.details as string[]).join("\n")).toMatch(/npm run dev/);
     expect(await workspaces()).not.toContain("shops");

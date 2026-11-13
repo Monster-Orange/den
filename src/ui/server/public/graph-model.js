@@ -174,7 +174,7 @@ export function applyHealth(m, results) {
 export const orgOf = (m, id) =>
   m.orgs.get(id) || {
     id,
-    label: id || m.workspace || "Workspace",
+    label: id || m.workspace || "Project",
     color: "var(--muted)",
   };
 export const isLocal = (s) => s.runs !== "remote";

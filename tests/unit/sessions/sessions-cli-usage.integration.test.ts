@@ -42,7 +42,7 @@ const usageErrors: Array<[string, string[], RegExp]> = [
   [
     "start in a workspace that does not exist",
     ["sessions", "start", "-w", "nope", "--name", "p", "--", "sh"],
-    /workspace "nope" does not exist/,
+    /project "nope" does not exist/,
   ],
   [
     "start with a bad name",
@@ -72,7 +72,7 @@ const usageErrors: Array<[string, string[], RegExp]> = [
     ["sessions", "kill", "p", "--signal", "HUP"],
     /INT\|TERM\|KILL/,
   ],
-  ["agents list without -w", ["agents", "list"], /-w <workspace>/],
+  ["agents list without -w", ["agents", "list"], /-w <project>/],
   [
     "an unknown agents subcommand",
     ["agents", "frob", "-w", "north"],

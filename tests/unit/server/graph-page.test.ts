@@ -26,7 +26,7 @@ describe("graphPageHtml", () => {
       LOCAL_DEV.length -
         "local-dev".length +
         "graph".length -
-        "Workspaces".length +
+        "Projects".length +
         "Graph".length,
     );
   });

@@ -64,7 +64,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
       instructions:
-        `${p.title}: local services, workspaces, logs and tests for this org, ` +
+        `${p.title}: local services, projects, logs and tests for this org, ` +
         `through the running ${p.title} web server (\`${opts.cli} web up\`). ` +
         (opts.cfg.actions.length
           ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
@@ -72,13 +72,13 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
         ` The ${approvalsState(opts.cfg)}.` +
         (opts.scope && !toolScope
           ? ` You are this ${p.title}'s own server agent (${opts.scope.actor}): the whole ${p.title}, ` +
-            "no workspace. Each write is held until the person allows it in the browser. " +
+            "no project. Each write is held until the person allows it in the browser. " +
             "onboard_status says what is set up: start there."
           : opts.scope
-            ? ` Scoped to workspace "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
-              "a call naming another workspace is refused, and lists show this one only, " +
+            ? ` Scoped to project "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
+              "a call naming another project is refused, and lists show this one only, " +
               "each with a `scope` block saying how much is hidden. org_summary has " +
-              "every workspace and repo (names and status counts), the graph, the " +
+              "every project and repo (names and status counts), the graph, the " +
               "edge and the environments: start there for the whole picture. " +
               "whoami says whether Hub's tools are yours: if Hub is connected but " +
               "they are missing, ask the person to restart you from Den (it keeps " +
@@ -204,14 +204,14 @@ export const MCP_USAGE = (cli: string): string =>
     "--list prints the tool names; --call runs one tool through the same guards,",
     "prints its text result and exits 1 if the tool reports an error.",
     "",
-    "--workspace + --actor (both, or neither) scope the server to one workspace:",
+    "--workspace + --actor (both, or neither) scope the server to one project:",
     "a call naming another is refused, lists show that one only, and every call",
     "is recorded as agent:<id>. It binds cooperating agents only: the web",
     "server's HTTP API does not check the scope yet.",
     "",
-    "--grant <ws> (repeatable) also serves another workspace, only when the org",
+    "--grant <ws> (repeatable) also serves another project, only when the org",
     "config's agents.<id>.grants lists it; each such call is recorded with both",
-    "workspaces. `agents start` passes an agent's grants for you.",
+    "projects. `agents start` passes an agent's grants for you.",
     "",
     `Register it with your agents: ${cli} mcp clients, then ${cli} mcp connect <client> (or --all).`,
   ].join("\n");
@@ -366,7 +366,7 @@ export function actorTokenRefusal(
   if (scope && scope.actor !== rec.actor)
     return `--actor ${scope.actor} does not match ${ACTOR_TOKEN_ENV}, which is ${rec.actor}'s`;
   if (scope && scope.workspace !== rec.workspace)
-    return `--workspace ${scope.workspace} does not match ${ACTOR_TOKEN_ENV}, which is workspace ${rec.workspace}'s`;
+    return `--workspace ${scope.workspace} does not match ${ACTOR_TOKEN_ENV}, which is project ${rec.workspace}'s`;
   return null;
 }
 

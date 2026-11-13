@@ -237,7 +237,7 @@ describe("Workspace ▾ (R4)", () => {
     if (!browser) return;
     const { p, writes } = await open("/services");
     await p.waitForSelector("#ws-pill:not([hidden])");
-    expect(await p.textContent("#ws-pill")).toBe("Workspace All active ▾");
+    expect(await p.textContent("#ws-pill")).toBe("Project All active ▾");
     await p.click("#ws-pill");
     expect(
       await p.$$eval(".den-pop .den-mi", (r) =>
@@ -248,11 +248,11 @@ describe("Workspace ▾ (R4)", () => {
       ["ws-aCLI default", "false"],
       ["ws-b", "false"],
       ["ws-c", "false"],
-      ["Manage workspaces…", null],
+      ["Manage projects…", null],
     ]);
     expect(
       await p.getAttribute('.den-pop .den-mi:has-text("ws-b")', "title"),
-    ).toMatch(/Picking a workspace here also makes it the CLI default/);
+    ).toMatch(/Picking a project here also makes it the CLI default/);
     await Promise.all([
       p.waitForNavigation(),
       p.click('.den-pop .den-mi:has-text("ws-b")'),
@@ -268,7 +268,7 @@ describe("Workspace ▾ (R4)", () => {
       focus: "ws-b",
     });
     await p.waitForSelector("#ws-pill:not([hidden])");
-    expect(await p.textContent("#ws-pill")).toBe("Workspace ws-b ▾");
+    expect(await p.textContent("#ws-pill")).toBe("Project ws-b ▾");
     await p.waitForSelector('[data-pin-toggle="billing"]');
     expect(await p.$$('[data-pin-toggle="search"]')).toHaveLength(0);
 
@@ -296,7 +296,7 @@ describe("Workspace ▾ (R4)", () => {
     await post("/api/workspaces", { name: "ws-a", action: "focus" });
     const { p, writes } = await open("/services");
     await p.waitForSelector("#ws-pill:not([hidden])");
-    expect(await p.textContent("#ws-pill")).toBe("Workspace ws-b ▾");
+    expect(await p.textContent("#ws-pill")).toBe("Project ws-b ▾");
     await p.click("#ws-pill");
     await Promise.all([
       p.waitForNavigation(),

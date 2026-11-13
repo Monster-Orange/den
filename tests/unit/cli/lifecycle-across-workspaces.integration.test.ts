@@ -111,7 +111,7 @@ describe("a service in an active workspace that isn't the focus", () => {
       const r = den(...args);
       expect([args.join(" "), r.code]).toEqual([args.join(" "), 0]);
       expect(r.out).toMatch(/Setup: beta/);
-      expect(r.out).toMatch(/in workspace south \(not the focus\)/);
+      expect(r.out).toMatch(/in project south \(not the focus\)/);
     }
   }, 120_000);
 
@@ -146,7 +146,7 @@ describe("names that don't resolve to one workspace", () => {
       expect([cmd, r.code]).toEqual([cmd, 1]);
       expect(r.out).toMatch(
         new RegExp(
-          `"gamma" is in more than one active workspace: south \\(den ${cmd} gamma -w south\\), east \\(den ${cmd} gamma -w east\\)`,
+          `"gamma" is in more than one active project: south \\(den ${cmd} gamma -w south\\), east \\(den ${cmd} gamma -w east\\)`,
         ),
       );
       expect(r.out).not.toMatch(/RAN-gamma/);
@@ -158,7 +158,7 @@ describe("names that don't resolve to one workspace", () => {
       const r = den(cmd, "nope", ...(cmd === "setup" ? [] : ["--dry-run"]));
       expect([cmd, r.code]).toEqual([cmd, 1]);
       expect(r.out).toMatch(
-        /"nope" is not a service in any active workspace \(north, south, east\)/,
+        /"nope" is not a service in any active project \(north, south, east\)/,
       );
     }
   }, 180_000);
@@ -167,7 +167,7 @@ describe("names that don't resolve to one workspace", () => {
     const mixed = den("setup", "alpha", "beta");
     expect(mixed.code).toBe(1);
     expect(mixed.out).toMatch(
-      /These names are in different workspaces: alpha \(north\), beta \(south\)/,
+      /These names are in different projects: alpha \(north\), beta \(south\)/,
     );
     const focus = den("restart", "alpha", "--dry-run");
     expect(focus.code).toBe(0);

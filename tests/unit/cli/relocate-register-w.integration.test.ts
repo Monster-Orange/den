@@ -159,7 +159,7 @@ describe("relocate", () => {
     expect(other.out).toMatch(/holds "site", not "shop"/);
     const unknown = den("relocate", "ghost", NEW());
     expect(unknown.code).toBe(1);
-    expect(unknown.out).toMatch(/"ghost" is not in any workspace/);
+    expect(unknown.out).toMatch(/"ghost" is not in any project/);
     expect(fs.readFileSync(WS_FILE(), "utf-8")).toBe(before);
   });
 
@@ -267,7 +267,7 @@ describe("register -w", () => {
     manifest(dir, "blog");
     const r = den("register", dir, "-w", "ws-b");
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(/Added to workspace "ws-b"/);
+    expect(r.out).toMatch(/Added to project "ws-b"/);
     const w = workspaces();
     expect(w.workspaces["ws-b"].services.blog).toEqual({
       mode: "dev-managed",
@@ -280,6 +280,6 @@ describe("register -w", () => {
   it("an unknown -w is refused", () => {
     const r = den("register", path.join(repos, "site"), "-w", "nope");
     expect(r.code).not.toBe(0);
-    expect(r.out).toMatch(/Workspace "nope" does not exist/);
+    expect(r.out).toMatch(/Project "nope" does not exist/);
   });
 });

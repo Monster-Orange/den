@@ -705,7 +705,7 @@ describe("setActiveWorkspace", () => {
     mockFs.writeFileSync.mockReturnValue(undefined);
 
     expect(() => setActiveWorkspace("missing-ws")).toThrow(
-      /Workspace "missing-ws" does not exist/,
+      /Project "missing-ws" does not exist/,
     );
   });
 });

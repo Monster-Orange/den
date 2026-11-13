@@ -1295,12 +1295,12 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const grants = block.grants ?? [];
     if (!Array.isArray(grants))
       throw new Error(
-        `${where}.grants: must be a list of workspace names (got ${JSON.stringify(grants)})`,
+        `${where}.grants: must be a list of project names (got ${JSON.stringify(grants)})`,
       );
     grants.forEach((g, i) => {
       if (typeof g !== "string" || !AGENT_KEY_RE.test(g))
         throw new Error(
-          `${where}.grants[${i}]: ${JSON.stringify(g)} is not a workspace name`,
+          `${where}.grants[${i}]: ${JSON.stringify(g)} is not a project name`,
         );
     });
     out.agents[id] = { grants: [...new Set(grants as string[])] };
@@ -1508,8 +1508,8 @@ export function readWorkspaceBlueprints(
   if (workspace != null && workspaces != null)
     throw new Error(
       `${DEN_CONFIG_PATH} sets both defaults.workspace and defaults.workspaces: ` +
-        "use defaults.workspaces alone (name the default workspace `default` in it), " +
-        "or defaults.workspace alone for a single default workspace",
+        "use defaults.workspaces alone (name the default project `default` in it), " +
+        "or defaults.workspace alone for a single default project",
     );
   if (workspaces != null) {
     if (typeof workspaces !== "object" || Array.isArray(workspaces))
@@ -1520,7 +1520,7 @@ export function readWorkspaceBlueprints(
       ([name, raw]) => {
         if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name))
           throw new Error(
-            `defaults.workspaces: "${name}" is not a valid workspace name (letters, digits, dots, dashes, underscores)`,
+            `defaults.workspaces: "${name}" is not a valid project name (letters, digits, dots, dashes, underscores)`,
           );
         return resolveBlueprint(`defaults.workspaces.${name}`, name, raw, [
           "focus",
@@ -1530,7 +1530,7 @@ export function readWorkspaceBlueprints(
     const focused = resolved.filter((b) => b.focus);
     if (focused.length > 1)
       throw new Error(
-        `defaults.workspaces: only one workspace may set focus: true (got ${focused.map((b) => b.name).join(", ")})`,
+        `defaults.workspaces: only one project may set focus: true (got ${focused.map((b) => b.name).join(", ")})`,
       );
     return { shape: "multi", workspaces: resolved };
   }

@@ -111,7 +111,9 @@ describe("the URL keeps #category and ?q=", () => {
 describe("scope tags", () => {
   it("User, Workspace · <ws>, Distribution · read-only", () => {
     expect(scopeText({ scope: "user" }, "a")).toBe("User");
-    expect(scopeText({ scope: "workspace" }, "ws-b")).toBe("Workspace · ws-b");
+    expect(scopeText({ scope: "workspace" }, "ws-b")).toBe(
+      "Project setup · ws-b",
+    );
     expect(scopeText({ scope: "distribution" }, "a")).toBe(
       "Distribution · read-only",
     );

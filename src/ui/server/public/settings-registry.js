@@ -59,21 +59,21 @@ export const DEN_SETTING_CATEGORIES = [
     label: "Graph",
     order: 40,
     description:
-      "How the graph is laid out, and how the Workspaces page shows its workspaces. The pages' own controls set these too.",
+      "How the graph is laid out, and how the Projects page shows its projects. The pages' own controls set these too.",
   },
   {
     id: "workspace",
-    label: "Workspace",
+    label: "Project setup",
     order: 50,
     description:
-      "Settings for one workspace. They follow the Workspace you view in the top bar.",
+      "Settings for one project. They follow the project you view in the top bar.",
   },
   {
     id: "agents",
     label: "Agents",
     order: 55,
     description:
-      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one workspace (config/local/workspaces.yml), which wins.",
+      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
   },
   {
     // SEC-2a: who may come in from other devices.
@@ -808,8 +808,8 @@ export const DEN_SETTINGS = [
   // ── Graph ──────────────────────────────────────────────────────────────
   graphRow(
     "workspaces",
-    "Workspace list",
-    "The Workspaces page's workspace list, open or collapsed to a strip so the table gets the width.",
+    "Project list",
+    "The Projects page's project list, open or collapsed to a strip so the table gets the width.",
     ["workspaces", "list", "sidebar", "collapse", "strip", "local dev"],
     seg([
       { value: "open", label: "Open" },
@@ -819,7 +819,7 @@ export const DEN_SETTINGS = [
   graphRow(
     "groupBy",
     "Group repos by",
-    "The Workspaces page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by org.",
+    "The Projects page's repo table: one list, or grouped by application (as __DEN_CLI__ apps) or by org.",
     ["workspaces", "group", "application", "apps", "org", "table", "local dev"],
     seg([
       { value: "none", label: "None" },
@@ -869,9 +869,9 @@ export const DEN_SETTINGS = [
   {
     id: "workspace.editor",
     category: "workspace",
-    label: "IDE for this workspace",
+    label: "IDE for this project",
     description:
-      "Opening this workspace, or a repo in it without a per-language override, uses this editor instead of your default.",
+      "Opening this project, or a repo in it without a per-language override, uses this editor instead of your default.",
     keywords: ["workspace", "editor", "ide", "override"],
     scope: "workspace",
     control: { type: "workspace-editor" },
@@ -924,7 +924,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Rotation",
     description:
-      "When an agent's conversation has compacted this many times (or its pull request merged), Den starts it again from its handoff: a fresh conversation, the same name, persona, workspace and folder. Auto asks the agent for its handoff when it is idle, then relaunches it by itself; Ask shows buttons on the agent; Off does nothing. Overrides win over this install's value: agent, persona in a workspace, persona, workspace, service. __DEN_CLI__ agents rotate",
+      "When an agent's conversation has compacted this many times (or its pull request merged), Den starts it again from its handoff: a fresh conversation, the same name, persona, project and folder. Auto asks the agent for its handoff when it is idle, then relaunches it by itself; Ask shows buttons on the agent; Off does nothing. Overrides win over this install's value: agent, persona in a project, persona, project, service. __DEN_CLI__ agents rotate",
     keywords: [
       "rotation",
       "rotate",
@@ -946,7 +946,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Hub",
     description:
-      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its team comes from this install's token, its project from the workspace's repos.",
+      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its team comes from this install's token, its project from the project's repos.",
     keywords: [
       "hub",
       "den hub",
@@ -993,7 +993,7 @@ export const DEN_SETTINGS = [
     category: "cli",
     label: "Local environment",
     description:
-      "Off hides Workspaces and the workspace APIs for you. __DEN_CLI__ config local_dev=false",
+      "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     keywords: ["local", "local dev", "environment", "disable"],
     scope: "user",
     control: { type: "readonly" },
@@ -1234,7 +1234,7 @@ export function runtimeRowHtml(r, scopeWs) {
       : "") +
     `</div>` +
     `<form class="rt-f" data-path-form="${id}" hidden>` +
-    `<label class="rt-fl" for="rt-in-${id}">Path to ${escR(r.label || r.id)}${scopeWs ? ` for ${escR(scopeWs)}` : " (every workspace)"}</label>` +
+    `<label class="rt-fl" for="rt-in-${id}">Path to ${escR(r.label || r.id)}${scopeWs ? ` for ${escR(scopeWs)}` : " (every project)"}</label>` +
     `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +
     `<button type="submit" class="btn sm primary">Save</button> <button type="button" class="btn sm" data-cancel-path>Cancel</button>` +
     `<div class="rt-err" role="alert" hidden></div></form>` +
@@ -1249,7 +1249,7 @@ function renderRuntimes(host, ctx) {
   const draw = (rows, note) => {
     host.innerHTML =
       `<div class="rt-scope"><label for="rt-ws">Paths for</label> <select id="rt-ws" data-focus-key="rt-ws">` +
-      `<option value="">every workspace (user.yml)</option>` +
+      `<option value="">every project (user.yml)</option>` +
       wss
         .map(
           (w) =>
@@ -1335,10 +1335,10 @@ export const withArticle = (w) => `${/^[aeiou]/.test(w) ? "an" : "a"} ${w}`;
 
 const ROT_SCOPES = [
   ["agent", "Agent", "agent id"],
-  ["persona-workspace", "Persona in a workspace", "persona@workspace"],
+  ["persona-workspace", "Persona in a project", "persona@project"],
   ["persona", "Persona", "persona id"],
-  ["workspace", "Workspace", "workspace"],
-  ["service", "Service", "service, as the workspace names it"],
+  ["workspace", "Project", "project"],
+  ["service", "Service", "service, as the project names it"],
 ];
 const ROT_KEYS = [
   ["after_compactions", "After compactions", "a number, or never"],
@@ -1925,7 +1925,7 @@ function renderRotation(host, ctx) {
       fail({
         message:
           scope === "persona-workspace"
-            ? "Pick a persona and a workspace."
+            ? "Pick a persona and a project."
             : `Pick ${withArticle((ROT_SCOPES.find((x) => x[0] === scope) || [scope, scope])[1].toLowerCase())}.`,
       });
       return;

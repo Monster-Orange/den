@@ -283,7 +283,7 @@ async function mount(o: Opts = {}): Promise<{
  * Palette rows' words, read from their parts: the label, the sub line and
  * the kind, upper-cased here as the stylesheet shows it. innerText follows
  * the CSS, so a row read before the sheet applied read "WorkspacesPage"
- * one run and "Workspaces PAGE" the next.
+ * one run and "Projects PAGE" the next.
  */
 const palRows = (p: Page, sel = "#den-pal-list [role=option]") =>
   p.$$eval(sel, (o) =>
@@ -512,7 +512,7 @@ describe("the ⌘K palette (R17)", () => {
       "den-pal-o-0",
     );
     // Empty: the pages first.
-    expect(await palRow(p, "#den-pal-o-0")).toBe("Workspaces PAGE");
+    expect(await palRow(p, "#den-pal-o-0")).toBe("Projects PAGE");
     await p.keyboard.type("shop");
     expect(await palRows(p)).toEqual([
       "shop/shop SERVICE",
@@ -632,7 +632,7 @@ describe("the ⌘K palette (R17)", () => {
     const cases: [string, string, RegExp][] = [
       [
         "workspaces",
-        "Workspaces PAGE",
+        "Projects PAGE",
         new RegExp(`${wsHref.replace(/[?]/g, "\\?")}$`),
       ],
       [

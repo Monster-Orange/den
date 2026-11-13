@@ -127,7 +127,7 @@ describe("Environments (0.4.17)", () => {
     // No org picker of its own: the View's note instead.
     expect(await p.$("#org-filter")).toBeNull();
     expect(await p.textContent("#view-note")).toBe(
-      "Shows all active workspaces, as the top bar's View. Change it there.",
+      "Shows all active projects, as the top bar's View. Change it there.",
     );
     // The controls never wait: Re-check works while the checks run.
     expect(await p.isEnabled("#refresh")).toBe(true);
@@ -187,7 +187,7 @@ describe("Environments (0.4.17)", () => {
         asked.some((u) => new URL(u).searchParams.get("workspace") === "south"),
       ).toBe(true);
       const note =
-        "Shows workspace south, as the top bar's View. Change it there.";
+        "Shows project south, as the top bar's View. Change it there.";
       expect(await p.textContent("#view-note")).toBe(note);
       await p.goto(`${s!.base}/release`);
       await p.waitForSelector("#view-note .view-note");

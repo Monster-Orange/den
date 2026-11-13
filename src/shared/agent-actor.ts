@@ -113,7 +113,7 @@ export function actorFromHeaders(
  */
 export function actorLabel(actor: AgentActor): string {
   const who = actor.agent ?? "agent";
-  const ws = actor.workspace ? `workspace ${actor.workspace}, ` : "";
+  const ws = actor.workspace ? `project ${actor.workspace}, ` : "";
   return (
     `${who} ${actor.client} ${actor.clientVersion} ` +
     `(${ws}mcp pid ${actor.mcpPid ?? "?"}, session ${actor.session || "?"})` +

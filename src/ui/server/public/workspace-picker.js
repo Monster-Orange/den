@@ -19,15 +19,14 @@
 export const EN_FALLBACK = {
   "ws.all": "All active",
   "ws.allN": "All active ({n})",
-  "ws.allTip":
-    "Every active workspace; a service several define is listed once",
+  "ws.allTip": "Every active project; a service several define is listed once",
   "ws.noneLabel": "none",
   "ws.viewTitle":
     "View: what every page shows ({ws}). A view filter only: it starts, stops and routes nothing.",
   "ws.viewTitleFocus":
     "View: what every page shows ({ws}). It starts, stops and routes nothing. CLI default: {focus}.",
   "ws.pickTip":
-    "Picking a workspace here also makes it the CLI default, so __DEN_CLI__ commands run there.",
+    "Picking a project here also makes it the CLI default, so __DEN_CLI__ commands run there.",
 };
 function enT(key, vars) {
   return String(EN_FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (m, k) =>

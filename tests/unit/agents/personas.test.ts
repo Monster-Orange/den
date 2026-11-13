@@ -236,11 +236,11 @@ describe("agents.persona_packs", () => {
     ).toEqual({ planner: { grants: ["south"] } });
     expect(() =>
       readAgentsConfig(cfg({ planner: { grants: "south" } })),
-    ).toThrow(/agents\.planner\.grants: must be a list of workspace names/);
+    ).toThrow(/agents\.planner\.grants: must be a list of project names/);
     expect(() =>
       readAgentsConfig(cfg({ planner: { grants: ["../x"] } })),
     ).toThrow(
-      /agents\.planner\.grants\[0\]: "\.\.\/x" is not a workspace name/,
+      /agents\.planner\.grants\[0\]: "\.\.\/x" is not a project name/,
     );
     expect(() => readAgentsConfig(cfg({ planner: { grant: ["x"] } }))).toThrow(
       /agents\.planner\.grant: unknown key \(an agent takes grants\)/,

@@ -354,8 +354,8 @@ const scopeLine = (p: Page) =>
 
 describe("R20 page headers (0.3.0-dev.32)", () => {
   it.each([
-    ["/?ws=main", "Workspaces"],
-    ["/local-dev?ws=main", "Workspaces"],
+    ["/?ws=main", "Projects"],
+    ["/local-dev?ws=main", "Projects"],
     ["/graph?ws=main", "Graph"],
     ["/services", "Services"],
     ["/logs", "Logs"],

@@ -1100,6 +1100,11 @@ Acme doctor: strategies
 `session-backend` is never a doctor failure: nothing needs a session until
 one is started (see Sessions).
 
+doctor's **Address** row is this install's address (`web.url`, see
+[This install's address](#this-installs-address-d80)): ok when set, a
+warning when it was taken from the edge route and not yet confirmed, and a
+failure, with `web url <address>` as the fix, when it is not set.
+
 `<cli> doctor --json` adds the onboarding checks (Node, git, Docker, the web
 server, Den's MCP) and answers with one JSON object: see
 [Set up by your agent](#up-doctor-and-mcp-connect).
@@ -1760,6 +1765,38 @@ Den's scripts run with the engine's tsx (`tsxCommand()`), never through `npx`
 or a path relative to the current directory. In Den's own checkout both roots
 are the same directory.
 
+## This install's address (D80)
+
+Every Den install has one address, `web.url` in `config/local/user.yml`,
+for example `https://acme.local.example.com`. It is the one Den gives
+people: the start banner (`Web UI → <address>`), what `web up` opens and
+prints (`web up --json`'s `url`), sign-in and setup links (`web login`,
+`web claim-link`), doctor, and Hub's link back to this Den. The name
+resolves to this machine on the machine itself and to it over your network
+on every other device, so one address works from all of them. Den works
+nothing out from where a browser is, and never falls back to localhost.
+
+```bash
+./bin/acme web url https://acme.local.example.com   # set it (a person's only)
+./bin/acme web url                                   # show it
+./bin/acme web url --json                            # { ok, url, confirmed }
+```
+
+- **Set it when you make the Den**: `create acme --url <address>` writes
+  it; without `--url`, create's next steps say to set it.
+- **An install made before it** takes its edge route's address once, at the
+  next server start. doctor shows where it came from and asks you to
+  confirm it (`web url <address>` confirms).
+- **Unset**: the banner says `address not set: run \`acme web url
+  <address>\``, `web login` and `web claim-link` print no link and say the
+  same, `web up --json` has `url: null`, and doctor fails with that fix.
+- Agents' own connections (MCP, the API) stay on loopback: an internal
+  detail, never shown.
+- Reachable from other devices is the normal setup: each one signs in first
+  (Sign in with GitHub, or a pairing link), and the server log says so in a
+  note. Only `web.edge_unattested: local` (no sign-in) shows the "reachable
+  from other machines" warning on every page.
+
 ## Signing in
 
 On localhost nothing asks you to sign in: every page, the agents and the
@@ -1788,7 +1825,7 @@ user, and the CLI does that for you:
 ./bin/acme web logout --all  # and rotate web.secret and revoke every agent's token
 ```
 
-- **The link** is `http://localhost:<port>/auth?c=<code>`, with `&next=<path>`
+- **The link** is `<web.url>/auth?c=<code>` (D80: this install's address), with `&next=<path>`
   for where to land (`web login --next /settings`). The code works once,
   within `web.login_link_ttl` (5 minutes unless set; 30s to 60m, as `90s`,
   `5m` or `1h`, in `config/local/user.yml` or the team config), and only

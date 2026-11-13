@@ -134,7 +134,7 @@ describe("service aliases", () => {
       "two/worker",
     ]);
     expect(() => runner.canonicalServiceAddress("worker", "default")).toThrow(
-      /"worker" is ambiguous in workspace "default": one\/worker, two\/worker/,
+      /"worker" is ambiguous in project "default": one\/worker, two\/worker/,
     );
   });
 
@@ -198,7 +198,7 @@ describe("service aliases in the CLI", () => {
     const r = await cli("restart", "worker");
     expect(r.status).toBe(1);
     expect(r.out).toMatch(
-      /"worker" is ambiguous in workspace "default": one\/worker, two\/worker/,
+      /"worker" is ambiguous in project "default": one\/worker, two\/worker/,
     );
   }, 60_000);
 });

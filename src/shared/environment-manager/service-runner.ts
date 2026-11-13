@@ -182,7 +182,7 @@ export class ServiceConflictError extends Error {
       opts.message ??
       (opts.reason === "orphan_containers"
         ? `Service "${opts.address}" has running opctl containers (${(opts.orphanContainers ?? []).join(", ")}) not tracked by ${product().cli} — refuse to start a second instance`
-        : `Service "${opts.address}" is already running for workspace(s) [${opts.owners.join(", ")}] at ${opts.running.repoPath}` +
+        : `Service "${opts.address}" is already running for project(s) [${opts.owners.join(", ")}] at ${opts.running.repoPath}` +
           ` (branch: ${opts.running.branch ?? "n/a"}), which differs from requested ${opts.requested.repoPath}` +
           ` (branch: ${opts.requested.branch ?? "n/a"})`);
     super(msg);
@@ -1062,7 +1062,7 @@ export function canonicalServiceAddress(
   if (candidates.length > 1) {
     const ws = namedWorkspace(workspaceName)?.name ?? "default";
     throw new Error(
-      `"${address}" is ambiguous in workspace "${ws}": ${candidates.join(", ")}; name one of them`,
+      `"${address}" is ambiguous in project "${ws}": ${candidates.join(", ")}; name one of them`,
     );
   }
   return candidates[0] ?? address;
@@ -2019,7 +2019,7 @@ export function previewServiceCommand(
       kind: "error",
       address,
       note:
-        `service "${address}" not found in workspace "${workspace ?? "default"}"` +
+        `service "${address}" not found in project "${workspace ?? "default"}"` +
         (candidates.length > 1
           ? `; it is ambiguous: ${candidates.join(", ")}`
           : ""),
@@ -2118,7 +2118,7 @@ export function runServiceCommand(
   if (!resolved) {
     const candidates = serviceAliasCandidates(address, workspace);
     onLine(
-      `Error: service "${address}" not found in catalog or workspace "${workspace}"` +
+      `Error: service "${address}" not found in catalog or project "${workspace}"` +
         (candidates.length > 1
           ? `; it is ambiguous: ${candidates.join(", ")}`
           : ""),
@@ -2325,7 +2325,7 @@ export function runServiceCommand(
     const owners = activeDaemonOwners(existing);
     if (owners.length > 0 && !owners.includes(workspace)) {
       onLine(
-        `workspace "${workspace}" does not own running "${resolved.address}" (owners: [${owners.join(", ")}]) — use \`--force\` to stop it anyway`,
+        `project "${workspace}" does not own running "${resolved.address}" (owners: [${owners.join(", ")}]) — use \`--force\` to stop it anyway`,
       );
       closeAsync(0);
       return dummy();
@@ -2334,7 +2334,7 @@ export function runServiceCommand(
       detachDaemonOwner(resolved.address, workspace);
       const remaining = owners.filter((w) => w !== workspace);
       onLine(
-        `detached workspace "${workspace}" — still running for [${remaining.join(", ")}]`,
+        `detached project "${workspace}" — still running for [${remaining.join(", ")}]`,
       );
       closeAsync(0);
       return dummy();

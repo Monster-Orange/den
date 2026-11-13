@@ -227,7 +227,7 @@ describe("the Agents tab", () => {
       "token revoked",
     );
     expect(await p.textContent("#ag-count")).toBe(
-      "5 sessions · 0 waiting · all workspaces",
+      "5 sessions · 0 waiting · all projects",
     );
     await p.goto(`${s!.base}/agents?ws=south`);
     await p.waitForSelector("#agl:not([aria-busy]) .agr");
@@ -626,15 +626,15 @@ describe("the Agents tab", () => {
     await p.fill("#den-pal-q", "scout");
     await p.waitForFunction(() =>
       [...document.querySelectorAll("#den-pal-list .den-pal-l")].some(
-        (e) => e.textContent === "Go to workspace north",
+        (e) => e.textContent === "Go to project north",
       ),
     );
-    await p.fill("#den-pal-q", "go to workspace north");
+    await p.fill("#den-pal-q", "go to project north");
     const opt = p
       .locator('#den-pal-list li[role="option"]')
-      .filter({ hasText: "Go to workspace north" })
+      .filter({ hasText: "Go to project north" })
       .first();
-    expect(await opt.locator(".den-kind").textContent()).toBe("Workspace");
+    expect(await opt.locator(".den-kind").textContent()).toBe("Project");
     await opt.click();
     await p.waitForURL(
       (u) =>
@@ -650,23 +650,23 @@ describe("the Agents tab", () => {
       `.pane[data-id="${id("logs")}"] .bar2 .where a.wslink`,
     );
     await p.click("#den-search");
-    await p.fill("#den-pal-q", "go to workspace");
+    await p.fill("#den-pal-q", "go to project");
     // west has no agents (and isn't active): it's listed too.
     await p.waitForFunction(() =>
       [...document.querySelectorAll("#den-pal-list .den-pal-l")].some(
-        (e) => e.textContent === "Go to workspace west",
+        (e) => e.textContent === "Go to project west",
       ),
     );
     const order = await p.$$eval("#den-pal-list .den-pal-l", (els) =>
       els
         .map((e) => e.textContent ?? "")
-        .filter((x) => x.startsWith("Go to workspace ")),
+        .filter((x) => x.startsWith("Go to project ")),
     );
-    expect(order[0]).toBe("Go to workspace south");
+    expect(order[0]).toBe("Go to project south");
     expect([...order].sort()).toEqual([
-      "Go to workspace north",
-      "Go to workspace south",
-      "Go to workspace west",
+      "Go to project north",
+      "Go to project south",
+      "Go to project west",
     ]);
     await p.context().close();
   }, 45_000);

@@ -41,6 +41,8 @@ function io() {
       out: (s: string) => (o.out += s),
       err: (s: string) => (o.err += s),
       stateDir: tmp,
+      // D80: the install's address the links are on.
+      webUrl: () => ({ url: "https://den.acme.example.com", confirmed: true }),
     },
   };
 }
@@ -103,12 +105,14 @@ describe("in the person's own terminal", () => {
   it("web login --no-wait prints a link", () => {
     const { o, io: i } = io();
     expect(cmdWebLogin(["--no-wait"], i)).toBe(0);
-    expect(o.out).toMatch(/^http:\/\/localhost:\d+\/auth\?c=/);
+    expect(o.out).toMatch(/^https:\/\/den\.acme\.example\.com\/auth\?c=/);
   });
   it("web claim-link prints one link to the page with ?claim=", () => {
     const { o, io: i } = io();
     expect(cmdWebClaimLink(["--port", "4100"], i)).toBe(0);
     expect(o.out.trim().split("\n")).toHaveLength(1);
-    expect(o.out).toMatch(/^http:\/\/localhost:4100\/auth\?claim=c1\./);
+    expect(o.out).toMatch(
+      /^https:\/\/den\.acme\.example\.com\/auth\?claim=c1\./,
+    );
   });
 });

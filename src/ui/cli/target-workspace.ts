@@ -63,14 +63,14 @@ export function targetWorkspaceFor(
       const looked = [o.focus, ...others].filter(Boolean).join(", ");
       return {
         ok: false,
-        error: `"${name}" is not a service in any active workspace (${looked || "none active"}).`,
+        error: `"${name}" is not a service in any active project (${looked || "none active"}).`,
       };
     }
     if (hits.length > 1)
       return {
         ok: false,
         error:
-          `"${name}" is in more than one active workspace: ` +
+          `"${name}" is in more than one active project: ` +
           `${hits.map((w) => `${w} (${o.cli} ${o.command} ${name} -w ${w})`).join(", ")}. ` +
           "Name one with -w.",
       };
@@ -81,9 +81,9 @@ export function targetWorkspaceFor(
     return {
       ok: false,
       error:
-        "These names are in different workspaces: " +
+        "These names are in different projects: " +
         `${[...where].map(([n, w]) => `${n} (${w})`).join(", ")}. ` +
-        `Run ${o.cli} ${o.command} once per workspace, with -w.`,
+        `Run ${o.cli} ${o.command} once per project, with -w.`,
     };
   const ws = workspaces[0];
   return { ok: true, workspace: ws === o.focus ? null : ws };

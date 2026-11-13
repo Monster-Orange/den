@@ -417,14 +417,14 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
   const { getReposRoot } = await import("../../shared/den-config.js");
   workspaceDirFn = (name) => {
     const cfg = ws.readWorkspacesFile().workspaces[name];
-    if (!cfg) throw usage(`workspace "${name}" does not exist`, 404);
+    if (!cfg) throw usage(`project "${name}" does not exist`, 404);
     return ws.resolveWorkspaceDir(name, cfg, getReposRoot());
   };
   namesFn = () => Object.keys(ws.readWorkspacesFile().workspaces ?? {});
   // A by-path repo's own folder (repo add <path>), wherever it is.
   foldersFn = (name) => {
     const cfg = ws.readWorkspacesFile().workspaces[name];
-    if (!cfg) throw usage(`workspace "${name}" does not exist`, 404);
+    if (!cfg) throw usage(`project "${name}" does not exist`, 404);
     return ws.conversationFolders(name, cfg, getReposRoot());
   };
   const { readCatalog } =
@@ -558,7 +558,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     workspaceDir:
       d.workspaceDir ??
       ((ws) => {
-        if (!workspaceDirFn) throw new Error("workspaces not loaded");
+        if (!workspaceDirFn) throw new Error("projects not loaded");
         return workspaceDirFn(ws);
       }),
     workspaceFolders:
@@ -566,7 +566,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       ((ws) => {
         // A caller that gives its own folder (a test) gives just it.
         if (d.workspaceDir) return { under: [d.workspaceDir(ws)] };
-        if (!foldersFn) throw new Error("workspaces not loaded");
+        if (!foldersFn) throw new Error("projects not loaded");
         return foldersFn(ws);
       }),
     workspaceNames: d.workspaceNames ?? (() => (namesFn ? namesFn() : [])),
@@ -975,7 +975,7 @@ export function checkWorkspaceName(where: string, ws: unknown): string {
   // D70: a workspace's name ("back office") or its slug.
   const k = typeof ws === "string" ? resolveWorkspaceInput(ws) : ws;
   if (typeof k !== "string" || !WORKSPACE_NAME_RE.test(k))
-    throw usage(`${where}: "${String(ws)}" is not a workspace`);
+    throw usage(`${where}: "${String(ws)}" is not a project`);
   return k;
 }
 
@@ -1933,7 +1933,7 @@ export async function setRuntimePath(
   if (req.scope === "workspace") {
     ws = checkWorkspaceName("runtime path", req.workspace);
     if (!d.workspaceExists(ws))
-      throw usage(`workspace "${ws}" does not exist`, 404);
+      throw usage(`project "${ws}" does not exist`, 404);
   }
   if (req.bin !== null) {
     const c = await checkRuntimeBin(rt.catalog, req.bin, d.env);
@@ -2258,13 +2258,13 @@ function launchInput(
   for (const g of grants)
     if (!d.workspaceExists(g))
       throw refused(
-        `agents.${id}.grants: workspace "${g}" does not exist`,
+        `agents.${id}.grants: project "${g}" does not exist`,
         [],
         422,
       );
   const dir = d.workspaceDir(ws);
   if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
-    throw refused(`workspace ${ws}'s directory ${dir} does not exist`);
+    throw refused(`project ${ws}'s directory ${dir} does not exist`);
   // den#4: only Den's hooks count compactions; without them, no rotation.
   const after = effectiveRotation(
     d,
@@ -2558,7 +2558,7 @@ export function startFolder(
   // it is outside it (the scope's own folders are compared real, too).
   if (!inScope(real, d.workspaceFolders(ws)))
     throw refused(
-      `${where}: folder ${dir} is not inside workspace ${ws}`,
+      `${where}: folder ${dir} is not inside project ${ws}`,
       [],
       403,
     );
@@ -2573,7 +2573,7 @@ export async function startAgent(
   const where = "agents start";
   const ws = checkWorkspaceName(where, req.workspace);
   if (!d.workspaceExists(ws))
-    throw usage(`${where}: workspace "${ws}" does not exist`, 404);
+    throw usage(`${where}: project "${ws}" does not exist`, 404);
   const cfg = agentsConfig(d);
   const all = personas(d, cfg, ws);
   const persona = all.get(req.persona);
@@ -2602,7 +2602,7 @@ export async function startAgent(
   const prev = readRecord(d.stateDir(), id);
   if (prev && prev.workspace !== ws)
     throw refused(
-      `agent ${id} belongs to workspace ${prev.workspace}; give this one another --id`,
+      `agent ${id} belongs to project ${prev.workspace}; give this one another --id`,
     );
   ptyOrRefuse(d);
   const allow = allowedFor(d, persona, ch.extras);
@@ -2921,7 +2921,7 @@ export function listConversations(
   const where = "agents import";
   checkWorkspaceName(where, ws);
   if (!d.workspaceExists(ws))
-    throw usage(`${where}: workspace "${ws}" does not exist`, 404);
+    throw usage(`${where}: project "${ws}" does not exist`, 404);
   syncCatalog(d);
   if (runtime !== undefined) runtimeFor(runtime);
   // Its folder and every repo's; a shared root only exactly (AG-17.1).
@@ -3069,8 +3069,8 @@ export async function importAgent(
     // Another project's: say whose, never bring it in.
     if (projectOf(d, elsewhere) !== null)
       throw refused(
-        `This conversation belongs to ${elsewhere}, not to workspace ${req.workspace}`,
-        [`List this workspace's: ${d.cli} agents import -w ${req.workspace}`],
+        `This conversation belongs to ${elsewhere}, not to project ${req.workspace}`,
+        [`List this project's: ${d.cli} agents import -w ${req.workspace}`],
         409,
       );
     // D56: outside every project. Never a folder that can't be an agent's.
@@ -3096,7 +3096,7 @@ export async function importAgent(
   }
   if (!c)
     throw refused(
-      `${where}: no ${rt.label} conversation "${req.session}" in workspace ${req.workspace}'s folder`,
+      `${where}: no ${rt.label} conversation "${req.session}" in project ${req.workspace}'s folder`,
       [`List them: ${d.cli} agents import -w ${req.workspace}`],
       404,
     );
@@ -3172,7 +3172,7 @@ export function agentRecord(
   if (!rec) throw refused(`no agent "${id}"`, [], 404);
   if (ws && ws !== rec.workspace)
     throw new AgentError(
-      `agent ${id} is in workspace ${rec.workspace}, not ${ws}`,
+      `agent ${id} is in project ${rec.workspace}, not ${ws}`,
       { status: 404, code: NOT_IN_WORKSPACE },
     );
   return rec;
@@ -3844,7 +3844,7 @@ export async function moveAgent(
   if (isServerScope(to) || isServerScope(rec.workspace))
     throw usage(`${where}: Den's own agents stay in its own scope`);
   if (!d.workspaceExists(to))
-    throw refused(`${where}: there is no workspace "${to}"`, [], 404);
+    throw refused(`${where}: there is no project "${to}"`, [], 404);
   const live = await withClient(d, async (c) => {
     const s = sessionOf(await c.list(), rec);
     return Boolean(s && !s.exited);
@@ -3952,16 +3952,16 @@ export async function disposeWorkspaceAgents(
   if (how === undefined) {
     const names = list.map((a) => a.name ?? a.id).join(", ");
     throw new AgentError(
-      `workspace "${ws}" has ${list.length} ${list.length === 1 ? "agent" : "agents"} (${names}): stop them, or move them to another workspace`,
+      `project "${ws}" has ${list.length} ${list.length === 1 ? "agent" : "agents"} (${names}): stop them, or move them to another project`,
       { status: 409, code: "has_agents" },
     );
   }
   if (how === "move") {
-    if (!to) throw usage("give the workspace to move its agents to");
+    if (!to) throw usage("give the project to move its agents to");
     if (to === ws)
-      throw usage(`move its agents to another workspace, not ${ws}`);
+      throw usage(`move its agents to another project, not ${ws}`);
     if (!d.workspaceExists(to))
-      throw refused(`there is no workspace "${to}"`, [], 404);
+      throw refused(`there is no project "${to}"`, [], 404);
     for (const a of list) {
       if (!a.running) {
         await moveAgent(d, a.id, ws, to, "now");
@@ -4551,10 +4551,10 @@ export async function startPlainSession(
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
-    throw usage(`workspace "${ws}" does not exist`, 404);
+    throw usage(`project "${ws}" does not exist`, 404);
   const dir = d.workspaceDir(ws);
   if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
-    throw refused(`workspace ${ws}'s directory ${dir} does not exist`);
+    throw refused(`project ${ws}'s directory ${dir} does not exist`);
   ptyOrRefuse(d);
   const sh = d.env.SHELL;
   let shell = "/bin/sh";
@@ -4934,7 +4934,7 @@ export function setRotationSetting(
     if (!ok)
       throw usage(
         scope === "persona-workspace"
-          ? "target: <persona>@<workspace>"
+          ? "target: <persona>@<project>"
           : `target: the ${String(scope)} it is for`,
       );
   } else if (target !== undefined && target !== null)

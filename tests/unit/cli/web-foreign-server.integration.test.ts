@@ -216,7 +216,11 @@ describe("web up/down/restart against another distribution's server", () => {
       "--port",
       `${fake.port}`,
     ]);
-    expect(out).toMatch(/OK Den web is already running at http:\/\//);
+    // D80: this root has no address set: said so, never localhost.
+    expect(out).toMatch(
+      /OK Den web is already running at \(address not set: run `den web url <address>`\)/,
+    );
+    expect(out).not.toMatch(/localhost/);
     expect(status).toBe(0);
   }, 120_000);
 
@@ -229,7 +233,11 @@ describe("web up/down/restart against another distribution's server", () => {
       "--port",
       `${fake.port}`,
     ]);
-    expect(out).toMatch(/OK Den web is already running at http:\/\//);
+    // D80: this root has no address set: said so, never localhost.
+    expect(out).toMatch(
+      /OK Den web is already running at \(address not set: run `den web url <address>`\)/,
+    );
+    expect(out).not.toMatch(/localhost/);
     expect(status).toBe(0);
   }, 120_000);
 });

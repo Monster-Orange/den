@@ -174,20 +174,20 @@ export const AGENTS_HELP = {
   usage:
     "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check> ...",
   lines: [
-    "Agents: a persona and a workspace, run by a runtime in a session that",
+    "Agents: a persona and a project, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
     "",
     "{cli} agents list -w <ws> [--stopped] [--json]",
     "    --stopped: only the stopped, interrupted and exited ones",
     "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>]",
-    "    runs in the workspace's dir as <dist>-<ws>:<id>; its MCP is pinned to <ws>",
+    "    runs in the project's dir as <dist>-<ws>:<id>; its MCP is pinned to <ws>",
     "    (plus agents.<id>.grants); capped by agents.max_concurrent",
     "{cli} agents stop <id> [-w <ws>] [--no-wait]",
     "    waits up to 5 s for the session to end (else: still stopping, exit 1);",
     "    --no-wait: return once TERM is sent",
     "{cli} agents resume <id> [-w <ws>]",
     "{cli} agents resume --all-interrupted [-w <ws>]",
-    "    the same conversation, persona, workspace and folder, when its runtime",
+    "    the same conversation, persona, project and folder, when its runtime",
     "    can resume one and its session has ended; with nothing to resume yet,",
     "    it starts fresh under the same conversation id. --all-interrupted: every",
     "    agent interrupted when Den or the machine restarted. A rotated agent",
@@ -195,15 +195,15 @@ export const AGENTS_HELP = {
     "{cli} agents relaunch <id> [-w <ws>]",
     "    session rotation: once a session ended after agents.rotate.after_compactions",
     "    compactions (default 3) or its pull request merged, and its handoff.md",
-    "    passes the check, a fresh conversation (same persona, workspace, folder,",
+    "    passes the check, a fresh conversation (same persona, project, folder,",
     "    grants) whose first prompt is the handoff",
     "{cli} agents rotate [--agent|--persona|--workspace|--service <x>] [-w <ws>] <key> <value>",
     "{cli} agents rotate [scope] --unset <key>   ·   {cli} agents rotate   ·   {cli} agents rotate <id> --show",
     "    rotation settings: after_compactions <n>|never (default 3), on_due",
     "    auto|ask|off (default auto: Den asks for the handoff at idle and",
     "    relaunches by itself), on_pr_merged true|false. No scope: this install.",
-    "    --persona <p> -w <ws>: the persona in that workspace. The most specific",
-    "    wins: agent, persona in a workspace, persona, workspace, service,",
+    "    --persona <p> -w <ws>: the persona in that project. The most specific",
+    "    wins: agent, persona in a project, persona, project, service,",
     "    install, org config. --show: an agent's values and where each comes from",
     "{cli} agents keep <id> [-w <ws>] [--never]",
     "    keep its conversation: the compaction count starts again; --never: this",
@@ -224,7 +224,7 @@ export const AGENTS_HELP = {
     "{cli} agents import -w <ws> [--runtime <r>] [--json]",
     "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>] [--model <m>] [--outside <folder>]",
     "    bring in a conversation started outside Den: the first lists the runtime's",
-    "    own (default den-claude) in the workspace's folder; the second continues",
+    "    own (default den-claude) in the project's folder; the second continues",
     "    one as a Den agent (its resume, in the folder it ran in). Refused while it",
     "    is still open in another terminal: close it there first. It keeps the",
     "    conversation's own model unless --model gives one",
@@ -238,9 +238,9 @@ export const AGENTS_HELP = {
     "    tools it would get now (Hub's, after Connect). It waits for its turn",
     "    to end; --now stops it at once. A person's only",
     "{cli} agents move <id> -w <ws> [--now]",
-    "    move an agent to another workspace; same conversation, folder and name.",
+    "    move an agent to another project; same conversation, folder and name.",
     "    A running one waits for its turn to end (--now: at once), then resumes",
-    "    there, with that workspace's tools. A person's only",
+    "    there, with that project's tools. A person's only",
     "{cli} agents rename <id> <name> [-w <ws>]",
     "{cli} agents rename <id> --clear [-w <ws>]",
     "    name an agent (its tab, row and pane header); the id never changes.",
@@ -260,7 +260,7 @@ export const AGENTS_HELP = {
     "    the runtime keeps its own history. agents.remove_stopped_after in",
     "    user.yml (never, 1d, 7d) forgets stopped ones on its own",
     "{cli} agents permission -w <ws> [ask|edits|auto|all|--clear]",
-    "    the permission mode the workspace's agents start with when the start",
+    "    the permission mode the project's agents start with when the start",
     "    names none (over their persona's); none given: shows it. auto: Claude",
     "    Code's own check runs routine actions and blocks risky ones, without",
     "    asking (needs a Claude Code that lists it: see doctor). A person's only",
@@ -269,7 +269,7 @@ export const AGENTS_HELP = {
     "{cli} agents doctor [-w <ws>] [--json]",
     "    each runtime, installed first: status, the CLI it runs and where it came",
     "    from, its version, the directories searched, and the fix; exit 1 when the",
-    "    default is missing. -w: as that workspace's agents find them. Also the",
+    "    default is missing. -w: as that project's agents find them. Also the",
     "    running agents whose tools are out of date (Hub changed since they started)",
     "{cli} agents handback-check <file|-> [--json]",
     "    checks a hand-back to a person: URL, machine, branch, what changed, what",
@@ -283,7 +283,7 @@ export const AGENTS_HELP = {
     "Runtimes: den-claude (default; Claude Code's claude), codex (OpenAI's Codex",
     "CLI), gemini (Google's Gemini CLI), grok (xAI's Grok Build), and generic (the",
     "persona's argv template). codex, gemini and grok run as their own CLI in the",
-    "workspace, without Den's tools yet. Attach with `{cli} sessions attach <ws>:<id>`.",
+    "project, without Den's tools yet. Attach with `{cli} sessions attach <ws>:<id>`.",
     "A runtime's CLI is found as your terminal finds it: <ws>.agents.runtimes.<id>.bin",
     "in config/local/workspaces.yml, then agents.runtimes.<id>.bin in",
     "config/local/user.yml (absolute paths), then the login shell's PATH, this PATH,",
@@ -303,7 +303,7 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
   });
   noExtra(where, p);
   const ws = workspaceFlag(where, p);
-  if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
+  if (!ws) throw new UsageError(`${where} needs -w <project>`);
   const rows = await listAgents(d, ws, {
     stopped: p.flags["--stopped"] === true,
   });
@@ -391,7 +391,7 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
   });
   noExtra(where, p);
   const ws = workspaceFlag(where, p);
-  if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
+  if (!ws) throw new UsageError(`${where} needs -w <project>`);
   const persona = str(p, "--persona");
   const name = str(p, "--name");
   if (!persona) throw new UsageError(`${where} needs --persona <p>`);
@@ -426,7 +426,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
   });
   noExtra(where, p);
   const ws = workspaceFlag(where, p);
-  if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
+  if (!ws) throw new UsageError(`${where} needs -w <project>`);
   const runtime = str(p, "--runtime");
   const session = str(p, "--session");
   const outside = str(p, "--outside");
@@ -456,7 +456,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
     for (const r of runtimes)
       if (!r.bringIn && (!runtime || runtime === r.id)) d.err(`${r.why}`);
     if (!conversations.length && !away.length) {
-      d.out(`no conversations to bring in for workspace ${ws}`);
+      d.out(`no conversations to bring in for project ${ws}`);
       return 0;
     }
     d.out(
@@ -615,7 +615,7 @@ async function move(args: string[], d: AgentsResolved): Promise<number> {
   const to = workspaceFlag(where, p);
   if (!id || !to)
     throw new UsageError(
-      `${where} needs <id> and -w <workspace to move it to>`,
+      `${where} needs <id> and -w <project to move it to>`,
     );
   const now = p.flags["--now"] === true;
   const m = await moveAgent(d, id, undefined, to, now ? "now" : "after-turn");
@@ -901,7 +901,7 @@ async function rotate(args: string[], d: AgentsResolved): Promise<number> {
     const a = rest[i];
     if (a === "-w" || a === "--ws") {
       ws = rest[++i];
-      if (!ws) throw new UsageError(`${where}: ${a} needs a workspace`);
+      if (!ws) throw new UsageError(`${where}: ${a} needs a project`);
     } else if (a in ROTATE_SCOPE_FLAGS) {
       if (scope !== "install")
         throw new UsageError(`${where}: one scope at a time`);
@@ -915,7 +915,7 @@ async function rotate(args: string[], d: AgentsResolved): Promise<number> {
   if (ws) {
     if (scope !== "persona")
       throw new UsageError(
-        `${where}: -w goes with --persona (the persona in that workspace); use --workspace <ws> for a workspace`,
+        `${where}: -w goes with --persona (the persona in that project); use --workspace <ws> for a project`,
       );
     scope = "persona-workspace";
     target = `${target}@${ws}`;
@@ -1087,7 +1087,7 @@ function permission(args: string[], d: AgentsResolved): number {
   const ws = workspaceFlag(where, p);
   if (!ws) throw new UsageError(`${where} needs -w <ws>`);
   if (!d.workspaceExists(ws))
-    throw new UsageError(`${where}: workspace "${ws}" does not exist`);
+    throw new UsageError(`${where}: project "${ws}" does not exist`);
   const given = p.positional[0];
   if (given === undefined && !p.flags["--clear"]) {
     const now = workspacePermissionOf(d, ws);
@@ -1218,7 +1218,7 @@ async function rm(args: string[], d: AgentsResolved): Promise<number> {
   if (p.flags["--stopped"]) {
     if (id) throw new UsageError(`${where}: give <id> or --stopped, not both`);
     if (ws && !d.workspaceExists(ws))
-      throw new UsageError(`${where}: workspace "${ws}" does not exist`);
+      throw new UsageError(`${where}: project "${ws}" does not exist`);
     const wss = ws
       ? [ws]
       : [...new Set(listRecords(d.stateDir()).map((r) => r.workspace))];
@@ -1342,7 +1342,7 @@ async function handbackCheck(
 }
 
 const SOURCE_WORD: Record<string, string> = {
-  workspace: "the workspace's agents.runtimes setting",
+  workspace: "the project's agents.runtimes setting",
   setting: "agents.runtimes setting",
   "login-shell": "login shell PATH",
   PATH: "PATH",
@@ -1503,7 +1503,7 @@ async function doctor(
   noExtra(where, p);
   const ws = workspaceFlag(where, p);
   if (ws && !d.workspaceExists(ws))
-    throw new UsageError(`${where}: workspace "${ws}" does not exist`);
+    throw new UsageError(`${where}: project "${ws}" does not exist`);
   await (deps.loginPath ?? (() => initLoginPath({ env: d.env })))();
   const rts = await listRuntimes(d, ws);
   const def = rts.find((r) => r.default);

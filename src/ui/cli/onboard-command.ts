@@ -168,7 +168,7 @@ export async function cmdOnboard(
     else {
       if (error) console.error(`✗ ${error}`);
       console.log(
-        `\n  ${ONBOARD_USAGE()}\n\n  What's set up (a distribution, the web server, workspaces, repos,\n  a running service, Den's MCP) and the one next step, with its command.\n`,
+        `\n  ${ONBOARD_USAGE()}\n\n  What's set up (a distribution, the web server, projects, repos,\n  a running service, Den's MCP) and the one next step, with its command.\n`,
       );
     }
     return error ? 2 : sub === undefined ? 1 : 0;

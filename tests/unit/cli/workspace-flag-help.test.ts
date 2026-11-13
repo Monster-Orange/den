@@ -21,10 +21,9 @@ describe("--help names -w", () => {
       const r = d().den([cmd, "--help"]);
       expect([cmd, r.code]).toEqual([cmd, 0]);
       expect([cmd, /(^|[\s[/])-w(,|\/| )/m.test(r.out)]).toEqual([cmd, true]);
-      expect([cmd, /--workspace|-w <workspace>/.test(r.out)]).toEqual([
-        cmd,
-        true,
-      ]);
+      expect([cmd, /--workspace|-w <(workspace|project)>/.test(r.out)]).toEqual(
+        [cmd, true],
+      );
       // A flag is never run into its text ("<ws>act in that…", 0.4.1).
       expect([cmd, r.out.match(/^.*<[a-z-]+>[A-Za-z].*$/m)?.[0]]).toEqual([
         cmd,

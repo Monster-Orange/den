@@ -52,6 +52,6 @@ export function serverAgentName(title: string): string {
 /** The refusal for a workspace that would take the reserved name. */
 export function reservedWorkspaceError(ws: string): string | null {
   return isServerScope(ws)
-    ? `"${ws}" is reserved for the server agent; pick another workspace name`
+    ? `"${ws}" is reserved for the server agent; pick another project name`
     : null;
 }

@@ -366,7 +366,7 @@ describe("the Settings page writes only what you change (R21)", () => {
     const ws = p.locator('[data-setting="workspace.editor"]');
     expect(await p.inputValue("#set-ws")).toBe("ws-a");
     expect(await ws.locator(".set-scope").textContent()).toBe(
-      "Workspace · ws-a",
+      "Project setup · ws-a",
     );
     expect(await ws.getByRole("button", { name: "Save" }).count()).toBe(0);
     await ws.getByRole("radio", { name: /^Default/ }).check();
@@ -475,12 +475,12 @@ describe("the Settings page's rows (R21)", () => {
       // (The list's ⚙ footer is gone, R24b; the workspace's Settings tab
       // moved into its ⋯ menu, R24c.)
       [
-        "Workspace settings in the workspace's ⋯ menu",
+        "Project setup in the workspace's ⋯ menu",
         async (p) => {
           await p.click('#content .ws-more [data-action="toggle-svc-menu"]');
           await p
             .locator("#ws-more-menu")
-            .getByRole("menuitem", { name: "Workspace settings" })
+            .getByRole("menuitem", { name: "Project setup" })
             .click();
         },
         "workspace",

@@ -240,7 +240,7 @@ describe("the old settings entry points go to the Settings page (R21)", () => {
   it("Workspaces' ⋯ menu links to the workspace's settings; the list's ⚙ footer is gone (R24b/c)", () => {
     expect(local).not.toContain("sidebar-settings-btn");
     expect(local).toMatch(
-      /<a role="menuitem" href="\/settings\?ws=\$\{enc\}#workspace">Workspace settings<\/a>/,
+      /<a role="menuitem" href="\/settings\?ws=\$\{enc\}#workspace">Project setup<\/a>/,
     );
     expect(local).toContain("const enc = encodeURIComponent(wsName);");
     // No editor or terminal set: the open actions send you there too.

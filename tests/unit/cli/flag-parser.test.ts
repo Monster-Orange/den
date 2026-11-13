@@ -61,7 +61,7 @@ describe("parseCliArgs", () => {
   it("rejects workspace use with workspace override", () => {
     expect(() =>
       parseCliArgs(["workspace", "use", "-w", "default", "feature"]),
-    ).toThrow(/workspace mutations/);
+    ).toThrow(/project mutations/);
   });
 
   it("supports the --workspace=<name> equals form", () => {

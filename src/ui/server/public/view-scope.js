@@ -23,7 +23,7 @@ const esc = (s) =>
       })[c],
   );
 
-/** The top bar's View: all active workspaces, or one. */
+/** The top bar's View: all active projects, or one. */
 export async function viewScope() {
   const v = await fetch("/api/scope", { headers: { accept: "json" } })
     .then((r) => (r.ok ? r.json() : null))
@@ -38,8 +38,8 @@ export async function viewScope() {
 export function viewNoteHtml(view) {
   const what =
     view.scope === "all"
-      ? "all active workspaces"
-      : `workspace <b>${esc(view.scope)}</b>`;
+      ? "all active projects"
+      : `project <b>${esc(view.scope)}</b>`;
   return `<span class="note view-note" data-view="${esc(view.scope)}">Shows ${what}, as the top bar's View. Change it there.</span>`;
 }
 

@@ -133,7 +133,7 @@ export function resolveWorkspaceOrg(
       : undefined;
   if (rawWsOrg !== undefined && rawWsOrg !== null && !wsOrg)
     warnings.push(
-      `workspace ${name}: org in workspaces.yml is not an org id; ignored`,
+      `project ${name}: org in workspaces.yml is not an org id; ignored`,
     );
 
   const repos = workspaceRepos(ws, bp, ctx.catalog);
@@ -150,7 +150,7 @@ export function resolveWorkspaceOrg(
     source = "workspace";
     if (bp?.org && lower(bp.org) !== lower(wsOrg))
       warnings.push(
-        `workspace ${name}: org ${wsOrg} in workspaces.yml overrides the blueprint's org ${bp.org}`,
+        `project ${name}: org ${wsOrg} in workspaces.yml overrides the blueprint's org ${bp.org}`,
       );
   } else if (bp?.org) {
     org = bp.org;
@@ -163,8 +163,8 @@ export function resolveWorkspaceOrg(
     source = org ? "default" : null;
     if (owners.size > 1)
       warnings.push(
-        `workspace ${name}: its repos belong to several owners (${[...owners.values()].join(", ")}); ` +
-          `using ${org ?? "no org"}. Set org: on the workspace to choose one`,
+        `project ${name}: its repos belong to several owners (${[...owners.values()].join(", ")}); ` +
+          `using ${org ?? "no org"}. Set org: on the project to choose one`,
       );
   }
   if (org) org = canonicalOrg(org, ctx.config);
@@ -175,7 +175,7 @@ export function resolveWorkspaceOrg(
     !knownOrgs(ctx).has(lower(org))
   )
     warnings.push(
-      `workspace ${name}: org ${org} is not in orgs:, the catalog or github_org`,
+      `project ${name}: org ${org} is not in orgs:, the catalog or github_org`,
     );
 
   // A repo in another owner than its workspace's org. A mixed workspace with
@@ -188,7 +188,7 @@ export function resolveWorkspaceOrg(
       const o = orgOf(repo, ctx.catalog, ctx.config.orgs);
       if (o && lower(o) !== lower(org))
         warnings.push(
-          `workspace ${name}: repo ${repo} belongs to ${o}, not the workspace's org ${org}`,
+          `project ${name}: repo ${repo} belongs to ${o}, not the project's org ${org}`,
         );
     }
 
@@ -232,7 +232,7 @@ export function githubOrgFor(workspace: string, ctx?: OrgContext): string {
   if (owner) return owner;
   throw new Error(
     `org ${hit.org} has no GitHub source (orgs.${hit.org}.sources): ` +
-      `give workspace ${workspace}'s repos a remote: in the service catalog`,
+      `give project ${workspace}'s repos a remote: in the service catalog`,
   );
 }
 

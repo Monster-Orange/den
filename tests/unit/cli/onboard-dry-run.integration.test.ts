@@ -317,8 +317,10 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
     // 2. web up --json, twice (the second finds it running).
     const [w1, w2] = twice("web", "up", "--no-open", "--json");
     for (const w of [w1, w2])
+      // D80: the install's address. This one had none; the server took
+      // its edge route's at start (the one-time migration).
       expect(w.json).toMatchObject({
-        url: `http://localhost:${webPort}`,
+        url: "http://acme.acme.localhost",
         port: webPort,
       });
 
@@ -326,7 +328,8 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
     const cl = acme("web", "claim-link", "--json");
     expect(cl.code).toBe(0);
     const link = new URL(String(cl.json.url));
-    expect(link.origin).toBe(`http://localhost:${webPort}`);
+    // D80: on the install's address (taken from its edge route).
+    expect(link.origin).toBe("http://acme.acme.localhost");
     expect(link.searchParams.has("claim")).toBe(true);
 
     // The person opens it: a session cookie, and the approval key in the

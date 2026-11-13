@@ -658,7 +658,7 @@ describe("the route classes", () => {
 });
 
 describe("the CLI: web login, web sessions, web logout", () => {
-  it("`web login --no-wait` prints one link on stdout (localhost, /auth, a code) that signs a browser in once", async () => {
+  it("`web login --no-wait` prints one link on stdout (the install's address, /auth, a code) that signs a browser in once", async () => {
     const r = cli([
       "web",
       "login",
@@ -673,8 +673,10 @@ describe("the CLI: web login, web sessions, web logout", () => {
     minted.push(link);
     expect(link.split("\n").length).toBe(1);
     const u = new URL(link);
+    // D80: on the install's address. This one had none: the server took
+    // its edge route's once at start (the migration), never localhost.
     expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
-      `http://localhost:${port}`,
+      "http://den.acme.localhost",
       "/auth",
       "/settings",
     ]);
@@ -910,11 +912,12 @@ describe("a plain-http bind to one LAN address (DEN_BIND_HOST=<LAN IPv4>)", () =
     v4Home = path.join(tmp, "lan-v4-home");
     write(path.join(v4Dist, "den.yml"), "product:\n  name: den\n");
     write(path.join(v4Dist, "config", "den.yml"), "environments: [local]\n");
+    v4Port = await freePort();
+    // D80: the install's address is the LAN one, the one `web up` names.
     write(
       path.join(v4Dist, "config", "local", "user.yml"),
-      "web:\n  allow_plain_http_remote: true\n",
+      `web:\n  allow_plain_http_remote: true\n  url: http://${lanV4}:${v4Port}\n`,
     );
-    v4Port = await freePort();
     v4 = spawnServer(
       TSX,
       [path.join(ENGINE, "src", "ui", "server", "index.ts")],

@@ -1001,1061 +1001,1077 @@
 
     <!-- The page's one main landmark: everything after the shell. -->
     <main id="den-content">
-    <!-- ── Bar 2: context actions (the env picker is the shell's) ───────────── -->
-    <div class="subbar">
-      <a
-        id="app-link"
-        href="#"
-        target="_blank"
-        rel="noopener"
-        title="Open app"
-        style="
-          font-size: 11px;
-          color: var(--muted);
-          text-decoration: none;
-          display: none;
-        "
-        >↗ open app</a
-      >
-
-      <!-- Tests context: run status + layout toggle + run button -->
-      <div class="bar2-slot active" id="bar2-tests">
-        <div class="status">
-          <span class="dot" id="run-dot"></span>
-          <span id="run-status">idle</span>
-        </div>
-        <div class="spacer"></div>
-        <div class="seg" id="layout-seg">
-          <button data-layout="top" class="active" title="Controls on top">
-            top
-          </button>
-          <button data-layout="side" title="Controls on left">side</button>
-        </div>
-        <button class="run-btn" id="run-btn">&#9654; Run</button>
-      </div>
-
-      <!-- Services context: exec status -->
-      <div class="bar2-slot" id="bar2-services">
-        <div class="spacer"></div>
-        <span id="svc-status" style="font-size: 11px; color: var(--muted)"
-          >idle</span
+      <!-- ── Bar 2: context actions (the env picker is the shell's) ───────────── -->
+      <div class="subbar">
+        <a
+          id="app-link"
+          href="#"
+          target="_blank"
+          rel="noopener"
+          title="Open app"
+          style="
+            font-size: 11px;
+            color: var(--muted);
+            text-decoration: none;
+            display: none;
+          "
+          >↗ open app</a
         >
-      </div>
-    </div>
 
-    <!-- ── TESTS VIEW ─────────────────────────────────────────────────────────── -->
-    <div class="view active" id="view-tests">
-      <div class="tests-main layout-top" id="tests-main">
-        <div class="left-panel">
-          <div class="controls">
-            <div class="seg pillars" id="pillars">
-              <button class="active" data-pillar="synthetic">
-                &#127760; browser
-              </button>
-              <button data-pillar="integration">&#128279; api</button>
-              <button data-pillar="smoke">&#128168; smoke</button>
-              <button data-pillar="performance">&#9889; perf</button>
-              <button data-pillar="journeys">&#129517; journeys</button>
-              <button data-pillar="security">&#128737;&#65039; security</button>
-              <button data-pillar="suites">&#129514; suites</button>
-            </div>
-            <div class="module-picker" id="module-picker">
-              <button
-                class="module-picker-btn"
-                id="module-picker-btn"
-                type="button"
-              >
-                <span id="module-picker-label">All modules</span>
-                <span class="module-picker-arrow">▾</span>
-              </button>
-              <div class="module-picker-dropdown" id="module-picker-dropdown">
-                <label class="module-check-item module-check-all">
-                  <input type="checkbox" id="module-check-all" checked />
-                  <span>All modules</span>
-                </label>
-                <div class="module-check-divider"></div>
-                <div id="module-check-list"></div>
-              </div>
-            </div>
-            <div class="smoke-override" id="smoke-api-url-wrap">
-              <span class="smoke-override-label">api url</span>
-              <input
-                id="smoke-api-url"
-                class="text-input"
-                type="text"
-                placeholder="Optional override; blank uses repo/env default"
-                spellcheck="false"
-              />
-            </div>
-            <label class="smoke-override" id="local-checkout-wrap">
-              <input
-                id="use-local-checkout"
-                class="toggle-input"
-                type="checkbox"
-              />
-              <span class="smoke-override-label">use local checkout</span>
-            </label>
-            <label class="smoke-override" id="security-mode-wrap">
-              <span class="smoke-override-label">scan</span>
-              <select id="security-mode" class="text-input">
-                <option value="baseline">
-                  baseline: passive, local + beta
-                </option>
-                <option value="api">api: OpenAPI, active, local only</option>
-                <option value="full">full: active attacks, local only</option>
-              </select>
-            </label>
-            <!-- Per-perf-test optional launch fields, rendered generically from
-               each selected module's declared `optionalFields` (manifest.yml). -->
-            <div id="perf-opt-fields"></div>
+        <!-- Tests context: run status + layout toggle + run button -->
+        <div class="bar2-slot active" id="bar2-tests">
+          <div class="status">
+            <span class="dot" id="run-dot"></span>
+            <span id="run-status">idle</span>
           </div>
-
-          <div class="test-sources-bar" id="test-sources-bar"></div>
+          <div class="spacer"></div>
+          <div class="seg" id="layout-seg">
+            <button data-layout="top" class="active" title="Controls on top">
+              top
+            </button>
+            <button data-layout="side" title="Controls on left">side</button>
+          </div>
+          <button class="run-btn" id="run-btn">&#9654; Run</button>
         </div>
 
-        <div class="divider" id="divider"></div>
+        <!-- Services context: exec status -->
+        <div class="bar2-slot" id="bar2-services">
+          <div class="spacer"></div>
+          <span id="svc-status" style="font-size: 11px; color: var(--muted)"
+            >idle</span
+          >
+        </div>
+      </div>
 
-        <div class="report-pane">
-          <div class="pane-bar">
-            <div class="pane-bar-left">
-              <span id="report-pane-title">Playwright Report</span>
-              <div class="seg report-tabs" id="report-view-tabs">
+      <!-- ── TESTS VIEW ─────────────────────────────────────────────────────────── -->
+      <div class="view active" id="view-tests">
+        <div class="tests-main layout-top" id="tests-main">
+          <div class="left-panel">
+            <div class="controls">
+              <div class="seg pillars" id="pillars">
+                <button class="active" data-pillar="synthetic">
+                  &#127760; browser
+                </button>
+                <button data-pillar="integration">&#128279; api</button>
+                <button data-pillar="smoke">&#128168; smoke</button>
+                <button data-pillar="performance">&#9889; perf</button>
+                <button data-pillar="journeys">&#129517; journeys</button>
+                <button data-pillar="security">
+                  &#128737;&#65039; security
+                </button>
+                <button data-pillar="suites">&#129514; suites</button>
+              </div>
+              <div class="module-picker" id="module-picker">
                 <button
-                  data-report-view="rendered"
-                  class="active"
+                  class="module-picker-btn"
+                  id="module-picker-btn"
                   type="button"
                 >
-                  Rendered Report
+                  <span id="module-picker-label">All modules</span>
+                  <span class="module-picker-arrow">▾</span>
                 </button>
-                <button data-report-view="raw" type="button">Raw Output</button>
+                <div class="module-picker-dropdown" id="module-picker-dropdown">
+                  <label class="module-check-item module-check-all">
+                    <input type="checkbox" id="module-check-all" checked />
+                    <span>All modules</span>
+                  </label>
+                  <div class="module-check-divider"></div>
+                  <div id="module-check-list"></div>
+                </div>
               </div>
+              <div class="smoke-override" id="smoke-api-url-wrap">
+                <span class="smoke-override-label">api url</span>
+                <input
+                  id="smoke-api-url"
+                  class="text-input"
+                  type="text"
+                  placeholder="Optional override; blank uses repo/env default"
+                  spellcheck="false"
+                />
+              </div>
+              <label class="smoke-override" id="local-checkout-wrap">
+                <input
+                  id="use-local-checkout"
+                  class="toggle-input"
+                  type="checkbox"
+                />
+                <span class="smoke-override-label">use local checkout</span>
+              </label>
+              <label class="smoke-override" id="security-mode-wrap">
+                <span class="smoke-override-label">scan</span>
+                <select id="security-mode" class="text-input">
+                  <option value="baseline">
+                    baseline: passive, local + beta
+                  </option>
+                  <option value="api">api: OpenAPI, active, local only</option>
+                  <option value="full">full: active attacks, local only</option>
+                </select>
+              </label>
+              <!-- Per-perf-test optional launch fields, rendered generically from
+               each selected module's declared `optionalFields` (manifest.yml). -->
+              <div id="perf-opt-fields"></div>
             </div>
-            <button id="open-report-tab">Open in new tab &#8599;</button>
+
+            <div class="test-sources-bar" id="test-sources-bar"></div>
           </div>
-          <div id="report-placeholder">
-            Run tests to see the Playwright report
+
+          <div class="divider" id="divider"></div>
+
+          <div class="report-pane">
+            <div class="pane-bar">
+              <div class="pane-bar-left">
+                <span id="report-pane-title">Playwright Report</span>
+                <div class="seg report-tabs" id="report-view-tabs">
+                  <button
+                    data-report-view="rendered"
+                    class="active"
+                    type="button"
+                  >
+                    Rendered Report
+                  </button>
+                  <button data-report-view="raw" type="button">
+                    Raw Output
+                  </button>
+                </div>
+              </div>
+              <button id="open-report-tab">Open in new tab &#8599;</button>
+            </div>
+            <div id="report-placeholder">
+              Run tests to see the Playwright report
+            </div>
+            <div id="perf-report-container"></div>
+            <pre id="report-raw-output"></pre>
+            <iframe id="report-frame" title="Playwright Report"></iframe>
           </div>
-          <div id="perf-report-container"></div>
-          <pre id="report-raw-output"></pre>
-          <iframe id="report-frame" title="Playwright Report"></iframe>
         </div>
       </div>
-    </div>
 
-    <!-- ── SERVICES VIEW ──────────────────────────────────────────────────────── -->
-    <div class="view" id="view-services">
-      <div class="services-pane" id="services-pane">
-        <div class="empty-state">Loading services&#8230;</div>
+      <!-- ── SERVICES VIEW ──────────────────────────────────────────────────────── -->
+      <div class="view" id="view-services">
+        <div class="services-pane" id="services-pane">
+          <div class="empty-state">Loading services&#8230;</div>
+        </div>
+
+        <!-- A command's output is a tab in the shell's runs dock (R16). -->
       </div>
 
-      <!-- A command's output is a tab in the shell's runs dock (R16). -->
-    </div>
+      <script type="module">
+        import {
+          initHealth,
+          refreshHealth,
+          initWorkspacePill,
+          applyDenConfig,
+          initLogBadge,
+          storeOpenLog,
+          initChangelog,
+          envReady,
+          sudoRun,
+        } from "/header.js";
+        import { ownersLabel } from "/workspace-picker.js";
+        import {
+          buildReportPaneModel,
+          getNextReportViewOnPillarChange,
+          renderPerfReportHtml,
+        } from "/perf-report.js";
 
-    <script type="module">
-      import {
-        initHealth,
-        refreshHealth,
-        initWorkspacePill,
-        applyDenConfig,
-        initLogBadge,
-        storeOpenLog,
-        initChangelog,
-        envReady,
-        sudoRun,
-      } from "/header.js";
-      import { ownersLabel } from "/workspace-picker.js";
-      import {
-        buildReportPaneModel,
-        getNextReportViewOnPillarChange,
-        renderPerfReportHtml,
-      } from "/perf-report.js";
+        // ── Module-level state ────────────────────────────────────────────────────
+        let currentView = "tests";
+        let pillar = "synthetic";
+        let testEs = null;
+        let reportView = "playwright";
+        let latestPerfReportUrl = null;
 
-      // ── Module-level state ────────────────────────────────────────────────────
-      let currentView = "tests";
-      let pillar = "synthetic";
-      let testEs = null;
-      let reportView = "playwright";
-      let latestPerfReportUrl = null;
+        let execEs = null;
 
-      let execEs = null;
-
-      // Release any open SSE socket on reload / navigation / bfcache-enter so the
-      // reloaded page isn't starved of a connection by a lingering stream.
-      window.addEventListener("pagehide", () => {
-        try {
-          testEs?.close();
-        } catch {}
-        testEs = null;
-        try {
-          execEs?.close();
-        } catch {}
-        execEs = null;
-      });
-
-      // ── Init ──────────────────────────────────────────────────────────────────
-      async function init() {
-        // Populate env selector
-        // The shell's env picker (header.js), one for every page.
-        await envReady();
-        const envSel = document.getElementById("env-sel");
-        updateAppLink(envSel.value);
-
-        // Restore pillar
-        const savedPillar =
-          localStorage.getItem("__DEN_CLI__-pillar") || "synthetic";
-        pillar = savedPillar;
-        document
-          .querySelectorAll("[data-pillar]")
-          .forEach((b) =>
-            b.classList.toggle("active", b.dataset.pillar === pillar),
-          );
-        document.getElementById("smoke-api-url").value =
-          localStorage.getItem("__DEN_CLI__-smoke-api-url") || "";
-        document.getElementById("use-local-checkout").checked =
-          localStorage.getItem("__DEN_CLI__-use-local-checkout") === "1";
-        syncTargetingControls();
-        resetReportPane();
-        if (pillar === "security") renderSecurityFindings();
-
-        // Restore layout
-        const savedLayout = localStorage.getItem("__DEN_CLI__-layout") || "top";
-        applyLayout(savedLayout);
-
-        // Load data
-        await Promise.all([
-          loadModules(pillar),
-          initHealth(),
-          initWorkspacePill(),
-          applyDenConfig(),
-          initChangelog(),
-        ]);
-        initLogBadge();
-
-        // Route to the correct view
-        routeFromHash();
-      }
-
-      // ── Routing ───────────────────────────────────────────────────────────────
-      window.addEventListener("hashchange", routeFromHash);
-
-      function routeFromHash() {
-        const hash = location.hash.replace("#", "") || "tests";
-        showView(["tests", "services"].includes(hash) ? hash : "tests");
-      }
-
-      function showView(view) {
-        currentView = view;
-
-        document
-          .querySelectorAll(".view")
-          .forEach((el) =>
-            el.classList.toggle("active", el.id === `view-${view}`),
-          );
-        document
-          .querySelectorAll(".bar2-slot")
-          .forEach((el) =>
-            el.classList.toggle("active", el.id === `bar2-${view}`),
-          );
-
-        if (view === "services") loadServices();
-      }
-
-      // ── App link ─────────────────────────────────────────────────────────────
-      async function updateAppLink(env) {
-        const link = document.getElementById("app-link");
-        if (!link) return;
-        try {
-          const { url } = await fetch(`/api/app-url?env=${env}`).then((r) =>
-            r.json(),
-          );
-          if (url) {
-            link.href = url;
-            link.style.display = "";
-            link.title = url;
-          } else {
-            link.style.display = "none";
-          }
-        } catch {
-          link.style.display = "none";
-        }
-      }
-
-      // ── Env ───────────────────────────────────────────────────────────────────
-      document.getElementById("env-sel").addEventListener("change", () => {
-        const env = document.getElementById("env-sel").value;
-        updateAppLink(env);
-
-        // Update health dots for the new env immediately
-        refreshHealth(env);
-
-        // Reload context-sensitive views
-        if (currentView === "services") loadServices();
-        if (pillar === "security") renderSecurityFindings();
-      });
-
-      // ── Layout (tests view) ───────────────────────────────────────────────────
-      document.getElementById("layout-seg").addEventListener("click", (e) => {
-        const btn = e.target.closest("[data-layout]");
-        if (!btn) return;
-        applyLayout(btn.dataset.layout);
-        localStorage.setItem("__DEN_CLI__-layout", btn.dataset.layout);
-      });
-
-      function applyLayout(layout) {
-        const main = document.getElementById("tests-main");
-        main.className = `tests-main layout-${layout}`;
-        document
-          .querySelectorAll("#layout-seg [data-layout]")
-          .forEach((b) =>
-            b.classList.toggle("active", b.dataset.layout === layout),
-          );
-        const savedSize = localStorage.getItem(`__DEN_CLI__-size-${layout}`);
-        document.querySelector(".left-panel").style.flex = savedSize
-          ? `0 0 ${savedSize}px`
-          : "";
-      }
-
-      // ── Draggable divider ─────────────────────────────────────────────────────
-      document.getElementById("divider").addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        const main = document.getElementById("tests-main");
-        const leftPanel = document.querySelector(".left-panel");
-        const isHoriz = main.classList.contains("layout-side");
-        const startPos = isHoriz ? e.clientX : e.clientY;
-        const startSize = isHoriz
-          ? leftPanel.getBoundingClientRect().width
-          : leftPanel.getBoundingClientRect().height;
-        const MIN = 160;
-
-        document.getElementById("divider").classList.add("active");
-        document.body.classList.add(isHoriz ? "dragging" : "dragging-v");
-
-        function onMove(ev) {
-          const delta = (isHoriz ? ev.clientX : ev.clientY) - startPos;
-          const mainSize = isHoriz
-            ? main.getBoundingClientRect().width
-            : main.getBoundingClientRect().height;
-          leftPanel.style.flex = `0 0 ${Math.min(Math.max(MIN, startSize + delta), mainSize - MIN)}px`;
-        }
-
-        function onUp() {
-          document.removeEventListener("mousemove", onMove);
-          document.removeEventListener("mouseup", onUp);
-          document.getElementById("divider").classList.remove("active");
-          document.body.classList.remove("dragging", "dragging-v");
-          const sz = isHoriz
-            ? leftPanel.getBoundingClientRect().width
-            : leftPanel.getBoundingClientRect().height;
-          localStorage.setItem(
-            `__DEN_CLI__-size-${isHoriz ? "side" : "top"}`,
-            Math.round(sz),
-          );
-        }
-
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
-      });
-
-      // ── Pillar / module ───────────────────────────────────────────────────────
-      document
-        .getElementById("pillars")
-        .addEventListener("click", async (e) => {
-          const btn = e.target.closest("[data-pillar]");
-          if (!btn) return;
-          const nextPillar = btn.dataset.pillar;
-          document
-            .querySelectorAll("[data-pillar]")
-            .forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          reportView = getNextReportViewOnPillarChange({
-            currentPillar: pillar,
-            nextPillar,
-            currentReportView: reportView,
-          });
-          const leavingSecurity = pillar === "security";
-          pillar = nextPillar;
-          localStorage.setItem("__DEN_CLI__-pillar", pillar);
-          syncTargetingControls();
-          // The findings table shares the perf container: clear it on the way in
-          // or out of security; other pillar switches keep their report.
-          if (leavingSecurity || pillar === "security") resetReportPane();
-          else syncReportPane();
-          if (pillar === "security") renderSecurityFindings();
-          await loadModules(pillar);
+        // Release any open SSE socket on reload / navigation / bfcache-enter so the
+        // reloaded page isn't starved of a connection by a lingering stream.
+        window.addEventListener("pagehide", () => {
+          try {
+            testEs?.close();
+          } catch {}
+          testEs = null;
+          try {
+            execEs?.close();
+          } catch {}
+          execEs = null;
         });
 
-      function syncTargetingControls() {
+        // ── Init ──────────────────────────────────────────────────────────────────
+        async function init() {
+          // Populate env selector
+          // The shell's env picker (header.js), one for every page.
+          await envReady();
+          const envSel = document.getElementById("env-sel");
+          updateAppLink(envSel.value);
+
+          // Restore pillar
+          const savedPillar =
+            localStorage.getItem("__DEN_CLI__-pillar") || "synthetic";
+          pillar = savedPillar;
+          document
+            .querySelectorAll("[data-pillar]")
+            .forEach((b) =>
+              b.classList.toggle("active", b.dataset.pillar === pillar),
+            );
+          document.getElementById("smoke-api-url").value =
+            localStorage.getItem("__DEN_CLI__-smoke-api-url") || "";
+          document.getElementById("use-local-checkout").checked =
+            localStorage.getItem("__DEN_CLI__-use-local-checkout") === "1";
+          syncTargetingControls();
+          resetReportPane();
+          if (pillar === "security") renderSecurityFindings();
+
+          // Restore layout
+          const savedLayout =
+            localStorage.getItem("__DEN_CLI__-layout") || "top";
+          applyLayout(savedLayout);
+
+          // Load data
+          await Promise.all([
+            loadModules(pillar),
+            initHealth(),
+            initWorkspacePill(),
+            applyDenConfig(),
+            initChangelog(),
+          ]);
+          initLogBadge();
+
+          // Route to the correct view
+          routeFromHash();
+        }
+
+        // ── Routing ───────────────────────────────────────────────────────────────
+        window.addEventListener("hashchange", routeFromHash);
+
+        function routeFromHash() {
+          const hash = location.hash.replace("#", "") || "tests";
+          showView(["tests", "services"].includes(hash) ? hash : "tests");
+        }
+
+        function showView(view) {
+          currentView = view;
+
+          document
+            .querySelectorAll(".view")
+            .forEach((el) =>
+              el.classList.toggle("active", el.id === `view-${view}`),
+            );
+          document
+            .querySelectorAll(".bar2-slot")
+            .forEach((el) =>
+              el.classList.toggle("active", el.id === `bar2-${view}`),
+            );
+
+          if (view === "services") loadServices();
+        }
+
+        // ── App link ─────────────────────────────────────────────────────────────
+        async function updateAppLink(env) {
+          const link = document.getElementById("app-link");
+          if (!link) return;
+          try {
+            const { url } = await fetch(`/api/app-url?env=${env}`).then((r) =>
+              r.json(),
+            );
+            if (url) {
+              link.href = url;
+              link.style.display = "";
+              link.title = url;
+            } else {
+              link.style.display = "none";
+            }
+          } catch {
+            link.style.display = "none";
+          }
+        }
+
+        // ── Env ───────────────────────────────────────────────────────────────────
+        document.getElementById("env-sel").addEventListener("change", () => {
+          const env = document.getElementById("env-sel").value;
+          updateAppLink(env);
+
+          // Update health dots for the new env immediately
+          refreshHealth(env);
+
+          // Reload context-sensitive views
+          if (currentView === "services") loadServices();
+          if (pillar === "security") renderSecurityFindings();
+        });
+
+        // ── Layout (tests view) ───────────────────────────────────────────────────
+        document.getElementById("layout-seg").addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-layout]");
+          if (!btn) return;
+          applyLayout(btn.dataset.layout);
+          localStorage.setItem("__DEN_CLI__-layout", btn.dataset.layout);
+        });
+
+        function applyLayout(layout) {
+          const main = document.getElementById("tests-main");
+          main.className = `tests-main layout-${layout}`;
+          document
+            .querySelectorAll("#layout-seg [data-layout]")
+            .forEach((b) =>
+              b.classList.toggle("active", b.dataset.layout === layout),
+            );
+          const savedSize = localStorage.getItem(`__DEN_CLI__-size-${layout}`);
+          document.querySelector(".left-panel").style.flex = savedSize
+            ? `0 0 ${savedSize}px`
+            : "";
+        }
+
+        // ── Draggable divider ─────────────────────────────────────────────────────
         document
-          .getElementById("smoke-api-url-wrap")
-          .classList.toggle("active", pillar === "smoke");
+          .getElementById("divider")
+          .addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            const main = document.getElementById("tests-main");
+            const leftPanel = document.querySelector(".left-panel");
+            const isHoriz = main.classList.contains("layout-side");
+            const startPos = isHoriz ? e.clientX : e.clientY;
+            const startSize = isHoriz
+              ? leftPanel.getBoundingClientRect().width
+              : leftPanel.getBoundingClientRect().height;
+            const MIN = 160;
+
+            document.getElementById("divider").classList.add("active");
+            document.body.classList.add(isHoriz ? "dragging" : "dragging-v");
+
+            function onMove(ev) {
+              const delta = (isHoriz ? ev.clientX : ev.clientY) - startPos;
+              const mainSize = isHoriz
+                ? main.getBoundingClientRect().width
+                : main.getBoundingClientRect().height;
+              leftPanel.style.flex = `0 0 ${Math.min(Math.max(MIN, startSize + delta), mainSize - MIN)}px`;
+            }
+
+            function onUp() {
+              document.removeEventListener("mousemove", onMove);
+              document.removeEventListener("mouseup", onUp);
+              document.getElementById("divider").classList.remove("active");
+              document.body.classList.remove("dragging", "dragging-v");
+              const sz = isHoriz
+                ? leftPanel.getBoundingClientRect().width
+                : leftPanel.getBoundingClientRect().height;
+              localStorage.setItem(
+                `__DEN_CLI__-size-${isHoriz ? "side" : "top"}`,
+                Math.round(sz),
+              );
+            }
+
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+          });
+
+        // ── Pillar / module ───────────────────────────────────────────────────────
         document
-          .getElementById("local-checkout-wrap")
-          .classList.toggle(
-            "active",
-            pillar === "smoke" || pillar === "performance",
-          );
-        document
-          .getElementById("security-mode-wrap")
-          .classList.toggle("active", pillar === "security");
-        // Perf optional fields render only for the performance pillar; clear them
-        // for every other pillar so stale controls never linger.
-        if (pillar !== "performance") {
-          document.getElementById("perf-opt-fields").replaceChildren();
-        } else {
-          renderPerfOptionalFields();
-        }
-      }
+          .getElementById("pillars")
+          .addEventListener("click", async (e) => {
+            const btn = e.target.closest("[data-pillar]");
+            if (!btn) return;
+            const nextPillar = btn.dataset.pillar;
+            document
+              .querySelectorAll("[data-pillar]")
+              .forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            reportView = getNextReportViewOnPillarChange({
+              currentPillar: pillar,
+              nextPillar,
+              currentReportView: reportView,
+            });
+            const leavingSecurity = pillar === "security";
+            pillar = nextPillar;
+            localStorage.setItem("__DEN_CLI__-pillar", pillar);
+            syncTargetingControls();
+            // The findings table shares the perf container: clear it on the way in
+            // or out of security; other pillar switches keep their report.
+            if (leavingSecurity || pillar === "security") resetReportPane();
+            else syncReportPane();
+            if (pillar === "security") renderSecurityFindings();
+            await loadModules(pillar);
+          });
 
-      function appendSpan(parent, cls, text) {
-        const el = document.createElement("span");
-        if (cls) el.className = cls;
-        el.textContent = text;
-        parent.appendChild(el);
-      }
+        function syncTargetingControls() {
+          document
+            .getElementById("smoke-api-url-wrap")
+            .classList.toggle("active", pillar === "smoke");
+          document
+            .getElementById("local-checkout-wrap")
+            .classList.toggle(
+              "active",
+              pillar === "smoke" || pillar === "performance",
+            );
+          document
+            .getElementById("security-mode-wrap")
+            .classList.toggle("active", pillar === "security");
+          // Perf optional fields render only for the performance pillar; clear them
+          // for every other pillar so stale controls never linger.
+          if (pillar !== "performance") {
+            document.getElementById("perf-opt-fields").replaceChildren();
+          } else {
+            renderPerfOptionalFields();
+          }
+        }
 
-      async function loadTestSources(p) {
-        const bar = document.getElementById("test-sources-bar");
-        bar.replaceChildren();
-        if (p !== "synthetic" && p !== "smoke") {
-          bar.classList.remove("visible");
-          return;
+        function appendSpan(parent, cls, text) {
+          const el = document.createElement("span");
+          if (cls) el.className = cls;
+          el.textContent = text;
+          parent.appendChild(el);
         }
-        let sources = [];
-        try {
-          sources = await fetch(`/api/test-sources?pillar=${p}`).then((r) =>
-            r.json(),
-          );
-        } catch {
-          sources = [];
-        }
-        bar.classList.add("visible");
-        if (!Array.isArray(sources) || sources.length === 0) {
-          const empty = document.createElement("div");
-          empty.className = "test-source test-source-empty";
-          empty.textContent =
-            "No source repo detected for this pillar — add one to your workspace or register-repos.";
-          bar.appendChild(empty);
-          return;
-        }
-        for (const s of sources) {
-          const row = document.createElement("div");
-          row.className = "test-source";
-          if (s.repoPath) row.title = s.repoPath;
-          appendSpan(row, "test-source-label", "source:");
-          appendSpan(row, "test-source-repo", s.repoName ?? "(unknown)");
-          if (s.workspace)
-            appendSpan(row, "test-source-ws", `@ ${s.workspace}`);
-          appendSpan(row, "test-source-label", "·");
-          appendSpan(row, "test-source-branch", s.branch ?? "(no branch)");
-          if (s.shortSha) appendSpan(row, "test-source-sha", `(${s.shortSha})`);
-          if (s.repoPath)
-            appendSpan(row, "test-source-path", `— ${s.repoPath}`);
-          bar.appendChild(row);
-        }
-      }
 
-      // Most-recent /api/modules payload for the current pillar, keyed by name.
-      // Used by the generic perf optional-field renderer to look up each selected
-      // module's declared `optionalFields`.
-      let currentModulesByName = {};
+        async function loadTestSources(p) {
+          const bar = document.getElementById("test-sources-bar");
+          bar.replaceChildren();
+          if (p !== "synthetic" && p !== "smoke") {
+            bar.classList.remove("visible");
+            return;
+          }
+          let sources = [];
+          try {
+            sources = await fetch(`/api/test-sources?pillar=${p}`).then((r) =>
+              r.json(),
+            );
+          } catch {
+            sources = [];
+          }
+          bar.classList.add("visible");
+          if (!Array.isArray(sources) || sources.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "test-source test-source-empty";
+            empty.textContent =
+              "No source repo detected for this pillar — add one to your project or register-repos.";
+            bar.appendChild(empty);
+            return;
+          }
+          for (const s of sources) {
+            const row = document.createElement("div");
+            row.className = "test-source";
+            if (s.repoPath) row.title = s.repoPath;
+            appendSpan(row, "test-source-label", "source:");
+            appendSpan(row, "test-source-repo", s.repoName ?? "(unknown)");
+            if (s.workspace)
+              appendSpan(row, "test-source-ws", `@ ${s.workspace}`);
+            appendSpan(row, "test-source-label", "·");
+            appendSpan(row, "test-source-branch", s.branch ?? "(no branch)");
+            if (s.shortSha)
+              appendSpan(row, "test-source-sha", `(${s.shortSha})`);
+            if (s.repoPath)
+              appendSpan(row, "test-source-path", `— ${s.repoPath}`);
+            bar.appendChild(row);
+          }
+        }
 
-      async function loadModules(p) {
-        loadTestSources(p);
-        const modules = await fetch(`/api/modules?pillar=${p}`)
-          .then((r) => r.json())
-          .catch(() => []);
-        currentModulesByName = {};
-        for (const m of modules) currentModulesByName[m.name] = m;
-        const list = document.getElementById("module-check-list");
-        list.innerHTML = modules
-          .map(
-            (m) =>
-              `<label class="module-check-item">
+        // Most-recent /api/modules payload for the current pillar, keyed by name.
+        // Used by the generic perf optional-field renderer to look up each selected
+        // module's declared `optionalFields`.
+        let currentModulesByName = {};
+
+        async function loadModules(p) {
+          loadTestSources(p);
+          const modules = await fetch(`/api/modules?pillar=${p}`)
+            .then((r) => r.json())
+            .catch(() => []);
+          currentModulesByName = {};
+          for (const m of modules) currentModulesByName[m.name] = m;
+          const list = document.getElementById("module-check-list");
+          list.innerHTML = modules
+            .map(
+              (m) =>
+                `<label class="module-check-item">
           <input type="checkbox" value="${m.name}" checked>
           <span>${m.icon} ${m.displayName}${m.testCount ? ` <span style="color:var(--muted)">(${m.testCount})</span>` : ""}</span>
         </label>`,
-          )
-          .join("");
+            )
+            .join("");
 
-        // Restore saved selection. Ignore it when it names none of the modules
-        // now on offer — after a workspace switch the saved names belong to the
-        // previous workspace's repos, and applying them would silently uncheck
-        // everything (which then runs the whole suite).
-        const saved = localStorage.getItem(`__DEN_CLI__-modules-${p}`);
-        if (saved) {
-          try {
-            const sel = JSON.parse(saved);
-            const boxes = [...list.querySelectorAll("input[type=checkbox]")];
-            if (
-              Array.isArray(sel) &&
-              sel.length > 0 &&
-              boxes.some((cb) => sel.includes(cb.value))
-            ) {
-              boxes.forEach((cb) => {
-                cb.checked = sel.includes(cb.value);
-              });
-            }
-          } catch {}
-        }
-        syncAllCheckbox();
-        updatePickerLabel();
-        if (p === "performance") renderPerfOptionalFields();
-      }
-
-      function getSelectedModules() {
-        return [
-          ...document.querySelectorAll(
-            "#module-check-list input[type=checkbox]:checked",
-          ),
-        ].map((cb) => cb.value);
-      }
-
-      function syncAllCheckbox() {
-        const all = document.querySelectorAll(
-          "#module-check-list input[type=checkbox]",
-        );
-        const chk = document.querySelectorAll(
-          "#module-check-list input[type=checkbox]:checked",
-        );
-        document.getElementById("module-check-all").checked =
-          all.length === chk.length;
-      }
-
-      function updatePickerLabel() {
-        const sel = getSelectedModules();
-        const all = document.querySelectorAll(
-          "#module-check-list input[type=checkbox]",
-        ).length;
-        const label = document.getElementById("module-picker-label");
-        if (sel.length === 0 || sel.length === all) {
-          label.textContent = "All modules";
-        } else if (sel.length === 1) {
-          label.textContent = sel[0];
-        } else {
-          label.textContent = `${sel.length} modules`;
-        }
-        localStorage.setItem(
-          `__DEN_CLI__-modules-${pillar}`,
-          JSON.stringify(sel.length === all ? [] : sel),
-        );
-      }
-
-      // "All" checkbox toggles every item
-      document
-        .getElementById("module-check-all")
-        .addEventListener("change", (e) => {
-          document
-            .querySelectorAll("#module-check-list input[type=checkbox]")
-            .forEach((cb) => {
-              cb.checked = e.target.checked;
-            });
-          updatePickerLabel();
-          if (pillar === "performance") renderPerfOptionalFields();
-        });
-
-      // Individual checkbox → sync "All" + label
-      document
-        .getElementById("module-check-list")
-        .addEventListener("change", () => {
+          // Restore saved selection. Ignore it when it names none of the modules
+          // now on offer — after a workspace switch the saved names belong to the
+          // previous workspace's repos, and applying them would silently uncheck
+          // everything (which then runs the whole suite).
+          const saved = localStorage.getItem(`__DEN_CLI__-modules-${p}`);
+          if (saved) {
+            try {
+              const sel = JSON.parse(saved);
+              const boxes = [...list.querySelectorAll("input[type=checkbox]")];
+              if (
+                Array.isArray(sel) &&
+                sel.length > 0 &&
+                boxes.some((cb) => sel.includes(cb.value))
+              ) {
+                boxes.forEach((cb) => {
+                  cb.checked = sel.includes(cb.value);
+                });
+              }
+            } catch {}
+          }
           syncAllCheckbox();
           updatePickerLabel();
-          if (pillar === "performance") renderPerfOptionalFields();
-        });
+          if (p === "performance") renderPerfOptionalFields();
+        }
 
-      // Toggle dropdown open/close
-      const pickerBtn = document.getElementById("module-picker-btn");
-      const pickerDropdown = document.getElementById("module-picker-dropdown");
-      pickerBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const open = pickerDropdown.classList.toggle("open");
-        pickerBtn.classList.toggle("open", open);
-        // 0.4.17: in the top layer, so the output pane can't cover it.
-        if (open)
-          window.denShell?.topLayer?.show(pickerDropdown, pickerBtn, {
-            gap: 4,
-          });
-      });
-      document.addEventListener("click", () => {
-        pickerDropdown.classList.remove("open");
-        pickerBtn.classList.remove("open");
-      });
-      pickerDropdown.addEventListener("click", (e) => e.stopPropagation());
-      document
-        .getElementById("smoke-api-url")
-        .addEventListener("input", (e) => {
-          localStorage.setItem("__DEN_CLI__-smoke-api-url", e.target.value);
-        });
-      document
-        .getElementById("use-local-checkout")
-        .addEventListener("change", (e) => {
+        function getSelectedModules() {
+          return [
+            ...document.querySelectorAll(
+              "#module-check-list input[type=checkbox]:checked",
+            ),
+          ].map((cb) => cb.value);
+        }
+
+        function syncAllCheckbox() {
+          const all = document.querySelectorAll(
+            "#module-check-list input[type=checkbox]",
+          );
+          const chk = document.querySelectorAll(
+            "#module-check-list input[type=checkbox]:checked",
+          );
+          document.getElementById("module-check-all").checked =
+            all.length === chk.length;
+        }
+
+        function updatePickerLabel() {
+          const sel = getSelectedModules();
+          const all = document.querySelectorAll(
+            "#module-check-list input[type=checkbox]",
+          ).length;
+          const label = document.getElementById("module-picker-label");
+          if (sel.length === 0 || sel.length === all) {
+            label.textContent = "All modules";
+          } else if (sel.length === 1) {
+            label.textContent = sel[0];
+          } else {
+            label.textContent = `${sel.length} modules`;
+          }
           localStorage.setItem(
-            "__DEN_CLI__-use-local-checkout",
-            e.target.checked ? "1" : "0",
+            `__DEN_CLI__-modules-${pillar}`,
+            JSON.stringify(sel.length === all ? [] : sel),
           );
-        });
-
-      // ── Per-perf-test optional launch fields (declarative) ────────────────────
-      // Each perf module declares `optionalFields` in its manifest.yml. We render
-      // one section per SELECTED module that has fields, scoped per test so two
-      // modules can both declare e.g. a `smoke` field without colliding. Values
-      // persist in localStorage keyed by module+field and serialize into `opts`.
-
-      const perfOptKey = (mod, field) => `__DEN_CLI__-perf-opt:${mod}:${field}`;
-
-      // Effective current value for a field (stored override, else its default).
-      function perfFieldValue(mod, f) {
-        const stored = localStorage.getItem(perfOptKey(mod, f.name));
-        if (stored !== null) {
-          if (f.type === "boolean") return stored === "1" || stored === "true";
-          if (f.type === "number") return stored === "" ? "" : Number(stored);
-          return stored;
         }
-        return f.default !== undefined
-          ? f.default
-          : f.type === "boolean"
-            ? false
-            : "";
-      }
 
-      function perfFieldIsDisabled(mod, f, fields) {
-        if (!f.disabledWhen) return false;
-        const ctrl = fields.find((x) => x.name === f.disabledWhen.field);
-        if (!ctrl) return false;
-        const v = perfFieldValue(mod, ctrl);
-        if (typeof f.disabledWhen.equals === "boolean") {
-          const truthy = v === true || v === 1 || v === "1" || v === "true";
-          return truthy === f.disabledWhen.equals;
-        }
-        return String(v) === String(f.disabledWhen.equals);
-      }
-
-      function renderPerfOptionalFields() {
-        const container = document.getElementById("perf-opt-fields");
-        container.replaceChildren();
-        if (pillar !== "performance") return;
-
-        const selected = getSelectedModules();
-        const allMods = document.querySelectorAll(
-          "#module-check-list input[type=checkbox]",
-        ).length;
-        const isAll = selected.length === 0 || selected.length === allMods;
-        // "All modules" → every perf module; otherwise just the selected ones.
-        const names = isAll ? Object.keys(currentModulesByName) : selected;
-        const withFields = names
-          .map((n) => currentModulesByName[n])
-          .filter(
-            (m) =>
-              m &&
-              Array.isArray(m.optionalFields) &&
-              m.optionalFields.length > 0,
-          );
-
-        const multi = withFields.length > 1;
-        for (const m of withFields) {
-          const section = document.createElement("div");
-          section.className = "perf-opt-section";
-          if (multi) {
-            const head = document.createElement("div");
-            head.className = "smoke-override-label perf-opt-section-head";
-            head.textContent = `${m.icon || ""} ${m.displayName}`.trim();
-            section.appendChild(head);
-          }
-          for (const f of m.optionalFields) {
-            section.appendChild(renderPerfField(m.name, f, m.optionalFields));
-          }
-          container.appendChild(section);
-        }
-      }
-
-      function renderPerfField(mod, f, fields) {
-        const disabled = perfFieldIsDisabled(mod, f, fields);
-        const val = perfFieldValue(mod, f);
-
-        const wrap = document.createElement("label");
-        wrap.className = "smoke-override active perf-opt-field";
-        if (f.description) wrap.title = f.description;
-        wrap.classList.toggle("perf-opt-disabled", disabled);
-
-        const onChange = () => {
-          renderPerfOptionalFields();
-        };
-
-        if (f.type === "boolean") {
-          const input = document.createElement("input");
-          input.type = "checkbox";
-          input.className = "toggle-input";
-          input.checked =
-            val === true || val === 1 || val === "1" || val === "true";
-          input.disabled = disabled;
-          input.addEventListener("change", () => {
-            localStorage.setItem(
-              perfOptKey(mod, f.name),
-              input.checked ? "1" : "0",
-            );
-            onChange();
+        // "All" checkbox toggles every item
+        document
+          .getElementById("module-check-all")
+          .addEventListener("change", (e) => {
+            document
+              .querySelectorAll("#module-check-list input[type=checkbox]")
+              .forEach((cb) => {
+                cb.checked = e.target.checked;
+              });
+            updatePickerLabel();
+            if (pillar === "performance") renderPerfOptionalFields();
           });
-          wrap.appendChild(input);
+
+        // Individual checkbox → sync "All" + label
+        document
+          .getElementById("module-check-list")
+          .addEventListener("change", () => {
+            syncAllCheckbox();
+            updatePickerLabel();
+            if (pillar === "performance") renderPerfOptionalFields();
+          });
+
+        // Toggle dropdown open/close
+        const pickerBtn = document.getElementById("module-picker-btn");
+        const pickerDropdown = document.getElementById(
+          "module-picker-dropdown",
+        );
+        pickerBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = pickerDropdown.classList.toggle("open");
+          pickerBtn.classList.toggle("open", open);
+          // 0.4.17: in the top layer, so the output pane can't cover it.
+          if (open)
+            window.denShell?.topLayer?.show(pickerDropdown, pickerBtn, {
+              gap: 4,
+            });
+        });
+        document.addEventListener("click", () => {
+          pickerDropdown.classList.remove("open");
+          pickerBtn.classList.remove("open");
+        });
+        pickerDropdown.addEventListener("click", (e) => e.stopPropagation());
+        document
+          .getElementById("smoke-api-url")
+          .addEventListener("input", (e) => {
+            localStorage.setItem("__DEN_CLI__-smoke-api-url", e.target.value);
+          });
+        document
+          .getElementById("use-local-checkout")
+          .addEventListener("change", (e) => {
+            localStorage.setItem(
+              "__DEN_CLI__-use-local-checkout",
+              e.target.checked ? "1" : "0",
+            );
+          });
+
+        // ── Per-perf-test optional launch fields (declarative) ────────────────────
+        // Each perf module declares `optionalFields` in its manifest.yml. We render
+        // one section per SELECTED module that has fields, scoped per test so two
+        // modules can both declare e.g. a `smoke` field without colliding. Values
+        // persist in localStorage keyed by module+field and serialize into `opts`.
+
+        const perfOptKey = (mod, field) =>
+          `__DEN_CLI__-perf-opt:${mod}:${field}`;
+
+        // Effective current value for a field (stored override, else its default).
+        function perfFieldValue(mod, f) {
+          const stored = localStorage.getItem(perfOptKey(mod, f.name));
+          if (stored !== null) {
+            if (f.type === "boolean")
+              return stored === "1" || stored === "true";
+            if (f.type === "number") return stored === "" ? "" : Number(stored);
+            return stored;
+          }
+          return f.default !== undefined
+            ? f.default
+            : f.type === "boolean"
+              ? false
+              : "";
+        }
+
+        function perfFieldIsDisabled(mod, f, fields) {
+          if (!f.disabledWhen) return false;
+          const ctrl = fields.find((x) => x.name === f.disabledWhen.field);
+          if (!ctrl) return false;
+          const v = perfFieldValue(mod, ctrl);
+          if (typeof f.disabledWhen.equals === "boolean") {
+            const truthy = v === true || v === 1 || v === "1" || v === "true";
+            return truthy === f.disabledWhen.equals;
+          }
+          return String(v) === String(f.disabledWhen.equals);
+        }
+
+        function renderPerfOptionalFields() {
+          const container = document.getElementById("perf-opt-fields");
+          container.replaceChildren();
+          if (pillar !== "performance") return;
+
+          const selected = getSelectedModules();
+          const allMods = document.querySelectorAll(
+            "#module-check-list input[type=checkbox]",
+          ).length;
+          const isAll = selected.length === 0 || selected.length === allMods;
+          // "All modules" → every perf module; otherwise just the selected ones.
+          const names = isAll ? Object.keys(currentModulesByName) : selected;
+          const withFields = names
+            .map((n) => currentModulesByName[n])
+            .filter(
+              (m) =>
+                m &&
+                Array.isArray(m.optionalFields) &&
+                m.optionalFields.length > 0,
+            );
+
+          const multi = withFields.length > 1;
+          for (const m of withFields) {
+            const section = document.createElement("div");
+            section.className = "perf-opt-section";
+            if (multi) {
+              const head = document.createElement("div");
+              head.className = "smoke-override-label perf-opt-section-head";
+              head.textContent = `${m.icon || ""} ${m.displayName}`.trim();
+              section.appendChild(head);
+            }
+            for (const f of m.optionalFields) {
+              section.appendChild(renderPerfField(m.name, f, m.optionalFields));
+            }
+            container.appendChild(section);
+          }
+        }
+
+        function renderPerfField(mod, f, fields) {
+          const disabled = perfFieldIsDisabled(mod, f, fields);
+          const val = perfFieldValue(mod, f);
+
+          const wrap = document.createElement("label");
+          wrap.className = "smoke-override active perf-opt-field";
+          if (f.description) wrap.title = f.description;
+          wrap.classList.toggle("perf-opt-disabled", disabled);
+
+          const onChange = () => {
+            renderPerfOptionalFields();
+          };
+
+          if (f.type === "boolean") {
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.className = "toggle-input";
+            input.checked =
+              val === true || val === 1 || val === "1" || val === "true";
+            input.disabled = disabled;
+            input.addEventListener("change", () => {
+              localStorage.setItem(
+                perfOptKey(mod, f.name),
+                input.checked ? "1" : "0",
+              );
+              onChange();
+            });
+            wrap.appendChild(input);
+            const span = document.createElement("span");
+            span.className = "smoke-override-label";
+            span.textContent = f.label;
+            wrap.appendChild(span);
+            return wrap;
+          }
+
+          // Non-boolean → label text then control
           const span = document.createElement("span");
           span.className = "smoke-override-label";
           span.textContent = f.label;
           wrap.appendChild(span);
+
+          if (f.type === "select") {
+            const sel = document.createElement("select");
+            sel.className = "text-input";
+            sel.disabled = disabled;
+            for (const opt of f.options || []) {
+              const o = document.createElement("option");
+              o.value = opt.value;
+              o.textContent = opt.label;
+              if (String(opt.value) === String(val)) o.selected = true;
+              sel.appendChild(o);
+            }
+            sel.addEventListener("change", () => {
+              localStorage.setItem(perfOptKey(mod, f.name), sel.value);
+              onChange();
+            });
+            wrap.appendChild(sel);
+          } else {
+            const input = document.createElement("input");
+            input.className = "text-input";
+            input.type = f.type === "number" ? "number" : "text";
+            input.value = val === undefined || val === null ? "" : String(val);
+            input.disabled = disabled;
+            input.addEventListener("input", () => {
+              localStorage.setItem(perfOptKey(mod, f.name), input.value);
+            });
+            input.addEventListener("change", onChange);
+            wrap.appendChild(input);
+          }
           return wrap;
         }
 
-        // Non-boolean → label text then control
-        const span = document.createElement("span");
-        span.className = "smoke-override-label";
-        span.textContent = f.label;
-        wrap.appendChild(span);
-
-        if (f.type === "select") {
-          const sel = document.createElement("select");
-          sel.className = "text-input";
-          sel.disabled = disabled;
-          for (const opt of f.options || []) {
-            const o = document.createElement("option");
-            o.value = opt.value;
-            o.textContent = opt.label;
-            if (String(opt.value) === String(val)) o.selected = true;
-            sel.appendChild(o);
+        // Build the `opts` payload: { [module]: { [field]: value } } for selected
+        // perf modules. Disabled fields are omitted (server also skips them).
+        function buildPerfOpts() {
+          const selected = getSelectedModules();
+          const allMods = document.querySelectorAll(
+            "#module-check-list input[type=checkbox]",
+          ).length;
+          const isAll = selected.length === 0 || selected.length === allMods;
+          const names = isAll ? Object.keys(currentModulesByName) : selected;
+          const opts = {};
+          for (const n of names) {
+            const m = currentModulesByName[n];
+            if (
+              !m ||
+              !Array.isArray(m.optionalFields) ||
+              m.optionalFields.length === 0
+            )
+              continue;
+            const fieldVals = {};
+            for (const f of m.optionalFields) {
+              if (perfFieldIsDisabled(n, f, m.optionalFields)) continue;
+              fieldVals[f.name] = perfFieldValue(n, f);
+            }
+            if (Object.keys(fieldVals).length > 0) opts[n] = fieldVals;
           }
-          sel.addEventListener("change", () => {
-            localStorage.setItem(perfOptKey(mod, f.name), sel.value);
-            onChange();
-          });
-          wrap.appendChild(sel);
-        } else {
-          const input = document.createElement("input");
-          input.className = "text-input";
-          input.type = f.type === "number" ? "number" : "text";
-          input.value = val === undefined || val === null ? "" : String(val);
-          input.disabled = disabled;
-          input.addEventListener("input", () => {
-            localStorage.setItem(perfOptKey(mod, f.name), input.value);
-          });
-          input.addEventListener("change", onChange);
-          wrap.appendChild(input);
-        }
-        return wrap;
-      }
-
-      // Build the `opts` payload: { [module]: { [field]: value } } for selected
-      // perf modules. Disabled fields are omitted (server also skips them).
-      function buildPerfOpts() {
-        const selected = getSelectedModules();
-        const allMods = document.querySelectorAll(
-          "#module-check-list input[type=checkbox]",
-        ).length;
-        const isAll = selected.length === 0 || selected.length === allMods;
-        const names = isAll ? Object.keys(currentModulesByName) : selected;
-        const opts = {};
-        for (const n of names) {
-          const m = currentModulesByName[n];
-          if (
-            !m ||
-            !Array.isArray(m.optionalFields) ||
-            m.optionalFields.length === 0
-          )
-            continue;
-          const fieldVals = {};
-          for (const f of m.optionalFields) {
-            if (perfFieldIsDisabled(n, f, m.optionalFields)) continue;
-            fieldVals[f.name] = perfFieldValue(n, f);
-          }
-          if (Object.keys(fieldVals).length > 0) opts[n] = fieldVals;
-        }
-        return opts;
-      }
-
-      // ── Run tests ─────────────────────────────────────────────────────────────
-      document.getElementById("run-btn").addEventListener("click", startRun);
-
-      function startRun() {
-        if (testEs) {
-          testEs.close();
-          testEs = null;
+          return opts;
         }
 
-        const selected = getSelectedModules();
-        const allMods = document.querySelectorAll(
-          "#module-check-list input[type=checkbox]",
-        ).length;
-        const isAll = selected.length === 0 || selected.length === allMods;
-        const env = document.getElementById("env-sel").value;
-        const params = new URLSearchParams({ pillar, env });
-        if (!isAll) selected.forEach((m) => params.append("module", m));
-        const smokeApiUrl = document
-          .getElementById("smoke-api-url")
-          .value.trim();
-        if (pillar === "smoke" && smokeApiUrl)
-          params.set("baseApiUrl", smokeApiUrl);
-        if (
-          (pillar === "smoke" || pillar === "performance") &&
-          document.getElementById("use-local-checkout").checked
-        ) {
-          params.set("useLocalCheckout", "1");
-        }
-        if (pillar === "security")
-          params.set("mode", document.getElementById("security-mode").value);
-        // Per-perf-test declarative optional fields → opts={module:{field:value}}.
-        let optLabel = "";
-        if (pillar === "performance") {
-          const opts = buildPerfOpts();
-          if (Object.keys(opts).length > 0) {
-            params.set("opts", JSON.stringify(opts));
-            // Compact summary of the fields set across selected tests.
-            const fieldNames = [
-              ...new Set(Object.values(opts).flatMap((o) => Object.keys(o))),
-            ];
-            if (fieldNames.length > 0) optLabel = ` (${fieldNames.join(", ")})`;
-          }
-        }
+        // ── Run tests ─────────────────────────────────────────────────────────────
+        document.getElementById("run-btn").addEventListener("click", startRun);
 
-        const label =
-          (isAll
-            ? ""
-            : selected.length === 1
-              ? selected[0]
-              : `${selected.length} modules`) + optLabel;
-        setRunStatus("running", "running\u2026");
-        document.getElementById("run-btn").disabled = true;
-        resetReportPane();
-        // The output is one tab in the shell's runs dock (R16), kept across
-        // runs as the pane was; Clear there also clears the raw report.
-        runs().start(TEST_RUN, `tests ${pillar}`, {
-          doneLine: false,
-          onClear: clearTestOutput,
-        });
-        testAppendLine(
-          `\n\u25b6 ${pillar}${label ? " / " + label : ""} \u00b7 ${env}\n`,
-          "cmd",
-        );
-
-        testEs = new EventSource(`/api/run?${params}`);
-        testEs.onmessage = (e) => {
-          const msg = JSON.parse(e.data);
-          if (msg.type === "cmd") {
-            testAppendLine(msg.text, "cmd");
-          } else if (msg.type === "line") {
-            testAppendLine(msg.text, "");
-          } else if (msg.type === "error") {
-            testAppendLine(msg.text, "err");
-          } else if (msg.type === "done") {
-            const ok = msg.exitCode === 0;
-            const dur = fmtDuration(msg.duration);
-            testAppendLine(
-              `\n${ok ? "\u2713 Passed" : "\u2717 Failed"} in ${dur}\n`,
-              ok ? "done-ok" : "done-fail",
-            );
-            setRunStatus(
-              ok ? "passed" : "failed",
-              ok ? `passed (${dur})` : `failed (${dur})`,
-            );
-            runs().finish(TEST_RUN, { ok });
-            document.getElementById("run-btn").disabled = false;
+        function startRun() {
+          if (testEs) {
             testEs.close();
             testEs = null;
-            if (pillar === "performance") {
-              if (msg.perfReport?.available && msg.perfReport.url) {
-                showPerfReport(msg.perfReport.url);
-              } else {
-                latestPerfReportUrl = null;
-                reportView = "raw";
-                syncReportPane(
-                  "Structured perf report unavailable. Showing raw output instead.",
-                );
-              }
-            } else if (
-              pillar !== "journeys" &&
-              pillar !== "security" &&
-              pillar !== "suites"
-            ) {
-              // Journeys, security (ZAP) and suites have no Playwright report — the raw-output pane
-              // (already live during the run) stays in place.
-              showPlaywrightReport();
+          }
+
+          const selected = getSelectedModules();
+          const allMods = document.querySelectorAll(
+            "#module-check-list input[type=checkbox]",
+          ).length;
+          const isAll = selected.length === 0 || selected.length === allMods;
+          const env = document.getElementById("env-sel").value;
+          const params = new URLSearchParams({ pillar, env });
+          if (!isAll) selected.forEach((m) => params.append("module", m));
+          const smokeApiUrl = document
+            .getElementById("smoke-api-url")
+            .value.trim();
+          if (pillar === "smoke" && smokeApiUrl)
+            params.set("baseApiUrl", smokeApiUrl);
+          if (
+            (pillar === "smoke" || pillar === "performance") &&
+            document.getElementById("use-local-checkout").checked
+          ) {
+            params.set("useLocalCheckout", "1");
+          }
+          if (pillar === "security")
+            params.set("mode", document.getElementById("security-mode").value);
+          // Per-perf-test declarative optional fields → opts={module:{field:value}}.
+          let optLabel = "";
+          if (pillar === "performance") {
+            const opts = buildPerfOpts();
+            if (Object.keys(opts).length > 0) {
+              params.set("opts", JSON.stringify(opts));
+              // Compact summary of the fields set across selected tests.
+              const fieldNames = [
+                ...new Set(Object.values(opts).flatMap((o) => Object.keys(o))),
+              ];
+              if (fieldNames.length > 0)
+                optLabel = ` (${fieldNames.join(", ")})`;
             }
           }
-        };
-        testEs.onerror = () => {
-          testAppendLine("Connection closed", "err");
-          runs().finish(TEST_RUN, { ok: false });
-          setRunStatus("failed", "error");
-          document.getElementById("run-btn").disabled = false;
-          testEs?.close();
-          testEs = null;
-        };
-      }
 
-      const TEST_RUN = "tests";
-      const runs = () => window.denShell.runs;
-      const _k6ProgressRe = /^(\S+)\s+[\[✓✗]/;
-      const _k6RunningRe = /^running \(\d+m[\d.]+s\), \d+\/\d+ VUs,/;
+          const label =
+            (isAll
+              ? ""
+              : selected.length === 1
+                ? selected[0]
+                : `${selected.length} modules`) + optLabel;
+          setRunStatus("running", "running\u2026");
+          document.getElementById("run-btn").disabled = true;
+          resetReportPane();
+          // The output is one tab in the shell's runs dock (R16), kept across
+          // runs as the pane was; Clear there also clears the raw report.
+          runs().start(TEST_RUN, `tests ${pillar}`, {
+            doneLine: false,
+            onClear: clearTestOutput,
+          });
+          testAppendLine(
+            `\n\u25b6 ${pillar}${label ? " / " + label : ""} \u00b7 ${env}\n`,
+            "cmd",
+          );
 
-      function testAppendLine(text, cls) {
-        const raw = document.getElementById("report-raw-output");
+          testEs = new EventSource(`/api/run?${params}`);
+          testEs.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "cmd") {
+              testAppendLine(msg.text, "cmd");
+            } else if (msg.type === "line") {
+              testAppendLine(msg.text, "");
+            } else if (msg.type === "error") {
+              testAppendLine(msg.text, "err");
+            } else if (msg.type === "done") {
+              const ok = msg.exitCode === 0;
+              const dur = fmtDuration(msg.duration);
+              testAppendLine(
+                `\n${ok ? "\u2713 Passed" : "\u2717 Failed"} in ${dur}\n`,
+                ok ? "done-ok" : "done-fail",
+              );
+              setRunStatus(
+                ok ? "passed" : "failed",
+                ok ? `passed (${dur})` : `failed (${dur})`,
+              );
+              runs().finish(TEST_RUN, { ok });
+              document.getElementById("run-btn").disabled = false;
+              testEs.close();
+              testEs = null;
+              if (pillar === "performance") {
+                if (msg.perfReport?.available && msg.perfReport.url) {
+                  showPerfReport(msg.perfReport.url);
+                } else {
+                  latestPerfReportUrl = null;
+                  reportView = "raw";
+                  syncReportPane(
+                    "Structured perf report unavailable. Showing raw output instead.",
+                  );
+                }
+              } else if (
+                pillar !== "journeys" &&
+                pillar !== "security" &&
+                pillar !== "suites"
+              ) {
+                // Journeys, security (ZAP) and suites have no Playwright report — the raw-output pane
+                // (already live during the run) stays in place.
+                showPlaywrightReport();
+              }
+            }
+          };
+          testEs.onerror = () => {
+            testAppendLine("Connection closed", "err");
+            runs().finish(TEST_RUN, { ok: false });
+            setRunStatus("failed", "error");
+            document.getElementById("run-btn").disabled = false;
+            testEs?.close();
+            testEs = null;
+          };
+        }
 
-        // k6 "running (...)" status lines are redundant with the progress bar;
-        // suppress them entirely in the web UI (still in raw output).
-        if (!cls && _k6RunningRe.test(text)) {
+        const TEST_RUN = "tests";
+        const runs = () => window.denShell.runs;
+        const _k6ProgressRe = /^(\S+)\s+[\[✓✗]/;
+        const _k6RunningRe = /^running \(\d+m[\d.]+s\), \d+\/\d+ VUs,/;
+
+        function testAppendLine(text, cls) {
+          const raw = document.getElementById("report-raw-output");
+
+          // k6 "running (...)" status lines are redundant with the progress bar;
+          // suppress them entirely in the web UI (still in raw output).
+          if (!cls && _k6RunningRe.test(text)) {
+            raw.textContent += text + "\n";
+            return;
+          }
+
+          // k6 progress/result lines: one line per scenario, updated in place
+          // (a keyed line in the dock), so the UI shows a compact live-updating
+          // progress bar.
+          const pm = !cls && text.match(_k6ProgressRe);
+          if (pm) {
+            runs().append(TEST_RUN, text, "k6-progress", { key: pm[1] });
+            return;
+          }
+
+          runs().append(TEST_RUN, text, cls);
           raw.textContent += text + "\n";
-          return;
+          raw.scrollTop = raw.scrollHeight;
         }
 
-        // k6 progress/result lines: one line per scenario, updated in place
-        // (a keyed line in the dock), so the UI shows a compact live-updating
-        // progress bar.
-        const pm = !cls && text.match(_k6ProgressRe);
-        if (pm) {
-          runs().append(TEST_RUN, text, "k6-progress", { key: pm[1] });
-          return;
-        }
-
-        runs().append(TEST_RUN, text, cls);
-        raw.textContent += text + "\n";
-        raw.scrollTop = raw.scrollHeight;
-      }
-
-      /** The dock's Clear on the tests tab: the raw report output too. */
-      function clearTestOutput() {
+        /** The dock's Clear on the tests tab: the raw report output too. */
+        function clearTestOutput() {
           document.getElementById("report-raw-output").textContent = "";
-      }
+        }
 
-      function setRunStatus(state, text) {
-        document.getElementById("run-dot").className = `dot ${state}`;
-        document.getElementById("run-status").textContent = text;
-      }
+        function setRunStatus(state, text) {
+          document.getElementById("run-dot").className = `dot ${state}`;
+          document.getElementById("run-status").textContent = text;
+        }
 
-      function showPlaywrightReport() {
-        const frame = document.getElementById("report-frame");
-        reportView = "playwright";
-        frame.dataset.ready = "1";
-        frame.src = "/report/";
-        syncReportPane();
-      }
+        function showPlaywrightReport() {
+          const frame = document.getElementById("report-frame");
+          reportView = "playwright";
+          frame.dataset.ready = "1";
+          frame.src = "/report/";
+          syncReportPane();
+        }
 
-      document
-        .getElementById("open-report-tab")
-        .addEventListener("click", () => {
+        document
+          .getElementById("open-report-tab")
+          .addEventListener("click", () => {
+            const model = buildReportPaneModel({
+              pillar,
+              selectedView: reportView,
+              perfReportUrl: latestPerfReportUrl,
+            });
+            if (model.openUrl) {
+              window.open(model.openUrl, "_blank");
+            }
+          });
+
+        document
+          .getElementById("report-view-tabs")
+          .addEventListener("click", (e) => {
+            const btn = e.target.closest("[data-report-view]");
+            if (!btn || pillar !== "performance") return;
+            reportView = btn.dataset.reportView;
+            syncReportPane();
+          });
+
+        function resetReportPane() {
+          reportView = pillar === "performance" ? "rendered" : "playwright";
+          latestPerfReportUrl = null;
+          document.getElementById("report-frame").removeAttribute("src");
+          document.getElementById("report-frame").dataset.ready = "0";
+          document.getElementById("perf-report-container").innerHTML = "";
+          document.getElementById("report-raw-output").textContent = "";
+          syncReportPane();
+        }
+
+        function syncReportPane(overrideMessage) {
           const model = buildReportPaneModel({
             pillar,
             selectedView: reportView,
             perfReportUrl: latestPerfReportUrl,
           });
-          if (model.openUrl) {
-            window.open(model.openUrl, "_blank");
-          }
-        });
-
-      document
-        .getElementById("report-view-tabs")
-        .addEventListener("click", (e) => {
-          const btn = e.target.closest("[data-report-view]");
-          if (!btn || pillar !== "performance") return;
-          reportView = btn.dataset.reportView;
-          syncReportPane();
-        });
-
-      function resetReportPane() {
-        reportView = pillar === "performance" ? "rendered" : "playwright";
-        latestPerfReportUrl = null;
-        document.getElementById("report-frame").removeAttribute("src");
-        document.getElementById("report-frame").dataset.ready = "0";
-        document.getElementById("perf-report-container").innerHTML = "";
-        document.getElementById("report-raw-output").textContent = "";
-        syncReportPane();
-      }
-
-      function syncReportPane(overrideMessage) {
-        const model = buildReportPaneModel({
-          pillar,
-          selectedView: reportView,
-          perfReportUrl: latestPerfReportUrl,
-        });
-        const frame = document.getElementById("report-frame");
-        const placeholder = document.getElementById("report-placeholder");
-        const perfContainer = document.getElementById("perf-report-container");
-        const rawOutput = document.getElementById("report-raw-output");
-        const tabs = document.getElementById("report-view-tabs");
-        const title = document.getElementById("report-pane-title");
-        const openBtn = document.getElementById("open-report-tab");
-
-        title.textContent = model.title;
-        tabs.classList.toggle("active", model.tabsVisible);
-        tabs.querySelectorAll("[data-report-view]").forEach((btn) => {
-          btn.classList.toggle(
-            "active",
-            btn.dataset.reportView === model.activeView,
+          const frame = document.getElementById("report-frame");
+          const placeholder = document.getElementById("report-placeholder");
+          const perfContainer = document.getElementById(
+            "perf-report-container",
           );
-        });
-        openBtn.style.display = model.openUrl ? "" : "none";
+          const rawOutput = document.getElementById("report-raw-output");
+          const tabs = document.getElementById("report-view-tabs");
+          const title = document.getElementById("report-pane-title");
+          const openBtn = document.getElementById("open-report-tab");
 
-        frame.style.display = "none";
-        perfContainer.style.display = "none";
-        rawOutput.style.display = "none";
-        placeholder.style.display = "none";
+          title.textContent = model.title;
+          tabs.classList.toggle("active", model.tabsVisible);
+          tabs.querySelectorAll("[data-report-view]").forEach((btn) => {
+            btn.classList.toggle(
+              "active",
+              btn.dataset.reportView === model.activeView,
+            );
+          });
+          openBtn.style.display = model.openUrl ? "" : "none";
 
-        if (model.activeView === "playwright") {
-          if (frame.dataset.ready === "1") {
-            frame.style.display = "block";
+          frame.style.display = "none";
+          perfContainer.style.display = "none";
+          rawOutput.style.display = "none";
+          placeholder.style.display = "none";
+
+          if (model.activeView === "playwright") {
+            if (frame.dataset.ready === "1") {
+              frame.style.display = "block";
+            } else {
+              placeholder.textContent = overrideMessage || model.emptyMessage;
+              placeholder.style.display = "flex";
+            }
+            return;
+          }
+
+          if (model.activeView === "raw") {
+            rawOutput.style.display = "block";
+            if (!rawOutput.textContent.trim()) {
+              rawOutput.textContent =
+                overrideMessage || "Raw performance output will appear here.";
+            }
+            return;
+          }
+
+          if (perfContainer.innerHTML.trim()) {
+            perfContainer.style.display = "block";
           } else {
             placeholder.textContent = overrideMessage || model.emptyMessage;
             placeholder.style.display = "flex";
           }
-          return;
         }
 
-        if (model.activeView === "raw") {
-          rawOutput.style.display = "block";
-          if (!rawOutput.textContent.trim()) {
-            rawOutput.textContent =
-              overrideMessage || "Raw performance output will appear here.";
+        // ── Security findings (newest ZAP run per scan mode, this env) ───────────
+        async function renderSecurityFindings() {
+          const env = document.getElementById("env-sel").value;
+          const box = document.getElementById("perf-report-container");
+          const esc = (v) =>
+            String(v ?? "").replace(
+              /[&<>"']/g,
+              (c) =>
+                ({
+                  "&": "&amp;",
+                  "<": "&lt;",
+                  ">": "&gt;",
+                  '"': "&quot;",
+                  "'": "&#39;",
+                })[c],
+            );
+          let runs = [];
+          try {
+            runs = await fetch(
+              `/api/security/latest?env=${encodeURIComponent(env)}`,
+            ).then((r) => r.json());
+          } catch {
+            runs = [];
           }
-          return;
-        }
-
-        if (perfContainer.innerHTML.trim()) {
-          perfContainer.style.display = "block";
-        } else {
-          placeholder.textContent = overrideMessage || model.emptyMessage;
-          placeholder.style.display = "flex";
-        }
-      }
-
-      // ── Security findings (newest ZAP run per scan mode, this env) ───────────
-      async function renderSecurityFindings() {
-        const env = document.getElementById("env-sel").value;
-        const box = document.getElementById("perf-report-container");
-        const esc = (v) =>
-          String(v ?? "").replace(
-            /[&<>"']/g,
-            (c) =>
-              ({
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                '"': "&quot;",
-                "'": "&#39;",
-              })[c],
-          );
-        let runs = [];
-        try {
-          runs = await fetch(
-            `/api/security/latest?env=${encodeURIComponent(env)}`,
-          ).then((r) => r.json());
-        } catch {
-          runs = [];
-        }
-        if (pillar !== "security") return;
-        if (!Array.isArray(runs) || runs.length === 0) {
-          box.innerHTML = "";
-          syncReportPane();
-          return;
-        }
-        const RISKS = ["High", "Medium", "Low", "Informational"];
-        const count = (fs, r) => (fs || []).filter((f) => f.risk === r).length;
-        box.innerHTML = runs
-          .map(
-            (run) => `
+          if (pillar !== "security") return;
+          if (!Array.isArray(runs) || runs.length === 0) {
+            box.innerHTML = "";
+            syncReportPane();
+            return;
+          }
+          const RISKS = ["High", "Medium", "Low", "Informational"];
+          const count = (fs, r) =>
+            (fs || []).filter((f) => f.risk === r).length;
+          box.innerHTML = runs
+            .map(
+              (run) => `
         <section class="sec-run">
           <h3>${esc(run.mode)} scan · ${esc(run.env)} · ${esc(new Date(run.finishedAt).toLocaleString())}</h3>
           <table class="sec-table">
@@ -2085,73 +2101,73 @@
             </tbody>
           </table>
         </section>`,
-          )
-          .join("");
-        syncReportPane();
-      }
-
-      async function showPerfReport(url) {
-        try {
-          const report = await fetch(url).then((r) => {
-            if (!r.ok)
-              throw new Error(`Failed to load perf report (${r.status})`);
-            return r.json();
-          });
-          latestPerfReportUrl = url;
-          reportView = "rendered";
-          document.getElementById("perf-report-container").innerHTML =
-            renderPerfReportHtml(report);
+            )
+            .join("");
           syncReportPane();
-        } catch {
-          latestPerfReportUrl = null;
-          reportView = "raw";
-          syncReportPane(
-            "Structured perf report unavailable. Showing raw output instead.",
-          );
-        }
-      }
-
-      // ── Services view ─────────────────────────────────────────────────────────
-      async function loadServices() {
-        const env = document.getElementById("env-sel").value;
-        const pane = document.getElementById("services-pane");
-        pane.innerHTML = '<div class="empty-state">Loading\u2026</div>';
-
-        let services;
-        try {
-          services = await fetch(`/api/services?env=${env}`).then((r) =>
-            r.json(),
-          );
-        } catch {
-          pane.innerHTML =
-            '<div class="empty-state">Failed to load services</div>';
-          return;
         }
 
-        if (!services.length) {
-          pane.innerHTML = `<div class="empty-state">No services registered for <strong>${env}</strong>.<br>Add a <code>services</code> block to <code>__DEN_MANIFEST_YML__</code>.</div>`;
-          return;
+        async function showPerfReport(url) {
+          try {
+            const report = await fetch(url).then((r) => {
+              if (!r.ok)
+                throw new Error(`Failed to load perf report (${r.status})`);
+              return r.json();
+            });
+            latestPerfReportUrl = url;
+            reportView = "rendered";
+            document.getElementById("perf-report-container").innerHTML =
+              renderPerfReportHtml(report);
+            syncReportPane();
+          } catch {
+            latestPerfReportUrl = null;
+            reportView = "raw";
+            syncReportPane(
+              "Structured perf report unavailable. Showing raw output instead.",
+            );
+          }
         }
 
-        pane.innerHTML = services
-          .map((s) => {
-            // The row's own workspace (the first in view that defines it):
-            // its command runs there, not in the focused one.
-            const ws = s.inWorkspaces?.[0];
-            const wsAttr = ws
-              ? ` data-workspace="${String(ws).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}"`
-              : "";
-            const cmdBtns = s.commands
-              .map(
-                (cmd) =>
-                  `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec"${wsAttr}>${cmd}</button>`,
-              )
-              .join("");
-            const logsBtn = s.logs
-              ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs ↗</button>`
-              : "";
-            const hasCaps = s.commands.length > 0 || s.logs;
-            return `
+        // ── Services view ─────────────────────────────────────────────────────────
+        async function loadServices() {
+          const env = document.getElementById("env-sel").value;
+          const pane = document.getElementById("services-pane");
+          pane.innerHTML = '<div class="empty-state">Loading\u2026</div>';
+
+          let services;
+          try {
+            services = await fetch(`/api/services?env=${env}`).then((r) =>
+              r.json(),
+            );
+          } catch {
+            pane.innerHTML =
+              '<div class="empty-state">Failed to load services</div>';
+            return;
+          }
+
+          if (!services.length) {
+            pane.innerHTML = `<div class="empty-state">No services registered for <strong>${env}</strong>.<br>Add a <code>services</code> block to <code>__DEN_MANIFEST_YML__</code>.</div>`;
+            return;
+          }
+
+          pane.innerHTML = services
+            .map((s) => {
+              // The row's own workspace (the first in view that defines it):
+              // its command runs there, not in the focused one.
+              const ws = s.inWorkspaces?.[0];
+              const wsAttr = ws
+                ? ` data-workspace="${String(ws).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}"`
+                : "";
+              const cmdBtns = s.commands
+                .map(
+                  (cmd) =>
+                    `<button class="cmd-btn" data-repo="${s.repo}" data-service="${s.service}" data-cmd="${cmd}" data-type="exec"${wsAttr}>${cmd}</button>`,
+                )
+                .join("");
+              const logsBtn = s.logs
+                ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs ↗</button>`
+                : "";
+              const hasCaps = s.commands.length > 0 || s.logs;
+              return `
           <div class="service-card">
             <div class="service-card-header">
               <span class="dot" id="svc-dot-${s.repo}-${s.service}"></span>
@@ -2164,152 +2180,152 @@
               ${hasCaps ? cmdBtns + logsBtn : '<span style="color:var(--muted);font-size:11px">no capabilities for this env</span>'}
             </div>
           </div>`;
-          })
-          .join("");
+            })
+            .join("");
 
-        pane.querySelectorAll(".cmd-btn").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const { repo, service, cmd, type, workspace } = btn.dataset;
-            if (type === "exec") runExec(repo, service, cmd, workspace);
-            else {
-              const env = document.getElementById("env-sel").value;
-              storeOpenLog(repo, service, env);
-              window.location.href = "/logs";
-            }
+          pane.querySelectorAll(".cmd-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const { repo, service, cmd, type, workspace } = btn.dataset;
+              if (type === "exec") runExec(repo, service, cmd, workspace);
+              else {
+                const env = document.getElementById("env-sel").value;
+                storeOpenLog(repo, service, env);
+                window.location.href = "/logs";
+              }
+            });
           });
-        });
-      }
-
-      function setSvcDot(repo, service, state) {
-        const el = document.getElementById(`svc-dot-${repo}-${service}`);
-        if (el) el.className = `dot ${state}`;
-      }
-
-      // The running command's tab carries Stop (Detach for a daemon) in the
-      // dock's bar while it runs.
-      let execRun = null;
-      let execDetachable = true;
-      function stopAction() {
-        return [
-          {
-            id: "stop",
-            label: execDetachable ? "Detach" : "Stop",
-            run: stopCmd,
-          },
-        ];
-      }
-      function stopCmd() {
-        const detachable = execDetachable;
-        execEs?.close();
-        execEs = null;
-        document
-          .querySelectorAll('.cmd-btn[data-type="exec"]')
-          .forEach((b) => (b.disabled = false));
-        document.getElementById("svc-status").textContent = "idle";
-        cmdAppendLine(
-          detachable ? "--- Detached ---" : "--- Stopped ---",
-          "err",
-        );
-        if (execRun) runs().set(execRun, { running: false, actions: [] });
-      }
-
-      // ── Service exec ──────────────────────────────────────────────────────────
-      function runExec(repo, service, cmd, workspace) {
-        if (execEs) {
-          execEs.close();
-          execEs = null;
         }
-        const env = document.getElementById("env-sel").value;
 
-        // Disable exec buttons while running, keep logs buttons intact
-        document
-          .querySelectorAll('.cmd-btn[data-type="exec"]')
-          .forEach((b) => (b.disabled = true));
-        setSvcDot(repo, service, "running");
+        function setSvcDot(repo, service, state) {
+          const el = document.getElementById(`svc-dot-${repo}-${service}`);
+          if (el) el.className = `dot ${state}`;
+        }
 
-        // The run's tab in the dock: one per service, the latest command.
-        if (execRun) runs().set(execRun, { running: false, actions: [] });
-        execDetachable = false;
-        execRun = runs().start(
-          `${repo}/${service}`,
-          `${cmd} ${repo}/${service}`,
-          {
-            doneLine: false,
-            actions: [{ id: "stop", label: "Stop", run: stopCmd }],
-          },
-        );
-        document.getElementById("svc-status").textContent =
-          `running ${service}:${cmd}\u2026`;
+        // The running command's tab carries Stop (Detach for a daemon) in the
+        // dock's bar while it runs.
+        let execRun = null;
+        let execDetachable = true;
+        function stopAction() {
+          return [
+            {
+              id: "stop",
+              label: execDetachable ? "Detach" : "Stop",
+              run: stopCmd,
+            },
+          ];
+        }
+        function stopCmd() {
+          const detachable = execDetachable;
+          execEs?.close();
+          execEs = null;
+          document
+            .querySelectorAll('.cmd-btn[data-type="exec"]')
+            .forEach((b) => (b.disabled = false));
+          document.getElementById("svc-status").textContent = "idle";
+          cmdAppendLine(
+            detachable ? "--- Detached ---" : "--- Stopped ---",
+            "err",
+          );
+          if (execRun) runs().set(execRun, { running: false, actions: [] });
+        }
 
-        cmdAppendLine(
-          `\n\u25b6 ${repo}/${service} \u00b7 ${cmd} \u00b7 ${env}\n`,
-          "cmd",
-        );
+        // ── Service exec ──────────────────────────────────────────────────────────
+        function runExec(repo, service, cmd, workspace) {
+          if (execEs) {
+            execEs.close();
+            execEs = null;
+          }
+          const env = document.getElementById("env-sel").value;
 
-        const params = new URLSearchParams({ repo, service, cmd, env });
-        if (workspace) params.set("workspace", workspace);
-        execEs = new EventSource(`/api/service/exec?${params}`);
-        // LK-0: a command that needs sudo without the password asks, then
-        // runs again.
-        const sudo = sudoRun();
-        execEs.onmessage = (e) => {
-          const msg = JSON.parse(e.data);
-          sudo.see(msg);
-          if (msg.type === "cmd") {
-            cmdAppendLine(msg.text, "cmd");
-            execDetachable = !!msg.detached;
-            runs().set(execRun, { actions: stopAction() });
-          } else if (msg.type === "line") {
-            cmdAppendLine(msg.text, "");
-          } else if (msg.type === "error") {
-            cmdAppendLine(msg.text, "err");
-          } else if (msg.type === "done") {
-            const ok = msg.exitCode === 0;
-            const dur = fmtDuration(msg.duration);
-            cmdAppendLine(
-              `\n${ok ? "\u2713 Done" : "\u2717 Failed"} in ${dur}\n`,
-              ok ? "done-ok" : "done-fail",
-            );
-            setSvcDot(repo, service, ok ? "ok" : "err");
+          // Disable exec buttons while running, keep logs buttons intact
+          document
+            .querySelectorAll('.cmd-btn[data-type="exec"]')
+            .forEach((b) => (b.disabled = true));
+          setSvcDot(repo, service, "running");
+
+          // The run's tab in the dock: one per service, the latest command.
+          if (execRun) runs().set(execRun, { running: false, actions: [] });
+          execDetachable = false;
+          execRun = runs().start(
+            `${repo}/${service}`,
+            `${cmd} ${repo}/${service}`,
+            {
+              doneLine: false,
+              actions: [{ id: "stop", label: "Stop", run: stopCmd }],
+            },
+          );
+          document.getElementById("svc-status").textContent =
+            `running ${service}:${cmd}\u2026`;
+
+          cmdAppendLine(
+            `\n\u25b6 ${repo}/${service} \u00b7 ${cmd} \u00b7 ${env}\n`,
+            "cmd",
+          );
+
+          const params = new URLSearchParams({ repo, service, cmd, env });
+          if (workspace) params.set("workspace", workspace);
+          execEs = new EventSource(`/api/service/exec?${params}`);
+          // LK-0: a command that needs sudo without the password asks, then
+          // runs again.
+          const sudo = sudoRun();
+          execEs.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            sudo.see(msg);
+            if (msg.type === "cmd") {
+              cmdAppendLine(msg.text, "cmd");
+              execDetachable = !!msg.detached;
+              runs().set(execRun, { actions: stopAction() });
+            } else if (msg.type === "line") {
+              cmdAppendLine(msg.text, "");
+            } else if (msg.type === "error") {
+              cmdAppendLine(msg.text, "err");
+            } else if (msg.type === "done") {
+              const ok = msg.exitCode === 0;
+              const dur = fmtDuration(msg.duration);
+              cmdAppendLine(
+                `\n${ok ? "\u2713 Done" : "\u2717 Failed"} in ${dur}\n`,
+                ok ? "done-ok" : "done-fail",
+              );
+              setSvcDot(repo, service, ok ? "ok" : "err");
+              document.getElementById("svc-status").textContent = "idle";
+              runs().set(execRun, { actions: [] });
+              runs().finish(execRun, { ok });
+              document
+                .querySelectorAll('.cmd-btn[data-type="exec"]')
+                .forEach((b) => (b.disabled = false));
+              execEs?.close();
+              execEs = null;
+              void sudo.done(() => runExec(repo, service, cmd, workspace));
+            }
+          };
+          execEs.onerror = () => {
+            cmdAppendLine("Connection closed", "err");
+            setSvcDot(repo, service, "err");
             document.getElementById("svc-status").textContent = "idle";
             runs().set(execRun, { actions: [] });
-            runs().finish(execRun, { ok });
+            runs().finish(execRun, { ok: false });
             document
               .querySelectorAll('.cmd-btn[data-type="exec"]')
               .forEach((b) => (b.disabled = false));
             execEs?.close();
             execEs = null;
-            void sudo.done(() => runExec(repo, service, cmd, workspace));
-          }
-        };
-        execEs.onerror = () => {
-          cmdAppendLine("Connection closed", "err");
-          setSvcDot(repo, service, "err");
-          document.getElementById("svc-status").textContent = "idle";
-          runs().set(execRun, { actions: [] });
-          runs().finish(execRun, { ok: false });
-          document
-            .querySelectorAll('.cmd-btn[data-type="exec"]')
-            .forEach((b) => (b.disabled = false));
-          execEs?.close();
-          execEs = null;
-        };
-      }
+          };
+        }
 
-      function cmdAppendLine(text, cls) {
-        if (execRun) runs().append(execRun, text, cls);
-      }
+        function cmdAppendLine(text, cls) {
+          if (execRun) runs().append(execRun, text, cls);
+        }
 
-      // ── Helpers ───────────────────────────────────────────────────────────────
-      function fmtDuration(ms) {
-        if (ms < 1000) return `${ms}ms`;
-        const s = Math.floor(ms / 1000),
-          m = Math.floor(s / 60);
-        return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
-      }
+        // ── Helpers ───────────────────────────────────────────────────────────────
+        function fmtDuration(ms) {
+          if (ms < 1000) return `${ms}ms`;
+          const s = Math.floor(ms / 1000),
+            m = Math.floor(s / 60);
+          return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+        }
 
-      init();
-    </script>
-      </main>
+        init();
+      </script>
+    </main>
   </body>
 </html>

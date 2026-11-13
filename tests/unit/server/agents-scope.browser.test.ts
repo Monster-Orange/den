@@ -108,7 +108,7 @@ describe("?ws= for a workspace that isn't active", () => {
     const p = await open("west");
     await note(p).waitFor();
     expect((await note(p).textContent())?.replace(/\s+/g, " ").trim()).toBe(
-      "Workspace west isn't active · Switch to west",
+      "Project west isn't active · Switch to west",
     );
     expect(await listed(p)).toEqual(["west/drifter"]);
     expect(await p.locator("#ag-start").isVisible()).toBe(true);
@@ -132,7 +132,7 @@ describe("?ws= for a workspace that isn't active", () => {
     const p = await open("nowhere");
     await note(p).waitFor();
     expect((await note(p).textContent())?.replace(/\s+/g, " ").trim()).toBe(
-      "Workspace nowhere isn't active (no workspace has that name)",
+      "Project nowhere isn't active (no project has that name)",
     );
     expect(await note(p).locator("button").count()).toBe(0);
     expect(await listed(p)).toEqual([]);

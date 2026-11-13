@@ -445,7 +445,7 @@ export const SECTIONS = [
     order: 20,
     render: (x) => {
       const c = connections(C.model(), x);
-      return `<div class="dg-conn"><div><h4>Depends on</h4>${c.deps.length ? `<div class="dg-chips">${c.deps.map(refChip).join("")}</div>` : none("nothing")}</div><div><h4>Used by</h4>${c.users.length ? `<div class="dg-chips">${c.users.map(refChip).join("")}</div>` : none("nothing in this workspace")}</div></div>`;
+      return `<div class="dg-conn"><div><h4>Depends on</h4>${c.deps.length ? `<div class="dg-chips">${c.deps.map(refChip).join("")}</div>` : none("nothing")}</div><div><h4>Used by</h4>${c.users.length ? `<div class="dg-chips">${c.users.map(refChip).join("")}</div>` : none("nothing in this project")}</div></div>`;
     },
   },
   {
@@ -459,7 +459,7 @@ export const SECTIONS = [
       const deps = [
         ...new Set((x.services ? x.services : [x]).flatMap((s) => s.missing)),
       ];
-      return `<p class="dg-muted" style="margin:0 0 8px;font-size:13px">Declared but not in this workspace.</p><ul class="cmds">${deps.map((d) => `<li><code>${esc(d)}</code><button class="dg-btn sm" data-add-dep="${esc(d)}">Add</button></li>`).join("")}</ul>`;
+      return `<p class="dg-muted" style="margin:0 0 8px;font-size:13px">Declared but not in this project.</p><ul class="cmds">${deps.map((d) => `<li><code>${esc(d)}</code><button class="dg-btn sm" data-add-dep="${esc(d)}">Add</button></li>`).join("")}</ul>`;
     },
   },
   {
@@ -480,7 +480,7 @@ export const SECTIONS = [
         ["Branch", s.branch ? `⎇ ${esc(s.branch)}` : none("unknown")],
         [
           "Starts",
-          s.autostart ? "with the workspace" : "on demand (auto-start off)",
+          s.autostart ? "with the project" : "on demand (auto-start off)",
         ],
         !s.cloned && ["On disk", "not cloned yet: Sync clones it"],
       ]),
@@ -504,7 +504,7 @@ export const SECTIONS = [
         [
           "Starts",
           r.services[0].autostart
-            ? "with the workspace"
+            ? "with the project"
             : "on demand (auto-start off)",
         ],
       ]),

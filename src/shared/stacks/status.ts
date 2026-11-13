@@ -77,7 +77,7 @@ export function resolveStackWorkspaces(
   const ws = override || resolved!.namespace;
   if (!STACK_NAMESPACE_RE.test(ws))
     throw new Error(
-      `workspace "${ws}" must be lowercase letters, digits and dashes`,
+      `project "${ws}" must be lowercase letters, digits and dashes`,
     );
   return {
     denWorkspace: fkWs,
@@ -140,11 +140,11 @@ export function emptyStacksReason(o: {
   const cfg = `the org config (${product().configFile}) declares no stacks:`;
   if (!o.workspaceExists)
     return (
-      `no stacks: workspace "${o.workspace}" does not exist here, so no ` +
+      `no stacks: project "${o.workspace}" does not exist here, so no ` +
       `repo manifest was read, and ${cfg}`
     );
   return (
-    `no stacks: ${cfg}, and no repo of workspace "${o.workspace}" has a ` +
+    `no stacks: ${cfg}, and no repo of project "${o.workspace}" has a ` +
     `compose: block in its ${product().manifestYml}`
   );
 }

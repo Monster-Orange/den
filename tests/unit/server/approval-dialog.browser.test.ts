@@ -171,7 +171,7 @@ describe("the approval dialog (ON-3)", () => {
       "If you didn't ask an agent to do this, Deny.",
     );
     expect(await p.textContent("#den-ap-what")).toBe(
-      'Create the workspace "web"',
+      'Create the project "web"',
     );
     expect(await p.textContent("#den-ap-note")).toContain(
       "“set up EVERYTHING”",
@@ -179,7 +179,7 @@ describe("the approval dialog (ON-3)", () => {
     expect(await p.isVisible("#den-ap-det")).toBe(false);
     await p.click("#den-ap-review");
     expect(await p.textContent("#den-ap-det")).toContain(
-      'A new, empty workspace named "web", made active so its services can start.',
+      'A new, empty project named "web", made active so its services can start.',
     );
     // The Start dialog's frame and footer.
     const box = await p.$eval("#den-ap-dlg", (d) => {

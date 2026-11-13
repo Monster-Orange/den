@@ -67,7 +67,7 @@ describe("resolveStackNamespace: precedence", () => {
     const r = resolveStackNamespace("shop", c);
     expect(r).toMatchObject({ namespace: "shared", source: "workspace" });
     expect(r.warnings).toEqual([
-      "workspace shop: stack_namespace shared in workspaces.yml overrides the blueprint's stack_namespace main",
+      "project shop: stack_namespace shared in workspaces.yml overrides the blueprint's stack_namespace main",
     ]);
   });
 

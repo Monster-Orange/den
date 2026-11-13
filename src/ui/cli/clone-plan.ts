@@ -259,7 +259,7 @@ export function buildSetupPlan(
     const unknown = want.filter((n) => !all.some((w) => w.name === n));
     if (unknown.length)
       throw new Error(
-        `no blueprint workspace named ${unknown.join(", ")} (the blueprint has ${all.map((w) => w.name).join(", ")})`,
+        `no blueprint project named ${unknown.join(", ")} (the blueprint has ${all.map((w) => w.name).join(", ")})`,
       );
     return {
       fromBlueprint: true,
@@ -281,7 +281,7 @@ export function buildSetupPlan(
   const unknown = planned.filter((n) => !ctx.file.workspaces[n]);
   if (unknown.length)
     throw new Error(
-      `no workspace named ${unknown.join(", ")} (workspaces: ${Object.keys(ctx.file.workspaces).join(", ") || "none"})`,
+      `no project named ${unknown.join(", ")} (projects: ${Object.keys(ctx.file.workspaces).join(", ") || "none"})`,
     );
   const workspaces = planned.map((n) =>
     workspaceClonePlan(n, names.length ? names : undefined, ctx),
@@ -320,7 +320,7 @@ const STATE_TEXT: Record<ClonePlanState, string> = {
   "would-clone": "would clone",
   "not-in-catalog": "not in the catalog: setup skips it, up clones it",
   checkout: "your checkout (setup skips it without --force)",
-  "no-org": "no org: set github_org, or org: on the workspace",
+  "no-org": "no org: set github_org, or org: on the project",
 };
 
 /** The plan as plain lines (the caller colours and prints them). */
@@ -333,13 +333,13 @@ export function renderClonePlan(
   const out: string[] = [];
   if (plan.fromBlueprint)
     out.push(
-      `From the blueprint: nothing is set up yet. \`${cli} workspace seed\` creates these workspaces.`,
+      `From the blueprint: nothing is set up yet. \`${cli} workspace seed\` creates these projects.`,
       "",
     );
-  if (plan.workspaces.length === 0) out.push("No workspace to plan.");
+  if (plan.workspaces.length === 0) out.push("No project to plan.");
   for (const ws of plan.workspaces) {
     out.push(
-      `Workspace ${ws.name}  org: ${ws.org ?? "(none)"}${ws.source ? ` (${ws.source})` : ""}`,
+      `Project ${ws.name}  org: ${ws.org ?? "(none)"}${ws.source ? ` (${ws.source})` : ""}`,
     );
     if (ws.rows.length === 0) out.push("  (no repos)");
     for (const r of ws.rows) {
@@ -362,11 +362,11 @@ export function renderClonePlan(
     const n = new Set(outside.flatMap((o) => o.repos)).size;
     out.push(
       "",
-      `Not in this plan: ${plural(n, "repo")} in other workspaces: ` +
+      `Not in this plan: ${plural(n, "repo")} in other projects: ` +
         outside
           .map((o) => `${o.workspace} (${o.repos.join(", ")})`)
           .join(", ") +
-        `. Plan them with -w <workspace> or --all-active.`,
+        `. Plan them with -w <project> or --all-active.`,
     );
   }
   out.push("", "Plan only: nothing was cloned, seeded or written.");

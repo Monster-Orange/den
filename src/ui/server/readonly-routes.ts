@@ -195,7 +195,7 @@ export async function handleReadonlyRoutes(
   if (pathname === "/api/stacks") {
     const workspace = url.searchParams.get("workspace") || null;
     if (workspace && !deps.workspaceExists(workspace)) {
-      send400(res, `unknown workspace "${workspace}"`);
+      send400(res, `unknown project "${workspace}"`);
       return true;
     }
     try {

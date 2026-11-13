@@ -104,6 +104,8 @@ describe("create --yes --json", () => {
         "cd acme",
         "npm install",
         "set web.allowed_github_org: <your GitHub org> in config/acme.yml (who may claim an instance)",
+        // D80: this install's address, the one people open.
+        "./bin/acme web url https://acme.<your domain>   (this install's address, the one people open)",
         "./bin/acme repo add <path|git-url> --json",
       ],
     });

@@ -133,11 +133,11 @@ describe("setup --plan", () => {
     const { out, code } = den(root, ["setup", "--plan"]);
     expect(code).toBe(0);
     expect(out).toContain("From the blueprint: nothing is set up yet.");
-    expect(out).toMatch(/Workspace main {2}org: acme \(default\)/);
+    expect(out).toMatch(/Project main {2}org: acme \(default\)/);
     expect(out).toMatch(
       /acme-api {2}managed main {2}org: acme {2}https:\/\/github\.com\/acme\/acme-api\.git {2}would clone/,
     );
-    expect(out).toMatch(/Workspace client {2}org: globex \(blueprint\)/);
+    expect(out).toMatch(/Project client {2}org: globex \(blueprint\)/);
     expect(out).toMatch(
       /globex-web {2}managed main {2}org: globex {2}https:\/\/github\.com\/globex\/globex-web\.git {2}would clone/,
     );
@@ -157,13 +157,13 @@ describe("setup --plan", () => {
     const setup = den(root, ["setup", "--plan"]);
     expect(setup.code).toBe(0);
     expect(setup.out).not.toContain("From the blueprint");
-    expect(setup.out).toMatch(/Workspace main {2}org: acme/);
+    expect(setup.out).toMatch(/Project main {2}org: acme/);
     expect(setup.out).toContain("https://github.com/acme/acme-web.git");
     // The client workspace is not planned, only named in the hint (0.2.8).
-    expect(setup.out).not.toMatch(/Workspace client/);
+    expect(setup.out).not.toMatch(/Project client/);
     expect(setup.out).not.toMatch(/globex-web {2}managed/);
     expect(setup.out).toContain(
-      "Not in this plan: 1 repo in other workspaces: client (globex-web).",
+      "Not in this plan: 1 repo in other projects: client (globex-web).",
     );
 
     const up = den(root, ["up", "-a", "--plan"]);
@@ -243,11 +243,11 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     const n = calls().length;
     const { out, code } = den(root, ["setup", "--plan"]);
     expect(code).toBe(0);
-    expect(out).toMatch(/Workspace main {2}org: acme/);
+    expect(out).toMatch(/Project main {2}org: acme/);
     expect(out).toMatch(/mine {2}dev-managed feature\/plan-w {2}org: acme/);
-    expect(out).not.toMatch(/Workspace (client|spare)/);
+    expect(out).not.toMatch(/Project (client|spare)/);
     expect(out).toContain(
-      "Not in this plan: 2 repos in other workspaces: client (globex-web), spare (spare-api). Plan them with -w <workspace> or --all-active.",
+      "Not in this plan: 2 repos in other projects: client (globex-web), spare (spare-api). Plan them with -w <project> or --all-active.",
     );
     expect(calls().slice(n)).toEqual([]);
   }, 60_000);
@@ -262,12 +262,12 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
       "--workspace=spare",
     ]);
     expect(code).toBe(0);
-    expect(out).toMatch(/Workspace client {2}org: globex/);
-    expect(out).toMatch(/Workspace spare {2}org: acme/);
+    expect(out).toMatch(/Project client {2}org: globex/);
+    expect(out).toMatch(/Project spare {2}org: acme/);
     expect(out).toContain("https://github.com/acme/spare-api.git");
-    expect(out).not.toMatch(/Workspace main/);
+    expect(out).not.toMatch(/Project main/);
     expect(out).toContain(
-      "Not in this plan: 2 repos in other workspaces: main (acme-api, mine).",
+      "Not in this plan: 2 repos in other projects: main (acme-api, mine).",
     );
   }, 60_000);
 
@@ -275,11 +275,11 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     const { root } = machine();
     const { out, code } = den(root, ["setup", "--plan", "--all-active"]);
     expect(code).toBe(0);
-    expect(out).toMatch(/Workspace main {2}org: acme/);
-    expect(out).toMatch(/Workspace client {2}org: globex/);
-    expect(out).not.toMatch(/Workspace spare/);
+    expect(out).toMatch(/Project main {2}org: acme/);
+    expect(out).toMatch(/Project client {2}org: globex/);
+    expect(out).not.toMatch(/Project spare/);
     expect(out).toContain(
-      "Not in this plan: 1 repo in other workspaces: spare (spare-api).",
+      "Not in this plan: 1 repo in other projects: spare (spare-api).",
     );
   }, 60_000);
 
@@ -290,7 +290,7 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     const bad = den(root, ["setup", "--plan", "-w", "nope"]);
     expect(bad.code).toBe(1);
     expect(bad.out).toContain(
-      "no workspace named nope (workspaces: main, client, spare)",
+      "no project named nope (projects: main, client, spare)",
     );
     const real = den(root, ["setup", "-w", "client", "-w", "spare"]);
     expect(real.code).toBe(1);
@@ -305,8 +305,8 @@ describe("setup --plan picks its workspaces (0.2.8)", () => {
     const root = makeRoot(`fresh-w-${Math.random().toString(36).slice(2)}`);
     const { out, code } = den(root, ["setup", "--plan", "-w", "client"]);
     expect(code).toBe(0);
-    expect(out).toMatch(/Workspace client {2}org: globex \(blueprint\)/);
-    expect(out).not.toMatch(/Workspace main/);
+    expect(out).toMatch(/Project client {2}org: globex \(blueprint\)/);
+    expect(out).not.toMatch(/Project main/);
   }, 60_000);
 });
 
@@ -343,7 +343,7 @@ describe("register with no terminal (0.2.8)", () => {
     const { out, code } = den(root, ["register"]);
     expect(code).toBe(2);
     expect(out.trim()).toBe(
-      "register needs a terminal (stdin is not a TTY); without one: den register <path> [--name <repo>] [--gh <owner/repo>] [-w <workspace>]",
+      "register needs a terminal (stdin is not a TTY); without one: den register <path> [--name <repo>] [--gh <owner/repo>] [-w <project>]",
     );
   }, 60_000);
 });
@@ -372,7 +372,7 @@ describe("register <path> -w (0.2.8)", () => {
     fs.mkdirSync(blog, { recursive: true });
     const { out, code } = den(root, ["register", blog, "-w", "spare"]);
     expect(code).toBe(0);
-    expect(out).toContain('Added to workspace "spare"');
+    expect(out).toContain('Added to project "spare"');
     const text = fs.readFileSync(wsFile, "utf-8");
     expect(text).toMatch(/focus: main/);
     expect(text).toMatch(/active:\s*\n?\s*-?\s*\[?main\]?/);
@@ -438,10 +438,10 @@ describe("org list and workspace list", () => {
     expect(row("acme")).toMatch(/│ ✓ +│ main, mixed +│/);
     expect(row("example-org")).toMatch(/│ odd +│/);
     expect(out).toContain(
-      "⚠ workspace mixed: its repos belong to several owners (acme, Globex); using acme",
+      "⚠ project mixed: its repos belong to several owners (acme, Globex); using acme",
     );
     expect(out).toContain(
-      "⚠ workspace odd: org example-org is not in orgs:, the catalog or github_org",
+      "⚠ project odd: org example-org is not in orgs:, the catalog or github_org",
     );
   }, 60_000);
 
@@ -449,15 +449,15 @@ describe("org list and workspace list", () => {
     const root = machine();
     const all = den(root, ["workspace", "list"]);
     expect(all.code).toBe(0);
-    expect(all.out).toMatch(/│ Workspace +│ Org +│ Active/);
+    expect(all.out).toMatch(/│ Project +│ Org +│ Active/);
     expect(all.out).toMatch(/│ client +│ globex +│/);
     expect(all.out).toMatch(/│ mixed +│ acme +│/);
-    expect(all.out).toContain("⚠ workspace mixed:");
+    expect(all.out).toContain("⚠ project mixed:");
 
     const one = den(root, ["workspace", "list", "--org", "GLOBEX"]);
     expect(one.code).toBe(0);
     expect(one.out).toMatch(/│ client +│ globex +│/);
     expect(one.out).not.toMatch(/│ (main|mixed|odd) +│/);
-    expect(one.out).not.toContain("⚠ workspace mixed:");
+    expect(one.out).not.toContain("⚠ project mixed:");
   }, 60_000);
 });

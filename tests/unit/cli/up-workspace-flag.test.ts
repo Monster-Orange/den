@@ -17,7 +17,7 @@ describe("upNeedsTarget", () => {
   it("names -a and a repo, keeping --plan", () => {
     expect(upNeedsTarget("acme", "shop", false)).toBe(
       "up -w shop needs what to start: `acme up -a -w shop` for the whole " +
-        "workspace, or `acme up <repo> -w shop` for one repo and its dependencies.",
+        "project, or `acme up <repo> -w shop` for one repo and its dependencies.",
     );
     expect(upNeedsTarget("acme", "shop", true)).toContain(
       "`acme up -a --plan -w shop`",
@@ -26,7 +26,7 @@ describe("upNeedsTarget", () => {
 
   it("never echoes an unprintable workspace", () => {
     expect(upNeedsTarget("den", "a\u001b[31m", true)).toContain(
-      "up -w <workspace> needs",
+      "up -w <project> needs",
     );
   });
 });
@@ -80,7 +80,7 @@ describe("den up --plan -w <ws>", () => {
     expect(out).not.toMatch(/no invocation target resolvable/);
     expect(out.split("\n").filter((l) => l.trim())).toEqual([
       "  up -w shop needs what to start: `den up -a --plan -w shop` for the " +
-        "whole workspace, or `den up <repo> --plan -w shop` for one repo and its dependencies.",
+        "whole project, or `den up <repo> --plan -w shop` for one repo and its dependencies.",
     ]);
   }, 60_000);
 });

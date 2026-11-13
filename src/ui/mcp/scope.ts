@@ -93,7 +93,7 @@ export function parseScopeFlags(argv: readonly string[]): {
     if (key === "grant") {
       if (!WORKSPACE_NAME_RE.test(value))
         throw new ScopeUsageError(
-          `--grant "${printable(value)}" is not a workspace name`,
+          `--grant "${printable(value)}" is not a project name`,
         );
       if (!grants.includes(value)) grants.push(value);
       continue;
@@ -111,7 +111,7 @@ export function parseScopeFlags(argv: readonly string[]): {
   }
   if (got.workspace === undefined)
     throw new ScopeUsageError(
-      "--actor needs --workspace: a scoped server serves one workspace",
+      "--actor needs --workspace: a scoped server serves one project",
     );
   if (got.actor === undefined)
     throw new ScopeUsageError(
@@ -119,7 +119,7 @@ export function parseScopeFlags(argv: readonly string[]): {
     );
   if (!WORKSPACE_NAME_RE.test(got.workspace))
     throw new ScopeUsageError(
-      `--workspace "${printable(got.workspace)}" is not a workspace name ` +
+      `--workspace "${printable(got.workspace)}" is not a project name ` +
         "(letters, digits, dots, dashes, underscores; at most 64)",
     );
   if (!AGENT_ACTOR_RE.test(got.actor))
@@ -201,7 +201,7 @@ export function grantHint(scope: McpScope, other: string): string {
     `To reach it, a person adds "${printable(other)}" to agents.${id}.grants ` +
     `in the org config and restarts the agent (agents start passes --grant); ` +
     "an agent can't grant itself one. For names and status counts of every " +
-    "workspace, call org_summary."
+    "project, call org_summary."
   );
 }
 
@@ -212,8 +212,8 @@ export function otherWorkspace(
   other: string,
 ): ScopeRefusal {
   return new ScopeRefusal(
-    `${tool}: this MCP server is scoped to workspace "${scope.workspace}" ` +
-      `(${scope.actor}; ${grantsNote(scope)}); "${printable(other)}" is another workspace, so nothing was read or run. ` +
+    `${tool}: this MCP server is scoped to project "${scope.workspace}" ` +
+      `(${scope.actor}; ${grantsNote(scope)}); "${printable(other)}" is another project, so nothing was read or run. ` +
       grantHint(scope, other),
   );
 }
@@ -320,7 +320,7 @@ export async function assertScopeExists(
   const body = read ?? (await api.get("/api/workspaces"));
   if (!(scope.workspace in asRecord(asRecord(body).workspaces)))
     throw new ScopeRefusal(
-      `this MCP server is scoped to workspace "${scope.workspace}", which does not exist in this distribution.`,
+      `this MCP server is scoped to project "${scope.workspace}", which does not exist in this distribution.`,
     );
   return body;
 }
@@ -335,7 +335,7 @@ export async function assertGrantExists(
   const body = await api.get("/api/workspaces");
   if (!(ws in asRecord(asRecord(body).workspaces)))
     throw new ScopeRefusal(
-      `${tool}: ${scope.actor} has a grant for workspace "${printable(ws)}", which does not exist in this distribution; nothing was read or run.`,
+      `${tool}: ${scope.actor} has a grant for project "${printable(ws)}", which does not exist in this distribution; nothing was read or run.`,
     );
 }
 
@@ -353,7 +353,7 @@ export async function assertScopeFocused(
   // A granted workspace that is focused is served too (and audited).
   if (focused && scopeWorkspaces(scope).includes(focused)) return focused;
   throw new ScopeRefusal(
-    `${tool}: tests run against the focused workspace` +
+    `${tool}: tests run against the focused project` +
       `${focused ? ` ("${focused}")` : ""}, and this MCP server is scoped to ` +
       `"${scope.workspace}". Focus "${scope.workspace}" first; nothing was read or run.`,
   );
@@ -392,10 +392,10 @@ export async function assertServicesInScope(
   if (outside.length)
     throw new ScopeRefusal(
       `${tool}: ${outside.map(printable).join(", ")} ${outside.length === 1 ? "is" : "are"} not a service ` +
-        `of workspace "${scope.workspace}", the only one this MCP server serves; nothing was read. ` +
-        "Logs and service details stay inside each workspace (logs can hold " +
+        `of project "${scope.workspace}", the only one this MCP server serves; nothing was read. ` +
+        "Logs and service details stay inside each project (logs can hold " +
         "secrets), and a grant does not widen them; org_summary has every " +
-        "workspace's status counts.",
+        "project's status counts.",
     );
 }
 
@@ -408,7 +408,7 @@ export async function assertPathInScope(
 ): Promise<void> {
   if (!path.isAbsolute(p))
     throw new ScopeRefusal(
-      `${tool}: a scoped MCP server takes an absolute path inside workspace "${scope.workspace}"'s repos (or the manifest content).`,
+      `${tool}: a scoped MCP server takes an absolute path inside project "${scope.workspace}"'s repos (or the manifest content).`,
     );
   const target = path.resolve(p);
   const roots = (await scopedEntries(api, scope))
@@ -417,6 +417,6 @@ export async function assertPathInScope(
     .map((r) => path.resolve(r));
   if (!roots.some((r) => target === r || target.startsWith(r + path.sep)))
     throw new ScopeRefusal(
-      `${tool}: ${printablePath(p)} is not inside a repo of workspace "${scope.workspace}", the only one this MCP server serves; nothing was read.`,
+      `${tool}: ${printablePath(p)} is not inside a repo of project "${scope.workspace}", the only one this MCP server serves; nothing was read.`,
     );
 }

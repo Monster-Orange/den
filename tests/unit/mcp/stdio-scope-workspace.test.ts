@@ -142,7 +142,7 @@ describe("a scoped stdio server, another workspace named anyway", () => {
       const r = await call(i, name, args);
       expect([name, r.isError]).toEqual([name, true]);
       expect(r.content[0].text).toMatch(
-        /^Refused: .*scoped to workspace "north"/,
+        /^Refused: .*scoped to project "north"/,
       );
       expect(
         paths

@@ -406,12 +406,12 @@ export function rolePrompt(
 ): string {
   const lines = isServerScope(workspace)
     ? [
-        `You are agent ${agentId}, this Den's own server agent, with the ${persona.id} persona. You belong to no workspace.`,
+        `You are agent ${agentId}, this Den's own server agent, with the ${persona.id} persona. You belong to no project.`,
         `Act only through the ${mcpName} MCP server; it serves the whole Den, and each write waits for the person's Allow.`,
       ]
     : [
-        `You are agent ${agentId} in workspace ${workspace}, with the ${persona.id} persona.`,
-        `Act on services, logs and tests only through the ${mcpName} MCP server; it serves this workspace.`,
+        `You are agent ${agentId} in project ${workspace}, with the ${persona.id} persona.`,
+        `Act on services, logs and tests only through the ${mcpName} MCP server; it serves this project.`,
       ];
   if (persona.context.length)
     lines.push(`Read first: ${persona.context.join("; ")}.`);

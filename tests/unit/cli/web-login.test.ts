@@ -48,13 +48,17 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-function login(args: string[]) {
+/** D80: the install's address the links are on. */
+const ADDRESS = "https://den.acme.example.com";
+
+function login(args: string[], webUrl: string | null = ADDRESS) {
   let out = "";
   let err = "";
   const code = cmdWebLogin(args, {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    webUrl: () => (webUrl ? { url: webUrl, confirmed: true } : null),
   });
   return { code, out, err };
 }
@@ -72,14 +76,14 @@ describe("web open", () => {
 });
 
 describe("web login", () => {
-  it("prints one localhost /auth link on stdout whose code this state dir's secret verifies", () => {
+  it("prints one /auth link on the install's address (web.url, D80) whose code this state dir's secret verifies", () => {
     const r = login(["--port", "4321", "--next", "/settings"]);
     expect(r.code).toBe(0);
     const lines = r.out.trim().split("\n");
     expect(lines.length).toBe(1);
     const u = new URL(lines[0]);
     expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
-      "http://localhost:4321",
+      ADDRESS,
       "/auth",
       "/settings",
     ]);
@@ -89,6 +93,14 @@ describe("web login", () => {
     expect(r.err).toMatch(/within 5 minutes/);
     expect(r.err.includes(c)).toBe(false);
     expect(fs.statSync(path.join(tmp, "web.secret")).mode & 0o777).toBe(0o600);
+  });
+
+  it("D80: with no address set, no link (never localhost): says to set it", () => {
+    const r = login(["--port", "4321"], null);
+    expect(r.code).toBe(1);
+    expect(r.out).toBe("");
+    expect(r.err).toMatch(/address not set: run `\S+ web url <address>`/);
+    expect(r.err).not.toMatch(/localhost/);
   });
 
   it("each call mints a new code", () => {

@@ -34,6 +34,13 @@ export function edgeExposedMessage(unattested: "local" | "signin"): string {
     : "Your edge is reachable from other machines. A browser it can't place as this one signs in first (Sign in with GitHub, or a pairing link).";
 }
 
+/**
+ * D80: the normal setup (web.edge_unattested: signin): other devices reach
+ * this Den at its address, and each signs in first. A note, not an alarm.
+ */
+export const EDGE_SIGNIN_NOTE =
+  "Other devices reach this Den at its address; each one signs in first (Sign in with GitHub, or a pairing link).";
+
 /** 0.4.5's default wording (web.edge_unattested: signin). */
 export const EDGE_EXPOSED_MESSAGE = edgeExposedMessage("signin");
 

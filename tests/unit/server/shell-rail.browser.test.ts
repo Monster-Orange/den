@@ -481,7 +481,7 @@ describe("the scope breadcrumb (R4)", () => {
       "/",
       "label:Org Acme Corp",
       "/",
-      "button:Workspace solo ▾",
+      "button:Project solo ▾",
       "/",
       "button:Env local ▾",
     ]);
@@ -538,14 +538,14 @@ describe("the scope breadcrumb (R4)", () => {
     expect(pop).toEqual({
       role: "menu",
       radius: "10px",
-      label: "Workspace",
+      label: "Project",
       labelFont: "11px",
     });
     expect(await menuRows(p)).toEqual([
       { text: "All active (2)", role: "menuitemradio", checked: "false" },
       { text: "ws-aCLI default", role: "menuitemradio", checked: "false" },
       { text: "ws-b", role: "menuitemradio", checked: "true" },
-      { text: "Manage workspaces…", role: "menuitem", checked: null },
+      { text: "Manage projects…", role: "menuitem", checked: null },
     ]);
     // ✓ on the checked row (R18), and focus starts there.
     expect(
@@ -557,11 +557,11 @@ describe("the scope breadcrumb (R4)", () => {
     expect(await focusedText(p)).toBe("ws-b");
     // ↑/↓ move (wrapping), Home and End.
     await p.keyboard.press("ArrowDown");
-    expect(await focusedText(p)).toBe("Manage workspaces…");
+    expect(await focusedText(p)).toBe("Manage projects…");
     await p.keyboard.press("Home");
     expect(await focusedText(p)).toBe("All active (2)");
     await p.keyboard.press("ArrowUp");
-    expect(await focusedText(p)).toBe("Manage workspaces…");
+    expect(await focusedText(p)).toBe("Manage projects…");
     // Escape closes and gives focus back to the button.
     await p.keyboard.press("Escape");
     expect(await p.$$(".den-pop")).toHaveLength(0);
@@ -643,9 +643,9 @@ describe("the scope breadcrumb (R4)", () => {
     expect(await p.textContent("#org-crumb")).toBe("Org Acme ▾");
     await p.click("#org-crumb");
     expect(await menuRows(p)).toEqual([
-      { text: "Acme3 workspaces", role: "menuitemradio", checked: "true" },
+      { text: "Acme3 projects", role: "menuitemradio", checked: "true" },
       // en's .one (0.3.0-dev.40): it said "1 workspaces".
-      { text: "Globex1 workspace", role: "menuitemradio", checked: "false" },
+      { text: "Globex1 project", role: "menuitemradio", checked: "false" },
     ]);
     await p.click('.den-pop .den-mi:has-text("Globex")');
     expect(
@@ -662,7 +662,7 @@ describe("the scope breadcrumb (R4)", () => {
     await stubWorkspaces(p, [], { label: "none" });
     await p.setViewportSize({ width: 800, height: 700 });
     expect(await visibleScope(p)).toEqual([
-      "button:Workspace none ▾",
+      "button:Project none ▾",
       "button:Env local ▾",
     ]);
     expect(await p.isVisible("#ws-pill .den-k")).toBe(false);

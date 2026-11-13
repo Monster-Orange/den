@@ -129,12 +129,12 @@ describe("readWorkspaceBlueprints", () => {
           data: { repos: ["b"], focus: true },
         },
       },
-      /only one workspace may set focus: true \(got web, data\)/,
+      /only one project may set focus: true \(got web, data\)/,
     ],
     [
       "a bad workspace name",
       { workspaces: { "a/b": { repos: ["a"] } } },
-      /"a\/b" is not a valid workspace name/,
+      /"a\/b" is not a valid project name/,
     ],
   ])("rejects %s", (_label, defaults, message) => {
     expect(() => readWorkspaceBlueprints(cfg(defaults))).toThrow(message);

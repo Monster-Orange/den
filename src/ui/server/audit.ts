@@ -343,7 +343,7 @@ export function recordCrossWorkspace(
     actor,
     {
       verb: tool,
-      detail: `in workspace ${target}, under a grant to ${actor.agent} of workspace ${actor.workspace}`,
+      detail: `in project ${target}, under a grant to ${actor.agent} of project ${actor.workspace}`,
       targetWorkspace: target,
     },
     principal,

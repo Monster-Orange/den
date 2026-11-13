@@ -286,7 +286,7 @@ describe("agents start", () => {
       ),
     ).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /agent planner belongs to workspace north/,
+      /agent planner belongs to project north/,
     );
     // Without --id, the default id makes room for it.
     expect(
@@ -507,7 +507,7 @@ describe("agents start", () => {
       await agents(r, "start", "-w", "north", "--persona", "planner"),
     ).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /agents\.planner\.grants: workspace "gone" does not exist/,
+      /agents\.planner\.grants: project "gone" does not exist/,
     );
     expect(r.made).toHaveLength(0);
   });
@@ -606,7 +606,7 @@ describe("agents stop and resume", () => {
     await agents(r, "start", "-w", "north", "--persona", "planner");
     expect(await agents(r, "stop", "planner", "-w", "south")).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /agent planner is in workspace north, not south/,
+      /agent planner is in project north, not south/,
     );
   });
 });

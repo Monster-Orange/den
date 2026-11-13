@@ -144,7 +144,7 @@ export function cmdOrg(args: string[]): void {
   const { rows, warnings, resolved } = orgListRows();
   const shown = only ? rows.filter((r) => sameOrg(r.id, only)) : rows;
   const table = newTable({
-    head: ["Org", "Label", "Default", "Workspaces"],
+    head: ["Org", "Label", "Default", "Projects"],
     style: { head: ["cyan"] },
   });
   for (const r of shown)
@@ -165,7 +165,7 @@ export function cmdOrg(args: string[]): void {
   printOrgWarnings(
     inScope
       ? warnings.filter((w) =>
-          [...inScope].some((n) => w.startsWith(`workspace ${n}:`)),
+          [...inScope].some((n) => w.startsWith(`project ${n}:`)),
         )
       : warnings,
   );

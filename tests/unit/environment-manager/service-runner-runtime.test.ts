@@ -1327,7 +1327,7 @@ describe("workspace ownership refcount through runServiceCommand", () => {
 
     expect(mockSpawnStreaming).not.toHaveBeenCalled();
     expect(onLine).toHaveBeenCalledWith(
-      'detached workspace "wsA" — still running for [wsB]',
+      'detached project "wsA" — still running for [wsB]',
     );
     expect(listDaemons()[0].workspaces).toEqual(["wsB"]);
     expect(onClose).toHaveBeenCalledWith(0);

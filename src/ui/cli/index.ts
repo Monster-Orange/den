@@ -5,6 +5,7 @@
  * Main entry point for the interactive CLI
  */
 
+import { notSetLine, readWebUrl } from "../../shared/web-url.js";
 import { getStateDir } from "../../shared/paths.js";
 import { listRecords } from "../../shared/agents/records.js";
 import { workspaceNameRefusal } from "../../shared/workspace-name.js";
@@ -251,7 +252,7 @@ import { DEN_BANNER_LINES, DEN_DIVIDER } from "../../shared/banner.js";
 import { product } from "../../shared/product.js";
 import { AGENT_SETUP_LINE } from "../../shared/agent-setup.js";
 import { ExitRequested, printJson, quietStdout } from "./json-out.js";
-const DEN_HELP_DESCRIPTION = `  ${product().title} - local-first test, service, and workspace orchestration`;
+const DEN_HELP_DESCRIPTION = `  ${product().title} - local-first test, service, and project orchestration`;
 
 /**
  * Concise `<command> -h` help for commands without a dedicated help renderer.
@@ -267,14 +268,14 @@ const WORKSPACE_SUBCOMMANDS: {
     name: "list",
     usage: "list [--org <id>]",
     lines: [
-      "every workspace, the active set, the focus and its org;",
-      "--org <id> lists one org's workspaces",
+      "every project, the active set, the focus and its org;",
+      "--org <id> lists one org's projects",
     ],
   },
   {
     name: "activate",
     usage: "activate <n>",
-    lines: ["add a workspace to the active set"],
+    lines: ["add a project to the active set"],
   },
   {
     name: "deactivate",
@@ -288,22 +289,22 @@ const WORKSPACE_SUBCOMMANDS: {
   {
     name: "focus",
     usage: "focus <n>",
-    lines: ["make an active workspace the default for commands"],
+    lines: ["make an active project the default for commands"],
   },
   {
     name: "use",
     usage: "use <n>",
-    lines: ["activate and focus a workspace"],
+    lines: ["activate and focus a project"],
   },
   {
     name: "create",
     usage: "create [n]",
-    lines: ["create an empty workspace"],
+    lines: ["create an empty project"],
   },
   {
     name: "delete",
     usage: "delete <n>",
-    lines: ["delete a workspace (and its directory)"],
+    lines: ["delete a project (and its directory)"],
   },
   {
     name: "code",
@@ -314,7 +315,7 @@ const WORKSPACE_SUBCOMMANDS: {
     name: "seed",
     usage: "seed",
     lines: [
-      "fill workspaces from the distribution's blueprint",
+      "fill projects from the distribution's blueprint",
       "(defaults.workspace / defaults.workspaces), all managed",
     ],
   },
@@ -322,28 +323,28 @@ const WORKSPACE_SUBCOMMANDS: {
 
 const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   down: {
-    usage: "down [repo] [-w <workspace>] [flags]",
+    usage: "down [repo] [-w <project>] [flags]",
     lines: [
       "Stop the cwd (or named) repo; --with-deps also stops what it sits on (its",
       "derived closure, in reverse order), naming anything else that uses it.",
-      "-a/--all stops EVERY workspace system (reverse derived order, cwd-agnostic;",
+      "-a/--all stops EVERY project system (reverse derived order, cwd-agnostic;",
       "every down script runs — no already-stopped skip).",
-      "Flags: -w/--workspace <ws> (that active workspace, not the focused one; focus stays) · -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
+      "Flags: -w/--workspace <ws> (that active project, not the focused one; focus stays) · -a/--all · -A/--app <app> · --with-deps · -n/--dry-run (print order, stop nothing) · --manifest (legacy depends_on)",
     ],
   },
   restart: {
-    usage: "restart [service...] [-w <workspace>] [-A <app>] [-n|--dry-run]",
+    usage: "restart [service...] [-w <project>] [-A <app>] [-n|--dry-run]",
     lines: [
       `Restart the given services, or every repo in an application (\`${product().cli} apps\`).`,
-      "-w/--workspace <ws> acts in that active workspace instead of the focused one; focus stays.",
+      "-w/--workspace <ws> acts in that active project instead of the focused one; focus stays.",
     ],
   },
   status: {
-    usage: "status [-A <app>] [--scope <all|workspace>] [--verbose]",
+    usage: "status [-A <app>] [--scope <all|project>] [--verbose]",
     lines: [
-      "Show service health for what is in view: every active workspace by",
-      "default (the web UI's scope), or --scope <workspace> for one. A",
-      "service several workspaces share is listed once, with its owners.",
+      "Show service health for what is in view: every active project by",
+      "default (the web UI's scope), or --scope <project> for one. A",
+      "service several projects share is listed once, with its owners.",
       "--verbose (or --all) shows one row per service instead of per repo.",
     ],
   },
@@ -361,46 +362,46 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     lines: ["List all registered services in the catalog."],
   },
   register: {
-    usage: "register [path] [-w <workspace>] [--org <id>]",
+    usage: "register [path] [-w <project>] [--org <id>]",
     lines: [
       "With a path: add that checkout (dev-managed) under its manifest name.",
       "Without one: pick the repo interactively. A managed clone is picked",
-      "from the focused workspace's org; --org <id> picks from another.",
-      "-w writes that workspace (active or not) and leaves focus alone.",
+      "from the focused project's org; --org <id> picks from another.",
+      "-w writes that project (active or not) and leaves focus alone.",
     ],
   },
   repo: {
     usage:
-      'repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>] [--run "<cmd>"] [--health <url>] [--dry-run] [--json] | repo detect <folder> [--json]',
+      'repo add <path|git-url> [--sidecar] [-w <project>] [--name <repo>] [--run "<cmd>"] [--health <url>] [--dry-run] [--json] | repo detect <folder> [--json]',
     lines: [
       "Add a repo with no prompts, never writing into it. A repo with no",
       "manifest (or --sidecar) gets a side-car manifest in manifests/, detected",
       "from its Makefile, compose file or package.json scripts. Safe to re-run.",
       "--dry-run prints the side-car it would write, validated, and writes nothing.",
       "detect: the git repos in a folder in your home, how each runs, and",
-      "suggested workspaces. `{cli} repo add --help` says more.",
+      "suggested projects. `{cli} repo add --help` says more.",
     ],
   },
   onboard: {
     usage: "onboard status [--json]",
     lines: [
-      "What's set up (a distribution, the web server, workspaces, repos, a",
+      "What's set up (a distribution, the web server, projects, repos, a",
       "running service, Den's MCP) and the one next step, with its command.",
       "Reads only; it never runs an agent's CLI.",
     ],
   },
   relocate: {
-    usage: "relocate <repo> <path> [--dry-run] [--force] [-w <workspace>]",
+    usage: "relocate <repo> <path> [--dry-run] [--force] [-w <project>]",
     lines: [
-      "Point every workspace's dev-managed entries for <repo> at <path>.",
+      "Point every project's dev-managed entries for <repo> at <path>.",
       "Refuses a path that is missing, holds a different repo, or has",
       "neither a manifest nor a remote naming this one (unless --force).",
-      "-w limits it to that workspace; focus never changes.",
+      "-w limits it to that project; focus never changes.",
     ],
   },
   setup: {
     usage:
-      "setup [service...] [-w <workspace>] [--force|-f] [--plan [-w <workspace>]... [--all-active]]",
+      "setup [service...] [-w <project>] [--force|-f] [--plan [-w <project>]... [--all-active]]",
     lines: [
       "Run 'make setup' once per system (clones missing managed repos first).",
       "Default targets MANAGED clones only — setup's codegen/installs",
@@ -408,16 +409,16 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
       "--force (-f) includes dev-managed repos; naming a service always works.",
       "--plan prints each repo's org and clone URL and stops: nothing is",
       "cloned, seeded or written (on a fresh machine: the blueprint's plan).",
-      "It plans the focused workspace; -w <workspace> (repeatable) plans those,",
-      "--all-active every active one. Repos only other workspaces hold are named.",
-      "Without --plan, -w <workspace> sets up that workspace's systems instead of the focused one's.",
+      "It plans the focused project; -w <project> (repeatable) plans those,",
+      "--all-active every active one. Repos only other projects hold are named.",
+      "Without --plan, -w <project> sets up that project's systems instead of the focused one's.",
     ],
   },
   org: {
     usage: "org list [--org <id>]",
     lines: [
-      "Every org: its label, its workspaces, whether it is the default",
-      "(github_org), and any org warnings. A workspace's org is its own org:,",
+      "Every org: its label, its projects, whether it is the default",
+      "(github_org), and any org warnings. A project's org is its own org:,",
       "then the blueprint's org:, then its repos' one catalog owner, then",
       "github_org.",
     ],
@@ -429,7 +430,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   workspace: {
     usage: `workspace <${WORKSPACE_SUBCOMMANDS.map((c) => c.name).join("|")}> [name]`,
     lines: [
-      "Manage workspaces (named sets of services + their modes).",
+      "Manage projects (named sets of services + their modes).",
       "",
       ...WORKSPACE_SUBCOMMANDS.flatMap((c) =>
         c.lines.map(
@@ -463,7 +464,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   init: {
     usage: "init [repo-dir]",
     lines: [
-      `In the ${product().cli} root: seed/reset the default workspace (all repos managed).`,
+      `In the ${product().cli} root: seed/reset the default project (all repos managed).`,
       `In a service repo: scaffold that repo's ${product().manifestYml} manifest.`,
     ],
   },
@@ -481,7 +482,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   },
   stack: {
     usage:
-      "stack [ls|up|down|restart|health|ps|logs] <name…> [--build] [-w <workspace>]",
+      "stack [ls|up|down|restart|health|ps|logs] <name…> [--build] [-w <project>]",
     lines: [
       "Run repos' compose stacks with no host ports, at https://<route>.<stack>.<edge.domain>.",
     ],
@@ -543,7 +544,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   "local-dev": {
     usage: "local-dev [on|off]",
     lines: [
-      "Toggle the local-dev experience (web Workspaces page + service mgmt).",
+      "Toggle the local-dev experience (web Projects page + service mgmt).",
     ],
   },
   menu: {
@@ -815,14 +816,14 @@ class DenCLI {
     if (parsed.flags.workspace) {
       const file = readWorkspacesFile();
       if (!file.workspaces[parsed.flags.workspace]) {
-        throw new Error(`Workspace "${parsed.flags.workspace}" does not exist`);
+        throw new Error(`Project "${parsed.flags.workspace}" does not exist`);
       }
       if (
         workspaceFlagRequiresActive(parsed.command ?? "") &&
         !isWorkspaceActive(parsed.flags.workspace)
       ) {
         throw new Error(
-          `Workspace "${parsed.flags.workspace}" is not active — run \`${product().cli} workspace activate ${parsed.flags.workspace}\` first`,
+          `Project "${parsed.flags.workspace}" is not active — run \`${product().cli} workspace activate ${parsed.flags.workspace}\` first`,
         );
       }
       process.env.DEN_WORKSPACE_OVERRIDE = parsed.flags.workspace;
@@ -1650,7 +1651,7 @@ class DenCLI {
           setActiveWorkspace(selected);
           console.log(
             chalk.green(
-              `\n  ✓ Activated and focused workspace: ${chalk.bold(selected)}\n`,
+              `\n  ✓ Activated and focused project: ${chalk.bold(selected)}\n`,
             ),
           );
           break;
@@ -1661,12 +1662,12 @@ class DenCLI {
           );
           const slug = createWorkspace(name, { services: {} });
           const activate = await cliPrompts.confirm(
-            `Switch to workspace "${name}" now?`,
+            `Switch to project "${name}" now?`,
             true,
           );
           if (activate) setActiveWorkspace(slug);
           console.log(
-            chalk.green(`\n  ✓ Created workspace: ${chalk.bold(name)}\n`),
+            chalk.green(`\n  ✓ Created project: ${chalk.bold(name)}\n`),
           );
           break;
         }
@@ -1677,19 +1678,19 @@ class DenCLI {
         case "remove-service": {
           const ws = getActiveWorkspace();
           if (!ws) {
-            console.log(chalk.red("\n  No active workspace.\n"));
+            console.log(chalk.red("\n  No active project.\n"));
             break;
           }
 
           const existing = Object.keys(ws.config.services);
           if (existing.length === 0) {
-            console.log(chalk.yellow("\n  No services in this workspace.\n"));
+            console.log(chalk.yellow("\n  No services in this project.\n"));
             break;
           }
 
           const selected = await cliPrompts.promptSelectServices(
             existing,
-            `Remove from workspace "${ws.name}":`,
+            `Remove from project "${ws.name}":`,
           );
           if (selected.length === 0) break;
 
@@ -1712,7 +1713,7 @@ class DenCLI {
           if (names.length === 0) {
             console.log(
               chalk.yellow(
-                "\n  No workspaces to delete (cannot delete default).\n",
+                "\n  No projects to delete (cannot delete default).\n",
               ),
             );
             break;
@@ -1725,13 +1726,13 @@ class DenCLI {
             break;
           }
           const confirmed = await cliPrompts.confirm(
-            `Delete workspace "${name}"?`,
+            `Delete project "${name}"?`,
             false,
           );
           if (!confirmed) break;
           deleteWorkspaceDirectory(name);
           deleteWorkspaceConfig(name);
-          console.log(chalk.green(`\n  ✓ Deleted workspace: ${name}\n`));
+          console.log(chalk.green(`\n  ✓ Deleted project: ${name}\n`));
           break;
         }
         case "back":
@@ -2258,7 +2259,7 @@ class DenCLI {
     if (ws) {
       const invocation = resolveInvocationTarget(ws.name, ws.config, catalog);
       if (invocation) {
-        console.log(chalk.cyan(`\n  Workspace: ${chalk.bold(ws.name)}`));
+        console.log(chalk.cyan(`\n  Project: ${chalk.bold(ws.name)}`));
         console.log(chalk.gray(`  Invocation repo: ${invocation.repoRoot}`));
         console.log(
           chalk.gray(`  Resolved target: ${invocation.addresses.join(", ")}\n`),
@@ -2662,7 +2663,7 @@ class DenCLI {
     if (!target) {
       console.log(
         chalk.yellow(
-          "\n  No services in the active workspace — nothing to start.\n",
+          "\n  No services in the active project — nothing to start.\n",
         ),
       );
       if (plan) process.exitCode = 1;
@@ -2785,7 +2786,7 @@ class DenCLI {
     if (!target) {
       console.log(
         chalk.yellow(
-          "\n  No services in the active workspace — nothing to stop.\n",
+          "\n  No services in the active project — nothing to stop.\n",
         ),
       );
       return;
@@ -2812,7 +2813,7 @@ class DenCLI {
     if (!only)
       for (const d of daemonsOutsideWorkspaces())
         printNotice(
-          `Warning: ${d.address} is recorded as running (${d.repoPath}) but is in no active workspace: ` +
+          `Warning: ${d.address} is recorded as running (${d.repoPath}) but is in no active project: ` +
             `down -a left it alone. Stop it yourself if it still runs.`,
         );
   }
@@ -2840,7 +2841,7 @@ class DenCLI {
     );
     row(
       "-a, --all",
-      "start EVERY workspace system in derived order (cwd-agnostic; skips auto-start-off)",
+      "start EVERY project system in derived order (cwd-agnostic; skips auto-start-off)",
     );
     row(
       "-A, --app <app>",
@@ -2861,7 +2862,7 @@ class DenCLI {
     );
     row(
       "-w, --workspace <ws>",
-      "act in that (active) workspace instead of the focused one; focus stays",
+      "act in that (active) project instead of the focused one; focus stays",
     );
     row("--skip-secrets", "skip the secrets-backend sign-in preflight");
     row(
@@ -2995,8 +2996,8 @@ class DenCLI {
       console.log(
         chalk.green(
           multi
-            ? `\n  ✓ ${plural(bps.length, "workspace")} already seeded (${bps.map((b) => b.name).join(", ")}): nothing changed.\n`
-            : `\n  ✓ Default workspace already seeded — ${plural(bps[0].repos.length, "repo")} (managed): nothing changed.\n`,
+            ? `\n  ✓ ${plural(bps.length, "project")} already seeded (${bps.map((b) => b.name).join(", ")}): nothing changed.\n`
+            : `\n  ✓ Default project already seeded — ${plural(bps[0].repos.length, "repo")} (managed): nothing changed.\n`,
         ),
       );
       return false;
@@ -3008,8 +3009,8 @@ class DenCLI {
     // only an explicit --reset may do it (SEED-0).
     if (willReset && !interactive && !reset) {
       const what = multi
-        ? "the blueprint's workspaces"
-        : "the default workspace";
+        ? "the blueprint's projects"
+        : "the default project";
       console.error(
         chalk.red(
           `\n  ❌ Not resetting ${what}: it has entries, and a reset replaces them all\n` +
@@ -3022,7 +3023,7 @@ class DenCLI {
     }
 
     for (const bp of bps) {
-      const label = multi ? `Workspace ${bp.name}` : "Default workspace";
+      const label = multi ? `Project ${bp.name}` : "Default project";
       console.log(
         chalk.cyan(
           `\n  ${label} — ${plural(bp.repos.length, "repo")}, all managed:`,
@@ -3042,7 +3043,7 @@ class DenCLI {
     );
 
     if (interactive) {
-      const what = multi ? "these workspaces" : "the default workspace";
+      const what = multi ? "these projects" : "the default project";
       const question = willReset
         ? `  Reset ${what} to this shipped set?`
         : `  Seed ${what} now?`;
@@ -3067,7 +3068,7 @@ class DenCLI {
       const focus = readWorkspacesFile().focus;
       console.log(
         chalk.green(
-          `  ✓ ${plural(seeded.length, "workspace")} ${willReset ? "reset to the blueprint" : "ready"} (${seeded.map((w) => w.name).join(", ")}), all active; focus: ${focus}. ` +
+          `  ✓ ${plural(seeded.length, "project")} ${willReset ? "reset to the blueprint" : "ready"} (${seeded.map((w) => w.name).join(", ")}), all active; focus: ${focus}. ` +
             `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
         ),
       );
@@ -3076,7 +3077,7 @@ class DenCLI {
     const seeded = seedDefaultWorkspace();
     console.log(
       chalk.green(
-        `  ✓ Default workspace ${willReset ? "reset to the blueprint" : "ready"} — ${plural(seeded.length, "repo")} (managed). ` +
+        `  ✓ Default project ${willReset ? "reset to the blueprint" : "ready"} — ${plural(seeded.length, "repo")} (managed). ` +
           `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
       ),
     );
@@ -3096,8 +3097,8 @@ class DenCLI {
         await this.seedDefaultWorkspaceFlow("auto");
       } else {
         const hint = isMultiBlueprint()
-          ? "no workspaces yet: run `{cli} workspace seed` to create them from the blueprint"
-          : "default workspace is empty: run `{cli} workspace seed` to fill it from the blueprint";
+          ? "no projects yet: run `{cli} workspace seed` to create them from the blueprint"
+          : "default project is empty: run `{cli} workspace seed` to fill it from the blueprint";
         console.error(chalk.gray(`  ${hint.replace("{cli}", product().cli)}`));
       }
       return;
@@ -3106,7 +3107,7 @@ class DenCLI {
     if (added.length > 0) {
       console.log(
         chalk.gray(
-          `  default workspace: added standard ${noun(added.length, "repo")} ${added.join(", ")} (managed)`,
+          `  default project: added standard ${noun(added.length, "repo")} ${added.join(", ")} (managed)`,
         ),
       );
     }
@@ -3141,7 +3142,7 @@ class DenCLI {
       process.env.DEN_WORKSPACE_OVERRIDE = r.workspace;
       console.log(
         chalk.gray(
-          `\n  ${names.join(", ")}: in workspace ${r.workspace} (not the focus)`,
+          `\n  ${names.join(", ")}: in project ${r.workspace} (not the focus)`,
         ),
       );
     }
@@ -3188,7 +3189,7 @@ class DenCLI {
       if (seedArg) {
         console.log(
           chalk.red(
-            `\n  -a/--all starts the whole workspace — drop the repo arg (${seedArg}) or the flag.\n`,
+            `\n  -a/--all starts the whole project — drop the repo arg (${seedArg}) or the flag.\n`,
           ),
         );
         process.exit(1);
@@ -3323,7 +3324,7 @@ class DenCLI {
       out.fix = `${bin} up ${args.join(" ")} --plan`.replace(/\s+/g, " ");
     } else if (touched.length === 0) {
       out.error =
-        "nothing was started: no repo named, and the folder up ran in is not a repo in the workspace";
+        "nothing was started: no repo named, and the folder up ran in is not a repo in the project";
       out.fix = `${bin} up -a --json`;
       out.ask = "Which repo should start? (its name, as `repo add` printed it)";
     }
@@ -3419,13 +3420,13 @@ class DenCLI {
     // (0.4.29-dev.2's gate).
     const out: Record<string, unknown> = {
       ok: !error && !running,
-      url,
+      url: readWebUrl()?.url ?? null, // D80: the address, never loopback
       port,
       running: error && !running ? null : running,
       stopped: !error && was && !running,
     };
     if (!out.ok) {
-      out.error = error ?? `the web server still answers at ${url}`;
+      out.error = error ?? `the web server still answers on port ${port}`;
       out.fix = `${bin} doctor --json`;
     }
     printJson(out);
@@ -3473,9 +3474,13 @@ class DenCLI {
     }
     // A server answering is not enough: `restart` that failed to stop the
     // old one leaves it answering (0.4.29-dev.2's gate). The error wins.
+    // D80: the address people open (web.url); null, with how to set it,
+    // when it isn't set. Never the loopback one the probe used.
+    const address = readWebUrl();
     const out: Record<string, unknown> = {
       ok: !error && probe.kind === "up",
-      url,
+      url: address?.url ?? null,
+      ...(address ? {} : { address: notSetLine(bin) }),
       port,
       ...(probe.kind === "up" && probe.version
         ? { version: probe.version }
@@ -3485,10 +3490,10 @@ class DenCLI {
       out.error = error;
       out.fix = `${bin} web restart --no-open --json`;
     } else if (probe.kind === "foreign") {
-      out.error = `${probe.who} answers at ${url}, not this distribution's web server`;
+      out.error = `${probe.who} answers on port ${port}, not this distribution's web server`;
       out.ask = `Another Den distribution uses port ${port}. Which port should ${product().title} use? (web.port in config/local/user.yml)`;
     } else if (probe.kind !== "up") {
-      out.error = error ?? `the web server is not answering at ${url}`;
+      out.error = error ?? `the web server is not answering on port ${port}`;
       out.fix = `${bin} web restart --no-open --json`;
     }
     printJson(out);
@@ -3515,7 +3520,7 @@ class DenCLI {
           ) +
             chalk.gray(
               `  Start a system by name (\`${product().cli} up shop\`), cd into a service repo,\n` +
-                `  or run \`${product().cli} graph\` to see the workspace.\n`,
+                `  or run \`${product().cli} graph\` to see the project.\n`,
             ),
         );
       } else if (process.env.DEN_WORKSPACE_OVERRIDE) {
@@ -3583,7 +3588,7 @@ class DenCLI {
       if (seedArg) {
         console.log(
           chalk.red(
-            `\n  -a/--all stops the whole workspace — drop the repo arg (${seedArg}) or the flag.\n`,
+            `\n  -a/--all stops the whole project — drop the repo arg (${seedArg}) or the flag.\n`,
           ),
         );
         process.exit(1);
@@ -3766,9 +3771,7 @@ class DenCLI {
     if (
       results.some((r) => noAutostart.has(parseAddress(r.address).repoName))
     ) {
-      console.log(
-        chalk.gray("  ⏸ auto-start off — not started by workspace up"),
-      );
+      console.log(chalk.gray("  ⏸ auto-start off — not started by up"));
     }
     if (!verbose && raw.length !== results.length) {
       console.log(
@@ -3809,7 +3812,7 @@ class DenCLI {
     if (!resolved) {
       console.log(
         chalk.red(
-          `\n  Service "${target.target}" not found in catalog or active workspace.\n`,
+          `\n  Service "${target.target}" not found in catalog or active project.\n`,
         ),
       );
       process.exit(1);
@@ -3934,9 +3937,7 @@ class DenCLI {
     if (
       results.some((r) => noAutostart.has(parseAddress(r.address).repoName))
     ) {
-      console.log(
-        chalk.gray("  ⏸ auto-start off — not started by workspace up"),
-      );
+      console.log(chalk.gray("  ⏸ auto-start off — not started by up"));
     }
     console.log();
   }
@@ -3944,14 +3945,14 @@ class DenCLI {
   private async cmdRegister(args: string[]): Promise<void> {
     if (args.includes("-h") || args.includes("--help")) {
       console.log(
-        `\n  ${product().cli} register [path] [--name <repo>] [--gh <owner/repo>] [-w <workspace>] [--org <id>]\n\n` +
+        `\n  ${product().cli} register [path] [--name <repo>] [--gh <owner/repo>] [-w <project>] [--org <id>]\n\n` +
           "  With a path: add that checkout to the catalog and the focused\n" +
-          "  workspace as your own (dev-managed) copy, without prompts. The name\n" +
+          "  project as your own (dev-managed) copy, without prompts. The name\n" +
           "  defaults to the manifest's name, then the folder name; the GitHub\n" +
-          "  slug to the git remote. -w writes that workspace (active or not)\n" +
+          "  slug to the git remote. -w writes that project (active or not)\n" +
           "  and leaves focus alone.\n" +
           "  Without a path: choose a local checkout or a managed clone interactively;\n" +
-          "  a managed clone comes from the workspace's org, or --org <id>.\n",
+          "  a managed clone comes from the project's org, or --org <id>.\n",
       );
       return;
     }
@@ -3965,7 +3966,7 @@ class DenCLI {
     if (!repoPathArg && !process.stdin.isTTY) {
       process.stderr.write(
         `register needs a terminal (stdin is not a TTY); without one: ` +
-          `${product().cli} register <path> [--name <repo>] [--gh <owner/repo>] [-w <workspace>]\n`,
+          `${product().cli} register <path> [--name <repo>] [--gh <owner/repo>] [-w <project>]\n`,
       );
       process.exitCode = 2;
       return;
@@ -3974,7 +3975,7 @@ class DenCLI {
     if (!ws) {
       console.log(
         chalk.red(
-          `\n  No active workspace. Create one first: ${product().cli} workspace create\n`,
+          `\n  No active project. Create one first: ${product().cli} workspace create\n`,
         ),
       );
       return;
@@ -4005,15 +4006,15 @@ class DenCLI {
    * clones and are left alone. Focus and the active set never change.
    */
   private async cmdRelocate(args: string[]): Promise<void> {
-    const usage = `${product().cli} relocate <repo> <path> [--dry-run] [--force] [-w <workspace>]`;
+    const usage = `${product().cli} relocate <repo> <path> [--dry-run] [--force] [-w <project>]`;
     if (args.includes("-h") || args.includes("--help")) {
       console.log(
         `\n  ${usage}\n\n` +
-          "  A checkout moved: point every workspace's dev-managed entries for\n" +
+          "  A checkout moved: point every project's dev-managed entries for\n" +
           "  <repo> at <path>. Refuses a missing path, one whose manifest\n" +
           "  name or GitHub remote names a different repo, and one where\n" +
           "  neither names this repo (--force accepts that last). --dry-run shows\n" +
-          "  the changes without writing. -w limits it to that workspace.\n" +
+          "  the changes without writing. -w limits it to that project.\n" +
           "  Focus and the active set never change.\n",
       );
       return;
@@ -4051,7 +4052,7 @@ class DenCLI {
       )
     ) {
       fail(
-        `"${repoName}" is not in ${only ? `workspace "${only}"` : "any workspace"}.`,
+        `"${repoName}" is not in ${only ? `project "${only}"` : "any project"}.`,
       );
       return;
     }
@@ -4240,7 +4241,7 @@ class DenCLI {
       console.log(
         chalk.red(
           `\n  ❌ No GitHub org to list: set github_org in ${product().configFile}, ` +
-            `org: on workspace ${ws.name}, or pass --org <id> ` +
+            `org: on project ${ws.name}, or pass --org <id> ` +
             `(an org with no GitHub source in orgs.<id>.sources has none)\n`,
         ),
       );
@@ -4336,7 +4337,7 @@ class DenCLI {
       );
       addresses = await cliPrompts.promptSelectServices(
         all,
-        `Add which services to workspace "${ws.name}"?`,
+        `Add which services to project "${ws.name}"?`,
         true,
       );
     }
@@ -4370,7 +4371,7 @@ class DenCLI {
     }
     writeWorkspacesFile(file);
 
-    console.log(chalk.green(`\n  ✓ Added to workspace "${ws.name}":\n`));
+    console.log(chalk.green(`\n  ✓ Added to project "${ws.name}":\n`));
     for (const addr of addresses) {
       const detail =
         mode === "managed"
@@ -4448,13 +4449,13 @@ class DenCLI {
   ): void {
     const ws = getActiveWorkspace();
     if (!ws) {
-      console.log(chalk.red("\n  No active workspace.\n"));
+      console.log(chalk.red("\n  No active project.\n"));
       return;
     }
     const file = readWorkspacesFile();
     const wsFile = file.workspaces[ws.name];
     if (!wsFile) {
-      console.log(chalk.red(`\n  Workspace "${ws.name}" not found.\n`));
+      console.log(chalk.red(`\n  Project "${ws.name}" not found.\n`));
       return;
     }
     if (!wsFile.services) wsFile.services = {};
@@ -4484,7 +4485,7 @@ class DenCLI {
     console.log(chalk.green(`\n  ✓ ${chalk.bold(repoName)} is now ${detail}`));
     console.log(
       chalk.gray(
-        `    services: ${keys.join(", ")}${added ? "  (added to workspace)" : ""}`,
+        `    services: ${keys.join(", ")}${added ? "  (added to project)" : ""}`,
       ),
     );
     const revert =
@@ -4520,7 +4521,7 @@ class DenCLI {
     if (planWs.length > 1 || allActive) {
       console.error(
         chalk.red(
-          `\n  More than one -w, and --all-active, go with --plan: setup itself works on one workspace (-w <workspace>, or the one the named repos are in, else the focus).\n`,
+          `\n  More than one -w, and --all-active, go with --plan: setup itself works on one project (-w <project>, or the one the named repos are in, else the focus).\n`,
         ),
       );
       process.exitCode = 1;
@@ -4529,14 +4530,14 @@ class DenCLI {
     if (planWs.length === 1) {
       const ws = planWs[0];
       if (!readWorkspacesFile().workspaces[ws]) {
-        console.error(chalk.red(`\n  Workspace "${ws}" does not exist\n`));
+        console.error(chalk.red(`\n  Project "${ws}" does not exist\n`));
         process.exitCode = 1;
         return;
       }
       if (!isWorkspaceActive(ws)) {
         console.error(
           chalk.red(
-            `\n  Workspace "${ws}" is not active — run \`${product().cli} workspace activate ${ws}\` first\n`,
+            `\n  Project "${ws}" is not active — run \`${product().cli} workspace activate ${ws}\` first\n`,
           ),
         );
         process.exitCode = 1;
@@ -4552,7 +4553,7 @@ class DenCLI {
     if (services.length === 0) {
       console.log(
         chalk.yellow(
-          `\n  No services in active workspace. Run: ${product().cli} register\n`,
+          `\n  No services in active project. Run: ${product().cli} register\n`,
         ),
       );
       return;
@@ -4570,7 +4571,7 @@ class DenCLI {
       const ws = getActiveWorkspace()?.name ?? "default";
       console.error(
         chalk.red(
-          `\n  ✗ Not in workspace ${ws}: ${unmatched.join(", ")}. Nothing was set up.\n`,
+          `\n  ✗ Not in project ${ws}: ${unmatched.join(", ")}. Nothing was set up.\n`,
         ),
       );
       process.exitCode = 1;
@@ -4665,7 +4666,7 @@ class DenCLI {
         const nsCol = [...nsRows.values()].some((r) => r.differs || r.error);
         const table = newTable({
           head: [
-            "Workspace",
+            "Project",
             "Org",
             "Active",
             "Focus",
@@ -4698,15 +4699,15 @@ class DenCLI {
         console.log(table.toString());
         printOrgWarnings(
           [...nsRows.values()].flatMap((r) =>
-            r.error ? [`workspace ${r.workspace}: ${r.error}`] : r.warnings,
+            r.error ? [`project ${r.workspace}: ${r.error}`] : r.warnings,
           ),
         );
         if (only && shown.length === 0)
-          console.log(chalk.yellow(`  No workspace in org ${only}.`));
+          console.log(chalk.yellow(`  No project in org ${only}.`));
         const names = new Set(shown.map(([n]) => n));
         printOrgWarnings(
           warnings.filter((w) =>
-            [...names].some((n) => w.startsWith(`workspace ${n}:`)),
+            [...names].some((n) => w.startsWith(`project ${n}:`)),
           ),
         );
         break;
@@ -4721,7 +4722,7 @@ class DenCLI {
         }
         activateWorkspace(name);
         console.log(
-          chalk.green(`\n  ✓ Activated workspace: ${chalk.bold(name)}\n`),
+          chalk.green(`\n  ✓ Activated project: ${chalk.bold(name)}\n`),
         );
         break;
       }
@@ -4740,7 +4741,7 @@ class DenCLI {
           console.log(chalk.gray(`    ${line}`)),
         );
         console.log(
-          chalk.green(`\n  ✓ Deactivated workspace: ${chalk.bold(name)}`),
+          chalk.green(`\n  ✓ Deactivated project: ${chalk.bold(name)}`),
         );
         for (const release of releases) {
           switch (release.outcome) {
@@ -4793,7 +4794,7 @@ class DenCLI {
         }
         setFocusedWorkspace(name);
         console.log(
-          chalk.green(`\n  ✓ Focused workspace: ${chalk.bold(name)}\n`),
+          chalk.green(`\n  ✓ Focused project: ${chalk.bold(name)}\n`),
         );
         break;
       }
@@ -4808,7 +4809,7 @@ class DenCLI {
         setActiveWorkspace(name);
         console.log(
           chalk.green(
-            `\n  ✓ Activated and focused workspace: ${chalk.bold(name)}\n`,
+            `\n  ✓ Activated and focused project: ${chalk.bold(name)}\n`,
           ),
         );
         break;
@@ -4832,7 +4833,7 @@ class DenCLI {
         const slug = createWorkspace(name, { services: {} });
         console.log(
           chalk.green(
-            `\n  ✓ Created workspace: ${chalk.bold(name)}${slug !== name ? ` (${slug})` : ""}`,
+            `\n  ✓ Created project: ${chalk.bold(name)}${slug !== name ? ` (${slug})` : ""}`,
           ),
         );
         console.log(
@@ -4860,7 +4861,7 @@ class DenCLI {
         if (!yes && !process.stdin.isTTY) {
           console.log(
             chalk.red(
-              `\n  Deleting a workspace asks first, and there is no terminal to ask in. Add --yes: ${product().cli} workspace delete ${JSON.stringify(args[1])} --yes\n`,
+              `\n  Deleting a project asks first, and there is no terminal to ask in. Add --yes: ${product().cli} workspace delete ${JSON.stringify(args[1])} --yes\n`,
             ),
           );
           process.exitCode = 2;
@@ -4869,20 +4870,20 @@ class DenCLI {
         const confirmed =
           yes ||
           (await cliPrompts.confirm(
-            `Delete workspace "${name}"? This will remove ${product().workspacesDir}/${name}/`,
+            `Delete project "${name}"? This will remove ${product().workspacesDir}/${name}/`,
             false,
           ));
         if (!confirmed) return;
         deleteWorkspaceDirectory(name);
         deleteWorkspaceConfig(name);
-        console.log(chalk.green(`\n  ✓ Deleted workspace: ${name}\n`));
+        console.log(chalk.green(`\n  ✓ Deleted project: ${name}\n`));
         break;
       }
       case "code": {
         const name = args[1] ?? focus;
         const wsCfg = file.workspaces[name];
         if (!wsCfg) {
-          console.log(chalk.red(`  Workspace "${name}" not found\n`));
+          console.log(chalk.red(`  Project "${name}" not found\n`));
           return;
         }
         const editor = readUserConfig().editor ?? "";
@@ -4917,7 +4918,7 @@ class DenCLI {
         } else {
           console.log(
             chalk.yellow(
-              `\n  ⚠ No workspace-level open support for editor "${editor || "(none set)"}".\n` +
+              `\n  ⚠ No project-level open support for editor "${editor || "(none set)"}".\n` +
                 `    Open individual repos from the graph or: ${product().cli} settings → set editor\n`,
             ),
           );
@@ -4936,9 +4937,7 @@ class DenCLI {
   private async cmdSync(args: string[]): Promise<void> {
     const allServices = getWorkspaceServices();
     if (allServices.length === 0) {
-      console.log(
-        chalk.yellow("\n  No services in active workspace to sync.\n"),
-      );
+      console.log(chalk.yellow("\n  No services in active project to sync.\n"));
       return;
     }
 
@@ -5205,7 +5204,7 @@ class DenCLI {
         chalk.yellow(
           held
             ? `  No manifests in ${heldManifestsDir()}.`
-            : "  No repos in any workspace and no held manifests.",
+            : "  No repos in any project and no held manifests.",
         ),
       );
       console.log();
@@ -5340,13 +5339,13 @@ class DenCLI {
       "  repo add <path|url>  Add a repo with no prompts, never changing it (--sidecar, --dry-run, --json)",
     );
     console.log(
-      "  repo detect <folder> Find the repos in a folder and suggest workspaces (--json)",
+      "  repo detect <folder> Find the repos in a folder and suggest projects (--json)",
     );
     console.log(
       "  onboard status       What's set up, and the next step (--json)",
     );
     console.log(
-      "  relocate <repo> <path>  Point a moved checkout's workspace entries at its new path",
+      "  relocate <repo> <path>  Point a moved checkout's project entries at its new path",
     );
     console.log();
     console.log(
@@ -5377,32 +5376,32 @@ class DenCLI {
     console.log(
       "  sessions list|attach|kill   List, attach to (ctrl-] detaches) or stop sessions",
     );
-    console.log("  agents list -w <ws>  The workspace's agents");
+    console.log("  agents list -w <ws>  The project's agents");
     console.log(
-      "  agents start -w <ws> --persona <p>  Run a persona in the workspace (stop, resume, rm, personas)",
+      "  agents start -w <ws> --persona <p>  Run a persona in the project (stop, resume, rm, personas)",
     );
     console.log(
       "  usage agents|report      Agents' tokens and outcomes, from local transcripts (never sent)",
     );
     console.log();
     console.log(
-      "  workspace list           List workspaces (active set + focus)",
+      "  workspace list           List projects (active set + focus)",
     );
-    console.log("  workspace activate <n>   Add workspace to the active set");
+    console.log("  workspace activate <n>   Add project to the active set");
     console.log(
-      "  workspace deactivate <n> Remove workspace from the active set",
-    );
-    console.log(
-      "  workspace focus <n>      Focus an active workspace (the default)",
-    );
-    console.log("  workspace use <n>        Activate and focus a workspace");
-    console.log("  workspace create [n]     Create a new workspace");
-    console.log("  workspace delete <n>     Delete a workspace");
-    console.log(
-      "  workspace code [n]       Open workspace in VS Code (generates .code-workspace)",
+      "  workspace deactivate <n> Remove project from the active set",
     );
     console.log(
-      "  org list [--org <id>]    List orgs: label, workspaces, default, warnings",
+      "  workspace focus <n>      Focus an active project (the default)",
+    );
+    console.log("  workspace use <n>        Activate and focus a project");
+    console.log("  workspace create [n]     Create a new project");
+    console.log("  workspace delete <n>     Delete a project");
+    console.log(
+      "  workspace code [n]       Open project in VS Code (generates .code-workspace)",
+    );
+    console.log(
+      "  org list [--org <id>]    List orgs: label, projects, default, warnings",
     );
     console.log("\nTest commands:");
     console.log(
@@ -5418,9 +5417,7 @@ class DenCLI {
     console.log("\nOptions:");
     console.log("  --help, -h             Show this help message");
     console.log("  --version, -v          Show version");
-    console.log(
-      "  -w, --workspace <name> Use a workspace for this command only",
-    );
+    console.log("  -w, --workspace <name> Use a project for this command only");
     console.log(
       "  -t, --tabs             Run up/restart commands in terminal tabs",
     );
@@ -5502,8 +5499,8 @@ function workspaceAgentsRefusal(name: string): string | null {
   if (!ids.length) return null;
   const cli = product().cli;
   return (
-    `Workspace "${name}" has ${ids.length === 1 ? "an agent" : `${ids.length} agents`} (${ids.join(", ")}). ` +
-    `Move ${ids.length === 1 ? "it" : "them"} first (${cli} agents move <id> -w <workspace>), ` +
+    `Project "${name}" has ${ids.length === 1 ? "an agent" : `${ids.length} agents`} (${ids.join(", ")}). ` +
+    `Move ${ids.length === 1 ? "it" : "them"} first (${cli} agents move <id> -w <project>), ` +
     `or stop and remove ${ids.length === 1 ? "it" : "them"} (${cli} agents stop <id>, ${cli} agents rm <id>).`
   );
 }

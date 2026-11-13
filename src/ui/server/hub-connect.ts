@@ -27,6 +27,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { readWebUrl } from "../../shared/web-url.js";
 import {
   hubExchange,
   HubCallError,
@@ -255,7 +256,11 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     readUser: () => readUserConfig() as Record<string, unknown>,
     writeUser: (u) => writeUserConfig(u as never),
     installLabel: () => defaultInstallLabel(),
-    denUrl: () => edgeDenUrl(),
+    // D80: the install's address, as Hub takes it (https, or a .localhost).
+    denUrl: () => {
+      const w = readWebUrl();
+      return (w && denUrlOrigin(w.url)) || undefined;
+    },
   };
 }
 

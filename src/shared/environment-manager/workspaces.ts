@@ -415,11 +415,11 @@ export function requireActiveWorkspace(name: string): {
 } {
   const ws = getWorkspaceByName(name);
   if (!ws) {
-    throw new Error(`Workspace "${name}" does not exist`);
+    throw new Error(`Project "${name}" does not exist`);
   }
   if (!isWorkspaceActive(name)) {
     throw new Error(
-      `Workspace "${name}" is not active — run \`${product().cli} workspace activate ${name}\` first`,
+      `Project "${name}" is not active — run \`${product().cli} workspace activate ${name}\` first`,
     );
   }
   return ws;
@@ -473,7 +473,7 @@ export function getFocusedWorkspace(): {
 export function activateWorkspace(name: string): void {
   const file = readWorkspacesFile();
   if (!file.workspaces[name]) {
-    throw new Error(`Workspace "${name}" does not exist`);
+    throw new Error(`Project "${name}" does not exist`);
   }
   if (!file.active.includes(name)) {
     file.active.push(name);
@@ -504,11 +504,11 @@ export function deactivateWorkspace(name: string): void {
 export function setFocusedWorkspace(name: string): void {
   const file = readWorkspacesFile();
   if (!file.workspaces[name]) {
-    throw new Error(`Workspace "${name}" does not exist`);
+    throw new Error(`Project "${name}" does not exist`);
   }
   if (!file.active.includes(name)) {
     throw new Error(
-      `Workspace "${name}" is not active — run \`${product().cli} workspace activate ${name}\` first`,
+      `Project "${name}" is not active — run \`${product().cli} workspace activate ${name}\` first`,
     );
   }
   file.focus = name;
@@ -519,7 +519,7 @@ export function setFocusedWorkspace(name: string): void {
 export function setActiveWorkspace(name: string): void {
   const file = readWorkspacesFile();
   if (!file.workspaces[name]) {
-    throw new Error(`Workspace "${name}" does not exist`);
+    throw new Error(`Project "${name}" does not exist`);
   }
   if (!file.active.includes(name)) {
     file.active.push(name);
@@ -552,7 +552,7 @@ export function createWorkspace(name: string, config: WorkspaceConfig): string {
 export function renameWorkspace(slug: string, name: string): void {
   const file = readWorkspacesFile();
   const cfg = file.workspaces[slug];
-  if (!cfg) throw new Error(`no workspace "${slug}"`);
+  if (!cfg) throw new Error(`no project "${slug}"`);
   const others = { ...file.workspaces };
   delete others[slug];
   const typed = String(name ?? "").trim();
@@ -999,7 +999,7 @@ export function setWorkspaceRuntimeBin(
 ): void {
   const file = readWorkspacesFile();
   const cfg = file.workspaces[ws];
-  if (!cfg) throw new Error(`workspace "${ws}" does not exist`);
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
   const agents = { ...(cfg.agents ?? {}) };
   const runtimes = { ...(agents.runtimes ?? {}) };
   if (bin === null) delete runtimes[id];
@@ -1044,7 +1044,7 @@ export function setWorkspaceAgentPermission(
 ): void {
   const file = readWorkspacesFile();
   const cfg = file.workspaces[ws];
-  if (!cfg) throw new Error(`workspace "${ws}" does not exist`);
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
   const agents = { ...(cfg.agents ?? {}) };
   if (intent === null) delete agents.permission;
   else agents.permission = intent;
