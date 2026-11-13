@@ -377,7 +377,17 @@ describe("the Settings page writes only what you change (R21)", () => {
         body: { workspace: "ws-a", editor: null },
       },
     ]);
-    expect(changedSince(before)).toEqual([WS_YML]);
+    // 0.4.44: and the audit row that names the writer.
+    expect(changedSince(before)).toEqual([WS_YML, "home/.den/audit.jsonl"]);
+    const lastRow = JSON.parse(
+      fs
+        .readFileSync(path.join(tmp, "home/.den/audit.jsonl"), "utf-8")
+        .trim()
+        .split("\n")
+        .at(-1)!,
+    ) as { verb: string; detail: string };
+    expect(lastRow.verb).toBe("config-write");
+    expect(lastRow.detail).toMatch(/^workspaces\.yml by .+: ws-a$/);
     const wsFile = yaml.parse(
       fs.readFileSync(path.join(tmp, WS_YML), "utf-8"),
     ) as { workspaces: Record<string, { editor?: string }> };

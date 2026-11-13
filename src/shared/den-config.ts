@@ -895,6 +895,11 @@ export interface ServerAgentConfig {
   folder?: string;
   /** SRV-1b: how its commits leave: a pull request (default) or a push. */
   git?: "pr" | "push";
+  /**
+   * SRV-1b: how long den_update waits for the new version to come up
+   * before it rolls back (seconds, default 180).
+   */
+  update_wait_seconds?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -904,7 +909,12 @@ export interface ResolvedServerAgentConfig {
   folder: string;
   /** SRV-1b: pr (the default) or push. */
   git: "pr" | "push";
+  /** SRV-1b: den_update's wait for the new version, in ms. */
+  updateWaitMs: number;
 }
+
+/** SRV-1b: den_update's default wait for the new version (seconds). */
+export const UPDATE_WAIT_SECONDS_DEFAULT = 180;
 
 /** SRV-1a/1b: `server_agent`, checked. A bad value throws naming its key. */
 export function readServerAgentConfig(
@@ -928,7 +938,17 @@ export function readServerAgentConfig(
   const folder = path.resolve(root, f?.trim() || ".");
   if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory())
     throw new Error(`server_agent.folder: ${folder} is not a folder`);
-  return { selfUpdate: v ?? "ask", folder, git: g ?? "pr" };
+  const w = sa.update_wait_seconds;
+  if (w !== undefined && (typeof w !== "number" || !Number.isFinite(w) || w < 10))
+    throw new Error(
+      `server_agent.update_wait_seconds: seconds, 10 or more (got ${JSON.stringify(w)})`,
+    );
+  return {
+    selfUpdate: v ?? "ask",
+    folder,
+    git: g ?? "pr",
+    updateWaitMs: Math.round((w ?? UPDATE_WAIT_SECONDS_DEFAULT) * 1000),
+  };
 }
 
 /** `mcp:` in the org config. */

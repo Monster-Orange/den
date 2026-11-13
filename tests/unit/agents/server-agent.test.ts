@@ -294,17 +294,33 @@ describe("its folder (SRV-1b)", () => {
         selfUpdate: "ask",
         folder: root,
         git: "pr",
+        updateWaitMs: 180_000,
       });
       expect(
         readServerAgentConfig(
-          { server_agent: { folder: "ops", git: "push", self_update: "auto" } },
+          {
+            server_agent: {
+              folder: "ops",
+              git: "push",
+              self_update: "auto",
+              update_wait_seconds: 600,
+            },
+          },
           root,
         ),
       ).toEqual({
         selfUpdate: "auto",
         folder: path.join(root, "ops"),
         git: "push",
+        updateWaitMs: 600_000,
       });
+      for (const bad of [0, 5, "60", Number.NaN])
+        expect(() =>
+          readServerAgentConfig(
+            { server_agent: { update_wait_seconds: bad as never } },
+            root,
+          ),
+        ).toThrow(/server_agent\.update_wait_seconds: seconds, 10 or more/);
       expect(() =>
         readServerAgentConfig({ server_agent: { folder: "nope" } }, root),
       ).toThrow(/server_agent\.folder: .*nope is not a folder/);
