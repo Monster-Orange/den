@@ -91,7 +91,7 @@ export interface OrgDisplay {
 export function listOrgs(
   catalog: ServiceCatalog,
   configured: WorkOrgsConfig = {},
-): Array<{ id: string; label: string; color?: string }> {
+): Array<{ id: string; label: string; color?: string; configured: boolean }> {
   const ids = new Set<string>(Object.keys(configured));
   for (const repo of Object.keys(catalog)) {
     const o = orgOf(repo, catalog, configured);
@@ -101,5 +101,8 @@ export function listOrgs(
     id,
     label: configured[id]?.label ?? id,
     ...(configured[id]?.color ? { color: configured[id].color } : {}),
+    // 0.4.45: an org of Den's own config is a company; one that is only a
+    // repo's GitHub owner is shown as the repo owner.
+    configured: Object.prototype.hasOwnProperty.call(configured, id),
   }));
 }

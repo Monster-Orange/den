@@ -176,16 +176,42 @@ const GOLDEN_REPOS =
 const GOLDEN_RELEASE_REPOS =
   '[{"workflow":"cd.yml","wave":0,"name":"acme-api"},{"workflow":"cd.yml","wave":1,"name":"widget"}]';
 
+/**
+ * 0.4.45 adds one key to each org, `configured` (an org of Den's own: a
+ * company; else a repo's owner): the body less that key, in its order, is
+ * still the golden one.
+ */
+const lessConfigured = (body: string): string =>
+  JSON.stringify(JSON.parse(body), (k, v) =>
+    k === "configured" ? undefined : v,
+  );
+
 describe("no ORG-1d keys: byte-identical to 0.2.8-dev.0", () => {
   it("GET /api/orgs", async () => {
     const r = await legacy.timed("/api/orgs");
     expect(r.status).toBe(200);
-    expect(r.body).toBe(GOLDEN_ORGS);
+    expect(lessConfigured(r.body)).toBe(GOLDEN_ORGS);
+    expect(
+      (JSON.parse(r.body) as { id: string; configured: boolean }[]).map((o) => [
+        o.id,
+        o.configured,
+      ]),
+    ).toEqual([
+      ["globex", true],
+      ["Initech", true],
+      ["umbrella", true],
+      ["acme", false],
+      ["Globex", false],
+      ["initech", false],
+      ["hooli", false],
+    ]);
   }, 30_000);
 
   it("GET /api/orgs?repos=1", async () => {
     const r = await legacy.timed("/api/orgs?repos=1");
-    expect(r.body).toBe(`{"orgs":${GOLDEN_ORGS},"repos":${GOLDEN_REPOS}}`);
+    expect(lessConfigured(r.body)).toBe(
+      `{"orgs":${GOLDEN_ORGS},"repos":${GOLDEN_REPOS}}`,
+    );
   }, 30_000);
 
   it("GET /api/release/config repos", async () => {

@@ -384,7 +384,7 @@ describe("the top bar's scope", () => {
               : el.id || el.className,
         ),
     );
-    expect(parts.slice(0, 3)).toEqual(["/", "Org:Acme Corp", "/"]);
+    expect(parts.slice(0, 3)).toEqual(["/", "Company:Acme Corp", "/"]);
     // The brand precedes the scope; nothing before the product name.
     const brand = await p.evaluate(
       () =>
@@ -488,7 +488,7 @@ describe("the scope breadcrumb (R4)", () => {
     // active workspace (ORG-SPEC C4), static, no ▾.
     expect(await visibleScope(p)).toEqual([
       "/",
-      "label:Org Acme Corp",
+      "label:Company Acme Corp",
       "/",
       "button:Project solo ▾",
       "/",
@@ -633,7 +633,7 @@ describe("the scope breadcrumb (R4)", () => {
     expect(
       await p.evaluate(() => document.getElementById("org-crumb")?.tagName),
     ).toBe("SPAN");
-    expect(await p.textContent("#org-crumb")).toBe("Org Acme");
+    expect(await p.textContent("#org-crumb")).toBe("Company Acme");
     await p.evaluate(() => {
       const w = window as unknown as { denShell: Shell; orgs: string[] };
       w.orgs = [];
@@ -649,7 +649,7 @@ describe("the scope breadcrumb (R4)", () => {
       );
     });
     expect(await p.getAttribute("#org-crumb", "aria-haspopup")).toBe("menu");
-    expect(await p.textContent("#org-crumb")).toBe("Org Acme ▾");
+    expect(await p.textContent("#org-crumb")).toBe("Company Acme ▾");
     await p.click("#org-crumb");
     expect(await menuRows(p)).toEqual([
       { text: "Acme3 projects", role: "menuitemradio", checked: "true" },
@@ -660,7 +660,19 @@ describe("the scope breadcrumb (R4)", () => {
     expect(
       await p.evaluate(() => (window as unknown as { orgs: string[] }).orgs),
     ).toEqual(["globex"]);
-    expect(await p.textContent("#org-crumb")).toBe("Org Globex ▾");
+    expect(await p.textContent("#org-crumb")).toBe("Company Globex ▾");
+    // 0.4.45: orgs that are only repos' GitHub owners (none configured)
+    // are "Repo owner", not a company.
+    await shell(
+      p,
+      "setOrgs",
+      [
+        { id: "acme", title: "acme", configured: false },
+        { id: "globex", title: "globex", configured: false },
+      ],
+      "acme",
+    );
+    expect(await p.textContent("#org-crumb")).toBe("Repo owner acme ▾");
     await p.context().close();
   });
 

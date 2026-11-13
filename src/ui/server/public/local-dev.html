@@ -1645,6 +1645,7 @@
           repoStatus,
           repoStatusWord,
           findHit,
+          orgGroupWord,
         } from "/graph-model.js";
 
         // Re-ping all health dots (top nav + cards) NOW — used after lifecycle
@@ -2294,7 +2295,7 @@
               ${[
                 ["none", pT("pj.group.none", "None")],
                 ["app", pT("pj.group.app", "Application")],
-                ["org", pT("pj.group.org", "Company")],
+                ["org", pT(...orgGroupWord(_orgData, "pj"))],
               ]
                 .map(
                   ([v, l]) =>
@@ -4784,6 +4785,10 @@
           .then((r) => r.json())
           .then((d) => {
             _orgData = d && d.orgs ? d : null;
+            // The table's group-by word follows the orgs (Company, or
+            // Repo owner when none is configured).
+            const og = document.querySelector('[data-group="org"]');
+            if (og) og.textContent = pT(...orgGroupWord(_orgData, "pj"));
             if (
               _orgData &&
               _graphServices &&

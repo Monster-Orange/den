@@ -191,6 +191,7 @@ describe("orgOf: repos, then a source, then the GitHub owner", () => {
     expect(listOrgs(CATALOG, ORGS)[0]).toEqual({
       id: "acme-group",
       label: "Acme Group",
+      configured: true,
     });
   });
 });

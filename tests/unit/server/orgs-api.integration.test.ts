@@ -79,10 +79,10 @@ const OLD_ORGS =
 
 type Entry = Record<string, unknown>;
 const strip = (orgs: Entry[]) =>
-  orgs.map(({ default: _d, workspaces: _w, ...rest }) => rest);
+  orgs.map(({ default: _d, workspaces: _w, configured: _c, ...rest }) => rest);
 
 describe("GET /api/orgs", () => {
-  it("adds default and workspaces only; the rest is byte-identical", async () => {
+  it("adds default, workspaces and configured only; the rest is byte-identical", async () => {
     const r = await srv.timed("/api/orgs");
     expect(r.status).toBe(200);
     const orgs = JSON.parse(r.body) as Entry[];
@@ -91,6 +91,12 @@ describe("GET /api/orgs", () => {
       ["globex", false, ["client"]],
       ["acme", true, ["main"]],
       ["Globex", false, []],
+    ]);
+    // 0.4.45: configured (a company of Den's own) vs a repo's owner only.
+    expect(orgs.map((o) => [o.id, o.configured])).toEqual([
+      ["globex", true],
+      ["acme", false],
+      ["Globex", false],
     ]);
     for (const o of orgs)
       expect(Object.keys(o).sort()).toEqual(

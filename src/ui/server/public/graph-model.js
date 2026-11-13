@@ -70,6 +70,19 @@ function colorFor(name) {
 }
 
 /** Build the model the graph and panel render from. */
+/**
+ * 0.4.45: the word for grouping by org, as [catalog key, en]: "Company" for
+ * Den's own orgs (orgs: in the config); "Repo owner" when none is
+ * configured and the groups are only the repos' GitHub owners (a GitHub
+ * org isn't a company). `orgData` is /api/orgs?repos=1's body, or null.
+ */
+export function orgGroupWord(orgData, prefix = "gr") {
+  const orgs = orgData?.orgs ?? [];
+  return orgs.length && orgs.every((o) => o.configured === false)
+    ? [`${prefix}.group.owner`, "Repo owner"]
+    : [`${prefix}.group.org`, "Company"];
+}
+
 export function buildModel({
   services = [],
   health = null,

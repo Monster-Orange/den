@@ -6,6 +6,7 @@
 import { describe, expect, it } from "@jest/globals";
 import ELK from "elkjs/lib/elk.bundled.js";
 import {
+  orgGroupWord,
   applyHealth,
   buildElkGraph,
   buildModel,
@@ -121,6 +122,23 @@ const fixture = () =>
       },
     ],
   });
+
+describe("orgGroupWord (0.4.45)", () => {
+  it("says Company for Den's own orgs, Repo owner when none is configured", () => {
+    expect(orgGroupWord(null)).toEqual(["gr.group.org", "Company"]);
+    expect(
+      orgGroupWord({
+        orgs: [
+          { id: "a", configured: true },
+          { id: "b", configured: false },
+        ],
+      }),
+    ).toEqual(["gr.group.org", "Company"]);
+    expect(
+      orgGroupWord({ orgs: [{ id: "b", configured: false }] }, "pj"),
+    ).toEqual(["pj.group.owner", "Repo owner"]);
+  });
+});
 
 describe("buildModel", () => {
   it("maps /api/services rows to cards with health, app, org and placement", () => {

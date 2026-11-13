@@ -130,7 +130,8 @@
     "n.releases": "Releases",
     "n.edge": "Edge",
     "n.settings": "Settings",
-    "k.org": "Org",
+    "k.org": "Company",
+    "k.repoOwner": "Repo owner",
     "k.ws": "Project",
     "k.env": "Env",
     scope: "Scope",
@@ -237,6 +238,7 @@
     "gr.fit": "Fit",
     "gr.group": "Group",
     "gr.group.app": "Application",
+    "gr.group.owner": "Repo owner",
     "gr.group.org": "Company",
     "gr.grp.commands": "Manifest commands",
     "gr.grp.common": "More actions",
@@ -417,6 +419,7 @@
     "pj.groupBy": "Group by",
     "pj.group.none": "None",
     "pj.group.app": "Application",
+    "pj.group.owner": "Repo owner",
     "pj.group.org": "Company",
     "pj.reposIn": "Repos in {ws}",
     "pj.th.repo": "Repo",
@@ -3207,6 +3210,14 @@
   if (envSel) envSel.addEventListener("change", syncEnv);
 
   /** One org: "/ ORG <title>" as a static label, no ▾ (C4). */
+  // 0.4.45: the crumb's word. Company for an org of Den's own config;
+  // "Repo owner" when none is configured and the orgs are only the repos'
+  // GitHub owners (a GitHub org isn't a company).
+  var orgWord = "k.org";
+  function paintOrgWord(el) {
+    var k = el && el.querySelector && el.querySelector(".den-k");
+    if (k) k.textContent = t(orgWord);
+  }
   function setOrg(org) {
     var el = document.getElementById("org-crumb");
     if (!el || !org || !org.title) return false;
@@ -3216,12 +3227,13 @@
       span.className = "den-ib den-org den-opt";
       span.innerHTML =
         '<span class="den-k">' +
-        esc(t("k.org")) +
+        esc(t(orgWord)) +
         '</span> <span class="den-org-name"></span>';
       el.replaceWith(span);
       el = span;
     }
     scopeMenus.org = null;
+    paintOrgWord(el);
     el.querySelector(".den-org-name").textContent = org.title;
     el.title = t(org.id ? "org.titleId" : "org.title", {
       title: org.title,
@@ -3241,6 +3253,13 @@
     var list = (Array.isArray(orgs) ? orgs : []).filter(function (o) {
       return o && o.id;
     });
+    orgWord =
+      list.length &&
+      list.every(function (o) {
+        return o.configured === false;
+      })
+        ? "k.repoOwner"
+        : "k.org";
     var cur = null;
     for (var i = 0; i < list.length; i++)
       if (list[i].id === current) cur = list[i];
@@ -3254,7 +3273,7 @@
     if (!el) return false;
     if (el.tagName !== "BUTTON") {
       var tmp = document.createElement("span");
-      tmp.innerHTML = scopeButton("org-crumb", "org", t("k.org"), "", false);
+      tmp.innerHTML = scopeButton("org-crumb", "org", t(orgWord), "", false);
       var btn = tmp.firstChild;
       btn.className += " den-org den-opt";
       btn.querySelector(".den-vn").className += " den-org-name";
@@ -3262,6 +3281,7 @@
       el = btn;
     }
     el.hidden = false;
+    paintOrgWord(el);
     setValue(
       el,
       title(cur),
@@ -3270,8 +3290,8 @@
     var sep = el.nextElementSibling;
     if (sep && sep.classList.contains("den-org-sep")) sep.hidden = false;
     scopeMenus.org = {
-      label: t("k.org"),
-      items: [{ heading: t("k.org") }].concat(
+      label: t(orgWord),
+      items: [{ heading: t(orgWord) }].concat(
         list.map(function (o) {
           return {
             label: title(o),

@@ -227,7 +227,7 @@ describe("the org label", () => {
     await p.waitForFunction(
       () => !document.getElementById("org-crumb")?.hidden,
     );
-    expect(await p.textContent("#org-crumb")).toBe("Org Acme Labs");
+    expect(await p.textContent("#org-crumb")).toBe("Company Acme Labs");
     await p.context().close();
   }, 30_000);
 });

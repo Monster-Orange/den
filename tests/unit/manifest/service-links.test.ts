@@ -82,9 +82,15 @@ describe("orgs", () => {
         Umbrella: { label: "Umbrella Inc", color: "#a371f7" },
       }),
     ).toEqual([
-      { id: "Umbrella", label: "Umbrella Inc", color: "#a371f7" },
-      { id: "Hooli", label: "Hooli" },
-      { id: "Initech", label: "Initech" },
+      // configured: an org of Den's own (a company); else a repo's owner.
+      {
+        id: "Umbrella",
+        label: "Umbrella Inc",
+        color: "#a371f7",
+        configured: true,
+      },
+      { id: "Hooli", label: "Hooli", configured: false },
+      { id: "Initech", label: "Initech", configured: false },
     ]);
   });
 });
