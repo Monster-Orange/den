@@ -549,6 +549,7 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
     : p.flags["--after-turn"]
       ? "after-turn"
       : undefined;
+  mustBeAgent(d, id, workspaceFlag(where, p));
   if (when === "after-turn") d.out(`waiting for agent ${id}'s turn to end…`);
   const s = await changePersona(d, id, workspaceFlag(where, p), {
     persona: to,
@@ -568,6 +569,59 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
   );
 }
 
+/** Edit distance, bounded (a name a person mistyped). */
+function editDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (Math.abs(m - n) > 3) return 99;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++)
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/**
+ * Agent `id` (in `ws` when given) exists, before anything waits on it: else
+ * "no agent", with the closest agent's id in that project when one is near
+ * (its id, or its name as people see it).
+ */
+export function mustBeAgent(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+): void {
+  const rec = readRecord(d.stateDir(), id);
+  if (rec && (!ws || rec.workspace === ws)) return;
+  const all = listRecords(d.stateDir()).filter(
+    (r) => !ws || r.workspace === ws,
+  );
+  const t = id.toLowerCase();
+  const score = (r: (typeof all)[number]) =>
+    Math.min(
+      editDistance(t, r.id.toLowerCase()),
+      r.displayName ? editDistance(t, r.displayName.toLowerCase()) : 99,
+      r.id.toLowerCase().includes(t) || t.includes(r.id.toLowerCase()) ? 1 : 99,
+    );
+  const near = all
+    .map((r) => ({ r, s: score(r) }))
+    .filter((x) => x.s <= Math.max(2, Math.floor(t.length / 3)))
+    .sort((a, b) => a.s - b.s || a.r.id.localeCompare(b.r.id))[0]?.r;
+  throw new AgentError(`no agent "${id}"${ws ? ` in ${ws}` : ""}`, {
+    hints: [
+      ...(near ? [`did you mean ${near.id}?`] : []),
+      `\`${d.cli} agents list${ws ? ` -w ${ws}` : ""}\` lists them`,
+    ],
+  });
+}
+
 /**
  * D44: `agents restart <id> [-w <ws>] [--now]`: the same conversation,
  * launched again with what it gets now. A person's only.
@@ -583,6 +637,7 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
   const [id] = p.positional;
   if (!id) throw new UsageError(`${where} needs <id>`);
   const now = p.flags["--now"] === true;
+  mustBeAgent(d, id, workspaceFlag(where, p));
   if (!now) d.out(`waiting for agent ${id}'s turn to end…`);
   const s = await restartAgent(
     d,
@@ -614,9 +669,7 @@ async function move(args: string[], d: AgentsResolved): Promise<number> {
   const [id] = p.positional;
   const to = workspaceFlag(where, p);
   if (!id || !to)
-    throw new UsageError(
-      `${where} needs <id> and -w <project to move it to>`,
-    );
+    throw new UsageError(`${where} needs <id> and -w <project to move it to>`);
   const now = p.flags["--now"] === true;
   const m = await moveAgent(d, id, undefined, to, now ? "now" : "after-turn");
   if (!m.resumed) {
