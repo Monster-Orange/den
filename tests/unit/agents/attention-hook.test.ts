@@ -33,6 +33,7 @@ describe("what the hook tells Den", () => {
       event: "waiting",
       why: "permission",
       text: "Claude needs your permission to use Bash",
+      hooked: true,
     });
     expect(
       attentionOf({
@@ -43,13 +44,36 @@ describe("what the hook tells Den", () => {
     expect(attentionOf({ hook_event_name: "Stop" })).toEqual({
       event: "finished",
       text: "",
+      hooked: true,
     });
     // A Stop another Stop hook kept going is not the turn's end.
     expect(
       attentionOf({ hook_event_name: "Stop", stop_hook_active: true }),
     ).toBeNull();
+    // PreToolUse comes before the permission check: it never clears one.
     expect(attentionOf({ hook_event_name: "PreToolUse" })).toBeNull();
     expect(attentionOf("x")).toBeNull();
+  });
+
+  it("the 0.4.41 gate: a permission dialog (any tool) marks it; a tool run or a prompt says it went on", () => {
+    expect(
+      attentionOf({ hook_event_name: "PermissionRequest", tool_name: "Bash" }),
+    ).toEqual({
+      event: "waiting",
+      why: "permission",
+      text: "Claude needs your permission to use Bash",
+      hooked: true,
+    });
+    expect(attentionOf({ hook_event_name: "PostToolUse" })).toEqual({
+      event: "resumed",
+      from: "tool",
+      hooked: true,
+    });
+    expect(attentionOf({ hook_event_name: "UserPromptSubmit" })).toEqual({
+      event: "resumed",
+      from: "prompt",
+      hooked: true,
+    });
   });
 
   it("posts to Den with the agent's own token; no token, no call; a failure is quiet", async () => {
@@ -139,6 +163,12 @@ describe("at launch", () => {
       "---\nname: quiet\nden_hooks: false\n---\nYou plan.\n",
     );
     const { hooks } = launch(loadPersonas([dir]).get("quiet")!);
-    expect(Object.keys(hooks!).sort()).toEqual(["Notification", "Stop"]);
+    expect(Object.keys(hooks!).sort()).toEqual([
+      "Notification",
+      "PermissionRequest",
+      "PostToolUse",
+      "Stop",
+      "UserPromptSubmit",
+    ]);
   });
 });

@@ -1,7 +1,8 @@
 /**
  * NT-1 / NT-2 / NT-3: the bell's routes.
  *   POST /api/agents/self/attention  an agent (its actor token only) says it
- *        waits for its person or finished its turn: {event, why?, text?}.
+ *        waits for its person, went on, or finished its turn:
+ *        {event: waiting|resumed|finished, why?, from?, text?, hooked?}.
  *        Which agent comes from the token, never the body.
  *   GET  /api/notifications          the bell: {unread, groups, mutes}.
  *   POST /api/notifications/read     {id} | {subject} | {scope} | {all: true}
@@ -101,8 +102,13 @@ export async function handleNotificationRoutes(
     const b = await jsonBody(req);
     const ev = b?.event;
     const why = b?.why;
-    if (ev !== "waiting" && ev !== "finished") {
-      refuse(res, 400, "bad_event", 'event is "waiting" or "finished".');
+    if (ev !== "waiting" && ev !== "finished" && ev !== "resumed") {
+      refuse(
+        res,
+        400,
+        "bad_event",
+        'event is "waiting", "resumed" or "finished".',
+      );
       return true;
     }
     if (
@@ -137,8 +143,15 @@ export async function handleNotificationRoutes(
       id,
       agent.workspace,
       ev === "waiting"
-        ? { event: "waiting", why: why as WaitingWhy, text: str(b?.text) }
-        : { event: "finished", text: str(b?.text) },
+        ? {
+            event: "waiting",
+            why: why as WaitingWhy,
+            text: str(b?.text),
+            hooked: b?.hooked === true,
+          }
+        : ev === "resumed"
+          ? { event: "resumed", from: b?.from === "prompt" ? "prompt" : "tool" }
+          : { event: "finished", text: str(b?.text) },
     );
     sendJson(res, { ok: true });
     return true;

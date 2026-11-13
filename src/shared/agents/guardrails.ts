@@ -19,6 +19,7 @@
  * persona_packs entry's `hooks` / `instructions`) and per persona (front
  * matter `den_hooks` / `den_instructions`), the persona winning.
  */
+import { ATTENTION_EVENTS } from "./guardrails/attention-hook.js";
 import * as fs from "fs";
 import * as path from "path";
 import { enginePath, scriptEntrypoint, type EngineCommand } from "../engine.js";
@@ -220,8 +221,10 @@ export function guardrailHooks(
 
 /**
  * NT-1: the attention hooks every agent gets (whatever its persona):
- * Notification → waiting, Stop → finished, posted to Den
- * (attention-hook.ts). Merged beside Den's other hooks.
+ * PermissionRequest and Notification → waiting, PostToolUse and
+ * UserPromptSubmit → resumed, Stop → finished, posted to Den
+ * (attention-hook.ts). Merged beside Den's other hooks. PermissionRequest
+ * prints nothing, so Claude Code still asks the person.
  */
 export function attentionHooks(base: string): Record<string, unknown[]> {
   const cmd = commandLine(
@@ -231,7 +234,7 @@ export function attentionHooks(base: string): Record<string, unknown[]> {
     }))(scriptEntrypoint("src/shared/agents/guardrails/attention-hook.ts")),
   );
   const entry = { hooks: [{ type: "command", command: cmd, timeout: 10 }] };
-  return { Notification: [entry], Stop: [entry] };
+  return Object.fromEntries(ATTENTION_EVENTS.map((e) => [e, [entry]]));
 }
 
 /** Two `hooks` blocks as one: each event's entries, the first's first. */

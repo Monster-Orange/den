@@ -14,12 +14,17 @@ config and manifest changes a distribution must make to move to it under
   project's Mark read, and an agent's Mute (1 hour) are in its panel.
   Items are kept in `<state>/notifications.json` (0600), the newest 500.
 - **An agent says it needs you.** Claude Code's hooks (a permission
-  prompt, waiting for input, its turn ended) tell Den, and the agent is
-  marked waiting everywhere, saying why: approval, permission, input or
-  a question. The mark clears itself when the agent's output moves
-  again. An agent whose runtime has no such hook counts as waiting for
-  input when its terminal rings the bell (BEL, OSC 9, OSC 777;notify).
-  An agent open on screen, in a visible and focused tab, doesn't notify.
+  dialog for any tool, waiting for input, its turn ended) tell Den, and
+  the agent is marked waiting everywhere, saying why: approval,
+  permission, input or a question. The mark clears when its hooks say it
+  went on (a tool ran, a new prompt, its turn ended) or when you type in
+  its terminal; Claude Code redraws a prompt while it waits, so its
+  output doesn't count. A question stays until it's answered. An agent
+  whose runtime has no such hook counts as waiting for input when its
+  terminal rings the bell (BEL, OSC 9, OSC 777;notify), and goes on when
+  its output moves again after a few seconds. An agent open on screen, in
+  a visible and focused tab, doesn't notify. Each item is shown in the
+  page's language.
 - **`ask_human`.** Any agent can ask its person a question (at most 300
   characters) with the MCP tool `ask_human`; it goes in the bell, and the
   answer comes as the agent's next input. `notifications.asks_per_hour`
@@ -34,7 +39,8 @@ config and manifest changes a distribution must make to move to it under
 - **Hub's notifications in the bell** (NT-6). While Hub is connected,
   Den reads the install owner's Hub notifications every
   `notifications.hub_poll_seconds` (default 60; 0 turns it off) and
-  shows them under "Hub · <project>", linked to Hub. Read on either side
+  shows them under "Hub · <project>" (the name Hub gives the project,
+  else its slug), linked to Hub. Read on either side
   counts on both; new activity makes an item unread again. Needs a Hub
   that refuses agents on its notification read route; Den's proxy
   refuses them too.
@@ -53,6 +59,8 @@ config and manifest changes a distribution must make to move to it under
 - `doctor`'s Den Hub GitHub access line said "Hub refused it (404)" for a
   Hub that hasn't that route yet. It now says "not available on this Hub
   yet".
+- `doctor`'s line for unlinked projects promised Hub's suggestions when
+  Hub had none. It now says to see what Hub suggests.
 
 ## [0.4.40] - 2026-11-13
 

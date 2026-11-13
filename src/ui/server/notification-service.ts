@@ -108,6 +108,8 @@ export function notificationDeps(): {
       const r = readRecord(getStateDir(), id);
       return r?.displayName || r?.persona || id;
     },
+    hooked: (id) =>
+      HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
   });
   if (!timer) {
     let busy = false;
@@ -132,6 +134,22 @@ export function notificationDeps(): {
         readNotificationConfig(readDenConfig(), readUserConfig()).asksPerHour,
     },
   };
+}
+
+/**
+ * The person typed into session `sessionId` (its pane): its agent's wait
+ * is answered. Never throws.
+ */
+export function personTyped(sessionId: string): void {
+  if (!attention?.waitingNow().size) return;
+  try {
+    const rec = listRecords(getStateDir()).find(
+      (r) => r.session.id === sessionId,
+    );
+    if (rec) attention.typed(rec.id);
+  } catch {
+    /* records unreadable: the hooks or the output clear it */
+  }
 }
 
 /** NT-3b: the agents the hooks say wait for their person, and why. */
