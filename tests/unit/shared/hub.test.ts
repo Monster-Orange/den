@@ -54,6 +54,7 @@ describe("readHubConfig", () => {
       allowTools: true,
       mcpUrl: "https://mine.example.test/mcp",
       inboxOnStop: "nudge",
+      syncCheckSeconds: 30,
     });
   });
 
@@ -149,6 +150,22 @@ describe("hub.inbox_on_stop (D41)", () => {
     expect(() =>
       readHubConfig({ hub: { url, inbox_on_stop: false } }, {}, noSecrets),
     ).toThrow(/hub\.inbox_on_stop must be "nudge" or "off"/);
+  });
+
+  it("H5 hub.sync_check_seconds: 30 by default, a setting, at least 5", () => {
+    expect(
+      readHubConfig({ hub: { url } }, {}, noSecrets)?.syncCheckSeconds,
+    ).toBe(30);
+    expect(
+      readHubConfig(
+        { hub: { url } },
+        { hub: { sync_check_seconds: 120 } },
+        noSecrets,
+      )?.syncCheckSeconds,
+    ).toBe(120);
+    expect(() =>
+      readHubConfig({ hub: { url, sync_check_seconds: 1 } }, {}, noSecrets),
+    ).toThrow(/hub\.sync_check_seconds must be a number, at least 5/);
   });
 });
 

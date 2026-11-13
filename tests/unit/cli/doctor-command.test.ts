@@ -28,6 +28,7 @@ import {
   doctorRows,
   formatDoctor,
   hubProjectLines,
+  hubGithubLines,
 } from "../../../src/ui/cli/doctor-command.js";
 // D9: the usage sources register on import, as in the CLI.
 import "../../../src/shared/usage/sources.js";
@@ -355,5 +356,48 @@ describe("hubProjectLines (H5)", () => {
     expect(r.lines[0]).toMatch(/^ {2}hub project {2}✓ {2}north: linked/);
     expect(r.lines[1]).toContain("`acme hub link -p south`");
     expect(r.lines[1]).toContain("⚠");
+  });
+});
+
+describe("hubGithubLines (H5)", () => {
+  it("not connected: nothing; all repos ✓; none and some warn with GitHub's link", () => {
+    expect(hubGithubLines(null)).toEqual({ lines: [], checks: [] });
+    const r = hubGithubLines({
+      orgs: [
+        { org: "acme-co", access: "all", covered: 2, total: 2 },
+        {
+          org: "beta-co",
+          access: "none",
+          covered: 0,
+          total: 1,
+          installUrl: "https://github.com/apps/den-hub/installations/new",
+        },
+        {
+          org: "gamma-co",
+          access: "some",
+          covered: 1,
+          total: 4,
+          manageUrl:
+            "https://github.com/organizations/gamma-co/settings/installations/9",
+        },
+      ],
+    });
+    expect(r.lines[0]).toMatch(/✓ {2}acme-co: Den Hub can read all repos$/);
+    expect(r.lines[1]).toContain(
+      "⚠  beta-co: Den Hub can read no repos (no access). Give Den Hub access: https://github.com/apps/den-hub/installations/new",
+    );
+    expect(r.lines[2]).toContain(
+      "gamma-co: Den Hub can read 1 of 4 repos. Change repos: https://github.com/organizations/gamma-co/settings/installations/9",
+    );
+    expect(r.checks.map((c) => c.status)).toEqual(["ok", "warn", "warn"]);
+  });
+
+  it("Hub couldn't answer: one warning in words", () => {
+    expect(
+      hubGithubLines({ error: "Hub did not answer in 5000 ms" }).checks[0],
+    ).toMatchObject({
+      id: "hub:github",
+      status: "warn",
+    });
   });
 });

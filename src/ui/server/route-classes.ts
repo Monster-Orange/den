@@ -454,6 +454,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/hub",
     "HUB-1.5: Den Hub: its URL, connected or not, the team and the install's label (never the token)",
   ),
+  R(
+    "/api/hub/github",
+    "H5: how many of the company's GitHub repos Den Hub's GitHub App can read, live from Hub, with Hub's github.com install or change link",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/sync",
+    "H5: send this install's project list to Hub again now (after a GitHub App install); answers the last sync",
+  ),
   M(
     ["POST"],
     "/api/hub/connect",

@@ -18,6 +18,7 @@ import {
   type HubProjectChoice,
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
+import type { Uncovered } from "../../shared/hub-project-sync.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf, auditActorOf } from "./request-guard.js";
 
@@ -33,6 +34,19 @@ export interface HubProjectRouteDeps {
   } | null>;
   read: (ws: string) => HubProjectLink | null;
   write: (ws: string, link: HubProjectLink | null) => void;
+  /** Repos in `ws` Den Hub's GitHub App can't see, from the last sync. */
+  uncovered: (ws: string) => Uncovered[];
+  /** After a link or unlink: send the project list again. */
+  changed: () => void;
+}
+
+async function defaultUncovered(ws: string): Promise<Uncovered[]> {
+  const s = await import("./hub-sync-service.js");
+  return s.projectSync().uncoveredFor(ws);
+}
+
+function defaultChanged(): void {
+  void import("./hub-sync-service.js").then((s) => s.projectSync().request());
 }
 
 async function defaultChoices(ws: string) {
@@ -82,9 +96,14 @@ export async function hubProjectRoute(
   const read = over.read ?? ((w: string) => hubProjectOf(w));
   const write = over.write ?? setHubProject;
   const choicesOf = over.choices ?? defaultChoices;
+  const changed = over.changed ?? defaultChanged;
+  const uncovered = over.uncovered
+    ? async (w: string) => over.uncovered!(w)
+    : defaultUncovered;
 
   if (method === "GET" || method === "HEAD") {
     const hub = read(ws);
+    const unseen = await uncovered(ws).catch(() => []);
     try {
       const c = await choicesOf(ws);
       sendJson(res, {
@@ -94,6 +113,7 @@ export async function hubProjectRoute(
         connected: c !== null,
         suggestions: c?.suggestions ?? [],
         projects: c?.projects ?? [],
+        uncovered: unseen,
       });
     } catch (e) {
       sendJson(res, {
@@ -103,6 +123,7 @@ export async function hubProjectRoute(
         connected: true,
         suggestions: [],
         projects: [],
+        uncovered: unseen,
         error: `Hub didn't list its projects: ${(e as Error).message}`,
       });
     }
@@ -135,6 +156,7 @@ export async function hubProjectRoute(
   }
   if (body.hub === null) {
     write(ws, null);
+    changed();
     sendJson(res, { ok: true, project: ws, hub: null });
     return true;
   }
@@ -185,6 +207,7 @@ export async function hubProjectRoute(
   }
   const link = { id: pick.id, slug: pick.slug, name: pick.name };
   write(ws, link);
+  changed();
   sendJson(res, { ok: true, project: ws, hub: link });
   return true;
 }

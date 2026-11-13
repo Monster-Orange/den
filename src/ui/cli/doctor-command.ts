@@ -550,6 +550,58 @@ export function hubProjectLines(
   return { lines, checks };
 }
 
+/**
+ * H5: Den Hub's GitHub access per org, live from Hub: all repos is fine;
+ * some or none warns, with GitHub's link to change or give it.
+ */
+export function hubGithubLines(
+  cov:
+    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { error: string }
+    | null,
+): { lines: string[]; checks: OnboardCheck[] } {
+  if (!cov) return { lines: [], checks: [] };
+  if ("error" in cov)
+    return {
+      lines: [
+        `  hub github   ⚠  Den couldn't ask Hub about GitHub access: ${cov.error}`,
+      ],
+      checks: [
+        {
+          id: "hub:github",
+          status: "warn",
+          detail: `Den couldn't ask Hub about GitHub access: ${cov.error}`,
+        },
+      ],
+    };
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const o of cov.orgs) {
+    const what =
+      o.access === "all"
+        ? "all repos"
+        : o.access === "some"
+          ? `${o.covered} of ${o.total} repos`
+          : "no repos (no access)";
+    const url =
+      o.access === "all"
+        ? undefined
+        : ((o.access === "some" ? o.manageUrl : undefined) ?? o.installUrl);
+    const detail = `${o.org}: Den Hub can read ${what}`;
+    const ok = o.access === "all";
+    lines.push(
+      `  hub github   ${ok ? "✓" : "⚠"}  ${detail}${url ? `. ${o.access === "none" ? "Give Den Hub access" : "Change repos"}: ${url}` : ""}`,
+    );
+    checks.push({
+      id: `hub:github:${o.org}`,
+      status: ok ? "ok" : "warn",
+      detail,
+      ...(url ? { fix: url } : {}),
+    });
+  }
+  return { lines, checks };
+}
+
 /** H5: every project here, with its Hub project (or null). */
 async function projectsWithHubProject(): Promise<
   { ws: string; link: { slug: string; name: string } | null }[]
@@ -731,6 +783,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
           product().cli,
         ).checks,
       );
+      if (st.configured && st.connected) {
+        const { githubCoverage } =
+          await import("../server/hub-sync-service.js");
+        r.checks.push(...hubGithubLines(await githubCoverage()).checks);
+      }
     }
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
@@ -767,6 +824,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       product().cli,
     ).lines)
       console.log(l);
+    if (st.configured && st.connected) {
+      const { githubCoverage } = await import("../server/hub-sync-service.js");
+      for (const l of hubGithubLines(await githubCoverage()).lines)
+        console.log(l);
+    }
   }
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);

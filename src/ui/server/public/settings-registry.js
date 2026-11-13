@@ -980,6 +980,18 @@ export const DEN_SETTINGS = [
   },
 
   {
+    id: "agents.hub_github",
+    category: "agents",
+    label: "Den Hub's GitHub access",
+    description:
+      "How many of your company's GitHub repos Den Hub can read, asked live from Hub, with GitHub's link to give it access or change its repos.",
+    keywords: ["hub", "github", "access", "app", "install", "repos"],
+    scope: "user",
+    control: { type: "custom", render: renderHubGithub },
+    read: () => null,
+  },
+
+  {
     id: "agents.personas",
     category: "agents",
     label: "Personas",
@@ -1162,6 +1174,26 @@ export const DEN_SETTINGS = [
     ["github", "repos", "clone"],
     (d) => d.github_org || "not set",
   ),
+  {
+    // H5: how much of the org Den Hub's GitHub App can read, live from Hub.
+    id: "distribution.hub_github",
+    category: "distribution",
+    label: "Den Hub's GitHub access",
+    description:
+      "How many of your company's GitHub repos Den Hub can read, asked live from Hub. Den Hub reads a repo only through your company's GitHub App install; the button opens GitHub to install it or change its repos. When you come back, Den sends its projects to Hub again and the repos link by themselves.",
+    keywords: [
+      "distribution",
+      "github",
+      "hub",
+      "access",
+      "app",
+      "install",
+      "repos",
+    ],
+    scope: "distribution",
+    control: { type: "custom", render: renderHubGithub },
+    read: () => null,
+  },
   distRow(
     "orgs",
     "Org labels",
@@ -1715,6 +1747,31 @@ function renderHubProject(host, ctx) {
     });
 }
 
+/** H5: repos Den Hub can't see, with one button per org. */
+export function hubUncoveredHtml(list, t) {
+  const un = Array.isArray(list) ? list : [];
+  if (!un.length) return "";
+  const orgs = [...new Set(un.map((u) => u.org))];
+  return (
+    `<div data-hubp-uncovered>` +
+    un
+      .map(
+        (u) =>
+          `<p class="set-status" data-hubp-unseen="${escR(u.repo)}"><span class="rt-dot warn"></span> ${escR(t("hubp.cantSee", { repo: u.repo }))}</p>`,
+      )
+      .join("") +
+    orgs
+      .map((org) => {
+        const href = un.find((u) => u.org === org && u.installUrl)?.installUrl;
+        return href && /^https:\/\/github\.com\//.test(href)
+          ? `<a class="btn sm primary" data-hubp-give="${escR(org)}" href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(t("hubp.giveAccess", { org }))}</a> `
+          : "";
+      })
+      .join("") +
+    `</div>`
+  );
+}
+
 function hubProjectHtml(b, t, name) {
   if (!b.connected)
     return (
@@ -1757,6 +1814,7 @@ function hubProjectHtml(b, t, name) {
   return (
     `<div data-hubp data-hubp-state="${linked ? "linked" : "unlinked"}">` +
     status +
+    hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
     picker +
     unlink +
@@ -1792,6 +1850,102 @@ function wireHubProject(host, ctx, url, t) {
   host
     .querySelector('[data-hubp-action="unlink"]')
     ?.addEventListener("click", () => put(null));
+}
+
+/**
+ * H5: Den Hub's GitHub access, one line per org: all repos, N of M, or no
+ * access, live from Hub, with GitHub's link (Hub gives only github.com
+ * https links; the server drops anything else). Coming back to the window,
+ * or to ?hub=installed, sends the projects to Hub again and redraws.
+ */
+export function hubGithubHtml(b, t) {
+  if (!b || !b.connected)
+    return `<p class="set-note" data-hubgh data-hubgh-state="offline">${escR(t("hubgh.offline"))}</p>`;
+  if (b.error)
+    return `<p class="set-note" data-hubgh data-hubgh-state="error">${escR(t("hubgh.failed"))} ${escR(b.error)}</p>`;
+  const orgs = b.orgs || [];
+  if (!orgs.length)
+    return `<p class="set-note" data-hubgh data-hubgh-state="none">${escR(t("hubgh.noOrgs"))}</p>`;
+  return (
+    `<div data-hubgh data-hubgh-state="orgs">` +
+    orgs
+      .map((o) => {
+        const what =
+          o.access === "all"
+            ? t("hubgh.all")
+            : o.access === "some"
+              ? t("hubgh.some", { n: o.covered, m: o.total })
+              : t("hubgh.none");
+        const href =
+          o.access === "some"
+            ? o.manageUrl || o.installUrl
+            : o.access === "none"
+              ? o.installUrl
+              : null;
+        const label = o.access === "none" ? t("hubgh.give") : t("hubgh.change");
+        const dot = o.access === "all" ? "ok" : "warn";
+        return (
+          `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="${escR(o.access)}">` +
+          `<span class="rt-dot ${dot}"></span> ${escR(t("hubgh.line", { org: o.org, what }))}` +
+          (href && /^https:\/\/github\.com\//.test(href)
+            ? ` <a class="btn sm${o.access === "none" ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
+            : "") +
+          `</p>`
+        );
+      })
+      .join("") +
+    `</div>`
+  );
+}
+
+// ?hub=installed: back from GitHub's install, read once at load (the page
+// rewrites its URL). One re-sync, shared by every row that shows access.
+let hubBackFromInstall = (() => {
+  try {
+    return new URLSearchParams(location.search).get("hub") === "installed";
+  } catch {
+    return false;
+  }
+})();
+let hubResync = null;
+
+function renderHubGithub(host, ctx) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  const draw = () =>
+    ctx.shell
+      .api("GET", "/api/hub/github")
+      .then((b) => {
+        host.innerHTML = hubGithubHtml(b, t);
+        host.querySelectorAll("[data-hubgh-open]").forEach((a) =>
+          a.addEventListener("click", () => {
+            host.dataset.hubghAway = "1";
+          }),
+        );
+      })
+      .catch((e) => {
+        host.innerHTML = `<p class="set-note" data-hubgh data-hubgh-state="error">${escR(e?.message || t("hubgh.failed"))}</p>`;
+      });
+  const resync = () => {
+    hubResync ??= ctx.shell
+      .api("POST", "/api/hub/sync", {})
+      .catch(() => null)
+      .finally(() => setTimeout(() => (hubResync = null), 2000));
+    return hubResync.then(draw);
+  };
+  if (!host.dataset.hubghWired) {
+    host.dataset.hubghWired = "1";
+    window.addEventListener("focus", () => {
+      if (host.isConnected && host.dataset.hubghAway === "1") {
+        host.dataset.hubghAway = "";
+        resync();
+      }
+    });
+  }
+  if (hubBackFromInstall || hubResync) {
+    hubBackFromInstall = false;
+    return resync();
+  }
+  return draw();
 }
 
 function renderHub(host, ctx) {

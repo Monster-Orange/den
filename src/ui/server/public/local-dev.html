@@ -2115,6 +2115,11 @@
           const hubChip = hubName
             ? `<a class="ws-head-link" id="ws-hub-project" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="${escHtml(wsT("ws.hubTip", "This project's agents file their Hub work in this Hub project. Change it in Project setup."))}">${escHtml(wsT("ws.hubChip", "Hub: {name}").replace("{name}", hubName))}</a>`
             : "";
+          // H5: repos Den Hub's GitHub App can't see: a warning, to Project setup.
+          const unseen = wsData?.hubUncovered?.[wsName] ?? [];
+          const hubWarn = unseen.length
+            ? `<a class="badge warn" id="ws-hub-unseen" href="/settings?ws=${encodeURIComponent(wsName)}#workspace" title="${escHtml(unseen.map((u) => wsT("hubp.cantSee", "Den Hub can't see {repo}.").replace("{repo}", u.repo)).join(" "))}">${escHtml(wsT("ws.hubUnseen", "Den Hub can't see {n} repos").replace("{n}", String(unseen.length)))}</a>`
+            : "";
           content.innerHTML = `
         <div class="content-header">
           <h2>${escHtml(wsName)}</h2>
@@ -2129,6 +2134,7 @@
           ${stackNsChip}
           <span class="badge ws-agents" id="ws-agents-count" hidden></span>
           ${hubChip}
+          ${hubWarn}
           <a class="ws-head-link" id="ws-open-graph" href="/graph?ws=${enc}">Open in Graph →</a>
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${escHtml(wsName)}" title="More for this project">⋯</button>

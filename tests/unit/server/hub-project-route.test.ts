@@ -26,7 +26,10 @@ afterAll(() => servers.forEach((s) => s.close()));
 
 async function serve(over: Partial<HubProjectRouteDeps> = {}) {
   const store = new Map<string, HubProjectLink | null>();
+  const sent = { n: 0 };
   const deps: Partial<HubProjectRouteDeps> = {
+    uncovered: () => [],
+    changed: () => void sent.n++,
     exists: (ws) => ws === "back-office",
     choices: async () => ({
       suggestions: [{ ...BACK, why: "repo" as const }],
@@ -44,7 +47,7 @@ async function serve(over: Partial<HubProjectRouteDeps> = {}) {
   servers.push(s);
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(s.address() as AddressInfo).port}/api/workspaces`;
-  return { base, store };
+  return { base, store, sent };
 }
 
 const put = (
@@ -68,6 +71,7 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
       hub: null,
       connected: true,
       suggestions: [{ ...BACK, why: "repo" }],
+      uncovered: [],
       projects: [BACK, SITE],
     });
     expect(store.size).toBe(0);
@@ -111,5 +115,40 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
     expect(g).toMatchObject({ connected: false, projects: [] });
     const p = await put(`${base}/back-office/hub-project`, { hub: "site" });
     expect(p.status).toBe(409);
+  });
+
+  it("GET: the repos Den Hub can't see, from the last sync; a link sends the projects again", async () => {
+    const { base, sent } = await serve({
+      uncovered: (ws) =>
+        ws === "back-office"
+          ? [
+              {
+                workspace: ws,
+                repo: "acme-co/web",
+                org: "acme-co",
+                installUrl: "https://github.com/apps/den-hub/installations/new",
+              },
+            ]
+          : [],
+    });
+    const b = (await (
+      await fetch(`${base}/back-office/hub-project`)
+    ).json()) as { uncovered: unknown };
+    expect(b.uncovered).toEqual([
+      {
+        workspace: "back-office",
+        repo: "acme-co/web",
+        org: "acme-co",
+        installUrl: "https://github.com/apps/den-hub/installations/new",
+      },
+    ]);
+    expect(sent.n).toBe(0);
+    expect(
+      (await put(`${base}/back-office/hub-project`, { hub: "site" })).status,
+    ).toBe(200);
+    expect(
+      (await put(`${base}/back-office/hub-project`, { hub: null })).status,
+    ).toBe(200);
+    expect(sent.n).toBe(2);
   });
 });

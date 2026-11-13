@@ -640,11 +640,21 @@ export async function handleWorkspaceRoutes(
         r,
       ]),
     );
+    // H5: per project, the repos Den Hub's GitHub App can't see (the last
+    // sync's answer; memory only, no call): the header's warning.
+    const { projectSync } = await import("./hub-sync-service.js");
+    const sync = projectSync();
+    const hubUncovered = Object.fromEntries(
+      Object.keys(wsFile.workspaces)
+        .map((ws) => [ws, sync.uncoveredFor(ws)] as const)
+        .filter(([, u]) => u.length),
+    );
     return sendJson(res, {
       ...wsFile,
       resolvedDirs,
       codeWorkspacePaths,
       stackNamespaces,
+      hubUncovered,
     });
   }
 
@@ -751,7 +761,8 @@ export async function handleWorkspaceRoutes(
         repo?: string;
         autostart?: boolean;
       };
-      if (!workspace || !repo) return send400(res, "a project and a repo are required");
+      if (!workspace || !repo)
+        return send400(res, "a project and a repo are required");
       if (typeof autostart !== "boolean")
         return send400(res, '"autostart" boolean required');
       const file = readWorkspacesFile();
@@ -794,7 +805,8 @@ export async function handleWorkspaceRoutes(
         mode?: string;
         branch?: string;
       };
-      if (!workspace || !repo) return send400(res, "a project and a repo are required");
+      if (!workspace || !repo)
+        return send400(res, "a project and a repo are required");
       if (mode !== "dev-managed" && mode !== "managed")
         return send400(res, 'mode must be "dev-managed" or "managed"');
       const file = readWorkspacesFile();

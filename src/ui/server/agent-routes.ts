@@ -208,6 +208,13 @@ export interface AgentRouteDeps {
   personaWait?: { pollMs?: number; maxMs?: number };
   /** HUB-1.5: GET /api/hub's answer (tests: a fake Hub). */
   hubStatus?: () => Promise<import("../../shared/hub.js").HubStatus>;
+  /** H5 (tests): Den Hub's GitHub coverage, and the project sync. */
+  hubGithub?: () => Promise<
+    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { error: string }
+    | null
+  >;
+  projectSync?: import("../../shared/hub-project-sync.js").ProjectSync;
   /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
   hubConnect?: import("./hub-connect.js").HubConnect;
   /** H5: Settings › Project setup › Hub project (tests swap Hub and the store). */
@@ -494,6 +501,25 @@ export async function handleAgentRoutes(
       await import("./hub-project-routes.js");
     const hub = HUB_PROJECT_ROUTE.exec(pathname);
     if (hub) return hubProjectRoute(req, res, hub[1], deps.hubProject);
+  }
+  // H5: Den Hub's GitHub App coverage, and a sync on demand.
+  if (pathname === "/api/hub/github" || pathname === "/api/hub/sync") {
+    const svc = await import("./hub-sync-service.js");
+    const method = req.method ?? "GET";
+    if (pathname === "/api/hub/github") {
+      if (method !== "GET" && method !== "HEAD")
+        return methodNotAllowed(res, "GET");
+      const c = await (deps.hubGithub ?? svc.githubCoverage)();
+      sendJson(
+        res,
+        c === null ? { connected: false, orgs: [] } : { connected: true, ...c },
+      );
+      return true;
+    }
+    if (method !== "POST") return methodNotAllowed(res, "POST");
+    const sync = deps.projectSync ?? svc.projectSync();
+    sendJson(res, { ok: true, last: await sync.now() });
+    return true;
   }
   // HUB-1.5: Settings › Hub. Never the token: hubStatus doesn't return it.
   if (pathname === "/api/hub") {
@@ -1742,6 +1768,13 @@ async function hubConnectRoute(
     if (method !== "GET") return methodNotAllowed(res, "GET");
     const q = new URL(req.url ?? "/", "http://localhost").searchParams;
     const r = await hc.finish(q);
+    // H5: a new connection gets the full project list at once.
+    if (r.ok) {
+      const sync =
+        deps.projectSync ??
+        (await import("./hub-sync-service.js")).projectSync();
+      sync.request();
+    }
     res.writeHead(r.ok ? 200 : 400, {
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",

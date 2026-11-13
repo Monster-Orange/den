@@ -70,6 +70,11 @@ export interface HubConfig {
    * asked once to call hub_inbox when more Hub comments wait on it.
    */
   inboxOnStop: "nudge" | "off";
+  /**
+   * H5 hub.sync_check_seconds (default 30, at least 5): how often Den
+   * checks whether its project list changed, to send it to Hub.
+   */
+  syncCheckSeconds: number;
 }
 
 type RawHub =
@@ -79,6 +84,7 @@ type RawHub =
       allow_tools?: unknown;
       mcp_url?: unknown;
       inbox_on_stop?: unknown;
+      sync_check_seconds?: unknown;
     }
   | undefined;
 
@@ -159,6 +165,13 @@ export function readHubConfig(
   const ios = h.inbox_on_stop;
   if (ios !== undefined && ios !== null && ios !== "nudge" && ios !== "off")
     throw new Error('hub.inbox_on_stop must be "nudge" or "off"');
+  const scs = h.sync_check_seconds;
+  if (
+    scs !== undefined &&
+    scs !== null &&
+    !(typeof scs === "number" && Number.isFinite(scs) && scs >= 5)
+  )
+    throw new Error("hub.sync_check_seconds must be a number, at least 5");
   return {
     url,
     tokenRef,
@@ -167,6 +180,7 @@ export function readHubConfig(
     mcpUrl,
     allowTools: at !== false,
     inboxOnStop: ios === "off" ? "off" : "nudge",
+    syncCheckSeconds: typeof scs === "number" ? scs : 30,
   };
 }
 
@@ -433,6 +447,48 @@ export async function hubProjectChoices(
     opts,
   );
   return readHubProjectChoices(b);
+}
+
+/**
+ * H5: tell Hub this install's full project list: PUT
+ * <url>/api/installs/self/projects (GITHUB-COVERAGE / H5 sync). The raw
+ * answer; hub-project-sync reads it.
+ */
+export async function hubPutProjects(
+  url: string,
+  token: string,
+  body: unknown,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<Record<string, unknown>> {
+  return hubCall(
+    `${url}/api/installs/self/projects`,
+    {
+      method: "PUT",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+    { timeoutMs: 10_000, ...opts },
+  );
+}
+
+/** How much of each GitHub org Den Hub's App can read: GET <url>/api/installs/self/github. */
+export async function hubGithubCoverage(
+  url: string,
+  token: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<Record<string, unknown>> {
+  return hubCall(
+    `${url}/api/installs/self/github`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    opts,
+  );
 }
 
 /** What POST /connect/token gives: the token, and where Hub is. */

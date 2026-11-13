@@ -287,7 +287,7 @@ import {
 } from "../../shared/cli-command.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
 import { agentsLayout, patchAgentsLayout } from "./agents-layout-pref.js";
-import { patchHubAllowTools } from "../../shared/hub.js";
+import { patchHubAllowTools, readHubConfig } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
@@ -5847,6 +5847,16 @@ const ADDRESS = migrateWebUrl(() => {
 });
 server.listen(PORT, BIND_HOST, () => {
   printBanner(ADDRESS ?? readWebUrl());
+  // H5: tell Hub this install's projects now, then whenever they change.
+  void import("./hub-sync-service.js").then((m) => {
+    let every = 30;
+    try {
+      every = readHubConfig()?.syncCheckSeconds ?? 30;
+    } catch {
+      /* a bad hub block: doctor says so; the default here */
+    }
+    m.startProjectSync(every);
+  });
 });
 
 /** The start banner: the install's address (D80), never localhost. */
