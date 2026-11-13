@@ -2641,6 +2641,10 @@ agent and kind.
   token. Any agent can call the MCP tool `ask_human` with a question; its
   prompt says to, when it needs a decision. The agent is marked waiting
   in every list, and the item clears itself when its output moves again.
+- **The terminal's bell.** An agent whose runtime has no such hook (not
+  Claude Code) counts as waiting for input when its output rings: a bare
+  BEL, OSC 9 (not OSC 9;4, a progress bar) or OSC 777;notify. A BEL that
+  ends a title or a link doesn't count.
 - **Not while you look** (NT-2). The Agents page says which agents are on
   screen, in a visible, focused tab. Those don't notify; they are still
   marked waiting.

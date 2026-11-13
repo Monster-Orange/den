@@ -5,7 +5,12 @@
  * agent's output moved.
  */
 import crypto from "node:crypto";
-import { readRecord } from "../../shared/agents/records.js";
+import {
+  listRecords,
+  readRecord,
+  type AgentRecord,
+} from "../../shared/agents/records.js";
+import type { SessionInfo } from "../../shared/sessions/types.js";
 import { readDenConfig, readUserConfig } from "../../shared/den-config.js";
 import {
   AskLimit,
@@ -40,6 +45,56 @@ async function outputMark(agent: string): Promise<string | null> {
   }
 }
 
+/** The runtimes whose hooks say when they wait: their bells add nothing. */
+const HOOKED_RUNTIMES = new Set(["den-claude"]);
+
+/** NT-1 (3): which running agents' sessions rang, and when. */
+export function bellsOf(
+  sessions: readonly SessionInfo[],
+  records: readonly AgentRecord[],
+): { agent: string; workspace: string; bellAt: string }[] {
+  const rang = new Map(
+    sessions
+      .filter((x) => x.bellAt && !x.exited)
+      .map((x) => [x.ref.id, x.bellAt!]),
+  );
+  return records
+    .filter(
+      (r) =>
+        !HOOKED_RUNTIMES.has(r.runtime) &&
+        !r.stoppedAt &&
+        rang.has(r.session.id),
+    )
+    .map((r) => ({
+      agent: r.id,
+      workspace: r.workspace,
+      bellAt: rang.get(r.session.id)!,
+    }));
+}
+
+/**
+ * NT-1 (3): the agents whose session rang the terminal's bell. Claude
+ * Code's agents are left out: their hooks say it, more exactly.
+ */
+async function sessionBells(): Promise<
+  { agent: string; workspace: string; bellAt: string }[]
+> {
+  try {
+    const { webDeps } = await import("./agent-routes.js");
+    const c = await webDeps().connectExisting();
+    if (!c) return [];
+    try {
+      const sessions = await c.list();
+      if (!sessions.some((x) => x.bellAt)) return [];
+      return bellsOf(sessions, listRecords(getStateDir()));
+    } finally {
+      c.close();
+    }
+  } catch {
+    return [];
+  }
+}
+
 export function notificationDeps(): {
   store: NotificationStore;
   attention: Attention;
@@ -59,7 +114,11 @@ export function notificationDeps(): {
     timer = setInterval(() => {
       if (busy) return;
       busy = true;
-      void attention!.check().finally(() => (busy = false));
+      void attention!
+        .check()
+        .then(async () => attention!.bells(await sessionBells()))
+        .catch(() => undefined)
+        .finally(() => (busy = false));
     }, 2000);
     timer.unref();
   }

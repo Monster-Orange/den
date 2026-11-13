@@ -1,6 +1,7 @@
 /**
  * NT-1 / NT-2 / NT-3b: which agents need their person, from the attention
- * hooks (and den_notify), and the notifications that follow.
+ * hooks, ask_human and the terminal bell, and the notifications that
+ * follow.
  *
  * - waiting (a permission prompt, or waiting for input): the agent is
  *   marked waiting (every list shows it) and a "waiting" notification is
@@ -41,6 +42,8 @@ export class Attention {
   /** NT-2: agent → until when a page shows it, visible and focused. */
   private readonly looking = new Map<string, number>();
   private readonly now: () => number;
+  /** NT-1: each agent's last bell seen (its session's bellAt). */
+  private readonly bellSeen = new Map<string, string>();
 
   constructor(private readonly d: AttentionDeps) {
     this.now = d.now ?? Date.now;
@@ -105,6 +108,29 @@ export class Attention {
     });
     if (!this.onScreen(agent))
       this.d.store.add({ kind: "waiting", subject, scope, text, link });
+  }
+
+  /**
+   * NT-1 (3): the sessions' last bells (a bare BEL, OSC 9, OSC 777). A new
+   * one marks its agent waiting for input, unless it already waits (it
+   * keeps why). A bell first seen more than 10 s old happened before this
+   * server looked: history, not a call.
+   */
+  async bells(
+    list: readonly { agent: string; workspace: string; bellAt: string }[],
+  ): Promise<void> {
+    for (const b of list) {
+      const prev = this.bellSeen.get(b.agent);
+      if (prev === b.bellAt) continue;
+      this.bellSeen.set(b.agent, b.bellAt);
+      if (prev === undefined && this.now() - Date.parse(b.bellAt) > 10_000)
+        continue;
+      if (this.waiting.has(b.agent)) continue;
+      await this.event(b.agent, b.workspace, {
+        event: "waiting",
+        why: "input",
+      });
+    }
   }
 
   /** The agent's output moved since it started waiting: no longer waiting. */

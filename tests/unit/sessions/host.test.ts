@@ -166,6 +166,19 @@ describe("session host", () => {
     expect((await c.scrollback(ref.id, 7)).toString()).toBe("\nafter\n");
   });
 
+  it("NT-1: a bell in the output stamps bellAt on the session; plain output doesn't", async () => {
+    const dir = stateDir();
+    const { made } = await host(dir);
+    const c = await client(dir);
+    await c.start(spec("acme-north:planner"));
+    made[0].emit("working\n\u001b]0;title\u0007");
+    await tick();
+    expect((await c.list())[0].bellAt).toBeUndefined();
+    made[0].emit("your turn\u0007");
+    await tick();
+    expect(Date.parse((await c.list())[0].bellAt ?? "")).not.toBeNaN();
+  });
+
   it("passes write, resize and signal to the PTY, and reports the exit", async () => {
     const dir = stateDir();
     const { made } = await host(dir);

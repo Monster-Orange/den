@@ -35,6 +35,11 @@ export interface SessionInfo {
    * Aqua ends at logout, Background survives it. Absent off macOS.
    */
   launchd?: string;
+  /**
+   * NT-1: when its output last asked for attention the terminal's way (a
+   * bare BEL, OSC 9, OSC 777;notify), ISO 8601. Since this host started.
+   */
+  bellAt?: string;
 }
 
 /**

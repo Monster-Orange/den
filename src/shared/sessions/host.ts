@@ -16,6 +16,7 @@
  * (input with a line end written to it), never the input itself.
  */
 import { randomBytes } from "crypto";
+import { BellScanner } from "./bell.js";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
@@ -78,6 +79,8 @@ interface Session {
   size?: { cols: number; rows: number };
   /** The cap it counts against (start's `pool`), when one was named. */
   pool?: SessionPool;
+  /** NT-1: reads its output for a bell. */
+  bell: BellScanner;
 }
 
 class Conn {
@@ -382,6 +385,7 @@ export class SessionHost {
           },
           cwd: rec.cwd,
           pty: null,
+          bell: new BellScanner(),
           log: new ScrollbackLog(
             logFile,
             ScrollbackLog.load(logFile, this.capacity),
@@ -698,6 +702,7 @@ export class SessionHost {
         },
       ),
       attachments: new Map(),
+      bell: new BellScanner(),
       size: { cols, rows },
       ...(pool !== undefined ? { pool: pool as SessionPool } : {}),
     };
@@ -705,6 +710,7 @@ export class SessionHost {
     this.persist(s);
     pty.onData((d) => {
       s.log.append(d);
+      if (s.bell.feed(d)) s.info.bellAt = new Date().toISOString();
       if (!s.attachments.size) return;
       const data = d.toString("base64");
       for (const [aid, c] of s.attachments) c.send({ ev: "data", aid, data });

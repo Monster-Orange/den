@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { NotificationStore } from "../../../src/shared/notifications";
 import { Attention } from "../../../src/ui/server/attention";
+import { bellsOf } from "../../../src/ui/server/notification-service";
+import type { AgentRecord } from "../../../src/shared/agents/records";
 
 let dir = "";
 let clock = 1_000_000;
@@ -81,7 +83,7 @@ describe("attention", () => {
     expect(store.list().map((n) => n.kind)).toEqual(["finished"]);
   });
 
-  it("asked (den_notify): its question in the text; gone() clears", async () => {
+  it("asked (ask_human): its question in the text; gone() clears", async () => {
     const { store, a } = mk();
     await a.event("ag-1", "web", {
       event: "waiting",
@@ -92,5 +94,84 @@ describe("attention", () => {
     a.gone("ag-1");
     expect(a.waitingNow().size).toBe(0);
     expect(store.list()).toEqual([]);
+  });
+
+  it("NT-1 bell: a new bellAt marks it waiting for input; the same one again doesn't; one from before the server saw it doesn't", async () => {
+    const { store, a } = mk();
+    marks["ag-1"] = "m1";
+    const at = (ms: number) => new Date(ms).toISOString();
+    // First sight: a bell older than 10 s is history, not a new one.
+    await a.bells([
+      { agent: "ag-1", workspace: "web", bellAt: at(clock - 60_000) },
+    ]);
+    expect(a.waitingNow().size).toBe(0);
+    clock += 1000;
+    await a.bells([{ agent: "ag-1", workspace: "web", bellAt: at(clock) }]);
+    expect([...a.waitingNow()]).toEqual([["ag-1", "input"]]);
+    expect(store.list()[0].text).toBe("Planner is waiting for you");
+    // Its output moves: cleared. The same bell again: nothing.
+    marks["ag-1"] = "m2";
+    await a.check();
+    await a.bells([{ agent: "ag-1", workspace: "web", bellAt: at(clock) }]);
+    expect(a.waitingNow().size).toBe(0);
+  });
+
+  it("NT-1 bell: an agent already waiting keeps why (permission stays permission)", async () => {
+    const { a } = mk();
+    marks["ag-1"] = "m1";
+    await a.event("ag-1", "web", { event: "waiting", why: "permission" });
+    clock += 1000;
+    await a.bells([
+      {
+        agent: "ag-1",
+        workspace: "web",
+        bellAt: new Date(clock).toISOString(),
+      },
+    ]);
+    expect([...a.waitingNow()]).toEqual([["ag-1", "permission"]]);
+  });
+});
+
+describe("NT-1 bell: which agents rang", () => {
+  const info = (id: string, bellAt?: string, exited = false) => ({
+    ref: { backend: "den-pty", id },
+    name: `acme-web:${id}`,
+    pid: 1,
+    startedAt: "2026-11-13T09:00:00.000Z",
+    ...(bellAt ? { bellAt } : {}),
+    ...(exited ? { exited: true } : {}),
+  });
+  const rec = (id: string, runtime: string, extra = {}) =>
+    ({
+      id,
+      persona: id,
+      runtime,
+      workspace: "web",
+      cwd: "/w",
+      session: { backend: "den-pty", id: `s-${id}` },
+      sessionName: `acme-web:${id}`,
+      startedAt: "2026-11-13T09:00:00.000Z",
+      ...extra,
+    }) as unknown as AgentRecord;
+  it("a running agent's rung session; not den-claude's (its hooks say it), not a stopped or exited one", () => {
+    const t = "2026-11-13T09:05:00.000Z";
+    expect(
+      bellsOf(
+        [
+          info("s-cx", t),
+          info("s-cl", t),
+          info("s-st", t),
+          info("s-ex", t, true),
+          info("s-quiet"),
+        ],
+        [
+          rec("cx", "codex"),
+          rec("cl", "den-claude"),
+          rec("st", "codex", { stoppedAt: t }),
+          rec("ex", "gemini"),
+          rec("quiet", "codex"),
+        ],
+      ),
+    ).toEqual([{ agent: "cx", workspace: "web", bellAt: t }]);
   });
 });
