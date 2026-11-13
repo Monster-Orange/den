@@ -16,6 +16,7 @@
  */
 import {
   ackBody,
+  deliveryRaw,
   deliveryText,
   parseDelivery,
   SseReader,
@@ -83,12 +84,72 @@ export class DeliveryLoop {
   private readonly active = new Map<string, Active>();
   /** The last state each delivery was acked with (a repeat is re-acked). */
   private readonly states = new Map<string, AckState>();
+  /**
+   * Agents being typed into right now. take() and the tick both pump; one
+   * typing must not let the other type the same comments again while the
+   * paste is under way (the 0.4.40 gate's bug 1).
+   */
+  private readonly typing = new Set<string>();
+  /** What persist() last wrote. */
+  private persisted = "null";
   private readonly hb: number;
   private readonly now: () => number;
 
   constructor(private readonly d: DeliveryLoopDeps) {
     this.hb = d.heartbeatMs ?? 15_000;
     this.now = d.now ?? Date.now;
+    this.restore();
+  }
+
+  /**
+   * What a Den restart left: queued comments queue again; typed ones are
+   * active again, so the agent's state settles them (its turn may still be
+   * running: sessions outlive Den).
+   */
+  private restore(): void {
+    this.persisted = JSON.stringify(this.d.seen.held ?? null);
+    const h = this.d.seen.held as {
+      queue?: Record<string, unknown[]>;
+      active?: Record<string, Partial<Active>>;
+    } | null;
+    if (!h || typeof h !== "object") return;
+    for (const [agent, list] of Object.entries(h.queue ?? {})) {
+      if (!Array.isArray(list)) continue;
+      const q = list
+        .map((r) => parseDelivery(r))
+        .filter((x): x is Delivery => !!x && x.agent === agent);
+      if (q.length) this.queue.set(agent, q);
+    }
+    for (const [agent, a] of Object.entries(h.active ?? {})) {
+      if (!a || !Array.isArray(a.ids) || !a.ids.length) continue;
+      const ids = a.ids.filter((x): x is string => typeof x === "string");
+      const typedAt = typeof a.typedAt === "number" ? a.typedAt : this.now();
+      this.active.set(agent, {
+        ids,
+        ...(typeof a.artifact === "string" ? { artifact: a.artifact } : {}),
+        ...(typeof a.url === "string" ? { url: a.url } : {}),
+        sawBusy: a.sawBusy === true,
+        typedAt,
+        lastBeat: this.now(),
+      });
+      for (const id of ids) this.states.set(id, "working");
+    }
+  }
+
+  /** Save what's held, for restore(). */
+  private persist(): void {
+    const queue: Record<string, unknown[]> = {};
+    for (const [a, q] of this.queue)
+      if (q.length) queue[a] = q.map(deliveryRaw);
+    const active: Record<string, Active> = {};
+    for (const [a, v] of this.active) active[a] = v;
+    const empty = !Object.keys(queue).length && !Object.keys(active).length;
+    const next = empty ? null : { queue, active };
+    // The tick calls this every 2 s: write only what changed.
+    const key = JSON.stringify(next);
+    if (key === this.persisted) return;
+    this.persisted = key;
+    this.d.seen.setHeld(next);
   }
 
   /** The card line's numbers for `agent`, or null when there's nothing. */
@@ -147,6 +208,7 @@ export class DeliveryLoop {
     const q = this.queue.get(dv.agent) ?? [];
     q.push(dv);
     this.queue.set(dv.agent, q);
+    this.persist();
     if (s === "stopped") await this.ack(dv.id, "queued");
     await this.pumpOne(dv.agent, s);
   }
@@ -158,6 +220,16 @@ export class DeliveryLoop {
   }
 
   private async pumpOne(agent: string, s: AgentState): Promise<void> {
+    // Another pump is typing into this agent: it settles the rest.
+    if (this.typing.has(agent)) return;
+    try {
+      await this.pumpOneNow(agent, s);
+    } finally {
+      this.persist();
+    }
+  }
+
+  private async pumpOneNow(agent: string, s: AgentState): Promise<void> {
     const now = this.now();
     const act = this.active.get(agent);
     if (act) {
@@ -199,8 +271,18 @@ export class DeliveryLoop {
       q.length === 1
         ? texts[0]
         : [`${q.length} Hub comments:`, ...texts].join("\n\n---\n\n");
-    if (!(await this.d.agents.type(agent, text))) return;
+    // Claim them before the paste: the queue keeps only what comes after.
     this.queue.delete(agent);
+    this.typing.add(agent);
+    let typed = false;
+    try {
+      typed = await this.d.agents.type(agent, text);
+    } finally {
+      this.typing.delete(agent);
+      if (!typed)
+        this.queue.set(agent, [...q, ...(this.queue.get(agent) ?? [])]);
+    }
+    if (!typed) return;
     this.active.set(agent, {
       ids: q.map((dv) => dv.id),
       artifact: q[0].thread.artifact,

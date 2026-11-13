@@ -313,3 +313,119 @@ describe("reading Hub", () => {
     expect(s.typed).toHaveLength(1);
   });
 });
+
+describe("the 0.4.40 gate's delivery bugs", () => {
+  it("bug 1: the tick while a paste is under way doesn't type it again", async () => {
+    const typed: string[] = [];
+    const waiting: (() => void)[] = [];
+    const release = () => waiting.splice(0).forEach((r) => r());
+    const seen = new SeenDeliveries(path.join(dir, "seen.json"));
+    const loop = new DeliveryLoop({
+      hub: {
+        stream: () => {
+          throw new Error("none");
+        },
+        list: async () => [],
+        ack: async () => {},
+      },
+      agents: {
+        state: async () => "idle",
+        // A paste that takes a while, as a real one does (about 1.7 s).
+        type: (_a, text) =>
+          new Promise((r) => {
+            typed.push(text);
+            waiting.push(() => r(true));
+          }),
+      },
+      owner: () => ({ ownerId: "u_me" }),
+      seen,
+    });
+    const nap = () => new Promise((r) => setTimeout(r, 5));
+    const taking = loop.take(dv("d1"));
+    await nap();
+    // Two ticks during the paste (not awaited: a second paste would wait too).
+    const ticks = [loop.pump(), loop.pump()];
+    await nap();
+    expect(typed).toHaveLength(1);
+    release();
+    await Promise.all([taking, ...ticks]);
+    await loop.pump();
+    expect(typed).toHaveLength(1);
+  });
+
+  it("bug 1: a paste that fails puts the comments back, ahead of newer ones", async () => {
+    const t = setup();
+    let fail = true;
+    const typed: string[] = [];
+    const loop = new DeliveryLoop({
+      hub: t.hub,
+      agents: {
+        state: async () => "idle",
+        type: async (_a, text) => {
+          typed.push(text);
+          return !fail;
+        },
+      },
+      owner: () => ({ ownerId: "u_me" }),
+      seen: new SeenDeliveries(path.join(dir, "seen2.json")),
+    });
+    await loop.take(dv("d1"));
+    fail = false;
+    await loop.pump();
+    expect(typed).toHaveLength(2);
+    expect(typed[1]).toContain("comment d1");
+    expect(loop.work("ag-1")).toMatchObject({ working: 1, queued: 0 });
+  });
+
+  it("bug 2: a comment in flight across a Den restart is settled after it", async () => {
+    const t = setup();
+    await t.loop.take(dv("d1"));
+    expect(t.of("d1")).toEqual(["delivered", "working"]);
+    // Den restarts mid-turn: a new loop on the same file.
+    const acks: { id: string; state: string }[] = [];
+    let state: AgentState = "busy";
+    const loop2 = new DeliveryLoop({
+      hub: {
+        ...t.hub,
+        ack: async (id, body) =>
+          void acks.push({ id, state: String(body.state) }),
+      },
+      agents: { state: async () => state, type: async () => true },
+      owner: () => ({ ownerId: "u_me" }),
+      seen: new SeenDeliveries(t.seenFile),
+    });
+    expect(loop2.work("ag-1")).toMatchObject({ working: 1 });
+    await loop2.pump();
+    state = "idle";
+    await loop2.pump();
+    expect(acks.map((a) => a.state)).toEqual(["done"]);
+    // Nothing held now: a third start has nothing to settle.
+    const loop3 = new DeliveryLoop({
+      hub: t.hub,
+      agents: { state: async () => "idle", type: async () => true },
+      owner: () => ({ ownerId: "u_me" }),
+      seen: new SeenDeliveries(t.seenFile),
+    });
+    expect(loop3.work("ag-1")).toBeNull();
+  });
+
+  it("bug 2: a comment queued for a stopped agent survives a Den restart", async () => {
+    const t = setup({ states: { "ag-1": "stopped" } });
+    await t.loop.take(dv("d1"));
+    expect(t.of("d1")).toEqual(["queued"]);
+    const typed: string[] = [];
+    const loop2 = new DeliveryLoop({
+      hub: t.hub,
+      agents: {
+        state: async () => "idle",
+        type: async (_a, text) => (typed.push(text), true),
+      },
+      owner: () => ({ ownerId: "u_me" }),
+      seen: new SeenDeliveries(t.seenFile),
+    });
+    await loop2.pump();
+    expect(typed).toHaveLength(1);
+    expect(typed[0]).toContain("comment d1");
+    expect(typed[0]).toContain("your person");
+  });
+});

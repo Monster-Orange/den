@@ -84,6 +84,20 @@ function readAuthor(v: unknown): DeliveryAuthor | null {
 }
 
 /** A delivery from Hub's stream or list, or null when it isn't one. */
+/** A Delivery back in Hub's shape, so parseDelivery reads it again. */
+export function deliveryRaw(d: Delivery): Record<string, unknown> {
+  return {
+    id: d.id,
+    agent: d.agent,
+    project: d.project,
+    thread: d.thread,
+    author: d.author,
+    body: d.body,
+    created_at: d.createdAt,
+    ...(d.forwarded ? { forwarded: d.forwarded } : {}),
+  };
+}
+
 export function parseDelivery(v: unknown): Delivery | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
@@ -277,6 +291,13 @@ export class SeenDeliveries {
   private ids: string[] = [];
   private set = new Set<string>();
   last: string | null = null;
+  /**
+   * What the loop still holds (queued, and typed but not finished), so a
+   * Den restart neither drops a queued comment nor leaves one "working"
+   * forever (the 0.4.40 gate's bug 2). The loop's own shape; read back by
+   * it, never trusted beyond that.
+   */
+  held: unknown = null;
 
   constructor(
     private readonly file: string,
@@ -293,6 +314,7 @@ export class SeenDeliveries {
           .slice(-cap);
       this.set = new Set(this.ids);
       this.last = typeof v.last === "string" ? v.last : null;
+      this.held = (v as { held?: unknown }).held ?? null;
     } catch {
       /* none yet, or broken: start empty */
     }
@@ -317,13 +339,18 @@ export class SeenDeliveries {
     this.save();
   }
 
+  setHeld(v: unknown): void {
+    this.held = v;
+    this.save();
+  }
+
   private save(): void {
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
       fs.writeFileSync(
         tmp,
-        JSON.stringify({ ids: this.ids, last: this.last }),
+        JSON.stringify({ ids: this.ids, last: this.last, held: this.held }),
         { mode: 0o600 },
       );
       fs.renameSync(tmp, this.file);
