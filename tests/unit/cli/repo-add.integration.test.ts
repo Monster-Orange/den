@@ -51,7 +51,19 @@ function acme(...args: string[]): { code: number; json: any; err: string } {
 function git(cwd: string, ...args: string[]): void {
   const r = spawnSync(
     "git",
-    ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args],
+    [
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.com",
+      // The setup's own commit never starts git's background maintenance:
+      // it would write in .git after the "untouched" snapshot (a lock).
+      "-c",
+      "maintenance.auto=false",
+      "-c",
+      "gc.auto=0",
+      ...args,
+    ],
     { cwd, env, encoding: "utf-8" },
   );
   if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
