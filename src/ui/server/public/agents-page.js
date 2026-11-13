@@ -550,7 +550,7 @@ function stoppedChip(r) {
 /** D37: what a stopped row leaves out, for its tooltip. */
 function stoppedTip(r) {
   const who = [r.persona, r.agent].filter(Boolean).join(" · ");
-  const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
+  const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
   const cant =
     !r.resumable && r.noResume
       ? r.noResume.startsWith(`${r.runtime} `)
@@ -614,7 +614,7 @@ function rowHtml(r) {
   const right = r.waiting
     ? `<span class="wbdg">${esc(t("ag.waiting"))}</span>`
     : `<span class="st">${esc(stateText(r.state))}</span>`;
-  const meta = [r.runtime, r.cwd].filter(Boolean).join(" · ");
+  const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
   // column (it pushed this row's name right of the others').
   const chip = r.kind === "agent" ? helperBadgeHtml(r) : "";
@@ -1424,7 +1424,7 @@ function paintBar(p) {
   // D37: a stopped agent's pane has what its one-line row leaves out.
   const rest = r
     ? (isStopped(r)
-        ? [r.persona, r.agent, r.runtime, r.cwd]
+        ? [r.persona, r.agent, r.runtime, cwdText(r)]
         : [r.runtime, sessionExtra(r)]
       )
         .filter(Boolean)
@@ -2612,10 +2612,20 @@ const sd = {
   change: null,
 };
 
+/** Bring in's conversations: the project's, then (D56) those started outside any. */
+function bringAll() {
+  return [...(sd.bring?.list ?? []), ...(sd.bring?.away ?? [])];
+}
+
 /** The conversation picked in Bring in, when it can be brought in. */
 function bringPick() {
-  const c = (sd.bring?.list ?? []).find((x) => x.id === sd.bring.pick);
+  const c = bringAll().find((x) => x.id === sd.bring.pick);
   return c && !c.open && !c.agent ? c : null;
+}
+
+/** D56: where an agent runs, saying so when that is outside its project. */
+function cwdText(r) {
+  return r.outside && r.cwd ? t("ag.outside", { folder: r.cwd }) : r.cwd;
 }
 
 /** "3 min ago", "2 h ago", or the date. */
@@ -2668,6 +2678,12 @@ function paintConversations() {
   ].join(" ");
   $d("#ag-conv").innerHTML = list.map(convRowHtml).join("");
   $d("#ag-conv").hidden = !list.length;
+  // D56: started outside every project: each runs in its own folder.
+  const away = sd.bring.away ?? [];
+  for (const id of ["#ag-conv-oh", "#ag-conv-ohelp", "#ag-conv-o"])
+    $d(id).hidden = !away.length;
+  $d("#ag-conv-ohelp").textContent = t("ag.bring.outsideHelp");
+  $d("#ag-conv-o").innerHTML = away.map(convRowHtml).join("");
 }
 
 /** Ask for the workspace's conversations (Bring in). */
@@ -2679,23 +2695,27 @@ async function fillConversations(ws) {
       `/api/workspaces/${encodeURIComponent(ws)}/conversations`,
     );
     sd.bring.list = r?.conversations ?? [];
+    sd.bring.away = r?.outside ?? [];
     sd.bring.runtimes = r?.runtimes ?? [];
     sd.bring.root = r?.folder ?? "";
   } catch (err) {
     window.denShell?.errorToast?.(err);
     return false;
   }
-  if (!sd.bring.list.some((c) => c.id === sd.bring.pick))
+  // Never one from outside picked for you: that is the person's own ask.
+  if (!bringAll().some((c) => c.id === sd.bring.pick))
     sd.bring.pick = sd.bring.list.find((c) => !c.open && !c.agent)?.id ?? "";
   paintConversations();
   return true;
 }
 
 function pickConversation(id) {
-  const c = (sd.bring?.list ?? []).find((x) => x.id === id);
+  const c = bringAll().find((x) => x.id === id);
   if (!c || c.open || c.agent) return;
   sd.bring.pick = id;
-  for (const b of st.root.querySelectorAll("#ag-conv [data-cid]"))
+  for (const b of st.root.querySelectorAll(
+    "#ag-conv [data-cid], #ag-conv-o [data-cid]",
+  ))
     b.setAttribute("aria-checked", String(b.dataset.cid === id));
   // AG-17.1c: its suggested persona, preselected (never submitted).
   if (c.suggest && (sd.data?.personas ?? []).some((p) => p.id === c.suggest))
@@ -3592,6 +3612,8 @@ async function submitBringIn(ws) {
         // AG-17.1c: the conversation's own model unless one is picked.
         ...(sd.model ? { model: sd.model } : {}),
         ...(sd.model && sd.ver ? { version: sd.ver } : {}),
+        // D56: picked from outside any project: the ask names its folder.
+        ...((sd.bring?.away ?? []).includes(c) ? { outside: c.cwd } : {}),
       },
     );
     window.denShell?.toast?.(t("ag.bring.done", { id: r?.agent?.id ?? p.id }));
@@ -3636,7 +3658,7 @@ async function editFromStart(kind) {
 function wireStartDialog(root) {
   const form = root.querySelector("#ag-form");
   form.addEventListener("click", (e) => {
-    const cr = e.target.closest("#ag-conv [data-cid]");
+    const cr = e.target.closest("#ag-conv [data-cid], #ag-conv-o [data-cid]");
     if (cr) {
       e.preventDefault();
       pickConversation(cr.dataset.cid);
@@ -3794,6 +3816,7 @@ function translateStatic(root) {
   set("#ag-start", "ag.start");
   set("#ag-bring", "ag.bring");
   set("#ag-conv-t", "ag.bring.conv");
+  set("#ag-conv-ot", "ag.bring.outside");
   set("#ag-clear", "ag.clear");
   set("#ag-dlg-h", "ag.new.title");
   set("#ag-ws-t", "ag.ws");

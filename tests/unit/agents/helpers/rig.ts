@@ -153,6 +153,8 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     distRoot: () => dir,
     stateDir: () => stateDir,
     workspaceDir: wsDir,
+    // D56: the projects whose folders are "inside a project".
+    workspaceNames: () => ["north", "south"],
     mcpServer: () => ({
       command: "/dist/bin/acme",
       env: { PATH: "/usr/bin:/bin" },

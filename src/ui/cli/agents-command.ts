@@ -222,7 +222,7 @@ export const AGENTS_HELP = {
     "{cli} agents helpers <id> <helper> [-w <ws>] [--limit <n>] [--json]",
     "    one helper's transcript, tool calls summarized (the last 500 lines)",
     "{cli} agents import -w <ws> [--runtime <r>] [--json]",
-    "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>] [--model <m>]",
+    "{cli} agents import -w <ws> --session <id> --persona <p> [--runtime <r>] [--id <id>] [--model <m>] [--outside <folder>]",
     "    bring in a conversation started outside Den: the first lists the runtime's",
     "    own (default den-claude) in the workspace's folder; the second continues",
     "    one as a Den agent (its resume, in the folder it ran in). Refused while it",
@@ -421,6 +421,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
     "--id": true,
     "--model": true,
     "--version": true,
+    "--outside": true,
     "--json": false,
   });
   noExtra(where, p);
@@ -428,19 +429,33 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
   if (!ws) throw new UsageError(`${where} needs -w <workspace>`);
   const runtime = str(p, "--runtime");
   const session = str(p, "--session");
+  const outside = str(p, "--outside");
+  // D56: bringing in from outside the project is a person's ask only.
+  if (outside !== undefined && d.env[ACTOR_TOKEN_ENV] !== undefined)
+    throw new AgentError(
+      `${where}: only a person can bring in a conversation from outside the project (this is an agent's session)`,
+    );
   if (!session) {
     if (str(p, "--persona") || str(p, "--id"))
       throw new UsageError(`${where}: --persona and --id need --session <id>`);
-    const { runtimes, conversations } = listConversations(d, ws, runtime);
+    const {
+      runtimes,
+      conversations,
+      outside: away,
+    } = listConversations(d, ws, runtime);
     if (p.flags["--json"]) {
       d.out(
-        JSON.stringify({ workspace: ws, runtimes, conversations }, null, 2),
+        JSON.stringify(
+          { workspace: ws, runtimes, conversations, outside: away },
+          null,
+          2,
+        ),
       );
       return 0;
     }
     for (const r of runtimes)
       if (!r.bringIn && (!runtime || runtime === r.id)) d.err(`${r.why}`);
-    if (!conversations.length) {
+    if (!conversations.length && !away.length) {
       d.out(`no conversations to bring in for workspace ${ws}`);
       return 0;
     }
@@ -460,6 +475,27 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
     d.out(
       `bring one in: ${d.cli} agents import -w ${ws} --session <id> --persona <p>`,
     );
+    // D56: started outside every project: each comes in by naming its folder.
+    if (away.length) {
+      d.out("");
+      d.out("started outside any project:");
+      d.out(
+        columns([
+          ["ID", "RUNTIME", "LAST", "TITLE", "FOLDER", "NOTE"],
+          ...away.map((c) => [
+            c.id,
+            c.runtime,
+            c.lastAt.slice(0, 16).replace("T", " "),
+            c.title ?? "(untitled)",
+            c.cwd,
+            c.agent ? `agent ${c.agent}` : c.open ? "open elsewhere" : "",
+          ]),
+        ]).join("\n"),
+      );
+      d.out(
+        `bring one in from its folder: ${d.cli} agents import -w ${ws} --session <id> --persona <p> --outside <folder>`,
+      );
+    }
     return 0;
   }
   const persona = str(p, "--persona");
@@ -475,6 +511,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
     ...(str(p, "--version") !== undefined
       ? { version: str(p, "--version") }
       : {}),
+    ...(outside !== undefined ? { outside } : {}),
   });
   return report(
     d,

@@ -88,10 +88,12 @@ import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName, transcriptTitle } from "./transcript-follow.js";
 import {
   claudeConversations,
+  claudeConversationsWhere,
   transcriptBusy,
   lastPrompt,
   transcriptSummary,
 } from "./conversations.js";
+import { claudeOpenPid } from "./open-check.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -710,6 +712,18 @@ export const denClaude: Runtime = {
     } catch {
       return [];
     }
+  },
+  // D56: its conversations started outside every project.
+  listSessionsWhere(accept, env = process.env) {
+    try {
+      return claudeConversationsWhere(accept, env);
+    } catch {
+      return [];
+    }
+  },
+  // D56 item 8: another process holding the conversation (its records).
+  openPid(token, env = process.env, exclude = []) {
+    return claudeOpenPid(token, env, exclude);
   },
   // AG-17.1: the folder a conversation ran in (only the ends of its file),
   // so a foreign one is refused by name.

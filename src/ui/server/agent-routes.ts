@@ -1120,7 +1120,7 @@ export async function handleAgentRoutes(
   return true;
 }
 
-const IMPORT_KEYS = ["persona", "runtime", "id", "model", "version"];
+const IMPORT_KEYS = ["persona", "runtime", "id", "model", "version", "outside"];
 /** AG-18: what a persona change takes. */
 const PERSONA_KEYS = ["persona", "model", "version", "when"];
 
@@ -1153,8 +1153,15 @@ async function conversations(
       const runtime =
         new URL(req.url ?? "/", "http://x").searchParams.get("runtime") ??
         undefined;
-      const listed = listConversations(d, ws, runtime);
-      sendJson(res, { workspace: ws, folder: d.workspaceDir(ws), ...listed });
+      const { outside, ...listed } = listConversations(d, ws, runtime);
+      // D56: those started outside every project are a person's to bring
+      // in, never an agent's to see.
+      sendJson(res, {
+        workspace: ws,
+        folder: d.workspaceDir(ws),
+        ...listed,
+        ...(agent ? {} : { outside }),
+      });
     } catch (e) {
       sendError(res, e, ws);
     }
@@ -1190,6 +1197,20 @@ async function conversations(
     };
     const persona = str("persona");
     if (!persona) throw new AgentError("persona is required", { usage: true });
+    // D56: the folder it started in, outside the project: a person's ask.
+    const out = body.outside;
+    if (out !== undefined && out !== null && out !== "") {
+      if (typeof out !== "string" || !path.isAbsolute(out) || out.length > 4096)
+        throw new AgentError("outside must be the folder's full path", {
+          usage: true,
+        });
+      if (agent)
+        throw new AgentError(
+          "only a person can bring in a conversation from outside the project",
+          { status: 403 },
+        );
+    }
+    const outside = typeof out === "string" && out ? out : undefined;
     const s = await importAgent(d, {
       workspace: ws,
       session,
@@ -1198,8 +1219,9 @@ async function conversations(
       id: str("id"),
       ...(str("model") !== undefined ? { model: str("model") } : {}),
       ...(str("version") !== undefined ? { version: str("version") } : {}),
+      ...(outside ? { outside } : {}),
     });
-    what = `bring in ${session} as ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
+    what = `bring in ${session} as ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}) in ${ws}${outside ? `, from outside the project (${outside})` : ""}`;
     audit(s.early ? "exited at once" : undefined);
     sendStarted(res, s, d);
   } catch (e) {
@@ -1978,6 +2000,31 @@ function agentFence(d: AgentsResolved, rec: AgentRecord): PathFence {
   };
 }
 
+/** D56 item 4: whether `dir` is the home folder, or holds a project's folder. */
+function holdsProjects(d: AgentsResolved, dir: string): boolean {
+  const real = (p: string) => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  const at = real(dir);
+  const home = d.env.HOME || os.homedir();
+  if (home && at === real(home)) return true;
+  const under = (p: string) => {
+    const rel = path.relative(at, real(p));
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  };
+  for (const ws of d.workspaceNames())
+    try {
+      if (d.workspaceFolders(ws).under.some(under)) return true;
+    } catch {
+      /* a workspace that can't say */
+    }
+  return false;
+}
+
 /**
  * The folders an agent's paths may point into (AG-4b, AG-DROP-2): its
  * workspace's, its own cwd, and its session's uploads folder.
@@ -1989,7 +2036,9 @@ function agentRoots(d: AgentsResolved, rec: AgentRecord, ws: string): string[] {
   } catch {
     /* no folder */
   }
-  roots.push(rec.cwd);
+  // D56 item 4: ~, or a folder holding projects, is never a file root:
+  // an agent started there reaches its project's files only.
+  if (!holdsProjects(d, rec.cwd)) roots.push(rec.cwd);
   const up = agentUploads(d, rec);
   if (up) roots.push(up);
   return roots.filter(Boolean);

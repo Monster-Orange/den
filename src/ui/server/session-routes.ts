@@ -268,6 +268,8 @@ export interface ListedSession {
   project?: string;
   repo?: string;
   repoMissing?: boolean;
+  /** D56: started outside its project; cwd is that folder. */
+  outside?: boolean;
   /** D71: its workspace was deleted; Move gives it one. */
   orphan?: boolean;
   persona?: string;
@@ -400,6 +402,7 @@ export function listedSessions(
         ? { repoMissing: true }
         : {}),
       ...(orphanWs.has(rec.workspace) ? { orphan: true } : {}),
+      ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
       ...(rec.model ? { model: rec.model } : {}),

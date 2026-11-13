@@ -538,3 +538,72 @@ export function openElsewhere(lastAt: string, now = Date.now()): boolean {
   const t = Date.parse(lastAt);
   return Number.isFinite(t) && now - t < OPEN_ELSEWHERE_MS;
 }
+
+/** D56: the most transcripts read (their ends) to find outside ones. */
+export const MAX_OUTSIDE_SCAN = 400;
+
+/**
+ * D56: Claude Code's conversations that ran in a folder `accept` takes
+ * (one outside every project, say ~), newest first, at most
+ * MAX_CONVERSATIONS. It looks at every project folder of the runtime's
+ * history, but reads (the ends of) only the newest MAX_OUTSIDE_SCAN
+ * transcripts. Never throws.
+ */
+export function claudeConversationsWhere(
+  accept: (cwd: string) => boolean,
+  env: NodeJS.ProcessEnv = process.env,
+): RuntimeConversation[] {
+  const root = claudeProjectsDir(env);
+  let projects: string[];
+  try {
+    projects = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  const files: { id: string; file: string; mtimeMs: number }[] = [];
+  for (const p of projects) {
+    let names: string[];
+    try {
+      names = fs.readdirSync(path.join(root, p));
+    } catch {
+      continue;
+    }
+    for (const n of names) {
+      if (!n.endsWith(".jsonl")) continue;
+      const id = n.slice(0, -".jsonl".length);
+      if (!ID_RE.test(id)) continue;
+      const file = path.join(root, p, n);
+      try {
+        const st = fs.statSync(file);
+        if (st.isFile() && st.size > 0)
+          files.push({ id, file, mtimeMs: st.mtimeMs });
+      } catch {
+        /* gone */
+      }
+    }
+  }
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const out: RuntimeConversation[] = [];
+  const seen = new Set<string>();
+  for (const f of files.slice(0, MAX_OUTSIDE_SCAN)) {
+    if (out.length >= MAX_CONVERSATIONS) break;
+    if (seen.has(f.id)) continue;
+    let s: ReturnType<typeof transcriptSummary>;
+    try {
+      s = transcriptSummary(f.file);
+    } catch {
+      continue;
+    }
+    if (!s.cwd || !accept(s.cwd)) continue;
+    seen.add(f.id);
+    out.push({
+      id: f.id,
+      title: s.title,
+      lastAt: new Date(f.mtimeMs).toISOString(),
+      cwd: s.cwd,
+      ...(s.model ? { model: s.model } : {}),
+      ...(s.mcp.length ? { mcp: s.mcp } : {}),
+    });
+  }
+  return out;
+}

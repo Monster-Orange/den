@@ -483,4 +483,99 @@ describe("Bring in (AG-17.1)", () => {
     await p.context().close();
     expect(errors).toEqual([]);
   }, 60_000);
+
+  it("D56: one started in ~ is listed apart, comes in only by the person's pick (naming its folder), and its row says where it started", async () => {
+    if (skip() || !PTY) return;
+    const home = path.dirname(s!.stateDir);
+    const AWAY = "4d3c2b1a-0000-4000-8000-00000000dddd";
+    conversation(home, AWAY, "Plan the week from home", 20 * 60_000, [
+      answer("claude-opus-5-5", "end_turn"),
+    ]);
+    const p = await page("/agents?ws=north");
+    await p.waitForSelector("#ag-bring");
+    // The tests above leave agents running: under the cap, one more.
+    for (const pty of s!.made) {
+      const kill = pty.kill.bind(pty);
+      pty.kill = (sig: string) => {
+        kill(sig);
+        setTimeout(() => pty.exit(143), 5);
+      };
+    }
+    await p.evaluate(async () => {
+      const r = (await window.denShell.api(
+        "GET",
+        "/api/workspaces/north/agents",
+      )) as
+        | { agents?: { agent: string; state: string }[] }
+        | { agent: string; state: string }[];
+      const rows = Array.isArray(r) ? r : (r.agents ?? []);
+      for (const a of rows)
+        if (a.state === "running")
+          await window.denShell.api(
+            "POST",
+            `/api/workspaces/north/agents/${encodeURIComponent(a.agent)}/stop`,
+            {},
+          );
+    });
+    await p.click("#ag-bring");
+    await p.waitForSelector("#ag-dlg[open]", { timeout: 20_000 });
+    await p.waitForSelector('#ag-persona [data-pid="planner"]');
+    await p.waitForSelector(`#ag-conv-o [data-cid="${AWAY}"]`);
+    expect(await p.textContent("#ag-conv-ot")).toBe(
+      "Started outside any project",
+    );
+    expect(await p.isVisible("#ag-conv-ohelp")).toBe(true);
+    // Never in the project's list, never picked for you.
+    expect(await p.$(`#ag-conv [data-cid="${AWAY}"]`)).toBeNull();
+    expect(
+      await p.getAttribute(`#ag-conv-o [data-cid="${AWAY}"]`, "aria-checked"),
+    ).toBe("false");
+    // Its full folder, not relative to the project's.
+    expect(
+      await p.textContent(`#ag-conv-o [data-cid="${AWAY}"] .pd`),
+    ).toContain(`${home} ·`);
+    await shot(p, "bring-in-outside-1440");
+    await p.click('#ag-persona [data-pid="planner"]');
+    await p.click(`#ag-conv-o [data-cid="${AWAY}"]`);
+    expect(
+      await p.getAttribute(`#ag-conv-o [data-cid="${AWAY}"]`, "aria-checked"),
+    ).toBe("true");
+    const [res] = await Promise.all([
+      p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname ===
+            `/api/workspaces/north/conversations/${AWAY}/import`,
+        { timeout: 20_000 },
+      ),
+      p.click("#ag-go"),
+    ]);
+    expect(res.status()).toBe(200);
+    expect(JSON.parse(res.request().postData() ?? "{}")).toEqual({
+      persona: "planner",
+      runtime: "den-claude",
+      outside: home,
+    });
+    const agent = (
+      (await res.json()) as { agent: { id: string; sessionId: string } }
+    ).agent;
+    const pty = s!.made[s!.made.length - 1];
+    expect(pty.args.slice(0, 2)).toEqual(["--resume", AWAY]);
+    expect(pty.opts.cwd).toBe(home);
+    expect(readRecord(s!.stateDir, agent.id)).toMatchObject({
+      cwd: home,
+      outside: true,
+    });
+    const row = "#agl";
+    await p.waitForFunction(
+      ([sel, want]) =>
+        (document.querySelector(sel as string)?.textContent ?? "").includes(
+          want as string,
+        ),
+      [row, `started in ${home} (outside the project)`],
+      { timeout: 10_000 },
+    );
+    await p.context().close();
+    expect(errors).toEqual([]);
+  }, 60_000);
 });

@@ -748,6 +748,10 @@
     "ag.bring.none":
       "No conversations started outside Den in this workspace's folder or its repos' folders.",
     "ag.bring.untitled": "Untitled conversation",
+    "ag.bring.outside": "Started outside any project",
+    "ag.bring.outsideHelp":
+      "These ran in a folder outside every project, your home folder say. Bring one in and it runs there, in the folder shown under it, as an agent of this project.",
+    "ag.outside": "started in {folder} (outside the project)",
     "ag.bring.open": "Open elsewhere",
     "ag.bring.openTip": "Still open in another terminal. Close it there first",
     "ag.bring.agent": "Agent {id}",

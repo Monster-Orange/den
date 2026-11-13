@@ -65,6 +65,11 @@ export interface AgentRecord {
    */
   broughtInAt?: string;
   /**
+   * D56: its conversation started outside its project (in ~, say) and was
+   * brought in by an explicit ask naming that folder: it runs there.
+   */
+  outside?: boolean;
+  /**
    * The runtime was launched on resumeToken at least once (0.4.8). A
    * resume then always tries the runtime's own resume first, never a new
    * conversation under the same id (which the runtime refuses once the

@@ -2710,6 +2710,7 @@ server scoped to its workspace.
 <cli> agents resume <id> [-w <ws>]
 <cli> agents import -w <ws> [--runtime <r>] [--json]          # conversations to bring in
 <cli> agents import -w <ws> --session <id> --persona <p> [--model <m>]  # bring one in
+<cli> agents import -w <ws> --session <id> --persona <p> --outside <folder>  # D56: one started outside any project
 <cli> agents persona <id> <persona> [-w <ws>] [--model <m>] [--now | --after-turn]  # change its persona
 <cli> agents restart <id> [-w <ws>] [--now]  # the same conversation, with the tools it gets now
 <cli> agents personas [--json]
@@ -2839,17 +2840,44 @@ import -w <ws>` lists them too.
   latest agent of the workspace that worked in the conversation's folder
   (or a folder inside it, or one containing it), else the workspace's
   latest agent's. The dialog preselects it; you confirm with Bring in.
+- **Started outside any project (D56).** A conversation that ran in a
+  folder no project holds (your home folder, say) is listed apart:
+  "Started outside any project", with its full folder (`outside` in the
+  list). One that ran inside another project's folder is still refused as
+  that project's (409). Bringing one in is one explicit ask that names
+  its folder: picking it in the dialog, or `--outside <folder>`, which must
+  be the folder it ran in. It runs there; the record says `outside: true`,
+  the audit trail names the folder, and its row reads "started in
+  <folder> (outside the project)". Never the root, a system folder
+  (`/System`, `/usr`, `/bin`, `/sbin`, `/etc`, `/var`, `/private`,
+  `/Library`, `/Applications`, `/opt`, `/dev`, unless inside your home
+  folder), Den's own state folder, or a folder inside them. Den never
+  copies its transcript. A person's ask only: an agent can't bring one in
+  from outside, nor see the outside list.
+- **Files: only its project's.** An agent whose folder is your home
+  folder, or a folder that holds projects, can't reach files there through
+  Den (uploads, file links): only its project's folders and its own
+  uploads.
+- **Resume only where it started (D56).** Every resume checks that the
+  agent's folder still exists and is the folder its conversation ran in
+  (when the runtime can tell). If not, it refuses and says why: "its
+  folder <f> is gone", or "the conversation ran in <a>, not in <b>".
 - **One writer only.** A conversation written in the last minute is taken
   to be still open in another terminal: "Still open in another terminal.
   Close it there first" (HTTP 409 `open_elsewhere`). A conversation an
-  agent already continues is refused too (409 `already_agent`).
+  agent already continues is refused too (409 `already_agent`). D56: Den
+  also reads Claude Code's own record of each running process
+  (`~/.claude/sessions/<pid>.json`, or under `CLAUDE_CONFIG_DIR`): a live
+  process (same pid, same start time) that has the conversation open
+  refuses bring-in and every resume: "This conversation is open in another
+  process (pid N). Close it first." Den's own sessions don't count.
 - The agent's id is the persona's, or `<persona>-2`, `-3`… when that is
   taken; `--id` sets one. An existing agent is never overwritten.
 - Only den-claude can bring one in for now. Other runtimes say "<runtime>
   can't bring in a conversation yet".
 - Routes: `GET /api/workspaces/<ws>/conversations[?runtime=<r>]` and `POST
 /api/workspaces/<ws>/conversations/<id>/import` `{ persona, runtime?, id?,
-model?, version? }`. A person's only, unless MCP `agent_import` is opted
+model?, version?, outside? }`. A person's only, unless MCP `agent_import` is opted
   in.
 
 #### Change an agent's persona

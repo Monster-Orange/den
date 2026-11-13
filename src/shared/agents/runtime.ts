@@ -251,6 +251,23 @@ export interface Runtime {
     scope: string | { under: string[]; exact?: string[] },
     env?: NodeJS.ProcessEnv,
   ): RuntimeConversation[];
+  /**
+   * D56: its conversations that ran in a folder `accept` takes (outside
+   * every project), newest first, as listSessions reads them. Never throws.
+   */
+  listSessionsWhere?(
+    accept: (cwd: string) => boolean,
+    env?: NodeJS.ProcessEnv,
+  ): RuntimeConversation[];
+  /**
+   * D56 item 8: the pid of another live process (not one of `exclude`)
+   * that has conversation `token` open, or null. Never throws.
+   */
+  openPid?(
+    token: string,
+    env?: NodeJS.ProcessEnv,
+    exclude?: readonly number[],
+  ): number | null;
   /** AG-17.1: the folder conversation `token` ran in, or null. Never throws. */
   conversationCwd?(token: string, env?: NodeJS.ProcessEnv): string | null;
   /**

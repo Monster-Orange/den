@@ -637,6 +637,10 @@
     "ag.bring.none":
       "No hay conversaciones iniciadas fuera de Den en la carpeta de este espacio de trabajo ni en las de sus repositorios.",
     "ag.bring.untitled": "Conversación sin título",
+    "ag.bring.outside": "Iniciadas fuera de cualquier proyecto",
+    "ag.bring.outsideHelp":
+      "Se ejecutaron en una carpeta fuera de todos los proyectos, por ejemplo tu carpeta personal. Si traes una, se ejecuta allí, en la carpeta que aparece debajo, como agente de este proyecto.",
+    "ag.outside": "iniciado en {folder} (fuera del proyecto)",
     "ag.bring.open": "Abierta en otro lugar",
     "ag.bring.openTip": "Sigue abierta en otra terminal. Ciérrala allí primero",
     "ag.bring.agent": "Agente {id}",

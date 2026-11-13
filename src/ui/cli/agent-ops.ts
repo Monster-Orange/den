@@ -177,6 +177,7 @@ import {
   openElsewhere,
   type RuntimeConversation,
 } from "../../shared/agents/conversations.js";
+import { openInMessage } from "../../shared/agents/open-check.js";
 import {
   OVERRIDE_SCOPES,
   readRotateFile,
@@ -255,6 +256,8 @@ export interface AgentsDeps extends SessionsDeps {
    * own folder, and each repo's path, a repo added by path outside it too.
    */
   workspaceFolders?: (ws: string) => { under: string[]; exact?: string[] };
+  /** D56: every workspace's name (whose folders are "inside a project"). */
+  workspaceNames?: () => string[];
   /** The MCP server binary and its env; Den adds the scoped args. */
   mcpServer?: () => { command: string[] | string; env: Record<string, string> };
   /**
@@ -325,6 +328,7 @@ export interface AgentsResolved extends Resolved {
   distRoot: () => string;
   workspaceDir: (ws: string) => string;
   workspaceFolders: (ws: string) => { under: string[]; exact?: string[] };
+  workspaceNames: () => string[];
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
   stopWaitMs: number;
@@ -404,6 +408,7 @@ let servicesFn: ((ws: string) => { address: string; path: string }[]) | null =
 let foldersFn: ((ws: string) => { under: string[]; exact?: string[] }) | null =
   null;
 let reposFn: ((ws: string) => string[]) | null = null;
+let namesFn: (() => string[]) | null = null;
 /** The workspaces config, for start and resume (loaded on first use). */
 export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
   await loadWorkspaces(d);
@@ -415,6 +420,7 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
     if (!cfg) throw usage(`workspace "${name}" does not exist`, 404);
     return ws.resolveWorkspaceDir(name, cfg, getReposRoot());
   };
+  namesFn = () => Object.keys(ws.readWorkspacesFile().workspaces ?? {});
   // A by-path repo's own folder (repo add <path>), wherever it is.
   foldersFn = (name) => {
     const cfg = ws.readWorkspacesFile().workspaces[name];
@@ -563,6 +569,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
         if (!foldersFn) throw new Error("workspaces not loaded");
         return foldersFn(ws);
       }),
+    workspaceNames: d.workspaceNames ?? (() => (namesFn ? namesFn() : [])),
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
     stopWaitMs: d.stopWaitMs ?? STOP_WAIT_MS,
@@ -771,6 +778,8 @@ export interface AgentRow {
    * keeps its conversation brings them in line.
    */
   mcpStale?: McpStale;
+  /** D56: started outside its project (rec.cwd is that folder). */
+  outside?: boolean;
   /**
    * D32/D34: the helpers it started in its own session, less those its
    * last "Clear done" hid: counts by state, and its active ones (running
@@ -918,6 +927,8 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
     ...newerOf(rec),
     workspace: rec.workspace,
     cwd: rec.cwd,
+    // D56: it runs in the folder outside the project it started in.
+    ...(rec.outside ? { outside: true } : {}),
   };
 }
 
@@ -2518,7 +2529,7 @@ interface StartMore {
    * AG-17.1, bring in a conversation: launch the runtime's resume of this
    * one (its id, in the folder it ran in) instead of a new conversation.
    */
-  bringIn?: { token: string; cwd: string };
+  bringIn?: { token: string; cwd: string; outside?: boolean };
 }
 
 /**
@@ -2702,6 +2713,9 @@ export async function startAgent(
             ? { resumeToken: out.resumeToken, launched: true }
             : {}),
           ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
+          // D56: started outside its project, brought in by an ask naming
+          // that folder.
+          ...(more.bringIn?.outside ? { outside: true } : {}),
         },
         argv: out.argv,
         env: out.env,
@@ -2820,6 +2834,74 @@ function agentByToken(d: AgentsResolved): Map<string, string> {
   return m;
 }
 
+/** D56: the project whose folders `cwd` is in, or null (outside them all). */
+function projectOf(d: AgentsResolved, cwd: string): string | null {
+  for (const ws of d.workspaceNames()) {
+    try {
+      if (inScope(cwd, d.workspaceFolders(ws))) return ws;
+    } catch {
+      /* a workspace that can't say: not this one */
+    }
+  }
+  return null;
+}
+
+/**
+ * D56 item 3: folders that are never an agent's: the root, a system
+ * folder (unless inside the home folder: macOS keeps temp folders under
+ * /private), Den's own state, or inside them.
+ */
+const SYSTEM_FOLDERS = [
+  "/System",
+  "/usr",
+  "/bin",
+  "/sbin",
+  "/etc",
+  "/var",
+  "/private",
+  "/Library",
+  "/Applications",
+  "/opt",
+  "/dev",
+];
+
+const insideOf = (p: string, dir: string) => {
+  const rel = path.relative(dir, p);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+};
+
+const realOr = (p: string) => {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+};
+
+/** Why `cwd` can't be an agent's folder (D56 item 3), or null. */
+export function folderRefusal(d: AgentsResolved, cwd: string): string | null {
+  const forms = [...new Set([path.resolve(cwd), realOr(cwd)])];
+  const state = realOr(d.stateDir());
+  if (forms.some((f) => insideOf(f, state) || insideOf(f, d.stateDir())))
+    return `${cwd} can't be an agent's folder: it is Den's own state`;
+  if (forms.some((f) => f === path.parse(f).root))
+    return `${cwd} can't be an agent's folder: it is the root folder`;
+  const home = d.env.HOME ? realOr(d.env.HOME) : null;
+  if (home && forms.some((f) => insideOf(f, home))) return null;
+  if (
+    forms.some((f) =>
+      SYSTEM_FOLDERS.some((s) => insideOf(f, s) || insideOf(f, realOr(s))),
+    )
+  )
+    return `${cwd} can't be an agent's folder: it is a system folder`;
+  return null;
+}
+
+/** D56: a folder outside every project that may be an agent's. */
+function outsideTest(d: AgentsResolved): (cwd: string) => boolean {
+  return (cwd) => projectOf(d, cwd) === null && folderRefusal(d, cwd) === null;
+}
+
 /**
  * The conversations Bring in offers for workspace `ws` (AG-17.1): each
  * runtime's own (only those with listSessions), that ran in the
@@ -2830,7 +2912,12 @@ export function listConversations(
   d: AgentsResolved,
   ws: string,
   runtime?: string,
-): { runtimes: BringInRuntime[]; conversations: ListedConversation[] } {
+): {
+  runtimes: BringInRuntime[];
+  conversations: ListedConversation[];
+  /** D56: started outside every project (one ask each, naming its folder). */
+  outside: ListedConversation[];
+} {
   const where = "agents import";
   checkWorkspaceName(where, ws);
   if (!d.workspaceExists(ws))
@@ -2844,7 +2931,22 @@ export function listConversations(
   const suggestFor = personaSuggester(d, ws);
   const now = Date.now();
   const conversations: ListedConversation[] = [];
+  const outside: ListedConversation[] = [];
   const seen = new Set<string>();
+  const listed = (id: string, c: RuntimeConversation): ListedConversation => {
+    const agent = taken.get(`${id} ${c.id}`);
+    const lost = (c.mcp ?? []).filter((m) => m !== d.cli);
+    const suggest = suggestFor(c.cwd);
+    return {
+      ...c,
+      runtime: id,
+      open: openOutsideDen(c.lastAt, denStops.get(`${id} ${c.id}`), now),
+      ...(agent ? { agent } : {}),
+      ...(suggest ? { suggest } : {}),
+      ...(lost.length ? { lost } : {}),
+    };
+  };
+  const away = outsideTest(d);
   for (const id of runtimeIds()) {
     if (runtime !== undefined && id !== runtime) continue;
     const rt = getRuntime(id);
@@ -2852,21 +2954,17 @@ export function listConversations(
     for (const c of rt.listSessions(scope, d.env)) {
       if (seen.has(`${id} ${c.id}`)) continue;
       seen.add(`${id} ${c.id}`);
-      const agent = taken.get(`${id} ${c.id}`);
-      const lost = (c.mcp ?? []).filter((m) => m !== d.cli);
-      const suggest = suggestFor(c.cwd);
-      conversations.push({
-        ...c,
-        runtime: id,
-        open: openOutsideDen(c.lastAt, denStops.get(`${id} ${c.id}`), now),
-        ...(agent ? { agent } : {}),
-        ...(suggest ? { suggest } : {}),
-        ...(lost.length ? { lost } : {}),
-      });
+      conversations.push(listed(id, c));
+    }
+    for (const c of rt.listSessionsWhere?.(away, d.env) ?? []) {
+      if (seen.has(`${id} ${c.id}`)) continue;
+      seen.add(`${id} ${c.id}`);
+      outside.push(listed(id, c));
     }
   }
   conversations.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
-  return { runtimes: bringInRuntimes(), conversations };
+  outside.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  return { runtimes: bringInRuntimes(), conversations, outside };
 }
 
 /**
@@ -2915,6 +3013,11 @@ export interface ImportRequest {
   version?: string;
   /** D65 v2: its repo (null: none); unset: proposed from its folder. */
   repo?: string | null;
+  /**
+   * D56: one started outside every project comes in only with this, the
+   * folder it started in (the person's explicit ask).
+   */
+  outside?: string;
 }
 
 /** The persona's id, else the first `<persona>-<n>` no agent has. */
@@ -2941,7 +3044,7 @@ export async function importAgent(
 ): Promise<Started> {
   const where = "agents import";
   const runtime = req.runtime ?? DEFAULT_RUNTIME_ID;
-  const { runtimes, conversations } = listConversations(
+  const { runtimes, conversations, outside } = listConversations(
     d,
     req.workspace,
     runtime,
@@ -2953,17 +3056,44 @@ export async function importAgent(
       [],
       422,
     );
-  const c = conversations.find((x) => x.id === req.session);
-  // Another workspace's (or no repo's): say whose, never bring it in.
+  let c = conversations.find((x) => x.id === req.session);
   const elsewhere = c
     ? null
     : (getRuntime(runtime)?.conversationCwd?.(req.session, d.env) ?? null);
-  if (!c && elsewhere && !inScope(elsewhere, d.workspaceFolders(req.workspace)))
-    throw refused(
-      `This conversation belongs to ${elsewhere}, not to workspace ${req.workspace}`,
-      [`List this workspace's: ${d.cli} agents import -w ${req.workspace}`],
-      409,
-    );
+  let away = false;
+  if (
+    !c &&
+    elsewhere &&
+    !inScope(elsewhere, d.workspaceFolders(req.workspace))
+  ) {
+    // Another project's: say whose, never bring it in.
+    if (projectOf(d, elsewhere) !== null)
+      throw refused(
+        `This conversation belongs to ${elsewhere}, not to workspace ${req.workspace}`,
+        [`List this workspace's: ${d.cli} agents import -w ${req.workspace}`],
+        409,
+      );
+    // D56: outside every project. Never a folder that can't be an agent's.
+    const no = folderRefusal(d, elsewhere);
+    if (no) throw refused(`${where}: ${no}`, [], 403);
+    // One explicit ask, naming the folder it started in.
+    if (req.outside === undefined)
+      throw refused(
+        `${where}: this conversation started outside project ${req.workspace}, in ${elsewhere}`,
+        [
+          `Bring it in from there: ${d.cli} agents import -w ${req.workspace} --session ${req.session} --persona ${req.persona} --outside ${elsewhere}`,
+        ],
+        409,
+      );
+    if (realOr(req.outside) !== realOr(elsewhere))
+      throw refused(
+        `${where}: --outside ${req.outside} isn't the folder this conversation started in (${elsewhere})`,
+        [],
+        409,
+      );
+    c = outside.find((x) => x.id === req.session);
+    away = true;
+  }
   if (!c)
     throw refused(
       `${where}: no ${rt.label} conversation "${req.session}" in workspace ${req.workspace}'s folder`,
@@ -2982,6 +3112,13 @@ export async function importAgent(
     );
   if (c.open)
     throw new AgentError(OPEN_ELSEWHERE_MESSAGE, { code: "open_elsewhere" });
+  // D56 item 8: never two writers on one conversation.
+  const holder = getRuntime(runtime)?.openPid?.(c.id, d.env) ?? null;
+  if (holder !== null)
+    throw new AgentError(openInMessage(holder), {
+      code: "open_elsewhere",
+      status: 409,
+    });
   if (!fs.statSync(c.cwd, { throwIfNoEntry: false })?.isDirectory())
     throw refused(`${where}: the folder it ran in, ${c.cwd}, is gone`);
   const id = req.id ?? freeId(d, req.persona);
@@ -3013,7 +3150,9 @@ export async function importAgent(
           ? { repo: was.repo ?? null }
           : {}),
     },
-    { bringIn: { token: c.id, cwd: c.cwd } },
+    {
+      bringIn: { token: c.id, cwd: c.cwd, ...(away ? { outside: true } : {}) },
+    },
   );
 }
 
@@ -3282,6 +3421,34 @@ export function resumeGrants(
   return rec.grants.filter((g) => now.includes(g));
 }
 
+/**
+ * D56 item 5: why agent `rec` can't resume now, or null. Its folder must
+ * still be there and be the one its conversation ran in (when the runtime
+ * can tell); and no other live process may have that conversation open
+ * (Den's own sessions, `denPids`, aside).
+ */
+function resumeWhereRefusal(
+  d: AgentsResolved,
+  rt: ReturnType<typeof runtimeFor>,
+  rec: AgentRecord,
+  denPids: number[],
+): { message: string; status: number } | null {
+  const where = `agents resume ${rec.id}`;
+  if (!fs.statSync(rec.cwd, { throwIfNoEntry: false })?.isDirectory())
+    return { message: `${where}: its folder ${rec.cwd} is gone`, status: 409 };
+  const token = rec.resumeToken;
+  if (!token) return null;
+  const ran = rt.conversationCwd?.(token, d.env) ?? null;
+  if (ran && realOr(ran) !== realOr(rec.cwd))
+    return {
+      message: `${where}: the conversation ran in ${ran}, not in ${rec.cwd}`,
+      status: 409,
+    };
+  const holder = rt.openPid?.(token, d.env, denPids) ?? null;
+  if (holder !== null) return { message: openInMessage(holder), status: 409 };
+  return null;
+}
+
 export async function resumeAgent(
   d: AgentsResolved,
   id: string,
@@ -3319,11 +3486,20 @@ export async function resumeAgent(
   const det = await availableOrRefuse(d, rt, rec.workspace);
   ptyOrRefuse(d);
   return withClient(d, async (c) => {
-    const old = sessionOf(await c.list(), rec);
+    const sessions = await c.list();
+    const old = sessionOf(sessions, rec);
     if (old && !old.exited)
       throw refused(`agent ${rec.id} is running (${old.name})`, [
         `Attach: ${d.cli} sessions attach ${old.name}`,
       ]);
+    // D56 item 5: only where it started, and only with no other writer.
+    const no = resumeWhereRefusal(
+      d,
+      rt,
+      rec,
+      sessions.filter((s) => !s.exited).map((s) => s.pid),
+    );
+    if (no) throw refused(no.message, [], no.status);
     const input = launchInput(
       d,
       cfg,

@@ -8,6 +8,23 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- **Bring in a conversation started outside any project (D56).** A
+  Claude Code conversation you started in your home folder (or any folder
+  no project holds) now shows in Bring in under "Started outside any
+  project". Pick it and it comes in as an agent of this project, running
+  where it started; its row says "started in <folder> (outside the
+  project)". From the CLI: `agents import … --outside <folder>`, naming
+  the folder it ran in. Never the root, a system folder or Den's own
+  state; one inside another project's folder is still that project's.
+  A person's ask only. An agent in your home folder reaches only its
+  project's files through Den.
+- **Never two writers on one conversation (D56).** Bring in and every
+  resume refuse while another live process has the conversation open
+  ("This conversation is open in another process (pid N). Close it
+  first."), from Claude Code's own record of its running processes. And a
+  resume refuses when the agent's folder is gone or isn't the one its
+  conversation ran in, saying which.
+
 - **Restart Den from the browser, any time (D64).** Settings › Server
   has a Restart Den button, and so does the header menu (◐ ▾). Before,
   the only button was the "stale server" pill, shown only when Den was
