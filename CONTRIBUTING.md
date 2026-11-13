@@ -87,6 +87,11 @@ trusted publishing (no token anywhere):
   work toward a version.
 - Bump the prerelease number (`-dev.N`) for every tarball handed to a
   distribution, so npm never serves a cached older copy.
+- Tag each tarball handed to a gate `v<version>-dev.N` on the commit it
+  was packed from, and push the tag. The release job checks that every
+  such tag of the version is in the release commit's history
+  (`scripts/release-ancestry.sh`): a candidate that passed its gate but
+  never merged stops the release.
 - Bump the version in `package.json`, `package-lock.json` and
   `CHANGELOG.md` together; the changelog entry lists the **Migrations** a
   distribution must make.

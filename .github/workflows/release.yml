@@ -127,6 +127,10 @@ jobs:
         with:
           fetch-depth: 0 # the history to place a tag in
           fetch-tags: true
+      # Every gated candidate of this version (its tags v<version>-dev.N) is in this commit's history: a candidate
+      # that passed its gate and never merged stops the release.
+      - name: The gated candidates are in this release
+        run: sh scripts/release-ancestry.sh "${{ needs.check.outputs.version }}" "$GITHUB_SHA"
       - name: The tag v<version>
         env:
           TAG: v${{ needs.check.outputs.version }}
