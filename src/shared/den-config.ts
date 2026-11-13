@@ -406,6 +406,7 @@ export interface UserConfig {
     collapsed?: boolean;
     hidden?: string[];
     order?: string[];
+    projectOrder?: string[];
   };
   /**
    * What the web UI and `<cli> status` show: `scope` is "all" (every active

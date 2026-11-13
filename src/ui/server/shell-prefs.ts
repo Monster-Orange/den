@@ -7,6 +7,7 @@
  * The shell mirrors it to localStorage so the first paint does not wait on
  * the server.
  */
+import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 
 export interface ShellPrefs {
   /** Pinned repos or services (`repo` or `repo/service`), in pin order. */
@@ -25,6 +26,11 @@ export interface ShellPrefs {
   dock: boolean;
   /** The open dock's output height in px; 0 is the default (170px). */
   dockHeight: number;
+  /**
+   * 0.4.45: project slugs in this person's order (Manage projects). Empty
+   * is A to Z; a project not listed slots in A to Z. Never sent to Hub.
+   */
+  projectOrder: string[];
 }
 
 export const SHELL_DEFAULTS: ShellPrefs = {
@@ -34,6 +40,7 @@ export const SHELL_DEFAULTS: ShellPrefs = {
   order: [],
   dock: false,
   dockHeight: 0,
+  projectOrder: [],
 };
 
 /** The dock height's bounds (the page also caps it at half the window). */
@@ -58,6 +65,31 @@ function dockHeightError(): string {
 export const MAX_NAV_IDS = 64;
 /** A NAV id, as shell.js's registerNav takes it. */
 const NAV_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+/** How many project slugs projectOrder keeps (a guard, not a limit). */
+export const MAX_PROJECT_IDS = 1000;
+
+function checkProjectOrder(
+  v: unknown,
+): { ok: true; value: string[] } | { ok: false; error: string } {
+  if (!Array.isArray(v))
+    return { ok: false, error: "shell.projectOrder must be a list" };
+  const out: string[] = [];
+  for (const id of v) {
+    if (typeof id !== "string" || !WORKSPACE_NAME_RE.test(id))
+      return {
+        ok: false,
+        error: `shell.projectOrder: "${String(id)}" is not a project`,
+      };
+    if (!out.includes(id)) out.push(id);
+  }
+  if (out.length > MAX_PROJECT_IDS)
+    return {
+      ok: false,
+      error: `shell.projectOrder: at most ${MAX_PROJECT_IDS}`,
+    };
+  return { ok: true, value: out };
+}
 
 /** How many pins the rail keeps. */
 export const MAX_PINS = 24;
@@ -115,8 +147,13 @@ export function shellPrefs(stored: unknown): ShellPrefs {
     order: [],
     dock: false,
     dockHeight: 0,
+    projectOrder: [],
   };
   if (!isObject(stored)) return out;
+  if (stored.projectOrder !== undefined) {
+    const o = checkProjectOrder(stored.projectOrder);
+    if (o.ok) out.projectOrder = o.value;
+  }
   if (typeof stored.dock === "boolean") out.dock = stored.dock;
   if (stored.dockHeight !== undefined) {
     const h = checkDockHeight(stored.dockHeight);
@@ -143,6 +180,7 @@ export function mergeShellPrefs(
     pins: [...current.pins],
     hidden: [...current.hidden],
     order: [...current.order],
+    projectOrder: [...(current.projectOrder ?? [])],
   };
   for (const key of Object.keys(patch)) {
     // null clears a pref back to its default (0.3.0-dev.32): the stored
@@ -170,6 +208,10 @@ export function mergeShellPrefs(
       const h = checkDockHeight(patch.dockHeight);
       if (!h.ok) return h;
       out.dockHeight = h.value;
+    } else if (key === "projectOrder") {
+      const o = checkProjectOrder(patch.projectOrder);
+      if (!o.ok) return o;
+      out.projectOrder = o.value;
     } else if (key === "hidden" || key === "order") {
       const ids = checkNavIds(key, patch[key]);
       if (!ids.ok) return ids;
@@ -188,5 +230,6 @@ export function storedShell(p: ShellPrefs): Partial<ShellPrefs> | undefined {
   if (p.order.length) out.order = p.order;
   if (p.dock) out.dock = true;
   if (p.dockHeight) out.dockHeight = p.dockHeight;
+  if (p.projectOrder?.length) out.projectOrder = p.projectOrder;
   return Object.keys(out).length ? out : undefined;
 }

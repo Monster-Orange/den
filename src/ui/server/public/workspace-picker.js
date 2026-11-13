@@ -65,8 +65,79 @@ export function wsLabel(data, slug) {
   return typeof n === "string" && n.trim() ? n.trim() : slug;
 }
 
-export function buildScopeMenuModel(scope, data, t = enT) {
-  const active = activeNames(data);
+/**
+ * 0.4.45 (LOGICAL-ERD): the name a project shows. Hub's when it is linked
+ * to a Hub project, else its own (wsLabel). The server's twin is
+ * projectDisplayName in src/shared/workspace-name.ts.
+ */
+export function projectLabel(data, slug) {
+  const h = data?.workspaces?.[slug]?.hub_project?.name;
+  return typeof h === "string" && h.trim() ? h.trim() : wsLabel(data, slug);
+}
+
+/** Where that name comes from: "hub" or "local". */
+export function projectNameSource(data, slug) {
+  const h = data?.workspaces?.[slug]?.hub_project?.name;
+  return typeof h === "string" && h.trim() ? "hub" : "local";
+}
+
+/**
+ * Projects in this person's order (0.4.45): A to Z by the name shown,
+ * ignoring case and accents, in the page's language; with a saved order,
+ * that order, and a project not in it slots in A to Z: before the first
+ * saved project whose name sorts after its own.
+ */
+export function orderProjects(slugs, data, saved = [], locale) {
+  let coll;
+  try {
+    coll = new Intl.Collator(locale || undefined, { sensitivity: "base" });
+  } catch {
+    coll = new Intl.Collator(undefined, { sensitivity: "base" });
+  }
+  const by = (a, b) =>
+    coll.compare(projectLabel(data, a), projectLabel(data, b)) ||
+    (a < b ? -1 : a > b ? 1 : 0);
+  const az = [...new Set(slugs)].sort(by);
+  const keep = Array.isArray(saved) ? saved.filter((s) => az.includes(s)) : [];
+  const out = [...new Set(keep)];
+  for (const s of az) {
+    if (out.includes(s)) continue;
+    const at = out.findIndex((o) => by(o, s) > 0);
+    if (at < 0) out.push(s);
+    else out.splice(at, 0, s);
+  }
+  return out;
+}
+
+/**
+ * Manage projects' Move up / Move down (`by` -1 or 1) and drop
+ * (`{ before: slug | null }`, null for last). A new list; the ends and an
+ * unknown slug leave it as it was.
+ */
+export function moveProject(list, slug, by) {
+  const out = [...list];
+  const i = out.indexOf(slug);
+  if (i < 0) return out;
+  if (typeof by === "number") {
+    const j = i + by;
+    if (j < 0 || j >= out.length) return out;
+    [out[i], out[j]] = [out[j], out[i]];
+    return out;
+  }
+  out.splice(i, 1);
+  const at = by?.before ? out.indexOf(by.before) : -1;
+  if (at < 0) out.push(slug);
+  else out.splice(at, 0, slug);
+  return out;
+}
+
+export function buildScopeMenuModel(scope, data, t = enT, locale) {
+  const active = orderProjects(
+    activeNames(data),
+    data,
+    data?.projectOrder,
+    locale,
+  );
   const focus = scope?.focus ?? focusName(data);
   const multi = active.length > 1;
   const selected =
@@ -89,7 +160,7 @@ export function buildScopeMenuModel(scope, data, t = enT) {
       : []),
     ...active.map((n) => ({
       value: n,
-      label: wsLabel(data, n),
+      label: projectLabel(data, n),
       checked: n === one,
       focused: n === focus,
       title: t("ws.pickTip"),
@@ -100,15 +171,17 @@ export function buildScopeMenuModel(scope, data, t = enT) {
       active.length === 0
         ? t("ws.noneLabel")
         : one
-          ? wsLabel(data, one)
+          ? projectLabel(data, one)
           : t("ws.all"),
     items,
     // Every workspace, active or not: ⌘K's Go to workspace (0.4.17).
     names: Object.keys(data?.workspaces ?? {}),
     focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
-      ws: inView.map((n) => wsLabel(data, n)).join(", ") || t("ws.noneLabel"),
-      focus: focus ? wsLabel(data, focus) : focus,
+      ws:
+        inView.map((n) => projectLabel(data, n)).join(", ") ||
+        t("ws.noneLabel"),
+      focus: focus ? projectLabel(data, focus) : focus,
     }),
   };
 }

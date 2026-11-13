@@ -13,6 +13,21 @@ config and manifest changes a distribution must make to move to it under
   nothing ran (every suite was skipped, none matched, or none is
   declared). Before, it always exited `0`, even when tests failed.
 
+### Added
+
+- Project names (part 1): a project linked to a Hub project shows Hub's
+  name in the header's picker, Manage projects and the project's page;
+  an unlinked one shows its own. Settings › Project setup › Name shows
+  Hub's name, read-only and marked "Named in Hub", or lets you rename an
+  unlinked project (1 to 60 characters; the slug never changes).
+  Unlinking keeps Hub's last name, so the name shown does not change.
+- Project order: projects are listed A to Z by the name shown, "All
+  active" first. In Manage projects, drag a row by its handle or use Move
+  up / Move down in its ⋮ menu; a new project slots in A to Z until you
+  move it. Reset to A to Z is there and in Settings › Navigation ›
+  Project order. The order is yours (`shell.projectOrder` in your user
+  config), never shared and never sent to Hub.
+
 ### Fixed
 
 - `agents permission <id> -w <project>` asks about that agent: an agent may

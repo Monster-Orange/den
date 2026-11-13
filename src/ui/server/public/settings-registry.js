@@ -766,6 +766,22 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.shell.setNavPrefs(v),
   },
   {
+    // 0.4.45: this person's project order (Manage projects); never Hub's.
+    id: "shell.projectOrder",
+    category: "navigation",
+    label: "Project order",
+    description:
+      "The order of projects in the header's picker and Manage projects. A to Z by the name shown unless you move them in Manage projects. Yours only: never shared and never sent to Hub.",
+    keywords: ["project", "order", "sort", "reorder", "picker", "a to z"],
+    scope: "user",
+    control: { type: "custom", render: renderProjectOrder },
+    keys: ["shell.projectOrder"],
+    read: (ctx) => ctx.data?.shell?.projectOrder ?? [],
+    // null is A to Z (Reset).
+    write: (v, ctx) =>
+      ctx.post({ shell: { projectOrder: v && v.length ? v : null } }),
+  },
+  {
     id: "shell.pins",
     category: "navigation",
     label: "Pinned",
@@ -866,6 +882,18 @@ export const DEN_SETTINGS = [
   ),
 
   // ── Workspace ──────────────────────────────────────────────────────────
+  {
+    // 0.4.45 project names v5: Hub's name when linked, else its own.
+    id: "workspace.name",
+    category: "workspace",
+    label: "Name",
+    description:
+      "The name Den shows for this project in the header, lists and pages. Linked to a Hub project, it is Hub's name. The slug never changes.",
+    keywords: ["name", "rename", "project", "hub", "slug"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectName },
+    read: () => null,
+  },
   {
     id: "workspace.editor",
     category: "workspace",
@@ -1759,6 +1787,152 @@ function renderHubProject(host, ctx) {
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note" data-hubp-error>${escR(e?.message || t("hubp.failed"))}</p>`;
+    });
+}
+
+/** 0.4.45: Navigation › Project order: its state, Reset, and where to move. */
+export function projectOrderHtml(custom, t, href = "/local-dev") {
+  return (
+    `<div data-porder data-porder-state="${custom ? "mine" : "az"}">` +
+    `<p class="set-status">${escR(t(custom ? "ws.order.mine" : "ws.order.az"))}</p>` +
+    (custom
+      ? `<button type="button" class="btn sm" data-porder-reset>${escR(t("ws.order.reset"))}</button> `
+      : "") +
+    `<a href="${escR(href)}">${escR(t("ws.manage"))}</a>` +
+    `<div class="rt-err" role="alert" hidden></div></div>`
+  );
+}
+
+function renderProjectOrder(host, ctx) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  const custom =
+    Array.isArray(ctx.data?.shell?.projectOrder) &&
+    ctx.data.shell.projectOrder.length > 0;
+  host.innerHTML = projectOrderHtml(custom, t);
+  host.querySelector("[data-porder-reset]")?.addEventListener("click", () =>
+    Promise.resolve(ctx.post({ shell: { projectOrder: null } }))
+      .then((ok) => {
+        if (!ok) throw new Error(t("pname.failed"));
+        if (ctx.data?.shell) ctx.data.shell.projectOrder = [];
+        return renderProjectOrder(host, ctx);
+      })
+      .catch((e) => {
+        const err = host.querySelector(".rt-err");
+        if (err) {
+          err.hidden = false;
+          err.textContent = e?.message || t("pname.failed");
+        }
+      }),
+  );
+  return Promise.resolve();
+}
+
+/** The longest project name Settings takes (mock v5). */
+const PNAME_MAX = 60;
+
+/**
+ * 0.4.45: a typed project name, checked: trimmed, 1 to 60 characters, and
+ * not the name it has now.
+ */
+export function projectNameCheck(raw, current) {
+  const name = String(raw ?? "").trim();
+  if (!name) return { ok: false, why: "empty" };
+  if (name.length > PNAME_MAX) return { ok: false, why: "long" };
+  if (name === String(current ?? "").trim()) return { ok: false, why: "same" };
+  return { ok: true, name };
+}
+
+/**
+ * 0.4.45 Settings › Project setup › Name (mock v5 A1, A4). `p` is
+ * { slug, cfg } with cfg the project's workspaces.yml entry. Linked to Hub:
+ * Hub's name, read-only, "Named in Hub" in words. Not linked: an input and
+ * Save name, off until the name changed.
+ */
+export function projectNameHtml(p, t) {
+  const hub = p?.cfg?.hub_project?.name;
+  if (typeof hub === "string" && hub.trim())
+    return (
+      `<div data-pname data-pname-state="hub">` +
+      `<p class="set-status"><strong data-pname-value>${escR(hub.trim())}</strong> ` +
+      `<span class="chip" data-pname-chip>${escR(t("pname.hubChip"))}</span></p>` +
+      `<p class="set-note">${escR(t("pname.hubHelp"))}</p></div>`
+    );
+  const own =
+    typeof p?.cfg?.name === "string" && p.cfg.name.trim()
+      ? p.cfg.name.trim()
+      : String(p?.slug ?? "");
+  return (
+    `<form data-pname data-pname-state="local" class="pname-form">` +
+    `<input id="pname-in" type="text" aria-label="${escR(t("pname.label"))}" data-pname-input value="${escR(own)}" maxlength="${PNAME_MAX}" autocomplete="off"> ` +
+    `<button type="submit" class="btn sm primary" data-pname-save disabled>${escR(t("pname.save"))}</button>` +
+    `<p class="set-note">${escR(t("pname.localHelp"))}</p>` +
+    `<div class="rt-err" role="alert" data-pname-err hidden></div>` +
+    `<p class="set-note" role="status" data-pname-ok hidden>${escR(t("pname.saved"))}</p></form>`
+  );
+}
+
+function renderProjectName(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell
+    .api("GET", "/api/workspaces")
+    .then((b) => {
+      const cfg = b?.workspaces?.[ws] ?? {};
+      host.innerHTML = projectNameHtml({ slug: ws, cfg }, t);
+      const form = host.querySelector("form[data-pname]");
+      if (!form) return;
+      const input = form.querySelector("[data-pname-input]");
+      const save = form.querySelector("[data-pname-save]");
+      const err = form.querySelector("[data-pname-err]");
+      const ok = form.querySelector("[data-pname-ok]");
+      const start = input.value;
+      const say = (msg) => {
+        err.hidden = !msg;
+        err.textContent = msg || "";
+      };
+      input.addEventListener("input", () => {
+        const c = projectNameCheck(input.value, start);
+        save.disabled = !c.ok;
+        ok.hidden = true;
+        say(c.why === "empty" ? t("pname.empty") : "");
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          input.value = start;
+          save.disabled = true;
+          say("");
+        }
+      });
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const c = projectNameCheck(input.value, start);
+        if (!c.ok) {
+          say(c.why === "empty" ? t("pname.empty") : "");
+          return;
+        }
+        save.disabled = true;
+        ctx.shell
+          .api("POST", "/api/workspaces/rename", {
+            oldName: ws,
+            newName: c.name,
+          })
+          .then(() => renderProjectName(host, ctx))
+          .then(() => {
+            const done = host.querySelector("[data-pname-ok]");
+            if (done) done.hidden = false;
+          })
+          .catch((x) => {
+            save.disabled = false;
+            say(x?.message || t("pname.failed"));
+          });
+      });
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note">${escR(e?.message || t("pname.failed"))}</p>`;
     });
 }
 

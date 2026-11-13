@@ -39,6 +39,27 @@
       "ここでプロジェクトを選ぶと CLI の既定にもなり、__DEN_CLI__ のコマンドはそこで実行されます。",
     "ws.none": "アクティブなプロジェクトはありません",
     "ws.manage": "プロジェクトを管理…",
+    "ws.order.az": "A〜Z順",
+    "ws.order.mine": "あなたの並び順",
+    "ws.order.reset": "A〜Z順に戻す",
+    "ws.order.help":
+      "行のハンドルをドラッグするか、⋮ メニューの「上へ」/「下へ」を使います。新しいプロジェクトは、移動するまでA〜Z順の位置に入ります。",
+    "ws.order.drag": "ドラッグして並べ替え",
+    "ws.order.up": "上へ",
+    "ws.order.down": "下へ",
+    "ws.named.hub": "Hub の名前",
+    "pname.label": "プロジェクト名",
+    "pname.hubChip": "Hub の名前",
+    "pname.hubHelp":
+      "名前は Hub から来ます。変更するには Hub に依頼してください。Hub で人が判断します。",
+    "pname.localHelp":
+      "Den のヘッダー、一覧、ページに表示されます。Hub の名前を使うには、このプロジェクトを Hub にリンクしてください。",
+    "pname.save": "名前を保存",
+    "pname.saved": "保存しました。",
+    "pname.empty": "名前を入力してください。空にはできません。",
+    "pname.failed": "名前を保存できませんでした。",
+    "set.workspace.name": "名前",
+    "set.shell.projectOrder": "プロジェクトの並び順",
     "ws.allN": "すべてのアクティブ ({n})",
     "ws.allTip":
       "アクティブなプロジェクトすべて。複数で定義されたサービスは一度だけ表示します",

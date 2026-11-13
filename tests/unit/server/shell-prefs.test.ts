@@ -14,7 +14,13 @@ import {
 
 describe("shellPrefs", () => {
   it("defaults: no pins, not collapsed; a broken block falls back", () => {
-    const none = { hidden: [], order: [], dock: false, dockHeight: 0 };
+    const none = {
+      hidden: [],
+      order: [],
+      dock: false,
+      dockHeight: 0,
+      projectOrder: [],
+    };
     expect(shellPrefs(undefined)).toEqual({
       pins: [],
       collapsed: false,
@@ -37,6 +43,7 @@ describe("shellPrefs", () => {
       order: ["logs", "services"],
       dock: false,
       dockHeight: 0,
+      projectOrder: [],
     });
   });
   it("the runs dock (R16a): collapsed and 170px by default; a stored height outside 60–2000 falls back", () => {
@@ -59,6 +66,7 @@ describe("mergeShellPrefs", () => {
     order: [],
     dock: false,
     dockHeight: 0,
+    projectOrder: [] as string[],
   };
   it("replaces pins and sets collapsed, keeping the rest", () => {
     expect(mergeShellPrefs(cur, { collapsed: true })).toEqual({
@@ -116,7 +124,13 @@ describe("mergeShellPrefs", () => {
       expect([patch, mergeShellPrefs(cur, patch).ok]).toEqual([patch, false]);
   });
   it("stores nothing for the defaults", () => {
-    const none = { hidden: [], order: [], dock: false, dockHeight: 0 };
+    const none = {
+      hidden: [],
+      order: [],
+      dock: false,
+      dockHeight: 0,
+      projectOrder: [],
+    };
     expect(
       storedShell({ pins: [], collapsed: false, ...none }),
     ).toBeUndefined();

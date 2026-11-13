@@ -17,6 +17,7 @@ import {
 import type { WorkspacesFile } from "./types/index.js";
 import { callerName } from "./config-audit.js";
 import { forgetLinkSeen } from "./hub-links-seen.js";
+import { WORKSPACE_NAME_MAX } from "./workspace-name.js";
 
 export interface HubProjectLink {
   /** Hub's project id (proj_…). */
@@ -80,7 +81,13 @@ export function setHubProject(
     const ok = parseHubProjectLink(link);
     if (!ok) throw new Error(`"${link.id}" is not a Hub project id`);
     next.hub_project = ok;
-  } else delete next.hub_project;
+  } else {
+    // 0.4.45 (Vision 11-13): unlink keeps Hub's last name as the project's
+    // own, so the name shown does not change. The slug never changes.
+    const last = parseHubProjectLink(cfg.hub_project)?.name?.trim();
+    if (last) next.name = last.slice(0, WORKSPACE_NAME_MAX);
+    delete next.hub_project;
+  }
   file.workspaces[ws] = next;
   writeWorkspacesFile(file, by);
   // An unlink the person asked for: doctor doesn't call it lost.

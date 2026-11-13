@@ -149,6 +149,27 @@
       "Picking a project here also makes it the CLI default, so __DEN_CLI__ commands run there.",
     "ws.none": "No active projects",
     "ws.manage": "Manage projects…",
+    "ws.order.az": "Sorted A to Z",
+    "ws.order.mine": "Your order",
+    "ws.order.reset": "Reset to A to Z",
+    "ws.order.help":
+      "Drag a row by its handle, or use Move up / Move down in its ⋮ menu. A new project slots in A to Z until you move it.",
+    "ws.order.drag": "Drag to reorder",
+    "ws.order.up": "Move up",
+    "ws.order.down": "Move down",
+    "ws.named.hub": "Named in Hub",
+    "pname.label": "Project name",
+    "pname.hubChip": "Named in Hub",
+    "pname.hubHelp":
+      "The name comes from Hub. To change it, ask Hub; a person decides there.",
+    "pname.localHelp":
+      "Shown in Den's header, lists and pages. Link this project to Hub to use Hub's name instead.",
+    "pname.save": "Save name",
+    "pname.saved": "Saved.",
+    "pname.empty": "Enter a name. It can't be empty.",
+    "pname.failed": "The name wasn't saved.",
+    "set.workspace.name": "Name",
+    "set.shell.projectOrder": "Project order",
     "ws.allN": "All active ({n})",
     "ws.allTip":
       "Every active project; a service several define is listed once",

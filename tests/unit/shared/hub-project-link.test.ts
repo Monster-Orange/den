@@ -56,6 +56,17 @@ describe("setHubProject / hubProjectOf (a real file)", () => {
     expect(fs.readFileSync(file(), "utf-8")).not.toContain("hub_project");
   });
 
+  it("0.4.45: unlink keeps Hub's last name as the project's name", () => {
+    // The screen doesn't change: the name shown was Hub's, and stays.
+    m.setHubProject("north", {
+      id: "proj_back1",
+      slug: "back-office",
+      name: "North Star",
+    });
+    m.setHubProject("north", null);
+    expect(fs.readFileSync(file(), "utf-8")).toMatch(/name: North Star/);
+  });
+
   it("refuses a project that isn't there, and an id that isn't Hub's", () => {
     expect(() => m.setHubProject("south", null)).toThrow(
       'project "south" does not exist',

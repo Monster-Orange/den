@@ -92,6 +92,8 @@ describe("the settings inventory (R21)", () => {
         "shell.hidden",
         "shell.order",
         "shell.pins",
+        // 0.4.45: this person's project order.
+        "shell.projectOrder",
         "terminal",
       ].sort(),
     );

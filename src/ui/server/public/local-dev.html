@@ -188,6 +188,24 @@
         letter-spacing: 0.07em;
         color: var(--muted);
       }
+      .ws-order {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 14px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .ws-order button {
+        margin-left: auto;
+        font-size: 11px;
+        min-height: 28px;
+      }
+      .ws-grip {
+        cursor: grab;
+        color: var(--muted);
+        margin-right: 6px;
+      }
       .ws-list {
         flex: 1;
         overflow-y: auto;
@@ -1512,6 +1530,10 @@
               «
             </button>
           </div>
+          <div class="ws-order" id="ws-order" hidden>
+            <span id="ws-order-state"></span>
+            <button type="button" id="ws-order-reset" hidden></button>
+          </div>
           <div class="ws-list" id="ws-list">
             <div style="padding: 14px; color: var(--muted); font-size: 12px">
               Loading…
@@ -1558,6 +1580,12 @@
           buildRow,
         } from "/header.js";
         import { checkLine } from "/topbar.js";
+        import {
+          moveProject,
+          orderProjects,
+          projectLabel,
+          projectNameSource,
+        } from "/workspace-picker.js";
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
         import {
           mountGraph,
@@ -1664,9 +1692,31 @@
             .catch(() => null);
           if (!wsData) return;
 
-          const names = Object.keys(wsData.workspaces ?? {});
+          // 0.4.45: this person's order, else A to Z by the name shown.
+          const saved = Array.isArray(wsData.projectOrder)
+            ? wsData.projectOrder
+            : [];
+          const names = orderProjects(
+            Object.keys(wsData.workspaces ?? {}),
+            wsData,
+            saved,
+            document.documentElement.lang || undefined,
+          );
+          wsOrderNow = names;
+          paintOrderBar(saved.length > 0, names.length);
           document.getElementById("ws-list").innerHTML = names
-            .map((n) => {
+            .map((n, i) => {
+              const shown = projectLabel(wsData, n);
+              const fromHub = projectNameSource(wsData, n) === "hub";
+              const moves =
+                names.length > 1
+                  ? `<span class="ws-grip" draggable="true" data-grip="${escHtml(n)}" title="${escHtml(wsT("ws.order.drag", "Drag to reorder"))}" aria-hidden="true">⠿</span>`
+                  : "";
+              const moveBtns =
+                names.length > 1
+                  ? `<button data-action="move-up"${i === 0 ? " disabled" : ""}>${escHtml(wsT("ws.order.up", "Move up"))}</button>` +
+                    `<button data-action="move-down"${i === names.length - 1 ? " disabled" : ""}>${escHtml(wsT("ws.order.down", "Move down"))}</button>`
+                  : "";
               const dirPath = wsData.resolvedDirs?.[n] ?? "";
               const menuId = `ws-menu-${n.replace(/[^a-z0-9]/gi, "-")}`;
               const deleteItem =
@@ -1674,7 +1724,7 @@
                   ? `<button class="danger" data-action="delete">Delete</button>`
                   : "";
               return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
-          <span>${escHtml(n)}${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
+          <span>${moves}<span title="${escHtml(fromHub ? wsT("ws.named.hub", "Named in Hub") + " · " + n : n)}">${escHtml(shown)}</span>${isWsActive(n) ? ' <span style="font-size:10px;color:var(--muted)">(active)</span>' : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
           <span class="ws-item-right">
             <button class="ws-term-btn" title="Open in terminal" data-open-term="${escHtml(dirPath)}">&#62;_</button>
             <button class="ws-open-btn" title="Open in editor" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
@@ -1686,6 +1736,7 @@
                     ? `<button data-action="deactivate">Deactivate</button>`
                     : `<button data-action="activate">Activate</button>`
                 }
+                ${moveBtns}
                 <button data-action="rename">Rename</button>
                 ${deleteItem}
               </div>
@@ -1852,6 +1903,17 @@
           const item = e.target.closest(".ws-item[data-name]");
           if (!item) return;
           const name = item.dataset.name;
+          const mv = e.target.closest(
+            '[data-action="move-up"], [data-action="move-down"]',
+          );
+          if (mv) {
+            document
+              .querySelectorAll(".ws-menu-dropdown.open")
+              .forEach((d) => d.classList.remove("open"));
+            const by = mv.dataset.action === "move-up" ? -1 : 1;
+            void saveProjectOrder(moveProject(wsOrderNow, name, by));
+            return;
+          }
           if (e.target.closest('[data-action="delete"]')) {
             document
               .querySelectorAll(".ws-menu-dropdown.open")
@@ -2122,7 +2184,7 @@
             : "";
           content.innerHTML = `
         <div class="content-header">
-          <h2>${escHtml(wsName)}</h2>
+          <h2 title="${escHtml(wsName)}">${escHtml(projectLabel(wsData, wsName))}</h2>
           ${
             isActive
               ? `<span class="badge active-ws"${isFocus ? ` title="${escHtml(wsT("ws.focusTip", ""))}"` : ""}>active${isFocus ? ` · ${escHtml(wsT("ws.focus", "CLI default"))}` : ""}</span>
@@ -2190,7 +2252,7 @@
           </div>
           <div class="tablewrap">
             <table class="svc" id="repo-table">
-              <caption>Repos in ${escHtml(wsName)}</caption>
+              <caption>Repos in ${escHtml(projectLabel(wsData, wsName))}</caption>
               <thead><tr>
                 <th scope="col">Repo</th>
                 <th scope="col">Health</th>
@@ -4332,6 +4394,70 @@
             await loadWorkspaces();
           }
         };
+
+        // ── Project order (0.4.45, per person; never sent to Hub) ─────────────
+        let wsOrderNow = [];
+        function paintOrderBar(custom, count) {
+          const bar = document.getElementById("ws-order");
+          bar.hidden = count < 2;
+          const state = document.getElementById("ws-order-state");
+          state.textContent = custom
+            ? wsT("ws.order.mine", "Your order")
+            : wsT("ws.order.az", "Sorted A to Z");
+          state.title = wsT(
+            "ws.order.help",
+            "Drag a row by its handle, or use Move up / Move down in its ⋮ menu. A new project slots in A to Z until you move it.",
+          );
+          const reset = document.getElementById("ws-order-reset");
+          reset.hidden = !custom;
+          reset.textContent = wsT("ws.order.reset", "Reset to A to Z");
+        }
+        async function saveProjectOrder(order) {
+          try {
+            await window.denShell.api("POST", "/api/settings", {
+              shell: { projectOrder: order },
+            });
+          } catch (err) {
+            window.denShell.errorToast(err);
+            return;
+          }
+          await loadWorkspaces();
+          await refreshWorkspacePill();
+        }
+        document
+          .getElementById("ws-order-reset")
+          .addEventListener("click", () => void saveProjectOrder(null));
+        {
+          const list = document.getElementById("ws-list");
+          let dragged = null;
+          list.addEventListener("dragstart", (e) => {
+            const g = e.target.closest?.("[data-grip]");
+            if (!g) return;
+            dragged = g.dataset.grip;
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", dragged);
+          });
+          list.addEventListener("dragover", (e) => {
+            if (dragged) e.preventDefault();
+          });
+          list.addEventListener("drop", (e) => {
+            if (!dragged) return;
+            e.preventDefault();
+            const row = e.target.closest(".ws-item[data-name]");
+            let before = row ? row.dataset.name : null;
+            // The lower half of a row drops after it.
+            if (row) {
+              const r = row.getBoundingClientRect();
+              if (e.clientY > r.top + r.height / 2)
+                before = row.nextElementSibling?.dataset?.name ?? null;
+            }
+            const from = dragged;
+            dragged = null;
+            if (before === from) return;
+            void saveProjectOrder(moveProject(wsOrderNow, from, { before }));
+          });
+          list.addEventListener("dragend", () => (dragged = null));
+        }
 
         // ── Rename workspace ─────────────────────────────────────────────────────
         // D70: the name changes; the slug (oldName here) stays.

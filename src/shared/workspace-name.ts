@@ -49,6 +49,21 @@ export function workspaceDisplayName(slug: string, cfg?: Named): string {
 }
 
 /**
+ * The name a project shows (0.4.45, LOGICAL-ERD): Hub's when it is linked
+ * to a Hub project, else its own, else its slug. Every page and list uses
+ * this one rule (the picker's projectLabel is its browser twin).
+ */
+export function projectDisplayName(
+  slug: string,
+  cfg?: Named & { hub_project?: unknown },
+): string {
+  const h = cfg?.hub_project as { name?: unknown } | undefined;
+  return typeof h?.name === "string" && h.name.trim()
+    ? h.name.trim()
+    : workspaceDisplayName(slug, cfg);
+}
+
+/**
  * Why `name` can't be a new workspace among `existing` (slug → config), or
  * null. The one check every create path runs.
  */

@@ -649,12 +649,17 @@ export async function handleWorkspaceRoutes(
         .map((ws) => [ws, sync.uncoveredFor(ws)] as const)
         .filter(([, u]) => u.length),
     );
+    // 0.4.45: this person's project order (Manage projects); the picker
+    // lists A to Z without one.
+    const { shellPrefs } = await import("./shell-prefs.js");
+    const projectOrder = shellPrefs(readUserConfig().shell).projectOrder;
     return sendJson(res, {
       ...wsFile,
       resolvedDirs,
       codeWorkspacePaths,
       stackNamespaces,
       hubUncovered,
+      projectOrder,
     });
   }
 

@@ -39,6 +39,27 @@
       "Elegir un proyecto aquí también lo convierte en el predeterminado de la CLI, así que los comandos de __DEN_CLI__ se ejecutan allí.",
     "ws.none": "No hay proyectos activos",
     "ws.manage": "Gestionar proyectos…",
+    "ws.order.az": "Orden de la A a la Z",
+    "ws.order.mine": "Tu orden",
+    "ws.order.reset": "Volver a la A a la Z",
+    "ws.order.help":
+      "Arrastra una fila por su asa, o usa Subir / Bajar en su menú ⋮. Un proyecto nuevo se coloca de la A a la Z hasta que lo muevas.",
+    "ws.order.drag": "Arrastra para reordenar",
+    "ws.order.up": "Subir",
+    "ws.order.down": "Bajar",
+    "ws.named.hub": "Nombre de Hub",
+    "pname.label": "Nombre del proyecto",
+    "pname.hubChip": "Nombre de Hub",
+    "pname.hubHelp":
+      "El nombre viene de Hub. Para cambiarlo, pídelo en Hub; allí decide una persona.",
+    "pname.localHelp":
+      "Se muestra en la cabecera, las listas y las páginas de Den. Vincula este proyecto a Hub para usar el nombre de Hub.",
+    "pname.save": "Guardar nombre",
+    "pname.saved": "Guardado.",
+    "pname.empty": "Escribe un nombre. No puede quedar vacío.",
+    "pname.failed": "No se guardó el nombre.",
+    "set.workspace.name": "Nombre",
+    "set.shell.projectOrder": "Orden de los proyectos",
     "ws.allN": "Todos los activos ({n})",
     "ws.allTip":
       "Todos los proyectos activos; un servicio que definen varios aparece una sola vez",

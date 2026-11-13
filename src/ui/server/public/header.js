@@ -840,7 +840,13 @@ async function _renderScopeMenu() {
         .catch(() => null),
     ]);
     sh.setWorkspaces({
-      ...buildScopeMenuModel(pageScope(scope, data), data, t),
+      // The page's language sorts the projects (ja its own way).
+      ...buildScopeMenuModel(
+        pageScope(scope, data),
+        data,
+        t,
+        document.documentElement.lang || undefined,
+      ),
       onSelect: _switchScope,
     });
   } catch {
