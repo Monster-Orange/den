@@ -610,14 +610,30 @@
         text-decoration: underline;
       }
       .pane .bar2 .where {
-        /* No width of its own to wrap on: it takes what's left, cut. */
+        /* No width of its own to wrap on: it takes what's left. */
         flex: 1 1 0;
         min-width: 0;
+        display: inline-flex;
         color: var(--faint);
         white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
         font-size: 12.5px;
+      }
+      /* 0.4.44: the project stays whole; the runtime is what is cut. */
+      .pane .bar2 .where .wsn {
+        flex: none;
+      }
+      .pane .bar2 .where .rt {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: pre; /* words-ok: a CSS property; keeps " · " */
+      }
+      /* A phone: the bar names the project, so Change stands alone. */
+      @media (max-width: 480px) {
+        .pane .bar2 .aglink > .mono {
+          display: none;
+        }
       }
       .pane .bar2 .x {
         margin-left: auto;

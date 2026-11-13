@@ -697,10 +697,11 @@ describe("the Agents tab's layouts (AG-4b)", () => {
   it("0.4.44: review shots of the tab in front (DEN_AGENTS_SHOTS only)", async () => {
     if (skip() || !SHOTS) return;
     try {
-      for (const lang of ["en", "ja"] as const) {
+      for (const lang of ["en", "ja", "es"] as const) {
         expect(await s!.settings({ language: lang === "en" ? null : lang })).toBe(200);
-        for (const scheme of ["light", "dark"] as const)
-          for (const width of [1440, 390]) {
+        // es once, at 390 in light: the longest words, on a phone.
+        for (const scheme of lang === "es" ? (["light"] as const) : (["light", "dark"] as const))
+          for (const width of lang === "es" ? [390] : [1440, 390]) {
             const ctx = await browser!.newContext({
               viewport: { width, height: width > 400 ? 900 : 844 },
               colorScheme: scheme,
@@ -764,6 +765,31 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     expect(cut).toEqual({ name: true, meta: true });
     await p.context().close();
   }, 60_000);
+
+  it("0.4.44: at 390 the bar keeps \"agent · project\" whole and shows the project once; at 1440 both", async () => {
+    if (skip()) return;
+    const look = async (width: number) => {
+      const p = await page(`/agents?layout=tabs&ws=south&open=${sid.builder}`, { width });
+      await termsUp(p, 1);
+      const r = await p.$eval("#agr .pane:not([hidden]) .bar2", (bar) => {
+        const wsn = bar.querySelector(".where .wsn") as HTMLElement | null;
+        const link = bar.querySelector(".aglink > .mono") as HTMLElement | null;
+        return {
+          project: wsn?.textContent ?? null,
+          whole: wsn ? wsn.scrollWidth <= wsn.clientWidth + 1 : false,
+          beside: link ? link.offsetWidth > 0 : null,
+          where: (bar.querySelector(".where") as HTMLElement).textContent,
+        };
+      });
+      await p.context().close();
+      return r;
+    };
+    const narrow = await look(390);
+    expect(narrow).toMatchObject({ project: "south", whole: true, beside: false });
+    expect(narrow.where).toMatch(/^south · /);
+    const wide = await look(1440);
+    expect(wide).toMatchObject({ project: "south", whole: true, beside: true });
+  }, 90_000);
 
   it("raised no page errors", () => {
     if (skip()) return;

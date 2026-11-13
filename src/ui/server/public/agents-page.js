@@ -1499,8 +1499,10 @@ function paintBar(p) {
         .filter(Boolean)
         .join(" · ")
     : "";
+  // 0.4.44: the project stays whole; the runtime and the rest are cut.
   const where =
-    (ws ? wsLinkHtml(ws) : "") + (ws && rest ? " · " : "") + esc(rest);
+    (ws ? `<span class="wsn">${wsLinkHtml(ws)}</span>` : "") +
+    (rest ? `<span class="rt">${ws ? " · " : ""}${esc(rest)}</span>` : "");
   const tone = r ? stateTone(r) : p.exited ? "off" : "pending";
   const stop =
     r?.kind === "agent" && (r.state === "running" || r.state === "stopping")
