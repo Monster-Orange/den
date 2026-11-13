@@ -76,7 +76,7 @@ Claude skill front matter. `den --help` prints the line. The skill does three
 things only: it installs Den (after checking Node and git), helps the person
 pick its name and folder (default `~/<name>`), then runs `web up` and hands
 over the one-time link from `web claim-link`: "Den's own agent takes it from
-there." It adds no repo and creates no workspace: that is
+there." It adds no repo and creates no project: that is
 [the server agent](#the-server-agent)'s job. Every command below also stays a
 person's own: `npm i -g @monster-orange/den` → `den create <name>` →
 `<cli> repo add` → `<cli> up` skips both agents. The skill runs the first
@@ -102,9 +102,9 @@ question for the person (`ask`, sometimes with `choices`).
 
 ### repo add
 
-`<cli> repo add <path|git-url> [--sidecar] [-w <workspace>] [--name <repo>]
+`<cli> repo add <path|git-url> [--sidecar] [-w <project>] [--name <repo>]
 [--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>]
-[--json]` adds a repo to a workspace without writing into the repo.
+[--json]` adds a repo to a project without writing into the repo.
 
 - A path is the person's own checkout, added dev-managed at that path. A git
   URL is cloned where Den keeps its managed clones
@@ -132,12 +132,12 @@ question for the person (`ask`, sometimes with `choices`).
   Gatsby 8000, webpack-dev-server 8080), the side-car gets
   `http://localhost:<port>/` as its health URL, so the service has Visit ↗.
   No port: no health URL is guessed.
-- The workspace is `-w <workspace>` (made and activated if it doesn't exist),
-  else the focused one, else a new `default` workspace.
+- The project is `-w <workspace>` (made and activated if it doesn't exist),
+  else the focused one, else a new `default` project.
 - The same repo again answers `ok` with `existed: true`. A different repo
   under the same name is an error that offers `relocate` or `--name`.
 - `--dry-run` (a local path only) runs the same detection and validator and
-  writes nothing: no side-car, no workspace entry, no catalog entry. The
+  writes nothing: no side-car, no project entry, no catalog entry. The
   answer carries the side-car as YAML (`draft`), the validator's answer
   (`validation`), where it would go (`manifest.file`, `written: false`) and,
   in `next`, the same command without `--dry-run`. A git URL is refused: it
@@ -174,7 +174,7 @@ a CLI command, an MCP read tool and a web API route, with the same answer
   `sidecar` or `none`), `runs` (what [`repo add`](#repo-add) would detect)
   or `ask` and `choices`, the suggested `workspace`, and `registered` when
   it is already in one. `workspaces` groups them by one simple rule: the
-  repos in one parent folder go in one workspace named after that folder,
+  repos in one parent folder go in one project named after that folder,
   and a repo directly in the scanned folder gets the scanned folder's name.
   It skips dot-folders, `node_modules` and `vendor`, never follows a
   symlink, stops at 50 repos or 5,000 folder entries (`truncated: true`),
@@ -198,13 +198,13 @@ with "If you didn't ask an agent to do this, Deny." under it.
 
 | MCP tool           | What Allow runs                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspace_create` | The Workspaces page's create: an empty workspace, made active                                                                                      |
+| `workspace_create` | The Projects page's create: an empty project, made active                                                                                      |
 | `repo_add`         | `repo add <path> --json`, a local folder inside home                                                                                               |
-| `service_try`      | `up` for one service, as the Services page's Start does; an inactive workspace is activated first ("Start <service> (this activates <workspace>)") |
+| `service_try`      | `up` for one service, as the Services page's Start does; an inactive project is activated first ("Start <service> (this activates <project>)") |
 
 - **Den writes the dialog.** Its line and its Review come from the action
   and its arguments, never from the agent. `repo_add`'s Review is its dry
-  run: the folder, the workspace (new or not) and the side-car Den would
+  run: the folder, the project (new or not) and the side-car Den would
   write. The agent's `note` is shown only quoted, as "Agent says".
 - **Bad arguments are refused before anything waits**: the same checks as
   the page, `repo add` and the path rule of
@@ -255,8 +255,8 @@ with "If you didn't ask an agent to do this, Deny." under it.
   registered and `POST /api/approvals` answers 403 `approvals_off`.
   `doctor` (and its `mcp:approvals` check in `--json`), the MCP server's
   instructions and `mcp --list` (on stderr) say which is in effect. A
-  workspace-scoped MCP server refuses `workspace_create` and `repo_add`:
-  they change Den beyond its workspace.
+  project-scoped MCP server refuses `workspace_create` and `repo_add`:
+  they change Den beyond its project.
 
 ### up, doctor and mcp connect
 
@@ -348,13 +348,13 @@ naming the file each error is in, then checks the merged result:
 Run with no argument in the distribution root, `<cli> validate` checks every
 manifest the distribution uses, and never clones:
 
-- each repo of every workspace, once per checkout path, with the
-  workspaces that use it and where its base comes from (`own`, `held`,
+- each repo of every project, once per checkout path, with the
+  projects that use it and where its base comes from (`own`, `held`,
   `+ override`);
 - a repo with no checkout on disk falls back to its held manifest, marked
   `held only, no checkout`. With no held manifest either it is a warning, not
   a failure;
-- each held manifest in `manifests/` that no workspace uses.
+- each held manifest in `manifests/` that no project uses.
 
 It prints one line per repo, details only for a layer with errors or
 warnings, and exits 1 if any fails. `<cli> validate --held` checks only
@@ -377,23 +377,23 @@ file: delete it, or keep only what this distribution changes as
 `up`, `down`, `restart` and `logs` take a repo name (`shop`) or a
 `repo/service` address (`shop/api`). A service's manifest key (`api`) or a
 compose stack's name (`compose.name`, else the manifest's `name`) works too,
-when it names exactly one service in the workspace: a stack stands for its
+when it names exactly one service in the project: a stack stands for its
 repo, so `<cli> restart search` restarts the repo whose stack is `search`.
 Repo names and listed addresses always win over an alias, so a catalog repo
 is never mistaken for another repo's service. An alias that names more than
-one service is an error that lists them (`"worker" is ambiguous in workspace
+one service is an error that lists them (`"worker" is ambiguous in project
 "default": one/worker, two/worker`); name one of them.
 
 ## Opening a service
 
 A service with a URL gets **Visit ↗**, which opens it in a new tab. It
-shows on Workspaces (beside Start, Stop, Restart and Logs, and as a link
+shows on Projects (beside Start, Stop, Restart and Logs, and as a link
 on the service's name), on Services and on Graph cards. Den picks the
 URL in this order: the service's `urls.<env>`; for `local`, its edge
 route when the edge serves one; else the origin of its HTTP health
 check. A service with none of these has no Visit.
 
-The ☆ star on Workspaces rows, Services and Graph cards marks a
+The ☆ star on Projects rows, Services and Graph cards marks a
 favourite. It is one list, saved in `shell.pins`, so a star set on one
 page shows on all of them.
 
@@ -414,7 +414,7 @@ Services card's name and the Graph card's **⋯** open the same panel.
 
 Top to bottom, it has:
 
-- the name, workspace, health dot, state ("up 2h", "down: HTTP 502",
+- the name, project, health dot, state ("up 2h", "down: HTTP 502",
   "starting…") and URL;
 - **Visit ↗**, then **Start** or **Stop**, **Restart** and **Logs**. These
   call what the Services page calls (`/api/service/exec` with `up`,
@@ -423,7 +423,7 @@ Top to bottom, it has:
 - **Last test run** (the server's run history, `GET /api/runs/last`) and
   **Run tests**, which runs the repo's suites (`/api/run?pillar=suites`);
 - **Agents**: the agents working in the repo, each with **Open**, and
-  **+ Start agent here**, which opens the Start dialog with the workspace
+  **+ Start agent here**, which opens the Start dialog with the project
   and the repo's folder filled in;
 - **Open in Services**, **Open in Graph** and **Unpin** (or **Pin**).
 
@@ -518,14 +518,14 @@ takes longer than 10 s. A check that runs out of time says "timed out after
 checks run.
 
 The page has no org picker of its own. It follows the top bar's View (all
-active workspaces, or one), asks for that workspace only, and says so:
-"Shows workspace south, as the top bar's View. Change it there." The
+active projects, or one), asks for that project only, and says so:
+"Shows project south, as the top bar's View. Change it there." The
 Release page follows the same rule with the same note. A page shows its own
 org picker only when it filters by org.
 
 ### Last test run
 
-The Workspaces page's "Last test run" column shows each repo's latest test
+The Projects page's "Last test run" column shows each repo's latest test
 run: its result (✓ or ✗), how long ago, and the pillar and environment on
 hover. It reads the server's run history, so it shows runs started from any
 browser or tab, and it survives a restart. The service's own state ("up 2h")
@@ -606,10 +606,10 @@ ones (`⇄ hybrid`).
 
 **Guards.**
 
-- Service exec (`/api/service/exec`, `<cli> up|down|restart`, workspace-wide
+- Service exec (`/api/service/exec`, `<cli> up|down|restart`, project-wide
   up and down, `<cli> up`'s plan) refuses every command on a remote service:
   `shop/core runs in dev (AWS); nothing to start here`. A `down` stops
-  nothing and succeeds, so a workspace down is not failed by it.
+  nothing and succeeds, so a project down is not failed by it.
 - MCP: `runsLocally()` reads the served `runs`, so agents cannot start, stop
   or restart a remote service.
 - Security: `auto_targets` never adds a remote service, even one with local
@@ -884,7 +884,7 @@ edge:
 | Strategy | What the edge does                                                                                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `none`   | Serves http on `edge.http_port` (80) only. Route URLs are `http://`. No cert, no CA, mkcert is never run.                                                                                              |
-| `mkcert` | Issues its own wildcard cert for every domain, workspace and stack zone. Its CA is its own under the state dir (`~/.local/share/<org>/edge/ca`), or `ca`, an existing CA it never mints or uninstalls. |
+| `mkcert` | Issues its own wildcard cert for every domain, project and stack zone. Its CA is its own under the state dir (`~/.local/share/<org>/edge/ca`), or `ca`, an existing CA it never mints or uninstalls. |
 | `files`  | Issues nothing: the `include` directory (copied beside the generated config) and `mounts` hold the certs. `ca` only tells health checks which CA to trust.                                             |
 
 `tls: <id>` is short for `tls: { strategy: <id> }`. `config/local/user.yml`'s
@@ -925,7 +925,7 @@ later plugins.
 - **A recreated edge keeps its routes.** After edge up creates, recreates
   or starts the edge, it rejoins the routed networks of every running stack
   whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,
-  one line per network. Stacks that are down, and projects with no routes
+  one line per network. Stacks that are down, and Compose projects with no routes
   file there, are left alone. (0.3.0-dev.40.)
 
 ## Hub
@@ -1030,7 +1030,7 @@ hub:
   token and plain headers naming the caller, taken from Den's records:
   `X-Den-Agent` (its name), `X-Den-Agent-Id` (its stable id, which Hub
   keys attribution on), `X-Den-Session` (its session), `X-Den-Workspace`
-  and `X-Den-Repos` (the workspace's repos, `owner/repo`,
+  and `X-Den-Repos` (the project's repos, `owner/repo`,
   comma-separated). Hub sets the company from the token and the project
   from the repos.
 - The proxy (`/hub/<path>`) takes only an agent's own Den token. A
@@ -1099,7 +1099,7 @@ restart <id>`; `--now` stops it at once). After Connect or Disconnect,
   `agents doctor` lists those agents. A restart is a person's: an
   agent's token is refused.
 - An agent can ask Den about itself with the MCP tool `whoami`: its id,
-  workspace, and whether Hub is connected and its tools are loaded. When
+  project, and whether Hub is connected and its tools are loaded. When
   Hub is connected but its tools are missing, it tells the person to
   restart it from Den. There is no token step for the agent or the
   person.
@@ -1184,7 +1184,7 @@ product:
 | `manifest`       | `.<name>.yml`        | The manifest file a repo carries; the `.json` twin is also read                                                      |
 | `state_dir`      | `~/.<name>`          | Per-user state: web server, daemons, logs, history (a relative path is relative to den.yml's directory, not the cwd) |
 | `services_dir`   | `.<name>-services`   | Managed clones, relative to the distribution root                                                                    |
-| `workspaces_dir` | `<name>-workspaces`  | Workspace checkouts, relative to the distribution root                                                               |
+| `workspaces_dir` | `<name>-workspaces`  | Project checkouts, relative to the distribution root                                                               |
 
 Env vars, with `ACME` as the prefix:
 
@@ -1478,14 +1478,14 @@ A color from the org config (`orgs.<id>.color`) is only ever a swatch,
 border or dot, never text or a ground: labels are `--text` or `--muted`.
 Links in body content are underlined, so a link never reads by color alone.
 
-## Workspace blueprint
+## Project blueprint
 
-The workspaces a new machine starts with. Read from `defaults:` in the org
+The projects a new machine starts with. Read from `defaults:` in the org
 config. Every repo is seeded as a managed clone (`mode: managed`) on the
 blueprint's branch; nothing is cloned until a command needs it. Switch a repo
 to a local checkout afterwards with `acme use-local <repo>`.
 
-One workspace, `default`:
+One project, `default`:
 
 ```yaml
 defaults:
@@ -1496,7 +1496,7 @@ defaults:
     entry: shop-web # where the setup script's dependency walk starts
 ```
 
-Several named workspaces:
+Several named projects:
 
 ```yaml
 defaults:
@@ -1511,42 +1511,42 @@ defaults:
 
 Each entry takes `repos`, `branch`, `autostart_off`, `org` and
 `stack_namespace` (see [Stack namespaces](#stack-namespaces)), the same
-fields as `defaults.workspace`, plus `focus`. Seeding creates every named workspace
+fields as `defaults.workspace`, plus `focus`. Seeding creates every named project
 with its repos, activates them all, and focuses the one with `focus: true`
 (else the first). Set `defaults.workspace` or `defaults.workspaces`, not both:
 both at once is an error, as is more than one `focus: true`.
 
-The blueprint applies only to a genuine fresh setup: no workspace except an
+The blueprint applies only to a genuine fresh setup: no project except an
 empty `default` that was never seeded. On a TTY the first command that needs
-workspaces offers to seed. Without a TTY it prints a one-line hint and changes
+projects offers to seed. Without a TTY it prints a one-line hint and changes
 nothing. `acme workspace seed` (or `acme init` in the distribution root) seeds
-explicitly, and resets the blueprint's workspaces if they already hold repos.
+explicitly, and resets the blueprint's projects if they already hold repos.
 
 Once seeded, a repo that later joins `defaults.workspace.repos` is added to
-`default`, but only while `default` is your only workspace, and never a repo
-you removed from it or that another workspace holds. With
+`default`, but only while `default` is your only project, and never a repo
+you removed from it or that another project holds. With
 `defaults.workspaces` nothing is topped up.
 
 To see what a setup would clone before it clones anything, run
 `acme setup --plan`: each repo with its org and clone URL, and whether it
-is cloned yet. On a fresh machine it plans the blueprint (every workspace
-`acme workspace seed` would create); once seeded, the focused workspace.
-`-w <workspace>` (repeatable) plans those workspaces instead, active or not,
+is cloned yet. On a fresh machine it plans the blueprint (every project
+`acme workspace seed` would create); once seeded, the focused project.
+`-w <workspace>` (repeatable) plans those projects instead, active or not,
 and `--all-active` every active one; on a fresh machine `-w` narrows the
-blueprint's plan. Repos that only workspaces outside the plan hold are named
+blueprint's plan. Repos that only projects outside the plan hold are named
 in a closing hint. A dev-managed repo shows the branch its checkout has out
 (read from its `.git/HEAD`), not a configured one. `acme up --plan` lists
 the same lines for the repos it would start, and exits 1 when nothing
-resolves (a name no workspace has, an empty workspace). Both are read-only:
+resolves (a name no project has, an empty project). Both are read-only:
 nothing is cloned, seeded or written.
 
 ## Orgs
 
-A distribution can hold work for more than one org: each workspace belongs
+A distribution can hold work for more than one org: each project belongs
 to one. An org's id is a key of `orgs:` or a GitHub owner, and today an org
 is the GitHub owner of the same name. `github_org` is the default org. A
 distribution that never mentions orgs has one org, the default, and every
-workspace is in it.
+project is in it.
 
 ```yaml
 github_org: acme
@@ -1562,25 +1562,25 @@ defaults:
       repos: [globex-web, globex-api]
 ```
 
-A workspace's org is the first of:
+A project's org is the first of:
 
-1. `org:` on the workspace in `config/local/workspaces.yml` (this machine)
-2. `org:` on the blueprint workspace of the same name (committed)
+1. `org:` on the project in `config/local/workspaces.yml` (this machine)
+2. `org:` on the blueprint project of the same name (committed)
 3. the one owner of its repos in the catalog (`gh: <owner>/<repo>`; owners
    compare case-insensitively, and a `gh: ""` counts as unknown)
 4. `github_org`
 
 It is worked out each time it is read and never written back. A repo with
-no clone URL is cloned from `<org>/<repo>` with its workspace's org: seeding
+no clone URL is cloned from `<org>/<repo>` with its project's org: seeding
 the blueprint above gives `globex-web` `gh: globex/globex-web`, not
 `acme/...`. `acme register` picks a managed clone from the focused
-workspace's org, or from `--org <id>`.
+project's org, or from `--org <id>`.
 
-`acme org list` shows each org's label, its workspaces and which is the
+`acme org list` shows each org's label, its projects and which is the
 default. `acme workspace list` has an Org column, and `--org <id>` lists one
-org's workspaces. A workspace whose repos belong to several owners, an
+org's projects. A project whose repos belong to several owners, an
 `org:` naming an owner Den does not know, or a repo in another owner than
-its workspace's org is a warning in both lists, never an error.
+its project's org is a warning in both lists, never an error.
 `GET /api/orgs` adds `default` and `workspaces` to each entry, and
 `/api/<cli>/config` adds `default_org`.
 
@@ -1627,7 +1627,7 @@ widget: { remote: git@git.initech.example:tools/widget.git }
 
 A repo's org is the org whose `repos` lists it, else the org with a source
 that claims its owner, else its GitHub owner as before. That org is what
-`/api/orgs?repos=1` maps the repo to and what infers a workspace's org (step
+`/api/orgs?repos=1` maps the repo to and what infers a project's org (step
 3 above). A claimed owner is not listed as an org of its own, and a
 `github_org` that names one makes the claiming org the default. Service rows
 (`/api/services`, `/api/health`) keep `org` as the repo's GitHub owner.
@@ -1664,10 +1664,10 @@ changes: `/api/orgs` is byte for byte what 0.2.7 answered. They need Den
 
 A repo's compose stack runs as the Compose project `<stack>-<workspace>`,
 and its containers, volumes and networks are named from it. The `default`
-workspace uses `main` (`shop-main`), so its data predates workspaces. That
+project uses `main` (`shop-main`), so its data predates projects. That
 is the default and needs no config.
 
-A workspace can opt out with `stack_namespace`, which replaces the suffix:
+A project can opt out with `stack_namespace`, which replaces the suffix:
 
 ```yaml
 # config/local/workspaces.yml (this machine)
@@ -1686,42 +1686,42 @@ defaults:
       stack_namespace: main
 ```
 
-A workspace's namespace is the first of `stack_namespace` in
-workspaces.yml, `stack_namespace` on the blueprint workspace of the same
+A project's namespace is the first of `stack_namespace` in
+workspaces.yml, `stack_namespace` on the blueprint project of the same
 name, and its own name (`default`: `main`). `acme workspace seed` writes
-the blueprint's value into the workspace it seeds. workspaces.yml
+the blueprint's value into the project it seeds. workspaces.yml
 overriding a different blueprint value is a warning naming both. The value
 is lowercase letters, digits and dashes; anything else is a config error
 that names the key.
 
-Workspaces with the same namespace share their stacks' projects, and so
+Projects with the same namespace share their stacks' Compose projects, and so
 their data; a stack keeps its data when its repo moves between them. A
-shared project is one instance, keyed by checkout:
+shared Compose project is one instance, keyed by checkout:
 
-- Two workspaces bringing up the same stack from the same checkout (repo
+- Two projects bringing up the same stack from the same checkout (repo
   path and branch) share it. `acme down <repo>` or `acme stack down
-<stack>` from one, while another active workspace in the namespace still
+<stack>` from one, while another active project in the namespace still
   holds it, detaches and leaves it running; the last one stops it.
-  `stack down --force` stops it regardless. A workspace that skips the
+  `stack down --force` stops it regardless. A project that skips the
   stack as already healthy counts as holding it too.
 - Bringing it up from a different checkout or branch is refused
   (`identity_mismatch`), naming both checkouts and the namespace. Stop it
-  where it runs first, or give the workspace its own `stack_namespace`.
+  where it runs first, or give the project its own `stack_namespace`.
 
 A shared stack's identity is its checkout path, plus the branch only when
-the workspace entry pins one. Den does not read the checkout's HEAD, so a
+the project entry pins one. Den does not read the checkout's HEAD, so a
 `git switch` in that checkout does not refuse its co-owners.
 
-`acme workspace list` adds a Stacks column when a workspace's namespace is
-not its default, the Workspaces page shows a "stacks: <ns>" chip in the
-workspace's header, and `GET /api/workspaces` gives `stackNamespaces`:
-each workspace's `stack_namespace`, its `source` (`workspace`, `blueprint`
+`acme workspace list` adds a Stacks column when a project's namespace is
+not its default, the Projects page shows a "stacks: <ns>" chip in the
+project's header, and `GET /api/workspaces` gives `stackNamespaces`:
+each project's `stack_namespace`, its `source` (`workspace`, `blueprint`
 or `default`), its `default` and whether it `differs`.
 
 `DEN_STACK_WORKSPACE=<suffix>` overrides the suffix for one command
 (`DEN_STACK_WORKSPACE=pr-12 acme stack up shop` runs `shop-pr-12`). It wins
-over `stack_namespace` and bypasses the shared-project bookkeeping. It is a
-per-command override, not a migration tool: to keep a workspace on another
+over `stack_namespace` and bypasses the shared Compose project bookkeeping. It is a
+per-command override, not a migration tool: to keep a project on another
 namespace, set `stack_namespace`.
 
 `stack_namespace` in the blueprint needs Den 0.3.0-dev.36 or later: an
@@ -2446,66 +2446,66 @@ everyone's checkout is in the same place.
 `--port <n>` (on `mcp` or `mcp connect`) points it at a web server on another
 port.
 
-### Scoped to one workspace
+### Scoped to one project
 
 ```sh
 ./bin/acme mcp --workspace north --actor agent:planner
 ```
 
 `--workspace <ws>` and `--actor agent:<id>` (both or neither) scope the server
-to one workspace for one agent:
+to one project for one agent:
 
 - **Pinned.** A tool that takes a `workspace` gets `<ws>`. The server
-  registers each workspace tool with "This workspace only" in its
+  registers each project tool with "This project only" in its
   description and without the `workspace` parameter (with grants it stays,
   a name whose description lists `<ws>` and the granted ones; any other
   name gets the refusal below, not a schema error). A call naming another
-  workspace is refused
-  (`Refused: <tool>: this MCP server is scoped to workspace "<ws>"
-(agent:<id>; no grants); "<other>" is another workspace`; with grants,
+  project is refused
+  (`Refused: <tool>: this MCP server is scoped to project "<ws>"
+(agent:<id>; no grants); "<other>" is another project`; with grants,
   `grants: <a>, <b>`) before anything reaches the web server. The refusal
   says how to get more: a person adds `<other>` to `agents.<id>.grants` in
   the org config and restarts the agent; an agent can't grant itself one. A
   refused call is recorded in the activity trail, read tools included.
 - **Says so.** Every scoped answer (`status`, `services`, `applications`,
-  `graph`, `stacks`, `workspaces`) carries a `scope` block: the workspace
-  shown, how many other workspaces there are and how much it leaves out,
+  `graph`, `stacks`, `workspaces`) carries a `scope` block: the project
+  shown, how many other projects there are and how much it leaves out,
   for example `hidden: { repos: 6 }`, and a note pointing at `org_summary`.
-  A scoped `graph` is the workspace's own repos and the edges out of them
+  A scoped `graph` is the project's own repos and the edges out of them
   (`map: "workspace"`, with `outside` naming the repos they depend on
   elsewhere). Unscoped with no `workspace` it is the org-wide map
-  (`map: "org-wide"`: every active workspace's graph merged, `workspaces`
-  naming them); with one, that workspace's (`map: "workspace"`).
+  (`map: "org-wide"`: every active project's graph merged, `workspaces`
+  naming them); with one, that project's (`map: "workspace"`).
 - **Filtered.** `workspaces` lists `<ws>` only. `logs_search` and `logs_tail`
   take only `<ws>`'s services, `manifest_validate` and `manifest_draft` take
   only an absolute path inside one of its repos (or, for `manifest_validate`,
   the content), and `workspace_sync` syncs `<ws>`. `repos_detect` is refused:
-  scanning folders reaches outside any workspace, so onboarding is for the
+  scanning folders reaches outside any project, so onboarding is for the
   unscoped server.
-  Tests run against the focused workspace, so `tests_available` and
+  Tests run against the focused project, so `tests_available` and
   `run_tests` are refused unless `<ws>` is the focused one.
-- **Not workspace data**, served as unscoped: `environments`,
+- **Not project data**, served as unscoped: `environments`,
   `security_latest`, `release_status`, `edge_status`, `onboard_status` (counts
   and checks only) and `org_summary` (the org's and the distribution's, not
-  a workspace's).
-- **The org at a glance.** `org_summary` gives every agent every workspace
+  a project's).
+- **The org at a glance.** `org_summary` gives every agent every project
   and repo with status counts, the graph, the edge and the environments
-  (see [Tools](#tools)). Detail and actions stay scoped: for workspaces
+  (see [Tools](#tools)). Detail and actions stay scoped: for projects
   other than `<ws>` it carries names and counts only, never logs, env
   values, commands, URLs, paths or check output.
 - **Stamped.** Every web API call carries `x-den-mcp-agent: agent:<id>` and
   `x-den-mcp-workspace: <ws>` beside the usual audit headers. The activity
   entry gains `agent` and `workspace`, and the log line reads `· by
-agent:<id> <client> <version> (workspace <ws>, mcp pid <pid>, session
+agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 <id>)` for every exec, run and sync.
 - **Granted.** `--grant <other>` (repeatable) also serves `<other>`, but only
   when the org config's `agents.<id>.grants` lists it; otherwise the server
   exits 2 (an agent can't grant itself one). A call naming a granted
-  workspace is reported to the web server before it runs, and its activity
+  project is reported to the web server before it runs, and its activity
   entry names both (`workspace` and `targetWorkspace`; the log line reads
-  `▶ <tool> in workspace <other>, under a grant to agent:<id> of workspace
-<ws>`). `GET /api/activity?address=workspace:<ws>` lists these entries
-  under either workspace. `workspaces` lists `<ws>` and its grants, and tests run when either
+  `▶ <tool> in project <other>, under a grant to agent:<id> of project
+<ws>`). `GET /api/activity?address=project:<ws>` lists these entries
+  under either project. `workspaces` lists `<ws>` and its grants, and tests run when either
   is focused. Logs and `manifest_validate` stay on `<ws>`'s own services.
   `agents start` passes an agent's grants for you (see [Agents](#agents)).
 - `<ws>` must exist in this distribution; until it does, every tool says so.
@@ -2517,7 +2517,7 @@ agent:<id> <client> <version> (workspace <ws>, mcp pid <pid>, session
 
 **It binds cooperating agents only.** The scope lives in the MCP server's
 process. The web server's HTTP API does not check it yet, so an agent that
-calls the API itself (curl, a browser) is not held to its workspace. Enforcing
+calls the API itself (curl, a browser) is not held to its project. Enforcing
 the scope in the HTTP server is WS-3a, planned for 0.4. `mcp connect` still
 registers the unscoped server; to hand one agent a scoped server, add it to
 that agent's config yourself, for example in a project's `.mcp.json`:
@@ -2569,8 +2569,8 @@ Read tools (always registered):
 | `status`             | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known |
 | `services`           | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                     |
 | `applications`       | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                            |
-| `graph`              | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active workspace's; with `workspace`, that one's and its startup order; scoped, the workspace's own)                                                                                                                    |
-| `workspaces`         | `/api/workspaces`                          | Workspaces, active and focused                                                                                                                                                                                                                                                 |
+| `graph`              | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active project's; with `workspace`, that one's and its startup order; scoped, the project's own)                                                                                                                    |
+| `workspaces`         | `/api/workspaces`                          | Projects, active and focused                                                                                                                                                                                                                                                 |
 | `environments`       | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                             |
 | `logs_search`        | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                              |
 | `logs_tail`          | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                                                                                                                         |
@@ -2582,7 +2582,7 @@ Read tools (always registered):
 | `ask_human`          | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                      |
 | `notifications_list` | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                              |
 | `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
-| `org_summary`        | several (read only)                        | Every workspace and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your workspace's services                                                                                                                                          |
+| `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                          |
 | `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
 | `repos_detect`       | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                     |
 | `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when it can start in several ways (call again with `run`)                                                                                              |
@@ -2599,20 +2599,20 @@ use the same rule: the web row shows a redirect muted (with `status` and `redire
 in `/api/health`), and `<cli> status` as `redirect 302 → /login`.
 
 **`org_summary`** reads `/api/workspaces`, `/api/health` (local, every
-active workspace), `/api/graph`, `/api/edge` and `/api/environments`:
+active project), `/api/graph`, `/api/edge` and `/api/environments`:
 
-- `workspaces`: each workspace's name, whether it is active, focused or
+- `workspaces`: each project's name, whether it is active, focused or
   yours, its state (`running`: every checked service answers; `partial`:
   some are down; `stopped`: all checked ones are down; `unknown`: nothing
   checked; `inactive`: not polled), its counts (up, down, redirect,
   pending, not checked) and its repos, each with its rolled-up state.
-- `graph`: the org-wide map, every active workspace's repos merged (each
-  workspace's graph from the web server; `workspaces` names them, and
+- `graph`: the org-wide map, every active project's repos merged (each
+  project's graph from the web server; `workspaces` names them, and
   `unavailable` any whose graph failed), repo names and edge kinds only (no
   evidence, paths or URLs).
 - `edge`: up, state, domains, the route count and `https`.
 - `environments`: the enabled names, never their values.
-- scoped, `yours`: your workspace's services as `status` gives them.
+- scoped, `yours`: your project's services as `status` gives them.
 
 **`edge_status.https`** says which TLS strategy is in use (`mkcert`,
 `files`, `none`), who supplies the cert (`den`, or `distribution` under
@@ -2631,7 +2631,7 @@ is no deploy tool.
 
 `agent_resume` (AG-14.4) resumes a stopped or interrupted agent, for an
 orchestrator. It is off unless `mcp.actions` names it. A scoped server
-(`--workspace`) resumes agents of its own workspace or a granted one, never
+(`--workspace`) resumes agents of its own project or a granted one, never
 itself. The web server checks the same rule, and the resume route is the
 only agent route an agent's token reaches.
 
@@ -2639,7 +2639,7 @@ only agent route an agent's token reaches.
 agent: with no `session` it lists them, with `session` and `persona` it
 brings one in (see [Bring in a conversation](#bring-in-a-conversation)). It
 is off unless `mcp.actions` names it, and a scoped server reaches its own
-workspace or a granted one. Without it, an agent's token gets 403 on both
+project or a granted one. Without it, an agent's token gets 403 on both
 the list and the import.
 
 ### Guards
@@ -2662,7 +2662,7 @@ the list and the import.
   AWS keys, credentials in URLs and DSNs, `key=value` secrets, private-key
   blocks.
 - **Never exposed:** sudo passwords, AWS login, opening a terminal or editor,
-  workspace-wide exec, any other service command, settings writes, workspace
+  project-wide exec, any other service command, settings writes, project
   create, rename or mode changes, the server log, and anything that returns
   environment values. The MCP server's HTTP client cannot reach any other
   route.
@@ -2741,7 +2741,7 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 ```
 
 - A session is named `<dist>-<ws>:<n>`. `list -w <ws>` and `agents list
--w <ws>` show that workspace's sessions only. Elsewhere a session can be
+-w <ws>` show that project's sessions only. Elsewhere a session can be
   named in full, as `<ws>:<n>`, as a bare `<n>` only one session has, or by
   its id.
 - It runs in `--cwd` (default: where you ran the command). Its environment
@@ -2800,14 +2800,14 @@ start` and `<cli> doctor` say why den-pty is unavailable.
 Every Den has its own agent, named after the distribution ("Acme agent"),
 for anything about the server itself: set it up, add a repo, fix a failing
 service, change a setting, explain what's running. It belongs to no
-workspace. It is a normal Den agent underneath (its record, its session,
+project. It is a normal Den agent underneath (its record, its session,
 Resume after a restart, rotation and Den's hooks), with Den's persona
 `server` and the plain-writing rule, in a reserved scope, `den-server`: no
-workspace may take that name.
+project may take that name.
 
 - **It acts only through Den's MCP.** Its MCP server
   (`<cli> mcp --workspace den-server --actor agent:server`) serves the whole
-  Den, not one workspace, so it may use the onboarding tools a workspace's
+  Den, not one project, so it may use the onboarding tools a project's
   agent is refused. Every write (`workspace_create`, `repo_add`,
   `service_try`) is [held for the person](#onboarding-writes-held-for-the-person):
   until they allow one in the browser, it only reads. It starts in an empty
@@ -2819,14 +2819,14 @@ workspace may take that name.
   (`mcp.actions`) stay in `permissions.ask`. On a fresh Den the page says
   above its terminal: "Claude asks whether to trust this folder. Choose
   Yes." Den doesn't answer that prompt for the person.
-- **Where it lives.** On a fresh Den (no repo in any workspace yet), the
+- **Where it lives.** On a fresh Den (no repo in any project yet), the
   first page, `/`, is that agent in a terminal framed as the page, with
   Open in Agents as the way out. After setup it is one click away in the
   rail ("Acme agent", `/server-agent`), and ⌘K has "Ask Acme". Agents lists
-  it first, under "Server", not under a workspace.
+  it first, under "Server", not under a project.
 - **Its onboarding:** `onboard_status`, then "Let's set up Acme. Where are
   your repos? I'll look in <the folder above the Den's> unless you name
-  another folder." in its first turn, `repos_detect` and suggested workspaces, `workspace_create`,
+  another folder." in its first turn, `repos_detect` and suggested projects, `workspace_create`,
   `manifest_draft` and `repo_add` for each repo, `service_try` (and
   `doctor` when it fails), then "Here's what's running, and three things to
   try next."
@@ -2855,9 +2855,9 @@ workspace may take that name.
 
 ## Agents
 
-An agent is a **persona** (who) in a **workspace** (where), run by a
+An agent is a **persona** (who) in a **project** (where), run by a
 **runtime** (which CLI) in a [session](#sessions), acting through Den's MCP
-server scoped to its workspace.
+server scoped to its project.
 
 ```
 <cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>]
@@ -2875,10 +2875,10 @@ server scoped to its workspace.
 <cli> sessions attach <ws>:<id>         # its terminal; ctrl-] detaches
 ```
 
-- `start` runs the agent as session `<dist>-<ws>:<id>` in the workspace's
+- `start` runs the agent as session `<dist>-<ws>:<id>` in the project's
   checkout dir (its `directory`, else `den-workspaces/<ws>`), capped by
   `agents.max_concurrent` (agents only: plain sessions never count). The id defaults to the persona's id; an id is
-  unique in the distribution, so a second workspace's planner gets
+  unique in the distribution, so a second project's planner gets
   `planner-<ws>` unless you give `--id`. A persona that already has an
   agent there, running or stopped, starts another: `planner-2`,
   `planner-3`. A stopped agent is continued by Resume or Start fresh,
@@ -2887,7 +2887,7 @@ server scoped to its workspace.
   typed; a running agent there with that id or title is refused, and a
   stopped one makes it `api-spike-2`.
 - The **agent record**, `<stateDir>/agents/<id>.json` (0600), holds its id,
-  persona, runtime, model, workspace, cwd, session and times, and what it was
+  persona, runtime, model, project, cwd, session and times, and what it was
   started with from the Start dialog: `version` (the model's, "latest" or
   pinned), `permission` (`ask`, `edits` or `all`), `allow` (extra allowed
   commands) and `overrides` (which of these differ from its persona). Start
@@ -2912,25 +2912,25 @@ server scoped to its workspace.
   its tab. A stopped agent's row and pane don't offer it (0.4.29); the CLI
   still does. The id never changes.
 - **Moving (D72).** `agents move <id> -w <ws> [--now]`, Move to
-  workspace… in the ⋯ menu, or `POST /api/workspaces/:ws/agents/:id/move
+  project… in the ⋯ menu, or `POST /api/workspaces/:ws/agents/:id/move
 {to, when}`. Only a person can move an agent. A stopped agent's record
-  changes (workspace, session name). A running agent waits for its turn
+  changes (project, session name). A running agent waits for its turn
   to end, unless you pass `--now` or `when: "now"`. Den then stops it and
-  resumes the same conversation in the new workspace, because an agent's
-  tools and token are scoped to a workspace. Its folder, name and
+  resumes the same conversation in the new project, because an agent's
+  tools and token are scoped to a project. Its folder, name and
   services stay the same. An import of a conversation whose last write
   came from Den's own stop of a removed agent (within 15 s) is not taken
   as open in another terminal.
-- **When its workspace is deleted (D71).** A workspace delete with
+- **When its project is deleted (D71).** A project delete with
   agents is refused until the person chooses: `agents: "move"` with
   `agentsTo` (each moves as `agents move` does), or `agents: "stop"`
   (each stops and is removed; Undo keeps it an hour).
   `GET /api/workspaces/cleanup-preview` lists the agents
-  (`{id, name?, running}`) so a page can ask. An agent whose workspace
+  (`{id, name?, running}`) so a page can ask. An agent whose project
   is gone anyway is listed by `/api/sessions` with `orphan: true`, so it
   can be moved.
 - **Its project and repo (D65).** The record's `project` (its
-  workspace until projects come from Hub) and `repo` (optional). Den
+  project until projects come from Hub) and `repo` (optional). Den
   proposes the repo from the agent's folder once, at start or bring-in,
   and again only in the one-time migration of older records. Nothing
   that shows an agent reads its folder. `agents link <id> --repo
@@ -2938,7 +2938,7 @@ server scoped to its workspace.
 /api/workspaces/:ws/agents/:id/link {repo: <name>|null}`, a person's
   only. `GET /api/personas?workspace=<ws>` lists the repos to choose
   from. Every restart path keeps it, and a move keeps the repo when the
-  new workspace has it. `agents doctor` lists agents on no repo and
+  new project has it. `agents doctor` lists agents on no repo and
   those whose repo is missing.
 - **The name other sessions see.** Den names a Claude Code agent's session
   `<cli>-<ws>:<name, else id>` (`--name`) at every start and resume, so
@@ -2960,10 +2960,10 @@ server scoped to its workspace.
 #### Bring in a conversation
 
 A conversation you started in a terminal outside Den (Claude Code, in the
-workspace's own folder or one inside it, or a folder of one of its repos,
+project's own folder or one inside it, or a folder of one of its repos,
 a repo added by path outside it too) can become a Den agent. When
-workspaces share one repos root, only each one's repos' folders count,
-and the root itself only exactly; another workspace's conversation is
+projects share one repos root, only each one's repos' folders count,
+and the root itself only exactly; another project's conversation is
 refused by id. Agents ›
 **Bring in** lists them, newest first, with the persona list; `agents
 import -w <ws>` lists them too.
@@ -2993,8 +2993,8 @@ import -w <ws>` lists them too.
   servers (`mcp__<server>__…`), the dialog names them: "It won't have:
   <servers>." The list's `lost` field has them.
 - **A suggested persona.** The list's `suggest` is the persona of the
-  latest agent of the workspace that worked in the conversation's folder
-  (or a folder inside it, or one containing it), else the workspace's
+  latest agent of the project that worked in the conversation's folder
+  (or a folder inside it, or one containing it), else the project's
   latest agent's. The dialog preselects it; you confirm with Bring in.
 - **Started outside any project (D56).** A conversation that ran in a
   folder no project holds (your home folder, say) is listed apart:
@@ -3043,7 +3043,7 @@ model?, version?, outside? }`. A person's only, unless MCP `agent_import` is opt
 same conversation. Den stops its session and resumes the conversation with
 the new persona's role prompt, permission mode and allowed commands (the
 old persona's mode and commands go). The history stays, and so do the
-agent's id, name, workspace, folder, grants, tab and slot, and the model it
+agent's id, name, project, folder, grants, tab and slot, and the model it
 runs unless Advanced (`--model`) picks another. The dialog lists the
 personas with the current one marked, and the same "From now on it works
 as…" line as Bring in.
@@ -3086,12 +3086,12 @@ as…" line as Bring in.
 - Route: `POST /api/workspaces/<ws>/agents/<id>/persona` `{ persona, model?,
 version?, when? }`.
 
-### On the Workspaces page
+### On the Projects page
 
-The selected workspace's agents are listed under its repo table, one row
+The selected project's agents are listed under its repo table, one row
 per agent: its id and persona, runtime, state (`running`, `stopping`,
 `stopped`, `ended` or `exited (<code>)`), directory, and when its session
-started. The workspace header counts them ("2 agents").
+started. The project header counts them ("2 agents").
 
 - **Stop** sends its session TERM, as `agents stop` does; the row reads
   `stopping…` until the session has gone. **Resume** shows only when
@@ -3108,12 +3108,12 @@ started. The workspace header counts them ("2 agents").
   `<cli> agents doctor`" (see [Runtimes](#runtimes)). Nothing fails only
   after Start.
 - **Folder** (optional) is where the agent runs: a folder inside the
-  workspace's own, or a repo's folder of the workspace (relative to the
-  workspace's folder, or absolute). Empty, it runs in the workspace's
-  folder. A folder outside the workspace is refused (403). The service
+  project's own, or a repo's folder of the project (relative to the
+  project's folder, or absolute). Empty, it runs in the project's
+  folder. A folder outside the project is refused (403). The service
   panel's **Start agent here** fills it with the repo's folder.
 - The page and the CLI call the same operations and read the same agent
-  records, so an agent started in one is listed in the other. A workspace
+  records, so an agent started in one is listed in the other. A project
   lists its own agents only.
 - Start, Stop and Resume never ask for the admin password (it is for
   sudo, and no agent action runs sudo), are capped by
@@ -3122,7 +3122,7 @@ started. The workspace header counts them ("2 agents").
   server log's activity, with you as its actor. The agent's environment is
   the one below, built from the web server's environment.
 - **Open in Agents →** (the section header) opens the Agents tab for the
-  workspace, and **Open** on a row with a session opens its terminal there.
+  project, and **Open** on a row with a session opens its terminal there.
 
 The routes: `GET /api/workspaces/<ws>/agents`, `POST
 /api/workspaces/<ws>/agents` (`{ persona, runtime?, model?, version?,
@@ -3148,12 +3148,12 @@ dialog:
   category. Each row is the persona's name ("Rita (reviewer)", else its
   id), its source badge and its one-line description, and "not installed"
   when its runtime isn't. **Plain session** is pinned last: your login
-  shell in the workspace's folder, no agent. **What's a persona?** explains
+  shell in the project's folder, no agent. **What's a persona?** explains
   the idea; **Details** shows the selected persona's instructions, runtime,
   model and version, permission mode, role preset and extra commands.
   **+ New persona**, **Duplicate** and (for your own) **Edit** open the
   persona editor, and the dialog picks what you saved.
-- **Runtime** and **Workspace**. Installed runtimes come first; the rest
+- **Runtime** and **Project**. Installed runtimes come first; the rest
   are listed, disabled, and named under the field ("Not found on this
   machine: …"). A persona whose runtime isn't installed starts on the first
   one that is, and the dialog says so. The line under the runtime says what
@@ -3167,7 +3167,7 @@ dialog:
 - **Advanced** (collapsed): **Model** and **Version** (the runtime's own
   list; "Persona default" first), the **Permission mode** (Ask for
   everything, Auto-approve edits in the worktree, Auto mode, Auto-approve
-  all; the workspace's own mode is picked first, and the dialog says so),
+  all; the project's own mode is picked first, and the dialog says so),
   the
   role's command preset as chips, **Extra allowed commands** (plain command
   prefixes, one per line, no patterns), and a preview of exactly what the
@@ -3211,10 +3211,10 @@ pick another mode. Where the list can't be read, it starts with a warning.
 `agents doctor` says what each mode means and whether this Claude Code
 takes auto.
 
-**A workspace's mode.** `<cli> agents permission -w <ws> auto` (or `ask`,
+**A project's mode.** `<cli> agents permission -w <ws> auto` (or `ask`,
 `edits`, `all`; `--clear` removes it; no mode shows it) sets
 `<ws>.agents.permission` in `config/local/workspaces.yml`. Agents started
-in that workspace take it when the start names no mode, over their
+in that project take it when the start names no mode, over their
 persona's; a start's own choice still wins. It changes the next start or
 resume, never a running agent. A person's command only: an agent's session
 is refused. A value that isn't a mode refuses the start, naming the key.
@@ -3222,16 +3222,16 @@ is refused. A value that isn't a mode refuses the start, naming the key.
 ### The Agents tab
 
 "Agents" in the rail (Develop, after Graph) is `/agents`: every session and
-agent of the workspaces in view, and their terminals in the browser.
+agent of the projects in view, and their terminals in the browser.
 
-- **The list** is grouped by workspace and follows the scope bar (or the
+- **The list** is grouped by project and follows the scope bar (or the
   page's `?ws=<ws>`, which "Open in Agents →" sets). A `?ws=` is never
-  replaced by All. A workspace that isn't active gets one line, "Workspace
+  replaced by All. A project that isn't active gets one line, "Project
   west isn't active · Switch to west", and the list shows it alone.
-  Switch makes it active and views it, as the top bar's Workspace menu
-  does. A name no workspace has gets the same line, an empty list, and no
+  Switch makes it active and views it, as the top bar's Project menu
+  does. A name no project has gets the same line, an empty list, and no
   "+ Start agent".
-  `GET /api/sessions?ws=<ws>` lists that workspace even when it isn't
+  `GET /api/sessions?ws=<ws>` lists that project even when it isn't
   active, and says `requested: { workspace, active, known }`. Each row has its
   state, persona (a `sessions start` session is labelled "session"),
   runtime and directory, and "waiting" when it waits on you (once the
@@ -3256,7 +3256,7 @@ agent of the workspaces in view, and their terminals in the browser.
   - **Focus** (the default) shows one pane. A click replaces it;
     Shift-click or ⌘-click adds one alongside.
   - **Tabs** shows one pane under a strip of tabs. Each tab has the
-    agent's name, then its persona and workspace ("reviewer · north"), and
+    agent's name, then its persona and project ("reviewer · north"), and
     a dot when it is waiting.
   - **Tile** shows the open panes in a grid: one fills it, two sit side
     by side, three or four make a 2×2.
@@ -3278,8 +3278,8 @@ agent of the workspaces in view, and their terminals in the browser.
   running, and opening it again replays what you missed. **Stop** (an
   agent only) is `agents stop`. **+ Start agent** (or
   `/agents?start=1`) starts one and opens its pane; under All it asks for
-  the workspace. It says before Start whether the runtime can run, as the
-  Workspaces page's form does. It never asks for the admin password.
+  the project. It says before Start whether the runtime can run, as the
+  Projects page's form does. It never asks for the admin password.
 - **Shift+Enter** adds a soft newline instead of submitting. It sends the
   runtime's `softNewline` from the runtime catalog: `esc-cr` (ESC CR, the
   default; Claude Code and Gemini CLI), `lf` (Ctrl+J; Codex CLI) or `none`
@@ -3307,7 +3307,7 @@ agent of the workspaces in view, and their terminals in the browser.
   `http:` and `https:` open; an OSC 8 link with any other scheme
   (`javascript:`, `file:`) is no link. A plain click selects text as
   ever. A file path an agent prints (`src/foo.ts:42`, `./a/b.js:3:7`, an
-  absolute path) is a link when it exists inside the agent's workspace
+  absolute path) is a link when it exists inside the agent's project
   (its directory, or the agent's own folder) or its uploads, resolved
   against the agent's folder; one outside it never is. The server checks with `GET
 /api/workspaces/<ws>/agents/<id>/paths?p=<path>&p=…` (stat only, nothing
@@ -3321,7 +3321,7 @@ agent of the workspaces in view, and their terminals in the browser.
     and every refusal, is audited.
   - The rule, for links and downloads alike: the path is resolved
     against the agent's folder and every link in it followed, and the
-    real path must be inside the workspace's folder, the agent's own
+    real path must be inside the project's folder, the agent's own
     folder or its uploads. A folder that would open too much is no
     root: `/`, the home folder, or one holding the home or Den's state
     folder (an agent whose folder is `~`). Whatever the roots, Den's state
@@ -3346,7 +3346,7 @@ agent of the workspaces in view, and their terminals in the browser.
   token only its own session's. Each attach and detach is in the server
   log's activity, with its actor.
 
-The routes: `GET /api/sessions` (`{ sessions, workspaces, host, backend,
+The routes: `GET /api/sessions` (`{ sessions, projects, host, backend,
 io }`) and the WebSocket `/api/sessions/<id>/io` (subprotocol `den.io`, the
 CSRF token as `den.csrf.<token>`): binary frames are output and input, a
 text frame `{"type":"resize","cols":c,"rows":r}` resizes, and the server
@@ -3354,16 +3354,16 @@ sends `{"type":"session",…}` first and `{"type":"exit","exitCode":n}` when
 the session ends.
 
 The terminal route checks the person and the agent, not whether the
-agent's workspace is active: an agent in a workspace you've switched away
+agent's project is active: an agent in a project you've switched away
 from still opens. A `GET` of the io path (not a WebSocket) says why one
 would be refused: `401` when you're signed out (the pane then says "Sign
 in"), `404` with the reason when there is no such session here, and `426`
 when the upgrade would be allowed. The pane shows that reason, not "Sign
 in", for any refusal but the first.
 
-The pane's header and the workspace's heading in the list link to the
-Workspaces page focused on that workspace (`/local-dev?ws=<ws>`), and ⌘K
-has "Go to workspace <ws>" for each workspace with agents.
+The pane's header and the project's heading in the list link to the
+Projects page focused on that project (`/local-dev?ws=<ws>`), and ⌘K
+has "Go to project <ws>" for each project with agents.
 
 ### Helpers: what an agent started in its own session
 
@@ -3416,7 +3416,7 @@ From the CLI and MCP:
 <cli> agents helpers <id> <helper> --limit 50 --json
 ```
 
-The MCP tool `agent_helpers` reads the same, in the agent's own workspace
+The MCP tool `agent_helpers` reads the same, in the agent's own project
 or one it is granted; cleared helpers are only counted (`clearedCount`)
 unless it asks with `all: true`. The routes are `GET
 /api/workspaces/<ws>/agents/<id>/helpers[/<helper>]` (`?all=1` lists the
@@ -3497,7 +3497,7 @@ agents:
 | `keep_days` | days, above 0 to 3650             | 7                 |
 | `dir`       | an absolute path                  | `<state>/uploads` |
 
-A repo's own secrets are inside the agent's workspace, so the fence alone
+A repo's own secrets are inside the agent's project, so the fence alone
 would serve them. `agents.files.deny` lists globs that are never a link
 or a download, applied after the fence, with the same 404 and audit:
 
@@ -3584,7 +3584,7 @@ helpers. What the actions do:
 
 - **Resume** continues the same conversation. Den runs the runtime's own
   resume with the conversation id it saved (Claude Code: `--resume <id>`).
-  The agent comes back in the folder it had, with its workspace and its
+  The agent comes back in the folder it had, with its project and its
   grants. A grant you took out of the config since is gone; one you added
   is not taken. Resume is never a new conversation fed the old prompt.
   Den decides before it launches. For Claude Code it looks for the
@@ -3600,7 +3600,7 @@ helpers. What the actions do:
   If a fresh start says the id is already in use, Den resumes once
   instead. If both fail, the CLI exits 1 and the route answers 502 with
   code `resume_failed`, naming the id and Start fresh.
-- **Start fresh** starts a new conversation: same persona, workspace and id.
+- **Start fresh** starts a new conversation: same persona, project and id.
 - **Remove** takes the row away in one click. The toast offers **Undo** for
   10 seconds. Den keeps the removed record for an hour, then forgets it. It
   never touches the runtime's own history.
@@ -3640,7 +3640,7 @@ Only a person can change it, never an agent.
 
 **The same permission mode on every resume.** An agent resumes in the
 mode it started in: from its Resume button, from Resume all, and on its
-own after a restart. Changing its persona's mode, or the workspace's,
+own after a restart. Changing its persona's mode, or the project's,
 later changes only the agents that start after that.
 
 **Removed on their own.** Stopped agents can go after a while:
@@ -3668,7 +3668,7 @@ The routes (a person's only, audited): `POST
 /api/workspaces/<ws>/agents/<id>/resume`, `…/fresh` and `…/remove`, and
 `POST /api/agents/clear-stopped` (`{ workspaces }`), `/api/agents/restore`
 (`{ agents }`, the Undo) and `/api/agents/resume-interrupted` (`{
-workspaces }`).
+projects }`).
 
 ### An agent's environment
 
@@ -3704,12 +3704,12 @@ adds a note to run `<cli> doctor --probe`.
 
 ### An agent's token
 
-`agents start` (the CLI or the Workspaces page) mints a random `den_at_…`
+`agents start` (the CLI or the Projects page) mints a random `den_at_…`
 token for the agent and writes it to a file of the agent's own
 (`<state>/actor-token/<id>/token`, 0600, in a 0700 folder). The session's
 environment names the file (`DEN_ACTOR_TOKEN_FILE`), never the token, so
 `ps` never shows it. Den keeps only its hash (`actor-tokens.json`, 0600, in the state dir) with the
-agent, its workspace, its grants and its session. Stop revokes it, and so
+agent, its project, its grants and its session. Stop revokes it, and so
 does the session's end; resume mints a new one and the old one stops
 working. The `<cli>` and the MCP server Den starts for the agent send it, so
 the server audits their calls as the agent, from the token, never from a
@@ -3757,7 +3757,7 @@ OS-user isolation
 
 **What the scope does not do.** An agent's MCP scope binds cooperating
 agents only. A runtime with a shell can still run `<cli>` itself, outside
-the scoped MCP server, and reach other workspaces (with its own token, so
+the scoped MCP server, and reach other projects (with its own token, so
 it is audited as the agent); WS-3a closes that later. And the user's own Claude Code settings and hooks
 (`~/.claude/settings.json`, its hooks, a project's `.claude/`) load in a
 den-claude agent, as in any `claude` you start.
@@ -3915,7 +3915,7 @@ data_paths: [var/db] # relative to the repo, or absolute; ~ is home
 machine: vault-vm # when it runs in an OrbStack machine
 ```
 
-Den gathers these from every workspace's checkouts into one rules file
+Den gathers these from every project's checkouts into one rules file
 (`<stateDir>/agents/api-only.json`), and every den-claude agent's
 `PreToolUse` hook reads it on each call, so a change applies without a
 restart. A persona with `den_hooks: false` still gets this check, and only
@@ -4046,7 +4046,7 @@ report. It works on den-claude for personas with Den's hooks on.
    the turn.
 4. Den relaunches the role, by itself unless the settings say otherwise
    (`on_due`, below). A relaunch starts a fresh conversation (a new
-   conversation id) with the same name, persona, workspace, folder and
+   conversation id) with the same name, persona, project, folder and
    grants. Its first prompt is the handoff. The handoff moves to
    `agent-files/<id>/handoffs/`, the record notes the rotation, and the
    old conversation is kept.
@@ -4129,8 +4129,8 @@ on its own.
 | `on_pr_merged`      | `true` or `false`      | `true`  |
 
 Each key comes from the most specific scope that sets it: the agent, the
-persona in a workspace, the persona, the workspace, the service (the
-workspace service whose folder holds the agent's folder), this install,
+persona in a project, the persona, the project, the service (the
+project service whose folder holds the agent's folder), this install,
 the org config, then Den's default. A change applies to running agents
 too, at their next look (about every 15 seconds).
 
@@ -4205,7 +4205,7 @@ are not xAI's and are not in the catalog).
 
 Claude Code runs as `den-claude` (above). Every other installed runtime
 runs its own interactive CLI (`codex`, `gemini`, `grok`) in the
-workspace's directory; Den's tools (MCP) and permission modes are coming
+project's directory; Den's tools (MCP) and permission modes are coming
 for them, and lists tag them **Den tools: coming**. A runtime is offered
 as startable only when it can start here: installed (or, for `generic`,
 with the persona's `argv`).
@@ -4242,8 +4242,8 @@ only on the web server's own PATH (a launchd service's PATH leaves out
 `~/.local/bin`, where Claude Code's native installer puts `claude`). The
 first match wins:
 
-1. **A workspace's own path**, `<ws>.agents.runtimes.<id>.bin` in
-   `config/local/workspaces.yml`, for that workspace's agents. Checked the
+1. **A project's own path**, `<ws>.agents.runtimes.<id>.bin` in
+   `config/local/workspaces.yml`, for that project's agents. Checked the
    same way as the next one.
 2. **`agents.runtimes.<id>.bin`** in `config/local/user.yml`: the absolute
    path of the runtime's CLI. Paths are per machine, so it is read from
@@ -4278,7 +4278,7 @@ shows each runtime's status, version, the path in use and its source.
 **Set path…** runs the runtime's version command and refuses a path that
 isn't that runtime (its output, npm package or install location must name
 it); **Clear** removes it. The **Paths for** selector switches between
-every workspace (`user.yml`) and one workspace (`workspaces.yml`). Only a
+every project (`user.yml`) and one project (`workspaces.yml`). Only a
 person sets a path, never an agent (`POST /api/agents/runtimes/<id>/path`,
 audited).
 
@@ -4290,13 +4290,13 @@ for none) and `DEN_RUNTIME_DIRS` (a PATH-style list that replaces every
 runtime's install directories; empty for none).
 
 **`<cli> agents doctor`** prints, for each runtime (installed first), its
-status, the CLI it runs and where that came from (the workspace's or the
+status, the CLI it runs and where that came from (the project's or the
 user.yml `agents.runtimes` setting, the login shell's PATH, PATH, an
 install directory, or the interactive shell's PATH), its version (`claude
 --version`, run once under a timeout), the directories it searched (names
 only, never an environment value), and the fix when it's missing. It
 resolves the login shell's PATH first, as the web server does. It exits 1
-when the default runtime is unavailable; `-w <ws>` uses that workspace's
+when the default runtime is unavailable; `-w <ws>` uses that project's
 paths; `--json` prints what the Start dialog gets. A search list the same
 as the one above it prints once.
 
@@ -4317,12 +4317,12 @@ den-claude (Claude Code, Anthropic)  [default]
 key) and `workspaceSetting` (the workspaces.yml key), and `userConfig`,
 the user.yml to edit.
 
-### Workspace scope and grants
+### Project scope and grants
 
 An agent's MCP config, `<stateDir>/agent-files/<id>/mcp.json` (0600), runs
 `<cli> mcp --workspace <ws> --actor agent:<id>`: the agent sees and acts on
-its own workspace only, and every action is recorded as `agent:<id>` (see
-[Scoped to one workspace](#scoped-to-one-workspace)). A grant widens one
+its own project only, and every action is recorded as `agent:<id>` (see
+[Scoped to one project](#scoped-to-one-project)). A grant widens one
 agent's scope. It is config in git, reviewed like code; an agent can't give
 itself one:
 
@@ -4333,9 +4333,9 @@ agents:
 ```
 
 `start` then adds `--grant other-workspace`, and each call into it is audited
-with both workspaces named. Any key of `agents:` other than `max_concurrent`
+with both projects named. Any key of `agents:` other than `max_concurrent`
 and `persona_packs` is an agent id, and its only key is `grants`. A grant
-naming a workspace that doesn't exist stops `start`, naming the key.
+naming a project that doesn't exist stops `start`, naming the key.
 
 ## Dev metrics: local unless you opt in
 
