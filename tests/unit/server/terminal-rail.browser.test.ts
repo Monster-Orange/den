@@ -88,12 +88,23 @@ describe("D73: Terminal", () => {
     );
     expect(id).toBeTruthy();
 
+    // The shell's prompt shows first: the pane is attached before we type.
+    pty.emit("ready$ ");
+    await p.waitForFunction(
+      (i) =>
+        (
+          document.querySelector(`.pane[data-id="${i}"] .xterm-rows`)
+            ?.textContent ?? ""
+        ).includes("ready$"),
+      id!,
+      { timeout: 20_000 },
+    );
     await p.click(`.pane[data-id="${id}"] .xterm-screen`);
     await p.keyboard.type("pwd");
     await p.keyboard.press("Enter");
     for (
       let i = 0;
-      i < 40 && !Buffer.concat(pty.writes).toString().includes("pwd\r");
+      i < 200 && !Buffer.concat(pty.writes).toString().includes("pwd\r");
       i++
     )
       await p.waitForTimeout(50);
