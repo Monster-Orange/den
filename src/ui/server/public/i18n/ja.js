@@ -865,6 +865,12 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "エージェント",
+    "n.terminal": "ターミナル",
+    "n.terminalTip": "このプロジェクトのフォルダーでシェルを Den 内に開く",
+    "ag.term.started": "{w} でターミナルを開きました",
+    "ag.term.failed": "Den はターミナルを開けませんでした: {e}",
+    "ag.term.noWs": "有効なプロジェクトがありません。先に有効にしてください。",
+    "ws.termHere": "ここでターミナル",
     "kind.agent": "エージェント",
     "ag.sub": "{n} セッション · 承認待ち {w} · {scope}",
     "ag.all": "すべてのプロジェクト",

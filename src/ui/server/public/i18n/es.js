@@ -884,6 +884,13 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agentes",
+    "n.terminal": "Terminal",
+    "n.terminalTip":
+      "Abrir una terminal en la carpeta de este proyecto, en Den",
+    "ag.term.started": "Terminal abierta en {w}",
+    "ag.term.failed": "Den no pudo abrir una terminal: {e}",
+    "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
+    "ws.termHere": "Terminal aquí",
     "kind.agent": "Agente",
     "ag.sub": "{n} sesiones · {w} en espera · {scope}",
     "ag.sub.one": "{n} sesión · {w} en espera · {scope}",

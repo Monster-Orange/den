@@ -992,6 +992,12 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agents",
+    "n.terminal": "Terminal",
+    "n.terminalTip": "Open a shell in this project's folder, in Den",
+    "ag.term.started": "Terminal opened in {w}",
+    "ag.term.failed": "Den couldn't open a terminal: {e}",
+    "ag.term.noWs": "no project is active. Activate one first.",
+    "ws.termHere": "Terminal here",
     "kind.agent": "Agent",
     "ag.sub": "{n} sessions · {w} waiting · {scope}",
     "ag.sub.one": "{n} session · {w} waiting · {scope}",
@@ -1290,6 +1296,8 @@
     agents:
       '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
     edge: '<path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/>',
+    // D73: a terminal: a prompt and a cursor, no window.
+    terminal: '<path d="M4 7l5 5-5 5M12 18h8"/>',
     // ON-6: the server agent, a speech bubble with a spark.
     assistant:
       '<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M12 8v4M10 10h4"/>',
@@ -1362,6 +1370,8 @@
     upsert(NAV, {
       id: n.id,
       label: n.label || n.id,
+      // D73: the rail's tooltip, when it says more than the label.
+      tip: typeof n.tip === "string" ? n.tip : "",
       icon: n.icon || "page",
       group: n.group,
       order: orderOf("nav", n),
@@ -2170,6 +2180,18 @@
           : null;
       },
     },
+    // D73: a plain shell in the project's folder, the same terminal pane
+    // agents use with no agent in it: a person's, signed in like the page.
+    {
+      id: "terminal",
+      label: "n.terminal",
+      tip: "n.terminalTip",
+      icon: "terminal",
+      group: "develop",
+      order: 17.5,
+      href: "/agents?terminal=1",
+      keywords: ["terminal", "shell", "console", "command line"],
+    },
     // ON-6: the server agent, this Den's own: one click away, after Agents.
     {
       id: "server-agent",
@@ -2249,6 +2271,7 @@
     NAV.push({
       id: n.id,
       label: n.label,
+      tip: n.tip || "",
       icon: n.icon,
       group: n.group,
       order: n.order,
@@ -2619,7 +2642,7 @@
       (current ? ' aria-current="page"' : "") +
       (attrs || "") +
       ' title="' +
-      esc(n.title) +
+      esc(n.tip || n.title) +
       '">' +
       (n.lead || icon(n.icon)) +
       '<span class="den-lbl' +
@@ -2726,7 +2749,13 @@
               var b = n.badge ? n.badge(state) : null;
               var name = t(n.label);
               return item(
-                { id: n.id, href: n.href, title: name, icon: n.icon },
+                {
+                  id: n.id,
+                  href: n.href,
+                  title: name,
+                  icon: n.icon,
+                  tip: n.tip ? t(n.tip) : "",
+                },
                 n.id === page,
                 b
                   ? '<span class="den-bdg' +

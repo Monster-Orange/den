@@ -239,6 +239,7 @@ function writeUrl() {
   u.searchParams.delete("folder");
   u.searchParams.delete("service");
   u.searchParams.delete("agent");
+  u.searchParams.delete("terminal");
   const s = u.searchParams.toString().replace(/%2C/gi, ",");
   history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
   paintSub();
@@ -4349,9 +4350,45 @@ export async function mountAgentsPage(root) {
   if (wanted.length && front && !isStopped(rowOf(front) ?? {}))
     focusTerm(front, false, { ifIdle: true });
   const linkedAgent = new URLSearchParams(location.search).get("agent");
+  const termAsked =
+    new URLSearchParams(location.search).get("terminal") === "1";
   writeUrl();
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
+  if (termAsked) await openTerminal();
   if (startAsked) void openStart();
+}
+
+/**
+ * D73: /agents?terminal=1 (the rail's Terminal, a project's Terminal
+ * here): a plain shell in the project's folder (?ws=, else the one in
+ * view), in a pane like an agent's. The pane is in ?open=, so a reload
+ * keeps it, and the shell outlives a Den restart (the sessions host).
+ * Used once: the URL drops ?terminal=.
+ */
+async function openTerminal() {
+  const all = st.data?.workspaces ?? [];
+  const ws =
+    urlWorkspace() ||
+    (st.scope && st.scope !== "all" && all.includes(st.scope)
+      ? st.scope
+      : all[0]);
+  if (!ws) {
+    window.denShell?.toast?.(t("ag.term.failed", { e: t("ag.term.noWs") }));
+    return;
+  }
+  try {
+    const r = await api(
+      "POST",
+      `/api/workspaces/${encodeURIComponent(ws)}/sessions`,
+    );
+    window.denShell?.toast?.(t("ag.term.started", { w: ws }));
+    await refresh();
+    if (r?.session?.id) await openPane(r.session.id);
+  } catch (err) {
+    window.denShell?.toast?.(
+      t("ag.term.failed", { e: err?.message || String(err) }),
+    );
+  }
 }
 
 /**
