@@ -95,6 +95,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import {
+  agentsModeCheckSeconds,
   configuredRemoveStoppedAfter,
   getReposRoot,
   readAgentsConfig,
@@ -133,6 +134,7 @@ import {
   updatePersona,
   listRuntimes,
   markInterrupted,
+  modeCheck,
   cancelStalePersonaChanges,
   NOT_IN_WORKSPACE,
   pruneStopped,
@@ -1836,12 +1838,43 @@ export function startAgentUpkeep(
       looking = false;
     }
   };
+  // 0.4.46 MODE-UI: a mode change applies on its own, after the turn.
+  const mc = modeCheck(d, { log });
+  let checking = false;
+  const modes = async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      await mc.tick();
+    } catch (e) {
+      log(`  ⚠ agents' modes: ${(e as Error).message}`);
+    } finally {
+      checking = false;
+    }
+  };
+  applyModesNow = modes;
+  let every = 30;
+  try {
+    every = agentsModeCheckSeconds();
+  } catch (e) {
+    log(`  ⚠ ${(e as Error).message}`);
+  }
   setTimeout(() => {
-    void restart().then(prune);
+    void restart()
+      .then(prune)
+      .then(() => {
+        setInterval(() => void modes(), every * 1000).unref();
+      });
   }, deps.delayMs ?? 2000).unref();
   setInterval(() => void prune(), PRUNE_EVERY_MS).unref();
   setInterval(() => void rotate(), ROTATION_TICK_MS).unref();
 }
+
+/**
+ * 0.4.46 MODE-UI: look at every running agent's mode now (after a person
+ * saved one), rather than at the next tick.
+ */
+export let applyModesNow: () => Promise<void> = async () => undefined;
 
 /**
  * D28, `/api/agents/rotation`. GET: the settings (install, overrides,

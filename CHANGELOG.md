@@ -18,6 +18,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- One mode for every agent, set once: Settings › Agents › Mode for every
+  agent (`agents.default_mode` in user.yml: ask, edits, auto or all), the
+  Den agent too. An agent runs in the mode chosen for it, else its
+  project's, else this one, else its persona's. Only a person sets it.
+- A mode change applies on its own: Den restarts each running agent whose
+  mode changed after its turn, the same conversation, in the new mode
+  (`agents.mode_check_seconds`, 30). Den's own restarts (reconnecting
+  Hub's tools, the restore after a restart) keep each agent's mode.
 - After the machine restarts, every agent that was running comes back on
   its own conversation, project and mode (`agents.restore_on_boot`, on
   by default), not only standing personas and those with

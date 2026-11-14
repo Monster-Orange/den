@@ -453,7 +453,10 @@ describe("the Settings page's rows (R21)", () => {
     expect(await p.$$("#set-body .swatches .sw")).toHaveLength(7);
     // Mode is a group of pressed buttons named by its label.
     expect(
-      await p.getByRole("group", { name: "Mode" }).getByRole("button").count(),
+      await p
+        .getByRole("group", { name: "Mode", exact: true })
+        .getByRole("button")
+        .count(),
     ).toBe(3);
     await p.context().close();
   }, 30_000);

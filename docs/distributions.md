@@ -3811,6 +3811,20 @@ mode it started in: from its Resume button, from Resume all, and on its
 own after a restart. Changing its persona's mode, or the project's,
 later changes only the agents that start after that.
 
+**One mode for every agent.** Set once in Settings › Agents › Mode for
+every agent, or in user.yml. An agent runs in the mode chosen for it
+(`agents permission <id> <mode>`), else its project's, else this one,
+else its persona's. Only a person sets it. A change reaches running
+agents on its own: each is restarted after its turn, the same
+conversation, in the new mode.
+
+```yaml
+# config/local/user.yml
+agents:
+  default_mode: auto # ask, edits, auto or all; unset: each persona's
+  mode_check_seconds: 30 # how often Den looks for a changed mode
+```
+
 **Back after the machine restarts.** Every agent that was running comes
 back on its own conversation, project and mode, not only standing
 personas and those with `resume_on_restart`. An agent someone stopped

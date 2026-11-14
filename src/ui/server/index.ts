@@ -27,6 +27,7 @@ import { notCheckedReason } from "../../shared/health/not-checked.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
 import { EventEmitter } from "events";
+import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
@@ -210,6 +211,7 @@ import {
   type OnboardRouteDeps,
 } from "./onboard-routes.js";
 import {
+  agentPrincipalOf,
   auditActorOf,
   bindRefusal,
   checkRequest,
@@ -5456,6 +5458,8 @@ async function handleRequest(
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
+        // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
+        agents_default_mode: user.agents?.default_mode ?? null,
         // SEC-2a: the name the signed-out page gives this machine, and
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),
@@ -5481,8 +5485,36 @@ async function handleRequest(
           bell_fold_days?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
+          agents_default_mode?: unknown;
         };
         const user = readUserConfig();
+        // 0.4.46 MODE-UI: agents.default_mode, the install's mode for every
+        // agent; null clears it. A person's only: an agent could widen
+        // every agent's mode with it.
+        let modesChanged = false;
+        if (body.agents_default_mode !== undefined) {
+          if (agentPrincipalOf(req) || auditActorOf(req))
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error: "only a person can change the agents' mode",
+              },
+              403,
+            );
+          const v = body.agents_default_mode;
+          const agents = { ...(user.agents ?? {}) };
+          if (v === null || v === "") delete agents.default_mode;
+          else
+            try {
+              agents.default_mode = checkIntent(v, "agents_default_mode");
+            } catch (e) {
+              return send400(res, (e as Error).message);
+            }
+          if (Object.keys(agents).length) user.agents = agents;
+          else delete user.agents;
+          modesChanged = true;
+        }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Agents › Hub); null clears it (the default, on).
         if (body.hub_allow_tools !== undefined) {
@@ -5615,8 +5647,11 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (modesChanged)
+          void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
+          agents_default_mode: user.agents?.default_mode ?? null,
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},

@@ -12,6 +12,7 @@ import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
 import { subagentsBlock, type SubagentSettings } from "./agents/subagents.js";
+import { checkIntent, type PermissionIntent } from "./agents/permissions.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -450,6 +451,13 @@ export interface UserConfig {
      * comes back on its own conversation (true, the default).
      */
     restore_on_boot?: unknown;
+    /**
+     * 0.4.46 MODE-UI: the install's mode for every agent (ask, edits, auto,
+     * all): under the agent's own and its project's, over its persona's.
+     */
+    default_mode?: unknown;
+    /** 0.4.46: how often Den looks for an agent whose mode changed (30 s). */
+    mode_check_seconds?: unknown;
     /** 0.4.46: how long that restore waits for Hub first (120 s). */
     restore_hub_wait_seconds?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
@@ -566,6 +574,30 @@ export function agentsRestoreOnBoot(
   if (typeof v === "boolean") return v;
   throw new Error(
     `agents.restore_on_boot must be true or false (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * 0.4.46 agents.default_mode (user.yml): the install's mode for every
+ * agent, or undefined when unset. A bad value is refused, naming the key.
+ */
+export function agentsDefaultMode(
+  read: () => UserConfig = readUserConfig,
+): PermissionIntent | undefined {
+  const v = read().agents?.default_mode;
+  if (v === undefined || v === null) return undefined;
+  return checkIntent(v, "agents.default_mode (user.yml)");
+}
+
+/** agents.mode_check_seconds (user.yml): 30 when unset, at least 5. */
+export function agentsModeCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.mode_check_seconds;
+  if (v === undefined || v === null) return 30;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 5) return v;
+  throw new Error(
+    `agents.mode_check_seconds must be a number, at least 5 (user.yml; got ${JSON.stringify(v)})`,
   );
 }
 

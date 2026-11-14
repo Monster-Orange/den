@@ -88,6 +88,7 @@ import {
   readAgentsConfig,
   readDenConfig,
   readServerAgentConfig,
+  readUserConfig,
   setUserRuntimeBin,
   userConfigPath,
   type ResolvedAgentsConfig,
@@ -294,6 +295,11 @@ export interface AgentsDeps extends SessionsDeps {
    * undefined: unset), as written.
    */
   workspacePermission?: (ws: string) => unknown;
+  /**
+   * 0.4.46 MODE-UI: the install's mode for every agent (default: user.yml's
+   * agents.default_mode; undefined: unset), as written.
+   */
+  installPermission?: () => unknown;
   /** den#48: save a checked intent as workspace `ws`'s (null clears it). */
   saveWorkspacePermission?: (
     ws: string,
@@ -350,6 +356,7 @@ export interface AgentsResolved extends Resolved {
   runtimeBin: (id: string) => unknown;
   workspaceRuntimeBin: (ws: string, id: string) => unknown;
   workspacePermission: (ws: string) => unknown;
+  installPermission: () => unknown;
   saveWorkspacePermission: (
     ws: string,
     intent: PermissionIntent | null,
@@ -613,6 +620,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceRuntimeBin ?? ((ws, id) => workspaceRuntimeBin(ws, id)),
     workspacePermission:
       d.workspacePermission ?? ((ws) => workspaceAgentPermission(ws)),
+    installPermission:
+      d.installPermission ?? (() => readUserConfig().agents?.default_mode),
     saveWorkspacePermission:
       d.saveWorkspacePermission ??
       ((ws, intent) => setWorkspaceAgentPermission(ws, intent)),
@@ -2548,6 +2557,33 @@ export function workspacePermissionOf(
   }
 }
 
+/**
+ * 0.4.46 MODE-UI: the install's mode (agents.default_mode), checked;
+ * undefined when unset.
+ */
+export function installPermissionOf(
+  d: AgentsResolved,
+): PermissionIntent | undefined {
+  const v = d.installPermission();
+  if (v === undefined || v === null) return undefined;
+  try {
+    return checkIntent(v, "agents.default_mode");
+  } catch (e) {
+    throw usage(`agents start: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * The mode an agent follows when nobody chose one for it: its project's,
+ * else the install's (then, by the caller, its persona's).
+ */
+export function followedPermissionOf(
+  d: AgentsResolved,
+  ws: string,
+): PermissionIntent | undefined {
+  return workspacePermissionOf(d, ws) ?? installPermissionOf(d);
+}
+
 /** What a start resolved, checked, before it launches. */
 interface Choices {
   model?: string;
@@ -2741,7 +2777,7 @@ export async function startAgent(
   syncCatalog(d);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
   const det = await availableOrRefuse(d, rt, ws);
-  const ch = startChoices(req, persona, rt, workspacePermissionOf(d, ws));
+  const ch = startChoices(req, persona, rt, followedPermissionOf(d, ws));
   const model = launchModel(ch.model, ch.version);
 
   const prev = readRecord(d.stateDir(), id);
@@ -4331,8 +4367,91 @@ export function permissionNow(
   if (rec.permission && rec.overrides?.includes("permission"))
     return rec.permission;
   return (
-    workspacePermissionOf(d, rec.workspace) ?? intentOf(persona.permissionMode)
+    followedPermissionOf(d, rec.workspace) ?? intentOf(persona.permissionMode)
   );
+}
+
+/**
+ * 0.4.46 MODE-UI: running agents whose mode now (permissionNow) is not
+ * the one they run in: a project's or the install's mode changed since.
+ */
+export async function modeDrift(
+  d: AgentsResolved,
+): Promise<{ id: string; workspace: string; want: PermissionIntent }[]> {
+  const c = await d.connectExisting();
+  let live: { ref: { id: string }; exited?: unknown }[] = [];
+  try {
+    live = c ? (await c.list()).filter((x) => !x.exited) : [];
+  } finally {
+    c?.close();
+  }
+  if (!live.length) return [];
+  let all: Map<string, Persona>;
+  try {
+    all = personas(d, agentsConfig(d));
+  } catch {
+    return [];
+  }
+  const out: { id: string; workspace: string; want: PermissionIntent }[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (!live.some((x) => x.ref.id === rec.session.id)) continue;
+    const rt = getRuntime(rec.runtime);
+    const p = personaOfRecord(rec, all);
+    if (!rt?.permissions || !p) continue;
+    let want: PermissionIntent | undefined;
+    try {
+      want = permissionNow(d, rec, p, rt);
+    } catch {
+      continue; // a bad mode: its next start says so
+    }
+    if (want && want !== rec.permission)
+      out.push({ id: rec.id, workspace: rec.workspace, want });
+  }
+  return out;
+}
+
+export interface ModeCheck {
+  /** One look: the agents it began restarting. */
+  tick(): Promise<string[]>;
+  pending(): Promise<void>;
+}
+
+/**
+ * 0.4.46 MODE-UI: a mode change applies on its own. Each running agent
+ * whose mode now differs is restarted after its turn, the same
+ * conversation, in the new mode: nobody presses Restart.
+ */
+export function modeCheck(
+  d: AgentsResolved,
+  opts: { pollMs?: number; log?: (line: string) => void } = {},
+): ModeCheck {
+  const running = new Map<string, Promise<void>>();
+  return {
+    async tick() {
+      const began: string[] = [];
+      for (const m of await modeDrift(d)) {
+        if (running.has(m.id)) continue;
+        began.push(m.id);
+        const p = restartAgent(d, m.id, m.workspace, "after-turn", {
+          pollMs: opts.pollMs,
+        })
+          .then(() =>
+            opts.log?.(`agent ${m.id}: restarted after its turn in ${m.want}`),
+          )
+          .catch((e: unknown) =>
+            opts.log?.(
+              `agent ${m.id}: not restarted for its mode: ${(e as Error)?.message ?? e}`,
+            ),
+          )
+          .finally(() => running.delete(m.id));
+        running.set(m.id, p);
+      }
+      return began;
+    },
+    async pending() {
+      await Promise.all([...running.values()]);
+    },
+  };
 }
 
 // ── den#4: relaunch from handoff ────────────────────────────────────────────

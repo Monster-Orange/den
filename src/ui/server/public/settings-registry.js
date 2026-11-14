@@ -1086,6 +1086,27 @@ export const DEN_SETTINGS = [
 
   // ── Agents ─────────────────────────────────────────────────────────────
   {
+    // 0.4.46 MODE-UI: one mode for every agent, set once.
+    id: "agents.default_mode",
+    category: "agents",
+    label: "Mode for every agent",
+    description:
+      "Every agent runs in this mode, the __DEN_TITLE__ agent too, unless a mode was chosen for the agent or its project sets one. A change reaches running agents after their turn, on its own.",
+    keywords: ["agents", "mode", "permission", "auto", "ask", "approve"],
+    scope: "user",
+    control: seg([
+      { value: "persona", label: "Each persona's" },
+      { value: "ask", label: "Ask for everything" },
+      { value: "edits", label: "Auto-approve edits" },
+      { value: "auto", label: "Auto mode" },
+      { value: "all", label: "Auto-approve all" },
+    ]),
+    keys: ["agents_default_mode"],
+    read: (ctx) => ctx.data.agents_default_mode ?? "persona",
+    write: (v, ctx) =>
+      ctx.post({ agents_default_mode: v === "persona" ? null : v }),
+  },
+  {
     id: "agents.layout",
     category: "agents",
     label: "Agents tab layout",

@@ -66,6 +66,8 @@ describe("the settings inventory (R21)", () => {
   it("reads every key POST /api/settings accepts from the handler", () => {
     expect(accepted.sort()).toEqual(
       [
+        // 0.4.46 MODE-UI: the install's mode for every agent.
+        "agents_default_mode",
         // AG-4b: the Agents tab's layout.
         "agents_layout",
         // #80: how many running helpers an open badge shows.
