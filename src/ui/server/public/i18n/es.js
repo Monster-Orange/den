@@ -512,6 +512,7 @@
     "set.distribution.hub_github": "Acceso de Den Hub a GitHub",
     "set.agents.hub_github": "Acceso de Den Hub a GitHub",
     "set.agents.hub_link_all": "Vincular proyectos a Hub",
+    "hubla.unclear": "Den no sabe qué proyecto de Hub corresponde. Elige uno.",
     "hubla.linkTicked": "Vincular los marcados",
     "hubla.linkedTo": "vinculado a",
     "hubla.noSuggestion":
@@ -988,6 +989,8 @@
     "bell.m.permission": "{name} necesita tu permiso",
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
+    "bell.m.pick": "{n} proyectos necesitan tu elección",
+    "bell.m.pick.one": "{n} proyecto necesita tu elección",
     "bell.m.turn": "{name} terminó su turno",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} terminó {n} comentarios de Hub",
@@ -1573,6 +1576,8 @@
     "set.ui.hub.badConfig": "hub en user.yml no es válido",
     "set.ui.hub.address": "Dirección de Hub",
     "set.ui.hub.connect": "Conectar",
+    "set.ui.hub.connectLinks":
+      "Conectar también vincula cada proyecto de aquí con su proyecto de Hub. Cuando Den no sabe cuál corresponde, te pregunta.",
     "set.ui.hub.connectNote":
       "Conectar abre Hub. Inicia sesión allí y aprueba esta instalación; vuelves aquí ya conectado. El token se guarda en el almacén de secretos de esta instalación y nunca se muestra.",
     "set.ui.hub.teams":

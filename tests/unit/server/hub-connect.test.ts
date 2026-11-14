@@ -312,6 +312,40 @@ describe("finish: what comes back from Hub", () => {
     expect(h.hc.lastResult()).toBeNull();
   });
 
+  it("0.4.45: Connect links the clear projects and says how many need a pick; an older Hub links none", async () => {
+    for (const [after, said] of [
+      [
+        { linked: ["north", "west"], unclear: ["south"] },
+        "Connected to Hub (Acme Co). Linked 2 projects to Hub; 1 needs your pick.",
+      ],
+      [
+        { linked: ["north"], unclear: [] },
+        "Connected to Hub (Acme Co). Linked 1 project to Hub.",
+      ],
+      [{ linked: [], unclear: [] }, "Connected to Hub (Acme Co)."],
+      [
+        { cannot: true },
+        "Connected to Hub (Acme Co). Hub can't link projects yet: link them in Settings › Agents › Link projects to Hub when it can.",
+      ],
+    ] as const) {
+      const h = harness({ linkAfter: async () => after });
+      const { q } = start(h);
+      await h.hc.finish(back({ state: q.state, code: "c1" }));
+      expect(h.hc.lastResult()).toEqual({ ok: true, message: said });
+    }
+    // Linking that throws never fails the Connect.
+    const h = harness({
+      linkAfter: async () => {
+        throw new Error("boom");
+      },
+    });
+    const { q } = start(h);
+    expect(
+      await h.hc.finish(back({ state: q.state, code: "c1" })),
+    ).toMatchObject({ ok: true });
+    expect(h.hc.lastResult()?.message).toMatch(/Hub can't link projects yet/);
+  });
+
   it("at most 16 connects wait; the oldest goes first", async () => {
     const h = harness();
     const first = start(h).q.state;

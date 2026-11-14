@@ -1864,6 +1864,7 @@ export function hubHtml(b, flash, t = (k) => k) {
       `<input type="url" id="hub-url" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
       ` <button type="submit" class="btn sm primary" data-hub-action="connect">${escR(L("set.ui.hub.connect", "Connect"))}</button>` +
       `</form>` +
+      `<p class="set-note" data-hub-connect-does>${escR(L("set.ui.hub.connectLinks", "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you."))}</p>` +
       `<p class="set-note">${escR(L("set.ui.hub.connectNote", "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown."))}</p>` +
       // 0.4.45: the two editions, until this install is connected, where
       // the distribution says they are. The names stay in English.
@@ -2312,12 +2313,31 @@ export function hubLinkAllHtml(b, t) {
   const name = (p) =>
     p.name === p.slug ? escR(p.slug) : `${escR(p.name)} (${escR(p.slug)})`;
   const why = (w) => (w === "repo" ? t("hubp.whyRepo") : t("hubp.whyName"));
-  const todo = rows.filter((r) => !r.hub && r.suggestion);
+  const unclear = (r) => Array.isArray(r.unclear) && r.unclear.length > 0;
+  const todo = rows.filter((r) => !r.hub && (r.suggestion || unclear(r)));
   if (!rows.length)
     return `<div data-hubla data-hubla-state="none"><p class="set-note">${escR(t("hubla.noProjects"))}</p></div>`;
   const line = (r) => {
     if (r.hub)
       return `<li data-hubla-row="${escR(r.project)}" data-hubla-linked><span class="rt-dot ok"></span> ${escR(r.project)}: ${escR(t("hubla.linkedTo"))} ${name(r.hub)}</li>`;
+    // 0.4.45: Den can't tell which fits: each choice, none picked.
+    if (unclear(r)) {
+      const group = `hubla-pick-${escR(r.project)}`;
+      return (
+        `<li data-hubla-row="${escR(r.project)}" data-hubla-unclear><fieldset class="hubla-pick">` +
+        `<legend><span class="rt-dot warn"></span> ${escR(r.project)}: ${escR(t("hubla.unclear"))}</legend>` +
+        r.unclear
+          .map((c, i) => {
+            const id = `${group}-${i}`;
+            return (
+              `<label for="${id}"><input type="radio" id="${id}" name="${group}" data-hubla-pick="${escR(r.project)}" data-hubla-hub="${escR(c.id)}"> ` +
+              `${name(c)}${c.why ? `: ${escR(why(c.why))}` : ""}</label>`
+            );
+          })
+          .join("") +
+        `</fieldset></li>`
+      );
+    }
     if (!r.suggestion)
       return `<li data-hubla-row="${escR(r.project)}"><span class="rt-dot warn"></span> ${escR(r.project)}: ${escR(t("hubla.noSuggestion"))}</li>`;
     const id = `hubla-${escR(r.project)}`;

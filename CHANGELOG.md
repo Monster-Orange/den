@@ -49,6 +49,12 @@ config and manifest changes a distribution must make to move to it under
   `notifications.kinds`), and "Fold items older than" 3, 7, 14 or 30
   days (`notifications.fold_days`). Turning off "Agent is waiting for
   you" warns that waiting agents won't show.
+- Projects follow Connect: connecting to Hub links each project to its
+  Hub project when the match is clear (by its repos, else by its name).
+  Where Den can't tell which fits, the bell says "N projects need your
+  pick", and Settings › Agents › Link projects to Hub offers each choice.
+  Connect's result says how many it linked. A Hub that can't suggest
+  links nothing, and Connect says so.
 - Settings › Agents › Hub names the two Hub editions under Connect,
   until the install is connected: Den Hub for Teams (closed beta, by
   invite) and Den Hub for Enterprise (coming), with "Talk to us". The

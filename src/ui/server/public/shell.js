@@ -543,6 +543,8 @@
     "set.ui.hub.badConfig": "hub in user.yml is not valid",
     "set.ui.hub.address": "Hub's address",
     "set.ui.hub.connect": "Connect",
+    "set.ui.hub.connectLinks":
+      "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you.",
     "set.ui.hub.connectNote":
       "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
     "set.ui.hub.teams":
@@ -1271,6 +1273,7 @@
     "set.distribution.hub_github": "Den Hub's GitHub access",
     "set.agents.hub_github": "Den Hub's GitHub access",
     "set.agents.hub_link_all": "Link projects to Hub",
+    "hubla.unclear": "Den can't tell which Hub project fits. Pick one.",
     "hubla.linkTicked": "Link ticked",
     "hubla.linkedTo": "linked to",
     "hubla.noSuggestion":
@@ -1738,6 +1741,8 @@
     "bell.m.permission": "{name} needs your permission",
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
+    "bell.m.pick": "{n} projects need your pick",
+    "bell.m.pick.one": "{n} project needs your pick",
     "bell.m.turn": "{name} finished its turn",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} finished {n} Hub comments",

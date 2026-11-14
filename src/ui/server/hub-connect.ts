@@ -91,6 +91,13 @@ export interface HubConnectDeps {
    * where Hub links back to it when the browser came over loopback).
    */
   denUrl?: () => string | undefined;
+  /**
+   * 0.4.45: once connected, link the projects whose Hub project is clear
+   * (hub-link-all-routes linkClearProjects); absent, none.
+   */
+  linkAfter?: () => Promise<
+    { linked: string[]; unclear: string[] } | { cannot: true }
+  >;
 }
 
 /** A `<name>.localhost` host: this machine (RFC 6761). */
@@ -309,6 +316,8 @@ export function defaultHubConnectDeps(): HubConnectDeps {
       const w = readWebUrl();
       return (w && denUrlOrigin(w.url)) || undefined;
     },
+    linkAfter: async () =>
+      (await import("./hub-link-all-routes.js")).defaultLinkAfter(),
   };
 }
 
@@ -332,6 +341,22 @@ export function callbackOriginProblem(origin: string): string | null {
 export type ConnectResult =
   | { ok: true; team?: string; where: string }
   | { ok: false; reason: "denied" | "expired" | "failed"; message: string };
+
+/** What Connect's linking came to, after "Connected to Hub." */
+function linkedWords(
+  l: { linked: string[]; unclear: string[] } | { cannot: true },
+): string {
+  if ("cannot" in l)
+    return " Hub can't link projects yet: link them in Settings › Agents › Link projects to Hub when it can.";
+  const n = l.linked.length;
+  const m = l.unclear.length;
+  if (!n && !m) return "";
+  const linked = n
+    ? ` Linked ${n} project${n === 1 ? "" : "s"} to Hub`
+    : " Linked no projects";
+  const pick = m ? `; ${m} need${m === 1 ? "s" : ""} your pick` : "";
+  return `${linked}${pick}.`;
+}
 
 export class HubConnect {
   private readonly pending = new Map<string, Pending>();
@@ -397,13 +422,17 @@ export class HubConnect {
    */
   async finish(q: URLSearchParams): Promise<ConnectResult> {
     const r = await this.finishOnce(q);
-    this.last = {
-      ok: r.ok,
-      message: r.ok
-        ? `Connected to Hub${r.team ? ` (${r.team})` : ""}.`
-        : r.message,
-      at: this.deps.now(),
-    };
+    let message = r.ok
+      ? `Connected to Hub${r.team ? ` (${r.team})` : ""}.`
+      : r.message;
+    // 0.4.45: projects follow Connect. Linking never fails the Connect.
+    if (r.ok && this.deps.linkAfter) {
+      const l = await this.deps
+        .linkAfter()
+        .catch(() => ({ cannot: true }) as const);
+      message += linkedWords(l);
+    }
+    this.last = { ok: r.ok, message, at: this.deps.now() };
     return r;
   }
 

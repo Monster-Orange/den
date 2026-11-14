@@ -941,6 +941,17 @@ distribution set in `hub.url`) and press **Connect**. Hub opens; sign
 in, pick the company and approve this install. Hub sends you back to
 Settings, connected. Nobody copies a token or edits config.
 
+**Projects follow Connect** (0.4.45). Once connected, Den links each
+unlinked project to its Hub project when the match is clear: one Hub
+project by its repos, or, with none by repos, one by its name. When two
+Hub projects share its repos, or its repos and its name point to
+different ones, Den doesn't guess: the bell says "N projects need your
+pick", and Settings › Agents › Link projects to Hub offers each choice,
+none picked. Connect's result says how many it linked and how many need
+a pick. A Hub that can't suggest (an older Hub, or one that doesn't
+answer) links nothing, and Connect says so. Each link is in the audit
+trail as a `hub-link` row.
+
 Until it is connected, the form can name the two Hub editions below the
 button (0.4.45), when the distribution says where they are in `den.yml`:
 
@@ -951,7 +962,7 @@ hub_editions:
   talk_url: https://example.com/den#enterprise # "Talk to us ↗"
 ```
 
-Each line shows only with its value; a value that isn't a host name (or
+Unset, the lines don't show. Each line shows only with its value; a value that isn't a host name (or
 an https URL, for `talk_url`) is left out. "Talk to us" shows only beside
 a line. The lines go once the install is connected.
 

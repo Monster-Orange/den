@@ -239,7 +239,8 @@ describe("0.4.40: Hub comments reach the agent", () => {
     }
     expect(texts).toContainEqual(
       expect.stringMatching(
-        /^finished: .+ finished 1 Hub comment on Pricing page$/,
+        // Bell v6: a Hub reply (Hub's switch).
+        /^answer: .+ finished 1 Hub comment on Pricing page$/,
       ),
     );
   }, 90_000);

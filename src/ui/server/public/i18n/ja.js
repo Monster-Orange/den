@@ -501,6 +501,8 @@
     "set.distribution.hub_github": "Den Hub の GitHub アクセス",
     "set.agents.hub_github": "Den Hub の GitHub アクセス",
     "set.agents.hub_link_all": "プロジェクトを Hub にリンク",
+    "hubla.unclear":
+      "Den はどの Hub プロジェクトが合うか判断できません。1つ選んでください。",
     "hubla.linkTicked": "チェックしたものをリンク",
     "hubla.linkedTo": "リンク先:",
     "hubla.noSuggestion":
@@ -963,6 +965,7 @@
     "bell.m.permission": "{name} があなたの許可を待っています",
     "bell.m.input": "{name} があなたを待っています",
     "bell.m.asked": "{name} からの質問: {text}",
+    "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.m.turn": "{name} のターンが終わりました",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} が Hub のコメント {n} 件を終えました",
@@ -1536,6 +1539,8 @@
     "set.ui.hub.badConfig": "user.yml の hub が無効です",
     "set.ui.hub.address": "Hub のアドレス",
     "set.ui.hub.connect": "接続",
+    "set.ui.hub.connectLinks":
+      "接続すると、ここの各プロジェクトが対応する Hub プロジェクトにも結び付けられます。どれが合うか Den が判断できないときは、あなたに確認します。",
     "set.ui.hub.connectNote":
       "「接続」を押すと Hub が開きます。そこでサインインしてこのインストールを承認すると、接続された状態でここに戻ります。トークンはこのインストールのシークレットストアに保存され、表示されることはありません。",
     "set.ui.hub.teams":

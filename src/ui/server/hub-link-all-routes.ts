@@ -43,6 +43,53 @@ export interface HubLinkAllDeps {
 
 const MAX_LINKS = 200;
 
+/**
+ * 0.4.45: which Hub project fits a project, from Hub's suggestions. Clear:
+ * one by its repos (a name pointing there too is fine), or, with none by
+ * repos, one by its name. Unclear: two by repos, or its repos and its name
+ * point to different ones; a person picks. None: Hub suggests nothing.
+ */
+export function hubMatchOf(
+  suggestions: Suggestion[],
+): { clear: Suggestion } | { unclear: Suggestion[] } | { none: true } {
+  const seen = new Set<string>();
+  const all = suggestions.filter((s) => !seen.has(s.id) && seen.add(s.id));
+  if (!all.length) return { none: true };
+  const byRepo = all.filter((s) => s.why === "repo");
+  if (byRepo.length === 1 && all.length === 1) return { clear: byRepo[0] };
+  if (byRepo.length === 0 && all.length === 1) return { clear: all[0] };
+  return { unclear: all };
+}
+
+/**
+ * 0.4.45 (projects follow Connect): link every unlinked project whose Hub
+ * project is clear; the unclear ones wait for a person's pick. Hub can't
+ * suggest (an older Hub, or it doesn't answer): nothing is linked.
+ */
+export async function linkClearProjects(
+  d: HubLinkAllDeps,
+): Promise<{ linked: string[]; unclear: string[] } | { cannot: true }> {
+  const todo = d.projects().filter((p) => !d.read(p));
+  const found: { project: string; m: ReturnType<typeof hubMatchOf> }[] = [];
+  for (const project of todo) {
+    const c = await d.choices(project).catch(() => null);
+    if (c === null) return { cannot: true };
+    found.push({ project, m: hubMatchOf(c.suggestions) });
+  }
+  const linked: string[] = [];
+  const unclear: string[] = [];
+  for (const { project, m } of found) {
+    if ("clear" in m) {
+      const link = { id: m.clear.id, slug: m.clear.slug, name: m.clear.name };
+      d.write(project, link);
+      d.audit(`${project} → ${link.slug} (on Connect)`);
+      linked.push(project);
+    } else if ("unclear" in m) unclear.push(project);
+  }
+  if (linked.length) d.changed();
+  return { linked, unclear };
+}
+
 export async function hubLinkAllRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -59,6 +106,20 @@ export async function hubLinkAllRoute(
         if (hub) return { project, hub, suggestion: null };
         const c = await d.choices(project).catch(() => null);
         if (c === null) connected = false;
+        // 0.4.45: an unclear one offers each choice and ticks none.
+        const m = c ? hubMatchOf(c.suggestions) : null;
+        if (m && "unclear" in m)
+          return {
+            project,
+            hub: null,
+            suggestion: null,
+            unclear: m.unclear.map((x) => ({
+              id: x.id,
+              slug: x.slug,
+              name: x.name,
+              ...(x.why ? { why: x.why } : {}),
+            })),
+          };
         const s = c?.suggestions[0];
         return {
           project,
@@ -165,4 +226,67 @@ export async function hubLinkAllRoute(
   if (linked.length) d.changed();
   sendJson(res, { ok: true, linked, skipped });
   return true;
+}
+
+/**
+ * The deps on this install's own files: the projects in workspaces.yml
+ * (never the server agent's scope), Hub's suggestions, and the link in
+ * each project's entry. `why` names who linked, for the file's note.
+ */
+export async function defaultLinkAllDeps(
+  why: string,
+  audit: (line: string) => void,
+): Promise<HubLinkAllDeps> {
+  const [hp, link, w, sa] = await Promise.all([
+    import("./hub-project-routes.js"),
+    import("../../shared/hub-project-link.js"),
+    import("../../shared/environment-manager/workspaces.js"),
+    import("../../shared/agents/server-agent.js"),
+  ]);
+  return {
+    projects: () => {
+      try {
+        return Object.keys(w.readWorkspacesFile().workspaces ?? {})
+          .filter((k) => !sa.isServerScope(k))
+          .sort();
+      } catch {
+        return [];
+      }
+    },
+    choices: hp.defaultChoices,
+    read: (ws) => link.hubProjectOf(ws),
+    write: (ws, l) => link.setHubProject(ws, l, why),
+    changed: hp.defaultChanged,
+    audit,
+  };
+}
+
+/** Where a person picks: Settings › Agents › Link projects to Hub. */
+export const HUB_PICK_LINK = "/settings#agents.hub_link_all";
+
+/**
+ * 0.4.45: what Connect runs once connected: link the clear projects, and
+ * put "N projects need your pick" in the bell for the unclear ones.
+ */
+export async function defaultLinkAfter(): Promise<
+  Awaited<ReturnType<typeof linkClearProjects>>
+> {
+  const { recordAction } = await import("./audit.js");
+  const d = await defaultLinkAllDeps("Connect to Hub", (line) =>
+    recordAction(null, { verb: "hub-link", detail: line.slice(0, 400) }),
+  );
+  const r = await linkClearProjects(d);
+  if ("unclear" in r && r.unclear.length) {
+    const { notificationDeps } = await import("./notification-service.js");
+    const n = r.unclear.length;
+    notificationDeps().store.add({
+      kind: "decision",
+      subject: "record:hub-pick",
+      scope: "workspace/den-server",
+      text: `${n} project${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} your pick`,
+      msg: { key: "bell.m.pick", vars: { n } },
+      link: HUB_PICK_LINK,
+    });
+  }
+  return r;
 }
