@@ -303,7 +303,9 @@
         min-width: min-content;
         /* The name keeps 4em, then the chip gives way to 3em (ellipsis;
            its title has it whole); the time stays whole, or goes. */
-        grid-template-columns: auto minmax(4em, 1fr) minmax(3em, max-content) auto;
+        grid-template-columns:
+          auto minmax(4em, 1fr) minmax(3em, max-content)
+          auto;
         column-gap: 6px;
         padding-right: 4px;
       }
