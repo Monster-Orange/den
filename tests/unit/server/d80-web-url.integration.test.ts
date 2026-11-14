@@ -184,7 +184,10 @@ describe("D80: web.url unset", () => {
     expect(j.ok).toBe(false);
     expect(j.checks.find((c) => c.id === "address")).toMatchObject({
       status: "fail",
-      detail: expect.stringMatching(/not set: run `den web url <address>`/),
+      detail: expect.stringMatching(
+        /not set: set it in Settings › Den's address \(\/settings\?q=web\.url\), or run `den web url <address>`/,
+      ),
+      settings: "/settings?q=web.url",
     });
     expect(doc.code).toBe(1);
     const up = cli(unset, ["web", "up", "--no-open", "--json"]);

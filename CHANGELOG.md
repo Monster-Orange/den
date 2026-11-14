@@ -23,7 +23,13 @@ config and manifest changes a distribution must make to move to it under
   it saves; an address that doesn't answer is not saved, and localhost is
   refused. Before, it was only `web url <address>` on the command line.
   doctor's and onboarding's web check now show this address, never a
-  loopback one, and link the row when it isn't set.
+  loopback one, and link the row when it isn't set. `web url <address>`
+  follows the same rules: a loopback name is refused, and the running web
+  server checks the address before it is saved; `--no-check` saves it
+  unchecked, for an install whose web server hasn't run yet.
+- `agents permission -w den-server <mode>` said the project didn't
+  exist. It now says how to set the Den agent's mode:
+  `agents permission server -w den-server <mode>`.
 - Start fresh on the Den agent's page: after a confirm ("This ends the
   Den agent's conversation. Start a new one?") it stops the agent,
   removes it and starts a new conversation, with the working pop-up.

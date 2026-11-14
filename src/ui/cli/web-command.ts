@@ -1343,7 +1343,7 @@ async function runWeb(args: string[]): Promise<void> {
     return;
   }
   if (args[0] === "url") {
-    process.exitCode = cmdWebUrl(args.slice(1));
+    process.exitCode = await cmdWebUrl(args.slice(1));
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {

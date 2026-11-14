@@ -27,6 +27,7 @@ import {
 } from "../../../src/ui/cli/agent-ops.js";
 import { clearPermissionModesCache } from "../../../src/shared/agents/den-claude.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { writeRecord } from "../../../src/shared/agents/records.js";
 
 afterEach(async () => {
   clearPermissionModesCache();
@@ -208,6 +209,35 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
       .map((p) => modeOf(p.args))
       .sort();
     expect(back).toEqual(["acceptEdits", "auto"]);
+  }, 30_000);
+
+  it("-w den-server names no project: the error says how to set the Den agent's mode, and that works", async () => {
+    const r = await rig();
+    const errs: string[] = [];
+    const run = (...args: string[]) =>
+      cmdAgents(args, {
+        ...r.deps,
+        loginPath: async () => {},
+        err: (l: string) => errs.push(l),
+      });
+    expect(await run("permission", "-w", "den-server", "auto")).not.toBe(0);
+    expect(errs.join("\n")).toMatch(
+      /den-server is the Den agent's own place, not a project: set its mode with `agents permission server -w den-server <mode>`/,
+    );
+    writeRecord(r.stateDir, {
+      id: "server",
+      persona: "server",
+      runtime: "den-claude",
+      workspace: "den-server",
+      cwd: r.dir,
+      session: { backend: "den-pty", id: "gone-server" },
+      sessionName: "acme-den-server:server",
+      startedAt: "2026-11-13T09:30:00.000Z",
+    } as Parameters<typeof writeRecord>[1]);
+    expect(await run("permission", "server", "-w", "den-server", "auto")).toBe(
+      0,
+    );
+    expect(record(r, "server").permission).toBe("auto");
   }, 30_000);
 
   it("agents.default_mode is a setting: unset, or one of ask, edits, auto, all", () => {

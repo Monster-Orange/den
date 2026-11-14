@@ -170,6 +170,10 @@ export {
   type AgentRow,
   type AgentsDeps,
 } from "./agent-ops.js";
+import {
+  isServerScope,
+  SERVER_AGENT_ID,
+} from "../../shared/agents/server-agent.js";
 
 export const AGENTS_HELP = {
   usage:
@@ -1159,6 +1163,11 @@ function permission(args: string[], d: AgentsResolved): number {
     return agentPermission(where, p, d);
   }
   noExtra(where, p, 1);
+  // The Den agent's own place is no project: its mode is the agent's.
+  if (isServerScope(ws))
+    throw new UsageError(
+      `${where}: ${ws} is the Den agent's own place, not a project: set its mode with \`agents permission ${SERVER_AGENT_ID} -w ${ws} <mode>\` (or Settings › Mode for every agent)`,
+    );
   if (!d.workspaceExists(ws))
     throw new UsageError(`${where}: project "${ws}" does not exist`);
   const given = p.positional[0];

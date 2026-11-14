@@ -1865,11 +1865,16 @@ on every other device, so one address works from all of them. Den works
 nothing out from where a browser is, and never falls back to localhost.
 
 ```bash
-./bin/acme web url https://acme.local.example.com   # set it (a person's only)
+./bin/acme web url https://acme.local.example.com   # check it answers, then set it (a person's only)
+./bin/acme web url https://acme.local.example.com --no-check   # set it unchecked: before the web server first runs
 ./bin/acme web url                                   # show it
 ./bin/acme web url --json                            # { ok, url, confirmed }
 ```
 
+- **The check**: the running web server asks the address to answer as
+  this Den first, and it is saved only then; a name for this machine only
+  is refused. With no web server running, `web url` says so: start it,
+  or use `--no-check` for an install whose web server hasn't run yet.
 - **Or in the browser**: Settings › Acme's address. **Check and save**
   first asks the address to answer as this Den (a one-time token it
   fetches through the address), and saves only if it does; otherwise the

@@ -19,6 +19,9 @@
 import * as http from "http";
 import { randomBytes } from "crypto";
 import { checkWebUrl, type WebUrl } from "../../shared/web-url.js";
+import { isLoopbackName, loopbackRefusal } from "../../shared/web-url-check.js";
+
+export { isLoopbackName };
 
 export interface WebUrlRouteDeps {
   /** An agent's request (its token or actor header): never sets it. */
@@ -46,18 +49,6 @@ function newToken(): string {
   const t = randomBytes(16).toString("hex");
   tokens.set(t, now + TOKEN_MS);
   return t;
-}
-
-/** A name that means this machine only: never the install's address. */
-export function isLoopbackName(host: string): boolean {
-  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
-  return (
-    h === "localhost" ||
-    h.endsWith(".localhost") ||
-    h === "::1" ||
-    /^127\./.test(h) ||
-    h === "0.0.0.0"
-  );
 }
 
 /** Whether `url` answers as this Den; else why not, in words. */
@@ -128,15 +119,8 @@ export function handleWebUrlRoutes(
     const ok = checkWebUrl(body.url);
     if (!("url" in ok))
       return d.sendJson(res, { ok: false, error: ok.error }, 400);
-    if (isLoopbackName(new URL(ok.url).hostname))
-      return d.sendJson(
-        res,
-        {
-          ok: false,
-          error: `${ok.url} names this machine only: the address is the name other devices open`,
-        },
-        400,
-      );
+    const loop = loopbackRefusal(ok.url);
+    if (loop) return d.sendJson(res, { ok: false, error: loop }, 400);
     const answers = await checkAnswers(ok.url, d);
     if (!answers.ok)
       return d.sendJson(

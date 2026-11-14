@@ -2,6 +2,25 @@
  * D80: what counts as an install's address (web.url), with no imports, so
  * `create` (which runs outside any distribution) can check `--url`.
  */
+/** A name that means this machine only: never the install's address (D80). */
+export function isLoopbackName(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    h === "localhost" ||
+    h.endsWith(".localhost") ||
+    h === "::1" ||
+    /^127\./.test(h) ||
+    h === "0.0.0.0"
+  );
+}
+
+/** Why `url` (an origin checkWebUrl gave) can't be the address; else null. */
+export function loopbackRefusal(url: string): string | null {
+  return isLoopbackName(new URL(url).hostname)
+    ? `${url} names this machine only: the address is the name other devices open`
+    : null;
+}
+
 /** `s` as an address Den gives people: an http(s) origin; else why not. */
 export function checkWebUrl(s: unknown): { url: string } | { error: string } {
   if (typeof s !== "string" || !s.trim())
