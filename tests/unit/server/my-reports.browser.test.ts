@@ -12,7 +12,7 @@
  * github.com is never reached. Invented names.
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
-import type { Browser, BrowserContext, Page, Route } from "playwright";
+import type { Browser, BrowserContext, Locator, Page, Route } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
@@ -28,7 +28,12 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -42,6 +47,14 @@ afterAll(async () => {
 });
 
 const skip = () => !browser;
+
+/** A visible element's box: waits until it is laid out, never null. */
+async function boxOf(l: Locator) {
+  await l.waitFor({ state: "visible" });
+  const b = await l.boundingBox();
+  if (!b) throw new Error("no box: the element is not laid out");
+  return b;
+}
 const HOUR = 3_600_000;
 const iso = (agoMs: number) => new Date(Date.now() - agoMs).toISOString();
 
@@ -374,7 +387,7 @@ describe("FB: My reports", () => {
     await p.keyboard.press("ControlOrMeta+Shift+F");
     const c = form(p).locator("canvas[data-shot]");
     await c.waitFor();
-    const cb = (await c.boundingBox())!;
+    const cb = await boxOf(c);
     await p.mouse.move(cb.x + cb.width * 0.2, cb.y + cb.height * 0.2);
     await p.mouse.down();
     await p.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height * 0.4, {

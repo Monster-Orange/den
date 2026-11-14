@@ -11,7 +11,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
-import type { Browser, Page, Route } from "playwright";
+import * as os from "os";
+import * as path from "path";
+import type { Browser, Locator, Page, Route } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
@@ -28,7 +30,12 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -42,6 +49,14 @@ afterAll(async () => {
 });
 
 const skip = () => !browser;
+
+/** A visible element's box: waits until it is laid out, never null. */
+async function boxOf(l: Locator) {
+  await l.waitFor({ state: "visible" });
+  const b = await l.boundingBox();
+  if (!b) throw new Error("no box: the element is not laid out");
+  return b;
+}
 
 /** What the fake report routes answer, and what they were sent. */
 interface Fake {
@@ -420,9 +435,9 @@ describe("FB: Report an issue, the dialog", () => {
       ).denShell.report(),
     );
     await dlg(p).waitFor();
-    const box = await dlg(p).boundingBox();
-    expect(Math.round(box!.width)).toBe(390);
-    expect(Math.round(box!.y + box!.height)).toBe(900);
+    const box = await boxOf(dlg(p));
+    expect(Math.round(box.width)).toBe(390);
+    expect(Math.round(box.y + box.height)).toBe(900);
     const btns = await dlg(p)
       .locator(".fb-btns button")
       .evaluateAll((bs) =>
@@ -555,18 +570,31 @@ const near = (a: number[], b: number[]) =>
 
 /**
  * The status drawer open, with a magenta square in it (where on the page:
- * its centre, in CSS px, which are the screenshot's pixels).
+ * its centre, in CSS px, which are the screenshot's pixels). Every health
+ * poll repaints the drawer's body (paintStatus), so the square goes in the
+ * drawer outside the body, and a repaint is forced here (⟳, then the old
+ * body gone) so a late poll can't take it away on a slow machine.
  */
 async function drawerWithMark(p: Page): Promise<{ x: number; y: number }> {
   await p.click("#den-status");
-  await p.waitForSelector("#den-status-drawer");
+  await p.locator("#den-status-drawer .den-db section").first().waitFor();
   await p.evaluate(() => {
+    const d = document.querySelector("#den-status-drawer")!;
     const m = document.createElement("div");
     m.id = "fb-mark";
-    m.style.cssText = "width:120px;height:120px;background:rgb(255,0,255)";
-    document.querySelector("#den-status-drawer .den-db")!.prepend(m);
+    m.style.cssText =
+      "width:120px;height:120px;flex:none;background:rgb(255,0,255)";
+    d.insertBefore(m, d.querySelector(".den-db"));
+    d.querySelector(".den-db section")!.setAttribute("data-old", "");
   });
-  const b = (await p.locator("#fb-mark").boundingBox())!;
+  await p.locator("#den-status-drawer [data-refresh]").click();
+  await p.waitForFunction(
+    () =>
+      !!document.querySelector("#den-status-drawer .den-db section") &&
+      !document.querySelector("#den-status-drawer [data-old]"),
+  );
+  const mark = p.locator("#fb-mark");
+  const b = await boxOf(mark);
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
 }
 
@@ -600,7 +628,7 @@ describe("FB: the screenshot and its mask", () => {
     await p.keyboard.press("ControlOrMeta+Shift+F");
     const c = dlg(p).locator("canvas[data-shot]");
     await c.waitFor();
-    const cb = (await c.boundingBox())!;
+    const cb = await boxOf(c);
     const at = (fx: number, fy: number) => ({
       x: cb.x + fx * cb.width,
       y: cb.y + fy * cb.height,
@@ -640,7 +668,14 @@ describe("FB: the screenshot and its mask", () => {
     expect(saved.suggestedFilename()).toBe("report-screenshot.png");
     // The file itself: the mask is in its pixels (drawn in, not laid over),
     // and what is outside it is the page.
-    const png = fs.readFileSync((await saved.path())!).toString("base64");
+    // saveAs: a remote browser (DEN_PW_WS) has no local path for it.
+    const file = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "den-fb-shot-")),
+      "shot.png",
+    );
+    await saved.saveAs(file);
+    const png = fs.readFileSync(file).toString("base64");
+    fs.rmSync(path.dirname(file), { recursive: true, force: true });
     const inFile = (x: number, y: number) =>
       p.evaluate(
         ([b64, px, py]) =>
