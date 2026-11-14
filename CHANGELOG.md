@@ -37,7 +37,7 @@ config and manifest changes a distribution must make to move to it under
   Connect, Start fresh, Resume, Relaunch, Start agent, Restart after
   this turn and Settings saves. Restart Den reads the same way.
 
-## [0.4.45] - unreleased
+## [0.4.45] - 2026-11-13
 
 ### Changed
 

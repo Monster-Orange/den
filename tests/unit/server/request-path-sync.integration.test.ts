@@ -48,6 +48,11 @@ const ALLOWED: { fn: string; caller: RegExp; why: string }[] = [
     why: "config/<product>.yml and config/local/user.yml",
   },
   {
+    fn: "readFileSync",
+    caller: /^denYmlKey /,
+    why: "the distribution's den.yml (hub_editions), read beside config/<product>.yml",
+  },
+  {
     fn: "statSync",
     caller: /^assertDenConfigValid /,
     why: "config/<product>.yml, one stat: its validation is memoised on mtime and size",
