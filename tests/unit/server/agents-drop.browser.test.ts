@@ -377,3 +377,143 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
     await p.context().close();
   }, 60_000);
 });
+
+/**
+ * A drag that lands where a person's pointer is: the element under (x, y)
+ * gets dragenter, dragover and drop, as in a real drag. The toast's words
+ * after it, if one shows.
+ */
+async function dropAt(p: Page, x: number, y: number) {
+  return p.evaluate(
+    ([x, y, bytes]) => {
+      document.querySelector(".den-toast")?.remove();
+      const dt = new DataTransfer();
+      dt.items.add(
+        new File([new Uint8Array(bytes as number[])], "pt.png", {
+          type: "image/png",
+        }),
+      );
+      const el = document.elementFromPoint(x as number, y as number)!;
+      let overlay = "";
+      for (const type of ["dragenter", "dragover", "drop"]) {
+        el.dispatchEvent(
+          new DragEvent(type, {
+            dataTransfer: dt,
+            bubbles: true,
+            cancelable: true,
+            clientX: x as number,
+            clientY: y as number,
+          }),
+        );
+        if (type === "dragover")
+          overlay = document.querySelector(".pane .agdrop")?.textContent ?? "";
+      }
+      return {
+        overlay,
+        toast: document.querySelector(".den-toast")?.textContent ?? "",
+      };
+    },
+    [x, y, PNG] as const,
+  );
+}
+
+async function centre(p: Page, sel: string) {
+  const b = (await p.locator(sel).boundingBox())!;
+  return [b.x + b.width / 2, b.y + b.height / 2] as const;
+}
+
+async function typedSoon(from: number, want: RegExp) {
+  const t0 = Date.now();
+  while (!want.test(typed(from)) && Date.now() - t0 < 8000)
+    await new Promise((r) => setTimeout(r, 100));
+  return typed(from);
+}
+
+/**
+ * 0.4.45 (stop-ship): the whole pane takes a drop, where a person's pointer
+ * lets go: the terminal, the To line under it, the marker bar over it. After
+ * the agent restarts the pane follows it, and a drop goes to the new
+ * session. A pane that can't take one says why; a drop beside every pane
+ * says where to drop. Last here: the restart swaps the session.
+ */
+describe("AG-DROP: the whole pane, and after a restart", () => {
+  it("the terminal, the To line and the marker bar each take a drop", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const pane = `.pane[data-id="${sid}"]`;
+    for (const part of [".xterm-screen", ".agto", ".bar2"]) {
+      const from = pty.writes.length;
+      const r = await dropAt(p, ...(await centre(p, `${pane} ${part}`)));
+      expect(r.overlay).toBe("Drop to attach to scout");
+      expect(await typedSoon(from, / $/)).toMatch(/uploads\/.*-pt\.png $/);
+    }
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("a drop beside every pane says where to drop", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const r = await dropAt(p, 5, 895);
+    expect(r.toast).toBe("Drop the file on an agent's pane to attach it.");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("after a restart the pane follows the agent; a drop goes to the new session; an ended one says why", async () => {
+    if (!browser) return;
+    const { p, errors } = await open();
+    const old = pty;
+    // The session ends: the pane can't take a file, and says why.
+    old.exit(0);
+    await p
+      .waitForFunction(
+        (id) =>
+          !!document.querySelector(`.pane[data-id="${id}"]`) &&
+          /exited|ended|stopped/i.test(
+            document.querySelector(`.pane[data-id="${id}"]`)?.textContent ?? "",
+          ),
+        sid,
+        { timeout: 15_000 },
+      )
+      .catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 1500));
+    const ended = await dropAt(p, ...(await centre(p, ".pane .xterm-screen")));
+    expect(ended.overlay).toBe("Can't attach: scout isn't running");
+    expect(ended.toast).toBe("Can't attach: scout isn't running");
+    // The agent restarts: a new session for the same agent.
+    const host = await connectHost(sessionPaths(s.stateDir).socket);
+    const info = await host.start({
+      name: "acme-north:scout",
+      cwd: s.wsDir("north"),
+      argv: ["sh"],
+      env: {},
+      cols: 80,
+      rows: 24,
+    });
+    host.close();
+    sid = info.ref.id;
+    pty = s.made.at(-1)!;
+    s.seed({
+      id: "scout",
+      persona: "builder",
+      runtime: "den-claude",
+      workspace: "north",
+      session: { backend: "den-pty", id: sid },
+      sessionName: "acme-north:scout",
+    });
+    await p.waitForSelector(`.pane[data-id="${sid}"]`, { timeout: 20_000 });
+    await new Promise((r) => setTimeout(r, 800));
+    for (const part of [".xterm-screen", ".agto", ".bar2"]) {
+      const from = pty.writes.length;
+      const r = await dropAt(
+        p,
+        ...(await centre(p, `.pane[data-id="${sid}"] ${part}`)),
+      );
+      expect(r.toast).toBe("");
+      expect(await typedSoon(from, / $/)).toMatch(pathRe("pt.png"));
+    }
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 120_000);
+});

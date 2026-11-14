@@ -177,12 +177,15 @@ export async function attachFiles(el, files, opts) {
  * A pane takes drops and pasted files: an overlay while a file is over it,
  * then attachFiles. `opts.name()` is the agent's name now (the overlay's
  * words). `opts.can()` says whether the pane takes one now (a live session).
+ * The whole pane takes the drag (its bar, terminal and To line). One that
+ * can't take a file now still takes the drag and says why (`opts.why()`,
+ * on the overlay, then `opts.say` when let go): never a silent drop.
  */
 export function wireDrop(el, opts) {
   const { t } = opts;
   const term = el.querySelector(".term");
   let over = 0;
-  const show = (on) => {
+  const show = (on, why = "") => {
     el.classList.toggle("dropping", on);
     let ov = el.querySelector(".agdrop");
     if (on && !ov) {
@@ -191,22 +194,28 @@ export function wireDrop(el, opts) {
       ov.setAttribute("aria-hidden", "true");
       term?.append(ov);
     }
-    if (ov)
+    if (ov) {
+      ov.classList.toggle("no", on && !!why);
       ov.innerHTML = on
-        ? `<span>${esc(t("ag.up.drop", { name: opts.name() }))}</span>`
+        ? `<span>${esc(why || t("ag.up.drop", { name: opts.name() }))}</span>`
         : "";
+    }
     if (!on) ov?.remove();
   };
+  const why = () =>
+    opts.can() ? "" : opts.why?.() || t("ag.up.cant", { name: opts.name() });
   el.addEventListener("dragenter", (e) => {
-    if (!dragHasFiles(e.dataTransfer) || !opts.can()) return;
+    if (!dragHasFiles(e.dataTransfer)) return;
     e.preventDefault();
     over++;
-    show(true);
+    show(true, why());
   });
   el.addEventListener("dragover", (e) => {
-    if (!dragHasFiles(e.dataTransfer) || !opts.can()) return;
+    if (!dragHasFiles(e.dataTransfer)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
+    const no = why();
+    e.dataTransfer.dropEffect = no ? "none" : "copy";
+    show(true, no);
   });
   el.addEventListener("dragleave", () => {
     over = Math.max(0, over - 1);
@@ -217,7 +226,11 @@ export function wireDrop(el, opts) {
     show(false);
     if (!dragHasFiles(e.dataTransfer)) return;
     e.preventDefault();
-    if (!opts.can()) return;
+    const no = why();
+    if (no) {
+      opts.say?.(no);
+      return;
+    }
     void attachFiles(el, e.dataTransfer.files, opts);
   });
   // Before xterm's own paste: files are ours, text stays its.
@@ -225,9 +238,14 @@ export function wireDrop(el, opts) {
     "paste",
     (e) => {
       const files = clipboardFiles(e.clipboardData);
-      if (!files.length || !opts.can()) return;
+      if (!files.length) return;
+      const no = why();
       e.preventDefault();
       e.stopImmediatePropagation();
+      if (no) {
+        opts.say?.(no);
+        return;
+      }
       void attachFiles(el, files, opts);
     },
     true,
@@ -236,14 +254,19 @@ export function wireDrop(el, opts) {
 
 /**
  * A drop that misses every pane must not open the file in place of the
- * page (the browser's default): taken and dropped on the floor.
+ * page (the browser's default): it is refused, and `onMiss` says where to
+ * drop. A pane that took the drop has already prevented it.
  */
-export function guardPageDrops(doc = document) {
-  const stop = (e) => {
+export function guardPageDrops(doc = document, onMiss) {
+  doc.addEventListener("dragover", (e) => {
     if (dragHasFiles(e.dataTransfer)) e.preventDefault();
-  };
-  doc.addEventListener("dragover", stop);
-  doc.addEventListener("drop", stop);
+  });
+  doc.addEventListener("drop", (e) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    const taken = e.defaultPrevented;
+    e.preventDefault();
+    if (!taken) onMiss?.();
+  });
 }
 
 /** The Attach button's hidden picker, made once. */

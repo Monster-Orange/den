@@ -2536,7 +2536,10 @@ async function openPane(id, { front = true } = {}) {
 /** AG-DROP: what a pane's drop, paste and Attach need. */
 function dropOpts(p) {
   return {
-    id: p.id,
+    // The pane's session now: a restart moves the pane to a new one.
+    get id() {
+      return p.id;
+    },
     t,
     csrf,
     name: () => {
@@ -2545,6 +2548,14 @@ function dropOpts(p) {
     },
     // A live session only: its terminal is open and it is running.
     can: () => attachable(p),
+    why: () => {
+      const r = rowOf(p.id);
+      const name = r ? paneName(r) : p.label || p.id;
+      return p.exited || p.closed || (r && isStopped(r))
+        ? t("ag.up.cant", { name })
+        : t("ag.up.cantConn", { name });
+    },
+    say: (msg) => window.denShell?.toast?.(msg),
     typeIn: (text) => {
       p.typeIn?.(text);
       p.term?.focus();
@@ -4651,7 +4662,7 @@ export async function mountAgentsPage(root) {
     if (tab) renameTab(tab);
   });
   // AG-DROP: a file dropped beside a pane never replaces the page.
-  guardPageDrops();
+  guardPageDrops(document, () => window.denShell?.toast?.(t("ag.up.miss")));
   root.querySelector("#agr").addEventListener("click", (e) => {
     const tab = e.target.closest('[role="tab"]');
     if (tab) {

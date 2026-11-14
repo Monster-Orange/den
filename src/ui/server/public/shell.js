@@ -1844,6 +1844,10 @@
     "ag.path.noFile":
       "{name} can't be downloaded: it isn't a file in the agent's project or uploads",
     "ag.up.drop": "Drop to attach to {name}",
+    "ag.up.cant": "Can't attach: {name} isn't running",
+    "ag.up.cantConn":
+      "Can't attach: {name} isn't connected yet. Try again in a moment.",
+    "ag.up.miss": "Drop the file on an agent's pane to attach it.",
     "ag.up.sending": "sending…",
     "ag.up.pct": "{n}%",
     "ag.up.done": "attached",

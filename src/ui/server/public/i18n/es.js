@@ -1093,6 +1093,11 @@
     "ag.path.noFile":
       "No se puede descargar {name}: no es un archivo del proyecto ni de las subidas del agente",
     "ag.up.drop": "Suelta para adjuntar a {name}",
+    "ag.up.cant": "No se puede adjuntar: {name} no está en marcha",
+    "ag.up.cantConn":
+      "No se puede adjuntar: {name} aún no está conectado. Inténtalo de nuevo en un momento.",
+    "ag.up.miss":
+      "Suelta el archivo sobre el panel de un agente para adjuntarlo.",
     "ag.up.sending": "enviando…",
     "ag.up.pct": "{n} %",
     "ag.up.done": "adjuntado",
