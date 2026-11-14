@@ -436,6 +436,37 @@ async function typedSoon(from: number, want: RegExp) {
  * session. A pane that can't take one says why; a drop beside every pane
  * says where to drop. Last here: the restart swaps the session.
  */
+describe("the pane's bar at 390", () => {
+  it("names the project whole (the buttons wrap instead), in en, es and ja", async () => {
+    if (!browser) return;
+    for (const lang of ["en", "es", "ja"] as const) {
+      if (lang !== "en") expect(await s.settings({ language: lang })).toBe(200);
+      try {
+        const { p } = await open(390);
+        const cut = await p
+          .locator(`.pane[data-id="${sid}"] .bar2 .where`)
+          .evaluate((w) => {
+            const n = w.querySelector(".wsn")!.getBoundingClientRect();
+            const b = w.getBoundingClientRect();
+            return {
+              wsn: n.right,
+              where: b.right,
+              text: w.querySelector(".wsn")!.textContent,
+            };
+          });
+        expect([lang, cut.text, cut.wsn <= cut.where + 0.5]).toEqual([
+          lang,
+          "north",
+          true,
+        ]);
+        await p.context().close();
+      } finally {
+        if (lang !== "en") await s.settings({ language: null });
+      }
+    }
+  }, 120_000);
+});
+
 describe("AG-DROP: the whole pane, and after a restart", () => {
   it("the terminal, the To line and the marker bar each take a drop", async () => {
     if (!browser) return;

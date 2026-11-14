@@ -225,6 +225,68 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("in a narrow list (a pane open beside it), nothing in a stopped row overlaps or spills, in en, es and ja", async () => {
+    if (skip()) return;
+    for (const lang of ["en", "es", "ja"] as const) {
+      if (lang !== "en")
+        expect(await s!.settings({ language: lang })).toBe(200);
+      try {
+        const p = await open("north");
+        await row(p, "scout").waitFor();
+        for (const w of [300, 260, 360]) {
+          // The list's width with a pane open beside it at 1280.
+          await p.evaluate((w) => {
+            (document.querySelector("#agl") as HTMLElement).style.width =
+              `${w}px`;
+          }, w);
+          const bad = await p.$$eval("#agl .agst1", (rows) => {
+            const out: string[] = [];
+            const box = (e: Element | null) => e?.getBoundingClientRect();
+            const shown = (b?: DOMRect) => !!b && b.width > 0 && b.height > 0;
+            const over = (a: DOMRect, b: DOMRect) =>
+              a.left < b.right - 0.5 &&
+              b.left < a.right - 0.5 &&
+              a.top < b.bottom - 0.5 &&
+              b.top < a.bottom - 0.5;
+            for (const r of rows) {
+              const id = (r as HTMLElement).dataset.agent;
+              const agr = box(r.querySelector(".agr"))!;
+              const parts = [".nm", ".stchip", ".when"]
+                .map((sel) => [sel, box(r.querySelector(sel))] as const)
+                .filter(([, b]) => shown(b));
+              const btns = [...r.querySelectorAll(".agacts .den-btn")].map(
+                (b) => b.getBoundingClientRect(),
+              );
+              for (const [sel, b] of parts) {
+                if (b!.right > agr.right + 0.5)
+                  out.push(`${id} ${sel} spills out of its row`);
+                for (const bb of btns)
+                  if (over(b!, bb)) out.push(`${id} ${sel} under a button`);
+              }
+              for (let i = 0; i < parts.length; i++)
+                for (let j = i + 1; j < parts.length; j++)
+                  if (over(parts[i][1]!, parts[j][1]!))
+                    out.push(`${id} ${parts[i][0]} over ${parts[j][0]}`);
+              // A time shown is shown whole.
+              const when = r.querySelector(".when") as HTMLElement | null;
+              if (
+                when &&
+                shown(box(when)) &&
+                when.scrollWidth > when.clientWidth + 0.5
+              )
+                out.push(`${id} .when clipped`);
+            }
+            return out;
+          });
+          expect([lang, w, bad]).toEqual([lang, w, []]);
+        }
+        await p.context().close();
+      } finally {
+        if (lang !== "en") await s!.settings({ language: null });
+      }
+    }
+  }, 120_000);
+
   it("D59: Resume after a restart, in ⋯: a check that sets this agent's own, over its persona's", async () => {
     if (skip()) return;
     const p = await open("north");

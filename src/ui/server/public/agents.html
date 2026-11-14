@@ -287,13 +287,23 @@
         display: flex;
         align-items: center;
         flex-wrap: wrap;
+        /* 0.4.45: a narrow list (a pane beside it) drops the time, which
+           is in the row's details; nothing overlaps. */
+        container: agst1 / inline-size;
+      }
+      @container agst1 (max-width: 330px) {
+        .agst1 > .agr .when {
+          display: none;
+        }
       }
       .agst1 > .agr {
         flex: 1 1 0;
-        min-width: 0;
-        /* The name keeps 6em, then the chip gives way (ellipsis; its
-           title has it whole); the time stays whole. */
-        grid-template-columns: auto minmax(6em, 1fr) minmax(0, max-content) auto;
+        /* Never narrower than its name, chip and dot need: with no room,
+           its buttons go under it (the row wraps). */
+        min-width: min-content;
+        /* The name keeps 4em, then the chip gives way to 3em (ellipsis;
+           its title has it whole); the time stays whole, or goes. */
+        grid-template-columns: auto minmax(4em, 1fr) minmax(3em, max-content) auto;
         column-gap: 6px;
         padding-right: 4px;
       }
@@ -610,9 +620,10 @@
         text-decoration: underline;
       }
       .pane .bar2 .where {
-        /* No width of its own to wrap on: it takes what's left. */
+        /* It takes what's left, never less than the project's name (0.4.45:
+           a phone cut it): with no room, the buttons take a line below. */
         flex: 1 1 0;
-        min-width: 0;
+        min-width: min-content;
         display: inline-flex;
         color: var(--faint);
         white-space: nowrap;
