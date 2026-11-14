@@ -31,6 +31,8 @@ import { needsDocker } from "./repo-detect.js";
 import { readMcpConfig } from "../../shared/den-config.js";
 import { approvalsState } from "../mcp/tools.js";
 import type { WebProbe } from "./mcp-connect.js";
+import { denWebBase } from "../../shared/web-dial.js";
+import { readWebUrl } from "../../shared/web-url.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
 
@@ -42,10 +44,19 @@ export interface OnboardCheck {
   fix?: string;
   /** A question for the person, when only they can fix it. */
   ask?: string;
-  /** The web server's URL and port (the web check). */
+  /**
+   * The web check: this install's address (web.url, D80), never the
+   * loopback it is dialled at; unset, `url` is absent and `settings` links
+   * Settings' address row.
+   */
   url?: string;
   port?: number;
+  /** A Settings link (a path with ?q=) where a person fixes it. */
+  settings?: string;
 }
+
+/** Settings' row for this install's address (web.url), as a ?q= link. */
+export const ADDRESS_SETTINGS_LINK = "/settings?q=web.url";
 
 export interface OnboardDeps {
   /** process.versions.node */
@@ -57,7 +68,10 @@ export interface OnboardDeps {
   dockerRepos: () => string[];
   /** Whether the Docker daemon answers (`docker info`). */
   dockerUp: () => boolean;
+  /** Where the web server is dialled (denWebBase): checks only. */
   webUrl: string;
+  /** This install's address (web.url, D80): what a person is shown. */
+  address?: () => string | null;
   probeWeb: (url: string) => Promise<WebProbe>;
   /** The MCP one-shot against the web server: exit 0, or why not. */
   mcpCall: () => { ok: boolean; detail?: string };
@@ -140,22 +154,35 @@ export async function onboardingChecks(
   const probe = await d.probeWeb(d.webUrl);
   const webPort = Number(new URL(d.webUrl).port) || 80;
   const webFix = `${d.bin} web up --no-open --json`;
+  // D80: a person is shown the install's address, never the loopback.
+  let address: string | null = null;
+  try {
+    address = d.address?.() ?? null;
+  } catch {
+    address = null;
+  }
+  const shown = address
+    ? { url: address }
+    : { settings: ADDRESS_SETTINGS_LINK };
+  const unset = address
+    ? ""
+    : `; this install's address is not set (Settings › Den's address, ${ADDRESS_SETTINGS_LINK})`;
   if (probe.kind === "up")
     out.push({
       id: "web",
       status: "ok",
-      detail: `web server up${probe.version ? ` (Den ${probe.version})` : ""}`,
-      url: d.webUrl,
+      detail: `web app up${probe.version ? ` (Den ${probe.version})` : ""}${unset}`,
+      ...shown,
       port: webPort,
     });
   else if (probe.kind === "foreign")
     out.push({
       id: "web",
       status: "fail",
-      detail: `${probe.who} answers at ${d.webUrl}, not this distribution's web server`,
-      url: d.webUrl,
+      detail: `${probe.who} answers on port ${webPort}, not this distribution's web app`,
+      ...shown,
       port: webPort,
-      ask: `Another Den distribution already uses ${d.webUrl}. Which port should ${product().title} use instead? (web.port in config/local/user.yml)`,
+      ask: `Another Den distribution already uses port ${webPort}. Which port should ${product().title} use instead? (web.port in config/local/user.yml)`,
     });
   else
     out.push({
@@ -163,9 +190,9 @@ export async function onboardingChecks(
       status: "fail",
       detail:
         probe.kind === "timeout"
-          ? `web server at ${d.webUrl} is not answering in time`
-          : `web server not running at ${d.webUrl}`,
-      url: d.webUrl,
+          ? `web app on port ${webPort} is not answering in time`
+          : `web app not running on port ${webPort}`,
+      ...shown,
       port: webPort,
       fix:
         probe.kind === "timeout"
@@ -290,7 +317,8 @@ export function defaultOnboardDeps(
         stdio: "ignore",
         timeout: 10_000,
       }).status === 0,
-    webUrl: `http://localhost:${port}`,
+    webUrl: denWebBase(port),
+    address: () => readWebUrl()?.url ?? null,
     probeWeb,
     mcpCall: () => {
       // The shim when there is one (a distribution), else this Den's bin.

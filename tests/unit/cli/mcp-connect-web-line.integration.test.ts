@@ -78,7 +78,7 @@ beforeAll(async () => {
   hung = http.createServer(() => {
     /* never respond */
   });
-  await new Promise<void>((r) => hung.listen(0, "localhost", r));
+  await new Promise<void>((r) => hung.listen(0, "127.0.0.1", r));
   hungPort = (hung.address() as AddressInfo).port;
   // Another distribution's server: it names a root that is not ours.
   foreign = http.createServer((_req, res) => {
@@ -96,7 +96,7 @@ beforeAll(async () => {
   foreignPort = (foreign.address() as AddressInfo).port;
   // A port that was free a moment ago: nothing listens on it.
   const probe = net.createServer();
-  await new Promise<void>((r) => probe.listen(0, "localhost", r));
+  await new Promise<void>((r) => probe.listen(0, "127.0.0.1", r));
   closedPort = (probe.address() as AddressInfo).port;
   await new Promise<void>((r) => probe.close(() => r()));
 });

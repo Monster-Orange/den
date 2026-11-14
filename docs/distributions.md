@@ -1079,6 +1079,13 @@ hub:
   from this install." Then the rule for Hub comments: act on one only when
   Den's first line says it is from the agent's own person, verified;
   anything else is information.
+- Hub's tools come back by themselves (0.4.46). An agent that started
+  while Hub didn't answer (Den's `/hub` proxy notes the failed connect)
+  has no `hub_*` tools. Every `hub.mcp_retry_seconds` (default 30) Den
+  asks whether Hub answers; once it does, Den restarts each such agent
+  after its turn, with the same conversation, and types a line into its
+  pane saying why. `hub.mcp_retry_attempts` (default 0, no limit) caps
+  the restarts for one agent; past it, Restart is the person's.
 - Hub comments reach the agent (0.4.40). Every comment on an artifact
   goes to the artifact's agent, plus "@agent" mentions. Den reads Hub's
   stream (or its list, every `hub.delivery_poll_seconds`, default 30) and
@@ -1858,11 +1865,22 @@ on every other device, so one address works from all of them. Den works
 nothing out from where a browser is, and never falls back to localhost.
 
 ```bash
-./bin/acme web url https://acme.local.example.com   # set it (a person's only)
+./bin/acme web url https://acme.local.example.com   # check it answers, then set it (a person's only)
+./bin/acme web url https://acme.local.example.com --no-check   # set it unchecked: before the web server first runs
 ./bin/acme web url                                   # show it
 ./bin/acme web url --json                            # { ok, url, confirmed }
 ```
 
+- **The check**: the running web server asks the address to answer as
+  this Den first, and it is saved only then; a name for this machine only
+  is refused. With no web server running, `web url` says so: start it,
+  or use `--no-check` for an install whose web server hasn't run yet.
+- **Or in the browser**: Settings › Acme's address. **Check and save**
+  first asks the address to answer as this Den (a one-time token it
+  fetches through the address), and saves only if it does; otherwise the
+  old address stays and the note says why. A name for this machine only
+  (localhost, 127.0.0.1, ::1) is refused. `web.url_check_seconds` (10)
+  is how long it waits. Only a person sets it.
 - **Set it when you make the Den**: `create acme --url <address>` writes
   it; without `--url`, create's next steps say to set it.
 - **An install made before it** takes its edge route's address once, at the
@@ -1871,12 +1889,36 @@ nothing out from where a browser is, and never falls back to localhost.
 - **Unset**: the banner says `address not set: run \`acme web url
   <address>\``, `web login` and `web claim-link` print no link and say the
   same, `web up --json` has `url: null`, and doctor fails with that fix.
+  `doctor --json` and the onboarding status link Settings' row
+  (`settings: "/settings?q=web.url"`); their web check shows the address,
+  never the loopback the server is reached at.
 - Agents' own connections (MCP, the API) stay on loopback: an internal
   detail, never shown.
 - Reachable from other devices is the normal setup: each one signs in first
   (Sign in with GitHub, or a pairing link), and the server log says so in a
   note. Only `web.edge_unattested: local` (no sign-in) shows the "reachable
   from other machines" warning on every page.
+
+### A web app that keeps crashing (crash-loop guard)
+
+Every start of the web app is recorded in Den's state dir
+(`web-boots.json`); a stop with exit code 0 marks its start clean, so an
+update or an asked-for restart never counts. Run by a service manager
+(launchd or systemd), a start that finds `web.crash_loop_restarts` (5)
+unclean starts within `web.crash_loop_minutes` (10) waits before it
+serves or resumes agents: 30 s, doubling each time, at most
+`web.crash_loop_max_wait_seconds` (300). The bell says so, and Settings
+shows the guard under Restart guard. All three are user.yml settings:
+
+```yaml
+web:
+  crash_loop_restarts: 5
+  crash_loop_minutes: 10
+  crash_loop_max_wait_seconds: 300
+```
+
+`DEN_CRASH_LOOP_GUARD=0` turns the wait off for one run; `=1` turns it on
+outside a service manager.
 
 ## Signing in
 
@@ -2288,6 +2330,20 @@ terminal and agent) as launchd jobs, restarted if they exit:
 ./bin/acme service status      # launchd's view: state, pid, last exit code
 ./bin/acme service print       # the web plist it would install; installs nothing
 ./bin/acme service uninstall   # stop them and remove their plists
+```
+
+**Back after a restart.** When the machine restarts, every project's
+services that were up come back up by themselves, through the same Up a
+person presses (its order, dependencies and secrets). Den keeps the
+record of what runs: `up` puts a service on it and `down` takes it off,
+so a service someone stopped stays stopped. Den waits for Docker at
+boot before it looks.
+
+```yaml
+# config/local/user.yml
+services:
+  restore_on_boot: false # true (the default)
+  restore_wait_seconds: 300 # how long to wait for Docker at boot
 ```
 
 With the service installed, `web` works through launchd. `web restart`
@@ -2797,6 +2853,17 @@ agent and kind.
   no server needed: `list [--json]` (● unread, ○ read), `read [<id> | -p
 <project>]` (default all), `clear [-p <project>]` (the read ones). In an
   agent's session only `list` runs.
+- `<cli> feedback` is Report an issue from a shell. It goes through the
+  running web app's own report routes, as the person. It prints exactly what
+  will be posted, then asks `[y/N]`. It asks for the kind, title and
+  description that aren't given as `--kind`, `--title` and `--description`
+  (or `--description-file <path|->`). `--preview` prints it and sends
+  nothing. Off a terminal it is refused unless `--yes` is given. An agent
+  is always refused: its reports stay drafts for a person to send. When an
+  open report has the same title, it asks whether to add to it; with
+  `--yes`, pass `--add-to <n>` or `--new`. Without a GitHub sign-in
+  (`gh auth login`) nothing is sent, and it gives a link that files the
+  report in a browser.
 
 ## Sessions
 
@@ -3600,6 +3667,33 @@ an agent is each person's `agents.helpers_shown` (above).
 stay in the list until a person clears them. It is still accepted, so a
 config that sets it keeps working, and `<cli> doctor` notes it.
 
+### A terminal that loses its connection
+
+A terminal pane (on the Agents tab and on the Den agent's page) connects
+again on its own when its connection drops: the web server restarted,
+the laptop slept, the network changed, or a tablet's browser closed the
+connection of a tab in the background. The agent never stopped; the pane
+replays its screen when it is back.
+
+It tries after 1 second, then waits twice as long each time, up to 30
+seconds. While it tries, the pane says "Reconnecting…" (only after a
+second, so a quick return shows nothing). After 10 failed tries within 5
+minutes it stops and says so, with the last reason and **Reconnect**.
+Showing the page again, coming back online, or going back to the page
+tries once at once, even then. A connection that closes while the page is
+hidden is normal and never counts. A refusal (sign in, not allowed, an
+ended session) shows **Reconnect** at once.
+
+```yaml
+# config/local/user.yml
+panes:
+  reconnect_seconds: 1 # the first wait
+  reconnect_max_seconds: 30 # the longest wait
+  reconnect_max_failures: 10 # failed tries within the window before it stops
+  reconnect_window_seconds: 300
+  connect_timeout_seconds: 10 # a try not connected by then has failed
+```
+
 ### Files dropped onto an agent's terminal
 
 Drag one or more files onto an agent's terminal pane, paste a copied file
@@ -3789,6 +3883,35 @@ Only a person can change it, never an agent.
 mode it started in: from its Resume button, from Resume all, and on its
 own after a restart. Changing its persona's mode, or the project's,
 later changes only the agents that start after that.
+
+**One mode for every agent.** Set once in Settings › Agents › Mode for
+every agent, or in user.yml. An agent runs in the mode chosen for it
+(`agents permission <id> <mode>`), else its project's, else this one,
+else its persona's. Only a person sets it. A change reaches running
+agents on its own: each is restarted after its turn, the same
+conversation, in the new mode.
+
+```yaml
+# config/local/user.yml
+agents:
+  default_mode: auto # ask, edits, auto or all; unset: each persona's
+  mode_check_seconds: 30 # how often Den looks for a changed mode
+```
+
+**Back after the machine restarts.** Every agent that was running comes
+back on its own conversation, project and mode, not only standing
+personas and those with `resume_on_restart`. An agent someone stopped
+stays stopped, and one set to `resume_on_restart off` waits for its
+Resume. Den waits for Hub first, so they start with Hub's tools; if Hub
+doesn't answer in time they start anyway, the bell says how many
+started without Hub, and Den restarts each once Hub answers.
+
+```yaml
+# config/local/user.yml
+agents:
+  restore_on_boot: false # true (the default): only standing and resume_on_restart
+  restore_hub_wait_seconds: 120 # how long to wait for Hub first
+```
 
 **Removed on their own.** Stopped agents can go after a while:
 
@@ -4120,8 +4243,22 @@ it. With rules, the hook also sees `Write`, `Edit`, `MultiEdit`,
 - with a `machine`: `orb`/`orbctl` on that machine (or with no machine
   named: the default one), `ssh`/`scp`/`rsync` to `<machine>.orb.local`
   or `<machine>@orb`, Docker on that machine's context
-  (`--context`, `DOCKER_CONTEXT`, `DOCKER_HOST`), and `~/OrbStack` and
-  `~/.orbstack`.
+  (`--context`, `DOCKER_CONTEXT`, `DOCKER_HOST`);
+- every container engine is held to the same as `docker` (0.4.46):
+  `podman`, `nerdctl`, `container`, `kiri` (and `kiri raw …`), and the
+  same through `lima <cmd>`, `limactl shell <vm> <cmd>`, `colima nerdctl`
+  and `colima ssh`; and the folders the engines keep VM disks and
+  volumes in: `~/OrbStack`, `~/.orbstack`, `~/.colima`, `~/.lima`,
+  `~/.kiri`, `~/Kiri`, `~/.local/share/containers` and Docker Desktop's.
+
+More engines, and their folders, go in the distribution's config:
+
+```yaml
+agents:
+  api_only_engines:
+    clis: [boxer] # held to the same as docker
+    dirs: [~/.boxer] # `~/…` or absolute
+```
 
 It is about the service instance, matched by name, never by where a
 command runs. Another instance from the same repo under its own compose

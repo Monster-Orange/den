@@ -147,6 +147,7 @@ export function loginLink(origin: string, code: string, next = "/"): string {
 
 /** `http://localhost:<port>`: the canonical loopback origin (§2). */
 export function localhostOrigin(port: number): string {
+  // eslint-disable-next-line no-restricted-syntax -- a browser's origin (cookies are per name), not dialled by Den
   return `http://localhost:${port}`;
 }
 

@@ -77,6 +77,16 @@ export interface GithubDeviceClient {
    * failure throws.
    */
   orgMember(token: string, org: string, login: string): Promise<OrgMembership>;
+  /**
+   * FB (den#81): one REST call as the token's person (`path` from the API
+   * base, e.g. /repos/o/r/issues). Never logs; the token is not kept.
+   */
+  api?(
+    token: string,
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; body: Record<string, unknown> }>;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -254,6 +264,19 @@ export function githubDeviceClient(
       // A 404 for its own membership means none; a 403 means this token
       // may not read it, so a private membership can't be told apart.
       return own.status === 404 ? "not_member" : "unreadable";
+    },
+    async api(token, method, apiPath, body) {
+      const r = await request(`${ep.api}${apiPath}`, {
+        method,
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: `Bearer ${token}`,
+          "x-github-api-version": "2022-11-28",
+          ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      });
+      return { status: r.status, body: parse(r.body) };
     },
   };
 }

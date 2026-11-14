@@ -56,6 +56,8 @@ describe("readHubConfig", () => {
       inboxOnStop: "nudge",
       syncCheckSeconds: 30,
       namesCheckSeconds: 300,
+      mcpRetrySeconds: 30,
+      mcpRetryAttempts: 0,
       deliveryHeartbeatSeconds: 15,
       deliveryPollSeconds: 30,
     });

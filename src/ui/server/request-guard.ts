@@ -61,6 +61,7 @@
 import { randomBytes, timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
 import { readMcpConfig } from "../../shared/den-config.js";
+import { LIFECYCLE_CMDS } from "../mcp/guards.js";
 import {
   agentImportRefusal,
   agentImportTarget,
@@ -584,13 +585,20 @@ export function checkRequest(
   const session = principal ? null : (ctx.session?.(req) ?? null);
 
   const method = (req.method ?? "GET").toUpperCase();
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const reqUrl = new URL(req.url ?? "/", "http://localhost");
+  const pathname = reqUrl.pathname;
   const cls: RouteClass =
     routeClass(method, pathname) ??
     (MUTATING.has(method) || isUpgrade(req) ? "mutating" : "readonly");
 
   if (principal?.kind === "agent") {
-    const refused = agentRefusal(principal, method, pathname, cls);
+    const refused = agentRefusal(
+      principal,
+      method,
+      pathname,
+      cls,
+      reqUrl.searchParams,
+    );
     if (refused)
       return {
         ok: false,
@@ -702,12 +710,76 @@ export const AGENT_FORBIDDEN: readonly string[] = [
 ];
 
 /**
- * Routes an agent's token may read but never change: the admin password (R8).
+ * Routes an agent's token may read but never change: the admin password
+ * (R8), and Local environment (MODE-5).
  * Privileged actions stay with people (AG-5); its status is a read.
  */
 export const AGENT_READ_ONLY: readonly string[] = [
   "/api/sudo-password",
   "/api/sudo-password/*",
+  // MODE-5: Local environment, a person's setting (Settings › Command line).
+  "/api/local-dev",
+];
+
+/**
+ * Writes that are a person's (0.4.46): an agent's token may read these
+ * paths but never change anything through them. What an agent may change
+ * is listed, with why, in tests/unit/server/agent-write-routes.test.ts; a
+ * write an agent wants goes through an approval (POST /api/approvals).
+ */
+export const AGENT_PERSON_WRITES: readonly string[] = [
+  // Allow and Deny on a held write: never the asking agent's.
+  "/api/approvals/:id/decide",
+  "/api/settings",
+  "/api/scope",
+  "/api/web-url",
+  "/api/release/config",
+  "/api/release/deploy",
+  "/api/personas",
+  "/api/personas/:id",
+  "/api/report/send",
+  "/api/report/drafts",
+  "/api/report/drafts/:id",
+  "/api/report/github-send",
+  "/api/editor/open",
+  "/api/terminal/open",
+  // Projects: made, renamed, removed and set up by a person (an agent asks).
+  "/api/workspaces",
+  "/api/workspaces/rename",
+  "/api/workspaces/create",
+  "/api/workspaces/settings",
+  "/api/workspaces/services",
+  "/api/workspaces/services/mode",
+  "/api/workspaces/services/autostart",
+  "/api/workspaces/:ws/hub-project",
+  // Another agent's life and record: a person's (an agent resumes and
+  // imports only when opted in, above).
+  "/api/workspaces/:ws/agents/:id/stop",
+  "/api/workspaces/:ws/agents/:id/name",
+  "/api/workspaces/:ws/agents/:id/remove",
+  "/api/workspaces/:ws/agents/:id/keep",
+  "/api/workspaces/:ws/agents/:id/settings",
+  "/api/agents/clear-stopped",
+  "/api/agents/restore",
+  "/api/agents/rotation",
+  "/api/server-agent/runtime",
+  "/api/server-agent/model",
+  // The person's bell.
+  "/api/notifications/read",
+  "/api/notifications/clear",
+  "/api/notifications/mute",
+  "/api/notifications/looking",
+  // This install's Hub link.
+  "/api/hub/connect",
+  "/api/hub/disconnect",
+  "/api/hub/sync",
+  "/api/hub/link-suggestions",
+];
+
+/** Commands a person runs, streamed over GET: an agent never starts one. */
+export const AGENT_PERSON_RUNS: readonly string[] = [
+  "/api/aws/login",
+  "/api/workspace/exec",
 ];
 
 /** `/api/sessions/<id>/…`: a session's own routes (AG-4a-term's io). */
@@ -727,7 +799,19 @@ export function agentRefusal(
   method: string,
   pathname: string,
   cls: RouteClass,
+  /** The query: service exec's command and environment are checked. */
+  search?: URLSearchParams,
 ): string | null {
+  // An agent runs a service's up, down or restart, and only on local
+  // (the MCP tool's rule, held here too: a token can skip the tool).
+  if (pathname === "/api/service/exec") {
+    const cmd = search?.get("cmd") ?? "";
+    const env = search?.get("env") ?? "local";
+    if (!(LIFECYCLE_CMDS as readonly string[]).includes(cmd))
+      return `${p.actor} can run ${LIFECYCLE_CMDS.join(", ")} only, not "${cmd}".`;
+    if (env !== "local")
+      return `${p.actor} can run a service on local only, not on ${env}.`;
+  }
   if (pathMatches("/api/workspaces/:ws/agents/:id/clear-helpers", pathname))
     return `${p.actor} can't use ${pathname}: clearing an agent's helpers is a person's.`;
   if (
@@ -737,6 +821,13 @@ export function agentRefusal(
       AGENT_READ_ONLY.some((r) => pathMatches(r, pathname)))
   )
     return `${p.actor} can't use ${pathname}: signing in, web.secret and the admin password are a person's.`;
+  if (
+    AGENT_PERSON_RUNS.some((r) => pathMatches(r, pathname)) ||
+    (method !== "GET" &&
+      method !== "HEAD" &&
+      AGENT_PERSON_WRITES.some((r) => pathMatches(r, pathname)))
+  )
+    return `${p.actor} can't change ${pathname}: that is a person's to do. An agent asks for it through an approval.`;
   // D32's helpers count is the list's, no session's: read-grade.
   const m =
     pathname === "/api/sessions/helpers" ? null : SESSION_ROUTE.exec(pathname);

@@ -130,6 +130,134 @@
     "n.releases": "Releases",
     "n.edge": "Edge",
     "n.settings": "Settings",
+    // FB (den#81): Report an issue.
+    "fb.rail": "Report an issue",
+    "fb.tip": "Report an issue (⌘⇧F)",
+    "fb.word": "Report",
+    "fb.palette": "Send feedback",
+    "fb.title": "Report an issue",
+    "fb.sub":
+      "Tell us what is wrong, or what you wish __DEN_TITLE__ did. It becomes a GitHub issue, filed as you.",
+    "fb.step1": "1 Write",
+    "fb.step2": "2 Include",
+    "fb.step3": "3 Review and send",
+    "fb.stepOf": "{i}/{n}",
+    "fb.kind": "What is it?",
+    "fb.k.bug": "Bug",
+    "fb.k.idea": "Idea",
+    "fb.k.question": "Question",
+    "fb.titleL": "Title",
+    "fb.desc": "What happened, and what did you expect?",
+    "fb.shot": "Screenshot of this page",
+    "fb.ncap":
+      "This page couldn't be captured. You can send the report without a screenshot.",
+    "fb.shotNote":
+      "Includes the open dialog or drawer. Drag on it to black out anything private.",
+    "fb.nos": "Don't include a screenshot",
+    "fb.undo": "Undo",
+    "fb.masks": "{n} areas hidden",
+    "fb.masks.one": "{n} area hidden",
+    "fb.kbdMask": "Mask by size and position",
+    "fb.mx": "Left %",
+    "fb.my": "Top %",
+    "fb.mw": "Width %",
+    "fb.mh": "Height %",
+    "fb.addMask": "Add area",
+    "fb.maskAll": "Mask the whole screenshot",
+    "fb.rmMask": "Remove",
+    "fb.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
+    "fb.revShot": "Screenshot after masking ({n} areas hidden)",
+    "fb.revShot.one": "Screenshot after masking ({n} area hidden)",
+    "fb.sentShot":
+      "The screenshot is saved and copied: paste it into the issue.",
+    "fb.sentShotSaved":
+      "The screenshot is saved as a file: add it to the issue.",
+    "fb.mine": "My reports",
+    "fb.myS":
+      "Shown live from GitHub. It works while you are signed in to GitHub.",
+    "fb.tabMine": "Mine",
+    "fb.tabDraft": "Drafts from agents ({n})",
+    "fb.r3": "Draft: Finish later",
+    "fb.r3s": "Saved on this computer · not sent",
+    "fb.openL": "Open on GitHub",
+    "fb.cont": "Continue",
+    "fb.myE": "No reports yet. Press Report on any page to send one.",
+    "fb.myOpen": "Open",
+    "fb.myClosed": "Closed",
+    "fb.myLast": "last reply: “{text}” {when}",
+    "fb.myNone": "no replies yet",
+    "fb.myNew": "New reply",
+    "fb.myNoGh":
+      "Sign in to GitHub to see your reports here. Drafts are shown either way.",
+    "fb.myBy": "From {agent} · {when}",
+    "fb.myAgE": "No drafts from agents.",
+    "fb.myLoading": "Loading…",
+    "fb.untitled": "(no title)",
+    "fb.next": "Next: Include",
+    "fb.back": "Back",
+    "fb.send": "Send as a GitHub issue",
+    "fb.later": "Finish later",
+    "fb.cancel": "Cancel",
+    "fb.dest": "Goes to",
+    "fb.pub": "Public repository",
+    "fb.pubW":
+      "Screenshots and text are visible to everyone. Mask anything private.",
+    "fb.incH": "What goes with your report",
+    "fb.incN":
+      "Each part says how __DEN_TITLE__ uses it. Secrets, tokens, emails, IP addresses and store references are always removed, whatever is ticked.",
+    "fb.all": "Include all",
+    "fb.none": "Include none",
+    "fb.remember": "Remember my choices",
+    "fb.redact":
+      "Redact names (companies, projects, repos, services) as <org-1>, <repo-1> …",
+    "fb.dgi": "How __DEN_TITLE__ uses this",
+    "fb.sec.Den": "__DEN_TITLE__",
+    "fb.sec.Browser": "Browser",
+    "fb.sec.Machine": "Machine",
+    "fb.sec.Page": "Page",
+    "fb.use.Den": "Which version you run, to find the change that caused it.",
+    "fb.use.Browser": "The browser and window size, to see it as you do.",
+    "fb.use.Machine": "The system it runs on, never who or where.",
+    "fb.use.Page": "Which page and dialog were open.",
+    "fb.revH": "Review: this is exactly what will be posted",
+    "fb.siH": "Sign in with GitHub to send",
+    "fb.siB":
+      "Reports are filed as you, so GitHub's replies reach you. __DEN_TITLE__ shows a code; enter it at github.com/login/device. This is not __DEN_TITLE__'s own sign-in.",
+    "fb.noApp":
+      "Sending needs GitHub. Save it with Finish later, or file it in a GitHub tab.",
+    "fb.open": "Open github.com/login/device",
+    "fb.codeL": "Your code",
+    "fb.waiting": "Waiting for you to approve in GitHub…",
+    "fb.siAlt": "Or open a new GitHub tab with the report filled in.",
+    "fb.siAltLink": "Open a filled-in GitHub tab",
+    "fb.expired": "The code expired before it was approved. Nothing was sent.",
+    "fb.denied": "GitHub sign-in was cancelled. Nothing was sent.",
+    "fb.dupH": "A report with this title is already open",
+    "fb.dupB":
+      "“{title}” is already open. Add your details to it instead of opening a second one?",
+    "fb.addTo": "Add to the existing report",
+    "fb.fileNew": "File a new report",
+    "fb.sentH": "Report sent",
+    "fb.sentB": "Your report is a GitHub issue now: “{title}”.",
+    "fb.addedB": "Your details were added to the open report.",
+    "fb.openIssue": "Open the issue",
+    "fb.done": "Done",
+    "fb.limH": "You have sent {n} reports this hour",
+    "fb.limB":
+      "Try again in {min} minutes. Your report is not lost: save it with Finish later and send it then.",
+    "fb.latH": "Saved. Nothing was sent.",
+    "fb.latB":
+      "It is saved on this computer with your text, choices and screenshot. Find it under My reports, at the top of Report an issue or in the command palette.",
+    "fb.failH": "Not sent",
+    "fb.keepH": "Keep what you wrote?",
+    "fb.keep": "Keep it (Finish later)",
+    "fb.discard": "Discard",
+    "fb.needTitle": "A title is needed.",
+    "fb.busyPreview": "Making the preview…",
+    "fb.busySend": "Sending the report…",
+    "fb.busySave": "Saving the report…",
+    "fb.busyDone": "Done",
+    "fb.busyFailed": "Couldn't reach __DEN_TITLE__. Nothing was sent.",
     "k.org": "Company",
     "k.repoOwner": "Repo owner",
     "k.ws": "Project",
@@ -482,6 +610,14 @@
       "No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here.",
     "set.ui.thisDevice": "This device",
     "set.ui.revoke": "Revoke",
+    "set.ui.signOutAll": "Sign out everywhere",
+    "set.ui.signOutAllB":
+      "This signs out every browser and phone, including this one. Each signs in again the usual way.",
+    "set.ui.signOutRotate":
+      "Also replace the sign-in secret. Running agents stop until they are restarted.",
+    "set.ui.signOutAllW": "Signing out everywhere…",
+    "set.ui.signOutAllF": "Not signed out",
+    "set.ui.signOutAllDone": "Signed out everywhere",
     "set.ui.devicesSignedIn": "The devices can only be listed signed in.",
     "set.ui.asked": "asked {ago}",
     "set.ui.approve": "Approve",
@@ -1050,10 +1186,45 @@
     "rd.go": "Restart",
     "rd.cancel": "Cancel",
     "rd.wait": "Restarting Den… {n}s",
-    "rd.back": "Den is back",
+    "rd.back": "Den is back.",
     "rd.slow": "Den isn't back yet. On the machine it runs on, run {cmd}.",
-    "rd.keep": "Keep waiting",
+    "rd.keep": "Check again",
+    "rd.reconnects": "This page reconnects by itself when Den is back.",
+    "rd.version": "Version {v}.",
+    "rd.notBack": "Den didn't come back.",
+    "rd.notBackB": "It may still be starting. Check again in a moment.",
     "rd.setButton": "Restart Den",
+    // BUSY-1: the working pop-up (busy.js). {who}: Den, Hub or GitHub.
+    "busy.wait": "Waiting for {who}…",
+    "busy.still": "Still working ({s} s). You can leave this open.",
+    "busy.done": "Done",
+    "busy.close": "Close",
+    "busy.retry": "Try again",
+    "busy.check": "Check again",
+    "busy.report": "Report",
+    "busy.details": "Details",
+    "busy.noansT": "No answer from {who} yet.",
+    "busy.noansB": "It may still finish. Check the page before you try again.",
+    "busy.errCode": "{who} answered with an error ({code}).",
+    "busy.network": "Couldn't reach {who}.",
+    "busy.unknown":
+      "{who} has no record of this request. It's safe to try again.",
+    "busy.linkW": "Linking projects…",
+    "busy.linkS.one": "Done: {names} is linked to Hub.",
+    "busy.linkS": "Done: {names} are linked to Hub.",
+    "busy.linkF": "Couldn't link the projects.",
+    "busy.connW": "Connecting to Hub…",
+    "busy.connS": "Connected to Hub.",
+    "busy.connF": "Couldn't connect to Hub.",
+    "busy.startW": "Starting {name}…",
+    "busy.startS": "{name} started.",
+    "busy.startF": "Couldn't start {name}.",
+    "busy.restartW": "Restarting {name}…",
+    "busy.restartS": "{name} restarted.",
+    "busy.restartF": "Couldn't restart {name}.",
+    "busy.saveW": "Saving…",
+    "busy.saveS": "Saved.",
+    "busy.saveF": "Couldn't save.",
     // The user menu (R10) and its palette commands (R17).
     "um.label": "Appearance",
     "um.title": "Appearance and theme",
@@ -1290,6 +1461,44 @@
     "hubla.why.stale": "no longer Hub's suggestion",
     "set.workspace.editor": "IDE for this project",
     "set.agents.runtimes": "Runtimes",
+    "set.server.crash_loop": "Restart guard",
+    "set.server.crash_loop.d":
+      "When __DEN_TITLE__'s web app stops without a clean stop this many times within the minutes below, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
+    "set.server.crash_loop_minutes": "Restart guard window, in minutes",
+    "set.server.crash_loop_minutes.d":
+      "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.crash_loop_wait": "Restart guard's longest wait",
+    "set.server.crash_loop_wait.d":
+      "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.agents.pane_reconnect": "Terminal reconnect tries",
+    "set.agents.pane_reconnect.d":
+      "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+    "set.agents.pane_reconnect_window": "Terminal reconnect window",
+    "set.agents.pane_reconnect_window.d":
+      "The time the failed tries above are counted in. __DEN_CLI__ config panes.reconnect_window_seconds=300",
+    "set.agents.pane_reconnect_wait": "Longest wait between tries",
+    "set.agents.pane_reconnect_wait.d":
+      "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.server.address": "__DEN_TITLE__'s address",
+    "set.server.address.d":
+      "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",
+    "addr.now": "Set: {url}",
+    "addr.unset": "Not set. The links __DEN_TITLE__ gives people need it.",
+    "addr.label": "Address",
+    "addr.check": "Check and save",
+    "addr.checking": "Checking…",
+    "addr.checkW": "Checking that {url} answers",
+    "addr.saved": "Saved: {url} answered.",
+    "addr.notSaved": "Not saved. The old address stays.",
+    "addr.empty": "Type an address first.",
+    "set.agents.default_mode": "Mode for every agent",
+    "set.agents.default_mode.d":
+      "Every agent runs in this mode, the __DEN_TITLE__ agent too, unless a mode was chosen for the agent or its project sets one. A change reaches running agents after their turn, on its own.",
+    "set.agents.default_mode.o.persona": "Each persona's",
+    "set.agents.default_mode.o.ask": "Ask for everything",
+    "set.agents.default_mode.o.edits": "Auto-approve edits",
+    "set.agents.default_mode.o.auto": "Auto mode",
+    "set.agents.default_mode.o.all": "Auto-approve all",
     "set.agents.layout": "Agents tab layout",
     "set.cli.local_dev": "Local environment",
     "set.cli.cli_tabs": "Terminal tabs",
@@ -1744,6 +1953,10 @@
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.pick": "{n} projects need your pick",
     "bell.m.pick.one": "{n} project needs your pick",
+    "bell.m.noHub": "{n} agents started without Hub",
+    "bell.m.noHub.one": "{n} agent started without Hub",
+    "bell.m.crashLoop":
+      "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.turn": "{name} finished its turn",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} finished {n} Hub comments",
@@ -1837,6 +2050,9 @@
     "ag.goWs": "Open {ws} on Projects",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
+    "ag.reconnecting": "Reconnecting…",
+    "ag.reconnectGaveUp": "Couldn't reconnect: {n} tries in {min} minutes",
+    "ag.notAnswering": "__DEN_TITLE__ isn't answering",
     // AG-DROP: a file dropped, pasted or attached onto an agent's terminal.
     "ag.path.download": "Download",
     "ag.path.open": "Open in {ed}",
@@ -1885,6 +2101,14 @@
     "sa.starting": "Starting the agent…",
     "sa.idle": "{name} isn't running.",
     "sa.start": "Start",
+    "sa.fresh": "Start fresh",
+    "sa.fresh.h": "Start fresh?",
+    "sa.fresh.q": "This ends the {name}'s conversation. Start a new one?",
+    "sa.fresh.cancel": "Cancel",
+    "sa.fresh.go": "Start fresh",
+    "sa.fresh.w": "Starting a new {name}…",
+    "sa.fresh.done": "Done: a new {name} is running.",
+    "sa.fresh.fail": "Couldn't start a new {name}.",
     "sa.failed": "It didn't start: {why}. {cli} agents doctor says more.",
     "sa.unread": "Couldn't read the agent's status. Is the web server running?",
     "sa.none.h": "No runtime can run the agent yet",
@@ -2086,6 +2310,8 @@
 
   // ── icons: the prototype's 24px line drawings ─────────────────────────
   var ICONS = {
+    // FB (den#81): the flat speech bubble with "!" (the Report button).
+    report: '<path d="M4 5h16v11H9l-5 4V5z"/><path d="M12 8v4M12 14.2v.01"/>',
     overview: '<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>',
     graph:
       '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.6 8M7 8.4l1.6 7.2M16.4 10.2l-5.6 6"/>',
@@ -3148,6 +3374,11 @@
   // chips start neutral ("Checking…", "Runs"; the sudo chip hidden) and topbar.js
   // paints them: a cold load never shows a partial red.
   var chips =
+    // FB (den#81): on a phone the rail is hidden: Report is in the top bar
+    // (icon and word, no shortcut). Hidden where the rail shows.
+    '<span class="den-report-top">' +
+    reportButton() +
+    "</span>" +
     '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
     esc(t("search.ph")) +
     '"><span class="den-search-ph">' +
@@ -3671,6 +3902,17 @@
       },
       page === SETTINGS.id,
     );
+    // FB (den#81): Report an issue, beside Settings; the icon stays when
+    // the rail is collapsed. Hidden with feedback.enabled: false.
+    if (!state.reportOff)
+      html +=
+        '<button class="den-ni den-report-btn" type="button" data-act="report" aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
+        esc(t("fb.tip")) +
+        '">' +
+        icon("report") +
+        '<span class="den-lbl">' +
+        esc(t("fb.rail")) +
+        "</span></button>";
     html += identityChip();
     html +=
       '<button class="den-ni den-collapse-btn" type="button" data-act="collapse" aria-expanded="' +
@@ -3949,6 +4191,11 @@
       });
       return;
     }
+    var rep = tgt && tgt.closest ? tgt.closest('[data-act="report"]') : null;
+    if (rep) {
+      openReport();
+      return;
+    }
     var c = tgt && tgt.closest ? tgt.closest('[data-act="collapse"]') : null;
     if (c) {
       setState({ collapsed: !state.collapsed });
@@ -3957,6 +4204,11 @@
   });
 
   function applyCollapsed() {
+    // FB (den#81): reports off hides every Report button, the injected too.
+    document.documentElement.classList.toggle(
+      "den-report-off",
+      !!state.reportOff,
+    );
     if (document.body && document.body.classList)
       document.body.classList.toggle("den-rail-collapsed", !!state.collapsed);
   }
@@ -4019,6 +4271,24 @@
       if (drawerOpen()) closeDrawer(true);
       else openDrawer();
     });
+  // FB (den#81): ⌘⇧F (Ctrl+Shift+F) opens Report an issue from anywhere,
+  // over an open dialog too.
+  document.addEventListener(
+    "keydown",
+    function (e) {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        (e.key === "F" || e.key === "f" || e.code === "KeyF") &&
+        !state.reportOff
+      ) {
+        e.preventDefault();
+        openReport();
+      }
+    },
+    true,
+  );
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && drawerOpen() && !openPop) {
       e.preventDefault();
@@ -6202,7 +6472,103 @@
     setTimeout(poll, 800);
   })();
 
+  /**
+   * FB (den#81): the Report button for a dialog's, drawer's or popover's
+   * footer (Ward: visible in every pop-up, never only in a menu): the flat
+   * speech bubble, the word, ⌘⇧F (phones hide it). A click anywhere on a
+   * [data-den-report] opens Report an issue over the pop-up, which stays.
+   */
+  function reportButton() {
+    if (state.reportOff) return "";
+    return (
+      '<button type="button" class="den-rb" data-den-report aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
+      esc(t("fb.tip")) +
+      '">' +
+      icon("report") +
+      "<span>" +
+      esc(t("fb.word")) +
+      '</span><kbd aria-hidden="true">⌘⇧F</kbd></button>'
+    );
+  }
+  document.addEventListener("click", function (e) {
+    var b =
+      e.target && e.target.closest
+        ? e.target.closest("[data-den-report]")
+        : null;
+    if (!b) return;
+    e.preventDefault();
+    openReport();
+  });
+
+  /** FB (den#81): the Report an issue dialog (report-dialog.js). */
+  function openReport(opts) {
+    if (state.reportOff) return Promise.resolve(null);
+    return import("/report-dialog.js").then(function (m) {
+      return m.openReport(opts || {});
+    });
+  }
+  // FB (den#81): every dialog, drawer and popover gets the Report button
+  // in its footer (report-inject.js), kept apart from the form.
+  if (typeof MutationObserver === "function")
+    import("/report-inject.js")
+      .then(function (m) {
+        m.startReportInjector({
+          button: reportButton,
+          off: function () {
+            return !!state.reportOff;
+          },
+        });
+      })
+      .catch(function () {
+        /* the rail's and the shortcut's Report still work */
+      });
+  registerCommand({
+    id: "report",
+    label: function () {
+      return t("fb.palette");
+    },
+    keywords: ["report", "feedback", "bug", "issue"],
+    run: function () {
+      openReport();
+    },
+  });
+  // My reports: the person's reports live from GitHub, and the drafts.
+  function openMyReports() {
+    if (state.reportOff) return Promise.resolve(null);
+    return import("/report-dialog.js").then(function (m) {
+      return m.openMyReports();
+    });
+  }
+  registerCommand({
+    id: "my-reports",
+    label: function () {
+      return t("fb.mine");
+    },
+    keywords: ["my reports", "reports", "drafts", "feedback", "replies"],
+    run: function () {
+      openMyReports();
+    },
+  });
+
   window.denShell = {
+    /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
+    report: openReport,
+    /** FB: My reports (the person's reports and the drafts). */
+    myReports: openMyReports,
+    /** FB: the footer Report button's HTML ("" when reports are off). */
+    reportButton: reportButton,
+    /** BUSY-1: the working pop-up for a slow action (busy.js). */
+    busyAction: function (opts) {
+      // The button disables at once, before busy.js has loaded.
+      var b = opts && opts.button;
+      if (b) {
+        b.disabled = true;
+        b.setAttribute("aria-busy", "true");
+      }
+      return import("/busy.js").then(function (m) {
+        return m.busyAction(opts);
+      });
+    },
     /** Light rail item `id` for this page (null: the page's own). */
     setRailLit: function (id) {
       var next = id || page;
@@ -6361,6 +6727,7 @@
         return r.ok ? r.json() : null;
       })
       .then(function (s) {
+        if (s && s.feedback_enabled === false) setState({ reportOff: true });
         if (!s || !s.shell) return;
         setState({
           pins: Array.isArray(s.shell.pins) ? s.shell.pins : [],
@@ -6577,6 +6944,24 @@
     "  padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); }",
     ".den-btn:hover { border-color: var(--border-strong); }",
     ".den-btn.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }",
+    // FB (den#81): the footer Report button.
+    ".den-rb { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong, var(--border)); border-radius: var(--radius-button, 4px); background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }",
+    ".den-rb svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }",
+    ".den-rb kbd { font: 11px var(--mono); color: var(--muted); }",
+    "@media (max-width: 600px) { .den-rb kbd { display: none; } }",
+    // FB: in a footer, first and on the left; a footer of its own when the
+    // pop-up has none; the top bar's on a phone only.
+    ".den-rb.den-rb-in { margin-right: auto; }",
+    ".den-rb-foot { display: flex; justify-content: flex-start; margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border); }",
+    ".den-report-top { display: none; }",
+    ".den-report-top kbd { display: none; }",
+    "@media (max-width: 720px) { .den-report-top { display: inline-flex; margin-left: auto; } }",
+    // A phone's top bar makes room for Report: Runs is in the dock bar.
+    "@media (max-width: 480px) { #den-runs { display: none; } }",
+    // …and the status chip's words shorten (…) rather than push the page
+    // sideways, whatever they say.
+    "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } #den-status .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }",
+    ".den-report-off [data-den-report], .den-report-off .den-report-top { display: none !important; }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
     // D27: Visit is a link styled as a button.

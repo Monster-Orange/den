@@ -17,6 +17,16 @@ import {
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
 import {
+  crashLoopSettings,
+  markCleanStop,
+  recordBoot,
+  runByServiceManager,
+} from "../../shared/crash-loop.js";
+import {
+  PERSON_ONLY_SETTINGS,
+  patchCliRows,
+} from "../../shared/settings-cli-rows.js";
+import {
   composeHealthTarget,
   containerCheckLabel,
   type ComposeHealthTarget,
@@ -26,6 +36,8 @@ import { healthCheckFields, type HealthCheckType } from "./health-row.js";
 import { notCheckedReason } from "../../shared/health/not-checked.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
+import { EventEmitter } from "events";
+import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
@@ -131,6 +143,8 @@ import {
   isLocalEnabled,
   readUserConfig,
   writeUserConfig,
+  panesReconnect,
+  webUrlCheckSeconds,
   readReleaseConfig,
   resolveReleaseTarget,
   writeUserReleaseConfig,
@@ -209,6 +223,7 @@ import {
   type OnboardRouteDeps,
 } from "./onboard-routes.js";
 import {
+  agentPrincipalOf,
   auditActorOf,
   bindRefusal,
   checkRequest,
@@ -226,6 +241,13 @@ import {
   type GuardContext,
   type GuardResult,
 } from "./request-guard.js";
+import {
+  clientRequestId,
+  createRequestLedger,
+  ledgerGate,
+  ledgerOwner,
+  validRequestId,
+} from "./request-ledger.js";
 import {
   rotateWebSecret,
   verifyPersonToken,
@@ -257,7 +279,21 @@ import {
 } from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
-import { migrateWebUrl, notSetLine, readWebUrl } from "../../shared/web-url.js";
+import {
+  migrateWebUrl,
+  notSetLine,
+  readWebUrl,
+  setWebUrl,
+} from "../../shared/web-url.js";
+import { handleWebUrlRoutes } from "./web-url-routes.js";
+import {
+  decideReport,
+  handleReportRoutes,
+  machineSection,
+  publicSearchOpen,
+  runGh,
+} from "./report-routes.js";
+import { readFeedbackSettings } from "../../shared/report-store.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -277,7 +313,7 @@ import {
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
-import { DeviceFlows } from "./device-flows.js";
+import { DeviceFlows, type Decide } from "./device-flows.js";
 import {
   decideFlow,
   handleGithubRoutes,
@@ -804,6 +840,9 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/changelog",
   "/api/web/restart",
   "/api/settings",
+  // MODE-5: the address row fixes what the config holds.
+  "/api/web-url",
+  "/api/web-url/probe",
   "/api/themes",
   "/api/scope",
   "/api/workspaces/settings",
@@ -1387,15 +1426,22 @@ const GUARD: GuardContext = {
 };
 
 // ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
+/** FB (den#81): a "report" flow files its held report; the rest sign in. */
+function reportOrSignin(signin: Decide): Decide {
+  return (purpose, identity, ctx) =>
+    purpose === "report" ? decideReport(ctx) : signin(purpose, identity, ctx);
+}
 const GITHUB_CLIENT_ID = githubClientId(WEB_AUTH.githubClientId);
 const GITHUB = githubEndpoints();
 const DEVICE_FLOWS = new DeviceFlows({
   client: githubDeviceClient(GITHUB),
   clientId: () => GITHUB_CLIENT_ID,
-  decide: decideFlow(
-    getStateDir,
-    (l) => serverLog(l, "lifecycle"),
-    () => claimRulesNow(),
+  decide: reportOrSignin(
+    decideFlow(
+      getStateDir,
+      (l) => serverLog(l, "lifecycle"),
+      () => claimRulesNow(),
+    ),
   ),
   // A test's fake GitHub may answer interval 0; the real one never does.
   minIntervalMs: GITHUB.fake ? 50 : 1000,
@@ -2293,6 +2339,7 @@ async function handleRequest(
   } catch {
     /* unreadable config: the routes say so */
   }
+  // eslint-disable-next-line no-restricted-syntax -- a base to parse the path against, never dialled
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
   // R26: one id per request, on every response and on its failure's log line.
@@ -2364,6 +2411,22 @@ async function handleRequest(
   }
   // SEC-1c (R8): an agent's request never passes the lock.
   if (guard.ok && guard.principal?.kind === "agent") closeLockForThisRequest();
+  // BUSY-1: the working pop-up's Check again, and its Try again: a write
+  // sent again with the same id runs once (request-ledger.ts).
+  if (guard.ok) {
+    const owner = ledgerOwner(guard.principal);
+    if (req.method === "GET" && pathname.startsWith("/api/requests/")) {
+      const id = pathname.slice("/api/requests/".length);
+      if (!validRequestId(id))
+        return send400(res, "a request id is 8 to 64 letters, digits or -");
+      return sendJson(res, {
+        ok: true,
+        id,
+        ...REQUEST_LEDGER.status(owner, id),
+      });
+    }
+    if (await ledgerGate(REQUEST_LEDGER, req, res, owner)) return;
+  }
 
   // ── Sign-in (SEC-1b, §2) ───────────────────────────────────────────────────
   // Before config validation: signing in never depends on the config.
@@ -2678,6 +2741,59 @@ async function handleRequest(
 
   // The active theme as CSS, its mark and fonts, and the theme list.
   if (handleThemeRoutes(req, res, pathname, themeDeps)) return;
+  if (
+    handleWebUrlRoutes(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      read: () => readWebUrl(),
+      set: (url) => setWebUrl(url),
+      ping: (url, ms) => pingHttp(url, ms),
+      checkMs: () => webUrlCheckSeconds() * 1000,
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // FB (den#81): Report an issue, filed as the person with their `gh`.
+  if (
+    handleReportRoutes(req, res, pathname, {
+      settings: () =>
+        readFeedbackSettings(
+          getEngineRoot(),
+          path.join(getDistRoot(), product().configFile),
+          readUserConfig().feedback,
+        ),
+      stateDir: () => getStateDir(),
+      gh: runGh,
+      names: () => {
+        const w = readWebUrl();
+        let webHost: string | undefined;
+        try {
+          webHost = w ? new URL(w.url).hostname : undefined;
+        } catch {
+          webHost = undefined;
+        }
+        return {
+          home: os.homedir(),
+          hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
+          orgs: [product().name],
+        };
+      },
+      diagnostics: async () => ({
+        Den: `${product().cli} ${engineVersion() ?? "?"}`,
+        Machine: machineSection(),
+      }),
+      agentOf: (r) => {
+        const a = agentPrincipalOf(r) || auditActorOf(r);
+        return a ? String(a) : null;
+      },
+      personOf: () => "person",
+      flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
+      searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
 
   // The graph's modules (graph.js, panel.js, …) and vendored libraries (ELK).
   if (serveUiAsset(res, pathname, PUBLIC_DIR)) return;
@@ -5183,6 +5299,14 @@ async function handleRequest(
   // ── API: local-dev toggle ─────────────────────────────────────────────────
   // POST /api/local-dev  body: { enabled: boolean }
   if (pathname === "/api/local-dev" && req.method === "POST") {
+    // MODE-5: a person's setting (Settings › Command line); an agent's
+    // claim is refused, as on /api/settings.
+    if (agentPrincipalOf(req) || auditActorOf(req))
+      return sendJson(
+        res,
+        { ok: false, error: "only a person can change local_dev" },
+        403,
+      );
     try {
       const body = await readBody(req);
       const { enabled } = JSON.parse(body) as { enabled?: boolean };
@@ -5432,6 +5556,30 @@ async function handleRequest(
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
+        // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
+        agents_default_mode: user.agents?.default_mode ?? null,
+        // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
+        feedback_enabled: (() => {
+          try {
+            return readFeedbackSettings(
+              getEngineRoot(),
+              path.join(getDistRoot(), product().configFile),
+              user.feedback,
+            ).enabled;
+          } catch {
+            return true;
+          }
+        })(),
+        // den#85: the crash-loop guard's settings (web.crash_loop_*).
+        crash_loop: crashLoopSettings(user.web),
+        // 0.4.46: how a terminal pane reconnects on its own (panes.*).
+        panes_reconnect: (() => {
+          try {
+            return panesReconnect(() => user);
+          } catch {
+            return null;
+          }
+        })(),
         // SEC-2a: the name the signed-out page gives this machine, and
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),
@@ -5457,8 +5605,57 @@ async function handleRequest(
           bell_fold_days?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
+          agents_default_mode?: unknown;
+          local_dev?: unknown;
+          cli_tabs?: unknown;
+          log_window_lines?: unknown;
+          panes_reconnect?: unknown;
+          crash_loop?: unknown;
         };
         const user = readUserConfig();
+        // MODE-5: settings only a person changes. An agent's claim to any
+        // of them is refused before anything is written.
+        const personOnly = PERSON_ONLY_SETTINGS.filter(
+          (k) => (body as Record<string, unknown>)[k] !== undefined,
+        );
+        if (personOnly.length && (agentPrincipalOf(req) || auditActorOf(req)))
+          return sendJson(
+            res,
+            {
+              ok: false,
+              error: `only a person can change ${personOnly.join(", ")}`,
+            },
+            403,
+          );
+        // MODE-5: what only `config` could change before.
+        {
+          const c = patchCliRows(user as Record<string, unknown>, {
+            local_dev: body.local_dev,
+            cli_tabs: body.cli_tabs,
+            log_window_lines: body.log_window_lines,
+            panes_reconnect: body.panes_reconnect,
+            crash_loop: body.crash_loop,
+          });
+          if (!c.ok) return send400(res, c.error);
+        }
+        // 0.4.46 MODE-UI: agents.default_mode, the install's mode for every
+        // agent; null clears it. A person's only: an agent could widen
+        // every agent's mode with it.
+        let modesChanged = false;
+        if (body.agents_default_mode !== undefined) {
+          const v = body.agents_default_mode;
+          const agents = { ...(user.agents ?? {}) };
+          if (v === null || v === "") delete agents.default_mode;
+          else
+            try {
+              agents.default_mode = checkIntent(v, "agents_default_mode");
+            } catch (e) {
+              return send400(res, (e as Error).message);
+            }
+          if (Object.keys(agents).length) user.agents = agents;
+          else delete user.agents;
+          modesChanged = true;
+        }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Agents › Hub); null clears it (the default, on).
         if (body.hub_allow_tools !== undefined) {
@@ -5591,8 +5788,11 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (modesChanged)
+          void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
+          agents_default_mode: user.agents?.default_mode ?? null,
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},
@@ -5842,7 +6042,10 @@ const REQUEST_IDS = new WeakMap<http.IncomingMessage, string>();
 function requestIdOf(req: http.IncomingMessage): string {
   let id = REQUEST_IDS.get(req);
   if (!id) {
-    id = traceRequestId(req.headers.traceparent) ?? newRequestId();
+    id =
+      clientRequestId(req) ??
+      traceRequestId(req.headers.traceparent) ??
+      newRequestId();
     REQUEST_IDS.set(req, id);
   }
   return id;
@@ -6002,7 +6205,11 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 // here held the event loop at startup); /api/service/daemons waits for it,
 // so the UI never gets a stale entry on its first load.
 loadDaemonsFromFile();
-startupPrune = pruneDeadDaemonsAsync()
+// 0.4.46 services.restore_on_boot: the record as the last run left it, and
+// why the prune drops any of it (restore-on-boot.ts).
+const daemonsAtStart = listDaemons();
+const prunedAtStart = new Map<string, "unresolved" | "stale" | "dead">();
+startupPrune = pruneDeadDaemonsAsync((a, why) => prunedAtStart.set(a, why))
   .then((pruned) => {
     if (pruned.length > 0)
       console.error(
@@ -6012,6 +6219,100 @@ startupPrune = pruneDeadDaemonsAsync()
   .catch((e: unknown) => {
     console.error(`[server] stale-daemon sweep failed: ${String(e)}`);
   });
+
+// 0.4.46 services.restore_on_boot: what was up before the machine (or Den)
+// restarted, and isn't now, comes back through Den's own Up, one project at
+// a time. A person's down took it off the record, so it stays down.
+void (async () => {
+  await startupPrune;
+  const m = await import("../../shared/environment-manager/restore-on-boot.js");
+  let wait: number;
+  try {
+    if (!m.servicesRestoreOnBoot() || daemonsAtStart.length === 0) return;
+    wait = m.servicesRestoreWaitSeconds();
+  } catch (e) {
+    serverLog(`  ⚠ ${(e as Error).message}`, "warn");
+    return;
+  }
+  // At boot Docker may start after Den: wait for it when anything needs it.
+  const needsDocker = daemonsAtStart.some((d) => d.containers?.length);
+  const running = needsDocker
+    ? await m.waitForContainers(wait, runningContainerBasesAsync)
+    : await runningContainerBasesAsync().catch(() => null);
+  const plan = await m.servicesToRestore(daemonsAtStart, {
+    pruned: prunedAtStart,
+    running,
+  });
+  await m.restoreServicesOnBoot(plan, {
+    enabled: true,
+    isActive: (ws) => isWorkspaceActive(ws),
+    forget: unregisterDaemon,
+    exec: upInProcess,
+    log: (line) => serverLog(line, "lifecycle"),
+  });
+})().catch((e: unknown) =>
+  serverLog(`  ⚠ services after the restart: ${String(e)}`, "warn"),
+);
+
+/**
+ * Den's own Up for some services of a project, in this process: the same
+ * route a person's Up takes (order, dependencies, secrets), its events
+ * read here. Resolves with the run's exit code.
+ */
+function upInProcess(workspace: string, addresses: string[]): Promise<number> {
+  const url = new URL(
+    `http://den.invalid/api/workspace/exec?cmd=up&workspace=${encodeURIComponent(workspace)}&addresses=${encodeURIComponent(addresses.join(","))}`,
+  );
+  return new Promise<number>((resolve, reject) => {
+    let code = 1;
+    let buf = "";
+    const req = Object.assign(new EventEmitter(), {
+      method: "GET",
+      url: url.pathname + url.search,
+      headers: {},
+    }) as unknown as http.IncomingMessage;
+    const res = {
+      headersSent: false,
+      writableEnded: false,
+      setHeader: () => res,
+      writeHead: () => res,
+      write: (chunk: unknown) => {
+        buf += String(chunk);
+        let at: number;
+        while ((at = buf.indexOf("\n\n")) >= 0) {
+          const ev = buf.slice(0, at);
+          buf = buf.slice(at + 2);
+          if (!ev.startsWith("data: ")) continue;
+          try {
+            const o = JSON.parse(ev.slice(6)) as {
+              type?: string;
+              exitCode?: number;
+              text?: string;
+            };
+            if (o.type === "done" && typeof o.exitCode === "number")
+              code = o.exitCode;
+            else if (
+              (o.type === "line" || o.type === "error") &&
+              typeof o.text === "string"
+            )
+              serverLog(`  ${workspace}: ${o.text}`, "lifecycle");
+          } catch {
+            /* not one of ours */
+          }
+        }
+        return true;
+      },
+      end: () => {
+        res.writableEnded = true;
+        resolve(code);
+        return res;
+      },
+    } as unknown as http.ServerResponse & { writableEnded: boolean };
+    handleWorkspaceRoutes(req, res, url.pathname, url, editors, github).catch(
+      reject,
+    );
+  });
+}
 
 // Background recovery: after a short delay (long enough for services to be
 // responding), health-check each loaded daemon. Removal requires strong
@@ -6147,8 +6448,6 @@ try {
 // service's PATH leaves out ~/.local/bin. Until (or unless) it answers, the
 // search is this PATH and the runtimes' install directories.
 void initLoginPath();
-// AG-14: agents interrupted by a restart, and stopped ones to forget.
-startAgentUpkeep((line) => serverLog(line, "lifecycle"));
 // D80: the install's address (web.url), the one people are given. An
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
@@ -6165,58 +6464,111 @@ const ADDRESS = migrateWebUrl(() => {
     return undefined; // no edge config: nothing to take
   }
 });
-server.listen(PORT, BIND_HOST, () => {
-  printBanner(ADDRESS ?? readWebUrl());
-  // SRV-1a: back from a restart the server agent asked for: tell it.
-  void serverBack();
-  // #57: agents whose record names a project by its pre-D70 key follow it.
-  void import("../../shared/agents/heal-workspace.js").then(async (m) => {
-    const { isServerScope } =
-      await import("../../shared/agents/server-agent.js");
-    try {
-      const n = m.healRecordWorkspaces(
-        getStateDir(),
-        readWorkspacesFile().workspaces,
-        isServerScope,
-      );
-      if (n.length)
-        serverLog(`  Moved ${n.length} agent(s) to their project's new key`);
-    } catch {
-      /* the file unreadable: the agents list heals them later */
-    }
+// den#85: every start is recorded; a stop with code 0 marks it clean. Run
+// by a service manager, a start after too many unclean ones in a short
+// time waits before it serves (doubling, capped) and rings the bell.
+const CRASH_GATE: Promise<void> = (() => {
+  const stateDir = getStateDir();
+  let web: unknown;
+  try {
+    web = readUserConfig().web;
+  } catch {
+    web = undefined;
+  }
+  const s = crashLoopSettings(web);
+  const boot = recordBoot(stateDir, s);
+  process.on("exit", (code) => {
+    if (code === 0) markCleanStop(stateDir);
   });
-  // H5: tell Hub this install's projects now, then whenever they change.
-  void import("./hub-sync-service.js").then((m) => {
-    let every = 30;
-    let names = 300;
-    try {
-      const c = readHubConfig();
-      every = c?.syncCheckSeconds ?? 30;
-      names = c?.namesCheckSeconds ?? 300;
-    } catch {
-      /* a bad hub block: doctor says so; the default here */
-    }
-    m.startProjectSync(every);
-    // 0.4.45: a project renamed in Hub shows its new name here.
-    m.startHubNameRefresh(names);
-  });
-  // 0.4.40: Hub comments reach this install's agents.
-  void import("./hub-delivery-service.js").then((m) => {
-    // Always registered: a later Connect starts it (no token: it waits).
-    let cfg: ReturnType<typeof readHubConfig> = null;
-    try {
-      cfg = readHubConfig();
-    } catch {
-      /* a bad hub block: doctor says so; the defaults here */
-    }
-    void m.startDeliveries({
-      heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
-      pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-      waiting: waitingAgentIds,
-      log: (l) => serverLog(`  ${l}`, "warn"),
+  if (!boot.waitMs || !runByServiceManager()) return Promise.resolve();
+  const secs = Math.round(boot.waitMs / 1000);
+  const vars = { n: boot.crashes, m: s.minutes, s: secs };
+  const text = `Den's web app stopped ${boot.crashes} times in ${s.minutes} minutes without a clean stop`;
+  serverLog(`  ⚠ ${text}; it waits ${secs} s before it starts again.`, "warn");
+  try {
+    notificationDeps().store.add({
+      kind: "service",
+      subject: "record:den-web-crash-loop",
+      scope: "workspace/den-server",
+      text: `${text}; it waited ${secs} s before starting again`,
+      msg: { key: "bell.m.crashLoop", vars },
+      link: "/logs",
     });
-  });
-});
+  } catch {
+    /* the bell is best effort: the wait still happens */
+  }
+  return new Promise((r) => setTimeout(r, boot.waitMs));
+})();
+// AG-14: agents interrupted by a restart, and stopped ones to forget
+// (after the crash-loop wait: a start that waits resumes nothing yet).
+void CRASH_GATE.then(() =>
+  startAgentUpkeep((line) => serverLog(line, "lifecycle")),
+);
+void CRASH_GATE.then(() =>
+  server.listen(PORT, BIND_HOST, () => {
+    printBanner(ADDRESS ?? readWebUrl());
+    // SRV-1a: back from a restart the server agent asked for: tell it.
+    void serverBack();
+    // #57: agents whose record names a project by its pre-D70 key follow it.
+    void import("../../shared/agents/heal-workspace.js").then(async (m) => {
+      const { isServerScope } =
+        await import("../../shared/agents/server-agent.js");
+      try {
+        const n = m.healRecordWorkspaces(
+          getStateDir(),
+          readWorkspacesFile().workspaces,
+          isServerScope,
+        );
+        if (n.length)
+          serverLog(`  Moved ${n.length} agent(s) to their project's new key`);
+      } catch {
+        /* the file unreadable: the agents list heals them later */
+      }
+    });
+    // H5: tell Hub this install's projects now, then whenever they change.
+    void import("./hub-sync-service.js").then((m) => {
+      let every = 30;
+      let names = 300;
+      let retry = 30;
+      try {
+        const c = readHubConfig();
+        every = c?.syncCheckSeconds ?? 30;
+        names = c?.namesCheckSeconds ?? 300;
+        retry = c?.mcpRetrySeconds ?? 30;
+      } catch {
+        /* a bad hub block: doctor says so; the default here */
+      }
+      m.startProjectSync(every);
+      // 0.4.45: a project renamed in Hub shows its new name here.
+      m.startHubNameRefresh(names);
+      // 0.4.46: an agent that started while Hub didn't answer gets its tools
+      // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
+      m.startMcpReconnect(retry, () => {
+        try {
+          return readHubConfig()?.mcpRetryAttempts ?? 0;
+        } catch {
+          return 0;
+        }
+      });
+    });
+    // 0.4.40: Hub comments reach this install's agents.
+    void import("./hub-delivery-service.js").then((m) => {
+      // Always registered: a later Connect starts it (no token: it waits).
+      let cfg: ReturnType<typeof readHubConfig> = null;
+      try {
+        cfg = readHubConfig();
+      } catch {
+        /* a bad hub block: doctor says so; the defaults here */
+      }
+      void m.startDeliveries({
+        heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
+        pollSeconds: cfg?.deliveryPollSeconds ?? 30,
+        waiting: waitingAgentIds,
+        log: (l) => serverLog(`  ${l}`, "warn"),
+      });
+    });
+  }),
+);
 
 /**
  * SRV-1a: the restart marker the last server left. An audit row says the
@@ -6440,6 +6792,22 @@ process.on("SIGINT", () => {
 
 process.on("SIGTERM", () => {
   beginShutdown("SIGTERM");
+});
+
+/**
+ * BUSY-1: how long Den remembers how a write sent with the working pop-up's
+ * id ended (ui.request_memory_seconds), a positive number, else 600.
+ */
+function requestMemorySeconds(): number {
+  try {
+    const v = Number(readUserConfig().ui?.request_memory_seconds);
+    return Number.isFinite(v) && v > 0 ? v : 600;
+  } catch {
+    return 600;
+  }
+}
+const REQUEST_LEDGER = createRequestLedger({
+  ttlMs: () => requestMemorySeconds() * 1000,
 });
 
 /** D64: ui.restart_wait_seconds, a positive number, else 90. */

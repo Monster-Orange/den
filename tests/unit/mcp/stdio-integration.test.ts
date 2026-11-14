@@ -59,7 +59,7 @@ beforeAll(async () => {
       ),
     );
   });
-  await new Promise<void>((r) => stub.listen(0, "localhost", r));
+  await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
   port = (stub.address() as AddressInfo).port;
 
   root = fs.mkdtempSync(path.join(os.tmpdir(), "den-mcp-"));

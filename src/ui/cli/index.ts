@@ -206,6 +206,7 @@ import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
 } from "./notifications-command.js";
+import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
@@ -560,6 +561,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   usage: USAGE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
+  feedback: FEEDBACK_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -615,6 +617,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "usage",
   "hub",
   "notifications",
+  "feedback",
   "service",
   "theme",
   "plugin",
@@ -650,6 +653,9 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "hub",
   // NT: the bell's own file, no org data.
   "notifications",
+  // FB: Den's own report routes; a report matters most when the config is
+  // what's wrong.
+  "feedback",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1135,6 +1141,10 @@ class DenCLI {
 
         case "notifications":
           process.exitCode = await cmdNotifications(args.slice(1));
+          break;
+
+        case "feedback":
+          process.exitCode = await cmdFeedback(args.slice(1));
           break;
 
         case "mcp": {
@@ -3393,7 +3403,8 @@ class DenCLI {
    * (up to 10s). `stopped` is false when it wasn't running: re-running is ok.
    */
   private async cmdWebDownJson(args: string[]): Promise<number> {
-    const { parseWebCommandArgs } = await import("./web-command.js");
+    const { parseWebCommandArgs, webProbeTarget } =
+      await import("./web-command.js");
     const { probeWebServer } = await import("./mcp-connect.js");
     const bin = fs.existsSync(
       nodePath.join(getDistRoot(), "bin", product().cli),
@@ -3411,7 +3422,9 @@ class DenCLI {
       });
       return 2;
     }
-    const url = `http://localhost:${port}`;
+    // Where the server binds (127.0.0.1 by default), not "localhost":
+    // that resolves to ::1 first, and another listener there answers.
+    const url = `http://${webProbeTarget(process.env.DEN_BIND_HOST, port).hostHeader}`;
     const was = (await probeWebServer(url)).kind === "up";
     let error: string | undefined;
     try {
@@ -3451,7 +3464,8 @@ class DenCLI {
    * (up to 30s), so an agent hands back the right URL.
    */
   private async cmdWebUpJson(args: string[]): Promise<number> {
-    const { parseWebCommandArgs } = await import("./web-command.js");
+    const { parseWebCommandArgs, webProbeTarget } =
+      await import("./web-command.js");
     const { probeWebServer } = await import("./mcp-connect.js");
     const bin = fs.existsSync(
       nodePath.join(getDistRoot(), "bin", product().cli),
@@ -3469,7 +3483,9 @@ class DenCLI {
       });
       return 2;
     }
-    const url = `http://localhost:${port}`;
+    // Where the server binds (127.0.0.1 by default), not "localhost":
+    // that resolves to ::1 first, and another listener there answers.
+    const url = `http://${webProbeTarget(process.env.DEN_BIND_HOST, port).hostHeader}`;
     let error: string | undefined;
     try {
       await quietStdout(() => cmdWeb(args));
@@ -5398,6 +5414,9 @@ class DenCLI {
     );
     console.log(
       "  usage agents|report      Agents' tokens and outcomes, from local transcripts (never sent)",
+    );
+    console.log(
+      "  feedback                 Report an issue: shows exactly what is posted, then asks",
     );
     console.log();
     console.log(

@@ -108,19 +108,37 @@ function run(cmd: string, args: string[], cwd: string): Step {
 const acme = (...args: string[]) =>
   run(path.join(dist, "bin", "acme"), args, dist);
 
-/** Run a step twice: both ok (exit 0), and the answers to compare. */
+/** Listen on a free port in 20000-31999; its number. */
+async function listenBelowEphemeral(srv: net.Server): Promise<number> {
+  for (let i = 0; i < 200; i++) {
+    const port = 20_000 + Math.floor(Math.random() * 12_000);
+    const ok = await new Promise<boolean>((r) => {
+      srv.once("error", () => r(false));
+      srv.listen(port, "localhost", () => r(true));
+    });
+    if (ok) return port;
+  }
+  throw new Error("no free port in 20000-31999");
+}
+
+/**
+ * Run a step twice: both ok (exit 0), and the answers to compare. A step
+ * that fails shows its own error (main's CI showed only the exit code).
+ */
 function twice(...args: string[]): [Step, Step] {
   const a = acme(...args);
-  expect([args.join(" "), a.code, a.json?.ok]).toEqual([
+  expect([args.join(" "), a.code, a.json?.ok, a.json?.error]).toEqual([
     args.join(" "),
     0,
     true,
+    undefined,
   ]);
   const b = acme(...args);
-  expect([args.join(" "), b.code, b.json?.ok]).toEqual([
+  expect([args.join(" "), b.code, b.json?.ok, b.json?.error]).toEqual([
     args.join(" "),
     0,
     true,
+    undefined,
   ]);
   return [a, b];
 }
@@ -145,9 +163,14 @@ beforeAll(async () => {
   // In the person's home: the onboarding tools read only there.
   repo = path.join(tmp, "home", "code", "sample");
   appPort = await freePort();
-  held = net.createServer((c) => c.destroy());
-  await new Promise<void>((r) => held!.listen(0, "localhost", () => r()));
-  heldPort = (held.address() as net.AddressInfo).port;
+  // Below every OS's ephemeral range (Linux 32768+, macOS 49152+): `create`
+  // picks the next free port above this one and the server binds it only
+  // at `web up`. In the ephemeral range, another test's port-0 listen or
+  // an outgoing connection could take it in between (main's CI, 0.4.45:
+  // `web up --json` exited 1).
+  heldPort = await listenBelowEphemeral(
+    (held = net.createServer((c) => c.destroy())),
+  );
   for (const [k, v] of Object.entries(process.env))
     // Keep setup.ts's guards (no login shell, no runtime search dirs).
     if (!/^(DEN_(?!LOGIN_SHELL$|RUNTIME_DIRS$)|ACME_|OP_|DOPPLER_)/.test(k))
@@ -314,8 +337,22 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
     // The share line is in --help (ON-5).
     expect(acme("--help").out).toContain(SHARE_LINE);
 
-    // 2. web up --json, twice (the second finds it running).
-    const [w1, w2] = twice("web", "up", "--no-open", "--json");
+    // 2. web up --json, twice (the second finds it running). Something
+    // else on ::1 at the same port (main's CI, 0.4.45: a test's listen on
+    // "localhost") is not this server: the server binds 127.0.0.1, and the
+    // answer reads it there, never "localhost".
+    const other = net.createServer((c) => c.destroy());
+    const onV6 = await new Promise<boolean>((r) => {
+      other.once("error", () => r(false));
+      other.listen(webPort, "::1", () => r(true));
+    });
+    let w1: Step;
+    let w2: Step;
+    try {
+      [w1, w2] = twice("web", "up", "--no-open", "--json");
+    } finally {
+      if (onV6) await new Promise<void>((r) => other.close(() => r()));
+    }
     for (const w of [w1, w2])
       // D80: the install's address. This one had none; the server took
       // its edge route's at start (the one-time migration).
@@ -438,7 +475,11 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
     const trying = serverAgentCall("service_try", { service: "sample" });
     expect(await allowNext()).toBe("service_try");
     const tried = await trying;
-    expect([tried.code, tried.json.approved]).toEqual([0, true]);
+    // The whole answer on a failure: `up`'s exit code and last lines.
+    expect({ code: tried.code, json: tried.json }).toMatchObject({
+      code: 0,
+      json: { approved: true },
+    });
     const appDeadline = Date.now() + 30_000;
     while ((await get(appPort, "/")) !== 200 && Date.now() < appDeadline)
       await new Promise((r) => setTimeout(r, 200));

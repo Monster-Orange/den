@@ -53,6 +53,14 @@ describe("search", () => {
     // tabs): each match keeps its category.
     expect(ids("terminal")).toEqual([
       ["editor", ["terminal"]],
+      [
+        "agents",
+        [
+          "agents.pane_reconnect",
+          "agents.pane_reconnect_window",
+          "agents.pane_reconnect_wait",
+        ],
+      ],
       ["cli", ["cli.cli_tabs"]],
     ]);
     // A description word: "stack.yml" is in Per-language IDE's.

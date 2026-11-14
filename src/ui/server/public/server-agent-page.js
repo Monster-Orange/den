@@ -25,9 +25,14 @@
  *    and the model picker beside it (agents.server_model), with only the
  *    runtime's own models.
  *
+ *  - 0.4.46: its terminal reconnects on its own after a drop (a web
+ *    restart, sleep, a tablet's background tab): pane-reconnect.js.
+ *
  * serverAgentView(status) is pure (HTML from the status JSON), so tests
  * need no server.
  */
+
+import { paneSettings, termPane } from "/term-pane.js";
 
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -80,10 +85,12 @@ export function serverAgentView(s, o = {}) {
     (onClaude
       ? `<p class="note sa-login" data-note="login">${esc(t("sa.login", { name: s.name }))}</p>`
       : "");
+  // 0.4.46 Start fresh: ends its conversation, starts a new one.
+  const freshBtn = `<div class="sa-acts"><button type="button" class="den-btn sm" data-act="fresh">${esc(t("sa.fresh"))}</button></div>`;
   if (running)
     return {
       sub,
-      body: login + readsOnly,
+      body: login + readsOnly + freshBtn,
       autoStart: false,
       terminal: s.sessionId,
     };
@@ -107,7 +114,8 @@ export function serverAgentView(s, o = {}) {
     body:
       `<div class="sa-idle" data-note="idle"><p>${esc(t("sa.idle", { name: s.name }))}</p>` +
       `<button type="button" class="den-btn primary" data-act="start">${esc(t("sa.start"))}</button></div>` +
-      readsOnly,
+      readsOnly +
+      freshBtn,
     autoStart: false,
     terminal: null,
   };
@@ -313,6 +321,68 @@ async function start() {
   await refresh();
 }
 
+/**
+ * 0.4.46 Start fresh: asks first (its conversation ends), then stops it,
+ * removes it and starts a new one, with the working pop-up.
+ */
+function confirmFresh(name) {
+  return new Promise((resolve) => {
+    let d = document.getElementById("sa-fresh-dlg");
+    if (!d) {
+      d = document.createElement("dialog");
+      d.id = "sa-fresh-dlg";
+      d.className = "sa-fresh-dlg";
+      d.setAttribute("role", "alertdialog");
+      d.setAttribute("aria-labelledby", "sa-fresh-h");
+      document.body.append(d);
+    }
+    d.innerHTML =
+      `<div class="sa-fresh-b"><h2 id="sa-fresh-h" tabindex="-1">${esc(t("sa.fresh.h"))}</h2>` +
+      `<p>${esc(t("sa.fresh.q", { name }))}</p>` +
+      `<div class="sa-fresh-acts"><button type="button" class="den-btn sm" data-saf="cancel">${esc(t("sa.fresh.cancel"))}</button>` +
+      `<button type="button" class="den-btn sm primary" data-saf="go">${esc(t("sa.fresh.go"))}</button></div></div>`;
+    const done = (yes) => {
+      d.removeEventListener("cancel", onCancel);
+      if (d.open && typeof d.close === "function") d.close();
+      else d.removeAttribute("open");
+      resolve(yes);
+    };
+    const onCancel = (e) => {
+      e.preventDefault();
+      done(false);
+    };
+    d.addEventListener("cancel", onCancel);
+    d.querySelector('[data-saf="cancel"]').addEventListener("click", () =>
+      done(false),
+    );
+    d.querySelector('[data-saf="go"]').addEventListener("click", () =>
+      done(true),
+    );
+    if (typeof d.showModal === "function") d.showModal();
+    else d.setAttribute("open", "");
+    d.querySelector('[data-saf="cancel"]').focus();
+  });
+}
+
+async function startFresh(button) {
+  const name = st.status?.name ?? "";
+  if (!(await confirmFresh(name))) {
+    button?.focus();
+    return;
+  }
+  closeTerminal();
+  await window.denShell.busyAction({
+    button,
+    who: "Den",
+    title: t("sa.fresh.w", { name }),
+    done: t("sa.fresh.done", { name }),
+    failed: t("sa.fresh.fail", { name }),
+    run: (headers) =>
+      window.denShell.api("POST", "/api/server-agent/fresh", {}, { headers }),
+  });
+  await refresh();
+}
+
 async function answerTrust(answer) {
   // Gate 0.4.44: check right before sending; a prompt gone since the last
   // check sends nothing (the server's 409 stays the guard behind this).
@@ -379,7 +449,7 @@ function closeTerminal() {
   if (!p) return;
   st.pane = null;
   p.closed = true;
-  p.sock?.close();
+  p.conn?.stop();
   p.term?.dispose();
   p.observer?.disconnect();
   p.el.remove();
@@ -391,7 +461,7 @@ async function openTerminal(id) {
   const el = document.createElement("div");
   el.className = "sa-term";
   el.dataset.id = id;
-  el.innerHTML = `<div class="tbox"></div>`;
+  el.innerHTML = `<p class="sa-recon" role="status"></p><div class="tbox"></div>`;
   st.root.querySelector("#sa-pane").appendChild(el);
   const p = { id, el, term: null, fit: null, sock: null, closed: false };
   st.pane = p;
@@ -441,41 +511,57 @@ async function openTerminal(id) {
       );
   };
   term.onResize(size);
-  const token = await csrf();
+  const settings = await paneSettings();
   if (p.closed) return;
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const sock = new WebSocket(
-    `${proto}//${location.host}/api/sessions/${encodeURIComponent(id)}/io`,
-    ["den.io", `den.csrf.${token ?? ""}`],
-  );
-  sock.binaryType = "arraybuffer";
-  p.sock = sock;
-  sock.onopen = () => {
-    refit();
-    size();
-    term.focus();
-  };
-  sock.onmessage = (e) => {
-    if (typeof e.data === "string") {
-      let msg = null;
-      try {
-        msg = JSON.parse(e.data);
-      } catch {
-        return;
-      }
+  p.windowMin = Math.round(settings.windowMs / 60000);
+  p.conn = termPane({
+    id,
+    term: () => p.term,
+    csrf: () => csrf(),
+    settings,
+    words: {
+      signin: () => t("ag.signin", { cli: CLI }),
+      refusedUnknown: () => t("ag.refusedUnknown"),
+      refusedStatus: (status) => t("ag.refusedStatus", { status }),
+      notAnswering: () => t("ag.notAnswering"),
+    },
+    paint: (r) => paintRecon(p, r),
+    onOpen: (sock) => {
+      p.sock = sock;
+      refit();
+      size();
+      term.focus();
+    },
+    onText: (msg) => {
       if (msg?.type === "exit") {
         term.write(`\r\n${t("ag.exitedLine", { code: "" })}\r\n`);
         setTimeout(() => void refresh(), 1000);
       }
-      return;
-    }
-    term.write(new Uint8Array(e.data));
-  };
-  sock.onclose = (e) => {
-    if (p.closed || p.sock !== sock) return;
-    p.sock = null;
-    term.write(`\r\n${t("ag.lost", { why: e.reason || String(e.code) })}\r\n`);
-  };
+    },
+    onClose: () => {
+      p.sock = null;
+    },
+  });
+  await p.conn.connect();
+}
+
+/** The line above the terminal: quiet while it tries, the button after. */
+function paintRecon(p, r) {
+  const line = p.el.querySelector(".sa-recon");
+  if (!line) return;
+  const btn = `<button type="button" class="den-btn sm" data-sa-recon>${esc(t("ag.reconnect"))}</button>`;
+  const why = r.why ? ` (${esc(r.why)})` : "";
+  line.innerHTML =
+    r.kind === "retrying"
+      ? esc(t("ag.reconnecting"))
+      : r.kind === "tripped"
+        ? `${esc(t("ag.reconnectGaveUp", { n: r.tries, min: p.windowMin }))}${why} ${btn}`
+        : r.kind === "refused"
+          ? `${esc(r.why)} ${btn}`
+          : "";
+  line
+    .querySelector("[data-sa-recon]")
+    ?.addEventListener("click", () => p.conn.retry());
 }
 
 export async function mountServerAgentPage(root) {
@@ -497,6 +583,7 @@ export async function mountServerAgentPage(root) {
       b.disabled = true;
       void start();
     }
+    if (b?.dataset.act === "fresh") void startFresh(b);
     if (b?.dataset.act === "trust-yes" || b?.dataset.act === "trust-no") {
       b.disabled = true;
       void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no");

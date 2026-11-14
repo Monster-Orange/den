@@ -166,9 +166,13 @@ describe("the double-click fix", () => {
       }),
     );
     await p.click(btn("fail-one", "fresh"));
+    // BUSY-1: the working pop-up's Failure says why; Close gives it back.
     await p.waitForFunction(() =>
-      (document.body.textContent ?? "").includes("at its limit of 4"),
+      (document.querySelector("dialog.bz-dlg")?.textContent ?? "").includes(
+        "at its limit of 4",
+      ),
     );
+    await p.click('dialog.bz-dlg [data-bz="close"]');
     await p.waitForFunction(
       (sel) => {
         const b = document.querySelector(sel) as HTMLButtonElement | null;

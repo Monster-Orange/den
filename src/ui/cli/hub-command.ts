@@ -23,6 +23,7 @@ import { actorTokenOf } from "../../shared/actor-token.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { product } from "../../shared/product.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export const HUB_HELP = {
   usage: "hub <push|link> …",
@@ -67,7 +68,7 @@ function defaultDenBase(): string {
   } catch {
     port = DEFAULT_PORT;
   }
-  return `http://localhost:${port}`;
+  return denWebBase(port);
 }
 
 /** A one-line, bounded, printable error from Hub (or Den). */

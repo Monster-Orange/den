@@ -126,6 +126,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/:cli/config",
     "/api/session",
     "/api/server-info",
+    // BUSY-1: how a write sent with the working pop-up's id ended.
+    "/api/requests/*",
     "/api/release/config",
     "/api/release/status",
     "/api/release/runs",
@@ -138,6 +140,17 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/sudo-password/vault-status",
     "/api/scope",
     "/api/settings",
+    // MODE-5: this install's address, and its check's other end.
+    "/api/web-url",
+    "/api/web-url/probe",
+    // FB (den#81): Report an issue's destinations, diagnostics and drafts.
+    "/api/report",
+    "/api/report/diagnostics",
+    "/api/report/drafts",
+    "/api/report/drafts/:id",
+    "/api/report/github-send/:id",
+    // My reports: live from GitHub as the person (an agent gets 403).
+    "/api/report/mine",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
@@ -373,6 +386,26 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // MODE-5: Check and save this install's address (a person's only).
+  M(["POST"], "/api/web-url"),
+  // FB: the preview composes (no write); a send is a person's only.
+  M(
+    ["POST"],
+    "/api/report/preview",
+    "composes the exact issue text (no write)",
+  ),
+  M(
+    ["POST"],
+    "/api/report/send",
+    "files the report as the person, with their gh",
+  ),
+  M(["POST"], "/api/report/drafts", "saves a report draft on this computer"),
+  M(["DELETE"], "/api/report/drafts/:id", "a person discards a draft"),
+  M(
+    ["POST"],
+    "/api/report/github-send",
+    "holds a report for the person's GitHub approval, then files it",
+  ),
   M(
     ["POST"],
     "/api/editor/open",
@@ -561,6 +594,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/server-agent/start",
     "starts the server agent (ON-6): a runtime in a PTY; never an agent's token",
   ),
+  S(
+    ["POST"],
+    "/api/server-agent/fresh",
+    "0.4.46 Start fresh: stops, removes and starts the Den agent (a runtime in a PTY); never an agent's token",
+  ),
   M(
     ["POST"],
     "/api/server-agent/runtime",
@@ -640,6 +678,9 @@ export const SIGNIN_FREE: readonly string[] = [
   // HUB-1.7: Hub's redirect back (no session cookie on it): the state
   // this server issued is the proof (hub-connect.ts).
   "/hub/callback",
+  // MODE-5: the address check comes back in through the edge with no
+  // cookie; it answers 204 or 404 for a one-time token, nothing else.
+  "/api/web-url/probe",
 ];
 
 /**
@@ -677,6 +718,8 @@ export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
+  "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
   "agent-routes.ts:AGENTS_PATH": [
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",

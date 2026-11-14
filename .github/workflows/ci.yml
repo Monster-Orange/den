@@ -12,9 +12,16 @@ permissions:
   contents: read
 
 jobs:
+  # Every gate on both ends of the supported range: the lowest Node that
+  # package.json's engines allows, and the Node installs run (24.13, the
+  # one den#84's V8 crash was seen on). Both block a merge.
   gates:
     runs-on: ubuntu-latest
     timeout-minutes: 30 # the suite takes 13–19 min on a hosted runner
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.13.0", "24.13.0"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,8 +29,9 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22.14.0
+          node-version: ${{ matrix.node }}
           cache: npm
+      - run: node --version
       - run: npm ci
       - run: npm run typecheck
       # LOGICAL-ERD.md "Words people see": no added string says workspace,
@@ -45,11 +53,15 @@ jobs:
   dist-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.13.0", "24.13.0"] # as gates: the supported range's ends
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22.14.0
+          node-version: ${{ matrix.node }}
           cache: npm
       # npm pack runs the prepare script (husky): it needs the dev dependencies.
       - run: npm ci

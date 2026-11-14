@@ -108,6 +108,8 @@ describe("the rail", () => {
       { heading: "Ship", tag: null, items: ["environments", "release"] },
       "den-rail-grow",
       "settings",
+      // FB (den#81): Report an issue, beside Settings.
+      "report",
       "collapse",
     ]);
     // Each group is named for assistive tech by its heading.
@@ -1047,6 +1049,8 @@ describe("Navigation prefs (R21)", () => {
       { heading: "Ship", tag: null, items: ["environments", "release"] },
       "den-rail-grow",
       "settings",
+      // FB (den#81): Report an issue, beside Settings.
+      "report",
       "collapse",
     ]);
     // The Settings page is current on /settings.

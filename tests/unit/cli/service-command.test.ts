@@ -191,7 +191,7 @@ describe("cmdService", () => {
     const h = harness({ web: { service: { logs: "/var/log/acme" } } });
     expect(await cmdService(["install"], h.deps)).toBe(0);
     expect(h.polls).toEqual([
-      { url: "http://localhost:7001/api/server-info", timeoutMs: 30_000 },
+      { url: "http://127.0.0.1:7001/api/server-info", timeoutMs: 30_000 },
     ]);
     expect(h.lines.join("\n")).toMatch(
       /local\.acme-dev\.web running .*http:\/\/localhost:7001/,

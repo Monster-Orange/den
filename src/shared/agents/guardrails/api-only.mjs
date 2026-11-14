@@ -55,15 +55,43 @@ function expand(p, cwd, home) {
 const under = (p, root) =>
   p === root || p.startsWith(root.endsWith("/") ? root : `${root}/`);
 
-/** The protected paths: each service's data paths; with a machine, OrbStack's. */
+/**
+ * 0.4.46: the container engines whose CLI is Docker's equal (run, exec,
+ * cp, compose, volumes, and `<engine> raw …`), and the folders they keep
+ * VM disks and volumes in. Den's defaults; the rules file's `engines` and
+ * `engineDirs` (the agents.api_only_engines setting) add to them.
+ */
+export const DEFAULT_ENGINES = [
+  "docker",
+  "docker-compose",
+  "podman",
+  "nerdctl",
+  "container",
+  "kiri",
+];
+export const DEFAULT_ENGINE_DIRS = [
+  "~/OrbStack",
+  "~/.orbstack",
+  "~/.colima",
+  "~/.lima",
+  "~/.kiri",
+  "~/Kiri",
+  "~/.local/share/containers",
+  "~/Library/Containers/com.docker.docker",
+];
+const engineSet = (rules) =>
+  new Set([...DEFAULT_ENGINES, ...list(rules.engines)]);
+
+/** The protected paths: each service's data paths, and the engines' folders. */
 function protectedPaths(rules, home) {
   const out = [];
+  const dirs = [...DEFAULT_ENGINE_DIRS, ...list(rules.engineDirs)];
   for (const s of rules.services) {
     for (const p of list(s.paths))
       out.push({ path: expand(p, "/", home), service: s.name });
-    if (s.machine && home)
-      for (const d of ["OrbStack", ".orbstack"])
-        out.push({ path: path.join(home, d), service: s.name });
+    if (home)
+      for (const d of dirs)
+        out.push({ path: expand(d, "/", home), service: s.name });
   }
   return out;
 }
@@ -376,6 +404,46 @@ function dockerReason(words, rules, ctx) {
   return null;
 }
 
+/**
+ * An engine's command (any listed engine is Docker's equal; `<engine> raw
+ * …` is its own command), and the wrappers that run one inside a VM:
+ * `lima <cmd>`, `limactl shell <vm> <cmd>`, `colima nerdctl [--] …`,
+ * `colima ssh [--] <cmd>`. Null when it is none of them, or it passes.
+ */
+function engineReason(words, rules, ctx, depth = 0) {
+  if (depth > 4 || !words.length) return null;
+  const c = base(words[0]);
+  const again = (w) => engineReason(w, rules, ctx, depth + 1);
+  if (c === "lima") return again(words.slice(1));
+  if (c === "limactl") {
+    const i = words.indexOf("shell");
+    if (i < 0) return null;
+    let k = i + 1;
+    while (k < words.length && words[k].startsWith("-")) k++;
+    return again(words.slice(k + 1));
+  }
+  if (c === "colima") {
+    let rest = words.slice(2);
+    if (words[1] === "nerdctl") {
+      if (rest[0] === "--") rest = rest.slice(1);
+      return again(["nerdctl", ...rest]);
+    }
+    if (words[1] === "ssh") {
+      const d = rest.indexOf("--");
+      return again(d >= 0 ? rest.slice(d + 1) : rest);
+    }
+    return null;
+  }
+  if (c === "orb" || c === "orbctl") return orbReason(words, rules);
+  if (engineSet(rules).has(c))
+    return dockerReason(
+      words[1] === "raw" ? [words[0], ...words.slice(2)] : words,
+      rules,
+      ctx,
+    );
+  return null;
+}
+
 /** `docker compose …` / `docker-compose …` against a service's project. */
 function composeReason(args, rules, ctx) {
   let project = ctx.env.COMPOSE_PROJECT_NAME ?? "";
@@ -609,11 +677,8 @@ function stageReason(st, rules, ctx, parseShell, depth) {
     );
     if (r) return r;
   }
-  let r = null;
-  if (c === "docker" || c === "docker-compose" || c === "podman")
-    r = dockerReason(words, rules, here);
-  else if (c === "orb" || c === "orbctl") r = orbReason(words, rules);
-  else if (["ssh", "scp", "sftp", "rsync", "mosh"].includes(c))
+  let r = engineReason(words, rules, here);
+  if (!r && ["ssh", "scp", "sftp", "rsync", "mosh"].includes(c))
     r = sshReason(words, rules);
   if (r) return r;
   // Any word that is a path under a protected one: a read or a write.

@@ -42,6 +42,9 @@ fs.writeFileSync(
         machine: "vaultvm",
       },
     ],
+    // 0.4.46: engines and their folders beyond Den's defaults (a setting).
+    engines: ["boxer"],
+    engineDirs: ["~/.boxer"],
   }),
 );
 
@@ -114,6 +117,29 @@ describe("D47: around the API is denied, with the API offered", () => {
     "docker -H ssh://root@vaultvm.orb.local ps",
     "cat ~/OrbStack/vaultvm/data/db",
     "ls ~/.orbstack/run",
+    // 0.4.46: every container engine is Docker's equal, wrapped or not.
+    "nerdctl exec vault-api-1 ls",
+    "nerdctl run --rm -v vault_data:/d alpine ls /d",
+    "nerdctl compose -p vault exec api sh",
+    "podman exec vault-api-1 ls",
+    "container exec vault-api-1 ls",
+    "kiri exec vault-api-1 ls",
+    "kiri run --rm -v vault_data:/d alpine ls /d",
+    "kiri raw run --rm -v vault_data:/d alpine ls /d",
+    "kiri raw exec vault-api-1 ls",
+    "lima nerdctl exec vault-api-1 ls",
+    "limactl shell default nerdctl exec vault-api-1 ls",
+    "colima nerdctl -- exec vault-api-1 ls",
+    "colima ssh -- nerdctl exec vault-api-1 ls",
+    "/opt/bin/kiri exec vault-api-1 ls",
+    "boxer exec vault-api-1 ls",
+    // Their own folders (VM disks, volumes).
+    "cat ~/.kiri/vm/disk.img",
+    "ls ~/Kiri/volumes",
+    "ls ~/.colima/default",
+    "ls ~/.lima/default",
+    "cat ~/.local/share/containers/storage/volumes/vault_data/_data/db",
+    "ls ~/.boxer/vols",
   ])("%s", (command) => {
     const r = bash(command);
     expect(r.code).toBe(2);
@@ -206,6 +232,12 @@ describe("D47: the API, and everything else, passes", () => {
     "orb list",
     "orb -m othervm ls",
     "ssh othervm@orb",
+    "nerdctl ps",
+    "kiri raw ps",
+    "kiri exec shop-api-1 ls",
+    "lima nerdctl run --rm -v shop_data:/d alpine ls /d",
+    "limactl list",
+    "colima status",
     `ls ${repo}/src`,
     "git status",
     "echo vault-api-1",

@@ -91,6 +91,8 @@ import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { dismissable } from "/popover.js";
+import { reconnectOptions } from "/pane-reconnect.js";
+import { termPane } from "/term-pane.js";
 import {
   attachFiles,
   guardPageDrops,
@@ -146,7 +148,8 @@ const esc = (s) =>
         c
       ],
   );
-const api = (method, url, body) => window.denShell.api(method, url, body);
+const api = (method, url, body, opts) =>
+  window.denShell.api(method, url, body, opts);
 const CLI = "__DEN_CLI__";
 const TITLE = "__DEN_TITLE__";
 /** ON-6: the server agent's scope (no workspace), shared/agents/server-agent.ts. */
@@ -167,6 +170,8 @@ const REFRESH_MS = 5_000;
 
 const st = {
   root: null,
+  /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
+  reconnect: reconnectOptions(undefined),
   /** 0.4.45: /api/workspaces, for the projects' names (projName). */
   projects: null,
   projectsAt: 0,
@@ -1165,6 +1170,7 @@ async function savedLayout() {
     const r = await fetch("/api/settings", { headers: { accept: "json" } });
     const b = r.ok ? await r.json() : null;
     if (typeof b?.editor_open === "string") st.editorOpen = b.editor_open;
+    st.reconnect = reconnectOptions(b?.panes_reconnect);
     if (Number.isInteger(b?.agents_helpers_shown) && b.agents_helpers_shown > 0)
       st.helpersShown = b.agents_helpers_shown;
     return LAYOUTS.includes(b?.agents_layout) ? b.agents_layout : "focus";
@@ -1316,13 +1322,11 @@ function freshLine(p) {
 /** Move pane `p` to session row `row`, where it was. */
 function retarget(p, row) {
   const old = p.id;
-  const sock = p.sock;
+  // Another session: a connection of its own.
+  p.conn?.stop();
+  p.conn = null;
   p.sock = null;
-  try {
-    sock?.close(1000, "switched");
-  } catch {
-    /* already closed */
-  }
+  p.recon = null;
   st.panes.delete(old);
   p.id = row.id;
   st.panes.set(row.id, p);
@@ -1756,14 +1760,17 @@ function mcpStaleTag(r, withButton) {
 
 /** D44: Restart at its next idle; the list shows it come back. */
 async function restartForTools(r, button) {
-  if (button) button.disabled = true;
-  try {
-    await api("POST", agentPath(r, "restart"), { when: "after-turn" });
-    window.denShell?.toast?.(t("ag.mcp.restarting", { id: r.agent }));
-  } catch (err) {
-    if (button) button.disabled = false;
-    window.denShell?.errorToast?.(err);
-  }
+  const name = { name: r.agent };
+  // BUSY-1: the working pop-up, then what happened.
+  await window.denShell.busyAction({
+    button,
+    who: "Den",
+    title: t("busy.restartW", name),
+    failed: t("busy.restartF", name),
+    done: t("ag.mcp.restarting", { id: r.agent }),
+    run: (headers) =>
+      api("POST", agentPath(r, "restart"), { when: "after-turn" }, { headers }),
+  });
   await refresh();
 }
 
@@ -1816,9 +1823,7 @@ function paintBar(p) {
     r && isStopped(r) && r.resumable
       ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
       : "";
-  const reconnect = p.lost
-    ? `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`
-    : "";
+  const reconnect = reconnectHtml(p);
   // AG-DROP: Attach (a touch screen has no drop): a live session's only.
   const attach =
     !p.lost && !p.exited && !(r && isStopped(r))
@@ -2079,152 +2084,133 @@ function remeasureAll() {
   for (const p of st.panes.values()) remeasure(p);
 }
 
-async function connect(p) {
-  p.lost = false;
-  paintBar(p);
-  const token = await csrf(false);
-  if (p.closed) return;
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${proto}//${location.host}/api/sessions/${encodeURIComponent(p.id)}/io`;
-  let sock;
-  try {
-    sock = new WebSocket(url, ["den.io", `den.csrf.${token ?? ""}`]);
-  } catch (err) {
-    p.term?.write(`\r\n${t("ag.lost", { why: err?.message ?? "error" })}\r\n`);
-    p.lost = true;
-    paintBar(p);
-    return;
-  }
-  sock.binaryType = "arraybuffer";
-  p.sock = sock;
-  p.heardSession = false;
-  let opened = false;
-  sock.onopen = () => {
-    opened = true;
-    p.pty = null;
-    p.heardSize = false;
-    // D54: who sizes the PTY is decided on the session frame (it says
-    // how many view it); until then, this pane waits.
-    p.following = false;
-    p.decided = false;
-    refit(p);
-  };
-  sock.onmessage = (e) => {
-    if (typeof e.data === "string") {
-      let msg = null;
-      try {
-        msg = JSON.parse(e.data);
-      } catch {
-        return;
-      }
-      if (msg?.type === "size") {
-        if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
-          p.heardSize = true;
-          const said = (z) => !!z && z.cols === msg.cols && z.rows === msg.rows;
-          const w =
-            p.awaiting && Date.now() < p.awaiting.until ? p.awaiting : null;
-          p.pty = { cols: msg.cols, rows: msg.rows };
-          let mine = false;
-          if (p.following) p.awaiting = null;
-          else if (w) {
-            // Still waiting for this pane's own size: an older frame. The
-            // PTY will be this pane's.
-            mine = true;
-            if (said(w)) p.awaiting = null;
-            else p.pty = { cols: w.cols, rows: w.rows };
-          } else {
-            p.awaiting = null;
-            mine = said(p.term);
-          }
-          // D54: another view set it: draw at its size until typed in.
-          // Alone, a size this pane didn't say is only an older one (a
-          // hidden pane that couldn't say its own yet): never a reason to
-          // follow.
-          if (!mine && (p.viewers ?? 1) > 1) p.following = true;
-          if (p.following) followPty(p);
-          else markSize(p);
-        }
-      } else if (msg?.type === "session") {
-        p.label = msg.label;
-        p.workspace = msg.workspace;
-        p.exited = !!msg.exited;
-        p.heardSession = true;
-        paintBar(p);
-        if (!p.decided) {
-          p.decided = true;
-          // D54: a lone viewer, or the pane the person just opened, sizes
-          // the PTY; another view of a session already in use follows
-          // its size until typed in, so opening one never redraws the
-          // other. An older server says no count: this pane leads.
-          p.viewers = Number.isInteger(msg.viewers) ? msg.viewers : 1;
-          const alone = p.viewers <= 1;
-          if (alone || (st.focusOnOpen === p.id && st.claimOnOpen))
-            claimSize(p);
-          else {
-            p.following = true;
-            if (p.pty) followPty(p);
-            else paintFollow(p);
-          }
-        }
-        // D40: the pane the person picked takes the keyboard once the
-        // server says its session is live (the first frame), never one
-        // that has ended.
-        if (st.focusOnOpen === p.id) {
-          if (p.exited) st.focusOnOpen = null;
-          else focusTerm(p.id, st.claimOnOpen, { ifIdle: st.focusIfIdle });
-        }
-      } else if (msg?.type === "viewers") {
-        // D54: the view that sized the PTY went away: this one, alone now,
-        // sizes it.
-        if (Number.isInteger(msg.n)) {
-          p.viewers = msg.n;
-          if (msg.n <= 1 && p.following) claimSize(p);
-        }
-      } else if (msg?.type === "exit") {
-        p.exited = true;
-        // Its agent may continue in a new session (followAgents).
-        st.followUntil = Date.now() + FOLLOW_FOR_MS;
-        const code =
-          typeof msg.exitCode === "number" ? ` (${msg.exitCode})` : "";
-        p.term?.write(`\r\n${t("ag.exitedLine", { code })}\r\n`);
-        void refresh();
-      }
-      return;
-    }
-    p.term?.write(new Uint8Array(e.data));
-  };
-  sock.onclose = async (e) => {
-    if (p.sock !== sock) return;
-    p.sock = null;
-    if (p.closed) return;
-    // Refused before it opened: a browser sees only the close, so ask the
-    // route why with a plain GET (0.4.17). "Sign in" only when it's 401.
-    let why = e.reason || String(e.code);
-    if (!opened) {
-      void refresh();
-      why = await refusalReason(p.id);
-      if (p.closed || p.sock) return;
-    }
-    p.term?.write(`\r\n${t("ag.lost", { why })}\r\n`);
-    p.lost = true;
-    paintBar(p);
-  };
+/** The bar's reconnect part: a quiet line while it tries, else a button. */
+function reconnectHtml(p) {
+  const s = p.recon;
+  const btn = `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`;
+  if (s?.kind === "retrying")
+    return `<span class="ag-recon" role="status">${esc(t("ag.reconnecting"))}</span>`;
+  if (s?.kind === "tripped")
+    return `<span class="ag-recon" role="status">${esc(t("ag.reconnectGaveUp", { n: s.tries, min: Math.round(st.reconnect.windowMs / 60000) }))}${s.why ? ` (${esc(s.why)})` : ""}</span>${btn}`;
+  return p.lost ? btn : "";
 }
 
-/** Why session `id`'s io upgrade was refused, in words for its pane. */
-async function refusalReason(id) {
-  try {
-    const r = await fetch(`/api/sessions/${encodeURIComponent(id)}/io`, {
-      headers: { accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (r.status === 401) return t("ag.signin", { cli: CLI });
-    const b = await r.json().catch(() => null);
-    if (r.status === 426) return t("ag.refusedUnknown");
-    if (typeof b?.error === "string" && b.error) return b.error;
-    return t("ag.refusedStatus", { status: r.status });
-  } catch {
-    return t("ag.refusedUnknown");
+/** The words a refused terminal gives (term-pane.js refusalOf). */
+const PANE_WORDS = {
+  signin: () => t("ag.signin", { cli: CLI }),
+  refusedUnknown: () => t("ag.refusedUnknown"),
+  refusedStatus: (status) => t("ag.refusedStatus", { status }),
+  notAnswering: () => t("ag.notAnswering"),
+};
+
+/**
+ * Pane `p`'s connection to its session (term-pane.js, shared with the
+ * __DEN_TITLE__ agent's page): it reconnects on its own after a drop.
+ */
+function connect(p) {
+  if (p.closed) return;
+  p.conn ??= termPane({
+    id: p.id,
+    term: () => p.term,
+    csrf: (fresh) => csrf(fresh),
+    settings: st.reconnect,
+    words: PANE_WORDS,
+    paint: (r) => {
+      p.recon = r;
+      p.lost = r.kind === "tripped" || r.kind === "refused";
+      paintBar(p);
+    },
+    onOpen: (sock) => {
+      p.sock = sock;
+      p.heardSession = false;
+      p.pty = null;
+      p.heardSize = false;
+      // D54: who sizes the PTY is decided on the session frame (it says
+      // how many view it); until then, this pane waits.
+      p.following = false;
+      p.decided = false;
+      refit(p);
+    },
+    onText: (msg) => paneText(p, msg),
+    onClose: ({ opened, refused, why }) => {
+      p.sock = null;
+      if (!opened) void refresh();
+      if (refused) p.term?.write(`\r\n${t("ag.lost", { why })}\r\n`);
+    },
+  });
+  return p.conn.connect();
+}
+
+/** A JSON frame from pane `p`'s session. */
+function paneText(p, msg) {
+  if (msg?.type === "size") {
+    if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
+      p.heardSize = true;
+      const said = (z) => !!z && z.cols === msg.cols && z.rows === msg.rows;
+      const w = p.awaiting && Date.now() < p.awaiting.until ? p.awaiting : null;
+      p.pty = { cols: msg.cols, rows: msg.rows };
+      let mine = false;
+      if (p.following) p.awaiting = null;
+      else if (w) {
+        // Still waiting for this pane's own size: an older frame. The
+        // PTY will be this pane's.
+        mine = true;
+        if (said(w)) p.awaiting = null;
+        else p.pty = { cols: w.cols, rows: w.rows };
+      } else {
+        p.awaiting = null;
+        mine = said(p.term);
+      }
+      // D54: another view set it: draw at its size until typed in.
+      // Alone, a size this pane didn't say is only an older one (a
+      // hidden pane that couldn't say its own yet): never a reason to
+      // follow.
+      if (!mine && (p.viewers ?? 1) > 1) p.following = true;
+      if (p.following) followPty(p);
+      else markSize(p);
+    }
+  } else if (msg?.type === "session") {
+    p.label = msg.label;
+    p.workspace = msg.workspace;
+    p.exited = !!msg.exited;
+    p.heardSession = true;
+    paintBar(p);
+    if (!p.decided) {
+      p.decided = true;
+      // D54: a lone viewer, or the pane the person just opened, sizes
+      // the PTY; another view of a session already in use follows
+      // its size until typed in, so opening one never redraws the
+      // other. An older server says no count: this pane leads.
+      p.viewers = Number.isInteger(msg.viewers) ? msg.viewers : 1;
+      const alone = p.viewers <= 1;
+      if (alone || (st.focusOnOpen === p.id && st.claimOnOpen)) claimSize(p);
+      else {
+        p.following = true;
+        if (p.pty) followPty(p);
+        else paintFollow(p);
+      }
+    }
+    // D40: the pane the person picked takes the keyboard once the
+    // server says its session is live (the first frame), never one
+    // that has ended.
+    if (st.focusOnOpen === p.id) {
+      if (p.exited) st.focusOnOpen = null;
+      else focusTerm(p.id, st.claimOnOpen, { ifIdle: st.focusIfIdle });
+    }
+  } else if (msg?.type === "viewers") {
+    // D54: the view that sized the PTY went away: this one, alone now,
+    // sizes it.
+    if (Number.isInteger(msg.n)) {
+      p.viewers = msg.n;
+      if (msg.n <= 1 && p.following) claimSize(p);
+    }
+  } else if (msg?.type === "exit") {
+    p.exited = true;
+    // Its agent may continue in a new session (followAgents).
+    st.followUntil = Date.now() + FOLLOW_FOR_MS;
+    const code = typeof msg.exitCode === "number" ? ` (${msg.exitCode})` : "";
+    p.term?.write(`\r\n${t("ag.exitedLine", { code })}\r\n`);
+    void refresh();
   }
 }
 
@@ -2639,6 +2625,7 @@ function closePane(id, { quiet = false } = {}) {
   const p = st.panes.get(id);
   if (!p) return;
   p.closed = true;
+  p.conn?.stop();
   st.panes.delete(id);
   st.open = st.open.filter((x) => x !== id);
   st.side.delete(id);
@@ -2774,30 +2761,37 @@ function restartRow(r, verb, button) {
 
 async function restartRowNow(r, verb, button) {
   if (button) button.disabled = true;
-  try {
-    const out = await api("POST", agentPath(r, verb));
-    window.denShell?.toast?.(
+  const name = { name: r.agent };
+  // BUSY-1: the working pop-up while Den starts it, then what happened.
+  let opened;
+  const out = await window.denShell.busyAction({
+    button,
+    who: "Den",
+    title: t("busy.startW", name),
+    failed: t("busy.startF", name),
+    done: (o) =>
       t(
         verb === "relaunch"
           ? "ag.relaunched"
           : verb !== "resume"
             ? "ag.startedFresh"
-            : out?.fresh
+            : o?.fresh
               ? "ag.resumedFresh"
               : "ag.resumed",
         { id: r.agent },
       ),
-    );
+    run: (headers) => api("POST", agentPath(r, verb), undefined, { headers }),
     // Its open pane follows it to the new session (followAgents, in
     // refresh); one that couldn't (not running yet) is closed for it.
+    onDone: (o) => (opened = follow(o)),
+  });
+  await (out ? opened : refresh());
+  async function follow(o) {
     await refresh();
-    const next = out?.agent?.sessionId;
+    const next = o?.agent?.sessionId;
     if (next && next !== r.id && st.panes.has(r.id))
       closePane(r.id, { quiet: true });
     if (next) await openPane(next);
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-    await refresh();
   }
 }
 
@@ -4019,26 +4013,46 @@ async function submitStart(form) {
     return showStartError(new Error(t("pe.badCmd", { c: bad })));
   go.disabled = true;
   go.textContent = t("ag.starting");
+  // BUSY-1: the working pop-up while Den starts it; the dialog keeps the
+  // error too.
+  const plain = sd.pid === PLAIN;
+  const name = {
+    name: plain ? t("ag.session") : $d("#ag-name").value || sd.pid,
+  };
+  const wsUrl = `/api/workspaces/${encodeURIComponent(ws)}`;
+  const body = plain ? undefined : startBody();
+  let opened;
   try {
-    if (sd.pid === PLAIN) {
-      const r = await api(
-        "POST",
-        `/api/workspaces/${encodeURIComponent(ws)}/sessions`,
-      );
-      window.denShell?.toast?.(
-        t("ag.new.started", { p: t("ag.session"), w: ws }),
-      );
+    const r = await window.denShell.busyAction({
+      button: go,
+      who: "Den",
+      title: t("busy.startW", name),
+      failed: t("busy.startF", name),
+      done: (o) =>
+        plain
+          ? t("ag.new.started", { p: t("ag.session"), w: ws })
+          : t("ag.started", { id: o?.agent?.id ?? sd.pid }),
+      run: (headers) =>
+        api("POST", plain ? `${wsUrl}/sessions` : `${wsUrl}/agents`, body, {
+          headers,
+        }),
+      onFail: (err) => showStartError(err),
+      onDone: (o) => (opened = startedOk(o)),
+    });
+    if (r) await opened;
+  } finally {
+    go.disabled = false;
+    go.textContent = goLabel();
+    if (dlg.open) paintRuntime(false);
+  }
+
+  async function startedOk(r) {
+    if (plain) {
       dlg.close?.();
       await refresh();
       if (r?.session?.id) await openPane(r.session.id);
       return;
     }
-    const r = await api(
-      "POST",
-      `/api/workspaces/${encodeURIComponent(ws)}/agents`,
-      startBody(),
-    );
-    window.denShell?.toast?.(t("ag.started", { id: r?.agent?.id ?? sd.pid }));
     // AG-10.10: the next start of this persona takes another id.
     personasAsked.delete(ws);
     $d("#ag-name").value = "";
@@ -4046,12 +4060,6 @@ async function submitStart(form) {
     dlg.close?.();
     await refresh();
     if (r?.agent?.sessionId) await openPane(r.agent.sessionId);
-  } catch (err) {
-    showStartError(err);
-  } finally {
-    go.disabled = false;
-    go.textContent = goLabel();
-    if (dlg.open) paintRuntime(false);
   }
 }
 
@@ -4311,7 +4319,9 @@ function wireDocument() {
   // D64: Den restarted in place (restart-den.js): lost panes reconnect,
   // no reload, so what was typed stays.
   window.addEventListener("den:server-back", () => {
-    for (const p of st.panes.values()) if (p.lost || !p.sock) void connect(p);
+    for (const p of st.panes.values())
+      if (p.lost && p.conn) p.conn.retry();
+      else if (!p.sock) p.conn ? p.conn.nudge() : void connect(p);
     void refresh();
   });
   window.addEventListener("den:appearance", () => {
@@ -4780,7 +4790,8 @@ export async function mountAgentsPage(root) {
     } else if (b.dataset.act === "resume") {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);
-    } else if (b.dataset.act === "reconnect") void connect(p);
+    } else if (b.dataset.act === "reconnect")
+      p.conn ? p.conn.retry() : void connect(p);
     else if (b.dataset.act === "attach")
       pickFiles((files) => void attachFiles(p.el, files, dropOpts(p)));
     else if (b.dataset.act === "helpers") {
@@ -4888,16 +4899,6 @@ export async function mountAgentsPage(root) {
   window.matchMedia?.(PHONE).addEventListener?.("change", () => {
     paintLayout();
     paintList();
-  });
-  window.addEventListener("pagehide", () => {
-    for (const p of st.panes.values()) {
-      p.closed = true;
-      try {
-        p.sock?.close(1000, "page closed");
-      } catch {
-        /* already closed */
-      }
-    }
   });
 
   // NT-2: while this tab is visible and focused, the agents in its panes

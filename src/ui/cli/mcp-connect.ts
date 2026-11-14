@@ -38,6 +38,7 @@ import {
 } from "./server-identity.js";
 import { readDenConfig, readMcpConfig } from "../../shared/den-config.js";
 import { printJson } from "./json-out.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export const MCP_CONNECT_SUBCOMMANDS = [
   "connect",
@@ -319,7 +320,7 @@ function webUrl(port?: number): string {
       p = DEFAULT_PORT;
     }
   }
-  return `http://localhost:${p}`;
+  return denWebBase(p);
 }
 
 async function webServerLine(port?: number, probe?: WebProbe): Promise<string> {

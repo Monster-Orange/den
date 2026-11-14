@@ -7,7 +7,7 @@ import chalk from "chalk";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import * as net from "net";
+import { webProbeTarget } from "../../shared/web-dial.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
@@ -288,6 +288,7 @@ export function denWebUrlAliases(port: number): string[] {
   return [
     `http://${product().cli}:${port}`,
     `http://${product().cli}.localhost:${port}`,
+    // eslint-disable-next-line no-restricted-syntax -- an address shown to a person, not dialled
     `http://localhost:${port}`,
     `http://127.0.0.1:${port}`,
   ];
@@ -317,28 +318,7 @@ export function isDenWebTabUrl(
   }
 }
 
-/**
- * Where `web up`'s probes (readiness, the CLI's own calls) reach the
- * server, and the Host they send: the address DEN_BIND_HOST binds. Unset,
- * 0.0.0.0 or `::` answer on loopback, so 127.0.0.1; one specific address
- * (a LAN IP with web.allow_plain_http_remote, or ::1) answers only there.
- * The Host names that address (an IPv6 one bracketed): the Host allowlist
- * accepts it (a loopback name, or the bound LAN address).
- */
-export function webProbeTarget(
-  bind: string | undefined,
-  port: number,
-): { host: string; hostHeader: string } {
-  const b = (bind ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/^\[|\]$/g, "");
-  const host = b === "" || b === "0.0.0.0" || b === "::" ? "127.0.0.1" : b;
-  return {
-    host,
-    hostHeader: `${net.isIPv6(host) ? `[${host}]` : host}:${port}`,
-  };
-}
+export { webProbeTarget };
 
 async function getHttpText(
   port: number,
@@ -1363,7 +1343,7 @@ async function runWeb(args: string[]): Promise<void> {
     return;
   }
   if (args[0] === "url") {
-    process.exitCode = cmdWebUrl(args.slice(1));
+    process.exitCode = await cmdWebUrl(args.slice(1));
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {

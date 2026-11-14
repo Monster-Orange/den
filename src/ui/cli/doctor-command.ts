@@ -74,6 +74,7 @@ import {
   RUNTIME_KIND,
 } from "../../shared/agents/runtimes.js";
 import {
+  ADDRESS_SETTINGS_LINK,
   defaultOnboardDeps,
   onboardingChecks,
   runnableCli,
@@ -91,6 +92,7 @@ import {
   type WhereRow,
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export interface DoctorRow {
   kind: string;
@@ -429,7 +431,7 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
     platform: process.platform,
     server: async () => {
       const port = readWebPort(getDistRoot());
-      const res = await fetch(`http://localhost:${port}/api/server-info`, {
+      const res = await fetch(`${denWebBase(port)}/api/server-info`, {
         signal: AbortSignal.timeout(1500),
       });
       if (!res.ok) return null;
@@ -685,7 +687,7 @@ export function addressLines(
   cli: string,
 ): { lines: string[]; problem: boolean; check: OnboardCheck } {
   if (!w) {
-    const detail = `not set: run \`${cli} web url <address>\` (for example https://${cli}.local.example.com)`;
+    const detail = `not set: set it in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url <address>\` (for example https://${cli}.local.example.com)`;
     return {
       lines: ["", `${title} doctor: Address`, "", `  address  ✗  ${detail}`],
       problem: true,
@@ -693,6 +695,7 @@ export function addressLines(
         id: "address",
         status: "fail",
         detail,
+        settings: ADDRESS_SETTINGS_LINK,
         // A person sets it (an agent's session can't): ask them.
         ask: `What address do people open this ${title} at (for example https://${cli}.local.example.com)? Then run \`${cli} web url <address>\`.`,
       },

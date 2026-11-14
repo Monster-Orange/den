@@ -63,6 +63,29 @@ describe("startDenServer", () => {
     expect(picks).toEqual([]);
   });
 
+  it("a server that exits saying its port is taken (Den's own words, no EADDRINUSE) is tried again on another", async () => {
+    const root = tmpRoot();
+    // The first start says what Den's server says, and exits; the second
+    // is a server of its own.
+    const once = path.join(root, "said-taken");
+    const script = `
+const fs = require("fs");
+if (!fs.existsSync(${JSON.stringify(once)})) {
+  fs.writeFileSync(${JSON.stringify(once)}, "1");
+  console.error("  ✗ Port " + process.env.PORT + " is already in use.");
+  process.exit(1);
+}
+${FAKE}`;
+    const started = await startDenServer(
+      process.execPath,
+      ["-e", script],
+      { cwd: root, env: { ...process.env, DEN_ROOT: root } },
+      { timeoutMs: 10_000 },
+    );
+    cleanup.push(() => stopServer(started.server));
+    expect(fs.existsSync(once)).toBe(true);
+  });
+
   it("a server that exits for its own reasons fails at once, with what it printed", async () => {
     const root = tmpRoot();
     await expect(

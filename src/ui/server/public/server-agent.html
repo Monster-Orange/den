@@ -153,14 +153,25 @@
         min-height: 240px;
         min-width: 0;
         display: grid;
-        grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+        grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
         padding: 6px 4px 4px 8px;
         background: var(--sunken);
         border: 1px solid var(--border);
         border-radius: var(--radius);
         overflow: hidden;
       }
+      /* 0.4.46: reconnecting on its own (a quiet line), or the button. */
+      .sa-term .sa-recon {
+        grid-row: 1;
+        margin: 0 0 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .sa-term .sa-recon:empty {
+        display: none;
+      }
       .sa-term .tbox {
+        grid-row: 2;
         min-height: 0;
         min-width: 0;
         overflow: hidden;
@@ -170,6 +181,44 @@
       }
       .sa-term .xterm .xterm-viewport {
         background-color: var(--sunken);
+      }
+      /* 0.4.46 Start fresh: its button, and the confirm. */
+      .sa-acts {
+        display: flex;
+        justify-content: flex-end;
+        margin: 4px 0;
+      }
+      .sa-fresh-dlg {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0;
+        background: var(--surface, var(--bg));
+        color: var(--text);
+        width: min(420px, calc(100vw - 32px));
+      }
+      .sa-fresh-dlg::backdrop {
+        background: rgba(0, 0, 0, 0.25);
+      }
+      .sa-fresh-b {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .sa-fresh-b h2 {
+        font-size: 15px;
+        margin: 0;
+      }
+      .sa-fresh-b p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .sa-fresh-acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
       }
     </style>
   </head>
@@ -187,10 +236,12 @@
         </div>
         <div class="acts">
           <label id="sa-runtime" hidden
-            ><span>Runs on</span> <select></select
+            ><span>Runs on</span>
+            <select></select
           ></label>
           <label id="sa-model" hidden
-            ><span>Model</span> <select></select
+            ><span>Model</span>
+            <select></select
           ></label>
           <a class="den-btn" id="sa-open" href="/agents" hidden
             >Open in Agents</a

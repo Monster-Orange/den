@@ -219,15 +219,34 @@ export async function mountSettings(deps) {
     if (!r.ok) throw new Error(`${url}: ${r.status}`);
     return r.json();
   }
+  /**
+   * BUSY-1: a save through the working pop-up: nothing shows for a fast
+   * one (the row says Saved itself); a slow one says it is saving, and a
+   * failure says so with Try again. The control pressed waits with it.
+   * The answer's data, or null.
+   */
+  function busySave(url, body) {
+    const sh = window.denShell;
+    const run = (headers) => sh.api("POST", url, body, { headers });
+    if (!sh?.busyAction) return run({}).catch(() => null);
+    const el = document.activeElement;
+    const button =
+      el && el !== document.body && "disabled" in el ? el : undefined;
+    const t = (k) => sh.t(k);
+    return sh.busyAction({
+      button,
+      who: "Den",
+      title: t("busy.saveW"),
+      done: t("busy.saveS"),
+      failed: t("busy.saveF"),
+      toastFast: false,
+      run,
+    });
+  }
   /** POST /api/settings; merges the reply. true when saved. */
   async function post(patch) {
-    const r = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    if (!r.ok) return false;
-    const reply = await r.json().catch(() => ({}));
+    const reply = await busySave("/api/settings", patch);
+    if (!reply) return false;
     // Every setting the reply returns (0.4.13): a fixed list here left a
     // new row's pressed button on its old value until a reload.
     for (const [k, v] of Object.entries(reply))
@@ -236,13 +255,11 @@ export async function mountSettings(deps) {
   }
   async function saveWorkspace(patch) {
     if (!ctx.workspace) return false;
-    const r = await fetch("/api/workspaces/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspace: ctx.workspace, ...patch }),
+    const reply = await busySave("/api/workspaces/settings", {
+      workspace: ctx.workspace,
+      ...patch,
     });
-    if (!r.ok) return false;
-    const reply = await r.json().catch(() => ({}));
+    if (!reply) return false;
     ctx.wsSettings = { editor: reply.editor ?? null };
     return true;
   }

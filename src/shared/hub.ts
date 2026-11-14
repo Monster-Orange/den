@@ -93,6 +93,17 @@ export interface HubConfig {
    * Den reads Hub's list of comments when Hub has no stream.
    */
   deliveryPollSeconds: number;
+  /**
+   * 0.4.46 hub.mcp_retry_seconds (default 30, at least 5): how often Den
+   * asks whether Hub answers again, for agents that started without its
+   * tools (ui/cli/mcp-reconnect.ts).
+   */
+  mcpRetrySeconds: number;
+  /**
+   * 0.4.46 hub.mcp_retry_attempts (default 0: no limit): how many times
+   * Den restarts one agent for Hub's tools before it leaves it to a person.
+   */
+  mcpRetryAttempts: number;
 }
 
 type RawHub =
@@ -106,6 +117,8 @@ type RawHub =
       names_check_seconds?: unknown;
       delivery_heartbeat_seconds?: unknown;
       delivery_poll_seconds?: unknown;
+      mcp_retry_seconds?: unknown;
+      mcp_retry_attempts?: unknown;
     }
   | undefined;
 
@@ -205,6 +218,16 @@ export function readHubConfig(
   );
   const poll = secs(h.delivery_poll_seconds, "delivery_poll_seconds", 30);
   const names = secs(h.names_check_seconds, "names_check_seconds", 300);
+  const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
+  const tries = h.mcp_retry_attempts;
+  if (
+    tries !== undefined &&
+    tries !== null &&
+    !(typeof tries === "number" && Number.isInteger(tries) && tries >= 0)
+  )
+    throw new Error(
+      "hub.mcp_retry_attempts must be a whole number, 0 or more (0: no limit)",
+    );
   return {
     url,
     tokenRef,
@@ -217,6 +240,8 @@ export function readHubConfig(
     namesCheckSeconds: names,
     deliveryHeartbeatSeconds: beat,
     deliveryPollSeconds: poll,
+    mcpRetrySeconds: retry,
+    mcpRetryAttempts: typeof tries === "number" ? tries : 0,
   };
 }
 

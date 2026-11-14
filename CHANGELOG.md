@@ -4,10 +4,201 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.46] - unreleased
+
+### Security
+
+- A service agents may reach only through its API (`agents: api_only`)
+  was guarded against Docker, Podman and OrbStack only. Every container
+  engine is now held to the same: `nerdctl`, `container`, `kiri` (and
+  `kiri raw …`), and the same through `lima`, `limactl shell`, `colima
+  nerdctl` and `colima ssh`; and the folders engines keep VM disks and
+  volumes in are guarded too, for every such service. More engines go
+  in `agents.api_only_engines` (`clis`, `dirs`).
+
+### Added
+
+- A crash-loop guard for the web app (#85). On one install, the web app ran
+  out of heap on every start (the huge-transcript read fixed in 0.4.36), and
+  the service manager restarted it 16 times in 9 minutes. Now each start is
+  recorded, and a stop with exit code 0 marks it clean. Run by launchd or
+  systemd, a start after `web.crash_loop_restarts` (5) unclean starts within
+  `web.crash_loop_minutes` (10) waits before it serves or resumes agents:
+  30 s, doubling, at most `web.crash_loop_max_wait_seconds` (300). The bell
+  says so; Settings shows it under Restart guard.
+- Report an issue, the server's side (#81). Reports go to the engine's
+  `bugs.url` (and the distribution's `feedback.repo`, when it names one), filed
+  as the person with their own `gh`. The preview is the exact text that will be
+  posted, with names redacted. Not signed in to GitHub sends nothing and gives a
+  link to a filled-in new-issue page. At most `feedback.max_per_hour` (5) an
+  hour. An open issue with the same title is offered first. An agent can save a
+  draft, never send one. `feedback.enabled: false` turns it all off. Without
+  `gh`, the person can send with Den's GitHub App instead: they approve a code on
+  GitHub, the report is filed with that one token, and the token is dropped. If
+  GitHub refuses (the app isn't installed on that repository, or can't write
+  issues there), nothing is sent and the filled-in link stays.
+- The Report an issue dialog: Report an issue beside Settings in the rail,
+  ⌘⇧F (Ctrl+Shift+F) from anywhere and over an open dialog, and Send feedback
+  in the command palette. Three steps: Write (kind, title, description),
+  Include (each diagnostics section's exact text, ticked or not, with Redact
+  names), Review and send (the exact text that will be posted, the public
+  repository warning just above Send). Then sent, signing in to GitHub with a
+  code, the same title already open, too many this hour, or Finish later. At
+  390 px it is a sheet from the bottom. In English, Spanish and Japanese.
+  What's new, which opens over the page after an update, has its own Report
+  button; Report opens over it, and Esc or a click outside closes What's new.
+  Every dialog, drawer and popover now has the Report button in its footer,
+  on the left (in a footer of its own when it has none), and gets it back when
+  it repaints. A test fails on any pop-up that shows without one, and on any new
+  pop-up in the page code until it is listed. On a phone the button is in the
+  top bar, with the icon and the word and no shortcut; Runs moves out of the
+  top bar there, since the dock bar has it.
+- Report an issue takes a screenshot of the page first, with whatever dialog,
+  drawer or menu is open, and leaves the form itself out. On Write, drag on it
+  to black out anything private, or Undo; or add areas by size and position,
+  or mask the whole screenshot, from the keyboard; or leave the screenshot out.
+  Review shows the image after masking. GitHub can't attach images through its
+  API, so after sending the masked screenshot is saved as a file and copied, to
+  paste into the issue. It never goes to Den's server. A page that can't be
+  captured within `feedback.capture_seconds` (15) offers to send without one.
+  The screenshot uses html-to-image 1.11.13 (MIT), pinned and served from
+  Den's own server.
+- Settings › Access › Sign out everywhere: it asks first, saying it signs out
+  every browser and phone, including this one. A choice there also replaces
+  the sign-in secret, which stops running agents until they are restarted.
+  Before, this was only `web logout` and `web logout --all`.
+- Settings › Command line: Local environment and Terminal tabs are switches,
+  and Log pane lines is a number. Before, they were read-only rows for
+  `config`.
+- The terminals' reconnect limits (tries, window, longest wait) and the
+  restart guard (unclean stops, window, longest wait) are Settings rows you
+  can change. `config` now accepts the keys their text names, such as
+  `config panes.reconnect_max_failures=20` and
+  `config web.crash_loop_restarts=5`, with the same checks as the page.
+  Before, Settings told you to run those commands and `config` refused
+  them. A test now checks that every `config` command in Settings' text is
+  a key `config` accepts.
+- A test lists every CLI command and subcommand with its page control, or
+  says why it has none (a read, script-only, or the release it is slotted
+  for). A new command that isn't listed fails, and so does a page control
+  that goes missing.
+- An agent can no longer change Local environment through the older
+  `/api/local-dev` route. These new settings are a person's only.
+- An agent's token can no longer change what is a person's to change.
+  Before, it reached 48 such writes: deciding approvals, settings,
+  deploys, projects, other agents' records, the bell, this install's Hub
+  link, sending reports, and opening an editor or a terminal. Each is now
+  refused before its handler runs, and an agent asks through an approval.
+  Service exec runs only up, down or restart on local for an agent, on the
+  server as in the MCP tool. A test walks every route that changes
+  something: it is a person's, or listed with why an agent may call it.
+- A report is filed with its kind's label: bug, enhancement (an idea) or
+  question, GitHub's default labels. A repo without that label gets the report
+  without one. Den only looks labels up and never makes one in someone's repo.
+  This applies with `gh` and with Den's GitHub App. Adding to an existing
+  report is a comment and has no label.
+- `<cli> feedback`: Report an issue from a shell, through the same routes as
+  the page. It prints exactly what will be posted, then asks y/N. Off a
+  terminal it needs `--yes`. An agent is always refused, so its reports stay
+  drafts for a person. It handles a same-title report (add to it or file a new
+  one), no GitHub sign-in (a browser link instead) and the hour's limit.
+  `--preview` prints it and sends nothing.
+- Every page's Report button is now checked by a test that opens every page
+  the server serves, the config-invalid page too, at desktop and phone
+  widths.
+- My reports, from the command palette or the link at the top of Report an
+  issue: your reports on the destination repos, shown live from GitHub
+  through your own GitHub sign-in (Den keeps no copy). Each shows its state,
+  its last reply and a link to it on GitHub. A dot marks a reply you haven't
+  opened yet; your own replies never get one. Your Finish later drafts are
+  listed with them, and agents' drafts are on their own tab. Continue opens
+  the form with a draft; Discard removes it. Finish later now keeps the
+  screenshot and its masks in this browser, never on Den's server, and
+  Continue brings them back. Sending the report forgets them.
+  `feedback.my_reports_max` (20) sets how many reports it shows. Den's server
+  now lists drafts without their screenshots, and sends a screenshot only
+  when one draft is opened.
+
+- Settings › Den's address: the install's address (web.url) as a page
+  control. Check and save asks the address to answer as this Den before
+  it saves; an address that doesn't answer is not saved, and localhost is
+  refused. Before, it was only `web url <address>` on the command line.
+  doctor's and onboarding's web check now show this address, never a
+  loopback one, and link the row when it isn't set. `web url <address>`
+  follows the same rules: a loopback name is refused, and the running web
+  server checks the address before it is saved; `--no-check` saves it
+  unchecked, for an install whose web server hasn't run yet.
+- `agents permission -w den-server <mode>` said the project didn't
+  exist. It now says how to set the Den agent's mode:
+  `agents permission server -w den-server <mode>`.
+- Start fresh on the Den agent's page: after a confirm ("This ends the
+  Den agent's conversation. Start a new one?") it stops the agent,
+  removes it and starts a new conversation, with the working pop-up.
+  Before, it took two command lines.
+- One mode for every agent, set once: Settings › Agents › Mode for every
+  agent (`agents.default_mode` in user.yml: ask, edits, auto or all), the
+  Den agent too. An agent runs in the mode chosen for it, else its
+  project's, else this one, else its persona's. Only a person sets it.
+- A mode change applies on its own: Den restarts each running agent whose
+  mode changed after its turn, the same conversation, in the new mode
+  (`agents.mode_check_seconds`, 30). Den's own restarts (reconnecting
+  Hub's tools, the restore after a restart) keep each agent's mode.
+- After the machine restarts, every agent that was running comes back on
+  its own conversation, project and mode (`agents.restore_on_boot`, on
+  by default), not only standing personas and those with
+  `resume_on_restart`. An agent someone stopped stays stopped; one set
+  to `resume_on_restart` off waits. Den waits for Hub first
+  (`agents.restore_hub_wait_seconds`, 120) so they start with Hub's
+  tools; if Hub doesn't answer in time they start anyway, the bell says
+  how many started without Hub, and Den restarts them once Hub answers.
+- After the machine restarts, every project's services that were up
+  come back up by themselves (`services.restore_on_boot`, on by default),
+  through the same Up a person presses. Den keeps the record of what
+  runs; a service someone stopped is off it, so it stays stopped. At
+  boot Den waits for Docker first (`services.restore_wait_seconds`, 300).
+- An agent that started while Hub didn't answer (its Hub tools never
+  loaded) no longer waits for a person to press Restart. Once Hub
+  answers again, Den restarts it after its turn, with the same
+  conversation, and tells it so in its pane. `hub.mcp_retry_seconds`
+  (default 30) is how often Den asks; `hub.mcp_retry_attempts` (default
+  0, no limit) caps the restarts for one agent.
+- A slow action now shows that it is working, then what happened: a
+  pop-up opens when Den or Hub hasn't answered within 300 ms. Try again
+  sends the same request again and Den runs it once; Check again asks
+  how it ended without sending it again. `ui.request_memory_seconds`
+  (default 600) is how long Den remembers. On it: Link ticked projects,
+  Connect, Start fresh, Resume, Relaunch, Start agent, Restart after
+  this turn and Settings saves. Restart Den reads the same way.
+
+### Fixed
+
+- A terminal pane whose connection dropped (a web server restart, sleep,
+  a network change, a tablet's browser closing a background tab's
+  connection) waited for a click on Reconnect, though its agent was
+  still running. It now connects again on its own, waiting 1 second and
+  then twice as long each time up to 30, and replays the screen. It stops
+  only after 10 failed tries within 5 minutes, or on a refusal, and then
+  shows Reconnect with the reason. Showing the page again or coming back
+  online tries at once; closes while the page is hidden never count.
+  Settings › Agents › Terminals reconnect shows the `panes.*` settings.
+  The Agents tab and the Den agent's page now share one terminal
+  connection (they had drifted: the Den agent's page had no Reconnect).
+- `web up --json` and `web down --json` could say the web server was not
+  answering when it was. They checked `localhost`, which resolves to the
+  IPv6 loopback first, while the server listens on 127.0.0.1. Another
+  program on the same port there answered instead. They now check the
+  address the server listens on. So do the MCP server, `doctor`,
+  `service install`, `mcp connect`, `hub` and the agents' calls to Den,
+  and a lint rule keeps `http://localhost:<port>` dials out of the code.
+
 ## [0.4.45] - 2026-11-13
 
 ### Changed
 
+- CI and the release check every change on both ends of the supported Node
+  range: 22.13 (the lowest `engines` allows) and 24.13 (what installs run).
+  Both block a merge and a publish. Until now the gates had run only 22.14.
+  The release tarball is built on 22.13 (#84).
 - The bell is quieter. "Agent finished its turn" no longer shows or
   counts unless you turn it on in Settings › Notifications. The badge
   counts only what the bell shows. Repeats of a kind from one agent fold

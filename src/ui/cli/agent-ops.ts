@@ -88,6 +88,7 @@ import {
   readAgentsConfig,
   readDenConfig,
   readServerAgentConfig,
+  readUserConfig,
   setUserRuntimeBin,
   userConfigPath,
   type ResolvedAgentsConfig,
@@ -255,6 +256,7 @@ import {
   type Resolved,
   type SessionsDeps,
 } from "./sessions-command.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
@@ -294,6 +296,11 @@ export interface AgentsDeps extends SessionsDeps {
    * undefined: unset), as written.
    */
   workspacePermission?: (ws: string) => unknown;
+  /**
+   * 0.4.46 MODE-UI: the install's mode for every agent (default: user.yml's
+   * agents.default_mode; undefined: unset), as written.
+   */
+  installPermission?: () => unknown;
   /** den#48: save a checked intent as workspace `ws`'s (null clears it). */
   saveWorkspacePermission?: (
     ws: string,
@@ -350,6 +357,7 @@ export interface AgentsResolved extends Resolved {
   runtimeBin: (id: string) => unknown;
   workspaceRuntimeBin: (ws: string, id: string) => unknown;
   workspacePermission: (ws: string) => unknown;
+  installPermission: () => unknown;
   saveWorkspacePermission: (
     ws: string,
     intent: PermissionIntent | null,
@@ -500,7 +508,7 @@ function defaultDenBase(): string {
   } catch {
     port = DEFAULT_PORT;
   }
-  return `http://localhost:${port}`;
+  return denWebBase(port);
 }
 
 /**
@@ -613,6 +621,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceRuntimeBin ?? ((ws, id) => workspaceRuntimeBin(ws, id)),
     workspacePermission:
       d.workspacePermission ?? ((ws) => workspaceAgentPermission(ws)),
+    installPermission:
+      d.installPermission ?? (() => readUserConfig().agents?.default_mode),
     saveWorkspacePermission:
       d.saveWorkspacePermission ??
       ((ws, intent) => setWorkspaceAgentPermission(ws, intent)),
@@ -1237,7 +1247,7 @@ export async function agentTools(
     restart = true;
   }
   const note = failed
-    ? `${connected ? "Hub is connected, but" : "Hub was disconnected, and"} you couldn't load its tools when you started (${failed}). Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed.`
+    ? `${connected ? "Hub is connected, but" : "Hub was disconnected, and"} you couldn't load its tools when you started (${failed}). Den restarts you to load them once Hub answers (this conversation stays); a person can also restart you from Den now. No token step is needed.`
     : !connected
       ? loaded
         ? "Hub was disconnected; its tools go when the person restarts you from Den."
@@ -2548,6 +2558,33 @@ export function workspacePermissionOf(
   }
 }
 
+/**
+ * 0.4.46 MODE-UI: the install's mode (agents.default_mode), checked;
+ * undefined when unset.
+ */
+export function installPermissionOf(
+  d: AgentsResolved,
+): PermissionIntent | undefined {
+  const v = d.installPermission();
+  if (v === undefined || v === null) return undefined;
+  try {
+    return checkIntent(v, "agents.default_mode");
+  } catch (e) {
+    throw usage(`agents start: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * The mode an agent follows when nobody chose one for it: its project's,
+ * else the install's (then, by the caller, its persona's).
+ */
+export function followedPermissionOf(
+  d: AgentsResolved,
+  ws: string,
+): PermissionIntent | undefined {
+  return workspacePermissionOf(d, ws) ?? installPermissionOf(d);
+}
+
 /** What a start resolved, checked, before it launches. */
 interface Choices {
   model?: string;
@@ -2741,7 +2778,7 @@ export async function startAgent(
   syncCatalog(d);
   const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
   const det = await availableOrRefuse(d, rt, ws);
-  const ch = startChoices(req, persona, rt, workspacePermissionOf(d, ws));
+  const ch = startChoices(req, persona, rt, followedPermissionOf(d, ws));
   const model = launchModel(ch.model, ch.version);
 
   const prev = readRecord(d.stateDir(), id);
@@ -4331,8 +4368,91 @@ export function permissionNow(
   if (rec.permission && rec.overrides?.includes("permission"))
     return rec.permission;
   return (
-    workspacePermissionOf(d, rec.workspace) ?? intentOf(persona.permissionMode)
+    followedPermissionOf(d, rec.workspace) ?? intentOf(persona.permissionMode)
   );
+}
+
+/**
+ * 0.4.46 MODE-UI: running agents whose mode now (permissionNow) is not
+ * the one they run in: a project's or the install's mode changed since.
+ */
+export async function modeDrift(
+  d: AgentsResolved,
+): Promise<{ id: string; workspace: string; want: PermissionIntent }[]> {
+  const c = await d.connectExisting();
+  let live: { ref: { id: string }; exited?: unknown }[] = [];
+  try {
+    live = c ? (await c.list()).filter((x) => !x.exited) : [];
+  } finally {
+    c?.close();
+  }
+  if (!live.length) return [];
+  let all: Map<string, Persona>;
+  try {
+    all = personas(d, agentsConfig(d));
+  } catch {
+    return [];
+  }
+  const out: { id: string; workspace: string; want: PermissionIntent }[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (!live.some((x) => x.ref.id === rec.session.id)) continue;
+    const rt = getRuntime(rec.runtime);
+    const p = personaOfRecord(rec, all);
+    if (!rt?.permissions || !p) continue;
+    let want: PermissionIntent | undefined;
+    try {
+      want = permissionNow(d, rec, p, rt);
+    } catch {
+      continue; // a bad mode: its next start says so
+    }
+    if (want && want !== rec.permission)
+      out.push({ id: rec.id, workspace: rec.workspace, want });
+  }
+  return out;
+}
+
+export interface ModeCheck {
+  /** One look: the agents it began restarting. */
+  tick(): Promise<string[]>;
+  pending(): Promise<void>;
+}
+
+/**
+ * 0.4.46 MODE-UI: a mode change applies on its own. Each running agent
+ * whose mode now differs is restarted after its turn, the same
+ * conversation, in the new mode: nobody presses Restart.
+ */
+export function modeCheck(
+  d: AgentsResolved,
+  opts: { pollMs?: number; log?: (line: string) => void } = {},
+): ModeCheck {
+  const running = new Map<string, Promise<void>>();
+  return {
+    async tick() {
+      const began: string[] = [];
+      for (const m of await modeDrift(d)) {
+        if (running.has(m.id)) continue;
+        began.push(m.id);
+        const p = restartAgent(d, m.id, m.workspace, "after-turn", {
+          pollMs: opts.pollMs,
+        })
+          .then(() =>
+            opts.log?.(`agent ${m.id}: restarted after its turn in ${m.want}`),
+          )
+          .catch((e: unknown) =>
+            opts.log?.(
+              `agent ${m.id}: not restarted for its mode: ${(e as Error)?.message ?? e}`,
+            ),
+          )
+          .finally(() => running.delete(m.id));
+        running.set(m.id, p);
+      }
+      return began;
+    },
+    async pending() {
+      await Promise.all([...running.values()]);
+    },
+  };
 }
 
 // ── den#4: relaunch from handoff ────────────────────────────────────────────
@@ -4557,6 +4677,24 @@ export interface RestartFound {
   resumed: string[];
   /** Ones that should have resumed but couldn't, with why. */
   failed: { agent: string; why: string }[];
+  /** 0.4.46: resumed though Hub didn't answer in time (no Hub tools). */
+  withoutHub: string[];
+}
+
+/** Poll `ok` until it says yes or `ms` pass; whether it said yes. */
+async function waitUntil(
+  ok: () => Promise<boolean>,
+  ms: number,
+  pollMs = 5000,
+): Promise<boolean> {
+  const until = Date.now() + ms;
+  for (;;) {
+    if (await ok().catch(() => false)) return true;
+    if (Date.now() >= until) return false;
+    await new Promise((r) =>
+      setTimeout(r, Math.min(pollMs, Math.max(0, until - Date.now()))),
+    );
+  }
 }
 
 /**
@@ -4569,10 +4707,28 @@ export interface RestartFound {
  */
 export async function markInterrupted(
   d: AgentsResolved,
-  opts: { autoResume?: boolean } = {},
+  opts: {
+    autoResume?: boolean;
+    /**
+     * 0.4.46 agents.restore_on_boot: every agent that was running resumes,
+     * not only standing personas and resume_on_restart (an agent's own
+     * resume_on_restart: false still waits).
+     */
+    restoreAll?: boolean;
+    /** Whether Hub answers; waited for first, so agents get its tools. */
+    hubUp?: () => Promise<boolean>;
+    /** agents.restore_hub_wait_seconds, in ms. */
+    hubWaitMs?: number;
+    hubPollMs?: number;
+  } = {},
 ): Promise<RestartFound> {
   const sessions = await hostSessions(d);
-  const found: RestartFound = { interrupted: [], resumed: [], failed: [] };
+  const found: RestartFound = {
+    interrupted: [],
+    resumed: [],
+    failed: [],
+    withoutHub: [],
+  };
   const now = new Date().toISOString();
   const marked: AgentRecord[] = [];
   for (const rec of listRecords(d.stateDir())) {
@@ -4590,17 +4746,28 @@ export async function markInterrupted(
   } catch {
     return found;
   }
-  for (const rec of marked) {
+  const due = marked.filter((rec) => {
     const p = personaOfRecord(rec, all);
-    if (!p || !resumesOnRestart(rec, p)) continue;
-    if (resumeRefusal(rec)) continue;
+    const wants = opts.restoreAll
+      ? rec.resumeOnRestart !== false
+      : !!p && resumesOnRestart(rec, p);
+    return wants && !resumeRefusal(rec);
+  });
+  if (!due.length) return found;
+  const hubAnswered = opts.hubUp
+    ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)
+    : true;
+  for (const rec of due) {
     try {
       // den#4: a rotated one relaunches from its handoff instead.
       const r = rotationOf(d, rec)?.ready
         ? await relaunchAgent(d, rec.id)
         : await resumeAgent(d, rec.id);
       if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
-      else found.resumed.push(rec.id);
+      else {
+        found.resumed.push(rec.id);
+        if (!hubAnswered) found.withoutHub.push(rec.id);
+      }
     } catch (e) {
       found.failed.push({ agent: rec.id, why: (e as Error).message });
     }

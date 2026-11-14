@@ -24,6 +24,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { SessionHost } from "../../../../src/shared/sessions/host.js";
 import type { PtyLoad } from "../../../../src/shared/sessions/pty.js";
 import {
@@ -64,6 +65,10 @@ export interface AgentsPageServer {
   /** GET /api/settings's answer. */
   settingsGet(): Promise<Record<string, unknown>>;
   log(): string;
+  /** Stops the web server only (the session host and its agents run on). */
+  webDown(): Promise<void>;
+  /** Starts the web server again, on the same port. */
+  webUp(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -85,6 +90,12 @@ export async function startAgentsPageServer(
     elevatedUp?: boolean;
     /** config/local/user.yml's content (agents.runtimes.<id>.bin). */
     userYml?: string;
+    /**
+     * agents.restore_on_boot (0.4.46, on in a real install): off here
+     * unless a test turns it on, so a recorded running agent shows as
+     * interrupted after the start, as the AG-14 tests expect.
+     */
+    restoreOnBoot?: boolean;
     /**
      * More fake CLIs on PATH (AG-0.5's catalog), name to the line each
      * prints for --version; any other run is recorded and fails.
@@ -179,8 +190,17 @@ export async function startAgentsPageServer(
       ].join("\n"),
     );
   }
-  if (opts.userYml !== undefined)
-    write(path.join(root, "config", "local", "user.yml"), opts.userYml);
+  {
+    const user = (parseYaml(opts.userYml ?? "") ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const agents = (user.agents ?? {}) as Record<string, unknown>;
+    if (agents.restore_on_boot === undefined)
+      agents.restore_on_boot = opts.restoreOnBoot === true;
+    user.agents = agents;
+    write(path.join(root, "config", "local", "user.yml"), stringifyYaml(user));
+  }
   const bin = path.join(tmp, "bin");
   const ran = path.join(tmp, "claude-ran");
   write(path.join(bin, "docker"), "#!/bin/sh\nexit 1\n", 0o755);
@@ -270,22 +290,25 @@ export async function startAgentsPageServer(
     NO_COLOR: "1",
   };
   // node itself, by path: the env's PATH may not have it.
-  let started: StartedServer;
-  try {
-    started = await startDenServer(
+  const startWeb = (pickPort?: () => Promise<number>) =>
+    startDenServer(
       process.execPath,
       [
         path.join(ENGINE, "node_modules", "tsx", "dist", "cli.mjs"),
         path.join(ENGINE, "src", "ui", "server", "index.ts"),
       ],
       { cwd: root, env },
-      { timeoutMs: 30_000 },
+      { timeoutMs: 30_000, ...(pickPort ? { pickPort, tries: 1 } : {}) },
     );
+  let started: StartedServer;
+  try {
+    started = await startWeb();
   } catch (err) {
     await host.close();
     throw err;
   }
-  const { server, port } = started;
+  let server: StartedServer["server"] | null = started.server;
+  const { port } = started;
   const base = `http://localhost:${port}`;
   return {
     port,
@@ -329,8 +352,16 @@ export async function startAgentsPageServer(
       return (await r.json()) as Record<string, unknown>;
     },
     log: started.out,
+    async webDown() {
+      if (server) await stopServer(server);
+      server = null;
+    },
+    async webUp() {
+      if (server) return;
+      server = (await startWeb(async () => port)).server;
+    },
     async stop() {
-      await stopServer(server);
+      if (server) await stopServer(server);
       await host.close();
       if (!opts.root) fs.rmSync(tmp, { recursive: true, force: true });
     },

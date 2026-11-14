@@ -64,7 +64,7 @@ beforeAll(async () => {
     });
     res.end(JSON.stringify(body));
   });
-  await new Promise<void>((r) => stub.listen(0, "localhost", r));
+  await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
   port = (stub.address() as AddressInfo).port;
 }, 30_000);
 

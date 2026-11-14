@@ -95,6 +95,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import {
+  agentsModeCheckSeconds,
   configuredRemoveStoppedAfter,
   getReposRoot,
   readAgentsConfig,
@@ -133,6 +134,7 @@ import {
   updatePersona,
   listRuntimes,
   markInterrupted,
+  modeCheck,
   cancelStalePersonaChanges,
   NOT_IN_WORKSPACE,
   pruneStopped,
@@ -1675,6 +1677,43 @@ function methodNotAllowed(res: http.ServerResponse, allow: string): true {
   return true;
 }
 
+/**
+ * Whether Hub answers Den, or null when this Den has no Hub (nothing to
+ * wait for).
+ */
+async function hubAnswers(): Promise<(() => Promise<boolean>) | null> {
+  try {
+    const { hubAndToken } = await import("./hub-sync-service.js");
+    if (!(await hubAndToken())) return null;
+    const hub = await import("../../shared/hub.js");
+    return async () => {
+      const at = await hubAndToken();
+      if (!at) return false;
+      await hub.hubWhoami(at.url, at.token, { timeoutMs: 5000 });
+      return true;
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 0.4.46: the bell's "N agents started without Hub" (one item, updated). */
+export function noteStartedWithoutHub(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  ids: readonly string[],
+): void {
+  const n = ids.length;
+  if (!n) return;
+  store.add({
+    kind: "service",
+    subject: "record:agents-without-hub",
+    scope: "workspace/den-server",
+    text: `${n} agent${n === 1 ? "" : "s"} started without Hub`,
+    msg: { key: "bell.m.noHub", vars: { n } },
+    link: "/agents",
+  });
+}
+
 /** How often stopped agents are checked against remove_stopped_after. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -1725,7 +1764,34 @@ export function startAgentUpkeep(
       log(`  ⚠ persona changes after the restart: ${(e as Error).message}`);
     }
     try {
-      const f = await markInterrupted(d);
+      // 0.4.46 agents.restore_on_boot: every agent that was running, after
+      // Hub answers (agents.restore_hub_wait_seconds) so it has Hub's tools.
+      let restoreAll = true;
+      let waitS = 120;
+      try {
+        const cfg = await import("../../shared/den-config.js");
+        restoreAll = cfg.agentsRestoreOnBoot();
+        waitS = cfg.agentsRestoreHubWaitSeconds();
+      } catch (e) {
+        log(`  ⚠ ${(e as Error).message}`);
+      }
+      const hubUp = await hubAnswers();
+      const f = await markInterrupted(d, {
+        restoreAll,
+        ...(hubUp ? { hubUp, hubWaitMs: waitS * 1000 } : {}),
+      });
+      if (f.withoutHub.length) {
+        log(
+          `  ⚠ Hub didn't answer in ${waitS} s: started without Hub's tools: ${f.withoutHub.join(", ")} (Den restarts them once Hub answers)`,
+        );
+        try {
+          const { notificationDeps } =
+            await import("./notification-service.js");
+          noteStartedWithoutHub(notificationDeps().store, f.withoutHub);
+        } catch {
+          /* the bell is best effort */
+        }
+      }
       if (f.interrupted.length)
         log(
           `Agents interrupted when Den restarted: ${f.interrupted.join(", ")}` +
@@ -1772,12 +1838,43 @@ export function startAgentUpkeep(
       looking = false;
     }
   };
+  // 0.4.46 MODE-UI: a mode change applies on its own, after the turn.
+  const mc = modeCheck(d, { log });
+  let checking = false;
+  const modes = async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      await mc.tick();
+    } catch (e) {
+      log(`  ⚠ agents' modes: ${(e as Error).message}`);
+    } finally {
+      checking = false;
+    }
+  };
+  applyModesNow = modes;
+  let every = 30;
+  try {
+    every = agentsModeCheckSeconds();
+  } catch (e) {
+    log(`  ⚠ ${(e as Error).message}`);
+  }
   setTimeout(() => {
-    void restart().then(prune);
+    void restart()
+      .then(prune)
+      .then(() => {
+        setInterval(() => void modes(), every * 1000).unref();
+      });
   }, deps.delayMs ?? 2000).unref();
   setInterval(() => void prune(), PRUNE_EVERY_MS).unref();
   setInterval(() => void rotate(), ROTATION_TICK_MS).unref();
 }
+
+/**
+ * 0.4.46 MODE-UI: look at every running agent's mode now (after a person
+ * saved one), rather than at the next tick.
+ */
+export let applyModesNow: () => Promise<void> = async () => undefined;
 
 /**
  * D28, `/api/agents/rotation`. GET: the settings (install, overrides,

@@ -448,7 +448,52 @@ function drawDevices(host, ctx) {
               );
             })
             .join("") +
-          "</div>";
+          "</div>" +
+          // MODE-5: `web logout` (and --all) from the page, asked first.
+          `<div data-signout-box style="margin-top:10px"><button type="button" class="btn" data-signout-all>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button></div>`;
+        const box = host.querySelector("[data-signout-box]");
+        const idle = box.innerHTML;
+        box.addEventListener("click", (e) => {
+          const b = e.target.closest?.("button");
+          if (!b) return;
+          if (b.hasAttribute("data-signout-all")) {
+            box.innerHTML =
+              `<div data-signout-ask role="group" aria-label="${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}" style="display:grid;gap:8px">` +
+              `<p class="set-note" style="margin:0">${escHtml(L("set.ui.signOutAllB", "This signs out every browser and phone, including this one. Each signs in again the usual way."))}</p>` +
+              `<label class="set-note" style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" data-signout-rotate> ${escHtml(L("set.ui.signOutRotate", "Also replace the sign-in secret. Running agents stop until they are restarted."))}</label>` +
+              `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-signout-yes>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button><button type="button" class="btn" data-signout-no>${escHtml(L("set.ui.cancel", "Cancel"))}</button></div></div>`;
+            box.querySelector("[data-signout-no]")?.focus();
+            return;
+          }
+          if (b.hasAttribute("data-signout-no")) {
+            box.innerHTML = idle;
+            box.querySelector("[data-signout-all]")?.focus();
+            return;
+          }
+          if (b.hasAttribute("data-signout-yes")) {
+            const rotate = !!box.querySelector("[data-signout-rotate]")
+              ?.checked;
+            ctx.shell
+              .busyAction({
+                button: b,
+                who: "__DEN_TITLE__",
+                title: L("set.ui.signOutAllW", "Signing out everywhere…"),
+                failed: L("set.ui.signOutAllF", "Not signed out"),
+                done: () => L("set.ui.signOutAllDone", "Signed out everywhere"),
+                run: (headers) =>
+                  ctx.shell.api(
+                    "POST",
+                    "/api/web/logout",
+                    rotate ? { rotate: true } : {},
+                    { headers },
+                  ),
+              })
+              .then((r) => {
+                // This browser is signed out too: the page shows sign-in.
+                if (r !== undefined) location.reload();
+              });
+          }
+        });
         host.querySelectorAll("[data-revoke]").forEach((btn) =>
           btn.addEventListener("click", () => {
             btn.disabled = true;
@@ -680,6 +725,73 @@ function drawRestart(host) {
 }
 
 export const DEN_SETTINGS = [
+  {
+    // MODE-5: the web app's crash-loop guard (user.yml web.crash_loop_*).
+    id: "server.crash_loop",
+    category: "server",
+    label: "Restart guard",
+    description:
+      "When __DEN_TITLE__'s web app stops without a clean stop this many times within the minutes below, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
+    keywords: [
+      "crash",
+      "restart",
+      "loop",
+      "memory",
+      "backoff",
+      "web.crash_loop",
+    ],
+    scope: "user",
+    keys: ["crash_loop.restarts"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.crash_loop?.restarts ?? 5,
+    write: (v, ctx) => ctx.post({ crash_loop: { restarts: v } }),
+  },
+  {
+    id: "server.crash_loop_minutes",
+    category: "server",
+    label: "Restart guard window, in minutes",
+    description:
+      "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    keywords: [
+      "crash",
+      "restart",
+      "loop",
+      "window",
+      "minutes",
+      "web.crash_loop",
+    ],
+    scope: "user",
+    keys: ["crash_loop.minutes"],
+    control: { type: "number", min: 1, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.crash_loop?.minutes ?? 10,
+    write: (v, ctx) => ctx.post({ crash_loop: { minutes: v } }),
+  },
+  {
+    id: "server.crash_loop_wait",
+    category: "server",
+    label: "Restart guard's longest wait",
+    description:
+      "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    keywords: ["crash", "restart", "wait", "backoff", "web.crash_loop"],
+    scope: "user",
+    keys: ["crash_loop.max_wait_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.crash_loop?.maxWaitSeconds ?? 300,
+    write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
+  },
+  {
+    // MODE-5 (0.4.46): this install's address (web.url, D80) as a page
+    // control: Check and save asks the address to answer first.
+    id: "server.address",
+    category: "server",
+    label: "__DEN_TITLE__'s address",
+    description:
+      "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",
+    keywords: ["address", "url", "web.url", "domain", "hostname", "link"],
+    scope: "user",
+    control: { type: "custom", render: renderAddress },
+    read: () => null,
+  },
   {
     id: "server.restart",
     category: "server",
@@ -1086,6 +1198,67 @@ export const DEN_SETTINGS = [
 
   // ── Agents ─────────────────────────────────────────────────────────────
   {
+    // 0.4.46 MODE-UI: one mode for every agent, set once.
+    id: "agents.default_mode",
+    category: "agents",
+    label: "Mode for every agent",
+    description:
+      "Every agent runs in this mode, the __DEN_TITLE__ agent too, unless a mode was chosen for the agent or its project sets one. A change reaches running agents after their turn, on its own.",
+    keywords: ["agents", "mode", "permission", "auto", "ask", "approve"],
+    scope: "user",
+    control: seg([
+      { value: "persona", label: "Each persona's" },
+      { value: "ask", label: "Ask for everything" },
+      { value: "edits", label: "Auto-approve edits" },
+      { value: "auto", label: "Auto mode" },
+      { value: "all", label: "Auto-approve all" },
+    ]),
+    keys: ["agents_default_mode"],
+    read: (ctx) => ctx.data.agents_default_mode ?? "persona",
+    write: (v, ctx) =>
+      ctx.post({ agents_default_mode: v === "persona" ? null : v }),
+  },
+  {
+    // MODE-5: how a terminal pane reconnects on its own (user.yml panes.*).
+    id: "agents.pane_reconnect",
+    category: "agents",
+    label: "Terminal reconnect tries",
+    description:
+      "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+    keywords: ["reconnect", "terminal", "pane", "disconnected", "retry"],
+    scope: "user",
+    keys: ["panes_reconnect.max_failures"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.panes_reconnect?.max_failures ?? 10,
+    write: (v, ctx) => ctx.post({ panes_reconnect: { max_failures: v } }),
+  },
+  {
+    id: "agents.pane_reconnect_window",
+    category: "agents",
+    label: "Terminal reconnect window",
+    description:
+      "The time the failed tries above are counted in. __DEN_CLI__ config panes.reconnect_window_seconds=300",
+    keywords: ["reconnect", "terminal", "window", "retry"],
+    scope: "user",
+    keys: ["panes_reconnect.window_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.panes_reconnect?.window_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ panes_reconnect: { window_seconds: v } }),
+  },
+  {
+    id: "agents.pane_reconnect_wait",
+    category: "agents",
+    label: "Longest wait between tries",
+    description:
+      "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    keywords: ["reconnect", "terminal", "wait", "backoff"],
+    scope: "user",
+    keys: ["panes_reconnect.max_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.panes_reconnect?.max_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ panes_reconnect: { max_seconds: v } }),
+  },
+  {
     id: "agents.layout",
     category: "agents",
     label: "Agents tab layout",
@@ -1244,11 +1417,11 @@ export const DEN_SETTINGS = [
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     keywords: ["local", "local dev", "environment", "disable"],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) =>
-      ctx.data.local_dev === false
-        ? L("set.ui.off", "Off")
-        : L("set.ui.on", "On"),
+    keys: ["local_dev"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.local_dev !== false,
+    // On is the default: it is stored only when off.
+    write: (v, ctx) => ctx.post({ local_dev: v ? null : false }),
   },
   {
     id: "cli.cli_tabs",
@@ -1258,9 +1431,10 @@ export const DEN_SETTINGS = [
       "Whether up and restart open terminal tabs by default. __DEN_CLI__ config cli_tabs=true",
     keywords: ["tabs", "terminal", "up", "restart", "cli"],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) =>
-      ctx.data.cli_tabs ? L("set.ui.on", "On") : L("set.ui.off", "Off"),
+    keys: ["cli_tabs"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.cli_tabs === true,
+    write: (v, ctx) => ctx.post({ cli_tabs: v ? true : null }),
   },
   {
     id: "cli.log_window_lines",
@@ -1270,11 +1444,10 @@ export const DEN_SETTINGS = [
       "How many lines a Logs pane keeps loaded; full-history search is unaffected. __DEN_CLI__ config log_window_lines=50000",
     keywords: ["logs", "lines", "window", "history", "buffer"],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) =>
-      L("set.ui.nLines", "{n} lines", {
-        n: Number(ctx.data.log_window_lines ?? 20000).toLocaleString(),
-      }),
+    keys: ["log_window_lines"],
+    control: { type: "number", min: 1000, max: 1000000, step: 1000 },
+    read: (ctx) => Number(ctx.data.log_window_lines ?? 20000),
+    write: (v, ctx) => ctx.post({ log_window_lines: v }),
   },
   {
     id: "cli.web_port",
@@ -2216,6 +2389,77 @@ function renderProjectName(host, ctx) {
     });
 }
 
+/** MODE-5: the address row's HTML (its value, the field, the note). */
+export function addressHtml(w, t) {
+  const now = w?.url
+    ? `<p class="set-status" data-addr-now>${escR(t("addr.now", { url: w.url }))}</p>`
+    : `<p class="set-status" data-addr-now><span class="rt-dot warn"></span> ${escR(t("addr.unset"))}</p>`;
+  return (
+    now +
+    `<form data-addr class="set-inline" novalidate>` +
+    `<label class="sr-only" for="addr-in">${escR(t("addr.label"))}</label>` +
+    `<input id="addr-in" type="url" data-addr-in value="${escR(w?.url ?? "")}" placeholder="https://__DEN_CLI__.local.example.com" autocomplete="off" spellcheck="false">` +
+    `<button type="submit" class="den-btn sm" data-addr-save>${escR(t("addr.check"))}</button>` +
+    `</form>` +
+    `<p class="set-note" data-addr-note role="status" hidden></p>`
+  );
+}
+
+function renderAddress(host, ctx) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell
+    .api("GET", "/api/web-url")
+    .then((w) => {
+      host.innerHTML = addressHtml(w, t);
+      const form = host.querySelector("form[data-addr]");
+      const input = form.querySelector("[data-addr-in]");
+      const btn = form.querySelector("[data-addr-save]");
+      const note = host.querySelector("[data-addr-note]");
+      const say = (msg, bad) => {
+        note.hidden = !msg;
+        note.textContent = msg || "";
+        note.classList.toggle("bad", !!bad);
+      };
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const url = input.value.trim();
+        if (!url) return say(t("addr.empty"), true);
+        say("");
+        input.disabled = true;
+        btn.textContent = t("addr.checking");
+        // BUSY-1: the working pop-up says it is checking, then what happened.
+        ctx.shell
+          .busyAction({
+            button: btn,
+            who: "__DEN_TITLE__",
+            title: t("addr.checkW", { url }),
+            failed: t("addr.notSaved"),
+            done: (r) => t("addr.saved", { url: r?.url ?? url }),
+            run: (headers) =>
+              ctx.shell.api("POST", "/api/web-url", { url }, { headers }),
+            onFail: (x) => say(x?.message || t("addr.notSaved"), true),
+          })
+          .then((r) => {
+            if (r === undefined) return;
+            return renderAddress(host, ctx).then(() => {
+              const n = host.querySelector("[data-addr-note]");
+              if (n) {
+                n.hidden = false;
+                n.textContent = t("addr.saved", { url: r?.url ?? url });
+              }
+            });
+          })
+          .finally(() => {
+            input.disabled = false;
+            btn.textContent = t("addr.check");
+          });
+      });
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note">${escR(e?.message || t("addr.notSaved"))}</p>`;
+    });
+}
+
 /** H5: repos Den Hub can't see, with one button per org. */
 export function hubUncoveredHtml(list, t) {
   const un = Array.isArray(list) ? list : [];
@@ -2383,6 +2627,17 @@ export function hubLinkAllHtml(b, t) {
   );
 }
 
+/** "a, b and c" in the page's language (BUSY-1's success lines). */
+function listWords(names) {
+  try {
+    return new Intl.ListFormat(document.documentElement.lang || "en", {
+      type: "conjunction",
+    }).format(names);
+  } catch {
+    return names.join(", ");
+  }
+}
+
 function renderHubLinkAll(host, ctx) {
   return drawHubLinkAll(host, ctx, null);
 }
@@ -2421,21 +2676,40 @@ function drawHubLinkAll(host, ctx, result) {
             hub: c.dataset.hublaHub,
           }));
         if (!links.length) return;
-        host
-          .querySelectorAll("button, input")
-          .forEach((x) => (x.disabled = true));
+        // BUSY-1: the working pop-up says it is linking, then what happened.
+        const lock = (on) =>
+          host
+            .querySelectorAll("button, input")
+            .forEach((x) => (x.disabled = on));
+        lock(true);
         ctx.shell
-          .api("POST", url, { links })
-          .then((r) => drawHubLinkAll(host, ctx, r))
-          .catch((e) => {
-            host
-              .querySelectorAll("button, input")
-              .forEach((x) => (x.disabled = false));
-            const err = host.querySelector(".rt-err");
-            if (err) {
-              err.hidden = false;
-              err.textContent = e?.message || t("hubp.failed");
-            }
+          .busyAction({
+            button: btn,
+            who: "Hub",
+            title: t("busy.linkW"),
+            failed: t("busy.linkF"),
+            done: (r) => {
+              const names = (r?.linked ?? []).map(
+                (x) => x?.hub?.name || x?.project,
+              );
+              return t("busy.linkS", {
+                n: names.length,
+                names: listWords(names),
+              });
+            },
+            run: (headers) =>
+              ctx.shell.api("POST", url, { links }, { headers }),
+            onFail: (e) => {
+              const err = host.querySelector(".rt-err");
+              if (err) {
+                err.hidden = false;
+                err.textContent = e?.message || t("hubp.failed");
+              }
+            },
+          })
+          .then((r) => {
+            if (r) drawHubLinkAll(host, ctx, r);
+            else lock(false);
           });
       });
     })
@@ -2595,15 +2869,28 @@ function wireHub(host, ctx) {
     const typed = host.querySelector("#hub-url");
     busy(true);
     err("");
+    // BUSY-1: the working pop-up while Den asks Hub.
+    const t = (k, v) => ctx.shell.t(k, v);
     ctx.shell
-      .api("POST", "/api/hub/connect", typed ? { url: typed.value } : {})
-      .then((r) => {
+      .busyAction({
+        button: host.querySelector('button[data-hub-action="connect"]'),
+        who: "Hub",
+        title: t("busy.connW"),
+        done: t("busy.connS"),
+        failed: t("busy.connF"),
+        run: (headers) =>
+          ctx.shell.api(
+            "POST",
+            "/api/hub/connect",
+            typed ? { url: typed.value } : {},
+            { headers },
+          ),
         // Off to Hub: sign in and approve there; Hub sends the person back.
-        location.assign(r.location);
+        onDone: (r) => location.assign(r.location),
+        onFail: (e) => err(e?.message || t("busy.connF")),
       })
-      .catch((e) => {
-        busy(false);
-        err(e?.message || "Connect didn't start");
+      .then((r) => {
+        if (!r) busy(false);
       });
   };
   const disconnect = (force, btn) => {

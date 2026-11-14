@@ -266,8 +266,9 @@ describe("the Settings page writes only what you change (R21)", () => {
     // the URL keeps ?q=.
     expect(await p.getAttribute("#set-count", "aria-live")).toBe("polite");
     await q.fill("terminal");
-    expect(await sectionIds(p)).toEqual(["editor", "cli"]);
-    expect(await p.textContent("#set-count")).toBe("2 settings match");
+    // 0.4.46: Agents › the terminals' three reconnect limits match too.
+    expect(await sectionIds(p)).toEqual(["editor", "agents", "cli"]);
+    expect(await p.textContent("#set-count")).toBe("5 settings match");
     expect(new URL(p.url()).searchParams.get("q")).toBe("terminal");
     expect(
       await p.$$eval("#cat-editor .set-row", (r) =>
@@ -445,6 +446,25 @@ describe("the Settings page's rows (R21)", () => {
     await p.context().close();
   }, 30_000);
 
+  it("MODE-5: doctor's link (?q=web.url) finds the address row; Check and save that doesn't answer saves nothing", async () => {
+    if (!browser) return;
+    const { p, posts } = await open("/settings?q=web.url");
+    expect(await sectionIds(p)).toEqual(["server"]);
+    const row = p.locator('[data-setting="server.address"]');
+    await row.locator("[data-addr-now]").waitFor();
+    const before = await row.locator("[data-addr-now]").textContent();
+    await row.locator("[data-addr-in]").fill("https://nowhere.invalid");
+    await row.getByRole("button", { name: "Check and save" }).click();
+    await row.locator("[data-addr-note]:not([hidden])").waitFor();
+    expect(await row.locator("[data-addr-note]").textContent()).toMatch(
+      /Not saved/,
+    );
+    expect(posts.map((x) => x.url)).toEqual(["/api/web-url"]);
+    // Not saved: the row still shows what was there.
+    expect(await row.locator("[data-addr-now]").textContent()).toBe(before);
+    await p.context().close();
+  }, 60_000);
+
   it("every control is a named form element; the theme shows its swatches", async () => {
     if (!browser) return;
     const { p } = await open();
@@ -453,7 +473,10 @@ describe("the Settings page's rows (R21)", () => {
     expect(await p.$$("#set-body .swatches .sw")).toHaveLength(7);
     // Mode is a group of pressed buttons named by its label.
     expect(
-      await p.getByRole("group", { name: "Mode" }).getByRole("button").count(),
+      await p
+        .getByRole("group", { name: "Mode", exact: true })
+        .getByRole("button")
+        .count(),
     ).toBe(3);
     await p.context().close();
   }, 30_000);

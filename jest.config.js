@@ -12,6 +12,9 @@ export default {
     // Stub so pure helpers of k6 scripts can be unit-tested under Jest.
     "^k6/http$": "<rootDir>/tests/__mocks__/k6-http.cjs",
     "^(\\.{1,2}/.*)\\.js$": "$1",
+    // The pages' modules import each other by the URL the server serves
+    // them at ("/term-pane.js"): under Jest, the file in public/.
+    "^/([A-Za-z0-9_-]+)\\.js$": "<rootDir>/src/ui/server/public/$1.js",
   },
   transform: {
     "^.+\\.[jt]sx?$": [

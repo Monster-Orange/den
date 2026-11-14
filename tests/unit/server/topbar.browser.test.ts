@@ -740,8 +740,9 @@ describe("the admin password, asked only when sudo needs it (R8, LK-0)", () => {
     expect(await p.isVisible("#den-lock")).toBe(true);
     expect(await text(p, "#den-lock")).toBe("🔑 Admin password needed");
     expect(await p.getAttribute("#den-lock-pop", "role")).toBe("dialog");
+    // FB (den#81): the Report button closes it, as in every pop-up.
     expect(await text(p, "#den-lock-pop")).toBe(
-      "sudo touch /etc/acme-test needs your admin password shop/db Save to 1Password Continue Den uses it only for sudo. Agents can't enter it.",
+      "sudo touch /etc/acme-test needs your admin password shop/db Save to 1Password Continue Den uses it only for sudo. Agents can't enter it. Report ⌘⇧F",
     );
     expect(await focused(p)).toBe("den-lock-pw");
     await p.fill("#den-lock-pw", "wrong");
@@ -1150,13 +1151,18 @@ describe("D64: Restart Den from the browser, in place", () => {
     // Keep waiting and the CLI line only after restart_wait_seconds.
     expect(await p.isVisible('[data-rd="keep"]')).toBe(false);
     expect(await p.isVisible("#rd-dlg .rd-slow")).toBe(false);
+    // BUSY-1: it says the page reconnects by itself, then Back and the version.
+    expect(await text(p, "#rd-dlg .rd-sub")).toBe(
+      "This page reconnects by itself when Den is back.",
+    );
     await p.waitForFunction(
       () =>
         document.querySelector("#rd-dlg .rd-msg")?.textContent ===
-        "Den is back",
+        "Den is back.",
       undefined,
       { timeout: 15_000 },
     );
+    expect(await text(p, "#rd-dlg .rd-sub")).toMatch(/^Version \S+\.$/);
     await p.waitForFunction(
       () => !(document.getElementById("rd-dlg") as HTMLDialogElement).open,
       undefined,
@@ -1210,9 +1216,13 @@ describe("D64: Restart Den from the browser, in place", () => {
       timeout: 10_000,
     });
     expect(await text(p, "#rd-dlg .rd-slow")).toContain("web restart");
+    // BUSY-1: "Den didn't come back.", and Check again waits on.
+    expect(await text(p, "#rd-dlg .rd-msg")).toBe("Den didn't come back.");
+    expect(await text(p, '[data-rd="keep"]')).toBe("Check again");
     expect(await p.isVisible('[data-rd="keep"]')).toBe(true);
     await p.click('[data-rd="keep"]');
     expect(await p.isHidden("#rd-dlg .rd-slow")).toBe(true);
+    expect(await text(p, "#rd-dlg .rd-msg")).toMatch(/^Restarting Den…/);
     expect(await p.isVisible('[data-rd="keep"]')).toBe(false);
     await p.keyboard.press("Escape");
     expect(await dlgOpen(p)).toBe(true);

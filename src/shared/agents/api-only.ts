@@ -23,6 +23,7 @@ import {
 } from "../environment-manager/workspaces.js";
 import type { RawManifest } from "../types/index.js";
 import type { ApiOnlyArgs } from "./guardrails.js";
+import { readDenConfig } from "../den-config.js";
 
 /** One service, as the hook reads it. */
 export interface ApiOnlyService {
@@ -44,6 +45,32 @@ export interface ApiOnlyService {
 
 export interface ApiOnlyRules {
   services: ApiOnlyService[];
+  /** 0.4.46: engines beyond the hook's defaults (agents.api_only_engines). */
+  engines?: string[];
+  /** 0.4.46: their folders (VM disks, volumes), `~/…` or absolute. */
+  engineDirs?: string[];
+}
+
+/**
+ * `agents.api_only_engines: { clis: [...], dirs: [...] }`: container
+ * engines whose CLI the hook treats as Docker's, and the folders they keep
+ * data in, added to its defaults (docker, podman, nerdctl, container,
+ * kiri, through lima and colima). An entry that isn't a command name, or a
+ * folder that isn't `~/…` or absolute, is left out.
+ */
+export function apiOnlyEngines(
+  raw: unknown,
+): Pick<ApiOnlyRules, "engines" | "engineDirs"> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const r = raw as { clis?: unknown; dirs?: unknown };
+  const strs = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const engines = strs(r.clis).filter((x) => /^[A-Za-z0-9._-]+$/.test(x));
+  const engineDirs = strs(r.dirs).filter((x) => /^(~\/|\/)\S/.test(x));
+  return {
+    ...(engines.length ? { engines } : {}),
+    ...(engineDirs.length ? { engineDirs } : {}),
+  };
 }
 
 const COMPOSE_FILES = [
@@ -159,7 +186,13 @@ export function gatherApiOnly(
       if (s) add(services, s);
     }
   }
-  return { services };
+  let extra = {};
+  try {
+    extra = apiOnlyEngines(readDenConfig().agents?.api_only_engines);
+  } catch {
+    /* unreadable config: the defaults */
+  }
+  return { services, ...extra };
 }
 
 /**

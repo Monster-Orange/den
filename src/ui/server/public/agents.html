@@ -664,6 +664,12 @@
       .pane .bar2 .x [hidden] {
         display: none;
       }
+      /* 0.4.46: a pane reconnecting on its own: a quiet line, no button. */
+      .pane .bar2 .ag-recon {
+        align-self: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
       /* The body: mono 12px/1.5 (xterm draws inside it). */
       .pane .term {
         min-height: 0;

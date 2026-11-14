@@ -27,7 +27,8 @@ function deps(over: Partial<OnboardDeps> = {}): OnboardDeps {
     which: (b) => b === "git" || b === "docker",
     dockerRepos: () => [],
     dockerUp: () => true,
-    webUrl: "http://localhost:47001",
+    webUrl: "http://127.0.0.1:47001",
+    address: () => "https://acme.local.example.com",
     probeWeb: async () => ({ kind: "up", version: "9.9.9" }),
     mcpCall: () => ({ ok: true }),
     approvals: () => true,
@@ -141,11 +142,11 @@ describe("docker: only when a registered repo needs it", () => {
 });
 
 describe("web and mcp", () => {
-  it("up: both ok, the web check carries its URL and port", async () => {
+  it("up: both ok, the web check carries the install's address and port", async () => {
     const all = await onboardingChecks(deps());
     expect(all.find((c) => c.id === "web")).toMatchObject({
       status: "ok",
-      url: "http://localhost:47001",
+      url: "https://acme.local.example.com",
       port: 47001,
     });
     expect(all.find((c) => c.id === "mcp")).toMatchObject({ status: "ok" });
@@ -165,7 +166,7 @@ describe("web and mcp", () => {
     expect(all.find((c) => c.id === "web")).toMatchObject({
       status: "fail",
       fix: "./bin/acme web up --no-open --json",
-      url: "http://localhost:47001",
+      url: "https://acme.local.example.com",
       port: 47001,
     });
     expect(all.find((c) => c.id === "mcp")).toMatchObject({
@@ -173,6 +174,22 @@ describe("web and mcp", () => {
       fix: "./bin/acme web up --no-open --json",
     });
     expect(called).toBe(false);
+  });
+
+  it("D80: a person is shown the address, never a loopback one; unset, it says so and links Settings", async () => {
+    for (const kind of ["up", "down", "timeout"] as const) {
+      const c = await check("web", { probeWeb: async () => ({ kind }) });
+      expect(JSON.stringify(c)).not.toMatch(/localhost|127\.0\.0\.1/);
+      const unset = await check("web", {
+        probeWeb: async () => ({ kind }),
+        address: () => null,
+      });
+      expect(unset.url).toBeUndefined();
+      expect(unset.settings).toBe("/settings?q=web.url");
+      expect(JSON.stringify(unset)).not.toMatch(/localhost|127\.0\.0\.1/);
+      if (kind === "up")
+        expect(unset.detail).toMatch(/address is not set .*Den's address/);
+    }
   });
 
   it("slow: web fails with a restart as the fix", async () => {
@@ -190,7 +207,7 @@ describe("web and mcp", () => {
       probeWeb: async () => ({ kind: "foreign", who: "other (Den 1.0.0)" }),
     });
     expect(c.status).toBe("fail");
-    expect(c.detail).toMatch(/other \(Den 1\.0\.0\) answers at/);
+    expect(c.detail).toMatch(/other \(Den 1\.0\.0\) answers on port 47001/);
     expect(c.ask).toMatch(/port/);
   });
 

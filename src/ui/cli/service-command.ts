@@ -62,6 +62,7 @@ import {
   type OwnServer,
   type ServerIdentity,
 } from "./server-identity.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 /** Runs a command with extra env vars; returns its exit code. */
 export type ServiceRunner = (
@@ -436,7 +437,7 @@ export async function cmdService(
     /* sessions then start a host of their own, as before */
   }
 
-  const url = `http://localhost:${port}/api/server-info`;
+  const url = `${denWebBase(port)}/api/server-info`;
   const waitReady =
     deps.waitReady ??
     ((u: string, t: number, o: OwnServer) => waitForServerInfo(u, t, 500, o));

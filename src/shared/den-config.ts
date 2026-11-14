@@ -12,6 +12,7 @@ import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
 import { subagentsBlock, type SubagentSettings } from "./agents/subagents.js";
+import { checkIntent, type PermissionIntent } from "./agents/permissions.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -331,6 +332,11 @@ export interface WorkspaceBlueprint {
  * Only affects settings that should differ between engineers on the same team.
  */
 export interface UserConfig {
+  /**
+   * 0.4.46: after the machine restarts, the services that were up come back
+   * up (restore_on_boot, true by default; restore-on-boot.ts).
+   */
+  services?: { restore_on_boot?: unknown; restore_wait_seconds?: unknown };
   /** Per-engineer secrets override (e.g. provider: env). */
   secrets?: SecretsConfig;
   /**
@@ -350,8 +356,11 @@ export interface UserConfig {
   /**
    * Browser settings. restart_wait_seconds (D64, default 90): how long the
    * Restart Den dialog waits before it shows the command line way.
+   * request_memory_seconds (BUSY-1, default 600): how long Den remembers
+   * how a write sent from the working pop-up ended, so Try again never runs
+   * it twice and Check again can say how it ended.
    */
-  ui?: { restart_wait_seconds?: number };
+  ui?: { restart_wait_seconds?: number; request_memory_seconds?: number };
   /**
    * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
    * Stored as a key; the server resolves the actual executable path at open time.
@@ -423,6 +432,31 @@ export interface UserConfig {
    * install directories). Per machine, so user.yml only: the distribution's
    * config never sets a path. See shared/agents/runtime-search.ts.
    */
+  /**
+   * 0.4.46: a terminal pane reconnects on its own after a drop: first
+   * after reconnect_seconds (1), doubling to reconnect_max_seconds (30);
+   * it stops after reconnect_max_failures (10) failed tries within
+   * reconnect_window_seconds (300), with a Reconnect button. A try that
+   * hasn't connected in connect_timeout_seconds (10) is a failed one.
+   */
+  panes?: {
+    reconnect_seconds?: unknown;
+    reconnect_max_seconds?: unknown;
+    reconnect_max_failures?: unknown;
+    reconnect_window_seconds?: unknown;
+    connect_timeout_seconds?: unknown;
+  };
+  /**
+   * FB (den#81): Report an issue. `enabled: false` hides every entry
+   * point; `max_per_hour` (5) is how many one person sends in an hour.
+   */
+  feedback?: {
+    enabled?: unknown;
+    max_per_hour?: unknown;
+    capture_seconds?: unknown;
+    /** How many of the person's reports My reports shows (20, 1..100). */
+    my_reports_max?: unknown;
+  };
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
     /**
@@ -437,6 +471,20 @@ export interface UserConfig {
      * (the default), 1d or 7d. Interrupted agents are never forgotten.
      */
     remove_stopped_after?: unknown;
+    /**
+     * 0.4.46: after the machine restarts, every agent that was running
+     * comes back on its own conversation (true, the default).
+     */
+    restore_on_boot?: unknown;
+    /**
+     * 0.4.46 MODE-UI: the install's mode for every agent (ask, edits, auto,
+     * all): under the agent's own and its project's, over its persona's.
+     */
+    default_mode?: unknown;
+    /** 0.4.46: how often Den looks for an agent whose mode changed (30 s). */
+    mode_check_seconds?: unknown;
+    /** 0.4.46: how long that restore waits for Hub first (120 s). */
+    restore_hub_wait_seconds?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -535,6 +583,112 @@ export function configuredRemoveStoppedAfter(
     return REMOVE_STOPPED_AFTER[v];
   throw new Error(
     `agents.remove_stopped_after (${path.basename(USER_CONFIG_PATH)}): must be never, 1d or 7d (got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * 0.4.46 agents.restore_on_boot (user.yml, true when unset): after the
+ * machine restarts, every agent that was running comes back, not only
+ * standing personas and those with resume_on_restart.
+ */
+export function agentsRestoreOnBoot(
+  read: () => UserConfig = readUserConfig,
+): boolean {
+  const v = read().agents?.restore_on_boot;
+  if (v === undefined || v === null) return true;
+  if (typeof v === "boolean") return v;
+  throw new Error(
+    `agents.restore_on_boot must be true or false (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * 0.4.46 agents.default_mode (user.yml): the install's mode for every
+ * agent, or undefined when unset. A bad value is refused, naming the key.
+ */
+export function agentsDefaultMode(
+  read: () => UserConfig = readUserConfig,
+): PermissionIntent | undefined {
+  const v = read().agents?.default_mode;
+  if (v === undefined || v === null) return undefined;
+  return checkIntent(v, "agents.default_mode (user.yml)");
+}
+
+/** web.url_check_seconds (user.yml): how long Check and save waits (10). */
+export function webUrlCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  let v: unknown;
+  try {
+    const w = read().web as Record<string, unknown> | undefined;
+    v = w && typeof w === "object" ? w.url_check_seconds : undefined;
+  } catch {
+    return 10;
+  }
+  return typeof v === "number" && Number.isFinite(v) && v >= 1 ? v : 10;
+}
+
+/** One panes.<key> number (user.yml): `dflt` when unset, at least `min`. */
+function panesNumber(
+  read: () => UserConfig,
+  key: keyof NonNullable<UserConfig["panes"]>,
+  dflt: number,
+  min: number,
+): number {
+  const v = read().panes?.[key];
+  if (v === undefined || v === null) return dflt;
+  if (typeof v === "number" && Number.isFinite(v) && v >= min) return v;
+  throw new Error(
+    `panes.${String(key)} must be a number, at least ${min} (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * 0.4.46: how a terminal pane reconnects on its own (user.yml panes.*),
+ * as GET /api/settings gives the page (panes_reconnect).
+ */
+export function panesReconnect(read: () => UserConfig = readUserConfig): {
+  seconds: number;
+  max_seconds: number;
+  max_failures: number;
+  window_seconds: number;
+  connect_timeout_seconds: number;
+} {
+  return {
+    seconds: panesNumber(read, "reconnect_seconds", 1, 0.1),
+    max_seconds: panesNumber(read, "reconnect_max_seconds", 30, 0.1),
+    max_failures: panesNumber(read, "reconnect_max_failures", 10, 1),
+    window_seconds: panesNumber(read, "reconnect_window_seconds", 300, 1),
+    connect_timeout_seconds: panesNumber(
+      read,
+      "connect_timeout_seconds",
+      10,
+      1,
+    ),
+  };
+}
+
+/** agents.mode_check_seconds (user.yml): 30 when unset, at least 5. */
+export function agentsModeCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.mode_check_seconds;
+  if (v === undefined || v === null) return 30;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 5) return v;
+  throw new Error(
+    `agents.mode_check_seconds must be a number, at least 5 (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/** agents.restore_hub_wait_seconds (user.yml): 120 when unset, at least 0. */
+export function agentsRestoreHubWaitSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.restore_hub_wait_seconds;
+  if (v === undefined || v === null) return 120;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) return v;
+  throw new Error(
+    `agents.restore_hub_wait_seconds must be a number, at least 0 (user.yml; got ${JSON.stringify(v)})`,
   );
 }
 
@@ -1139,6 +1293,12 @@ export interface AgentsConfig {
    */
   uploads?: { max_bytes?: unknown; keep_days?: unknown; dir?: unknown };
   /**
+   * 0.4.46: container engines beyond Den's defaults whose CLI an api_only
+   * service's guardrail treats as Docker's, and their folders:
+   * `{ clis: [...], dirs: [...] }` (agents/api-only.ts).
+   */
+  api_only_engines?: { clis?: unknown; dirs?: unknown };
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -1172,6 +1332,8 @@ export const AGENTS_RESERVED_KEYS = [
   "exited_shell_minutes",
   // AG-DROP: files dropped onto an agent's terminal.
   "uploads",
+  // 0.4.46: engines the api_only guardrail treats as Docker's.
+  "api_only_engines",
   // AG-DROP-2: files an agent's links and downloads never reach.
   "files",
   // AG-10.5, AG-11.1: the distribution's persona categories and roles.
