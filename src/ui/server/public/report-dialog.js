@@ -73,6 +73,20 @@ const CSS = `
 .fb-shot img{cursor:default}
 .fb-kbd input[type=number]{width:5em;font:13px var(--sans);padding:4px 6px;border:1px solid var(--border-strong, var(--border));border-radius:6px;background:var(--bg);color:var(--text)}
 .fb-masks{margin:6px 0 0;padding-inline-start:18px;font-size:13px;display:grid;gap:4px}
+.fb-lk{justify-self:start;background:none;border:0;padding:0;color:var(--accent-text, var(--accent));font:13px var(--sans);text-decoration:underline;cursor:pointer}
+.fb-my{width:min(560px,calc(100vw - 32px))}
+.fb-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.fb-tabs button{min-height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--border-strong, var(--border));background:var(--surface, var(--bg));color:var(--text);font:13px var(--sans);cursor:pointer}
+.fb-tabs button[aria-selected="true"]{background:var(--accent-fill, var(--accent));border-color:var(--accent-fill, var(--accent));color:var(--on-accent);font-weight:600}
+.fb-list{list-style:none;margin:0;padding:0;display:grid}
+.fb-row{display:flex;gap:10px;align-items:center;padding:8px 2px;border-bottom:1px solid var(--border);font-size:13px}
+.fb-row:last-child{border-bottom:0}
+.fb-row>div{flex:1;min-width:0;display:grid;gap:2px}
+.fb-row b{overflow-wrap:anywhere}
+.fb-row a{color:var(--accent-text, var(--accent));white-space:nowrap}
+.fb-row button{min-height:32px;padding:0 10px;border-radius:.2rem;border:1px solid var(--border-strong, var(--border));background:var(--surface, var(--bg));color:var(--text);font:13px var(--sans);cursor:pointer}
+.fb-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-text, var(--accent));flex:none}
+.fb-nodot{width:8px;flex:none}
 .fb-tools button{min-height:32px;padding:0 10px;border-radius:.2rem;border:1px solid var(--border-strong, var(--border));background:var(--surface, var(--bg));color:var(--text);font:13px var(--sans);cursor:pointer}
 @media (max-width:600px){
   .fb-dlg{width:100%;max-width:100%;margin:0;inset:auto 0 0 0;border-radius:12px 12px 0 0;max-height:92vh}
@@ -247,12 +261,26 @@ export async function openReport(opts = {}) {
   st.info = info.data || {};
   // Taken before the dialog is on the page, so it shows what the person
   // saw: the page and any pop-up open over it.
-  st.shot = shots
-    ? await shots.capture({
-        seconds: st.info.captureSeconds || 15,
-        skip: (el) => el.classList?.contains("fb-dlg"),
-      })
-    : null;
+  // A draft brings its own: Finish later's from this browser (with its
+  // masks), an agent's from its record.
+  const fromDraft = async () => {
+    if (d.by === "person" && d.id) {
+      const k = await shots.loadShot(d.id);
+      if (!k) return null;
+      st.masks = k.masks;
+      st.noShot = k.noShot;
+      return k.canvas;
+    }
+    return typeof d.shot === "string" ? shots.canvasOf(d.shot) : null;
+  };
+  st.shot = !shots
+    ? null
+    : opts.draft
+      ? await fromDraft()
+      : await shots.capture({
+          seconds: st.info.captureSeconds || 15,
+          skip: (el) => el.classList?.contains("fb-dlg"),
+        });
   if (current !== self) return self;
   document.body.append(dlg);
   st.diag = diag.data?.sections || {};
@@ -332,7 +360,7 @@ export async function openReport(opts = {}) {
       : "";
     if (st.step === "write") {
       h = `<h2 tabindex="-1">${esc(t("fb.title"))}</h2>
-<p class="fb-sub">${esc(t("fb.sub"))}</p>${stepsHtml(0)}
+<p class="fb-sub">${esc(t("fb.sub"))}</p><button type="button" class="fb-lk" data-act="mine">${esc(t("fb.mine"))}</button>${stepsHtml(0)}
 <div class="fb-h" id="fb-kind">${esc(t("fb.kind"))}</div>
 <div class="fb-kinds" role="radiogroup" aria-labelledby="fb-kind">${KINDS.map(
         (k) =>
@@ -513,12 +541,18 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       return render();
     }
     st.draftId = r.data.draft?.id || st.draftId;
+    // The screenshot stays in this browser, never on Den's server.
+    if (shots && st.draftId)
+      await (st.shot
+        ? shots.keepShot(st.draftId, st.shot, st.masks, st.noShot)
+        : shots.dropShot(st.draftId));
     go("later");
   }
 
   /** Sent: then the masked screenshot is saved and copied to paste. */
   function sent(data) {
     st.sent = data || {};
+    if (shots && st.draftId) void shots.dropShot(st.draftId);
     go("sent");
     if (!shotOn()) return;
     void shots.saveAndCopy(maskedShot()).then((r) => {
@@ -749,18 +783,296 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       return void send();
     }
     if (act === "later") return void saveDraft();
-    if (act === "back-write") return go("write");
+    if (act === "mine") {
+      // Typed text is kept or discarded first, then My reports opens.
+      if (dirty()) {
+        st.then = "mine";
+        return go("keep");
+      }
+      close();
+      return void openMyReports();
+    }
+    if (act === "back-write") {
+      st.then = null;
+      return go("write");
+    }
     if (act === "back-include") return go("include");
     if (act === "back-review") {
       go("review");
       return void preview();
     }
     if (act === "cancel") return dirty() ? go("keep") : close();
-    if (act === "discard" || act === "done") return close();
+    if (act === "discard" || act === "done") {
+      const then = st.then;
+      close();
+      if (then === "mine") void openMyReports();
+      return;
+    }
   });
 
   render();
   dlg.showModal();
   render();
+  return self;
+}
+
+/*
+ * My reports (E2): the person's reports on the destinations, live from
+ * GitHub through their own gh (Den keeps no copy), and the drafts: their
+ * own Finish later ones beside them, agents' on the second tab, each to
+ * continue (the form opens with it) or discard. A dot marks a reply the
+ * person hasn't opened yet, remembered in this browser.
+ *
+ *   openMyReports()   opens it
+ */
+const SEEN_KEY = "den.report.seen";
+function loadSeen() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SEEN_KEY) || "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+function saveSeen(v) {
+  try {
+    localStorage.setItem(SEEN_KEY, JSON.stringify(v));
+  } catch {
+    /* storage off: dots come back */
+  }
+}
+
+/** "2 h ago", "yesterday": the page's language. */
+function ago(iso) {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  const lang = document.documentElement.lang || "en";
+  let rtf;
+  try {
+    rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+  } catch {
+    rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  }
+  const s = Math.round((ms - Date.now()) / 1000);
+  const a = Math.abs(s);
+  if (a < 60) return rtf.format(s, "second");
+  if (a < 3600) return rtf.format(Math.round(s / 60), "minute");
+  if (a < 86400) return rtf.format(Math.round(s / 3600), "hour");
+  if (a < 30 * 86400) return rtf.format(Math.round(s / 86400), "day");
+  return rtf.format(Math.round(s / (30 * 86400)), "month");
+}
+
+let mine = null;
+
+export async function openMyReports() {
+  if (mine) {
+    mine.dlg.querySelector("h2")?.focus();
+    return mine;
+  }
+  ensureCss();
+  const dlg = document.createElement("dialog");
+  dlg.className = "fb-dlg fb-my";
+  dlg.setAttribute("aria-modal", "true");
+  dlg.setAttribute("aria-label", t("fb.mine"));
+  const ms = {
+    tab: "mine",
+    gh: null,
+    drafts: null,
+    error: "",
+    seen: loadSeen(),
+  };
+  const self = { dlg, ms, close };
+  mine = self;
+  document.body.append(dlg);
+
+  const btn = (act, label, attrs = "") =>
+    `<button type="button" data-act="${act}"${attrs}>${esc(label)}</button>`;
+
+  function unseen(r) {
+    const l = r.lastReply;
+    if (!l || !l.at || (ms.gh?.me && l.by === ms.gh.me)) return false;
+    return (ms.seen[`${r.repo}#${r.number}`] || "") < l.at;
+  }
+
+  function reportRow(r) {
+    const status = [
+      t(r.state === "open" ? "fb.myOpen" : "fb.myClosed"),
+      r.lastReply
+        ? t("fb.myLast", { text: r.lastReply.text, when: ago(r.lastReply.at) })
+        : t("fb.myNone"),
+    ].join(" · ");
+    const dot = unseen(r)
+      ? `<span class="fb-dot" role="img" aria-label="${esc(t("fb.myNew"))}"></span>`
+      : `<span class="fb-nodot"></span>`;
+    return `<li class="fb-row" data-report="${esc(`${r.repo}#${r.number}`)}">${dot}<div><b>${esc(r.title || t("fb.untitled"))}</b><span class="fb-fine">${esc(status)}</span></div><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" data-open="${esc(`${r.repo}#${r.number}`)}">${esc(t("fb.openL"))} ↗</a></li>`;
+  }
+
+  function draftRow(dr) {
+    const sub =
+      dr.by === "person"
+        ? `${t("fb.r3")} · ${t("fb.r3s")}`
+        : t("fb.myBy", {
+            agent: dr.by.replace(/^agent:/, ""),
+            when: ago(dr.savedAt),
+          });
+    return `<li class="fb-row" data-draft="${esc(dr.id)}"><span class="fb-nodot"></span><div><b>${esc(dr.title || t("fb.untitled"))}</b><span class="fb-fine">${esc(sub)}</span></div>${btn("cont", t("fb.cont"), ` data-id="${esc(dr.id)}"`)}${btn("rmdraft", t("fb.discard"), ` data-id="${esc(dr.id)}"`)}</li>`;
+  }
+
+  function render(focusSel) {
+    const drafts = ms.drafts || [];
+    const own = drafts.filter((x) => x.by === "person");
+    const agents = drafts.filter((x) => x.by !== "person");
+    let body = "";
+    if (!ms.gh && !ms.drafts)
+      body = `<p class="fb-fine" role="status">${esc(t("fb.myLoading"))}</p>`;
+    else if (ms.tab === "mine") {
+      const reports = ms.gh?.reports || [];
+      const note = ms.error
+        ? `<p class="fb-err" role="alert">${esc(ms.error)}</p>`
+        : ms.gh && !ms.gh.signedIn
+          ? `<p class="fb-warn">${esc(t("fb.myNoGh"))}</p>`
+          : "";
+      const rows = [...own.map(draftRow), ...reports.map(reportRow)];
+      body = `${note}${
+        rows.length
+          ? `<ul class="fb-list">${rows.join("")}</ul>`
+          : `<p class="fb-fine">${esc(t("fb.myE"))}</p>`
+      }`;
+    } else
+      body = agents.length
+        ? `<ul class="fb-list">${agents.map(draftRow).join("")}</ul>`
+        : `<p class="fb-fine">${esc(t("fb.myAgE"))}</p>`;
+    const tab = (id, label) =>
+      `<button type="button" role="tab" data-tab="${id}" aria-selected="${ms.tab === id}" aria-controls="fb-my-panel" tabindex="${ms.tab === id ? 0 : -1}">${esc(label)}</button>`;
+    dlg.innerHTML = `<div class="fb-b"><h2 tabindex="-1">${esc(t("fb.mine"))}</h2>
+<p class="fb-sub">${esc(t("fb.myS"))}</p>
+<div class="fb-tabs" role="tablist">${tab("mine", t("fb.tabMine"))}${tab("agents", t("fb.tabDraft", { n: agents.length }))}</div>
+<div id="fb-my-panel" role="tabpanel" aria-live="polite">${body}</div>
+<div class="fb-btns">${btn("done", t("fb.done"), ' class="fb-pri"')}</div></div>`;
+    (
+      (focusSel && dlg.querySelector(focusSel)) ||
+      dlg.querySelector("h2")
+    )?.focus();
+  }
+
+  async function load() {
+    const [gh, dr] = await Promise.all([
+      api("GET", "/api/report/mine").catch(() => ({ status: 0, data: {} })),
+      api("GET", "/api/report/drafts").catch(() => ({ status: 0, data: {} })),
+    ]);
+    if (mine !== self) return;
+    ms.gh = gh.status === 200 ? gh.data : { signedIn: true, reports: [] };
+    ms.error = gh.status === 200 ? "" : gh.data.error || `${gh.status}`;
+    ms.drafts = Array.isArray(dr.data.drafts) ? dr.data.drafts : [];
+  }
+
+  async function cont(id) {
+    const r = await api("GET", `/api/report/drafts/${id}`);
+    if (r.status !== 200) {
+      ms.error = r.data.error || `${r.status}`;
+      return render();
+    }
+    close();
+    void openReport({ draft: r.data.draft });
+  }
+
+  async function discard(id, button) {
+    const run = (headers) =>
+      api("DELETE", `/api/report/drafts/${id}`, undefined, {
+        headers,
+      }).then((r) => {
+        if (r.status !== 200 && r.status !== 404) {
+          const e = new Error(r.data.error || "");
+          e.status = r.status;
+          throw e;
+        }
+        return r.data;
+      });
+    const busy = window.denShell?.busyAction;
+    try {
+      if (busy)
+        await busy({
+          button,
+          title: t("fb.discard"),
+          done: t("fb.busyDone"),
+          failed: t("fb.busyFailed"),
+          who: "Den",
+          toastFast: false,
+          run,
+        });
+      else await run({});
+    } catch {
+      return render();
+    }
+    import("/report-shot.js").then((m) => m.dropShot(id)).catch(() => {});
+    ms.drafts = (ms.drafts || []).filter((x) => x.id !== id);
+    if (mine === self) render(`[data-tab="${ms.tab}"]`);
+  }
+
+  function close() {
+    if (mine === self) mine = null;
+    if (dlg.open) dlg.close();
+    dlg.remove();
+  }
+
+  dlg.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      return close();
+    }
+    const tb = e.target.closest?.('[role="tab"]');
+    if (tb && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+      e.preventDefault();
+      ms.tab = ms.tab === "mine" ? "agents" : "mine";
+      render(`[data-tab="${ms.tab}"]`);
+    }
+  });
+  dlg.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    close();
+  });
+  dlg.addEventListener("close", () => {
+    if (mine === self) close();
+  });
+  dlg.addEventListener("click", (e) => {
+    const o = e.target.closest?.("[data-open]");
+    if (o) {
+      const k = o.getAttribute("data-open");
+      const r = (ms.gh?.reports || []).find(
+        (x) => `${x.repo}#${x.number}` === k,
+      );
+      if (r?.lastReply?.at) {
+        ms.seen[k] = r.lastReply.at;
+        saveSeen(ms.seen);
+        // The dot goes; the link still opens (no re-render under the click).
+        o.closest(".fb-row")
+          ?.querySelector(".fb-dot")
+          ?.replaceWith(
+            Object.assign(document.createElement("span"), {
+              className: "fb-nodot",
+            }),
+          );
+      }
+      return;
+    }
+    const tb = e.target.closest?.("[data-tab]");
+    if (tb) {
+      ms.tab = tb.getAttribute("data-tab");
+      return render(`[data-tab="${ms.tab}"]`);
+    }
+    const b = e.target.closest?.("[data-act]");
+    if (!b) return;
+    const act = b.getAttribute("data-act");
+    const id = b.getAttribute("data-id");
+    if (act === "done") return close();
+    if (act === "cont" && id) return void cont(id);
+    if (act === "rmdraft" && id) return void discard(id, b);
+  });
+
+  render();
+  dlg.showModal();
+  await load();
+  if (mine === self) render();
   return self;
 }

@@ -147,7 +147,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/report",
     "/api/report/diagnostics",
     "/api/report/drafts",
+    "/api/report/drafts/:id",
     "/api/report/github-send/:id",
+    // My reports: live from GitHub as the person (an agent gets 403).
+    "/api/report/mine",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",

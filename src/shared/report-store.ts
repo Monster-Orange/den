@@ -26,6 +26,8 @@ export interface FeedbackSettings {
   repos: string[];
   /** How long the page's screenshot may take before it is skipped (s). */
   captureSeconds: number;
+  /** How many of the person's reports My reports shows. */
+  myReportsMax: number;
 }
 
 /** owner/repo from a GitHub URL (https://github.com/o/r/issues), else null. */
@@ -67,6 +69,7 @@ export function feedbackSettings(
     repos.push(d.repo);
   const max = u.max_per_hour ?? d.max_per_hour;
   const cap = u.capture_seconds ?? d.capture_seconds;
+  const mine = u.my_reports_max ?? d.my_reports_max;
   return {
     enabled: d.enabled !== false && u.enabled !== false,
     maxPerHour:
@@ -74,6 +77,13 @@ export function feedbackSettings(
     repos,
     captureSeconds:
       typeof cap === "number" && Number.isFinite(cap) && cap >= 1 ? cap : 15,
+    myReportsMax:
+      typeof mine === "number" &&
+      Number.isInteger(mine) &&
+      mine >= 1 &&
+      mine <= 100
+        ? mine
+        : 20,
   };
 }
 

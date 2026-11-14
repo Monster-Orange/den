@@ -172,6 +172,27 @@
       "The screenshot is saved and copied: paste it into the issue.",
     "fb.sentShotSaved":
       "The screenshot is saved as a file: add it to the issue.",
+    "fb.mine": "My reports",
+    "fb.myS":
+      "Shown live from GitHub. It works while you are signed in to GitHub.",
+    "fb.tabMine": "Mine",
+    "fb.tabDraft": "Drafts from agents ({n})",
+    "fb.r3": "Draft: Finish later",
+    "fb.r3s": "Saved on this computer · not sent",
+    "fb.openL": "Open on GitHub",
+    "fb.cont": "Continue",
+    "fb.myE": "No reports yet. Press Report on any page to send one.",
+    "fb.myOpen": "Open",
+    "fb.myClosed": "Closed",
+    "fb.myLast": "last reply: “{text}” {when}",
+    "fb.myNone": "no replies yet",
+    "fb.myNew": "New reply",
+    "fb.myNoGh":
+      "Sign in to GitHub to see your reports here. Drafts are shown either way.",
+    "fb.myBy": "From {agent} · {when}",
+    "fb.myAgE": "No drafts from agents.",
+    "fb.myLoading": "Loading…",
+    "fb.untitled": "(no title)",
     "fb.next": "Next: Include",
     "fb.back": "Back",
     "fb.send": "Send as a GitHub issue",
@@ -226,7 +247,7 @@
       "Try again in {min} minutes. Your report is not lost: save it with Finish later and send it then.",
     "fb.latH": "Saved. Nothing was sent.",
     "fb.latB":
-      "It is saved on this computer with your text and choices. Open it again from Report an issue to send it.",
+      "It is saved on this computer with your text, choices and screenshot. Find it under My reports, at the top of Report an issue or in the command palette.",
     "fb.failH": "Not sent",
     "fb.keepH": "Keep what you wrote?",
     "fb.keep": "Keep it (Finish later)",
@@ -6495,10 +6516,29 @@
       openReport();
     },
   });
+  // My reports: the person's reports live from GitHub, and the drafts.
+  function openMyReports() {
+    if (state.reportOff) return Promise.resolve(null);
+    return import("/report-dialog.js").then(function (m) {
+      return m.openMyReports();
+    });
+  }
+  registerCommand({
+    id: "my-reports",
+    label: function () {
+      return t("fb.mine");
+    },
+    keywords: ["my reports", "reports", "drafts", "feedback", "replies"],
+    run: function () {
+      openMyReports();
+    },
+  });
 
   window.denShell = {
     /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
     report: openReport,
+    /** FB: My reports (the person's reports and the drafts). */
+    myReports: openMyReports,
     /** FB: the footer Report button's HTML ("" when reports are off). */
     reportButton: reportButton,
     /** BUSY-1: the working pop-up for a slow action (busy.js). */

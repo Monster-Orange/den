@@ -16,7 +16,11 @@
  *                                    `addTo` (a comment there) or `fileNew`
  *   GET    /api/report/drafts       Finish later's and agents' drafts
  *   POST   /api/report/drafts       save one (an agent's stays a draft)
+ *   GET    /api/report/drafts/<id>  one, with its screenshot
  *   DELETE /api/report/drafts/<id>  a person discards one
+ *   GET    /api/report/mine         My reports: the person's issues on the
+ *                                    destinations, live from GitHub through
+ *                                    their own gh (Den keeps no copy)
  *   POST   /api/report/github-send  no `gh`: the same send, through Den's
  *                                    GitHub App's device flow. The report is
  *                                    held here; the person's approval files
@@ -152,7 +156,7 @@ export async function decideReport(
 
 /** GET /api/report/github-send/<id>. */
 const FLOW_PATH = /^\/api\/report\/github-send\/([A-Za-z0-9_-]{16,64})$/;
-/** DELETE /api/report/drafts/<id>. */
+/** GET and DELETE /api/report/drafts/<id>. */
 const DRAFT_PATH = /^\/api\/report\/drafts\/([a-f0-9]{16})$/;
 
 const KINDS: readonly ReportKind[] = ["bug", "idea", "question"];
@@ -234,6 +238,63 @@ async function ghSignedIn(d: ReportRouteDeps): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** My reports' one search: the person's issues, each with its last reply. */
+const MINE_QUERY =
+  "query($q:String!,$n:Int!){viewer{login} search(query:$q,type:ISSUE,first:$n){nodes{... on Issue{number title url state updatedAt repository{nameWithOwner} comments(last:1){totalCount nodes{bodyText createdAt author{login}}}}}}}";
+
+export interface MyReport {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  state: "open" | "closed";
+  updatedAt: string;
+  replies: number;
+  lastReply?: { text: string; at: string; by: string };
+}
+
+/** GitHub's search answer as My reports rows; anything else is left out. */
+export function myReportsOf(raw: unknown): MyReport[] {
+  const nodes = (raw as { data?: { search?: { nodes?: unknown[] } } } | null)
+    ?.data?.search?.nodes;
+  if (!Array.isArray(nodes)) return [];
+  const out: MyReport[] = [];
+  for (const n of nodes as Record<string, unknown>[]) {
+    if (!n || typeof n.number !== "number" || typeof n.url !== "string")
+      continue;
+    const repo = (n.repository as { nameWithOwner?: unknown } | undefined)
+      ?.nameWithOwner;
+    const c = (n.comments ?? {}) as {
+      totalCount?: unknown;
+      nodes?: Record<string, unknown>[];
+    };
+    const last = Array.isArray(c.nodes) ? c.nodes[0] : undefined;
+    const row: MyReport = {
+      repo: typeof repo === "string" ? repo : "",
+      number: n.number,
+      title: typeof n.title === "string" ? n.title : "",
+      url: n.url,
+      state: n.state === "OPEN" ? "open" : "closed",
+      updatedAt: typeof n.updatedAt === "string" ? n.updatedAt : "",
+      replies: typeof c.totalCount === "number" ? c.totalCount : 0,
+    };
+    if (last && typeof last.bodyText === "string") {
+      const text = last.bodyText.replace(/\s+/g, " ").trim();
+      row.lastReply = {
+        text: text.length > 140 ? `${text.slice(0, 139)}…` : text,
+        at: typeof last.createdAt === "string" ? last.createdAt : "",
+        by:
+          typeof (last.author as { login?: unknown } | undefined)?.login ===
+          "string"
+            ? (last.author as { login: string }).login
+            : "",
+      };
+    }
+    out.push(row);
+  }
+  return out;
 }
 
 /** An open issue on `repo` with exactly this title, if there is one. */
@@ -494,7 +555,63 @@ export function handleReportRoutes(
 
   if (pathname === "/api/report/drafts" && req.method === "GET")
     return run(async () => {
-      d.sendJson(res, { ok: true, drafts: draftStore(d.stateDir()).list() });
+      // The list leaves screenshots out: one is read when it is opened.
+      const drafts = draftStore(d.stateDir())
+        .list()
+        .map(({ shot, ...rest }) => (shot ? { ...rest, hasShot: true } : rest));
+      d.sendJson(res, { ok: true, drafts });
+    });
+
+  if (pathname === "/api/report/mine" && req.method === "GET")
+    return run(async () => {
+      if (!d.settings().enabled) return off();
+      if (d.agentOf(req))
+        return d.sendJson(
+          res,
+          { ok: false, error: "My reports is the person's own" },
+          403,
+        );
+      if (!(await ghSignedIn(d)))
+        return d.sendJson(res, { ok: true, signedIn: false, reports: [] });
+      const s = d.settings();
+      const q = [
+        ...s.repos.map((r) => `repo:${r}`),
+        "author:@me is:issue sort:updated-desc",
+      ].join(" ");
+      const r = await d.gh([
+        "api",
+        "graphql",
+        "-f",
+        `query=${MINE_QUERY}`,
+        "-f",
+        `q=${q}`,
+        "-F",
+        `n=${s.myReportsMax}`,
+      ]);
+      if (r.code !== 0)
+        return d.sendJson(
+          res,
+          {
+            ok: false,
+            error: (r.stderr || "GitHub did not answer").split("\n")[0],
+          },
+          502,
+        );
+      let raw: unknown = null;
+      try {
+        raw = JSON.parse(r.stdout);
+      } catch {
+        /* not JSON: none */
+      }
+      // `me`: the person's login, so their own replies aren't new ones.
+      const me = (raw as { data?: { viewer?: { login?: unknown } } } | null)
+        ?.data?.viewer?.login;
+      d.sendJson(res, {
+        ok: true,
+        signedIn: true,
+        me: typeof me === "string" ? me : "",
+        reports: myReportsOf(raw),
+      });
     });
 
   if (pathname === "/api/report/drafts" && req.method === "POST")
@@ -529,6 +646,15 @@ export function handleReportRoutes(
     });
 
   const m = DRAFT_PATH.exec(pathname);
+  if (m && req.method === "GET")
+    return run(async () => {
+      const draft = draftStore(d.stateDir()).get(m[1]);
+      d.sendJson(
+        res,
+        draft ? { ok: true, draft } : { ok: false, error: "no such draft" },
+        draft ? 200 : 404,
+      );
+    });
   if (m && req.method === "DELETE")
     return run(async () => {
       if (d.agentOf(req))

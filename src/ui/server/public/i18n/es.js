@@ -62,6 +62,28 @@
       "La captura está guardada y copiada: pégala en la incidencia.",
     "fb.sentShotSaved":
       "La captura está guardada como archivo: añádela a la incidencia.",
+    "fb.mine": "Mis informes",
+    "fb.myS":
+      "Se muestran en vivo desde GitHub. Funciona mientras tengas la sesión iniciada en GitHub.",
+    "fb.tabMine": "Míos",
+    "fb.tabDraft": "Borradores de agentes ({n})",
+    "fb.r3": "Borrador: Terminar luego",
+    "fb.r3s": "Guardado en este ordenador · no enviado",
+    "fb.openL": "Abrir en GitHub",
+    "fb.cont": "Continuar",
+    "fb.myE":
+      "Aún no hay informes. Pulsa Informar en cualquier página para enviar uno.",
+    "fb.myOpen": "Abierto",
+    "fb.myClosed": "Cerrado",
+    "fb.myLast": "última respuesta: «{text}» {when}",
+    "fb.myNone": "aún sin respuestas",
+    "fb.myNew": "Respuesta nueva",
+    "fb.myNoGh":
+      "Inicia sesión en GitHub para ver aquí tus informes. Los borradores se muestran igual.",
+    "fb.myBy": "De {agent} · {when}",
+    "fb.myAgE": "No hay borradores de agentes.",
+    "fb.myLoading": "Cargando…",
+    "fb.untitled": "(sin título)",
     "fb.next": "Siguiente: Incluir",
     "fb.back": "Atrás",
     "fb.send": "Enviar como incidencia de GitHub",
@@ -117,7 +139,7 @@
       "Inténtalo de nuevo en {min} minutos. Tu informe no se pierde: guárdalo con Terminar luego y envíalo entonces.",
     "fb.latH": "Guardado. No se envió nada.",
     "fb.latB":
-      "Está guardado en este ordenador con tu texto y tus elecciones. Ábrelo de nuevo desde Informar de un problema para enviarlo.",
+      "Está guardado en este ordenador con tu texto, tus elecciones y la captura. Lo encontrarás en Mis informes, arriba en Informar de un problema o en la paleta de comandos.",
     "fb.failH": "No enviado",
     "fb.keepH": "¿Conservar lo que escribiste?",
     "fb.keep": "Conservarlo (Terminar luego)",

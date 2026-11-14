@@ -78,12 +78,21 @@ let server: http.Server;
 let base = "";
 let signedIn = true;
 let openIssues: { number: number; title: string; url: string }[] = [];
+/** What GitHub's search answers for My reports (gh api graphql). */
+let mine: unknown = { data: { search: { nodes: [] } } };
+let mineCode = 0;
 const calls: { args: string[]; stdin?: string }[] = [];
 
 const gh = async (args: string[], stdin?: string): Promise<GhResult> => {
   calls.push({ args, stdin });
   if (args[0] === "auth")
     return { code: signedIn ? 0 : 1, stdout: "", stderr: "" };
+  if (args[0] === "api" && args[1] === "graphql")
+    return {
+      code: mineCode,
+      stdout: mineCode ? "" : JSON.stringify(mine),
+      stderr: mineCode ? "HTTP 502: Bad gateway\nmore" : "",
+    };
   if (args[0] === "issue" && args[1] === "list")
     return { code: 0, stdout: JSON.stringify(openIssues), stderr: "" };
   if (args[0] === "issue" && args[1] === "create")
@@ -156,6 +165,8 @@ beforeEach(() => {
   state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-"));
   signedIn = true;
   openIssues = [];
+  mine = { data: { search: { nodes: [] } } };
+  mineCode = 0;
   calls.length = 0;
 });
 
@@ -323,6 +334,7 @@ describe("FB: Report an issue, the server's side", () => {
       maxPerHour: 2,
       repos: ["acme-eng/engine", "acme-dist/den"],
       captureSeconds: 15,
+      myReportsMax: 20,
     });
   });
 });
@@ -398,5 +410,129 @@ describe("FB: no gh, Den's GitHub App files it (the device flow)", () => {
       await call("POST", "/api/report/send", { ...FORM, title: `t${i}` });
     const r = await call("POST", "/api/report/github-send", FORM);
     expect(r.status).toBe(429);
+  });
+
+  it("My reports: the person's issues on the destination, live from GitHub, with the last reply", async () => {
+    mine = {
+      data: {
+        viewer: { login: "pat" },
+        search: {
+          nodes: [
+            {
+              number: 7,
+              title: "Agents list jumps",
+              url: "https://github.com/acme-eng/engine/issues/7",
+              state: "OPEN",
+              updatedAt: "2026-11-13T10:00:00Z",
+              repository: { nameWithOwner: "acme-eng/engine" },
+              comments: {
+                totalCount: 2,
+                nodes: [
+                  {
+                    bodyText:
+                      "Fixed in 9.9.9.\nThanks for the report, it helped a lot to have the screenshot attached here.",
+                    createdAt: "2026-11-13T09:00:00Z",
+                    author: { login: "maintainer" },
+                  },
+                ],
+              },
+            },
+            {
+              number: 5,
+              title: "Bell font",
+              url: "https://github.com/acme-eng/engine/issues/5",
+              state: "CLOSED",
+              updatedAt: "2026-11-12T10:00:00Z",
+              repository: { nameWithOwner: "acme-eng/engine" },
+              comments: { totalCount: 0, nodes: [] },
+            },
+            {},
+          ],
+        },
+      },
+    };
+    const r = await call("GET", "/api/report/mine");
+    expect(r.status).toBe(200);
+    expect(r.body.signedIn).toBe(true);
+    expect(r.body.me).toBe("pat");
+    expect(r.body.reports).toEqual([
+      {
+        repo: "acme-eng/engine",
+        number: 7,
+        title: "Agents list jumps",
+        url: "https://github.com/acme-eng/engine/issues/7",
+        state: "open",
+        updatedAt: "2026-11-13T10:00:00Z",
+        replies: 2,
+        lastReply: {
+          text: "Fixed in 9.9.9. Thanks for the report, it helped a lot to have the screenshot attached here.",
+          at: "2026-11-13T09:00:00Z",
+          by: "maintainer",
+        },
+      },
+      {
+        repo: "acme-eng/engine",
+        number: 5,
+        title: "Bell font",
+        url: "https://github.com/acme-eng/engine/issues/5",
+        state: "closed",
+        updatedAt: "2026-11-12T10:00:00Z",
+        replies: 0,
+      },
+    ]);
+    // One search, as the person, on the destination repos only.
+    const q = calls.find((c) => c.args[1] === "graphql")!.args;
+    expect(q).toContain(
+      "q=repo:acme-eng/engine author:@me is:issue sort:updated-desc",
+    );
+    expect(q).toContain("n=20");
+  });
+
+  it("My reports: not signed in to GitHub shows none (Den stores nothing); a GitHub error says so; an agent can't read them", async () => {
+    signedIn = false;
+    const off = await call("GET", "/api/report/mine");
+    expect(off.body).toEqual({ ok: true, signedIn: false, reports: [] });
+    expect(calls.some((c) => c.args[1] === "graphql")).toBe(false);
+    signedIn = true;
+    mineCode = 1;
+    const bad = await call("GET", "/api/report/mine");
+    expect(bad.status).toBe(502);
+    expect(bad.body.error).toMatch(/HTTP 502: Bad gateway/);
+    expect(bad.body.error).not.toMatch(/more/);
+    const agent = await call("GET", "/api/report/mine", undefined, "a1");
+    expect(agent.status).toBe(403);
+  });
+
+  it("drafts: the list leaves the screenshot out (hasShot); one draft has it", async () => {
+    const shot = "data:image/png;base64,iVBORw0KGgo=";
+    const saved = await call(
+      "POST",
+      "/api/report/drafts",
+      { ...FORM, shot },
+      "a1",
+    );
+    const id = saved.body.draft.id as string;
+    const list = await call("GET", "/api/report/drafts");
+    expect(list.body.drafts[0]).toMatchObject({
+      id,
+      by: "agent:a1",
+      hasShot: true,
+    });
+    expect(list.body.drafts[0].shot).toBeUndefined();
+    const one = await call("GET", `/api/report/drafts/${id}`);
+    expect(one.body.draft).toMatchObject({ id, shot });
+    expect(
+      (await call("GET", "/api/report/drafts/0123456789abcdef")).status,
+    ).toBe(404);
+  });
+
+  it("feedback.my_reports_max: how many My reports shows (20)", () => {
+    expect(feedbackSettings({}, {}, {}).myReportsMax).toBe(20);
+    expect(feedbackSettings({}, { my_reports_max: 50 }, {}).myReportsMax).toBe(
+      50,
+    );
+    expect(feedbackSettings({}, {}, { my_reports_max: 0 }).myReportsMax).toBe(
+      20,
+    );
   });
 });

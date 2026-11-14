@@ -454,6 +454,8 @@ export interface UserConfig {
     enabled?: unknown;
     max_per_hour?: unknown;
     capture_seconds?: unknown;
+    /** How many of the person's reports My reports shows (20, 1..100). */
+    my_reports_max?: unknown;
   };
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;

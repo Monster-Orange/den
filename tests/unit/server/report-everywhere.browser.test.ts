@@ -66,7 +66,10 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     how: "the bell's panel: a footer of its own; its inline ask is skipped",
   },
   "graph.js": { n: 1, how: "the popped detail panel: a footer of its own" },
-  "report-dialog.js": { n: 1, how: "the form itself" },
+  "report-dialog.js": {
+    n: 2,
+    how: "the form itself, and My reports (part of Report: its own way to it)",
+  },
   "popover.js": { n: 3, how: "not a pop-up: how pop-ups close" },
   "report-inject.js": { n: 2, how: "not a pop-up: the injector's own list" },
 };

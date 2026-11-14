@@ -62,7 +62,19 @@ config and manifest changes a distribution must make to move to it under
   paste into the issue. It never goes to Den's server. A page that can't be
   captured within `feedback.capture_seconds` (15) offers to send without one.
   The screenshot uses html-to-image 1.11.13 (MIT), pinned and served from
-  Den's own server. My reports comes next.
+  Den's own server.
+- My reports, from the command palette or the link at the top of Report an
+  issue: your reports on the destination repos, shown live from GitHub
+  through your own GitHub sign-in (Den keeps no copy). Each shows its state,
+  its last reply and a link to it on GitHub. A dot marks a reply you haven't
+  opened yet; your own replies never get one. Your Finish later drafts are
+  listed with them, and agents' drafts are on their own tab. Continue opens
+  the form with a draft; Discard removes it. Finish later now keeps the
+  screenshot and its masks in this browser, never on Den's server, and
+  Continue brings them back. Sending the report forgets them.
+  `feedback.my_reports_max` (20) sets how many reports it shows. Den's server
+  now lists drafts without their screenshots, and sends a screenshot only
+  when one draft is opened.
 
 - Settings › Den's address: the install's address (web.url) as a page
   control. Check and save asks the address to answer as this Den before

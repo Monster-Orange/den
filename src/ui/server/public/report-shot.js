@@ -148,3 +148,99 @@ export async function saveAndCopy(canvas, name = "report-screenshot.png") {
   }
   return out;
 }
+
+/** An image (a Blob or a data: URL) back as a canvas, or null. */
+export async function canvasOf(src) {
+  let url = "";
+  try {
+    url = typeof src === "string" ? src : URL.createObjectURL(src);
+    const img = new Image();
+    await new Promise((ok, no) => {
+      img.onload = ok;
+      img.onerror = no;
+      img.src = url;
+    });
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    c.getContext("2d").drawImage(img, 0, 0);
+    return c.width && c.height ? c : null;
+  } catch {
+    return null;
+  } finally {
+    if (url && typeof src !== "string") URL.revokeObjectURL(url);
+  }
+}
+
+/*
+ * Finish later's screenshot stays in this browser (IndexedDB), keyed by
+ * the draft's id, with its masks: the draft's text is on Den's server, the
+ * picture never is. Storage off or full: the draft keeps its text only.
+ */
+const DB = "den-report";
+const STORE = "shots";
+
+function openDb() {
+  return new Promise((ok, no) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => no(r.error);
+  });
+}
+
+async function inStore(mode, f) {
+  const db = await openDb();
+  try {
+    return await new Promise((ok, no) => {
+      const tx = db.transaction(STORE, mode);
+      const req = f(tx.objectStore(STORE));
+      tx.oncomplete = () => ok(req.result);
+      tx.onerror = () => no(tx.error);
+      tx.onabort = () => no(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Keeps a draft's screenshot (the original) and its masks. */
+export async function keepShot(id, canvas, masks, noShot) {
+  try {
+    const blob = await toBlob(canvas);
+    if (!blob) return false;
+    await inStore("readwrite", (s) =>
+      s.put({ blob, masks, noShot: !!noShot }, id),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A kept screenshot: { canvas, masks, noShot }, or null. */
+export async function loadShot(id) {
+  try {
+    const v = await inStore("readonly", (s) => s.get(id));
+    if (!v || !v.blob) return null;
+    const canvas = await canvasOf(v.blob);
+    return canvas
+      ? {
+          canvas,
+          masks: Array.isArray(v.masks) ? v.masks : [],
+          noShot: !!v.noShot,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Forgets a draft's screenshot (sent or discarded). */
+export async function dropShot(id) {
+  try {
+    await inStore("readwrite", (s) => s.delete(id));
+  } catch {
+    /* nothing kept */
+  }
+}
