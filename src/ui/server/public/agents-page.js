@@ -195,6 +195,8 @@ const st = {
   // #80: ?open= ids of other projects' sessions, left out of this
   // project's tabs (one line offers them in All active).
   hiddenOpen: [],
+  // #80: the project a deliberate open left (its "Back to" line), or null.
+  switchedFrom: null,
   // AG-4b: where a path link opens (Settings editor_open).
   editorOpen: "none",
 };
@@ -259,6 +261,10 @@ function writeUrl() {
   const u = new URL(location.href);
   if (st.open.length) u.searchParams.set("open", st.open.join(","));
   else u.searchParams.delete("open");
+  // #80: the tab in front, so a reload keeps the pane the keyboard was in.
+  if (st.open.length > 1 && st.open.includes(st.cur))
+    u.searchParams.set("front", st.cur);
+  else u.searchParams.delete("front");
   u.searchParams.set("layout", st.layout);
   u.searchParams.delete("start");
   u.searchParams.delete("folder");
@@ -271,6 +277,10 @@ function writeUrl() {
 }
 
 // ── the list ────────────────────────────────────────────────────────────
+
+/** A link that names one agent (?agent=): it picks the pane itself. */
+const linkedAgentAsked = () =>
+  new URLSearchParams(location.search).has("agent");
 
 /** ?ws=: the one workspace the page was asked for, or null. */
 const urlWorkspace = () => {
@@ -799,6 +809,14 @@ function paintList() {
         ) +
         `</div>`,
     );
+  // #80: an agent opened on purpose switched the project: say so.
+  const now = viewWorkspaces();
+  if (st.switchedFrom && now.length === 1 && now[0] !== st.switchedFrom)
+    notes.push(
+      `<div class="agnote" data-note="switched" role="status">` +
+        esc(t("ag.switchedTo", { ws: now[0] })) +
+        ` · <button type="button" class="lnk" data-act="switch-back">${esc(t("ag.backTo", { ws: st.switchedFrom }))}</button></div>`,
+    );
   // #80: tabs ?open= named from other projects, left out of this view.
   if (st.hiddenOpen.length)
     notes.push(
@@ -964,11 +982,64 @@ async function showAllActive() {
  */
 async function switchToProjectOf(r) {
   if (!r || inView(r)) return;
+  const was = viewWorkspaces();
+  st.switchedFrom = was.length === 1 ? was[0] : null;
+  await showProject(r.workspace);
+}
+
+/** This page shows project `ws`: the address, the stored view, the top bar. */
+async function showProject(ws) {
   const u = new URL(location.href);
   u.searchParams.delete("ws");
-  u.searchParams.set("project", r.workspace);
+  u.searchParams.set("project", ws);
   history.replaceState(history.state, "", u.pathname + u.search);
+  st.scope = ws;
+  try {
+    await window.denShell?.api?.("POST", "/api/scope", { scope: ws });
+  } catch {
+    /* the address still says it, for this page */
+  }
+  try {
+    await (await import("/header.js")).refreshWorkspacePill?.();
+  } catch {
+    /* the top bar repaints on the next load */
+  }
   await refresh();
+}
+
+/** #80: "Back to <project>": the project left, its tabs back. */
+async function switchBack() {
+  const ws = st.switchedFrom;
+  if (!ws) return;
+  st.switchedFrom = null;
+  await showProject(ws);
+  // Its tabs come back from where the browser kept them.
+  for (const id of [...st.hiddenOpen]) {
+    const r = rowOf(id);
+    if (r && inView(r)) {
+      st.hiddenOpen = st.hiddenOpen.filter((x) => x !== id);
+      await openPane(id);
+    }
+  }
+  paintList();
+  writeUrl();
+}
+
+/**
+ * #80, scope wins: no pane of this project is open (the top bar's project
+ * changed under the pane): its most recent running agent comes in front,
+ * else the pane says to pick one there.
+ */
+async function paneFollowsProject() {
+  if (st.open.length) return;
+  const view = viewWorkspaces();
+  if (view.length !== 1) return;
+  const latest = visibleRows()
+    .filter(
+      (r) => r.kind === "agent" && !isStopped(r) && r.workspace === view[0],
+    )
+    .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""))[0];
+  if (latest) await openPane(latest.id);
 }
 
 /**
@@ -1298,7 +1369,8 @@ function paintLayout() {
     box.className = "agempty";
     delete box.dataset.layout;
     delete box.dataset.ws;
-    box.innerHTML = `<div>${esc(t("ag.empty"))}</div>`;
+    const view = st.data ? viewWorkspaces() : [];
+    box.innerHTML = `<div>${esc(view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: view[0] }) : t("ag.empty"))}</div>`;
     return;
   }
   const layout = shownLayout();
@@ -4371,6 +4443,8 @@ export async function mountAgentsPage(root) {
   const q0 = new URLSearchParams(location.search);
   const termWs =
     q0.get("terminal") === "1" ? q0.get("project") || q0.get("ws") || "" : null;
+  // #80: read before the panes open (each writes the address).
+  const frontAsked = q0.get("front");
   const wanted =
     termWs !== null && !q0.get("open")
       ? rememberedOpen()
@@ -4418,6 +4492,7 @@ export async function mountAgentsPage(root) {
       if (which === "review") return review();
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
+      if (which === "switch-back") return void switchBack();
       const agent = act.closest(".agst")?.dataset.agent;
       const ws = act.closest(".agst")?.dataset.ws;
       const r = visibleRows().find(
@@ -4476,6 +4551,7 @@ export async function mountAgentsPage(root) {
         st.cur = tab.dataset.id;
         paintLayout();
         paintList();
+        writeUrl();
       }
       if (pointer && !isStopped(rowOf(tab.dataset.id) ?? {}))
         focusTerm(tab.dataset.id, false);
@@ -4675,7 +4751,16 @@ export async function mountAgentsPage(root) {
       }
       if (!st.data || rowOf(id)) await openPane(id);
     }
-  if (st.hiddenOpen.length) paintList();
+  // #80: ?front= (the tab that was in front) comes in front again.
+  if (frontAsked && st.open.includes(frontAsked) && st.cur !== frontAsked) {
+    st.cur = frontAsked;
+    paintLayout();
+  }
+  if (st.hiddenOpen.length) {
+    // #80: the tabs were another project's: this project's agent instead.
+    if (!linkedAgentAsked()) await paneFollowsProject();
+    paintList();
+  }
   // D58: a link to an agent (⌘K, another page's Open) puts the keyboard in
   // its terminal. Never its size: that is the person's typing (D54).
   const front = st.cur && st.open.includes(st.cur) ? st.cur : st.open.at(-1);

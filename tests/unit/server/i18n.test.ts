@@ -144,6 +144,32 @@ describe("the catalogs", () => {
     expect(off).toEqual([]);
   });
 
+  it("no catalog has a key twice (a later one silently wins, 0.4.45)", () => {
+    // The catalog's own lines: from its table's "{" to the "};" that ends it.
+    const keysOf = (file: string, start: RegExp) => {
+      const lines = read(file).split("\n");
+      const from = lines.findIndex((l) => start.test(l));
+      const to = lines.findIndex((l, i) => i > from && /^ {2}};/.test(l));
+      return lines
+        .slice(from + 1, to)
+        .map((l) => /^ {4}"([^"]+)":/.exec(l)?.[1])
+        .filter((k): k is string => !!k);
+    };
+    const twice: Record<string, string[]> = {};
+    for (const [file, start] of [
+      ["shell.js", /^ {2}MESSAGES\.en = \{/],
+      ["i18n/es.js", /^ {2}m\.es = \{/],
+      ["i18n/ja.js", /^ {2}m\.ja = \{/],
+    ] as const) {
+      const keys = keysOf(file, start);
+      expect(keys.length).toBeGreaterThan(1000);
+      const seen = new Set<string>();
+      const dup = keys.filter((k) => seen.has(k) || !seen.add(k));
+      if (dup.length) twice[file] = dup;
+    }
+    expect(twice).toEqual({});
+  });
+
   it("every key the UI looks up by name is in en", () => {
     const keys = new Set<string>();
     for (const f of fs.readdirSync(PUBLIC).filter((x) => x.endsWith(".js")))
