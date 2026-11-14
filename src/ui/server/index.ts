@@ -304,6 +304,12 @@ import {
   patchAgentsLayout,
   patchHelpersShown,
 } from "./agents-layout-pref.js";
+import {
+  bellFoldDays,
+  bellKinds,
+  patchBellFoldDays,
+  patchBellKinds,
+} from "./bell-prefs.js";
 import { patchHubAllowTools, readHubConfig } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import { graphPageHtml } from "./graph-page.js";
@@ -5335,6 +5341,10 @@ async function handleRequest(
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
   //     badge shows (#80, user.yml agents.helpers_shown); null clears it
+  //   bell_kinds: {switch: true | false | null}, the bell's kinds (bell
+  //     v6, bell-prefs.ts; user.yml notifications.kinds)
+  //   bell_fold_days: 3 | 7 | 14 | 30, when an item folds as older; null
+  //     clears it (7)
   //   editor_open: vscode | cursor | zed | none, where a path in an agent's
   //     pane opens (AG-4b, editor-open-pref.ts); null clears it (none)
   //   language: the UI's language, en | ja | es (ui-language.ts); null or
@@ -5386,6 +5396,8 @@ async function handleRequest(
         shell: shellPrefs(user.shell),
         agents_layout: agentsLayout(user),
         agents_helpers_shown: helpersShown(user),
+        bell_kinds: bellKinds(user),
+        bell_fold_days: bellFoldDays(user),
         editor_open: editorOpen(user),
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
@@ -5416,6 +5428,8 @@ async function handleRequest(
           machine_name?: unknown;
           agents_layout?: unknown;
           agents_helpers_shown?: unknown;
+          bell_kinds?: unknown;
+          bell_fold_days?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
         };
@@ -5438,6 +5452,15 @@ async function handleRequest(
         if (body.agents_helpers_shown !== undefined) {
           const h = patchHelpersShown(user, body.agents_helpers_shown);
           if (!h.ok) return send400(res, h.error);
+        }
+        // Bell v6: which kinds the bell shows, and when items fold as old.
+        if (body.bell_kinds !== undefined) {
+          const k = patchBellKinds(user, body.bell_kinds);
+          if (!k.ok) return send400(res, k.error);
+        }
+        if (body.bell_fold_days !== undefined) {
+          const f = patchBellFoldDays(user, body.bell_fold_days);
+          if (!f.ok) return send400(res, f.error);
         }
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
@@ -5555,6 +5578,8 @@ async function handleRequest(
           machine_name: machineNameSetting(user),
           agents_layout: agentsLayout(user),
           agents_helpers_shown: helpersShown(user),
+          bell_kinds: bellKinds(user),
+          bell_fold_days: bellFoldDays(user),
           editor_open: editorOpen(user),
         });
       } catch (e) {

@@ -119,8 +119,17 @@ describe("NT: the bell on the real server", () => {
       { event: "finished" },
       "agent",
     );
+    // Bell v6: "finished its turn" is off until the person turns it on.
+    const quiet = await call("GET", "/api/notifications");
+    expect(quiet.json).toMatchObject({ unread: 0, groups: [] });
+    expect(quiet.json.off).toContain("finished");
+    expect(
+      (await call("POST", "/api/settings", { bell_kinds: { finished: true } }))
+        .status,
+    ).toBe(200);
     const bell = await call("GET", "/api/notifications");
     expect(bell.json.unread).toBe(1);
+    expect(bell.json.off).not.toContain("finished");
     expect(
       (await call("POST", "/api/notifications/read", { all: true })).json,
     ).toMatchObject({ ok: true, changed: 1, unread: 0 });

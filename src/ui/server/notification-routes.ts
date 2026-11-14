@@ -4,8 +4,13 @@
  *        waits for its person, went on, or finished its turn:
  *        {event: waiting|resumed|finished, why?, from?, text?, hooked?}.
  *        Which agent comes from the token, never the body.
- *   GET  /api/notifications          the bell: {unread, groups, mutes}.
+ *   GET  /api/notifications          the bell: {unread, groups, older,
+ *                                     off, foldDays, mutes}. Bell v6: only
+ *                                     the person's kinds that are on;
+ *                                     items older than foldDays in
+ *                                     `older`; unread counts what is shown.
  *   POST /api/notifications/read     {id} | {subject} | {scope} | {all: true}
+ *                                     (all: what is shown only)
  *   POST /api/notifications/clear    the read ones ({scope} or all).
  *   POST /api/notifications/mute     {target, minutes}; {target, minutes: 0}
  *                                     unmutes.
@@ -17,6 +22,9 @@
 import type * as http from "http";
 import {
   type AskLimit,
+  type BellPrefs,
+  bellPrefs,
+  bellView,
   groupNotifications,
   type NotificationStore,
   type Which,
@@ -42,6 +50,8 @@ export interface NotificationRouteDeps {
   attention: Attention;
   /** ask_human's limit (notifications.asks_per_hour); absent, none. */
   asks?: { limit: AskLimit; perHour: () => number };
+  /** Bell v6: the person's kinds and fold (absent: the defaults). */
+  prefs?: () => BellPrefs;
 }
 
 async function jsonBody(
@@ -160,15 +170,18 @@ export async function handleNotificationRoutes(
   if (pathname === "/api/notifications") {
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
-    const items = deps.store.list();
+    const v = bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null));
     sendJson(res, {
       ok: true,
-      unread: items.filter((n) => !n.read).length,
+      unread: v.unread,
       waiting: [...deps.attention.waitingNow()].map(([a, why]) => ({
         agent: a,
         why,
       })),
-      groups: groupNotifications(items),
+      groups: groupNotifications(v.recent),
+      older: { count: v.older.length, groups: groupNotifications(v.older) },
+      off: v.off,
+      foldDays: v.foldDays,
       mutes: deps.store.mutes(),
     });
     return true;
@@ -218,10 +231,27 @@ export async function handleNotificationRoutes(
     refuse(res, 400, "bad_which", "id, subject, scope, or all: true.");
     return true;
   }
-  const n =
-    pathname === "/api/notifications/read"
+  // Bell v6: Mark all read marks what is shown (kinds off stay unread).
+  const shownAll =
+    pathname === "/api/notifications/read" && "all" in which
+      ? (() => {
+          const v = bellView(
+            deps.store.list(),
+            (deps.prefs ?? bellPrefs)(null),
+          );
+          return [...v.recent, ...v.older].filter((x) => !x.read);
+        })()
+      : null;
+  const n = shownAll
+    ? shownAll.reduce((k, x) => k + deps.store.markRead({ id: x.id }), 0)
+    : pathname === "/api/notifications/read"
       ? deps.store.markRead(which)
       : deps.store.clearRead(which);
-  sendJson(res, { ok: true, changed: n, unread: deps.store.unread() });
+  sendJson(res, {
+    ok: true,
+    changed: n,
+    // The badge's number: what is shown.
+    unread: bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null)).unread,
+  });
   return true;
 }

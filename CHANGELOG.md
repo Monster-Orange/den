@@ -8,6 +8,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The bell is quieter. "Agent finished its turn" no longer shows or
+  counts unless you turn it on in Settings › Notifications. The badge
+  counts only what the bell shows. Repeats of a kind from one agent fold
+  into one row with ×N, and items older than 7 days fold under "Older
+  than 7 days". A long question shows two lines and an Open link. The
+  row's 1-hour mute is replaced by ⊘ "Stop showing this kind", which
+  asks once and offers Undo. "Finished N Hub comments" is now a Hub
+  reply, so it shows under Hub's switch.
 - `run` (the CLI's test command) now exits with the run's result, so
   scripts and CI that call it see it. `0` = passed, `1` = failed, `3` =
   nothing ran (every suite was skipped, none matched, or none is
@@ -34,6 +42,10 @@ config and manifest changes a distribution must make to move to it under
   Agents › "Show up to this many helpers under an agent" picks 1, 3, 5 or
   10 (`agents.helpers_shown`, yours). The org config's
   `agents.helpers.row_max` is now ignored.
+- Settings › Notifications: one switch per kind of bell item (yours, in
+  `notifications.kinds`), and "Fold items older than" 3, 7, 14 or 30
+  days (`notifications.fold_days`). Turning off "Agent is waiting for
+  you" warns that waiting agents won't show.
 - `agents.exited_shell_minutes` in the distribution's config: how long
   an exited shell with nothing unread stays in the Agents list (default
   10; `0` keeps it until removed).

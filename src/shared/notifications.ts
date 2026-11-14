@@ -3,7 +3,8 @@
  * `{ id, source, kind, subject, scope, text, link, at, read }`, kept in
  * `<state>/notifications.json` (0600), the newest 500.
  *
- * - kind: waiting | finished | answer | mention | decision | service.
+ * - kind: waiting | finished | answer | mention | decision | service;
+ *   each belongs to one of the person's seven switches (switchOf).
  * - subject: `agent:<id>`, `thread:<id>` or `record:<id>`.
  * - scope: `workspace/<ws>` (Den's own, grouped by project then agent) or
  *   `hub/<project>` (Hub's).
@@ -532,4 +533,99 @@ export class AskLimit {
     this.asked.set(agent, recent);
     return true;
   }
+}
+
+/**
+ * Bell v6 (0.4.45): the seven switches a person turns kinds on and off
+ * with. Each notification kind belongs to one; pr and shared have none
+ * producing yet (their switches are ready).
+ */
+export const BELL_SWITCHES = [
+  "waiting",
+  "finished",
+  "hub",
+  "pr",
+  "release",
+  "pick",
+  "shared",
+] as const;
+export type BellSwitch = (typeof BELL_SWITCHES)[number];
+
+/** The switch a kind of notification is shown or hidden by. */
+export function switchOf(kind: NotificationKind): BellSwitch {
+  switch (kind) {
+    case "waiting":
+      return "waiting";
+    case "finished":
+      return "finished";
+    case "answer":
+    case "mention":
+      return "hub";
+    case "decision":
+      return "pick";
+    case "service":
+      return "release";
+  }
+}
+
+/** Fold items older than this many days: the choices, and the default. */
+export const BELL_FOLD_DAYS = [3, 7, 14, 30] as const;
+export const BELL_FOLD_DAYS_DEFAULT = 7;
+
+/** A person's bell: the switches that are off, and how old is "older". */
+export interface BellPrefs {
+  off: BellSwitch[];
+  foldDays: number;
+}
+
+/**
+ * The prefs from user.yml's `notifications.kinds` ({switch: true|false})
+ * and `notifications.fold_days`. Unset: every switch on but finished (off
+ * by default, also for anyone who never set it), 7 days. A hand-broken
+ * value is its default.
+ */
+export function bellPrefs(user: unknown): BellPrefs {
+  const n = (user as { notifications?: Record<string, unknown> } | null)
+    ?.notifications;
+  const kinds = (n?.kinds ?? {}) as Record<string, unknown>;
+  const off = BELL_SWITCHES.filter((s) =>
+    typeof kinds[s] === "boolean" ? kinds[s] === false : s === "finished",
+  );
+  const d = n?.fold_days;
+  const foldDays = (BELL_FOLD_DAYS as readonly unknown[]).includes(d)
+    ? (d as number)
+    : BELL_FOLD_DAYS_DEFAULT;
+  return { off, foldDays };
+}
+
+/** What the bell shows: switches on only, and the old ones folded apart. */
+export interface BellView {
+  /** The badge: unread items shown and not folded as old. */
+  unread: number;
+  /** Items shown, newer than foldDays. */
+  recent: Notification[];
+  /** Items shown, older than foldDays (one "Older" row). */
+  older: Notification[];
+  /** The switches that are off (the empty panel says which). */
+  off: BellSwitch[];
+  foldDays: number;
+}
+
+export function bellView(
+  items: Notification[],
+  prefs: BellPrefs,
+  now = Date.now(),
+): BellView {
+  const off = new Set(prefs.off);
+  const shown = items.filter((n) => !off.has(switchOf(n.kind)));
+  const from = now - prefs.foldDays * 86_400_000;
+  const old = (n: Notification) => Date.parse(n.at) < from;
+  const recent = shown.filter((n) => !old(n));
+  return {
+    unread: recent.filter((n) => !n.read).length,
+    recent,
+    older: shown.filter(old),
+    off: prefs.off,
+    foldDays: prefs.foldDays,
+  };
 }

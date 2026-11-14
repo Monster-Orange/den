@@ -35,6 +35,8 @@ describe("search", () => {
       "graph",
       "workspace",
       "agents",
+      // Bell v6 (0.4.45).
+      "notifications",
       "access",
       "secrets",
       "server",

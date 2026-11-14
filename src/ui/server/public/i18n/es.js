@@ -964,12 +964,24 @@
     "bell.title": "Notificaciones",
     "bell.n": "Notificaciones: {n} sin leer",
     "bell.n.one": "Notificaciones: {n} sin leer",
-    "bell.empty": "Nada te necesita.",
     "bell.markAll": "Marcar todo como leído",
+    "bell.empty": "Nada te necesita ahora mismo.",
+    "bell.notShown": "No se muestran: {kinds}.",
+    "bell.sep": ", ",
+    "bell.settings": "Ajustes de notificaciones",
+    "bell.older": "Más de {d} días ({n})",
+    "bell.rep": "{n} más como este",
+    "bell.stop": "Dejar de mostrar este tipo",
+    "bell.askT": "¿Dejar de mostrar «{kind}»?",
+    "bell.askB":
+      "Solo este tipo. El registro de actividad lo sigue anotando. Puedes volver a activarlo en Ajustes.",
+    "bell.askYes": "Dejar de mostrar",
+    "bell.cancel": "Cancelar",
+    "bell.undo": "Deshacer",
+    "bell.undoMsg": "Ya no se muestra «{kind}».",
+    "bell.open": "Abrir",
     "bell.clearRead": "Borrar las leídas",
     "bell.read": "Marcar como leída",
-    "bell.mute": "Silenciar 1 hora",
-    "bell.muted": "Silenciado 1 hora",
     "bell.server": "Agente de __DEN_TITLE__",
     "bell.hub": "Hub · {project}",
     "bell.hubAll": "Hub",
@@ -1748,6 +1760,39 @@
     "set.agents.helpers_shown.o.3": "3",
     "set.agents.helpers_shown.o.5": "5",
     "set.agents.helpers_shown.o.10": "10",
+    "setc.notifications": "Notificaciones",
+    "setc.notifications.d":
+      "Qué aparece en la campana y se suma a su insignia. Son decisiones tuyas. Apagado significa sin elemento en la campana y sin insignia. El registro de actividad lo sigue anotando.",
+    "set.notifications.waiting": "Un agente te espera",
+    "set.notifications.waiting.d":
+      "Un agente te espera, o te hizo una pregunta, y no puede continuar.",
+    "set.notifications.waiting.warn":
+      "Mientras esté apagado, los agentes que te esperan no se mostrarán aquí ni en la insignia.",
+    "set.notifications.finished": "Un agente terminó su turno",
+    "set.notifications.finished.d":
+      "Un agente se detuvo y está libre. Apagado por defecto.",
+    "set.notifications.hub": "Respuestas y comentarios en Hub",
+    "set.notifications.hub.d":
+      "Alguien respondió a un comentario sobre algo que creaste.",
+    "set.notifications.pr": "Pull requests",
+    "set.notifications.pr.d":
+      "Un pull request necesita revisión o cambió de estado.",
+    "set.notifications.release": "Versiones y comprobaciones",
+    "set.notifications.release.d":
+      "Salió una versión, o falló una comprobación.",
+    "set.notifications.pick": "Proyectos que necesitan tu elección",
+    "set.notifications.pick.d":
+      "Den no sabe qué proyecto de Hub corresponde a un proyecto.",
+    "set.notifications.shared": "Compartido contigo",
+    "set.notifications.shared.d":
+      "Un agente compartió contigo un documento o una maqueta.",
+    "set.notifications.fold_days": "Plegar elementos de más de",
+    "set.notifications.fold_days.d":
+      "Lo antiguo pasa a «Más de N días». No se borra nada.",
+    "set.notifications.fold_days.o.3": "3 días",
+    "set.notifications.fold_days.o.7": "7 días",
+    "set.notifications.fold_days.o.14": "14 días",
+    "set.notifications.fold_days.o.30": "30 días",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",

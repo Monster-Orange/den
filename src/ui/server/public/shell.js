@@ -728,6 +728,36 @@
     "set.agents.helpers_shown.o.3": "3",
     "set.agents.helpers_shown.o.5": "5",
     "set.agents.helpers_shown.o.10": "10",
+    "setc.notifications": "Notifications",
+    "setc.notifications.d":
+      "What shows in the bell and counts on its badge. These are your own choices. Off means no bell item and no badge. The activity trail still records it.",
+    "set.notifications.waiting": "Agent is waiting for you",
+    "set.notifications.waiting.d":
+      "An agent is waiting for you, or asked you a question, and can't go on.",
+    "set.notifications.waiting.warn":
+      "While this is off, agents waiting for you won't show here or on the badge.",
+    "set.notifications.finished": "Agent finished its turn",
+    "set.notifications.finished.d":
+      "An agent stopped and is idle. Off by default.",
+    "set.notifications.hub": "Replies and comments in Hub",
+    "set.notifications.hub.d":
+      "Someone answered a comment on something you made.",
+    "set.notifications.pr": "Pull requests",
+    "set.notifications.pr.d": "A pull request needs a look or changed state.",
+    "set.notifications.release": "Releases and checks",
+    "set.notifications.release.d": "A release shipped, or a check failed.",
+    "set.notifications.pick": "Projects need your pick",
+    "set.notifications.pick.d":
+      "Den can't tell which Hub project fits a project.",
+    "set.notifications.shared": "Shared with you",
+    "set.notifications.shared.d": "An agent shared a doc or mock with you.",
+    "set.notifications.fold_days": "Fold items older than",
+    "set.notifications.fold_days.d":
+      "Older items move under “Older than N days”. Nothing is deleted.",
+    "set.notifications.fold_days.o.3": "3 days",
+    "set.notifications.fold_days.o.7": "7 days",
+    "set.notifications.fold_days.o.14": "14 days",
+    "set.notifications.fold_days.o.30": "30 days",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
@@ -1679,12 +1709,24 @@
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
-    "bell.empty": "Nothing needs you.",
     "bell.markAll": "Mark all read",
+    "bell.empty": "Nothing needs you right now.",
+    "bell.notShown": "Not shown: {kinds}.",
+    "bell.sep": ", ",
+    "bell.settings": "Notification settings",
+    "bell.older": "Older than {d} days ({n})",
+    "bell.rep": "{n} more like this",
+    "bell.stop": "Stop showing this kind",
+    "bell.askT": "Stop showing “{kind}”?",
+    "bell.askB":
+      "Only this kind. The activity trail still records it. You can turn it back on in Settings.",
+    "bell.askYes": "Stop showing",
+    "bell.cancel": "Cancel",
+    "bell.undo": "Undo",
+    "bell.undoMsg": "No longer showing “{kind}”.",
+    "bell.open": "Open",
     "bell.clearRead": "Clear read",
     "bell.read": "Mark read",
-    "bell.mute": "Mute for 1 hour",
-    "bell.muted": "Muted for 1 hour",
     "bell.server": "__DEN_TITLE__ agent",
     "bell.hub": "Hub · {project}",
     "bell.hubAll": "Hub",
@@ -2578,7 +2620,8 @@
    * small button, for `ms` (default 10 s). The action runs once, and the
    * toast goes.
    */
-  function toastAction(msg, label, onAction, ms) {
+  // Bell v6: `link` ({href, label}) adds a link after the button.
+  function toastAction(msg, label, onAction, ms, link) {
     if (!document.body || !document.createElement) return null;
     var old = document.querySelector && document.querySelector(".den-toast");
     if (old && old.remove) old.remove();
@@ -2601,6 +2644,13 @@
     });
     el.appendChild(text);
     el.appendChild(b);
+    if (link && link.href) {
+      var a = document.createElement("a");
+      a.className = "den-tlink";
+      a.href = link.href;
+      a.textContent = link.label;
+      el.appendChild(a);
+    }
     document.body.appendChild(el);
     clearOfMarked(el);
     clearTimeout(toastTimer);
@@ -6481,6 +6531,27 @@
     ".den-bell-row.read a { color: var(--muted); }",
     ".den-bell-row time { color: var(--faint); font-size: 11px; white-space: nowrap; }",
     ".den-bell-empty { padding: 16px 12px; color: var(--muted); }",
+    ".den-bell-empty p { margin: 0 0 6px; }",
+    ".den-bell-empty a, .den-bell-open, .den-tlink { color: var(--accent-text); }",
+    // Bell v6: a long question's two lines, ×N repeats, Older, the ⊘ ask.
+    ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
+    ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
+    ".den-bell-row.rep { padding-left: 28px; }",
+    ".den-bell-x, .den-bell-row .den-ib { font: 500 11px var(--mono); background: none; color: var(--muted);",
+    "  border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; min-height: 20px; cursor: pointer; }",
+    ".den-bell-row .den-ib { border-color: transparent; }",
+    ".den-bell-older { display: block; width: 100%; text-align: left; font: inherit; color: var(--muted);",
+    "  background: none; border: 0; border-top: 1px solid var(--border); padding: 8px 12px; cursor: pointer; }",
+    ".den-bell-older::before { content: '\\25B8  '; }",
+    ".den-bell-older[aria-expanded=true]::before { content: '\\25BE  '; }",
+    ".den-bell-ask { margin: 8px 12px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px;",
+    "  background: var(--bg); }",
+    ".den-bell-ask p { margin: 0 0 6px; }",
+    ".den-bell-ask div { display: flex; gap: 8px; }",
+    // A phone: the full width, rows to touch, the small buttons 32px.
+    "@media (max-width: 480px) { .den-bell-pop { left: 0; right: 0; width: auto; top: 48px; border-radius: 0 0 10px 10px; }",
+    "  .den-bell-row { min-height: 44px; align-items: center; }",
+    "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 32px; min-width: 32px; } }",
     "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",

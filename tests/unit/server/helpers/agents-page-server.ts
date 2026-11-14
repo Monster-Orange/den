@@ -61,6 +61,8 @@ export interface AgentsPageServer {
   seed(rec: Partial<AgentRecord> & { id: string; workspace: string }): void;
   /** POST /api/settings (language, appearance). */
   settings(body: Record<string, unknown>): Promise<number>;
+  /** GET /api/settings's answer. */
+  settingsGet(): Promise<Record<string, unknown>>;
   log(): string;
   stop(): Promise<void>;
 }
@@ -319,6 +321,12 @@ export async function startAgentsPageServer(
         body: JSON.stringify(body),
       });
       return r.status;
+    },
+    async settingsGet() {
+      const r = await fetch(`${base}/api/settings`, {
+        headers: denAuth(stateDir),
+      });
+      return (await r.json()) as Record<string, unknown>;
     },
     log: started.out,
     async stop() {

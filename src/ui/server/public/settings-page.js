@@ -460,6 +460,9 @@ export async function mountSettings(deps) {
       ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}" ${desc}>`;
     } else if (t === "toggle") {
       ctl = `<input type="checkbox" class="set-check" id="${cid}" data-focus-key="${id}"${v ? " checked" : ""} ${desc}>`;
+      // Bell v6: a switch may say what being off means (waiting).
+      const notice = r.control.notice?.(ctx);
+      if (notice) ctl += `<p class="set-warn" role="status">${esc(notice)}</p>`;
     } else if (t === "langmap") {
       const map = v || {};
       const eds = opts(r.control.options);

@@ -71,6 +71,9 @@ describe("the settings inventory (R21)", () => {
         // #80: how many running helpers an open badge shows.
         "agents_helpers_shown",
         "appearance.mode",
+        // Bell v6: the person's notification kinds and fold days.
+        "bell_fold_days",
+        "bell_kinds",
         "appearance.theme",
         "editor",
         // AG-4b: where a path link in an agent's pane opens.

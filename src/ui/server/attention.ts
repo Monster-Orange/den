@@ -180,8 +180,10 @@ export class Attention {
     const name = this.d.nameOf(agent);
     const what = w.count === 1 ? "1 Hub comment" : `${w.count} Hub comments`;
     const vars = { name, n: w.count, artifact: w.artifact ?? "" };
+    // Bell v6: Hub's comments are the "Replies and comments in Hub" kind
+    // (it was "finished", so turning finished off hid them).
     this.d.store.add({
-      kind: "finished",
+      kind: "answer",
       subject: `agent:${agent}`,
       scope: `workspace/${workspace}`,
       text: `${name} finished ${what}${w.artifact ? ` on ${w.artifact}` : ""}`,

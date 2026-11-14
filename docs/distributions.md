@@ -2710,8 +2710,8 @@ even when Hub isn't connected.
 
 The bell in the top bar counts what needs the person, grouped by project,
 then agent; a waiting agent comes first. A row opens the agent and marks
-it read. Mark all read, Clear read, a project's Mark read, and an
-agent's Mute (1 hour) are in its panel. Items are kept in
+it read. Mark all read, Clear read and a project's Mark read are in its
+panel. Items are kept in
 `<state>/notifications.json` (0600), the newest 500; one unread item per
 agent and kind.
 
@@ -2738,6 +2738,20 @@ agent and kind.
 - **Not while you look** (NT-2). The Agents page says which agents are on
   screen, in a visible, focused tab. Those don't notify; they are still
   marked waiting.
+- **Kinds and folds** (0.4.45). Settings › Notifications has one switch
+  per kind, the person's own (user.yml `notifications.kinds`, a map of
+  `waiting`, `finished`, `hub`, `pr`, `release`, `pick` and `shared` to
+  `true` or `false`). All are on but `finished` ("Agent finished its
+  turn"), which is off by default. A kind that is off shows no bell item
+  and doesn't count on the badge; the item is still kept, and `<cli>
+  notifications list` still lists it. A row's ⊘ turns its kind off after
+  one question, with Undo; "Agent is waiting for you" has none, and
+  turning it off in Settings says what that means. Repeats of a kind from
+  one agent fold into one row with ×N. Items older than
+  `notifications.fold_days` (3, 7, 14 or 30; default 7) fold under one
+  "Older than N days" row and don't count on the badge. Mark all read
+  marks what is shown. `/api/settings` serves and takes them as
+  `bell_kinds` and `bell_fold_days`.
 - **Settings** (den.yml, then user.yml): `notifications.asks_per_hour`
   (default 30, at least 1): how many `ask_human` questions one agent may
   put in the bell in an hour. The next is refused (429) until the oldest

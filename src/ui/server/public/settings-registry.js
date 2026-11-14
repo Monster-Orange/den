@@ -76,6 +76,14 @@ export const DEN_SETTING_CATEGORIES = [
       "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
   },
   {
+    // Bell v6 (0.4.45): the person's bell.
+    id: "notifications",
+    label: "Notifications",
+    order: 56,
+    description:
+      "What shows in the bell and counts on its badge. These are your own choices. Off means no bell item and no badge. The activity trail still records it.",
+  },
+  {
     // SEC-2a: who may come in from other devices.
     id: "access",
     label: "Access",
@@ -165,6 +173,88 @@ function L(key, en, vars) {
   return String(s).replace(/\{(\w+)\}/g, (m, k) =>
     vars && vars[k] != null ? String(vars[k]) : m,
   );
+}
+
+/**
+ * Bell v6 (0.4.45): Settings › Notifications: one switch per kind (all on
+ * but "finished its turn"), and when items fold as older. user.yml's
+ * notifications.kinds and notifications.fold_days, via /api/settings.
+ */
+
+function bellRows() {
+  // Here, not at the top: the registry's list calls this as it loads.
+  const BELL_ROWS = [
+    [
+      "waiting",
+      "Agent is waiting for you",
+      "An agent is waiting for you, or asked you a question, and can't go on.",
+    ],
+    [
+      "finished",
+      "Agent finished its turn",
+      "An agent stopped and is idle. Off by default.",
+    ],
+    [
+      "hub",
+      "Replies and comments in Hub",
+      "Someone answered a comment on something you made.",
+    ],
+    ["pr", "Pull requests", "A pull request needs a look or changed state."],
+    ["release", "Releases and checks", "A release shipped, or a check failed."],
+    [
+      "pick",
+      "Projects need your pick",
+      "Den can't tell which Hub project fits a project.",
+    ],
+    ["shared", "Shared with you", "An agent shared a doc or mock with you."],
+  ];
+  const on = (ctx, k) => {
+    const v = ctx.data.bell_kinds?.[k];
+    return typeof v === "boolean" ? v : k !== "finished";
+  };
+  return [
+    ...BELL_ROWS.map(([k, label, description]) => ({
+      id: `notifications.${k}`,
+      category: "notifications",
+      label,
+      description,
+      keywords: ["notifications", "bell", "badge", "kinds", k],
+      scope: "user",
+      control: {
+        type: "toggle",
+        // "Waiting for you" is the one kind not to hide by accident.
+        ...(k === "waiting"
+          ? {
+              notice: (ctx) =>
+                on(ctx, "waiting")
+                  ? ""
+                  : L(
+                      "set.notifications.waiting.warn",
+                      "While this is off, agents waiting for you won't show here or on the badge.",
+                    ),
+            }
+          : {}),
+      },
+      keys: ["bell_kinds"],
+      read: (ctx) => on(ctx, k),
+      write: (v, ctx) => ctx.post({ bell_kinds: { [k]: v === true } }),
+    })),
+    {
+      id: "notifications.fold_days",
+      category: "notifications",
+      label: "Fold items older than",
+      description:
+        "Older items move under \u201cOlder than N days\u201d. Nothing is deleted.",
+      keywords: ["notifications", "bell", "fold", "older", "days"],
+      scope: "user",
+      control: seg(
+        [3, 7, 14, 30].map((n) => ({ value: String(n), label: `${n} days` })),
+      ),
+      keys: ["bell_fold_days"],
+      read: (ctx) => String(ctx.data.bell_fold_days ?? 7),
+      write: (v, ctx) => ctx.post({ bell_fold_days: Number(v) }),
+    },
+  ];
 }
 
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */
@@ -992,6 +1082,7 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agents_layout ?? "focus",
     write: (v, ctx) => ctx.post({ agents_layout: v }),
   },
+  ...bellRows(),
   {
     id: "agents.helpers_shown",
     category: "agents",

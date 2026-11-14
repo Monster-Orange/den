@@ -12,6 +12,7 @@ import {
 } from "../../shared/agents/records.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import { readDenConfig, readUserConfig } from "../../shared/den-config.js";
+import { bellPrefs, type BellPrefs } from "../../shared/notifications.js";
 import {
   AskLimit,
   NotificationStore,
@@ -99,6 +100,7 @@ export function notificationDeps(): {
   store: NotificationStore;
   attention: Attention;
   asks: { limit: AskLimit; perHour: () => number };
+  prefs: () => BellPrefs;
 } {
   store ??= new NotificationStore(getStateDir());
   attention ??= new Attention({
@@ -132,6 +134,14 @@ export function notificationDeps(): {
       // Read each time: a change to user.yml counts at once.
       perHour: () =>
         readNotificationConfig(readDenConfig(), readUserConfig()).asksPerHour,
+    },
+    // Bell v6: the person's kinds and fold, read each time.
+    prefs: () => {
+      try {
+        return bellPrefs(readUserConfig());
+      } catch {
+        return bellPrefs(null);
+      }
     },
   };
 }

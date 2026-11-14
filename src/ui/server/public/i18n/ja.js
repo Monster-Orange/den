@@ -939,12 +939,24 @@
     "ag.waiting.asked": "質問があります",
     "bell.title": "通知",
     "bell.n": "通知: 未読 {n} 件",
-    "bell.empty": "対応が必要なものはありません。",
     "bell.markAll": "すべて既読にする",
+    "bell.empty": "今、対応が必要なものはありません。",
+    "bell.notShown": "表示していない種類: {kinds}。",
+    "bell.sep": "、",
+    "bell.settings": "通知の設定",
+    "bell.older": "{d}日より古い通知({n})",
+    "bell.rep": "同様の通知があと {n} 件",
+    "bell.stop": "この種類を表示しない",
+    "bell.askT": "「{kind}」を表示しませんか?",
+    "bell.askB":
+      "この種類だけです。アクティビティ記録には残ります。設定でいつでもオンに戻せます。",
+    "bell.askYes": "表示しない",
+    "bell.cancel": "キャンセル",
+    "bell.undo": "元に戻す",
+    "bell.undoMsg": "「{kind}」を表示しなくなりました。",
+    "bell.open": "開く",
     "bell.clearRead": "既読を消去",
     "bell.read": "既読にする",
-    "bell.mute": "1 時間ミュート",
-    "bell.muted": "1 時間ミュートしました",
     "bell.server": "__DEN_TITLE__ エージェント",
     "bell.hub": "Hub · {project}",
     "bell.hubAll": "Hub",
@@ -1708,6 +1720,38 @@
     "set.agents.helpers_shown.o.3": "3",
     "set.agents.helpers_shown.o.5": "5",
     "set.agents.helpers_shown.o.10": "10",
+    "setc.notifications": "通知",
+    "setc.notifications.d":
+      "ベルに表示し、バッジで数えるものです。あなた個人の選択です。オフにするとベルの項目もバッジも出ません。アクティビティ記録には残ります。",
+    "set.notifications.waiting": "エージェントがあなたを待っている",
+    "set.notifications.waiting.d":
+      "エージェントがあなたを待っている、または質問をして、先に進めません。",
+    "set.notifications.waiting.warn":
+      "オフの間は、あなたを待っているエージェントがここにもバッジにも表示されません。",
+    "set.notifications.finished": "エージェントがターンを終えた",
+    "set.notifications.finished.d":
+      "エージェントが止まって待機中です。既定はオフ。",
+    "set.notifications.hub": "Hub での返信とコメント",
+    "set.notifications.hub.d":
+      "あなたが作ったものへのコメントに返信がありました。",
+    "set.notifications.pr": "プルリクエスト",
+    "set.notifications.pr.d":
+      "プルリクエストの確認が必要、または状態が変わりました。",
+    "set.notifications.release": "リリースとチェック",
+    "set.notifications.release.d": "リリースが出たか、チェックが失敗しました。",
+    "set.notifications.pick": "選択が必要なプロジェクト",
+    "set.notifications.pick.d":
+      "Den がどの Hub プロジェクトが合うか判断できません。",
+    "set.notifications.shared": "あなたに共有",
+    "set.notifications.shared.d":
+      "エージェントがあなたに文書またはモックを共有しました。",
+    "set.notifications.fold_days": "次より古い項目をたたむ",
+    "set.notifications.fold_days.d":
+      "古い項目は「N日より古い通知」に移ります。何も削除されません。",
+    "set.notifications.fold_days.o.3": "3日",
+    "set.notifications.fold_days.o.7": "7日",
+    "set.notifications.fold_days.o.14": "14日",
+    "set.notifications.fold_days.o.30": "30日",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",

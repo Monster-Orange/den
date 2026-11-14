@@ -178,14 +178,19 @@ describe("attention", () => {
     expect(store.list().map((n) => n.msg)).toEqual([
       { key: "bell.m.turn", vars: { name: "Planner" } },
     ]);
-    // Finished Hub comments update that unread finished item.
+    // Bell v6: finished Hub comments are their own item, of Hub's switch
+    // (on), beside the turn's end (its own switch, off by default).
     a.hubFinished("ag-1", "web", { count: 2, artifact: "Spec" });
-    expect(store.list().map((n) => n.msg)).toEqual([
-      {
-        key: "bell.m.hubOn",
-        vars: { name: "Planner", n: 2, artifact: "Spec" },
-      },
-    ]);
+    expect(store.list().map((n) => n.msg)).toEqual(
+      expect.arrayContaining([
+        {
+          key: "bell.m.hubOn",
+          vars: { name: "Planner", n: 2, artifact: "Spec" },
+        },
+        { key: "bell.m.turn", vars: { name: "Planner" } },
+      ]),
+    );
+    expect(store.list()).toHaveLength(2);
   });
 
   it("finished: a finished notification; any waiting mark goes", async () => {
@@ -270,7 +275,8 @@ describe("Hub comments finished", () => {
     });
     const [n] = store.list();
     expect(n).toMatchObject({
-      kind: "finished",
+      // Bell v6: shown by Hub's switch, not "finished its turn" (off).
+      kind: "answer",
       subject: "agent:ag-1",
       scope: "workspace/web",
       text: "Planner finished 2 Hub comments on Pricing page",
