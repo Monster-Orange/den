@@ -1826,7 +1826,7 @@ function editionsHtml(e) {
   const lines = [];
   if (e.teamsHost)
     lines.push(
-      `<p class="set-note"><b>Den Hub for Teams:</b> ${escR(L("set.ui.hub.teams", "a shared Hub hosted by Monster Orange at {host}. Closed beta, by invite.", { host: e.teamsHost }))}</p>`, // words-ok: the edition's name
+      `<p class="set-note"><b>Den Hub for Teams:</b> ${escR(L("set.ui.hub.teams", "a shared Hub hosted by Monster Orange at {host}. Closed beta, by invite.", { host: e.teamsHost }))}</p>`,
     );
   if (e.enterpriseDomain)
     lines.push(

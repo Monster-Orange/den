@@ -13,6 +13,9 @@ describe("the words gate's rules", () => {
   it.each([
     ["Workspace north does not exist", ["workspace"]],
     ["Ask your team to sign in", ["team"]],
+    // The edition's name is a name (0.4.45); "teams" around it still counts.
+    ["Den Hub for Teams: a shared Hub", []],
+    ["Den Hub for Teams, for teams", ["team"]],
     ["the org's repos", ["org"]],
     ["This user can't approve", ["user"]],
     ["Link your account", ["account"]],

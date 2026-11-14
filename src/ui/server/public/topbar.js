@@ -991,7 +991,7 @@ function paletteItems() {
       key: "agent:ask-server",
       kind: "action",
       label: t("pal.askServer"),
-      keywords: ["ask", "server agent", "agent", "help", "setup", "onboarding"], // words-ok: a search word; Agents names its group Server
+      keywords: ["ask", "agent", "help", "setup", "onboarding"],
       ...page("/server-agent"),
     });
   for (const c of s?.commands?.() ?? [])

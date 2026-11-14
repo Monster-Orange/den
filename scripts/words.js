@@ -19,7 +19,8 @@
 /** The "never shown" words, by language (the catalog's own words). */
 export const NEVER_SHOWN = {
   en: [
-    ["team", /\bteams?\b/i],
+    // "Den Hub for Teams" is an edition's name, not the word.
+    ["team", /(?<!Den Hub for )\bteams?\b/i],
     ["tenant", /\btenants?\b/i],
     ["org", /\borg(?:s|anization|anizations)?\b/i],
     ["Den install", /\bden installs?\b/i],

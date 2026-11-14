@@ -521,6 +521,8 @@ describe("the ⌘K palette (R17)", () => {
       "Logs of shop/shop ACTION",
       "Restart shop/db ACTION",
       "Logs of shop/db ACTION",
+      // #80 (0.4.45): a fuzzy match, last ("Sh…o…p" in its label).
+      "Show up to this many helpers under an agent SETTING",
     ]);
     await p.keyboard.press("ArrowDown");
     expect(await p.getAttribute(q, "aria-activedescendant")).toBe(
