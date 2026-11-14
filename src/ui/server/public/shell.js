@@ -1779,6 +1779,8 @@
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.pick": "{n} projects need your pick",
     "bell.m.pick.one": "{n} project needs your pick",
+    "bell.m.noHub": "{n} agents started without Hub",
+    "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.turn": "{name} finished its turn",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} finished {n} Hub comments",

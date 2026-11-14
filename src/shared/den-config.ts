@@ -450,6 +450,8 @@ export interface UserConfig {
      * comes back on its own conversation (true, the default).
      */
     restore_on_boot?: unknown;
+    /** 0.4.46: how long that restore waits for Hub first (120 s). */
+    restore_hub_wait_seconds?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -548,6 +550,34 @@ export function configuredRemoveStoppedAfter(
     return REMOVE_STOPPED_AFTER[v];
   throw new Error(
     `agents.remove_stopped_after (${path.basename(USER_CONFIG_PATH)}): must be never, 1d or 7d (got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * 0.4.46 agents.restore_on_boot (user.yml, true when unset): after the
+ * machine restarts, every agent that was running comes back, not only
+ * standing personas and those with resume_on_restart.
+ */
+export function agentsRestoreOnBoot(
+  read: () => UserConfig = readUserConfig,
+): boolean {
+  const v = read().agents?.restore_on_boot;
+  if (v === undefined || v === null) return true;
+  if (typeof v === "boolean") return v;
+  throw new Error(
+    `agents.restore_on_boot must be true or false (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/** agents.restore_hub_wait_seconds (user.yml): 120 when unset, at least 0. */
+export function agentsRestoreHubWaitSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.restore_hub_wait_seconds;
+  if (v === undefined || v === null) return 120;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) return v;
+  throw new Error(
+    `agents.restore_hub_wait_seconds must be a number, at least 0 (user.yml; got ${JSON.stringify(v)})`,
   );
 }
 

@@ -1027,6 +1027,8 @@
     "bell.m.asked": "{name} preguntó: {text}",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
+    "bell.m.noHub": "{n} agentes empezaron sin Hub",
+    "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.turn": "{name} terminó su turno",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} terminó {n} comentarios de Hub",

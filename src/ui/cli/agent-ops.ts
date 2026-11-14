@@ -4557,6 +4557,24 @@ export interface RestartFound {
   resumed: string[];
   /** Ones that should have resumed but couldn't, with why. */
   failed: { agent: string; why: string }[];
+  /** 0.4.46: resumed though Hub didn't answer in time (no Hub tools). */
+  withoutHub: string[];
+}
+
+/** Poll `ok` until it says yes or `ms` pass; whether it said yes. */
+async function waitUntil(
+  ok: () => Promise<boolean>,
+  ms: number,
+  pollMs = 5000,
+): Promise<boolean> {
+  const until = Date.now() + ms;
+  for (;;) {
+    if (await ok().catch(() => false)) return true;
+    if (Date.now() >= until) return false;
+    await new Promise((r) =>
+      setTimeout(r, Math.min(pollMs, Math.max(0, until - Date.now()))),
+    );
+  }
 }
 
 /**
@@ -4569,10 +4587,28 @@ export interface RestartFound {
  */
 export async function markInterrupted(
   d: AgentsResolved,
-  opts: { autoResume?: boolean } = {},
+  opts: {
+    autoResume?: boolean;
+    /**
+     * 0.4.46 agents.restore_on_boot: every agent that was running resumes,
+     * not only standing personas and resume_on_restart (an agent's own
+     * resume_on_restart: false still waits).
+     */
+    restoreAll?: boolean;
+    /** Whether Hub answers; waited for first, so agents get its tools. */
+    hubUp?: () => Promise<boolean>;
+    /** agents.restore_hub_wait_seconds, in ms. */
+    hubWaitMs?: number;
+    hubPollMs?: number;
+  } = {},
 ): Promise<RestartFound> {
   const sessions = await hostSessions(d);
-  const found: RestartFound = { interrupted: [], resumed: [], failed: [] };
+  const found: RestartFound = {
+    interrupted: [],
+    resumed: [],
+    failed: [],
+    withoutHub: [],
+  };
   const now = new Date().toISOString();
   const marked: AgentRecord[] = [];
   for (const rec of listRecords(d.stateDir())) {
@@ -4590,17 +4626,28 @@ export async function markInterrupted(
   } catch {
     return found;
   }
-  for (const rec of marked) {
+  const due = marked.filter((rec) => {
     const p = personaOfRecord(rec, all);
-    if (!p || !resumesOnRestart(rec, p)) continue;
-    if (resumeRefusal(rec)) continue;
+    const wants = opts.restoreAll
+      ? rec.resumeOnRestart !== false
+      : !!p && resumesOnRestart(rec, p);
+    return wants && !resumeRefusal(rec);
+  });
+  if (!due.length) return found;
+  const hubAnswered = opts.hubUp
+    ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)
+    : true;
+  for (const rec of due) {
     try {
       // den#4: a rotated one relaunches from its handoff instead.
       const r = rotationOf(d, rec)?.ready
         ? await relaunchAgent(d, rec.id)
         : await resumeAgent(d, rec.id);
       if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
-      else found.resumed.push(rec.id);
+      else {
+        found.resumed.push(rec.id);
+        if (!hubAnswered) found.withoutHub.push(rec.id);
+      }
     } catch (e) {
       found.failed.push({ agent: rec.id, why: (e as Error).message });
     }

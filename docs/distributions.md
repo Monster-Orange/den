@@ -3811,6 +3811,21 @@ mode it started in: from its Resume button, from Resume all, and on its
 own after a restart. Changing its persona's mode, or the project's,
 later changes only the agents that start after that.
 
+**Back after the machine restarts.** Every agent that was running comes
+back on its own conversation, project and mode, not only standing
+personas and those with `resume_on_restart`. An agent someone stopped
+stays stopped, and one set to `resume_on_restart off` waits for its
+Resume. Den waits for Hub first, so they start with Hub's tools; if Hub
+doesn't answer in time they start anyway, the bell says how many
+started without Hub, and Den restarts each once Hub answers.
+
+```yaml
+# config/local/user.yml
+agents:
+  restore_on_boot: false # true (the default): only standing and resume_on_restart
+  restore_hub_wait_seconds: 120 # how long to wait for Hub first
+```
+
 **Removed on their own.** Stopped agents can go after a while:
 
 ```yaml

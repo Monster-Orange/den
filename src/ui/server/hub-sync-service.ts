@@ -16,7 +16,10 @@ import { getStateDir } from "../../shared/paths.js";
 
 let sync: ProjectSync | null = null;
 
-async function hubAndToken(): Promise<{ url: string; token: string } | null> {
+export async function hubAndToken(): Promise<{
+  url: string;
+  token: string;
+} | null> {
   const hub = await import("../../shared/hub.js");
   const cfg = hub.readHubConfig();
   if (!cfg) return null;

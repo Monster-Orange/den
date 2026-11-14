@@ -18,6 +18,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- After the machine restarts, every agent that was running comes back on
+  its own conversation, project and mode (`agents.restore_on_boot`, on
+  by default), not only standing personas and those with
+  `resume_on_restart`. An agent someone stopped stays stopped; one set
+  to `resume_on_restart` off waits. Den waits for Hub first
+  (`agents.restore_hub_wait_seconds`, 120) so they start with Hub's
+  tools; if Hub doesn't answer in time they start anyway, the bell says
+  how many started without Hub, and Den restarts them once Hub answers.
 - After the machine restarts, every project's services that were up
   come back up by themselves (`services.restore_on_boot`, on by default),
   through the same Up a person presses. Den keeps the record of what

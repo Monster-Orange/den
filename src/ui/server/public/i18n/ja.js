@@ -1001,6 +1001,7 @@
     "bell.m.input": "{name} があなたを待っています",
     "bell.m.asked": "{name} からの質問: {text}",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
+    "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.turn": "{name} のターンが終わりました",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} が Hub のコメント {n} 件を終えました",
