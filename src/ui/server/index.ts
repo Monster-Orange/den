@@ -23,6 +23,10 @@ import {
   runByServiceManager,
 } from "../../shared/crash-loop.js";
 import {
+  PERSON_ONLY_SETTINGS,
+  patchCliRows,
+} from "../../shared/settings-cli-rows.js";
+import {
   composeHealthTarget,
   containerCheckLabel,
   type ComposeHealthTarget,
@@ -5295,6 +5299,14 @@ async function handleRequest(
   // ── API: local-dev toggle ─────────────────────────────────────────────────
   // POST /api/local-dev  body: { enabled: boolean }
   if (pathname === "/api/local-dev" && req.method === "POST") {
+    // MODE-5: a person's setting (Settings › Command line); an agent's
+    // claim is refused, as on /api/settings.
+    if (agentPrincipalOf(req) || auditActorOf(req))
+      return sendJson(
+        res,
+        { ok: false, error: "only a person can change local_dev" },
+        403,
+      );
     try {
       const body = await readBody(req);
       const { enabled } = JSON.parse(body) as { enabled?: boolean };
@@ -5594,22 +5606,43 @@ async function handleRequest(
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           agents_default_mode?: unknown;
+          local_dev?: unknown;
+          cli_tabs?: unknown;
+          log_window_lines?: unknown;
+          panes_reconnect?: unknown;
+          crash_loop?: unknown;
         };
         const user = readUserConfig();
+        // MODE-5: settings only a person changes. An agent's claim to any
+        // of them is refused before anything is written.
+        const personOnly = PERSON_ONLY_SETTINGS.filter(
+          (k) => (body as Record<string, unknown>)[k] !== undefined,
+        );
+        if (personOnly.length && (agentPrincipalOf(req) || auditActorOf(req)))
+          return sendJson(
+            res,
+            {
+              ok: false,
+              error: `only a person can change ${personOnly.join(", ")}`,
+            },
+            403,
+          );
+        // MODE-5: what only `config` could change before.
+        {
+          const c = patchCliRows(user as Record<string, unknown>, {
+            local_dev: body.local_dev,
+            cli_tabs: body.cli_tabs,
+            log_window_lines: body.log_window_lines,
+            panes_reconnect: body.panes_reconnect,
+            crash_loop: body.crash_loop,
+          });
+          if (!c.ok) return send400(res, c.error);
+        }
         // 0.4.46 MODE-UI: agents.default_mode, the install's mode for every
         // agent; null clears it. A person's only: an agent could widen
         // every agent's mode with it.
         let modesChanged = false;
         if (body.agents_default_mode !== undefined) {
-          if (agentPrincipalOf(req) || auditActorOf(req))
-            return sendJson(
-              res,
-              {
-                ok: false,
-                error: "only a person can change the agents' mode",
-              },
-              403,
-            );
           const v = body.agents_default_mode;
           const agents = { ...(user.agents ?? {}) };
           if (v === null || v === "") delete agents.default_mode;

@@ -702,12 +702,15 @@ export const AGENT_FORBIDDEN: readonly string[] = [
 ];
 
 /**
- * Routes an agent's token may read but never change: the admin password (R8).
+ * Routes an agent's token may read but never change: the admin password
+ * (R8), and Local environment (MODE-5).
  * Privileged actions stay with people (AG-5); its status is a read.
  */
 export const AGENT_READ_ONLY: readonly string[] = [
   "/api/sudo-password",
   "/api/sudo-password/*",
+  // MODE-5: Local environment, a person's setting (Settings › Command line).
+  "/api/local-dev",
 ];
 
 /** `/api/sessions/<id>/…`: a session's own routes (AG-4a-term's io). */

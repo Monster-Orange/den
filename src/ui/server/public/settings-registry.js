@@ -448,7 +448,52 @@ function drawDevices(host, ctx) {
               );
             })
             .join("") +
-          "</div>";
+          "</div>" +
+          // MODE-5: `web logout` (and --all) from the page, asked first.
+          `<div data-signout-box style="margin-top:10px"><button type="button" class="btn" data-signout-all>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button></div>`;
+        const box = host.querySelector("[data-signout-box]");
+        const idle = box.innerHTML;
+        box.addEventListener("click", (e) => {
+          const b = e.target.closest?.("button");
+          if (!b) return;
+          if (b.hasAttribute("data-signout-all")) {
+            box.innerHTML =
+              `<div data-signout-ask role="group" aria-label="${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}" style="display:grid;gap:8px">` +
+              `<p class="set-note" style="margin:0">${escHtml(L("set.ui.signOutAllB", "This signs out every browser and phone, including this one. Each signs in again the usual way."))}</p>` +
+              `<label class="set-note" style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" data-signout-rotate> ${escHtml(L("set.ui.signOutRotate", "Also replace the sign-in secret. Running agents stop until they are restarted."))}</label>` +
+              `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-signout-yes>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button><button type="button" class="btn" data-signout-no>${escHtml(L("set.ui.cancel", "Cancel"))}</button></div></div>`;
+            box.querySelector("[data-signout-no]")?.focus();
+            return;
+          }
+          if (b.hasAttribute("data-signout-no")) {
+            box.innerHTML = idle;
+            box.querySelector("[data-signout-all]")?.focus();
+            return;
+          }
+          if (b.hasAttribute("data-signout-yes")) {
+            const rotate = !!box.querySelector("[data-signout-rotate]")
+              ?.checked;
+            ctx.shell
+              .busyAction({
+                button: b,
+                who: "__DEN_TITLE__",
+                title: L("set.ui.signOutAllW", "Signing out everywhere…"),
+                failed: L("set.ui.signOutAllF", "Not signed out"),
+                done: () => L("set.ui.signOutAllDone", "Signed out everywhere"),
+                run: (headers) =>
+                  ctx.shell.api(
+                    "POST",
+                    "/api/web/logout",
+                    rotate ? { rotate: true } : {},
+                    { headers },
+                  ),
+              })
+              .then((r) => {
+                // This browser is signed out too: the page shows sign-in.
+                if (r !== undefined) location.reload();
+              });
+          }
+        });
         host.querySelectorAll("[data-revoke]").forEach((btn) =>
           btn.addEventListener("click", () => {
             btn.disabled = true;
@@ -681,12 +726,12 @@ function drawRestart(host) {
 
 export const DEN_SETTINGS = [
   {
-    // den#85: the web app's crash-loop guard (user.yml web.crash_loop_*).
+    // MODE-5: the web app's crash-loop guard (user.yml web.crash_loop_*).
     id: "server.crash_loop",
     category: "server",
     label: "Restart guard",
     description:
-      "When __DEN_TITLE__'s web app stops without a clean stop too many times in a short time, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
+      "When __DEN_TITLE__'s web app stops without a clean stop this many times within the minutes below, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
     keywords: [
       "crash",
       "restart",
@@ -696,19 +741,43 @@ export const DEN_SETTINGS = [
       "web.crash_loop",
     ],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) => {
-      const r = ctx.data.crash_loop ?? {};
-      return L(
-        "set.server.crash_loop.v",
-        "Waits after {n} unclean stops in {m} minutes; at most {max} s",
-        {
-          n: r.restarts ?? 5,
-          m: r.minutes ?? 10,
-          max: r.maxWaitSeconds ?? 300,
-        },
-      );
-    },
+    keys: ["crash_loop.restarts"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.crash_loop?.restarts ?? 5,
+    write: (v, ctx) => ctx.post({ crash_loop: { restarts: v } }),
+  },
+  {
+    id: "server.crash_loop_minutes",
+    category: "server",
+    label: "Restart guard window, in minutes",
+    description:
+      "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    keywords: [
+      "crash",
+      "restart",
+      "loop",
+      "window",
+      "minutes",
+      "web.crash_loop",
+    ],
+    scope: "user",
+    keys: ["crash_loop.minutes"],
+    control: { type: "number", min: 1, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.crash_loop?.minutes ?? 10,
+    write: (v, ctx) => ctx.post({ crash_loop: { minutes: v } }),
+  },
+  {
+    id: "server.crash_loop_wait",
+    category: "server",
+    label: "Restart guard's longest wait",
+    description:
+      "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    keywords: ["crash", "restart", "wait", "backoff", "web.crash_loop"],
+    scope: "user",
+    keys: ["crash_loop.max_wait_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.crash_loop?.maxWaitSeconds ?? 300,
+    write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
   },
   {
     // MODE-5 (0.4.46): this install's address (web.url, D80) as a page
@@ -1150,28 +1219,44 @@ export const DEN_SETTINGS = [
       ctx.post({ agents_default_mode: v === "persona" ? null : v }),
   },
   {
-    // 0.4.46: a terminal pane reconnects on its own after a drop.
+    // MODE-5: how a terminal pane reconnects on its own (user.yml panes.*).
     id: "agents.pane_reconnect",
     category: "agents",
-    label: "Terminals reconnect",
+    label: "Terminal reconnect tries",
     description:
-      "A terminal whose connection drops tries again on its own, waiting longer each time. It stops after too many failed tries and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+      "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
     keywords: ["reconnect", "terminal", "pane", "disconnected", "retry"],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) => {
-      const r = ctx.data.panes_reconnect ?? {};
-      return L(
-        "set.agents.pane_reconnect.v",
-        "Every {s}–{max} s; stops after {n} failed tries in {w} s",
-        {
-          s: r.seconds ?? 1,
-          max: r.max_seconds ?? 30,
-          n: r.max_failures ?? 10,
-          w: r.window_seconds ?? 300,
-        },
-      );
-    },
+    keys: ["panes_reconnect.max_failures"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.panes_reconnect?.max_failures ?? 10,
+    write: (v, ctx) => ctx.post({ panes_reconnect: { max_failures: v } }),
+  },
+  {
+    id: "agents.pane_reconnect_window",
+    category: "agents",
+    label: "Terminal reconnect window",
+    description:
+      "The time the failed tries above are counted in. __DEN_CLI__ config panes.reconnect_window_seconds=300",
+    keywords: ["reconnect", "terminal", "window", "retry"],
+    scope: "user",
+    keys: ["panes_reconnect.window_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.panes_reconnect?.window_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ panes_reconnect: { window_seconds: v } }),
+  },
+  {
+    id: "agents.pane_reconnect_wait",
+    category: "agents",
+    label: "Longest wait between tries",
+    description:
+      "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    keywords: ["reconnect", "terminal", "wait", "backoff"],
+    scope: "user",
+    keys: ["panes_reconnect.max_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.panes_reconnect?.max_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ panes_reconnect: { max_seconds: v } }),
   },
   {
     id: "agents.layout",
@@ -1332,11 +1417,11 @@ export const DEN_SETTINGS = [
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     keywords: ["local", "local dev", "environment", "disable"],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) =>
-      ctx.data.local_dev === false
-        ? L("set.ui.off", "Off")
-        : L("set.ui.on", "On"),
+    keys: ["local_dev"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.local_dev !== false,
+    // On is the default: it is stored only when off.
+    write: (v, ctx) => ctx.post({ local_dev: v ? null : false }),
   },
   {
     id: "cli.cli_tabs",
@@ -1346,9 +1431,10 @@ export const DEN_SETTINGS = [
       "Whether up and restart open terminal tabs by default. __DEN_CLI__ config cli_tabs=true",
     keywords: ["tabs", "terminal", "up", "restart", "cli"],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) =>
-      ctx.data.cli_tabs ? L("set.ui.on", "On") : L("set.ui.off", "Off"),
+    keys: ["cli_tabs"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.cli_tabs === true,
+    write: (v, ctx) => ctx.post({ cli_tabs: v ? true : null }),
   },
   {
     id: "cli.log_window_lines",
@@ -1358,11 +1444,10 @@ export const DEN_SETTINGS = [
       "How many lines a Logs pane keeps loaded; full-history search is unaffected. __DEN_CLI__ config log_window_lines=50000",
     keywords: ["logs", "lines", "window", "history", "buffer"],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) =>
-      L("set.ui.nLines", "{n} lines", {
-        n: Number(ctx.data.log_window_lines ?? 20000).toLocaleString(),
-      }),
+    keys: ["log_window_lines"],
+    control: { type: "number", min: 1000, max: 1000000, step: 1000 },
+    read: (ctx) => Number(ctx.data.log_window_lines ?? 20000),
+    write: (v, ctx) => ctx.post({ log_window_lines: v }),
   },
   {
     id: "cli.web_port",

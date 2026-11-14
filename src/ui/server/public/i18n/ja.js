@@ -615,16 +615,24 @@
     "set.language": "言語",
     "set.appearance.org-theme": "組織の既定テーマ",
     "set.editor": "既定の IDE",
-    "set.agents.pane_reconnect": "ターミナルの再接続",
-    "set.agents.pane_reconnect.d":
-      "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。失敗が続くと止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
-    "set.agents.pane_reconnect.v":
-      "{s}〜{max} 秒ごと。{w} 秒間に {n} 回失敗すると止まります",
     "set.server.crash_loop": "再起動ガード",
     "set.server.crash_loop.d":
-      "__DEN_TITLE__ の Web アプリが短時間に何度も正常に終了せずに止まると、次の起動は応答する前に待ちます。待ち時間は毎回延び、ベルで知らせます。__DEN_CLI__ config web.crash_loop_restarts=5",
-    "set.server.crash_loop.v":
-      "{m} 分間に {n} 回正常に終了せずに止まると待ちます。最長 {max} 秒",
+      "__DEN_TITLE__ の Web アプリが下の分数のうちにこの回数、正常に終了せずに止まると、次の起動は応答する前に待ちます。待ち時間は毎回延び、ベルで知らせます。__DEN_CLI__ config web.crash_loop_restarts=5",
+    "set.server.crash_loop_minutes": "再起動ガードの時間枠(分)",
+    "set.server.crash_loop_minutes.d":
+      "上の、正常に終了しなかった回数を数える分数です。__DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
+    "set.server.crash_loop_wait.d":
+      "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
+    "set.agents.pane_reconnect.d":
+      "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
+    "set.agents.pane_reconnect_window": "ターミナルの再接続の時間枠",
+    "set.agents.pane_reconnect_window.d":
+      "上の失敗回数を数える時間です。__DEN_CLI__ config panes.reconnect_window_seconds=300",
+    "set.agents.pane_reconnect_wait": "試行の間の最長の待ち時間",
+    "set.agents.pane_reconnect_wait.d":
+      "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.server.address": "__DEN_TITLE__ のアドレス",
     "set.server.address.d":
       "ほかの人やデバイスがこの __DEN_TITLE__ を開くアドレスです(例: https://__DEN_CLI__.local.example.com)。「確認して保存」は、まずそのアドレスが応答するか確かめ、応答したときだけ保存します。__DEN_CLI__ web url と同じです。",
@@ -1688,6 +1696,14 @@
       "リンク済みのデバイスはありません。GitHub でサインインしたブラウザ、コードで承認されたブラウザ、一回限りのリンクを開いたブラウザがここに表示されます。",
     "set.ui.thisDevice": "このデバイス",
     "set.ui.revoke": "取り消す",
+    "set.ui.signOutAll": "すべてからサインアウト",
+    "set.ui.signOutAllB":
+      "この端末を含む、すべてのブラウザーとスマートフォンからサインアウトします。それぞれ、いつもの方法でもう一度サインインします。",
+    "set.ui.signOutRotate":
+      "サインイン用のシークレットも置き換えます。実行中のエージェントは再起動するまで止まります。",
+    "set.ui.signOutAllW": "すべてからサインアウトしています…",
+    "set.ui.signOutAllF": "サインアウトできませんでした",
+    "set.ui.signOutAllDone": "すべてからサインアウトしました",
     "set.ui.devicesSignedIn":
       "デバイスの一覧はサインイン中にのみ表示されます。",
     "set.ui.asked": "{ago} に要求",

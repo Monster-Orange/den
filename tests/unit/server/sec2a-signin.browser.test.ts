@@ -286,4 +286,54 @@ describe("Settings › Access", () => {
     );
     await ctx.close();
   }, 120_000);
+
+  it("Sign out everywhere asks first, then signs out every browser, this one too; replacing the secret is a choice", async () => {
+    if (skip()) return;
+    const open = async () => {
+      const ctx = await browser!.newContext({
+        viewport: { width: 1280, height: 1000 },
+      });
+      const p = await ctx.newPage();
+      await claimIn(p);
+      return { ctx, p };
+    };
+    const signedIn = (p: Page) =>
+      p.evaluate(() =>
+        fetch("/api/web/sessions", { cache: "no-store" }).then((r) => r.status),
+      );
+    const a = await open();
+    // b: a phone on the edge's address, signed in with GitHub (localhost
+    // is this computer's own).
+    const b = await edgePage();
+    await b.p.click("#den-gh-start");
+    await b.p.waitForSelector("#den-gh-code");
+    gh.approve(lastCode(), { id: 4242, login: "octo-owner" });
+    await b.p.waitForFunction(() => !document.querySelector("#den-signin"));
+    await a.p.goto(`http://localhost:${port}/settings#access`);
+    await a.p.waitForSelector(".set-device");
+    const secret = readWebSecret(stateDir)!.toString("hex");
+    // First a question, and Cancel ends nothing.
+    await a.p.click("[data-signout-all]");
+    const ask = a.p.locator("[data-signout-ask]");
+    await ask.waitFor();
+    expect(await ask.textContent()).toContain(
+      "This signs out every browser and phone, including this one.",
+    );
+    expect(await a.p.isChecked("[data-signout-rotate]")).toBe(false);
+    await a.p.click("[data-signout-no]");
+    await ask.waitFor({ state: "detached" });
+    expect(await signedIn(b.p)).toBe(200);
+    // Yes, with the secret replaced too.
+    await a.p.click("[data-signout-all]");
+    await a.p.check("[data-signout-rotate]");
+    const out = a.p.waitForResponse((r) => r.url().endsWith("/api/web/logout"));
+    await a.p.click("[data-signout-yes]");
+    const r = await out;
+    expect(r.request().postDataJSON()).toEqual({ rotate: true });
+    expect(r.status()).toBe(200);
+    expect((await b.p.reload())?.status()).toBe(401);
+    expect(readWebSecret(stateDir)!.toString("hex")).not.toBe(secret);
+    await a.ctx.close();
+    await b.ctx.close();
+  }, 120_000);
 });

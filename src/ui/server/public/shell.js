@@ -610,6 +610,14 @@
       "No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here.",
     "set.ui.thisDevice": "This device",
     "set.ui.revoke": "Revoke",
+    "set.ui.signOutAll": "Sign out everywhere",
+    "set.ui.signOutAllB":
+      "This signs out every browser and phone, including this one. Each signs in again the usual way.",
+    "set.ui.signOutRotate":
+      "Also replace the sign-in secret. Running agents stop until they are restarted.",
+    "set.ui.signOutAllW": "Signing out everywhere…",
+    "set.ui.signOutAllF": "Not signed out",
+    "set.ui.signOutAllDone": "Signed out everywhere",
     "set.ui.devicesSignedIn": "The devices can only be listed signed in.",
     "set.ui.asked": "asked {ago}",
     "set.ui.approve": "Approve",
@@ -1453,16 +1461,24 @@
     "hubla.why.stale": "no longer Hub's suggestion",
     "set.workspace.editor": "IDE for this project",
     "set.agents.runtimes": "Runtimes",
-    "set.agents.pane_reconnect": "Terminals reconnect",
-    "set.agents.pane_reconnect.d":
-      "A terminal whose connection drops tries again on its own, waiting longer each time. It stops after too many failed tries and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
-    "set.agents.pane_reconnect.v":
-      "Every {s}–{max} s; stops after {n} failed tries in {w} s",
     "set.server.crash_loop": "Restart guard",
     "set.server.crash_loop.d":
-      "When __DEN_TITLE__'s web app stops without a clean stop too many times in a short time, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
-    "set.server.crash_loop.v":
-      "Waits after {n} unclean stops in {m} minutes; at most {max} s",
+      "When __DEN_TITLE__'s web app stops without a clean stop this many times within the minutes below, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
+    "set.server.crash_loop_minutes": "Restart guard window, in minutes",
+    "set.server.crash_loop_minutes.d":
+      "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.crash_loop_wait": "Restart guard's longest wait",
+    "set.server.crash_loop_wait.d":
+      "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.agents.pane_reconnect": "Terminal reconnect tries",
+    "set.agents.pane_reconnect.d":
+      "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+    "set.agents.pane_reconnect_window": "Terminal reconnect window",
+    "set.agents.pane_reconnect_window.d":
+      "The time the failed tries above are counted in. __DEN_CLI__ config panes.reconnect_window_seconds=300",
+    "set.agents.pane_reconnect_wait": "Longest wait between tries",
+    "set.agents.pane_reconnect_wait.d":
+      "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.server.address": "__DEN_TITLE__'s address",
     "set.server.address.d":
       "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",

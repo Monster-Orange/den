@@ -630,16 +630,24 @@
     "set.language": "Idioma",
     "set.appearance.org-theme": "Tema predeterminado de la org",
     "set.editor": "IDE predeterminado",
-    "set.agents.pane_reconnect": "Las terminales se reconectan",
-    "set.agents.pane_reconnect.d":
-      "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Se detiene tras demasiados intentos fallidos y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
-    "set.agents.pane_reconnect.v":
-      "Cada {s}–{max} s; se detiene tras {n} intentos fallidos en {w} s",
     "set.server.crash_loop": "Protección contra reinicios",
     "set.server.crash_loop.d":
-      "Cuando la app web de __DEN_TITLE__ se detiene sin un cierre limpio demasiadas veces en poco tiempo, el siguiente arranque espera antes de atender, más cada vez, y la campana lo avisa. __DEN_CLI__ config web.crash_loop_restarts=5",
-    "set.server.crash_loop.v":
-      "Espera tras {n} cierres no limpios en {m} minutos; como mucho {max} s",
+      "Cuando la app web de __DEN_TITLE__ se detiene sin un cierre limpio estas veces dentro de los minutos de abajo, el siguiente arranque espera antes de atender, más cada vez, y la campana lo avisa. __DEN_CLI__ config web.crash_loop_restarts=5",
+    "set.server.crash_loop_minutes": "Ventana de la protección, en minutos",
+    "set.server.crash_loop_minutes.d":
+      "Los minutos en los que se cuentan los cierres no limpios de arriba. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.crash_loop_wait": "Espera máxima de la protección",
+    "set.server.crash_loop_wait.d":
+      "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.agents.pane_reconnect": "Intentos de reconexión de la terminal",
+    "set.agents.pane_reconnect.d":
+      "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Tras estos intentos fallidos dentro del tiempo de abajo, se detiene y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
+    "set.agents.pane_reconnect_window": "Ventana de reconexión de la terminal",
+    "set.agents.pane_reconnect_window.d":
+      "El tiempo en el que se cuentan los intentos fallidos de arriba. __DEN_CLI__ config panes.reconnect_window_seconds=300",
+    "set.agents.pane_reconnect_wait": "Espera máxima entre intentos",
+    "set.agents.pane_reconnect_wait.d":
+      "El primer intento espera 1 s y cada espera se duplica, hasta este valor. __DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.server.address": "La dirección de __DEN_TITLE__",
     "set.server.address.d":
       "La dirección con la que las personas y otros dispositivos abren este __DEN_TITLE__, por ejemplo https://__DEN_CLI__.local.example.com. Comprobar y guardar le pide primero que responda, y solo guarda si responde. Igual que __DEN_CLI__ web url.",
@@ -1730,6 +1738,14 @@
       "No hay dispositivos vinculados. Aquí aparece cada navegador que inicia sesión con GitHub, se aprueba con un código o abre un enlace de un solo uso.",
     "set.ui.thisDevice": "Este dispositivo",
     "set.ui.revoke": "Revocar",
+    "set.ui.signOutAll": "Cerrar sesión en todas partes",
+    "set.ui.signOutAllB":
+      "Esto desconecta todos los navegadores y teléfonos, también este. Cada uno vuelve a entrar como siempre.",
+    "set.ui.signOutRotate":
+      "Sustituir también el secreto de inicio. Los agentes en marcha se detienen hasta que se reinicien.",
+    "set.ui.signOutAllW": "Desconectando en todas partes…",
+    "set.ui.signOutAllF": "No se desconectó",
+    "set.ui.signOutAllDone": "Desconectado en todas partes",
     "set.ui.devicesSignedIn":
       "Los dispositivos solo se listan con la sesión iniciada.",
     "set.ui.asked": "lo pidió {ago}",

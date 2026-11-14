@@ -11,6 +11,7 @@
  * The rules: every row has a scope (user, workspace or distribution); a
  * distribution row is read-only (no write); every row's category exists.
  */
+import { PAGE_LIMITS } from "../../../src/shared/settings-cli-rows.js";
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -32,6 +33,11 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   graph: GRAPH_DEFAULTS as unknown as Record<string, unknown>,
   appearance: APPEARANCE_DEFAULTS as unknown as Record<string, unknown>,
   shell: SHELL_DEFAULTS as unknown as Record<string, unknown>,
+  // MODE-5: the limits Settings has a row for.
+  panes_reconnect: Object.fromEntries(
+    PAGE_LIMITS.panes_reconnect.map((k) => [k, true]),
+  ),
+  crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -102,6 +108,16 @@ describe("the settings inventory (R21)", () => {
         // 0.4.45: this person's project order.
         "shell.projectOrder",
         "terminal",
+        // MODE-5: what only `config` could change.
+        "cli_tabs",
+        "local_dev",
+        "log_window_lines",
+        "panes_reconnect.max_failures",
+        "panes_reconnect.window_seconds",
+        "panes_reconnect.max_seconds",
+        "crash_loop.restarts",
+        "crash_loop.minutes",
+        "crash_loop.max_wait_seconds",
       ].sort(),
     );
   });

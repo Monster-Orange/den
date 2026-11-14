@@ -63,6 +63,27 @@ config and manifest changes a distribution must make to move to it under
   captured within `feedback.capture_seconds` (15) offers to send without one.
   The screenshot uses html-to-image 1.11.13 (MIT), pinned and served from
   Den's own server.
+- Settings › Access › Sign out everywhere: it asks first, saying it signs out
+  every browser and phone, including this one. A choice there also replaces
+  the sign-in secret, which stops running agents until they are restarted.
+  Before, this was only `web logout` and `web logout --all`.
+- Settings › Command line: Local environment and Terminal tabs are switches,
+  and Log pane lines is a number. Before, they were read-only rows for
+  `config`.
+- The terminals' reconnect limits (tries, window, longest wait) and the
+  restart guard (unclean stops, window, longest wait) are Settings rows you
+  can change. `config` now accepts the keys their text names, such as
+  `config panes.reconnect_max_failures=20` and
+  `config web.crash_loop_restarts=5`, with the same checks as the page.
+  Before, Settings told you to run those commands and `config` refused
+  them. A test now checks that every `config` command in Settings' text is
+  a key `config` accepts.
+- A test lists every CLI command and subcommand with its page control, or
+  says why it has none (a read, script-only, or the release it is slotted
+  for). A new command that isn't listed fails, and so does a page control
+  that goes missing.
+- An agent can no longer change Local environment through the older
+  `/api/local-dev` route. These new settings are a person's only.
 - A report is filed with its kind's label: bug, enhancement (an idea) or
   question, GitHub's default labels. A repo without that label gets the report
   without one. Den only looks labels up and never makes one in someone's repo.
