@@ -1625,20 +1625,26 @@ function checkEdgeExposure(): void {
 }
 
 /**
- * The Set-Cookie for a session: HttpOnly, SameSite=Strict, Path=/, Secure
+ * The Set-Cookie for a session: HttpOnly, SameSite=Lax, Path=/, Secure
  * when the request came over HTTPS (requestIsHttps: the edge's own header
  * only from the edge), for as long as a browser keeps a cookie: the
  * session itself never expires.
+ *
+ * Lax (0.4.45, was Strict): a person's click on a link to Den from another
+ * site (Hub's sidebar) carries the session, so it lands signed in. What
+ * another site sends on its own (a POST, a fetch, an <img>) still doesn't,
+ * every write needs this page's X-Den-CSRF besides, and a GET that runs
+ * something refuses a cross-site Sec-Fetch-Site (request-guard.ts).
  */
 function sessionSetCookie(id: string, secure: boolean): string {
   return (
-    `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; ` +
+    `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Lax; ` +
     `Max-Age=${SESSION_COOKIE_MAX_AGE_S}${secure ? "; Secure" : ""}`
   );
 }
 function clearSessionCookie(secure: boolean): string {
   return (
-    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` +
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` +
     (secure ? "; Secure" : "")
   );
 }

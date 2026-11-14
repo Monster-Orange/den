@@ -191,3 +191,53 @@ describe("refusal pages start no polls (no /api answers 421 or 401 after load)",
     await ctx.close();
   }, 60_000);
 });
+
+/**
+ * 0.4.45: a link to Den on another site (Hub's sidebar) lands signed in.
+ * The session cookie is SameSite=Lax: a top-level click from another site
+ * carries it. What that site sends on its own (a POST, a fetch) still
+ * doesn't, and every write needs this page's CSRF token besides.
+ */
+describe("a link from another site", () => {
+  it("signed in here, a click from another site's page lands signed in; its POST changes nothing", async () => {
+    if (skip()) return;
+    const ctx = await browser!.newContext({ extraHTTPHeaders: AWAY });
+    const p = await ctx.newPage();
+    const den = `http://${EDGE}:${port}`;
+    const r = await p.goto(signInUrl(stateDir, den, "/"));
+    expect(r?.status()).toBe(200);
+    expect(await signedIn(p)).toBe(true);
+    // Another site: a link to Den, and a form that posts to it.
+    await ctx.route("http://evil.test/**", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body:
+          `<a id="go" href="${den}/services">Den</a>` +
+          `<form id="f" method="post" action="${den}/api/session/logout"></form>`,
+      }),
+    );
+    await p.goto("http://evil.test/");
+    const [landed] = await Promise.all([
+      p.waitForResponse((x) => x.url() === `${den}/services`),
+      p.click("#go"),
+    ]);
+    // The click's own request carried the session: the page, not sign-in.
+    expect(landed.status()).toBe(200);
+    await p.waitForLoadState("domcontentloaded");
+    expect(await p.locator("#den-signin").count()).toBe(0);
+    expect(await signedIn(p)).toBe(true);
+    // Its form's POST: refused, and the session stays.
+    await p.goto("http://evil.test/");
+    const posted = p.waitForResponse((x) =>
+      x.url().endsWith("/api/session/logout"),
+    );
+    await p.evaluate(() =>
+      (document.getElementById("f") as HTMLFormElement).submit(),
+    );
+    expect((await posted).status()).toBeGreaterThanOrEqual(400);
+    await p.waitForURL((u) => u.pathname === "/api/session/logout");
+    await p.goto(`${den}/services`);
+    expect(await signedIn(p)).toBe(true);
+    await ctx.close();
+  }, 60_000);
+});

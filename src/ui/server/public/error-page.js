@@ -710,8 +710,8 @@ function wirePair(root, t, s) {
  * never asks for a secret or a token, and never runs anything here.
  *
  * On 127.0.0.1 or [::1] it links to the same page on localhost, where the
- * cookie is. A link from 127.0.0.1 lands here once without the cookie (a
- * cross-site navigation doesn't carry a SameSite=Strict one); /api/session,
+ * cookie is. A link from 127.0.0.1 can land here without the cookie (the
+ * cookie is localhost's, not 127.0.0.1's); /api/session,
  * asked same-origin, does carry it, so a signed-in browser reloads the page
  * from here (same-origin) and is let through.
  */

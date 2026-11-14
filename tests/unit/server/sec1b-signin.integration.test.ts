@@ -228,7 +228,7 @@ afterAll(async () => {
 });
 
 describe("the login link", () => {
-  it("a valid code: a session cookie (HttpOnly, SameSite=Strict, Path=/, no Secure on http) and a 303 to next", async () => {
+  it("a valid code: a session cookie (HttpOnly, SameSite=Lax, Path=/, no Secure on http) and a 303 to next", async () => {
     const r = await call(
       "GET",
       `/auth?c=${encodeURIComponent(code())}&next=${encodeURIComponent("/settings?x=1")}`,
@@ -241,7 +241,7 @@ describe("the login link", () => {
     expect(line.length).toBeGreaterThan(0);
     expect(flags(line)).toEqual(["httponly", "max-age", "path", "samesite"]);
     expect(line).toMatch(/; Path=\//);
-    expect(line).toMatch(/; SameSite=Strict/);
+    expect(line).toMatch(/; SameSite=Lax/);
     // A session never expires: the cookie lasts as long as a browser keeps
     // one (400 days), not the old 30-day absolute lifetime.
     expect(line).toMatch(/; Max-Age=34560000/);

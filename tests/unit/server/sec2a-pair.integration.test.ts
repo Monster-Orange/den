@@ -332,7 +332,7 @@ describe("approve this computer with a code", () => {
     const line = ([] as string[])
       .concat(done.headers["set-cookie"] ?? [])
       .find((c) => c.startsWith(`den_session_${port}=`))!;
-    expect(line).toMatch(/; HttpOnly; SameSite=Strict; Max-Age=34560000/);
+    expect(line).toMatch(/; HttpOnly; SameSite=Lax; Max-Age=34560000/);
     // Signed in, beyond loopback.
     expect((await call("GET", "/api/settings", { cookie })).status).toBe(200);
     // Listed as a linked device, approved by code.

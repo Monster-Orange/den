@@ -296,7 +296,7 @@ describe("Sign in with GitHub through the edge", () => {
     const line = ([] as string[])
       .concat(done.headers["set-cookie"] ?? [])
       .find((c) => c.startsWith(`den_session_${port}=`))!;
-    expect(line).toMatch(/; HttpOnly; SameSite=Strict; Max-Age=34560000/);
+    expect(line).toMatch(/; HttpOnly; SameSite=Lax; Max-Age=34560000/);
     // Signed in: the edge serves it.
     const page = await call("GET", "/api/settings", edge({ cookie }));
     expect(page.status).toBe(200);

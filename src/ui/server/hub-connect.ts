@@ -7,9 +7,9 @@
  *      is Hub's /connect URL, and the page goes there.
  *   2. Hub signs the person in; they pick a company and approve. Hub sends
  *      the browser to <this Den>/hub/callback?code&state (or error=…).
- *   3. GET /hub/callback (sign-in free: the session cookie is SameSite
- *      Strict, so a redirect from Hub doesn't carry it; the single-use state
- *      and the verifier only this server holds are what protect it) trades
+ *   3. GET /hub/callback (sign-in free: a redirect from Hub may arrive
+ *      without the session; the single-use state and the verifier only
+ *      this server holds are what protect it) trades
  *      the code for the install's token server to server (POST
  *      /connect/token), stores the token and points hub.token at it, then
  *      answers a page that moves on to Settings by script, a same-site

@@ -66,6 +66,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A link to Den from another site (Hub's sidebar) showed Den's sign-in
+  although the browser was signed in, because the session cookie was
+  SameSite=Strict. It is now SameSite=Lax: a person's click from another
+  site lands signed in. Another site's own requests still don't carry
+  it, and every change still needs the page's CSRF token.
+
 - A file dropped on an agent's pane after the agent restarted went to
   the ended session, and nothing was typed. It now goes to the agent's
   session as it is now. The whole pane takes a drop: its bar, its

@@ -514,7 +514,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R(
     "/hub/callback",
-    "HUB-1.7: Hub sends the person back here. Sign-in free: the session cookie is SameSite=Strict, so Hub's redirect doesn't carry it. It acts only for a state this server issued to a signed-in Connect (single-use, 10 min), with the PKCE verifier only this server holds; anything else changes nothing",
+    "HUB-1.7: Hub sends the person back here. Sign-in free: Hub's redirect may arrive signed out. It acts only for a state this install issued to a signed-in Connect (single-use, 10 min), with the PKCE verifier only this install holds; anything else changes nothing",
   ),
   M(
     ["PUT"],
