@@ -91,6 +91,7 @@ import {
   type WhereRow,
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export interface DoctorRow {
   kind: string;
@@ -429,7 +430,7 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
     platform: process.platform,
     server: async () => {
       const port = readWebPort(getDistRoot());
-      const res = await fetch(`http://localhost:${port}/api/server-info`, {
+      const res = await fetch(`${denWebBase(port)}/api/server-info`, {
         signal: AbortSignal.timeout(1500),
       });
       if (!res.ok) return null;

@@ -63,7 +63,9 @@ config and manifest changes a distribution must make to move to it under
   answering when it was. They checked `localhost`, which resolves to the
   IPv6 loopback first, while the server listens on 127.0.0.1. Another
   program on the same port there answered instead. They now check the
-  address the server listens on.
+  address the server listens on. So do the MCP server, `doctor`,
+  `service install`, `mcp connect`, `hub` and the agents' calls to Den,
+  and a lint rule keeps `http://localhost:<port>` dials out of the code.
 
 ## [0.4.45] - 2026-11-13
 

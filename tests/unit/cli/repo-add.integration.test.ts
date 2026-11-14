@@ -537,7 +537,7 @@ describe("doctor --json over the repos added above", () => {
       });
       expect(byId.web).toMatchObject({
         status: "fail",
-        url: "http://localhost:1",
+        url: "http://127.0.0.1:1",
         fix: "./bin/acme web up --no-open --json",
       });
       expect(byId.mcp).toMatchObject({

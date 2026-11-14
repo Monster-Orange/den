@@ -212,6 +212,7 @@ export function draftHealthUrl(
   c: Pick<DetectedCommands, "up">,
 ): string | undefined {
   const port = detectDevPort(repoPath, c);
+  // eslint-disable-next-line no-restricted-syntax -- a repo's own dev server, as its config names it, not Den's
   return port ? `http://localhost:${port}/` : undefined;
 }
 

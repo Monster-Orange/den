@@ -32,6 +32,7 @@ import {
 import { defaultStatusDeps, registeredRepos } from "../cli/onboard-command.js";
 import type { ManifestValidator } from "../cli/repo-command.js";
 import { runnableCli } from "../cli/doctor-onboard.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export interface OnboardRouteDeps {
   rules: () => PathRules;
@@ -61,7 +62,7 @@ export function defaultOnboardRouteDeps(
       // This server is the web server asked about: it is answering.
       return onboardStatus(
         await defaultStatusDeps({
-          webUrl: `http://localhost:${port}`,
+          webUrl: denWebBase(port),
           probeWeb: async () => ({ kind: "up", version }),
           viaMcp,
         }),

@@ -256,6 +256,7 @@ import {
   type Resolved,
   type SessionsDeps,
 } from "./sessions-command.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
@@ -507,7 +508,7 @@ function defaultDenBase(): string {
   } catch {
     port = DEFAULT_PORT;
   }
-  return `http://localhost:${port}`;
+  return denWebBase(port);
 }
 
 /**

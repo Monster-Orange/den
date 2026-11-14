@@ -2303,6 +2303,7 @@ async function handleRequest(
   } catch {
     /* unreadable config: the routes say so */
   }
+  // eslint-disable-next-line no-restricted-syntax -- a base to parse the path against, never dialled
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
   // R26: one id per request, on every response and on its failure's log line.

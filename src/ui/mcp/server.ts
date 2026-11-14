@@ -41,6 +41,7 @@ import {
   ScopeUsageError,
   type McpScope,
 } from "./scope.js";
+import { denWebBase } from "../../shared/web-dial.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;
@@ -465,7 +466,7 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
     }
   }
   const cfg = readMcpConfig();
-  const baseUrl = `http://localhost:${port}`;
+  const baseUrl = denWebBase(port);
   const shot = parseOneShot(argv);
   if (shot) {
     // Recorded like any MCP action: actor agent, this process, one session.
