@@ -34,10 +34,23 @@ export interface DecideContext {
   local: boolean;
   /** Whether the approving account is a member of `org`. */
   orgMember(org: string): Promise<OrgMembership>;
+  /** The flow's id (FB: which held report this approval sends). */
+  id: string;
+  /** FB: one REST call as the approving person, with the flow's token. */
+  api(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; body: Record<string, unknown> }>;
 }
 
 /** What an identity means: ok, or refused (with why, for the page). */
-export type Decision = "ok" | "refused" | { refused: string };
+export type Decision =
+  | "ok"
+  | "refused"
+  | { refused: string }
+  /** ok, with what the page is told (FB: the filed issue's link). */
+  | { ok: Record<string, unknown> };
 
 export type Decide = (
   purpose: FlowPurpose,
@@ -45,7 +58,7 @@ export type Decide = (
   ctx: DecideContext,
 ) => Decision | Promise<Decision>;
 
-export type FlowPurpose = "signin" | "link";
+export type FlowPurpose = "signin" | "link" | "report";
 export type FlowState =
   | "pending"
   | "ok"
@@ -66,6 +79,8 @@ export interface FlowView {
   login?: string;
   /** error: what went wrong; refused: why, when the decision said (no secret in it). */
   message?: string;
+  /** ok: what the decision told the page (FB: the issue's link). */
+  result?: Record<string, unknown>;
 }
 
 interface Flow extends FlowView {
@@ -267,16 +282,28 @@ export class DeviceFlows {
             local: f.local,
             orgMember: (org) =>
               this.client.orgMember(token, org, identity.login),
+            id: f.id,
+            api: (method, apiPath, body) => {
+              if (!this.client.api)
+                return Promise.reject(new Error("no GitHub API client"));
+              return this.client.api(token, method, apiPath, body);
+            },
           });
         } catch (e) {
           return this.finish(f, "error", { message: (e as Error).message });
         }
         if (this.flows.get(id) !== f || f.state !== "pending") return;
-        const outcome = typeof decision === "string" ? decision : "refused";
+        const okResult =
+          typeof decision === "object" && "ok" in decision
+            ? decision.ok
+            : undefined;
+        const outcome =
+          typeof decision === "string" ? decision : okResult ? "ok" : "refused";
         return this.finish(f, outcome, {
           login: identity.login,
           ...(outcome === "ok" ? { identity } : {}),
-          ...(typeof decision === "object"
+          ...(okResult ? { result: okResult } : {}),
+          ...(typeof decision === "object" && "refused" in decision
             ? { message: decision.refused }
             : {}),
         });
@@ -305,5 +332,6 @@ function view(f: Flow): FlowView {
     expiresAt: f.expiresAt,
     ...(f.login !== undefined ? { login: f.login } : {}),
     ...(f.message !== undefined ? { message: f.message } : {}),
+    ...(f.result !== undefined ? { result: f.result } : {}),
   };
 }

@@ -17,6 +17,15 @@
  *   GET    /api/report/drafts       Finish later's and agents' drafts
  *   POST   /api/report/drafts       save one (an agent's stays a draft)
  *   DELETE /api/report/drafts/<id>  a person discards one
+ *   POST   /api/report/github-send  no `gh`: the same send, through Den's
+ *                                    GitHub App's device flow. The report is
+ *                                    held here; the person's approval files
+ *                                    it with that one token, then the token
+ *                                    is dropped. GitHub refusing (the app
+ *                                    not installed there, or no Issues:
+ *                                    write) ends it refused: the page keeps
+ *                                    the filled-in new-issue link
+ *   GET    /api/report/github-send/<id>  that flow, for the page's poll
  *
  * `gh` runs through `deps.gh` (tests pass a fake: never the real one).
  */
@@ -30,6 +39,7 @@ import {
   type ReportForm,
   type ReportKind,
 } from "../../shared/feedback.js";
+import type { Decision, FlowView } from "./device-flows.js";
 import {
   draftStore,
   sentLog,
@@ -58,8 +68,90 @@ export interface ReportRouteDeps {
   readBody: (req: http.IncomingMessage) => Promise<string>;
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
   now?: () => number;
+  /** The device flows (Den's GitHub App), for a person with no `gh`. */
+  flows?: {
+    start(
+      purpose: "report",
+    ): Promise<FlowView | { error: "busy" | "no_client_id" }>;
+    get(id: string, purpose: "report"): FlowView | null;
+  };
+  /** An open issue with this title, read without a token (F5), or null. */
+  searchOpen?: (
+    repo: string,
+    title: string,
+  ) => Promise<{ number: number; url: string; title: string } | null>;
 }
 
+/** A report waiting for its person's approval in the device flow. */
+interface Held {
+  repo: string;
+  title: string;
+  body: string;
+  addTo: number | null;
+  who: string;
+  draftId?: string;
+  stateDir: string;
+  maxPerHour: number;
+  at: number;
+}
+const HELD = new Map<string, Held>();
+/** Longer than any device code lasts (GitHub's are 15 minutes). */
+const HELD_MS = 20 * 60_000;
+
+function sweepHeld(now: number): void {
+  for (const [id, h] of HELD) if (now - h.at > HELD_MS) HELD.delete(id);
+}
+
+/**
+ * The device flow's decision for a held report: file it as the person who
+ * approved, with that flow's token (`ctx.api`), once.
+ */
+export async function decideReport(
+  ctx: {
+    id: string;
+    api(
+      method: "GET" | "POST",
+      path: string,
+      body?: unknown,
+    ): Promise<{ status: number; body: Record<string, unknown> }>;
+  },
+  now: () => number = Date.now,
+): Promise<Decision> {
+  const h = HELD.get(ctx.id);
+  HELD.delete(ctx.id);
+  if (!h) return { refused: "this report is no longer held: send it again" };
+  const log = sentLog(h.stateDir);
+  if (log.recent(h.who, now()) >= h.maxPerHour)
+    return { refused: `at most ${h.maxPerHour} reports an hour` };
+  const r =
+    h.addTo !== null
+      ? await ctx.api("POST", `/repos/${h.repo}/issues/${h.addTo}/comments`, {
+          body: h.body,
+        })
+      : await ctx.api("POST", `/repos/${h.repo}/issues`, {
+          title: h.title,
+          body: h.body,
+        });
+  if (r.status !== 201)
+    return {
+      refused:
+        r.status === 403 || r.status === 404
+          ? `GitHub refused it (${r.status}): Den's GitHub App isn't installed on ${h.repo}, or can't write issues there. Nothing was sent; the link files it in a browser tab.`
+          : `GitHub refused it (${r.status}). Nothing was sent; the link files it in a browser tab.`,
+    };
+  log.add(h.who, now());
+  if (h.draftId) draftStore(h.stateDir).remove(h.draftId);
+  return {
+    ok: {
+      url: typeof r.body.html_url === "string" ? r.body.html_url : "",
+      repo: h.repo,
+      added: h.addTo !== null,
+    },
+  };
+}
+
+/** GET /api/report/github-send/<id>. */
+const FLOW_PATH = /^\/api\/report\/github-send\/([A-Za-z0-9_-]{16,64})$/;
 /** DELETE /api/report/drafts/<id>. */
 const DRAFT_PATH = /^\/api\/report\/drafts\/([a-f0-9]{16})$/;
 
@@ -214,7 +306,7 @@ export function handleReportRoutes(
         ok: true,
         enabled: s.enabled,
         repos: s.repos.map((repo) => ({ repo })),
-        github: { signedIn: await ghSignedIn(d) },
+        github: { signedIn: await ghSignedIn(d), deviceFlow: !!d.flows },
         maxPerHour: s.maxPerHour,
         sentThisHour: sentLog(d.stateDir()).recent(who, now()),
       });
@@ -271,7 +363,8 @@ export function handleReportRoutes(
           {
             ok: false,
             need: "github",
-            error: "a GitHub account is needed to send: nothing was sent",
+            error: "sending needs a GitHub sign-in: nothing was sent",
+            deviceFlow: !!d.flows,
             newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
           },
           409,
@@ -323,6 +416,79 @@ export function handleReportRoutes(
         draftStore(d.stateDir()).remove(b.draftId);
       const url = r.stdout.trim().split("\n").pop() ?? "";
       d.sendJson(res, { ok: true, url, repo: c.repo, added: addTo !== null });
+    });
+
+  if (pathname === "/api/report/github-send" && req.method === "POST")
+    return run(async () => {
+      if (!d.settings().enabled) return off();
+      if (d.agentOf(req))
+        return d.sendJson(
+          res,
+          { ok: false, error: "only a person sends a report" },
+          403,
+        );
+      const b = await json();
+      const c = await compose(b, d);
+      if (typeof c === "string")
+        return d.sendJson(res, { ok: false, error: c }, 400);
+      const link = newIssueUrl(c.repo, c.title, c.body);
+      const s = d.settings();
+      const who = d.personOf(req);
+      const log = sentLog(d.stateDir());
+      if (log.recent(who, now()) >= s.maxPerHour)
+        return d.sendJson(
+          res,
+          {
+            ok: false,
+            limit: s.maxPerHour,
+            nextAt: new Date(log.nextAt(who, now())).toISOString(),
+            error: `at most ${s.maxPerHour} reports an hour`,
+          },
+          429,
+        );
+      const addTo = Number.isInteger(b.addTo) ? (b.addTo as number) : null;
+      if (addTo === null && b.fileNew !== true && d.searchOpen) {
+        const dup = await d.searchOpen(c.repo, c.title).catch(() => null);
+        if (dup) return d.sendJson(res, { ok: false, duplicate: dup }, 409);
+      }
+      const v = d.flows ? await d.flows.start("report") : null;
+      if (!v || "error" in v)
+        return d.sendJson(
+          res,
+          {
+            ok: false,
+            error:
+              v?.error === "busy"
+                ? "too many GitHub sign-ins at once: try again in a minute"
+                : "no GitHub App is set up here (web.github_client_id)",
+            newIssueUrl: link,
+          },
+          v?.error === "busy" ? 503 : 409,
+        );
+      sweepHeld(now());
+      HELD.set(v.id, {
+        repo: c.repo,
+        title: c.title,
+        body: c.body,
+        addTo,
+        who,
+        ...(typeof b.draftId === "string" ? { draftId: b.draftId } : {}),
+        stateDir: d.stateDir(),
+        maxPerHour: s.maxPerHour,
+        at: now(),
+      });
+      d.sendJson(res, { ok: true, flow: v, newIssueUrl: link });
+    });
+
+  const fm = FLOW_PATH.exec(pathname);
+  if (fm && req.method === "GET")
+    return run(async () => {
+      const v = d.flows?.get(fm[1], "report") ?? null;
+      d.sendJson(
+        res,
+        v ? { ok: true, flow: v } : { ok: false, error: "no such sign-in" },
+        v ? 200 : 404,
+      );
     });
 
   if (pathname === "/api/report/drafts" && req.method === "GET")
@@ -421,4 +587,39 @@ export function runGh(args: string[], stdin?: string): Promise<GhResult> {
     });
     child.stdin?.end(stdin ?? "");
   });
+}
+
+/**
+ * F5 with no `gh`: an open issue with this exact title, from GitHub's
+ * public search (no token: public repositories only; a failure is null).
+ */
+export function publicSearchOpen(apiBase: string) {
+  return async (
+    repo: string,
+    title: string,
+  ): Promise<{ number: number; url: string; title: string } | null> => {
+    const q = `repo:${repo} is:issue is:open in:title "${title.replace(/"/g, "")}"`;
+    try {
+      const r = await fetch(
+        `${apiBase}/search/issues?per_page=20&q=${encodeURIComponent(q)}`,
+        {
+          headers: { accept: "application/vnd.github+json" },
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (!r.ok) return null;
+      const j = (await r.json()) as {
+        items?: { number: number; title: string; html_url: string }[];
+      };
+      const want = title.trim().toLowerCase();
+      const hit = (j.items ?? []).find(
+        (i) => i.title.trim().toLowerCase() === want,
+      );
+      return hit
+        ? { number: hit.number, title: hit.title, url: hit.html_url }
+        : null;
+    } catch {
+      return null;
+    }
+  };
 }

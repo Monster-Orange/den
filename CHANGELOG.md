@@ -24,8 +24,12 @@ config and manifest changes a distribution must make to move to it under
   posted, with names redacted. Not signed in to GitHub sends nothing and gives a
   link to a filled-in new-issue page. At most `feedback.max_per_hour` (5) an
   hour. An open issue with the same title is offered first. An agent can save a
-  draft, never send one. `feedback.enabled: false` turns it all off. The dialog
-  comes next.
+  draft, never send one. `feedback.enabled: false` turns it all off. Without
+  `gh`, the person can send with Den's GitHub App instead: they approve a code on
+  GitHub, the report is filed with that one token, and the token is dropped. If
+  GitHub refuses (the app isn't installed on that repository, or can't write
+  issues there), nothing is sent and the filled-in link stays. The dialog comes
+  next.
 
 - Settings › Den's address: the install's address (web.url) as a page
   control. Check and save asks the address to answer as this Den before

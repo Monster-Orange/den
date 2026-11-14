@@ -276,7 +276,13 @@ import {
   setWebUrl,
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
-import { handleReportRoutes, machineSection, runGh } from "./report-routes.js";
+import {
+  decideReport,
+  handleReportRoutes,
+  machineSection,
+  publicSearchOpen,
+  runGh,
+} from "./report-routes.js";
 import { readFeedbackSettings } from "../../shared/report-store.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
@@ -297,7 +303,7 @@ import {
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
-import { DeviceFlows } from "./device-flows.js";
+import { DeviceFlows, type Decide } from "./device-flows.js";
 import {
   decideFlow,
   handleGithubRoutes,
@@ -1410,15 +1416,22 @@ const GUARD: GuardContext = {
 };
 
 // ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
+/** FB (den#81): a "report" flow files its held report; the rest sign in. */
+function reportOrSignin(signin: Decide): Decide {
+  return (purpose, identity, ctx) =>
+    purpose === "report" ? decideReport(ctx) : signin(purpose, identity, ctx);
+}
 const GITHUB_CLIENT_ID = githubClientId(WEB_AUTH.githubClientId);
 const GITHUB = githubEndpoints();
 const DEVICE_FLOWS = new DeviceFlows({
   client: githubDeviceClient(GITHUB),
   clientId: () => GITHUB_CLIENT_ID,
-  decide: decideFlow(
-    getStateDir,
-    (l) => serverLog(l, "lifecycle"),
-    () => claimRulesNow(),
+  decide: reportOrSignin(
+    decideFlow(
+      getStateDir,
+      (l) => serverLog(l, "lifecycle"),
+      () => claimRulesNow(),
+    ),
   ),
   // A test's fake GitHub may answer interval 0; the real one never does.
   minIntervalMs: GITHUB.fake ? 50 : 1000,
@@ -2764,6 +2777,8 @@ async function handleRequest(
         return a ? String(a) : null;
       },
       personOf: () => "person",
+      flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
+      searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })

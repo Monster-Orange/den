@@ -26,6 +26,52 @@ import {
   type ReportRouteDeps,
 } from "../../../src/ui/server/report-routes.js";
 import { feedbackSettings } from "../../../src/shared/report-store.js";
+import { decideReport } from "../../../src/ui/server/report-routes.js";
+import { DeviceFlows } from "../../../src/ui/server/device-flows.js";
+import type { GithubDeviceClient } from "../../../src/shared/github-device.js";
+
+/** The fake GitHub behind the device flow: what each issue POST answers. */
+let apiStatus = 201;
+const apiCalls: { method: string; path: string; body?: unknown }[] = [];
+const timers: (() => void)[] = [];
+const fakeClient: GithubDeviceClient = {
+  start: async () => ({
+    deviceCode: "dc",
+    userCode: "ABCD-1234",
+    expiresIn: 900,
+    interval: 5,
+  }),
+  poll: async () => ({ kind: "token", token: "t", expiring: false }),
+  user: async () => ({ id: 1, login: "pat" }),
+  orgMember: async () => "unreadable",
+  api: async (_t, method, p, body) => {
+    apiCalls.push({ method, path: p, body });
+    return {
+      status: apiStatus,
+      body:
+        apiStatus === 201
+          ? { html_url: "https://github.com/acme-eng/engine/issues/43" }
+          : { message: "Resource not accessible by integration" },
+    };
+  },
+};
+const flows = new DeviceFlows({
+  client: fakeClient,
+  clientId: () => "Iv-test",
+  decide: (purpose, _i, ctx) =>
+    purpose === "report" ? decideReport(ctx) : "refused",
+  schedule: (fn) => {
+    timers.push(fn);
+    return () => undefined;
+  },
+});
+/** GitHub's interval passes: the flow polls once (and decides). */
+const tick = async () => {
+  const fns = timers.splice(0);
+  for (const fn of fns) fn();
+  await new Promise((r) => setTimeout(r, 20));
+};
+let dupOpen: { number: number; title: string; url: string } | null = null;
 
 let state = "";
 let server: http.Server;
@@ -75,6 +121,8 @@ const deps: ReportRouteDeps = {
   }),
   agentOf: (r) => (r.headers["x-den-agent"] as string | undefined) ?? null,
   personOf: () => "person",
+  flows,
+  searchOpen: async () => dupOpen,
   readBody: (req) =>
     new Promise((ok) => {
       let b = "";
@@ -102,6 +150,9 @@ afterAll(async () => {
   await new Promise<void>((r) => server.close(() => r()));
 });
 beforeEach(() => {
+  apiStatus = 201;
+  apiCalls.length = 0;
+  dupOpen = null;
   state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-"));
   signedIn = true;
   openIssues = [];
@@ -257,5 +308,79 @@ describe("FB: Report an issue, the server's side", () => {
       maxPerHour: 2,
       repos: ["acme-eng/engine", "acme-dist/den"],
     });
+  });
+});
+
+describe("FB: no gh, Den's GitHub App files it (the device flow)", () => {
+  it("the person approves: the report is filed once with that token, redacted", async () => {
+    const r = await call("POST", "/api/report/github-send", FORM);
+    expect(r.status).toBe(200);
+    expect(r.body.flow).toMatchObject({
+      state: "pending",
+      userCode: "ABCD-1234",
+    });
+    expect(r.body.newIssueUrl).toMatch(/issues\/new\?title=/);
+    await tick();
+    const v = await call("GET", `/api/report/github-send/${r.body.flow.id}`);
+    expect(v.body.flow).toMatchObject({
+      state: "ok",
+      result: {
+        url: "https://github.com/acme-eng/engine/issues/43",
+        repo: "acme-eng/engine",
+        added: false,
+      },
+    });
+    expect(apiCalls).toHaveLength(1);
+    expect(apiCalls[0]).toMatchObject({
+      method: "POST",
+      path: "/repos/acme-eng/engine/issues",
+    });
+    expect(JSON.stringify(apiCalls[0].body)).not.toMatch(/rocket|\/Users\/pat/);
+    expect((await call("GET", "/api/report")).body.sentThisHour).toBe(1);
+    expect(JSON.stringify(v.body)).not.toMatch(/"t"|dc/);
+  });
+
+  it("GitHub refuses (the app isn't installed there): nothing counted, it says which repo", async () => {
+    apiStatus = 404;
+    const r = await call("POST", "/api/report/github-send", FORM);
+    await tick();
+    const v = await call("GET", `/api/report/github-send/${r.body.flow.id}`);
+    expect(v.body.flow.state).toBe("refused");
+    expect(v.body.flow.message).toMatch(
+      /isn't installed on acme-eng\/engine, or can't write issues there\. Nothing was sent/,
+    );
+    expect((await call("GET", "/api/report")).body.sentThisHour).toBe(0);
+  });
+
+  it("addTo comments on the open issue; a same-title issue is offered first (F5)", async () => {
+    dupOpen = {
+      number: 7,
+      title: "x",
+      url: "https://github.com/acme-eng/engine/issues/7",
+    };
+    const d = await call("POST", "/api/report/github-send", FORM);
+    expect(d.status).toBe(409);
+    expect(d.body.duplicate).toMatchObject({ number: 7 });
+    const r = await call("POST", "/api/report/github-send", {
+      ...FORM,
+      addTo: 7,
+    });
+    await tick();
+    expect(apiCalls[0].path).toBe("/repos/acme-eng/engine/issues/7/comments");
+    const v = await call("GET", `/api/report/github-send/${r.body.flow.id}`);
+    expect(v.body.flow.result).toMatchObject({ added: true });
+  });
+
+  it("an agent can't start one", async () => {
+    const r = await call("POST", "/api/report/github-send", FORM, "builder");
+    expect(r.status).toBe(403);
+    expect(timers).toEqual([]);
+  });
+
+  it("the limit holds here too (F7)", async () => {
+    for (let i = 0; i < 5; i++)
+      await call("POST", "/api/report/send", { ...FORM, title: `t${i}` });
+    const r = await call("POST", "/api/report/github-send", FORM);
+    expect(r.status).toBe(429);
   });
 });

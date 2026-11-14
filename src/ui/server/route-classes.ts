@@ -147,6 +147,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/report",
     "/api/report/diagnostics",
     "/api/report/drafts",
+    "/api/report/github-send/:id",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
@@ -397,6 +398,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(["POST"], "/api/report/drafts", "saves a report draft on this computer"),
   M(["DELETE"], "/api/report/drafts/:id", "a person discards a draft"),
+  M(
+    ["POST"],
+    "/api/report/github-send",
+    "holds a report for the person's GitHub approval, then files it",
+  ),
   M(
     ["POST"],
     "/api/editor/open",
@@ -710,6 +716,7 @@ export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
+  "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
   "agent-routes.ts:AGENTS_PATH": [
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",
