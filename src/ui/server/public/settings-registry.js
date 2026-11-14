@@ -1840,17 +1840,20 @@ const HUB_FLASH = {
  * Disconnect. A token Hub refuses offers Reconnect; a role that no longer
  * may connect says to ask an admin (never a retry).
  */
+/** A distribution's own note after an edition's line (no default). */
+const eNote = (n) => (n ? ` ${escR(n)}` : "");
+
 /** 0.4.45: den.yml hub_editions as lines; a line without its value goes. */
 function editionsHtml(e) {
   if (!e) return "";
   const lines = [];
   if (e.teamsHost)
     lines.push(
-      `<p class="set-note"><b>Den Hub for Teams:</b> ${escR(L("set.ui.hub.teams", "a shared Hub hosted by Monster Orange at {host}. Closed beta, by invite.", { host: e.teamsHost }))}</p>`,
+      `<p class="set-note"><b>Den Hub for Teams:</b> ${escR(L("set.ui.hub.teams", "a shared Hub at {host}.", { host: e.teamsHost }))}${eNote(e.teamsNote)}</p>`,
     );
   if (e.enterpriseDomain)
     lines.push(
-      `<p class="set-note"><b>Den Hub for Enterprise:</b> ${escR(L("set.ui.hub.ent", "your own isolated runtime, at your own domain or a unique subdomain on {domain}. Coming.", { domain: e.enterpriseDomain }))}</p>`,
+      `<p class="set-note"><b>Den Hub for Enterprise:</b> ${escR(L("set.ui.hub.ent", "your own isolated runtime, at your own domain or a unique subdomain on {domain}.", { domain: e.enterpriseDomain }))}${eNote(e.enterpriseNote)}</p>`,
     );
   if (lines.length && /^https:\/\//.test(e.talkUrl || ""))
     lines.push(

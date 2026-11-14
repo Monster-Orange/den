@@ -51,7 +51,7 @@ describe("profileFrom", () => {
   });
 
   it("refuses names that cannot be a slug or an env prefix", () => {
-    expect(() => profileFrom({ name: "Field Kit" })).toThrow(/product\.name/);
+    expect(() => profileFrom({ name: "Big Shop" })).toThrow(/product\.name/);
     expect(() => profileFrom({ name: "x", env_prefix: "x-y" })).toThrow(
       /env_prefix/,
     );

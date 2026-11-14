@@ -774,8 +774,9 @@ export function readDenConfig(): DenConfig {
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
-      // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts).
-      hub_editions: parsed?.hub_editions,
+      // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
+      // the distribution's den.yml (as the docs say), else this file.
+      hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -792,6 +793,21 @@ export function readDenConfig(): DenConfig {
   }
 
   return base;
+}
+
+/**
+ * A top-level key of the distribution's own den.yml (beside `product:`),
+ * read fresh; undefined when the file or the key is missing or unreadable.
+ */
+function denYmlKey(key: string): unknown {
+  try {
+    const doc = yaml.parse(
+      fs.readFileSync(path.join(ROOT, "den.yml"), "utf-8"),
+    ) as Record<string, unknown> | null;
+    return doc && typeof doc === "object" ? doc[key] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

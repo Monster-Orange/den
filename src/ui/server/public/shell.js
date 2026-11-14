@@ -549,10 +549,9 @@
       "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you.",
     "set.ui.hub.connectNote":
       "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
-    "set.ui.hub.teams":
-      "a shared Hub hosted by Monster Orange at {host}. Closed beta, by invite.",
+    "set.ui.hub.teams": "a shared Hub at {host}.",
     "set.ui.hub.ent":
-      "your own isolated runtime, at your own domain or a unique subdomain on {domain}. Coming.",
+      "your own isolated runtime, at your own domain or a unique subdomain on {domain}.",
     "set.ui.hub.talk": "Talk to us",
     "set.ui.hub.connected": "Connected",
     "set.ui.hub.rejected": "Token not accepted",

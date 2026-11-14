@@ -7,15 +7,28 @@
  *     teams_host: hub.example.com      # the shared Hub, as plain text
  *     enterprise_domain: example.com   # "a unique subdomain on …"
  *     talk_url: https://example.com/den#enterprise   # "Talk to us"
+ *     teams_note: Closed beta, by invite.   # optional, after its line
+ *     enterprise_note: Coming.              # optional, after its line
  *
- * Unset, or a value that isn't one: that line isn't shown. Never an email
- * address, a price or a date.
+ * Unset, or a value that isn't one: that line isn't shown. A note is the
+ * distribution's own words (who runs it, whether it's open), one line of
+ * at most 200 characters, with no default; never an email address.
  */
 
 export interface HubEditions {
   teamsHost?: string;
   enterpriseDomain?: string;
   talkUrl?: string;
+  teamsNote?: string;
+  enterpriseNote?: string;
+}
+
+function note(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const n = v.trim();
+  if (!n || n.length > 200 || /[\r\n]/.test(n) || /\S@\S/.test(n))
+    return undefined;
+  return n;
 }
 
 const HOST =
@@ -44,8 +57,12 @@ export function hubEditions(raw: unknown): HubEditions | null {
   const out: HubEditions = {};
   const t = host(r.teams_host);
   if (t) out.teamsHost = t;
+  const tn = t ? note(r.teams_note) : undefined;
+  if (tn) out.teamsNote = tn;
   const d = host(r.enterprise_domain);
   if (d) out.enterpriseDomain = d;
+  const dn = d ? note(r.enterprise_note) : undefined;
+  if (dn) out.enterpriseNote = dn;
   const u = httpsUrl(r.talk_url);
   if (u) out.talkUrl = u;
   return Object.keys(out).length ? out : null;
