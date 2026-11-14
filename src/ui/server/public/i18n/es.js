@@ -1575,6 +1575,11 @@
     "set.ui.hub.connect": "Conectar",
     "set.ui.hub.connectNote":
       "Conectar abre Hub. Inicia sesión allí y aprueba esta instalación; vuelves aquí ya conectado. El token se guarda en el almacén de secretos de esta instalación y nunca se muestra.",
+    "set.ui.hub.teams":
+      "un Hub compartido, alojado por Monster Orange en {host}. Beta cerrada, por invitación.",
+    "set.ui.hub.ent":
+      "tu propio entorno de ejecución aislado, en tu propio dominio o en un subdominio propio de {domain}. Próximamente.",
+    "set.ui.hub.talk": "Habla con nosotros",
     "set.ui.hub.connected": "Conectado",
     "set.ui.hub.rejected": "Token no aceptado",
     "set.ui.hub.forbidden": "No permitido",

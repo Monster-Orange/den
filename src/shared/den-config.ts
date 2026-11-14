@@ -214,6 +214,8 @@ export interface DenConfig {
   repos_root?: string;
   /** GitHub org slug used to list org repos in the web UI (e.g. "Globex-Corp"). */
   github_org?: string;
+  /** 0.4.45: where the Hub editions are (hub-editions.ts). */
+  hub_editions?: unknown;
   /**
    * Work orgs, keyed by org id: a display name and an optional colour. An
    * entry with neither `sources` nor `repos` is the GitHub owner of its own

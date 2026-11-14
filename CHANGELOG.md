@@ -49,6 +49,11 @@ config and manifest changes a distribution must make to move to it under
   `notifications.kinds`), and "Fold items older than" 3, 7, 14 or 30
   days (`notifications.fold_days`). Turning off "Agent is waiting for
   you" warns that waiting agents won't show.
+- Settings › Agents › Hub names the two Hub editions under Connect,
+  until the install is connected: Den Hub for Teams (closed beta, by
+  invite) and Den Hub for Enterprise (coming), with "Talk to us". The
+  distribution says where they are in `den.yml` `hub_editions`
+  (`teams_host`, `enterprise_domain`, `talk_url`); unset, no lines.
 - `agents.exited_shell_minutes` in the distribution's config: how long
   an exited shell with nothing unread stays in the Agents list (default
   10; `0` keeps it until removed).

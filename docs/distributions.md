@@ -941,6 +941,20 @@ distribution set in `hub.url`) and press **Connect**. Hub opens; sign
 in, pick the company and approve this install. Hub sends you back to
 Settings, connected. Nobody copies a token or edits config.
 
+Until it is connected, the form can name the two Hub editions below the
+button (0.4.45), when the distribution says where they are in `den.yml`:
+
+```yaml
+hub_editions:
+  teams_host: hub.example.com # "Den Hub for Teams: … at <host>", plain text
+  enterprise_domain: example.com # "Den Hub for Enterprise: … on <domain>"
+  talk_url: https://example.com/den#enterprise # "Talk to us ↗"
+```
+
+Each line shows only with its value; a value that isn't a host name (or
+an https URL, for `talk_url`) is left out. "Talk to us" shows only beside
+a line. The lines go once the install is connected.
+
 - Den makes a PKCE verifier (S256) and a single-use state and keeps both
   in memory for 10 minutes. Hub's answer comes back to
   `<this Den>/hub/callback`, which trades the one-time code for the

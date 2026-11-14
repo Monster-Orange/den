@@ -545,6 +545,11 @@
     "set.ui.hub.connect": "Connect",
     "set.ui.hub.connectNote":
       "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
+    "set.ui.hub.teams":
+      "a shared Hub hosted by Monster Orange at {host}. Closed beta, by invite.",
+    "set.ui.hub.ent":
+      "your own isolated runtime, at your own domain or a unique subdomain on {domain}. Coming.",
+    "set.ui.hub.talk": "Talk to us",
     "set.ui.hub.connected": "Connected",
     "set.ui.hub.rejected": "Token not accepted",
     "set.ui.hub.forbidden": "Not allowed",

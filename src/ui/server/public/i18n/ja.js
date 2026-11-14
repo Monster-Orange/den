@@ -1538,6 +1538,11 @@
     "set.ui.hub.connect": "接続",
     "set.ui.hub.connectNote":
       "「接続」を押すと Hub が開きます。そこでサインインしてこのインストールを承認すると、接続された状態でここに戻ります。トークンはこのインストールのシークレットストアに保存され、表示されることはありません。",
+    "set.ui.hub.teams":
+      "{host} で Monster Orange が運営する共有の Hub。クローズドベータ、招待制。",
+    "set.ui.hub.ent":
+      "あなた専用の独立したランタイムを、あなた自身のドメイン、または {domain} 上の専用サブドメインで。近日公開。",
+    "set.ui.hub.talk": "お問い合わせ",
     "set.ui.hub.connected": "接続済み",
     "set.ui.hub.rejected": "トークンが受け付けられません",
     "set.ui.hub.forbidden": "許可されていません",

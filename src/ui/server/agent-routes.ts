@@ -602,7 +602,17 @@ export async function handleAgentRoutes(
     const last = rail
       ? null
       : (deps.hubConnect ?? defaultConnect)?.lastResult();
-    sendJson(res, last ? { ...st, connect: last } : st);
+    // 0.4.45: the editions Settings names under Connect (den.yml).
+    const { hubEditions } = await import("../../shared/hub-editions.js");
+    const { readDenConfig } = await import("../../shared/den-config.js");
+    let editions = null;
+    try {
+      editions = hubEditions(readDenConfig().hub_editions);
+    } catch {
+      editions = null;
+    }
+    const out = { ...st, ...(editions ? { editions } : {}) };
+    sendJson(res, last ? { ...out, connect: last } : out);
     return true;
   }
   // HUB-1.7: Connect to Hub, and its callback (see hub-connect.ts).

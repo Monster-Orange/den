@@ -1820,6 +1820,25 @@ const HUB_FLASH = {
  * Disconnect. A token Hub refuses offers Reconnect; a role that no longer
  * may connect says to ask an admin (never a retry).
  */
+/** 0.4.45: den.yml hub_editions as lines; a line without its value goes. */
+function editionsHtml(e) {
+  if (!e) return "";
+  const lines = [];
+  if (e.teamsHost)
+    lines.push(
+      `<p class="set-note"><b>Den Hub for Teams:</b> ${escR(L("set.ui.hub.teams", "a shared Hub hosted by Monster Orange at {host}. Closed beta, by invite.", { host: e.teamsHost }))}</p>`, // words-ok: the edition's name
+    );
+  if (e.enterpriseDomain)
+    lines.push(
+      `<p class="set-note"><b>Den Hub for Enterprise:</b> ${escR(L("set.ui.hub.ent", "your own isolated runtime, at your own domain or a unique subdomain on {domain}. Coming.", { domain: e.enterpriseDomain }))}</p>`,
+    );
+  if (lines.length && /^https:\/\//.test(e.talkUrl || ""))
+    lines.push(
+      `<p class="set-note"><a href="${escR(e.talkUrl)}" target="_blank" rel="noopener">${escR(L("set.ui.hub.talk", "Talk to us"))} ↗</a></p>`,
+    );
+  return lines.length ? `<div class="hub-eds">${lines.join("")}</div>` : "";
+}
+
 export function hubHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
@@ -1846,6 +1865,9 @@ export function hubHtml(b, flash, t = (k) => k) {
       ` <button type="submit" class="btn sm primary" data-hub-action="connect">${escR(L("set.ui.hub.connect", "Connect"))}</button>` +
       `</form>` +
       `<p class="set-note">${escR(L("set.ui.hub.connectNote", "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown."))}</p>` +
+      // 0.4.45: the two editions, until this install is connected, where
+      // the distribution says they are. The names stay in English.
+      editionsHtml(b.editions) +
       (b.problem && b.url && !/^not connected yet/.test(b.problem)
         ? note(b.problem, "data-hub-problem")
         : "") +
