@@ -66,6 +66,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A file dropped on an agent's pane after the agent restarted went to
+  the ended session, and nothing was typed. It now goes to the agent's
+  session as it is now. The whole pane takes a drop: its bar, its
+  terminal and its To line. A pane that can't take a file says why
+  ("Can't attach: <agent> isn't running"), and a drop beside every pane
+  says to drop it on one, instead of nothing happening.
+- A project renamed in Hub now shows its new name in Den without a
+  restart. Den asks Hub for its projects' names at start, after Connect,
+  and every `hub.names_check_seconds` (default 300).
+- At phone width, the note with Undo puts its words on top and its
+  actions in a row under them, instead of crowding them side by side.
 - The Agents page never mixes projects (#80). In a project it lists only
   that project's agents and shells, plus the server agent. Tabs from
   other projects stay hidden, counted in one line ("1 tab from other

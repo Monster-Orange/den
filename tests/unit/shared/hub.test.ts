@@ -55,6 +55,7 @@ describe("readHubConfig", () => {
       mcpUrl: "https://mine.example.test/mcp",
       inboxOnStop: "nudge",
       syncCheckSeconds: 30,
+      namesCheckSeconds: 300,
       deliveryHeartbeatSeconds: 15,
       deliveryPollSeconds: 30,
     });

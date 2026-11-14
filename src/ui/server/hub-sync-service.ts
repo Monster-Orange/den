@@ -54,5 +54,47 @@ export function startProjectSync(checkSeconds: number): void {
   setInterval(() => s.check(), ms).unref();
 }
 
+/**
+ * 0.4.45: bring Hub's project names here (shared/hub-project-names.ts):
+ * at start, after Connect, and every `hub.names_check_seconds` (default
+ * 300). A page shows a new name on its next read of the projects.
+ */
+export async function refreshHubNamesNow(): Promise<string[]> {
+  const at = await hubAndToken();
+  if (!at) return [];
+  const { refreshHubNames } = await import("../../shared/hub-project-names.js");
+  const link = await import("../../shared/hub-project-link.js");
+  const hub = await import("../../shared/hub.js");
+  return refreshHubNames({
+    linked: () => {
+      const out: [
+        string,
+        import("../../shared/hub-project-link.js").HubProjectLink,
+      ][] = [];
+      for (const ws of Object.keys(readWorkspacesFile().workspaces)) {
+        const l = link.hubProjectOf(ws);
+        if (l) out.push([ws, l]);
+      }
+      return out;
+    },
+    hubProjects: async () => {
+      const first = Object.keys(readWorkspacesFile().workspaces)[0] ?? "";
+      const c = await hub.hubProjectChoices(at.url, at.token, {
+        workspace: first,
+        repos: [],
+      });
+      return c?.projects ?? null;
+    },
+    write: (ws, l) => link.setHubProject(ws, l, "Hub (its project's name)"),
+  });
+}
+
+/** Start it: now, then every `seconds`. */
+export function startHubNameRefresh(seconds: number): void {
+  const run = () => void refreshHubNamesNow().catch(() => undefined);
+  run();
+  setInterval(run, Math.max(5, seconds) * 1000).unref();
+}
+
 /** How much of each org Den Hub can read, live (shared/hub-github.ts). */
 export { githubCoverage } from "../../shared/hub-github.js";

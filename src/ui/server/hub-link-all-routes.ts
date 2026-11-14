@@ -276,6 +276,10 @@ export async function defaultLinkAfter(): Promise<
     recordAction(null, { verb: "hub-link", detail: line.slice(0, 400) }),
   );
   const r = await linkClearProjects(d);
+  // The ones linked before: Hub's names now (a rename while apart).
+  void import("./hub-sync-service.js")
+    .then((m) => m.refreshHubNamesNow())
+    .catch(() => undefined);
   if ("unclear" in r && r.unclear.length) {
     const { notificationDeps } = await import("./notification-service.js");
     const n = r.unclear.length;

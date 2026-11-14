@@ -107,6 +107,7 @@ const cfgFor = (url: string, file: string): HubConfig => ({
   allowTools: true,
   inboxOnStop: "nudge",
   syncCheckSeconds: 30,
+  namesCheckSeconds: 300,
   deliveryHeartbeatSeconds: 15,
   deliveryPollSeconds: 30,
 });

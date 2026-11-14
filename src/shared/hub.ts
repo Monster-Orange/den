@@ -79,6 +79,11 @@ export interface HubConfig {
    */
   syncCheckSeconds: number;
   /**
+   * 0.4.45 hub.names_check_seconds (default 300, at least 5): how often
+   * Den asks Hub for its projects' names, so a rename in Hub shows here.
+   */
+  namesCheckSeconds: number;
+  /**
    * 0.4.40 hub.delivery_heartbeat_seconds (default 15, at least 5): how
    * often Den tells Hub an agent is still working on a comment.
    */
@@ -98,6 +103,7 @@ type RawHub =
       mcp_url?: unknown;
       inbox_on_stop?: unknown;
       sync_check_seconds?: unknown;
+      names_check_seconds?: unknown;
       delivery_heartbeat_seconds?: unknown;
       delivery_poll_seconds?: unknown;
     }
@@ -198,6 +204,7 @@ export function readHubConfig(
     15,
   );
   const poll = secs(h.delivery_poll_seconds, "delivery_poll_seconds", 30);
+  const names = secs(h.names_check_seconds, "names_check_seconds", 300);
   return {
     url,
     tokenRef,
@@ -207,6 +214,7 @@ export function readHubConfig(
     allowTools: at !== false,
     inboxOnStop: ios === "off" ? "off" : "nudge",
     syncCheckSeconds: typeof scs === "number" ? scs : 30,
+    namesCheckSeconds: names,
     deliveryHeartbeatSeconds: beat,
     deliveryPollSeconds: poll,
   };

@@ -6163,12 +6163,17 @@ server.listen(PORT, BIND_HOST, () => {
   // H5: tell Hub this install's projects now, then whenever they change.
   void import("./hub-sync-service.js").then((m) => {
     let every = 30;
+    let names = 300;
     try {
-      every = readHubConfig()?.syncCheckSeconds ?? 30;
+      const c = readHubConfig();
+      every = c?.syncCheckSeconds ?? 30;
+      names = c?.namesCheckSeconds ?? 300;
     } catch {
       /* a bad hub block: doctor says so; the default here */
     }
     m.startProjectSync(every);
+    // 0.4.45: a project renamed in Hub shows its new name here.
+    m.startHubNameRefresh(names);
   });
   // 0.4.40: Hub comments reach this install's agents.
   void import("./hub-delivery-service.js").then((m) => {
