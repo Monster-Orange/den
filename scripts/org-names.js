@@ -37,3 +37,27 @@ export function orgHits(text, patterns) {
   });
   return hits;
 }
+
+/**
+ * The gate's wider match: a name listed run together ("acmewidgets") is
+ * also caught as a string writes it, "Acme Widgets", "acme-widgets" or
+ * "ACME_WIDGETS". Only spaces, hyphens and underscores between two letters
+ * are dropped, so words are never joined across other punctuation.
+ * `allowed` (lower-case, run together) are names this text may carry: the
+ * publisher's own, outside what the product shows.
+ */
+export function orgHitsWide(text, patterns, allowed = []) {
+  const join = (s) => s.replace(/(?<=\p{L})[\s_-]+(?=\p{L})/gu, "");
+  let joined = join(text);
+  for (const a of allowed)
+    joined = joined.replace(
+      new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
+      " ",
+    );
+  const hits = [];
+  patterns.forEach((p, i) => {
+    if (p.test(text) || p.test(joined))
+      hits.push({ index: i + 1, term: p.source });
+  });
+  return hits;
+}

@@ -2350,6 +2350,25 @@ async function handleRequest(
     return sendGuardRefusal(req, res, pathname, guard, requestId, url.search);
   }
   if (guard.ok) setPrincipal(req, guard.principal);
+  // 0.4.45: a browser signed in while the cookie was SameSite=Strict still
+  // holds it so. Each signed-in page load gets the same cookie again as Lax
+  // (the same session, so its CSRF stays; a session never expires here, so
+  // this extends nothing). A route's own Set-Cookie (sign-out) replaces it.
+  if (
+    guard.ok &&
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.session &&
+    req.method === "GET" &&
+    req.headers["sec-fetch-dest"] === "document" &&
+    !res.headersSent
+  ) {
+    const id = sessionCookie(req);
+    if (id)
+      res.setHeader(
+        "Set-Cookie",
+        sessionSetCookie(id, requestIsHttps(req, guard.via)),
+      );
+  }
   // SEC-1c (R8): an agent's request never passes the lock.
   if (guard.ok && guard.principal?.kind === "agent") closeLockForThisRequest();
   // BUSY-1: the working pop-up's Check again, and its Try again: a write

@@ -953,14 +953,21 @@ answer) links nothing, and Connect says so. Each link is in the audit
 trail as a `hub-link` row.
 
 Until it is connected, the form can name the two Hub editions below the
-button (0.4.45), when the distribution says where they are in `den.yml`:
+button (0.4.45), when the distribution says where they are in its `den.yml` (the file with
+`product:`, at the distribution's root; `config/<product>.yml` is read when `den.yml` has no
+`hub_editions`):
 
 ```yaml
 hub_editions:
   teams_host: hub.example.com # "Den Hub for Teams: … at <host>", plain text
   enterprise_domain: example.com # "Den Hub for Enterprise: … on <domain>"
   talk_url: https://example.com/den#enterprise # "Talk to us ↗"
+  teams_note: Closed beta, by invite. # optional: after the Teams line
+  enterprise_note: Coming. # optional: after the Enterprise line
 ```
+
+A note is the distribution's own words (who runs the Hub, whether it is open), one line of at most
+200 characters with no email address; it has no default, so Den's own words never name an operator.
 
 Unset, the lines don't show. Each line shows only with its value; a value that isn't a host name (or
 an https URL, for `talk_url`) is left out. "Talk to us" shows only beside
@@ -1938,7 +1945,8 @@ user, and the CLI does that for you:
   came over HTTPS through the edge. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
-  browser allows. The 0.4.1-dev `web.session.idle` and `web.session.max`
+  browser allows. Each signed-in page load sends it again (the same value),
+  so a browser that signed in while it was SameSite=Strict moves to Lax. The 0.4.1-dev `web.session.idle` and `web.session.max`
   keys are ignored; the server logs a warning naming each one it finds.
 
   `web sessions`' LAST SEEN is written at most once a minute (60 s), so it

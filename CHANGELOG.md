@@ -84,10 +84,12 @@ config and manifest changes a distribution must make to move to it under
   Connect's result says how many it linked. A Hub that can't suggest
   links nothing, and Connect says so.
 - Settings › Agents › Hub names the two Hub editions under Connect,
-  until the install is connected: Den Hub for Teams (closed beta, by
-  invite) and Den Hub for Enterprise (coming), with "Talk to us". The
-  distribution says where they are in `den.yml` `hub_editions`
-  (`teams_host`, `enterprise_domain`, `talk_url`); unset, no lines.
+  until the install is connected: Den Hub for Teams (a shared Hub) and
+  Den Hub for Enterprise (your own runtime), with "Talk to us". The
+  distribution says where they are in its `den.yml` (beside `product:`)
+  `hub_editions` (`teams_host`, `enterprise_domain`, `talk_url`, and
+  optional `teams_note` and `enterprise_note` in its own words, such as
+  who runs it or "Closed beta, by invite."); unset, no lines.
 - `agents.exited_shell_minutes` in the distribution's config: how long
   an exited shell with nothing unread stays in the Agents list (default
   10; `0` keeps it until removed).
@@ -98,7 +100,9 @@ config and manifest changes a distribution must make to move to it under
   although the browser was signed in, because the session cookie was
   SameSite=Strict. It is now SameSite=Lax: a person's click from another
   site lands signed in. Another site's own requests still don't carry
-  it, and every change still needs the page's CSRF token.
+  it, and every change still needs the page's CSRF token. A browser
+  signed in before gets its cookie again as Lax on its next page load:
+  the same session, with no new sign-in.
 
 - A file dropped on an agent's pane after the agent restarted went to
   the ended session, and nothing was typed. It now goes to the agent's
