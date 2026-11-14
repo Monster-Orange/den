@@ -241,8 +241,7 @@ function _injectChangelogStyles() {
       display: inline-flex; align-items: center; justify-content: center;
       transition: color .1s, border-color .1s;
     }
-    .cl-more-btn {
-      margin-right: auto; padding: 4px 12px;
+    .cl-more-btn { padding: 4px 12px;
       font: inherit; font-size: 11px; color: var(--muted);
       background: none; border: 1px solid var(--border); border-radius: 6px;
       cursor: pointer;
@@ -252,9 +251,10 @@ function _injectChangelogStyles() {
     .cl-copy-btn.copied { color: var(--ok); border-color: var(--ok); }
     .cl-slack-btn:hover { color: var(--accent-text); border-color: var(--accent); }
     .cl-slack-btn.copied { color: var(--ok); border-color: var(--ok); }
+    .cl-footer .den-rb { margin-right: auto; }
     .cl-footer {
       padding: 10px 18px; border-top: 1px solid var(--border);
-      display: flex; justify-content: flex-end; flex-shrink: 0;
+      display: flex; justify-content: flex-end; flex-shrink: 0; gap: 8px;
       background: var(--surface);
     }
     .cl-got-it {
@@ -274,7 +274,10 @@ function _injectChangelogStyles() {
     '<div class="cl-box" role="dialog" aria-modal="true" aria-labelledby="cl-title">' +
     `<div class="cl-hdr"><h3 id="cl-title" tabindex="-1">${escT("cl.title")}</h3><button type="button" class="cl-close" id="cl-close-btn" title="${escT("cl.close")}" aria-label="${escT("cl.close")}">×</button></div>` +
     '<div class="cl-body" id="cl-body"></div>' +
-    '<div class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">' +
+    '<div class="cl-footer">' +
+    // FB (den#81): Report, as in every pop-up.
+    (window.denShell?.reportButton?.() ?? "") +
+    '<button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">' +
     escT("cl.gotIt") +
     "</button></div>" +
     "</div>";

@@ -48,8 +48,9 @@ describe("changelogView", () => {
     );
     expect(src).toMatch(/aria-expanded/);
     // In the fixed footer, so it is visible however long the newest entry.
+    // FB (den#81): Report first, as in every pop-up.
     expect(src).toMatch(
-      /class="cl-footer"><button type="button" class="cl-more-btn" id="cl-more"/,
+      /class="cl-footer">'[\s\S]{0,120}reportButton[\s\S]{0,120}<button type="button" class="cl-more-btn" id="cl-more"/,
     );
   });
 

@@ -61,7 +61,7 @@ const PREVIEW = {
   repo: "acme-eng/engine",
 };
 
-async function page(fake: Fake, width = 1440): Promise<Page> {
+async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
@@ -69,13 +69,14 @@ async function page(fake: Fake, width = 1440): Promise<Page> {
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   // What's new opens on a new version's first visit, over the rail.
-  await p.addInitScript(() => {
-    document.addEventListener("DOMContentLoaded", () => {
-      const st = document.createElement("style");
-      st.textContent = "#cl-overlay{display:none!important}";
-      document.head.appendChild(st);
+  if (!whatsNew)
+    await p.addInitScript(() => {
+      document.addEventListener("DOMContentLoaded", () => {
+        const st = document.createElement("style");
+        st.textContent = "#cl-overlay{display:none!important}";
+        document.head.appendChild(st);
+      });
     });
-  });
   const json = (r: Route, status: number, body: unknown) =>
     r.fulfill({
       status,
@@ -478,6 +479,33 @@ describe("FB: Report an issue, the dialog", () => {
       }
     }
     await s!.settings({ language: "en" });
+  });
+
+  it("What's new on a first visit carries its own Report; Report opens over it and keeps it; Esc closes What's new", async () => {
+    if (skip()) return;
+    const p = await page(fresh(), 1440, true);
+    const ov = p.locator("#cl-overlay.open");
+    await ov.waitFor();
+    const rb = ov.locator("[data-den-report]");
+    expect((await rb.textContent())?.replace(/\s+/g, " ").trim()).toMatch(
+      /^Report\s*⌘⇧F$/,
+    );
+    await rb.click();
+    await dlg(p).waitFor();
+    // Tab stays in the report dialog (What's new's trap stands aside).
+    await p.keyboard.press("Tab");
+    expect(
+      await p.evaluate(
+        () => !!document.activeElement?.closest("dialog.fb-dlg"),
+      ),
+    ).toBe(true);
+    await p.keyboard.press("Escape");
+    await dlg(p).waitFor({ state: "detached" });
+    // What's new is still open under it, and Esc closes it.
+    expect(await ov.count()).toBe(1);
+    await p.keyboard.press("Escape");
+    await ov.waitFor({ state: "detached" });
+    await p.context().close();
   });
 
   it("no page errors", () => {

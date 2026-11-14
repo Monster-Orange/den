@@ -6397,6 +6397,34 @@
     setTimeout(poll, 800);
   })();
 
+  /**
+   * FB (den#81): the Report button for a dialog's, drawer's or popover's
+   * footer (Ward: visible in every pop-up, never only in a menu): the flat
+   * speech bubble, the word, ⌘⇧F (phones hide it). A click anywhere on a
+   * [data-den-report] opens Report an issue over the pop-up, which stays.
+   */
+  function reportButton() {
+    if (state.reportOff) return "";
+    return (
+      '<button type="button" class="den-rb" data-den-report aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
+      esc(t("fb.tip")) +
+      '">' +
+      icon("report") +
+      "<span>" +
+      esc(t("fb.word")) +
+      '</span><kbd aria-hidden="true">⌘⇧F</kbd></button>'
+    );
+  }
+  document.addEventListener("click", function (e) {
+    var b =
+      e.target && e.target.closest
+        ? e.target.closest("[data-den-report]")
+        : null;
+    if (!b) return;
+    e.preventDefault();
+    openReport();
+  });
+
   /** FB (den#81): the Report an issue dialog (report-dialog.js). */
   function openReport(opts) {
     if (state.reportOff) return Promise.resolve(null);
@@ -6418,6 +6446,8 @@
   window.denShell = {
     /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
     report: openReport,
+    /** FB: the footer Report button's HTML ("" when reports are off). */
+    reportButton: reportButton,
     /** BUSY-1: the working pop-up for a slow action (busy.js). */
     busyAction: function (opts) {
       // The button disables at once, before busy.js has loaded.
@@ -6805,6 +6835,11 @@
     "  padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); }",
     ".den-btn:hover { border-color: var(--border-strong); }",
     ".den-btn.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }",
+    // FB (den#81): the footer Report button.
+    ".den-rb { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong, var(--border)); border-radius: var(--radius-button, 4px); background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }",
+    ".den-rb svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }",
+    ".den-rb kbd { font: 11px var(--mono); color: var(--muted); }",
+    "@media (max-width: 600px) { .den-rb kbd { display: none; } }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
     // D27: Visit is a link styled as a button.

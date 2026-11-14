@@ -475,7 +475,11 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
     const trying = serverAgentCall("service_try", { service: "sample" });
     expect(await allowNext()).toBe("service_try");
     const tried = await trying;
-    expect([tried.code, tried.json.approved]).toEqual([0, true]);
+    // The whole answer on a failure: `up`'s exit code and last lines.
+    expect({ code: tried.code, json: tried.json }).toMatchObject({
+      code: 0,
+      json: { approved: true },
+    });
     const appDeadline = Date.now() + 30_000;
     while ((await get(appPort, "/")) !== 200 && Date.now() < appDeadline)
       await new Promise((r) => setTimeout(r, 200));

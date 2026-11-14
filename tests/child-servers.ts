@@ -208,7 +208,8 @@ export async function startDenServer(
     }\n${out}`;
     // A server that exits for its own reasons, or never answers, fails now;
     // only a port someone else holds is worth another try.
-    const portTaken = foreign || /EADDRINUSE/.test(out);
+    // Den says it in words ("Port N is already in use."), not EADDRINUSE.
+    const portTaken = foreign || /EADDRINUSE|is already in use/.test(out);
     if (!portTaken) break;
   }
   throw new Error(`the test's server did not start:${log}`);
