@@ -150,6 +150,7 @@ export function restartDen({
     d.innerHTML =
       `<div class="rd-b" role="status" aria-live="polite"><div class="rd-st"><span class="rd-spin" aria-hidden="true"></span>` +
       `<h2 id="rd-h" tabindex="-1" class="rd-msg"></h2></div>` +
+      `<p class="rd-sub">${esc(t("rd.reconnects"))}</p>` +
       `<p class="rd-slow" hidden></p>` +
       `<div class="rd-acts" hidden><button type="button" class="den-btn sm" data-rd="keep">${esc(t("rd.keep"))}</button></div></div>`;
     // Esc never hides a restart that's still under way.
@@ -159,9 +160,12 @@ export function restartDen({
     const msg = d.querySelector(".rd-msg");
     const slow = d.querySelector(".rd-slow");
     const acts = d.querySelector(".rd-acts");
+    const sub = d.querySelector(".rd-sub");
     let t0 = Date.now();
     let since = t0;
+    // BUSY-1: Restarting (seconds), Back (its version), or Didn't come back.
     const paint = () => {
+      if (!slow.hidden) return;
       msg.textContent = t("rd.wait", {
         n: Math.floor((Date.now() - t0) / 1000),
       });
@@ -171,6 +175,9 @@ export function restartDen({
       since = Date.now();
       slow.hidden = true;
       acts.hidden = true;
+      sub.hidden = false;
+      d.dataset.state = "waiting";
+      paint();
     });
     try {
       const api = window.denShell?.api;
@@ -198,6 +205,10 @@ export function restartDen({
       if (isNew) {
         d.dataset.state = "back";
         msg.textContent = t("rd.back");
+        sub.textContent = info.version
+          ? t("rd.version", { v: info.version })
+          : "";
+        sub.hidden = !info.version;
         slow.hidden = true;
         acts.hidden = true;
         window.dispatchEvent(
@@ -209,10 +220,15 @@ export function restartDen({
         return info;
       }
       if (Date.now() - since > waitS * 1000 && slow.hidden) {
-        slow.innerHTML = esc(t("rd.slow", { cmd: "\u0000" })).replace(
-          "\u0000",
-          `<code>${esc(`${CLI} web restart`)}</code>`,
-        );
+        d.dataset.state = "slow";
+        msg.textContent = t("rd.notBack");
+        sub.hidden = true;
+        slow.innerHTML =
+          `${esc(t("rd.notBackB"))} ` +
+          esc(t("rd.slow", { cmd: "\u0000" })).replace(
+            "\u0000",
+            `<code>${esc(`${CLI} web restart`)}</code>`,
+          );
         slow.hidden = false;
         acts.hidden = false;
       }

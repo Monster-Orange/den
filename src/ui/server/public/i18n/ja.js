@@ -276,7 +276,7 @@
     "rd.go": "再起動",
     "rd.cancel": "キャンセル",
     "rd.wait": "Den を再起動しています… {n} 秒",
-    "rd.back": "Den が戻りました",
+    "rd.back": "Den が戻りました。",
     "busy.wait": "{who} の応答を待っています…",
     "busy.still": "処理中です({s} 秒)。このまま開いておけます。",
     "busy.done": "完了",
@@ -309,7 +309,12 @@
     "busy.saveF": "保存できませんでした。",
     "rd.slow":
       "Den はまだ戻っていません。Den が動いているマシンで {cmd} を実行してください。",
-    "rd.keep": "待ち続ける",
+    "rd.keep": "もう一度確認",
+    "rd.reconnects": "Den が戻ると、このページは自動で再接続します。",
+    "rd.version": "バージョン {v}。",
+    "rd.notBack": "Den が戻りませんでした。",
+    "rd.notBackB":
+      "まだ起動中かもしれません。少し待ってからもう一度確認してください。",
     "rd.setButton": "Den を再起動",
     "um.label": "外観",
     "um.title": "外観とテーマ",

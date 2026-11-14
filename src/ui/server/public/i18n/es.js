@@ -288,7 +288,7 @@
     "rd.go": "Reiniciar",
     "rd.cancel": "Cancelar",
     "rd.wait": "Reiniciando Den… {n}s",
-    "rd.back": "Den ha vuelto",
+    "rd.back": "Den ha vuelto.",
     "busy.wait": "Esperando a {who}…",
     "busy.still": "Sigue trabajando ({s} s). Puedes dejar esto abierto.",
     "busy.done": "Listo",
@@ -322,7 +322,12 @@
     "busy.saveF": "No se pudo guardar.",
     "rd.slow":
       "Den aún no ha vuelto. En la máquina donde se ejecuta, ejecuta {cmd}.",
-    "rd.keep": "Seguir esperando",
+    "rd.keep": "Volver a comprobar",
+    "rd.reconnects": "Esta página se reconecta sola cuando Den vuelva.",
+    "rd.version": "Versión {v}.",
+    "rd.notBack": "Den no volvió.",
+    "rd.notBackB":
+      "Puede que aún esté arrancando. Vuelve a comprobar en un momento.",
     "rd.setButton": "Reiniciar Den",
     "um.label": "Apariencia",
     "um.title": "Apariencia y tema",
