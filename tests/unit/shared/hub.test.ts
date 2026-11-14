@@ -21,6 +21,7 @@ import {
   ownerRepo,
   patchHubAllowTools,
   readHubConfig,
+  newHubTokenCache,
   readHubToken,
   scrubToken,
   type HubConfig,
@@ -287,6 +288,10 @@ describe("readHubToken", () => {
   const store = (v: string | null | Error) =>
     (() =>
       ({
+        get: async () => {
+          if (v instanceof Error) throw v;
+          return v;
+        },
         tryGet: async () => {
           if (v instanceof Error) throw v;
           return v;
@@ -294,12 +299,16 @@ describe("readHubToken", () => {
       }) as unknown as SecretsProvider) as () => SecretsProvider;
 
   it("the install's store answers; blank, missing or failing is null", async () => {
-    expect(await readHubToken(cfg, store(` ${TOKEN}\n`))).toBe(TOKEN);
-    expect(await readHubToken(cfg, store("  "))).toBeNull();
-    expect(await readHubToken(cfg, store(null))).toBeNull();
-    expect(await readHubToken(cfg, store(new Error("locked")))).toBeNull();
+    // Each read with its own cache (0.4.47: one process keeps one).
+    const fresh = newHubTokenCache;
+    expect(await readHubToken(cfg, store(` ${TOKEN}\n`), fresh())).toBe(TOKEN);
+    expect(await readHubToken(cfg, store("  "), fresh())).toBeNull();
+    expect(await readHubToken(cfg, store(null), fresh())).toBeNull();
     expect(
-      await readHubToken({ ...cfg, tokenRef: null }, store(TOKEN)),
+      await readHubToken(cfg, store(new Error("locked")), fresh()),
+    ).toBeNull();
+    expect(
+      await readHubToken({ ...cfg, tokenRef: null }, store(TOKEN), fresh()),
     ).toBeNull();
   });
 });

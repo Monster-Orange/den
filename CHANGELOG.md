@@ -4,6 +4,27 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [Unreleased]
+
+### Fixed
+
+- Agents lost Hub on a busy install, and it didn't come back. Den read
+  the Hub token from the install's secrets store on every Hub call, so
+  many agents together ran the store's rate limit dry; then every call
+  failed, and kept asking. Den now reads the token once and keeps it in
+  memory (never on disk). When the store refuses (rate-limited, signed
+  out), Den keeps the last good token and waits before it asks again, a
+  minute at first and up to 10 minutes, never once per call. Hub turning
+  the token down lets Den read it again at most once a minute; Connect,
+  Disconnect and a token Hub rotates take effect at once.
+- With no good token, Settings and `doctor` say why in plain words, with
+  the store's own message and when Den tries again, in place of "connect
+  it in Settings".
+- Installs that share one store account: right after updating, the
+  first read may still be refused until the store's window resets. Den
+  waits and tries again, and Hub comes back within minutes once the
+  store allows reads again.
+
 ## [0.4.46] - 2026-11-14
 
 ### Security
