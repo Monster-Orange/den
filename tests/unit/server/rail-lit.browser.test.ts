@@ -96,14 +96,17 @@ describe("the rail follows the pane in front", () => {
     await p.context().close();
   }, 60_000);
 
-  it("Terminal sits below the server agent", async () => {
+  it("0.4.45: Agents, then Terminal, then Services; the server agent is off the rail", async () => {
     if (!browser) return;
     const p = await open("/agents?ws=south");
     await p.waitForSelector('.den-ni[data-nav="terminal"]');
     const order = await p.$$eval(".den-ni[data-nav]", (xs) =>
       xs.map((x) => (x as HTMLElement).dataset.nav),
     );
-    expect(order.indexOf("terminal")).toBe(order.indexOf("server-agent") + 1);
+    const at = (id: string) => order.indexOf(id);
+    expect(at("server-agent")).toBe(-1);
+    expect(at("terminal")).toBe(at("agents") + 1);
+    expect(at("services")).toBe(at("terminal") + 1);
     await p.context().close();
   }, 60_000);
 });

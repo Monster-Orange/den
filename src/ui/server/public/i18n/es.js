@@ -1109,7 +1109,7 @@
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "Agente de __DEN_TITLE__",
     "ag.server": "Servidor",
-    "pal.askServer": "Preguntar a __DEN_TITLE__",
+    "pal.askServer": "Preguntar al agente de __DEN_TITLE__",
     "sa.sub.fresh":
       "Vamos a configurar __DEN_TITLE__. Solo lee hasta que permitas un cambio.",
     "sa.sub":

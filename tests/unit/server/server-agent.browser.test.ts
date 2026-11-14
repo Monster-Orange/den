@@ -6,8 +6,9 @@
  *     allows a write, and offers Open in Agents;
  *   - with no runtime, the same page shows how to install one and the
  *     manual path, and starts nothing;
- *   - after setup it is one click away in the rail, and ⌘K has
- *     "Ask <name>"; Agents lists it under "Server", not a workspace.
+ *   - after setup it is not in the rail (0.4.45: one door, the SERVER
+ *     row in Agents), and ⌘K has "Ask the <name> agent"; Agents lists it
+ *     under "Server", not a workspace.
  *
  * The demo distribution (acme) on the real web server, with a session host
  * in this process and a scripted PTY: nothing an agent starts really runs.
@@ -129,7 +130,10 @@ describe("a fresh Den", () => {
         if (hang) return; // never answered: a check that went stale
         const r = await route.fetch();
         const j = (await r.json()) as Record<string, unknown>;
-        await route.fulfill({ response: r, json: { ...j, prompt, promptCheckMs: 2000 } });
+        await route.fulfill({
+          response: r,
+          json: { ...j, prompt, promptCheckMs: 2000 },
+        });
       });
       await pg.route("**/api/server-agent/trust", async (route) => {
         posts.push(route.request().postData() ?? "");
@@ -205,14 +209,14 @@ describe("after setup", () => {
     await s?.stop();
   });
 
-  it("is one click away in the rail and never starts by itself; Start runs it", async () => {
+  it("is off the rail (0.4.45); its page never starts it by itself; Start runs it", async () => {
     if (!browser) return;
     const p = await open(s!, "/local-dev");
-    const rail = p.locator('.den-rail [data-nav="server-agent"]');
-    await rail.waitFor();
-    expect(await rail.getAttribute("title")).toBe("Acme agent");
-    await rail.click();
-    await p.waitForURL(/\/server-agent$/);
+    await p.locator('.den-rail [data-nav="agents"]').waitFor();
+    expect(await p.locator('.den-rail [data-nav="server-agent"]').count()).toBe(
+      0,
+    );
+    await p.goto(`${s!.base}/server-agent`);
     await p.waitForSelector('[data-note="idle"]', { timeout: 20_000 });
     expect(s!.made).toHaveLength(0);
     await p.locator('button[data-act="start"]').click();
@@ -240,7 +244,7 @@ describe("after setup", () => {
     await p.context().close();
   }, 60_000);
 
-  it("⌘K has Ask Acme, which opens it", async () => {
+  it("⌘K has Ask the Acme agent, which opens it", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");
     await p.waitForSelector("#agl:not([aria-busy])", { timeout: 20_000 });
@@ -249,8 +253,8 @@ describe("after setup", () => {
     await p.keyboard.type("ask");
     const first = p.locator("#den-pal-o-0 .den-pal-l");
     await first.waitFor();
-    expect((await first.textContent())?.trim()).toBe("Ask Acme");
-    // The server agent is Ask Acme, never "Agents › den-server / …".
+    expect((await first.textContent())?.trim()).toBe("Ask the Acme agent");
+    // The server agent is this entry, never "Agents › den-server / …".
     const rows = await p.locator("#den-pal-list .den-pal-l").allTextContents();
     expect(rows.some((r) => r.includes("den-server"))).toBe(false);
     await p.keyboard.press("Enter");

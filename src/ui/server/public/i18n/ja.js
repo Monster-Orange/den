@@ -1074,7 +1074,7 @@
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ エージェント",
     "ag.server": "サーバー",
-    "pal.askServer": "__DEN_TITLE__ に聞く",
+    "pal.askServer": "__DEN_TITLE__ エージェントに聞く",
     "sa.sub.fresh":
       "__DEN_TITLE__ をセットアップしましょう。変更を許可するまで、読み取りだけを行います。",
     "sa.sub":

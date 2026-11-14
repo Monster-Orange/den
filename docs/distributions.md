@@ -2917,9 +2917,9 @@ project may take that name.
   `good`, `rolling_back`, `rolled_back` or `rollback_failed`).
 - **Where it lives.** On a fresh Den (no repo in any project yet), the
   first page, `/`, is that agent in a terminal framed as the page, with
-  Open in Agents as the way out. After setup it is one click away in the
-  rail ("Acme agent", `/server-agent`), and ⌘K has "Ask Acme". Agents lists
-  it first, under "Server", not under a project.
+  Open in Agents as the way out. After setup Agents lists it first, under
+  "Server", not under a project, and ⌘K's "Ask the Acme agent" opens its
+  page (`/server-agent`). Since 0.4.45 it is not in the rail.
 - **Its onboarding:** `onboard_status`, then "Let's set up Acme. Where are
   your repos? I'll look in <the folder above the Den's> unless you name
   another folder." in its first turn, `repos_detect` and suggested projects, `workspace_create`,

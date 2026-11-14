@@ -984,15 +984,15 @@ function paletteItems() {
       keywords: ["agents", "start", "persona"],
       ...page("/agents?start=1"),
     });
-  // ON-6: Ask <name>, the server agent's page.
-  const ask = s?.nav?.().find((n) => n.id === "server-agent");
-  if (ask)
+  // ON-6: Ask the <name> agent, the server agent's page. 0.4.45: off the
+  // rail, so here wherever there is an Agents page.
+  if (s?.nav?.().some((n) => n.id === "agents"))
     items.push({
       key: "agent:ask-server",
       kind: "action",
       label: t("pal.askServer"),
-      keywords: ["ask", "server agent", "agent", "help", "setup"],
-      ...page(ask.href),
+      keywords: ["ask", "server agent", "agent", "help", "setup", "onboarding"], // words-ok: a search word; Agents names its group Server
+      ...page("/server-agent"),
     });
   for (const c of s?.commands?.() ?? [])
     items.push({

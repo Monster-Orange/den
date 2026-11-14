@@ -16,6 +16,9 @@ config and manifest changes a distribution must make to move to it under
   row's 1-hour mute is replaced by ⊘ "Stop showing this kind", which
   asks once and offers Undo. "Finished N Hub comments" is now a Hub
   reply, so it shows under Hub's switch.
+- The rail no longer has the server agent ("<name> agent"). It is
+  pinned at the top of Agents under Server, and ⌘K's "Ask the <name>
+  agent" opens its page. Terminal now sits right under Agents.
 - `run` (the CLI's test command) now exits with the run's result, so
   scripts and CI that call it see it. `0` = passed, `1` = failed, `3` =
   nothing ran (every suite was skipped, none matched, or none is

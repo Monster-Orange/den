@@ -1852,7 +1852,7 @@
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ agent",
     "ag.server": "Server",
-    "pal.askServer": "Ask __DEN_TITLE__",
+    "pal.askServer": "Ask the __DEN_TITLE__ agent",
     "sa.sub.fresh":
       "Let's set up __DEN_TITLE__. It reads only until you allow a write.",
     "sa.sub":
@@ -3025,21 +3025,13 @@
       tip: "n.terminalTip",
       icon: "terminal",
       group: "develop",
-      // 0.4.45: below the server agent.
-      order: 18.5,
+      // 0.4.45: right under Agents (a view of the same pane).
+      order: 17.5,
       href: "/agents?terminal=1",
       keywords: ["terminal", "shell", "console", "command line"],
     },
-    // ON-6: the server agent, this Den's own: one click away, after Agents.
-    {
-      id: "server-agent",
-      label: "n.serverAgent",
-      icon: "assistant",
-      group: "develop",
-      order: 18,
-      href: "/server-agent",
-      keywords: ["server agent", "ask", "setup", "onboarding"],
-    },
+    // 0.4.45: the server agent is off the rail: one door, the SERVER row
+    // pinned at the top of Agents, and ⌘K "Ask the <name> agent".
     {
       id: "services",
       label: "n.services",
