@@ -1189,6 +1189,16 @@ function scopeLabelFor(shown) {
   return st.scope === "all" ? t("ag.all") : projName(st.scope);
 }
 
+/** 0.4.45: the projects' names changed: everything that says them. */
+function repaintNames() {
+  st.scopeLabel = scopeLabelFor(viewWorkspaces());
+  paintList();
+  paintSub();
+  for (const pane of st.panes.values()) paintBar(pane);
+  const strip = st.root?.querySelector("#agr > .agtabs");
+  if (strip) paintTabs(strip);
+}
+
 async function refresh() {
   clearTimeout(st.timer);
   try {
@@ -1198,21 +1208,31 @@ async function refresh() {
       { headers: { accept: "json" } },
     );
     // 0.4.45: the projects' names (a rename in Hub shows here within
-    // 30 s of reaching this install).
+    // 30 s of reaching this install). The first list waits for them, so
+    // nothing paints a slug first.
     if (!st.projectsAt || Date.now() - st.projectsAt > 30_000) {
       st.projectsAt = Date.now();
-      void fetch("/api/workspaces", { headers: { accept: "json" } })
+      const names = fetch("/api/workspaces", { headers: { accept: "json" } })
         .then((x) => (x.ok ? x.json() : null))
         .then((d) => {
-          if (!d) return;
+          if (!d) return false;
           const was = JSON.stringify(st.projects?.workspaces ?? null);
           st.projects = d;
-          if (JSON.stringify(d.workspaces ?? null) !== was) {
-            paintList();
-            for (const pane of st.panes.values()) paintBar(pane);
-          }
+          return JSON.stringify(d.workspaces ?? null) !== was;
         })
-        .catch(() => undefined);
+        .catch(() => false);
+      // At most 3 s: a slow answer paints the slugs, then the names.
+      if (!st.projects)
+        await Promise.race([
+          names.then((changed) => {
+            if (changed && st.data) repaintNames();
+          }),
+          new Promise((r) => setTimeout(r, 3000)),
+        ]);
+      else
+        void names.then((changed) => {
+          if (changed) repaintNames();
+        });
     }
     if (r.status === 401) {
       st.signedOut = true;

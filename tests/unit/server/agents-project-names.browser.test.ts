@@ -82,10 +82,22 @@ describe("the Agents page names a project as Hub does", () => {
       }
     });
     const p = await ctx.newPage();
+    // The names come slower than the list: the page waits for them.
+    await p.route("**/api/workspaces", async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
     await p.goto(
       signInUrl(s.stateDir, s.base, `/agents?open=${sid}&layout=tabs`),
     );
     const pane = `.pane[data-id="${sid}"]`;
+    await p
+      .locator(`.agtab[data-id="${sid}"] .tm`)
+      .waitFor({ timeout: 20_000 });
+    // The first paint already says it: no slug first, then the name.
+    expect(
+      await p.locator(`.agtab[data-id="${sid}"] .tm`).textContent(),
+    ).toContain("North Star");
     await p.locator(`${pane} .xterm`).waitFor({ timeout: 20_000 });
     const said = (sel: string) =>
       p.waitForFunction(
@@ -106,7 +118,11 @@ describe("the Agents page names a project as Hub does", () => {
     await p.goto(
       signInUrl(s.stateDir, s.base, `/agents?project=north&open=${sid}`),
     );
-    await said("#ag-count");
+    await p.locator("#ag-count").waitFor();
+    await p.waitForFunction(
+      () => (document.querySelector("#ag-count")?.textContent ?? "") !== "",
+    );
+    expect(await p.locator("#ag-count").textContent()).toContain("North Star");
     await ctx.close();
   }, 60_000);
 });
