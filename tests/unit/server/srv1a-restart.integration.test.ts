@@ -70,11 +70,20 @@ async function call(
 }
 
 const den = () => path.join(s.tmp, "dist", "config", "acme.yml");
-const setSelfUpdate = (v: "ask" | "auto") => {
-  const base = fs
-    .readFileSync(den(), "utf8")
-    .replace(/\nserver_agent:\n {2}self_update: \w+\n/, "\n");
-  fs.writeFileSync(den(), `${base}\nserver_agent:\n  self_update: ${v}\n`);
+const user = () => path.join(s.tmp, "dist", "config", "local", "user.yml");
+/**
+ * Review M4 (0.4.46): self_update is the person's (user.yml); the team
+ * file, which the server agent works beside, can't switch it on.
+ */
+const setSelfUpdate = (v: "ask" | "auto", where: "user" | "team" = "user") => {
+  const file = where === "user" ? user() : den();
+  const base = fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf8")
+        .replace(/\nserver_agent:\n {2}self_update: \w+\n/, "\n")
+    : "";
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${base}\nserver_agent:\n  self_update: ${v}\n`);
 };
 
 const typed = () => Buffer.concat(s.made.at(-1)?.writes ?? []).toString("utf8");
@@ -119,6 +128,18 @@ describe("SRV-1a: the server agent restarts its own Den", () => {
       "agent",
     );
     expect([r.status, r.json.state]).toEqual([202, "pending"]);
+  }, 30_000);
+
+  it("auto in the team file only: the ask still waits for the person", async () => {
+    setSelfUpdate("auto", "team");
+    const r = await call(
+      "POST",
+      "/api/approvals",
+      { action: "den_restart", args: { reason: "team file says auto" } },
+      "agent",
+    );
+    expect([r.status, r.json.state]).toEqual([202, "pending"]);
+    setSelfUpdate("ask", "team");
   }, 30_000);
 
   it('auto: it runs at once; a new server on the same port types "Server is back" into its session', async () => {

@@ -266,9 +266,9 @@ export interface DenConfig {
    */
   mcp?: McpConfig;
   /**
-   * SRV-1a: the server agent. `self_update: ask | auto` (default ask):
-   * with ask, each restart it asks for is held for the person's Allow;
-   * auto, it runs at once. See readServerAgentConfig.
+   * SRV-1a: the server agent: its folder, git, update wait and prompt
+   * check. `self_update` here does nothing since 0.4.47 (review M4): it is
+   * the person's, in user.yml. See readServerAgentConfig.
    */
   server_agent?: ServerAgentConfig;
   /**
@@ -332,6 +332,12 @@ export interface WorkspaceBlueprint {
  * Only affects settings that should differ between engineers on the same team.
  */
 export interface UserConfig {
+  /**
+   * Review M4 (0.4.46): `server_agent.self_update: ask | auto`, the
+   * person's: whether the server agent's own restarts and updates run
+   * without an Allow. Only here; the team file's is ignored.
+   */
+  server_agent?: { self_update?: unknown };
   /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
@@ -1097,8 +1103,14 @@ export interface ServerAgentConfig {
 }
 
 export interface ResolvedServerAgentConfig {
-  /** ask: held for the person's Allow; auto: runs at once. */
+  /**
+   * ask: held for the person's Allow; auto: runs at once. The person's
+   * (user.yml) only: review M4 (0.4.46), the team file sits where the
+   * server agent works, so it can't switch on its own Allow.
+   */
   selfUpdate: "ask" | "auto";
+  /** The team file sets self_update, which is ignored (doctor says so). */
+  teamSelfUpdateIgnored: boolean;
   /** SRV-1b: its folder, absolute (an existing directory). */
   folder: string;
   /** SRV-1b: pr (the default) or push. */
@@ -1119,12 +1131,13 @@ export const UPDATE_WAIT_SECONDS_DEFAULT = 180;
 export function readServerAgentConfig(
   config: DenConfig = readDenConfig(),
   root: string = getDistRoot(),
+  user: UserConfig = readUserConfig(),
 ): ResolvedServerAgentConfig {
   const sa = config.server_agent ?? {};
-  const v = sa.self_update;
+  const v = user.server_agent?.self_update;
   if (v !== undefined && v !== "ask" && v !== "auto")
     throw new Error(
-      `server_agent.self_update: ask or auto, not ${JSON.stringify(v)}`,
+      `server_agent.self_update (user.yml): ask or auto, not ${JSON.stringify(v)}`,
     );
   const g = sa.git;
   if (g !== undefined && g !== "pr" && g !== "push")
@@ -1155,6 +1168,7 @@ export function readServerAgentConfig(
     );
   return {
     selfUpdate: v ?? "ask",
+    teamSelfUpdateIgnored: sa.self_update !== undefined,
     folder,
     git: g ?? "pr",
     updateWaitMs: Math.round((w ?? UPDATE_WAIT_SECONDS_DEFAULT) * 1000),

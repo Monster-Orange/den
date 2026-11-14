@@ -105,6 +105,12 @@ export interface LaunchInput {
    */
   stateDir?: string;
   /**
+   * Review M4 (0.4.46): the person's own config folder (config/local),
+   * which a runtime that takes deny rules keeps the agent from editing.
+   * Binds a cooperating agent only, like stateDir's rules.
+   */
+  personConfigDir?: string;
+  /**
    * NT-1: Den's web server as the agent reaches it, for the attention
    * hooks (Notification: waiting; Stop: finished). No token: the hook
    * sends the agent's own, from its env.

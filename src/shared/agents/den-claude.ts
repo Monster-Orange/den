@@ -434,6 +434,17 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   ];
 }
 
+/**
+ * Review M4 (0.4.46): Edit and Write denied under the person's own config
+ * folder (config/local: user.yml holds self_update and the person's
+ * settings). The team file beside it stays editable. A cooperating
+ * agent's boundary only; the server's token rules are the real one.
+ */
+export function personConfigDenyRules(dir: string): string[] {
+  const abs = path.resolve(dir);
+  return [`Edit(/${abs}/**)`, `Write(/${abs}/**)`];
+}
+
 /** The readers named in the Bash deny rules (stateDirDenyRules). */
 export const BASH_READERS = [
   "cat",
@@ -514,7 +525,11 @@ function common(input: LaunchInput): {
   // den#3: no claude.ai connectors unless the org lets them in.
   const noConnectors = input.claudeAiConnectors !== true;
   const settings =
-    input.stateDir || hooks || allow.length || noConnectors
+    input.stateDir ||
+    input.personConfigDir ||
+    hooks ||
+    allow.length ||
+    noConnectors
       ? settingsPath(input)
       : null;
   return {
@@ -540,17 +555,24 @@ function common(input: LaunchInput): {
         ? {
             [settings]: `${JSON.stringify(
               {
-                ...(input.stateDir || allow.length
+                ...(input.stateDir || input.personConfigDir || allow.length
                   ? {
                       permissions: {
                         ...(allow.length ? { allow } : {}),
                         ...(ask.length ? { ask } : {}),
-                        ...(input.stateDir
+                        ...(input.stateDir || input.personConfigDir
                           ? {
-                              deny: stateDirDenyRules(
-                                input.stateDir,
-                                input.env?.HOME,
-                              ),
+                              deny: [
+                                ...(input.stateDir
+                                  ? stateDirDenyRules(
+                                      input.stateDir,
+                                      input.env?.HOME,
+                                    )
+                                  : []),
+                                ...(input.personConfigDir
+                                  ? personConfigDenyRules(input.personConfigDir)
+                                  : []),
+                              ],
                             }
                           : {}),
                       },

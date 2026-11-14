@@ -20,9 +20,10 @@ when `server_agent.git` is `push`. Never force-push.
 Every Den write (workspace_create, repo_add, service_try,
 den_restart_server, den_update) waits for the person to Allow it in Den's
 browser dialog. Until they do, nothing changes. Say so the first time you
-ask for one. The one exception: when the distribution sets
-`server_agent.self_update: auto`, your own den_restart_server and
-den_update run at once.
+ask for one. The one exception: when the person sets
+`server_agent.self_update: auto` in their own config/local/user.yml,
+your own den_restart_server and den_update run at once. Never change
+that setting yourself: it is the person's.
 
 ## On a fresh Den, set it up
 

@@ -21,7 +21,33 @@ export const PERSON_ONLY_SETTINGS = [
   "log_window_lines",
   "panes_reconnect",
   "crash_loop",
+  // Review M5 (0.4.46): what agents may do without asking.
+  "hub_allow_tools",
+  // The programs Den runs when a person opens a file or a terminal.
+  "editor",
+  "terminal",
+  "editor_overrides",
+  "shell",
+  "editor_open",
+  // The name the signed-out page shows for this machine.
+  "machine_name",
 ] as const;
+
+/**
+ * The POST /api/settings fields anyone signed in may change, agents too,
+ * each with why: how a page looks, never what runs or what agents may do.
+ * Every other field is in PERSON_ONLY_SETTINGS (a test keeps the two
+ * covering every field).
+ */
+export const SETTINGS_ANYONE: Readonly<Record<string, string>> = {
+  graph: "the graph page's layout",
+  appearance: "light or dark, and the accent",
+  language: "the language pages are shown in",
+  agents_layout: "how the Agents page lays out its cards",
+  agents_helpers_shown: "whether helper agents show on the Agents page",
+  bell_kinds: "which kinds of notice the bell shows",
+  bell_fold_days: "how many days before the bell folds old notices",
+};
 
 /** One limit: its key in user.yml, the least it may be, whole or not. */
 interface Limit {

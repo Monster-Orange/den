@@ -114,7 +114,9 @@ describe("the server agent", () => {
     // SRV-1b: its folder is the distribution's repo; it updates Den and
     // commits only the distribution's own files, as server_agent.git says.
     expect(prompt).toMatch(/Your folder is the distribution's own repo/);
-    expect(prompt).toMatch(/package\.json, package-lock\.json\), config\/, manifests\/ and\s+plugins\.lock\.json/);
+    expect(prompt).toMatch(
+      /package\.json, package-lock\.json\), config\/, manifests\/ and\s+plugins\.lock\.json/,
+    );
     expect(prompt).toMatch(/never the person's service\s+repos/);
     expect(prompt).toMatch(/den_update installs another Den version/);
     expect(prompt).toMatch(/Rolled back: the line says why\. Commit nothing/);
@@ -299,8 +301,9 @@ describe("its folder (SRV-1b)", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-saf-"));
     try {
       fs.mkdirSync(path.join(root, "ops"));
-      expect(readServerAgentConfig({}, root)).toEqual({
+      expect(readServerAgentConfig({}, root, {})).toEqual({
         selfUpdate: "ask",
+        teamSelfUpdateIgnored: false,
         folder: root,
         git: "pr",
         updateWaitMs: 180_000,
@@ -318,9 +321,13 @@ describe("its folder (SRV-1b)", () => {
             },
           },
           root,
+          { server_agent: { self_update: "auto" } },
         ),
       ).toEqual({
+        // Review M4: the person's file switches it on; the team file's
+        // value is ignored and flagged.
         selfUpdate: "auto",
+        teamSelfUpdateIgnored: true,
         folder: path.join(root, "ops"),
         git: "push",
         updateWaitMs: 600_000,
@@ -331,6 +338,7 @@ describe("its folder (SRV-1b)", () => {
           readServerAgentConfig(
             { server_agent: { prompt_check_seconds: bad as never } },
             root,
+            {},
           ),
         ).toThrow(/server_agent\.prompt_check_seconds: seconds, 0\.5 to 60/);
       for (const bad of [0, 5, "60", Number.NaN])

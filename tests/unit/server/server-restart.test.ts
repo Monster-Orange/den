@@ -117,7 +117,10 @@ describe("SRV-1b: den_update, the held action", () => {
     const asked: unknown[] = [];
     const a = heldActions(deps(asked)).den_update;
     expect(
-      await a.run({ version: "latest", reason: "r" }, { id: "r1", agent: "server" }),
+      await a.run(
+        { version: "latest", reason: "r" },
+        { id: "r1", agent: "server" },
+      ),
     ).toMatchObject({ ok: true, restarting: true });
     expect(asked).toEqual([
       { version: "latest", reason: "r", who: { id: "r1", agent: "server" } },
@@ -181,7 +184,8 @@ describe("the restart marker", () => {
         marker({
           rolledBack: true,
           fromVersion: "0.4.42",
-          reason: "Den 0.4.42 wasn't up within 180 s (it never answered), so Den rolled back to 0.4.41",
+          reason:
+            "Den 0.4.42 wasn't up within 180 s (it never answered), so Den rolled back to 0.4.41",
         }),
         "0.4.41",
         222,
@@ -232,14 +236,28 @@ describe("telling the agent", () => {
 });
 
 describe("server_agent.self_update", () => {
-  it("ask by default; auto when the distribution says; anything else names its key", () => {
-    expect(readServerAgentConfig({} as never).selfUpdate).toBe("ask");
+  it("ask by default; auto only when the person's user.yml says (review M4); the team file can't; anything else names its key", () => {
+    expect(readServerAgentConfig({} as never, undefined, {}).selfUpdate).toBe(
+      "ask",
+    );
     expect(
-      readServerAgentConfig({ server_agent: { self_update: "auto" } } as never)
-        .selfUpdate,
+      readServerAgentConfig({} as never, undefined, {
+        server_agent: { self_update: "auto" },
+      }).selfUpdate,
     ).toBe("auto");
+    const team = readServerAgentConfig(
+      { server_agent: { self_update: "auto" } } as never,
+      undefined,
+      {},
+    );
+    expect([team.selfUpdate, team.teamSelfUpdateIgnored]).toEqual([
+      "ask",
+      true,
+    ]);
     expect(() =>
-      readServerAgentConfig({ server_agent: { self_update: "yes" } } as never),
+      readServerAgentConfig({} as never, undefined, {
+        server_agent: { self_update: "yes" },
+      }),
     ).toThrow(/server_agent\.self_update/);
   });
 });

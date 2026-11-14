@@ -801,7 +801,31 @@ export function configLines(
 export function deprecatedKeys(
   readUser: () => { agents?: unknown } = readUserConfig,
 ): string[] {
-  return [...userYmlOrgKeys(readUser), ...collapseDoneKey()];
+  return [
+    ...userYmlOrgKeys(readUser),
+    ...collapseDoneKey(),
+    ...teamSelfUpdateKey(),
+  ];
+}
+
+/**
+ * Review M4 (0.4.46): server_agent.self_update is the person's, in
+ * config/local/user.yml. Set in the team file, where the server agent
+ * works, it does nothing (0.4.47).
+ */
+export function teamSelfUpdateKey(
+  read: () => { server_agent?: unknown } = readDenConfig,
+): string[] {
+  try {
+    const sa = read().server_agent;
+    return sa && typeof sa === "object" && "self_update" in sa
+      ? [
+          `${product().configFile}: server_agent.self_update does nothing there (0.4.47): it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on its own Allow`,
+        ]
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 /**

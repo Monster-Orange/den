@@ -242,6 +242,7 @@ import {
   writeActorTokenFile,
 } from "../../shared/actor-token.js";
 import { HostError, type HostClient } from "../../shared/sessions/client.js";
+import { withAgentLock } from "../../shared/agents/agent-lock.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
@@ -2378,6 +2379,7 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    personConfigDir: path.join(d.distRoot(), "config", "local"),
     env: d.env,
     ...(bin ? { bin } : {}),
     // den#3: its subagents' model (the persona's, else the org's), and
@@ -2775,147 +2777,150 @@ export async function startAgent(
     (given ? await namedId(d, given, ws) : null) ??
     defaultId(d.stateDir(), persona.id, ws);
   checkId(where, id);
-  syncCatalog(d);
-  const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
-  const det = await availableOrRefuse(d, rt, ws);
-  const ch = startChoices(req, persona, rt, followedPermissionOf(d, ws));
-  const model = launchModel(ch.model, ch.version);
+  // Review M1: the rest under this agent's lock (agent-lock.ts).
+  return withAgentLock(d.stateDir(), id, async () => {
+    syncCatalog(d);
+    const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
+    const det = await availableOrRefuse(d, rt, ws);
+    const ch = startChoices(req, persona, rt, followedPermissionOf(d, ws));
+    const model = launchModel(ch.model, ch.version);
 
-  const prev = readRecord(d.stateDir(), id);
-  if (prev && prev.workspace !== ws)
-    throw refused(
-      `agent ${id} belongs to project ${prev.workspace}; give this one another --id`,
-    );
-  ptyOrRefuse(d);
-  const allow = allowedFor(d, persona, ch.extras);
-  // D24: the name peers see it by, from the name it will have (below).
-  const peerName = peerSessionName(d.cli, ws, {
-    id,
-    displayName: given ?? prev?.displayName ?? persona.displayName,
-  });
-  const base = launchInput(
-    d,
-    cfg,
-    persona,
-    ws,
-    id,
-    model,
-    det.path,
-    undefined,
-    {
-      ...(ch.permission ? { permission: ch.permission } : {}),
-      ...(rt.permissions ? { allow } : {}),
-    },
-  );
-  // HUB-1.5: Den Hub's MCP server, when hub.url is set.
-  const hub = await agentHub(d);
-  const input = {
-    ...base,
-    ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
-    sessionLabel: peerName,
-    ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
-    // 0.4.18: Start agent here: in a folder of the workspace's.
-    ...(req.folder !== undefined && !more.bringIn
-      ? { worktree: startFolder(d, ws, req.folder) }
-      : {}),
-    // AG-17.1: the runtime's resume, in the folder the conversation ran in.
-    ...(more.bringIn
-      ? { worktree: more.bringIn.cwd, resumeToken: more.bringIn.token }
-      : {}),
-  };
-  // AG-13.4: a command a runtime can't express is said, never dropped.
-  const unexpressed =
-    !rt.permissions && allow.length
-      ? [
-          `${rt.id} can't take allowed commands from Den yet: ${allow.join(", ")} not applied (it asks as usual)`,
-        ]
-      : [];
-
-  return withClient(d, async (c) => {
-    const sessions = await c.list();
-    const old = prev ? sessionOf(sessions, prev) : undefined;
-    if (old && !old.exited)
-      throw new AgentError(`agent ${id} is running (${old.name})`, {
-        status: 409,
-        hints: [`Attach: ${d.cli} sessions attach ${old.name}`],
-        running: { id, sessionId: old.ref.id },
-      });
-    const out = more.bringIn
-      ? { ...broughtIn(rt, input), resumeToken: more.bringIn.token }
-      : launchOrThrow(() => rt.launch(input));
-    more.beforeLaunch?.();
-    // A new conversation: a handoff left from the last one is kept aside,
-    // so the next rotation needs its own (den#4).
-    if (fs.existsSync(handoffFile(input.filesDir)))
-      archiveHandoff(
-        input.filesDir,
-        `${new Date().toISOString().replace(/[:.]/g, "-")}-unused`,
+    const prev = readRecord(d.stateDir(), id);
+    if (prev && prev.workspace !== ws)
+      throw refused(
+        `agent ${id} belongs to project ${prev.workspace}; give this one another --id`,
       );
-    writeRuntimeFiles(input.filesDir, out.files);
-    // den#4: a new conversation's compactions count from 0.
-    launchRotation(input.filesDir, out.resumeToken, launchAfter(rt, input));
-    const { rec, info } = await startSession(
+    ptyOrRefuse(d);
+    const allow = allowedFor(d, persona, ch.extras);
+    // D24: the name peers see it by, from the name it will have (below).
+    const peerName = peerSessionName(d.cli, ws, {
+      id,
+      displayName: given ?? prev?.displayName ?? persona.displayName,
+    });
+    const base = launchInput(
       d,
-      c,
+      cfg,
+      persona,
+      ws,
+      id,
+      model,
+      det.path,
+      undefined,
       {
-        rec: {
-          id,
-          persona: persona.id,
-          runtime: rt.id,
-          ...(ch.model ? { model: ch.model } : {}),
-          ...(ch.model ? { version: ch.version } : {}),
-          ...(ch.permission ? { permission: ch.permission } : {}),
-          ...(req.allow !== undefined ? { allow: ch.extras } : {}),
-          ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
-          ...subagentsField(rt, persona, cfg),
-          workspace: ws,
-          cwd: input.worktree,
-          // D65 v2: its project and repo outlive every new conversation.
-          ...linkFields(d, ws, input.worktree, req.repo, prev),
-          sessionName: sessionName(d.dist, ws, id),
-          peerName,
-          // AG-4b: a name given to the agent is the agent's, not its
-          // conversation's: Start fresh and Relaunch keep it. AG-10.8:
-          // else its persona's name ("Rita").
-          // AG-10.10: a name given at start wins.
-          ...(given
-            ? { displayName: given, displayNameAt: new Date().toISOString() }
-            : prev?.displayName
-              ? {
-                  displayName: prev.displayName,
-                  ...(prev.displayNameAt
-                    ? { displayNameAt: prev.displayNameAt }
-                    : {}),
-                }
-              : persona.displayName
-                ? { displayName: persona.displayName }
-                : {}),
-          // 0.4.8: launched on this token, so a resume continues it.
-          ...(out.resumeToken
-            ? { resumeToken: out.resumeToken, launched: true }
-            : {}),
-          ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
-          // D56: started outside its project, brought in by an ask naming
-          // that folder.
-          ...(more.bringIn?.outside ? { outside: true } : {}),
-        },
-        argv: out.argv,
-        env: out.env,
-        passthrough: rt.envPassthrough,
-        launchEnv: rt.launchEnv,
-        grants: cfg.agents[id]?.grants ?? [],
-        ...binDirOf(det),
+        ...(ch.permission ? { permission: ch.permission } : {}),
+        ...(rt.permissions ? { allow } : {}),
       },
-      old,
-      more.rotations?.length ? { rotations: more.rotations } : {},
     );
-    const early = await exitedAtOnce(d, c, info);
-    return {
-      rec,
-      info,
-      warnings: [...(out.warnings ?? []), ...unexpressed],
-      early,
+    // HUB-1.5: Den Hub's MCP server, when hub.url is set.
+    const hub = await agentHub(d);
+    const input = {
+      ...base,
+      ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
+      sessionLabel: peerName,
+      ...(more.firstPrompt ? { firstPrompt: more.firstPrompt } : {}),
+      // 0.4.18: Start agent here: in a folder of the workspace's.
+      ...(req.folder !== undefined && !more.bringIn
+        ? { worktree: startFolder(d, ws, req.folder) }
+        : {}),
+      // AG-17.1: the runtime's resume, in the folder the conversation ran in.
+      ...(more.bringIn
+        ? { worktree: more.bringIn.cwd, resumeToken: more.bringIn.token }
+        : {}),
     };
+    // AG-13.4: a command a runtime can't express is said, never dropped.
+    const unexpressed =
+      !rt.permissions && allow.length
+        ? [
+            `${rt.id} can't take allowed commands from Den yet: ${allow.join(", ")} not applied (it asks as usual)`,
+          ]
+        : [];
+
+    return withClient(d, async (c) => {
+      const sessions = await c.list();
+      const old = prev ? sessionOf(sessions, prev) : undefined;
+      if (old && !old.exited)
+        throw new AgentError(`agent ${id} is running (${old.name})`, {
+          status: 409,
+          hints: [`Attach: ${d.cli} sessions attach ${old.name}`],
+          running: { id, sessionId: old.ref.id },
+        });
+      const out = more.bringIn
+        ? { ...broughtIn(rt, input), resumeToken: more.bringIn.token }
+        : launchOrThrow(() => rt.launch(input));
+      more.beforeLaunch?.();
+      // A new conversation: a handoff left from the last one is kept aside,
+      // so the next rotation needs its own (den#4).
+      if (fs.existsSync(handoffFile(input.filesDir)))
+        archiveHandoff(
+          input.filesDir,
+          `${new Date().toISOString().replace(/[:.]/g, "-")}-unused`,
+        );
+      writeRuntimeFiles(input.filesDir, out.files);
+      // den#4: a new conversation's compactions count from 0.
+      launchRotation(input.filesDir, out.resumeToken, launchAfter(rt, input));
+      const { rec, info } = await startSession(
+        d,
+        c,
+        {
+          rec: {
+            id,
+            persona: persona.id,
+            runtime: rt.id,
+            ...(ch.model ? { model: ch.model } : {}),
+            ...(ch.model ? { version: ch.version } : {}),
+            ...(ch.permission ? { permission: ch.permission } : {}),
+            ...(req.allow !== undefined ? { allow: ch.extras } : {}),
+            ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
+            ...subagentsField(rt, persona, cfg),
+            workspace: ws,
+            cwd: input.worktree,
+            // D65 v2: its project and repo outlive every new conversation.
+            ...linkFields(d, ws, input.worktree, req.repo, prev),
+            sessionName: sessionName(d.dist, ws, id),
+            peerName,
+            // AG-4b: a name given to the agent is the agent's, not its
+            // conversation's: Start fresh and Relaunch keep it. AG-10.8:
+            // else its persona's name ("Rita").
+            // AG-10.10: a name given at start wins.
+            ...(given
+              ? { displayName: given, displayNameAt: new Date().toISOString() }
+              : prev?.displayName
+                ? {
+                    displayName: prev.displayName,
+                    ...(prev.displayNameAt
+                      ? { displayNameAt: prev.displayNameAt }
+                      : {}),
+                  }
+                : persona.displayName
+                  ? { displayName: persona.displayName }
+                  : {}),
+            // 0.4.8: launched on this token, so a resume continues it.
+            ...(out.resumeToken
+              ? { resumeToken: out.resumeToken, launched: true }
+              : {}),
+            ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
+            // D56: started outside its project, brought in by an ask naming
+            // that folder.
+            ...(more.bringIn?.outside ? { outside: true } : {}),
+          },
+          argv: out.argv,
+          env: out.env,
+          passthrough: rt.envPassthrough,
+          launchEnv: rt.launchEnv,
+          grants: cfg.agents[id]?.grants ?? [],
+          ...binDirOf(det),
+        },
+        old,
+        more.rotations?.length ? { rotations: more.rotations } : {},
+      );
+      const early = await exitedAtOnce(d, c, info);
+      return {
+        rec,
+        info,
+        warnings: [...(out.warnings ?? []), ...unexpressed],
+        early,
+      };
+    });
   });
 }
 
@@ -3600,33 +3605,44 @@ export async function stopAgent(
   ws?: string,
   opts: { wait?: boolean } = {},
 ): Promise<Stopped> {
-  const rec = agentRecord(d, id, ws);
-  return withClient(d, async (c) => {
-    const s = sessionOf(await c.list(), rec);
-    // Its token stops working before the session is asked to end.
-    revokeAgentTokens(d.stateDir(), rec.id);
-    const live = Boolean(s && !s.exited);
-    if (live) await c.kill(s!.ref.id, "TERM");
-    const next = { ...rec, stoppedAt: new Date().toISOString() };
-    writeRecord(d.stateDir(), next);
-    let stillStopping = false;
-    if (live && opts.wait !== false && d.stopWaitMs > 0) {
-      const deadline = Date.now() + d.stopWaitMs;
-      for (;;) {
-        const now = (await c.list()).find((x) => x.ref.id === s!.ref.id);
-        if (!now || now.exited) break;
-        if (Date.now() >= deadline) {
-          stillStopping = true;
-          break;
+  return withAgentLock(d.stateDir(), id, async () => {
+    const rec = agentRecord(d, id, ws);
+    return withClient(d, async (c) => {
+      const s = sessionOf(await c.list(), rec);
+      // Its token stops working before the session is asked to end.
+      revokeAgentTokens(d.stateDir(), rec.id);
+      let live = Boolean(s && !s.exited);
+      // Review M2 (0.4.46): it may end on its own between the list and the
+      // kill. The host then refuses ("exited"): stopped is what was asked
+      // for, so that is a success, with nothing to wait for.
+      if (live)
+        try {
+          await c.kill(s!.ref.id, "TERM");
+        } catch (e) {
+          if (!(e instanceof HostError && e.code === "exited")) throw e;
+          live = false;
         }
-        await new Promise((r) => setTimeout(r, EXIT_POLL_MS));
+      const next = { ...rec, stoppedAt: new Date().toISOString() };
+      writeRecord(d.stateDir(), next);
+      let stillStopping = false;
+      if (live && opts.wait !== false && d.stopWaitMs > 0) {
+        const deadline = Date.now() + d.stopWaitMs;
+        for (;;) {
+          const now = (await c.list()).find((x) => x.ref.id === s!.ref.id);
+          if (!now || now.exited) break;
+          if (Date.now() >= deadline) {
+            stillStopping = true;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, EXIT_POLL_MS));
+        }
       }
-    }
-    return {
-      rec: next,
-      ...(live ? { session: s! } : {}),
-      ...(stillStopping ? { stillStopping } : {}),
-    };
+      return {
+        rec: next,
+        ...(live ? { session: s! } : {}),
+        ...(stillStopping ? { stillStopping } : {}),
+      };
+    });
   });
 }
 
@@ -3682,175 +3698,177 @@ export async function resumeAgent(
   id: string,
   ws?: string,
 ): Promise<Resumed> {
-  const rec = agentRecord(d, id, ws);
-  syncCatalog(d);
-  const rt = runtimeFor(rec.runtime);
-  // AG-14.2: never a resume that would start a new conversation instead.
-  const why = resumeRefusal(rec);
-  if (why)
-    throw refused(why, [
-      `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
-    ]);
-  // den#4: a rotated conversation ends there; its role relaunches from
-  // the handoff, in a fresh one.
-  const rot = rotationOf(d, rec);
-  // D28: on_due off: nothing happens, its conversation goes on.
-  if (rot?.ready && rot.onDue !== "off")
-    throw new AgentError(
-      `agent ${rec.id} rotated after ${reasonText(rot.due!, rot.compactions)}: its conversation is not resumed`,
-      {
-        code: "rotated",
-        hints: [
-          `Relaunch from handoff: ${d.cli} agents relaunch ${rec.id}`,
-          `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
-        ],
-      },
-    );
-  const cfg = agentsConfig(d);
-  const grants = resumeGrants(rec, cfg);
-  const persona = personas(d, cfg, rec.workspace).get(rec.persona);
-  if (!persona)
-    throw refused(`agent ${rec.id}'s persona "${rec.persona}" is gone`);
-  const det = await availableOrRefuse(d, rt, rec.workspace);
-  ptyOrRefuse(d);
-  return withClient(d, async (c) => {
-    const sessions = await c.list();
-    const old = sessionOf(sessions, rec);
-    if (old && !old.exited)
-      throw refused(`agent ${rec.id} is running (${old.name})`, [
-        `Attach: ${d.cli} sessions attach ${old.name}`,
+  return withAgentLock(d.stateDir(), id, async () => {
+    const rec = agentRecord(d, id, ws);
+    syncCatalog(d);
+    const rt = runtimeFor(rec.runtime);
+    // AG-14.2: never a resume that would start a new conversation instead.
+    const why = resumeRefusal(rec);
+    if (why)
+      throw refused(why, [
+        `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
       ]);
-    // D56 item 5: only where it started, and only with no other writer.
-    const no = resumeWhereRefusal(
-      d,
-      rt,
-      rec,
-      sessions.filter((s) => !s.exited).map((s) => s.pid),
-    );
-    if (no) throw refused(no.message, [], no.status);
-    const permission = permissionNow(d, rec, persona, rt);
-    const input = launchInput(
-      d,
-      cfg,
-      persona,
-      rec.workspace,
-      rec.id,
-      launchModel(rec.model, rec.version),
-      det.path,
-      grants,
-      {
-        ...(permission ? { permission } : {}),
-        ...(rt.permissions
-          ? {
-              allow: allowedFor(
-                d,
-                persona,
-                rec.allow ?? persona.allowedCommands,
-              ),
-            }
-          : {}),
-      },
-    );
-    // Resume in the cwd the agent had, wherever the workspace points now.
-    // D24 (and D25: a rename since) the name peers see it by.
-    const peerName = peerSessionName(d.cli, rec.workspace, rec);
-    const hub = await agentHub(d);
-    const at = {
-      ...input,
-      ...(hub ? { mcp: { ...input.mcp, hub } } : {}),
-      sessionLabel: peerName,
-      worktree: rec.cwd,
-      ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),
-    };
-    // 0.4.8: the runtime's own resume first, whenever this token was
-    // launched (the record says so), its conversation is on disk, the last
-    // session was prompted, or the host no longer lists it. Only a record
-    // from before 0.4.8 whose session nobody prompted starts afresh under
-    // the same id.
-    const token = rec.resumeToken;
-    // A runtime that can tell (den-claude: its transcript) decides before
-    // launching: a conversation on disk, or a last session someone typed
-    // into, resumes; neither starts fresh at once. Without that, the record
-    // decides: launched on this token, or a session the host lost.
-    const known = rt.conversationExists
-      ? Boolean(token && rt.conversationExists(token, d.env)) ||
-        Boolean(old?.prompted)
-      : Boolean(rec.launched) || !old || Boolean(old.prompted);
-    const launchAs = (asFresh: boolean) => {
-      const out = launchOrThrow(() =>
-        asFresh ? rt.launch(at) : rt.resume!(at),
-      );
-      if (!out) throw refused(`agent ${rec.id} has nothing to resume`);
-      writeRuntimeFiles(input.filesDir, out.files);
-      // den#4: the same conversation keeps its count.
-      launchRotation(input.filesDir, token, launchAfter(rt, input));
-      return out;
-    };
-    const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
-    const run = async (asFresh: boolean, prior: SessionInfo | undefined) => {
-      const out = launchAs(asFresh);
-      const { rec: next, info } = await startSession(
-        d,
-        c,
+    // den#4: a rotated conversation ends there; its role relaunches from
+    // the handoff, in a fresh one.
+    const rot = rotationOf(d, rec);
+    // D28: on_due off: nothing happens, its conversation goes on.
+    if (rot?.ready && rot.onDue !== "off")
+      throw new AgentError(
+        `agent ${rec.id} rotated after ${reasonText(rot.due!, rot.compactions)}: its conversation is not resumed`,
         {
-          rec: {
-            ...base,
-            ...(permission ? { permission } : {}),
-            ...subagentsField(rt, persona, cfg),
-            cwd: rec.cwd,
-            peerName,
-            ...(token ? { launched: true } : {}),
-          },
-          argv: out.argv,
-          env: out.env,
-          passthrough: rt.envPassthrough,
-          launchEnv: rt.launchEnv,
-          grants,
-          ...binDirOf(det),
+          code: "rotated",
+          hints: [
+            `Relaunch from handoff: ${d.cli} agents relaunch ${rec.id}`,
+            `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
+          ],
         },
-        prior,
-        asFresh ? {} : { resumedAt: new Date().toISOString() },
       );
-      const early = await exitedAtOnce(d, c, info);
-      return { out, next, info, early };
-    };
-    let fresh = !known && Boolean(token);
-    let r = await run(fresh, old);
-    // It exited at once saying the other way was the right one: try that,
-    // once. A resume with nothing to continue starts fresh under the same
-    // id; a fresh start whose id is taken resumes it.
-    const said = r.early?.said ?? "";
-    const other = fresh
-      ? rt.launchFailures?.idInUse?.test(said)
-      : rt.launchFailures?.noConversation?.test(said);
-    if (r.early && other && token) {
-      const first = r;
-      fresh = !fresh;
-      // The first try's token goes with its session.
-      revokeAgentTokens(d.stateDir(), rec.id);
-      r = await run(
-        fresh,
-        (await c.list()).find((x) => x.ref.id === first.info.ref.id),
+    const cfg = agentsConfig(d);
+    const grants = resumeGrants(rec, cfg);
+    const persona = personas(d, cfg, rec.workspace).get(rec.persona);
+    if (!persona)
+      throw refused(`agent ${rec.id}'s persona "${rec.persona}" is gone`);
+    const det = await availableOrRefuse(d, rt, rec.workspace);
+    ptyOrRefuse(d);
+    return withClient(d, async (c) => {
+      const sessions = await c.list();
+      const old = sessionOf(sessions, rec);
+      if (old && !old.exited)
+        throw refused(`agent ${rec.id} is running (${old.name})`, [
+          `Attach: ${d.cli} sessions attach ${old.name}`,
+        ]);
+      // D56 item 5: only where it started, and only with no other writer.
+      const no = resumeWhereRefusal(
+        d,
+        rt,
+        rec,
+        sessions.filter((s) => !s.exited).map((s) => s.pid),
       );
-      if (r.early)
-        throw new AgentError(
-          `agent ${rec.id}: conversation ${token} could not be continued or started (${rt.id} exited at once both ways: ${[...first.early!.tail, ...r.early.tail].slice(-4).join(" / ") || "no output"})`,
-          {
-            status: 502,
-            code: "resume_failed",
-            hints: [
-              `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id} (a new conversation)`,
-            ],
-          },
+      if (no) throw refused(no.message, [], no.status);
+      const permission = permissionNow(d, rec, persona, rt);
+      const input = launchInput(
+        d,
+        cfg,
+        persona,
+        rec.workspace,
+        rec.id,
+        launchModel(rec.model, rec.version),
+        det.path,
+        grants,
+        {
+          ...(permission ? { permission } : {}),
+          ...(rt.permissions
+            ? {
+                allow: allowedFor(
+                  d,
+                  persona,
+                  rec.allow ?? persona.allowedCommands,
+                ),
+              }
+            : {}),
+        },
+      );
+      // Resume in the cwd the agent had, wherever the workspace points now.
+      // D24 (and D25: a rename since) the name peers see it by.
+      const peerName = peerSessionName(d.cli, rec.workspace, rec);
+      const hub = await agentHub(d);
+      const at = {
+        ...input,
+        ...(hub ? { mcp: { ...input.mcp, hub } } : {}),
+        sessionLabel: peerName,
+        worktree: rec.cwd,
+        ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),
+      };
+      // 0.4.8: the runtime's own resume first, whenever this token was
+      // launched (the record says so), its conversation is on disk, the last
+      // session was prompted, or the host no longer lists it. Only a record
+      // from before 0.4.8 whose session nobody prompted starts afresh under
+      // the same id.
+      const token = rec.resumeToken;
+      // A runtime that can tell (den-claude: its transcript) decides before
+      // launching: a conversation on disk, or a last session someone typed
+      // into, resumes; neither starts fresh at once. Without that, the record
+      // decides: launched on this token, or a session the host lost.
+      const known = rt.conversationExists
+        ? Boolean(token && rt.conversationExists(token, d.env)) ||
+          Boolean(old?.prompted)
+        : Boolean(rec.launched) || !old || Boolean(old.prompted);
+      const launchAs = (asFresh: boolean) => {
+        const out = launchOrThrow(() =>
+          asFresh ? rt.launch(at) : rt.resume!(at),
         );
-    }
-    return {
-      rec: r.next,
-      info: r.info,
-      warnings: r.out.warnings ?? [],
-      early: r.early,
-      fresh,
-    };
+        if (!out) throw refused(`agent ${rec.id} has nothing to resume`);
+        writeRuntimeFiles(input.filesDir, out.files);
+        // den#4: the same conversation keeps its count.
+        launchRotation(input.filesDir, token, launchAfter(rt, input));
+        return out;
+      };
+      const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
+      const run = async (asFresh: boolean, prior: SessionInfo | undefined) => {
+        const out = launchAs(asFresh);
+        const { rec: next, info } = await startSession(
+          d,
+          c,
+          {
+            rec: {
+              ...base,
+              ...(permission ? { permission } : {}),
+              ...subagentsField(rt, persona, cfg),
+              cwd: rec.cwd,
+              peerName,
+              ...(token ? { launched: true } : {}),
+            },
+            argv: out.argv,
+            env: out.env,
+            passthrough: rt.envPassthrough,
+            launchEnv: rt.launchEnv,
+            grants,
+            ...binDirOf(det),
+          },
+          prior,
+          asFresh ? {} : { resumedAt: new Date().toISOString() },
+        );
+        const early = await exitedAtOnce(d, c, info);
+        return { out, next, info, early };
+      };
+      let fresh = !known && Boolean(token);
+      let r = await run(fresh, old);
+      // It exited at once saying the other way was the right one: try that,
+      // once. A resume with nothing to continue starts fresh under the same
+      // id; a fresh start whose id is taken resumes it.
+      const said = r.early?.said ?? "";
+      const other = fresh
+        ? rt.launchFailures?.idInUse?.test(said)
+        : rt.launchFailures?.noConversation?.test(said);
+      if (r.early && other && token) {
+        const first = r;
+        fresh = !fresh;
+        // The first try's token goes with its session.
+        revokeAgentTokens(d.stateDir(), rec.id);
+        r = await run(
+          fresh,
+          (await c.list()).find((x) => x.ref.id === first.info.ref.id),
+        );
+        if (r.early)
+          throw new AgentError(
+            `agent ${rec.id}: conversation ${token} could not be continued or started (${rt.id} exited at once both ways: ${[...first.early!.tail, ...r.early.tail].slice(-4).join(" / ") || "no output"})`,
+            {
+              status: 502,
+              code: "resume_failed",
+              hints: [
+                `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id} (a new conversation)`,
+              ],
+            },
+          );
+      }
+      return {
+        rec: r.next,
+        info: r.info,
+        warnings: r.out.warnings ?? [],
+        early: r.early,
+        fresh,
+      };
+    });
   });
 }
 
@@ -4036,12 +4054,16 @@ export async function restartAgent(
       busy = await agentBusy(d, agentRecord(d, id, ws));
     }
   }
-  const stopped = await stopAgent(d, rec.id, rec.workspace);
-  if (stopped.stillStopping)
-    throw refused(
-      `${where}: agent ${rec.id} is still stopping; try again in a moment`,
-    );
-  return resumeAgent(d, rec.id, rec.workspace);
+  // Review M1: stop and resume as one change (not the wait above, so a
+  // person can still stop it while it waits).
+  return withAgentLock(d.stateDir(), rec.id, async () => {
+    const stopped = await stopAgent(d, rec.id, rec.workspace);
+    if (stopped.stillStopping)
+      throw refused(
+        `${where}: agent ${rec.id} is still stopping; try again in a moment`,
+      );
+    return resumeAgent(d, rec.id, rec.workspace);
+  });
 }
 
 export interface Moved {
@@ -4123,14 +4145,17 @@ export async function moveAgent(
       busy = await agentBusy(d, agentRecord(d, id, rec.workspace));
     }
   }
-  const stopped = await stopAgent(d, rec.id, rec.workspace);
-  if (stopped.stillStopping)
-    throw refused(
-      `${where}: agent ${rec.id} is still stopping; try again in a moment`,
-    );
-  moveRecord(agentRecord(d, rec.id, rec.workspace));
-  const resumed = await resumeAgent(d, rec.id, to);
-  return { rec: resumed.rec, from: rec.workspace, resumed };
+  // Review M1: stop, move and resume as one change (not the wait above).
+  return withAgentLock(d.stateDir(), rec.id, async () => {
+    const stopped = await stopAgent(d, rec.id, rec.workspace);
+    if (stopped.stillStopping)
+      throw refused(
+        `${where}: agent ${rec.id} is still stopping; try again in a moment`,
+      );
+    moveRecord(agentRecord(d, rec.id, rec.workspace));
+    const resumed = await resumeAgent(d, rec.id, to);
+    return { rec: resumed.rec, from: rec.workspace, resumed };
+  });
 }
 
 /** D71: a workspace's agents, for its delete to name. */
@@ -4479,84 +4504,87 @@ export async function relaunchAgent(
   /** D28: Den relaunched it by itself (on_due auto). */
   o: { auto?: boolean } = {},
 ): Promise<Relaunched> {
-  const rec = agentRecord(d, id, ws);
-  syncCatalog(d);
-  const rt = runtimeFor(rec.runtime);
-  const files = agentFilesDir(d.stateDir(), rec.id);
-  const rot = rotationOf(d, rec);
-  const fresh = `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`;
-  const resume = `Resume: ${d.cli} agents resume ${rec.id}`;
-  if (!rt.firstPrompt)
-    throw refused(`${rec.runtime} can't start a conversation from a handoff`, [
-      fresh,
-    ]);
-  if (!rot?.due)
-    throw refused(`agent ${rec.id} has not rotated: resume it instead`, [
-      resume,
-    ]);
-  const h = readHandoff(files);
-  if (h.status !== "ok")
-    throw new AgentError(
-      h.status === "missing"
-        ? `agent ${rec.id} has no handoff.md yet, so it can't relaunch from one`
-        : `agent ${rec.id}'s handoff.md is not ready: ${h.problems.join(" ")}`,
-      { code: "no_handoff", hints: [fresh, resume] },
-    );
-  // The rotated session ends here, if it is still open.
-  const s = sessionOf(await hostSessions(d), rec);
-  if (s && !s.exited) {
-    const stopped = await stopAgent(d, rec.id, ws);
-    if (stopped.stillStopping)
-      throw refused(`agent ${rec.id} is still stopping; try again`);
-  }
-  const now = new Date().toISOString();
-  const why = reasonText(rot.due, rot.compactions);
-  const entry = {
-    at: now,
-    reason: rot.due,
-    compactions: rot.compactions,
-    ...(rec.resumeToken ? { conversation: rec.resumeToken } : {}),
-    ...(o.auto ? { auto: true } : {}),
-  };
-  let kept = "";
-  const before = readRotation(files);
-  // The launch failed: the handoff and the rotation are as they were, for
-  // the conversation the record now names, so Relaunch is offered again.
-  const undo = (conversation?: string) => {
-    if (kept && fs.existsSync(kept) && !fs.existsSync(handoffFile(files)))
-      fs.renameSync(kept, handoffFile(files));
-    if (before)
-      writeRotation(files, {
-        ...before,
-        due: rot.due,
-        ...(conversation ? { conversation } : {}),
-      });
-  };
-  const started = await startAgent(
-    d,
-    {
-      workspace: rec.workspace,
-      persona: rec.persona,
-      runtime: rec.runtime,
-      ...keptChoices(rec),
-      id: rec.id,
-    },
-    {
-      firstPrompt: handoffPrompt(h.text!, rot.due, rot.compactions),
-      rotations: [...(rec.rotations ?? []), entry],
-      beforeLaunch: () => {
-        kept = archiveHandoff(
-          files,
-          `${now.replace(/[:.]/g, "-")}-${rec.resumeToken ?? "conversation"}`,
-        );
+  return withAgentLock(d.stateDir(), id, async () => {
+    const rec = agentRecord(d, id, ws);
+    syncCatalog(d);
+    const rt = runtimeFor(rec.runtime);
+    const files = agentFilesDir(d.stateDir(), rec.id);
+    const rot = rotationOf(d, rec);
+    const fresh = `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`;
+    const resume = `Resume: ${d.cli} agents resume ${rec.id}`;
+    if (!rt.firstPrompt)
+      throw refused(
+        `${rec.runtime} can't start a conversation from a handoff`,
+        [fresh],
+      );
+    if (!rot?.due)
+      throw refused(`agent ${rec.id} has not rotated: resume it instead`, [
+        resume,
+      ]);
+    const h = readHandoff(files);
+    if (h.status !== "ok")
+      throw new AgentError(
+        h.status === "missing"
+          ? `agent ${rec.id} has no handoff.md yet, so it can't relaunch from one`
+          : `agent ${rec.id}'s handoff.md is not ready: ${h.problems.join(" ")}`,
+        { code: "no_handoff", hints: [fresh, resume] },
+      );
+    // The rotated session ends here, if it is still open.
+    const s = sessionOf(await hostSessions(d), rec);
+    if (s && !s.exited) {
+      const stopped = await stopAgent(d, rec.id, ws);
+      if (stopped.stillStopping)
+        throw refused(`agent ${rec.id} is still stopping; try again`);
+    }
+    const now = new Date().toISOString();
+    const why = reasonText(rot.due, rot.compactions);
+    const entry = {
+      at: now,
+      reason: rot.due,
+      compactions: rot.compactions,
+      ...(rec.resumeToken ? { conversation: rec.resumeToken } : {}),
+      ...(o.auto ? { auto: true } : {}),
+    };
+    let kept = "";
+    const before = readRotation(files);
+    // The launch failed: the handoff and the rotation are as they were, for
+    // the conversation the record now names, so Relaunch is offered again.
+    const undo = (conversation?: string) => {
+      if (kept && fs.existsSync(kept) && !fs.existsSync(handoffFile(files)))
+        fs.renameSync(kept, handoffFile(files));
+      if (before)
+        writeRotation(files, {
+          ...before,
+          due: rot.due,
+          ...(conversation ? { conversation } : {}),
+        });
+    };
+    const started = await startAgent(
+      d,
+      {
+        workspace: rec.workspace,
+        persona: rec.persona,
+        runtime: rec.runtime,
+        ...keptChoices(rec),
+        id: rec.id,
       },
-    },
-  ).catch((e: unknown) => {
-    undo();
-    throw e;
+      {
+        firstPrompt: handoffPrompt(h.text!, rot.due, rot.compactions),
+        rotations: [...(rec.rotations ?? []), entry],
+        beforeLaunch: () => {
+          kept = archiveHandoff(
+            files,
+            `${now.replace(/[:.]/g, "-")}-${rec.resumeToken ?? "conversation"}`,
+          );
+        },
+      },
+    ).catch((e: unknown) => {
+      undo();
+      throw e;
+    });
+    if (started.early) undo(started.rec.resumeToken);
+    return { ...started, why, handoff: kept };
   });
-  if (started.early) undo(started.rec.resumeToken);
-  return { ...started, why, handoff: kept };
 }
 
 /** The host's sessions, never starting a host (none running: none). */
