@@ -146,7 +146,8 @@ const esc = (s) =>
         c
       ],
   );
-const api = (method, url, body) => window.denShell.api(method, url, body);
+const api = (method, url, body, opts) =>
+  window.denShell.api(method, url, body, opts);
 const CLI = "__DEN_CLI__";
 const TITLE = "__DEN_TITLE__";
 /** ON-6: the server agent's scope (no workspace), shared/agents/server-agent.ts. */
@@ -1756,14 +1757,17 @@ function mcpStaleTag(r, withButton) {
 
 /** D44: Restart at its next idle; the list shows it come back. */
 async function restartForTools(r, button) {
-  if (button) button.disabled = true;
-  try {
-    await api("POST", agentPath(r, "restart"), { when: "after-turn" });
-    window.denShell?.toast?.(t("ag.mcp.restarting", { id: r.agent }));
-  } catch (err) {
-    if (button) button.disabled = false;
-    window.denShell?.errorToast?.(err);
-  }
+  const name = { name: r.agent };
+  // BUSY-1: the working pop-up, then what happened.
+  await window.denShell.busyAction({
+    button,
+    who: "Den",
+    title: t("busy.restartW", name),
+    failed: t("busy.restartF", name),
+    done: t("ag.mcp.restarting", { id: r.agent }),
+    run: (headers) =>
+      api("POST", agentPath(r, "restart"), { when: "after-turn" }, { headers }),
+  });
   await refresh();
 }
 
@@ -2774,30 +2778,37 @@ function restartRow(r, verb, button) {
 
 async function restartRowNow(r, verb, button) {
   if (button) button.disabled = true;
-  try {
-    const out = await api("POST", agentPath(r, verb));
-    window.denShell?.toast?.(
+  const name = { name: r.agent };
+  // BUSY-1: the working pop-up while Den starts it, then what happened.
+  let opened;
+  const out = await window.denShell.busyAction({
+    button,
+    who: "Den",
+    title: t("busy.startW", name),
+    failed: t("busy.startF", name),
+    done: (o) =>
       t(
         verb === "relaunch"
           ? "ag.relaunched"
           : verb !== "resume"
             ? "ag.startedFresh"
-            : out?.fresh
+            : o?.fresh
               ? "ag.resumedFresh"
               : "ag.resumed",
         { id: r.agent },
       ),
-    );
+    run: (headers) => api("POST", agentPath(r, verb), undefined, { headers }),
     // Its open pane follows it to the new session (followAgents, in
     // refresh); one that couldn't (not running yet) is closed for it.
+    onDone: (o) => (opened = follow(o)),
+  });
+  await (out ? opened : refresh());
+  async function follow(o) {
     await refresh();
-    const next = out?.agent?.sessionId;
+    const next = o?.agent?.sessionId;
     if (next && next !== r.id && st.panes.has(r.id))
       closePane(r.id, { quiet: true });
     if (next) await openPane(next);
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-    await refresh();
   }
 }
 
@@ -4019,26 +4030,46 @@ async function submitStart(form) {
     return showStartError(new Error(t("pe.badCmd", { c: bad })));
   go.disabled = true;
   go.textContent = t("ag.starting");
+  // BUSY-1: the working pop-up while Den starts it; the dialog keeps the
+  // error too.
+  const plain = sd.pid === PLAIN;
+  const name = {
+    name: plain ? t("ag.session") : $d("#ag-name").value || sd.pid,
+  };
+  const wsUrl = `/api/workspaces/${encodeURIComponent(ws)}`;
+  const body = plain ? undefined : startBody();
+  let opened;
   try {
-    if (sd.pid === PLAIN) {
-      const r = await api(
-        "POST",
-        `/api/workspaces/${encodeURIComponent(ws)}/sessions`,
-      );
-      window.denShell?.toast?.(
-        t("ag.new.started", { p: t("ag.session"), w: ws }),
-      );
+    const r = await window.denShell.busyAction({
+      button: go,
+      who: "Den",
+      title: t("busy.startW", name),
+      failed: t("busy.startF", name),
+      done: (o) =>
+        plain
+          ? t("ag.new.started", { p: t("ag.session"), w: ws })
+          : t("ag.started", { id: o?.agent?.id ?? sd.pid }),
+      run: (headers) =>
+        api("POST", plain ? `${wsUrl}/sessions` : `${wsUrl}/agents`, body, {
+          headers,
+        }),
+      onFail: (err) => showStartError(err),
+      onDone: (o) => (opened = startedOk(o)),
+    });
+    if (r) await opened;
+  } finally {
+    go.disabled = false;
+    go.textContent = goLabel();
+    if (dlg.open) paintRuntime(false);
+  }
+
+  async function startedOk(r) {
+    if (plain) {
       dlg.close?.();
       await refresh();
       if (r?.session?.id) await openPane(r.session.id);
       return;
     }
-    const r = await api(
-      "POST",
-      `/api/workspaces/${encodeURIComponent(ws)}/agents`,
-      startBody(),
-    );
-    window.denShell?.toast?.(t("ag.started", { id: r?.agent?.id ?? sd.pid }));
     // AG-10.10: the next start of this persona takes another id.
     personasAsked.delete(ws);
     $d("#ag-name").value = "";
@@ -4046,12 +4077,6 @@ async function submitStart(form) {
     dlg.close?.();
     await refresh();
     if (r?.agent?.sessionId) await openPane(r.agent.sessionId);
-  } catch (err) {
-    showStartError(err);
-  } finally {
-    go.disabled = false;
-    go.textContent = goLabel();
-    if (dlg.open) paintRuntime(false);
   }
 }
 

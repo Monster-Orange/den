@@ -13,6 +13,9 @@
  *             runs it once; Check again asks /api/requests/<id>.
  *     stay    Success stays open until Done (Send report, Update Den).
  *     onDone  (data) => void, after Success.
+ *     onFail  (err) => void, after each Failure (the row can say it too).
+ *     toastFast  a fast Success (no pop-up) still says what happened, in a
+ *             toast (default true; false where the page shows it itself).
  *   Resolves with the answer's data, or null when it didn't succeed.
  *
  * States: Working, Success, Failure, No answer. The pop-up opens only after
@@ -231,9 +234,14 @@ export function busyAction(opts) {
       : err?.status
         ? t("busy.errCode", { who, code: err.status })
         : err?.message || t("busy.network", { who });
+    // The server's own words, when it said more than its code.
+    const said =
+      err?.status && !err?.network && err?.message ? String(err.message) : "";
+    opts.onFail?.(err);
     paint(
       title("bad", opts.failed) +
         `<p>${esc(why)}</p>` +
+        (said ? `<p class="bz-said">${esc(said)}</p>` : "") +
         `<details><summary>${esc(t("busy.details"))}</summary><pre>${esc(detailsText(err, id, lastAt))}</pre></details>` +
         footer("retry", "busy.retry"),
       '[data-bz="retry"]',
@@ -288,7 +296,13 @@ export function busyAction(opts) {
     if (ok) {
       okData = data;
       opts.onDone?.(data);
-      if (!d?.open && !opts.stay) return close(data);
+      if (!d?.open && !opts.stay) {
+        if (opts.toastFast !== false)
+          window.denShell?.toast?.(
+            typeof opts.done === "function" ? opts.done(data) : opts.done,
+          );
+        return close(data);
+      }
       return paintSuccess(data);
     }
     paintFailure(err);

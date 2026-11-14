@@ -2380,6 +2380,17 @@ export function hubLinkAllHtml(b, t) {
   );
 }
 
+/** "a, b and c" in the page's language (BUSY-1's success lines). */
+function listWords(names) {
+  try {
+    return new Intl.ListFormat(document.documentElement.lang || "en", {
+      type: "conjunction",
+    }).format(names);
+  } catch {
+    return names.join(", ");
+  }
+}
+
 function renderHubLinkAll(host, ctx) {
   return drawHubLinkAll(host, ctx, null);
 }
@@ -2418,21 +2429,40 @@ function drawHubLinkAll(host, ctx, result) {
             hub: c.dataset.hublaHub,
           }));
         if (!links.length) return;
-        host
-          .querySelectorAll("button, input")
-          .forEach((x) => (x.disabled = true));
+        // BUSY-1: the working pop-up says it is linking, then what happened.
+        const lock = (on) =>
+          host
+            .querySelectorAll("button, input")
+            .forEach((x) => (x.disabled = on));
+        lock(true);
         ctx.shell
-          .api("POST", url, { links })
-          .then((r) => drawHubLinkAll(host, ctx, r))
-          .catch((e) => {
-            host
-              .querySelectorAll("button, input")
-              .forEach((x) => (x.disabled = false));
-            const err = host.querySelector(".rt-err");
-            if (err) {
-              err.hidden = false;
-              err.textContent = e?.message || t("hubp.failed");
-            }
+          .busyAction({
+            button: btn,
+            who: "Hub",
+            title: t("busy.linkW"),
+            failed: t("busy.linkF"),
+            done: (r) => {
+              const names = (r?.linked ?? []).map(
+                (x) => x?.hub?.name || x?.project,
+              );
+              return t("busy.linkS", {
+                n: names.length,
+                names: listWords(names),
+              });
+            },
+            run: (headers) =>
+              ctx.shell.api("POST", url, { links }, { headers }),
+            onFail: (e) => {
+              const err = host.querySelector(".rt-err");
+              if (err) {
+                err.hidden = false;
+                err.textContent = e?.message || t("hubp.failed");
+              }
+            },
+          })
+          .then((r) => {
+            if (r) drawHubLinkAll(host, ctx, r);
+            else lock(false);
           });
       });
     })
@@ -2592,15 +2622,28 @@ function wireHub(host, ctx) {
     const typed = host.querySelector("#hub-url");
     busy(true);
     err("");
+    // BUSY-1: the working pop-up while Den asks Hub.
+    const t = (k, v) => ctx.shell.t(k, v);
     ctx.shell
-      .api("POST", "/api/hub/connect", typed ? { url: typed.value } : {})
-      .then((r) => {
+      .busyAction({
+        button: host.querySelector('button[data-hub-action="connect"]'),
+        who: "Hub",
+        title: t("busy.connW"),
+        done: t("busy.connS"),
+        failed: t("busy.connF"),
+        run: (headers) =>
+          ctx.shell.api(
+            "POST",
+            "/api/hub/connect",
+            typed ? { url: typed.value } : {},
+            { headers },
+          ),
         // Off to Hub: sign in and approve there; Hub sends the person back.
-        location.assign(r.location);
+        onDone: (r) => location.assign(r.location),
+        onFail: (e) => err(e?.message || t("busy.connF")),
       })
-      .catch((e) => {
-        busy(false);
-        err(e?.message || "Connect didn't start");
+      .then((r) => {
+        if (!r) busy(false);
       });
   };
   const disconnect = (force, btn) => {
