@@ -186,6 +186,9 @@ describe("bell v6: a quieter bell", () => {
     await expect(
       asked.locator("a.den-bell-open").getAttribute("href"),
     ).resolves.toBe("/agents?project=north&agent=asker");
+    // Open is outside the two lines: never clipped away.
+    expect(await asked.locator("a.den-bell-open").isVisible()).toBe(true);
+    expect(await asked.locator(".den-bell-t a").count()).toBe(0);
     // Waiting is the one kind with no ⊘ in the row.
     expect(await asked.locator('[data-bell="stop"]').count()).toBe(0);
     await p.context().close();

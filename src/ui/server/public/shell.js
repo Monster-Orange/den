@@ -6537,6 +6537,7 @@
     ".den-bell-empty a, .den-bell-open, .den-tlink { color: var(--accent-text); }",
     // Bell v6: a long question's two lines, ×N repeats, Older, the ⊘ ask.
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
+    ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
     ".den-bell-x, .den-bell-row .den-ib { font: 500 11px var(--mono); background: none; color: var(--muted);",

@@ -105,11 +105,11 @@ function rowHtml(n, fold) {
     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
     (link && !long
       ? `<a href="${esc(link)}" data-bell="open">${esc(text)}</a>`
-      : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}` +
-        (long && link
-          ? ` <a href="${esc(link)}" data-bell="open" class="den-bell-open">${esc(tr("bell.open"))}</a>`
-          : "") +
-        `</span>`) +
+      : long && link
+        ? // The question's two lines, then Open below them (never clipped).
+          `<div class="den-bell-tw"><span class="den-bell-t long">${esc(text)}</span>` +
+          `<a href="${esc(link)}" data-bell="open" class="den-bell-open">${esc(tr("bell.open"))}</a></div>`
+        : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}</span>`) +
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`
       : "") +
