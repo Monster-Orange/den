@@ -2643,6 +2643,7 @@
     el.className = "den-toast den-toast-act";
     el.setAttribute("role", "status");
     var text = document.createElement("span");
+    text.className = "den-tmsg";
     text.textContent = msg;
     var b = document.createElement("button");
     b.type = "button";
@@ -2656,15 +2657,20 @@
       el.remove();
       onAction();
     });
-    el.appendChild(text);
-    el.appendChild(b);
+    // The actions in one row: beside the words when wide, under them at
+    // 480 px and below.
+    var acts = document.createElement("span");
+    acts.className = "den-tacts";
+    acts.appendChild(b);
     if (link && link.href) {
       var a = document.createElement("a");
       a.className = "den-tlink";
       a.href = link.href;
       a.textContent = link.label;
-      el.appendChild(a);
+      acts.appendChild(a);
     }
+    el.appendChild(text);
+    el.appendChild(acts);
     document.body.appendChild(el);
     clearOfMarked(el);
     clearTimeout(toastTimer);
@@ -6766,6 +6772,11 @@
     ".den-toast-err { display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px));",
     "  border-color: color-mix(in srgb, var(--bad) 45%, var(--border-strong)); }",
     ".den-toast-act { display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px)); }",
+    ".den-tacts { display: flex; align-items: center; gap: 10px; flex: none; }",
+    ".den-tlink { white-space: nowrap; }",
+    "@media (max-width: 480px) { .den-toast-act { flex-direction: column; align-items: stretch;",
+    "  width: calc(100vw - 32px); box-sizing: border-box; gap: 8px; }",
+    "  .den-tacts { justify-content: space-between; } }",
     ".den-toast-err .den-te-ic { color: var(--bad); }",
     ".den-toast-err .den-te-msg { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }",
     ".den-toast-err .den-te-id { font: 11px var(--mono); color: var(--faint); }",

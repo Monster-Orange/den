@@ -221,7 +221,7 @@ describe("bell v6: a quieter bell", () => {
     await pop.locator('[data-bell="ask-yes"]').click();
     const toast = p.locator(".den-toast-act");
     await toast.waitFor();
-    await expect(toast.locator("span").textContent()).resolves.toBe(
+    await expect(toast.locator("span.den-tmsg").textContent()).resolves.toBe(
       "No longer showing “Releases and checks”.",
     );
     await expect(
@@ -289,6 +289,60 @@ describe("bell v6: a quieter bell", () => {
     await s!.settings({ bell_kinds: { waiting: null } });
     await p.context().close();
   }, 90_000);
+
+  it("390 px: the Undo note stacks (the words, then Undo and the settings link in a row), in en, es and ja", async () => {
+    if (skip()) return;
+    for (const lang of ["en", "es", "ja"] as const) {
+      if (lang !== "en")
+        expect(await s!.settings({ language: lang })).toBe(200);
+      try {
+        const p = await open("/services", 390);
+        await openBell(p);
+        await p
+          .locator('#den-bell-pop [data-bell="stop"][data-sw="release"]')
+          .first()
+          .click();
+        await p.locator('#den-bell-pop [data-bell="ask-yes"]').click();
+        const toast = p.locator(".den-toast-act");
+        await toast.waitFor();
+        const box = await toast.evaluate((t) => {
+          const r = (e: Element | null) => {
+            const b = e!.getBoundingClientRect();
+            return {
+              l: b.left,
+              r: b.right,
+              t: b.top,
+              b: b.bottom,
+              h: b.height,
+            };
+          };
+          const a = t.querySelector("a.den-tlink")!;
+          return {
+            toast: r(t),
+            msg: r(t.querySelector("span.den-tmsg")),
+            btn: r(t.querySelector("button")),
+            link: r(a),
+            lineH: parseFloat(getComputedStyle(a).lineHeight),
+          };
+        });
+        // The words on top; both actions under them.
+        expect(box.btn.t).toBeGreaterThanOrEqual(box.msg.b - 0.5);
+        expect(box.link.t).toBeGreaterThanOrEqual(box.msg.b - 0.5);
+        // The actions side by side, apart; the link on one line.
+        expect(box.link.l).toBeGreaterThanOrEqual(box.btn.r);
+        expect(box.link.h).toBeLessThan(box.lineH * 1.6);
+        // Inside the screen, with its gutter.
+        expect(box.toast.l).toBeGreaterThanOrEqual(15);
+        expect(box.toast.r).toBeLessThanOrEqual(390 - 15);
+        // Undo, so the next language starts with releases shown.
+        await toast.locator("button").click();
+        await badge(p, "2");
+        await p.context().close();
+      } finally {
+        if (lang !== "en") await s!.settings({ language: null });
+      }
+    }
+  }, 150_000);
 
   it("390 px: the panel is the full width; Spanish and Japanese say it", async () => {
     if (skip()) return;

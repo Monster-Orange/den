@@ -189,6 +189,52 @@ describe("Settings › Agents › Runtimes (AG-0.5)", () => {
   }, 60_000);
 });
 
+describe("Settings › Agents › Runtimes: no collisions in any language", () => {
+  it("the name, its tags and the status never overlap, at 1280 and 390, in en, es and ja", async () => {
+    if (skip()) return;
+    for (const lang of ["en", "es", "ja"] as const) {
+      if (lang !== "en")
+        expect(await s!.settings({ language: lang })).toBe(200);
+      try {
+        for (const width of [1280, 390]) {
+          const p = await page(
+            signInUrl(s!.stateDir, s!.base, "/settings#agents"),
+            width,
+          );
+          await p.waitForSelector('.rt[data-runtime="grok"]');
+          const hits = await p.$$eval(".rt", (rows) => {
+            const out: string[] = [];
+            const over = (a: DOMRect, b: DOMRect) =>
+              a.left < b.right - 0.5 &&
+              b.left < a.right - 0.5 &&
+              a.top < b.bottom - 0.5 &&
+              b.top < a.bottom - 0.5;
+            for (const r of rows) {
+              const id = (r as HTMLElement).dataset.runtime;
+              const status = r
+                .querySelector(".rt-s > span")!
+                .getBoundingClientRect();
+              const cell = r.querySelector(".rt-n")!.getBoundingClientRect();
+              for (const e of r.querySelectorAll(".rt-n > *")) {
+                const b = e.getBoundingClientRect();
+                if (over(b, status))
+                  out.push(`${id}: ${e.textContent} over the status`);
+                if (b.right > cell.right + 0.5)
+                  out.push(`${id}: ${e.textContent} past its cell`);
+              }
+            }
+            return out;
+          });
+          expect([lang, width, hits]).toEqual([lang, width, []]);
+          await p.context().close();
+        }
+      } finally {
+        if (lang !== "en") await s!.settings({ language: null });
+      }
+    }
+  }, 150_000);
+});
+
 describe("the Start agent dialog (AG-0.5)", () => {
   it.each([
     [1440, 900, 638],

@@ -417,8 +417,14 @@
       .rt-v {
         color: var(--muted);
       }
+      /* The tag stays in its cell: on a line of its own when the name
+         takes the room, wrapping inside it when the cell is narrow. */
       .rt-n .set-tag {
-        white-space: nowrap;
+        display: inline-block;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow-wrap: anywhere;
+        border-radius: 8px;
       }
       .rt-ok {
         color: var(--ok);
