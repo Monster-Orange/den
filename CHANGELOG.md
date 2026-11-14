@@ -126,6 +126,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- CI and the release check every change on both ends of the supported Node
+  range: 22.13 (the lowest `engines` allows) and 24.13 (what installs run).
+  Both block a merge and a publish. Until now the gates had run only 22.14.
+  The release tarball is built on 22.13 (#84).
 - The bell is quieter. "Agent finished its turn" no longer shows or
   counts unless you turn it on in Settings › Notifications. The badge
   counts only what the bell shows. Repeats of a kind from one agent fold
