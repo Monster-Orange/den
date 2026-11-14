@@ -365,6 +365,12 @@ export function isStopped(r) {
   return r.kind === "agent" && r.state !== "running" && r.state !== "stopping";
 }
 
+/** 0.4.45: a shell that exited (it has nothing to resume). */
+export const exitedShell = (r) => r?.kind === "session" && r.exited === true;
+
+/** 0.4.45: what the Stopped group holds: stopped agents, exited shells. */
+export const inStopped = (r) => isStopped(r) || exitedShell(r);
+
 /** "19:52" today, else "Nov 6, 19:52" (the browser's own format). */
 function when(iso) {
   const d = new Date(iso);
@@ -646,6 +652,25 @@ function stoppedHtml(r, wsTag = false) {
 }
 
 /**
+ * 0.4.45: an exited shell in Stopped: its name, "Exited", and Remove. A
+ * click opens its pane, where its last output still reads.
+ */
+function exitedShellHtml(r, wsTag = false) {
+  const label = r.label || r.name;
+  return (
+    `<div class="agst agst1" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"` +
+    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${label}` }))}">` +
+    `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
+    `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
+    `<span class="stchip">${esc(stoppedChip(r))}</span>` +
+    `</button>` +
+    `<span class="agacts"><button type="button" class="den-btn sm" data-act="remove-shell" aria-label="${esc(t("ag.removeShell", { id: label }))}">${esc(t("ag.remove"))}</button></span>` +
+    `</div>`
+  );
+}
+
+/**
  * 0.4.40: "Working on N Hub comments · <artifact>" (its turn has them), or
  * "N Hub comments wait for it" (stopped, or mid-turn); the artifact links
  * to Hub. Under the row (never inside its button).
@@ -855,11 +880,11 @@ function paintList() {
   const inView = shown.flatMap((ws) =>
     st.data.sessions.filter((s) => s.workspace === ws),
   );
-  const stopped = inView.filter(isStopped);
+  const stopped = inView.filter(inStopped);
   const groups = shown
     .map((ws) => ({
       ws,
-      rows: inView.filter((s) => s.workspace === ws && !isStopped(s)),
+      rows: inView.filter((s) => s.workspace === ws && !inStopped(s)),
     }))
     .filter((g) => g.rows.length > 0);
   const body =
@@ -880,7 +905,7 @@ function paintList() {
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
   const clear = st.root.querySelector("#ag-clear");
-  if (clear) clear.hidden = !visibleRows().some(isStopped);
+  if (clear) clear.hidden = !visibleRows().some(inStopped);
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
@@ -916,7 +941,11 @@ function stoppedGroupHtml(rows) {
   return (
     `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
     `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span></summary>` +
-    rows.map((r) => stoppedHtml(r, wsTag)).join("") +
+    rows
+      .map((r) =>
+        exitedShell(r) ? exitedShellHtml(r, wsTag) : stoppedHtml(r, wsTag),
+      )
+      .join("") +
     `</details>`
   );
 }
@@ -2826,7 +2855,25 @@ async function removeRow(r, button) {
   }
 }
 
-/** Clear stopped: every stopped agent in view (AG-14.1b). */
+/**
+ * 0.4.45: Remove on an exited shell: the host forgets it (the close route,
+ * which never ends a running one: this is only offered once it exited).
+ */
+async function removeShell(r, button) {
+  if (!exitedShell(r)) return;
+  if (button) button.disabled = true;
+  try {
+    await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
+    if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
+    window.denShell?.toast?.(t("ag.removed", { id: r.label || r.name }));
+  } catch (err) {
+    if (button) button.disabled = false;
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
+/** Clear stopped: every stopped agent and exited shell in view (AG-14.1b). */
 async function clearStopped(button) {
   const workspaces = [
     ...new Set(
@@ -2835,16 +2882,36 @@ async function clearStopped(button) {
         .map((r) => r.workspace),
     ),
   ];
-  if (!workspaces.length) return;
+  const shells = visibleRows().filter(exitedShell);
+  if (!workspaces.length && !shells.length) return;
   button.disabled = true;
   try {
-    const out = await api("POST", "/api/agents/clear-stopped", { workspaces });
+    const out = workspaces.length
+      ? await api("POST", "/api/agents/clear-stopped", { workspaces })
+      : null;
     const ids = (out?.removed ?? []).map((x) => x.agent);
     for (const r of visibleRows())
       if (ids.includes(r.agent) && st.panes.has(r.id))
         closePane(r.id, { quiet: true });
+    // 0.4.45: the exited shells too (nothing to undo: a shell can't come
+    // back).
+    let gone = 0;
+    for (const r of shells)
+      try {
+        await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
+        if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
+        gone++;
+      } catch {
+        /* still listed: its row says so */
+      }
     await refresh();
-    if (ids.length)
+    const n = ids.length + gone;
+    if (gone && n)
+      removedToast(
+        t(n === 1 ? "ag.clearedMany.one" : "ag.clearedMany", { n }),
+        ids,
+      );
+    else if (ids.length)
       removedToast(
         t(ids.length === 1 ? "ag.removedMany.one" : "ag.removedMany", {
           n: ids.length,
@@ -4493,6 +4560,11 @@ export async function mountAgentsPage(root) {
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
       if (which === "switch-back") return void switchBack();
+      if (which === "remove-shell")
+        return void removeShell(
+          rowOf(act.closest(".agst")?.dataset.shell),
+          act,
+        );
       const agent = act.closest(".agst")?.dataset.agent;
       const ws = act.closest(".agst")?.dataset.ws;
       const r = visibleRows().find(

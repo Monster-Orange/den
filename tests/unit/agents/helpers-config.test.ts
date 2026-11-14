@@ -7,6 +7,7 @@ import { describe, expect, it } from "@jest/globals";
 import { HELPER_DEFAULTS } from "../../../src/shared/agents/helpers.js";
 import {
   AGENTS_RESERVED_KEYS,
+  DEFAULT_EXITED_SHELL_MINUTES,
   helpersBlock,
   readAgentsConfig,
   type DenConfig,
@@ -103,5 +104,29 @@ describe("agents.turn_read_max_mb (D39)", () => {
   it("a bad value fails naming the key", () => {
     for (const bad of [0, -1, 5000, "8", true])
       expect(() => turn(bad)).toThrow(/agents\.turn_read_max_mb: must be/);
+  });
+});
+
+describe("agents.exited_shell_minutes (0.4.45)", () => {
+  const minutes = (v: unknown) =>
+    readAgentsConfig({
+      agents: { exited_shell_minutes: v },
+    } as unknown as DenConfig).exitedShellMinutes;
+
+  it("unset: the default; 0: never; it is no agent id", () => {
+    expect(
+      readAgentsConfig({} as DenConfig).exitedShellMinutes,
+    ).toBeUndefined();
+    expect(DEFAULT_EXITED_SHELL_MINUTES).toBe(10);
+    expect(minutes(0)).toBe(0);
+    expect(minutes(2.5)).toBe(2.5);
+    expect(AGENTS_RESERVED_KEYS).toContain("exited_shell_minutes");
+  });
+
+  it("a bad value fails naming the key", () => {
+    for (const bad of [-1, "10", true, Infinity])
+      expect(() => minutes(bad)).toThrow(
+        /agents\.exited_shell_minutes: must be/,
+      );
   });
 });

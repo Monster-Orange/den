@@ -40,6 +40,14 @@ export interface SessionInfo {
    * bare BEL, OSC 9, OSC 777;notify), ISO 8601. Since this host started.
    */
   bellAt?: string;
+  /** 0.4.45: when it exited, ISO 8601 (absent for one from before 0.4.45). */
+  exitedAt?: string;
+  /**
+   * 0.4.45: it printed something while no one was attached, and no one has
+   * attached since (its replay reads it). An exited shell with nothing
+   * unread may leave the list by itself (agents.exited_shell_minutes).
+   */
+  unread?: boolean;
 }
 
 /**

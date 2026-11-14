@@ -2800,6 +2800,19 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
   the session is forgotten, so closed shells never count toward
   `sessions.max_concurrent` (`POST /api/sessions/<id>/close`, a person's
   only). An agent's pane has Stop instead.
+- A shell that exits (you typed `exit`, or it ended) moves into the
+  list's Stopped group with Remove on its row; its pane still shows its
+  last output. Remove and Clear stopped forget it, through the same
+  route. An exited shell with no unread output (it printed nothing while
+  no one was looking) leaves by itself after `agents.exited_shell_minutes`
+  (default 10; `0` keeps it until removed). An agent's session never
+  leaves this way: its record keeps it.
+
+  ```yaml
+  agents:
+    exited_shell_minutes: 10 # minutes, 0 or more (0: never)
+  ```
+
 - `sessions.max_concurrent` caps the plain sessions (`sessions start`)
   running at once (default 8), and `agents.max_concurrent` the agents
   (default 4). Each counts only its own, so a few plain shells never stop

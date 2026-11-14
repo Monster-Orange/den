@@ -962,7 +962,10 @@ export function readServerAgentConfig(
   if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory())
     throw new Error(`server_agent.folder: ${folder} is not a folder`);
   const w = sa.update_wait_seconds;
-  if (w !== undefined && (typeof w !== "number" || !Number.isFinite(w) || w < 10))
+  if (
+    w !== undefined &&
+    (typeof w !== "number" || !Number.isFinite(w) || w < 10)
+  )
     throw new Error(
       `server_agent.update_wait_seconds: seconds, 10 or more (got ${JSON.stringify(w)})`,
     );
@@ -1102,6 +1105,12 @@ export interface AgentsConfig {
    */
   turn_read_max_mb?: unknown;
   /**
+   * 0.4.45: minutes an exited shell with nothing unread stays listed
+   * before it leaves by itself (default 10; 0: never, it stays until
+   * removed).
+   */
+  exited_shell_minutes?: unknown;
+  /**
    * AG-DROP: files dropped or pasted onto an agent's terminal,
    * `{ max_bytes, keep_days, dir }` (defaults 25 MB, 7 days,
    * `<state>/uploads`).
@@ -1137,6 +1146,8 @@ export const AGENTS_RESERVED_KEYS = [
   "helpers",
   // D39: how far back the mid-turn check reads.
   "turn_read_max_mb",
+  // 0.4.45: how long an exited shell stays listed.
+  "exited_shell_minutes",
   // AG-DROP: files dropped onto an agent's terminal.
   "uploads",
   // AG-DROP-2: files an agent's links and downloads never reach.
@@ -1154,9 +1165,7 @@ export const AGENTS_RESERVED_KEYS = [
  * key other than grants (signing_key, or a typo gitSigningBlock names).
  */
 function isGitSettings(block: unknown): boolean {
-  return (
-    isMapping(block) && Object.keys(block).some((k) => k !== "grants")
-  );
+  return isMapping(block) && Object.keys(block).some((k) => k !== "grants");
 }
 
 /** One agent's own block, `agents.<id>`. */
@@ -1193,6 +1202,8 @@ export interface ResolvedAgentsConfig {
   helpers?: HelperSettings;
   /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */
   turnReadMaxBytes?: number;
+  /** agents.exited_shell_minutes; unset: DEFAULT_EXITED_SHELL_MINUTES. */
+  exitedShellMinutes?: number;
   /** agents.uploads (AG-DROP) with its defaults. */
   uploads?: UploadSettings;
   /** agents.files (AG-DROP-2) with its defaults. */
@@ -1328,6 +1339,9 @@ function guardrailsBlock(
  * The effective agents config. Anything malformed throws, naming the key:
  * a typo must not lift the cap, drop a pack or widen a grant.
  */
+/** How long an exited shell with nothing unread stays listed (0.4.45). */
+export const DEFAULT_EXITED_SHELL_MINUTES = 10;
+
 export function readAgentsConfig(
   config?: DenConfig,
   /** user.yml (default: read only when `config` is Den's own, unpassed). */
@@ -1406,6 +1420,18 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.turn_read_max_mb: must be a number of MB, above 0 and at most 4096 (got ${JSON.stringify(turnMb)})`,
       );
     out.turnReadMaxBytes = Math.round(turnMb * 1024 * 1024);
+  }
+  const exitedMin = raw.exited_shell_minutes;
+  if (exitedMin !== undefined && exitedMin !== null) {
+    if (
+      typeof exitedMin !== "number" ||
+      !Number.isFinite(exitedMin) ||
+      exitedMin < 0
+    )
+      throw new Error(
+        `agents.exited_shell_minutes: must be a number of minutes, 0 or more (0: never) (got ${JSON.stringify(exitedMin)})`,
+      );
+    out.exitedShellMinutes = exitedMin;
   }
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [

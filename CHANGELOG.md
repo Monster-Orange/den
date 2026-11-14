@@ -27,9 +27,29 @@ config and manifest changes a distribution must make to move to it under
   move it. Reset to A to Z is there and in Settings › Navigation ›
   Project order. The order is yours (`shell.projectOrder` in your user
   config), never shared and never sent to Hub.
+- `agents.exited_shell_minutes` in the distribution's config: how long
+  an exited shell with nothing unread stays in the Agents list (default
+  10; `0` keeps it until removed).
 
 ### Fixed
 
+- The Agents page never mixes projects (#80). In a project it lists only
+  that project's agents and shells, plus the server agent. Tabs from
+  other projects stay hidden, counted in one line ("1 tab from other
+  projects hidden · Show in All active"). When you change the project in
+  the top bar, the list, the pane and the "To" line follow it together.
+  The pane moves to that project's most recent running agent, or says
+  "Pick an agent in <project>". The agents you left keep running. Opening
+  another project's agent on purpose (a link, ⌘K, a bell item) switches
+  the project and says so: "Switched to <project> · Back to <project>".
+  A reload keeps the tab that was in front, so what you type reaches the
+  agent the "To" line names. Page addresses say `?project=`; an old
+  `?ws=` link still works.
+- An exited shell can be removed. It moves into Stopped with a Remove
+  button, and Clear stopped removes exited shells too. An exited shell
+  with no unread output leaves by itself after 10 minutes (one you
+  haven't seen stays until you remove it). Before, it stayed in its
+  project's group with no way out.
 - `agents permission <id> -w <project>` asks about that agent: an agent may
   ask which mode it runs in, and the id is no longer read as a mode. A
   refusal names what it guards (an agent's or a project's permission

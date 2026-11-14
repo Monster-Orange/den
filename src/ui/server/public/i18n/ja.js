@@ -653,6 +653,8 @@
       "{why}のあと {id} を引き継ぎから再起動しました。前の会話 {old} は残っています。",
     "ag.remove": "削除",
     "ag.removed": "{id} を削除しました",
+    "ag.removeShell": "{id} を削除",
+    "ag.clearedMany": "停止中から {n} 件を削除しました",
     "ag.removedMany": "停止中のエージェント {n} 件を削除しました",
     "ag.undo": "元に戻す",
     "ag.restored": "一覧に戻しました: {ids}",

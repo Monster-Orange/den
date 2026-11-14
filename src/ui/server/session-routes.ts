@@ -89,6 +89,7 @@ import type { SessionInfo } from "../../shared/sessions/types.js";
 import type { HelperSettings } from "../../shared/agents/helpers.js";
 import {
   readAgentsConfig,
+  DEFAULT_EXITED_SHELL_MINUTES,
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import { stopSession } from "../../shared/sessions/stop.js";
@@ -144,6 +145,8 @@ export interface SessionRouteDeps {
   restartResume?: () => (rec: AgentRecord) => boolean;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
+  /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
+  exitedShellMinutes?: () => number;
   /** D44: the Hub server URL an agent would get now (null: none). */
   hubNow?: () => Promise<string | null>;
   /** AG-DROP: agents.uploads (default: the agents config's). */
@@ -168,6 +171,7 @@ interface Resolved {
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   helperSettings: () => HelperSettings | undefined;
+  exitedShellMinutes: () => number;
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
   closeGrace: () => number;
@@ -240,6 +244,18 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         }
       }),
     now: d.now ?? (() => new Date()),
+    exitedShellMinutes:
+      d.exitedShellMinutes ??
+      (() => {
+        try {
+          return (
+            readAgentsConfig().exitedShellMinutes ??
+            DEFAULT_EXITED_SHELL_MINUTES
+          );
+        } catch {
+          return DEFAULT_EXITED_SHELL_MINUTES;
+        }
+      }),
     ...(d.rotationPolicy ? { rotationPolicy: d.rotationPolicy } : {}),
     ...(d.restartResume ? { restartResume: d.restartResume } : {}),
   };
@@ -358,6 +374,38 @@ export interface ListedSession {
   helpers?: AgentRow["helpers"];
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
+}
+
+/**
+ * 0.4.45: a plain shell that exited agents.exited_shell_minutes ago, with
+ * nothing unread, leaves by itself: the host forgets it (as Remove does).
+ * An agent's session never: its record keeps it. 0: none leaves.
+ */
+export async function leaveExitedShells(
+  c: Pick<HostClient, "forget">,
+  sessions: SessionInfo[],
+  d: Pick<Resolved, "stateDir" | "exitedShellMinutes" | "now">,
+): Promise<SessionInfo[]> {
+  const minutes = d.exitedShellMinutes();
+  if (!(minutes > 0)) return sessions;
+  const before = d.now().getTime() - minutes * 60_000;
+  const due = sessions.filter(
+    (s) =>
+      s.exited && !s.unread && s.exitedAt && Date.parse(s.exitedAt) <= before,
+  );
+  if (!due.length) return sessions;
+  const agents = new Set(listRecords(d.stateDir()).map((r) => r.session?.id));
+  const gone = new Set<string>();
+  for (const s of due) {
+    if (agents.has(s.ref.id)) continue;
+    try {
+      await c.forget(s.ref.id);
+      gone.add(s.ref.id);
+    } catch {
+      /* listed again; the next look tries again */
+    }
+  }
+  return sessions.filter((s) => !gone.has(s.ref.id));
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -596,7 +644,7 @@ export async function handleSessionList(
     if (c) {
       host = true;
       try {
-        sessions = await c.list();
+        sessions = await leaveExitedShells(c, await c.list(), d);
       } finally {
         c.close();
       }

@@ -363,6 +363,8 @@ export class SessionHost {
           exitCode?: number;
           prompted?: boolean;
           launchd?: unknown;
+          exitedAt?: unknown;
+          unread?: unknown;
         };
         if (typeof rec.id !== "string" || typeof rec.name !== "string")
           continue;
@@ -378,6 +380,16 @@ export class SessionHost {
               ? { exitCode: rec.exitCode }
               : {}),
             ...(rec.prompted === true ? { prompted: true } : {}),
+            // 0.4.45: one that ended with the last host had no viewer at
+            // its end: its last output counts as unread.
+            ...(rec.exited
+              ? {
+                  ...(typeof rec.exitedAt === "string"
+                    ? { exitedAt: rec.exitedAt }
+                    : {}),
+                  ...(rec.unread === true ? { unread: true } : {}),
+                }
+              : { exitedAt: new Date().toISOString(), unread: true }),
             ...(typeof rec.launchd === "string" &&
             /^[A-Za-z]{1,32}$/.test(rec.launchd)
               ? { launchd: rec.launchd }
@@ -413,6 +425,8 @@ export class SessionHost {
       ...(s.info.exited ? { exited: true } : {}),
       ...(s.info.exitCode !== undefined ? { exitCode: s.info.exitCode } : {}),
       ...(s.info.prompted ? { prompted: true } : {}),
+      ...(s.info.exitedAt ? { exitedAt: s.info.exitedAt } : {}),
+      ...(s.info.unread ? { unread: true } : {}),
       ...(s.info.launchd ? { launchd: s.info.launchd } : {}),
     };
     try {
@@ -711,7 +725,10 @@ export class SessionHost {
     pty.onData((d) => {
       s.log.append(d);
       if (s.bell.feed(d)) s.info.bellAt = new Date().toISOString();
-      if (!s.attachments.size) return;
+      if (!s.attachments.size) {
+        s.info.unread = true;
+        return;
+      }
       const data = d.toString("base64");
       for (const [aid, c] of s.attachments) c.send({ ev: "data", aid, data });
     });
@@ -719,6 +736,7 @@ export class SessionHost {
       setTimeout(() => {
         s.info.exited = true;
         s.info.exitCode = signal ? 128 + signal : exitCode;
+        s.info.exitedAt = new Date().toISOString();
         s.pty = null;
         s.log.flush();
         if (this.sessions.get(id) === s) this.persist(s);
@@ -749,6 +767,11 @@ export class SessionHost {
     const replay = s.log.ring.snapshot(max);
     if (replay.length)
       conn.send({ ev: "data", aid, data: replay.toString("base64") });
+    // 0.4.45: someone sees it now.
+    if (s.info.unread) {
+      delete s.info.unread;
+      if (s.info.exited) this.persist(s);
+    }
     if (s.info.exited) {
       conn.send({ ev: "exit", aid, exitCode: s.info.exitCode });
     } else {
