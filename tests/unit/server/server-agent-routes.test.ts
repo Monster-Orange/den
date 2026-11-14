@@ -321,7 +321,17 @@ describe("/api/server-agent/fresh (0.4.46: Start fresh)", () => {
     expect(no.status).toBe(403);
     expect(r.made).toHaveLength(1);
     r.made[0].kill("SIGTERM");
-    await new Promise((res) => setTimeout(res, 50));
+    // "Stopped already": wait until Den sees the exit (a fixed 50 ms was
+    // too short on a loaded runner: the session was still ending, and
+    // Start fresh met it mid-exit; release run 43624099539).
+    for (let i = 0; i < 200; i++) {
+      const s = (await call("GET", "/api/server-agent")).json.state;
+      if (s !== "running" && s !== "stopping") break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    expect((await call("GET", "/api/server-agent")).json.state).not.toMatch(
+      /^(running|stopping)$/,
+    );
     const f = await call("POST", "/api/server-agent/fresh", {});
     expect([f.status, f.json.how]).toEqual([200, "started"]);
     expect(r.made.at(-1)!.args).not.toContain("--resume");
