@@ -206,6 +206,7 @@ import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
 } from "./notifications-command.js";
+import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
@@ -560,6 +561,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   usage: USAGE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
+  feedback: FEEDBACK_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -615,6 +617,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "usage",
   "hub",
   "notifications",
+  "feedback",
   "service",
   "theme",
   "plugin",
@@ -650,6 +653,9 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "hub",
   // NT: the bell's own file, no org data.
   "notifications",
+  // FB: Den's own report routes; a report matters most when the config is
+  // what's wrong.
+  "feedback",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1135,6 +1141,10 @@ class DenCLI {
 
         case "notifications":
           process.exitCode = await cmdNotifications(args.slice(1));
+          break;
+
+        case "feedback":
+          process.exitCode = await cmdFeedback(args.slice(1));
           break;
 
         case "mcp": {
@@ -5404,6 +5414,9 @@ class DenCLI {
     );
     console.log(
       "  usage agents|report      Agents' tokens and outcomes, from local transcripts (never sent)",
+    );
+    console.log(
+      "  feedback                 Report an issue: shows exactly what is posted, then asks",
     );
     console.log();
     console.log(

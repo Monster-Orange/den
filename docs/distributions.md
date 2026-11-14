@@ -2853,6 +2853,17 @@ agent and kind.
   no server needed: `list [--json]` (● unread, ○ read), `read [<id> | -p
 <project>]` (default all), `clear [-p <project>]` (the read ones). In an
   agent's session only `list` runs.
+- `<cli> feedback` is Report an issue from a shell. It goes through the
+  running web app's own report routes, as the person. It prints exactly what
+  will be posted, then asks `[y/N]`. It asks for the kind, title and
+  description that aren't given as `--kind`, `--title` and `--description`
+  (or `--description-file <path|->`). `--preview` prints it and sends
+  nothing. Off a terminal it is refused unless `--yes` is given. An agent
+  is always refused: its reports stay drafts for a person to send. When an
+  open report has the same title, it asks whether to add to it; with
+  `--yes`, pass `--add-to <n>` or `--new`. Without a GitHub sign-in
+  (`gh auth login`) nothing is sent, and it gives a link that files the
+  report in a browser.
 
 ## Sessions
 

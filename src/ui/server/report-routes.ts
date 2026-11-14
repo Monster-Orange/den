@@ -86,11 +86,23 @@ export interface ReportRouteDeps {
   ) => Promise<{ number: number; url: string; title: string } | null>;
 }
 
+/**
+ * The label each kind is filed with: GitHub's default labels. A repo
+ * without it gets the report without a label; Den only looks labels up
+ * and never makes one in someone's repo.
+ */
+const KIND_LABEL: Record<ReportKind, string> = {
+  bug: "bug",
+  idea: "enhancement",
+  question: "question",
+};
+
 /** A report waiting for its person's approval in the device flow. */
 interface Held {
   repo: string;
   title: string;
   body: string;
+  label: string;
   addTo: number | null;
   who: string;
   draftId?: string;
@@ -127,6 +139,14 @@ export async function decideReport(
   const log = sentLog(h.stateDir);
   if (log.recent(h.who, now()) >= h.maxPerHour)
     return { refused: `at most ${h.maxPerHour} reports an hour` };
+  // A lookup only: GitHub makes a label that is sent but missing.
+  const labelled =
+    h.addTo === null &&
+    (
+      await ctx
+        .api("GET", `/repos/${h.repo}/labels/${encodeURIComponent(h.label)}`)
+        .catch(() => ({ status: 0 }))
+    ).status === 200;
   const r =
     h.addTo !== null
       ? await ctx.api("POST", `/repos/${h.repo}/issues/${h.addTo}/comments`, {
@@ -135,6 +155,7 @@ export async function decideReport(
       : await ctx.api("POST", `/repos/${h.repo}/issues`, {
           title: h.title,
           body: h.body,
+          ...(labelled ? { labels: [h.label] } : {}),
         });
   if (r.status !== 201)
     return {
@@ -206,7 +227,9 @@ export function newIssueUrl(repo: string, title: string, body: string): string {
 async function compose(
   b: Draftish,
   d: ReportRouteDeps,
-): Promise<{ title: string; body: string; repo: string } | string> {
+): Promise<
+  { title: string; body: string; repo: string; label: string } | string
+> {
   const form = formOf(b);
   if (typeof form === "string") return form;
   const s = d.settings();
@@ -226,6 +249,7 @@ async function compose(
     title: issueTitle(form, names, opts),
     body: issueBody(form, diag, names, opts),
     repo,
+    label: KIND_LABEL[form.kind],
   };
 }
 
@@ -295,6 +319,22 @@ export function myReportsOf(raw: unknown): MyReport[] {
     out.push(row);
   }
   return out;
+}
+
+/** Whether `repo` has `label` (read only: a missing one is never made). */
+async function hasLabel(
+  d: ReportRouteDeps,
+  repo: string,
+  label: string,
+): Promise<boolean> {
+  try {
+    return (
+      (await d.gh(["api", `repos/${repo}/labels/${encodeURIComponent(label)}`]))
+        .code === 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** An open issue on `repo` with exactly this title, if there is one. */
@@ -458,6 +498,9 @@ export function handleReportRoutes(
                 c.repo,
                 "--title",
                 c.title,
+                ...((await hasLabel(d, c.repo, c.label))
+                  ? ["--label", c.label]
+                  : []),
                 "--body-file",
                 "-",
               ],
@@ -532,6 +575,7 @@ export function handleReportRoutes(
         repo: c.repo,
         title: c.title,
         body: c.body,
+        label: c.label,
         addTo,
         who,
         ...(typeof b.draftId === "string" ? { draftId: b.draftId } : {}),

@@ -32,6 +32,10 @@ import type { GithubDeviceClient } from "../../../src/shared/github-device.js";
 
 /** The fake GitHub behind the device flow: what each issue POST answers. */
 let apiStatus = 201;
+/** The labels the destination repo has (GitHub's defaults unless a test says). */
+let repoLabels = new Set(["bug", "enhancement", "question"]);
+/** Every label lookup, either path: Den only reads labels, never makes one. */
+const labelLookups: string[] = [];
 const apiCalls: { method: string; path: string; body?: unknown }[] = [];
 const timers: (() => void)[] = [];
 const fakeClient: GithubDeviceClient = {
@@ -45,6 +49,14 @@ const fakeClient: GithubDeviceClient = {
   user: async () => ({ id: 1, login: "pat" }),
   orgMember: async () => "unreadable",
   api: async (_t, method, p, body) => {
+    const lb = /^\/repos\/[^/]+\/[^/]+\/labels\/([^/]+)$/.exec(p);
+    if (lb && method === "GET") {
+      labelLookups.push(`app:${decodeURIComponent(lb[1]!)}`);
+      return {
+        status: repoLabels.has(decodeURIComponent(lb[1]!)) ? 200 : 404,
+        body: {},
+      };
+    }
     apiCalls.push({ method, path: p, body });
     return {
       status: apiStatus,
@@ -87,6 +99,13 @@ const gh = async (args: string[], stdin?: string): Promise<GhResult> => {
   calls.push({ args, stdin });
   if (args[0] === "auth")
     return { code: signedIn ? 0 : 1, stdout: "", stderr: "" };
+  const lb = /^repos\/[^/]+\/[^/]+\/labels\/([^/]+)$/.exec(args[1] ?? "");
+  if (args[0] === "api" && lb) {
+    labelLookups.push(`gh:${decodeURIComponent(lb[1]!)}`);
+    return repoLabels.has(decodeURIComponent(lb[1]!))
+      ? { code: 0, stdout: "{}", stderr: "" }
+      : { code: 1, stdout: "", stderr: "HTTP 404: Not Found" };
+  }
   if (args[0] === "api" && args[1] === "graphql")
     return {
       code: mineCode,
@@ -161,6 +180,8 @@ afterAll(async () => {
 beforeEach(() => {
   apiStatus = 201;
   apiCalls.length = 0;
+  repoLabels = new Set(["bug", "enhancement", "question"]);
+  labelLookups.length = 0;
   dupOpen = null;
   state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-"));
   signedIn = true;
@@ -534,5 +555,64 @@ describe("FB: no gh, Den's GitHub App files it (the device flow)", () => {
     expect(feedbackSettings({}, {}, { my_reports_max: 0 }).myReportsMax).toBe(
       20,
     );
+  });
+});
+
+describe("FB: the kind's label (bug, enhancement, question)", () => {
+  const created = () => calls.find((c) => c.args[1] === "create")!.args;
+
+  it("with gh: the kind's label when the repo has it (an idea is an enhancement)", async () => {
+    await call("POST", "/api/report/send", FORM);
+    expect(created()).toEqual(expect.arrayContaining(["--label", "bug"]));
+    calls.length = 0;
+    await call("POST", "/api/report/send", {
+      ...FORM,
+      kind: "idea",
+      title: "Another",
+    });
+    expect(created()).toEqual(
+      expect.arrayContaining(["--label", "enhancement"]),
+    );
+  });
+
+  it("with gh: a repo without that label gets the report without it; Den never makes a label", async () => {
+    repoLabels = new Set();
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      kind: "question",
+    });
+    expect(r.status).toBe(200);
+    expect(created()).not.toContain("--label");
+    expect(labelLookups).toEqual(["gh:question"]);
+    expect(
+      calls.some(
+        (c) => c.args[0] === "label" || c.args.some((a) => /-X|POST/.test(a)),
+      ),
+    ).toBe(false);
+  });
+
+  it("with Den's GitHub App: the label when the repo has it, none when it doesn't, never made", async () => {
+    let r = await call("POST", "/api/report/github-send", FORM);
+    await tick();
+    await call("GET", `/api/report/github-send/${r.body.flow.id}`);
+    expect(apiCalls[0]!.body).toMatchObject({ labels: ["bug"] });
+    apiCalls.length = 0;
+    repoLabels = new Set();
+    r = await call("POST", "/api/report/github-send", {
+      ...FORM,
+      title: "Another",
+    });
+    await tick();
+    await call("GET", `/api/report/github-send/${r.body.flow.id}`);
+    expect(apiCalls).toHaveLength(1);
+    expect(apiCalls[0]!.path).toBe("/repos/acme-eng/engine/issues");
+    expect(apiCalls[0]!.body).not.toHaveProperty("labels");
+    expect(labelLookups).toEqual(["app:bug", "app:bug"]);
+  });
+
+  it("Add to an existing report: a comment, no label looked up", async () => {
+    await call("POST", "/api/report/send", { ...FORM, addTo: 7 });
+    expect(calls.some((c) => c.args[1] === "comment")).toBe(true);
+    expect(labelLookups).toEqual([]);
   });
 });

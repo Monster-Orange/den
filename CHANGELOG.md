@@ -63,6 +63,20 @@ config and manifest changes a distribution must make to move to it under
   captured within `feedback.capture_seconds` (15) offers to send without one.
   The screenshot uses html-to-image 1.11.13 (MIT), pinned and served from
   Den's own server.
+- A report is filed with its kind's label: bug, enhancement (an idea) or
+  question, GitHub's default labels. A repo without that label gets the report
+  without one. Den only looks labels up and never makes one in someone's repo.
+  This applies with `gh` and with Den's GitHub App. Adding to an existing
+  report is a comment and has no label.
+- `<cli> feedback`: Report an issue from a shell, through the same routes as
+  the page. It prints exactly what will be posted, then asks y/N. Off a
+  terminal it needs `--yes`. An agent is always refused, so its reports stay
+  drafts for a person. It handles a same-title report (add to it or file a new
+  one), no GitHub sign-in (a browser link instead) and the hour's limit.
+  `--preview` prints it and sends nothing.
+- Every page's Report button is now checked by a test that opens every page
+  the server serves, the config-invalid page too, at desktop and phone
+  widths.
 - My reports, from the command palette or the link at the top of Report an
   issue: your reports on the destination repos, shown live from GitHub
   through your own GitHub sign-in (Den keeps no copy). Each shows its state,
