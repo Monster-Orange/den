@@ -74,6 +74,8 @@ export const UI_MODULES: readonly string[] = [
   "/busy.js",
   // FB (den#81): Report an issue, the dialog.
   "/report-dialog.js",
+  // FB (den#81): the Report button in every pop-up's footer.
+  "/report-inject.js",
   "/ws-delete-agents.js",
 ];
 

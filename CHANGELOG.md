@@ -47,8 +47,13 @@ config and manifest changes a distribution must make to move to it under
   390 px it is a sheet from the bottom. In English, Spanish and Japanese.
   What's new, which opens over the page after an update, has its own Report
   button; Report opens over it, and Esc or a click outside closes What's new.
-  The screenshot, the Report button in every other dialog and drawer, and My
-  reports come next.
+  Every dialog, drawer and popover now has the Report button in its footer,
+  on the left (in a footer of its own when it has none), and gets it back when
+  it repaints. A test fails on any pop-up that shows without one, and on any new
+  pop-up in the page code until it is listed. On a phone the button is in the
+  top bar, with the icon and the word and no shortcut; Runs moves out of the
+  top bar there, since the dock bar has it. The screenshot and My reports come
+  next.
 
 - Settings › Den's address: the install's address (web.url) as a page
   control. Check and save asks the address to answer as this Den before

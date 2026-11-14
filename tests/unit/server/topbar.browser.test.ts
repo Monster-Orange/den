@@ -740,8 +740,9 @@ describe("the admin password, asked only when sudo needs it (R8, LK-0)", () => {
     expect(await p.isVisible("#den-lock")).toBe(true);
     expect(await text(p, "#den-lock")).toBe("🔑 Admin password needed");
     expect(await p.getAttribute("#den-lock-pop", "role")).toBe("dialog");
+    // FB (den#81): the Report button closes it, as in every pop-up.
     expect(await text(p, "#den-lock-pop")).toBe(
-      "sudo touch /etc/acme-test needs your admin password shop/db Save to 1Password Continue Den uses it only for sudo. Agents can't enter it.",
+      "sudo touch /etc/acme-test needs your admin password shop/db Save to 1Password Continue Den uses it only for sudo. Agents can't enter it. Report ⌘⇧F",
     );
     expect(await focused(p)).toBe("den-lock-pw");
     await p.fill("#den-lock-pw", "wrong");

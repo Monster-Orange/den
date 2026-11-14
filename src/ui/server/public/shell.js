@@ -3316,6 +3316,11 @@
   // chips start neutral ("Checking…", "Runs"; the sudo chip hidden) and topbar.js
   // paints them: a cold load never shows a partial red.
   var chips =
+    // FB (den#81): on a phone the rail is hidden: Report is in the top bar
+    // (icon and word, no shortcut). Hidden where the rail shows.
+    '<span class="den-report-top">' +
+    reportButton() +
+    "</span>" +
     '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
     esc(t("search.ph")) +
     '"><span class="den-search-ph">' +
@@ -4141,6 +4146,11 @@
   });
 
   function applyCollapsed() {
+    // FB (den#81): reports off hides every Report button, the injected too.
+    document.documentElement.classList.toggle(
+      "den-report-off",
+      !!state.reportOff,
+    );
     if (document.body && document.body.classList)
       document.body.classList.toggle("den-rail-collapsed", !!state.collapsed);
   }
@@ -6439,6 +6449,21 @@
       return m.openReport(opts || {});
     });
   }
+  // FB (den#81): every dialog, drawer and popover gets the Report button
+  // in its footer (report-inject.js), kept apart from the form.
+  if (typeof MutationObserver === "function")
+    import("/report-inject.js")
+      .then(function (m) {
+        m.startReportInjector({
+          button: reportButton,
+          off: function () {
+            return !!state.reportOff;
+          },
+        });
+      })
+      .catch(function () {
+        /* the rail's and the shortcut's Report still work */
+      });
   registerCommand({
     id: "report",
     label: function () {
@@ -6847,6 +6872,19 @@
     ".den-rb svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }",
     ".den-rb kbd { font: 11px var(--mono); color: var(--muted); }",
     "@media (max-width: 600px) { .den-rb kbd { display: none; } }",
+    // FB: in a footer, first and on the left; a footer of its own when the
+    // pop-up has none; the top bar's on a phone only.
+    ".den-rb.den-rb-in { margin-right: auto; }",
+    ".den-rb-foot { display: flex; justify-content: flex-start; margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border); }",
+    ".den-report-top { display: none; }",
+    ".den-report-top kbd { display: none; }",
+    "@media (max-width: 720px) { .den-report-top { display: inline-flex; margin-left: auto; } }",
+    // A phone's top bar makes room for Report: Runs is in the dock bar.
+    "@media (max-width: 480px) { #den-runs { display: none; } }",
+    // …and the status chip's words shorten (…) rather than push the page
+    // sideways, whatever they say.
+    "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } #den-status .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }",
+    ".den-report-off [data-den-report], .den-report-off .den-report-top { display: none !important; }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
     // D27: Visit is a link styled as a button.
