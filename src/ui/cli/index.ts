@@ -3393,7 +3393,8 @@ class DenCLI {
    * (up to 10s). `stopped` is false when it wasn't running: re-running is ok.
    */
   private async cmdWebDownJson(args: string[]): Promise<number> {
-    const { parseWebCommandArgs } = await import("./web-command.js");
+    const { parseWebCommandArgs, webProbeTarget } =
+      await import("./web-command.js");
     const { probeWebServer } = await import("./mcp-connect.js");
     const bin = fs.existsSync(
       nodePath.join(getDistRoot(), "bin", product().cli),
@@ -3411,7 +3412,9 @@ class DenCLI {
       });
       return 2;
     }
-    const url = `http://localhost:${port}`;
+    // Where the server binds (127.0.0.1 by default), not "localhost":
+    // that resolves to ::1 first, and another listener there answers.
+    const url = `http://${webProbeTarget(process.env.DEN_BIND_HOST, port).hostHeader}`;
     const was = (await probeWebServer(url)).kind === "up";
     let error: string | undefined;
     try {
@@ -3451,7 +3454,8 @@ class DenCLI {
    * (up to 30s), so an agent hands back the right URL.
    */
   private async cmdWebUpJson(args: string[]): Promise<number> {
-    const { parseWebCommandArgs } = await import("./web-command.js");
+    const { parseWebCommandArgs, webProbeTarget } =
+      await import("./web-command.js");
     const { probeWebServer } = await import("./mcp-connect.js");
     const bin = fs.existsSync(
       nodePath.join(getDistRoot(), "bin", product().cli),
@@ -3469,7 +3473,9 @@ class DenCLI {
       });
       return 2;
     }
-    const url = `http://localhost:${port}`;
+    // Where the server binds (127.0.0.1 by default), not "localhost":
+    // that resolves to ::1 first, and another listener there answers.
+    const url = `http://${webProbeTarget(process.env.DEN_BIND_HOST, port).hostHeader}`;
     let error: string | undefined;
     try {
       await quietStdout(() => cmdWeb(args));

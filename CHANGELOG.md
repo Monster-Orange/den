@@ -57,6 +57,14 @@ config and manifest changes a distribution must make to move to it under
   Connect, Start fresh, Resume, Relaunch, Start agent, Restart after
   this turn and Settings saves. Restart Den reads the same way.
 
+### Fixed
+
+- `web up --json` and `web down --json` could say the web server was not
+  answering when it was. They checked `localhost`, which resolves to the
+  IPv6 loopback first, while the server listens on 127.0.0.1. Another
+  program on the same port there answered instead. They now check the
+  address the server listens on.
+
 ## [0.4.45] - 2026-11-13
 
 ### Changed
