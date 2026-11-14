@@ -1107,6 +1107,30 @@ export const DEN_SETTINGS = [
       ctx.post({ agents_default_mode: v === "persona" ? null : v }),
   },
   {
+    // 0.4.46: a terminal pane reconnects on its own after a drop.
+    id: "agents.pane_reconnect",
+    category: "agents",
+    label: "Terminals reconnect",
+    description:
+      "A terminal whose connection drops tries again on its own, waiting longer each time. It stops after too many failed tries and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+    keywords: ["reconnect", "terminal", "pane", "disconnected", "retry"],
+    scope: "user",
+    control: { type: "readonly" },
+    read: (ctx) => {
+      const r = ctx.data.panes_reconnect ?? {};
+      return L(
+        "set.agents.pane_reconnect.v",
+        "Every {s}–{max} s; stops after {n} failed tries in {w} s",
+        {
+          s: r.seconds ?? 1,
+          max: r.max_seconds ?? 30,
+          n: r.max_failures ?? 10,
+          w: r.window_seconds ?? 300,
+        },
+      );
+    },
+  },
+  {
     id: "agents.layout",
     category: "agents",
     label: "Agents tab layout",

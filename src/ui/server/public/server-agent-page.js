@@ -25,9 +25,14 @@
  *    and the model picker beside it (agents.server_model), with only the
  *    runtime's own models.
  *
+ *  - 0.4.46: its terminal reconnects on its own after a drop (a web
+ *    restart, sleep, a tablet's background tab): pane-reconnect.js.
+ *
  * serverAgentView(status) is pure (HTML from the status JSON), so tests
  * need no server.
  */
+
+import { paneSettings, termPane } from "/term-pane.js";
 
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -444,7 +449,7 @@ function closeTerminal() {
   if (!p) return;
   st.pane = null;
   p.closed = true;
-  p.sock?.close();
+  p.conn?.stop();
   p.term?.dispose();
   p.observer?.disconnect();
   p.el.remove();
@@ -456,7 +461,7 @@ async function openTerminal(id) {
   const el = document.createElement("div");
   el.className = "sa-term";
   el.dataset.id = id;
-  el.innerHTML = `<div class="tbox"></div>`;
+  el.innerHTML = `<p class="sa-recon" role="status"></p><div class="tbox"></div>`;
   st.root.querySelector("#sa-pane").appendChild(el);
   const p = { id, el, term: null, fit: null, sock: null, closed: false };
   st.pane = p;
@@ -506,41 +511,57 @@ async function openTerminal(id) {
       );
   };
   term.onResize(size);
-  const token = await csrf();
+  const settings = await paneSettings();
   if (p.closed) return;
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const sock = new WebSocket(
-    `${proto}//${location.host}/api/sessions/${encodeURIComponent(id)}/io`,
-    ["den.io", `den.csrf.${token ?? ""}`],
-  );
-  sock.binaryType = "arraybuffer";
-  p.sock = sock;
-  sock.onopen = () => {
-    refit();
-    size();
-    term.focus();
-  };
-  sock.onmessage = (e) => {
-    if (typeof e.data === "string") {
-      let msg = null;
-      try {
-        msg = JSON.parse(e.data);
-      } catch {
-        return;
-      }
+  p.windowMin = Math.round(settings.windowMs / 60000);
+  p.conn = termPane({
+    id,
+    term: () => p.term,
+    csrf: () => csrf(),
+    settings,
+    words: {
+      signin: () => t("ag.signin", { cli: CLI }),
+      refusedUnknown: () => t("ag.refusedUnknown"),
+      refusedStatus: (status) => t("ag.refusedStatus", { status }),
+      notAnswering: () => t("ag.notAnswering"),
+    },
+    paint: (r) => paintRecon(p, r),
+    onOpen: (sock) => {
+      p.sock = sock;
+      refit();
+      size();
+      term.focus();
+    },
+    onText: (msg) => {
       if (msg?.type === "exit") {
         term.write(`\r\n${t("ag.exitedLine", { code: "" })}\r\n`);
         setTimeout(() => void refresh(), 1000);
       }
-      return;
-    }
-    term.write(new Uint8Array(e.data));
-  };
-  sock.onclose = (e) => {
-    if (p.closed || p.sock !== sock) return;
-    p.sock = null;
-    term.write(`\r\n${t("ag.lost", { why: e.reason || String(e.code) })}\r\n`);
-  };
+    },
+    onClose: () => {
+      p.sock = null;
+    },
+  });
+  await p.conn.connect();
+}
+
+/** The line above the terminal: quiet while it tries, the button after. */
+function paintRecon(p, r) {
+  const line = p.el.querySelector(".sa-recon");
+  if (!line) return;
+  const btn = `<button type="button" class="den-btn sm" data-sa-recon>${esc(t("ag.reconnect"))}</button>`;
+  const why = r.why ? ` (${esc(r.why)})` : "";
+  line.innerHTML =
+    r.kind === "retrying"
+      ? esc(t("ag.reconnecting"))
+      : r.kind === "tripped"
+        ? `${esc(t("ag.reconnectGaveUp", { n: r.tries, min: p.windowMin }))}${why} ${btn}`
+        : r.kind === "refused"
+          ? `${esc(r.why)} ${btn}`
+          : "";
+  line
+    .querySelector("[data-sa-recon]")
+    ?.addEventListener("click", () => p.conn.retry());
 }
 
 export async function mountServerAgentPage(root) {

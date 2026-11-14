@@ -432,6 +432,20 @@ export interface UserConfig {
    * install directories). Per machine, so user.yml only: the distribution's
    * config never sets a path. See shared/agents/runtime-search.ts.
    */
+  /**
+   * 0.4.46: a terminal pane reconnects on its own after a drop: first
+   * after reconnect_seconds (1), doubling to reconnect_max_seconds (30);
+   * it stops after reconnect_max_failures (10) failed tries within
+   * reconnect_window_seconds (300), with a Reconnect button. A try that
+   * hasn't connected in connect_timeout_seconds (10) is a failed one.
+   */
+  panes?: {
+    reconnect_seconds?: unknown;
+    reconnect_max_seconds?: unknown;
+    reconnect_max_failures?: unknown;
+    reconnect_window_seconds?: unknown;
+    connect_timeout_seconds?: unknown;
+  };
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
     /**
@@ -587,6 +601,46 @@ export function agentsDefaultMode(
   const v = read().agents?.default_mode;
   if (v === undefined || v === null) return undefined;
   return checkIntent(v, "agents.default_mode (user.yml)");
+}
+
+/** One panes.<key> number (user.yml): `dflt` when unset, at least `min`. */
+function panesNumber(
+  read: () => UserConfig,
+  key: keyof NonNullable<UserConfig["panes"]>,
+  dflt: number,
+  min: number,
+): number {
+  const v = read().panes?.[key];
+  if (v === undefined || v === null) return dflt;
+  if (typeof v === "number" && Number.isFinite(v) && v >= min) return v;
+  throw new Error(
+    `panes.${String(key)} must be a number, at least ${min} (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * 0.4.46: how a terminal pane reconnects on its own (user.yml panes.*),
+ * as GET /api/settings gives the page (panes_reconnect).
+ */
+export function panesReconnect(read: () => UserConfig = readUserConfig): {
+  seconds: number;
+  max_seconds: number;
+  max_failures: number;
+  window_seconds: number;
+  connect_timeout_seconds: number;
+} {
+  return {
+    seconds: panesNumber(read, "reconnect_seconds", 1, 0.1),
+    max_seconds: panesNumber(read, "reconnect_max_seconds", 30, 0.1),
+    max_failures: panesNumber(read, "reconnect_max_failures", 10, 1),
+    window_seconds: panesNumber(read, "reconnect_window_seconds", 300, 1),
+    connect_timeout_seconds: panesNumber(
+      read,
+      "connect_timeout_seconds",
+      10,
+      1,
+    ),
+  };
 }
 
 /** agents.mode_check_seconds (user.yml): 30 when unset, at least 5. */

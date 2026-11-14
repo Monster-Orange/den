@@ -65,6 +65,9 @@ export const UI_MODULES: readonly string[] = [
   "/log-source.js",
   // D50: how every pop-over closes (a press outside, Esc).
   "/popover.js",
+  // 0.4.46: one terminal pane connection, reconnecting on its own.
+  "/pane-reconnect.js",
+  "/term-pane.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
   // BUSY-1: the working pop-up.

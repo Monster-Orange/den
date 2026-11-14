@@ -499,6 +499,11 @@
     "set.language": "Idioma",
     "set.appearance.org-theme": "Tema predeterminado de la org",
     "set.editor": "IDE predeterminado",
+    "set.agents.pane_reconnect": "Las terminales se reconectan",
+    "set.agents.pane_reconnect.d":
+      "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Se detiene tras demasiados intentos fallidos y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
+    "set.agents.pane_reconnect.v":
+      "Cada {s}–{max} s; se detiene tras {n} intentos fallidos en {w} s",
     "set.agents.default_mode": "Modo para todos los agentes",
     "set.agents.default_mode.d":
       "Todos los agentes trabajan en este modo, también el agente de __DEN_TITLE__, salvo que se haya elegido un modo para el agente o que su proyecto fije uno. Un cambio llega a los agentes en marcha al terminar su turno, solo.",
@@ -1132,6 +1137,10 @@
     "ag.goWs": "Abrir {ws} en Proyectos",
     "ag.lost": "[desconectado: {why}]",
     "ag.reconnect": "Reconectar",
+    "ag.reconnecting": "Reconectando…",
+    "ag.reconnectGaveUp":
+      "No se pudo reconectar: {n} intentos en {min} minutos",
+    "ag.notAnswering": "__DEN_TITLE__ no responde",
     "ag.path.download": "Descargar",
     "ag.path.open": "Abrir en {ed}",
     "ag.path.copy": "Copiar ruta",

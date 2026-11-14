@@ -1325,6 +1325,11 @@
     "hubla.why.stale": "no longer Hub's suggestion",
     "set.workspace.editor": "IDE for this project",
     "set.agents.runtimes": "Runtimes",
+    "set.agents.pane_reconnect": "Terminals reconnect",
+    "set.agents.pane_reconnect.d":
+      "A terminal whose connection drops tries again on its own, waiting longer each time. It stops after too many failed tries and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+    "set.agents.pane_reconnect.v":
+      "Every {s}–{max} s; stops after {n} failed tries in {w} s",
     "set.agents.default_mode": "Mode for every agent",
     "set.agents.default_mode.d":
       "Every agent runs in this mode, the __DEN_TITLE__ agent too, unless a mode was chosen for the agent or its project sets one. A change reaches running agents after their turn, on its own.",
@@ -1882,6 +1887,9 @@
     "ag.goWs": "Open {ws} on Projects",
     "ag.lost": "[disconnected: {why}]",
     "ag.reconnect": "Reconnect",
+    "ag.reconnecting": "Reconnecting…",
+    "ag.reconnectGaveUp": "Couldn't reconnect: {n} tries in {min} minutes",
+    "ag.notAnswering": "__DEN_TITLE__ isn't answering",
     // AG-DROP: a file dropped, pasted or attached onto an agent's terminal.
     "ag.path.download": "Download",
     "ag.path.open": "Open in {ed}",

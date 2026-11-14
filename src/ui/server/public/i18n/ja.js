@@ -487,6 +487,11 @@
     "set.language": "言語",
     "set.appearance.org-theme": "組織の既定テーマ",
     "set.editor": "既定の IDE",
+    "set.agents.pane_reconnect": "ターミナルの再接続",
+    "set.agents.pane_reconnect.d":
+      "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。失敗が続くと止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
+    "set.agents.pane_reconnect.v":
+      "{s}〜{max} 秒ごと。{w} 秒間に {n} 回失敗すると止まります",
     "set.agents.default_mode": "すべてのエージェントのモード",
     "set.agents.default_mode.d":
       "エージェントに個別のモードが選ばれていない、またはプロジェクトがモードを決めていない限り、__DEN_TITLE__ エージェントを含むすべてのエージェントがこのモードで動きます。変更は、動いているエージェントにもターンの終わりに自動で反映されます。",
@@ -1096,6 +1101,10 @@
     "ag.goWs": "プロジェクトで {ws} を開く",
     "ag.lost": "[切断: {why}]",
     "ag.reconnect": "再接続",
+    "ag.reconnecting": "再接続しています…",
+    "ag.reconnectGaveUp":
+      "再接続できませんでした: {min} 分間に {n} 回試しました",
+    "ag.notAnswering": "__DEN_TITLE__ が応答しません",
     "ag.path.download": "ダウンロード",
     "ag.path.open": "{ed} で開く",
     "ag.path.copy": "パスをコピー",

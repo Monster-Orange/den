@@ -59,6 +59,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A terminal pane whose connection dropped (a web server restart, sleep,
+  a network change, a tablet's browser closing a background tab's
+  connection) waited for a click on Reconnect, though its agent was
+  still running. It now connects again on its own, waiting 1 second and
+  then twice as long each time up to 30, and replays the screen. It stops
+  only after 10 failed tries within 5 minutes, or on a refusal, and then
+  shows Reconnect with the reason. Showing the page again or coming back
+  online tries at once; closes while the page is hidden never count.
+  Settings › Agents › Terminals reconnect shows the `panes.*` settings.
+  The Agents tab and the Den agent's page now share one terminal
+  connection (they had drifted: the Den agent's page had no Reconnect).
 - `web up --json` and `web down --json` could say the web server was not
   answering when it was. They checked `localhost`, which resolves to the
   IPv6 loopback first, while the server listens on 127.0.0.1. Another

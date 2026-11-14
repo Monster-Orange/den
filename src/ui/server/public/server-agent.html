@@ -153,14 +153,25 @@
         min-height: 240px;
         min-width: 0;
         display: grid;
-        grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+        grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
         padding: 6px 4px 4px 8px;
         background: var(--sunken);
         border: 1px solid var(--border);
         border-radius: var(--radius);
         overflow: hidden;
       }
+      /* 0.4.46: reconnecting on its own (a quiet line), or the button. */
+      .sa-term .sa-recon {
+        grid-row: 1;
+        margin: 0 0 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .sa-term .sa-recon:empty {
+        display: none;
+      }
       .sa-term .tbox {
+        grid-row: 2;
         min-height: 0;
         min-width: 0;
         overflow: hidden;

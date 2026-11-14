@@ -3621,6 +3621,33 @@ an agent is each person's `agents.helpers_shown` (above).
 stay in the list until a person clears them. It is still accepted, so a
 config that sets it keeps working, and `<cli> doctor` notes it.
 
+### A terminal that loses its connection
+
+A terminal pane (on the Agents tab and on the Den agent's page) connects
+again on its own when its connection drops: the web server restarted,
+the laptop slept, the network changed, or a tablet's browser closed the
+connection of a tab in the background. The agent never stopped; the pane
+replays its screen when it is back.
+
+It tries after 1 second, then waits twice as long each time, up to 30
+seconds. While it tries, the pane says "Reconnecting…" (only after a
+second, so a quick return shows nothing). After 10 failed tries within 5
+minutes it stops and says so, with the last reason and **Reconnect**.
+Showing the page again, coming back online, or going back to the page
+tries once at once, even then. A connection that closes while the page is
+hidden is normal and never counts. A refusal (sign in, not allowed, an
+ended session) shows **Reconnect** at once.
+
+```yaml
+# config/local/user.yml
+panes:
+  reconnect_seconds: 1 # the first wait
+  reconnect_max_seconds: 30 # the longest wait
+  reconnect_max_failures: 10 # failed tries within the window before it stops
+  reconnect_window_seconds: 300
+  connect_timeout_seconds: 10 # a try not connected by then has failed
+```
+
 ### Files dropped onto an agent's terminal
 
 Drag one or more files onto an agent's terminal pane, paste a copied file

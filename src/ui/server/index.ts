@@ -133,6 +133,7 @@ import {
   isLocalEnabled,
   readUserConfig,
   writeUserConfig,
+  panesReconnect,
   readReleaseConfig,
   resolveReleaseTarget,
   writeUserReleaseConfig,
@@ -5461,6 +5462,14 @@ async function handleRequest(
         ui_languages: UI_LANGUAGES,
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // 0.4.46: how a terminal pane reconnects on its own (panes.*).
+        panes_reconnect: (() => {
+          try {
+            return panesReconnect(() => user);
+          } catch {
+            return null;
+          }
+        })(),
         // SEC-2a: the name the signed-out page gives this machine, and
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),

@@ -64,6 +64,10 @@ export interface AgentsPageServer {
   /** GET /api/settings's answer. */
   settingsGet(): Promise<Record<string, unknown>>;
   log(): string;
+  /** Stops the web server only (the session host and its agents run on). */
+  webDown(): Promise<void>;
+  /** Starts the web server again, on the same port. */
+  webUp(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -270,22 +274,25 @@ export async function startAgentsPageServer(
     NO_COLOR: "1",
   };
   // node itself, by path: the env's PATH may not have it.
-  let started: StartedServer;
-  try {
-    started = await startDenServer(
+  const startWeb = (pickPort?: () => Promise<number>) =>
+    startDenServer(
       process.execPath,
       [
         path.join(ENGINE, "node_modules", "tsx", "dist", "cli.mjs"),
         path.join(ENGINE, "src", "ui", "server", "index.ts"),
       ],
       { cwd: root, env },
-      { timeoutMs: 30_000 },
+      { timeoutMs: 30_000, ...(pickPort ? { pickPort, tries: 1 } : {}) },
     );
+  let started: StartedServer;
+  try {
+    started = await startWeb();
   } catch (err) {
     await host.close();
     throw err;
   }
-  const { server, port } = started;
+  let server: StartedServer["server"] | null = started.server;
+  const { port } = started;
   const base = `http://localhost:${port}`;
   return {
     port,
@@ -329,8 +336,16 @@ export async function startAgentsPageServer(
       return (await r.json()) as Record<string, unknown>;
     },
     log: started.out,
+    async webDown() {
+      if (server) await stopServer(server);
+      server = null;
+    },
+    async webUp() {
+      if (server) return;
+      server = (await startWeb(async () => port)).server;
+    },
     async stop() {
-      await stopServer(server);
+      if (server) await stopServer(server);
       await host.close();
       if (!opts.root) fs.rmSync(tmp, { recursive: true, force: true });
     },
