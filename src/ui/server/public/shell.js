@@ -1416,6 +1416,11 @@
       "A terminal whose connection drops tries again on its own, waiting longer each time. It stops after too many failed tries and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
     "set.agents.pane_reconnect.v":
       "Every {s}–{max} s; stops after {n} failed tries in {w} s",
+    "set.server.crash_loop": "Restart guard",
+    "set.server.crash_loop.d":
+      "When __DEN_TITLE__'s web app stops without a clean stop too many times in a short time, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
+    "set.server.crash_loop.v":
+      "Waits after {n} unclean stops in {m} minutes; at most {max} s",
     "set.server.address": "__DEN_TITLE__'s address",
     "set.server.address.d":
       "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",
@@ -1892,6 +1897,8 @@
     "bell.m.pick.one": "{n} project needs your pick",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.noHub.one": "{n} agent started without Hub",
+    "bell.m.crashLoop":
+      "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.turn": "{name} finished its turn",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} finished {n} Hub comments",

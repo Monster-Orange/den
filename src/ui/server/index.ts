@@ -17,6 +17,12 @@ import {
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
 import {
+  crashLoopSettings,
+  markCleanStop,
+  recordBoot,
+  runByServiceManager,
+} from "../../shared/crash-loop.js";
+import {
   composeHealthTarget,
   containerCheckLabel,
   type ComposeHealthTarget,
@@ -5552,6 +5558,8 @@ async function handleRequest(
             return true;
           }
         })(),
+        // den#85: the crash-loop guard's settings (web.crash_loop_*).
+        crash_loop: crashLoopSettings(user.web),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {
@@ -6407,8 +6415,6 @@ try {
 // service's PATH leaves out ~/.local/bin. Until (or unless) it answers, the
 // search is this PATH and the runtimes' install directories.
 void initLoginPath();
-// AG-14: agents interrupted by a restart, and stopped ones to forget.
-startAgentUpkeep((line) => serverLog(line, "lifecycle"));
 // D80: the install's address (web.url), the one people are given. An
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
@@ -6425,69 +6431,111 @@ const ADDRESS = migrateWebUrl(() => {
     return undefined; // no edge config: nothing to take
   }
 });
-server.listen(PORT, BIND_HOST, () => {
-  printBanner(ADDRESS ?? readWebUrl());
-  // SRV-1a: back from a restart the server agent asked for: tell it.
-  void serverBack();
-  // #57: agents whose record names a project by its pre-D70 key follow it.
-  void import("../../shared/agents/heal-workspace.js").then(async (m) => {
-    const { isServerScope } =
-      await import("../../shared/agents/server-agent.js");
-    try {
-      const n = m.healRecordWorkspaces(
-        getStateDir(),
-        readWorkspacesFile().workspaces,
-        isServerScope,
-      );
-      if (n.length)
-        serverLog(`  Moved ${n.length} agent(s) to their project's new key`);
-    } catch {
-      /* the file unreadable: the agents list heals them later */
-    }
+// den#85: every start is recorded; a stop with code 0 marks it clean. Run
+// by a service manager, a start after too many unclean ones in a short
+// time waits before it serves (doubling, capped) and rings the bell.
+const CRASH_GATE: Promise<void> = (() => {
+  const stateDir = getStateDir();
+  let web: unknown;
+  try {
+    web = readUserConfig().web;
+  } catch {
+    web = undefined;
+  }
+  const s = crashLoopSettings(web);
+  const boot = recordBoot(stateDir, s);
+  process.on("exit", (code) => {
+    if (code === 0) markCleanStop(stateDir);
   });
-  // H5: tell Hub this install's projects now, then whenever they change.
-  void import("./hub-sync-service.js").then((m) => {
-    let every = 30;
-    let names = 300;
-    let retry = 30;
-    try {
-      const c = readHubConfig();
-      every = c?.syncCheckSeconds ?? 30;
-      names = c?.namesCheckSeconds ?? 300;
-      retry = c?.mcpRetrySeconds ?? 30;
-    } catch {
-      /* a bad hub block: doctor says so; the default here */
-    }
-    m.startProjectSync(every);
-    // 0.4.45: a project renamed in Hub shows its new name here.
-    m.startHubNameRefresh(names);
-    // 0.4.46: an agent that started while Hub didn't answer gets its tools
-    // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
-    m.startMcpReconnect(retry, () => {
+  if (!boot.waitMs || !runByServiceManager()) return Promise.resolve();
+  const secs = Math.round(boot.waitMs / 1000);
+  const vars = { n: boot.crashes, m: s.minutes, s: secs };
+  const text = `Den's web app stopped ${boot.crashes} times in ${s.minutes} minutes without a clean stop`;
+  serverLog(`  ⚠ ${text}; it waits ${secs} s before it starts again.`, "warn");
+  try {
+    notificationDeps().store.add({
+      kind: "service",
+      subject: "record:den-web-crash-loop",
+      scope: "workspace/den-server",
+      text: `${text}; it waited ${secs} s before starting again`,
+      msg: { key: "bell.m.crashLoop", vars },
+      link: "/logs",
+    });
+  } catch {
+    /* the bell is best effort: the wait still happens */
+  }
+  return new Promise((r) => setTimeout(r, boot.waitMs));
+})();
+// AG-14: agents interrupted by a restart, and stopped ones to forget
+// (after the crash-loop wait: a start that waits resumes nothing yet).
+void CRASH_GATE.then(() =>
+  startAgentUpkeep((line) => serverLog(line, "lifecycle")),
+);
+void CRASH_GATE.then(() =>
+  server.listen(PORT, BIND_HOST, () => {
+    printBanner(ADDRESS ?? readWebUrl());
+    // SRV-1a: back from a restart the server agent asked for: tell it.
+    void serverBack();
+    // #57: agents whose record names a project by its pre-D70 key follow it.
+    void import("../../shared/agents/heal-workspace.js").then(async (m) => {
+      const { isServerScope } =
+        await import("../../shared/agents/server-agent.js");
       try {
-        return readHubConfig()?.mcpRetryAttempts ?? 0;
+        const n = m.healRecordWorkspaces(
+          getStateDir(),
+          readWorkspacesFile().workspaces,
+          isServerScope,
+        );
+        if (n.length)
+          serverLog(`  Moved ${n.length} agent(s) to their project's new key`);
       } catch {
-        return 0;
+        /* the file unreadable: the agents list heals them later */
       }
     });
-  });
-  // 0.4.40: Hub comments reach this install's agents.
-  void import("./hub-delivery-service.js").then((m) => {
-    // Always registered: a later Connect starts it (no token: it waits).
-    let cfg: ReturnType<typeof readHubConfig> = null;
-    try {
-      cfg = readHubConfig();
-    } catch {
-      /* a bad hub block: doctor says so; the defaults here */
-    }
-    void m.startDeliveries({
-      heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
-      pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-      waiting: waitingAgentIds,
-      log: (l) => serverLog(`  ${l}`, "warn"),
+    // H5: tell Hub this install's projects now, then whenever they change.
+    void import("./hub-sync-service.js").then((m) => {
+      let every = 30;
+      let names = 300;
+      let retry = 30;
+      try {
+        const c = readHubConfig();
+        every = c?.syncCheckSeconds ?? 30;
+        names = c?.namesCheckSeconds ?? 300;
+        retry = c?.mcpRetrySeconds ?? 30;
+      } catch {
+        /* a bad hub block: doctor says so; the default here */
+      }
+      m.startProjectSync(every);
+      // 0.4.45: a project renamed in Hub shows its new name here.
+      m.startHubNameRefresh(names);
+      // 0.4.46: an agent that started while Hub didn't answer gets its tools
+      // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
+      m.startMcpReconnect(retry, () => {
+        try {
+          return readHubConfig()?.mcpRetryAttempts ?? 0;
+        } catch {
+          return 0;
+        }
+      });
     });
-  });
-});
+    // 0.4.40: Hub comments reach this install's agents.
+    void import("./hub-delivery-service.js").then((m) => {
+      // Always registered: a later Connect starts it (no token: it waits).
+      let cfg: ReturnType<typeof readHubConfig> = null;
+      try {
+        cfg = readHubConfig();
+      } catch {
+        /* a bad hub block: doctor says so; the defaults here */
+      }
+      void m.startDeliveries({
+        heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
+        pollSeconds: cfg?.deliveryPollSeconds ?? 30,
+        waiting: waitingAgentIds,
+        log: (l) => serverLog(`  ${l}`, "warn"),
+      });
+    });
+  }),
+);
 
 /**
  * SRV-1a: the restart marker the last server left. An audit row says the

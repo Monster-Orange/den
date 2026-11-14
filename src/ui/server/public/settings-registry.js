@@ -681,6 +681,36 @@ function drawRestart(host) {
 
 export const DEN_SETTINGS = [
   {
+    // den#85: the web app's crash-loop guard (user.yml web.crash_loop_*).
+    id: "server.crash_loop",
+    category: "server",
+    label: "Restart guard",
+    description:
+      "When __DEN_TITLE__'s web app stops without a clean stop too many times in a short time, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
+    keywords: [
+      "crash",
+      "restart",
+      "loop",
+      "memory",
+      "backoff",
+      "web.crash_loop",
+    ],
+    scope: "user",
+    control: { type: "readonly" },
+    read: (ctx) => {
+      const r = ctx.data.crash_loop ?? {};
+      return L(
+        "set.server.crash_loop.v",
+        "Waits after {n} unclean stops in {m} minutes; at most {max} s",
+        {
+          n: r.restarts ?? 5,
+          m: r.minutes ?? 10,
+          max: r.maxWaitSeconds ?? 300,
+        },
+      );
+    },
+  },
+  {
     // MODE-5 (0.4.46): this install's address (web.url, D80) as a page
     // control: Check and save asks the address to answer first.
     id: "server.address",

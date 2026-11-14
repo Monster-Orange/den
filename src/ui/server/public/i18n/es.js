@@ -592,6 +592,11 @@
       "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Se detiene tras demasiados intentos fallidos y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
     "set.agents.pane_reconnect.v":
       "Cada {s}–{max} s; se detiene tras {n} intentos fallidos en {w} s",
+    "set.server.crash_loop": "Protección contra reinicios",
+    "set.server.crash_loop.d":
+      "Cuando la app web de __DEN_TITLE__ se detiene sin un cierre limpio demasiadas veces en poco tiempo, el siguiente arranque espera antes de atender, más cada vez, y la campana lo avisa. __DEN_CLI__ config web.crash_loop_restarts=5",
+    "set.server.crash_loop.v":
+      "Espera tras {n} cierres no limpios en {m} minutos; como mucho {max} s",
     "set.server.address": "La dirección de __DEN_TITLE__",
     "set.server.address.d":
       "La dirección con la que las personas y otros dispositivos abren este __DEN_TITLE__, por ejemplo https://__DEN_CLI__.local.example.com. Comprobar y guardar le pide primero que responda, y solo guarda si responde. Igual que __DEN_CLI__ web url.",
@@ -1142,6 +1147,8 @@
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
+    "bell.m.crashLoop":
+      "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.turn": "{name} terminó su turno",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} terminó {n} comentarios de Hub",

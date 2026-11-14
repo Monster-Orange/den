@@ -1899,6 +1899,27 @@ nothing out from where a browser is, and never falls back to localhost.
   note. Only `web.edge_unattested: local` (no sign-in) shows the "reachable
   from other machines" warning on every page.
 
+### A web app that keeps crashing (crash-loop guard)
+
+Every start of the web app is recorded in Den's state dir
+(`web-boots.json`); a stop with exit code 0 marks its start clean, so an
+update or an asked-for restart never counts. Run by a service manager
+(launchd or systemd), a start that finds `web.crash_loop_restarts` (5)
+unclean starts within `web.crash_loop_minutes` (10) waits before it
+serves or resumes agents: 30 s, doubling each time, at most
+`web.crash_loop_max_wait_seconds` (300). The bell says so, and Settings
+shows the guard under Restart guard. All three are user.yml settings:
+
+```yaml
+web:
+  crash_loop_restarts: 5
+  crash_loop_minutes: 10
+  crash_loop_max_wait_seconds: 300
+```
+
+`DEN_CRASH_LOOP_GUARD=0` turns the wait off for one run; `=1` turns it on
+outside a service manager.
+
 ## Signing in
 
 On localhost nothing asks you to sign in: every page, the agents and the

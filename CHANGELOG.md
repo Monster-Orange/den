@@ -18,6 +18,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- A crash-loop guard for the web app (#85). On one install, the web app ran
+  out of heap on every start (the huge-transcript read fixed in 0.4.36), and
+  the service manager restarted it 16 times in 9 minutes. Now each start is
+  recorded, and a stop with exit code 0 marks it clean. Run by launchd or
+  systemd, a start after `web.crash_loop_restarts` (5) unclean starts within
+  `web.crash_loop_minutes` (10) waits before it serves or resumes agents:
+  30 s, doubling, at most `web.crash_loop_max_wait_seconds` (300). The bell
+  says so; Settings shows it under Restart guard.
 - Report an issue, the server's side (#81). Reports go to the engine's
   `bugs.url` (and the distribution's `feedback.repo`, when it names one), filed
   as the person with their own `gh`. The preview is the exact text that will be
