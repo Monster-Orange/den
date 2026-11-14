@@ -1143,6 +1143,14 @@
     "sa.starting": "エージェントを起動しています…",
     "sa.idle": "{name} は動いていません。",
     "sa.start": "開始",
+    "sa.fresh": "新しく始める",
+    "sa.fresh.h": "新しく始めますか?",
+    "sa.fresh.q": "{name} の会話を終了します。新しい会話を始めますか?",
+    "sa.fresh.cancel": "キャンセル",
+    "sa.fresh.go": "新しく始める",
+    "sa.fresh.w": "新しい {name} を起動しています…",
+    "sa.fresh.done": "完了: 新しい {name} が動いています。",
+    "sa.fresh.fail": "新しい {name} を起動できませんでした。",
     "sa.failed":
       "起動しませんでした：{why}。詳しくは {cli} agents doctor で確認できます。",
     "sa.unread":

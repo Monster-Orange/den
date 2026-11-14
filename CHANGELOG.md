@@ -18,6 +18,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Start fresh on the Den agent's page: after a confirm ("This ends the
+  Den agent's conversation. Start a new one?") it stops the agent,
+  removes it and starts a new conversation, with the working pop-up.
+  Before, it took two command lines.
 - One mode for every agent, set once: Settings › Agents › Mode for every
   agent (`agents.default_mode` in user.yml: ask, edits, auto or all), the
   Den agent too. An agent runs in the mode chosen for it, else its

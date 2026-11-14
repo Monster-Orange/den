@@ -171,6 +171,44 @@
       .sa-term .xterm .xterm-viewport {
         background-color: var(--sunken);
       }
+      /* 0.4.46 Start fresh: its button, and the confirm. */
+      .sa-acts {
+        display: flex;
+        justify-content: flex-end;
+        margin: 4px 0;
+      }
+      .sa-fresh-dlg {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0;
+        background: var(--surface, var(--bg));
+        color: var(--text);
+        width: min(420px, calc(100vw - 32px));
+      }
+      .sa-fresh-dlg::backdrop {
+        background: rgba(0, 0, 0, 0.25);
+      }
+      .sa-fresh-b {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .sa-fresh-b h2 {
+        font-size: 15px;
+        margin: 0;
+      }
+      .sa-fresh-b p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .sa-fresh-acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
     </style>
   </head>
   <body>
@@ -187,10 +225,12 @@
         </div>
         <div class="acts">
           <label id="sa-runtime" hidden
-            ><span>Runs on</span> <select></select
+            ><span>Runs on</span>
+            <select></select
           ></label>
           <label id="sa-model" hidden
-            ><span>Model</span> <select></select
+            ><span>Model</span>
+            <select></select
           ></label>
           <a class="den-btn" id="sa-open" href="/agents" hidden
             >Open in Agents</a

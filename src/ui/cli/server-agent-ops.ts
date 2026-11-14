@@ -18,9 +18,11 @@ import {
   listAgents,
   listRuntimes,
   relaunchAgent,
+  removeAgent,
   resumeAgent,
   resumeRefusal,
   startAgent,
+  stopAgent,
   type AgentRow,
   type AgentsResolved,
   type RuntimeChoice,
@@ -381,6 +383,33 @@ export async function startServerAgent(
       : {},
   );
   return done("started", st);
+}
+
+/**
+ * 0.4.46 Start fresh: stop the server agent (if running), remove it, and
+ * start a new one, a new conversation. What a person did before with
+ * `agents stop server -w den-server` and `agents rm server -w den-server`.
+ */
+export async function freshServerAgent(
+  d: AgentsResolved,
+  s: ServerAgentDeps = {},
+): Promise<ServerAgentStarted> {
+  const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
+  if (rec && rec.workspace === SERVER_SCOPE) {
+    const status = await serverAgentStatus(d, s);
+    if (status.state === "running" || status.state === "stopping") {
+      const st = await stopAgent(d, SERVER_AGENT_ID, SERVER_SCOPE, {
+        wait: true,
+      });
+      if (st.stillStopping)
+        throw new AgentError(
+          `${serverAgentName(resolve(s).title())} is still stopping; try Start fresh again in a moment`,
+          { status: 409 },
+        );
+    }
+    await removeAgent(d, SERVER_AGENT_ID, SERVER_SCOPE);
+  }
+  return startServerAgent(d, {}, s);
 }
 
 /** Save the person's model choice; null clears it. Only the runtime's own. */

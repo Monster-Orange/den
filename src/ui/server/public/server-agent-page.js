@@ -80,10 +80,12 @@ export function serverAgentView(s, o = {}) {
     (onClaude
       ? `<p class="note sa-login" data-note="login">${esc(t("sa.login", { name: s.name }))}</p>`
       : "");
+  // 0.4.46 Start fresh: ends its conversation, starts a new one.
+  const freshBtn = `<div class="sa-acts"><button type="button" class="den-btn sm" data-act="fresh">${esc(t("sa.fresh"))}</button></div>`;
   if (running)
     return {
       sub,
-      body: login + readsOnly,
+      body: login + readsOnly + freshBtn,
       autoStart: false,
       terminal: s.sessionId,
     };
@@ -107,7 +109,8 @@ export function serverAgentView(s, o = {}) {
     body:
       `<div class="sa-idle" data-note="idle"><p>${esc(t("sa.idle", { name: s.name }))}</p>` +
       `<button type="button" class="den-btn primary" data-act="start">${esc(t("sa.start"))}</button></div>` +
-      readsOnly,
+      readsOnly +
+      freshBtn,
     autoStart: false,
     terminal: null,
   };
@@ -313,6 +316,68 @@ async function start() {
   await refresh();
 }
 
+/**
+ * 0.4.46 Start fresh: asks first (its conversation ends), then stops it,
+ * removes it and starts a new one, with the working pop-up.
+ */
+function confirmFresh(name) {
+  return new Promise((resolve) => {
+    let d = document.getElementById("sa-fresh-dlg");
+    if (!d) {
+      d = document.createElement("dialog");
+      d.id = "sa-fresh-dlg";
+      d.className = "sa-fresh-dlg";
+      d.setAttribute("role", "alertdialog");
+      d.setAttribute("aria-labelledby", "sa-fresh-h");
+      document.body.append(d);
+    }
+    d.innerHTML =
+      `<div class="sa-fresh-b"><h2 id="sa-fresh-h" tabindex="-1">${esc(t("sa.fresh.h"))}</h2>` +
+      `<p>${esc(t("sa.fresh.q", { name }))}</p>` +
+      `<div class="sa-fresh-acts"><button type="button" class="den-btn sm" data-saf="cancel">${esc(t("sa.fresh.cancel"))}</button>` +
+      `<button type="button" class="den-btn sm primary" data-saf="go">${esc(t("sa.fresh.go"))}</button></div></div>`;
+    const done = (yes) => {
+      d.removeEventListener("cancel", onCancel);
+      if (d.open && typeof d.close === "function") d.close();
+      else d.removeAttribute("open");
+      resolve(yes);
+    };
+    const onCancel = (e) => {
+      e.preventDefault();
+      done(false);
+    };
+    d.addEventListener("cancel", onCancel);
+    d.querySelector('[data-saf="cancel"]').addEventListener("click", () =>
+      done(false),
+    );
+    d.querySelector('[data-saf="go"]').addEventListener("click", () =>
+      done(true),
+    );
+    if (typeof d.showModal === "function") d.showModal();
+    else d.setAttribute("open", "");
+    d.querySelector('[data-saf="cancel"]').focus();
+  });
+}
+
+async function startFresh(button) {
+  const name = st.status?.name ?? "";
+  if (!(await confirmFresh(name))) {
+    button?.focus();
+    return;
+  }
+  closeTerminal();
+  await window.denShell.busyAction({
+    button,
+    who: "Den",
+    title: t("sa.fresh.w", { name }),
+    done: t("sa.fresh.done", { name }),
+    failed: t("sa.fresh.fail", { name }),
+    run: (headers) =>
+      window.denShell.api("POST", "/api/server-agent/fresh", {}, { headers }),
+  });
+  await refresh();
+}
+
 async function answerTrust(answer) {
   // Gate 0.4.44: check right before sending; a prompt gone since the last
   // check sends nothing (the server's 409 stays the guard behind this).
@@ -497,6 +562,7 @@ export async function mountServerAgentPage(root) {
       b.disabled = true;
       void start();
     }
+    if (b?.dataset.act === "fresh") void startFresh(b);
     if (b?.dataset.act === "trust-yes" || b?.dataset.act === "trust-no") {
       b.disabled = true;
       void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no");

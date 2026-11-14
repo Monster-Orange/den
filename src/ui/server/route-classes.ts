@@ -563,6 +563,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/server-agent/start",
     "starts the server agent (ON-6): a runtime in a PTY; never an agent's token",
   ),
+  S(
+    ["POST"],
+    "/api/server-agent/fresh",
+    "0.4.46 Start fresh: stops, removes and starts the Den agent (a runtime in a PTY); never an agent's token",
+  ),
   M(
     ["POST"],
     "/api/server-agent/runtime",

@@ -160,12 +160,16 @@ describe("SRV-1b: the trust step", () => {
     const no = await call("POST", "/api/server-agent/trust", { answer: "no" });
     expect(no).toMatchObject({ status: 200, json: { ok: true, typed: false } });
     expect(trust.typed).toBe(0);
-    const yes = await call("POST", "/api/server-agent/trust", { answer: "yes" });
+    const yes = await call("POST", "/api/server-agent/trust", {
+      answer: "yes",
+    });
     expect(yes).toMatchObject({ status: 200, json: { ok: true, typed: true } });
     expect(trust.typed).toBe(1);
     // Answered: no prompt now, and a second Trust types nothing.
     expect((await call("GET", "/api/server-agent")).json.prompt).toBeNull();
-    const again = await call("POST", "/api/server-agent/trust", { answer: "yes" });
+    const again = await call("POST", "/api/server-agent/trust", {
+      answer: "yes",
+    });
     expect(again).toMatchObject({ status: 409, json: { ok: false } });
     expect(trust.typed).toBe(1);
   });
@@ -267,6 +271,61 @@ describe("/api/server-agent", () => {
     expect(bad.status).toBe(400);
     expect(saved.id).toBe("den-claude");
   });
+});
+
+describe("/api/server-agent/fresh (0.4.46: Start fresh)", () => {
+  /** Stop waits for the session to end; each scripted one ends on TERM. */
+  function endOnTerm(r: Rig): void {
+    r.deps.stopWaitMs = 3_000;
+    const made = r.made;
+    const push = made.push.bind(made);
+    made.push = (...ps) => {
+      for (const p of ps) {
+        const kill = p.kill.bind(p);
+        p.kill = (sig: string) => {
+          kill(sig);
+          setTimeout(() => p.exit(143), 5);
+        };
+      }
+      return push(...ps);
+    };
+  }
+
+  it("a person's Start fresh stops it, removes it and starts a new one: a new conversation", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    const call = await serve(r, {}, []);
+    const first = await call("POST", "/api/server-agent/start", {});
+    expect(first.json.how).toBe("started");
+    const token = readRecord(r.stateDir, "server")!.resumeToken;
+    const f = await call("POST", "/api/server-agent/fresh", {});
+    expect([f.status, f.json.how]).toEqual([200, "started"]);
+    expect(f.json.sessionId).not.toBe(first.json.sessionId);
+    expect(r.made).toHaveLength(2);
+    expect(r.made[1].args).not.toContain("--resume");
+    const rec = readRecord(r.stateDir, "server")!;
+    expect(rec.resumeToken).not.toBe(token);
+    const st = await call("GET", "/api/server-agent");
+    expect(st.json).toMatchObject({
+      state: "running",
+      sessionId: f.json.sessionId,
+    });
+  }, 30_000);
+
+  it("stopped already: removed and started new; an agent can't", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    const call = await serve(r, {}, []);
+    await call("POST", "/api/server-agent/start", {});
+    const no = await call("POST", "/api/server-agent/fresh", {}, true);
+    expect(no.status).toBe(403);
+    expect(r.made).toHaveLength(1);
+    r.made[0].kill("SIGTERM");
+    await new Promise((res) => setTimeout(res, 50));
+    const f = await call("POST", "/api/server-agent/fresh", {});
+    expect([f.status, f.json.how]).toEqual([200, "started"]);
+    expect(r.made.at(-1)!.args).not.toContain("--resume");
+  }, 30_000);
 });
 
 describe("/api/server-agent/model", () => {

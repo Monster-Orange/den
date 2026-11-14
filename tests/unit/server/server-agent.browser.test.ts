@@ -225,6 +225,42 @@ describe("after setup", () => {
     await p.context().close();
   }, 60_000);
 
+  it("0.4.46 Start fresh: asks first; Cancel does nothing; yes stops it, removes it and starts a new conversation", async () => {
+    if (!browser) return;
+    const p = await open(s!, "/server-agent");
+    await p.waitForSelector(".sa-term .xterm", { timeout: 20_000 });
+    const n = s!.made.length;
+    // A real agent ends on TERM; the scripted one is told to.
+    for (const pty of s!.made) {
+      const kill = pty.kill.bind(pty);
+      pty.kill = (sig: string) => {
+        kill(sig);
+        setTimeout(() => pty.exit(143), 5);
+      };
+    }
+    const fresh = p.locator('button[data-act="fresh"]');
+    await fresh.click();
+    const dlg = p.locator("dialog.sa-fresh-dlg");
+    await dlg.waitFor({ state: "visible" });
+    expect(await dlg.getAttribute("role")).toBe("alertdialog");
+    await expect(dlg.textContent()).resolves.toContain(
+      "This ends the Acme agent's conversation. Start a new one?",
+    );
+    await dlg.locator('[data-saf="cancel"]').click();
+    await dlg.waitFor({ state: "hidden" });
+    expect(s!.made.length).toBe(n);
+    await fresh.click();
+    await dlg.locator('[data-saf="go"]').click();
+    const until = Date.now() + 20_000;
+    while (s!.made.length < n + 1 && Date.now() < until)
+      await new Promise((r) => setTimeout(r, 100));
+    expect(s!.made.length).toBe(n + 1);
+    expect(s!.made.at(-1)!.args).not.toContain("--resume");
+    await p.waitForSelector(".sa-term .xterm", { timeout: 20_000 });
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
   it("Agents lists it under Server, not under a workspace", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");

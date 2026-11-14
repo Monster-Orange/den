@@ -30,6 +30,7 @@ import {
   serverAgentStatus,
   setServerModel,
   setServerRuntime,
+  freshServerAgent,
   startServerAgent,
   type ServerAgentDeps,
 } from "../cli/server-agent-ops.js";
@@ -110,6 +111,7 @@ export async function handleServerAgentRoutes(
   if (
     pathname !== "/api/server-agent" &&
     pathname !== "/api/server-agent/start" &&
+    pathname !== "/api/server-agent/fresh" &&
     pathname !== "/api/server-agent/runtime" &&
     pathname !== "/api/server-agent/model" &&
     pathname !== "/api/server-agent/trust"
@@ -159,11 +161,13 @@ export async function handleServerAgentRoutes(
   const actor = auditActorOf(req);
   const verb = pathname.endsWith("/start")
     ? "start"
-    : pathname.endsWith("/model")
-      ? "model"
-      : pathname.endsWith("/trust")
-        ? "trust"
-        : "runtime";
+    : pathname.endsWith("/fresh")
+      ? "fresh"
+      : pathname.endsWith("/model")
+        ? "model"
+        : pathname.endsWith("/trust")
+          ? "trust"
+          : "runtime";
   const audit = (detail: string, reason?: string) =>
     recordAction(
       actor,
@@ -221,6 +225,13 @@ export async function handleServerAgentRoutes(
       setServerRuntime(id, deps.server);
       audit(id ? `runtime ${id}` : "runtime cleared");
       sendJson(res, { ok: true, ...(await serverAgentStatus(d, deps.server)) });
+      return true;
+    }
+    if (verb === "fresh") {
+      // 0.4.46: stop, remove and start a new one (a new conversation).
+      const s = await freshServerAgent(d, deps.server);
+      audit(`start fresh: ${s.how} on ${s.runtime}`);
+      sendJson(res, { ok: true, ...s });
       return true;
     }
     const s = await startServerAgent(
