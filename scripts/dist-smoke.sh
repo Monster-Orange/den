@@ -318,7 +318,7 @@ SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 SEC_LINK=""
 if [[ "$SEC_HDR" == HTTP/*" 303"* ]] &&
-  grep -qi "^set-cookie: den_session_$PORT=[^;]*; Path=/; HttpOnly; SameSite=Strict" <<<"$SEC_HDR" &&
+  grep -qi "^set-cookie: den_session_$PORT=[^;]*; Path=/; HttpOnly; SameSite=Lax" <<<"$SEC_HDR" &&
   [ "$again" = "401" ]; then
   ok "\`acme web login\`'s link signs in once (303 and a session cookie; 401 the second time)"
 else bad "\`acme web login\`'s link didn't sign in once (second use answered $again)"; fi

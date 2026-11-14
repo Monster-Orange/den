@@ -971,11 +971,10 @@ a line. The lines go once the install is connected.
   `<this Den>/hub/callback`, which trades the one-time code for the
   install's token server to server (`POST <hub>/connect/token`). A
   replayed or old state changes nothing.
-- `/hub/callback` needs no sign-in: the session cookie is SameSite
-  Strict, so Hub's redirect doesn't carry it. The state this server
-  issued to a signed-in Connect, and the verifier only it holds, are
-  what protect it. It then moves on to Settings by script, which carries
-  the cookie again.
+- `/hub/callback` needs no sign-in: Hub's redirect may arrive without
+  the session cookie. The state this server issued to a signed-in
+  Connect, and the verifier only it holds, are what protect it. It then
+  moves on to Settings.
 - Hub can only send the person back to https or to this machine, so
   open Den over https (its edge address), on localhost, or on a
   `<name>.localhost` address (an edge on this machine over http; RFC 6761
@@ -1926,9 +1925,10 @@ user, and the CLI does that for you:
   its bearer and never logs the code. `--no-wait` prints the link alone and
   returns, as before (no code); with no server running `web login` does
   that too, and says so.
-- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Strict and
-  Path=/, and Secure when the request came over HTTPS through the edge. The
-  session lives server-side (`web-sessions.json`, 0600, in the state dir)
+- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Lax (a
+  person's click on a link from another site lands signed in; that site's
+  own requests carry no cookie) and Path=/, and Secure when the request
+  came over HTTPS through the edge. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
   browser allows. The 0.4.1-dev `web.session.idle` and `web.session.max`
