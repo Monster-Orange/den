@@ -10,6 +10,7 @@
  * The demo distribution (helpers/agents-page-server.ts). Invented names.
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import * as fs from "fs";
 import type { Browser, Page, Route } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
@@ -635,7 +636,36 @@ describe("FB: the screenshot and its mask", () => {
     ).toBe(true);
     const download = p.waitForEvent("download");
     await dlg(p).locator('[data-act="send"]').click();
-    expect((await download).suggestedFilename()).toBe("report-screenshot.png");
+    const saved = await download;
+    expect(saved.suggestedFilename()).toBe("report-screenshot.png");
+    // The file itself: the mask is in its pixels (drawn in, not laid over),
+    // and what is outside it is the page.
+    const png = fs.readFileSync((await saved.path())!).toString("base64");
+    const inFile = (x: number, y: number) =>
+      p.evaluate(
+        ([b64, px, py]) =>
+          new Promise<number[]>((ok) => {
+            const img = new Image();
+            img.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = img.naturalWidth;
+              c.height = img.naturalHeight;
+              const g = c.getContext("2d")!;
+              g.drawImage(img, 0, 0);
+              ok([
+                ...g
+                  .getImageData(px as number, py as number, 1, 1)
+                  .data.slice(0, 3),
+              ]);
+            };
+            img.src = `data:image/png;base64,${b64}`;
+          }),
+        [png, Math.round(x), Math.round(y)],
+      );
+    expect(near(await inFile(mark.x, mark.y), [0, 0, 0])).toBe(true);
+    expect(near(await inFile(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
+      true,
+    );
     await dlg(p).locator("[data-saved]").waitFor();
     await p.context().close();
   });
