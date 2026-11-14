@@ -74,6 +74,8 @@ export const UI_MODULES: readonly string[] = [
   "/busy.js",
   // FB (den#81): Report an issue, the dialog.
   "/report-dialog.js",
+  // FB (den#81): the screenshot and its mask.
+  "/report-shot.js",
   // FB (den#81): the Report button in every pop-up's footer.
   "/report-inject.js",
   "/ws-delete-agents.js",
@@ -90,6 +92,9 @@ export const VENDOR_ASSETS: Readonly<Record<string, string>> = {
   // AG-4b: plain URLs in a pane are links (⌘- or Ctrl-click opens them).
   "/vendor/addon-web-links.mjs":
     "@xterm/addon-web-links/lib/addon-web-links.mjs",
+  // FB (den#81): Report an issue's screenshot. html-to-image, MIT, the
+  // same version and bytes as Hub's copy (one copy for both in UK-3).
+  "/vendor/html-to-image.js": "html-to-image/dist/html-to-image.js",
 };
 
 /** The installed file for a vendored URL path, or null. */

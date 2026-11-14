@@ -308,6 +308,7 @@ export function handleReportRoutes(
         repos: s.repos.map((repo) => ({ repo })),
         github: { signedIn: await ghSignedIn(d), deviceFlow: !!d.flows },
         maxPerHour: s.maxPerHour,
+        captureSeconds: s.captureSeconds,
         sentThisHour: sentLog(d.stateDir()).recent(who, now()),
       });
     });

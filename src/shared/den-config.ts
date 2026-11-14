@@ -450,7 +450,11 @@ export interface UserConfig {
    * FB (den#81): Report an issue. `enabled: false` hides every entry
    * point; `max_per_hour` (5) is how many one person sends in an hour.
    */
-  feedback?: { enabled?: unknown; max_per_hour?: unknown };
+  feedback?: {
+    enabled?: unknown;
+    max_per_hour?: unknown;
+    capture_seconds?: unknown;
+  };
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
     /**

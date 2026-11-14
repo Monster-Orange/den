@@ -41,6 +41,27 @@
     "fb.shot": "Captura de esta página",
     "fb.ncap":
       "No se pudo capturar esta página. Puedes enviar el informe sin captura.",
+    "fb.shotNote":
+      "Incluye el diálogo o panel abierto. Arrastra sobre ella para tapar lo privado.",
+    "fb.nos": "No incluir captura",
+    "fb.undo": "Deshacer",
+    "fb.masks": "{n} zonas tapadas",
+    "fb.masks.one": "{n} zona tapada",
+    "fb.kbdMask": "Tapar por tamaño y posición",
+    "fb.mx": "Izquierda %",
+    "fb.my": "Arriba %",
+    "fb.mw": "Ancho %",
+    "fb.mh": "Alto %",
+    "fb.addMask": "Añadir zona",
+    "fb.maskAll": "Tapar toda la captura",
+    "fb.rmMask": "Quitar",
+    "fb.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
+    "fb.revShot": "Captura tras ocultar ({n} zonas tapadas)",
+    "fb.revShot.one": "Captura tras ocultar ({n} zona tapada)",
+    "fb.sentShot":
+      "La captura está guardada y copiada: pégala en la incidencia.",
+    "fb.sentShotSaved":
+      "La captura está guardada como archivo: añádela a la incidencia.",
     "fb.next": "Siguiente: Incluir",
     "fb.back": "Atrás",
     "fb.send": "Enviar como incidencia de GitHub",

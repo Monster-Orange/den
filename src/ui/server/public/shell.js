@@ -151,6 +151,27 @@
     "fb.shot": "Screenshot of this page",
     "fb.ncap":
       "This page couldn't be captured. You can send the report without a screenshot.",
+    "fb.shotNote":
+      "Includes the open dialog or drawer. Drag on it to black out anything private.",
+    "fb.nos": "Don't include a screenshot",
+    "fb.undo": "Undo",
+    "fb.masks": "{n} areas hidden",
+    "fb.masks.one": "{n} area hidden",
+    "fb.kbdMask": "Mask by size and position",
+    "fb.mx": "Left %",
+    "fb.my": "Top %",
+    "fb.mw": "Width %",
+    "fb.mh": "Height %",
+    "fb.addMask": "Add area",
+    "fb.maskAll": "Mask the whole screenshot",
+    "fb.rmMask": "Remove",
+    "fb.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
+    "fb.revShot": "Screenshot after masking ({n} areas hidden)",
+    "fb.revShot.one": "Screenshot after masking ({n} area hidden)",
+    "fb.sentShot":
+      "The screenshot is saved and copied: paste it into the issue.",
+    "fb.sentShotSaved":
+      "The screenshot is saved as a file: add it to the issue.",
     "fb.next": "Next: Include",
     "fb.back": "Back",
     "fb.send": "Send as a GitHub issue",

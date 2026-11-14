@@ -512,3 +512,199 @@ describe("FB: Report an issue, the dialog", () => {
     expect(errors).toEqual([]);
   });
 });
+
+/** One pixel (r, g, b) of a canvas, or of an image drawn at full size. */
+async function pixelAt(
+  p: Page,
+  sel: string,
+  x: number,
+  y: number,
+): Promise<number[]> {
+  return p.evaluate(
+    ([s, px, py]) => {
+      const el = document.querySelector(s as string) as
+        | HTMLCanvasElement
+        | HTMLImageElement;
+      let c = el as HTMLCanvasElement;
+      if (el.tagName !== "CANVAS") {
+        const img = el as HTMLImageElement;
+        c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext("2d")!.drawImage(img, 0, 0);
+      }
+      return [
+        ...c
+          .getContext("2d")!
+          .getImageData(
+            Math.round(px as number),
+            Math.round(py as number),
+            1,
+            1,
+          )
+          .data.slice(0, 3),
+      ];
+    },
+    [sel, x, y],
+  );
+}
+
+const near = (a: number[], b: number[]) =>
+  a.every((v, i) => Math.abs(v - b[i]) <= 12);
+
+/**
+ * The status drawer open, with a magenta square in it (where on the page:
+ * its centre, in CSS px, which are the screenshot's pixels).
+ */
+async function drawerWithMark(p: Page): Promise<{ x: number; y: number }> {
+  await p.click("#den-status");
+  await p.waitForSelector("#den-status-drawer");
+  await p.evaluate(() => {
+    const m = document.createElement("div");
+    m.id = "fb-mark";
+    m.style.cssText = "width:120px;height:120px;background:rgb(255,0,255)";
+    document.querySelector("#den-status-drawer .den-db")!.prepend(m);
+  });
+  const b = (await p.locator("#fb-mark").boundingBox())!;
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+}
+
+describe("FB: the screenshot and its mask", () => {
+  it("a report opened over a drawer includes the drawer in the shot, and the drawer stays open", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    const mark = await drawerWithMark(p);
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).locator("canvas[data-shot]").waitFor();
+    expect(
+      near(
+        await pixelAt(p, "canvas[data-shot]", mark.x, mark.y),
+        [255, 0, 255],
+      ),
+    ).toBe(true);
+    expect(await p.isVisible("#den-status-drawer")).toBe(true);
+    // The form itself is not in it.
+    await dlg(p)
+      .getByText(/Drag on it to black out/)
+      .waitFor();
+    await p.context().close();
+  });
+
+  it("drag to black out; Undo; Review shows the masked image; Sent saves and copies it", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    const mark = await drawerWithMark(p);
+    const vw = await p.evaluate(() => innerWidth);
+    const vh = await p.evaluate(() => innerHeight);
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    const c = dlg(p).locator("canvas[data-shot]");
+    await c.waitFor();
+    const cb = (await c.boundingBox())!;
+    const at = (fx: number, fy: number) => ({
+      x: cb.x + fx * cb.width,
+      y: cb.y + fy * cb.height,
+    });
+    const drag = async () => {
+      const a = at(mark.x / vw - 0.03, mark.y / vh - 0.03);
+      const b = at(mark.x / vw + 0.03, mark.y / vh + 0.03);
+      await p.mouse.move(a.x, a.y);
+      await p.mouse.down();
+      await p.mouse.move(b.x, b.y, { steps: 4 });
+      await p.mouse.up();
+    };
+    await drag();
+    await dlg(p).getByText("1 area hidden").waitFor();
+    await dlg(p).locator('[data-act="undo"]').click();
+    await dlg(p).getByText("0 areas hidden").waitFor();
+    await drag();
+    await dlg(p).getByText("1 area hidden").waitFor();
+    expect(
+      near(await pixelAt(p, "canvas[data-shot]", mark.x, mark.y), [0, 0, 0]),
+    ).toBe(true);
+    await toReview(p);
+    const img = dlg(p).locator("img[data-shot-review]");
+    await img.waitFor();
+    expect(await img.getAttribute("alt")).toBe(
+      "Screenshot after masking (1 area hidden)",
+    );
+    expect(
+      near(
+        await pixelAt(p, "img[data-shot-review]", mark.x, mark.y),
+        [0, 0, 0],
+      ),
+    ).toBe(true);
+    const download = p.waitForEvent("download");
+    await dlg(p).locator('[data-act="send"]').click();
+    expect((await download).suggestedFilename()).toBe("report-screenshot.png");
+    await dlg(p).locator("[data-saved]").waitFor();
+    await p.context().close();
+  });
+
+  it("the keyboard way: an area by size and position, or the whole screenshot", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).locator("canvas[data-shot]").waitFor();
+    await dlg(p).getByText("Mask by size and position").click();
+    await dlg(p).locator('[data-m="x"]').fill("10");
+    await dlg(p).locator('[data-m="y"]').fill("10");
+    await dlg(p).locator('[data-m="w"]').fill("30");
+    await dlg(p).locator('[data-m="h"]').fill("30");
+    await dlg(p).locator('[data-act="addmask"]').click();
+    await dlg(p)
+      .getByText("10% from the left, 10% from the top, 30% × 30%")
+      .waitFor();
+    // Focus stays on the button the person pressed.
+    expect(
+      await p.evaluate(() => document.activeElement?.getAttribute("data-act")),
+    ).toBe("addmask");
+    await dlg(p).locator('[data-act="maskall"]').click();
+    await dlg(p).getByText("2 areas hidden").waitFor();
+    await toReview(p);
+    expect(
+      near(await pixelAt(p, "img[data-shot-review]", 5, 5), [0, 0, 0]),
+    ).toBe(true);
+    await p.context().close();
+  });
+
+  it("Don't include a screenshot: none on Review, nothing saved after sending", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    let downloads = 0;
+    p.on("download", () => downloads++);
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).locator("canvas[data-shot]").waitFor();
+    await dlg(p).locator('[data-f="noshot"]').check();
+    expect(await dlg(p).locator("canvas[data-shot]").isVisible()).toBe(false);
+    await toReview(p);
+    expect(await dlg(p).locator("img[data-shot-review]").count()).toBe(0);
+    await dlg(p).locator('[data-act="send"]').click();
+    await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
+    await p.waitForTimeout(300);
+    expect(downloads).toBe(0);
+    expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
+    await p.context().close();
+  });
+
+  it("a page that can't be captured offers to send without one", async () => {
+    if (skip()) return;
+    const f = fresh();
+    const p = await page(f);
+    await p.route("**/vendor/html-to-image.js", (r) =>
+      r.fulfill({ status: 404, body: "" }),
+    );
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p)
+      .getByText(
+        "This page couldn't be captured. You can send the report without a screenshot.",
+      )
+      .waitFor();
+    expect(await dlg(p).locator("canvas[data-shot]").count()).toBe(0);
+    await toReview(p);
+    expect(await dlg(p).locator("img[data-shot-review]").count()).toBe(0);
+    await dlg(p).locator('[data-act="send"]').click();
+    await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
+    expect(f.sent).toHaveLength(1);
+    await p.context().close();
+  });
+});

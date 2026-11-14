@@ -193,6 +193,7 @@ describe("FB: Report an issue, the server's side", () => {
       repos: [{ repo: "acme-eng/engine" }],
       github: { signedIn: true },
       maxPerHour: 5,
+      captureSeconds: 15,
       sentThisHour: 0,
     });
   });
@@ -294,6 +295,20 @@ describe("FB: Report an issue, the server's side", () => {
     expect(mine.status).toBe(200);
   });
 
+  it("feedback.capture_seconds: how long the screenshot may take (15)", () => {
+    expect(feedbackSettings({}, {}, {}).captureSeconds).toBe(15);
+    expect(
+      feedbackSettings({}, { capture_seconds: 30 }, {}).captureSeconds,
+    ).toBe(30);
+    expect(
+      feedbackSettings({}, { capture_seconds: 30 }, { capture_seconds: 5 })
+        .captureSeconds,
+    ).toBe(5);
+    expect(
+      feedbackSettings({}, {}, { capture_seconds: 0 }).captureSeconds,
+    ).toBe(15);
+  });
+
   it("feedback.enabled: false turns every route off", () => {
     expect(feedbackSettings({}, { enabled: false }, {}).enabled).toBe(false);
     expect(feedbackSettings({}, {}, { enabled: false }).enabled).toBe(false);
@@ -307,6 +322,7 @@ describe("FB: Report an issue, the server's side", () => {
       enabled: true,
       maxPerHour: 2,
       repos: ["acme-eng/engine", "acme-dist/den"],
+      captureSeconds: 15,
     });
   });
 });

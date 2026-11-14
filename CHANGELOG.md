@@ -52,8 +52,17 @@ config and manifest changes a distribution must make to move to it under
   it repaints. A test fails on any pop-up that shows without one, and on any new
   pop-up in the page code until it is listed. On a phone the button is in the
   top bar, with the icon and the word and no shortcut; Runs moves out of the
-  top bar there, since the dock bar has it. The screenshot and My reports come
-  next.
+  top bar there, since the dock bar has it.
+- Report an issue takes a screenshot of the page first, with whatever dialog,
+  drawer or menu is open, and leaves the form itself out. On Write, drag on it
+  to black out anything private, or Undo; or add areas by size and position,
+  or mask the whole screenshot, from the keyboard; or leave the screenshot out.
+  Review shows the image after masking. GitHub can't attach images through its
+  API, so after sending the masked screenshot is saved as a file and copied, to
+  paste into the issue. It never goes to Den's server. A page that can't be
+  captured within `feedback.capture_seconds` (15) offers to send without one.
+  The screenshot uses html-to-image 1.11.13 (MIT), pinned and served from
+  Den's own server. My reports comes next.
 
 - Settings › Den's address: the install's address (web.url) as a page
   control. Check and save asks the address to answer as this Den before

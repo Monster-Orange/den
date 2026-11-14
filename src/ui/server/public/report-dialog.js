@@ -13,6 +13,11 @@
  * filled-in new-issue tab as the other way. The same title open: F5. Over
  * the hour's limit: F7. Finish later: F8 (a draft on this computer).
  *
+ * The screenshot (report-shot.js) is taken before the dialog opens, with
+ * whatever pop-up is open; the person masks it on Write, sees it masked on
+ * Review, and after sending it is saved and copied to paste into the issue
+ * (GitHub's API can't attach images). It never goes to Den's server.
+ *
  * Framework-free and self-contained (the UI-kit shape): its own CSS on the
  * theme tokens, its words through denShell.t (fb.* keys, en/es/ja).
  */
@@ -63,12 +68,20 @@ const CSS = `
 .fb-btns .fb-pri{background:var(--accent-fill, var(--accent));border-color:var(--accent-fill, var(--accent));color:var(--on-accent)}
 .fb-btns button:focus-visible,.fb-btns a:focus-visible{outline:2px solid var(--accent-text, var(--accent));outline-offset:2px}
 .fb-ico{width:16px;height:16px;flex:none}
+.fb-shot{border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--sunken, var(--bg));line-height:0}
+.fb-shot canvas,.fb-shot img{width:100%;height:auto;display:block;cursor:crosshair;touch-action:none}
+.fb-shot img{cursor:default}
+.fb-kbd input[type=number]{width:5em;font:13px var(--sans);padding:4px 6px;border:1px solid var(--border-strong, var(--border));border-radius:6px;background:var(--bg);color:var(--text)}
+.fb-masks{margin:6px 0 0;padding-inline-start:18px;font-size:13px;display:grid;gap:4px}
+.fb-tools button{min-height:32px;padding:0 10px;border-radius:.2rem;border:1px solid var(--border-strong, var(--border));background:var(--surface, var(--bg));color:var(--text);font:13px var(--sans);cursor:pointer}
 @media (max-width:600px){
   .fb-dlg{width:100%;max-width:100%;margin:0;inset:auto 0 0 0;border-radius:12px 12px 0 0;max-height:92vh}
   .fb-b{padding:14px}
   .fb-btns{flex-direction:column;position:sticky;bottom:-14px;background:var(--raised, var(--surface, var(--bg)));padding-bottom:14px}
   .fb-btns button,.fb-btns a{width:100%;justify-content:center}
   .fb-steps .fb-wide{display:none}
+  .fb-shot{text-align:center}
+  .fb-shot canvas,.fb-shot img{max-height:45vh;width:auto;max-width:100%;display:inline-block}
 }
 @media (min-width:601px){.fb-steps .fb-narrow{display:none}}
 `;
@@ -189,7 +202,6 @@ export async function openReport(opts = {}) {
   const dlg = document.createElement("dialog");
   dlg.className = "fb-dlg";
   dlg.setAttribute("aria-modal", "true");
-  document.body.append(dlg);
   const d = opts.draft || {};
   const prefs = loadPrefs();
   const st = {
@@ -217,15 +229,32 @@ export async function openReport(opts = {}) {
     addTo: null,
     fileNew: false,
     viaApp: false,
+    // The screenshot: a canvas, or null when the page couldn't be taken.
+    shot: null,
+    masks: [],
+    noShot: false,
+    drag: null,
+    saved: null,
   };
   const self = { dlg, st, close };
   current = self;
 
-  const [info, diag] = await Promise.all([
+  const [info, diag, shots] = await Promise.all([
     api("GET", "/api/report"),
     api("GET", "/api/report/diagnostics"),
+    import("/report-shot.js").catch(() => null),
   ]);
   st.info = info.data || {};
+  // Taken before the dialog is on the page, so it shows what the person
+  // saw: the page and any pop-up open over it.
+  st.shot = shots
+    ? await shots.capture({
+        seconds: st.info.captureSeconds || 15,
+        skip: (el) => el.classList?.contains("fb-dlg"),
+      })
+    : null;
+  if (current !== self) return self;
+  document.body.append(dlg);
   st.diag = diag.data?.sections || {};
   st.repo = st.repo || st.info.repos?.[0]?.repo || "";
   if (!st.sections) {
@@ -235,6 +264,28 @@ export async function openReport(opts = {}) {
 
   function allSections() {
     return { ...st.diag, ...st.client };
+  }
+  /** Whether a screenshot goes with the report. */
+  function shotOn() {
+    return !!st.shot && !st.noShot;
+  }
+  function maskedShot() {
+    return shots.masked(st.shot, st.masks);
+  }
+  const pct = (v) => Math.round(v * 100);
+  /** Draws the screenshot with its masks (and one being dragged). */
+  function paintShot() {
+    const c = dlg.querySelector("canvas[data-shot]");
+    if (!c || !st.shot) return;
+    c.width = st.shot.width;
+    c.height = st.shot.height;
+    const g = c.getContext("2d");
+    g.drawImage(maskedShot(), 0, 0);
+    if (st.drag?.b) {
+      const r = shots.rectOf(st.drag.a, st.drag.b);
+      g.fillStyle = "rgba(0,0,0,.6)";
+      g.fillRect(r.x * c.width, r.y * c.height, r.w * c.width, r.h * c.height);
+    }
   }
   function dirty() {
     return (
@@ -271,7 +322,8 @@ export async function openReport(opts = {}) {
   const linkBtn = (href, label, pri) =>
     `<a href="${esc(href)}" target="_blank" rel="noopener"${pri ? ' class="fb-pri"' : ""}>${esc(label)}</a>`;
 
-  function render() {
+  /** Draws the step; `focusSel` keeps focus where the person was. */
+  function render(focusSel) {
     let h = "";
     let role = "dialog";
     let label = t("fb.title");
@@ -289,7 +341,37 @@ export async function openReport(opts = {}) {
 <label class="fb-f">${esc(t("fb.titleL"))}<input type="text" data-f="title" maxlength="200" value="${esc(st.title)}"></label>
 <label class="fb-f">${esc(t("fb.desc"))}<textarea data-f="description" maxlength="20000">${esc(st.description)}</textarea></label>
 <div class="fb-h">${esc(t("fb.shot"))}</div>
-<p class="fb-fine">${esc(t("fb.ncap"))}</p>${err}
+${
+  st.shot
+    ? `<p class="fb-fine">${esc(t("fb.shotNote"))}</p>
+<div class="fb-shot"${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("fb.shot"))}"></canvas></div>
+<div class="fb-tools">${st.noShot ? "" : btn("undo", t("fb.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("fb.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("fb.masks", { n: st.masks.length }))}</span></div>
+${
+  st.noShot
+    ? ""
+    : `<details class="fb-kbd"${st.kbd ? " open" : ""}><summary>${esc(t("fb.kbdMask"))}</summary>
+<div class="fb-tools">${[
+        ["x", "fb.mx"],
+        ["y", "fb.my"],
+        ["w", "fb.mw"],
+        ["h", "fb.mh"],
+      ]
+        .map(
+          ([k, l]) =>
+            `<label>${esc(t(l))} <input type="number" data-m="${k}" min="0" max="100" step="1" value="${k === "w" || k === "h" ? 20 : 0}"></label>`,
+        )
+        .join(
+          "",
+        )}${btn("addmask", t("fb.addMask"))}${btn("maskall", t("fb.maskAll"))}</div>
+<ul class="fb-masks">${st.masks
+        .map(
+          (m, i) =>
+            `<li>${esc(t("fb.area", { x: pct(m.x), y: pct(m.y), w: pct(m.w), h: pct(m.h) }))} <button type="button" data-act="rmmask" data-i="${i}">${esc(t("fb.rmMask"))}</button></li>`,
+        )
+        .join("")}</ul></details>`
+}`
+    : `<p class="fb-fine" role="status">${esc(t("fb.ncap"))}</p>`
+}${err}
 <div class="fb-btns">${btn("next", t("fb.next"), true)}${btn("later", t("fb.later"))}${btn("cancel", t("fb.cancel"))}</div>`;
     } else if (st.step === "include") {
       label = t("fb.incH");
@@ -323,7 +405,11 @@ ${Object.entries(secs)
               .join("")}</select>`
           : `<b>${esc(st.repo)}</b>`
       }<span class="fb-pill">${esc(t("fb.pub"))}</span></div>
-<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>
+<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${
+        shotOn()
+          ? `<div class="fb-h">${esc(t("fb.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("fb.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`
+          : ""
+      }
 <div class="fb-warn" role="note"><b>${esc(t("fb.pub"))}.</b> ${esc(t("fb.pubW"))}</div>${err}
 <div class="fb-btns">${btn("send", t("fb.send"), true)}${btn("later", t("fb.later"))}${btn("back-include", t("fb.back"))}</div>`;
     } else if (st.step === "signin") {
@@ -356,7 +442,11 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       label = t("fb.sentH");
       h = `<h2 tabindex="-1">${esc(t("fb.sentH"))}</h2><p>${esc(
         t(st.sent.added ? "fb.addedB" : "fb.sentB", { title: st.title }),
-      )}</p>
+      )}</p>${
+        st.saved
+          ? `<p data-saved>${esc(t(st.saved.copied ? "fb.sentShot" : "fb.sentShotSaved"))}</p>`
+          : ""
+      }
 <div class="fb-btns">${st.sent.url ? linkBtn(st.sent.url, t("fb.openIssue"), true) : ""}${btn("done", t("fb.done"), !st.sent.url)}</div>`;
     } else if (st.step === "limit") {
       role = "alertdialog";
@@ -385,10 +475,12 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
     dlg.setAttribute("aria-label", label);
     dlg.dataset.step = st.step;
     dlg.innerHTML = `<div class="fb-b">${h}</div>`;
+    paintShot();
     const focus =
-      st.step === "write"
+      (focusSel && dlg.querySelector(focusSel)) ||
+      (st.step === "write"
         ? dlg.querySelector('[data-f="title"]')
-        : dlg.querySelector("h2");
+        : dlg.querySelector("h2"));
     focus?.focus();
   }
 
@@ -424,11 +516,19 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
     go("later");
   }
 
+  /** Sent: then the masked screenshot is saved and copied to paste. */
+  function sent(data) {
+    st.sent = data || {};
+    go("sent");
+    if (!shotOn()) return;
+    void shots.saveAndCopy(maskedShot()).then((r) => {
+      st.saved = r.saved || r.copied ? r : null;
+      if (current === self && st.step === "sent") render();
+    });
+  }
+
   function onAnswer(r) {
-    if (r.status === 200 && r.data.ok) {
-      st.sent = r.data;
-      return go("sent");
-    }
+    if (r.status === 200 && r.data.ok) return sent(r.data);
     if (r.status === 429) {
       const next = r.data.nextAt ? Date.parse(r.data.nextAt) : Date.now();
       st.limit = {
@@ -499,10 +599,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       const p = await api("GET", `/api/report/github-send/${id}`);
       const f = p.data.flow;
       if (!f || f.state === "pending") return setTimeout(poll, 2000);
-      if (f.state === "ok") {
-        st.sent = f.result || {};
-        return go("sent");
-      }
+      if (f.state === "ok") return sent(f.result);
       st.error =
         f.message || (f.state === "expired" ? t("fb.expired") : t("fb.denied"));
       go("failed");
@@ -557,10 +654,44 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
     const f = el.getAttribute?.("data-f");
     if (f === "redact") st.redact = el.checked;
     if (f === "remember") st.remember = el.checked;
+    if (f === "noshot") {
+      st.noShot = el.checked;
+      render('[data-f="noshot"]');
+    }
     if (f === "repo") {
       st.repo = el.value;
       void preview();
     }
+  });
+  // The mask tool: drag on the screenshot to black out a rectangle.
+  const frac = (e, c) => {
+    const r = c.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) / r.width,
+      y: (e.clientY - r.top) / r.height,
+    };
+  };
+  dlg.addEventListener("pointerdown", (e) => {
+    const c = e.target.closest?.("canvas[data-shot]");
+    if (!c) return;
+    e.preventDefault();
+    c.setPointerCapture?.(e.pointerId);
+    st.drag = { a: frac(e, c), b: null };
+  });
+  dlg.addEventListener("pointermove", (e) => {
+    const c = e.target.closest?.("canvas[data-shot]");
+    if (!c || !st.drag) return;
+    st.drag.b = frac(e, c);
+    paintShot();
+  });
+  dlg.addEventListener("pointerup", (e) => {
+    const c = e.target.closest?.("canvas[data-shot]");
+    const d0 = st.drag;
+    st.drag = null;
+    if (!c || !d0) return;
+    const r = shots.rectOf(d0.a, frac(e, c));
+    if (r.w * r.h > 0.0001) st.masks.push(r);
+    render('[data-act="undo"]');
   });
   dlg.addEventListener("click", (e) => {
     const b = e.target.closest?.("[data-act]");
@@ -572,6 +703,26 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
         return render();
       }
       return go("include");
+    }
+    if (act === "undo") {
+      st.masks.pop();
+      return render('[data-act="undo"]');
+    }
+    if (act === "addmask") {
+      const v = (k) => dlg.querySelector(`[data-m="${k}"]`)?.value;
+      const m = shots.rectOfPercent(v("x"), v("y"), v("w"), v("h"));
+      st.kbd = true;
+      if (m.w > 0 && m.h > 0) st.masks.push(m);
+      return render('[data-act="addmask"]');
+    }
+    if (act === "maskall") {
+      st.kbd = true;
+      st.masks.push({ x: 0, y: 0, w: 1, h: 1 });
+      return render('[data-act="maskall"]');
+    }
+    if (act === "rmmask") {
+      st.masks.splice(Number(b.getAttribute("data-i")), 1);
+      return render('[data-act="addmask"]');
     }
     if (act === "all" || act === "none") {
       for (const k of Object.keys(allSections()))
