@@ -12,6 +12,7 @@ import {
   apiOnlyService,
   readApiOnlyAudit,
   writeApiOnlyRules,
+  apiOnlyEngines,
 } from "../../../src/shared/agents/api-only.js";
 import {
   loadPersonas,
@@ -80,6 +81,32 @@ describe("D47: a manifest's api_only becomes a rule", () => {
       } as Partial<RawManifest>),
     );
     expect(s?.project).toBe("vlt");
+  });
+
+  it("agents.api_only_engines adds engines and their folders; a bad entry is left out", () => {
+    expect(
+      apiOnlyEngines({
+        clis: ["boxer", "my-engine.2", "rm -rf", 3, ""],
+        dirs: ["~/.boxer", "/opt/boxer/vols", "relative/dir", 7],
+      }),
+    ).toEqual({
+      engines: ["boxer", "my-engine.2"],
+      engineDirs: ["~/.boxer", "/opt/boxer/vols"],
+    });
+    for (const none of [undefined, null, "boxer", [], { clis: "boxer" }])
+      expect(apiOnlyEngines(none)).toEqual({});
+  });
+
+  it("the rules file carries the extra engines for the hook", () => {
+    const state = path.join(root, "state-e");
+    const files = writeApiOnlyRules(state, {
+      services: [apiOnlyService(repo, manifest({ agents: "api_only" }))!],
+      engines: ["boxer"],
+      engineDirs: ["~/.boxer"],
+    })!;
+    const r = JSON.parse(fs.readFileSync(files.rules, "utf-8"));
+    expect(r.engines).toEqual(["boxer"]);
+    expect(r.engineDirs).toEqual(["~/.boxer"]);
   });
 
   it("without agents: api_only, no rule", () => {

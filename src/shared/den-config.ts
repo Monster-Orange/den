@@ -1126,6 +1126,12 @@ export interface AgentsConfig {
    */
   uploads?: { max_bytes?: unknown; keep_days?: unknown; dir?: unknown };
   /**
+   * 0.4.46: container engines beyond Den's defaults whose CLI an api_only
+   * service's guardrail treats as Docker's, and their folders:
+   * `{ clis: [...], dirs: [...] }` (agents/api-only.ts).
+   */
+  api_only_engines?: { clis?: unknown; dirs?: unknown };
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -1159,6 +1165,8 @@ export const AGENTS_RESERVED_KEYS = [
   "exited_shell_minutes",
   // AG-DROP: files dropped onto an agent's terminal.
   "uploads",
+  // 0.4.46: engines the api_only guardrail treats as Docker's.
+  "api_only_engines",
   // AG-DROP-2: files an agent's links and downloads never reach.
   "files",
   // AG-10.5, AG-11.1: the distribution's persona categories and roles.

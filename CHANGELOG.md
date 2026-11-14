@@ -4,6 +4,28 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.46] - unreleased
+
+### Security
+
+- A service agents may reach only through its API (`agents: api_only`)
+  was guarded against Docker, Podman and OrbStack only. Every container
+  engine is now held to the same: `nerdctl`, `container`, `kiri` (and
+  `kiri raw …`), and the same through `lima`, `limactl shell`, `colima
+  nerdctl` and `colima ssh`; and the folders engines keep VM disks and
+  volumes in are guarded too, for every such service. More engines go
+  in `agents.api_only_engines` (`clis`, `dirs`).
+
+### Added
+
+- A slow action now shows that it is working, then what happened: a
+  pop-up opens when Den or Hub hasn't answered within 300 ms. Try again
+  sends the same request again and Den runs it once; Check again asks
+  how it ended without sending it again. `ui.request_memory_seconds`
+  (default 600) is how long Den remembers. On it: Link ticked projects,
+  Connect, Start fresh, Resume, Relaunch, Start agent, Restart after
+  this turn and Settings saves. Restart Den reads the same way.
+
 ## [0.4.45] - unreleased
 
 ### Changed

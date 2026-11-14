@@ -4112,8 +4112,22 @@ it. With rules, the hook also sees `Write`, `Edit`, `MultiEdit`,
 - with a `machine`: `orb`/`orbctl` on that machine (or with no machine
   named: the default one), `ssh`/`scp`/`rsync` to `<machine>.orb.local`
   or `<machine>@orb`, Docker on that machine's context
-  (`--context`, `DOCKER_CONTEXT`, `DOCKER_HOST`), and `~/OrbStack` and
-  `~/.orbstack`.
+  (`--context`, `DOCKER_CONTEXT`, `DOCKER_HOST`);
+- every container engine is held to the same as `docker` (0.4.46):
+  `podman`, `nerdctl`, `container`, `kiri` (and `kiri raw …`), and the
+  same through `lima <cmd>`, `limactl shell <vm> <cmd>`, `colima nerdctl`
+  and `colima ssh`; and the folders the engines keep VM disks and
+  volumes in: `~/OrbStack`, `~/.orbstack`, `~/.colima`, `~/.lima`,
+  `~/.kiri`, `~/Kiri`, `~/.local/share/containers` and Docker Desktop's.
+
+More engines, and their folders, go in the distribution's config:
+
+```yaml
+agents:
+  api_only_engines:
+    clis: [boxer] # held to the same as docker
+    dirs: [~/.boxer] # `~/…` or absolute
+```
 
 It is about the service instance, matched by name, never by where a
 command runs. Another instance from the same repo under its own compose
