@@ -84,6 +84,14 @@ config and manifest changes a distribution must make to move to it under
   that goes missing.
 - An agent can no longer change Local environment through the older
   `/api/local-dev` route. These new settings are a person's only.
+- An agent's token can no longer change what is a person's to change.
+  Before, it reached 48 such writes: deciding approvals, settings,
+  deploys, projects, other agents' records, the bell, this install's Hub
+  link, sending reports, and opening an editor or a terminal. Each is now
+  refused before its handler runs, and an agent asks through an approval.
+  Service exec runs only up, down or restart on local for an agent, on the
+  server as in the MCP tool. A test walks every route that changes
+  something: it is a person's, or listed with why an agent may call it.
 - A report is filed with its kind's label: bug, enhancement (an idea) or
   question, GitHub's default labels. A repo without that label gets the report
   without one. Den only looks labels up and never makes one in someone's repo.

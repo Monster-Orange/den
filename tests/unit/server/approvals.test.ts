@@ -151,10 +151,10 @@ describe("approverAllowed: only a signed-in browser session", () => {
     if (g.ok) expect(approverAllowed(r, g)).toMatchObject({ ok: false });
   });
 
-  it("an agent's curl with its actor token: refused", () => {
+  it("an agent's curl with its actor token: refused (by the guard: /decide is a person's)", () => {
     expect(
-      allowed({ ...ORIGIN, authorization: "Bearer den_at_agent" }).approver,
-    ).toMatchObject({ ok: false });
+      allowed({ ...ORIGIN, authorization: "Bearer den_at_agent" }),
+    ).toEqual({ guard: false, approver: null });
   });
 
   it("an agent's curl with no credential and the server-start CSRF token (the loopback page's): refused", () => {
@@ -180,8 +180,8 @@ describe("approverAllowed: only a signed-in browser session", () => {
         cookie: `den_session_${PORT}=good`,
         "x-den-approve-key": AK,
         authorization: "Bearer den_at_agent",
-      }).approver,
-    ).toMatchObject({ ok: false });
+      }),
+    ).toEqual({ guard: false, approver: null });
   });
 
   it("the session cookie with the server-start CSRF token instead of its own: refused by the guard", () => {

@@ -44,7 +44,7 @@ const LISTING: Record<string, Entry> = {
   relocate: slot("0.4.47", "a checkout moved on disk"),
   "use-local": page("local-dev.html", "/api/workspaces/services/mode"),
   "use-managed": page("local-dev.html", "/api/workspaces/services/mode"),
-  setup: slot("0.4.47", "clone a project's repos"),
+  setup: page("local-dev.html", "runWorkspaceCmd('setup')"),
   sync: page("local-dev.html", "/api/workspace/sync"),
   org: R,
   init: script("scaffolds a repo's manifest"),
