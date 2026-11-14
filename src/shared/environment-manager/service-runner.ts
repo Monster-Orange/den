@@ -920,10 +920,13 @@ export function pruneDeadDaemons(): string[] {
  * child processes (the web server's startup, which used to hold the event
  * loop for the `docker ps`).
  */
-export async function pruneDeadDaemonsAsync(): Promise<string[]> {
+export async function pruneDeadDaemonsAsync(
+  /** Each record dropped, and why (restore-on-boot.ts reads it). */
+  onPruned?: (address: string, why: "unresolved" | "stale" | "dead") => void,
+): Promise<string[]> {
   const daemons = listDaemons();
   if (daemons.length === 0) return [];
-  return pruneAgainst(daemons, await runningContainerBasesAsync());
+  return pruneAgainst(daemons, await runningContainerBasesAsync(), onPruned);
 }
 
 /** The running opctl containers' base names, or null without opctl. */
@@ -936,6 +939,7 @@ export async function runningContainerBasesAsync(): Promise<Set<string> | null> 
 function pruneAgainst(
   daemons: DaemonRecord[],
   running: Set<string> | null,
+  onPruned?: (address: string, why: "unresolved" | "stale" | "dead") => void,
 ): string[] {
   const pruned: string[] = [];
   for (const d of daemons) {
@@ -949,6 +953,7 @@ function pruneAgainst(
       if (root === "here" && !canResolveDaemonAddress(d)) {
         unregisterDaemon(d.address);
         pruned.push(d.address);
+        onPruned?.(d.address, "unresolved");
         continue;
       }
       // A checkout that is gone, or one the service has moved away from
@@ -956,11 +961,13 @@ function pruneAgainst(
       if (daemonStaleReason(d, running)) {
         unregisterDaemon(d.address);
         pruned.push(d.address);
+        onPruned?.(d.address, "stale");
         continue;
       }
       if (isDaemonVerifiablyDead(d, running)) {
         unregisterDaemon(d.address);
         pruned.push(d.address);
+        onPruned?.(d.address, "dead");
       }
     } catch {
       /* keep the entry on any error */

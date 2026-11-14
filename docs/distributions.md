@@ -2297,6 +2297,20 @@ terminal and agent) as launchd jobs, restarted if they exit:
 ./bin/acme service uninstall   # stop them and remove their plists
 ```
 
+**Back after a restart.** When the machine restarts, every project's
+services that were up come back up by themselves, through the same Up a
+person presses (its order, dependencies and secrets). Den keeps the
+record of what runs: `up` puts a service on it and `down` takes it off,
+so a service someone stopped stays stopped. Den waits for Docker at
+boot before it looks.
+
+```yaml
+# config/local/user.yml
+services:
+  restore_on_boot: false # true (the default)
+  restore_wait_seconds: 300 # how long to wait for Docker at boot
+```
+
 With the service installed, `web` works through launchd. `web restart`
 restarts the job (`launchctl kickstart -k`) and names its new pid and the
 service's log. `web up` starts the job when it isn't answering. `web down`

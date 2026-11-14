@@ -18,6 +18,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- After the machine restarts, every project's services that were up
+  come back up by themselves (`services.restore_on_boot`, on by default),
+  through the same Up a person presses. Den keeps the record of what
+  runs; a service someone stopped is off it, so it stays stopped. At
+  boot Den waits for Docker first (`services.restore_wait_seconds`, 300).
 - An agent that started while Hub didn't answer (its Hub tools never
   loaded) no longer waits for a person to press Restart. Once Hub
   answers again, Den restarts it after its turn, with the same

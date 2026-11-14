@@ -331,6 +331,11 @@ export interface WorkspaceBlueprint {
  * Only affects settings that should differ between engineers on the same team.
  */
 export interface UserConfig {
+  /**
+   * 0.4.46: after the machine restarts, the services that were up come back
+   * up (restore_on_boot, true by default; restore-on-boot.ts).
+   */
+  services?: { restore_on_boot?: unknown; restore_wait_seconds?: unknown };
   /** Per-engineer secrets override (e.g. provider: env). */
   secrets?: SecretsConfig;
   /**
@@ -440,6 +445,11 @@ export interface UserConfig {
      * (the default), 1d or 7d. Interrupted agents are never forgotten.
      */
     remove_stopped_after?: unknown;
+    /**
+     * 0.4.46: after the machine restarts, every agent that was running
+     * comes back on its own conversation (true, the default).
+     */
+    restore_on_boot?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */

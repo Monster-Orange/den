@@ -26,6 +26,7 @@ import { healthCheckFields, type HealthCheckType } from "./health-row.js";
 import { notCheckedReason } from "../../shared/health/not-checked.js";
 import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
 import * as http from "http";
+import { EventEmitter } from "events";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
@@ -6028,7 +6029,11 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 // here held the event loop at startup); /api/service/daemons waits for it,
 // so the UI never gets a stale entry on its first load.
 loadDaemonsFromFile();
-startupPrune = pruneDeadDaemonsAsync()
+// 0.4.46 services.restore_on_boot: the record as the last run left it, and
+// why the prune drops any of it (restore-on-boot.ts).
+const daemonsAtStart = listDaemons();
+const prunedAtStart = new Map<string, "unresolved" | "stale" | "dead">();
+startupPrune = pruneDeadDaemonsAsync((a, why) => prunedAtStart.set(a, why))
   .then((pruned) => {
     if (pruned.length > 0)
       console.error(
@@ -6038,6 +6043,100 @@ startupPrune = pruneDeadDaemonsAsync()
   .catch((e: unknown) => {
     console.error(`[server] stale-daemon sweep failed: ${String(e)}`);
   });
+
+// 0.4.46 services.restore_on_boot: what was up before the machine (or Den)
+// restarted, and isn't now, comes back through Den's own Up, one project at
+// a time. A person's down took it off the record, so it stays down.
+void (async () => {
+  await startupPrune;
+  const m = await import("../../shared/environment-manager/restore-on-boot.js");
+  let wait: number;
+  try {
+    if (!m.servicesRestoreOnBoot() || daemonsAtStart.length === 0) return;
+    wait = m.servicesRestoreWaitSeconds();
+  } catch (e) {
+    serverLog(`  ⚠ ${(e as Error).message}`, "warn");
+    return;
+  }
+  // At boot Docker may start after Den: wait for it when anything needs it.
+  const needsDocker = daemonsAtStart.some((d) => d.containers?.length);
+  const running = needsDocker
+    ? await m.waitForContainers(wait, runningContainerBasesAsync)
+    : await runningContainerBasesAsync().catch(() => null);
+  const plan = await m.servicesToRestore(daemonsAtStart, {
+    pruned: prunedAtStart,
+    running,
+  });
+  await m.restoreServicesOnBoot(plan, {
+    enabled: true,
+    isActive: (ws) => isWorkspaceActive(ws),
+    forget: unregisterDaemon,
+    exec: upInProcess,
+    log: (line) => serverLog(line, "lifecycle"),
+  });
+})().catch((e: unknown) =>
+  serverLog(`  ⚠ services after the restart: ${String(e)}`, "warn"),
+);
+
+/**
+ * Den's own Up for some services of a project, in this process: the same
+ * route a person's Up takes (order, dependencies, secrets), its events
+ * read here. Resolves with the run's exit code.
+ */
+function upInProcess(workspace: string, addresses: string[]): Promise<number> {
+  const url = new URL(
+    `http://den.invalid/api/workspace/exec?cmd=up&workspace=${encodeURIComponent(workspace)}&addresses=${encodeURIComponent(addresses.join(","))}`,
+  );
+  return new Promise<number>((resolve, reject) => {
+    let code = 1;
+    let buf = "";
+    const req = Object.assign(new EventEmitter(), {
+      method: "GET",
+      url: url.pathname + url.search,
+      headers: {},
+    }) as unknown as http.IncomingMessage;
+    const res = {
+      headersSent: false,
+      writableEnded: false,
+      setHeader: () => res,
+      writeHead: () => res,
+      write: (chunk: unknown) => {
+        buf += String(chunk);
+        let at: number;
+        while ((at = buf.indexOf("\n\n")) >= 0) {
+          const ev = buf.slice(0, at);
+          buf = buf.slice(at + 2);
+          if (!ev.startsWith("data: ")) continue;
+          try {
+            const o = JSON.parse(ev.slice(6)) as {
+              type?: string;
+              exitCode?: number;
+              text?: string;
+            };
+            if (o.type === "done" && typeof o.exitCode === "number")
+              code = o.exitCode;
+            else if (
+              (o.type === "line" || o.type === "error") &&
+              typeof o.text === "string"
+            )
+              serverLog(`  ${workspace}: ${o.text}`, "lifecycle");
+          } catch {
+            /* not one of ours */
+          }
+        }
+        return true;
+      },
+      end: () => {
+        res.writableEnded = true;
+        resolve(code);
+        return res;
+      },
+    } as unknown as http.ServerResponse & { writableEnded: boolean };
+    handleWorkspaceRoutes(req, res, url.pathname, url, editors, github).catch(
+      reject,
+    );
+  });
+}
 
 // Background recovery: after a short delay (long enough for services to be
 // responding), health-check each loaded daemon. Removal requires strong
