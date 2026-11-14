@@ -65,14 +65,26 @@ async function show(p: Page, cat: string, first: string) {
 const key = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "-");
 const ctl = (p: Page, id: string) => p.locator(`[data-focus-key="${key(id)}"]`);
 
-/** Changes a number row and waits for its save. */
+/**
+ * Waits for a row's "Saved" mark. The page redraws the category after a save
+ * and only then marks the row, so the next step can't type into an input
+ * that the redraw is about to replace (CI run 43597828404: the late redraw
+ * swapped the input between fill and change, and the old value was saved).
+ */
+async function savedMark(p: Page, id: string) {
+  await p.waitForSelector(`#s-${key(id)}.set-saved.ok`);
+}
+
+/** Changes a number row and waits for its save and the page's redraw. */
 async function setNumber(p: Page, id: string, v: number) {
   const saved = p.waitForResponse(
     (r) => r.url().endsWith("/api/settings") && r.request().method() === "POST",
   );
   await ctl(p, id).fill(String(v));
   await ctl(p, id).dispatchEvent("change");
-  return (await saved).request().postDataJSON();
+  const body = (await saved).request().postDataJSON();
+  await savedMark(p, id);
+  return body;
 }
 
 describe("MODE-5: Settings rows that were the command line's", () => {
@@ -87,6 +99,7 @@ describe("MODE-5: Settings rows that were the command line's", () => {
     );
     await ctl(p, "cli.cli_tabs").check();
     expect((await tabs).request().postDataJSON()).toEqual({ cli_tabs: true });
+    await savedMark(p, "cli.cli_tabs");
     expect(await setNumber(p, "cli.log_window_lines", 50000)).toEqual({
       log_window_lines: 50000,
     });

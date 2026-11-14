@@ -103,6 +103,12 @@ interface Opts {
    * `down` times (503), then answers as a new server (pid 2).
    */
   restart?: { down: number; waitSeconds?: number };
+  /**
+   * The page's clock, fixed at this time (timers still run), so a check's
+   * time on the page and the time a test expects can't differ by a minute
+   * that turned in between (CI run 43597828404).
+   */
+  clock?: Date;
 }
 
 /** A page on a stub origin; records every request. */
@@ -121,6 +127,7 @@ async function mount(o: Opts = {}): Promise<{
     viewport: { width: o.width ?? 1440, height: 800 },
   });
   const p = await ctx.newPage();
+  if (o.clock) await p.clock.setFixedTime(o.clock);
   const reqs: string[] = [];
   const posts: { path: string; body: unknown }[] = [];
   let unlocked = o.unlocked ?? false;
@@ -391,7 +398,9 @@ describe("the status chip (R6)", () => {
 describe("the status drawer (R15)", () => {
   it("is a modal dialog: focus on ✕, Tab stays in, Escape returns to the chip", async () => {
     if (!browser) return;
-    const { p } = await mount();
+    // A second before a minute turns: the card must still say this minute.
+    const at = new Date(2026, 0, 2, 13, 4, 59);
+    const { p } = await mount({ clock: at });
     await p.waitForSelector("#den-status.bad");
     await p.click("#den-status");
     await p.waitForSelector(".den-drawer");
@@ -405,11 +414,13 @@ describe("the status drawer (R15)", () => {
     ).toEqual(["Needs attention", "Everything"]);
     expect(await text(p, ".den-prob-card")).toBe(
       "billing billing http://billing/healthz — connect ECONNREFUSED · failed at " +
-        (await p.evaluate(() =>
-          new Intl.DateTimeFormat(undefined, {
-            hour: "2-digit",
-            minute: "2-digit",
-          }).format(new Date()),
+        (await p.evaluate(
+          (ms) =>
+            new Intl.DateTimeFormat(undefined, {
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(new Date(ms)),
+          at.getTime(),
         )) +
         " Start Logs Pin",
     );
