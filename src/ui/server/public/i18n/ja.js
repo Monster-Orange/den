@@ -492,6 +492,18 @@
       "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。失敗が続くと止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
     "set.agents.pane_reconnect.v":
       "{s}〜{max} 秒ごと。{w} 秒間に {n} 回失敗すると止まります",
+    "set.server.address": "__DEN_TITLE__ のアドレス",
+    "set.server.address.d":
+      "ほかの人やデバイスがこの __DEN_TITLE__ を開くアドレスです(例: https://__DEN_CLI__.local.example.com)。「確認して保存」は、まずそのアドレスが応答するか確かめ、応答したときだけ保存します。__DEN_CLI__ web url と同じです。",
+    "addr.now": "設定済み: {url}",
+    "addr.unset": "未設定です。__DEN_TITLE__ が渡すリンクに必要です。",
+    "addr.label": "アドレス",
+    "addr.check": "確認して保存",
+    "addr.checking": "確認しています…",
+    "addr.checkW": "{url} が応答するか確認しています",
+    "addr.saved": "保存しました: {url} が応答しました。",
+    "addr.notSaved": "保存していません。前のアドレスのままです。",
+    "addr.empty": "先にアドレスを入力してください。",
     "set.agents.default_mode": "すべてのエージェントのモード",
     "set.agents.default_mode.d":
       "エージェントに個別のモードが選ばれていない、またはプロジェクトがモードを決めていない限り、__DEN_TITLE__ エージェントを含むすべてのエージェントがこのモードで動きます。変更は、動いているエージェントにもターンの終わりに自動で反映されます。",

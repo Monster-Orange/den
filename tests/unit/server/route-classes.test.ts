@@ -138,6 +138,8 @@ describe("the classes", () => {
       "/api/session",
       "/api/signin/code",
       "/api/signin/code/:id",
+      // MODE-5: the address check's other end: 204 or 404, nothing else.
+      "/api/web-url/probe",
       "/attest",
       "/auth",
       "/hub/callback",
@@ -148,6 +150,8 @@ describe("the classes", () => {
     expect(routeClass("GET", "/hub/callback")).toBe("readonly");
     expect(routeClass("POST", "/api/hub/connect")).toBe("mutating");
     expect(routeClass("POST", "/api/hub/disconnect")).toBe("mutating");
+    expect(routeClass("GET", "/api/web-url/probe")).toBe("readonly");
+    expect(routeClass("POST", "/api/web-url")).toBe("mutating");
   });
 
   it("SEC-2a's routes: a GitHub sign-in is sign-in free (its poll a mutating GET: it sets the cookie); the owner and pairing are shell-grade", () => {

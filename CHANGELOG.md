@@ -18,6 +18,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Settings › Den's address: the install's address (web.url) as a page
+  control. Check and save asks the address to answer as this Den before
+  it saves; an address that doesn't answer is not saved, and localhost is
+  refused. Before, it was only `web url <address>` on the command line.
+  doctor's and onboarding's web check now show this address, never a
+  loopback one, and link the row when it isn't set.
 - Start fresh on the Den agent's page: after a confirm ("This ends the
   Den agent's conversation. Start a new one?") it stops the agent,
   removes it and starts a new conversation, with the working pop-up.

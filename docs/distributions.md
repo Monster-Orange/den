@@ -1870,6 +1870,12 @@ nothing out from where a browser is, and never falls back to localhost.
 ./bin/acme web url --json                            # { ok, url, confirmed }
 ```
 
+- **Or in the browser**: Settings › Acme's address. **Check and save**
+  first asks the address to answer as this Den (a one-time token it
+  fetches through the address), and saves only if it does; otherwise the
+  old address stays and the note says why. A name for this machine only
+  (localhost, 127.0.0.1, ::1) is refused. `web.url_check_seconds` (10)
+  is how long it waits. Only a person sets it.
 - **Set it when you make the Den**: `create acme --url <address>` writes
   it; without `--url`, create's next steps say to set it.
 - **An install made before it** takes its edge route's address once, at the
@@ -1878,6 +1884,9 @@ nothing out from where a browser is, and never falls back to localhost.
 - **Unset**: the banner says `address not set: run \`acme web url
   <address>\``, `web login` and `web claim-link` print no link and say the
   same, `web up --json` has `url: null`, and doctor fails with that fix.
+  `doctor --json` and the onboarding status link Settings' row
+  (`settings: "/settings?q=web.url"`); their web check shows the address,
+  never the loopback the server is reached at.
 - Agents' own connections (MCP, the API) stay on loopback: an internal
   detail, never shown.
 - Reachable from other devices is the normal setup: each one signs in first

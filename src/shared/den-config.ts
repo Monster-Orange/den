@@ -603,6 +603,20 @@ export function agentsDefaultMode(
   return checkIntent(v, "agents.default_mode (user.yml)");
 }
 
+/** web.url_check_seconds (user.yml): how long Check and save waits (10). */
+export function webUrlCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  let v: unknown;
+  try {
+    const w = read().web as Record<string, unknown> | undefined;
+    v = w && typeof w === "object" ? w.url_check_seconds : undefined;
+  } catch {
+    return 10;
+  }
+  return typeof v === "number" && Number.isFinite(v) && v >= 1 ? v : 10;
+}
+
 /** One panes.<key> number (user.yml): `dflt` when unset, at least `min`. */
 function panesNumber(
   read: () => UserConfig,

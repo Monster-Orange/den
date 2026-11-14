@@ -446,6 +446,25 @@ describe("the Settings page's rows (R21)", () => {
     await p.context().close();
   }, 30_000);
 
+  it("MODE-5: doctor's link (?q=web.url) finds the address row; Check and save that doesn't answer saves nothing", async () => {
+    if (!browser) return;
+    const { p, posts } = await open("/settings?q=web.url");
+    expect(await sectionIds(p)).toEqual(["server"]);
+    const row = p.locator('[data-setting="server.address"]');
+    await row.locator("[data-addr-now]").waitFor();
+    const before = await row.locator("[data-addr-now]").textContent();
+    await row.locator("[data-addr-in]").fill("https://nowhere.invalid");
+    await row.getByRole("button", { name: "Check and save" }).click();
+    await row.locator("[data-addr-note]:not([hidden])").waitFor();
+    expect(await row.locator("[data-addr-note]").textContent()).toMatch(
+      /Not saved/,
+    );
+    expect(posts.map((x) => x.url)).toEqual(["/api/web-url"]);
+    // Not saved: the row still shows what was there.
+    expect(await row.locator("[data-addr-now]").textContent()).toBe(before);
+    await p.context().close();
+  }, 60_000);
+
   it("every control is a named form element; the theme shows its swatches", async () => {
     if (!browser) return;
     const { p } = await open();

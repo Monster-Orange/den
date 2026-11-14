@@ -140,6 +140,9 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/sudo-password/vault-status",
     "/api/scope",
     "/api/settings",
+    // MODE-5: this install's address, and its check's other end.
+    "/api/web-url",
+    "/api/web-url/probe",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
@@ -375,6 +378,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // MODE-5: Check and save this install's address (a person's only).
+  M(["POST"], "/api/web-url"),
   M(
     ["POST"],
     "/api/editor/open",
@@ -647,6 +652,9 @@ export const SIGNIN_FREE: readonly string[] = [
   // HUB-1.7: Hub's redirect back (no session cookie on it): the state
   // this server issued is the proof (hub-connect.ts).
   "/hub/callback",
+  // MODE-5: the address check comes back in through the edge with no
+  // cookie; it answers 204 or 404 for a one-time token, nothing else.
+  "/api/web-url/probe",
 ];
 
 /**

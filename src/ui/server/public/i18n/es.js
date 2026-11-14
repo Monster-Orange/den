@@ -504,6 +504,18 @@
       "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Se detiene tras demasiados intentos fallidos y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
     "set.agents.pane_reconnect.v":
       "Cada {s}–{max} s; se detiene tras {n} intentos fallidos en {w} s",
+    "set.server.address": "La dirección de __DEN_TITLE__",
+    "set.server.address.d":
+      "La dirección con la que las personas y otros dispositivos abren este __DEN_TITLE__, por ejemplo https://__DEN_CLI__.local.example.com. Comprobar y guardar le pide primero que responda, y solo guarda si responde. Igual que __DEN_CLI__ web url.",
+    "addr.now": "Definida: {url}",
+    "addr.unset": "Sin definir. Los enlaces que da __DEN_TITLE__ la necesitan.",
+    "addr.label": "Dirección",
+    "addr.check": "Comprobar y guardar",
+    "addr.checking": "Comprobando…",
+    "addr.checkW": "Comprobando que {url} responde",
+    "addr.saved": "Guardada: {url} respondió.",
+    "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
+    "addr.empty": "Escribe primero una dirección.",
     "set.agents.default_mode": "Modo para todos los agentes",
     "set.agents.default_mode.d":
       "Todos los agentes trabajan en este modo, también el agente de __DEN_TITLE__, salvo que se haya elegido un modo para el agente o que su proyecto fije uno. Un cambio llega a los agentes en marcha al terminar su turno, solo.",

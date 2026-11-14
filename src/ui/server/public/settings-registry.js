@@ -681,6 +681,19 @@ function drawRestart(host) {
 
 export const DEN_SETTINGS = [
   {
+    // MODE-5 (0.4.46): this install's address (web.url, D80) as a page
+    // control: Check and save asks the address to answer first.
+    id: "server.address",
+    category: "server",
+    label: "__DEN_TITLE__'s address",
+    description:
+      "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",
+    keywords: ["address", "url", "web.url", "domain", "hostname", "link"],
+    scope: "user",
+    control: { type: "custom", render: renderAddress },
+    read: () => null,
+  },
+  {
     id: "server.restart",
     category: "server",
     label: "Restart Den",
@@ -2258,6 +2271,77 @@ function renderProjectName(host, ctx) {
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note">${escR(e?.message || t("pname.failed"))}</p>`;
+    });
+}
+
+/** MODE-5: the address row's HTML (its value, the field, the note). */
+export function addressHtml(w, t) {
+  const now = w?.url
+    ? `<p class="set-status" data-addr-now>${escR(t("addr.now", { url: w.url }))}</p>`
+    : `<p class="set-status" data-addr-now><span class="rt-dot warn"></span> ${escR(t("addr.unset"))}</p>`;
+  return (
+    now +
+    `<form data-addr class="set-inline" novalidate>` +
+    `<label class="sr-only" for="addr-in">${escR(t("addr.label"))}</label>` +
+    `<input id="addr-in" type="url" data-addr-in value="${escR(w?.url ?? "")}" placeholder="https://__DEN_CLI__.local.example.com" autocomplete="off" spellcheck="false">` +
+    `<button type="submit" class="den-btn sm" data-addr-save>${escR(t("addr.check"))}</button>` +
+    `</form>` +
+    `<p class="set-note" data-addr-note role="status" hidden></p>`
+  );
+}
+
+function renderAddress(host, ctx) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell
+    .api("GET", "/api/web-url")
+    .then((w) => {
+      host.innerHTML = addressHtml(w, t);
+      const form = host.querySelector("form[data-addr]");
+      const input = form.querySelector("[data-addr-in]");
+      const btn = form.querySelector("[data-addr-save]");
+      const note = host.querySelector("[data-addr-note]");
+      const say = (msg, bad) => {
+        note.hidden = !msg;
+        note.textContent = msg || "";
+        note.classList.toggle("bad", !!bad);
+      };
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const url = input.value.trim();
+        if (!url) return say(t("addr.empty"), true);
+        say("");
+        input.disabled = true;
+        btn.textContent = t("addr.checking");
+        // BUSY-1: the working pop-up says it is checking, then what happened.
+        ctx.shell
+          .busyAction({
+            button: btn,
+            who: "__DEN_TITLE__",
+            title: t("addr.checkW", { url }),
+            failed: t("addr.notSaved"),
+            done: (r) => t("addr.saved", { url: r?.url ?? url }),
+            run: (headers) =>
+              ctx.shell.api("POST", "/api/web-url", { url }, { headers }),
+            onFail: (x) => say(x?.message || t("addr.notSaved"), true),
+          })
+          .then((r) => {
+            if (r === undefined) return;
+            return renderAddress(host, ctx).then(() => {
+              const n = host.querySelector("[data-addr-note]");
+              if (n) {
+                n.hidden = false;
+                n.textContent = t("addr.saved", { url: r?.url ?? url });
+              }
+            });
+          })
+          .finally(() => {
+            input.disabled = false;
+            btn.textContent = t("addr.check");
+          });
+      });
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note">${escR(e?.message || t("addr.notSaved"))}</p>`;
     });
 }
 

@@ -1330,6 +1330,18 @@
       "A terminal whose connection drops tries again on its own, waiting longer each time. It stops after too many failed tries and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
     "set.agents.pane_reconnect.v":
       "Every {s}–{max} s; stops after {n} failed tries in {w} s",
+    "set.server.address": "__DEN_TITLE__'s address",
+    "set.server.address.d":
+      "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",
+    "addr.now": "Set: {url}",
+    "addr.unset": "Not set. The links __DEN_TITLE__ gives people need it.",
+    "addr.label": "Address",
+    "addr.check": "Check and save",
+    "addr.checking": "Checking…",
+    "addr.checkW": "Checking that {url} answers",
+    "addr.saved": "Saved: {url} answered.",
+    "addr.notSaved": "Not saved. The old address stays.",
+    "addr.empty": "Type an address first.",
     "set.agents.default_mode": "Mode for every agent",
     "set.agents.default_mode.d":
       "Every agent runs in this mode, the __DEN_TITLE__ agent too, unless a mode was chosen for the agent or its project sets one. A change reaches running agents after their turn, on its own.",

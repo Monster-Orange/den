@@ -134,6 +134,7 @@ import {
   readUserConfig,
   writeUserConfig,
   panesReconnect,
+  webUrlCheckSeconds,
   readReleaseConfig,
   resolveReleaseTarget,
   writeUserReleaseConfig,
@@ -268,7 +269,13 @@ import {
 } from "../../shared/web-session.js";
 import { serveUiAsset } from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
-import { migrateWebUrl, notSetLine, readWebUrl } from "../../shared/web-url.js";
+import {
+  migrateWebUrl,
+  notSetLine,
+  readWebUrl,
+  setWebUrl,
+} from "../../shared/web-url.js";
+import { handleWebUrlRoutes } from "./web-url-routes.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -815,6 +822,9 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/changelog",
   "/api/web/restart",
   "/api/settings",
+  // MODE-5: the address row fixes what the config holds.
+  "/api/web-url",
+  "/api/web-url/probe",
   "/api/themes",
   "/api/scope",
   "/api/workspaces/settings",
@@ -2706,6 +2716,18 @@ async function handleRequest(
 
   // The active theme as CSS, its mark and fonts, and the theme list.
   if (handleThemeRoutes(req, res, pathname, themeDeps)) return;
+  if (
+    handleWebUrlRoutes(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      read: () => readWebUrl(),
+      set: (url) => setWebUrl(url),
+      ping: (url, ms) => pingHttp(url, ms),
+      checkMs: () => webUrlCheckSeconds() * 1000,
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
 
   // The graph's modules (graph.js, panel.js, …) and vendored libraries (ELK).
   if (serveUiAsset(res, pathname, PUBLIC_DIR)) return;
