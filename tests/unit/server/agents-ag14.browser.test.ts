@@ -390,6 +390,13 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
         ),
       ),
     ).toBeLessThan(4);
+    // …and shown, cut with an ellipsis when long: not hidden.
+    expect(
+      await bar.locator(".where .rt").evaluate((e) => {
+        const c = getComputedStyle(e);
+        return e.getBoundingClientRect().width > 40 && c.textOverflow;
+      }),
+    ).toBe("ellipsis");
     expect((await bar.locator("[data-why]").textContent())?.trim()).toMatch(
       /exited/i,
     );
