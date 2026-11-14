@@ -98,9 +98,15 @@ describe("the Agents page names a project as Hub does", () => {
     await said(`${pane} .bar2 .where .wsn`);
     await said(`${pane} .bar2 .aglink .mono`);
     await said(`${pane} .agto`);
+    await said(`.agtab[data-id="${sid}"] .tm`);
     expect(await p.locator(`${pane} .agto`).textContent()).toBe(
       "To scout · North Star",
     );
+    // The page's line: "1 agent · 0 waiting · North Star" in a project.
+    await p.goto(
+      signInUrl(s.stateDir, s.base, `/agents?project=north&open=${sid}`),
+    );
+    await said("#ag-count");
     await ctx.close();
   }, 60_000);
 });

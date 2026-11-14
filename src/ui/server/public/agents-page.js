@@ -1185,8 +1185,8 @@ async function loadScope() {
 
 function scopeLabelFor(shown) {
   const ws = urlWorkspace();
-  if (ws && shown.length === 1 && shown[0] === ws) return ws;
-  return st.scope === "all" ? t("ag.all") : st.scope;
+  if (ws && shown.length === 1 && shown[0] === ws) return projName(ws);
+  return st.scope === "all" ? t("ag.all") : projName(st.scope);
 }
 
 async function refresh() {
@@ -1390,15 +1390,19 @@ function termTheme() {
 function tabWords(id) {
   const r = rowOf(id);
   const p = st.panes.get(id);
-  if (!r) return { name: p?.label || id, meta: p?.workspace || "" };
+  const wsName = (ws) =>
+    !ws ? "" : ws === SERVER_WS ? t("ag.server") : projName(ws);
+  if (!r) return { name: p?.label || id, meta: wsName(p?.workspace) };
   if (r.kind !== "agent")
     return {
       name: r.label,
-      meta: [t("ag.session"), r.workspace].join(" · "),
+      meta: [t("ag.session"), wsName(r.workspace)].join(" · "),
     };
   return {
     name: paneName(r),
-    meta: [r.persona, r.workspace, sessionExtra(r)].filter(Boolean).join(" · "),
+    meta: [r.persona, wsName(r.workspace), sessionExtra(r)]
+      .filter(Boolean)
+      .join(" · "),
   };
 }
 
