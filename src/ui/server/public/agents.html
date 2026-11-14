@@ -638,6 +638,9 @@
       }
       .pane .bar2 .where .rt {
         min-width: 0;
+        /* Adds nothing to the bar's minimum: .where's is the project's
+           name alone, and the rest is what is cut. */
+        contain: inline-size;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: pre; /* words-ok: a CSS property; keeps " · " */

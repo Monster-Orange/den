@@ -380,6 +380,16 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     expect(await bar.locator(".where").textContent()).toContain(
       "reviewer · ender",
     );
+    // Its long details are cut on the name's line, never put on a line
+    // of their own.
+    expect(
+      await bar.evaluate((b) =>
+        Math.abs(
+          b.querySelector(".where")!.getBoundingClientRect().top -
+            b.querySelector("b")!.getBoundingClientRect().top,
+        ),
+      ),
+    ).toBeLessThan(4);
     expect((await bar.locator("[data-why]").textContent())?.trim()).toMatch(
       /exited/i,
     );
