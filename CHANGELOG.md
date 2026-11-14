@@ -18,6 +18,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Report an issue, the server's side (#81). Reports go to the engine's
+  `bugs.url` (and the distribution's `feedback.repo`, when it names one), filed
+  as the person with their own `gh`. The preview is the exact text that will be
+  posted, with names redacted. Not signed in to GitHub sends nothing and gives a
+  link to a filled-in new-issue page. At most `feedback.max_per_hour` (5) an
+  hour. An open issue with the same title is offered first. An agent can save a
+  draft, never send one. `feedback.enabled: false` turns it all off. The dialog
+  comes next.
+
 - Settings › Den's address: the install's address (web.url) as a page
   control. Check and save asks the address to answer as this Den before
   it saves; an address that doesn't answer is not saved, and localhost is

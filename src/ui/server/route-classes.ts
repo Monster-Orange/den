@@ -143,6 +143,10 @@ export const ROUTES: readonly RouteEntry[] = [
     // MODE-5: this install's address, and its check's other end.
     "/api/web-url",
     "/api/web-url/probe",
+    // FB (den#81): Report an issue's destinations, diagnostics and drafts.
+    "/api/report",
+    "/api/report/diagnostics",
+    "/api/report/drafts",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
@@ -380,6 +384,19 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/settings"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
+  // FB: the preview composes (no write); a send is a person's only.
+  M(
+    ["POST"],
+    "/api/report/preview",
+    "composes the exact issue text (no write)",
+  ),
+  M(
+    ["POST"],
+    "/api/report/send",
+    "files the report as the person, with their gh",
+  ),
+  M(["POST"], "/api/report/drafts", "saves a report draft on this computer"),
+  M(["DELETE"], "/api/report/drafts/:id", "a person discards a draft"),
   M(
     ["POST"],
     "/api/editor/open",
@@ -692,6 +709,7 @@ export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "agent-routes.ts:AGENTS_PATH": [
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",

@@ -276,6 +276,8 @@ import {
   setWebUrl,
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
+import { handleReportRoutes, machineSection, runGh } from "./report-routes.js";
+import { readFeedbackSettings } from "../../shared/report-store.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -2723,6 +2725,45 @@ async function handleRequest(
       set: (url) => setWebUrl(url),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // FB (den#81): Report an issue, filed as the person with their `gh`.
+  if (
+    handleReportRoutes(req, res, pathname, {
+      settings: () =>
+        readFeedbackSettings(
+          getEngineRoot(),
+          path.join(getDistRoot(), product().configFile),
+          readUserConfig().feedback,
+        ),
+      stateDir: () => getStateDir(),
+      gh: runGh,
+      names: () => {
+        const w = readWebUrl();
+        let webHost: string | undefined;
+        try {
+          webHost = w ? new URL(w.url).hostname : undefined;
+        } catch {
+          webHost = undefined;
+        }
+        return {
+          home: os.homedir(),
+          hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
+          orgs: [product().name],
+        };
+      },
+      diagnostics: async () => ({
+        Den: `${product().cli} ${engineVersion() ?? "?"}`,
+        Machine: machineSection(),
+      }),
+      agentOf: (r) => {
+        const a = agentPrincipalOf(r) || auditActorOf(r);
+        return a ? String(a) : null;
+      },
+      personOf: () => "person",
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
