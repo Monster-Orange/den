@@ -1001,9 +1001,7 @@
     "hp.title": "Ayudantes ({n})",
     "hp.bar": "Ayudantes: {n}",
     "hp.barRunning": "Ayudantes: {n}, {r} en marcha",
-    "hp.all": "Todos los ayudantes ({n})",
     "hp.titlePlain": "Ayudantes",
-    "hp.allPlain": "Todos los ayudantes",
     "hp.rowRunning": "{n} ayudantes en marcha",
     "hp.rowRunning.one": "{n} ayudante en marcha",
     "hp.runningN": "{n} en marcha",
@@ -1742,6 +1740,15 @@
     "set.agents.layout.o.focus": "Enfoque",
     "set.agents.layout.o.tabs": "Pestañas",
     "set.agents.layout.o.tile": "Mosaico",
+    "set.agents.helpers_shown":
+      "Mostrar hasta este número de ayudantes bajo un agente",
+    "set.agents.helpers_shown.d":
+      "El resto, en Mostrar todos. La insignia siempre muestra el total de ayudantes en marcha.",
+    "set.agents.helpers_shown.o.1": "1",
+    "set.agents.helpers_shown.o.3": "3",
+    "set.agents.helpers_shown.o.5": "5",
+    "set.agents.helpers_shown.o.10": "10",
+    "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",
     "set.agents.rotation.d":

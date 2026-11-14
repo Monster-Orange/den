@@ -71,7 +71,10 @@ export interface HelperSettings {
    * finished helpers by time; a person clears them (D34).
    */
   collapseDoneMinutes: number;
-  /** D34: at most this many active helpers under the selected agent's row. */
+  /**
+   * Deprecated (0.4.45, #80): accepted and ignored. How many helpers show
+   * under an agent is the person's agents.helpers_shown (its badge).
+   */
   rowMax: number;
   /**
    * D76: the most of an agent's own transcript its helpers' states are read

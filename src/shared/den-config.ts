@@ -437,6 +437,8 @@ export interface UserConfig {
     remove_stopped_after?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
+    /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
+    helpers_shown?: unknown;
   };
   /**
    * The web server's per-machine keys (src/shared/web-session.ts

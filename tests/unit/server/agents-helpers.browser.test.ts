@@ -3,9 +3,9 @@
  * from Claude Code's files on disk through the real routes (no mocked
  * route):
  *
- *   - under the agent in front only, its active helpers (running first,
- *     at most row_max, then "All helpers (n)"); every agent's row counts
- *     its running ones (D34);
+ *   - #80: every agent's row counts its running ones in a badge; the badge
+ *     opens them under the row (closed by default), the first
+ *     agents.helpers_shown (3) in start order, then "Show all (M)";
  *   - a helper's row opens its transcript, read-only, in a dialog that
  *     says why Den can't steer it, and Escape gives focus back;
  *   - the pane bar's "Helpers (n)" opens the list;
@@ -190,15 +190,23 @@ async function open(width = 1280) {
   return { p, errors };
 }
 
+/** #80: open agent `agent`'s helpers badge (closed by default). */
+async function openBadge(p: Page, agent: string): Promise<void> {
+  const b = p.locator(`#agl .agr-hpb[data-agent="${agent}"]`);
+  await b.waitFor({ timeout: 20_000 });
+  if ((await b.getAttribute("aria-expanded")) !== "true") await b.click();
+  await p.locator(`#agl .aghs[data-helpers-of="${agent}"]`).waitFor();
+}
+
 describe("an agent's helpers on the agents page (D32)", () => {
   it("rows under the agent, running first; a row opens its transcript, read-only", async () => {
     if (!browser) return;
     const { p, errors } = await open();
+    await openBadge(p, "scout");
     const group = p.locator('#agl .aghs[data-helpers-of="scout"]');
-    await group.waitFor({ timeout: 15_000 });
     const rows = group.locator("button.agh");
-    // D34: under the agent in front, its active helpers only; the done
-    // one is in the Helpers list. Its row's badge counts the running one.
+    // Open: its running helpers only; the done one is in the Helpers
+    // list. Its row's badge counts the running one.
     expect(
       await rows.evaluateAll((b) => b.map((x) => x.dataset.helper)),
     ).toEqual([LIVE]);
@@ -301,6 +309,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     };
     // A helper's row, and the pane bar's button, the same.
     const row = `#agl button.agh[data-helper="${LIVE}"]`;
+    await openBadge(p, "scout");
     await p.click(row);
     await p.locator("#tx-dlg .tx-list").waitFor();
     await replace(row);
@@ -338,6 +347,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
   it("at 375 px: rows and the transcript fit, nothing scrolls sideways", async () => {
     if (!browser) return;
     const { p, errors } = await open(375);
+    await openBadge(p, "scout");
     const row = p.locator('.aghs[data-helpers-of="scout"] button.agh').first();
     await row.waitFor({ state: "attached", timeout: 15_000 });
     await row.scrollIntoViewIfNeeded();
@@ -392,7 +402,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
 
   // Last: it adds helpers (a done parent and its newer done child; neither
   // runs, so the counts above stay as they are).
-  it("a helper's own helper sits under it, indented, not above it by start time", async () => {
+  it("a helper's own helper sits under it in the Helpers list, indented, not above it by start time", async () => {
     if (!browser) return;
     const dir = path.join(
       s.tmp,
@@ -428,23 +438,24 @@ describe("an agent's helpers on the agents page (D32)", () => {
     write(PARENT, "Plan the notes", 5 * 60_000);
     write(CHILD, "Count one folder", 2 * 60_000, PARENT);
     const { p, errors } = await open();
-    const group = p.locator('#agl .aghs[data-helpers-of="scout"]');
-    await group
-      .locator(`[data-helper="${CHILD}"]`)
-      .waitFor({ timeout: 20_000 });
-    const rows = await group
+    // #80: the row's open badge lists running helpers only, flat; the
+    // Helpers list (the pane bar's) has the tree.
+    await p.click(`.pane[data-id="${sid}"] [data-act="helpers"]`);
+    const body = p.locator("#hp-body");
+    await body.locator(`[data-helper="${CHILD}"]`).waitFor({ timeout: 20_000 });
+    const rows = (await body
       .locator("button.agh")
       .evaluateAll((b) =>
         b.map((x) => [
           x.dataset.helper,
           (x as HTMLElement).style.getPropertyValue("--hp-depth"),
         ]),
-      );
-    expect(rows).toEqual([
-      [LIVE, "0"],
+      )) as [string, string][];
+    expect(rows.filter(([id]) => id === PARENT || id === CHILD)).toEqual([
       [PARENT, "0"],
       [CHILD, "1"],
     ]);
+    await p.keyboard.press("Escape");
     // The page's twin of shownDepths agrees with the server's.
     const list: Helper[] = sortHelpers([
       { id: "p", depth: 1, status: "done", statusFrom: "t", startedAt: 1 },
@@ -520,29 +531,44 @@ describe("an agent's helpers on the agents page (D32)", () => {
             : (a?.tagName ?? "none");
       });
     const row = `#agl button.agh[data-helper="${LIVE}"]`;
+    await openBadge(p, "scout");
     await p.locator(row).waitFor({ timeout: 15_000 });
     await p.focus(row);
+    // A new helper redraws the row's badge (and, with room, the rows).
+    const count = () =>
+      p.$eval('#agl .agr-hpb[data-agent="scout"]', (b) =>
+        parseInt(b.textContent ?? "0", 10),
+      );
+    const grew = async (from: number) =>
+      p.waitForFunction(
+        (n) =>
+          parseInt(
+            document.querySelector('#agl .agr-hpb[data-agent="scout"]')
+              ?.textContent ?? "0",
+            10,
+          ) > n,
+        from,
+        { timeout: 15_000 },
+      );
     // Nothing changed: a poll later, the same row, focused.
     await p.waitForTimeout(6_000);
     expect(await where()).toBe(`row:${LIVE}`);
     // The list changed (a new helper): redrawn, focus found again.
+    const n0 = await count();
     add("a8f0c0ffee0000008");
-    await p
-      .locator('#agl [data-helper="a8f0c0ffee0000008"]')
-      .waitFor({ timeout: 15_000 });
+    await grew(n0);
     expect(await where()).toBe(`row:${LIVE}`);
     // An agent's own row, the same.
     await p.focus(`#agl button.agr[data-id="${sid}"]`);
+    const n1 = await count();
     add("a9f0c0ffee0000009");
-    await p
-      .locator('#agl [data-helper="a9f0c0ffee0000009"]')
-      .waitFor({ timeout: 15_000 });
+    await grew(n1);
     expect(await where()).toBe("agent");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
 
-  it("D34: rows only under the agent in front; at most row_max, then All helpers (n)", async () => {
+  it("#80: rows only under an opened badge; the first 3 running, then Show all (n)", async () => {
     if (!browser) return;
     const host = await connectHost(sessionPaths(s.stateDir).socket);
     // keeper: 2 running, 5 done. crowd: 6 running.
@@ -627,38 +653,36 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const rowsOf = (agent: string) =>
       p.locator(`#agl .aghs[data-helpers-of="${agent}"] button.agh`).count();
     const badge = (agent: string) =>
-      p
-        .locator(`#agl button.agr[data-id="${sids[agent]}"] .agr-hp`)
-        .textContent();
-    // Not in front: no rows; its badge still counts its running ones.
+      p.locator(`#agl .agr-hpb[data-agent="${agent}"]`).textContent();
+    // Closed: no rows, in front or not; its badge counts its running ones.
     await p.waitForFunction(
-      (id) =>
-        document.querySelector(`#agl button.agr[data-id="${id}"] .agr-hp`)
-          ?.textContent === "2 helpers",
-      sids.keeper,
+      () =>
+        /2 helpers/.test(
+          document.querySelector('#agl .agr-hpb[data-agent="keeper"]')
+            ?.textContent ?? "",
+        ),
+      undefined,
       { timeout: 20_000 },
     );
-    expect(await rowsOf("keeper")).toBe(0);
-    // In front: its 2 running ones, none of its 5 done ones.
     await p.click(`#agl button.agr[data-id="${sids.keeper}"]`);
-    await p
-      .locator('#agl .aghs[data-helpers-of="keeper"] button.agh')
-      .first()
-      .waitFor({ timeout: 15_000 });
+    await p.waitForTimeout(500);
+    expect(await rowsOf("keeper")).toBe(0);
+    // Opened: its 2 running ones, none of its 5 done ones.
+    await openBadge(p, "keeper");
     expect(await rowsOf("keeper")).toBe(2);
     expect(await rowsOf("scout")).toBe(0);
-    // Another in front: keeper's rows go, its badge stays.
+    // Another in front: keeper's stay open (the person opened them).
     await p.click(`#agl button.agr[data-id="${sids.crowd}"]`);
-    await p
-      .locator('#agl .aghs[data-helpers-of="keeper"]')
-      .waitFor({ state: "detached", timeout: 15_000 });
-    expect(await badge("keeper")).toBe("2 helpers");
-    // 6 running: 4 rows (row_max), then "All helpers · 6 running", which opens
-    // the Helpers list with all of them.
+    await p.waitForTimeout(500);
+    expect(await rowsOf("keeper")).toBe(2);
+    expect((await badge("keeper"))?.trim()).toBe("2 helpers");
+    // 6 running: 3 rows (agents.helpers_shown), then "Show all (6)", which
+    // opens the Helpers list with all of them.
+    await openBadge(p, "crowd");
     const all = '#agl .aghs[data-helpers-of="crowd"] .aghs-all';
     await p.locator(all).waitFor({ timeout: 15_000 });
-    expect(await rowsOf("crowd")).toBe(4);
-    expect(await p.locator(all).textContent()).toBe("All helpers · 6 running");
+    expect(await rowsOf("crowd")).toBe(3);
+    expect(await p.locator(all).textContent()).toBe("Show all (6)");
     await p.click(all);
     await p.locator("#hp-body > button.agh").first().waitFor();
     expect(await p.locator("#hp-body > button.agh").count()).toBe(6);
@@ -667,7 +691,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.context().close();
   }, 90_000);
 
-  it("D62: every row's name starts at the same x; the helper count is a chip on line 2 that opens the list; a helper's title is never cut", async () => {
+  it("D62: every row's name starts at the same x; the helper count is a badge on line 2 that opens the rows; a helper's title is never cut", async () => {
     if (!browser) return;
     const host = await connectHost(sessionPaths(s.stateDir).socket);
     const ids: Record<string, string> = {};
@@ -746,7 +770,8 @@ describe("an agent's helpers on the agents page (D32)", () => {
         "\n",
     );
     const { p, errors } = await open();
-    const chip = `#agl button.agr[data-id="${ids.wide}"] .agr-hp`;
+    // #80: the badge is its own button, laid over its place in the row.
+    const chip = '#agl .agr-hpb[data-agent="wide"]';
     await p.waitForSelector(chip, { timeout: 20_000 });
     // The dot column is one width on every row: names line up.
     const lefts = await p.$$eval(
@@ -757,16 +782,21 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(new Set(lefts).size).toBe(1);
     // The count is a chip under the name, said once ("1 helper").
     expect((await p.textContent(chip))?.trim()).toBe("1 helper");
-    const below = await p.$eval(chip, (c) => {
-      const nm = c.closest(".agr")!.querySelector(".nm")!;
-      return (
-        c.getBoundingClientRect().top >= nm.getBoundingClientRect().bottom - 1
-      );
+    const place = await p.$eval(chip, (c) => {
+      const w = c.closest(".agrw")!;
+      const nm = w.querySelector(".nm")!.getBoundingClientRect();
+      const ph = w.querySelector(".agr-hp-ph")!.getBoundingClientRect();
+      const b = c.getBoundingClientRect();
+      return {
+        below: b.top >= nm.bottom - 1,
+        onItsPlace:
+          Math.abs(b.left - ph.left) <= 1 && Math.abs(b.top - ph.top) <= 1,
+      };
     });
-    expect(below).toBe(true);
-    // In front: the helper's title has line 1 to itself, never cut;
-    // its status, time, tool and model are line 2.
-    await p.click(`#agl button.agr[data-id="${ids.wide}"]`);
+    expect(place).toEqual({ below: true, onItsPlace: true });
+    // Opened: the helper's title has line 1 to itself, never cut; its
+    // status, time, tool and model are line 2.
+    await p.click(chip);
     const h = p.locator('#agl .aghs[data-helpers-of="wide"] button.agh');
     await h.first().waitFor({ timeout: 15_000 });
     const geo = await h.first().evaluate((b) => {
@@ -780,13 +810,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
       };
     });
     expect(geo).toEqual({ cut: false, stBelow: true });
-    // A click on the chip opens the list of its helpers (D50).
-    await p.click(chip);
-    await p.locator("#hp-body button.agh").first().waitFor({ timeout: 10_000 });
-    expect(await p.textContent("#hp-body")).toContain(
-      "Backend fixes: the queue",
-    );
-    await p.keyboard.press("Escape");
+    expect(await h.first().textContent()).toContain("Backend fixes: the queue");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);

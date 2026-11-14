@@ -27,6 +27,13 @@ config and manifest changes a distribution must make to move to it under
   move it. Reset to A to Z is there and in Settings › Navigation ›
   Project order. The order is yours (`shell.projectOrder` in your user
   config), never shared and never sent to Hub.
+- An agent's helpers badge opens and closes its helpers under its row.
+  They start closed, the agent in front too, so the list no longer moves
+  each time a helper starts or ends. Open, it shows the first 3 running
+  helpers, oldest first, and "Show all (n)" when more run. Settings ›
+  Agents › "Show up to this many helpers under an agent" picks 1, 3, 5 or
+  10 (`agents.helpers_shown`, yours). The org config's
+  `agents.helpers.row_max` is now ignored.
 - `agents.exited_shell_minutes` in the distribution's config: how long
   an exited shell with nothing unread stays in the Agents list (default
   10; `0` keeps it until removed).

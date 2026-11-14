@@ -993,6 +993,24 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_layout: v }),
   },
   {
+    id: "agents.helpers_shown",
+    category: "agents",
+    label: "Show up to this many helpers under an agent",
+    description:
+      "More open in Show all. The badge always counts every running helper.",
+    keywords: ["agents", "helpers", "subagents", "badge", "shown", "list"],
+    scope: "user",
+    control: seg([
+      { value: "1", label: "1" },
+      { value: "3", label: "3" },
+      { value: "5", label: "5" },
+      { value: "10", label: "10" },
+    ]),
+    keys: ["agents_helpers_shown"],
+    read: (ctx) => String(ctx.data.agents_helpers_shown ?? 3),
+    write: (v, ctx) => ctx.post({ agents_helpers_shown: Number(v) }),
+  },
+  {
     id: "agents.runtimes",
     category: "agents",
     label: "Runtimes",

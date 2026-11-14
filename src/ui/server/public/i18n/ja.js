@@ -971,9 +971,7 @@
     "hp.title": "ヘルパー ({n})",
     "hp.bar": "ヘルパー: {n}",
     "hp.barRunning": "ヘルパー: {n}、実行中 {r}",
-    "hp.all": "すべてのヘルパー ({n})",
     "hp.titlePlain": "ヘルパー",
-    "hp.allPlain": "すべてのヘルパー",
     "hp.rowRunning": "実行中のヘルパー {n}",
     "hp.runningN": "実行中 {n}",
     "hp.chip": "ヘルパー {n}",
@@ -1703,6 +1701,14 @@
     "set.agents.layout.o.focus": "フォーカス",
     "set.agents.layout.o.tabs": "タブ",
     "set.agents.layout.o.tile": "タイル",
+    "set.agents.helpers_shown": "エージェントの下に表示するヘルパーの最大数",
+    "set.agents.helpers_shown.d":
+      "残りは「すべて表示」で見られます。バッジは、動作中のヘルパーをすべて数えます。",
+    "set.agents.helpers_shown.o.1": "1",
+    "set.agents.helpers_shown.o.3": "3",
+    "set.agents.helpers_shown.o.5": "5",
+    "set.agents.helpers_shown.o.10": "10",
+    "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",
     "set.agents.rotation.d":

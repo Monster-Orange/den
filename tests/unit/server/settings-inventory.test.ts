@@ -68,6 +68,8 @@ describe("the settings inventory (R21)", () => {
       [
         // AG-4b: the Agents tab's layout.
         "agents_layout",
+        // #80: how many running helpers an open badge shows.
+        "agents_helpers_shown",
         "appearance.mode",
         "appearance.theme",
         "editor",

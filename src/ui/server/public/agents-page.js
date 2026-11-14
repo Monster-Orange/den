@@ -101,6 +101,7 @@ import {
   helperCountSaid,
   helperBarButtonHtml,
   helperRowsHtml,
+  helperToggleHtml,
   openHelpers,
   wireHelperRows,
 } from "/agent-helpers.js";
@@ -197,6 +198,11 @@ const st = {
   hiddenOpen: [],
   // #80: the project a deliberate open left (its "Back to" line), or null.
   switchedFrom: null,
+  // #80: agents (ws\0id) whose helpers badge is open. Closed by default;
+  // kept while the page is open, never across a reload.
+  helpersOpen: new Set(),
+  // #80: how many running helpers an open badge shows (agents.helpers_shown).
+  helpersShown: 3,
   // AG-4b: where a path link opens (Settings editor_open).
   editorOpen: "none",
 };
@@ -750,19 +756,43 @@ function rowHtml(r) {
   // D28: a running agent whose rotation is due: its callout, with buttons
   // (before, only a tag: nothing to press).
   const callout = r.kind === "agent" ? rotCalloutHtml(r) : "";
-  // D32: the helpers it started in its own session, under it.
-  // D34: only under the agent in front.
-  const helpers = r.kind === "agent" ? helperRowsHtml(r, r.id === st.cur) : "";
+  // D32: the helpers it started in its own session, under it. #80: only
+  // once its badge is opened (closed by default, the agent in front too).
+  const hOpen = r.kind === "agent" && st.helpersOpen.has(helperKey(r));
+  const helpers =
+    r.kind === "agent" ? helperRowsHtml(r, hOpen, st.helpersShown) : "";
+  // #80: the badge is a button beside the row's (laid over its place).
+  const toggle = r.kind === "agent" ? helperToggleHtml(r, hOpen) : "";
+  const row = toggle ? `<div class="agrw">${button}${toggle}</div>` : button;
   const hub = hubWorkHtml(r);
-  if (!callout) return button + hub + helpers;
+  if (!callout) return row + hub + helpers;
   return (
     `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}" data-rotation="${rot}">` +
-    button +
+    row +
     `<div class="agacts">${callout}</div>` +
     hub +
     `</div>` +
     helpers
   );
+}
+
+/** #80: an agent's key in st.helpersOpen. */
+const helperKey = (r) => `${r.workspace}\0${r.agent}`;
+
+/**
+ * #80: each helpers badge sits over its placeholder on its row's second
+ * line (the row is a button, and a button can't hold one).
+ */
+function placeHelperToggles(root) {
+  for (const w of root.querySelectorAll(".agrw")) {
+    const ph = w.querySelector(".agr-hp-ph");
+    const b = w.querySelector(":scope > .agr-hpb");
+    if (!ph || !b) continue;
+    const a = w.getBoundingClientRect();
+    const r = ph.getBoundingClientRect();
+    b.style.left = `${Math.round(r.left - a.left)}px`;
+    b.style.top = `${Math.round(r.top - a.top)}px`;
+  }
 }
 
 /** Where focus was in the list, as a selector that finds it again once
@@ -771,6 +801,8 @@ function listFocusKey(el) {
   const key = refindKey(el);
   if (key) return key;
   const q = (v) => CSS.escape(String(v ?? ""));
+  if (el.matches(".agr-hpb[data-agent]"))
+    return `#agl .agr-hpb[data-agent="${q(el.dataset.agent)}"][data-ws="${q(el.dataset.ws)}"]`;
   if (el.matches("button.agr[data-id]"))
     return `#agl button.agr[data-id="${q(el.dataset.id)}"]`;
   if (el.matches("[data-act]")) {
@@ -793,6 +825,7 @@ function setList(el, html) {
     : null;
   const key = had ? listFocusKey(had) : "";
   el.innerHTML = html;
+  placeHelperToggles(el);
   if (had) focusBack(had, key);
 }
 
@@ -1118,6 +1151,8 @@ async function savedLayout() {
     const r = await fetch("/api/settings", { headers: { accept: "json" } });
     const b = r.ok ? await r.json() : null;
     if (typeof b?.editor_open === "string") st.editorOpen = b.editor_open;
+    if (Number.isInteger(b?.agents_helpers_shown) && b.agents_helpers_shown > 0)
+      st.helpersShown = b.agents_helpers_shown;
     return LAYOUTS.includes(b?.agents_layout) ? b.agents_layout : "focus";
   } catch {
     return "focus";
@@ -4534,6 +4569,14 @@ export async function mountAgentsPage(root) {
   }
 
   // D32: helper rows open their transcript; "All helpers" the full list.
+  // #80: the helpers badges follow their rows when the list's width
+  // changes (a resize, the rail, a font that arrives late).
+  {
+    const agl = root.querySelector("#agl");
+    if (typeof ResizeObserver === "function")
+      new ResizeObserver(() => placeHelperToggles(agl)).observe(agl);
+    document.fonts?.ready?.then(() => placeHelperToggles(agl));
+  }
   wireHelperRows(
     root.querySelector("#agl"),
     (agent, ws) => {
@@ -4560,6 +4603,14 @@ export async function mountAgentsPage(root) {
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
       if (which === "switch-back") return void switchBack();
+      // #80: the helpers badge opens or closes them under its agent.
+      if (which === "helpers-toggle") {
+        const k = `${act.dataset.ws}\0${act.dataset.agent}`;
+        if (st.helpersOpen.has(k)) st.helpersOpen.delete(k);
+        else st.helpersOpen.add(k);
+        paintList();
+        return;
+      }
       if (which === "remove-shell")
         return void removeShell(
           rowOf(act.closest(".agst")?.dataset.shell),
@@ -4583,18 +4634,6 @@ export async function mountAgentsPage(root) {
     }
     const b = e.target.closest(".agr");
     if (!b) return;
-    // D62: the helpers chip opens the list (D50), not the agent.
-    if (e.target.closest('[data-act="helpers-chip"]')) {
-      const r = rowOf(b.dataset.id);
-      if (r?.kind === "agent")
-        void openHelpers({
-          ws: r.workspace,
-          agent: r.agent,
-          name: displayName(r),
-          opener: b,
-        });
-      return;
-    }
     if (b.hasAttribute("data-details")) {
       const r = visibleRows().find((x) => x.id === b.dataset.id);
       if (r) void openDetails(r, b);

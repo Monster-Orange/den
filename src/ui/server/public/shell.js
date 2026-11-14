@@ -721,6 +721,14 @@
     "set.agents.layout.o.focus": "Focus",
     "set.agents.layout.o.tabs": "Tabs",
     "set.agents.layout.o.tile": "Tile",
+    "set.agents.helpers_shown": "Show up to this many helpers under an agent",
+    "set.agents.helpers_shown.d":
+      "More open in Show all. The badge always counts every running helper.",
+    "set.agents.helpers_shown.o.1": "1",
+    "set.agents.helpers_shown.o.3": "3",
+    "set.agents.helpers_shown.o.5": "5",
+    "set.agents.helpers_shown.o.10": "10",
+    "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
     "set.agents.rotation.d":
@@ -1708,9 +1716,7 @@
     "hp.title": "Helpers ({n})",
     "hp.bar": "Helpers: {n}",
     "hp.barRunning": "Helpers: {n}, {r} running",
-    "hp.all": "All helpers ({n})",
     "hp.titlePlain": "Helpers",
-    "hp.allPlain": "All helpers",
     "hp.rowRunning": "{n} helpers running",
     "hp.rowRunning.one": "{n} helper running",
     "hp.runningN": "{n} running",

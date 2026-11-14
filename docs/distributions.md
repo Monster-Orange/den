@@ -3467,13 +3467,17 @@ but can't stop or steer them. To change what they do, tell the agent.
 Where they show:
 
 - **The Agents tab.** Every running agent's row counts its running
-  helpers. Under the agent in front (its pane showing), its active
-  helpers, running and idle, are listed: running first, a helper's own
-  helpers under it, each with what it was asked to do, its state and
-  when; at most `row_max` (4), then **All helpers (n)**, which opens the
-  Helpers list. Done, failed and stopped helpers are never listed under
-  the row; they are in the Helpers list. Select another agent and the
-  first one's rows go.
+  helpers in a badge ("2 helpers", with a dot that pulses unless your
+  system asks for reduced motion). The badge is a button: press it to
+  open that agent's running helpers under its row, and again to close
+  them. They start closed, the agent in front too, and a reload closes
+  them again. Open, the row shows the first few running helpers in the
+  order they started, oldest first, so the rows you see never move when
+  another starts. How many is yours: Settings › Agents › "Show up to
+  this many helpers under an agent" (1, 3, 5 or 10; default 3,
+  `agents.helpers_shown` in your user config). With more running,
+  **Show all (n)** opens the Helpers list. Done, failed and stopped
+  helpers are only in the Helpers list.
 - **A pane's bar.** **Helpers (n)** opens the list, with a count while any
   run. Helpers from the agent's earlier conversations (before a relaunch)
   are folded under "Earlier (n)".
@@ -3524,7 +3528,7 @@ Settings, under `agents.helpers` in the org config:
 agents:
   helpers:
     active_minutes: 10 # no activity this long, not known done: idle
-    row_max: 4 # active helpers under the agent in front
+    row_max: 4 # deprecated (0.4.45): ignored
     read_max_mb: 64 # the most of an agent's transcript read for them
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
@@ -3532,7 +3536,7 @@ agents:
 | Key                     | Values                     | Default |
 | ----------------------- | -------------------------- | ------- |
 | `active_minutes`        | minutes, above 0 to 100000 | 10      |
-| `row_max`               | a whole number, 1 to 1000  | 4       |
+| `row_max`               | deprecated, ignored        | 4       |
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
@@ -3541,6 +3545,9 @@ transcript (its notification, its result). Den reads only that much of the
 transcript's end, then only what is added, so a transcript of gigabytes
 costs what a 64 MB one does. A helper whose notification is further back
 gets its state from its own files.
+
+`row_max` no longer does anything (0.4.45): how many helpers show under
+an agent is each person's `agents.helpers_shown` (above).
 
 `collapse_done_minutes` no longer does anything (0.4.29): finished helpers
 stay in the list until a person clears them. It is still accepted, so a

@@ -298,7 +298,12 @@ import {
   sshUser,
 } from "../../shared/cli-command.js";
 import { graphPrefs, patchStoredGraph } from "./graph-prefs.js";
-import { agentsLayout, patchAgentsLayout } from "./agents-layout-pref.js";
+import {
+  agentsLayout,
+  helpersShown,
+  patchAgentsLayout,
+  patchHelpersShown,
+} from "./agents-layout-pref.js";
 import { patchHubAllowTools, readHubConfig } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import { graphPageHtml } from "./graph-page.js";
@@ -5328,6 +5333,8 @@ async function handleRequest(
   //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
   //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
+  //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
+  //     badge shows (#80, user.yml agents.helpers_shown); null clears it
   //   editor_open: vscode | cursor | zed | none, where a path in an agent's
   //     pane opens (AG-4b, editor-open-pref.ts); null clears it (none)
   //   language: the UI's language, en | ja | es (ui-language.ts); null or
@@ -5378,6 +5385,7 @@ async function handleRequest(
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell),
         agents_layout: agentsLayout(user),
+        agents_helpers_shown: helpersShown(user),
         editor_open: editorOpen(user),
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
@@ -5407,6 +5415,7 @@ async function handleRequest(
           language?: unknown;
           machine_name?: unknown;
           agents_layout?: unknown;
+          agents_helpers_shown?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
         };
@@ -5424,6 +5433,11 @@ async function handleRequest(
         if (body.agents_layout !== undefined) {
           const l = patchAgentsLayout(user, body.agents_layout);
           if (!l.ok) return send400(res, l.error);
+        }
+        // #80: how many running helpers an open badge shows.
+        if (body.agents_helpers_shown !== undefined) {
+          const h = patchHelpersShown(user, body.agents_helpers_shown);
+          if (!h.ok) return send400(res, h.error);
         }
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
@@ -5540,6 +5554,7 @@ async function handleRequest(
           language: uiLanguage(user.language),
           machine_name: machineNameSetting(user),
           agents_layout: agentsLayout(user),
+          agents_helpers_shown: helpersShown(user),
           editor_open: editorOpen(user),
         });
       } catch (e) {

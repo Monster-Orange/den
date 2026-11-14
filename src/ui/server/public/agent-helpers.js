@@ -115,22 +115,34 @@ export function helperHtml(h, { ws, agent, depth }) {
   );
 }
 
+/** #80: the id of an agent's open helpers group (the badge controls it). */
+export const helpersGroupId = (r) =>
+  `aghs-${String(r?.workspace ?? "")}-${String(r?.agent ?? "")}`.replace(
+    /[^\w-]/g,
+    "_",
+  );
+
 /**
- * Under the selected agent's row: its active helpers, and "All helpers
- * (n)" when it has more than the row shows. Nothing for any other row, or
- * when none is active (the row's badge still counts the running ones).
+ * #80 (0.4.45): under an agent whose badge is open, its first `max`
+ * running helpers in start order, oldest first, so the rows shown never
+ * move when another starts; then "Show all (M)" when more run. Nothing
+ * when the badge is closed (the default) or none runs.
  */
-export function helperRowsHtml(r, selected = false) {
+export function helperRowsHtml(r, open = false, max = 3) {
   const h = r?.helpers;
-  if (!selected || !h || !h.activeCount) return "";
+  if (!open || !h || !h.running) return "";
   const name = r.displayName || r.agent;
   const ctx = { ws: r.workspace, agent: r.agent };
-  const active = Array.isArray(h.active) ? h.active : [];
+  const shown = (Array.isArray(h.active) ? h.active : [])
+    .filter((x) => x.status === "running")
+    .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
+    .slice(0, Math.max(1, max));
   return (
-    `<div class="aghs" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name }))}">` +
-    helperListHtml(active, ctx) +
-    (h.activeCount > active.length
-      ? `<button type="button" class="lnk aghs-all" aria-haspopup="dialog">${countLabel("hp.all", h.activeCount, h.running)}</button>`
+    `<div class="aghs" id="${esc(helpersGroupId(r))}" data-helpers-of="${esc(r.agent)}" data-ws="${esc(r.workspace)}" role="group" aria-label="${esc(t("hp.groupOf", { name }))}">` +
+    // Flat: a helper's own helper may be cut off by the count.
+    shown.map((x) => helperHtml(x, { ...ctx, depth: 0 })).join("") +
+    (h.running > shown.length
+      ? `<button type="button" class="lnk aghs-all" aria-haspopup="dialog">${esc(t("hp.showAll", { n: h.running }))}</button>`
       : "") +
     `</div>`
   );
@@ -139,7 +151,7 @@ export function helperRowsHtml(r, selected = false) {
 /**
  * D48: one label, never two bare numbers. While any helper runs it says how
  * many run, after a pulsing dot ("Helpers · 2 running"); when none does, how
- * many there are ("Helpers (5)"). `key` is hp.title or hp.all.
+ * many there are ("Helpers (5)"). `key` is hp.title.
  */
 function countLabel(key, total, running) {
   return running
@@ -148,14 +160,30 @@ function countLabel(key, total, running) {
 }
 
 /**
- * D62: the row's count of helpers running now (any row), a chip on its
- * second line ("2 helpers"); a click on it opens the list. Said once: the
- * row's own label carries it (helperCountSaid).
+ * D62: the row's count of helpers running now (any row), on its second
+ * line ("2 helpers"). #80: inside the row's button it only holds the
+ * place (unseen, unspoken: the row's label carries the count); the badge
+ * itself is helperToggleHtml's button, laid over it.
  */
 export function helperBadgeHtml(r) {
   const n = r?.helpers?.running;
   if (!n) return "";
-  return `<span class="agr-hp hp-run" data-act="helpers-chip"><span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.chip", { n }))}</span>`;
+  return `<span class="agr-hp agr-hp-ph hp-run" aria-hidden="true"><span class="hp-dot"></span>${esc(t("hp.chip", { n }))}</span>`;
+}
+
+/**
+ * #80 (0.4.45): the badge as a toggle: it opens or closes the agent's
+ * helpers under its row (helperRowsHtml). A button of its own, beside the
+ * row's (a button can't hold one), laid over the row's placeholder.
+ */
+export function helperToggleHtml(r, open = false) {
+  const n = r?.helpers?.running;
+  if (!n) return "";
+  return (
+    `<button type="button" class="agr-hp agr-hpb hp-run" data-act="helpers-toggle" data-agent="${esc(r.agent)}" data-ws="${esc(r.workspace)}"` +
+    ` aria-expanded="${open}"${open ? ` aria-controls="${esc(helpersGroupId(r))}"` : ""}>` +
+    `<span class="hp-dot" aria-hidden="true"></span>${esc(t("hp.chip", { n }))}</button>`
+  );
 }
 
 /** D62: "2 helpers running", for the row's label; "" when none run. */
@@ -202,6 +230,12 @@ const CSS = `
 .hp-run{white-space:nowrap}
 .agr-hp{flex:none;display:inline-flex;align-items:center;padding:0 6px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;line-height:16px;font-weight:400;cursor:pointer}
 .agr-hp:hover{color:var(--text);border-color:var(--border-strong)}
+.agr-hp-ph{visibility:hidden}
+.agrw{position:relative}
+.agrw>.agr-hpb{position:absolute;margin:0;font:inherit;font-size:11px;line-height:16px;background:var(--surface);min-height:0;z-index:1}
+.agrw>.agr-hpb[aria-expanded="true"]{color:var(--text);border-color:var(--border-strong)}
+.agrw>.agr-hpb:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.agrw>.agr-hpb::after{content:"";position:absolute;inset:-6px -4px}
 .hp-dot{display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:var(--ok);vertical-align:1px;animation:hp-pulse 1.6s ease-in-out infinite}
 @keyframes hp-pulse{50%{opacity:.35}}
 @media (prefers-reduced-motion: reduce){.hp-dot{animation:none}}

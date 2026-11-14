@@ -41,3 +41,39 @@ export function patchAgentsLayout(
   else delete user.agents;
   return { ok: true };
 }
+
+/**
+ * 0.4.45 (#80): how many running helpers an agent's open badge shows under
+ * it (`agents.helpers_shown`, served as `agents_helpers_shown`): 1, 3, 5
+ * or 10, default 3. More open in Show all. A view preference only.
+ */
+export const HELPERS_SHOWN = [1, 3, 5, 10] as const;
+export const HELPERS_SHOWN_DEFAULT = 3;
+
+const isShown = (v: unknown): v is number =>
+  typeof v === "number" && (HELPERS_SHOWN as readonly number[]).includes(v);
+
+/** The stored count, or the default when unset or hand-broken. */
+export function helpersShown(user: UserConfig): number {
+  const v = (user.agents as { helpers_shown?: unknown } | undefined)
+    ?.helpers_shown;
+  return isShown(v) ? v : HELPERS_SHOWN_DEFAULT;
+}
+
+/** Apply a POSTed `agents_helpers_shown` (null clears it), as the layout. */
+export function patchHelpersShown(
+  user: UserConfig,
+  v: unknown,
+): { ok: true } | { ok: false; error: string } {
+  if (v !== null && !isShown(v))
+    return {
+      ok: false,
+      error: `agents_helpers_shown must be one of ${HELPERS_SHOWN.join(", ")}, or null`,
+    };
+  const agents = { ...(user.agents ?? {}) } as Record<string, unknown>;
+  if (v === null) delete agents.helpers_shown;
+  else agents.helpers_shown = v;
+  if (Object.keys(agents).length) user.agents = agents as UserConfig["agents"];
+  else delete user.agents;
+  return { ok: true };
+}

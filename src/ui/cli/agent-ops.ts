@@ -67,7 +67,6 @@ import {
   type SubagentModelFrom,
 } from "../../shared/agents/subagents.js";
 import {
-  capHelpers,
   HELPER_DEFAULTS,
   HELPERS_READ_ONLY_NOTE,
   type Helper,
@@ -1296,6 +1295,9 @@ function addHelperCounts(
   }
 }
 
+/** #80: the most running helpers a row is sent (agents.helpers_shown's top). */
+export const ROW_HELPERS_SENT = 10;
+
 /**
  * D32/D34: what an agent's row shows of its helpers: its counts by state
  * and its active ones (running or idle; at most row_max, running kept),
@@ -1337,7 +1339,13 @@ export function rowHelpers(
     total: hs.length,
     cleared: cleared.length,
     activeCount: active.length,
-    active: capHelpers(active, settings.rowMax),
+    // #80: the running ones in start order, oldest first, as many as an
+    // open badge can show (agents.helpers_shown, at most 10): the rows a
+    // person sees never move when another starts.
+    active: active
+      .filter((h) => h.status === "running")
+      .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
+      .slice(0, ROW_HELPERS_SENT),
   };
 }
 
