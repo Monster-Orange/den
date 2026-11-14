@@ -88,6 +88,7 @@
  * as a tag.
  */
 import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
+import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { dismissable } from "/popover.js";
 import {
@@ -166,6 +167,9 @@ const REFRESH_MS = 5_000;
 
 const st = {
   root: null,
+  /** 0.4.45: /api/workspaces, for the projects' names (projName). */
+  projects: null,
+  projectsAt: 0,
   scope: "all",
   scopeLabel: "",
   data: null,
@@ -424,12 +428,22 @@ function wsHref(ws) {
   return `${base}?project=${encodeURIComponent(ws)}`;
 }
 
+/**
+ * 0.4.45: a project's name as the header's picker shows it: Hub's when it
+ * is linked to a Hub project, else its own (workspace-picker.js). From
+ * /api/workspaces, read with the list now and then (st.projects).
+ */
+function projName(ws) {
+  return projectLabel(st.projects, ws);
+}
+
 /** Workspace `ws` as a link to it on Workspaces. */
 function wsLinkHtml(ws) {
   // ON-6: the server agent belongs to no workspace: its group is "Server".
   if (ws === SERVER_WS)
     return `<span class="wslink" data-server>${esc(t("ag.server"))}</span>`;
-  return `<a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws }))}">${esc(ws)}</a>`;
+  const name = projName(ws);
+  return `<a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws: name }))}">${esc(name)}</a>`;
 }
 
 /**
@@ -458,7 +472,7 @@ function whereTag(r, button = false) {
  */
 function linkTag(r) {
   if (r?.kind !== "agent" || r.server) return "";
-  const project = r.project || r.workspace;
+  const project = projName(r.project || r.workspace);
   const path = r.repo ? `${project} › ${r.repo}` : project;
   return (
     `<span class="aglink" data-link><span class="mono">${esc(path)}</span>` +
@@ -1183,6 +1197,23 @@ async function refresh() {
       ws ? `/api/sessions?ws=${encodeURIComponent(ws)}` : "/api/sessions",
       { headers: { accept: "json" } },
     );
+    // 0.4.45: the projects' names (a rename in Hub shows here within
+    // 30 s of reaching this install).
+    if (!st.projectsAt || Date.now() - st.projectsAt > 30_000) {
+      st.projectsAt = Date.now();
+      void fetch("/api/workspaces", { headers: { accept: "json" } })
+        .then((x) => (x.ok ? x.json() : null))
+        .then((d) => {
+          if (!d) return;
+          const was = JSON.stringify(st.projects?.workspaces ?? null);
+          st.projects = d;
+          if (JSON.stringify(d.workspaces ?? null) !== was) {
+            paintList();
+            for (const pane of st.panes.values()) paintBar(pane);
+          }
+        })
+        .catch(() => undefined);
+    }
     if (r.status === 401) {
       st.signedOut = true;
     } else if (r.ok) {
@@ -1813,7 +1844,12 @@ function paintBar(p) {
   // project's colour (a message once went to the wrong agent's tab).
   const to = p.el.querySelector(".agto");
   if (to) {
-    const said = ws ? t("ag.to", { name, ws }) : t("ag.toName", { name });
+    const said = ws
+      ? t("ag.to", {
+          name,
+          ws: ws === SERVER_WS ? t("ag.server") : projName(ws),
+        })
+      : t("ag.toName", { name });
     if (to.textContent !== said) to.textContent = said;
     to.style.setProperty("--ws-h", String(wsHue(ws)));
   }
