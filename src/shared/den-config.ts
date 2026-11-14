@@ -774,6 +774,8 @@ export function readDenConfig(): DenConfig {
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
+      // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts).
+      hub_editions: parsed?.hub_editions,
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
