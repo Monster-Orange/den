@@ -130,6 +130,13 @@ describe("D71: a workspace delete and its agents", () => {
 
   it("move: the stopped one at once, the running one once its turn ends; same conversation", async () => {
     const r = await twoAgents();
+    // The record moves before the agent is started again, and the hub
+    // lookup sits between them: a slow one opens that gap every time, so
+    // the test can't read the first launch as the move's.
+    r.deps.hub = async () => {
+      await new Promise((res) => setTimeout(res, 200));
+      return null;
+    };
     const d = resolveAgentsDeps(r.deps);
     const token = readRecord(r.stateDir, "planner")!.resumeToken!;
     const out = await disposeWorkspaceAgents(d, "north", "move", "south");
@@ -148,9 +155,11 @@ describe("D71: a workspace delete and its agents", () => {
       workspace: "south",
       resumeToken: token,
     });
-    expect(r.made[r.made.length - 1].args.slice(0, 2)).toEqual([
-      "--resume",
-      token,
+    // Started again once, resuming the same conversation.
+    for (let i = 0; i < 100 && r.made.length < 2; i++) await settle();
+    expect(r.made.map((m) => m.args.slice(0, 2))).toEqual([
+      ["--session-id", token],
+      ["--resume", token],
     ]);
   });
 
