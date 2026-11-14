@@ -28,8 +28,17 @@ config and manifest changes a distribution must make to move to it under
   `gh`, the person can send with Den's GitHub App instead: they approve a code on
   GitHub, the report is filed with that one token, and the token is dropped. If
   GitHub refuses (the app isn't installed on that repository, or can't write
-  issues there), nothing is sent and the filled-in link stays. The dialog comes
-  next.
+  issues there), nothing is sent and the filled-in link stays.
+- The Report an issue dialog: Report an issue beside Settings in the rail,
+  ⌘⇧F (Ctrl+Shift+F) from anywhere and over an open dialog, and Send feedback
+  in the command palette. Three steps: Write (kind, title, description),
+  Include (each diagnostics section's exact text, ticked or not, with Redact
+  names), Review and send (the exact text that will be posted, the public
+  repository warning just above Send). Then sent, signing in to GitHub with a
+  code, the same title already open, too many this hour, or Finish later. At
+  390 px it is a sheet from the bottom. In English, Spanish and Japanese. The
+  screenshot, the Report button in every dialog and drawer, and My reports
+  come next.
 
 - Settings › Den's address: the install's address (web.url) as a page
   control. Check and save asks the address to answer as this Den before

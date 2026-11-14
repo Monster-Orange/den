@@ -5540,6 +5540,18 @@ async function handleRequest(
         ui_languages: UI_LANGUAGES,
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
+        feedback_enabled: (() => {
+          try {
+            return readFeedbackSettings(
+              getEngineRoot(),
+              path.join(getDistRoot(), product().configFile),
+              user.feedback,
+            ).enabled;
+          } catch {
+            return true;
+          }
+        })(),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {

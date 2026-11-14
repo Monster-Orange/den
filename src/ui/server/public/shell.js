@@ -130,6 +130,92 @@
     "n.releases": "Releases",
     "n.edge": "Edge",
     "n.settings": "Settings",
+    // FB (den#81): Report an issue.
+    "fb.rail": "Report an issue",
+    "fb.tip": "Report an issue (⌘⇧F)",
+    "fb.word": "Report",
+    "fb.palette": "Send feedback",
+    "fb.title": "Report an issue",
+    "fb.sub":
+      "Tell us what is wrong, or what you wish __DEN_TITLE__ did. It becomes a GitHub issue, filed as you.",
+    "fb.step1": "1 Write",
+    "fb.step2": "2 Include",
+    "fb.step3": "3 Review and send",
+    "fb.stepOf": "{i}/{n}",
+    "fb.kind": "What is it?",
+    "fb.k.bug": "Bug",
+    "fb.k.idea": "Idea",
+    "fb.k.question": "Question",
+    "fb.titleL": "Title",
+    "fb.desc": "What happened, and what did you expect?",
+    "fb.shot": "Screenshot of this page",
+    "fb.ncap":
+      "This page couldn't be captured. You can send the report without a screenshot.",
+    "fb.next": "Next: Include",
+    "fb.back": "Back",
+    "fb.send": "Send as a GitHub issue",
+    "fb.later": "Finish later",
+    "fb.cancel": "Cancel",
+    "fb.dest": "Goes to",
+    "fb.pub": "Public repository",
+    "fb.pubW":
+      "Screenshots and text are visible to everyone. Mask anything private.",
+    "fb.incH": "What goes with your report",
+    "fb.incN":
+      "Each part says how __DEN_TITLE__ uses it. Secrets, tokens, emails, IP addresses and store references are always removed, whatever is ticked.",
+    "fb.all": "Include all",
+    "fb.none": "Include none",
+    "fb.remember": "Remember my choices",
+    "fb.redact":
+      "Redact names (companies, projects, repos, services) as <org-1>, <repo-1> …",
+    "fb.dgi": "How __DEN_TITLE__ uses this",
+    "fb.sec.Den": "__DEN_TITLE__",
+    "fb.sec.Browser": "Browser",
+    "fb.sec.Machine": "Machine",
+    "fb.sec.Page": "Page",
+    "fb.use.Den": "Which version you run, to find the change that caused it.",
+    "fb.use.Browser": "The browser and window size, to see it as you do.",
+    "fb.use.Machine": "The system it runs on, never who or where.",
+    "fb.use.Page": "Which page and dialog were open.",
+    "fb.revH": "Review: this is exactly what will be posted",
+    "fb.siH": "Sign in with GitHub to send",
+    "fb.siB":
+      "Reports are filed as you, so GitHub's replies reach you. __DEN_TITLE__ shows a code; enter it at github.com/login/device. This is not __DEN_TITLE__'s own sign-in.",
+    "fb.noApp":
+      "Sending needs GitHub. Save it with Finish later, or file it in a GitHub tab.",
+    "fb.open": "Open github.com/login/device",
+    "fb.codeL": "Your code",
+    "fb.waiting": "Waiting for you to approve in GitHub…",
+    "fb.siAlt": "Or open a new GitHub tab with the report filled in.",
+    "fb.siAltLink": "Open a filled-in GitHub tab",
+    "fb.expired": "The code expired before it was approved. Nothing was sent.",
+    "fb.denied": "GitHub sign-in was cancelled. Nothing was sent.",
+    "fb.dupH": "A report with this title is already open",
+    "fb.dupB":
+      "“{title}” is already open. Add your details to it instead of opening a second one?",
+    "fb.addTo": "Add to the existing report",
+    "fb.fileNew": "File a new report",
+    "fb.sentH": "Report sent",
+    "fb.sentB": "Your report is a GitHub issue now: “{title}”.",
+    "fb.addedB": "Your details were added to the open report.",
+    "fb.openIssue": "Open the issue",
+    "fb.done": "Done",
+    "fb.limH": "You have sent {n} reports this hour",
+    "fb.limB":
+      "Try again in {min} minutes. Your report is not lost: save it with Finish later and send it then.",
+    "fb.latH": "Saved. Nothing was sent.",
+    "fb.latB":
+      "It is saved on this computer with your text and choices. Open it again from Report an issue to send it.",
+    "fb.failH": "Not sent",
+    "fb.keepH": "Keep what you wrote?",
+    "fb.keep": "Keep it (Finish later)",
+    "fb.discard": "Discard",
+    "fb.needTitle": "A title is needed.",
+    "fb.busyPreview": "Making the preview…",
+    "fb.busySend": "Sending the report…",
+    "fb.busySave": "Saving the report…",
+    "fb.busyDone": "Done",
+    "fb.busyFailed": "Couldn't reach __DEN_TITLE__. Nothing was sent.",
     "k.org": "Company",
     "k.repoOwner": "Repo owner",
     "k.ws": "Project",
@@ -2159,6 +2245,8 @@
 
   // ── icons: the prototype's 24px line drawings ─────────────────────────
   var ICONS = {
+    // FB (den#81): the flat speech bubble with "!" (the Report button).
+    report: '<path d="M4 5h16v11H9l-5 4V5z"/><path d="M12 8v4M12 14.2v.01"/>',
     overview: '<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>',
     graph:
       '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.6 8M7 8.4l1.6 7.2M16.4 10.2l-5.6 6"/>',
@@ -3744,6 +3832,17 @@
       },
       page === SETTINGS.id,
     );
+    // FB (den#81): Report an issue, beside Settings; the icon stays when
+    // the rail is collapsed. Hidden with feedback.enabled: false.
+    if (!state.reportOff)
+      html +=
+        '<button class="den-ni den-report-btn" type="button" data-act="report" aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
+        esc(t("fb.tip")) +
+        '">' +
+        icon("report") +
+        '<span class="den-lbl">' +
+        esc(t("fb.rail")) +
+        "</span></button>";
     html += identityChip();
     html +=
       '<button class="den-ni den-collapse-btn" type="button" data-act="collapse" aria-expanded="' +
@@ -4022,6 +4121,11 @@
       });
       return;
     }
+    var rep = tgt && tgt.closest ? tgt.closest('[data-act="report"]') : null;
+    if (rep) {
+      openReport();
+      return;
+    }
     var c = tgt && tgt.closest ? tgt.closest('[data-act="collapse"]') : null;
     if (c) {
       setState({ collapsed: !state.collapsed });
@@ -4092,6 +4196,24 @@
       if (drawerOpen()) closeDrawer(true);
       else openDrawer();
     });
+  // FB (den#81): ⌘⇧F (Ctrl+Shift+F) opens Report an issue from anywhere,
+  // over an open dialog too.
+  document.addEventListener(
+    "keydown",
+    function (e) {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        (e.key === "F" || e.key === "f" || e.code === "KeyF") &&
+        !state.reportOff
+      ) {
+        e.preventDefault();
+        openReport();
+      }
+    },
+    true,
+  );
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && drawerOpen() && !openPop) {
       e.preventDefault();
@@ -6275,7 +6397,27 @@
     setTimeout(poll, 800);
   })();
 
+  /** FB (den#81): the Report an issue dialog (report-dialog.js). */
+  function openReport(opts) {
+    if (state.reportOff) return Promise.resolve(null);
+    return import("/report-dialog.js").then(function (m) {
+      return m.openReport(opts || {});
+    });
+  }
+  registerCommand({
+    id: "report",
+    label: function () {
+      return t("fb.palette");
+    },
+    keywords: ["report", "feedback", "bug", "issue"],
+    run: function () {
+      openReport();
+    },
+  });
+
   window.denShell = {
+    /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
+    report: openReport,
     /** BUSY-1: the working pop-up for a slow action (busy.js). */
     busyAction: function (opts) {
       // The button disables at once, before busy.js has loaded.
@@ -6446,6 +6588,7 @@
         return r.ok ? r.json() : null;
       })
       .then(function (s) {
+        if (s && s.feedback_enabled === false) setState({ reportOff: true });
         if (!s || !s.shell) return;
         setState({
           pins: Array.isArray(s.shell.pins) ? s.shell.pins : [],

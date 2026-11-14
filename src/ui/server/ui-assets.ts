@@ -72,6 +72,8 @@ export const UI_MODULES: readonly string[] = [
   "/restart-den.js",
   // BUSY-1: the working pop-up.
   "/busy.js",
+  // FB (den#81): Report an issue, the dialog.
+  "/report-dialog.js",
   "/ws-delete-agents.js",
 ];
 
