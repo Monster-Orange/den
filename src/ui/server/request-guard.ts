@@ -738,7 +738,7 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/personas",
   "/api/personas/:id",
   "/api/report/send",
-  "/api/report/drafts",
+  // An agent saves a draft (stamped as its own); it never discards one.
   "/api/report/drafts/:id",
   "/api/report/github-send",
   "/api/editor/open",

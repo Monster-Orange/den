@@ -8,6 +8,19 @@ config and manifest changes a distribution must make to move to it under
 
 ### Security
 
+- Agents could make changes that only a person should make. They're
+  refused now. With its own token, an agent could make, rename, set up
+  or delete projects and their services; change most settings, including
+  letting Hub tools run without asking; change the release settings, and
+  start a deploy where deploys are turned on; disconnect this install
+  from Hub; run a whole project's up, down or restart, or `aws sso
+  login`; open an editor or a terminal app; and run any service command
+  in any environment. Each is now refused before it runs, and an agent
+  asks through an approval instead. For an agent, service commands are
+  up, down or restart on local only. Approvals, other agents, the bell,
+  sending reports and the server agent were already a person's. A test
+  goes through every route that changes something: each is a person's,
+  or listed with why an agent may call it.
 - A service agents may reach only through its API (`agents: api_only`)
   was guarded against Docker, Podman and OrbStack only. Every container
   engine is now held to the same: `nerdctl`, `container`, `kiri` (and
@@ -84,14 +97,6 @@ config and manifest changes a distribution must make to move to it under
   that goes missing.
 - An agent can no longer change Local environment through the older
   `/api/local-dev` route. These new settings are a person's only.
-- An agent's token can no longer change what is a person's to change.
-  Before, it reached 48 such writes: deciding approvals, settings,
-  deploys, projects, other agents' records, the bell, this install's Hub
-  link, sending reports, and opening an editor or a terminal. Each is now
-  refused before its handler runs, and an agent asks through an approval.
-  Service exec runs only up, down or restart on local for an agent, on the
-  server as in the MCP tool. A test walks every route that changes
-  something: it is a person's, or listed with why an agent may call it.
 - A report is filed with its kind's label: bug, enhancement (an idea) or
   question, GitHub's default labels. A repo without that label gets the report
   without one. Den only looks labels up and never makes one in someone's repo.

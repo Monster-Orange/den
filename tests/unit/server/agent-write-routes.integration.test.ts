@@ -52,6 +52,27 @@ describe("an agent's token and a person's writes, on the real server", () => {
     expect(r.status).toBe(200);
   });
 
+  it("an agent saves a report draft, stamped as its own; it never sends or discards one", async () => {
+    const r = await asAgent("POST", "/api/report/drafts", {
+      id: "a-person-s-draft",
+      title: "From an agent",
+      kind: "bug",
+      description: "Seen while running the tests.",
+    });
+    expect(r.status).toBe(200);
+    const { draft } = (await r.json()) as { draft: { id: string } };
+    expect(draft.id).not.toBe("a-person-s-draft");
+    const all = await fetch(`${s.base}/api/report/drafts`, {
+      headers: denAuth(s.stateDir),
+    });
+    const mine = (
+      (await all.json()) as { drafts: { id: string; by?: string }[] }
+    ).drafts.find((d) => d.id === draft.id);
+    expect(mine?.by).toMatch(/^agent:/);
+    const gone = await asAgent("DELETE", `/api/report/drafts/${draft.id}`);
+    expect(gone.status).toBe(403);
+  });
+
   it("a person's writes are refused before their handler, and change nothing", async () => {
     const before = await s.settingsGet();
     for (const [method, p, body] of [

@@ -61,6 +61,8 @@ const AGENTS_MAY: Record<string, string> = {
   "HEAD /api/workspace/sync": "as GET",
   "POST /api/manifest/validate": "validates posted content; writes nothing",
   "POST /api/report/preview": "composes a report's text; writes nothing",
+  "POST /api/report/drafts":
+    "an agent's report stays a draft, stamped as its own, for its person to send",
   "POST /api/agents/self/attention":
     "NT-1: the agent's own waiting mark, by its own token only",
   "POST /hub/*": "D52: the agent's own Hub calls, with its own Hub token",
