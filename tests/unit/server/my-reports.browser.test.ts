@@ -493,6 +493,22 @@ describe("FB: My reports", () => {
     expect(await form(p).count()).toBe(0);
   });
 
+  it('the palette says Report an issue, and "feedback" still finds it', async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    await p.keyboard.press("Control+k");
+    await p.waitForSelector(".den-pal");
+    await p.keyboard.type("feedback");
+    const opt = p.getByRole("option", { name: /^Report an issue/ });
+    await opt.first().waitFor();
+    expect(await p.getByRole("option", { name: /Send feedback/ }).count()).toBe(
+      0,
+    );
+    await opt.first().click();
+    await form(p).locator('[data-f="title"]').waitFor();
+    await p.context().close();
+  });
+
   it("in es and ja, and at 390 px with nothing wider than the screen", async () => {
     if (skip()) return;
     for (const [lang, title, tab] of [

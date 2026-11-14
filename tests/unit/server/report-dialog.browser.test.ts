@@ -68,6 +68,10 @@ interface Fake {
   app?: Record<string, unknown>;
   polls?: Record<string, unknown>[];
   settings?: Record<string, unknown>;
+  /** feedback.max_per_hour, as GET /api/report says it (default 5). */
+  max?: number;
+  /** Each send's X-Den-Request-Id. */
+  ids?: string[];
 }
 
 const PREVIEW = {
@@ -108,7 +112,7 @@ async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
         enabled: true,
         repos: [{ repo: "acme-eng/engine" }],
         github: { signedIn: true, deviceFlow: true },
-        maxPerHour: 5,
+        maxPerHour: fake.max ?? 5,
         sentThisHour: 0,
       });
     if (u.pathname === "/api/report/diagnostics")
@@ -119,6 +123,7 @@ async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
     if (u.pathname === "/api/report/preview") return json(r, 200, PREVIEW);
     if (u.pathname === "/api/report/send") {
       fake.sent.push(body);
+      (fake.ids ??= []).push(r.request().headers()["x-den-request-id"] ?? "");
       return json(r, fake.send[0], fake.send[1]);
     }
     if (u.pathname === "/api/report/drafts") {
@@ -365,6 +370,92 @@ describe("FB: Report an issue, the dialog", () => {
     expect(f.drafts[0]).toMatchObject({
       title: "Pane drops at acme.local.example.com",
     });
+    await p.context().close();
+  });
+
+  it("a limit without its number in the answer: the setting's, not a built-in 5", async () => {
+    if (skip()) return;
+    const f = fresh([
+      429,
+      { ok: false, nextAt: new Date(Date.now() + 9 * 60_000).toISOString() },
+    ]);
+    f.max = 12;
+    const p = await page(f);
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await toReview(p);
+    await dlg(p).locator('[data-act="send"]').click();
+    await dlg(p)
+      .getByRole("heading", { name: "You have sent 12 reports this hour" })
+      .waitFor();
+    await p.context().close();
+  });
+
+  it("a failed send: Try again is first and sends the same text again; Finish later stays", async () => {
+    if (skip()) return;
+    const f = fresh([422, { ok: false, error: "GitHub refused the label." }]);
+    const p = await page(f);
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await toReview(p);
+    await dlg(p).locator('[data-act="send"]').click();
+    await dlg(p).getByRole("heading", { name: "Not sent" }).waitFor();
+    await dlg(p).getByText("GitHub refused the label.").waitFor();
+    // The primary choice, and the first of them.
+    const first = dlg(p).locator(".fb-btns > *").first();
+    expect(await first.getAttribute("data-act")).toBe("retry");
+    expect(await first.getAttribute("class")).toBe("fb-pri");
+    expect(await first.textContent()).toBe("Try again");
+    expect(await dlg(p).locator('.fb-btns [data-act="later"]').count()).toBe(1);
+    f.send = [
+      200,
+      {
+        ok: true,
+        url: "https://github.com/acme-eng/engine/issues/44",
+        repo: "acme-eng/engine",
+        added: false,
+      },
+    ];
+    await first.click();
+    await dlg(p)
+      .getByRole("link", { name: "Open the issue" })
+      .waitFor({ timeout: 10_000 });
+    expect(f.sent).toHaveLength(2);
+    expect(f.sent[1]).toEqual(f.sent[0]);
+    // The first was answered (nothing was filed): the second is a new
+    // request, which the request ledger would otherwise answer with the
+    // first one's failure.
+    expect(f.ids![1]).not.toBe(f.ids![0]);
+    await p.context().close();
+  });
+
+  it("a failed send with GitHub's own page to finish on: Try again first, that page next", async () => {
+    if (skip()) return;
+    const f = fresh([
+      422,
+      {
+        ok: false,
+        error: "GitHub turned the report down.",
+        newIssueUrl: "https://github.com/acme-eng/engine/issues/new?title=x",
+      },
+    ]);
+    const p = await page(f);
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await toReview(p);
+    await dlg(p).locator('[data-act="send"]').click();
+    await dlg(p).getByRole("heading", { name: "Not sent" }).waitFor();
+    const acts = await dlg(p)
+      .locator(".fb-btns > *")
+      .evaluateAll((es) =>
+        es.map((e) => [
+          e.getAttribute("data-act") ?? e.tagName,
+          e.classList.contains("fb-pri"),
+        ]),
+      );
+    expect(acts).toEqual([
+      ["retry", true],
+      ["A", false],
+      ["later", false],
+      ["back-review", false],
+    ]);
     await p.context().close();
   });
 

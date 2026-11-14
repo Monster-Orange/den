@@ -77,13 +77,15 @@ config and manifest changes a distribution must make to move to it under
   The screenshot uses html-to-image 1.11.13 (MIT), pinned and served from
   Den's own server.
 - Settings › Access › Sign out everywhere: it asks first, saying it signs out
-  every browser and phone, including this one. A choice there also replaces
-  the sign-in secret, which stops running agents until they are restarted.
+  every browser and phone, including this one. An optional tick box, "Also
+  replace the sign-in secret", replaces it too; running agents then stop
+  until they are restarted.
   Before, this was only `web logout` and `web logout --all`.
 - Settings › Command line: Local environment and Terminal tabs are switches,
   and Log pane lines is a number. Before, they were read-only rows for
   `config`.
-- The terminals' reconnect limits (tries, window, longest wait) and the
+- The terminals' reconnect limits (Terminal reconnect tries, Terminal
+  reconnect window, Longest wait between tries) and the
   restart guard (unclean stops, window, longest wait) are Settings rows you
   can change. `config` now accepts the keys their text names, such as
   `config panes.reconnect_max_failures=20` and
@@ -177,6 +179,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Report an issue: a failed send now says why (the reason was wiped
+  before it was shown), and Try again is its first choice: it sends the
+  same text again. Finish later and GitHub's own page stay as the other
+  choices. The hourly limit's number comes from `feedback.max_per_hour`
+  when the answer leaves it out, not a built-in 5.
+- The command palette says Report an issue, like the rail; "feedback"
+  still finds it.
 - A terminal pane whose connection dropped (a web server restart, sleep,
   a network change, a tablet's browser closing a background tab's
   connection) waited for a click on Reconnect, though its agent was
@@ -185,7 +194,8 @@ config and manifest changes a distribution must make to move to it under
   only after 10 failed tries within 5 minutes, or on a refusal, and then
   shows Reconnect with the reason. Showing the page again or coming back
   online tries at once; closes while the page is hidden never count.
-  Settings › Agents › Terminals reconnect shows the `panes.*` settings.
+  Settings › Agents shows them as Terminal reconnect tries, Terminal
+  reconnect window and Longest wait between tries (`panes.*`).
   The Agents tab and the Den agent's page now share one terminal
   connection (they had drifted: the Den agent's page had no Reconnect).
 - `web up --json` and `web down --json` could say the web server was not

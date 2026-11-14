@@ -24,7 +24,7 @@
     "fb.rail": "Informar de un problema",
     "fb.tip": "Informar de un problema (⌘⇧F)",
     "fb.word": "Informar",
-    "fb.palette": "Enviar comentarios",
+    "fb.palette": "Informar de un problema",
     "fb.title": "Informar de un problema",
     "fb.sub":
       "Cuéntanos qué falla, o qué te gustaría que hiciera __DEN_TITLE__. Se convierte en una incidencia de GitHub, a tu nombre.",
@@ -141,6 +141,7 @@
     "fb.latB":
       "Está guardado en este ordenador con tu texto, tus elecciones y la captura. Lo encontrarás en Mis informes, arriba en Informar de un problema o en la paleta de comandos.",
     "fb.failH": "No enviado",
+    "fb.retry": "Intentar de nuevo",
     "fb.keepH": "¿Conservar lo que escribiste?",
     "fb.keep": "Conservarlo (Terminar luego)",
     "fb.discard": "Descartar",

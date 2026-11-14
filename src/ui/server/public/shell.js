@@ -134,7 +134,7 @@
     "fb.rail": "Report an issue",
     "fb.tip": "Report an issue (⌘⇧F)",
     "fb.word": "Report",
-    "fb.palette": "Send feedback",
+    "fb.palette": "Report an issue",
     "fb.title": "Report an issue",
     "fb.sub":
       "Tell us what is wrong, or what you wish __DEN_TITLE__ did. It becomes a GitHub issue, filed as you.",
@@ -249,6 +249,7 @@
     "fb.latB":
       "It is saved on this computer with your text, choices and screenshot. Find it under My reports, at the top of Report an issue or in the command palette.",
     "fb.failH": "Not sent",
+    "fb.retry": "Try again",
     "fb.keepH": "Keep what you wrote?",
     "fb.keep": "Keep it (Finish later)",
     "fb.discard": "Discard",

@@ -487,7 +487,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       role = "alertdialog";
       label = t("fb.failH");
       h = `<h2 tabindex="-1">${esc(t("fb.failH"))}</h2><p>${esc(st.error)}</p>
-<div class="fb-btns">${st.link ? linkBtn(st.link, t("fb.siAltLink"), true) : ""}${btn("later", t("fb.later"), !st.link)}${btn("back-review", t("fb.back"))}</div>`;
+<div class="fb-btns">${btn("retry", t("fb.retry"), true)}${st.link ? linkBtn(st.link, t("fb.siAltLink")) : ""}${btn("later", t("fb.later"))}${btn("back-review", t("fb.back"))}</div>`;
     } else if (st.step === "later") {
       role = "status";
       label = t("fb.latH");
@@ -512,9 +512,10 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
     focus?.focus();
   }
 
-  function go(step) {
+  /** A step, with what went wrong to show on it (none by default). */
+  function go(step, error = "") {
     st.step = step;
-    st.error = "";
+    st.error = error;
     render();
   }
 
@@ -566,7 +567,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
     if (r.status === 429) {
       const next = r.data.nextAt ? Date.parse(r.data.nextAt) : Date.now();
       st.limit = {
-        n: r.data.limit ?? 5,
+        n: r.data.limit ?? st.info.maxPerHour,
         min: Math.max(1, Math.ceil((next - Date.now()) / 60_000)),
       };
       return go("limit");
@@ -581,8 +582,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       st.flow = null;
       return go("signin");
     }
-    st.error = r.data.error || `${r.status}`;
-    go("failed");
+    go("failed", r.data.error || `${r.status}`);
   }
 
   async function send() {
@@ -621,8 +621,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       if (r.status === 429 || (r.status === 409 && r.data.duplicate))
         return onAnswer(r);
       st.flow = null;
-      st.error = r.data.error || "";
-      return go("signin");
+      return go("signin", r.data.error || "");
     }
     st.flow = r.data.flow;
     go("signin");
@@ -634,9 +633,10 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       const f = p.data.flow;
       if (!f || f.state === "pending") return setTimeout(poll, 2000);
       if (f.state === "ok") return sent(f.result);
-      st.error =
-        f.message || (f.state === "expired" ? t("fb.expired") : t("fb.denied"));
-      go("failed");
+      go(
+        "failed",
+        f.message || (f.state === "expired" ? t("fb.expired") : t("fb.denied")),
+      );
     };
     setTimeout(poll, 2000);
   }
@@ -783,6 +783,9 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
       return void send();
     }
     if (act === "later") return void saveDraft();
+    // A failed send: the same text again. The server answered the first
+    // (nothing was filed), so it goes as a new request.
+    if (act === "retry") return void send();
     if (act === "mine") {
       // Typed text is kept or discarded first, then My reports opens.
       if (dirty()) {
