@@ -243,7 +243,7 @@ describe("den#48: agents permission", () => {
     expect(await agents(r, "permission", "nobody", "auto")).not.toBe(0);
   });
 
-  // 0.4.44 on a consumer install: `agents permission shift -w shift`, from an
+  // 0.4.44 on a consumer install: `agents permission web -w acme`, from an
   // agent's own session, was refused as "only a person can change
   // rotation": the id read as the project's mode, the wrong word named.
   it("<id> with -w: an agent may ask which mode it runs in; a change says permission mode, never rotation", async () => {
