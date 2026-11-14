@@ -1237,7 +1237,7 @@ export async function agentTools(
     restart = true;
   }
   const note = failed
-    ? `${connected ? "Hub is connected, but" : "Hub was disconnected, and"} you couldn't load its tools when you started (${failed}). Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed.`
+    ? `${connected ? "Hub is connected, but" : "Hub was disconnected, and"} you couldn't load its tools when you started (${failed}). Den restarts you to load them once Hub answers (this conversation stays); a person can also restart you from Den now. No token step is needed.`
     : !connected
       ? loaded
         ? "Hub was disconnected; its tools go when the person restarts you from Den."

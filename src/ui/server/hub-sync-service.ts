@@ -96,5 +96,46 @@ export function startHubNameRefresh(seconds: number): void {
   setInterval(run, Math.max(5, seconds) * 1000).unref();
 }
 
+/**
+ * 0.4.46: agents that started while Hub didn't answer get its tools back
+ * with no person (ui/cli/mcp-reconnect.ts): every `seconds`, once Hub
+ * answers Den again, each is restarted after its turn.
+ */
+export function startMcpReconnect(
+  seconds: number,
+  attempts: () => number,
+): void {
+  let rc: import("../cli/mcp-reconnect.js").McpReconnect | null = null;
+  let busy = false;
+  const run = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      if (!rc) {
+        const m = await import("../cli/mcp-reconnect.js");
+        const { webDeps } = await import("./agent-routes.js");
+        const hub = await import("../../shared/hub.js");
+        rc = m.mcpReconnect(webDeps(), {
+          hubUp: async () => {
+            const at = await hubAndToken();
+            if (!at) return false;
+            await hub.hubWhoami(at.url, at.token, { timeoutMs: 5000 });
+            return true;
+          },
+          attempts,
+          log: (line) => console.log(`[hub] ${line}`),
+        });
+      }
+      await rc.tick();
+    } finally {
+      busy = false;
+    }
+  };
+  setInterval(
+    () => void run().catch(() => undefined),
+    Math.max(5, seconds) * 1000,
+  ).unref();
+}
+
 /** How much of each org Den Hub can read, live (shared/hub-github.ts). */
 export { githubCoverage } from "../../shared/hub-github.js";

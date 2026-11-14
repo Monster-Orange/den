@@ -18,6 +18,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- An agent that started while Hub didn't answer (its Hub tools never
+  loaded) no longer waits for a person to press Restart. Once Hub
+  answers again, Den restarts it after its turn, with the same
+  conversation, and tells it so in its pane. `hub.mcp_retry_seconds`
+  (default 30) is how often Den asks; `hub.mcp_retry_attempts` (default
+  0, no limit) caps the restarts for one agent.
 - A slow action now shows that it is working, then what happened: a
   pop-up opens when Den or Hub hasn't answered within 300 ms. Try again
   sends the same request again and Den runs it once; Check again asks

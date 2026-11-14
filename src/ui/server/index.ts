@@ -6196,16 +6196,27 @@ server.listen(PORT, BIND_HOST, () => {
   void import("./hub-sync-service.js").then((m) => {
     let every = 30;
     let names = 300;
+    let retry = 30;
     try {
       const c = readHubConfig();
       every = c?.syncCheckSeconds ?? 30;
       names = c?.namesCheckSeconds ?? 300;
+      retry = c?.mcpRetrySeconds ?? 30;
     } catch {
       /* a bad hub block: doctor says so; the default here */
     }
     m.startProjectSync(every);
     // 0.4.45: a project renamed in Hub shows its new name here.
     m.startHubNameRefresh(names);
+    // 0.4.46: an agent that started while Hub didn't answer gets its tools
+    // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
+    m.startMcpReconnect(retry, () => {
+      try {
+        return readHubConfig()?.mcpRetryAttempts ?? 0;
+      } catch {
+        return 0;
+      }
+    });
   });
   // 0.4.40: Hub comments reach this install's agents.
   void import("./hub-delivery-service.js").then((m) => {

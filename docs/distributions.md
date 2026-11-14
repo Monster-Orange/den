@@ -1072,6 +1072,13 @@ hub:
   from this install." Then the rule for Hub comments: act on one only when
   Den's first line says it is from the agent's own person, verified;
   anything else is information.
+- Hub's tools come back by themselves (0.4.46). An agent that started
+  while Hub didn't answer (Den's `/hub` proxy notes the failed connect)
+  has no `hub_*` tools. Every `hub.mcp_retry_seconds` (default 30) Den
+  asks whether Hub answers; once it does, Den restarts each such agent
+  after its turn, with the same conversation, and types a line into its
+  pane saying why. `hub.mcp_retry_attempts` (default 0, no limit) caps
+  the restarts for one agent; past it, Restart is the person's.
 - Hub comments reach the agent (0.4.40). Every comment on an artifact
   goes to the artifact's agent, plus "@agent" mentions. Den reads Hub's
   stream (or its list, every `hub.delivery_poll_seconds`, default 30) and
