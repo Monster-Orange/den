@@ -460,6 +460,8 @@
     "set.ui.viaClaim": "claimed with a setup link",
     "set.ui.viaLink": "signed in with a one-time link",
     "set.ui.unknownBrowser": "Unknown browser",
+    "set.ui.deviceOn": "{browser} on {os}",
+    "set.ui.aBrowserOn": "A browser on {os}",
     "set.ui.created": "created {ago}",
     "set.ui.fromAt": "from {from} ({name})",
     "set.ui.lastSeen": "last seen {ago}",

@@ -1371,6 +1371,17 @@
         justify-content: flex-end;
         white-space: nowrap;
       }
+      /* 0.4.45: Start … ⋯ wrap as one group, Visit apart: when a row runs
+         out of room the group goes to the next line whole, so Start lines
+         up across rows whether a service has Visit or not. */
+      .tbl-acts .tbl-run {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        justify-content: flex-end;
+        flex: 0 1 auto;
+        max-width: 100%;
+      }
       /* The ⋯ and, on a sub-row (no ⋯ of its own), a spacer as wide: the
          Start/Stop/Restart/Logs columns line up across repo and sub-rows. */
       .tbl-acts .tbl-more,
@@ -2722,7 +2733,7 @@
               <td class="tbl-mono tbl-muted">${escHtml(primary?.branch ?? "")}</td>
               <td>${modeCell}</td>
               <td class="tbl-muted${run.cls ? " " + run.cls : ""}" data-last="${escHtml(repo)}" title="${escHtml(run.title)}">${escHtml(run.text)}</td>
-              <td><div class="tbl-acts">${visitBtn(primary, repo)}${actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</div></td>
+              <td><div class="tbl-acts">${visitBtn(primary, repo)}<span class="tbl-run">${actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</span></div></td>
             </tr>`;
           const fixes = r.fixes
             .map(
@@ -2747,7 +2758,7 @@
               <th scope="row">${nameLink(s, s.name)} ${starBtn(s.id)}${s.entry ? ' <span class="badge">entry</span>' : ""}</th>
               <td>${!_lastHealthAt ? CHECKING() : healthCell(status(s), s.health.ok === false ? checkLineOf(s) : healthLine(s))}</td>
               <td></td><td></td><td></td>
-              <td><div class="tbl-acts">${visitBtn(s, s.id)}${actBtns(s.id, { up: s.commands.includes("up"), restart: s.commands.includes("up") || s.commands.includes("restart") })}<span class="tbl-more-sp" aria-hidden="true"></span></div></td>
+              <td><div class="tbl-acts">${visitBtn(s, s.id)}<span class="tbl-run">${actBtns(s.id, { up: s.commands.includes("up"), restart: s.commands.includes("up") || s.commands.includes("restart") })}<span class="tbl-more-sp" aria-hidden="true"></span></span></div></td>
             </tr>`,
                 )
                 .join("")

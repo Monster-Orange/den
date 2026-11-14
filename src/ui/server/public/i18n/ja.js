@@ -1458,6 +1458,8 @@
     "set.ui.viaClaim": "セットアップリンクで登録",
     "set.ui.viaLink": "一回限りのリンクでサインイン",
     "set.ui.unknownBrowser": "不明なブラウザ",
+    "set.ui.deviceOn": "{os} の {browser}",
+    "set.ui.aBrowserOn": "{os} のブラウザ",
     "set.ui.created": "{ago} に作成",
     "set.ui.fromAt": "{from} から ({name})",
     "set.ui.lastSeen": "最終確認 {ago}",

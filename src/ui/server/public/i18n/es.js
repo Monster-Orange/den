@@ -1494,6 +1494,8 @@
     "set.ui.viaClaim": "reclamado con un enlace de configuración",
     "set.ui.viaLink": "sesión iniciada con un enlace de un solo uso",
     "set.ui.unknownBrowser": "Navegador desconocido",
+    "set.ui.deviceOn": "{browser} en {os}",
+    "set.ui.aBrowserOn": "Un navegador en {os}",
     "set.ui.created": "creado {ago}",
     "set.ui.fromAt": "desde {from} ({name})",
     "set.ui.lastSeen": "visto por última vez {ago}",

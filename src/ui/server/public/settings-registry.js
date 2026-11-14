@@ -271,6 +271,26 @@ export function seenAgo(iso, now = Date.now()) {
 }
 
 /**
+ * 0.4.45: a device's name (the server's English: "Chrome on Linux", "A
+ * browser on macOS", "Unknown browser") in the page's words; the browser's
+ * and the system's names stay as they are.
+ */
+export function deviceWords(name, tr = L) {
+  const s = String(name ?? "").trim();
+  if (!s || s === "Unknown browser")
+    return tr("set.ui.unknownBrowser", "Unknown browser");
+  const any = /^A browser on (.+)$/.exec(s);
+  if (any) return tr("set.ui.aBrowserOn", "A browser on {os}", { os: any[1] });
+  const on = /^(.+?) on (.+)$/.exec(s);
+  if (on)
+    return tr("set.ui.deviceOn", "{browser} on {os}", {
+      browser: on[1],
+      os: on[2],
+    });
+  return s;
+}
+
+/**
  * One linked device's line (SEC-2a: every sign-in, whatever the method):
  * its browser and OS, "This device" for this browser, then how it signed
  * in, when, from where (the client address and the browser), and when it
@@ -289,7 +309,7 @@ export function deviceLine(d, now = Date.now()) {
         : d.via === "claim"
           ? L("set.ui.viaClaim", "claimed with a setup link")
           : L("set.ui.viaLink", "signed in with a one-time link");
-  const name = d.name || L("set.ui.unknownBrowser", "Unknown browser");
+  const name = deviceWords(d.name);
   const from = d.client || d.host;
   return {
     title: name,
@@ -450,7 +470,7 @@ function drawDevices(host, ctx) {
 /** One waiting device's line: its code, browser and OS, address, age. */
 export function waitingLine(w, now = Date.now()) {
   return {
-    title: `${w.code} · ${w.device || L("set.ui.unknownBrowser", "Unknown browser")}`,
+    title: `${w.code} · ${deviceWords(w.device)}`,
     detail: [
       w.client,
       L("set.ui.asked", "asked {ago}", { ago: seenAgo(w.createdAt, now) }),
