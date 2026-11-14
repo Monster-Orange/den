@@ -227,6 +227,13 @@ import {
   type GuardResult,
 } from "./request-guard.js";
 import {
+  clientRequestId,
+  createRequestLedger,
+  ledgerGate,
+  ledgerOwner,
+  validRequestId,
+} from "./request-ledger.js";
+import {
   rotateWebSecret,
   verifyPersonToken,
   WebSecretStore,
@@ -2345,6 +2352,22 @@ async function handleRequest(
   if (guard.ok) setPrincipal(req, guard.principal);
   // SEC-1c (R8): an agent's request never passes the lock.
   if (guard.ok && guard.principal?.kind === "agent") closeLockForThisRequest();
+  // BUSY-1: the working pop-up's Check again, and its Try again: a write
+  // sent again with the same id runs once (request-ledger.ts).
+  if (guard.ok) {
+    const owner = ledgerOwner(guard.principal);
+    if (req.method === "GET" && pathname.startsWith("/api/requests/")) {
+      const id = pathname.slice("/api/requests/".length);
+      if (!validRequestId(id))
+        return send400(res, "a request id is 8 to 64 letters, digits or -");
+      return sendJson(res, {
+        ok: true,
+        id,
+        ...REQUEST_LEDGER.status(owner, id),
+      });
+    }
+    if (await ledgerGate(REQUEST_LEDGER, req, res, owner)) return;
+  }
 
   // ── Sign-in (SEC-1b, §2) ───────────────────────────────────────────────────
   // Before config validation: signing in never depends on the config.
@@ -5823,7 +5846,10 @@ const REQUEST_IDS = new WeakMap<http.IncomingMessage, string>();
 function requestIdOf(req: http.IncomingMessage): string {
   let id = REQUEST_IDS.get(req);
   if (!id) {
-    id = traceRequestId(req.headers.traceparent) ?? newRequestId();
+    id =
+      clientRequestId(req) ??
+      traceRequestId(req.headers.traceparent) ??
+      newRequestId();
     REQUEST_IDS.set(req, id);
   }
   return id;
@@ -6421,6 +6447,22 @@ process.on("SIGINT", () => {
 
 process.on("SIGTERM", () => {
   beginShutdown("SIGTERM");
+});
+
+/**
+ * BUSY-1: how long Den remembers how a write sent with the working pop-up's
+ * id ended (ui.request_memory_seconds), a positive number, else 600.
+ */
+function requestMemorySeconds(): number {
+  try {
+    const v = Number(readUserConfig().ui?.request_memory_seconds);
+    return Number.isFinite(v) && v > 0 ? v : 600;
+  } catch {
+    return 600;
+  }
+}
+const REQUEST_LEDGER = createRequestLedger({
+  ttlMs: () => requestMemorySeconds() * 1000,
 });
 
 /** D64: ui.restart_wait_seconds, a positive number, else 90. */

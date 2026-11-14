@@ -67,6 +67,8 @@ export const UI_MODULES: readonly string[] = [
   "/popover.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
+  // BUSY-1: the working pop-up.
+  "/busy.js",
   "/ws-delete-agents.js",
 ];
 

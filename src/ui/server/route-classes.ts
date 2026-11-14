@@ -126,6 +126,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/:cli/config",
     "/api/session",
     "/api/server-info",
+    // BUSY-1: how a write sent with the working pop-up's id ended.
+    "/api/requests/*",
     "/api/release/config",
     "/api/release/status",
     "/api/release/runs",

@@ -350,8 +350,11 @@ export interface UserConfig {
   /**
    * Browser settings. restart_wait_seconds (D64, default 90): how long the
    * Restart Den dialog waits before it shows the command line way.
+   * request_memory_seconds (BUSY-1, default 600): how long Den remembers
+   * how a write sent from the working pop-up ended, so Try again never runs
+   * it twice and Check again can say how it ended.
    */
-  ui?: { restart_wait_seconds?: number };
+  ui?: { restart_wait_seconds?: number; request_memory_seconds?: number };
   /**
    * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
    * Stored as a key; the server resolves the actual executable path at open time.

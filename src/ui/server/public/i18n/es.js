@@ -289,6 +289,21 @@
     "rd.cancel": "Cancelar",
     "rd.wait": "Reiniciando Den… {n}s",
     "rd.back": "Den ha vuelto",
+    "busy.wait": "Esperando a {who}…",
+    "busy.still": "Sigue trabajando ({s} s). Puedes dejar esto abierto.",
+    "busy.done": "Listo",
+    "busy.close": "Cerrar",
+    "busy.retry": "Intentar de nuevo",
+    "busy.check": "Volver a comprobar",
+    "busy.report": "Informar",
+    "busy.details": "Detalles",
+    "busy.noansT": "{who} aún no responde.",
+    "busy.noansB":
+      "Puede que aún termine. Revisa la página antes de intentarlo de nuevo.",
+    "busy.errCode": "{who} respondió con un error ({code}).",
+    "busy.network": "No se pudo contactar con {who}.",
+    "busy.unknown":
+      "{who} no tiene registro de esta solicitud. Puedes intentarlo de nuevo sin riesgo.",
     "rd.slow":
       "Den aún no ha vuelto. En la máquina donde se ejecuta, ejecuta {cmd}.",
     "rd.keep": "Seguir esperando",

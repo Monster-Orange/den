@@ -277,6 +277,21 @@
     "rd.cancel": "キャンセル",
     "rd.wait": "Den を再起動しています… {n} 秒",
     "rd.back": "Den が戻りました",
+    "busy.wait": "{who} の応答を待っています…",
+    "busy.still": "処理中です({s} 秒)。このまま開いておけます。",
+    "busy.done": "完了",
+    "busy.close": "閉じる",
+    "busy.retry": "もう一度試す",
+    "busy.check": "もう一度確認",
+    "busy.report": "報告",
+    "busy.details": "詳細",
+    "busy.noansT": "{who} からまだ応答がありません。",
+    "busy.noansB":
+      "まだ完了する可能性があります。もう一度試す前にページを確認してください。",
+    "busy.errCode": "{who} がエラーを返しました({code})。",
+    "busy.network": "{who} に接続できませんでした。",
+    "busy.unknown":
+      "{who} にこのリクエストの記録がありません。もう一度試しても安全です。",
     "rd.slow":
       "Den はまだ戻っていません。Den が動いているマシンで {cmd} を実行してください。",
     "rd.keep": "待ち続ける",

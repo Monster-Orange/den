@@ -1055,6 +1055,21 @@
     "rd.slow": "Den isn't back yet. On the machine it runs on, run {cmd}.",
     "rd.keep": "Keep waiting",
     "rd.setButton": "Restart Den",
+    // BUSY-1: the working pop-up (busy.js). {who}: Den, Hub or GitHub.
+    "busy.wait": "Waiting for {who}…",
+    "busy.still": "Still working ({s} s). You can leave this open.",
+    "busy.done": "Done",
+    "busy.close": "Close",
+    "busy.retry": "Try again",
+    "busy.check": "Check again",
+    "busy.report": "Report",
+    "busy.details": "Details",
+    "busy.noansT": "No answer from {who} yet.",
+    "busy.noansB": "It may still finish. Check the page before you try again.",
+    "busy.errCode": "{who} answered with an error ({code}).",
+    "busy.network": "Couldn't reach {who}.",
+    "busy.unknown":
+      "{who} has no record of this request. It's safe to try again.",
     // The user menu (R10) and its palette commands (R17).
     "um.label": "Appearance",
     "um.title": "Appearance and theme",
@@ -6204,6 +6219,18 @@
   })();
 
   window.denShell = {
+    /** BUSY-1: the working pop-up for a slow action (busy.js). */
+    busyAction: function (opts) {
+      // The button disables at once, before busy.js has loaded.
+      var b = opts && opts.button;
+      if (b) {
+        b.disabled = true;
+        b.setAttribute("aria-busy", "true");
+      }
+      return import("/busy.js").then(function (m) {
+        return m.busyAction(opts);
+      });
+    },
     /** Light rail item `id` for this page (null: the page's own). */
     setRailLit: function (id) {
       var next = id || page;
