@@ -706,9 +706,9 @@ describe("Clear stopped (AG-14.1b)", () => {
     await p.locator("#ag-clear").click();
     const toast = p.locator(".den-toast.den-toast-act");
     await toast.waitFor();
-    expect((await toast.locator("span.den-tmsg").textContent())?.trim()).toMatch(
-      /^Removed \d+ stopped agents?$/,
-    );
+    expect(
+      (await toast.locator("span.den-tmsg").textContent())?.trim(),
+    ).toMatch(/^Removed \d+ stopped agents?$/);
     await p.waitForFunction(
       () => !document.querySelector("#agl .agst"),
       undefined,
