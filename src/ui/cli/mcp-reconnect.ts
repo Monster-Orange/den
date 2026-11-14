@@ -20,7 +20,7 @@ import {
 
 /** What the agent reads in its pane after Den restarted it. */
 export const RECONNECTED_LINE =
-  "Den restarted you to load Hub's tools (hub_*): Hub didn't answer when you started. This is the same conversation; carry on."; // words-ok: typed to the agent
+  "Den restarted you to load Hub's tools (hub_*): Hub didn't answer when you started. This is the same conversation; carry on.";
 
 /** Running agents whose Hub connect failed since they started. */
 export async function hubToolsMissing(

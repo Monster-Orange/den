@@ -171,7 +171,7 @@ export async function onboardingChecks(
     out.push({
       id: "web",
       status: "ok",
-      detail: `web server up${probe.version ? ` (Den ${probe.version})` : ""}${unset}`, // words-ok: doctor --json, the wording it had (only the address part changed)
+      detail: `web app up${probe.version ? ` (Den ${probe.version})` : ""}${unset}`,
       ...shown,
       port: webPort,
     });
@@ -179,7 +179,7 @@ export async function onboardingChecks(
     out.push({
       id: "web",
       status: "fail",
-      detail: `${probe.who} answers on port ${webPort}, not this distribution's web server`, // words-ok: doctor --json, the wording it had (only the address part changed)
+      detail: `${probe.who} answers on port ${webPort}, not this distribution's web app`,
       ...shown,
       port: webPort,
       ask: `Another Den distribution already uses port ${webPort}. Which port should ${product().title} use instead? (web.port in config/local/user.yml)`,
@@ -190,8 +190,8 @@ export async function onboardingChecks(
       status: "fail",
       detail:
         probe.kind === "timeout"
-          ? `web server on port ${webPort} is not answering in time` // words-ok: doctor --json, the wording it had (only the address part changed)
-          : `web server not running on port ${webPort}`, // words-ok: doctor --json, the wording it had (only the address part changed)
+          ? `web app on port ${webPort} is not answering in time`
+          : `web app not running on port ${webPort}`,
       ...shown,
       port: webPort,
       fix:

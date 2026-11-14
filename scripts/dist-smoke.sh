@@ -160,9 +160,15 @@ say "sessions (den-pty)"
 # The PTY module is optional: with it doctor says den-pty is available;
 # without it (--omit=optional) doctor says why, and nothing else changes.
 # D80: an install has one address (doctor fails without it); set it as a
-# person does.
-run web-url ./bin/acme web url http://acme.localhost
-expect_in "web url sets the address" "$WORK/web-url.out" "http://acme.localhost"
+# person does before its web server has run (--no-check). A loopback name
+# (localhost, *.localhost) is refused: the address is the one other
+# devices open (MODE-5).
+loop_rc=0
+(cd "$DIST" && ./bin/acme web url http://acme.localhost --no-check) >"$WORK/web-url-loop.out" 2>&1 || loop_rc=$?
+[ "$loop_rc" = "2" ] && ok "web url refuses a loopback name: exit 2" || bad "web url with a loopback name exited $loop_rc"
+expect_in "web url says why" "$WORK/web-url-loop.out" "names this machine only"
+run web-url ./bin/acme web url https://acme.local.example.com --no-check
+expect_in "web url sets the address" "$WORK/web-url.out" "https://acme.local.example.com"
 run doctor ./bin/acme doctor
 # D9: a fresh install's doctor shows no false failure row.
 expect_not_in "doctor: no (invalid config) row" "$WORK/doctor.out" "invalid config"
@@ -311,9 +317,9 @@ SEC_TOKEN=""
 [ "$code" = "200" ] && ok "POST /api/settings with \`acme web token --print\`: 200" || bad "POST /api/settings with the CLI token answered $code"
 # SEC-1b: `web login` prints a one-time link (never echoed here) that the
 # server swaps for a session cookie, once.
-# D80: the link is on the install's address; here, this server's port.
-(cd "$DIST" && ./bin/acme web url "http://acme.acme.localhost:$PORT" >/dev/null)
-SEC_LINK="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" 2>/dev/null)"
+# D80: the link is on the install's address; this check has no DNS for
+# it, so the link is made for this server's own origin (--origin).
+SEC_LINK="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" --origin "http://localhost:$PORT" 2>/dev/null)"
 SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 SEC_LINK=""

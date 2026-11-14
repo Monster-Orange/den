@@ -24,6 +24,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { SessionHost } from "../../../../src/shared/sessions/host.js";
 import type { PtyLoad } from "../../../../src/shared/sessions/pty.js";
 import {
@@ -89,6 +90,12 @@ export async function startAgentsPageServer(
     elevatedUp?: boolean;
     /** config/local/user.yml's content (agents.runtimes.<id>.bin). */
     userYml?: string;
+    /**
+     * agents.restore_on_boot (0.4.46, on in a real install): off here
+     * unless a test turns it on, so a recorded running agent shows as
+     * interrupted after the start, as the AG-14 tests expect.
+     */
+    restoreOnBoot?: boolean;
     /**
      * More fake CLIs on PATH (AG-0.5's catalog), name to the line each
      * prints for --version; any other run is recorded and fails.
@@ -183,8 +190,17 @@ export async function startAgentsPageServer(
       ].join("\n"),
     );
   }
-  if (opts.userYml !== undefined)
-    write(path.join(root, "config", "local", "user.yml"), opts.userYml);
+  {
+    const user = (parseYaml(opts.userYml ?? "") ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const agents = (user.agents ?? {}) as Record<string, unknown>;
+    if (agents.restore_on_boot === undefined)
+      agents.restore_on_boot = opts.restoreOnBoot === true;
+    user.agents = agents;
+    write(path.join(root, "config", "local", "user.yml"), stringifyYaml(user));
+  }
   const bin = path.join(tmp, "bin");
   const ran = path.join(tmp, "claude-ran");
   write(path.join(bin, "docker"), "#!/bin/sh\nexit 1\n", 0o755);

@@ -63,7 +63,7 @@ async function serverCheckAndSave(
       signal: AbortSignal.timeout(120_000),
     });
   } catch {
-    return { ok: false, error: "the web server is not running", down: true }; // words-ok: the CLI's own name for what `web up` starts
+    return { ok: false, error: "the web app is not running", down: true };
   }
   const b = (await r.json().catch(() => null)) as {
     ok?: boolean;
@@ -74,7 +74,7 @@ async function serverCheckAndSave(
     return { ok: true, url: b.url };
   return {
     ok: false,
-    error: b?.error ?? `the web server answered ${r.status}`, // words-ok: the CLI's own name for what `web up` starts
+    error: b?.error ?? `the web app answered ${r.status}`,
   };
 }
 
@@ -88,7 +88,7 @@ const stdIo: Io = {
 };
 
 export function webUrlUsage(cli = product().cli): string {
-  return `Usage: ${cli} web url [<address>] [--no-check] [--json]\n  This install's address, for example https://${cli}.local.example.com: the one Den gives people (the start banner, web up, sign-in links, doctor, Hub). Set it once; the name must reach this machine from every device that uses it.\n  The running web server first checks the address answers as this install, and it is saved only then. A name for this machine only (localhost, 127.0.0.1, ::1) is refused.\n  --no-check  save it without the check: for an install whose web server hasn't run yet (set the address, then \`${cli} web up\`).\n  Same as Settings › the address.\n`; // words-ok: the CLI's own name for what `web up` starts
+  return `Usage: ${cli} web url [<address>] [--no-check] [--json]\n  This install's address, for example https://${cli}.local.example.com: the one Den gives people (the start banner, web up, sign-in links, doctor, Hub). Set it once; the name must reach this machine from every device that uses it.\n  The running web app first checks the address answers as this install, and it is saved only then. A name for this machine only (localhost, 127.0.0.1, ::1) is refused.\n  --no-check  save it without the check: for an install whose web app hasn't run yet (set the address, then \`${cli} web up\`).\n  Same as Settings › the address.\n`;
 }
 
 export async function cmdWebUrl(
@@ -153,7 +153,7 @@ export async function cmdWebUrl(
     if (!r.ok)
       return fail(
         r.down
-          ? `${r.error}, so ${ok.url} can't be checked. Start it (\`${cli} web up\`) and try again, or save it unchecked with --no-check (for an install whose web server hasn't run yet). Not saved.` // words-ok: the CLI's own name for what `web up` starts
+          ? `${r.error}, so ${ok.url} can't be checked. Start it (\`${cli} web up\`) and try again, or save it unchecked with --no-check (for an install whose web app hasn't run yet). Not saved.`
           : r.error,
         1,
       );

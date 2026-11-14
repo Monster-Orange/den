@@ -125,7 +125,7 @@ describe("MODE-5: web url <address> checks before it saves", () => {
     const x = io(OK);
     expect(await cmdWebUrl(["--help"], x.io)).toBe(0);
     expect(x.r.out).toMatch(
-      /--no-check\s+save it without the check: for an install whose web server hasn't run yet/,
+      /--no-check\s+save it without the check: for an install whose web app hasn't run yet/,
     );
   });
 });
