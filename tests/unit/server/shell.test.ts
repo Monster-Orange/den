@@ -149,7 +149,7 @@ describe("the shell's source", () => {
         "/services",
         "/tests",
         // ON-6: the server agent.
-          ].sort(),
+      ].sort(),
     );
     expect(SHELL).not.toMatch(
       /href="\/(local-dev|services|logs|tests|environments|release)"/,
