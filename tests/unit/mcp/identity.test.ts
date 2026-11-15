@@ -147,10 +147,11 @@ describe("the identity check's cache", () => {
 
   it("re-checks after a connection error, and then sees the new server is foreign", async () => {
     // A port that was ours, then nobody's, then another distribution's.
-    const probe = net.createServer();
+    // "Nobody's" is a listener that drops every connection: a closed port
+    // can be taken by another test's server before the request.
+    const probe = net.createServer((sock) => sock.resetAndDestroy());
     await new Promise<void>((r) => probe.listen(0, "localhost", r));
     const port = (probe.address() as AddressInfo).port;
-    await new Promise<void>((r) => probe.close(() => r()));
     const c = counted([
       { kind: "ours" },
       { kind: "foreign", who: `acme-ops at ${OTHER_ROOT}` },
@@ -169,6 +170,7 @@ describe("the identity check's cache", () => {
       `port ${port} is in use by acme-ops at ${OTHER_ROOT}; not this distribution's server`,
     );
     expect(c.asked).toHaveLength(2);
+    await new Promise<void>((r) => probe.close(() => r()));
   });
 
   it("nothing listening is 'not running'; no answer in time is not served", async () => {
