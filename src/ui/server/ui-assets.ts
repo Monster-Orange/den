@@ -71,8 +71,8 @@ export const UI_MODULES: readonly string[] = [
   "/term-pane.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
-  // BUSY-1: the working pop-up.
-  "/busy.js",
+  // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
+  "/busy-den.js",
   // FB (den#81): Report an issue, the dialog.
   "/report-dialog.js",
   // FB (den#81): the screenshot and its mask.
@@ -125,6 +125,8 @@ export const KIT_FILES: readonly string[] = [
   "fonts.css",
   "tokens.css",
   "base.css",
+  "busy.js",
+  "busy-words.js",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",
@@ -166,10 +168,12 @@ export function serveUiAsset(
     res.writeHead(200, {
       "Content-Type": kit.endsWith(".css")
         ? "text/css; charset=utf-8"
-        : "font/woff2",
-      "Cache-Control": kit.endsWith(".css")
-        ? "no-cache"
-        : "public, max-age=86400",
+        : kit.endsWith(".js")
+          ? "text/javascript; charset=utf-8"
+          : "font/woff2",
+      "Cache-Control": kit.endsWith(".woff2")
+        ? "public, max-age=86400"
+        : "no-cache",
     });
     res.end(fs.readFileSync(kit));
     return true;

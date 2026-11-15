@@ -51,7 +51,6 @@ const KNOWN: Record<string, { n: number; how: string }> = {
   },
   "server-agent-page.js": { n: 2, how: "start fresh: .sa-fresh-acts" },
   "restart-den.js": { n: 1, how: "restart: .rd-acts, or a footer of its own" },
-  "busy.js": { n: 1, how: "skipped: the working pop-up has its own Report" },
   "agent-helpers.js": { n: 1, how: "helpers list: a footer of its own" },
   "transcript-view.js": { n: 2, how: "transcript: a footer of its own" },
   "header.js": { n: 1, how: "What's new: reportButton() in .cl-footer" },

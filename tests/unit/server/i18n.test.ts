@@ -191,6 +191,39 @@ describe("the catalogs", () => {
   });
 });
 
+describe("UK-2: Den's actions on the kit's working pop-up (busy-den.js)", () => {
+  const src = read("busy-den.js");
+  const table = src.slice(src.indexOf("export const DEN_ACTIONS"));
+  const names = [...table.matchAll(/^ {2}"?([\w-]+)"?: \{$/gm)].map(
+    (m) => m[1],
+  );
+  const keys = [...table.matchAll(/keys: \{([^}]*)\}/g)].flatMap((m) =>
+    [...m[1].matchAll(/"([\w.]+)"/g)].map((k) => k[1]),
+  );
+
+  it("names its actions and their words", () => {
+    expect(names).toContain("restart-agent");
+    expect(keys.length).toBeGreaterThanOrEqual(names.length * 3);
+  });
+
+  it.each(["en", ...NON_EN])("%s has every action's words", (lang) => {
+    const t = messages[lang];
+    const missing = keys.filter(
+      (k) => !(k in t) && !(`${k}.one` in t && `${k}.other` in t),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("every action a page starts is one Den names", () => {
+    const used = new Set<string>();
+    for (const f of fs.readdirSync(PUBLIC).filter((x) => x.endsWith(".js")))
+      for (const m of read(f).matchAll(/busyAction\(\s*"([\w-]+)"/g))
+        used.add(m[1]);
+    expect(used.size).toBeGreaterThan(5);
+    expect([...used].filter((n) => !names.includes(n))).toEqual([]);
+  });
+});
+
 describe("the Settings rows in the palette", () => {
   it("every built-in row has its label in en, word for word", () => {
     const off = (DEN_SETTINGS as { id: string; label: string }[])

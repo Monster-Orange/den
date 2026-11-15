@@ -169,9 +169,10 @@ function savePrefs(p) {
  * A write through the working pop-up (BUSY-1): it shows only when the
  * answer is slow. The dialog's own answers (F4, F5, F7: a 4xx) are its to
  * show; no answer or a 5xx is the pop-up's Failure, with Try again.
+ * action: its name in busy-den.js (report-preview, send-report, …).
  * Resolves with { status, data }, or null when it didn't get through.
  */
-async function write(url, body, title, button) {
+async function write(url, body, action, button) {
   let got = null;
   const run = (headers) =>
     api("POST", url, body, { headers }).then((r) => {
@@ -192,15 +193,7 @@ async function write(url, body, title, button) {
     }
     return got;
   }
-  await busy({
-    button,
-    title,
-    done: t("fb.busyDone"),
-    failed: t("fb.busyFailed"),
-    who: "Den",
-    toastFast: false,
-    run,
-  });
+  await busy(action, run, { button, toastFast: false });
   return got;
 }
 
@@ -520,7 +513,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
   }
 
   async function preview() {
-    const r = await write("/api/report/preview", form(), t("fb.busyPreview"));
+    const r = await write("/api/report/preview", form(), "report-preview");
     if (!r) return render();
     if (r.status !== 200) {
       st.error = r.data.error || `${r.status}`;
@@ -533,7 +526,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
     const r = await write(
       "/api/report/drafts",
       { ...form(), ...(st.draftId ? { id: st.draftId } : {}) },
-      t("fb.busySave"),
+      "save-report-draft",
       dlg.querySelector('[data-act="later"]'),
     );
     if (!r) return render();
@@ -594,7 +587,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
         ...(st.addTo !== null ? { addTo: st.addTo } : {}),
         ...(st.fileNew ? { fileNew: true } : {}),
       },
-      t("fb.busySend"),
+      "send-report",
       dlg.querySelector(
         '[data-act="send"],[data-act="addto"],[data-act="filenew"]',
       ),
@@ -613,7 +606,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("fb.siAlt"))} ${linkBtn(st.link, t("fb.s
         ...(st.addTo !== null ? { addTo: st.addTo } : {}),
         ...(st.fileNew ? { fileNew: true } : {}),
       },
-      t("fb.busySend"),
+      "send-report",
     );
     if (!r) return render();
     st.link = r.data.newIssueUrl || st.link;
@@ -993,16 +986,7 @@ export async function openMyReports() {
       });
     const busy = window.denShell?.busyAction;
     try {
-      if (busy)
-        await busy({
-          button,
-          title: t("fb.discard"),
-          done: t("fb.busyDone"),
-          failed: t("fb.busyFailed"),
-          who: "Den",
-          toastFast: false,
-          run,
-        });
+      if (busy) await busy("discard-draft", run, { button, toastFast: false });
       else await run({});
     } catch {
       return render();

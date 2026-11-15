@@ -1,9 +1,10 @@
 /**
- * BUSY-1: the working pop-up (busy.js), the spec's tests against a stubbed
+ * BUSY-1: the working pop-up (UK-2: the kit's busy.js, through Den's
+ * actions in busy-den.js), the spec's tests against a stubbed
  * route so the timings are the test's: it opens only for a slow answer, has
  * no buttons while working, ignores Esc, says what failed, Try again resends
  * the same id, No answer after 60 s, and Check again asks how the id ended
- * without resending. {who} reads the name the button passes.
+ * without resending. {who} is the action's (Hub, for link).
  *
  * The demo distribution (helpers/agents-page-server.ts). Invented names only.
  */
@@ -76,31 +77,27 @@ async function stub(p: Page, plan: [number, number][]): Promise<Stub> {
   return st;
 }
 
-/** Start a busy action on a button of the page; returns at once. */
-const start = (p: Page, who = "Den", stay = false) =>
-  p.evaluate(
-    ([w, url, st]) => {
-      const b = document.createElement("button");
-      b.id = "bz-btn";
-      b.textContent = "Link ticked projects";
-      document.body.append(b);
-      type Fn = (...a: unknown[]) => Promise<unknown>;
-      const shell = (
-        window as unknown as { denShell: { busyAction: Fn; api: Fn } }
-      ).denShell;
-      (window as unknown as { bzDone: unknown }).bzDone = shell.busyAction({
-        button: b,
-        title: "Linking projects…",
-        done: "Done: linked.",
-        failed: "Couldn't link the projects.",
-        who: w,
-        stay: st,
-        run: (headers: Record<string, string>) =>
-          shell.api("POST", url, {}, { headers }),
-      });
-    },
-    [who, PROBE, stay] as const,
-  );
+/**
+ * Start Den's "link" action (UK-2: the kit's pop-up, Den's words; Hub is
+ * who it waits for) on a button of the page; returns at once.
+ */
+const start = (p: Page) =>
+  p.evaluate((url) => {
+    const b = document.createElement("button");
+    b.id = "bz-btn";
+    b.textContent = "Link ticked projects";
+    document.body.append(b);
+    type Fn = (...a: unknown[]) => Promise<unknown>;
+    const shell = (
+      window as unknown as { denShell: { busyAction: Fn; api: Fn } }
+    ).denShell;
+    (window as unknown as { bzDone: unknown }).bzDone = shell.busyAction(
+      "link",
+      (headers: Record<string, string>) =>
+        shell.api("POST", url, {}, { headers }),
+      { button: b, success: () => "Done: linked." },
+    );
+  }, PROBE);
 
 const dlg = (p: Page) => p.locator("dialog.bz-dlg");
 
@@ -120,7 +117,7 @@ describe("BUSY-1: the working pop-up", () => {
     await expect(dlg(p).locator("h2").textContent()).resolves.toContain(
       "Linking projects…",
     );
-    await expect(dlg(p).textContent()).resolves.toContain("Waiting for Den…");
+    await expect(dlg(p).textContent()).resolves.toContain("Waiting for Hub…");
     expect(await dlg(p).locator("button").count()).toBe(0);
     await expect(dlg(p).getAttribute("aria-busy")).resolves.toBe("true");
     await p.keyboard.press("Escape");
@@ -160,7 +157,7 @@ describe("BUSY-1: the working pop-up", () => {
       [0, 500],
       [0, 200],
     ]);
-    await start(p, "Hub", true);
+    await start(p);
     await dlg(p).locator('[data-bz="retry"]').waitFor({ timeout: 5000 });
     await expect(dlg(p).textContent()).resolves.toContain(
       "Hub answered with an error (500).",
@@ -199,7 +196,7 @@ describe("BUSY-1: the working pop-up", () => {
         }),
       });
     });
-    await start(p, "Hub");
+    await start(p);
     await p.clock.runFor(500);
     await dlg(p).waitFor({ state: "visible" });
     await p.clock.runFor(12_000);

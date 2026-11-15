@@ -371,15 +371,12 @@ async function startFresh(button) {
     return;
   }
   closeTerminal();
-  await window.denShell.busyAction({
-    button,
-    who: "Den",
-    title: t("sa.fresh.w", { name }),
-    done: t("sa.fresh.done", { name }),
-    failed: t("sa.fresh.fail", { name }),
-    run: (headers) =>
+  await window.denShell.busyAction(
+    "fresh-start",
+    (headers) =>
       window.denShell.api("POST", "/api/server-agent/fresh", {}, { headers }),
-  });
+    { button, vars: { name } },
+  );
   await refresh();
 }
 

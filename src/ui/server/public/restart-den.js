@@ -6,17 +6,18 @@
  *                            header menu, the palette); the stale pill skips
  *                            it (the pill is already the ask).
  *
- * Then a small dialog, "Restarting Den… 4s", asks GET /api/server-info
- * every second. Den counts as back only on a 200 from a NEW pid or
- * startedAt (the old server can answer for a moment before it stops). Back:
- * "Den is back" for about a second, then it closes by itself and fires
- * `den:server-back` on window, so a page reconnects its live connections
- * (terminals, events) without a reload: typed text and scroll stay. A
- * changed build is the update pill's to offer (D61).
+ * Then the kit's working pop-up in reconnect mode (UK-2, busy-den.js's
+ * "restart-den") asks GET /api/server-info, every second backing off to
+ * three. Den counts as back only on a 200 from a NEW pid or startedAt (the
+ * old server can answer for a moment before it stops). Back: "Den is back"
+ * with its version, then it closes by itself and fires `den:server-back`
+ * on window, so a page reconnects its live connections (terminals, events)
+ * without a reload: typed text and scroll stay. A changed build is the
+ * update pill's to offer (D61).
  *
  * After `ui.restart_wait_seconds` (server-info's restartWaitSeconds,
- * default 90) the dialog shows the CLI line and Keep waiting; it never
- * closes by itself while the server is down.
+ * default 90) it says Den didn't come back, with Report, Close, Open the
+ * log and Check again.
  */
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
@@ -29,12 +30,6 @@ const esc = (s) =>
       ],
   );
 
-const CLI = "__DEN_CLI__";
-/** How often it asks, and how long "Den is back" shows. */
-export const RESTART_POLL_MS = 1000;
-export const RESTART_BACK_MS = 1000;
-const DEFAULT_WAIT_S = 90;
-
 const CSS = `
 .rd-dlg{font-family:var(--sans);width:min(420px,calc(100vw - 32px));padding:0;border:1px solid var(--border-strong, var(--border));border-radius:10px;background:var(--raised, var(--surface, var(--bg)));color:var(--text);box-shadow:var(--shadow)}
 .rd-dlg::backdrop{background:rgba(0,0,0,.25)}
@@ -42,14 +37,8 @@ const CSS = `
 .rd-b h2{font-size:15px;margin:0;outline:none}
 .rd-b ul{margin:0;padding-left:18px;font-size:13px;line-height:1.5;color:var(--muted)}
 .rd-b p{margin:0;font-size:13px;line-height:1.5}
-.rd-st{display:flex;align-items:center;gap:10px;font-size:14px}
-.rd-spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:rd-spin .8s linear infinite;flex:none}
-.rd-dlg[data-state="back"] .rd-spin{animation:none;border-color:var(--ok)}
-.rd-slow code{font-family:var(--mono);font-size:12px}
 .rd-acts{display:flex;gap:8px;justify-content:flex-end}
 .rd-dlg [hidden]{display:none}
-@keyframes rd-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion: reduce){.rd-spin{animation:none}}
 `;
 
 function ensureCss() {
@@ -141,98 +130,31 @@ export function restartDen({
   running = (async () => {
     const d = dialog();
     if (confirm && !(await confirmRestart(d))) return null;
+    hide(d);
     const was = before ?? (await serverInfo());
-    const waitS =
-      Number(was?.restartWaitSeconds) > 0
-        ? Number(was.restartWaitSeconds)
-        : DEFAULT_WAIT_S;
-    d.dataset.state = "waiting";
-    d.innerHTML =
-      `<div class="rd-b" role="status" aria-live="polite"><div class="rd-st"><span class="rd-spin" aria-hidden="true"></span>` +
-      `<h2 id="rd-h" tabindex="-1" class="rd-msg"></h2></div>` +
-      `<p class="rd-sub">${esc(t("rd.reconnects"))}</p>` +
-      `<p class="rd-slow" hidden></p>` +
-      `<div class="rd-acts" hidden><button type="button" class="den-btn sm" data-rd="keep">${esc(t("rd.keep"))}</button></div></div>`;
-    // Esc never hides a restart that's still under way.
-    const noEsc = (e) => e.preventDefault();
-    d.addEventListener("cancel", noEsc);
-    show(d);
-    const msg = d.querySelector(".rd-msg");
-    const slow = d.querySelector(".rd-slow");
-    const acts = d.querySelector(".rd-acts");
-    const sub = d.querySelector(".rd-sub");
-    let t0 = Date.now();
-    let since = t0;
-    // BUSY-1: Restarting (seconds), Back (its version), or Didn't come back.
-    const paint = () => {
-      if (!slow.hidden) return;
-      msg.textContent = t("rd.wait", {
-        n: Math.floor((Date.now() - t0) / 1000),
-      });
-    };
-    paint();
-    acts.querySelector('[data-rd="keep"]').addEventListener("click", () => {
-      since = Date.now();
-      slow.hidden = true;
-      acts.hidden = true;
-      sub.hidden = false;
-      d.dataset.state = "waiting";
-      paint();
-    });
-    try {
-      const api = window.denShell?.api;
-      if (!post) {
-        /* already asked: wait for the new one */
-      } else if (api) await api("POST", "/api/web/restart", {});
-      else
-        await fetch("/api/web/restart", {
+    // UK-2: the kit's working pop-up in reconnect mode (busy-den.js):
+    // no answer to the POST is Den going down; it waits for a NEW pid or
+    // start time, says the version, then fires den:server-back.
+    const { busyAction } = await import("/busy-den.js");
+    return busyAction(
+      "restart-den",
+      (headers) => {
+        if (!post) return Promise.resolve({});
+        const api = window.denShell?.api;
+        if (api) return api("POST", "/api/web/restart", {}, { headers });
+        return fetch("/api/web/restart", {
           method: "POST",
+          headers,
           signal: AbortSignal.timeout(4000),
-        });
-    } catch {
-      // The server often stops before it answers: wait for the new one.
-    }
-    for (;;) {
-      await new Promise((r) => setTimeout(r, RESTART_POLL_MS));
-      paint();
-      const info = await serverInfo();
-      const isNew =
-        info &&
-        info.pid != null &&
-        (!was ||
-          info.pid !== was.pid ||
-          String(info.startedAt) !== String(was.startedAt));
-      if (isNew) {
-        d.dataset.state = "back";
-        msg.textContent = t("rd.back");
-        sub.textContent = info.version
-          ? t("rd.version", { v: info.version })
-          : "";
-        sub.hidden = !info.version;
-        slow.hidden = true;
-        acts.hidden = true;
-        window.dispatchEvent(
-          new CustomEvent("den:server-back", { detail: info }),
+        }).then(
+          (r) => r.json().catch(() => ({})),
+          () => {
+            throw { network: true };
+          },
         );
-        await new Promise((r) => setTimeout(r, RESTART_BACK_MS));
-        d.removeEventListener("cancel", noEsc);
-        hide(d);
-        return info;
-      }
-      if (Date.now() - since > waitS * 1000 && slow.hidden) {
-        d.dataset.state = "slow";
-        msg.textContent = t("rd.notBack");
-        sub.hidden = true;
-        slow.innerHTML =
-          `${esc(t("rd.notBackB"))} ` +
-          esc(t("rd.slow", { cmd: "\u0000" })).replace(
-            "\u0000",
-            `<code>${esc(`${CLI} web restart`)}</code>`,
-          );
-        slow.hidden = false;
-        acts.hidden = false;
-      }
-    }
+      },
+      { before: was ?? undefined },
+    );
   })().finally(() => {
     running = null;
   });

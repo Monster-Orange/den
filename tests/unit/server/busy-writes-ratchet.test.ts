@@ -23,7 +23,7 @@ const LEFT: Record<string, number> = {
   "graph.js": 1,
   "header.js": 2,
   "persona-ui.js": 5,
-  "restart-den.js": 2,
+  "restart-den.js": 1,
   "server-agent-page.js": 4,
   "settings-registry.js": 15,
   "shell.js": 4,

@@ -232,16 +232,7 @@ export async function mountSettings(deps) {
     const el = document.activeElement;
     const button =
       el && el !== document.body && "disabled" in el ? el : undefined;
-    const t = (k) => sh.t(k);
-    return sh.busyAction({
-      button,
-      who: "Den",
-      title: t("busy.saveW"),
-      done: t("busy.saveS"),
-      failed: t("busy.saveF"),
-      toastFast: false,
-      run,
-    });
+    return sh.busyAction("save", run, { button, toastFast: false });
   }
   /** POST /api/settings; merges the reply. true when saved. */
   async function post(patch) {

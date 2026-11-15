@@ -530,20 +530,17 @@ function drawDevices(host, ctx) {
             const rotate = !!box.querySelector("[data-signout-rotate]")
               ?.checked;
             ctx.shell
-              .busyAction({
-                button: b,
-                who: "__DEN_TITLE__",
-                title: L("set.ui.signOutAllW", "Signing out everywhere…"),
-                failed: L("set.ui.signOutAllF", "Not signed out"),
-                done: () => L("set.ui.signOutAllDone", "Signed out everywhere"),
-                run: (headers) =>
+              .busyAction(
+                "sign-out-all",
+                (headers) =>
                   ctx.shell.api(
                     "POST",
                     "/api/web/logout",
                     rotate ? { rotate: true } : {},
                     { headers },
                   ),
-              })
+                { button: b },
+              )
               .then((r) => {
                 // This browser is signed out too: the page shows sign-in.
                 if (r !== undefined) location.reload();
@@ -2516,16 +2513,17 @@ function renderAddress(host, ctx) {
         btn.textContent = t("addr.checking");
         // BUSY-1: the working pop-up says it is checking, then what happened.
         ctx.shell
-          .busyAction({
-            button: btn,
-            who: "__DEN_TITLE__",
-            title: t("addr.checkW", { url }),
-            failed: t("addr.notSaved"),
-            done: (r) => t("addr.saved", { url: r?.url ?? url }),
-            run: (headers) =>
+          .busyAction(
+            "check-address",
+            (headers) =>
               ctx.shell.api("POST", "/api/web-url", { url }, { headers }),
-            onFail: (x) => say(x?.message || t("addr.notSaved"), true),
-          })
+            {
+              button: btn,
+              vars: { url },
+              success: (r) => t("addr.saved", { url: r?.url ?? url }),
+              onFail: (x) => say(x?.message || t("addr.notSaved"), true),
+            },
+          )
           .then((r) => {
             if (r === undefined) return;
             return renderAddress(host, ctx).then(() => {
@@ -2770,30 +2768,29 @@ function drawHubLinkAll(host, ctx, result) {
             .forEach((x) => (x.disabled = on));
         lock(true);
         ctx.shell
-          .busyAction({
-            button: btn,
-            who: "Hub",
-            title: t("busy.linkW"),
-            failed: t("busy.linkF"),
-            done: (r) => {
-              const names = (r?.linked ?? []).map(
-                (x) => x?.hub?.name || x?.project,
-              );
-              return t("busy.linkS", {
-                n: names.length,
-                names: listWords(names),
-              });
+          .busyAction(
+            "link",
+            (headers) => ctx.shell.api("POST", url, { links }, { headers }),
+            {
+              button: btn,
+              success: (r) => {
+                const names = (r?.linked ?? []).map(
+                  (x) => x?.hub?.name || x?.project,
+                );
+                return t("busy.linkS", {
+                  n: names.length,
+                  names: listWords(names),
+                });
+              },
+              onFail: (e) => {
+                const err = host.querySelector(".rt-err");
+                if (err) {
+                  err.hidden = false;
+                  err.textContent = e?.message || t("hubp.failed");
+                }
+              },
             },
-            run: (headers) =>
-              ctx.shell.api("POST", url, { links }, { headers }),
-            onFail: (e) => {
-              const err = host.querySelector(".rt-err");
-              if (err) {
-                err.hidden = false;
-                err.textContent = e?.message || t("hubp.failed");
-              }
-            },
-          })
+          )
           .then((r) => {
             if (r) drawHubLinkAll(host, ctx, r);
             else lock(false);
@@ -2959,23 +2956,22 @@ function wireHub(host, ctx) {
     // BUSY-1: the working pop-up while Den asks Hub.
     const t = (k, v) => ctx.shell.t(k, v);
     ctx.shell
-      .busyAction({
-        button: host.querySelector('button[data-hub-action="connect"]'),
-        who: "Hub",
-        title: t("busy.connW"),
-        done: t("busy.connS"),
-        failed: t("busy.connF"),
-        run: (headers) =>
+      .busyAction(
+        "connect",
+        (headers) =>
           ctx.shell.api(
             "POST",
             "/api/hub/connect",
             typed ? { url: typed.value } : {},
             { headers },
           ),
-        // Off to Hub: sign in and approve there; Hub sends the person back.
-        onDone: (r) => location.assign(r.location),
-        onFail: (e) => err(e?.message || t("busy.connF")),
-      })
+        {
+          button: host.querySelector('button[data-hub-action="connect"]'),
+          // Off to Hub: sign in and approve there; Hub sends the person back.
+          onDone: (r) => location.assign(r.location),
+          onFail: (e) => err(e?.message || t("busy.connF")),
+        },
+      )
       .then((r) => {
         if (!r) busy(false);
       });

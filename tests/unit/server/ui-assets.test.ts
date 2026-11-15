@@ -10,6 +10,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   UI_MODULES,
+  KIT_FILES,
   VENDOR_ASSETS,
   vendorAssetFile,
 } from "../../../src/ui/server/ui-assets.js";
@@ -118,6 +119,8 @@ describe("UI_MODULES: what the served modules import", () => {
     const served = new Set([
       ...UI_MODULES,
       ...Object.keys(VENDOR_ASSETS),
+      // UK-2: the UI kit's files, at /kit/<file>.
+      ...KIT_FILES.map((f) => `/kit/${f}`),
       ...[...own].map((x) => x[1]),
     ]);
     const missing: string[] = [];

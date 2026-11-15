@@ -1767,16 +1767,9 @@ async function restartForTools(r, button) {
   const name = { name: r.agent };
   let job = null;
   // BUSY-1: the working pop-up, then what happened.
-  await window.denShell.busyAction({
-    button,
-    who: "Den",
-    title: t("busy.restartW", name),
-    failed: t("busy.restartF", name),
-    done: (out) =>
-      out?.job
-        ? t("ag.job.held", { id: r.agent })
-        : t("ag.mcp.restarting", { id: r.agent }),
-    run: (headers) =>
+  await window.denShell.busyAction(
+    "restart-agent",
+    (headers) =>
       api(
         "POST",
         agentPath(r, "restart"),
@@ -1787,17 +1780,26 @@ async function restartForTools(r, button) {
         job = e.data?.job ?? { minutes: 0 };
         return { job };
       }),
-  });
-  if (job && (await confirmJob(r, job.minutes)))
-    await window.denShell.busyAction({
+    {
       button,
-      who: "Den",
-      title: t("busy.restartW", name),
-      failed: t("busy.restartF", name),
-      done: t("ag.mcp.restarting", { id: r.agent }),
-      run: (headers) =>
+      vars: name,
+      success: (out) =>
+        out?.job
+          ? t("ag.job.held", { id: r.agent })
+          : t("ag.mcp.restarting", { id: r.agent }),
+    },
+  );
+  if (job && (await confirmJob(r, job.minutes)))
+    await window.denShell.busyAction(
+      "restart-agent",
+      (headers) =>
         api("POST", agentPath(r, "restart"), { when: "now" }, { headers }),
-    });
+      {
+        button,
+        vars: name,
+        success: () => t("ag.mcp.restarting", { id: r.agent }),
+      },
+    );
   await refresh();
 }
 
@@ -2825,27 +2827,28 @@ async function restartRowNow(r, verb, button) {
   const name = { name: r.agent };
   // BUSY-1: the working pop-up while Den starts it, then what happened.
   let opened;
-  const out = await window.denShell.busyAction({
-    button,
-    who: "Den",
-    title: t("busy.startW", name),
-    failed: t("busy.startF", name),
-    done: (o) =>
-      t(
-        verb === "relaunch"
-          ? "ag.relaunched"
-          : verb !== "resume"
-            ? "ag.startedFresh"
-            : o?.fresh
-              ? "ag.resumedFresh"
-              : "ag.resumed",
-        { id: r.agent },
-      ),
-    run: (headers) => api("POST", agentPath(r, verb), undefined, { headers }),
-    // Its open pane follows it to the new session (followAgents, in
-    // refresh); one that couldn't (not running yet) is closed for it.
-    onDone: (o) => (opened = follow(o)),
-  });
+  const out = await window.denShell.busyAction(
+    "start-agent",
+    (headers) => api("POST", agentPath(r, verb), undefined, { headers }),
+    {
+      button,
+      vars: name,
+      success: (o) =>
+        t(
+          verb === "relaunch"
+            ? "ag.relaunched"
+            : verb !== "resume"
+              ? "ag.startedFresh"
+              : o?.fresh
+                ? "ag.resumedFresh"
+                : "ag.resumed",
+          { id: r.agent },
+        ),
+      // Its open pane follows it to the new session (followAgents, in
+      // refresh); one that couldn't (not running yet) is closed for it.
+      onDone: (o) => (opened = follow(o)),
+    },
+  );
   await (out ? opened : refresh());
   async function follow(o) {
     await refresh();
@@ -4084,22 +4087,23 @@ async function submitStart(form) {
   const body = plain ? undefined : startBody();
   let opened;
   try {
-    const r = await window.denShell.busyAction({
-      button: go,
-      who: "Den",
-      title: t("busy.startW", name),
-      failed: t("busy.startF", name),
-      done: (o) =>
-        plain
-          ? t("ag.new.started", { p: t("ag.session"), w: ws })
-          : t("ag.started", { id: o?.agent?.id ?? sd.pid }),
-      run: (headers) =>
+    const r = await window.denShell.busyAction(
+      "start-agent",
+      (headers) =>
         api("POST", plain ? `${wsUrl}/sessions` : `${wsUrl}/agents`, body, {
           headers,
         }),
-      onFail: (err) => showStartError(err),
-      onDone: (o) => (opened = startedOk(o)),
-    });
+      {
+        button: go,
+        vars: name,
+        success: (o) =>
+          plain
+            ? t("ag.new.started", { p: t("ag.session"), w: ws })
+            : t("ag.started", { id: o?.agent?.id ?? sd.pid }),
+        onFail: (err) => showStartError(err),
+        onDone: (o) => (opened = startedOk(o)),
+      },
+    );
     if (r) await opened;
   } finally {
     go.disabled = false;

@@ -1186,30 +1186,14 @@
       "This page's live views: terminals, logs, an open deploy log",
     "rd.go": "Restart",
     "rd.cancel": "Cancel",
-    "rd.wait": "Restarting Den… {n}s",
+    "rd.restarting": "Restarting Den…",
     "rd.back": "Den is back.",
-    "rd.slow": "Den isn't back yet. On the machine it runs on, run {cmd}.",
-    "rd.keep": "Check again",
     "rd.reconnects": "This page reconnects by itself when Den is back.",
     "rd.version": "Version {v}.",
     "rd.notBack": "Den didn't come back.",
     "rd.notBackB": "It may still be starting. Check again in a moment.",
     "rd.setButton": "Restart Den",
     // BUSY-1: the working pop-up (busy.js). {who}: Den, Hub or GitHub.
-    "busy.wait": "Waiting for {who}…",
-    "busy.still": "Still working ({s} s). You can leave this open.",
-    "busy.done": "Done",
-    "busy.close": "Close",
-    "busy.retry": "Try again",
-    "busy.check": "Check again",
-    "busy.report": "Report",
-    "busy.details": "Details",
-    "busy.noansT": "No answer from {who} yet.",
-    "busy.noansB": "It may still finish. Check the page before you try again.",
-    "busy.errCode": "{who} answered with an error ({code}).",
-    "busy.network": "Couldn't reach {who}.",
-    "busy.unknown":
-      "{who} has no record of this request. It's safe to try again.",
     "busy.linkW": "Linking projects…",
     "busy.linkS.one": "Done: {names} is linked to Hub.",
     "busy.linkS": "Done: {names} are linked to Hub.",
@@ -6615,16 +6599,19 @@
     myReports: openMyReports,
     /** FB: the footer Report button's HTML ("" when reports are off). */
     reportButton: reportButton,
-    /** BUSY-1: the working pop-up for a slow action (busy.js). */
-    busyAction: function (opts) {
-      // The button disables at once, before busy.js has loaded.
+    /**
+     * UK-2: the working pop-up for a slow action, the kit's (busy-den.js
+     * names Den's actions): busyAction(name, run(headers), opts).
+     */
+    busyAction: function (name, run, opts) {
+      // The button disables at once, before the kit has loaded.
       var b = opts && opts.button;
       if (b) {
         b.disabled = true;
         b.setAttribute("aria-busy", "true");
       }
-      return import("/busy.js").then(function (m) {
-        return m.busyAction(opts);
+      return import("/busy-den.js").then(function (m) {
+        return m.busyAction(name, run, opts);
       });
     },
     /** Light rail item `id` for this page (null: the page's own). */
