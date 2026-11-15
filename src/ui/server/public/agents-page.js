@@ -4605,8 +4605,19 @@ function detailsHtml(r, det) {
       "ag.det.where",
       `<div><span class="den-wsp">${esc(r.workspace ?? "")}</span></div>` +
         (r.cwd ? `<div class="den-svp-url">${esc(r.cwd)}</div>` : ""),
-    )
+    ) +
+    reportFoot()
   );
+}
+
+/**
+ * den#143: its Report button drawn with it (every pop-up has one, den#81),
+ * so it is there when they are shown and stays through a repaint. Left to
+ * the page's injector, it came a frame after and the details grew.
+ */
+function reportFoot() {
+  const b = window.denShell?.reportButton?.() ?? "";
+  return b ? `<div class="den-rb-foot">${b}</div>` : "";
 }
 
 function placeDetails() {

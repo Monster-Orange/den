@@ -566,6 +566,26 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           if (k === "top" && g && g.style === this) w.__placed++;
           return set.call(this, k, ...rest);
         };
+        // The moment they turn ready (before the next frame): their box,
+        // and whether their Report button is already in them.
+        const w2 = w as unknown as {
+          __atReady: { h: number; y: number; report: boolean } | null;
+        };
+        w2.__atReady = null;
+        new MutationObserver(() => {
+          const g = document.querySelector(".den-agd") as HTMLElement | null;
+          if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
+          const b = g.getBoundingClientRect();
+          w2.__atReady = {
+            h: Math.round(b.height),
+            y: Math.round(b.y),
+            report: !!g.querySelector("[data-den-report]"),
+          };
+        }).observe(document.body, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["data-state"],
+        });
         const t0 = performance.now();
         const look = () => {
           const g = document.querySelector(".den-agd") as HTMLElement | null;
@@ -590,14 +610,29 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           __tops: number[];
           __placed: number;
         };
-        return { rects: w.__rects, tops: w.__tops, placed: w.__placed };
+        const g = document.querySelector(".den-agd") as HTMLElement;
+        const b = g.getBoundingClientRect();
+        return {
+          rects: w.__rects,
+          tops: w.__tops,
+          placed: w.__placed,
+          atReady: (
+            w as unknown as {
+              __atReady: { h: number; y: number; report: boolean } | null;
+            }
+          ).__atReady,
+          last: { h: Math.round(b.height), y: Math.round(b.y) },
+        };
       });
       return { p, ...seen };
     }
 
     it("#143: they open where they stay: shown once their details are in, never growing or moving after", async () => {
       if (skip()) return;
-      const { p, rects, placed } = await openLate(150);
+      const { p, rects, placed, atReady, last } = await openLate(150);
+      // Whole when shown: its Report button in, and the same box after.
+      expect(atReady?.report).toBe(true);
+      expect(last).toEqual({ h: atReady?.h, y: atReady?.y });
       expect(rects).toHaveLength(1);
       expect(placed).toBe(1);
       expect(await p.locator(".den-agd").textContent()).toContain(
@@ -612,7 +647,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
 
     it("#143: details that come after they are shown fill in where they are: placed once, the top edge never moves", async () => {
       if (skip()) return;
-      const { p, tops, placed } = await openLate(800);
+      const { p, tops, placed, atReady, last } = await openLate(800);
+      expect(atReady?.report).toBe(true);
+      expect(last.y).toBe(atReady?.y);
       expect(placed).toBe(1);
       expect(tops).toHaveLength(1);
       const g = p.locator(".den-agd");

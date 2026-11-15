@@ -123,6 +123,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A stopped agent's details opened, then grew and could move: they were
+  drawn again when their details came in, and their Report button came a
+  frame after that. A press aimed inside could land outside and close
+  them. Now they show once their details are in (or after the working
+  pop-up's short wait), with their Report button, placed once; details
+  that come later fill in where they are and scroll inside. (den#143)
 - On Linux, a request through the edge got a 502: the edge container
   reaches the host on the Docker bridge, and Den listened only on
   127.0.0.1 unless you set `DEN_BIND_HOST` by hand. Now, with an edge set
