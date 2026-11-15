@@ -123,34 +123,30 @@ const start = (p: Page) =>
 const dlg = (p: Page) => p.locator("dialog.bz-dlg");
 
 describe("BUSY-1: the working pop-up", () => {
-  it("a slow answer: opens by 400 ms, no buttons, Esc does nothing, then Success closes by itself", async () => {
+  it("a slow answer: opens at the kit's wait, no buttons, Esc does nothing, then Success closes by itself", async () => {
     if (skip()) return;
-    const p = await page();
+    // The page's clock is the test's (den#179): a loaded runner fires the
+    // page's timers late, so any wall-clock bound is a flake.
+    const p = await page(1280, true);
     await stub(p, [[2000, 200]]);
     // The kit loaded first: its load time is the page's, not its wait.
     // A string: compiled, an import() in a function becomes a helper the page
     // hasn't got.
     await p.evaluate(`import("/busy-den.js").then(() => true)`);
+    // Paused before the action starts: the kit's wait (300 ms) runs only as
+    // the test moves the page's clock. Not at 299 ms; at 300 ms, open.
+    await p.clock.pauseAt((await p.evaluate(() => Date.now())) + 1000);
     await start(p);
     await expect(p.locator("#bz-btn").isDisabled()).resolves.toBe(true);
     await expect(p.locator("#bz-btn").getAttribute("aria-busy")).resolves.toBe(
       "true",
     );
+    await p.clock.runFor(299);
+    expect(await p.locator("dialog.bz-dlg[open]").count()).toBe(0);
+    await p.clock.runFor(1);
     await dlg(p).waitFor({ state: "visible", timeout: 2000 });
-    // By 400 ms, on the page's clock (the kit's wait is 300).
-    // den#155: on the page's clock, it shows with the kit's wait (300 ms),
-    // not later: within 100 ms of a probe timer of the same wait, started
-    // at the same moment (a loaded runner makes both late, not one).
-    const t = await p.evaluate(() => {
-      const w = window as unknown as {
-        bzT0: number;
-        bzShownAt: number;
-        bzProbeAt: number;
-      };
-      return { shown: w.bzShownAt - w.bzT0, probe: w.bzProbeAt - w.bzT0 };
-    });
-    expect(t.shown).toBeGreaterThan(0);
-    expect(t.shown - t.probe).toBeLessThan(100);
+    // From here time flows: the answer (2 s) comes, Success closes it.
+    await p.clock.resume();
     await expect(dlg(p).locator("h2").textContent()).resolves.toContain(
       "Linking projects…",
     );
