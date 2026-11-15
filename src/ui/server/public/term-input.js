@@ -14,6 +14,7 @@
  *   layoutKeyIndex(e)      ⌃⇧1 / ⌃⇧2 / ⌃⇧3 (by the key's code: Shift+1 is
  *                          "!" on a US keyboard): 0-2, else -1. ⌘1-9 and
  *                          Ctrl+1-9 are the browser's (its tabs), never ours
+ *   imeOnce(el, typeIn)    an IME key's text goes to the agent once (den#165)
  */
 
 /** The editors a path link opens in, by URL scheme (Settings › editor.open). */
@@ -143,4 +144,42 @@ export function layoutKeyIndex(e) {
   if (e?.type !== "keydown") return -1;
   if (!e.ctrlKey || !e.shiftKey || e.metaKey || e.altKey) return -1;
   return ["Digit1", "Digit2", "Digit3"].indexOf(e.code);
+}
+
+/**
+ * den#165: with an input method on (a Japanese input source, which Caps
+ * Lock switches to ABC on a Mac), a key arrives as an IME key (keyCode
+ * 229). xterm 6 sends such a key's text by comparing its hidden input
+ * box before and after, a tick later: fast or held keys overlap, and it
+ * sends text twice, the whole box again, or a delete. Upstream:
+ * https://github.com/xtermjs/xterm.js/issues/5778 (remove this when it is
+ * fixed there). Here an IME key outside a composition never reaches xterm;
+ * the text it inserts goes to the agent once, as typed, and the box stays
+ * empty. A composition (kana to kanji) is xterm's, untouched.
+ */
+export function imeOnce(el, typeIn) {
+  let composing = false;
+  let imeKey = false;
+  el.addEventListener("compositionstart", () => (composing = true), true);
+  el.addEventListener("compositionend", () => (composing = false), true);
+  el.addEventListener(
+    "keydown",
+    (e) => {
+      imeKey = e.keyCode === 229 && !e.isComposing && !composing;
+      if (imeKey) e.stopPropagation();
+    },
+    true,
+  );
+  el.addEventListener(
+    "beforeinput",
+    (e) => {
+      if (!imeKey || composing || e.isComposing) return;
+      if (e.inputType !== "insertText" || !e.data) return;
+      imeKey = false;
+      e.preventDefault();
+      e.stopPropagation();
+      typeIn(e.data);
+    },
+    true,
+  );
 }
