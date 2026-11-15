@@ -27,6 +27,10 @@ config and manifest changes a distribution must make to move to it under
   couldn't be linked: north. Try again.", instead of a line per project.
   Same words in English, Spanish and Japanese.
 
+### Fixed
+
+- Report an issue sits in one place on every page and in every pop-up (issue 94). In the top bar it is right before the bell, with its word, at every width; it is no longer in the left rail. In a pop-up it is first in the footer. The place is set once, in the shared UI kit.
+
 ## [0.4.50] - unreleased
 
 ### Added

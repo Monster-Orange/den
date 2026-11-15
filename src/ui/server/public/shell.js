@@ -3918,11 +3918,6 @@
   // chips start neutral ("Checking…", "Runs"; the sudo chip hidden) and topbar.js
   // paints them: a cold load never shows a partial red.
   var chips =
-    // FB (den#81): on a phone the rail is hidden: Report is in the top bar
-    // (icon and word, no shortcut). Hidden where the rail shows.
-    '<span class="den-report-top">' +
-    reportButton() +
-    "</span>" +
     '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
     esc(t("search.ph")) +
     '"><span class="den-search-ph">' +
@@ -3942,6 +3937,9 @@
     '<span class="den-lock-ic" aria-hidden="true">🔑</span><span class="den-lbl-l">' +
     esc(t("lock.waiting")) +
     "</span></button>" +
+    // UK-3 (issue 94): Report sits right before the bell, at every width
+    // (Report, bell, account); the kit's base.css places it.
+    reportButton(false, true) +
     // NT-3: the bell (bell.js paints its count and opens its panel).
     '<button type="button" class="den-ib den-bell" id="den-bell" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
     esc(t("bell.title")) +
@@ -4446,17 +4444,6 @@
       },
       page === SETTINGS.id,
     );
-    // FB (den#81): Report an issue, beside Settings; the icon stays when
-    // the rail is collapsed. Hidden with feedback.enabled: false.
-    if (!state.reportOff)
-      html +=
-        '<button class="den-ni den-report-btn" type="button" data-act="report" aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
-        esc(t("fb.tip")) +
-        '">' +
-        icon("report") +
-        '<span class="den-lbl">' +
-        esc(t("fb.rail")) +
-        "</span></button>";
     html += identityChip();
     html +=
       '<button class="den-ni den-collapse-btn" type="button" data-act="collapse" aria-expanded="' +
@@ -4733,11 +4720,6 @@
       servicePanel.open(sp.getAttribute("data-svpanel"), sp, {
         fromRail: true,
       });
-      return;
-    }
-    var rep = tgt && tgt.closest ? tgt.closest('[data-act="report"]') : null;
-    if (rep) {
-      openReport();
       return;
     }
     var c = tgt && tgt.closest ? tgt.closest('[data-act="collapse"]') : null;
@@ -7030,11 +7012,12 @@
    * speech bubble, the word, ⌘⇧F (phones hide it). A click anywhere on a
    * [data-den-report] opens Report an issue over the pop-up, which stays.
    */
-  function reportButton(inFoot) {
+  function reportButton(inFoot, inTop) {
     if (state.reportOff) return "";
     return (
       '<button type="button" class="den-rb' +
       (inFoot ? " den-rb-in" : "") +
+      (inTop ? " den-rb-top" : "") +
       '" data-den-report aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
       esc(t("fb.tip")) +
       '">' +
@@ -7522,19 +7505,15 @@
     ".den-rb svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }",
     ".den-rb kbd { font: 11px var(--mono); color: var(--muted); }",
     "@media (max-width: 600px) { .den-rb kbd { display: none; } }",
-    // FB: in a footer, first and on the left; a footer of its own when the
-    // pop-up has none; the top bar's on a phone only.
-    ".den-rb.den-rb-in { margin-right: auto; }",
+    // FB: where Report sits is the kit's (base.css, UK-3): first in a
+    // footer, right before the bell in the top bar.
     ".den-rb-foot { display: flex; justify-content: flex-start; margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border); }",
-    ".den-report-top { display: none; }",
-    ".den-report-top kbd { display: none; }",
-    "@media (max-width: 720px) { .den-report-top { display: inline-flex; margin-left: auto; } }",
     // A phone's top bar makes room for Report: Runs is in the dock bar.
     "@media (max-width: 480px) { #den-runs { display: none; } }",
     // …and the status chip's words shorten (…) rather than push the page
     // sideways, whatever they say.
     "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } #den-status .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }",
-    ".den-report-off [data-den-report], .den-report-off .den-report-top { display: none !important; }",
+    ".den-report-off [data-den-report] { display: none !important; }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
     // D27: Visit is a link styled as a button.

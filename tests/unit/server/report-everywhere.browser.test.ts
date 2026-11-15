@@ -197,22 +197,133 @@ async function missing(p: Page): Promise<string[]> {
   });
 }
 
+/**
+ * Issue 94, UK-3 "one placement": in the top bar, Report sits right
+ * before the bell (then the account), with its word, at every width and
+ * on every page, never in the rail; the shortcut shows beside the word
+ * only where there is room, and the tooltip always has it.
+ */
+async function topBarPlacement(p: Page, wide: boolean): Promise<string[]> {
+  return p.evaluate((isWide) => {
+    const bad: string[] = [];
+    const vis = (e: Element | null) => {
+      const r = e?.getBoundingClientRect();
+      return !!r && r.width > 0 && r.height > 0;
+    };
+    const top = [
+      ...document.querySelectorAll<HTMLElement>(".den-top [data-den-report]"),
+    ];
+    if (top.length !== 1) return ["top bar has " + top.length + " Report"];
+    const b = top[0]!;
+    const bell = document.getElementById("den-bell");
+    if (!vis(b)) bad.push("top Report not visible");
+    if (b.nextElementSibling !== bell) bad.push("not right before the bell");
+    const user = document.getElementById("den-user");
+    if (
+      user &&
+      bell &&
+      !(bell.compareDocumentPosition(user) & Node.DOCUMENT_POSITION_FOLLOWING)
+    )
+      bad.push("account not after the bell");
+    if (!/\S/.test(b.querySelector("span")?.textContent ?? ""))
+      bad.push("no word");
+    if (!b.querySelector("svg")) bad.push("no icon");
+    if (!(b.getAttribute("title") ?? "").includes("⌘⇧F"))
+      bad.push("tooltip lacks the shortcut");
+    if (vis(b.querySelector("kbd")) !== isWide)
+      bad.push("kbd " + (isWide ? "hidden when wide" : "shown when narrow"));
+    if (
+      document.querySelector(
+        ".den-rail [data-den-report], .den-rail [data-act=report]",
+      )
+    )
+      bad.push("Report in the rail");
+    if (document.documentElement.scrollWidth > innerWidth)
+      bad.push("page scrolls sideways");
+    return bad;
+  }, wide);
+}
+
+/**
+ * Every pop-up showing, where its Report button sits: first in its row,
+ * so no other button of that row is before it (above it, or to its left).
+ */
+async function misplaced(p: Page): Promise<string[]> {
+  return p.evaluate(() => {
+    const out: string[] = [];
+    for (const b of document.querySelectorAll<HTMLElement>(
+      "[data-den-report]",
+    )) {
+      if (b.closest(".den-top, .den-rail, .fb-dlg")) continue;
+      const r = b.getBoundingClientRect();
+      if (!r.width) continue;
+      const row = b.parentElement!;
+      for (const o of row.querySelectorAll<HTMLElement>(
+        ":scope > button, :scope > a",
+      )) {
+        if (o === b) continue;
+        const q = o.getBoundingClientRect();
+        if (!q.width) continue;
+        const before =
+          q.bottom <= r.top + 2 || (q.top < r.bottom - 2 && q.left < r.left);
+        if (before)
+          out.push(
+            `${row.className || row.tagName}: ${o.textContent?.trim().slice(0, 20)} before Report`,
+          );
+      }
+    }
+    return out;
+  });
+}
+
+async function clean(p: Page) {
+  expect(await missing(p)).toEqual([]);
+  expect(await misplaced(p)).toEqual([]);
+}
+
 describe("the Report button in every pop-up (FB, den#81)", () => {
+  it.each([1440, 390])(
+    "issue 94: one placement at %i: the top bar before the bell, first in every pop-up's footer",
+    async (w) => {
+      if (skip()) return;
+      const p = await open("/agents", w);
+      await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+      expect(await topBarPlacement(p, w >= 1000)).toEqual([]);
+      await p.keyboard.press("Control+k");
+      await p.waitForSelector(".den-pal");
+      await clean(p);
+      await p.keyboard.press("Escape");
+      await p.click("#den-status");
+      await p.waitForSelector("#den-status-drawer");
+      await clean(p);
+      await p.keyboard.press("Escape");
+      await p.click("#den-bell");
+      await p.waitForSelector("#den-bell-pop:not([hidden])");
+      await clean(p);
+      await p.keyboard.press("Escape");
+      await p.click("#ag-start");
+      await p.waitForSelector("#ag-dlg[open]");
+      await clean(p);
+      await p.context().close();
+    },
+    60_000,
+  );
+
   it("the palette, the status drawer, the bell and the admin password ask", async () => {
     if (skip()) return;
     const p = await open("/settings");
     await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
     await p.keyboard.press("Control+k");
     await p.waitForSelector(".den-pal");
-    expect(await missing(p)).toEqual([]);
+    await clean(p);
     await p.keyboard.press("Escape");
     await p.click("#den-status");
     await p.waitForSelector("#den-status-drawer");
-    expect(await missing(p)).toEqual([]);
+    await clean(p);
     await p.keyboard.press("Escape");
     await p.click("#den-bell");
     await p.waitForSelector("#den-bell-pop:not([hidden])");
-    expect(await missing(p)).toEqual([]);
+    await clean(p);
     await p.keyboard.press("Escape");
     // The ask a run makes when sudo needs the password (topbar.js). The
     // password and vault routes are the test's: no password set, no vault
@@ -234,7 +345,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
       `import("/topbar.js").then((m) => { void m.askSudo({ command: "make install" }); })`,
     );
     await p.waitForSelector("#den-lock-pop");
-    expect(await missing(p)).toEqual([]);
+    await clean(p);
     // The button in a pop-up opens the form over it; the pop-up stays.
     await p.click("#den-lock-pop [data-den-report]");
     await p.waitForSelector(".fb-dlg[open]");
@@ -304,14 +415,14 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
       (window as { openChangelog?: () => void }).openChangelog?.(),
     );
     await p.waitForSelector("#cl-overlay.open");
-    expect(await missing(p)).toEqual([]);
+    await clean(p);
     await p.evaluate(() =>
       (window as { closeChangelog?: () => void }).closeChangelog?.(),
     );
     await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
     await p.click("#ag-start");
     await p.waitForSelector("#ag-dlg[open]");
-    expect(await missing(p)).toEqual([]);
+    await clean(p);
     // In the footer, first: it sits on the left.
     expect(
       await p.evaluate(
@@ -321,19 +432,6 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
             ?.firstElementChild?.matches("[data-den-report]") ?? false,
       ),
     ).toBe(true);
-    await p.context().close();
-  });
-
-  it("on a phone: in the top bar, icon and word, no shortcut", async () => {
-    if (skip()) return;
-    const p = await open("/settings", 390);
-    const b = p.locator(".den-top [data-den-report]");
-    await expect(b.isVisible()).resolves.toBe(true);
-    await expect(b.locator("kbd").isVisible()).resolves.toBe(false);
-    await expect(b.innerText()).resolves.toMatch(/Report/);
-    // Wide, the rail has it: the top bar's is hidden.
-    await p.setViewportSize({ width: 1440, height: 900 });
-    await expect(b.isVisible()).resolves.toBe(false);
     await p.context().close();
   });
 });

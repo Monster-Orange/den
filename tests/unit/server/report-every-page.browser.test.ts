@@ -147,13 +147,17 @@ describe("FB: a visible Report button on every page, no menu opened", () => {
     expect([...served].sort()).toEqual([...PAGES, ...NOT_DEN].sort());
   });
 
-  it.each(PAGES)("%s, at 1440 (the rail) and 390 (the top bar)", async (r) => {
-    if (skip()) return;
-    const wide = await sweep(s!.base, r, 1440);
-    expect(wide.where).toContain("rail");
-    const phone = await sweep(s!.base, r, 390);
-    expect(phone.where).toContain("top");
-  });
+  it.each(PAGES)(
+    "%s: Report is in the top bar at 1440 and 390, never in the rail (issue 94)",
+    async (r) => {
+      if (skip()) return;
+      for (const w of [1440, 390]) {
+        const got = await sweep(s!.base, r, w);
+        expect(got.where).toContain("top");
+        expect(got.where).not.toContain("rail");
+      }
+    },
+  );
 
   it("the config-invalid page", async () => {
     if (skip()) return;

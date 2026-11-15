@@ -57,7 +57,7 @@ const LISTING: Record<string, Entry> = {
   applications: R,
   mcp: script("the stdio MCP server and agent registration"),
   usage: R,
-  feedback: page("shell.js", 'data-act="report"'),
+  feedback: page("shell.js", "den-rb-top"),
   onboard: R,
   repo: R,
 

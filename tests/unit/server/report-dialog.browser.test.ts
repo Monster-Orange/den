@@ -188,11 +188,12 @@ async function toReview(p: Page) {
 }
 
 describe("FB: Report an issue, the dialog", () => {
-  it("the rail's Report button opens it; focus starts on Title", async () => {
+  it("the top bar's Report button opens it; focus starts on Title", async () => {
     if (skip()) return;
     const p = await page(fresh());
-    const btn = p.locator('#den-shell [data-act="report"]');
-    await expect(btn.textContent()).resolves.toMatch(/Report an issue/);
+    const btn = p.locator("#den-shell .den-top [data-den-report]");
+    await expect(btn.getAttribute("title")).resolves.toMatch(/Report an issue/);
+    await expect(btn.textContent()).resolves.toMatch(/Report/);
     await btn.click();
     await dlg(p).waitFor();
     expect(await dlg(p).getAttribute("aria-label")).toBe("Report an issue");
@@ -508,12 +509,12 @@ describe("FB: Report an issue, the dialog", () => {
       .getByRole("heading", { name: "Keep what you wrote?" })
       .waitFor();
     await dlg(p).locator('[data-act="discard"]').click();
-    await dlg(p).waitFor({ state: "detached" });
+    await dlg(p).waitFor({ state: "hidden" });
     // Nothing typed: Esc just closes.
     await p.keyboard.press("ControlOrMeta+Shift+F");
     await dlg(p).waitFor();
     await p.keyboard.press("Escape");
-    await dlg(p).waitFor({ state: "detached" });
+    await dlg(p).waitFor({ state: "hidden" });
     await p.context().close();
   });
 
@@ -542,14 +543,14 @@ describe("FB: Report an issue, the dialog", () => {
     await p.context().close();
   });
 
-  it("feedback.enabled: false hides the rail's Report and ⌘⇧F", async () => {
+  it("feedback.enabled: false hides the top bar's Report and ⌘⇧F", async () => {
     if (skip()) return;
     const f = fresh();
     f.settings = { feedback_enabled: false };
     const p = await page(f);
     await p
-      .locator('#den-shell [data-act="report"]')
-      .waitFor({ state: "detached" });
+      .locator("#den-shell [data-den-report]")
+      .waitFor({ state: "hidden" });
     await p.keyboard.press("ControlOrMeta+Shift+F");
     await p.waitForTimeout(300);
     expect(await dlg(p).count()).toBe(0);
@@ -607,11 +608,11 @@ describe("FB: Report an issue, the dialog", () => {
       ),
     ).toBe(true);
     await p.keyboard.press("Escape");
-    await dlg(p).waitFor({ state: "detached" });
+    await dlg(p).waitFor({ state: "hidden" });
     // What's new is still open under it, and Esc closes it.
     expect(await ov.count()).toBe(1);
     await p.keyboard.press("Escape");
-    await ov.waitFor({ state: "detached" });
+    await ov.waitFor({ state: "hidden" });
     await p.context().close();
   });
 
