@@ -252,10 +252,7 @@ function status(args: string[], d: GateDeps): number {
     d.out("No gate runs hold or wait.");
     return 0;
   }
-  const order = [...all].sort(
-    (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt),
-  );
-  for (const e of order) d.out(slotLine(e, all, d.now(), set));
+  for (const e of all) d.out(slotLine(e, all, d.now(), set));
   return 0;
 }
 

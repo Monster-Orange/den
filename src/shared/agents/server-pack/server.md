@@ -99,6 +99,10 @@ Reads (they change nothing):
 - `ask_human`: ask your person a question.
 - `notifications_list`: your person's bell.
 - `approval_check`: where one of your held asks stands.
+- `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
+- `gate_slot_request`, `gate_slot_release`: hold a slot across several
+  test commands, and give it back (your own only). For one command, run it
+  as `<cli> gate run -- <command>` instead.
 
 Held (each waits for the person's Allow):
 

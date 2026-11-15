@@ -2,9 +2,13 @@
  * The MCP tools. Read tools are always registered; action tools only when the
  * org names them in `mcp.actions`. Every tool is a thin call to the web API
  * (see api.ts); the guards (guards.ts) run first, and all text returned is
- * passed through the secret redactor.
+ * passed through the secret redactor. The gate-slot tools (den#144) are the
+ * exception: the slots are the machine's, not an install's, so they read
+ * and write the machine's slot store directly, and only the agent's own.
  */
 import { z } from "zod";
+import { expectedEnd, expectedStart } from "../../shared/gates/rules.js";
+import { GateStore } from "../../shared/gates/store.js";
 import {
   MCP_ACTIONS,
   type McpAction,
@@ -73,6 +77,8 @@ export interface ToolContext {
     waitMs: number;
     sleep?: (ms: number) => Promise<void>;
   };
+  /** The machine's gate slots (den#144); tests pass a temp store. */
+  gates?: GateStore;
 }
 
 type Args = Record<string, unknown>;
@@ -174,6 +180,46 @@ function actionResult(
   const out = { ...head, ...streamSummary(r, keep) };
   if (streamFailed(r)) throw new ActionFailed({ failed: true, ...out });
   return out;
+}
+
+// ── Gate slots (den#144) ────────────────────────────────────────────────────
+
+/** The slots this MCP server asked for: the only ones it may give back. */
+const mySlots = new Set<string>();
+let defaultGates: GateStore | undefined;
+const gatesOf = (ctx: ToolContext): GateStore =>
+  ctx.gates ?? (defaultGates ??= new GateStore());
+
+function gateView(store: GateStore) {
+  const all = store.list();
+  const now = Date.now();
+  return {
+    settings: store.settings(),
+    slots: all.map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      who: e.who,
+      label: e.label,
+      granted: !!e.grantedAt,
+      ...(e.grantedAt
+        ? {
+            grantedAt: e.grantedAt,
+            expectedEnd: new Date(expectedEnd(e)).toISOString(),
+          }
+        : {
+            askedAt: e.askedAt,
+            expectedStart: new Date(
+              expectedStart(all, e.id, now),
+            ).toISOString(),
+          }),
+    })),
+  };
+}
+
+function slotView(store: GateStore, id: string) {
+  const v = gateView(store);
+  const mine = v.slots.find((x) => x.id === id);
+  return { ...mine, queue: v.slots.length };
 }
 
 // ── Read tools ──────────────────────────────────────────────────────────────
@@ -290,6 +336,77 @@ const READ_TOOLS: DenTool[] = [
     "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. Reads only: an agent can't mark or clear these.",
     {},
     async (_a, { api }) => api.get("/api/notifications"),
+  ),
+  read(
+    "gate_slot_status",
+    "Gate slots on this machine",
+    "den#144: who holds a heavy-test slot on this machine and who waits, across every repo and install here: each slot's id, kind (browser runs alone; cpu shares), who, label, grantedAt or its place in the queue, expectedEnd or expectedStart, and the machine's settings. Reads only.",
+    {},
+    async (_a, ctx) => gateView(gatesOf(ctx)),
+  ),
+  read(
+    "gate_slot_request",
+    "Ask for a gate slot",
+    "den#144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now) or false with `expectedStart` (ask again with `id` to wait on: that also keeps your hold alive; a slot quiet past the lease is taken back). Never pre-empts anyone.",
+    {
+      kind: z
+        .enum(["browser", "cpu"])
+        .optional()
+        .describe("browser (runs alone) or cpu (shares); default cpu"),
+      estimate_minutes: z
+        .number()
+        .positive()
+        .optional()
+        .describe("How long you expect to hold it (default 10)"),
+      label: z
+        .string()
+        .optional()
+        .describe("What runs, a few words (no command arguments)"),
+      id: z
+        .string()
+        .optional()
+        .describe("Your slot's id: ask again to wait on it and keep it alive"),
+    },
+    async (a, ctx) => {
+      const store = gatesOf(ctx);
+      const id = str(a.id);
+      if (id) {
+        if (!mySlots.has(id))
+          throw new Refusal("gate_slot_request: that slot isn't yours.");
+        const e = store.renew(id);
+        if (!e) {
+          mySlots.delete(id);
+          throw new Refusal(
+            "gate_slot_request: that slot is gone (released, ended early, or taken back); ask for a new one.",
+          );
+        }
+        return slotView(store, e.id);
+      }
+      const e = store.ask({
+        kind: a.kind === "browser" ? "browser" : "cpu",
+        who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
+        label: (str(a.label) ?? "tests").slice(0, 120),
+        pid: process.pid,
+        estimateMin:
+          typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
+        agent: true,
+      });
+      mySlots.add(e.id);
+      return slotView(store, e.id);
+    },
+  ),
+  read(
+    "gate_slot_release",
+    "Give a gate slot back",
+    "den#144: give back a slot you asked for with gate_slot_request (holding or still waiting). Only your own: an agent can't end anyone else's.",
+    { id: z.string().describe("Your slot's id") },
+    async (a, ctx) => {
+      const id = str(a.id) ?? "";
+      if (!mySlots.has(id))
+        throw new Refusal("gate_slot_release: that slot isn't yours.");
+      mySlots.delete(id);
+      return { released: gatesOf(ctx).release(id) };
+    },
   ),
   read(
     "approval_check",

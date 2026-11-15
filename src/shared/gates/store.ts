@@ -19,6 +19,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   GATE_DEFAULTS,
+  byAsked,
   grants,
   takenBackWhy,
   type GateEntry,
@@ -287,9 +288,16 @@ export class GateStore {
     return entries;
   }
 
-  /** The queue now (holders and waiters), after taking back and granting. */
+  /**
+   * The queue now, after taking back and granting: holders first, then the
+   * waiters in the order they asked.
+   */
   list(): GateEntry[] {
-    return this.locked(() => this.settle());
+    return this.locked(() =>
+      this.settle().sort(
+        (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt) || byAsked(a, b),
+      ),
+    );
   }
 
   /** Asks for a slot; returns the entry (granted at once if it may start). */
