@@ -30,6 +30,12 @@ import { readWebPort } from "../../shared/edge/config.js";
 import { product } from "../../shared/product.js";
 import { denWebBase } from "../../shared/web-dial.js";
 import {
+  foreignServerMessage,
+  identifyServer,
+  ownServer,
+  type ServerIdentity,
+} from "./server-identity.js";
+import {
   CAPTIONS_FILE,
   HubFilesError,
   hubPull,
@@ -85,6 +91,42 @@ export interface HubCommandDeps {
   err?: (line: string) => void;
   /** Uploads at once. */
   parallel?: number;
+  /** Whose server answers at the base (den#182). Default identifyServer. */
+  identify?: (base: string) => Promise<ServerIdentity>;
+}
+
+function identifyBase(base: string): Promise<ServerIdentity> {
+  const u = new URL(base);
+  return identifyServer(
+    Number(u.port) || 80,
+    ownServer(),
+    undefined,
+    u.hostname.replace(/^\[|\]$/g, ""),
+  );
+}
+
+/**
+ * den#182: the agent's token goes only to this Den. Whatever answers at
+ * the base says whose it is first; anything else gets no request.
+ */
+async function thisDen(
+  verb: string,
+  base: string,
+  deps: HubCommandDeps,
+  err: (l: string) => void,
+): Promise<boolean> {
+  const cli = product().cli;
+  const id = await (deps.identify ?? identifyBase)(base);
+  if (id.kind === "ours") return true;
+  const port = new URL(base).port;
+  err(
+    id.kind === "none"
+      ? `${cli} hub ${verb}: Den isn't answering at ${base}. Is it running (\`${cli} web up\`)?`
+      : id.kind === "foreign"
+        ? `${cli} hub ${verb}: ${foreignServerMessage(Number(port), id.who)}, not this Den; the agent's token was not sent.`
+        : `${cli} hub ${verb}: what answers at ${base} did not say in time whose it is, so it is not known to be this Den; the agent's token was not sent. Try again.`,
+  );
+  return false;
 }
 
 function defaultDenBase(): string {
@@ -151,8 +193,10 @@ export async function cmdHub(
     return 1;
   }
 
+  const denBase = (deps.denBase ?? defaultDenBase)();
+  if (!(await thisDen("push", denBase, deps, err))) return 1;
   const via: HubVia = {
-    denBase: (deps.denBase ?? defaultDenBase)(),
+    denBase,
     token,
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
   };
@@ -312,8 +356,10 @@ async function cmdHubFiles(
     );
     return 2;
   }
+  const denBase = (deps.denBase ?? defaultDenBase)();
+  if (!(await thisDen(verb, denBase, deps, err))) return 1;
   const via: HubVia = {
-    denBase: (deps.denBase ?? defaultDenBase)(),
+    denBase,
     token,
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.parallel ? { parallel: deps.parallel } : {}),

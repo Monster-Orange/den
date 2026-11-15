@@ -17,6 +17,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { cmdHub } from "../../../src/ui/cli/hub-command.js";
+import { ownServer } from "../../../src/ui/cli/server-identity.js";
 import { handleHubProxy } from "../../../src/ui/server/hub-proxy-routes.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import {
@@ -292,6 +293,12 @@ async function denProxy(hubUrl: string): Promise<string> {
         session: { name: "north:ada", id: "s1" },
       });
     const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    // This Den says whose it is, as Den's own does (den#182).
+    if (p === "/api/server-info") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(ownServer()));
+      return;
+    }
     void handleHubProxy(req, res, p, {
       upstream: async () => ({
         base: hubUrl,

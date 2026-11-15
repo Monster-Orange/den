@@ -22,6 +22,7 @@ import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { cmdHub } from "../../../src/ui/cli/hub-command.js";
+import { ownServer } from "../../../src/ui/cli/server-identity.js";
 import {
   hubUpstream,
   resolveAgentsDeps,
@@ -140,6 +141,12 @@ async function den(
         session: t.session,
       });
     const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    // This Den says whose it is, as Den's own does (den#182).
+    if (p === "/api/server-info") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(ownServer()));
+      return;
+    }
     void handleHubProxy(req, res, p, {
       upstream: (who) => hubUpstream(d, who),
     }).then((handled) => {

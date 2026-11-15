@@ -8,6 +8,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- `<cli> hub put`, `hub pull` and `hub push` send the agent's Den token only
+  to this Den. They first ask whatever answers on Den's port whose it is,
+  as the MCP tools already did; another install, or anything that is not
+  a Den, gets no request and the command says so. (#182)
 - A large mock no longer reaches Hub cut off. Agents published a page by
   typing its whole text into one call; a long one was cut off mid-text,
   and Hub kept the broken page. `<cli> hub put <file|dir> hub:<slug>
