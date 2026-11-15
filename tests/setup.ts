@@ -3,10 +3,17 @@
  * Runs before each test suite
  */
 
+import { afterAll } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { scrubSecretEnv } from "./scrub-env";
+import {
+  armTripwire,
+  configLocalChanges,
+  configLocalSnapshot,
+  tripwireCalls,
+} from "./tripwire";
 
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
@@ -33,6 +40,35 @@ process.env.DEN_LOGIN_SHELL ??= "off";
 // sign-in tabs from test runs). `web up` and every opener honour it; the
 // opener refuses under JEST_WORKER_ID besides (browser-open.ts).
 process.env.DEN_NO_OPEN = "1";
+
+// 0.4.48 tripwires (tripwire.ts): no test reaches a person's browser or
+// Terminal (open, osascript, xdg-open, x-www-browser are failing shims
+// first on PATH), and none writes this checkout's config/local. A test
+// file that does fails, naming what it did.
+armTripwire();
+const checkoutRoot = process.cwd();
+const configLocalBefore = configLocalSnapshot(checkoutRoot);
+afterAll(() => {
+  const calls = tripwireCalls();
+  const changes = configLocalChanges(checkoutRoot, configLocalBefore);
+  if (calls.length || changes.length)
+    throw new Error(
+      [
+        ...(calls.length
+          ? [
+              "This test file tried to open an app on the developer's machine (stub it, or pass --no-open):",
+              ...calls.map((c) => `  ${c}`),
+            ]
+          : []),
+        ...(changes.length
+          ? [
+              "This test file wrote the checkout's config/local (use a temp DEN_ROOT):",
+              ...changes.map((c) => `  ${c}`),
+            ]
+          : []),
+      ].join("\n"),
+    );
+});
 process.env.DEN_RUNTIME_DIRS ??= "";
 
 // No test runs a vendor's CLI installed on this machine's PATH (AG-0.5's

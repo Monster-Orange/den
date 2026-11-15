@@ -9,7 +9,10 @@
  */
 
 import { describe, it, expect, afterAll } from "@jest/globals";
+import * as fs from "fs";
 import * as http from "http";
+import * as os from "os";
+import * as path from "path";
 import { spawnServer, stopServer } from "../../child-servers.js";
 
 // Import the server module to start it on a random port
@@ -17,6 +20,7 @@ const TEST_PORT = 19876 + Math.floor(Math.random() * 1000);
 
 let serverProcess: ReturnType<typeof import("child_process").spawn> | null =
   null;
+let tmp = "";
 
 function fetch(path: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -42,9 +46,23 @@ function fetch(path: string): Promise<{ status: number; body: string }> {
 describe("server smoke", () => {
   // Start the actual server before tests
   beforeAll(async () => {
+    // Its own distribution and home: the server's first start writes its
+    // config/local (user.yml, the graph cache), never this checkout's.
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-smoke-"));
+    const dist = path.join(tmp, "dist");
+    fs.mkdirSync(path.join(dist, "config"), { recursive: true });
+    fs.writeFileSync(path.join(dist, "den.yml"), "product:\n  name: den\n");
+    fs.writeFileSync(
+      path.join(dist, "config", "den.yml"),
+      "environments: [local]\n",
+    );
     serverProcess = spawnServer("npx", ["tsx", "src/ui/server/index.ts"], {
       env: {
         ...process.env,
+        DEN_ROOT: dist,
+        DEN_ENGINE_ROOT: process.cwd(),
+        DEN_HOME: path.join(tmp, "home", ".den"),
+        HOME: path.join(tmp, "home"),
         PORT: String(TEST_PORT),
         // Suppress the browser auto-open
         DEN_NO_OPEN: "1",
@@ -69,6 +87,7 @@ describe("server smoke", () => {
   afterAll(async () => {
     await stopServer(serverProcess ?? undefined);
     serverProcess = null;
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   });
 
   it("GET /api/environments returns JSON array", async () => {

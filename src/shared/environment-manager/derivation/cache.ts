@@ -20,12 +20,12 @@ import { repoInputFiles } from "./scan.js";
 // classification) — the fingerprint only tracks repo inputs, so without a
 // bump every clone keeps serving graphs derived under the old rules.
 const CACHE_VERSION = 3;
-const CACHE_PATH = path.join(
-  getDistRoot(),
-  "config",
-  "local",
-  ".graph-cache.json",
-);
+/**
+ * Where the cache lives, read on each use: the distribution's config/local
+ * (DEN_ROOT as it is now, never as it was when this module loaded).
+ */
+const cachePath = () =>
+  path.join(getDistRoot(), "config", "local", ".graph-cache.json");
 
 interface CacheEntry {
   fingerprint: string;
@@ -54,7 +54,7 @@ export function repoFingerprint(repoPath: string): string {
 
 export function readGraphCache(): CacheFile {
   try {
-    const raw = fs.readFileSync(CACHE_PATH, "utf-8");
+    const raw = fs.readFileSync(cachePath(), "utf-8");
     const parsed = JSON.parse(raw) as CacheFile;
     if (parsed.version !== CACHE_VERSION)
       return { version: CACHE_VERSION, repos: {} };
@@ -66,7 +66,7 @@ export function readGraphCache(): CacheFile {
 
 export function writeGraphCache(cache: CacheFile): void {
   try {
-    const dir = path.dirname(CACHE_PATH);
+    const dir = path.dirname(cachePath());
     fs.mkdirSync(dir, { recursive: true });
     // Temp-then-rename so a concurrent reader (another den up/graph) never
     // observes a half-written cache file. Unique temp name avoids writer
@@ -77,7 +77,7 @@ export function writeGraphCache(cache: CacheFile): void {
     );
     try {
       fs.writeFileSync(tmp, JSON.stringify(cache), "utf-8");
-      fs.renameSync(tmp, CACHE_PATH);
+      fs.renameSync(tmp, cachePath());
     } catch (err) {
       // Don't leave an orphaned temp file behind when the write/rename fails.
       try {
