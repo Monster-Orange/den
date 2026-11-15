@@ -1535,7 +1535,7 @@
     "ub.link": "Link",
     "ub.waiting": "Nothing is filed for this project yet.",
     "ub.empty":
-      "All your projects are linked to a Hub project. Den lists a project here only when it can't tell which one fits.",
+      "Every match is clear. Den lists a project here only when it can't tell which Hub project fits.",
     "ub.repos": "same repos",
     "ub.name": "same name",
     "ub.clear": "{project}: Hub suggests",

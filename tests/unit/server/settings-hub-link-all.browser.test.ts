@@ -213,10 +213,25 @@ describe("Settings › Agents › Unclear matches (#68, issue 167)", () => {
       connected: true,
       projects: [{ project: "east", hub: BLOG, suggestion: null }],
     }));
-    expect(await rowText(p)).toContain(
-      "All your projects are linked to a Hub project.",
-    );
+    expect(await rowText(p)).toContain("Every match is clear.");
     expect(await p.$(`${ROW} fieldset`)).toBeNull();
+    await p.context().close();
+  }, 60_000);
+
+  it("nothing unclear, some not linked yet: never says all are linked (a 0.4.50-dev.3 gate)", async () => {
+    if (skip()) return;
+    const { p } = await page(() => ({
+      ok: true,
+      connected: true,
+      projects: [
+        { project: "east", hub: BLOG, suggestion: null },
+        { project: "north", hub: null, suggestion: BACK },
+      ],
+    }));
+    const text = await rowText(p);
+    expect(text).not.toContain("All your projects are linked");
+    expect(text).toContain("Every match is clear.");
+    expect(await p.$(`${ROW} [data-hubla-clear="north"]`)).not.toBeNull();
     await p.context().close();
   }, 60_000);
 
