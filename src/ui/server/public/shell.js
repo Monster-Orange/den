@@ -1178,6 +1178,37 @@
       "Their conversations stay. Undo brings one back for an hour.",
     "wsd.cancel": "Cancel",
     "wsd.go": "Delete project",
+    // issue 133: the kit's dialogs (dialog-den.js), in place of confirm(),
+    // prompt() and alert().
+    "dlg.ok": "OK",
+    "dlg.cancel": "Cancel",
+    "dlg.keep": "Keep",
+    "dlg.delete": "Delete",
+    "dlg.remove": "Remove",
+    "dlg.removeSvcT": "Remove the service?",
+    "dlg.removeSvc": "Remove “{svc}” from “{ws}”?",
+    "dlg.delProjT": "Delete the project?",
+    "dlg.delProj": "Delete project “{ws}”?",
+    "dlg.dirT": "Delete its folder too?",
+    "dlg.dir":
+      "Also delete the project's directory from your machine?\n\n{dir}\n\nThis removes all files in the directory. Any unpushed commits will be lost.",
+    "dlg.reposT": "Delete its repos too?",
+    "dlg.devRepos.one":
+      "Also delete {n} dev-managed repo from your machine?\n\n{list}\n\nAny unpushed commits will be lost.",
+    "dlg.devRepos":
+      "Also delete {n} dev-managed repos from your machine?\n\n{list}\n\nAny unpushed commits will be lost.",
+    "dlg.denRepos.one":
+      "Also delete {n} managed repo only used by this project?\n\n{list}\n\nNo other project uses these clones.",
+    "dlg.denRepos":
+      "Also delete {n} managed repos only used by this project?\n\n{list}\n\nNo other project uses these clones.",
+    "dlg.renameT": "Rename the project",
+    "dlg.rename": "Rename project “{ws}” to:",
+    "dlg.renameGo": "Rename",
+    "dlg.openT": "Run it yourself",
+    "dlg.editorFail":
+      "Could not open Terminal.app automatically.\n\nRun this in your terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.termFail":
+      "Could not open the terminal automatically.\n\nRun this in your terminal:\n\n  {cmd}\n\n{msg}",
     "rd.keepsHead": "Keeps running:",
     "rd.keepsAgents": "Agents and their terminals",
     "rd.keepsServices": "Services, and deploys on GitHub",

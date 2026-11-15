@@ -411,6 +411,37 @@
       "Sus conversaciones se conservan. Deshacer recupera uno durante una hora.",
     "wsd.cancel": "Cancelar",
     "wsd.go": "Eliminar el proyecto",
+    // issue 133: the kit's dialogs (dialog-den.js), in place of confirm(),
+    // prompt() and alert().
+    "dlg.ok": "Aceptar",
+    "dlg.cancel": "Cancelar",
+    "dlg.keep": "Conservar",
+    "dlg.delete": "Eliminar",
+    "dlg.remove": "Quitar",
+    "dlg.removeSvcT": "¿Quitar el servicio?",
+    "dlg.removeSvc": "¿Quitar “{svc}” de “{ws}”?",
+    "dlg.delProjT": "¿Eliminar el proyecto?",
+    "dlg.delProj": "¿Eliminar el proyecto “{ws}”?",
+    "dlg.dirT": "¿Eliminar también su carpeta?",
+    "dlg.dir":
+      "¿Eliminar también el directorio del proyecto de este ordenador?\n\n{dir}\n\nSe borran todos los archivos del directorio. Los commits sin enviar se perderán.",
+    "dlg.reposT": "¿Eliminar también sus repositorios?",
+    "dlg.devRepos.one":
+      "¿Eliminar también {n} repositorio gestionado en desarrollo de este ordenador?\n\n{list}\n\nLos commits sin enviar se perderán.",
+    "dlg.devRepos":
+      "¿Eliminar también {n} repositorios gestionados en desarrollo de este ordenador?\n\n{list}\n\nLos commits sin enviar se perderán.",
+    "dlg.denRepos.one":
+      "¿Eliminar también {n} repositorio gestionado que solo usa este proyecto?\n\n{list}\n\nNingún otro proyecto usa estos clones.",
+    "dlg.denRepos":
+      "¿Eliminar también {n} repositorios gestionados que solo usa este proyecto?\n\n{list}\n\nNingún otro proyecto usa estos clones.",
+    "dlg.renameT": "Cambiar el nombre del proyecto",
+    "dlg.rename": "Nuevo nombre para el proyecto “{ws}”:",
+    "dlg.renameGo": "Cambiar nombre",
+    "dlg.openT": "Ejecútalo tú",
+    "dlg.editorFail":
+      "No se pudo abrir Terminal.app automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.termFail":
+      "No se pudo abrir la terminal automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
     "rd.keepsHead": "Sigue en marcha:",
     "rd.keepsAgents": "Los agentes y sus terminales",
     "rd.keepsServices": "Los servicios y los despliegues en GitHub",

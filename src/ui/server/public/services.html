@@ -354,6 +354,8 @@
         } from "/header.js";
         import { logStreamUrl } from "/log-source.js";
         import { ownersLabel } from "/workspace-picker.js";
+        // issue 133: Den's own dialogs, never the browser's confirm().
+        import { askConfirm } from "/dialog-den.js";
 
         let es = null;
         // The run tab `es` feeds in the shell's runs dock (R16): one per
@@ -489,7 +491,14 @@
             msg.className = "ws-msg err";
             return;
           }
-          if (!confirm(`Delete project "${name}"?`)) return;
+          const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
+          const sure = await askConfirm({
+            title: dT("dlg.delProjT"),
+            message: dT("dlg.delProj", { ws: name }),
+            okLabel: dT("dlg.delete"),
+            danger: true,
+          });
+          if (!sure) return;
           // D71: its agents: stop them or move them, never left behind.
           let agentsChoice = {};
           const preview = await fetch(

@@ -396,6 +396,33 @@
     "wsd.stopHelp": "会話は残ります。元に戻すと 1 時間以内なら復元できます。",
     "wsd.cancel": "キャンセル",
     "wsd.go": "プロジェクトを削除",
+    // issue 133: the kit's dialogs (dialog-den.js), in place of confirm(),
+    // prompt() and alert().
+    "dlg.ok": "OK",
+    "dlg.cancel": "キャンセル",
+    "dlg.keep": "残す",
+    "dlg.delete": "削除",
+    "dlg.remove": "外す",
+    "dlg.removeSvcT": "サービスを外しますか?",
+    "dlg.removeSvc": "「{svc}」を「{ws}」から外しますか?",
+    "dlg.delProjT": "プロジェクトを削除しますか?",
+    "dlg.delProj": "プロジェクト「{ws}」を削除しますか?",
+    "dlg.dirT": "フォルダーも削除しますか?",
+    "dlg.dir":
+      "このマシンからプロジェクトのディレクトリも削除しますか?\n\n{dir}\n\nディレクトリ内のファイルはすべて削除されます。プッシュしていないコミットは失われます。",
+    "dlg.reposT": "リポジトリも削除しますか?",
+    "dlg.devRepos":
+      "このマシンから開発用に管理しているリポジトリ {n} 個も削除しますか?\n\n{list}\n\nプッシュしていないコミットは失われます。",
+    "dlg.denRepos":
+      "このプロジェクトだけが使う管理リポジトリ {n} 個も削除しますか?\n\n{list}\n\nほかのプロジェクトはこれらのクローンを使っていません。",
+    "dlg.renameT": "プロジェクト名を変更",
+    "dlg.rename": "プロジェクト「{ws}」の新しい名前:",
+    "dlg.renameGo": "名前を変更",
+    "dlg.openT": "手動で実行してください",
+    "dlg.editorFail":
+      "Terminal.app を自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
+    "dlg.termFail":
+      "ターミナルを自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
     "rd.keepsHead": "動き続けるもの:",
     "rd.keepsAgents": "エージェントとそのターミナル",
     "rd.keepsServices": "サービスと GitHub 上のデプロイ",
