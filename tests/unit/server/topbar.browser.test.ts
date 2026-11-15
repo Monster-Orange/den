@@ -24,6 +24,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
+const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
 let browser: Browser | null = null;
 
 beforeAll(async () => {
@@ -151,6 +152,15 @@ async function mount(o: Opts = {}): Promise<{
       return r.fulfill({
         contentType: "text/javascript; charset=utf-8",
         body: fs.readFileSync(path.join(PUBLIC, file[1]), "utf-8"),
+      });
+    // UK-2: the kit's files, as Den serves them under /kit/.
+    const kit = /^\/kit\/([\w-]+\.(?:js|css))$/.exec(url.pathname);
+    if (kit && fs.existsSync(path.join(KIT, kit[1])))
+      return r.fulfill({
+        contentType: kit[1].endsWith(".css")
+          ? "text/css; charset=utf-8"
+          : "text/javascript; charset=utf-8",
+        body: fs.readFileSync(path.join(KIT, kit[1]), "utf-8"),
       });
     switch (url.pathname) {
       case "/api/health/stream":

@@ -40,6 +40,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.crash_loop_restarts": ["crash_loop", "restarts"],
   "web.crash_loop_minutes": ["crash_loop", "minutes"],
   "web.crash_loop_max_wait_seconds": ["crash_loop", "max_wait_seconds"],
+  // 0.4.48: Den on the Docker bridge for the edge (Linux).
+  "web.bridge_listen": ["web_bridge", "listen"],
+  "web.bridge_probe_seconds": ["web_bridge", "probe_seconds"],
 };
 
 /** Every key `config` accepts, aliases too. */

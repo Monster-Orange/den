@@ -98,6 +98,9 @@ export const DEN_ACTIONS = {
   },
   "send-report": {
     who: "Den",
+    // FB: a quick answer shows nothing; the report dialog says what
+    // happened (Sent, F4, F5, F7, a refusal with Try again).
+    autoClose: true,
     keys: {
       working: "fb.busySend",
       success: "fb.busyDone",

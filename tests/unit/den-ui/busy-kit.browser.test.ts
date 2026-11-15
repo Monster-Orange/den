@@ -421,6 +421,9 @@ describe("UK-2 kit: the working pop-up", () => {
     const { p } = await open([[0, 202]], { clock: true });
     await p.evaluate(() => ((window as { waitMs?: number }).waitMs = 90_000));
     await go(p, "restart");
+    // The kit reads "before" over the network first; move the faked clock
+    // only once it waits (else the wait starts after the clock moved).
+    await dlg(p).locator("h2", { hasText: "Restarting" }).waitFor();
     await p.clock.runFor(70_000);
     expect(await dlg(p).locator("h2").textContent()).toContain("Restarting");
     await p.clock.runFor(25_000);
@@ -432,6 +435,7 @@ describe("UK-2 kit: the working pop-up", () => {
     if (skip()) return;
     const { p } = await open([[0, 202]], { clock: true });
     await go(p, "restart");
+    await dlg(p).locator("h2", { hasText: "Restarting" }).waitFor();
     await p.clock.runFor(70_000);
     await dlg(p).locator("h2", { hasText: "Not back yet" }).waitFor();
     const keys = await dlg(p)

@@ -150,7 +150,9 @@ describe("BUSY-1: the working pop-up", () => {
     ).toBe(false);
   }, 30_000);
 
-  it("a 500: Failure says so; Try again resends the same id once", async () => {
+  // UK-2 (UI-KIT-SPEC, request ids): an error answer was stored under its
+  // id (the ledger replays it), so Try again sends a new id, once.
+  it("a 500: Failure says so; Try again sends once more, under a new id", async () => {
     if (skip()) return;
     const p = await page();
     const st = await stub(p, [
@@ -174,7 +176,8 @@ describe("BUSY-1: the working pop-up", () => {
     await dlg(p).locator('[data-bz="done"]').waitFor({ timeout: 5000 });
     expect(st.ids).toHaveLength(2);
     expect(st.ids[0]).toMatch(/^[A-Za-z0-9-]{8,64}$/);
-    expect(st.ids[1]).toBe(st.ids[0]);
+    expect(st.ids[1]).toMatch(/^[A-Za-z0-9-]{8,64}$/);
+    expect(st.ids[1]).not.toBe(st.ids[0]);
   }, 30_000);
 
   it("60 s with no answer: No answer; Check again asks how the id ended and never resends", async () => {
@@ -216,7 +219,9 @@ describe("BUSY-1: the working pop-up", () => {
     expect(st.ids).toHaveLength(1);
   }, 60_000);
 
-  it("at 390 the Failure footer wraps inside the pop-up, Try again last on the right", async () => {
+  // UK-2: at 390 the kit puts the primary alone on the last row, full
+  // width (busy-kit.browser holds the kit to it); Den's pop-up is the kit's.
+  it("at 390 the Failure footer wraps inside the pop-up, Try again alone on the last row", async () => {
     if (skip()) return;
     const p = await page(390);
     await stub(p, [[0, 500]]);
@@ -228,7 +233,8 @@ describe("BUSY-1: the working pop-up", () => {
     const r = (await retry.boundingBox())!;
     const c = (await dlg(p).locator('[data-bz="close"]').boundingBox())!;
     expect(r.x + r.width).toBeLessThanOrEqual(box.x + box.width);
-    expect(r.x).toBeGreaterThanOrEqual(c.x);
+    expect(r.x).toBeGreaterThanOrEqual(box.x);
+    expect(r.y).toBeGreaterThanOrEqual(c.y + c.height);
     expect(
       await p.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
