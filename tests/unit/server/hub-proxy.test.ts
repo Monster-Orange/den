@@ -451,6 +451,53 @@ describe("D52: which paths", () => {
 });
 
 describe("D52: what passes through", () => {
+  it("issue 193: tools/list is Hub's own, every time; a parameter Hub adds shows without a Den restart", async () => {
+    const part = (props: string[]) => ({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        tools: [
+          {
+            name: "hub_artifact_upload_part",
+            inputSchema: {
+              type: "object",
+              properties: Object.fromEntries(
+                props.map((k) => [k, { type: "string" }]),
+              ),
+            },
+          },
+        ],
+      },
+    });
+    let props = ["artifact", "upload", "n", "text"];
+    const hub = await fakeHub((req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(part(props)));
+    });
+    const { base, agentToken } = await den(hub.url, {
+      mcpUrl: `${hub.url}/mcp`,
+    });
+    const list = async () => {
+      const r = await fetch(`${base}/hub/mcp`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${agentToken}`,
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      });
+      expect(r.status).toBe(200);
+      const b = (await r.json()) as ReturnType<typeof part>;
+      return Object.keys(b.result.tools[0].inputSchema.properties);
+    };
+    expect(await list()).toEqual(["artifact", "upload", "n", "text"]);
+    // Hub ships base64; Den keeps running.
+    props = ["artifact", "upload", "n", "text", "base64"];
+    expect(await list()).toEqual(["artifact", "upload", "n", "text", "base64"]);
+    expect(hub.seen.filter((x) => x.method === "POST")).toHaveLength(2);
+  });
+
   it("MCP: POST and its session header both ways; a streamed answer arrives as Hub sends it", async () => {
     let release = () => undefined as void;
     const hub = await fakeHub((req, res) => {
