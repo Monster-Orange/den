@@ -1343,11 +1343,7 @@ const FOLLOW_FOR_MS = 15_000;
  */
 function followAgents() {
   for (const p of [...st.panes.values()]) {
-    const r = rowOf(p.id);
-    if (r?.kind === "agent" && r.agent) {
-      p.agent = r.agent;
-      p.agentWs = r.workspace;
-    }
+    const r = knowAgent(p);
     if (!p.agent || p.closed || r?.state === "running") continue;
     const next = st.data?.sessions?.find(
       (x) =>
@@ -1359,6 +1355,21 @@ function followAgents() {
     );
     if (next && !st.panes.has(next.id)) retarget(p, next);
   }
+}
+
+/**
+ * Pane `p` notes its agent from its row, while the row is there; its row
+ * goes when its session ends. Issue 202: a pane opened after a list read
+ * learns it at once, not at the next read: a session ended before then
+ * (Change persona) left the pane on the old one for good.
+ */
+function knowAgent(p) {
+  const r = rowOf(p.id);
+  if (r?.kind === "agent" && r.agent) {
+    p.agent = r.agent;
+    p.agentWs = r.workspace;
+  }
+  return r;
 }
 
 /** The pane's line for a resume that had nothing to continue (AG-14). */
@@ -2631,6 +2642,7 @@ async function openPane(id, { front = true } = {}) {
     // The PTY's size as last heard (the server's size frame), or null.
     pty: null,
   };
+  knowAgent(p);
   st.panes.set(id, p);
   st.open.push(id);
   paintBar(p);
