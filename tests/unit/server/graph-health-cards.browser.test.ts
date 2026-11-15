@@ -28,6 +28,7 @@ const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
 let port = 0;
 let server: ChildProcess;
+let serverOut: () => string = () => "";
 let browser: Browser | null = null;
 
 function write(file: string, content: string): void {
@@ -99,9 +100,14 @@ beforeAll(async () => {
   );
   server = started.server;
   port = started.port;
+  serverOut = started.out;
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await chromium.connect(ws, { exposeNetwork: "<loopback>" })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -139,8 +145,32 @@ async function graph(): Promise<Page> {
   await p.route(/\/api\/health(\/stream)?(\?|$)/, () => {
     /* never answered */
   });
+  // issue 197: a first load that never drew its cards (one CI run) said
+  // only "Timeout 30000ms". Now it says what the page was still waiting
+  // for, what it showed, and what the server logged.
+  const inFlight = new Map<object, string>();
+  const t0 = Date.now();
+  p.on("request", (r) =>
+    inFlight.set(r, `${new URL(r.url()).pathname} (from ${Date.now() - t0}ms)`),
+  );
+  p.on("requestfinished", (r) => inFlight.delete(r));
+  p.on("requestfailed", (r) => inFlight.delete(r));
   await p.goto(api("/graph?ws=main"));
-  await p.waitForSelector(CARD("shop/api"));
+  try {
+    await p.waitForSelector(CARD("shop/api"));
+  } catch (err) {
+    const shown = await p
+      .$eval("#content", (e) => (e as HTMLElement).innerText.slice(0, 400))
+      .catch(() => "(no #content)");
+    throw new Error(
+      [
+        (err as Error).message,
+        `still waiting on: ${[...inFlight.values()].join(", ") || "nothing"}`,
+        `the page showed: ${shown}`,
+        `server output (last 3000 chars):\n${serverOut().slice(-3000)}`,
+      ].join("\n"),
+    );
+  }
   return p;
 }
 /** One health round, through graph.js's own graphHealth. */
