@@ -47,6 +47,45 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
   );
 }
 
+export type GateSettingsPatch = {
+  cpu_slots?: number | null;
+  lease_minutes?: number | null;
+  overrun_margin_minutes?: number | null;
+};
+
+/**
+ * A settings change as the web sends it ({cpu_slots, lease_minutes,
+ * overrun_margin_minutes}, null clears), checked; or what is wrong.
+ */
+export function checkGatePatch(
+  v: unknown,
+): { ok: true; patch: GateSettingsPatch } | { ok: false; error: string } {
+  if (!v || typeof v !== "object" || Array.isArray(v))
+    return { ok: false, error: "gate_slots is an object" };
+  const o = v as Record<string, unknown>;
+  const patch: GateSettingsPatch = {};
+  const rules: [keyof GateSettingsPatch, number, number][] = [
+    ["cpu_slots", 1, 64],
+    ["lease_minutes", 1, 24 * 60],
+    ["overrun_margin_minutes", 0, 24 * 60],
+  ];
+  for (const [k, min, max] of rules) {
+    const x = o[k];
+    if (x === undefined) continue;
+    if (x === null) {
+      patch[k] = null;
+      continue;
+    }
+    if (typeof x !== "number" || !Number.isFinite(x) || x < min || x > max)
+      return {
+        ok: false,
+        error: `gate_slots.${k} is a number from ${min} to ${max}, or null`,
+      };
+    patch[k] = k === "cpu_slots" ? Math.floor(x) : x;
+  }
+  return { ok: true, patch };
+}
+
 export type GateEvent =
   | "asked"
   | "granted"
@@ -127,11 +166,7 @@ export class GateStore {
   }
 
   /** Writes the machine's settings; null clears a key (default again). */
-  writeSettings(patch: {
-    cpu_slots?: number | null;
-    lease_minutes?: number | null;
-    overrun_margin_minutes?: number | null;
-  }): void {
+  writeSettings(patch: GateSettingsPatch): void {
     const file = path.join(this.dir, "settings.json");
     let cur: Record<string, unknown> = {};
     try {

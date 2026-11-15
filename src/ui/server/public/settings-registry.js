@@ -878,6 +878,62 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
   },
   {
+    // den#144: the machine's gate slots (gates/store.ts settings.json),
+    // shared by every install here. A person's only.
+    id: "server.gate_cpu",
+    category: "server",
+    label: "Unit test runs at once, on this machine",
+    description:
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "parallel",
+      "gate.cpu_slots",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlots ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_slots: v } }),
+  },
+  {
+    id: "server.gate_lease",
+    category: "server",
+    label: "Test slot taken back after quiet, in minutes",
+    description:
+      "A test run that holds a slot and gives no sign of life for this long loses the slot, and it is recorded. `gate run` signs each minute. A run whose process ended loses it at once. __DEN_CLI__ gate settings --lease-minutes 30",
+    keywords: ["gate", "slot", "lease", "quiet", "tests", "gate.lease_minutes"],
+    scope: "user",
+    keys: ["gate_slots.lease_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.leaseMinutes ?? 30,
+    write: (v, ctx) => ctx.post({ gate_slots: { lease_minutes: v } }),
+  },
+  {
+    id: "server.gate_overrun",
+    category: "server",
+    label: "Test run flagged past its estimate, in minutes",
+    description:
+      "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    keywords: [
+      "gate",
+      "slot",
+      "overrun",
+      "estimate",
+      "tests",
+      "gate.overrun_margin_minutes",
+    ],
+    scope: "user",
+    keys: ["gate_slots.overrun_margin_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
+    write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
+  },
+  {
     // SRV-P6 (0.4.48): how this install takes a new version
     // (user.yml server_agent.self_update). A person's only.
     id: "server.self_update",

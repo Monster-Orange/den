@@ -24,6 +24,7 @@ import {
   type GateKind,
 } from "../../shared/gates/rules.js";
 import { GateStore } from "../../shared/gates/store.js";
+import { gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 
 export const GATE_HELP = {
@@ -232,20 +233,7 @@ function status(args: string[], d: GateDeps): number {
   const all = d.store.list();
   const set = d.store.settings();
   if (f["--json"]) {
-    d.out(
-      JSON.stringify(
-        {
-          settings: set,
-          slots: all.map((e) => ({
-            ...e,
-            expectedEnd: new Date(expectedEnd(e)).toISOString(),
-            overrun: overrun(e, set, d.now()),
-          })),
-        },
-        null,
-        2,
-      ),
-    );
+    d.out(JSON.stringify(gateView(d.store, d.now()), null, 2));
     return 0;
   }
   if (all.length === 0) {

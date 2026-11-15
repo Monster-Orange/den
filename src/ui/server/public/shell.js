@@ -1482,6 +1482,15 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.gate_cpu": "Unit test runs at once, on this machine",
+    "set.server.gate_cpu.d":
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_lease": "Test slot taken back after quiet, in minutes",
+    "set.server.gate_lease.d":
+      "A test run that holds a slot and gives no sign of life for this long loses the slot, and it is recorded. `gate run` signs each minute. A run whose process ended loses it at once. __DEN_CLI__ gate settings --lease-minutes 30",
+    "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
+    "set.server.gate_overrun.d":
+      "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

@@ -649,6 +649,18 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.gate_cpu":
+      "Ejecuciones de pruebas unitarias a la vez, en esta máquina",
+    "set.server.gate_cpu.d":
+      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una ejecución de pruebas de navegador siempre va sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_lease":
+      "Espacio de pruebas recuperado tras silencio, en minutos",
+    "set.server.gate_lease.d":
+      "Una ejecución de pruebas que tiene un espacio y no da señales de vida durante este tiempo lo pierde, y queda registrado. `gate run` da señal cada minuto. Una ejecución cuyo proceso terminó lo pierde al momento. __DEN_CLI__ gate settings --lease-minutes 30",
+    "set.server.gate_overrun":
+      "Ejecución de pruebas marcada tras su estimación, en minutos",
+    "set.server.gate_overrun.d":
+      "Una ejecución de pruebas que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página de agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

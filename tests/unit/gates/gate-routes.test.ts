@@ -1,0 +1,149 @@
+/**
+ * 0.4.49 GATE-SLOT (den#144): the gate-slot routes. A person ends a slot
+ * early; an agent's token (or an agent's claim) is refused. In process,
+ * a temp store: no Den runs.
+ */
+import { afterEach, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as http from "http";
+import type { AddressInfo } from "net";
+import * as os from "os";
+import * as path from "path";
+import { GateStore } from "../../../src/shared/gates/store.js";
+import { handleGateRoutes } from "../../../src/ui/server/gate-routes.js";
+import { setPrincipal } from "../../../src/ui/server/request-guard.js";
+
+const tmps: string[] = [];
+const servers: http.Server[] = [];
+afterEach(async () => {
+  for (const s of servers.splice(0))
+    await new Promise<void>((r) => s.close(() => r()));
+  for (const d of tmps.splice(0))
+    fs.rmSync(d, { recursive: true, force: true });
+});
+
+async function serve() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-gateroute-"));
+  tmps.push(dir);
+  const store = new GateStore({ dir, alive: () => true });
+  const server = http.createServer((req, res) => {
+    if (req.headers.authorization === "Bearer agent")
+      setPrincipal(req, {
+        kind: "agent",
+        actor: "agent:coder",
+        workspace: "north",
+        grants: [],
+        session: "s",
+      } as never);
+    if (req.headers.authorization === "Bearer person")
+      setPrincipal(req, { kind: "person", actor: "person:pat" });
+    const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    void handleGateRoutes(req, res, p, { store: () => store, title: "Acme" });
+  });
+  servers.push(server);
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const call = async (
+    method: string,
+    p: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ) => {
+    const r = await fetch(base + p, {
+      method,
+      headers: { "content-type": "application/json", ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    return {
+      status: r.status,
+      json: (await r.json()) as Record<string, unknown>,
+    };
+  };
+  return { store, call };
+}
+
+describe("gate-slot routes", () => {
+  it("GET lists holders and waiters with the machine's settings", async () => {
+    const { store, call } = await serve();
+    const a = store.ask({
+      kind: "browser",
+      who: "A",
+      label: "e2e",
+      pid: 1,
+      estimateMin: 6,
+    });
+    const r = await call("GET", "/api/gate-slots");
+    expect(r.status).toBe(200);
+    expect(r.json.settings).toMatchObject({ cpuSlots: 2, leaseMinutes: 30 });
+    expect(r.json.slots).toEqual([
+      expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),
+    ]);
+  });
+
+  it("an agent can't end a slot early, by token or by claim", async () => {
+    const { store, call } = await serve();
+    const a = store.ask({
+      kind: "browser",
+      who: "A",
+      label: "e2e",
+      pid: 1,
+      estimateMin: 6,
+    });
+    const byToken = await call(
+      "POST",
+      "/api/gate-slots/end",
+      { id: a.id },
+      {
+        authorization: "Bearer agent",
+      },
+    );
+    expect(byToken).toEqual({
+      status: 403,
+      json: {
+        ok: false,
+        code: "person_only",
+        error: "only a person can end a slot early",
+      },
+    });
+    const byClaim = await call(
+      "POST",
+      "/api/gate-slots/end",
+      { id: a.id },
+      {
+        "x-den-actor": "agent",
+        "x-den-mcp-client": "x",
+        "x-den-mcp-session": "s",
+      },
+    );
+    expect(byClaim.status).toBe(403);
+    expect(store.list()).toHaveLength(1);
+  });
+
+  it("a person ends it; recorded with who; a wrong id is said", async () => {
+    const { store, call } = await serve();
+    const a = store.ask({
+      kind: "browser",
+      who: "A",
+      label: "e2e",
+      pid: 1,
+      estimateMin: 6,
+    });
+    expect(
+      (await call("POST", "/api/gate-slots/end", { id: "nope" })).status,
+    ).toBe(404);
+    expect((await call("POST", "/api/gate-slots/end", {})).status).toBe(400);
+    const r = await call(
+      "POST",
+      "/api/gate-slots/end",
+      { id: a.id },
+      {
+        authorization: "Bearer person",
+      },
+    );
+    expect(r).toEqual({ status: 200, json: { ok: true, slots: [] } });
+    expect(store.events().at(-1)).toMatchObject({
+      event: "ended-early",
+      by: "Acme · person:pat",
+    });
+  });
+});

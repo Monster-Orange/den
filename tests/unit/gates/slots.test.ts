@@ -14,7 +14,12 @@ import {
   overrun,
   type GateEntry,
 } from "../../../src/shared/gates/rules.js";
-import { GateStore, gateDir } from "../../../src/shared/gates/store.js";
+import {
+  GateStore,
+  checkGatePatch,
+  gateDir,
+} from "../../../src/shared/gates/store.js";
+import { PERSON_ONLY_SETTINGS } from "../../../src/shared/settings-cli-rows.js";
 
 const tmps: string[] = [];
 const kids: ChildProcess[] = [];
@@ -219,4 +224,31 @@ describe("the store", () => {
     expect(outs.filter((o) => o === "granted")).toHaveLength(1);
     expect(outs.filter((o) => o === "waiting")).toHaveLength(7);
   }, 30_000);
+});
+
+describe("Settings › Server: the machine's gate settings (POST gate_slots)", () => {
+  it("takes numbers in range, null clears; anything else says what is right", () => {
+    expect(
+      checkGatePatch({
+        cpu_slots: 3.7,
+        lease_minutes: null,
+        overrun_margin_minutes: 0,
+      }),
+    ).toEqual({
+      ok: true,
+      patch: { cpu_slots: 3, lease_minutes: null, overrun_margin_minutes: 0 },
+    });
+    expect(checkGatePatch({ cpu_slots: 0 })).toEqual({
+      ok: false,
+      error: "gate_slots.cpu_slots is a number from 1 to 64, or null",
+    });
+    expect(checkGatePatch({ lease_minutes: "30" })).toMatchObject({
+      ok: false,
+    });
+    expect(checkGatePatch([])).toMatchObject({ ok: false });
+  });
+
+  it("is a person's only", () => {
+    expect(PERSON_ONLY_SETTINGS).toContain("gate_slots");
+  });
 });

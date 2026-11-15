@@ -26,6 +26,8 @@ export const PERSON_ONLY_SETTINGS = [
   "crash_loop",
   // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
   "web_bridge",
+  // den#144: the machine's gate slots (every install and repo here).
+  "gate_slots",
   // Review M5 (0.4.46): what agents may do without asking.
   "hub_allow_tools",
   // The programs Den runs when a person opens a file or a terminal.

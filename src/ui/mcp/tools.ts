@@ -7,8 +7,8 @@
  * and write the machine's slot store directly, and only the agent's own.
  */
 import { z } from "zod";
-import { expectedEnd, expectedStart } from "../../shared/gates/rules.js";
 import { GateStore } from "../../shared/gates/store.js";
+import { gateView } from "../../shared/gates/view.js";
 import {
   MCP_ACTIONS,
   type McpAction,
@@ -189,32 +189,6 @@ const mySlots = new Set<string>();
 let defaultGates: GateStore | undefined;
 const gatesOf = (ctx: ToolContext): GateStore =>
   ctx.gates ?? (defaultGates ??= new GateStore());
-
-function gateView(store: GateStore) {
-  const all = store.list();
-  const now = Date.now();
-  return {
-    settings: store.settings(),
-    slots: all.map((e) => ({
-      id: e.id,
-      kind: e.kind,
-      who: e.who,
-      label: e.label,
-      granted: !!e.grantedAt,
-      ...(e.grantedAt
-        ? {
-            grantedAt: e.grantedAt,
-            expectedEnd: new Date(expectedEnd(e)).toISOString(),
-          }
-        : {
-            askedAt: e.askedAt,
-            expectedStart: new Date(
-              expectedStart(all, e.id, now),
-            ).toISOString(),
-          }),
-    })),
-  };
-}
 
 function slotView(store: GateStore, id: string) {
   const v = gateView(store);

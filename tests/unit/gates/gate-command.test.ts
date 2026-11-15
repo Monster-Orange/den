@@ -230,13 +230,14 @@ describe("gate status", () => {
     t.out.length = 0;
     await cmdGate(["status", "--json"], t.d);
     const j = JSON.parse(t.out[0]!) as {
-      slots: { id: string; overrun: boolean }[];
+      slots: { id: string; overrun?: boolean; expectedStart?: string }[];
     };
-    expect(j.slots.map((s) => [s.id, s.overrun])).toEqual(
-      expect.arrayContaining([
-        [a.id, false],
-        [b.id, false],
-      ]),
-    );
+    expect(j.slots[0]).toMatchObject({
+      id: a.id,
+      granted: true,
+      overrun: false,
+    });
+    expect(j.slots[1]).toMatchObject({ id: b.id, granted: false });
+    expect(typeof j.slots[1]!.expectedStart).toBe("string");
   });
 });

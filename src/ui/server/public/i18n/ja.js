@@ -634,6 +634,15 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.gate_cpu": "このマシンで同時に走る単体テスト",
+    "set.server.gate_cpu.d":
+      "このマシンを共有する単体テストの実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で走ります。ここにあるすべてのインストールとリポジトリが同じ順番待ちを共有します。__DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_lease": "無応答で返却されるまでの時間 (分)",
+    "set.server.gate_lease.d":
+      "枠を持つテスト実行がこの時間応答しないと枠は返却され、記録されます。`gate run` は毎分応答します。プロセスが終わった実行はすぐに枠を失います。__DEN_CLI__ gate settings --lease-minutes 30",
+    "set.server.gate_overrun": "見積もり超過で印を付けるまで (分)",
+    "set.server.gate_overrun.d":
+      "見積もりをこの時間超えて続くテスト実行は `gate status` とエージェントページで印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

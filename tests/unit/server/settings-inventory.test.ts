@@ -40,6 +40,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
   // 0.4.48: Den on the Docker bridge for the edge.
   web_bridge: { listen: true, probe_seconds: true },
+  // den#144: the machine's gate slots.
+  gate_slots: {
+    cpu_slots: true,
+    lease_minutes: true,
+    overrun_margin_minutes: true,
+  },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -125,6 +131,9 @@ describe("the settings inventory (R21)", () => {
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         "web_bridge.listen",
         "web_bridge.probe_seconds",
+        "gate_slots.cpu_slots",
+        "gate_slots.lease_minutes",
+        "gate_slots.overrun_margin_minutes",
       ].sort(),
     );
   });
