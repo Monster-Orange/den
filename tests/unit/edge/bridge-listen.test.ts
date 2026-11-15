@@ -16,6 +16,10 @@ import {
 } from "../../../src/shared/edge/bridge-listen.js";
 import { bridgeListenLines } from "../../../src/ui/cli/doctor-command.js";
 import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import {
+  PERSON_ONLY_SETTINGS,
+  patchCliRows,
+} from "../../../src/shared/settings-cli-rows.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -181,5 +185,41 @@ describe("web.bridge_listen and web.bridge_probe_seconds", () => {
     expect(() =>
       readWebAuthConfig(root("web:\n  bridge_probe_seconds: 0\n")),
     ).toThrow("web.bridge_probe_seconds must be a number of seconds above 0");
+  });
+});
+
+describe("Settings › Server: the bridge rows (POST web_bridge)", () => {
+  it("writes user.yml web.bridge_listen and web.bridge_probe_seconds; null clears", () => {
+    const user: Record<string, unknown> = { web: { machine_name: "box" } };
+    expect(
+      patchCliRows(user, { web_bridge: { listen: "off", probe_seconds: 30 } }),
+    ).toEqual({ ok: true });
+    expect(user.web).toEqual({
+      machine_name: "box",
+      bridge_listen: "off",
+      bridge_probe_seconds: 30,
+    });
+    expect(
+      patchCliRows(user, {
+        web_bridge: { listen: null, probe_seconds: null },
+      }),
+    ).toEqual({ ok: true });
+    expect(user.web).toEqual({ machine_name: "box" });
+  });
+
+  it("a wrong value changes nothing and says what is right", () => {
+    const user: Record<string, unknown> = {};
+    expect(patchCliRows(user, { web_bridge: { listen: "yes" } })).toEqual({
+      ok: false,
+      error: "web_bridge.listen is auto, off or null",
+    });
+    expect(
+      patchCliRows(user, { web_bridge: { listen: "off", probe_seconds: 0 } }),
+    ).toMatchObject({ ok: false });
+    expect(user).toEqual({});
+  });
+
+  it("is a person's only", () => {
+    expect(PERSON_ONLY_SETTINGS).toContain("web_bridge");
   });
 });

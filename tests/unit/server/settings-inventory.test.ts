@@ -38,6 +38,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     PAGE_LIMITS.panes_reconnect.map((k) => [k, true]),
   ),
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
+  // 0.4.48: Den on the Docker bridge for the edge.
+  web_bridge: { listen: true, probe_seconds: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -120,6 +122,9 @@ describe("the settings inventory (R21)", () => {
         "crash_loop.restarts",
         "crash_loop.minutes",
         "crash_loop.max_wait_seconds",
+        // 0.4.48: Den on the Docker bridge for the edge (Linux).
+        "web_bridge.listen",
+        "web_bridge.probe_seconds",
       ].sort(),
     );
   });

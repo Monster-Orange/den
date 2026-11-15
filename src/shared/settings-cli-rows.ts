@@ -11,6 +11,9 @@
  *     window_seconds?, connect_timeout_seconds? }   user.yml panes.*
  *   crash_loop: { restarts?, minutes?, max_wait_seconds? }
  *                                     user.yml web.crash_loop_*
+ *   web_bridge: { listen?: auto | off, probe_seconds? }
+ *                                     user.yml web.bridge_listen,
+ *                                     web.bridge_probe_seconds (0.4.48)
  */
 
 /** The settings a person changes and an agent never does. */
@@ -21,6 +24,8 @@ export const PERSON_ONLY_SETTINGS = [
   "log_window_lines",
   "panes_reconnect",
   "crash_loop",
+  // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
+  "web_bridge",
   // Review M5 (0.4.46): what agents may do without asking.
   "hub_allow_tools",
   // The programs Den runs when a person opens a file or a terminal.
@@ -96,6 +101,10 @@ const CRASH: Record<string, Limit> = {
     max: 86_400,
     int: true,
   },
+};
+
+const BRIDGE: Record<string, Limit> = {
+  probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
 };
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
@@ -205,7 +214,35 @@ export function patchCliRows(
       else user.log_window_lines = lines;
     });
   }
+  // 0.4.48: web.bridge_listen (auto or off) and its probe's seconds.
+  const wb = body.web_bridge;
+  let bridgeRest: unknown = undefined;
+  if (wb !== undefined) {
+    if (!isObj(wb))
+      return {
+        ok: false,
+        error: "web_bridge is an object: listen, probe_seconds",
+      };
+    const { listen, ...rest } = wb;
+    if (
+      listen !== undefined &&
+      listen !== null &&
+      listen !== "auto" &&
+      listen !== "off"
+    )
+      return { ok: false, error: "web_bridge.listen is auto, off or null" };
+    if (listen !== undefined)
+      apply.push(() => {
+        const w = isObj(user.web) ? { ...user.web } : {};
+        if (listen === null) delete w.bridge_listen;
+        else w.bridge_listen = listen;
+        if (Object.keys(w).length) user.web = w;
+        else delete user.web;
+      });
+    if (Object.keys(rest).length) bridgeRest = rest;
+  }
   const e =
+    patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
     patchBlock(
       user,
       "panes_reconnect",
@@ -213,7 +250,8 @@ export function patchCliRows(
       panes,
       body.panes_reconnect,
       apply,
-    ) ?? patchBlock(user, "crash_loop", "web", crash, body.crash_loop, apply);
+    ) ??
+    patchBlock(user, "crash_loop", "web", crash, body.crash_loop, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

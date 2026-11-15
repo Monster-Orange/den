@@ -1474,6 +1474,14 @@
     "set.server.crash_loop_minutes": "Restart guard window, in minutes",
     "set.server.crash_loop_minutes.d":
       "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.bridge_listen": "Docker bridge, for the edge",
+    "set.server.bridge_listen.d":
+      "Linux only, with an edge set up here: __DEN_TITLE__ also listens on the Docker bridge's address, where the edge reaches this machine. Off: only 127.0.0.1, and the edge can't reach __DEN_TITLE__. Applies at the next start. __DEN_CLI__ config web.bridge_listen=off",
+    "set.server.bridge_listen.o.auto": "Auto",
+    "set.server.bridge_listen.o.off": "Off",
+    "set.server.bridge_probe": "Docker bridge check, in seconds",
+    "set.server.bridge_probe.d":
+      "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

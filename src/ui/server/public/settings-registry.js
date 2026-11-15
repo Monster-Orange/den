@@ -833,6 +833,51 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
   },
   {
+    // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
+    // (user.yml web.bridge_listen). A person's only.
+    id: "server.bridge_listen",
+    category: "server",
+    label: "Docker bridge, for the edge",
+    description:
+      "Linux only, with an edge set up here: __DEN_TITLE__ also listens on the Docker bridge's address, where the edge reaches this machine. Off: only 127.0.0.1, and the edge can't reach __DEN_TITLE__. Applies at the next start. __DEN_CLI__ config web.bridge_listen=off",
+    keywords: [
+      "bridge",
+      "docker",
+      "edge",
+      "linux",
+      "listen",
+      "502",
+      "web.bridge_listen",
+    ],
+    scope: "user",
+    keys: ["web_bridge.listen"],
+    control: seg([
+      { value: "auto", label: "Auto" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) => ctx.data.web_bridge?.listen ?? "auto",
+    write: (v, ctx) => ctx.post({ web_bridge: { listen: v } }),
+  },
+  {
+    id: "server.bridge_probe",
+    category: "server",
+    label: "Docker bridge check, in seconds",
+    description:
+      "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    keywords: [
+      "bridge",
+      "docker",
+      "edge",
+      "timeout",
+      "web.bridge_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_bridge.probe_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
     // SRV-P6 (0.4.48): how this install takes a new version
     // (user.yml server_agent.self_update). A person's only.
     id: "server.self_update",

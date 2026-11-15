@@ -5740,6 +5740,17 @@ async function handleRequest(
         })(),
         // den#85: the crash-loop guard's settings (web.crash_loop_*).
         crash_loop: crashLoopSettings(user.web),
+        // 0.4.48: Den on the Docker bridge for the edge (Linux).
+        web_bridge: (() => {
+          const w = (user.web ?? {}) as Record<string, unknown>;
+          return {
+            listen: w.bridge_listen === "off" ? "off" : "auto",
+            probeSeconds:
+              typeof w.bridge_probe_seconds === "number"
+                ? w.bridge_probe_seconds
+                : 10,
+          };
+        })(),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {
@@ -5780,6 +5791,7 @@ async function handleRequest(
           log_window_lines?: unknown;
           panes_reconnect?: unknown;
           crash_loop?: unknown;
+          web_bridge?: unknown;
         };
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
@@ -5804,6 +5816,7 @@ async function handleRequest(
             log_window_lines: body.log_window_lines,
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
+            web_bridge: body.web_bridge,
           });
           if (!c.ok) return send400(res, c.error);
         }

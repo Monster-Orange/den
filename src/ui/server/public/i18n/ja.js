@@ -626,6 +626,14 @@
     "set.server.crash_loop_minutes": "再起動ガードの時間枠(分)",
     "set.server.crash_loop_minutes.d":
       "上の、正常に終了しなかった回数を数える分数です。__DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.bridge_listen": "Docker ブリッジ (edge 用)",
+    "set.server.bridge_listen.d":
+      "Linux のみ。ここに edge がある場合、__DEN_TITLE__ は Docker ブリッジのアドレスでも待ち受けます。edge はそこからこのマシンに届きます。オフ: 127.0.0.1 のみで、edge から __DEN_TITLE__ に届きません。次の起動から反映されます。__DEN_CLI__ config web.bridge_listen=off",
+    "set.server.bridge_listen.o.auto": "自動",
+    "set.server.bridge_listen.o.off": "オフ",
+    "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
+    "set.server.bridge_probe.d":
+      "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

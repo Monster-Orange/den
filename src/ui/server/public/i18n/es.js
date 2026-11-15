@@ -641,6 +641,14 @@
     "set.server.crash_loop_minutes": "Ventana de la protección, en minutos",
     "set.server.crash_loop_minutes.d":
       "Los minutos en los que se cuentan los cierres no limpios de arriba. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.bridge_listen": "Puente de Docker, para el edge",
+    "set.server.bridge_listen.d":
+      "Solo en Linux, con un edge configurado aquí: __DEN_TITLE__ también escucha en la dirección del puente de Docker, por donde el edge llega a esta máquina. Desactivado: solo 127.0.0.1, y el edge no llega a __DEN_TITLE__. Se aplica en el siguiente arranque. __DEN_CLI__ config web.bridge_listen=off",
+    "set.server.bridge_listen.o.auto": "Automático",
+    "set.server.bridge_listen.o.off": "Desactivado",
+    "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
+    "set.server.bridge_probe.d":
+      "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
