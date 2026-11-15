@@ -824,16 +824,13 @@
     "hubla.noProjects": "Aún no hay proyectos.",
     "hubla.linked.one": "{n} proyecto vinculado.",
     "hubla.linked": "{n} proyectos vinculados.",
-    "hubla.skipped": "Omitido {project}: {why}.",
-    "hubla.why.unknown": "no existe ese proyecto",
-    "hubla.why.linked": "ya estaba vinculado",
-    "hubla.why.offline": "Hub no respondió",
-    "hubla.why.stale": "ya no es la sugerencia de Hub",
+    "hubla.failed": "{n} sin vincular: {names}. Inténtalo de nuevo.",
+    "hubla.failedAll": "No se pudo vincular {names}. Inténtalo de nuevo.",
     "set.agents.hub_link_all": "Coincidencias dudosas",
     "set.agents.hub_link_all.d":
-      "Solo aparece cuando Den no sabe qué proyecto de Hub corresponde a un proyecto: dos proyectos de Hub comparten sus repositorios, o sus repositorios y su nombre apuntan a proyectos distintos. Elige uno para cada caso. No se guarda nada de ese proyecto hasta que lo hagas.",
+      "Vincular une un proyecto con su proyecto de Hub, para que sus agentes guarden allí documentos, maquetas y comentarios. Den lista aquí un proyecto solo cuando no sabe cuál de Hub corresponde. Elige uno y pulsa Vincular. Hasta entonces, no se guarda nada de ese proyecto.",
     "ub.intro":
-      "Den no supo qué proyecto de Hub corresponde a estos proyectos. Elige uno para cada uno; no se guarda nada de un proyecto hasta que elijas.",
+      "Den no sabe qué proyecto de Hub corresponde a estos. Elige uno para cada uno y pulsa Vincular.",
     "ub.why.repos": "Dos proyectos de Hub comparten sus repositorios",
     "ub.why.split":
       "Sus repositorios coinciden con un proyecto de Hub; su nombre, con otro",
