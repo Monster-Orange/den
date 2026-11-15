@@ -121,6 +121,13 @@ config and manifest changes a distribution must make to move to it under
   host job and stops nothing that is running. An install made before
   0.4.22 (when the host job came in) and never installed again is like
   this. Found in the restart drill.
+- An agent whose record says one mode while its process runs in another
+  (for example, a record that says auto over a process started in ask) is
+  now restarted after its turn in the right mode, like any mode change.
+  Den reads the mode the process runs in from its own command line, and
+  only when that line names the agent's own conversation; it never keeps
+  or logs the line. Before, it trusted the record, so this never applied.
+  Found in the restart drill.
 
 - Den's web server and CLI entry files, and the manifest schema, are
   type-checked again (they were left out, so a missing import there

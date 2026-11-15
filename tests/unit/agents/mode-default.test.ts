@@ -181,6 +181,52 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     expect(await mc2.tick()).toEqual([]);
   }, 30_000);
 
+  it("drill (b): a record that says auto over a process started in ask is drift: restarted after its turn, in auto", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    persona(r, "server");
+    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+      0,
+    );
+    await endedTurn(r, "server");
+    expect(modeOf(r.made.at(-1)!.args)).toBe("default");
+    // The record says auto, chosen for it, but nothing restarted it.
+    const file = path.join(r.stateDir, "agents", "server.json");
+    const rec = JSON.parse(fs.readFileSync(file, "utf-8"));
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ ...rec, permission: "auto", overrides: ["permission"] }),
+    );
+    const token = rec.resumeToken as string;
+    // What ps says the process runs: its own launch line.
+    const launched = ["claude", ...r.made.at(-1)!.args].join(" ");
+    const mc = modeCheck(resolveAgentsDeps(r.deps), {
+      pollMs: 20,
+      commandLineOf: () => launched,
+    });
+    expect(await mc.tick()).toEqual(["server"]);
+    await mc.pending();
+    const last = r.made.at(-1)!;
+    expect(last.args.slice(0, 2)).toEqual(["--resume", token]);
+    expect(modeOf(last.args)).toBe("auto");
+  }, 30_000);
+
+  it("drill (b): a command line that doesn't name the agent's conversation says nothing (the record counts)", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    persona(r, "server");
+    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+      0,
+    );
+    await endedTurn(r, "server");
+    const mc = modeCheck(resolveAgentsDeps(r.deps), {
+      pollMs: 20,
+      commandLineOf: () =>
+        "claude --resume someone-else --permission-mode auto",
+    });
+    expect(await mc.tick()).toEqual([]);
+  }, 30_000);
+
   it("(3) Den's after-turn restart and its restore after a restart keep the mode", async () => {
     const r = await rig();
     endOnTerm(r);

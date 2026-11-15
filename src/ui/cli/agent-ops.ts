@@ -50,6 +50,11 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import {
+  psCommandLine,
+  runningIntent,
+  type CommandLineOf,
+} from "../../shared/agents/running-mode.js";
 import { trustPromptIn } from "../../shared/agents/trust-prompt.js";
 import {
   hubProjectOf,
@@ -5412,12 +5417,24 @@ export function permissionNow(
 /**
  * 0.4.46 MODE-UI: running agents whose mode now (permissionNow) is not
  * the one they run in: a project's or the install's mode changed since.
+ * Drill (b), 0.4.48: "the one they run in" is read from the process's own
+ * command line when it says (running-mode.ts), else the record's: a record
+ * that says auto over a process started in ask is drift too. `running` is
+ * the mode read from the process, when known.
  */
 export async function modeDrift(
   d: AgentsResolved,
-): Promise<{ id: string; workspace: string; want: PermissionIntent }[]> {
+  commandLineOf: CommandLineOf = psCommandLine,
+): Promise<
+  {
+    id: string;
+    workspace: string;
+    want: PermissionIntent;
+    running?: PermissionIntent;
+  }[]
+> {
   const c = await d.connectExisting();
-  let live: { ref: { id: string }; exited?: unknown }[] = [];
+  let live: { ref: { id: string }; pid?: number; exited?: unknown }[] = [];
   try {
     live = c ? (await c.list()).filter((x) => !x.exited) : [];
   } finally {
@@ -5425,9 +5442,15 @@ export async function modeDrift(
   }
   if (!live.length) return [];
   const find = personaLookup(d);
-  const out: { id: string; workspace: string; want: PermissionIntent }[] = [];
+  const out: {
+    id: string;
+    workspace: string;
+    want: PermissionIntent;
+    running?: PermissionIntent;
+  }[] = [];
   for (const rec of listRecords(d.stateDir())) {
-    if (!live.some((x) => x.ref.id === rec.session.id)) continue;
+    const session = live.find((x) => x.ref.id === rec.session.id);
+    if (!session) continue;
     const rt = getRuntime(rec.runtime);
     const p = find(rec);
     if (!rt?.permissions || !p) continue;
@@ -5437,8 +5460,16 @@ export async function modeDrift(
     } catch {
       continue; // a bad mode: its next start says so
     }
-    if (want && want !== rec.permission)
-      out.push({ id: rec.id, workspace: rec.workspace, want });
+    const running = session.pid
+      ? runningIntent(session.pid, rec.resumeToken, commandLineOf)
+      : undefined;
+    if (want && want !== (running ?? rec.permission))
+      out.push({
+        id: rec.id,
+        workspace: rec.workspace,
+        want,
+        ...(running ? { running } : {}),
+      });
   }
   return out;
 }
@@ -5456,13 +5487,18 @@ export interface ModeCheck {
  */
 export function modeCheck(
   d: AgentsResolved,
-  opts: { pollMs?: number; log?: (line: string) => void } = {},
+  opts: {
+    pollMs?: number;
+    log?: (line: string) => void;
+    /** Drill (b): a process's command line (default: ps). */
+    commandLineOf?: CommandLineOf;
+  } = {},
 ): ModeCheck {
   const running = new Map<string, Promise<void>>();
   return {
     async tick() {
       const began: string[] = [];
-      for (const m of await modeDrift(d)) {
+      for (const m of await modeDrift(d, opts.commandLineOf)) {
         if (running.has(m.id)) continue;
         began.push(m.id);
         const p = restartAgent(d, m.id, m.workspace, "after-turn", {
