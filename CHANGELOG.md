@@ -141,6 +141,12 @@ config and manifest changes a distribution must make to move to it under
   `agents_list.refresh_timeout_seconds` (default 15); both are in
   Settings › Agents. When a list doesn't come in time, the list says so
   and keeps asking every few seconds. (den#156)
+- Since 0.4.46, Den restarted a running agent once, by itself, when it
+  didn't know the agent's mode: no mode in its record (an older Den's
+  record, or one written by hand) and none on its command line. Den counted
+  that as a mode change. If some agents restarted for no clear reason after
+  an update, this was why. Now only a mode Den knows can differ, and an
+  agent whose mode Den doesn't know is never restarted for it. (den#156)
 - On Linux, a request through the edge got a 502: the edge container
   reaches the host on the Docker bridge, and Den listened only on
   127.0.0.1 unless you set `DEN_BIND_HOST` by hand. Now, with an edge set

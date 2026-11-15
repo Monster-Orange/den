@@ -5463,7 +5463,11 @@ export async function modeDrift(
     const running = session.pid
       ? runningIntent(session.pid, rec.resumeToken, commandLineOf)
       : undefined;
-    if (want && want !== (running ?? rec.permission))
+    // Only a mode Den knows the agent runs in can differ: none recorded
+    // (an older record, one written by hand) and none on its command line
+    // is not drift, and never restarts a running agent.
+    const ran = running ?? rec.permission;
+    if (want && ran && want !== ran)
       out.push({
         id: rec.id,
         workspace: rec.workspace,

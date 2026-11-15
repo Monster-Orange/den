@@ -229,6 +229,30 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     expect(await mc.tick()).toEqual([]);
   }, 30_000);
 
+  it("a running agent whose mode Den doesn't know (none recorded, none on its command line) is not drift: never restarted", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    persona(r, "server");
+    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+      0,
+    );
+    await endedTurn(r, "server");
+    // A record with no mode (an older Den's, or one written by hand).
+    const file = path.join(r.stateDir, "agents", "server.json");
+    const rec = JSON.parse(fs.readFileSync(file, "utf-8"));
+    delete rec.permission;
+    fs.writeFileSync(file, JSON.stringify(rec));
+    const starts = r.made.length;
+    const mc = modeCheck(resolveAgentsDeps(r.deps), {
+      pollMs: 20,
+      // Its process names no mode: not known either.
+      commandLineOf: () => "sh",
+    });
+    expect(await mc.tick()).toEqual([]);
+    await mc.pending();
+    expect(r.made.length).toBe(starts);
+  }, 30_000);
+
   it("MODE-3: the row says the mode it should run in and the one its process runs in", async () => {
     const r = await rig();
     endOnTerm(r);
