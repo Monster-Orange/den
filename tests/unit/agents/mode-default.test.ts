@@ -22,12 +22,14 @@ import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
   markInterrupted,
   modeCheck,
+  modeResolver,
   resolveAgentsDeps,
   restartAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import { clearPermissionModesCache } from "../../../src/shared/agents/den-claude.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 import { writeRecord } from "../../../src/shared/agents/records.js";
+import { listedSessions } from "../../../src/ui/server/session-routes.js";
 
 afterEach(async () => {
   clearPermissionModesCache();
@@ -225,6 +227,62 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
         "claude --resume someone-else --permission-mode auto",
     });
     expect(await mc.tick()).toEqual([]);
+  }, 30_000);
+
+  it("MODE-3: the row says the mode it should run in and the one its process runs in", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    persona(r, "server");
+    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+      0,
+    );
+    const file = path.join(r.stateDir, "agents", "server.json");
+    const rec = JSON.parse(fs.readFileSync(file, "utf-8"));
+    const launched = ["claude", ...r.made.at(-1)!.args].join(" ");
+    const d = resolveAgentsDeps(r.deps);
+    const c = await connectHost(sessionPaths(r.stateDir).socket);
+    const live = await c.list();
+    c.close();
+    const rows = () =>
+      listedSessions(live, {
+        stateDir: () => r.stateDir,
+        dist: () => "acme",
+        activeWorkspaces: () => ["north"],
+        modeOf: () => modeResolver(d, () => launched),
+      });
+    const row = () => rows().find((x) => x.agent === "server")!;
+    expect([row().mode, row().modeRunning]).toEqual(["ask", "ask"]);
+    // Set to auto for it; its process still runs in ask: a mismatch.
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ ...rec, permission: "auto", overrides: ["permission"] }),
+    );
+    expect([row().mode, row().modeRunning]).toEqual(["auto", "ask"]);
+    // A process line that isn't its conversation: the record counts.
+    const other = modeResolver(d, () => "claude --permission-mode default");
+    expect(other(record(r, "server") as never, 1)).toEqual({
+      want: "auto",
+      running: "auto",
+    });
+  }, 30_000);
+
+  it("MODE-3: an agent that isn't running has no mode on its row", async () => {
+    const r = await rig();
+    endOnTerm(r);
+    persona(r, "server");
+    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+      0,
+    );
+    const d = resolveAgentsDeps(r.deps);
+    const rows = listedSessions([], {
+      stateDir: () => r.stateDir,
+      dist: () => "acme",
+      activeWorkspaces: () => ["north"],
+      modeOf: () => modeResolver(d, () => null),
+    });
+    const row = rows.find((x) => x.agent === "server")!;
+    expect(row).not.toHaveProperty("mode");
+    expect(row).not.toHaveProperty("modeRunning");
   }, 30_000);
 
   it("(3) Den's after-turn restart and its restore after a restart keep the mode", async () => {

@@ -755,9 +755,10 @@ function rowHtml(r) {
   const ovTags = r.kind === "agent" ? overrideTagsHtml(r) : "";
   const wTag = whereTag(r);
   const mTag = mcpStaleTag(r, false);
+  const modeTag = modeTagHtml(r, false);
   const tags =
-    rotTag || revokedTag || ovTags || wTag || mTag
-      ? `<span class="agtags">${revokedTag}${mTag}${rotTag}${wTag}${ovTags}</span>`
+    rotTag || revokedTag || ovTags || wTag || mTag || modeTag
+      ? `<span class="agtags">${revokedTag}${mTag}${modeTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -774,7 +775,9 @@ function rowHtml(r) {
     `</button>`;
   // D28: a running agent whose rotation is due: its callout, with buttons
   // (before, only a tag: nothing to press).
-  const callout = r.kind === "agent" ? rotCalloutHtml(r) : "";
+  // MODE-3: Restart to apply, under a row whose mode differs.
+  const callout =
+    r.kind === "agent" ? rotCalloutHtml(r) + modeApplyHtml(r) : "";
   // D32: the helpers it started in its own session, under it. #80: only
   // once its badge is opened (closed by default, the agent in front too).
   const hOpen = r.kind === "agent" && st.helpersOpen.has(helperKey(r));
@@ -786,7 +789,7 @@ function rowHtml(r) {
   const hub = hubWorkHtml(r);
   if (!callout) return row + hub + helpers;
   return (
-    `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}" data-rotation="${rot}">` +
+    `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
     row +
     `<div class="agacts">${callout}</div>` +
     hub +
@@ -1759,6 +1762,62 @@ function mcpStaleTag(r, withButton) {
 }
 
 /**
+ * MODE-3 (0.4.48): a running agent's mode differs from the one its
+ * process runs in (a mode chosen while it ran; MODE-2 restarts it after
+ * its turn, unless that waits on something): { want, running }, else null.
+ */
+export function modeDriftOf(r) {
+  if (r?.kind !== "agent" || isStopped(r) || !r.mode || !r.modeRunning)
+    return null;
+  return r.mode === r.modeRunning
+    ? null
+    : { want: r.mode, running: r.modeRunning };
+}
+
+const modeName = (m) => t(`pm.name.${m}`);
+
+/**
+ * MODE-3: its mode on its row and its pane bar ("mode: Auto"); on a
+ * mismatch, "Set to Auto, running Ask", and in the pane bar Restart to
+ * apply beside it (the row has it under the row: modeApplyHtml).
+ */
+export function modeTagHtml(r, withButton) {
+  if (r?.kind !== "agent" || isStopped(r) || !r.mode) return "";
+  const d = modeDriftOf(r);
+  if (!d)
+    return `<span class="tagx${r.mode === "all" ? " warn" : ""}" data-mode="${esc(r.mode)}">${esc(t("ag.mode.tag", { m: modeName(r.mode) }))}</span>`;
+  const tag = `<span class="tagx warn" data-mode-drift="${esc(d.want)}">${esc(t("ag.mode.drift", { want: modeName(d.want), running: modeName(d.running) }))}</span>`;
+  return withButton
+    ? `<span class="agmode">${tag}${modeApplyHtml(r)}</span>`
+    : tag;
+}
+
+/** MODE-3: Restart to apply, a person's one click (a mismatch only). */
+function modeApplyHtml(r) {
+  if (!modeDriftOf(r)) return "";
+  return `<button type="button" class="den-btn sm primary" data-act="mode-apply" aria-label="${esc(t("ag.mode.applyName", { id: r.agent }))}">${esc(t("ag.mode.apply"))}</button>`;
+}
+
+/**
+ * MODE-3: restart it now, on the same conversation; it starts in its mode
+ * (the server reads it again at every start). Only a person's page can
+ * (the restart route refuses an agent).
+ */
+async function applyMode(r, button) {
+  await window.denShell.busyAction(
+    "restart-agent",
+    (headers) =>
+      api("POST", agentPath(r, "restart"), { when: "now" }, { headers }),
+    {
+      button,
+      vars: { name: r.agent },
+      success: () => t("ag.mode.applied", { id: r.agent, m: modeName(r.mode) }),
+    },
+  );
+  await refresh();
+}
+
+/**
  * D44: Restart at its next idle; the list shows it come back. 0.4.48: a
  * job it left running (a test run) is asked about first; Restart anyway
  * restarts it now, which ends the job.
@@ -1909,6 +1968,7 @@ function paintBar(p) {
       : "") +
     apiOnlyTag(r) +
     mcpStaleTag(r, true) +
+    modeTagHtml(r, true) +
     whereTag(r, true) +
     linkTag(r) +
     subagentTag(r) +
@@ -4771,6 +4831,7 @@ export async function mountAgentsPage(root) {
       if (which === "relaunch") void relaunchNow(r, act);
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
+      else if (which === "mode-apply") void applyMode(r, act);
       else if (which === "resume" || which === "fresh")
         void restartRow(r, which, act);
       else if (which === "remove") void removeRow(r, act);
@@ -4852,6 +4913,9 @@ export async function mountAgentsPage(root) {
     else if (b.dataset.act === "tools-restart") {
       const r = rowOf(id);
       if (r) void restartForTools(r, b);
+    } else if (b.dataset.act === "mode-apply") {
+      const r = rowOf(id);
+      if (r) void applyMode(r, b);
     } else if (b.dataset.act === "resume") {
       const r = rowOf(id);
       if (r) void restartRow(r, "resume", b);

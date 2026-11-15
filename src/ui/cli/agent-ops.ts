@@ -5474,6 +5474,42 @@ export async function modeDrift(
   return out;
 }
 
+/** MODE-3 (0.4.48): the mode an agent should run in, and the one it runs in. */
+export interface AgentMode {
+  want: PermissionIntent;
+  /** Its process's, when its command line says; else its record's. */
+  running?: PermissionIntent;
+}
+
+/**
+ * MODE-3 (0.4.48): each running agent's mode for its row and pane (one
+ * persona read per project per list). `pid` is its session's process:
+ * the mode it runs in is read from there first (drill b), else the
+ * record's. Undefined for a runtime without modes, or a persona gone.
+ */
+export function modeResolver(
+  d: AgentsResolved,
+  commandLineOf: CommandLineOf = psCommandLine,
+): (rec: AgentRecord, pid?: number) => AgentMode | undefined {
+  const find = personaLookup(d);
+  return (rec, pid) => {
+    const rt = getRuntime(rec.runtime);
+    const p = find(rec);
+    if (!rt?.permissions || !p) return undefined;
+    let want: PermissionIntent | undefined;
+    try {
+      want = permissionNow(d, rec, p, rt);
+    } catch {
+      return undefined; // a bad mode: its next start says so
+    }
+    if (!want) return undefined;
+    const running =
+      (pid ? runningIntent(pid, rec.resumeToken, commandLineOf) : undefined) ??
+      rec.permission;
+    return { want, ...(running ? { running } : {}) };
+  };
+}
+
 export interface ModeCheck {
   /** One look: the agents it began restarting. */
   tick(): Promise<string[]>;

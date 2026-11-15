@@ -422,7 +422,11 @@ export function overrideTagsHtml(r) {
         : t("ver.pinned", { v: r.version }),
       "version",
     ]);
-  if (r.permission === "all")
+  // MODE-3 (0.4.48): a running agent's row says its mode itself
+  // (agents-page.js modeTagHtml), from the mode its process runs in.
+  if (r.mode) {
+    /* said there */
+  } else if (r.permission === "all")
     tags.push(["warn", t("pm.tag.all"), "permission"]);
   // den#48: auto mode always shows: its peers' mode, not the persona's.
   else if (r.permission === "auto")

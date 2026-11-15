@@ -144,6 +144,14 @@ export interface SessionRouteDeps {
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
   /** D59: whether each agent resumes on its own after a restart. */
   restartResume?: () => (rec: AgentRecord) => boolean;
+  /**
+   * MODE-3 (0.4.48): a running agent's mode (`want`) and the mode its
+   * process runs in (`running`), one resolver per list.
+   */
+  modeOf?: () => (
+    rec: AgentRecord,
+    pid?: number,
+  ) => { want: string; running?: string } | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
   /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
@@ -171,6 +179,7 @@ interface Resolved {
   typed: (id: string) => void;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
+  modeOf?: SessionRouteDeps["modeOf"];
   helperSettings: () => HelperSettings | undefined;
   exitedShellMinutes: () => number;
   hubNow: () => Promise<string | null>;
@@ -259,6 +268,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
       }),
     ...(d.rotationPolicy ? { rotationPolicy: d.rotationPolicy } : {}),
     ...(d.restartResume ? { restartResume: d.restartResume } : {}),
+    ...(d.modeOf ? { modeOf: d.modeOf } : {}),
   };
 }
 
@@ -331,6 +341,10 @@ export interface ListedSession {
   newer?: string;
   /** Its permission intent (AG-13): ask, edits, all. */
   permission?: string;
+  /** MODE-3: the mode it should run in now (running agents). */
+  mode?: string;
+  /** MODE-3: the mode its process runs in, when known. */
+  modeRunning?: string;
   /** Extra allowed commands it was started with (AG-13.3). */
   allow?: string[];
   /** What it overrides of its persona (AG-10.9): its row's tags. */
@@ -417,7 +431,7 @@ export function listedSessions(
       Pick<Resolved, "waitingAgents" | "waitingWhy" | "workspaceExists">
     > &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
-    Pick<SessionRouteDeps, "rotationPolicy" | "restartResume"> & {
+    Pick<SessionRouteDeps, "rotationPolicy" | "restartResume" | "modeOf"> & {
       /** #57 (tests): the projects, by key; default the workspaces file. */
       workspaces?: () => Record<string, { name?: unknown }>;
       /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
@@ -480,6 +494,7 @@ export function listedSessions(
   noteEnded(d.stateDir(), mine, records);
   const helperSettings = d.helperSettings?.();
   const restartOf = d.restartResume?.();
+  const modeOf = d.modeOf?.();
   const repoSets = new Map<string, ReadonlySet<string> | null>();
   const repoGone = (ws: string, repo: string): boolean => {
     if (!d.repoNames) return false;
@@ -529,6 +544,14 @@ export function listedSessions(
       ...(rec.version ? { version: rec.version } : {}),
       ...newerOf(rec),
       ...(rec.permission ? { permission: rec.permission } : {}),
+      // MODE-3: the mode it should run in, and the one it runs in.
+      ...(() => {
+        if (!modeOf || !s || s.exited) return {};
+        const m = modeOf(rec, s.pid);
+        return m
+          ? { mode: m.want, ...(m.running ? { modeRunning: m.running } : {}) }
+          : {};
+      })(),
       ...(rec.allow?.length ? { allow: [...rec.allow] } : {}),
       ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
       // D59: its own Resume after a restart, and the setting all told.

@@ -8,6 +8,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- An agent's row and its pane now show its mode ("mode: Auto"). When the
+  mode it should run in differs from the one its process runs in (the
+  mode was changed while it ran, and the restart after its turn hasn't
+  happened), both say so ("Set to Auto, running Ask") and offer Restart to
+  apply: one click restarts it now, on the same conversation, in its mode.
+  Only a person can press it. In English, Spanish and Japanese. (MODE-3)
 - Den keeps itself current. Every `server_agent.update_check_minutes`
   (default 30, 0 for never) it looks at npm. With `self_update: ask` the
   person gets one "update Den to X" to Allow and a bell notice, once per

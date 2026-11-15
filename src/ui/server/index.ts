@@ -985,6 +985,7 @@ import {
   hubUpstream,
   policyResolver,
   restartResolver,
+  modeResolver,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -5328,6 +5329,7 @@ async function handleRequest(
         waitingWhy: waitingReasons,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
+        modeOf: () => modeResolver(agentWebDeps()),
       },
     )
   )

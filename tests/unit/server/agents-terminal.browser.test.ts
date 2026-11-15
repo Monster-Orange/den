@@ -978,6 +978,90 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("MODE-3: a row and its pane say the mode; a mismatch says both and has Restart to apply, one click, now", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    await p.route("**/api/sessions*", async (r) => {
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mode?: string; modeRunning?: string }[];
+        };
+        for (const x of body.sessions) {
+          // Set to auto while it ran; its process still runs in ask.
+          if (x.agent === "planner") {
+            x.mode = "auto";
+            x.modeRunning = "ask";
+          }
+          if (x.agent === "coder") {
+            x.mode = "edits";
+            x.modeRunning = "edits";
+          }
+        }
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    const posted: { url: string; body: unknown }[] = [];
+    await p.route("**/agents/planner/restart", (r) => {
+      posted.push({
+        url: new URL(r.request().url()).pathname,
+        body: r.request().postDataJSON(),
+      });
+      return r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: '{"ok":true,"agent":{"id":"planner"}}',
+      });
+    });
+    await p.reload();
+    const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
+    const bar = `.pane[data-id="${sid.planner}"] .bar2`;
+    await p.waitForSelector(`${bar} [data-mode-drift="auto"]`, {
+      timeout: 15_000,
+    });
+    expect(await p.textContent(`${bar} [data-mode-drift]`)).toBe(
+      "Set to Auto, running Ask",
+    );
+    expect(await p.textContent(`${bar} [data-act="mode-apply"]`)).toBe(
+      "Restart to apply",
+    );
+    expect(await p.textContent(`${row("planner")} [data-mode-drift]`)).toBe(
+      "Set to Auto, running Ask",
+    );
+    // Under the row too: one button, outside the row's own.
+    expect(
+      await p
+        .locator(
+          `#agl .agst[data-agent="planner"] .agacts [data-act="mode-apply"]`,
+        )
+        .count(),
+    ).toBe(1);
+    // The agent whose process runs in its mode: just its mode.
+    expect(await p.textContent(`${row("coder")} [data-mode]`)).toBe(
+      "mode: Edits",
+    );
+    expect(
+      await p
+        .locator(`#agl [data-agent="coder"] [data-act="mode-apply"]`)
+        .count(),
+    ).toBe(0);
+    await p.click(`${bar} [data-act="mode-apply"]`);
+    await p.waitForFunction(() =>
+      /restarts on the same conversation, in Auto/.test(
+        document.body.textContent ?? "",
+      ),
+    );
+    expect(posted).toEqual([
+      {
+        url: "/api/workspaces/north/agents/planner/restart",
+        body: { when: "now" },
+      },
+    ]);
+    await p.context().close();
+  }, 60_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);
