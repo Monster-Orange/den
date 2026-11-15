@@ -1132,8 +1132,18 @@ describe("D64: Restart Den from the browser, in place", () => {
         (document.getElementById("rd-dlg") as HTMLDialogElement | null)?.open ??
         false,
     );
+  // UK-2 (0.4.48): the confirm is Den's (#rd-dlg); the wait is the kit's
+  // working pop-up in reconnect mode.
+  const bz = (state?: string) =>
+    state ? `dialog.bz-dlg[data-state="${state}"]` : "dialog.bz-dlg";
+  const bzOpen = (p: Page) =>
+    p.evaluate(
+      () =>
+        (document.querySelector("dialog.bz-dlg") as HTMLDialogElement | null)
+          ?.open ?? false,
+    );
 
-  it("the header menu's Restart Den asks first, then waits in a dialog that closes by itself; no reload, a typed draft stays", async () => {
+  it("the header menu's Restart Den asks first, then waits in a pop-up that closes by itself; no reload, a typed draft stays", async () => {
     if (!browser) return;
     const { p, posts, backAt } = await mount({
       restart: { down: 2 },
@@ -1154,17 +1164,16 @@ describe("D64: Restart Den from the browser, in place", () => {
       w.__backShown = 0;
       w.__closedAt = 0;
       new MutationObserver(() => {
-        const d = document.getElementById("rd-dlg") as HTMLDialogElement | null;
-        if (!d) return;
-        const msg = d.querySelector(".rd-msg")?.textContent;
-        if (!w.__backShown && msg === "Den is back.")
+        const d = document.querySelector(
+          "dialog.bz-dlg",
+        ) as HTMLDialogElement | null;
+        if (!w.__backShown && d?.dataset.state === "success")
           w.__backShown = performance.now();
-        if (w.__backShown && !w.__closedAt && !d.open)
+        if (w.__backShown && !w.__closedAt && !d?.open)
           w.__closedAt = performance.now();
       }).observe(document.body, {
         subtree: true,
         childList: true,
-        characterData: true,
         attributes: true,
       });
     });
@@ -1181,30 +1190,26 @@ describe("D64: Restart Den from the browser, in place", () => {
     await p.click("#appearance-btn");
     await p.click('.den-pop .den-mi:has-text("Restart Den…")');
     await p.click('[data-rd="go"]');
-    await p.waitForSelector('#rd-dlg[data-state="waiting"]');
-    expect(await text(p, "#rd-dlg .rd-msg")).toMatch(/^Restarting Den… \d+s$/);
-    // Keep waiting and the CLI line only after restart_wait_seconds.
-    expect(await p.isVisible('[data-rd="keep"]')).toBe(false);
-    expect(await p.isVisible("#rd-dlg .rd-slow")).toBe(false);
-    // BUSY-1: it says the page reconnects by itself, then Back and the version.
-    expect(await text(p, "#rd-dlg .rd-sub")).toBe(
+    await p.waitForSelector(bz("working"));
+    expect(await dlgOpen(p)).toBe(false);
+    expect(await text(p, `${bz()} h2`)).toBe("Restarting Den…");
+    // It says the page reconnects by itself; no buttons while it waits.
+    expect(await text(p, `${bz()} .bz-live`)).toBe(
       "This page reconnects by itself when Den is back.",
     );
+    expect(await p.locator(`${bz()} button`).count()).toBe(0);
+    await p.waitForSelector(bz("success"), { timeout: 15_000 });
+    expect(await text(p, `${bz()} h2`)).toBe("Den is back.");
+    expect(await text(p, `${bz()} .bz-b`)).toMatch(/Version \S+\./);
     await p.waitForFunction(
       () =>
-        document.querySelector("#rd-dlg .rd-msg")?.textContent ===
-        "Den is back.",
-      undefined,
-      { timeout: 15_000 },
-    );
-    expect(await text(p, "#rd-dlg .rd-sub")).toMatch(/^Version \S+\.$/);
-    await p.waitForFunction(
-      () => !(document.getElementById("rd-dlg") as HTMLDialogElement).open,
+        !(document.querySelector("dialog.bz-dlg") as HTMLDialogElement | null)
+          ?.open,
       undefined,
       { timeout: 5_000 },
     );
     expect(backAt()).toBeGreaterThan(0);
-    // Back stays up about a second (RESTART_BACK_MS), then it closes.
+    // Back stays up about a second (the kit's 1.2 s), then it closes.
     const shown = await p.evaluate(() => {
       const w = window as unknown as {
         __backShown: number;
@@ -1228,7 +1233,7 @@ describe("D64: Restart Den from the browser, in place", () => {
     await p.context().close();
   }, 40_000);
 
-  it("the stale pill restarts with the same dialog, without asking", async () => {
+  it("the stale pill restarts with the same pop-up, without asking", async () => {
     if (!browser) return;
     const { p } = await mount({ stale: true, restart: { down: 1 } });
     await p.evaluate(() => {
@@ -1236,9 +1241,12 @@ describe("D64: Restart Den from the browser, in place", () => {
     });
     await p.waitForSelector("#stale-pill", { state: "visible" });
     await p.click("#stale-pill");
-    await p.waitForSelector('#rd-dlg[data-state="waiting"]');
+    await p.waitForSelector(bz("working"));
+    expect(await dlgOpen(p)).toBe(false);
     await p.waitForFunction(
-      () => !(document.getElementById("rd-dlg") as HTMLDialogElement).open,
+      () =>
+        !(document.querySelector("dialog.bz-dlg") as HTMLDialogElement | null)
+          ?.open,
       undefined,
       { timeout: 15_000 },
     );
@@ -1249,26 +1257,23 @@ describe("D64: Restart Den from the browser, in place", () => {
     await p.context().close();
   }, 40_000);
 
-  it("a slow restart shows the command line and Keep waiting, and never closes while the server is down", async () => {
+  it("a slow restart: after restart_wait_seconds it says Den didn't come back, Check again waits on, and it never closes while working", async () => {
     if (!browser) return;
     const { p } = await mount({ restart: { down: 1000, waitSeconds: 2 } });
     await p.click("#appearance-btn");
     await p.click('.den-pop .den-mi:has-text("Restart Den…")');
     await p.click('[data-rd="go"]');
-    await p.waitForSelector("#rd-dlg .rd-slow:not([hidden])", {
-      timeout: 10_000,
-    });
-    expect(await text(p, "#rd-dlg .rd-slow")).toContain("web restart");
-    // BUSY-1: "Den didn't come back.", and Check again waits on.
-    expect(await text(p, "#rd-dlg .rd-msg")).toBe("Den didn't come back.");
-    expect(await text(p, '[data-rd="keep"]')).toBe("Check again");
-    expect(await p.isVisible('[data-rd="keep"]')).toBe(true);
-    await p.click('[data-rd="keep"]');
-    expect(await p.isHidden("#rd-dlg .rd-slow")).toBe(true);
-    expect(await text(p, "#rd-dlg .rd-msg")).toMatch(/^Restarting Den…/);
-    expect(await p.isVisible('[data-rd="keep"]')).toBe(false);
+    await p.waitForSelector(bz("noanswer"), { timeout: 10_000 });
+    expect(await text(p, `${bz()} h2`)).toBe("Den didn't come back.");
+    expect(await text(p, `${bz()} .bz-b`)).toContain(
+      "It may still be starting. Check again in a moment.",
+    );
+    expect(await text(p, `${bz()} [data-bz="check"]`)).toBe("Check again");
+    await p.click(`${bz()} [data-bz="check"]`);
+    await p.waitForSelector(bz("working"));
+    expect(await text(p, `${bz()} h2`)).toBe("Restarting Den…");
     await p.keyboard.press("Escape");
-    expect(await dlgOpen(p)).toBe(true);
+    expect(await bzOpen(p)).toBe(true);
     await p.context().close();
   }, 40_000);
 });

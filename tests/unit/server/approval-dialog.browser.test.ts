@@ -257,8 +257,9 @@ describe("the approval dialog (ON-3)", () => {
     );
     await p.click("#den-ap-allow");
     await closed(p);
-    // The restart is under way: the page waits for the new server in place.
-    await p.waitForSelector('#rd-dlg[open][data-state="waiting"]', {
+    // The restart is under way: the page waits for the new server in place
+    // (UK-2: the kit's working pop-up, reconnect mode).
+    await p.waitForSelector('dialog.bz-dlg[open][data-state="working"]', {
       timeout: 15_000,
     });
     await p.context().close();
