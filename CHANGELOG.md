@@ -34,7 +34,7 @@ config and manifest changes a distribution must make to move to it under
   (the first install's address, else its edge domain); `--url`, `--yes`
   and `--json` skip the question. (den#173, D80)
 
-## [0.4.48] - unreleased
+## [0.4.48] - 2026-11-15
 
 ### Added
 
