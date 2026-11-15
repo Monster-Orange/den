@@ -77,8 +77,13 @@ async function savedMark(p: Page, id: string) {
 
 /** Changes a number row and waits for its save and the page's redraw. */
 async function setNumber(p: Page, id: string, v: number) {
+  // This row's own save (its value in the body): under load, the save of
+  // the row before can land after this wait starts (seen in a full run).
   const saved = p.waitForResponse(
-    (r) => r.url().endsWith("/api/settings") && r.request().method() === "POST",
+    (r) =>
+      r.url().endsWith("/api/settings") &&
+      r.request().method() === "POST" &&
+      JSON.stringify(r.request().postDataJSON() ?? {}).includes(`:${v}`),
   );
   await ctl(p, id).fill(String(v));
   await ctl(p, id).dispatchEvent("change");
