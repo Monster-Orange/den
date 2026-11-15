@@ -174,7 +174,10 @@ import {
   type Runtime,
 } from "../../shared/agents/runtimes.js";
 import { agentGitEnv } from "../../shared/agents/git-signing.js";
-import { readHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
+import {
+  noteHubMcpInit,
+  readHubMcpInit,
+} from "../../shared/agents/hub-mcp-connect.js";
 import type {
   RuntimeDetect,
   RuntimeModel,
@@ -247,7 +250,7 @@ import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
-import { HUB_SERVER } from "../../shared/hub.js";
+import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
 import {
   contractInfo,
   loadWorkspaces,
@@ -334,6 +337,8 @@ export interface AgentsDeps extends SessionsDeps {
     /** D41: hub.inbox_on_stop (default nudge). */
     inboxOnStop?: "nudge" | "off";
   } | null>;
+  /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
+  hubProblem?: () => string | null;
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
@@ -377,6 +382,11 @@ export interface AgentsResolved extends Resolved {
   workspaceRepos: (ws: string) => string[];
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
+  /**
+   * 0.4.48: why Hub isn't there when its token can't be read now (the
+   * store refused it), in plain words; null otherwise.
+   */
+  hubProblem: () => string | null;
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -641,6 +651,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
+    hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
   });
 }
 
@@ -1184,6 +1195,12 @@ export function sameMcpUrl(had: unknown, now: string): boolean {
 export function mcpStaleOf(
   filesDir: string,
   hubUrl: string | null,
+  /**
+   * 0.4.48: Hub is set up but Den can't read its token now (hubProblem):
+   * a wait, not a disconnect, so an agent with Hub's tools keeps them and
+   * no restart is offered for them.
+   */
+  o: { waiting?: boolean } = {},
 ): McpStale | undefined {
   let servers: Record<string, { url?: unknown }>;
   try {
@@ -1200,7 +1217,7 @@ export function mcpStaleOf(
   const adds: string[] = [];
   const drops: string[] = [];
   if (hubUrl && (!had || !sameMcpUrl(had.url, hubUrl))) adds.push(HUB_SERVER);
-  if (!hubUrl && had) drops.push(HUB_SERVER);
+  if (!hubUrl && had && !o.waiting) drops.push(HUB_SERVER);
   return adds.length || drops.length ? { adds, drops } : undefined;
 }
 
@@ -1209,8 +1226,11 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
   const running = rows.filter((r) => r.state === "running");
   if (!running.length) return;
   const url = await hubNow(d);
+  const waiting = d.hubProblem() !== null;
   for (const r of running) {
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url);
+    const st = mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, {
+      waiting,
+    });
     if (st) r.mcpStale = st;
   }
 }
@@ -1231,7 +1251,9 @@ export async function staleAgents(
   const out: { id: string; workspace: string; stale: McpStale }[] = [];
   for (const rec of listRecords(d.stateDir())) {
     if (!live.some((s) => sessionOf([s], rec))) continue;
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url);
+    const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
+      waiting: d.hubProblem() !== null,
+    });
     if (st) out.push({ id: rec.id, workspace: rec.workspace, stale: st });
   }
   return out;
@@ -1261,15 +1283,18 @@ export async function agentTools(
   const rec = agentRecord(d, id, ws);
   const url = await hubNow(d);
   const files = agentFilesDir(d.stateDir(), rec.id);
-  const st = mcpStaleOf(files, url);
+  const problem = url === null ? d.hubProblem() : null;
+  const st = mcpStaleOf(files, url, { waiting: problem !== null });
   const connected = url !== null;
   let loaded = connected
     ? !st?.adds.includes(HUB_SERVER)
-    : Boolean(st?.drops.includes(HUB_SERVER));
+    : Boolean(mcpStaleOf(files, url)?.drops.includes(HUB_SERVER));
   let restart = Boolean(st);
   // What its session actually got: a connect that failed in this session
   // (the proxy's note) means no hub_* tools until it connects again.
-  const init = loaded ? readHubMcpInit(d.stateDir(), rec.id) : null;
+  // 0.4.48: or it launched with none because Den couldn't read its token.
+  const init =
+    loaded || connected ? readHubMcpInit(d.stateDir(), rec.id) : null;
   const failed =
     init && !init.ok && Date.parse(init.at) >= Date.parse(rec.startedAt)
       ? (init.error ?? "an error")
@@ -1278,15 +1303,19 @@ export async function agentTools(
     loaded = false;
     restart = true;
   }
-  const note = failed
-    ? `${connected ? "Hub is connected, but" : "Hub was disconnected, and"} you couldn't load its tools when you started (${failed}). Den restarts you to load them once Hub answers (this conversation stays); a person can also restart you from Den now. No token step is needed.`
-    : !connected
-      ? loaded
-        ? "Hub was disconnected; its tools go when the person restarts you from Den."
-        : "This Den is not connected to Hub. A person connects it in Settings › Agents › Hub."
-      : restart
-        ? "Hub is connected, but you started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
-        : "Hub is connected and its tools (hub_*) are yours.";
+  // 0.4.48: Hub is set up but Den can't read its token now (problem): a
+  // wait, not a reconnect; nobody needs to do anything.
+  const note = problem
+    ? `${problem}. Nothing for the person to do: Hub isn't disconnected. Once Den reads the token again, it restarts you to load Hub's tools if you need them (this conversation stays).`
+    : failed
+      ? `${connected ? "Hub is connected, but" : "Hub was disconnected, and"} you couldn't load its tools when you started (${failed}). Den restarts you to load them once Hub answers (this conversation stays); a person can also restart you from Den now. No token step is needed.`
+      : !connected
+        ? loaded
+          ? "Hub was disconnected; its tools go when the person restarts you from Den."
+          : "This Den is not connected to Hub. A person connects it in Settings › Agents › Hub."
+        : restart
+          ? "Hub is connected, but you started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
+          : "Hub is connected and its tools (hub_*) are yours.";
   return {
     agent: rec.id,
     workspace: rec.workspace,
@@ -2944,6 +2973,17 @@ export async function startAgent(
         old,
         more.rotations?.length ? { rotations: more.rotations } : {},
       );
+      // 0.4.48: launched with no Hub because its token couldn't be read:
+      // noted as a failed connect, so once Den reads it again the agent is
+      // restarted to load Hub's tools, as after a Hub outage (mcp-reconnect).
+      if (!hub) {
+        const why = d.hubProblem();
+        if (why)
+          noteHubMcpInit(d.stateDir(), rec.id, {
+            ok: false,
+            error: "Den couldn't read its Hub token",
+          });
+      }
       const early = await exitedAtOnce(d, c, info);
       return {
         rec,

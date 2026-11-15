@@ -24,6 +24,26 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- While Den couldn't read its Hub token (the secrets store refused for a
+  while), agents were told "Hub isn't connected here. The person connects
+  it in Settings", so they sent the person to reconnect, which was the
+  wrong fix. Their Hub calls and whoami now say Den can't read its Hub
+  token, the store's reason and when Den tries again, and that there is
+  nothing for the person to do. An agent that has Hub's tools keeps them
+  through the wait: no restart is offered for it.
+- Agents that started while the token couldn't be read had no Hub tools
+  and kept none after Den read it again. Den now restarts them after
+  their turn to load Hub's tools (the same conversation), as it does after
+  a Hub outage.
+- Two Hub calls at the same moment each read the token; both failed and
+  the first wait doubled to two minutes. Calls now share one read, and a
+  read still out when Connect or a rotation sets the token can't undo it.
+- Hub turning the token down through an agent's call didn't let Den read
+  it again; only Den's own status check did. Now either does (at most
+  once a minute).
+- An agent's `hub-mcp.json` said `ok` from its first connect while its
+  later Hub calls failed. It now also keeps the latest call's result
+  (`last`).
 - Agents were shown as missing Hub's tools, with a restart offered, when
   they had them. Den compared the address of its Hub server as text, so
   an agent given `localhost` looked out of date once Den gave out

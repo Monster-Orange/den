@@ -347,7 +347,12 @@ import {
   patchBellFoldDays,
   patchBellKinds,
 } from "./bell-prefs.js";
-import { patchHubAllowTools, readHubConfig } from "../../shared/hub.js";
+import {
+  forgetHubToken,
+  hubTokenProblem,
+  patchHubAllowTools,
+  readHubConfig,
+} from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
@@ -949,7 +954,10 @@ import {
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleHubProxy } from "./hub-proxy-routes.js";
-import { noteHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
+import {
+  noteHubMcpCall,
+  noteHubMcpInit,
+} from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
   startAgentUpkeep,
@@ -5204,6 +5212,24 @@ async function handleRequest(
     await handleHubProxy(req, res, pathname, {
       upstream: (who) => hubUpstream(agentWebDeps(), who),
       onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
+      // 0.4.48: Hub turned the token down through an agent's call: let the
+      // next call read it again (at most once a minute), as Den's own
+      // status check does; and the agent's note says how its calls go.
+      onHubAnswer: (agentId, o) => {
+        if (o.status === 401) forgetHubToken();
+        if (o.sub === "/mcp")
+          noteHubMcpCall(getStateDir(), agentId, {
+            ok: o.status !== null && o.status >= 200 && o.status < 300,
+            ...(o.status === null
+              ? { error: o.error ?? "hub didn't answer" }
+              : o.status >= 300
+                ? {
+                    error: `hub (${o.status}): ${http.STATUS_CODES[o.status] ?? "error"}`,
+                  }
+                : {}),
+          });
+      },
+      whyNotConnected: () => hubTokenProblem(),
     })
   )
     return;

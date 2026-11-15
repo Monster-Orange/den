@@ -157,6 +157,65 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     }
   }, 30_000);
 
+  it("0.4.48: started while Den couldn't read its Hub token (no Hub at all): once the token reads again, it is in the same list and gets the same restart", async () => {
+    let hubUp = false;
+    const r = await rig({
+      hub: async () => (hubUp ? { url: HUB, token: TOKEN } : null),
+    });
+    r.deps.hubProblem = () =>
+      hubUp
+        ? null
+        : "Den can't read the Hub token from its secrets store (Too many requests.); trying again in 1 min";
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+    ).toBe(0);
+    await settle();
+    const d = resolveAgentsDeps(r.deps);
+    // While the token can't be read, nothing to restart for.
+    expect(await hubToolsMissing(d)).toEqual([]);
+    hubUp = true;
+    expect(await hubToolsMissing(d)).toEqual([
+      { id: "planner", workspace: "north" },
+    ]);
+    const t = await agentTools(d, "planner", "north");
+    expect(t.hub).toEqual({ connected: true, loaded: false, restart: true });
+    expect(t.note).toMatch(/couldn't read its Hub token/);
+  });
+
+  it("0.4.48: started with Hub's tools, then the token can't be read: they are still its own, no restart, and it is told it is a wait", async () => {
+    let hubUp = true;
+    const r = await rig({
+      hub: async () => (hubUp ? { url: HUB, token: TOKEN } : null),
+    });
+    r.deps.hubProblem = () =>
+      hubUp
+        ? null
+        : "Den can't read the Hub token from its secrets store (Too many requests.); trying again in 1 min";
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+    ).toBe(0);
+    await settle();
+    hubUp = false;
+    const t = await agentTools(resolveAgentsDeps(r.deps), "planner", "north");
+    expect(t.hub).toEqual({ connected: false, loaded: true, restart: false });
+    expect(t.note).toMatch(/Nothing for the person to do/);
+    expect(t.note).not.toMatch(/Settings/);
+  });
+
+  it("started before Hub was connected at all (no token problem): not restarted by Den (the person's, D44)", async () => {
+    let hubUp = false;
+    const r = await rig({
+      hub: async () => (hubUp ? { url: HUB, token: TOKEN } : null),
+    });
+    r.deps.hubProblem = () => null;
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+    ).toBe(0);
+    await settle();
+    hubUp = true;
+    expect(await hubToolsMissing(resolveAgentsDeps(r.deps))).toEqual([]);
+  });
+
   it("hub.mcp_retry_seconds (30, at least 5) and hub.mcp_retry_attempts (0: no limit) are settings", () => {
     const url = "https://hub.example.test";
     const none = () => ({});

@@ -93,6 +93,7 @@ import {
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import { stopSession } from "../../shared/sessions/stop.js";
+import { hubTokenProblem } from "../../shared/hub.js";
 import {
   agentRows,
   defaultHubNow,
@@ -564,7 +565,9 @@ export function listedSessions(
       })(),
       ...(() => {
         if (hubUrl === undefined || r.state !== "running") return {};
-        const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl);
+        const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl, {
+          waiting: hubUrl === null && hubTokenProblem() !== null,
+        });
         return st ? { mcpStale: st } : {};
       })(),
       // D32: the helpers it started in its own session.

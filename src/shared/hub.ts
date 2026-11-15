@@ -284,25 +284,38 @@ export interface HubTokenCache {
   retryAt?: number;
   /** The store's own words for the last failure, one line. */
   error?: string;
+  /**
+   * 0.4.48: the read out now, shared by every call that comes while it is
+   * (two at start counted two failures and doubled the first wait).
+   */
+  reading?: { key: string; p: Promise<string | null> };
+  /**
+   * Bumped when Den sets or clears the token itself (Connect, rotation,
+   * a reset): a read that was out by then leaves the cache alone.
+   */
+  gen: number;
 }
 
 export const HUB_TOKEN_RETRY_MS = 60_000;
 export const HUB_TOKEN_RETRY_MAX_MS = 10 * 60_000;
 
 export function newHubTokenCache(): HubTokenCache {
-  return { stale: false, failures: 0 };
+  return { stale: false, failures: 0, gen: 0 };
 }
 
 const processHubToken = newHubTokenCache();
 
 /** Forget everything this process kept about the Hub token (tests). */
 export function resetHubTokenCache(): void {
+  const gen = processHubToken.gen + 1;
   Object.assign(processHubToken, newHubTokenCache(), {
+    gen,
     key: undefined,
     token: undefined,
     forgotAt: undefined,
     retryAt: undefined,
     error: undefined,
+    reading: undefined,
   });
 }
 
@@ -323,6 +336,8 @@ export function forgetHubToken(
   if (o.now) {
     cache.retryAt = undefined;
     cache.failures = 0;
+    cache.gen++;
+    cache.reading = undefined;
   }
   return true;
 }
@@ -338,7 +353,12 @@ export function rememberHubToken(
     : cfg.tokenRef
       ? JSON.stringify(cfg.tokenRef)
       : undefined;
-  Object.assign(cache, newHubTokenCache(), { key, token });
+  Object.assign(cache, newHubTokenCache(), {
+    key,
+    token,
+    gen: cache.gen + 1,
+    reading: undefined,
+  });
 }
 
 /**
@@ -384,10 +404,32 @@ export async function readHubToken(
       ? JSON.stringify(cfg.tokenRef)
       : null;
   if (!key) return null;
-  if (cache.key !== key) Object.assign(cache, newHubTokenCache(), { key });
+  if (cache.key !== key)
+    Object.assign(cache, newHubTokenCache(), {
+      key,
+      gen: cache.gen + 1,
+      reading: undefined,
+    });
   if (cache.token && !cache.stale) return cache.token;
   if (cache.retryAt !== undefined && at < cache.retryAt)
     return cache.token ?? null;
+  if (cache.reading?.key === key) return cache.reading.p;
+  const p = readOnce(cfg, key, provider, cache, at, cache.gen);
+  cache.reading = { key, p };
+  return p.finally(() => {
+    if (cache.reading?.p === p) cache.reading = undefined;
+  });
+}
+
+/** One read from the store, and what it leaves in the cache. */
+async function readOnce(
+  cfg: HubConfig,
+  key: string,
+  provider: () => SecretsProvider,
+  cache: HubTokenCache,
+  at: number,
+  gen: number,
+): Promise<string | null> {
   let token: string | null = null;
   let error: string | null = null;
   if (cfg.tokenSource) {
@@ -405,6 +447,9 @@ export async function readHubToken(
       error = oneLine(e);
     }
   }
+  // Den set or cleared the token while it was out (Connect, Disconnect, a
+  // rotation): that is the newer word; this answer changes nothing.
+  if (cache.key !== key || cache.gen !== gen) return cache.token ?? token;
   cache.stale = false;
   if (token) {
     Object.assign(cache, {

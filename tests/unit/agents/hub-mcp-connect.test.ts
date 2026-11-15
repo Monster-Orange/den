@@ -10,6 +10,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import {
+  noteHubMcpCall,
   noteHubMcpInit,
   readHubMcpInit,
 } from "../../../src/shared/agents/hub-mcp-connect.js";
@@ -18,9 +19,15 @@ import {
   agentTools,
   resolveAgentsDeps,
 } from "../../../src/ui/cli/agent-ops.js";
-import { handleHubProxy } from "../../../src/ui/server/hub-proxy-routes.js";
+import {
+  handleHubProxy,
+  type HubProxyDeps,
+} from "../../../src/ui/server/hub-proxy-routes.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
-import { verifyActorToken, actorTokenOf } from "../../../src/shared/actor-token.js";
+import {
+  verifyActorToken,
+  actorTokenOf,
+} from "../../../src/shared/actor-token.js";
 import { cleanupRigs, rig, settle } from "./helpers/rig.js";
 
 const HUB = "http://hub.example.test";
@@ -34,8 +41,12 @@ afterEach(async () => {
 });
 
 async function started() {
-  const r = await rig({ hub: async () => ({ url: HUB, token: "hubi_TESTONLY" }) });
-  expect(await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps)).toBe(0);
+  const r = await rig({
+    hub: async () => ({ url: HUB, token: "hubi_TESTONLY" }),
+  });
+  expect(
+    await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+  ).toBe(0);
   await settle();
   return { r, d: resolveAgentsDeps(r.deps) };
 }
@@ -45,7 +56,10 @@ describe("whoami after a Hub connection that failed at start", () => {
     const { r, d } = await started();
     const ok = await agentTools(d, "planner", "north");
     expect(ok.hub).toEqual({ connected: true, loaded: true, restart: false });
-    noteHubMcpInit(r.stateDir, "planner", { ok: false, error: "hub (502): Bad Gateway" });
+    noteHubMcpInit(r.stateDir, "planner", {
+      ok: false,
+      error: "hub (502): Bad Gateway",
+    });
     const t = await agentTools(d, "planner", "north");
     expect(t.hub).toEqual({ connected: true, loaded: false, restart: true });
     expect(t.note).toContain("hub (502): Bad Gateway");
@@ -54,16 +68,25 @@ describe("whoami after a Hub connection that failed at start", () => {
 
   it("a later connect that worked (the runtime reconnected): loaded again", async () => {
     const { r, d } = await started();
-    noteHubMcpInit(r.stateDir, "planner", { ok: false, error: "hub (502): Bad Gateway" });
+    noteHubMcpInit(r.stateDir, "planner", {
+      ok: false,
+      error: "hub (502): Bad Gateway",
+    });
     noteHubMcpInit(r.stateDir, "planner", { ok: true });
     expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(true);
   });
 
   it("a failure from before this session started doesn't count", async () => {
     const { r, d } = await started();
-    noteHubMcpInit(r.stateDir, "planner", { ok: false, error: "hub (502): Bad Gateway" });
+    noteHubMcpInit(r.stateDir, "planner", {
+      ok: false,
+      error: "hub (502): Bad Gateway",
+    });
     const rec = readRecord(r.stateDir, "planner")!;
-    writeRecord(r.stateDir, { ...rec, startedAt: new Date(Date.now() + 60_000).toISOString() });
+    writeRecord(r.stateDir, {
+      ...rec,
+      startedAt: new Date(Date.now() + 60_000).toISOString(),
+    });
     expect((await agentTools(d, "planner", "north")).hub).toEqual({
       connected: true,
       loaded: true,
@@ -73,7 +96,10 @@ describe("whoami after a Hub connection that failed at start", () => {
 });
 
 describe("the /hub proxy notes each MCP initialize", () => {
-  async function proxied(status: number | "down") {
+  async function proxied(
+    status: number | "down",
+    extra: Partial<HubProxyDeps> = {},
+  ) {
     const { r } = await started();
     const token = actorTokenOf(r.made[0].opts.env) ?? "";
     const hub = http.createServer((req, res) => {
@@ -89,10 +115,16 @@ describe("the /hub proxy notes each MCP initialize", () => {
     servers.push(hub);
     await new Promise<void>((x) => hub.listen(0, "127.0.0.1", x));
     const port = (hub.address() as AddressInfo).port;
-    const mcpUrl = status === "down" ? "http://127.0.0.1:1/mcp" : `http://127.0.0.1:${port}/mcp`;
+    const mcpUrl =
+      status === "down"
+        ? "http://127.0.0.1:1/mcp"
+        : `http://127.0.0.1:${port}/mcp`;
     const notes: unknown[] = [];
     const den = http.createServer((req, res) => {
-      const t = verifyActorToken(r.stateDir, String(req.headers.authorization ?? "").slice(7));
+      const t = verifyActorToken(
+        r.stateDir,
+        String(req.headers.authorization ?? "").slice(7),
+      );
       if (t)
         setPrincipal(req, {
           kind: "agent",
@@ -101,10 +133,20 @@ describe("the /hub proxy notes each MCP initialize", () => {
           grants: t.grants,
           session: t.session,
         });
-      void handleHubProxy(req, res, new URL(req.url ?? "/", "http://x").pathname, {
-        upstream: async () => ({ base: mcpUrl.replace(/\/mcp$/, ""), mcpUrl, headers: {} }),
-        onMcpInit: (agentId, o) => notes.push({ agentId, ...o }),
-      });
+      void handleHubProxy(
+        req,
+        res,
+        new URL(req.url ?? "/", "http://x").pathname,
+        {
+          upstream: async () => ({
+            base: mcpUrl.replace(/\/mcp$/, ""),
+            mcpUrl,
+            headers: {},
+          }),
+          onMcpInit: (agentId, o) => notes.push({ agentId, ...o }),
+          ...extra,
+        },
+      );
     });
     servers.push(den);
     await new Promise<void>((x) => den.listen(0, "127.0.0.1", x));
@@ -125,13 +167,17 @@ describe("the /hub proxy notes each MCP initialize", () => {
   it("a 502 from Hub: noted as failed, with the status", async () => {
     const { notes, post } = await proxied(502);
     expect((await post()).status).toBe(502);
-    expect(notes).toEqual([{ agentId: "planner", ok: false, error: "hub (502): Bad Gateway" }]);
+    expect(notes).toEqual([
+      { agentId: "planner", ok: false, error: "hub (502): Bad Gateway" },
+    ]);
   });
 
   it("Hub not answering: noted as failed", async () => {
     const { notes, post } = await proxied("down");
     expect((await post()).status).toBe(502);
-    expect(notes).toEqual([{ agentId: "planner", ok: false, error: "hub didn't answer" }]);
+    expect(notes).toEqual([
+      { agentId: "planner", ok: false, error: "hub didn't answer" },
+    ]);
   });
 
   it("a 200 with a session: noted as ok; a call inside a session isn't an initialize", async () => {
@@ -147,5 +193,77 @@ describe("the /hub proxy notes each MCP initialize", () => {
     noteHubMcpInit(r.stateDir, "planner", { ok: true });
     expect(readHubMcpInit(r.stateDir, "planner")).toMatchObject({ ok: true });
     expect(readHubMcpInit(r.stateDir, "nobody")).toBeNull();
+  });
+
+  it("0.4.48: every answer from Hub is reported (a 401 inside a session too), so Den can re-read its token and keep the note live", async () => {
+    const answers: unknown[] = [];
+    const { post } = await proxied(401, {
+      onHubAnswer: (agentId, o) => answers.push({ agentId, ...o }),
+    });
+    expect((await post()).status).toBe(401);
+    expect((await post("s1")).status).toBe(401);
+    expect(answers).toEqual([
+      { agentId: "planner", sub: "/mcp", status: 401 },
+      { agentId: "planner", sub: "/mcp", status: 401 },
+    ]);
+  });
+
+  it("0.4.48: Hub set up but its token unreadable: the agent is told so plainly, never to reconnect", async () => {
+    const answers: unknown[] = [];
+    const why =
+      "Den can't read the Hub token from its secrets store (Too many requests.); trying again in 1 min";
+    const { notes, post } = await proxied(200, {
+      upstream: async () => null,
+      whyNotConnected: () => why,
+      onHubAnswer: (agentId, o) => answers.push({ agentId, ...o }),
+    });
+    const res = await post();
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.code).toBe("hub_token_unreadable");
+    expect(body.error).toContain(why);
+    expect(body.error).not.toMatch(/Settings/);
+    expect(body.error).toMatch(/nothing for the person to do/i);
+    expect(notes).toEqual([
+      {
+        agentId: "planner",
+        ok: false,
+        error: "Den couldn't read its Hub token",
+      },
+    ]);
+    expect(answers).toEqual([
+      { agentId: "planner", sub: "/mcp", status: null, error: why },
+    ]);
+  });
+});
+
+describe("0.4.48: hub-mcp.json says how the agent's Hub calls go now", () => {
+  it("each call's result is kept beside the connect's; the connect's note stays what whoami reads", async () => {
+    const { r } = await started();
+    noteHubMcpInit(r.stateDir, "planner", { ok: true });
+    noteHubMcpCall(r.stateDir, "planner", {
+      ok: false,
+      error: "hub (401): Unauthorized",
+    });
+    const v = readHubMcpInit(r.stateDir, "planner");
+    expect(v).toMatchObject({
+      ok: true,
+      last: {
+        ok: false,
+        error: "hub (401): Unauthorized",
+        at: expect.any(String),
+      },
+    });
+    noteHubMcpCall(r.stateDir, "planner", { ok: true });
+    expect(readHubMcpInit(r.stateDir, "planner")?.last).toEqual({
+      ok: true,
+      at: expect.any(String),
+    });
+    // A call with no connect noted yet is never read as a failed connect.
+    noteHubMcpCall(r.stateDir, "nobody-yet", { ok: false, error: "x" });
+    expect(readHubMcpInit(r.stateDir, "nobody-yet")).toBeNull();
+    // A new connect keeps the last call it had.
+    noteHubMcpInit(r.stateDir, "planner", { ok: true });
+    expect(readHubMcpInit(r.stateDir, "planner")?.last?.ok).toBe(true);
   });
 });

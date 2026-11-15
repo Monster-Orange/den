@@ -20,6 +20,7 @@ import {
   hubTokenProblem,
   newHubTokenCache,
   readHubToken,
+  rememberHubToken,
   type HubConfig,
 } from "../../../src/shared/hub.js";
 import type { SecretsProvider } from "../../../src/shared/secrets/index.js";
@@ -109,5 +110,46 @@ describe("the Hub token is read once, not per call", () => {
     forgetHubToken(cache, now + 6_000, { now: true });
     await readHubToken(cfg, provider, cache, now + 6_000);
     expect(s.reads).toBe(3);
+  });
+});
+
+describe("calls at the same moment share one read (0.4.48)", () => {
+  it("10 calls while a read is out: 1 read, all get its token", async () => {
+    const { s, provider } = counting(TOKEN);
+    const cache = newHubTokenCache();
+    const got = await Promise.all(
+      Array.from({ length: 10 }, () => readHubToken(cfg, provider, cache)),
+    );
+    expect(got).toEqual(Array(10).fill(TOKEN));
+    expect(s.reads).toBe(1);
+  });
+
+  it("a failed read counts once: the first wait is a minute, not two", async () => {
+    const { s, provider } = counting(RATE);
+    const cache = newHubTokenCache();
+    const now = 5_000_000;
+    await Promise.all([
+      readHubToken(cfg, provider, cache, now),
+      readHubToken(cfg, provider, cache, now),
+    ]);
+    expect(s.reads).toBe(1);
+    expect(cache.failures).toBe(1);
+    expect(cache.retryAt).toBe(now + 60_000);
+  });
+});
+
+describe("a read out when Den writes the token itself (0.4.48)", () => {
+  it("Connect or a rotation while a read is out: the new token stays", async () => {
+    let release!: (v: string) => void;
+    const provider = (() =>
+      ({
+        get: () => new Promise<string>((r) => (release = r)),
+      }) as unknown as SecretsProvider) as () => SecretsProvider;
+    const cache = newHubTokenCache();
+    const out = readHubToken(cfg, provider, cache);
+    rememberHubToken(cfg, "hubi_TESTONLYfresh", cache);
+    release("hubi_TESTONLYold");
+    await out;
+    expect(await readHubToken(cfg, provider, cache)).toBe("hubi_TESTONLYfresh");
   });
 });

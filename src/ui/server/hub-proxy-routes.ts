@@ -81,6 +81,20 @@ export interface HubProxyDeps {
    * what it got: whoami reports a failed one (hub-mcp-connect.ts).
    */
   onMcpInit?: (agentId: string, o: { ok: boolean; error?: string }) => void;
+  /**
+   * 0.4.48: each answer an agent got for Hub path `sub`: Hub's status, or
+   * null with why when Den didn't reach Hub. Den re-reads its token on a
+   * 401 and keeps the agent's note (hub-mcp.json) live.
+   */
+  onHubAnswer?: (
+    agentId: string,
+    o: { sub: string; status: number | null; error?: string },
+  ) => void;
+  /**
+   * 0.4.48: why Hub isn't there when it is set up but its token can't be
+   * read now, in plain words; null when it simply isn't connected.
+   */
+  whyNotConnected?: () => string | null;
 }
 
 /**
@@ -132,10 +146,25 @@ export async function handleHubProxy(
   const agentId = p.actor.slice("agent:".length);
   const init =
     sub === "/mcp" && method === "POST" && !req.headers["mcp-session-id"];
+  const answered = (status: number | null, error?: string) => {
+    if (!deps.onHubAnswer) return;
+    try {
+      deps.onHubAnswer(agentId, {
+        sub,
+        status,
+        ...(error !== undefined ? { error } : {}),
+      });
+    } catch {
+      // A note never changes the agent's answer.
+    }
+  };
   const noteInit = (ok: boolean, error?: string) => {
     if (!init || !deps.onMcpInit) return;
     try {
-      deps.onMcpInit(agentId, ok ? { ok } : { ok, ...(error ? { error } : {}) });
+      deps.onMcpInit(
+        agentId,
+        ok ? { ok } : { ok, ...(error ? { error } : {}) },
+      );
     } catch {
       // A note never changes the agent's answer.
     }
@@ -147,8 +176,23 @@ export async function handleHubProxy(
       session: p.session.id ?? p.session.name,
     })
     .catch(() => null);
+  const why = up ? null : (deps.whyNotConnected?.() ?? null);
+  if (!up && why) {
+    noteInit(false, "Den couldn't read its Hub token");
+    answered(null, why);
+    sendJson(
+      res,
+      {
+        error: `${why}. Hub is still connected: nothing for the person to do, and no need to reconnect. Try this call again after that.`,
+        code: "hub_token_unreadable",
+      },
+      503,
+    );
+    return true;
+  }
   if (!up) {
     noteInit(false, "hub isn't connected here");
+    answered(null, "hub isn't connected here");
     sendJson(
       res,
       {
@@ -167,6 +211,7 @@ export async function handleHubProxy(
   if (sub !== "/mcp") target.search = query;
   if (target.protocol !== "http:" && target.protocol !== "https:") {
     noteInit(false, "hub's address isn't http(s)");
+    answered(null, "hub's address isn't http(s)");
     sendJson(res, { error: "Hub's address isn't http(s)." }, 502);
     return true;
   }
@@ -188,6 +233,7 @@ export async function handleHubProxy(
       if (/^text\/event-stream/i.test(String(back["content-type"] ?? "")))
         back["x-accel-buffering"] = "no";
       const status = hubRes.statusCode ?? 502;
+      answered(status);
       noteInit(
         status >= 200 && status < 300,
         `hub (${status}): ${http.STATUS_CODES[status] ?? "error"}`,
@@ -203,6 +249,7 @@ export async function handleHubProxy(
     });
     out.on("error", () => {
       if (!res.headersSent) noteInit(false, "hub didn't answer");
+      if (!res.headersSent) answered(null, "hub didn't answer");
       if (!res.headersSent)
         sendJson(
           res,

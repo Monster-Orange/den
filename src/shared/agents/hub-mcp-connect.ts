@@ -16,6 +16,17 @@ export interface HubMcpInit {
   at: string;
   /** For a failed one: what Den saw, one line. */
   error?: string;
+  /**
+   * 0.4.48: the agent's latest Hub call through Den (any, not only the
+   * connect), so the file says how its calls go now.
+   */
+  last?: HubMcpCall;
+}
+
+export interface HubMcpCall {
+  ok: boolean;
+  at: string;
+  error?: string;
 }
 
 const FILE = "hub-mcp.json";
@@ -26,12 +37,40 @@ export function noteHubMcpInit(
   agentId: string,
   o: { ok: boolean; error?: string },
 ): void {
-  const dir = agentFilesDir(stateDir, agentId);
-  const v: HubMcpInit = {
+  const last = readRaw(stateDir, agentId)?.last;
+  write(stateDir, agentId, {
+    ...note(o),
+    ...(last ? { last } : {}),
+  });
+}
+
+/**
+ * 0.4.48: the proxy's note of an agent's Hub call (each one): kept as
+ * `last` beside the connect's note, which is what whoami's "loaded" reads.
+ */
+export function noteHubMcpCall(
+  stateDir: string,
+  agentId: string,
+  o: { ok: boolean; error?: string },
+): void {
+  // No connect noted yet: only the call (never read as a connect).
+  write(stateDir, agentId, { ...readRaw(stateDir, agentId), last: note(o) });
+}
+
+function note(o: { ok: boolean; error?: string }): HubMcpCall {
+  return {
     ok: o.ok,
     at: new Date().toISOString(),
     ...(!o.ok && o.error ? { error: o.error.slice(0, 200) } : {}),
   };
+}
+
+function write(
+  stateDir: string,
+  agentId: string,
+  v: Partial<HubMcpInit>,
+): void {
+  const dir = agentFilesDir(stateDir, agentId);
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = path.join(dir, FILE);
@@ -43,17 +82,31 @@ export function noteHubMcpInit(
   }
 }
 
-/** The last note for an agent, or null. */
+/** The file as it is, or null. */
+function readRaw(
+  stateDir: string,
+  agentId: string,
+): Partial<HubMcpInit> | null {
+  try {
+    const v = JSON.parse(
+      fs.readFileSync(
+        path.join(agentFilesDir(stateDir, agentId), FILE),
+        "utf8",
+      ),
+    ) as Partial<HubMcpInit> | null;
+    return v && typeof v === "object" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The last connect's note for an agent (with its latest call), or null. */
 export function readHubMcpInit(
   stateDir: string,
   agentId: string,
 ): HubMcpInit | null {
-  try {
-    const v = JSON.parse(
-      fs.readFileSync(path.join(agentFilesDir(stateDir, agentId), FILE), "utf8"),
-    ) as HubMcpInit;
-    return typeof v?.ok === "boolean" && typeof v.at === "string" ? v : null;
-  } catch {
-    return null;
-  }
+  const v = readRaw(stateDir, agentId);
+  return v && typeof v.ok === "boolean" && typeof v.at === "string"
+    ? (v as HubMcpInit)
+    : null;
 }
