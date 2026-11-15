@@ -4,6 +4,15 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.51] - unreleased
+
+### Added
+
+- The org-name gate now reads commit messages too (issue 189). In CI it checks
+  every new commit in the pull request (or push) and names any commit that
+  matches, never the name itself. A commit-msg hook runs the same check before
+  a commit is made, and passes quietly when no names file is set.
+
 ## [0.4.50] - unreleased
 
 ### Added

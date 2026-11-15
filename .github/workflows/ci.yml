@@ -42,6 +42,15 @@ jobs:
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
         run: node scripts/org-name-gate.mjs
+      # The same names, over the messages of the new commits (issue 189):
+      # a PR's base..head, a push's before..after. Needs the full history
+      # (fetch-depth above). Messages already on main are not rewritten.
+      - name: Org-name gate, commit messages
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
 
   # The whole unit suite on both Nodes, split in four parts that run side by
   # side (jest --shard): every test runs once per Node, as before; the suite
