@@ -26,6 +26,7 @@ function deps(over: Partial<GateDeps> = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const ran: string[][] = [];
+  const beats: (() => void)[] = [];
   let release: ((s: NodeJS.Signals) => void) | undefined;
   const d: GateDeps = {
     store: new GateStore({ dir, alive: () => true }),
@@ -38,6 +39,12 @@ function deps(over: Partial<GateDeps> = {}) {
       ran.push([cmd, ...args]);
       return Promise.resolve(0);
     },
+    every: (_ms, fn) => {
+      beats.push(fn);
+      return () => {
+        beats.length = 0;
+      };
+    },
     onSignal: (r) => {
       release = r;
       return () => {
@@ -48,7 +55,14 @@ function deps(over: Partial<GateDeps> = {}) {
     cwd: "/x/some-repo",
     ...over,
   };
-  return { d, out, err, ran, signal: (s: NodeJS.Signals) => release?.(s) };
+  return {
+    d,
+    out,
+    err,
+    ran,
+    beats,
+    signal: (s: NodeJS.Signals) => release?.(s),
+  };
 }
 
 const events = (d: GateDeps) => d.store.events().map((e) => e.event);
@@ -153,6 +167,36 @@ describe("gate run", () => {
       "released",
     ]);
   }, 30_000);
+
+  it("past its estimate plus the margin, it says so once, and keeps the slot", async () => {
+    let now = Date.now();
+    const t = deps({ now: () => now });
+    t.d.store = new GateStore({
+      dir: t.d.store.dir,
+      alive: () => true,
+      now: () => now,
+    });
+    t.d.exec = async () => {
+      now += 10 * 60_000;
+      t.beats[0]!();
+      expect(t.err.join("\n")).not.toContain("past its estimate");
+      now += 15 * 60_000;
+      t.beats[0]!();
+      t.beats[0]!();
+      expect(t.d.store.list()).toHaveLength(1);
+      return 0;
+    };
+    expect(
+      await cmdGate(
+        ["run", "--estimate", "5m", "--label", "e2e", "--", "x"],
+        t.d,
+      ),
+    ).toBe(0);
+    expect(t.err.filter((l) => l.includes("past its estimate"))).toEqual([
+      "gate: e2e is past its estimate (5 min); the slot stays its own until it ends",
+    ]);
+    expect(t.beats).toEqual([]);
+  });
 
   it("says what is wrong with the asking", async () => {
     const t = deps();

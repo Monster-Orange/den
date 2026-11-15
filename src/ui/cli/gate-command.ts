@@ -52,6 +52,8 @@ export interface GateDeps {
   sleep: (ms: number) => Promise<void>;
   /** Runs the command; resolves with its exit code. */
   exec: (cmd: string, args: string[]) => Promise<number>;
+  /** Runs `fn` every `ms` until the returned stop is called. */
+  every: (ms: number, fn: () => void) => () => void;
   /** Called with a function that gives the slot back on SIGINT/SIGTERM. */
   onSignal: (release: (signal: NodeJS.Signals) => void) => () => void;
   pid: number;
@@ -96,6 +98,11 @@ export function realGateDeps(): GateDeps {
     now: Date.now,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     exec: realExec,
+    every: (ms, fn) => {
+      const h = setInterval(fn, ms);
+      h.unref();
+      return () => clearInterval(h);
+    },
     onSignal: realOnSignal,
     pid: process.pid,
     cwd: process.cwd(),
@@ -214,14 +221,23 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       e = now;
     }
     d.err(`gate: ${e.id} holds ${kind}; running ${label}`);
-    // Alive each minute while the command runs; the lease takes back a
-    // holder that goes quiet.
-    const heart = setInterval(() => s.renew(e.id), 60_000);
-    heart.unref();
-    const code = await d
-      .exec(pos[0]!, pos.slice(1))
-      .finally(() => clearInterval(heart));
-    return code;
+    // Alive each minute while the command runs (the lease takes back a
+    // holder that goes quiet); past its estimate plus the margin, it says
+    // so once. The slot stays the run's.
+    let flagged = false;
+    const stop = d.every(60_000, () => {
+      const now = s.renew(e.id);
+      if (!now || flagged || !overrun(now, s.settings(), d.now())) return;
+      flagged = true;
+      d.err(
+        `gate: ${label} is past its estimate (${now.estimateMin} min); the slot stays its own until it ends`,
+      );
+    });
+    try {
+      return await d.exec(pos[0]!, pos.slice(1));
+    } finally {
+      stop();
+    }
   } finally {
     off();
     if (!done) s.release(e.id);
