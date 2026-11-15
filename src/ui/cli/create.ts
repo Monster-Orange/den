@@ -13,7 +13,9 @@
  */
 import { checkWebUrl } from "../../shared/web-url-check.js";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
+import * as readline from "node:readline";
 import { execFileSync } from "node:child_process";
 import { ENGINE_PACKAGE, getEngineRoot } from "../../shared/paths.js";
 import { profileFrom } from "../../shared/profile.js";
@@ -446,8 +448,9 @@ config/environments/local.json, manifests/ and tests/pillars/.
                          (default: the owner of the GitHub repo [dir] is in)
   --url <address>        this install's address (web.url), the one people
                          open, for example https://<cli>.local.example.com.
-                         Without it, set it next: <cli> web url <address>
-  --yes, -y              never prompt (create never does; for agents)
+                         Without it, at a terminal, create asks (and
+                         proposes one); else set it next: <cli> web url <address>
+  --yes, -y              never prompt (for agents)
   --json                 print one JSON object: { ok, dir, cli, existed, port, next }
 
 Safe to re-run: a [dir] that already holds this distribution answers ok
@@ -668,11 +671,69 @@ export async function createResult(
   }
 }
 
+/** D80: where create can ask the person for this install's address. */
+export interface CreateAskOptions {
+  /** A person is at the prompt (default: stdin and stdout are a terminal). */
+  interactive?: boolean;
+  /** Ask `question`; the answer, "" for the default (default: readline). */
+  ask?: (question: string, proposal: string) => Promise<string>;
+  /** This machine's short name, for later installs (default: its hostname). */
+  machine?: string;
+  /** The domain for later installs (default: "local"). */
+  domain?: string;
+}
+
+/**
+ * D80: the address create proposes. The first install on a machine gets the
+ * plain name from the distribution; later ones `<product>.<machine>.<domain>`.
+ * The person can change it.
+ */
+export function proposeWebUrl(o: {
+  cli: string;
+  machine: string;
+  domain?: string;
+  later: boolean;
+}): string {
+  return o.later
+    ? `https://${o.cli}.${o.machine}.${o.domain ?? "local"}`
+    : `https://${o.cli}`;
+}
+
+/** Whether a sibling folder of `dir` is already an install with an address. */
+function otherInstallNear(dir: string): boolean {
+  try {
+    const parent = path.dirname(dir);
+    return fs
+      .readdirSync(parent)
+      .some(
+        (n) =>
+          path.join(parent, n) !== dir &&
+          fs.existsSync(path.join(parent, n, "config", "local", "user.yml")),
+      );
+  } catch {
+    return false;
+  }
+}
+
+function askWithReadline(question: string, proposal: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return new Promise((resolve) =>
+    rl.question(`${question} [${proposal}] `, (a) => {
+      rl.close();
+      resolve(a);
+    }),
+  );
+}
+
 /** Run `create` end to end; resolves to the process exit code. */
 export async function runCreate(
   argv: string[],
   cwd: string,
   portOpts: CreatePortOptions = { startPort: startPortFromEnv() },
+  askOpts: CreateAskOptions = {},
 ): Promise<number> {
   if (argv.includes("-h") || argv.includes("--help")) {
     console.log(CREATE_HELP);
@@ -693,6 +754,29 @@ export async function runCreate(
       );
     } else console.error(`create: ${(e as Error).message}`);
     return 1;
+  }
+  const interactive =
+    askOpts.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if (!args.url && !args.yes && !json && interactive) {
+    const proposal = proposeWebUrl({
+      cli: args.cli ?? args.name,
+      machine: askOpts.machine ?? os.hostname().split(".")[0].toLowerCase(),
+      domain: askOpts.domain,
+      later: otherInstallNear(args.dir),
+    });
+    const answer = (
+      await (askOpts.ask ?? askWithReadline)(
+        "This install's address, the one people open (web.url)?",
+        proposal,
+      )
+    ).trim();
+    const checked = checkWebUrl(
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(answer || proposal)
+        ? answer || proposal
+        : `https://${answer}`,
+    );
+    if ("url" in checked) args = { ...args, url: checked.url };
+    else console.error(`create: ${checked.error} (set it later: web url)`);
   }
   const r = await createResult(args, cwd, runningDenVersion(), portOpts);
   if (json) {

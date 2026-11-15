@@ -26,6 +26,12 @@ config and manifest changes a distribution must make to move to it under
   name. (den#170)
 - The Edge, Tests, Release, Logs, Environments and Services pages speak
   Spanish and Japanese; they drew many words in English before. (den#171)
+- The service commands (`service install`, `--plan`) print this install's
+  address (`web.url`), never `localhost`; with no address set they say how
+  to set it. `create` now asks for the address at a terminal, proposing the
+  plain name for the first install and `<product>.<machine>.local` for
+  later ones; `--url`, `--yes` and `--json` skip the question. (den#173,
+  D80)
 
 ## [0.4.48] - unreleased
 

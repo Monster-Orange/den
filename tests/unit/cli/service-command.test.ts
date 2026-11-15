@@ -194,7 +194,7 @@ describe("cmdService", () => {
       { url: "http://127.0.0.1:7001/api/server-info", timeoutMs: 30_000 },
     ]);
     expect(h.lines.join("\n")).toMatch(
-      /local\.acme-dev\.web running .*http:\/\/localhost:7001/,
+      /local\.acme-dev\.web running .*address not set/,
     );
   });
 
