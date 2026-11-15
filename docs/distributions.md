@@ -1451,7 +1451,9 @@ and the guide to making your own
   the status colors) at 4.5:1 on every ground (`bg`, `surface`, `raised`,
   `sunken`); `accent` and `border-strong` at 3:1; `on-accent` on
   `accent-fill` at 4.5:1. `accent` is never text: Den draws links and accent
-  text in `accent-text`.
+  text in `accent-text`. Two colors are optional in each mode: `info`
+  (neutral notes, text at 4.5:1) and `violet` (cross-group edges, 3:1),
+  checked when a theme sets them; unset, the UI kit's defaults hold.
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a

@@ -6,8 +6,12 @@
   "bin": {
     "den": "./bin/den"
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "files": [
     "bin/",
+    "packages/den-ui/",
     "src/",
     "!src/**/*.test.ts",
     "make/",

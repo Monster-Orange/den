@@ -28,6 +28,7 @@ import {
 } from "../../shared/plugins/manifest.js";
 import {
   markImage,
+  OPTIONAL_COLOR_TOKENS,
   themeFiles,
   validateThemeDir,
   type ColorToken,
@@ -345,6 +346,9 @@ export function renderThemeCss(id: string, theme: ThemeManifest): string {
         : `:root[data-mode="${mode}"]`;
     lines.push(`${sel} {`, `  color-scheme: ${mode};`);
     for (const t of COLOR_TOKENS) lines.push(`  --${t}: ${c[t]};`);
+    // den-ui UK-1: only when set; else the kit's tokens.css default holds.
+    for (const t of OPTIONAL_COLOR_TOKENS)
+      if (c[t]) lines.push(`  --${t}: ${c[t]};`);
     lines.push(
       `  --shadow: ${c.shadow ?? (mode === "dark" ? "0 12px 30px rgb(0 0 0 / 0.5)" : "0 8px 24px rgb(0 0 0 / 0.14)")};`,
       `  --bar: ${c.bar ?? "none"};`,

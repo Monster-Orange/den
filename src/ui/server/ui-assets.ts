@@ -7,7 +7,8 @@
  * node_modules (never a CDN), so the UI works offline. Each is a pinned
  * dependency in package.json. npm hoists Den's dependencies into a
  * distribution's node_modules, so the lookup walks up from the engine root,
- * like engineBin does.
+ * like engineBin does;
+ *   - den-ui, the UI kit (packages/den-ui), at /kit/<file>.
  */
 import * as fs from "fs";
 import * as http from "http";
@@ -116,6 +117,34 @@ export function vendorAssetFile(
   }
 }
 
+/**
+ * den-ui (UK-1): the kit's files Den serves at /kit/<file>, from the
+ * package inside Den's own install (packages/den-ui/src). Only these.
+ */
+export const KIT_FILES: readonly string[] = [
+  "fonts.css",
+  "tokens.css",
+  "base.css",
+  "fonts/rubik-latin-400-normal.woff2",
+  "fonts/rubik-latin-ext-400-normal.woff2",
+  "fonts/rubik-latin-500-normal.woff2",
+  "fonts/rubik-latin-ext-500-normal.woff2",
+  "fonts/space-mono-latin-400-normal.woff2",
+  "fonts/space-mono-latin-ext-400-normal.woff2",
+];
+
+/** The kit's file for a /kit/ path, or null. */
+export function kitAssetFile(
+  pathname: string,
+  engineRoot: string = getEngineRoot(),
+): string | null {
+  if (!pathname.startsWith("/kit/")) return null;
+  const rel = pathname.slice("/kit/".length);
+  if (!KIT_FILES.includes(rel)) return null;
+  const file = path.join(engineRoot, "packages", "den-ui", "src", rel);
+  return fs.existsSync(file) ? file : null;
+}
+
 /** Serves a UI module or vendored asset; false when `pathname` is neither. */
 export function serveUiAsset(
   res: http.ServerResponse,
@@ -124,6 +153,25 @@ export function serveUiAsset(
 ): boolean {
   if (UI_MODULES.includes(pathname)) {
     serveFile(res, path.join(publicDir, pathname.slice(1)));
+    return true;
+  }
+  if (pathname === "/kit" || pathname.startsWith("/kit/")) {
+    const kit = kitAssetFile(pathname);
+    if (!kit) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+      return true;
+    }
+    // The bytes change only with Den itself.
+    res.writeHead(200, {
+      "Content-Type": kit.endsWith(".css")
+        ? "text/css; charset=utf-8"
+        : "font/woff2",
+      "Cache-Control": kit.endsWith(".css")
+        ? "no-cache"
+        : "public, max-age=86400",
+    });
+    res.end(fs.readFileSync(kit));
     return true;
   }
   if (!pathname.startsWith("/vendor/")) return false;

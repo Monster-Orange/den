@@ -56,6 +56,16 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- Den's pages are built on its UI kit, `den-ui` (`packages/den-ui`, MIT),
+  which ships inside Den. It brings one set of design tokens for colour,
+  type, radius, shadow, spacing, motion and layers, in light and dark.
+  It also self-hosts Rubik and Space Mono (no font is fetched from
+  anywhere), sets one reduced-motion rule, and keeps Japanese words whole
+  when a line breaks. The active theme still decides every colour; the
+  kit's tokens sit underneath it. Den serves the kit at `/kit/`.
+- A theme may set two more colours in each mode, both optional: `info`
+  (neutral notes) and `violet` (cross-group edges). Each is
+  contrast-checked when set; unset, the kit's defaults hold.
 - The bell's badge counts only what needs you: an agent waiting, a
   decision, a mention. An agent finished, an answer, and releases and
   checks fold into one closed "Updates (N)" row in the bell, and opening

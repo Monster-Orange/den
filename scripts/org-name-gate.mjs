@@ -44,7 +44,10 @@ const coords = [
 const publisher = [...coords, run(author), run(scope), run(owner)].filter(
   Boolean,
 );
-const shown = (file) => file.startsWith("src/ui/server/public/");
+// What a page shows: Den's pages, and the UI kit they load (den-ui).
+const shown = (file) =>
+  file.startsWith("src/ui/server/public/") ||
+  file.startsWith("packages/den-ui/src/");
 
 const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf-8" })
   .split("\0")

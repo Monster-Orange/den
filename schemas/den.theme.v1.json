@@ -144,6 +144,14 @@
           "$ref": "#/$defs/hex",
           "description": "Remote (cloud) services."
         },
+        "info": {
+          "$ref": "#/$defs/hex",
+          "description": "Optional. Neutral notes (text, 4.5:1 on every ground). Unset: the UI kit's default."
+        },
+        "violet": {
+          "$ref": "#/$defs/hex",
+          "description": "Optional. Cross-group edges (a mark, 3:1 on every ground). Unset: the UI kit's default."
+        },
         "shadow": {
           "$ref": "#/$defs/cssValue",
           "description": "box-shadow for popovers."

@@ -124,6 +124,32 @@ describe("validateThemeDir", () => {
     expect(r.contrast.every((c) => c.ratio < c.min)).toBe(true);
   });
 
+  it("den-ui UK-1: info and violet are optional colours, checked when a theme sets them", () => {
+    const m = base() as unknown as {
+      modes: Record<string, Record<string, string>>;
+    };
+    m.modes.light.info = "#485a70";
+    m.modes.light.violet = "#6a4bc4";
+    m.modes.dark.info = "#a9bbd1";
+    m.modes.dark.violet = "#a993ff";
+    const ok = validateThemeDir(theme(m));
+    expect(ok.issues).toEqual([]);
+    expect(ok.contrast).toEqual([]);
+    // Info is text (4.5:1); violet a mark (3:1).
+    m.modes.light.info = "#a0b0c0";
+    m.modes.light.violet = "#e0d8ff";
+    const bad = validateThemeDir(theme(m));
+    expect(bad.ok).toBe(false);
+    expect(bad.contrast).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ mode: "light", fg: "info", min: 4.5 }),
+        expect.objectContaining({ mode: "light", fg: "violet", min: 3 }),
+      ]),
+    );
+    // Not set: nothing to check, still valid.
+    expect(validateThemeDir(theme(base())).ok).toBe(true);
+  });
+
   it("requires both modes", () => {
     const m = base() as unknown as { modes: Record<string, unknown> };
     delete m.modes.light;
@@ -274,16 +300,26 @@ describe("validateThemeDir", () => {
 });
 
 describe("the contract", () => {
-  it("every rule names a required token", () => {
+  it("every rule names a required token, or an optional one as foreground (den-ui UK-1)", () => {
     const schema = JSON.parse(
       fs.readFileSync(
         path.join(__dirname, "../../../schemas/den.theme.v1.json"),
         "utf-8",
       ),
-    ) as { $defs: { colors: { required: string[] } } };
+    ) as {
+      $defs: {
+        colors: { required: string[]; properties: Record<string, unknown> };
+      };
+    };
     const required = new Set(schema.$defs.colors.required);
+    const optional = new Set(
+      Object.keys(schema.$defs.colors.properties).filter(
+        (k) => !required.has(k) && k !== "shadow" && k !== "bar",
+      ),
+    );
+    expect([...optional].sort()).toEqual(["info", "violet"]);
     for (const [fg, bg] of CONTRAST_RULES) {
-      expect(required.has(fg)).toBe(true);
+      expect(required.has(fg) || optional.has(fg)).toBe(true);
       expect(required.has(bg)).toBe(true);
     }
   });

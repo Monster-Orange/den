@@ -1,0 +1,29 @@
+/*
+ * den-ui base: what every page using the kit gets. Load after tokens.css.
+ * Zero specificity (:where), so a product's own rules win.
+ */
+
+/* Motion: every animation and transition uses the duration tokens, so
+   one rule stops them all when the person asks for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  :where(:root) {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-cue: 0ms;
+  }
+}
+
+/* Japanese: keep words whole, break a run only where it would overflow,
+   strict kinsoku. Chromium keeps phrases whole (auto-phrase); WebKit has
+   keep-all. break-word, not anywhere: anywhere lets a table column shrink
+   to one character, so a short header breaks inside its word. */
+:where(:lang(ja)) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  line-break: strict;
+}
+@supports (word-break: auto-phrase) {
+  :where(:lang(ja)) {
+    word-break: auto-phrase;
+  }
+}

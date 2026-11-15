@@ -36,6 +36,15 @@ export type ColorToken =
   | "warn"
   | "bad"
   | "remote";
+/**
+ * den-ui UK-1: colours a theme may set; with none, the kit's defaults hold.
+ * info: neutral notes (text); violet: cross-group edges (a mark).
+ */
+export type OptionalColorToken = "info" | "violet";
+export const OPTIONAL_COLOR_TOKENS: readonly OptionalColorToken[] = [
+  "info",
+  "violet",
+];
 
 export interface ThemeManifest {
   schema: typeof THEME_SCHEMA_ID;
@@ -73,7 +82,11 @@ export interface ThemeManifest {
   }[];
   modes: Record<
     ThemeMode,
-    Record<ColorToken, string> & { shadow?: string; bar?: string }
+    Record<ColorToken, string> &
+      Partial<Record<OptionalColorToken, string>> & {
+        shadow?: string;
+        bar?: string;
+      }
   >;
 }
 
@@ -101,7 +114,11 @@ export const GROUNDS: readonly ColorToken[] = [
   "sunken",
 ];
 
-export const CONTRAST_RULES: readonly [ColorToken, ColorToken, number][] = [
+export const CONTRAST_RULES: readonly [
+  ColorToken | OptionalColorToken,
+  ColorToken,
+  number,
+][] = [
   ...TEXT_TOKENS.flatMap((fg) =>
     GROUNDS.map((bg): [ColorToken, ColorToken, number] => [fg, bg, 4.5]),
   ),
@@ -110,6 +127,17 @@ export const CONTRAST_RULES: readonly [ColorToken, ColorToken, number][] = [
   ...(["accent", "border-strong"] as const).flatMap((fg) =>
     GROUNDS.map((bg): [ColorToken, ColorToken, number] => [fg, bg, 3]),
   ),
+  // den-ui UK-1, checked when a theme sets them: info is text, violet a mark.
+  ...GROUNDS.map((bg): [OptionalColorToken, ColorToken, number] => [
+    "info",
+    bg,
+    4.5,
+  ]),
+  ...GROUNDS.map((bg): [OptionalColorToken, ColorToken, number] => [
+    "violet",
+    bg,
+    3,
+  ]),
 ];
 
 /** WCAG relative luminance of #rrggbb. */
@@ -129,7 +157,7 @@ export function contrastRatio(a: string, b: string): number {
 
 export interface ContrastFailure {
   mode: ThemeMode;
-  fg: ColorToken;
+  fg: ColorToken | OptionalColorToken;
   bg: ColorToken;
   ratio: number;
   min: number;
@@ -140,7 +168,10 @@ export function checkContrast(theme: ThemeManifest): ContrastFailure[] {
   for (const mode of ["dark", "light"] as const) {
     const t = theme.modes[mode];
     for (const [fg, bg, min] of CONTRAST_RULES) {
-      const ratio = contrastRatio(t[fg], t[bg]);
+      const f = t[fg];
+      // An optional colour the theme doesn't set: the kit's, not checked here.
+      if (f === undefined) continue;
+      const ratio = contrastRatio(f, t[bg]);
       // Unrounded, as the den-themes validator: 4.49 fails 4.5.
       if (ratio < min)
         out.push({ mode, fg, bg, ratio: Math.floor(ratio * 100) / 100, min });

@@ -1,0 +1,140 @@
+/*
+ * den-ui tokens (UK-1). The kit's defaults: a theme laid on top overrides
+ * colours (both modes), shadow, bar, type, radius, radius-button, density
+ * and fonts; never spacing, motion or layers. Every rule here has zero
+ * specificity (:where), so any theme rule wins.
+ *
+ * Mode: <html data-mode="light|dark">. With none set, light, or dark when
+ * the system asks for it.
+ */
+
+/* Type, shape, space, depth, motion, layers, targets: one set, both modes. */
+:where(:root) {
+  --sans:
+    "Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+    "Noto Sans JP", sans-serif;
+  --mono: "Space Mono", ui-monospace, Menlo, Consolas, monospace;
+  --display: var(--sans);
+  --ja:
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  --fs-xs: 12px;
+  --fs-s: 13px;
+  --fs-m: 14px;
+  --fs-l: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --lh: 1.45;
+
+  --radius: 6px;
+  --radius-button: 0.2rem;
+  --r: var(--radius);
+  --r-btn: var(--radius-button);
+
+  --density: 1;
+  --space-1: calc(4px * var(--density));
+  --space-2: calc(8px * var(--density));
+  --space-3: calc(12px * var(--density));
+  --space-4: calc(16px * var(--density));
+  --space-5: calc(24px * var(--density));
+  --space-6: calc(32px * var(--density));
+
+  --shadow-menu: var(--shadow);
+  --shadow-dialog: var(--shadow);
+  --shadow-bar: 0 6px 18px color-mix(in srgb, var(--text) 14%, transparent);
+
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-cue: 400ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  --z-menu: 10;
+  --z-bar: 30;
+  --z-drawer: 35;
+  --z-dialog: 40;
+  --z-palette: 45;
+  --z-toast: 50;
+
+  --tap: 44px;
+  --tap-min: 36px;
+}
+
+/* Light: the default. */
+:where(:root),
+:where(:root[data-mode="light"]) {
+  color-scheme: light;
+  --bg: #fffcfc;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --sunken: #f4efee;
+  --text: hsl(220 6% 10%);
+  --muted: hsl(220 5% 34%);
+  --faint: #62656a;
+  --border: hsl(20 12% 86%);
+  --border-strong: #97867f;
+  --accent: #e16500;
+  --accent-text: #a34a00;
+  --accent-fill: #c23f00;
+  --on-accent: #ffffff;
+  --ok: #11692f;
+  --warn: #865700;
+  --bad: #af0900;
+  --info: hsl(213 22% 36%);
+  /* #0e7280 failed the pill rule over --sunken (4.20:1); 4.59:1 now. */
+  --remote: #0d6b79;
+  --violet: #6a4bc4;
+  --shadow: 0 8px 28px rgb(0 0 0 / 0.14);
+  --bar: linear-gradient(90deg, #ff7300, #af0900);
+}
+
+/* Dark: asked for, or the system's choice when no mode is set. */
+:where(:root[data-mode="dark"]) {
+  color-scheme: dark;
+  --bg: hsl(220 6% 10%);
+  --surface: hsl(220 6% 8.5%);
+  --raised: #1f2023;
+  --sunken: hsl(220 6% 7%);
+  --text: #fffcfc;
+  --muted: #c4c4c4;
+  --faint: #a3a3a3;
+  --border: hsl(220 5% 20%);
+  --border-strong: #676a71;
+  --accent: #ff7300;
+  --accent-text: #ff8f33;
+  --accent-fill: #ff7300;
+  --on-accent: hsl(220 6% 10%);
+  --ok: #4cc777;
+  --warn: #e3a72f;
+  --bad: #ff5a4f;
+  --info: hsl(213 30% 74%);
+  --remote: #4fd1db;
+  --violet: #a993ff;
+  --shadow: 0 12px 30px rgb(0 0 0 / 0.5);
+  --bar: linear-gradient(90deg, #ff7300, #af0900);
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-mode])) {
+    color-scheme: dark;
+    --bg: hsl(220 6% 10%);
+    --surface: hsl(220 6% 8.5%);
+    --raised: #1f2023;
+    --sunken: hsl(220 6% 7%);
+    --text: #fffcfc;
+    --muted: #c4c4c4;
+    --faint: #a3a3a3;
+    --border: hsl(220 5% 20%);
+    --border-strong: #676a71;
+    --accent: #ff7300;
+    --accent-text: #ff8f33;
+    --accent-fill: #ff7300;
+    --on-accent: hsl(220 6% 10%);
+    --ok: #4cc777;
+    --warn: #e3a72f;
+    --bad: #ff5a4f;
+    --info: hsl(213 30% 74%);
+    --remote: #4fd1db;
+    --violet: #a993ff;
+    --shadow: 0 12px 30px rgb(0 0 0 / 0.5);
+    --bar: linear-gradient(90deg, #ff7300, #af0900);
+  }
+}

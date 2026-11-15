@@ -272,6 +272,22 @@ describe("renderThemeCss (den)", () => {
     expect(COLOR_TOKENS).toHaveLength(17);
   });
 
+  it("den-ui UK-1: writes info and violet only when the theme sets them", () => {
+    expect(css).not.toMatch(/--info:|--violet:/);
+    const den = listThemes(roots).find((t) => t.id === "den")!.theme!;
+    const withThem = structuredClone(den);
+    Object.assign(withThem.modes.light, { info: "#485a70", violet: "#6a4bc4" });
+    Object.assign(withThem.modes.dark, { info: "#a9bbd1" });
+    const out = renderThemeCss("den", withThem);
+    const lightBlock = out.match(/:root\[data-mode="light"\] \{([^}]*)\}/)![1];
+    const darkBlock = out.match(/:root\[data-mode="dark"\] \{([^}]*)\}/)![1];
+    expect(lightBlock).toContain("--info: #485a70;");
+    expect(lightBlock).toContain("--violet: #6a4bc4;");
+    expect(darkBlock).toContain("--info: #a9bbd1;");
+    // Not set in dark: the kit's own default holds.
+    expect(darkBlock).not.toContain("--violet:");
+  });
+
   it("applies the default mode with no data-mode, and sets type and shape", () => {
     expect(css).toContain(':root,\n:root[data-mode="dark"] {');
     for (const v of [

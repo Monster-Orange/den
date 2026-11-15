@@ -97,6 +97,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/theme-favicon",
     "/theme-favicon/*",
     "/vendor/*",
+    // den-ui (UK-1): the kit's tokens, base and fonts.
+    "/kit/*",
     "/report",
     "/report/*",
     "/reports/security/*",
