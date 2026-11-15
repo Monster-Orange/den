@@ -91,6 +91,22 @@ const start = (p: Page) =>
     const shell = (
       window as unknown as { denShell: { busyAction: Fn; api: Fn } }
     ).denShell;
+    // On the page's clock (a loaded runner's round trips aren't the
+    // page's): when the action started, and when its pop-up first showed.
+    const w = window as unknown as { bzT0: number; bzShownAt: number | null };
+    w.bzShownAt = null;
+    new MutationObserver((_r, mo) => {
+      if (document.querySelector("dialog.bz-dlg[open]")) {
+        w.bzShownAt = performance.now();
+        mo.disconnect();
+      }
+    }).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["open"],
+    });
+    w.bzT0 = performance.now();
     (window as unknown as { bzDone: unknown }).bzDone = shell.busyAction(
       "link",
       (headers: Record<string, string>) =>
@@ -106,14 +122,19 @@ describe("BUSY-1: the working pop-up", () => {
     if (skip()) return;
     const p = await page();
     await stub(p, [[2000, 200]]);
-    const t0 = Date.now();
     await start(p);
     await expect(p.locator("#bz-btn").isDisabled()).resolves.toBe(true);
     await expect(p.locator("#bz-btn").getAttribute("aria-busy")).resolves.toBe(
       "true",
     );
     await dlg(p).waitFor({ state: "visible", timeout: 2000 });
-    expect(Date.now() - t0).toBeLessThan(400 + 250);
+    // By 400 ms, on the page's clock (the kit's wait is 300).
+    const shownIn = await p.evaluate(() => {
+      const w = window as unknown as { bzT0: number; bzShownAt: number };
+      return w.bzShownAt - w.bzT0;
+    });
+    expect(shownIn).toBeGreaterThan(0);
+    expect(shownIn).toBeLessThan(400);
     await expect(dlg(p).locator("h2").textContent()).resolves.toContain(
       "Linking projects…",
     );
