@@ -65,7 +65,12 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    browser = await pw[engine].launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    browser = process.env.DEN_PW_WS
+      ? await pw[engine].connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -835,7 +840,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     const p = await ctx.newPage();
     p.on("pageerror", (e) => errors.push(`issue 170: ${e.message}`));
     // Every tag the bar can carry, on every agent.
-    await p.route(/\/api\/sessions(\?|$)/, async (r) => {
+    await ctx.route(/\/api\/sessions(\?|$)/, async (r) => {
       const res = await r.fetch();
       const body = (await res.json()) as {
         sessions: Record<string, unknown>[];
@@ -856,8 +861,8 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
     await termsUp(p, 1);
     await p.waitForSelector("#agr .pane:not([hidden]) .bar2 [data-tags]");
-    const look = () =>
-      p.evaluate(() => {
+    const look = (on: Page = p) =>
+      on.evaluate(() => {
         const box = (e: Element | null) => {
           const r = e!.getBoundingClientRect();
           return { l: r.left, r: r.right, t: r.top, b: r.bottom };
@@ -886,8 +891,8 @@ describe("the Agents tab's layouts (AG-4b)", () => {
           ),
         };
       });
-    const check = async (when: string) => {
-      const m = await look();
+    const check = async (when: string, on: Page = p) => {
+      const m = await look(on);
       process.stdout.write(
         `issue 170 at 390x844 ${when}: To ${m.to.t}-${m.to.b}, dock top ${m.dock.t}, name ${m.name.l}-${m.name.r}, tags over it ${m.hit}\n`,
       );
@@ -913,18 +918,27 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await check("scrolled");
     // The dock open (half the window at most): scrolled to the bottom,
     // the pane still ends above it.
+    // Opening it saves the choice; the next page to load starts with it.
+    const saved = p.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/settings") && r.request().method() === "POST",
+    );
     await p.click('.den-dock [data-act="dock"]');
     await p.waitForSelector("#den-dock-out");
+    await saved;
     await toBottom();
     await check("dock open, scrolled");
     // The dock left open (a saved choice) and the page loaded again, not
     // scrolled: what a person sees first (Lair's gate on 0.4.49-dev.1).
-    await p.reload();
-    await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
-    await termsUp(p, 1);
-    await p.waitForSelector("#den-dock-out");
-    await p.waitForSelector("#agr .pane:not([hidden]) .bar2 [data-tags]");
-    await check("dock open, as loaded");
+    // A second tab, as a person opening Agents again.
+    const p2 = await ctx.newPage();
+    p2.on("pageerror", (e) => errors.push(`issue 170: ${e.message}`));
+    await p2.goto(`${s!.base}/agents?layout=tabs&open=${all()}`);
+    await p2.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+    await termsUp(p2, 1);
+    await p2.waitForSelector("#den-dock-out");
+    await p2.waitForSelector("#agr .pane:not([hidden]) .bar2 [data-tags]");
+    await check("dock open, as loaded", p2);
     await p.click('.den-dock [data-act="dock"]');
     await shot(p, "issue-170-390");
     await ctx.close();
