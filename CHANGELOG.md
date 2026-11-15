@@ -4,6 +4,17 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.48] - unreleased
+
+### Fixed
+
+- Agents were shown as missing Hub's tools, with a restart offered, when
+  they had them. Den compared the address of its Hub server as text, so
+  an agent given `localhost` looked out of date once Den gave out
+  `127.0.0.1` for the same port. This machine's own names (`localhost`,
+  `127.0.0.1`, `::1`) on the same scheme, port and path now count as one
+  address.
+
 ## [0.4.47] - 2026-11-14
 
 ### Fixed

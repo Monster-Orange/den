@@ -132,3 +132,40 @@ export function proseIn(line) {
   }
   return out;
 }
+
+/**
+ * 0.4.48: the lines a `git diff -U0` only moved: removed and added again in
+ * the same file, whitespace aside (a block re-indented under a new wrapper).
+ * Keys are `<file>\0<trimmed line>`. Their strings were read when they were
+ * written; the gate reads only what is new.
+ */
+export function movedLines(diff) {
+  const removed = new Map();
+  const added = new Map();
+  let from = "";
+  let to = "";
+  const bump = (m, k) => m.set(k, (m.get(k) ?? 0) + 1);
+  for (const raw of diff.split("\n")) {
+    if (raw.startsWith("--- ")) {
+      from = raw.slice(6);
+      continue;
+    }
+    if (raw.startsWith("+++ ")) {
+      to = raw.slice(6);
+      continue;
+    }
+    if (raw.startsWith("diff --git ")) {
+      const m = / a\/(.+) b\/(.+)$/.exec(raw);
+      from = m?.[1] ?? "";
+      to = m?.[2] ?? "";
+      continue;
+    }
+    const line = raw.slice(1).trim();
+    if (!line) continue;
+    if (raw.startsWith("-")) bump(removed, `${from || to}\0${line}`);
+    else if (raw.startsWith("+")) bump(added, `${to}\0${line}`);
+  }
+  const moved = new Set();
+  for (const [k, n] of added) if ((removed.get(k) ?? 0) >= n) moved.add(k);
+  return moved;
+}

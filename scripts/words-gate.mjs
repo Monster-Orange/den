@@ -16,7 +16,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-import { neverShownIn, proseIn } from "./words.js";
+import { movedLines, neverShownIn, proseIn } from "./words.js";
 
 const git = (...args) =>
   execFileSync("git", args, {
@@ -114,6 +114,8 @@ function inStyle(f, at) {
   return styleLines.get(f).has(at);
 }
 
+// A block re-indented under a new wrapper is not new text (0.4.48).
+const moved = movedLines(diff);
 let file = "";
 let lineNo = 0;
 let hits = 0;
@@ -132,6 +134,7 @@ for (const raw of diff.split("\n")) {
   const at = lineNo++;
   if (/\.test\.|\.d\.ts$/.test(file)) continue;
   if (/words-ok:/.test(line)) continue;
+  if (moved.has(`${file}\0${line.trim()}`)) continue;
   if (file.endsWith(".html") && inStyle(file, at)) continue;
   const strings =
     file.endsWith(".html") && !inScript(file, at)

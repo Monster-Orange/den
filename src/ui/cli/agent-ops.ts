@@ -1145,6 +1145,37 @@ export function hubNow(
 export const defaultHubNow = (fresh = false): Promise<string | null> =>
   hubNow({ hub: defaultHub, denBase: defaultDenBase }, fresh);
 
+/** This machine's own names: one server whichever an agent was given. */
+const LOOPBACK_HOST = /^(localhost|127(\.\d{1,3}){3}|::1)$/;
+
+/**
+ * Two MCP server addresses that reach the same server: the same text, or
+ * this machine spelled two ways (localhost, 127.0.0.1, ::1) with the same
+ * scheme, port and path (one trailing slash aside). An agent launched with
+ * one, when Den now hands out the other, is in line (Hub tools loaded).
+ */
+export function sameMcpUrl(had: unknown, now: string): boolean {
+  if (had === now) return true;
+  if (typeof had !== "string") return false;
+  let a: URL, b: URL;
+  try {
+    a = new URL(had);
+    b = new URL(now);
+  } catch {
+    return false;
+  }
+  const host = (u: URL) => u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const loop = (u: URL) => LOOPBACK_HOST.test(host(u));
+  const trail = (p: string) => p.replace(/\/+$/, "") || "/";
+  return (
+    (host(a) === host(b) || (loop(a) && loop(b))) &&
+    a.protocol === b.protocol &&
+    a.port === b.port &&
+    trail(a.pathname) === trail(b.pathname) &&
+    a.search === b.search
+  );
+}
+
 /**
  * What agent `id`'s MCP config (as it launched) lacks or has extra against
  * Hub now (`hubUrl`, null: none). Undefined: in line, or no config file
@@ -1168,7 +1199,7 @@ export function mcpStaleOf(
   const had = servers[HUB_SERVER];
   const adds: string[] = [];
   const drops: string[] = [];
-  if (hubUrl && (!had || had.url !== hubUrl)) adds.push(HUB_SERVER);
+  if (hubUrl && (!had || !sameMcpUrl(had.url, hubUrl))) adds.push(HUB_SERVER);
   if (!hubUrl && had) drops.push(HUB_SERVER);
   return adds.length || drops.length ? { adds, drops } : undefined;
 }

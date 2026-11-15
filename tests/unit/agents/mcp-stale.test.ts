@@ -104,6 +104,40 @@ describe("D44: an agent's MCP servers against Hub now", () => {
     expect(mcpStaleOf(files(null), HUB_MCP)).toBe(undefined);
   });
 
+  it("the same loopback address spelled another way (localhost, 127.0.0.1, ::1): in line", () => {
+    const now = "http://127.0.0.1:4100/hub/mcp";
+    for (const had of [
+      "http://localhost:4100/hub/mcp",
+      "http://LOCALHOST:4100/hub/mcp",
+      "http://[::1]:4100/hub/mcp",
+      "http://127.0.0.1:4100/hub/mcp/",
+    ])
+      expect({
+        had,
+        st: mcpStaleOf(files({ ...den, hub: { url: had } }), now),
+      }).toEqual({ had, st: undefined });
+    // Another port, path or scheme on loopback is another server.
+    for (const had of [
+      "http://localhost:4101/hub/mcp",
+      "http://localhost:4100/mcp",
+      "https://localhost:4100/hub/mcp",
+    ])
+      expect({
+        had,
+        st: mcpStaleOf(files({ ...den, hub: { url: had } }), now),
+      }).toEqual({
+        had,
+        st: { adds: [HUB_SERVER], drops: [] },
+      });
+    // A name that isn't loopback is never taken for it.
+    expect(
+      mcpStaleOf(
+        files({ ...den, hub: { url: "http://den.example.test:4100/hub/mcp" } }),
+        now,
+      ),
+    ).toEqual({ adds: [HUB_SERVER], drops: [] });
+  });
+
   it("asks for Hub's config once a while (the token read is slow); fresh asks again", async () => {
     let calls = 0;
     const d = {

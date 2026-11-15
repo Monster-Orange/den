@@ -7,7 +7,12 @@
 import { execFileSync } from "node:child_process";
 
 import { describe, expect, it } from "@jest/globals";
-import { languageOf, neverShownIn, proseIn } from "../../../scripts/words.js";
+import {
+  languageOf,
+  movedLines,
+  neverShownIn,
+  proseIn,
+} from "../../../scripts/words.js";
 
 describe("the words gate's rules", () => {
   it.each([
@@ -102,6 +107,40 @@ describe("a tag's attributes (dev.6)", () => {
  * remove one; raise it only with the exemption it pays for.
  */
 const WORDS_OK_MAX = 67;
+
+describe("lines only moved or re-indented (0.4.48)", () => {
+  // A diff where one string moved in a file (re-indented under a new
+  // block) and another is new. Only the new one is read.
+  const diff = [
+    "diff --git a/src/a.ts b/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -10,2 +10,4 @@",
+    "-        hints: [`Attach: ${cli} sessions attach ${n}`],",
+    "+          hints: [`Attach: ${cli} sessions attach ${n}`],",
+    '+          note: "a new string with the session word",',
+    "diff --git a/src/b.ts b/src/b.ts",
+    "+++ b/src/b.ts",
+    "@@ -1,0 +1,1 @@",
+    "+        hints: [`Attach: ${cli} sessions attach ${n}`],",
+  ].join("\n");
+
+  it("a line removed and added again in the same file (whitespace aside) is not new", () => {
+    const moved = movedLines(diff);
+    expect(
+      moved.has("src/a.ts\0hints: [`Attach: ${cli} sessions attach ${n}`],"),
+    ).toBe(true);
+  });
+
+  it("a changed line, or the same text in another file, is new", () => {
+    const moved = movedLines(diff);
+    expect(
+      moved.has('src/a.ts\0note: "a new string with the session word",'),
+    ).toBe(false);
+    expect(
+      moved.has("src/b.ts\0hints: [`Attach: ${cli} sessions attach ${n}`],"),
+    ).toBe(false);
+  });
+});
 
 describe("the words-ok ratchet", () => {
   it(`src/ has at most ${WORDS_OK_MAX} words-ok markers`, () => {
