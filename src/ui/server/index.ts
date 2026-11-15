@@ -973,7 +973,7 @@ import {
   checkPersonaCreate,
   checkPersonaUpdate,
   createAgent,
-  createPersona,
+  runPersonaCreate,
   runPersonaUpdate,
   hubUpstream,
   policyResolver,
@@ -2322,12 +2322,12 @@ function approvalDeps(): ApprovalDeps {
     reposRoot: () => getReposRoot(),
     // SRV-P2: an agent asks to add or change a persona.
     personas: {
-      checkCreate: (a) => checkPersonaCreate(agentWebDeps(), a),
+      checkCreate: (a, who) => checkPersonaCreate(agentWebDeps(), a, who),
       create: async (a) => ({
         ok: true,
-        persona: createPersona(agentWebDeps(), a),
+        persona: await runPersonaCreate(agentWebDeps(), a),
       }),
-      checkUpdate: (a) => checkPersonaUpdate(agentWebDeps(), a),
+      checkUpdate: (a, who) => checkPersonaUpdate(agentWebDeps(), a, who),
       update: async (a) => ({
         ok: true,
         persona: await runPersonaUpdate(agentWebDeps(), a),

@@ -3591,7 +3591,7 @@ async function loadDetail() {
   const p = curPersona();
   if (!p) return;
   try {
-    const d = await personaDetail(p.id);
+    const d = await personaDetail(p.id, sd.data?.workspace);
     if (curPersona()?.id !== d.id) return;
     sd.detail = d;
     paintDetails();
@@ -4239,7 +4239,7 @@ async function editFromStart(kind) {
   let src = null;
   if (kind !== "new" && p) {
     try {
-      src = await personaDetail(p.id);
+      src = await personaDetail(p.id, sd.data?.workspace);
     } catch (err) {
       return void window.denShell?.errorToast?.(err);
     }

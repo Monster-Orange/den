@@ -1057,6 +1057,10 @@
     "ap.do.den_restart": "Reiniciar Den ({reason})",
     "ap.do.persona_create": "Añadir la persona {name} ({id})",
     "ap.do.persona_update": "Cambiar la persona {id}: {fields}",
+    "ap.do.persona_create.project":
+      "Añadir la persona {name} ({id}) al proyecto {where}",
+    "ap.do.persona_update.project":
+      "Cambiar la persona {id} en el proyecto {where}: {fields}",
     "ap.do.repo_clone": "Clonar {source} en {path}",
     "ap.do.agent_create":
       "Iniciar el agente {name} ({persona}) en {where}, modo {mode}",
@@ -1120,12 +1124,15 @@
     "pe.src.distribution": "distribución",
     "pe.src.local": "mío",
     "pe.src.hub": "hub",
+    "pe.src.project": "proyecto",
     "pe.src.builtin.p":
       "Viene con Den. Solo lectura aquí; duplícalo para personalizarlo.",
     "pe.src.distribution.p":
       "Viene con tu distribución. Solo lectura aquí; duplícalo para personalizarlo.",
     "pe.src.local.p": "Tuyo, en esta máquina.",
     "pe.src.hub.p": "Compartido a través de Den Hub. Solo lectura aquí.",
+    "pe.src.project.p":
+      "Del repositorio de este proyecto (.den/personas). Solo lectura aquí; cámbiala en el repositorio.",
     "pe.new": "Nueva persona",
     "pe.dupT": "Duplicar persona",
     "pe.edit": "Editar persona",

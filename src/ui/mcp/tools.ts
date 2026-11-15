@@ -1346,11 +1346,23 @@ function personaShape(update: boolean) {
       .array(z.string())
       .optional()
       .describe("Commands it may run without asking"),
+    project: z
+      .string()
+      .optional()
+      .describe(
+        "A project to keep it in, as a file in its repo (.den/personas); a project's agent: always its own",
+      ),
+    repo: z
+      .string()
+      .optional()
+      .describe("Which of the project's repos (default: its first)"),
     note: noteArg,
   };
 }
 
 const PERSONA_FIELDS = [
+  "project",
+  "repo",
   "displayName",
   "role",
   "category",
@@ -1581,7 +1593,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "persona_create",
     title: "Add a persona",
     description:
-      "Add a persona (a reusable role an agent starts from), as the Personas page's New persona does. The person's Allow shows every field and the instructions in full. personas lists the roles, categories and runtimes it may name. It gets an id from its name." +
+      "Add a persona (a reusable role an agent starts from), as the Personas page's New persona does. The person's Allow shows every field and the instructions in full. personas lists the roles, categories and runtimes it may name. It gets an id from its name. A project's agent adds it to its project: a file in the project's repo (.den/personas) for the person to commit; Den's own agent adds this machine's own, or a project's when it names `project`." +
       HELD,
     action: true,
     shape: personaShape(false),
@@ -1599,7 +1611,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "persona_update",
     title: "Change a persona",
     description:
-      "Change a persona you or the person added (`id`), giving only the fields that change. A built-in persona, or one the distribution ships, can't change: add a copy with persona_create." +
+      "Change a persona (`id`), giving only the fields that change. A project's agent changes its project's personas (its repos' .den/personas files); Den's own agent changes this machine's own, or a project's when it names `project`. A built-in persona, or one the distribution ships, can't change: add a copy with persona_create." +
       HELD,
     action: true,
     shape: personaShape(true),

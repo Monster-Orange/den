@@ -26,6 +26,13 @@ import type { PermissionIntent } from "./permissions.js";
 export interface AgentRecord {
   id: string;
   persona: string;
+  /**
+   * PSN-3 (0.4.48): where its persona came from when it last started
+   * (built-in, distribution, project, local, hub), and the sha256 of the
+   * persona's file then: a newer version (PSN-4) is told from it.
+   */
+  personaOrigin?: string;
+  personaHash?: string;
   runtime: string;
   model?: string;
   /**

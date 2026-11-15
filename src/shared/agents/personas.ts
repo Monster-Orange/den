@@ -58,10 +58,16 @@ import {
 } from "./guardrails.js";
 
 /** Where a persona came from (AG-10.3). */
-export type PersonaOrigin = "builtin" | "distribution" | "local" | "hub";
+export type PersonaOrigin =
+  | "builtin"
+  | "distribution"
+  | "project"
+  | "local"
+  | "hub";
 export const PERSONA_ORIGINS: readonly PersonaOrigin[] = [
   "builtin",
   "distribution",
+  "project",
   "local",
   "hub",
 ];
@@ -350,6 +356,13 @@ export function loadPersonas(
    * front matter says otherwise.
    */
   localDir?: string,
+  /**
+   * PSN-1 (0.4.48): a project's personas, each of its repos'
+   * `.den/personas` as checked out, in the project's repo order: read
+   * after the packs and before the local ones, the first repo's winning.
+   * They get the default pack's guardrails, as local ones do.
+   */
+  projectDirs: readonly string[] = [],
 ): Map<string, Persona> {
   const all = new Map<string, Persona>();
   const packs: [string, Guardrails, PersonaOrigin][] = [
@@ -364,6 +377,9 @@ export function loadPersonas(
       "distribution",
     ]),
   ];
+  for (const dir of [...projectDirs].reverse())
+    if (fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
+      packs.push([dir, { ...DEFAULT_PACK_GUARDRAILS }, "project"]);
   if (
     localDir &&
     fs.statSync(localDir, { throwIfNoEntry: false })?.isDirectory()

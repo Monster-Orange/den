@@ -27,9 +27,17 @@ config and manifest changes a distribution must make to move to it under
   the server agent for any. The Allow names who asked, the persona, the
   project and repo, and the mode, which is the project's or stricter.
   On Allow Den starts it as `agents start` does.
-- Agents can ask to add a persona (`persona_create`) or change one of
-  the local personas (`persona_update`), held for the person's Allow.
-  The Allow shows every field and the instructions in full.
+- A project's personas live in its repos, in `.den/personas/<id>.md`,
+  read from what each repo has checked out. Only that project's agents
+  see them. Per id: yours, then the project's, then the distribution's,
+  then Den's.
+- An agent's record keeps the persona it started with: where it came
+  from and a hash of its file (`personaOrigin`, `personaHash`).
+- Agents can ask to add a persona (`persona_create`) or change one
+  (`persona_update`), held for the person's Allow, which shows the file
+  it writes and every field. A project's agent writes its project's
+  personas (a file in its repo, to commit); Den's own agent or a person
+  writes this machine's own.
 - The server agent can ask to clone a repo (`repo_clone`: GitHub
   `owner/name` or a git URL) into the repos folder, held for the
   person's Allow. A GitHub repo uses the person's gh login; any other

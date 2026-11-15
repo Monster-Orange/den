@@ -1816,6 +1816,10 @@
     "ap.do.den_restart": "Restart Den ({reason})",
     "ap.do.persona_create": "Add the persona {name} ({id})",
     "ap.do.persona_update": "Change the persona {id}: {fields}",
+    "ap.do.persona_create.project":
+      "Add the persona {name} ({id}) to project {where}",
+    "ap.do.persona_update.project":
+      "Change the persona {id} in project {where}: {fields}",
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.agent_create":
       "Start agent {name} ({persona}) in {where}, mode {mode}",
@@ -1878,12 +1882,15 @@
     "pe.src.distribution": "distribution",
     "pe.src.local": "mine",
     "pe.src.hub": "hub",
+    "pe.src.project": "project",
     "pe.src.builtin.p":
       "Ships with Den. Read-only here; duplicate it to customize.",
     "pe.src.distribution.p":
       "Ships with your distribution. Read-only here; duplicate it to customize.",
     "pe.src.local.p": "Yours, on this machine.",
     "pe.src.hub.p": "Shared through Den Hub. Read-only here.",
+    "pe.src.project.p":
+      "From this project's repo (.den/personas). Read-only here; change it in the repo.",
     "pe.new": "New persona",
     "pe.dupT": "Duplicate persona",
     "pe.edit": "Edit persona",
@@ -6040,7 +6047,13 @@
     var key =
       "ap.do." +
       a.action +
-      (p.isNew ? ".new" : p.activates ? ".activates" : "");
+      (p.isNew
+        ? ".new"
+        : p.activates
+          ? ".activates"
+          : p.inProject
+            ? ".project"
+            : "");
     var s = t(key, p);
     if (s !== key) return s;
     s = String(a.summary || a.action);

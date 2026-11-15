@@ -348,7 +348,8 @@ dialog.pe-dlg::backdrop {
 /* On the chosen row's tint, faint text falls under 4.5:1 (light): the
    role and a plain tag read in muted there. */
 .pr[aria-checked="true"] .pn .role,
-.pr[aria-checked="true"] .tagx:not(.warn, .src-local, .src-distribution, .src-hub) {
+.pr[aria-checked="true"]
+  .tagx:not(.warn, .src-local, .src-distribution, .src-project, .src-hub) {
   color: var(--muted);
 }
 .pr .pd {
@@ -391,6 +392,10 @@ dialog.pe-dlg::backdrop {
 .tagx.src-distribution {
   color: var(--muted);
   border-style: solid;
+}
+.tagx.src-project {
+  color: var(--text);
+  border-style: dashed;
 }
 .tagx.src-hub {
   color: var(--remote, var(--accent-text));

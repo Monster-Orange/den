@@ -267,6 +267,34 @@ export function writeLocalPersona(
   return file;
 }
 
+/**
+ * PSN-1: project persona `id`'s file in persona folder `dir` (a repo's
+ * `.den/personas`).
+ */
+export function projectPersonaFile(dir: string, id: string): string {
+  if (!PERSONA_ID_RE.test(id))
+    throw new PersonaInputError(`"${shown(id)}" is not a persona id`);
+  return path.join(dir, `${id}.md`);
+}
+
+/**
+ * PSN-1: write project persona `id` in `dir` (a repo's .den/personas),
+ * atomically, readable by the project's people: it is the repo's to
+ * commit. Returns its file.
+ */
+export function writeProjectPersona(
+  dir: string,
+  id: string,
+  input: PersonaInput,
+): string {
+  const file = projectPersonaFile(dir, id);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, personaMarkdown(id, input), { mode: 0o644 });
+  fs.renameSync(tmp, file);
+  return file;
+}
+
 /** Remove local persona `id`; false when there was none. Only that file. */
 export function deleteLocalPersona(stateDir: string, id: string): boolean {
   const file = fileOf(stateDir, id);

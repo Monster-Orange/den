@@ -648,13 +648,13 @@ export async function handleAgentRoutes(
       const runtimes = await listRuntimes(d, ws);
       sendJson(res, {
         ...(pathname === "/api/personas"
-          ? { personas: listPersonas(d), ...registries(d) }
+          ? { personas: listPersonas(d, ws), ...registries(d) }
           : {}),
         // AG-10.10: the id a new start of each persona takes here.
         ...(pathname === "/api/personas" && ws
           ? {
               startsAs: Object.fromEntries(
-                listPersonas(d).flatMap((p) => {
+                listPersonas(d, ws).flatMap((p) => {
                   try {
                     return [[p.id, defaultId(d.stateDir(), p.id, ws)]];
                   } catch {
@@ -1495,7 +1495,9 @@ async function personaRoute(
   const method = req.method ?? "GET";
   if (id !== null && (method === "GET" || method === "HEAD")) {
     try {
-      sendJson(res, { persona: personaDetail(d, id) });
+      sendJson(res, {
+        persona: personaDetail(d, id, queryWorkspace(req, d)),
+      });
     } catch (e) {
       sendError(res, e);
     }

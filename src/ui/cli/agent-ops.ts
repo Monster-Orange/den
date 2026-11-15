@@ -79,6 +79,7 @@ import {
   splitCleared,
   writeClearedAt,
 } from "../../shared/agents/helpers-cleared.js";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -129,6 +130,8 @@ import {
   localPersonasDir,
   newPersonaId,
   PERSONA_KEYS,
+  projectPersonaFile,
+  writeProjectPersona,
   PersonaInputError,
   writeLocalPersona,
   type PersonaInput,
@@ -1111,20 +1114,30 @@ function addRestartResume(
 export function restartResolver(
   d: AgentsResolved,
 ): (rec: AgentRecord) => boolean {
-  let all: Map<string, Persona> | undefined;
-  try {
-    all = personas(d, agentsConfig(d));
-  } catch {
-    all = undefined;
-  }
-  return (rec) => resumesOnRestart(rec, personaOfRecord(rec, all));
+  const find = personaLookup(d);
+  return (rec) => resumesOnRestart(rec, find(rec));
 }
 
-function personaOfRecord(
-  rec: AgentRecord,
-  all: Map<string, Persona> | undefined,
-): Persona | undefined {
-  return isServerScope(rec.workspace) ? serverPersona() : all?.get(rec.persona);
+/**
+ * An agent record's persona, read once per project (PSN-1: a project's
+ * own personas are its agents' only); undefined when it is gone or the
+ * personas can't be read.
+ */
+export function personaLookup(
+  d: AgentsResolved,
+): (rec: AgentRecord) => Persona | undefined {
+  const byWs = new Map<string, Map<string, Persona> | null>();
+  return (rec) => {
+    if (isServerScope(rec.workspace)) return serverPersona();
+    if (!byWs.has(rec.workspace)) {
+      try {
+        byWs.set(rec.workspace, personas(d, agentsConfig(d), rec.workspace));
+      } catch {
+        byWs.set(rec.workspace, null);
+      }
+    }
+    return byWs.get(rec.workspace)?.get(rec.persona);
+  };
 }
 
 /**
@@ -1618,6 +1631,34 @@ function agentsConfig(d: AgentsResolved): ResolvedAgentsConfig {
   }
 }
 
+/**
+ * PSN-1: project `ws`'s persona folders, `.den/personas` in each of its
+ * repos as checked out, in its repo order. None outside a project.
+ */
+export function projectPersonaDirs(
+  d: AgentsResolved,
+  ws: string | undefined,
+): string[] {
+  if (!ws || isServerScope(ws)) return [];
+  try {
+    if (!d.workspaceExists(ws)) return [];
+  } catch {
+    return [];
+  }
+  return [...workspaceRepoFolders(d, ws).values()].map((dir) =>
+    path.join(dir, ".den", "personas"),
+  );
+}
+
+/** PSN-3: the sha256 of persona `p`'s file, or undefined if unreadable. */
+export function personaHashOf(p: Persona): string | undefined {
+  try {
+    return createHash("sha256").update(fs.readFileSync(p.source)).digest("hex");
+  } catch {
+    return undefined;
+  }
+}
+
 /** Every persona; a bad pack or persona file is a refusal naming it. */
 function personas(
   d: AgentsResolved,
@@ -1631,6 +1672,7 @@ function personas(
       undefined,
       { defaultPack: cfg.defaultPackGuardrails, packs: cfg.packGuardrails },
       localPersonasDir(d.stateDir()),
+      projectPersonaDirs(d, ws),
     );
     if (isServerScope(ws)) all.set(SERVER_PERSONA_ID, serverPersona());
     return all;
@@ -1681,7 +1723,8 @@ export function policyResolver(
       }
     }
     if (!cfg) return undefined;
-    const key = isServerScope(rec.workspace) ? rec.workspace : "";
+    // PSN-1: per project, its own personas among them.
+    const key = rec.workspace;
     if (!byWs.has(key)) {
       try {
         byWs.set(key, personas(d, cfg, rec.workspace));
@@ -1758,9 +1801,18 @@ function listed(p: Persona): ListedPersona {
   return { ...rest, ...(permission ? { permission } : {}) };
 }
 
-/** Den's default pack, then agents.persona_packs, then local ones, by id. */
-export function listPersonas(d: AgentsResolved): ListedPersona[] {
-  return [...personas(d, agentsConfig(d)).values()]
+/**
+ * Den's default pack, then agents.persona_packs, then (PSN-1) project
+ * `ws`'s, then local ones, by id.
+ */
+export function listPersonas(d: AgentsResolved, ws?: string): ListedPersona[] {
+  return [
+    ...personas(
+      d,
+      agentsConfig(d),
+      isServerScope(ws) ? undefined : ws,
+    ).values(),
+  ]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map(listed);
 }
@@ -1817,8 +1869,14 @@ export function subagentsReport(d: AgentsResolved): SubagentsReport {
 export function personaDetail(
   d: AgentsResolved,
   id: string,
+  /** PSN-1: with a project, its own personas too. */
+  ws?: string,
 ): ListedPersona & { instructions: string } {
-  const p = personas(d, agentsConfig(d)).get(id);
+  const p = personas(
+    d,
+    agentsConfig(d),
+    isServerScope(ws) ? undefined : ws,
+  ).get(id);
   if (!p) throw refused(`no persona "${id}"`, [], 404);
   return { ...listed(p), instructions: p.prompt };
 }
@@ -1900,6 +1958,12 @@ export type PersonaHeldCheck =
     }
   | { ok: false; error: string };
 
+/** Who asked (HeldAsker): an agent's id and the project its token is for. */
+export interface PersonaAsker {
+  agent?: string;
+  project?: string;
+}
+
 /** The Review's lines for a persona: its fields, then its instructions in full. */
 function personaReview(input: PersonaInput): string[] {
   return [
@@ -1920,31 +1984,131 @@ const heldError = (e: unknown): { ok: false; error: string } => ({
   error: (e as Error).message,
 });
 
+const LOCAL_FILE_LINE =
+  "File: this machine's own personas (not shared with the project)";
+
+/** A project's agent: the project it works in (never Den's own scope). */
+const projectOfAsker = (who: PersonaAsker): string | undefined =>
+  who.project && !isServerScope(who.project) ? who.project : undefined;
+
+/**
+ * SRV-P2 + PSN-1: where a persona write goes. A project's agent writes
+ * its own project's personas only (a repo's .den/personas); Den's own
+ * agent or a person writes this machine's own, or a project's when they
+ * name one. `repo`: one of the project's (default: its first).
+ */
+function personaHome(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: PersonaAsker,
+  verb: "add" | "change",
+):
+  | { ok: true; ws?: string; repo?: string; dir?: string }
+  | { ok: false; error: string } {
+  const mine = projectOfAsker(who);
+  const asked =
+    typeof raw.project === "string" && raw.project.trim()
+      ? raw.project.trim()
+      : undefined;
+  if (mine && asked && asked !== mine)
+    return {
+      ok: false,
+      error: `${who.agent ?? "this agent"} works in project ${mine}: it can ${verb} personas there only, not to project ${asked}`,
+    };
+  const ws = mine ?? asked;
+  if (!ws) return { ok: true };
+  checkWorkspaceName("persona", ws);
+  if (!d.workspaceExists(ws)) return { ok: false, error: `no project "${ws}"` };
+  const repos = workspaceRepoFolders(d, ws);
+  const want =
+    typeof raw.repo === "string" && raw.repo.trim()
+      ? raw.repo.trim()
+      : undefined;
+  const repo = want ?? [...repos.keys()][0];
+  if (!repo)
+    return {
+      ok: false,
+      error: `project ${ws} has no repo to keep personas in: add one first`,
+    };
+  const folder = repos.get(repo);
+  if (!folder)
+    return {
+      ok: false,
+      error: `project ${ws} has no repo "${repo}" (its repos: ${[...repos.keys()].sort().join(", ")})`,
+    };
+  return { ok: true, ws, repo, dir: path.join(folder, ".den", "personas") };
+}
+
+/** The persona fields only (a held ask's `project` and `repo` set aside). */
+function personaFields(raw: unknown): Record<string, unknown> {
+  const {
+    project: _p,
+    repo: _r,
+    ...rest
+  } = (raw ?? {}) as Record<string, unknown>;
+  return rest;
+}
+
 /**
  * SRV-P2: checks a persona_create ask, writing nothing: the persona the
- * Personas page's New persona would write, and the id it would get.
+ * Personas page's New persona would write, the id it would get, and
+ * (PSN-1) where: a project's repo, or this machine's own.
  */
 export function checkPersonaCreate(
   d: AgentsResolved,
   raw: unknown,
+  who: PersonaAsker = {},
 ): PersonaHeldCheck {
   try {
-    const input = checkedInput(d, raw);
+    const r = (raw ?? {}) as Record<string, unknown>;
+    const home = personaHome(d, r, who, "add");
+    if (!home.ok) return home;
+    const input = checkedInput(d, personaFields(r));
     const id = newPersonaId(
       input,
-      new Set(personas(d, agentsConfig(d)).keys()),
+      new Set(personas(d, agentsConfig(d), home.ws).keys()),
     );
     const name = input.displayName ?? id;
+    if (!home.ws)
+      return {
+        ok: true,
+        summary: `add persona ${name} (${id})`,
+        params: { name, id },
+        details: [LOCAL_FILE_LINE, ...personaReview(input)],
+        args: { ...input },
+      };
+    const where = `${home.ws} › ${home.repo}`;
+    const file = projectPersonaFile(home.dir!, id);
     return {
       ok: true,
-      summary: `add persona ${name} (${id})`,
-      params: { name, id },
-      details: personaReview(input),
-      args: { ...input },
+      summary: `add persona ${name} (${id}) to project ${where}`,
+      params: { name, id, where, inProject: "1" },
+      details: [
+        `File: ${file} (new; commit it so the project's other Dens get it)`,
+        ...personaReview(input),
+      ],
+      args: { ...input, project: home.ws, repo: home.repo! },
     };
   } catch (e) {
     return heldError(e);
   }
+}
+
+/** SRV-P2: on Allow, persona_create's write: a project's file, or local. */
+export async function runPersonaCreate(
+  d: AgentsResolved,
+  args: Record<string, unknown>,
+): Promise<ListedPersona> {
+  if (typeof args.project !== "string") return createPersona(d, args);
+  const home = personaHome(d, args, {}, "add");
+  if (!home.ok || !home.dir) throw usage(home.ok ? "no project" : home.error);
+  const input = checkedInput(d, personaFields(args));
+  const id = newPersonaId(
+    input,
+    new Set(personas(d, agentsConfig(d), home.ws).keys()),
+  );
+  writeProjectPersona(home.dir, id, input);
+  return personaDetail(d, id, home.ws);
 }
 
 /** Persona `p` as the page's form holds it (PersonaInput's fields). */
@@ -1966,25 +2130,50 @@ function personaInputOf(p: Persona): Record<string, unknown> {
 /**
  * SRV-P2: checks a persona_update ask: `id` and only the fields that
  * change, laid over the persona as it is. A built-in or a distribution's
- * persona is read-only, as on the page.
+ * persona is read-only, as on the page. PSN-1: a project's agent changes
+ * its project's personas only (its repos' files); Den's own agent or a
+ * person changes this machine's own, or a project's when they name one.
  */
 export function checkPersonaUpdate(
   d: AgentsResolved,
   raw: Record<string, unknown>,
+  who: PersonaAsker = {},
 ): PersonaHeldCheck {
   try {
     const id = typeof raw.id === "string" ? raw.id.trim() : "";
     if (!id) return { ok: false, error: "id is required (a persona's id)" };
-    const p = personas(d, agentsConfig(d)).get(id);
+    const mine = projectOfAsker(who);
+    const asked =
+      typeof raw.project === "string" && raw.project.trim()
+        ? raw.project.trim()
+        : undefined;
+    if (mine && asked && asked !== mine)
+      return {
+        ok: false,
+        error: `${who.agent ?? "this agent"} works in project ${mine}: it can change personas there only, not in project ${asked}`,
+      };
+    const ws = mine ?? asked;
+    if (ws && !d.workspaceExists(ws))
+      return { ok: false, error: `no project "${ws}"` };
+    const p = personas(d, agentsConfig(d), ws).get(id);
     if (!p) return { ok: false, error: `no persona "${id}"` };
-    if (p.origin !== "local" || !localPersonaExists(d.stateDir(), id))
+    if (mine && p.origin !== "project")
+      return {
+        ok: false,
+        error: `${id} is ${p.origin === "local" ? "this machine's own persona" : p.origin === "builtin" ? "built in" : `the ${p.origin}'s`}: a project's agent changes only its project's personas (its repos' .den/personas)`,
+      };
+    if (p.origin === "local" && !localPersonaExists(d.stateDir(), id))
+      return { ok: false, error: `no persona "${id}"` };
+    if (p.origin !== "local" && p.origin !== "project")
       return {
         ok: false,
         error: `${id} is ${p.origin === "builtin" ? "built in" : `the ${p.origin}'s`}: duplicate it (persona_create) to change a copy of your own`,
       };
     const was = personaInputOf(p);
     const given = Object.fromEntries(
-      Object.entries(raw).filter(([k, v]) => k !== "id" && v !== undefined),
+      Object.entries(personaFields(raw)).filter(
+        ([k, v]) => k !== "id" && v !== undefined,
+      ),
     );
     for (const k of Object.keys(given))
       if (!(PERSONA_KEYS as readonly string[]).includes(k))
@@ -2001,11 +2190,23 @@ export function checkPersonaUpdate(
     if (!changed.length)
       return { ok: false, error: `nothing to change in persona ${id}` };
     const fields = changed.join(", ");
+    const inProject = p.origin === "project" && ws;
+    const repo = inProject
+      ? [...workspaceRepoFolders(d, ws).entries()].find(
+          ([, dir]) =>
+            path.resolve(path.join(dir, ".den", "personas", `${id}.md`)) ===
+            path.resolve(p.source),
+        )?.[0]
+      : undefined;
+    const where = inProject ? `${ws} › ${repo ?? "?"}` : undefined;
     return {
       ok: true,
-      summary: `change persona ${id}: ${fields}`,
-      params: { id, fields },
+      summary: `change persona ${id}: ${fields}${where ? ` in project ${where}` : ""}`,
+      params: { id, fields, ...(where ? { where, inProject: "1" } : {}) },
       details: [
+        inProject
+          ? `File: ${p.source} (changed; commit it so the project's other Dens get it)`
+          : LOCAL_FILE_LINE,
         ...changed.map((k) => {
           const v = (input as unknown as Record<string, unknown>)[k];
           return `${k}: ${Array.isArray(v) ? v.join(", ") || "none" : String(v ?? "")}`;
@@ -2013,20 +2214,29 @@ export function checkPersonaUpdate(
         "As it will read:",
         ...personaReview(input),
       ],
-      args: { id, ...input },
+      args: { id, ...input, ...(inProject ? { project: ws } : {}) },
     };
   } catch (e) {
     return heldError(e);
   }
 }
 
-/** SRV-P2: on Allow, persona_update's write (the page's edit). */
+/** SRV-P2: on Allow, persona_update's write: the project's file, or local. */
 export async function runPersonaUpdate(
   d: AgentsResolved,
   args: Record<string, unknown>,
 ): Promise<ListedPersona> {
-  const { id, ...input } = args;
-  return updatePersona(d, String(id), input);
+  const { id, project, repo: _r, ...input } = args;
+  if (typeof project !== "string") return updatePersona(d, String(id), input);
+  const p = personas(d, agentsConfig(d), project).get(String(id));
+  if (!p || p.origin !== "project")
+    throw refused(`no persona "${String(id)}" in project ${project}`, [], 404);
+  writeProjectPersona(
+    path.dirname(p.source),
+    String(id),
+    checkedInput(d, input),
+  );
+  return personaDetail(d, String(id), project);
 }
 
 /** Delete local persona `id` (never a built-in or a distribution's). */
@@ -3092,6 +3302,11 @@ export async function startAgent(
           rec: {
             id,
             persona: persona.id,
+            // PSN-3: the persona as it started.
+            personaOrigin: persona.origin,
+            ...(personaHashOf(persona)
+              ? { personaHash: personaHashOf(persona) }
+              : {}),
             runtime: rt.id,
             ...(ch.model ? { model: ch.model } : {}),
             ...(ch.model ? { version: ch.version } : {}),
@@ -3419,7 +3634,7 @@ function personaSuggester(
 ): (cwd: string) => string | undefined {
   let known: Set<string>;
   try {
-    known = new Set(personas(d, agentsConfig(d)).keys());
+    known = new Set(personas(d, agentsConfig(d), ws).keys());
   } catch {
     return () => undefined;
   }
@@ -4965,17 +5180,12 @@ export async function modeDrift(
     c?.close();
   }
   if (!live.length) return [];
-  let all: Map<string, Persona>;
-  try {
-    all = personas(d, agentsConfig(d));
-  } catch {
-    return [];
-  }
+  const find = personaLookup(d);
   const out: { id: string; workspace: string; want: PermissionIntent }[] = [];
   for (const rec of listRecords(d.stateDir())) {
     if (!live.some((x) => x.ref.id === rec.session.id)) continue;
     const rt = getRuntime(rec.runtime);
-    const p = personaOfRecord(rec, all);
+    const p = find(rec);
     if (!rt?.permissions || !p) continue;
     let want: PermissionIntent | undefined;
     try {
@@ -5321,14 +5531,9 @@ export async function markInterrupted(
     found.interrupted.push(rec.id);
   }
   if (opts.autoResume === false || !marked.length) return found;
-  let all: Map<string, Persona>;
-  try {
-    all = personas(d, agentsConfig(d));
-  } catch {
-    return found;
-  }
+  const find = personaLookup(d);
   const due = marked.filter((rec) => {
-    const p = personaOfRecord(rec, all);
+    const p = find(rec);
     const wants = opts.restoreAll
       ? rec.resumeOnRestart !== false
       : !!p && resumesOnRestart(rec, p);

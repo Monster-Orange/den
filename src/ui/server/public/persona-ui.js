@@ -34,7 +34,7 @@ const api = (method, url, body) => window.denShell.api(method, url, body);
 /** Den's permission intents (permissions.ts), in the switch's order. */
 export const INTENTS = ["ask", "edits", "auto", "all"];
 /** The sources a filter offers (hub: later, once Den Hub exists). */
-export const ORIGINS = ["builtin", "distribution", "local"];
+export const ORIGINS = ["builtin", "distribution", "project", "local"];
 
 // The same rule as permissions.ts (the server checks again).
 const PREFIX_RE = /^[A-Za-z0-9][A-Za-z0-9 ._/:=@%+,-]*$/;
@@ -376,19 +376,26 @@ export function personaDetailHtml(p, data) {
 }
 
 const detailAsked = new Map();
-/** A persona with its instructions, asked once per page. */
-export function personaDetail(id) {
-  if (!detailAsked.has(id))
+/**
+ * A persona with its instructions, asked once per page. `ws` (PSN-1): a
+ * project, whose own personas (its repos') are among them.
+ */
+export function personaDetail(id, ws) {
+  const key = `${ws || ""}\n${id}`;
+  if (!detailAsked.has(key))
     detailAsked.set(
-      id,
-      api("GET", `/api/personas/${encodeURIComponent(id)}`)
+      key,
+      api(
+        "GET",
+        `/api/personas/${encodeURIComponent(id)}${ws ? `?workspace=${encodeURIComponent(ws)}` : ""}`,
+      )
         .then((r) => r.persona)
         .catch((e) => {
-          detailAsked.delete(id);
+          detailAsked.delete(key);
           throw e;
         }),
     );
-  return detailAsked.get(id);
+  return detailAsked.get(key);
 }
 /** Forget what was asked (after a save or delete). */
 export function forgetPersonaDetails() {

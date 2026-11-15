@@ -28,9 +28,11 @@
  *                     Any agent may ask: a project's agent for its own
  *                     project only, the server agent for any
  *   persona_create    SRV-P2: add a persona, as the Personas page's New
- *   persona_update    persona and edit do (agent-ops.ts); only a local
- *                     persona changes, and the Review has the
- *                     instructions in full
+ *   persona_update    persona and edit do (agent-ops.ts); the Review has
+ *                     the instructions in full. PSN-1: a project's agent
+ *                     writes its project's personas (a repo's
+ *                     .den/personas file); this machine's own, only Den's
+ *                     own agent or a person
  *   repo_clone        SRV-P3: clone a repo into repos_root (repo-clone.ts),
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
@@ -109,9 +111,15 @@ export interface HeldActionDeps {
   gitRun?: GitRunner;
   /** SRV-P2: persona_create's and persona_update's checks and writes. */
   personas?: {
-    checkCreate: (args: Record<string, unknown>) => PersonaHeldCheck;
+    checkCreate: (
+      args: Record<string, unknown>,
+      who?: HeldAsker,
+    ) => PersonaHeldCheck;
     create: (args: Record<string, unknown>) => Promise<unknown>;
-    checkUpdate: (args: Record<string, unknown>) => PersonaHeldCheck;
+    checkUpdate: (
+      args: Record<string, unknown>,
+      who?: HeldAsker,
+    ) => PersonaHeldCheck;
     update: (args: Record<string, unknown>) => Promise<unknown>;
   };
 }
@@ -384,13 +392,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     error: "this Den can't change personas here",
   };
   const personaCreate: HeldAction = {
-    check: (a): HeldCheck =>
-      d.personas ? d.personas.checkCreate(a) : noPersonas,
+    check: (a, who): HeldCheck =>
+      d.personas ? d.personas.checkCreate(a, who) : noPersonas,
     run: (a) => d.personas!.create(a),
   };
   const personaUpdate: HeldAction = {
-    check: (a): HeldCheck =>
-      d.personas ? d.personas.checkUpdate(a) : noPersonas,
+    check: (a, who): HeldCheck =>
+      d.personas ? d.personas.checkUpdate(a, who) : noPersonas,
     run: (a) => d.personas!.update(a),
   };
 

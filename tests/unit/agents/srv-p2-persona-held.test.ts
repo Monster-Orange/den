@@ -13,10 +13,13 @@ import {
   checkPersonaUpdate,
   createPersona,
   personaDetail,
+  listPersonas,
   resolveAgentsDeps,
+  runPersonaCreate,
   runPersonaUpdate,
 } from "../../../src/ui/cli/agent-ops.js";
-import { cleanupRigs, rig } from "./helpers/rig.js";
+import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
+import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
 
 afterEach(cleanupRigs);
 
@@ -113,6 +116,130 @@ describe("SRV-P2: persona_update", () => {
     expect(why({ id: "copy-checker" })).toMatch(/nothing to change/);
     expect(why({ id: "copy-checker", description: mine.description })).toMatch(
       /nothing to change/,
+    );
+  });
+});
+
+/** north has notes (first) and shop; south has none. */
+async function repoRig(): Promise<Rig> {
+  let wsDir: (ws: string) => string = () => "";
+  const r = await rig({
+    workspaceServices: (ws) =>
+      ws === "north"
+        ? [
+            { address: "notes/api", path: path.join(wsDir("north"), "notes") },
+            { address: "shop", path: path.join(wsDir("north"), "shop") },
+          ]
+        : [],
+  });
+  wsDir = r.wsDir;
+  for (const repo of ["notes", "shop"])
+    fs.mkdirSync(path.join(r.wsDir("north"), repo), { recursive: true });
+  return r;
+}
+
+const lead = { agent: "lead", project: "north" };
+
+describe("SRV-P2 + PSN-1: a project's agent writes its project's personas", () => {
+  it("persona_create from a project's agent is a file in its project's repo, shown in the Allow", async () => {
+    const r = await repoRig();
+    const d = resolveAgentsDeps(r.deps);
+    const c = checkPersonaCreate(d, mine, lead);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    const file = path.join(
+      r.wsDir("north"),
+      "notes",
+      ".den",
+      "personas",
+      "copy-checker.md",
+    );
+    expect(c.summary).toBe(
+      "add persona Copy checker (copy-checker) to project north › notes",
+    );
+    expect(c.params).toEqual({
+      name: "Copy checker",
+      id: "copy-checker",
+      where: "north › notes",
+      inProject: "1",
+    });
+    expect(c.details[0]).toBe(
+      `File: ${file} (new; commit it so the project's other Dens get it)`,
+    );
+    expect(fs.existsSync(file)).toBe(false);
+    await runPersonaCreate(d, c.args);
+    expect(fs.readFileSync(file, "utf-8")).toMatch(
+      /^---\nname: copy-checker\n/,
+    );
+    expect(
+      listPersonas(d, "north").find((p) => p.id === "copy-checker")?.origin,
+    ).toBe("project");
+    // Not this machine's own: nothing under the state dir.
+    expect(
+      fs.existsSync(path.join(r.stateDir, "personas", "copy-checker.md")),
+    ).toBe(false);
+  });
+
+  it("a repo can be named; another project, or a project with no repo, is refused", async () => {
+    const r = await repoRig();
+    fs.mkdirSync(r.wsDir("south"), { recursive: true });
+    const d = resolveAgentsDeps(r.deps);
+    const shop = checkPersonaCreate(d, { ...mine, repo: "shop" }, lead);
+    expect(shop.ok && shop.params.where).toBe("north › shop");
+    const other = checkPersonaCreate(d, { ...mine, project: "south" }, lead);
+    expect(other.ok ? "" : other.error).toBe(
+      "lead works in project north: it can add personas there only, not to project south",
+    );
+    const bare = checkPersonaCreate(d, { ...mine, project: "south" }, {});
+    expect(bare.ok ? "" : bare.error).toMatch(
+      /project south has no repo to keep personas in/,
+    );
+  });
+
+  it("the server agent or a person: this machine's own persona, unless they name a project", async () => {
+    const r = await repoRig();
+    const d = resolveAgentsDeps(r.deps);
+    const own = checkPersonaCreate(d, mine, {
+      agent: "server",
+      project: SERVER_SCOPE,
+    });
+    expect(own.ok && own.summary).toBe(
+      "add persona Copy checker (copy-checker)",
+    );
+    expect(own.ok && own.details[0]).toBe(
+      "File: this machine's own personas (not shared with the project)",
+    );
+    const named = checkPersonaCreate(d, { ...mine, project: "north" }, {});
+    expect(named.ok && named.params.where).toBe("north › notes");
+  });
+
+  it("persona_update from a project's agent: its project's personas only; the file is rewritten", async () => {
+    const r = await repoRig();
+    const d = resolveAgentsDeps(r.deps);
+    const made = checkPersonaCreate(d, mine, lead);
+    if (!made.ok) throw new Error(made.error);
+    await runPersonaCreate(d, made.args);
+    const c = checkPersonaUpdate(
+      d,
+      { id: "copy-checker", description: "Checks copy." },
+      lead,
+    );
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.params.where).toBe("north › notes");
+    await runPersonaUpdate(d, c.args);
+    expect(
+      listPersonas(d, "north").find((p) => p.id === "copy-checker")
+        ?.description,
+    ).toBe("Checks copy.");
+    createPersona(d, { ...mine, displayName: "Mine only" });
+    const local = checkPersonaUpdate(
+      d,
+      { id: "mine-only", description: "x" },
+      lead,
+    );
+    expect(local.ok ? "" : local.error).toBe(
+      "mine-only is this machine's own persona: a project's agent changes only its project's personas (its repos' .den/personas)",
     );
   });
 });

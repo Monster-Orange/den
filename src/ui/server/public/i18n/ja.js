@@ -1031,6 +1031,10 @@
     "ap.do.den_restart": "Den を再起動 ({reason})",
     "ap.do.persona_create": "ペルソナ {name} ({id}) を追加",
     "ap.do.persona_update": "ペルソナ {id} を変更: {fields}",
+    "ap.do.persona_create.project":
+      "ペルソナ {name} ({id}) をプロジェクト {where} に追加",
+    "ap.do.persona_update.project":
+      "プロジェクト {where} のペルソナ {id} を変更: {fields}",
     "ap.do.repo_clone": "{source} を {path} にクローン",
     "ap.do.agent_create":
       "エージェント {name} ({persona}) を {where} で起動、モード {mode}",
@@ -1093,12 +1097,15 @@
     "pe.src.distribution": "ディストリビューション",
     "pe.src.local": "自分の",
     "pe.src.hub": "hub",
+    "pe.src.project": "プロジェクト",
     "pe.src.builtin.p":
       "Den に含まれています。ここでは読み取り専用です。複製してカスタマイズしてください。",
     "pe.src.distribution.p":
       "ディストリビューションに含まれています。ここでは読み取り専用です。複製してカスタマイズしてください。",
     "pe.src.local.p": "このマシン上のあなたのものです。",
     "pe.src.hub.p": "Den Hub で共有されています。ここでは読み取り専用です。",
+    "pe.src.project.p":
+      "このプロジェクトのリポジトリ (.den/personas) から。ここでは読み取り専用です。リポジトリで変更してください。",
     "pe.new": "新しいペルソナ",
     "pe.dupT": "ペルソナを複製",
     "pe.edit": "ペルソナを編集",

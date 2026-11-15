@@ -143,6 +143,9 @@ describe("agents start", () => {
         "peerName",
         // den#48: the mode it started in, for every resume.
         "permission",
+        // PSN-3: the persona's origin and file hash it started with.
+        "personaOrigin",
+        "personaHash",
         // D65 v2: the project it belongs to (no repo: its own folder).
         "project",
       ].sort(),

@@ -3044,13 +3044,17 @@ project may take that name.
   from its token), the server agent for any project.
 - **It adds and changes personas** (0.4.48, `persona_create` and
   `persona_update { id, …fields }`, held actions of the same names).
-  Any agent may ask; the person's Allow is the gate. The fields are the
-  Personas page's (name, role, category, description, instructions,
-  runtime, model, version, mode, allowed commands), checked the same
-  way. The Allow shows each field and the instructions in full;
-  `persona_update` lists the fields it changes and takes only those.
-  Only a local persona changes: a built-in one, or one the distribution
-  ships, is refused before anything waits (add a copy instead).
+  The fields are the Personas page's (name, role, category, description,
+  instructions, runtime, model, version, mode, allowed commands),
+  checked the same way, plus `project` and `repo`. The Allow shows the
+  file it writes, each field and the instructions in full;
+  `persona_update` lists the fields it changes and takes only those. A
+  project's agent writes its own project's personas: a file in one of
+  its repos (`.den/personas/<id>.md`, the first repo unless it names
+  one) for the person to commit. Den's own agent or a person writes this
+  machine's own personas, or a project's when they name `project`. A
+  built-in persona, or one the distribution ships, is refused before
+  anything waits (add a copy instead).
 - **It clones repos** (0.4.48, `repo_clone { source, name?, branch? }`,
   the held action `repo_clone`). `source` is `owner/name` (GitHub) or a
   git URL. Den clones it into the folder it finds repos in
@@ -4204,8 +4208,22 @@ used without converting them. Files without front matter (a README) are
 skipped; two files with one id in a pack, or a pack that isn't a directory,
 are errors naming the file or the key.
 
+**A project's personas** (0.4.48) live in its repos, in
+`.den/personas/<id>.md`, in the same format. Den reads them from what each
+repo has checked out (its main branch, another branch, or a worktree the
+repo points at), so committing one shares it with everyone working on that
+repo. Only that project's agents see them, and the Start dialog marks them
+**project**; they are read-only on the page (change the file in the repo).
+With two repos naming one id, the project's first repo wins.
+
 **Your own personas** live in `<stateDir>/personas/<id>.md` (0600), in the
-same format, read last: one wins over a pack's persona of the same id.
+same format, read last: one wins over a pack's persona of the same id. Per
+id the order is yours, then the project's, then the distribution's, then
+Den's built-in ones.
+
+Each agent's record keeps the persona it started with: its id, where it
+came from, and a hash of its file (`personaOrigin`, `personaHash`), so a
+newer version can be told apart later.
 Settings › Personas lists every persona with the Start dialog's search and
 chips: **View** (or **Edit** for your own), **Duplicate**, **Delete** (your
 own only) and **+ New persona**. A built-in or distribution persona is
