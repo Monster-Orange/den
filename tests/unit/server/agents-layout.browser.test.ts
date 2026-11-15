@@ -840,8 +840,23 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     const p = await ctx.newPage();
     p.on("pageerror", (e) => errors.push(`issue 170: ${e.message}`));
     // Every tag the bar can carry, on every agent.
+    let tagged: string | null = null;
     await ctx.route(/\/api\/sessions(\?|$)/, async (r) => {
-      const res = await r.fetch();
+      // The page polls the list. A forward can fail under load (a CI
+      // shard saw "read ECONNRESET"): answer with the last tagged list,
+      // or let the server answer the first one itself. Never throw here.
+      let res;
+      try {
+        res = await r.fetch();
+      } catch {
+        if (tagged)
+          return r.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: tagged,
+          });
+        return r.continue().catch(() => undefined);
+      }
       const body = (await res.json()) as {
         sessions: Record<string, unknown>[];
       };
@@ -855,7 +870,8 @@ describe("the Agents tab's layouts (AG-4b)", () => {
             subagentModel: "inherit",
             subagentModelFrom: "persona",
           });
-      await r.fulfill({ response: res, body: JSON.stringify(body) });
+      tagged = JSON.stringify(body);
+      await r.fulfill({ response: res, body: tagged });
     });
     await p.goto(`${s!.base}/agents?layout=tabs&open=${all()}`);
     await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
@@ -941,6 +957,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await check("dock open, as loaded", p2);
     await p.click('.den-dock [data-act="dock"]');
     await shot(p, "issue-170-390");
+    await ctx.unrouteAll({ behavior: "ignoreErrors" });
     await ctx.close();
     await s!.settings({ shell: { dock: null } });
   }, 60_000);
