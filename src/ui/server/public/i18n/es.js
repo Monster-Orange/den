@@ -703,17 +703,11 @@
     "set.workspace.hub": "Proyecto de Hub",
     "hubp.offline": "Esta instalación aún no está conectada a Hub.",
     "hubp.connect": "Conéctala en Agentes › Hub",
-    "hubp.linked": "Vinculado al proyecto de Hub {name}.",
-    "hubp.unlinked":
-      "No está vinculado a un proyecto de Hub. Hub archiva el trabajo de los agentes de este proyecto en Sin archivar.",
     "hubp.suggested": "Sugeridos por Hub",
     "hubp.others": "Otros proyectos de Hub de tu empresa",
     "hubp.whyRepo": "tiene estos repos",
     "hubp.whyName": "mismo nombre",
-    "hubp.linkTo": "Vincular a",
-    "hubp.changeTo": "Cambiar a",
     "hubp.link": "Vincular",
-    "hubp.change": "Cambiar",
     "hubp.unlink": "Desvincular",
     "hubp.none": "Tu empresa aún no tiene proyectos en Hub.",
     "hubp.noOther":
@@ -721,6 +715,33 @@
     "hubp.failed": "Den no pudo obtener los proyectos de Hub.",
     "hubp.cantSee": "Den Hub no puede ver {repo}.",
     "hubp.giveAccess": "Dar acceso a Den Hub a {org}",
+    "hubp.noHub":
+      "Esta instalación no está conectada a Hub, así que aún no hay nada que vincular.",
+    "hubp.connectBtn": "Conectar con Hub",
+    "hubp.sideProject": "Proyecto",
+    "hubp.sideHub": "Proyecto en Hub",
+    "hubp.linkedWhen": "Vinculado cuando esta instalación se conectó a Hub.",
+    "hubp.does":
+      "Los documentos, maquetas y comentarios que creen los agentes de {project} van a {hub} en Hub.",
+    "hubp.more": "Más",
+    "hubp.moreNote":
+      "Den lo vinculó al conectarse a Hub. Cámbialo solo si Den eligió el proyecto de Hub equivocado.",
+    "hubp.switchL": "Usar otro proyecto de Hub",
+    "hubp.switch": "Cambiar",
+    "hubp.unlinkDoes":
+      "Desvincular lo detiene. Los documentos, maquetas y comentarios nuevos de los agentes de {project} irán a Sin archivar en Hub. Lo que ya está en {hub} se queda allí. El nombre que Den muestra no cambia.",
+    "hubp.cliL": "Desde una terminal:",
+    "hubp.unlinkAsk": "¿Desvincular {project} del proyecto de Hub {hub}?",
+    "hubp.unlinkYes": "Sí, desvincular",
+    "hubp.cancel": "Cancelar",
+    "hubp.waiting":
+      "Den no sabe qué proyecto de Hub corresponde a {project}, así que no se guarda nada de {project} hasta que elijas uno.",
+    "hubp.pickBtn": "Elegir un proyecto de Hub",
+    "hubp.notLinked":
+      "Sin vincular. Los documentos, maquetas y comentarios de los agentes de {project} se guardan en Sin archivar, en Hub.",
+    "hubp.linkProject": "Vincular {project} a un proyecto de Hub",
+    "hubp.scope":
+      "Vincular solo afecta al proyecto {project}. Tus otros proyectos no cambian.",
     "hub.legacy":
       "Esta instalación usa un token antiguo de Hub, guardado donde Den no puede reemplazarlo. Vuelve a conectar para pasar a uno nuevo.",
     "hub.reconnect": "Volver a conectar",

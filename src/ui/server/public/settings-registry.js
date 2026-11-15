@@ -2374,10 +2374,9 @@ function takeHubFlash() {
 
 /** HUB-1.5/1.7: the Hub row: always shown, so a person can Connect. */
 /**
- * H5: Settings › Project setup › Hub project. Linked: its name, Change and
- * Unlink. Not linked: says so, with Hub's suggestions first in the list
- * and the first one picked; nothing is linked until the person presses
- * Link. Not connected to Hub: says where to connect.
+ * H5: Settings › Project setup › Hub project (hubProjectHtml has its
+ * states). Nothing is linked until the person presses Link or Switch, and
+ * Unlink asks first.
  */
 function renderHubProject(host, ctx) {
   const ws = ctx.workspace;
@@ -2393,7 +2392,7 @@ function renderHubProject(host, ctx) {
     .api("GET", url)
     .then((b) => {
       host.innerHTML = hubProjectHtml(b, t, name);
-      wireHubProject(host, ctx, url, t);
+      wireHubProject(host, ctx, url, t, b);
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note" data-hubp-error>${escR(e?.message || t("hubp.failed"))}</p>`;
@@ -2643,11 +2642,27 @@ export function hubUncoveredHtml(list, t) {
   );
 }
 
-function hubProjectHtml(b, t, name) {
-  if (!b.connected)
+/** Where a person picks a Hub project for an unclear one (issue 167). */
+export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
+
+/**
+ * Issue 167 (mock v6 A0): Settings › Project setup › Hub project. `b` is
+ * GET /api/workspaces/:ws/hub-project's answer; `name(p)` a Hub project's
+ * name as HTML. Linked: the read-only pair, how it was linked and where the
+ * work goes; the rare changes (another Hub project, Unlink, the terminal
+ * command) sit behind More. Waiting for a pick (b.pick): a button to
+ * Unclear matches. Not linked: a select (Hub's suggestion first, picked)
+ * and Link. Not connected to Hub: Connect.
+ */
+export function hubProjectHtml(b, t, name) {
+  const ws = String(b?.project ?? "");
+  const st = (dot, text) =>
+    `<p class="set-status"><span class="rt-dot ${dot}"></span> ${escR(text)}</p>`;
+  if (!b?.connected)
     return (
       `<div data-hubp data-hubp-state="offline">` +
-      `<p class="set-note">${escR(t("hubp.offline"))} <a href="/settings#agents.hub">${escR(t("hubp.connect"))}</a></p></div>`
+      st("warn", t("hubp.noHub")) +
+      `<a class="btn sm primary" href="/settings#agents.hub">${escR(t("hubp.connectBtn"))}</a></div>`
     );
   const linked = b.hub;
   const why = (w) => (w === "repo" ? t("hubp.whyRepo") : t("hubp.whyName"));
@@ -2669,31 +2684,94 @@ function hubProjectHtml(b, t, name) {
           .map((p) => `<option value="${escR(p.id)}">${name(p)}</option>`)
           .join("")}</optgroup>`
       : "");
-  const status = linked
-    ? `<p class="set-status"><span class="rt-dot ok"></span> ${t("hubp.linked", { name: `<strong data-hubp-name>${name(linked)}</strong>` })}</p>`
-    : `<p class="set-status"><span class="rt-dot warn"></span> ${escR(t("hubp.unlinked"))}</p>`;
-  const picker = opts
-    ? `<form class="hubp-pick" data-hubp-form>` +
-      `<label for="hubp-sel">${escR(t(linked ? "hubp.changeTo" : "hubp.linkTo"))}</label> ` +
-      `<select id="hubp-sel">${opts}</select> ` +
-      `<button type="submit" class="btn sm${linked ? "" : " primary"}" data-hubp-action="link">${escR(t(linked ? "hubp.change" : "hubp.link"))}</button>` +
-      `</form>`
-    : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
-  const unlink = linked
-    ? ` <button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
-    : "";
-  return (
-    `<div data-hubp data-hubp-state="${linked ? "linked" : "unlinked"}">` +
-    status +
+  const picker = (label, btn, primary) =>
+    opts
+      ? `<form class="hubp-pick" data-hubp-form>` +
+        `<label for="hubp-sel">${escR(label)}</label> ` +
+        `<select id="hubp-sel">${opts}</select> ` +
+        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+        `</form>`
+      : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
+  const tail =
     hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
-    picker +
-    unlink +
-    `<div class="rt-err" role="alert" hidden></div></div>`
+    `<div class="rt-err" role="alert" hidden></div></div>`;
+  if (linked) {
+    const hubName = linked.name || linked.slug;
+    return (
+      `<div data-hubp data-hubp-state="linked">` +
+      `<div class="hubp-pair" data-hubp-pair>` +
+      `<div><small>${escR(t("hubp.sideProject"))}</small><b>${escR(ws)}</b></div>` +
+      `<span aria-hidden="true">↔</span>` +
+      `<div><small>${escR(t("hubp.sideHub"))}</small><b data-hubp-name>${name(linked)}</b></div></div>` +
+      `<p class="set-note">${escR(t("hubp.linkedWhen"))}</p>` +
+      `<p class="set-note">${escR(t("hubp.does", { project: ws, hub: hubName }))}</p>` +
+      `<details class="hubp-more" data-hubp-more><summary>${escR(t("hubp.more"))}</summary>` +
+      `<p class="set-note">${escR(t("hubp.moreNote"))}</p>` +
+      picker(t("hubp.switchL"), t("hubp.switch"), false) +
+      `<p><button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button></p>` +
+      `<p class="set-note">${escR(t("hubp.unlinkDoes", { project: ws, hub: hubName }))}</p>` +
+      `<p class="set-note">${escR(t("hubp.cliL"))} <code>__DEN_CLI__ hub link -p ${escR(ws)}</code></p>` +
+      `</details>` +
+      tail
+    );
+  }
+  if (b.pick)
+    return (
+      `<div data-hubp data-hubp-state="pick">` +
+      st("warn", t("hubp.waiting", { project: ws })) +
+      `<a class="btn sm primary" href="${HUB_PICK_HREF}">${escR(t("hubp.pickBtn"))}</a>` +
+      tail
+    );
+  return (
+    `<div data-hubp data-hubp-state="unlinked">` +
+    st("warn", t("hubp.notLinked", { project: ws })) +
+    picker(t("hubp.linkProject", { project: ws }), t("hubp.link"), true) +
+    `<p class="set-note">${escR(t("hubp.scope", { project: ws }))}</p>` +
+    tail
   );
 }
 
-function wireHubProject(host, ctx, url, t) {
+/**
+ * Issue 167 (mock v6 H3): Unlink asks first, in a dialog with its own
+ * Report button. Resolves true on "Yes, unlink".
+ */
+function askHubUnlink(ctx, t, project, hub) {
+  document.getElementById("hubp-dlg")?.remove();
+  const d = document.createElement("dialog");
+  d.id = "hubp-dlg";
+  d.className = "hubp-dlg";
+  d.setAttribute("aria-labelledby", "hubp-dlg-h");
+  d.innerHTML =
+    `<form method="dialog" class="hubp-dlg-b">` +
+    `<h2 id="hubp-dlg-h">${escR(t("hubp.unlinkAsk", { project, hub }))}</h2>` +
+    `<p class="set-note">${escR(t("hubp.unlinkDoes", { project, hub }))}</p>` +
+    `<div class="hubp-dlg-acts" data-den-foot>${ctx.shell?.reportButton?.(true) ?? ""}` +
+    `<button type="button" class="btn sm" data-hubp-dlg="cancel">${escR(t("hubp.cancel"))}</button>` +
+    `<button type="submit" class="btn sm primary" data-hubp-dlg="yes">${escR(t("hubp.unlinkYes"))}</button>` +
+    `</div></form>`;
+  document.body.append(d);
+  return new Promise((resolve) => {
+    let yes = false;
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(yes);
+    });
+    d.querySelector('[data-hubp-dlg="cancel"]').addEventListener("click", () =>
+      d.close(),
+    );
+    d.querySelector("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      yes = true;
+      d.close();
+    });
+    if (typeof d.showModal === "function") d.showModal();
+    else d.setAttribute("open", "");
+    d.querySelector('[data-hubp-dlg="cancel"]').focus();
+  });
+}
+
+function wireHubProject(host, ctx, url, t, b) {
   const err = (msg) => {
     const e = host.querySelector(".rt-err");
     if (!e) return;
@@ -2720,7 +2798,16 @@ function wireHubProject(host, ctx, url, t) {
   });
   host
     .querySelector('[data-hubp-action="unlink"]')
-    ?.addEventListener("click", () => put(null));
+    ?.addEventListener("click", () =>
+      askHubUnlink(
+        ctx,
+        t,
+        String(b?.project ?? ""),
+        b?.hub?.name || b?.hub?.slug || "",
+      ).then((yes) => {
+        if (yes) put(null);
+      }),
+    );
 }
 
 /**

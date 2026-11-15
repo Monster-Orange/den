@@ -219,6 +219,7 @@ describe("pages in a pseudo-locale: no literal inside <main>", () => {
     if (!browser) return;
     const p = await open("/settings?ws=north#workspace");
     await p.waitForSelector('[data-setting="workspace.name"] [data-pname]');
+    await p.waitForSelector('[data-setting="workspace.hub"] [data-hubp]');
     await p.waitForSelector(
       '[data-setting="shell.projectOrder"] [data-porder]',
     );

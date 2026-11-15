@@ -50,6 +50,60 @@
         border-radius: 50%;
         background: var(--accent);
       }
+      /* Issue 167 (mock v6 A0): the Hub project row's read-only pair, its
+         More, and the Unlink question. */
+      .hubp-pair {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 12px;
+        margin: 0 0 6px;
+      }
+      .hubp-pair > div {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .hubp-pair small {
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .hubp-pair b {
+        overflow-wrap: anywhere;
+      }
+      .hubp-more summary {
+        cursor: pointer;
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+      }
+      .hubp-dlg {
+        width: min(440px, calc(100vw - 32px));
+        padding: 0;
+        border: 1px solid var(--border-strong, var(--border));
+        border-radius: 10px;
+        background: var(--raised, var(--surface, var(--bg)));
+        color: var(--text);
+      }
+      .hubp-dlg::backdrop {
+        background: rgba(0, 0, 0, 0.25);
+      }
+      .hubp-dlg-b {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .hubp-dlg-b h2 {
+        font-size: 15px;
+        margin: 0;
+      }
+      .hubp-dlg-acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
       /* The Settings page (R21): the prototype's (den-shell.html) page
          header, sections, rows, segmented buttons, swatches and navigation
          list, ported as they are; --r is --radius, --r-btn is

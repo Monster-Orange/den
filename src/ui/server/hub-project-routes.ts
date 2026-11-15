@@ -3,9 +3,11 @@
  * works on (Settings › Project setup › Hub project).
  *
  *   GET → { project, hub: {id, slug, name} | null, connected,
- *           suggestions, projects, error? }
+ *           suggestions, projects, pick, error? }
  *         Hub's suggestions (the same repo, then the same name) and every
  *         project of this install's company, from Hub; nothing is written.
+ *         pick (issue 167): not linked, and Den can't tell which Hub
+ *         project fits (hubMatchOf), so it waits for a person's pick.
  *   PUT { hub: "<id | slug | name>" | null } → links it to one of the
  *         company's Hub projects (checked against Hub's list), or unlinks.
  *         A person's only: an agent's token or an MCP caller is refused.
@@ -20,6 +22,7 @@ import {
 } from "../../shared/hub-project-link.js";
 import type { Uncovered } from "../../shared/hub-project-sync.js";
 import { readBody, sendJson } from "./http-helpers.js";
+import { hubMatchOf } from "./hub-link-all-routes.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -119,6 +122,7 @@ export async function hubProjectRoute(
         suggestions: c?.suggestions ?? [],
         projects: c?.projects ?? [],
         uncovered: unseen,
+        pick: !hub && !!c && "unclear" in hubMatchOf(c.suggestions),
       });
     } catch (e) {
       sendJson(res, {
@@ -129,6 +133,7 @@ export async function hubProjectRoute(
         suggestions: [],
         projects: [],
         uncovered: unseen,
+        pick: false,
         error: `Hub didn't list its projects: ${(e as Error).message}`,
       });
     }

@@ -688,23 +688,45 @@
     "set.workspace.hub": "Hub のプロジェクト",
     "hubp.offline": "このインストールはまだ Hub に接続されていません。",
     "hubp.connect": "エージェント › Hub で接続",
-    "hubp.linked": "Hub のプロジェクト {name} にリンク済みです。",
-    "hubp.unlinked":
-      "Hub のプロジェクトにリンクされていません。Hub はこのプロジェクトのエージェントの作業を「未分類」に保存します。",
     "hubp.suggested": "Hub のおすすめ",
     "hubp.others": "あなたの会社のほかの Hub プロジェクト",
     "hubp.whyRepo": "同じリポジトリ",
     "hubp.whyName": "同じ名前",
-    "hubp.linkTo": "リンク先",
-    "hubp.changeTo": "変更先",
     "hubp.link": "リンク",
-    "hubp.change": "変更",
     "hubp.unlink": "リンクを解除",
     "hubp.none": "あなたの会社にはまだ Hub のプロジェクトがありません。",
     "hubp.noOther": "切り替えられる Hub のプロジェクトはほかにありません。",
     "hubp.failed": "Den は Hub のプロジェクトを取得できませんでした。",
     "hubp.cantSee": "Den Hub は {repo} を参照できません。",
     "hubp.giveAccess": "{org} へのアクセスを Den Hub に許可",
+    "hubp.noHub":
+      "このインストールは Hub に接続されていません。リンクできるものはまだありません。",
+    "hubp.connectBtn": "Hub に接続",
+    "hubp.sideProject": "プロジェクト",
+    "hubp.sideHub": "Hub プロジェクト",
+    "hubp.linkedWhen":
+      "このインストールが Hub に接続したときにリンクされました。",
+    "hubp.does":
+      "{project} のエージェントが作る文書・モック・コメントは、Hub の {hub} に入ります。",
+    "hubp.more": "詳細",
+    "hubp.moreNote":
+      "Den が Hub に接続したときにリンクしました。Den が違う Hub プロジェクトを選んだときだけ変更してください。",
+    "hubp.switchL": "別の Hub プロジェクトを使う",
+    "hubp.switch": "切り替え",
+    "hubp.unlinkDoes":
+      "リンクを解除すると、これが止まります。{project} のエージェントが新しく作る文書・モック・コメントは Hub の「未分類」に入ります。すでに {hub} にあるものはそのまま残ります。Den に表示される名前も変わりません。",
+    "hubp.cliL": "ターミナルから:",
+    "hubp.unlinkAsk": "{project} を Hub プロジェクト「{hub}」から解除しますか?",
+    "hubp.unlinkYes": "はい、解除する",
+    "hubp.cancel": "キャンセル",
+    "hubp.waiting":
+      "Den は {project} に合う Hub プロジェクトを判断できないため、選ぶまで {project} の分は何も保存されません。",
+    "hubp.pickBtn": "Hub プロジェクトを選ぶ",
+    "hubp.notLinked":
+      "未リンクです。{project} のエージェントが作る文書・モック・コメントは Hub の「未分類」に入ります。",
+    "hubp.linkProject": "{project} を Hub プロジェクトにリンク",
+    "hubp.scope":
+      "リンクされるのはプロジェクト「{project}」だけです。ほかのプロジェクトは変わりません。",
     "hub.legacy":
       "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
     "hub.reconnect": "再接続",

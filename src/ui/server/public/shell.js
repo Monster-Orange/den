@@ -1398,23 +1398,44 @@
     "set.workspace.hub": "Hub project",
     "hubp.offline": "This install isn't connected to Hub yet.",
     "hubp.connect": "Connect in Agents › Hub",
-    "hubp.linked": "Linked to Hub project {name}.",
-    "hubp.unlinked":
-      "Not linked to a Hub project. Hub files this project's agents' work in Unfiled.",
     "hubp.suggested": "Suggested by Hub",
     "hubp.others": "Your company's other Hub projects",
     "hubp.whyRepo": "has these repos",
     "hubp.whyName": "same name",
-    "hubp.linkTo": "Link to",
-    "hubp.changeTo": "Change to",
     "hubp.link": "Link",
-    "hubp.change": "Change",
     "hubp.unlink": "Unlink",
     "hubp.none": "Your company has no Hub projects yet.",
     "hubp.noOther": "Your company has no other Hub projects to switch to.",
     "hubp.failed": "Den couldn't reach Hub's projects.",
     "hubp.cantSee": "Den Hub can't see {repo}.",
     "hubp.giveAccess": "Give Den Hub access to {org}",
+    "hubp.noHub":
+      "This install isn't connected to Hub, so there is nothing to link yet.",
+    "hubp.connectBtn": "Connect to Hub",
+    "hubp.sideProject": "Project",
+    "hubp.sideHub": "Hub project",
+    "hubp.linkedWhen": "Linked when this install connected to Hub.",
+    "hubp.does":
+      "Docs, mocks and comments that {project}'s agents make go to {hub} in Hub.",
+    "hubp.more": "More",
+    "hubp.moreNote":
+      "Den linked this when it connected to Hub. Change it only if Den picked the wrong Hub project.",
+    "hubp.switchL": "Use a different Hub project",
+    "hubp.switch": "Switch",
+    "hubp.unlinkDoes":
+      "Unlink stops that. New docs, mocks and comments from {project}'s agents go to Unfiled in Hub. What is already in {hub} stays there. The name Den shows does not change.",
+    "hubp.cliL": "From a terminal:",
+    "hubp.unlinkAsk": "Unlink {project} from the Hub project {hub}?",
+    "hubp.unlinkYes": "Yes, unlink",
+    "hubp.cancel": "Cancel",
+    "hubp.waiting":
+      "Den can't tell which Hub project fits {project}, so nothing is filed for {project} until you pick one.",
+    "hubp.pickBtn": "Pick a Hub project",
+    "hubp.notLinked":
+      "Not linked. Docs, mocks and comments that {project}'s agents make are filed in Unfiled in Hub.",
+    "hubp.linkProject": "Link {project} to a Hub project",
+    "hubp.scope":
+      "Linking affects only the project {project}. Your other projects aren't changed.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
     "hub.reconnect": "Reconnect",

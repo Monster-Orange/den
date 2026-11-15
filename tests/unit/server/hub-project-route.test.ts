@@ -73,8 +73,46 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
       suggestions: [{ ...BACK, why: "repo" }],
       uncovered: [],
       projects: [BACK, SITE],
+      pick: false,
     });
     expect(store.size).toBe(0);
+  });
+
+  it("GET (issue 167): unclear (two Hub projects share its repos) says a pick waits", async () => {
+    const { base } = await serve({
+      choices: async () => ({
+        suggestions: [
+          { ...BACK, why: "repo" as const },
+          { ...SITE, why: "repo" as const },
+        ],
+        projects: [BACK, SITE],
+      }),
+    });
+    const b = (await (
+      await fetch(`${base}/back-office/hub-project`)
+    ).json()) as {
+      pick: boolean;
+    };
+    expect(b.pick).toBe(true);
+  });
+
+  it("GET (issue 167): linked, never a pick, whatever Hub suggests", async () => {
+    const { base, store } = await serve({
+      choices: async () => ({
+        suggestions: [
+          { ...BACK, why: "repo" as const },
+          { ...SITE, why: "repo" as const },
+        ],
+        projects: [BACK, SITE],
+      }),
+    });
+    store.set("back-office", BACK);
+    const b = (await (
+      await fetch(`${base}/back-office/hub-project`)
+    ).json()) as {
+      pick: boolean;
+    };
+    expect(b.pick).toBe(false);
   });
 
   it("PUT links to a company project by slug, name or id; null unlinks; anything else is refused", async () => {

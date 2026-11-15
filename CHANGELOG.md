@@ -6,6 +6,17 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.50] - unreleased
 
+### Added
+
+- Project names, part 2 (#167). Settings › Project setup › Hub project now
+  shows the pair read-only: the project, an arrow, and its Hub project,
+  with "Linked when this install connected to Hub" and where the agents'
+  docs, mocks and comments go. Using a different Hub project, Unlink and
+  the terminal command sit behind More. Unlink asks first, in a dialog
+  that says what changes. A project waiting for a pick says nothing is
+  filed for it yet and links to the pick. Not linked: a list with Hub's
+  suggestion first, and Link. Not connected: Connect to Hub.
+
 ### Fixed
 
 - `<cli> hub put`, `hub pull` and `hub push` send the agent's Den token only

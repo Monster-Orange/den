@@ -1,11 +1,13 @@
 /**
  * H5: Settings › Project setup › Hub project.
  *
- * Not connected to Hub: says so and links to Agents › Hub (the real
- * server, no Hub). Not linked: says Hub files the work in Unfiled, with
- * Hub's suggestion first and picked; nothing is linked until Link, which
- * sends the picked Hub project's id. Linked: the Hub project's name,
- * Change and Unlink (which sends null). In Spanish the row is Spanish.
+ * Not connected to Hub: says so, with Connect (the real server, no Hub).
+ * Not linked: says Hub files the work in Unfiled, with Hub's suggestion
+ * first and picked; nothing is linked until Link, which sends the picked
+ * Hub project's id. Linked (issue 167, mock v6 A0): the read-only pair;
+ * Switch and Unlink behind More; Unlink asks first in a dialog with a
+ * Report button and sends null only on Yes. Waiting for a pick: a button
+ * to Unclear matches. In Spanish the row is Spanish.
  *
  * The demo distribution (helpers/agents-page-server.ts). Needs Playwright's
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names only.
@@ -114,13 +116,12 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     expect(await p.getAttribute("[data-hubp]", "data-hubp-state")).toBe(
       "offline",
     );
-    expect(await rowText(p)).toContain("isn't connected to Hub yet");
+    expect(await rowText(p)).toContain(
+      "isn't connected to Hub, so there is nothing to link yet",
+    );
     expect(
-      await p.getAttribute(
-        '[data-hubp] a[href="/settings#agents.hub"]',
-        "href",
-      ),
-    ).toBe("/settings#agents.hub");
+      await p.textContent('[data-hubp] a[href="/settings#agents.hub"]'),
+    ).toBe("Connect to Hub");
     expect(await fits(p)).toBeLessThanOrEqual(0);
     await p.context().close();
   }, 60_000);
@@ -146,8 +147,9 @@ describe("Settings › Project setup › Hub project (H5)", () => {
       "unlinked",
     );
     const text = await rowText(p);
-    expect(text).toContain("Not linked to a Hub project");
+    expect(text).toContain("Not linked.");
     expect(text).toContain("Unfiled");
+    expect(text).toContain("Linking affects only the project north.");
     // Picked, not linked: nothing was sent yet.
     expect(await p.inputValue("#hubp-sel")).toBe(BACK.id);
     expect(puts).toEqual([]);
@@ -165,7 +167,7 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     await p.context().close();
   }, 60_000);
 
-  it("linked: the name, Change and Unlink; Unlink sends null", async () => {
+  it("linked: the pair; Switch and Unlink behind More; Unlink asks, then sends null", async () => {
     if (skip()) return;
     let linked: typeof BACK | null = BACK;
     const { p, puts } = await page((method) => {
@@ -182,13 +184,33 @@ describe("Settings › Project setup › Hub project (H5)", () => {
         projects: [BLOG, BACK],
       };
     });
-    expect(await rowText(p)).toContain("Linked to Hub project");
-    expect(await p.textContent('[data-hubp-action="link"]')).toBe("Change");
+    const text = await rowText(p);
+    expect(text).toContain("north");
+    expect(text).toContain("Linked when this install connected to Hub.");
+    expect(text).toContain(
+      "Docs, mocks and comments that north's agents make go to Back office in Hub.",
+    );
+    // More is closed: Switch and Unlink aren't on screen.
+    expect(await p.isVisible('[data-hubp-action="unlink"]')).toBe(false);
+    await p.click("[data-hubp-more] summary");
+    expect(await p.textContent('[data-hubp-action="link"]')).toBe("Switch");
     // The linked one isn't offered again.
     expect(
       await p.$$eval("#hubp-sel option", (os) => os.map((o) => o.value)),
     ).toEqual([BLOG.id]);
+    expect(await fits(p)).toBeLessThanOrEqual(0);
+    // Unlink asks first; Cancel sends nothing.
     await p.click('[data-hubp-action="unlink"]');
+    await p.waitForSelector("#hubp-dlg[open]");
+    expect(await p.textContent("#hubp-dlg h2")).toBe(
+      "Unlink north from the Hub project Back office?",
+    );
+    expect(await p.$("#hubp-dlg [data-den-report]")).not.toBeNull();
+    await p.click('[data-hubp-dlg="cancel"]');
+    await p.waitForSelector("#hubp-dlg", { state: "detached" });
+    expect(puts).toEqual([]);
+    await p.click('[data-hubp-action="unlink"]');
+    await p.click('[data-hubp-dlg="yes"]');
     await p.waitForSelector('[data-hubp-state="unlinked"]');
     expect(puts).toEqual([{ hub: null }]);
     await p.context().close();
@@ -205,7 +227,7 @@ describe("Settings › Project setup › Hub project (H5)", () => {
       projects: [BACK],
     }));
     const text = await rowText(p);
-    expect(text).toContain("Linked to Hub project");
+    expect(text).toContain("Linked when this install connected to Hub.");
     expect(text).not.toContain("no Hub projects yet");
     expect(text).toContain("no other Hub projects to switch to");
     await p.context().close();
@@ -226,12 +248,38 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     );
     try {
       const text = await rowText(p);
-      expect(text).toContain("No está vinculado a un proyecto de Hub");
+      expect(text).toContain("Sin vincular.");
       expect(await p.textContent('[data-hubp-action="link"]')).toBe("Vincular");
     } finally {
       await setLanguage(p, null);
       await p.context().close();
     }
+  }, 60_000);
+
+  it("waiting for a pick: says nothing is filed, and opens Unclear matches", async () => {
+    if (skip()) return;
+    const { p, puts } = await page(() => ({
+      ok: true,
+      project: "north",
+      hub: null,
+      pick: true,
+      connected: true,
+      suggestions: [
+        { ...BACK, why: "repo" },
+        { ...BLOG, why: "repo" },
+      ],
+      projects: [BLOG, BACK],
+    }));
+    expect(await p.getAttribute("[data-hubp]", "data-hubp-state")).toBe("pick");
+    expect(await rowText(p)).toContain(
+      "nothing is filed for north until you pick one",
+    );
+    expect(
+      await p.getAttribute('[data-hubp] a[href^="/settings#agents"]', "href"),
+    ).toBe("/settings#agents.hub_link_all");
+    expect(puts).toEqual([]);
+    expect(await fits(p)).toBeLessThanOrEqual(0);
+    await p.context().close();
   }, 60_000);
 
   it("the project's header shows its Hub project, linking to Project setup", async () => {
