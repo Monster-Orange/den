@@ -370,6 +370,8 @@ describe("D52: which paths", () => {
       "/api/reports/*",
       "/api/admin/fixtures/*",
       "/api/admin/fold/*",
+      "/api/artifacts/*",
+      "/f/*",
     ]);
     expect(hubProxyPath("/hub/callback")).toBeNull();
     expect(hubProxyPath("/hubx/mcp")).toBeNull();
@@ -377,6 +379,45 @@ describe("D52: which paths", () => {
     expect(hubProxyPath("/hub/mcp")).toBe("/mcp");
     expect(hubProxyAllowed("/api/import/packs/p/files/abc")).toBe(true);
     expect(hubProxyAllowed("/api/import/packs/p/../../projects")).toBe(false);
+  });
+
+  // den#49: an artifact's files (hub put / hub pull), and Hub's file links
+  // (GET and HEAD only: Hub serves /f/* for reads, nothing else).
+  it("den#49: /api/artifacts/* passes every method; /f/* only GET and HEAD", async () => {
+    const hub = await fakeHub();
+    const { base, agentToken } = await den(hub.url);
+    const auth = { authorization: `Bearer ${agentToken}` };
+    for (const [m, p] of [
+      ["GET", "/hub/api/artifacts/studio/versions/latest"],
+      ["POST", "/hub/api/artifacts/studio/versions"],
+      ["PUT", "/hub/api/artifacts/studio/drafts/d1/files/abc"],
+      ["POST", "/hub/api/artifacts/studio/drafts/d1/commit"],
+      ["GET", "/hub/f/rec1/2/cap/index.html"],
+      ["HEAD", "/hub/f/rec1/2/cap/index.html"],
+    ] as const) {
+      const res = await fetch(`${base}${p}`, { method: m, headers: auth });
+      expect([m, p, res.status]).toEqual([m, p, 200]);
+    }
+    expect(hub.seen.map((s) => `${s.method} ${s.url}`)).toEqual([
+      "GET /api/artifacts/studio/versions/latest",
+      "POST /api/artifacts/studio/versions",
+      "PUT /api/artifacts/studio/drafts/d1/files/abc",
+      "POST /api/artifacts/studio/drafts/d1/commit",
+      "GET /f/rec1/2/cap/index.html",
+      "HEAD /f/rec1/2/cap/index.html",
+    ]);
+    hub.seen.length = 0;
+    for (const m of ["POST", "PUT", "DELETE"]) {
+      const res = await fetch(`${base}/hub/f/rec1/2/cap/index.html`, {
+        method: m,
+        headers: auth,
+      });
+      expect([m, res.status]).toEqual([m, 405]);
+    }
+    // A person's token or none: refused, as for every Hub path.
+    const anon = await fetch(`${base}/hub/api/artifacts/studio/versions/1`);
+    expect(anon.status).toBe(403);
+    expect(hub.seen).toEqual([]);
   });
 
   it("the request checks let an agent's bearer through to it: a read, and a call", () => {

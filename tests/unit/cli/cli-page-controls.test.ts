@@ -110,6 +110,9 @@ const LISTING: Record<string, Entry> = {
   "notifications read": page("bell.js", "/api/notifications"),
 
   "hub link": page("settings-registry.js", "/hub-project"),
+  // den#49: an agent's commands, with its own Den token; a person uses Hub.
+  "hub put": script("an agent publishes an artifact's files to Hub"),
+  "hub pull": script("an agent fetches an artifact's files from Hub"),
 
   "usage agents": R,
   "usage report": R,

@@ -547,7 +547,7 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST", "PUT", "DELETE"],
     "/hub/*",
-    "D52: Hub's MCP and import calls, for an agent, through Den: its own Den token only, Hub's agent paths only; Den attaches the install token",
+    "D52: Hub's MCP, import and artifact-file calls (den#49), for an agent, through Den: its own Den token only, Hub's agent paths only; Den attaches the install token",
   ),
   R(
     "/hub/callback",

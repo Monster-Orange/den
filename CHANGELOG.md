@@ -4,6 +4,28 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.50] - unreleased
+
+### Fixed
+
+- A large mock no longer reaches Hub cut off. Agents published a page by
+  typing its whole text into one call; a long one was cut off mid-text,
+  and Hub kept the broken page. `<cli> hub put <file|dir> hub:<slug>
+  --note "…" [--entry <path>] [--base N]` now publishes a folder (or one
+  file) as one new version of a mock, image or doc, in parts, through
+  Den's proxy with the agent's own Den token: it checks Hub's limits,
+  sends only the files Hub lacks (four at a time), commits, and prints
+  `hub:<slug>@vN` and its link. When Hub has moved past `--base`, nothing
+  is published and the latest version is named. `<cli> hub pull
+  hub:<slug>@vN|latest <dir>` writes a version's files, refusing a path
+  that is absolute or has `..`, and checking each file's sha256. Den's MCP
+  tools `hub_put` and `hub_pull` do the same steps and answer with the
+  pointer, never the file's body, and every agent's Hub line says to
+  publish files with `hub_put`, never by pasting a page into one call.
+  Den's proxy to Hub now passes `/api/artifacts/*`, and `/f/*` for GET
+  and HEAD only, still only for an agent's own Den token. No Hub token is
+  read or printed. (den#49)
+
 ## [0.4.48] - 2026-11-15
 
 ### Added

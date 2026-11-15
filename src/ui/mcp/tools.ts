@@ -4,6 +4,7 @@
  * (see api.ts); the guards (guards.ts) run first, and all text returned is
  * passed through the secret redactor.
  */
+import * as path from "path";
 import { z } from "zod";
 import {
   MCP_ACTIONS,
@@ -11,6 +12,13 @@ import {
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
 import { redactSecrets } from "../../shared/redact.js";
+import { actorTokenOf } from "../../shared/actor-token.js";
+import {
+  hubPull,
+  hubPut,
+  parseHubRef,
+  type HubVia,
+} from "../../shared/hub-files.js";
 import {
   DenHttpError,
   DenWebDown,
@@ -73,6 +81,11 @@ export interface ToolContext {
     waitMs: number;
     sleep?: (ms: number) => Promise<void>;
   };
+  /**
+   * Where hub_put / hub_pull find the agent's own Den token
+   * (DEN_ACTOR_TOKEN); default this process's env. Tests pass one.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 type Args = Record<string, unknown>;
@@ -1153,6 +1166,110 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
   agent_import: agentImportTool,
 };
 
+// ── den#49: an artifact's files to and from Hub, in parts ───────────────────
+// The same steps as `<cli> hub put` / `hub pull` (hub-files.ts), through
+// Den's proxy with the agent's own Den token: never a Hub token here. They
+// answer with the pointer, never a file's body.
+
+/** How a hub_* file tool reaches Hub: Den's proxy, as this agent. */
+async function hubVia(tool: string, ctx: ToolContext): Promise<HubVia> {
+  const token = actorTokenOf(ctx.env ?? process.env);
+  if (!token)
+    throw new Refusal(
+      `${tool} is for an agent Den started: it calls Hub through Den as that agent.`,
+    );
+  // The token goes only to this Den: a first call through the API checks
+  // whose it is on the port (its identity check), as every tool's does.
+  await ctx.api.get("/api/server-info");
+  return { denBase: ctx.api.baseUrl, token };
+}
+
+function absPath(tool: string, a: Args, k: string): string {
+  const p = str(a[k]);
+  if (!p || !path.isAbsolute(p))
+    throw new Refusal(`${tool}: \`${k}\` is an absolute path.`);
+  return path.resolve(p);
+}
+
+function hubRef(tool: string, a: Args, latestOk: boolean) {
+  const ref = parseHubRef(str(a.ref) ?? "");
+  if (!ref || (!latestOk && ref.version !== null))
+    throw new Refusal(
+      latestOk
+        ? `${tool}: \`ref\` is hub:<slug>@vN or hub:<slug>@latest.`
+        : `${tool}: \`ref\` is hub:<slug> (a put makes the next version).`,
+    );
+  return ref;
+}
+
+const HUB_FILE_TOOLS: DenTool[] = [
+  {
+    name: "hub_put",
+    title: "Publish files to Hub",
+    description:
+      "den#49: publish a file or a folder as ONE new version of a Hub mock, image or doc, sent in parts (the way to publish a large page: never paste a page's text into one call). Checks Hub's limits, sends only the files Hub lacks, then commits. A single .html file is the one-page mock (index.html); a folder of several files opens on `entry` (default index.html). Captions: captions.json in the folder, one per path. `base` is the version you changed (default the latest): if Hub moved past it, nothing is published and the latest version is named. Answers the pointer hub:<slug>@vN and its link, never a file's body. The artifact must already exist in Hub.",
+    action: true,
+    shape: {
+      path: z
+        .string()
+        .describe("Absolute path of the file or folder to publish"),
+      ref: z.string().describe('The artifact: "hub:<slug>"'),
+      note: z.string().optional().describe("What changed, for the version"),
+      entry: z
+        .string()
+        .optional()
+        .describe("A mock of several files: the .html page it opens on"),
+      base: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("The version you changed (default the latest)"),
+    },
+    async run(a, ctx) {
+      const src = absPath("hub_put", a, "path");
+      const ref = hubRef("hub_put", a, false);
+      const via = await hubVia("hub_put", ctx);
+      return hubPut(
+        {
+          src,
+          slug: ref.slug,
+          ...(str(a.note) !== undefined ? { note: str(a.note) } : {}),
+          ...(str(a.entry) !== undefined ? { entry: str(a.entry) } : {}),
+          ...(typeof a.base === "number" ? { base: a.base } : {}),
+        },
+        via,
+      );
+    },
+  },
+  {
+    name: "hub_pull",
+    title: "Fetch a Hub version's files",
+    description:
+      "den#49: write a Hub mock's, image's or doc's version into a folder: each file checked against its sha256 and size, every path checked first (relative, no \"..\"). Answers the pointer and how many files, never a file's body.",
+    action: true,
+    shape: {
+      ref: z
+        .string()
+        .describe('"hub:<slug>@vN" or "hub:<slug>@latest" (the default)'),
+      dir: z.string().describe("Absolute path of the folder to write into"),
+    },
+    async run(a, ctx) {
+      const dir = absPath("hub_pull", a, "dir");
+      const ref = hubRef("hub_pull", a, true);
+      const via = await hubVia("hub_pull", ctx);
+      return hubPull(
+        { slug: ref.slug, version: ref.version ?? "latest", dir },
+        via,
+      );
+    },
+  },
+];
+
+export const HUB_FILE_TOOL_NAMES: readonly string[] = HUB_FILE_TOOLS.map(
+  (t) => t.name,
+);
+
 export const READ_TOOL_NAMES: readonly string[] = READ_TOOLS.map((t) => t.name);
 export const ACTION_TOOL_NAMES: readonly McpAction[] = MCP_ACTIONS;
 
@@ -1785,10 +1902,11 @@ export function approvalsState(
     : `held writes off (mcp.approvals: false): ${APPROVAL_TOOL_NAMES.join(", ")} are not registered`;
 }
 
-/** The tools to register: every read tool, the held writes (unless turned off), plus the actions the org named. */
+/** The tools to register: every read tool, hub_put and hub_pull, the held writes (unless turned off), plus the actions the org named. */
 export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
   const tools = [
     ...READ_TOOLS,
+    ...HUB_FILE_TOOLS,
     ...(cfg.approvals ? APPROVAL_TOOLS : []),
     ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a)).map(
       (a) => ACTION_TOOLS[a],

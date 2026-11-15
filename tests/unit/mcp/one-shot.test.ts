@@ -11,6 +11,7 @@ import {
 } from "../../../src/ui/mcp/server.js";
 import {
   APPROVAL_TOOL_NAMES,
+  HUB_FILE_TOOL_NAMES,
   READ_TOOL_NAMES,
 } from "../../../src/ui/mcp/tools.js";
 import type { DenApi, Query } from "../../../src/ui/mcp/api.js";
@@ -94,8 +95,12 @@ describe("runOneShot", () => {
     const h = harness(cfg(["service_up"]));
     expect(await runOneShot({ kind: "list" }, h.opts)).toBe(0);
     expect(h.out.join("")).toBe(
-      [...READ_TOOL_NAMES, ...APPROVAL_TOOL_NAMES, "service_up"].join("\n") +
-        "\n",
+      [
+        ...READ_TOOL_NAMES,
+        ...HUB_FILE_TOOL_NAMES,
+        ...APPROVAL_TOOL_NAMES,
+        "service_up",
+      ].join("\n") + "\n",
     );
     expect(h.calls).toEqual([]);
   });
@@ -107,7 +112,9 @@ describe("runOneShot", () => {
     const off = harness({ ...cfg(), approvals: false });
     await runOneShot({ kind: "list" }, off.opts);
     expect(off.err.join("")).toMatch(/held writes off/);
-    expect(off.out.join("")).toBe(READ_TOOL_NAMES.join("\n") + "\n");
+    expect(off.out.join("")).toBe(
+      [...READ_TOOL_NAMES, ...HUB_FILE_TOOL_NAMES].join("\n") + "\n",
+    );
   });
 
   it("--call prints a read tool's text and exits 0", async () => {

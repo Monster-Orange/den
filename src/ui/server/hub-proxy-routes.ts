@@ -9,7 +9,7 @@
  *     or a browser gets 403: a person uses Hub itself.
  *   - Only Hub's agent paths: HUB_PROXY_PATHS. Anything else is a 404, so
  *     an agent can't reach Hub's Settings, members or browser routes
- *     through Den.
+ *     through Den. Hub's file links (/f/*) are GET and HEAD only (405).
  *   - The agent's own Authorization and any X-Den-* header it sent are
  *     dropped. Den sets Authorization (the install token), X-Den-Agent,
  *     X-Den-Agent-Id, X-Den-Workspace, X-Den-Session, X-Den-Repos and X-Den-Project.
@@ -38,7 +38,14 @@ export const HUB_PROXY_PATHS: readonly string[] = [
   "/api/reports/*",
   "/api/admin/fixtures/*",
   "/api/admin/fold/*",
+  // den#49: an artifact's version as files (hub put / hub pull).
+  "/api/artifacts/*",
+  // Hub's file links: reads only (READ_ONLY_PATHS).
+  "/f/*",
 ];
+
+/** Hub paths an agent may only read (GET, HEAD): Hub serves nothing else there. */
+const READ_ONLY_PATHS: readonly string[] = ["/f/*"];
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "DELETE"]);
 
@@ -141,6 +148,18 @@ export async function handleHubProxy(
   }
   if (!hubProxyAllowed(sub) || !METHODS.has(method)) {
     sendJson(res, { error: `Den doesn't pass ${sub} to Hub.` }, 404);
+    return true;
+  }
+  if (
+    method !== "GET" &&
+    method !== "HEAD" &&
+    READ_ONLY_PATHS.some((r) => pathMatches(r, sub))
+  ) {
+    sendJson(
+      res,
+      { error: `Den passes only GET and HEAD for ${sub} to Hub.` },
+      405,
+    );
     return true;
   }
   const agentId = p.actor.slice("agent:".length);

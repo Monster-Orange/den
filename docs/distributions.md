@@ -1088,7 +1088,10 @@ hub:
   only Hub's paths for agents: `/mcp`, `/api/inbox`,
   `/api/notifications…`, `/api/import/packs…`, `/api/import/ds/…`
   (a design system), `/api/reports/…`, `/api/admin/fixtures/…` and
-  `/api/admin/fold/…` (asking to fold one company into another). Anything else gets 404. The agent's own
+  `/api/admin/fold/…` (asking to fold one company into another),
+  `/api/artifacts/…` (an artifact's files, for `hub put` and `hub pull`)
+  and `/f/…` (Hub's file links, GET and HEAD only; any other method gets
+  405). Anything else gets 404. The agent's own
   `Authorization` and any `X-Den-*` it sends are dropped. Redirects are
   passed back, never followed, and Hub's status and errors come back as
   they are. Bodies stream both ways, and Hub enforces its own size
@@ -1137,6 +1140,20 @@ hub:
   at a time), and prints Hub's dry run. With `--request`, it asks a
   person to apply it and prints the link where they approve it in Hub.
   Outside an agent's session it is refused.
+- `<cli> hub put <file|dir> hub:<slug> --note "…"`, run by an agent
+  (also `--entry <path>` and `--base N`), publishes a folder (or one
+  file) as one new version of a Hub mock, image or doc, in parts. It checks Hub's
+  limits first, sends only the files Hub lacks (four at a time), commits,
+  and prints `hub:<slug>@vN` and its link. A single `.html` file is the
+  one-page mock (`index.html`). Captions come from `captions.json` in the
+  folder, one per path. `--base` is the version the change was made on
+  (default the latest); when Hub has moved past it, nothing is published
+  and the latest version is named. `<cli> hub pull hub:<slug>@vN|latest
+  <dir>` writes a version's files, after checking every path (relative,
+  no `..`) and each file's sha256 and size. Den's MCP tools `hub_put` and
+  `hub_pull` do the same steps and answer with the pointer, never a
+  file's body; every agent's Hub line tells it to publish files with
+  `hub_put`, never by pasting a page's text into one call.
 - `hub.allow_tools` (default `true`): agents use Hub's tools without
   asking (Den allows `mcp__hub` for every agent it launches). The token
   limits writes to this install's company, and Hub keeps every version.

@@ -100,6 +100,13 @@ Reads (they change nothing):
 - `notifications_list`: your person's bell.
 - `approval_check`: where one of your held asks stands.
 
+Hub files (through Den, as you; when Hub is connected):
+
+- `hub_put`: publish a file or folder as one new version of a Hub mock,
+  image or doc, sent in parts. Publish files through it, never by pasting
+  a page's text into one call.
+- `hub_pull`: fetch a version's files into a folder, each hash checked.
+
 Held (each waits for the person's Allow):
 
 - `workspace_create`: create a project.
