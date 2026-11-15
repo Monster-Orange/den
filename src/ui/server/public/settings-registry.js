@@ -1565,6 +1565,30 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
 
+  {
+    // Issue 163: opt-in, off by default. On, `service install` runs Den as
+    // LaunchDaemons (mode always) that outlive a logout.
+    id: "agents.keep_running",
+    category: "agents",
+    label: "Keep agents running after logout",
+    description:
+      "On: __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. Under it an agent may not reach its sign-in (the login keychain): not yet shown. Off (the default): agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+    keywords: [
+      "logout",
+      "log out",
+      "daemon",
+      "launchd",
+      "always",
+      "background",
+    ],
+    scope: "user",
+    control: { type: "readonly" },
+    read: (ctx) =>
+      ctx.data.keep_running_after_logout === true
+        ? L("set.ui.on", "On")
+        : L("set.ui.off", "Off"),
+  },
+
   // ── Command line ───────────────────────────────────────────────────────
   {
     id: "cli.local_dev",

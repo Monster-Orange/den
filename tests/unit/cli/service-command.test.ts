@@ -292,14 +292,14 @@ describe("waitForServerInfo", () => {
 });
 
 describe("service install --plan", () => {
-  it("prints the label, paths and the plist, running only install.sh print", async () => {
+  it("prints the label, paths and both plists, running only install.sh print and print-host", async () => {
     const h = harness({
       web: { service: { label: "com.acme.den", logs: "/var/log/acme" } },
       identity: { kind: "ours", version: "0.2.6", pid: 41 },
     });
     expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
     // Only the read-only print: no install, so no launchctl, no plist file.
-    expect(h.calls.map((c) => c.args[1])).toEqual(["print"]);
+    expect(h.calls.map((c) => c.args[1])).toEqual(["print", "print-host"]);
     expect(h.calls[0].env.DEN_SERVICE_READY_CHECK).toBeUndefined();
     expect(h.polls).toEqual([]);
     expect(h.identified).toEqual([7001]);
@@ -358,7 +358,7 @@ describe("service install --plan", () => {
       /port 7001 is in use by acme-ops at \/srv\/acme-other; not this distribution's server/,
     );
     expect(out).toMatch(/install would refuse this port/);
-    expect(h.calls.map((c) => c.args[1])).toEqual(["print"]);
+    expect(h.calls.map((c) => c.args[1])).toEqual(["print", "print-host"]);
   });
 
   it("works off macOS too (it loads nothing)", async () => {
@@ -551,5 +551,56 @@ describe("D26: running means the job's own process", () => {
     expect(h.lines.join("\n")).toMatch(
       /✓ local\.acme-dev\.web running \(login\)/,
     );
+  });
+});
+
+/**
+ * Issue 163: which mode `service install` uses. An explicit --mode, then
+ * the Setting (agents.keep_running_after_logout, when set), then the mode
+ * already installed, then login.
+ */
+describe("keep running after logout: the mode install uses", () => {
+  const always: ServiceJob = {
+    state: "loaded",
+    mode: "always",
+    plist: "/Library/LaunchDaemons/local.acme-dev.web.plist",
+    domain: "system",
+  };
+  const login: ServiceJob = {
+    state: "loaded",
+    mode: "login",
+    plist: "/home/someone/Library/LaunchAgents/local.acme-dev.web.plist",
+    domain: "gui/501",
+  };
+  const modeOf = async (
+    keep: boolean | undefined,
+    job: ServiceJob | null,
+    args: string[] = [],
+  ) => {
+    const h = harness({ job, jobPid: 4242 });
+    await cmdService(["install", ...args], {
+      ...h.deps,
+      keepRunning: () => keep,
+    });
+    return h.calls[0].env.DEN_SERVICE_MODE;
+  };
+
+  it("the Setting on: always, even over an installed login job", async () => {
+    expect(await modeOf(true, null)).toBe("always");
+    expect(await modeOf(true, login)).toBe("always");
+  });
+
+  it("the Setting off: login, even over an installed always job", async () => {
+    expect(await modeOf(false, always)).toBe("login");
+  });
+
+  it("the Setting unset: the installed mode, else login", async () => {
+    expect(await modeOf(undefined, always)).toBe("always");
+    expect(await modeOf(undefined, null)).toBe("login");
+  });
+
+  it("--mode wins over the Setting", async () => {
+    expect(await modeOf(true, null, ["--mode", "login"])).toBe("login");
+    expect(await modeOf(false, null, ["--mode", "always"])).toBe("always");
   });
 });

@@ -345,3 +345,77 @@ describe("service status", () => {
     expect(out.stdout).toContain("local.acme-test.sessions is not loaded");
   });
 });
+
+/**
+ * Issue 163: Settings › Keep agents running after logout
+ * (agents.keep_running_after_logout in user.yml). `service install` with
+ * no --mode follows it; --plan prints both jobs' plists, so a person sees
+ * the daemon and its UserName for the web job and the session host alike.
+ */
+describe("keep running after logout: install follows the Setting", () => {
+  /** cmdService with the real install.sh, under the rig's shims. */
+  async function plan(r: Rig, keep: boolean | undefined, args: string[] = []) {
+    const { cmdService } =
+      await import("../../../src/ui/cli/service-command.js");
+    const lines: string[] = [];
+    const runs: string[][] = [];
+    const code = await cmdService(["install", "--plan", ...args], {
+      run: (cmd, a, env) => {
+        runs.push(a);
+        const out = spawnSync(cmd, a, {
+          encoding: "utf-8",
+          env: { ...r.env, ...env },
+        });
+        lines.push(out.stdout);
+        return out.status ?? 1;
+      },
+      keepRunning: () => keep,
+      config: { environments: ["local"] } as never,
+      stateDir: path.join(r.t, "state"),
+      job: () => null,
+      jobPid: () => null,
+      distRoot: dist,
+      engineRoot: root,
+      home: r.home,
+      platform: "darwin",
+      webPort: 7001,
+      log: (l) => lines.push(l),
+      identify: async () => ({ kind: "none" }),
+    });
+    return { code, out: lines.join("\n"), runs };
+  }
+  const daemonUser = (xml: string) =>
+    [...xml.matchAll(/<key>UserName<\/key>\s*<string>([^<]*)<\/string>/g)].map(
+      (m) => m[1],
+    );
+
+  it("on: the plan is LaunchDaemons, with UserName for the web job AND the session host", async () => {
+    const r = rig();
+    const p = await plan(r, true);
+    expect(p.code).toBe(0);
+    expect(p.runs.map((a) => a[1])).toEqual(["print", "print-host"]);
+    expect(p.out).toContain("mode:    always");
+    expect(p.out).toContain("/Library/LaunchDaemons/");
+    const user = os.userInfo().username;
+    expect(daemonUser(p.out)).toEqual([user, user]);
+    // The labels come from the distribution (its dir name).
+    expect(p.out).toContain("<string>local.distribution.web</string>");
+    expect(p.out).toContain("<string>local.distribution.sessions</string>");
+  });
+
+  it("off: LaunchAgents, no UserName for either job", async () => {
+    const r = rig();
+    const p = await plan(r, false);
+    expect(p.code).toBe(0);
+    expect(p.out).toContain("mode:    login");
+    expect(p.out).toContain(path.join(r.home, "Library", "LaunchAgents"));
+    expect(daemonUser(p.out)).toEqual([]);
+  });
+
+  it("an explicit --mode wins over the Setting", async () => {
+    const r = rig();
+    const p = await plan(r, true, ["--mode", "login"]);
+    expect(p.out).toContain("mode:    login");
+    expect(daemonUser(p.out)).toEqual([]);
+  });
+});

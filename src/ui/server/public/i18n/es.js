@@ -755,6 +755,7 @@
     "set.agents.layout": "Disposición de la pestaña Agentes",
     "set.cli.local_dev": "Entorno local",
     "set.cli.cli_tabs": "Pestañas de terminal",
+    "set.agents.keep_running": "Mantener los agentes al cerrar sesión",
     "set.cli.log_window_lines": "Líneas del panel de registros",
     "set.server.restart": "Reiniciar Den",
     "set.cli.web_port": "Tu puerto web",
@@ -2111,6 +2112,8 @@
       "Configuraciones de agente desde las que puedes empezar. Las integradas vienen con Den, las de la distribución con tu distribución, y las tuyas están en esta máquina. Ver o Editar, Duplicar, + Nueva persona; solo las tuyas se pueden editar o eliminar.",
     "set.cli.local_dev.d":
       "Desactivado oculta Proyectos y las API de proyectos para ti. __DEN_CLI__ config local_dev=false",
+    "set.agents.keep_running.d":
+      "Activado: __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Así, un agente puede no llegar a su inicio de sesión (el llavero de inicio): aún no se ha mostrado. Desactivado (por defecto): los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "Si up y restart abren pestañas de terminal de forma predeterminada. __DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":

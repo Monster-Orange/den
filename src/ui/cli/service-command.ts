@@ -17,8 +17,11 @@
  *
  * D18: `install --mode login|always`. login: LaunchAgents in the desktop
  * session, stopped at logout. always: LaunchDaemons that run as you, kept
- * across logout (one sudo). Without --mode, the mode already installed
- * (else login): re-running install never changes it. Both modes also
+ * across logout (one sudo). Which mode install uses (issue 163): an
+ * explicit --mode, else the Setting "Keep agents running after logout"
+ * (agents.keep_running_after_logout, when set: on is always, off is
+ * login), else the mode already installed, else login. `--plan` prints
+ * both jobs' plists (the web job's and the session host's). Both modes also
  * install the session host as its own job, on Den's node copy
  * (`<stateDir>/bin/<cli>-sessions-host`, the path Full Disk Access is
  * granted to), and `<cli> sessions` then waits for that job instead of
@@ -44,6 +47,7 @@ import {
   type ServiceMode,
 } from "./doctor-where.js";
 import {
+  agentsKeepRunningAfterLogout,
   readDenConfig,
   readWebServiceConfig,
   type DenConfig,
@@ -137,6 +141,11 @@ export interface ServiceDeps {
   jobPid?: (job: ServiceJob, label: string) => number | null;
   /** D26: stop a plain server of this install (default: SIGTERM, wait). */
   stopPlain?: (pid: number, port: number) => Promise<boolean>;
+  /**
+   * Issue 163: Settings › Keep agents running after logout (true, false,
+   * or undefined when unset). Default: user.yml, unless `run` is a test's.
+   */
+  keepRunning?: () => boolean | undefined;
   /** D17: record web.owner_github (default: from gh, unless `run` is a test's). */
   recordOwner?: () => OwnerGithubResult;
   config?: DenConfig;
@@ -315,7 +324,9 @@ export function serviceHelp(cli: string): string[] {
     ``,
     `  --mode login   (default) LaunchAgents in the desktop session: stop at logout, with every agent`,
     `  --mode always  LaunchDaemons running as you, one sudo: meant to keep agents running across logout. Opt-in, ${ALWAYS_UNPROVEN}`,
-    `  Without --mode, install keeps the mode already installed.`,
+    `  Without --mode, install follows Settings › Keep agents running after logout`,
+    `  (agents.keep_running_after_logout: on is always, off is login); unset, it keeps`,
+    `  the mode already installed.`,
   ];
 }
 
@@ -373,8 +384,16 @@ export async function cmdService(
     deps.job ??
     ((l: string) => serviceJobState(l, home, process.getuid?.() ?? 0));
   const installed = jobOf(label);
-  // D18: without --mode, the mode it has (re-running install keeps it).
-  const mode: ServiceMode = askedMode ?? installed?.mode ?? "login";
+  // Issue 163: --mode, then the Setting, then the mode it has (re-running
+  // install keeps it), then login.
+  const keep = (
+    deps.keepRunning ??
+    (deps.run ? () => undefined : () => agentsKeepRunningAfterLogout())
+  )();
+  const settingMode: ServiceMode | undefined =
+    keep === undefined ? undefined : keep ? "always" : "login";
+  const mode: ServiceMode =
+    askedMode ?? settingMode ?? installed?.mode ?? "login";
   const stateDir = deps.stateDir ?? getStateDir();
   const env: Record<string, string> = {
     DEN_ROOT: distRoot,
@@ -434,10 +453,12 @@ export async function cmdService(
       log(
         `           install stops this plain server (pid ${id.pid}) first; the service runs it then`,
       );
-    log(`  plist it would write:`);
-    // install.sh print writes the plist to stdout only.
-    const code = run("bash", [script, "print"], env);
-    if (code !== 0) return code;
+    log(`  plists it would write (the web job's, then the host job's):`);
+    // install.sh print / print-host write a plist to stdout only.
+    for (const which of ["print", "print-host"]) {
+      const code = run("bash", [script, which], env);
+      if (code !== 0) return code;
+    }
     if (id.kind === "foreign") {
       log(`✗ install would refuse this port: ${pickAnotherPortHint()}`);
       return 1;

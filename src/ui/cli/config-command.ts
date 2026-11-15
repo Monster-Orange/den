@@ -51,9 +51,33 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   ],
 };
 
+/**
+ * Dotted switches, as Settings names them: the Settings field each sets
+ * (issue 163: `config agents.keep_running_after_logout=true`).
+ */
+const DOTTED_SWITCH: Record<string, string> = {
+  "agents.keep_running_after_logout": "keep_running_after_logout",
+};
+
 /** Every key `config` accepts, aliases too. */
 export function configKeyNames(): string[] {
-  return [...Object.keys(KEY_ALIASES), ...Object.keys(DOTTED)];
+  return [
+    ...Object.keys(KEY_ALIASES),
+    ...Object.keys(DOTTED),
+    ...Object.keys(DOTTED_SWITCH),
+  ];
+}
+
+/** A dotted switch set (or, with null, cleared) as Settings would. */
+function setSwitch(name: string, value: unknown): void {
+  const user = readUserConfig() as Record<string, unknown>;
+  const r = patchCliRows(
+    user,
+    { [DOTTED_SWITCH[name]!]: value },
+    { cli: true },
+  );
+  if (!r.ok) throw new Error(r.error);
+  writeUserConfig(user as UserConfig);
 }
 
 /** A dotted limit set (or, with null, cleared) as Settings would. */
@@ -91,6 +115,11 @@ export async function cmdConfig(args: string[]): Promise<void> {
   if (args[0] === "rm") {
     const keyArg = args[1];
     if (!keyArg) throw new Error(`Usage: ${product().cli} config rm <key>`);
+    if (DOTTED_SWITCH[keyArg]) {
+      setSwitch(keyArg, null);
+      console.log(chalk.green(`  ✓ Removed ${keyArg}`));
+      return;
+    }
     if (DOTTED[keyArg]) {
       setDotted(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
@@ -111,6 +140,11 @@ export async function cmdConfig(args: string[]): Promise<void> {
   }
 
   const name = assignment.slice(0, eq);
+  if (DOTTED_SWITCH[name]) {
+    setSwitch(name, parseValue(assignment.slice(eq + 1)));
+    console.log(chalk.green(`  ✓ Set ${name}`));
+    return;
+  }
   if (DOTTED[name]) {
     setDotted(name, parseValue(assignment.slice(eq + 1)));
     console.log(chalk.green(`  ✓ Set ${name}`));

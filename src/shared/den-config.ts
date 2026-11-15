@@ -519,6 +519,12 @@ export interface UserConfig {
      */
     restore_on_boot?: unknown;
     /**
+     * Issue 163 (0.4.50): Settings › Keep agents running after logout.
+     * true: `service install` runs Den as LaunchDaemons (mode always),
+     * false: LaunchAgents (login). Unset: the mode already installed.
+     */
+    keep_running_after_logout?: unknown;
+    /**
      * 0.4.46 MODE-UI: the install's mode for every agent (ask, edits, auto,
      * all): under the agent's own and its project's, over its persona's.
      */
@@ -641,6 +647,22 @@ export function agentsRestoreOnBoot(
   if (typeof v === "boolean") return v;
   throw new Error(
     `agents.restore_on_boot must be true or false (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * Issue 163 (0.4.50) agents.keep_running_after_logout (user.yml): true or
+ * false when the person set it, undefined when unset (install then keeps
+ * the mode already installed). Off is the default the page shows.
+ */
+export function agentsKeepRunningAfterLogout(
+  read: () => UserConfig = readUserConfig,
+): boolean | undefined {
+  const v = read().agents?.keep_running_after_logout;
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === "boolean") return v;
+  throw new Error(
+    `agents.keep_running_after_logout must be true or false (user.yml; got ${JSON.stringify(v)})`,
   );
 }
 

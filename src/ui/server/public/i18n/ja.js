@@ -740,6 +740,7 @@
     "set.agents.layout": "エージェントタブのレイアウト",
     "set.cli.local_dev": "ローカル環境",
     "set.cli.cli_tabs": "ターミナルのタブ",
+    "set.agents.keep_running": "ログアウト後もエージェントを動かす",
     "set.cli.log_window_lines": "ログ欄の行数",
     "set.server.restart": "Den を再起動",
     "set.cli.web_port": "あなたの web ポート",
@@ -2065,6 +2066,8 @@
       "エージェントを始めるときの設定です。組み込みのものは Den に、ディストリビューションのものはディストリビューションに含まれ、あなたのものはこのマシンにあります。表示 / 編集、複製、+ 新しいペルソナ。編集や削除ができるのは自分のものだけです。",
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
+    "set.agents.keep_running.d":
+      "オン: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。この場合、エージェントがサインイン情報（ログインキーチェーン）に届かないことがあります（まだ確認されていません）。オフ（既定）: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":

@@ -160,6 +160,7 @@ import {
   writeUserConfig,
   panesReconnect,
   agentsListWaits,
+  agentsKeepRunningAfterLogout,
   webUrlCheckSeconds,
   readReleaseConfig,
   resolveReleaseTarget,
@@ -5751,6 +5752,14 @@ async function handleRequest(
                 ? w.bridge_probe_seconds
                 : 10,
           };
+        })(),
+        // Issue 163: Keep agents running after logout (off when unset).
+        keep_running_after_logout: (() => {
+          try {
+            return agentsKeepRunningAfterLogout(() => user) === true;
+          } catch {
+            return false;
+          }
         })(),
         // den#156: the Agents list's waits (agents_list.*).
         agents_list: (() => {

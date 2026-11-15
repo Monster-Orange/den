@@ -6,6 +6,18 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.50] - unreleased
 
+### Added
+
+- Settings › Agents › Keep agents running after logout. It is opt-in and
+  off by default (`agents.keep_running_after_logout` in user.yml, or
+  `<cli> config agents.keep_running_after_logout=true`). `<cli> service
+  install` without `--mode` follows it: on runs Den as LaunchDaemons that
+  run as you (mode always), off runs LaunchAgents that stop at logout. An
+  explicit `--mode` still wins; with the Setting unset, install keeps the
+  mode already installed. `service install --plan` now prints both jobs'
+  plists, the web job's and the host job's. Real logout not shown;
+  keychain under the daemon not yet shown. (#163)
+
 ### Fixed
 
 - `<cli> hub put`, `hub pull` and `hub push` send the agent's Den token only
