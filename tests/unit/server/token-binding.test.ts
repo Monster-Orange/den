@@ -11,7 +11,7 @@ import { tokenCaller } from "../../../src/ui/server/token-binding.js";
 let port = 40000;
 const req = (remoteAddress = "127.0.0.1") =>
   ({
-    socket: { remoteAddress, remotePort: port++ },
+    socket: { remoteAddress, remotePort: port++, localPort: 7700 },
   }) as unknown as http.IncomingMessage;
 
 describe("#70 tokenCaller", () => {
@@ -21,6 +21,14 @@ describe("#70 tokenCaller", () => {
     expect(tokenCaller(req(), 200, { peer, descends: () => false })).toBe(
       "elsewhere",
     );
+  });
+
+  it("issue 196: the lookup is told the server's own port (a client port can be shared)", () => {
+    const asked: unknown[][] = [];
+    const peer = (...a: unknown[]) => (asked.push(a), 400);
+    const r = req();
+    expect(tokenCaller(r, 200, { peer, descends: () => true })).toBe("ok");
+    expect(asked).toEqual([[r.socket.remotePort, 7700]]);
   });
 
   it("a caller Den can't find, or no session pid: unknown (refused)", () => {

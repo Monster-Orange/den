@@ -1,6 +1,6 @@
 // den#143: on a busy machine fewer workers means fewer load flakes. A
 // setting, never a number here: DEN_TEST_WORKERS (8, or 50%); unset or
-// blank, jest's own default (CI). `npm run preflight` asks for 8.
+// blank, jest's own default. CI's test shards set 2; `npm run preflight` asks for 8.
 const workers = (process.env.DEN_TEST_WORKERS ?? "").trim();
 
 export default {
