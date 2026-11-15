@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# No org's names in a commit message (this repo is public). Passes quietly
+# when no names file is configured (DEN_ORG_NAMES_FILE / DEN_ORG_NAMES).
+node scripts/org-name-commits.mjs --message "$1"

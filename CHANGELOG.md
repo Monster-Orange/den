@@ -31,6 +31,11 @@ config and manifest changes a distribution must make to move to it under
 
 - Report an issue sits in one place on every page and in every pop-up (issue 94). In the top bar it is right before the bell, with its word, at every width; it is no longer in the left rail. In a pop-up it is first in the footer. The place is set once, in the shared UI kit.
 
+- The org-name gate now reads commit messages too (issue 189). In CI it checks
+  every new commit in the pull request (or push) and names any commit that
+  matches, never the name itself. A commit-msg hook runs the same check before
+  a commit is made, and passes quietly when no names file is set.
+
 ## [0.4.50] - unreleased
 
 ### Added
