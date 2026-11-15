@@ -243,7 +243,7 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   sync: [],
   // The only override for an edge another state dir owns; a typo'd one
   // must not be ignored.
-  edge: ["--take-over"],
+  edge: ["--take-over", "--rotate-proof"],
 };
 
 /**

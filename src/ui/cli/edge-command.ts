@@ -1,5 +1,5 @@
 /**
- * `edge up [--take-over] | down | status | trust | untrust | routes`
+ * `edge up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes`
  *
  * This org's edge: routes at `<name>.<edge.domain>`, TLS as `edge.tls` says
  * (none, mkcert or files). `trust` / `untrust` exist only under mkcert.
@@ -51,8 +51,12 @@ export async function cmdEdge(args: string[]): Promise<void> {
     case "up": {
       // --take-over: the only way to replace an edge another state dir
       // owns (0.3.0-dev.40); never implied.
+      // --rotate-proof (H1): a new edge proof; the old one stops working
+      // at once. Den's web app picks the new one up with no restart.
+      const rotateProof = args.includes("--rotate-proof");
       const { certs } = await edgeUp(cfg, {
         takeOver: args.includes("--take-over"),
+        rotateProof,
       });
       console.log(
         chalk.green(
@@ -62,6 +66,8 @@ export async function cmdEdge(args: string[]): Promise<void> {
         ),
       );
       console.log(`  ports  ${published}`);
+      if (rotateProof)
+        console.log("  proof  rotated: the old one no longer works");
       if (certs.issued)
         console.log(`  cert   issued for ${certs.names.join(", ")}`);
       if (cfg.tls.strategy === "mkcert" && caTrusted(cfg) === false)
@@ -140,7 +146,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
     }
     default:
       throw new Error(
-        `Unknown edge command "${sub}". Use: up [--take-over] | down | status | trust | untrust | routes`,
+        `Unknown edge command "${sub}". Use: up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes`,
       );
   }
 }

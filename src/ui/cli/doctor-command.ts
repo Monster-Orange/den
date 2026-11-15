@@ -21,6 +21,8 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import * as fs from "fs";
+import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
 import chalk from "chalk";
 import {
@@ -53,6 +55,7 @@ import { eventsFile } from "../../shared/dev-metrics/emit.js";
 import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
+import { readEdgeProof } from "../../shared/edge/proof.js";
 import {
   edgeAccessHealthy,
   edgeAccessWarnings,
@@ -724,6 +727,46 @@ export function addressLines(
 }
 
 /**
+ * H1 (0.4.48): whether the edge set up here carries Den's proof (the
+ * generated edge.yml has the current one). Never prints the proof: only
+ * whether it is there. No edge config, or no edge set up here: nothing.
+ */
+export function edgeProofLines(
+  title: string,
+  cli: string,
+  edgeDir: () => string | null = () => {
+    try {
+      return readEdgeConfig().stateDir;
+    } catch {
+      return null;
+    }
+  },
+): { lines: string[]; check?: OnboardCheck } {
+  const dir = edgeDir();
+  if (!dir) return { lines: [] };
+  let yml: string;
+  try {
+    yml = fs.readFileSync(path.join(dir, "dynamic", "edge.yml"), "utf8");
+  } catch {
+    return { lines: [] };
+  }
+  const proof = readEdgeProof(dir);
+  const carried = !!proof && yml.includes(proof);
+  const detail = carried
+    ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
+    : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Edge proof`,
+      "",
+      `  edge proof  ${carried ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "edge_proof", status: carried ? "ok" : "warn", detail },
+  };
+}
+
+/**
  * SRV-P6 (0.4.48): server_agent.self_update, always: its value, where it
  * came from (user.yml, the org config not yet copied, or the default),
  * and the update check's last pass and next (the running Den writes them).
@@ -985,6 +1028,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
     r.checks.push(selfUpdateLines(readBrand().name).check);
+    {
+      const ep = edgeProofLines(readBrand().name, product().cli);
+      if (ep.check) r.checks.push(ep.check);
+    }
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1027,6 +1074,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
+  for (const l of edgeProofLines(readBrand().name, product().cli).lines)
+    console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {

@@ -175,6 +175,13 @@ export interface GuardContext {
    * in (`signin`, the default when unset) or counts as local (`local`).
    */
   edgeUnattested?: "local" | "signin";
+  /**
+   * H1 (0.4.48): the request carries the edge's proof (edge/proof.ts).
+   * Only then is the edge's forwarded client believed: without it, a
+   * request on the edge hostname is never this machine and signs in,
+   * whatever web.edge_unattested says. Unset: no proof (fails closed).
+   */
+  edgeProved?: (req: http.IncomingMessage) => boolean;
 }
 
 export type GuardResult =
@@ -532,21 +539,25 @@ export function checkRequest(
   // The edge: local when it attests this machine; a client it can't place
   // signs in unless web.edge_unattested is local; never local when this
   // server is deliberately exposed. A LAN name or peer is beyond.
+  // H1: the forwarded client is the edge's word only with its proof; a
+  // peer that merely sits where the edge does is believed in nothing.
   const xff = header(req, "x-forwarded-for");
-  const who = via === "edge" ? edgeClient(xff, ctx.localNet?.()) : null;
+  const proved = via === "edge" && !!ctx.edgeProved?.(req);
+  const who = proved ? edgeClient(xff, ctx.localNet?.()) : null;
   const beyond =
     via === "edge"
-      ? !!ctx.exposed ||
+      ? !proved ||
+        !!ctx.exposed ||
         who === "foreign" ||
         (who === "unattested" && ctx.edgeUnattested !== "local")
       : via !== "loopback" || !peerLoopback;
   // The address a device's record keeps: the edge's attested client, or
-  // the peer itself off the edge.
+  // the peer itself off the edge (never an unproved forwarded one).
   const client =
     via === "edge"
-      ? who === "unattested"
-        ? undefined
-        : forwardedClient(xff)
+      ? who === "local" || who === "foreign"
+        ? forwardedClient(xff)
+        : undefined
       : (req.socket?.remoteAddress ?? undefined);
 
   let principal: Principal | null = null;

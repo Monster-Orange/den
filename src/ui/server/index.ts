@@ -43,6 +43,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import semver from "semver";
+import { edgeProofChecker } from "../../shared/edge/proof.js";
+import { syncEdgeProof } from "../../shared/edge/runtime.js";
 import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
@@ -1333,6 +1335,20 @@ function sessionCookie(req: http.IncomingMessage): string | undefined {
 }
 
 const LAN_HOSTS = lanHosts();
+/** H1: the edge's state folder (its proof's), re-read at most every 10 s. */
+let EDGE_DIR = { at: 0, dir: null as string | null };
+const EDGE_PROVED = edgeProofChecker(() => {
+  if (Date.now() - EDGE_DIR.at > 10_000) {
+    let dir: string | null = null;
+    try {
+      dir = readEdgeConfig().stateDir;
+    } catch {
+      /* no edge config: nothing proves */
+    }
+    EDGE_DIR = { at: Date.now(), dir };
+  }
+  return EDGE_DIR.dir;
+});
 /** This machine's addresses (localNet), re-read at most every 10 s. */
 let LOCAL_NET = { at: 0, net: localNet() };
 /** The edge's Docker networks' subnets (edgeNetworkSubnets), once at start. */
@@ -1434,6 +1450,8 @@ const GUARD: GuardContext = {
   exposed: !isLoopbackBind(BIND_HOST) && !isDockerBridgeAddress(BIND_HOST),
   // SEC-2a: an edge client Den can't place signs in (web.edge_unattested).
   edgeUnattested: WEB_AUTH.edgeUnattested,
+  // H1: the edge's forwarded client is believed only with its proof.
+  edgeProved: (req) => EDGE_PROVED(req),
 };
 
 // ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
@@ -6106,6 +6124,8 @@ function requestIdOf(req: http.IncomingMessage): string {
 }
 
 const server = http.createServer((req, res) => {
+  // H1: the edge's proof is read once and taken off every request first.
+  EDGE_PROVED(req);
   // An async handler with no catch turns any route throw into an unhandled
   // rejection — which CRASHES the whole server on modern Node (freezing every
   // health dot) and leaves the request hanging. Fail the one request instead.
@@ -6200,6 +6220,7 @@ server.on(
   "upgrade",
   (req: http.IncomingMessage, socket: net.Socket, head: Buffer) => {
     socket.on("error", () => undefined);
+    EDGE_PROVED(req);
     const requestId = requestIdOf(req);
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     const guard = checkRequest(req, GUARD, product().cli, product().title);
@@ -6576,6 +6597,20 @@ void CRASH_GATE.then(() =>
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
+    // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
+    try {
+      const r = syncEdgeProof(
+        readEdgeConfig(),
+        new Set([PORT, readWebPortSafe()]),
+      );
+      if (r === "written")
+        serverLog(
+          "  Edge: Den's route now carries the edge's proof (dynamic/edge.yml)",
+          "lifecycle",
+        );
+    } catch (e) {
+      serverLog(`  ⚠ edge proof not synced: ${(e as Error).message}`, "warn");
+    }
     // #57: agents whose record names a project by its pre-D70 key follow it.
     void import("../../shared/agents/heal-workspace.js").then(async (m) => {
       const { isServerScope } =

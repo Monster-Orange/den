@@ -39,6 +39,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { clientFrame, wsConnect, type TestWs } from "./helpers/ws-client.js";
+import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 
 let s: AgentsPageServer;
 let host: HostClient;
@@ -455,6 +456,8 @@ describe("the request checks on the io upgrade", () => {
     // X-Forwarded-For is loopback), is local (0.4.3): the terminal opens
     // with the page's Origin and CSRF, as on localhost.
     const edgeHost = "acme.acme.localhost";
+    // H1: the real edge adds its proof to every request it forwards.
+    writeTestEdgeProof(path.join(s.tmp, "edge-state"));
     expect(
       await refusal(
         io("shell"),
@@ -462,6 +465,7 @@ describe("the request checks on the io upgrade", () => {
           host: edgeHost,
           origin: `http://${edgeHost}`,
           "x-forwarded-for": "127.0.0.1",
+          ...EDGE_PROOF,
         }),
       ),
     ).toEqual([101, "upgraded"]);

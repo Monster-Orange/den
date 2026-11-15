@@ -51,6 +51,8 @@ const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
   session: () => null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
   peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
+  // H1: the real edge adds its proof to every request it forwards.
+  edgeProved: () => true,
   localNet: () => HERE,
   ...over,
 });

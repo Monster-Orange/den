@@ -29,6 +29,7 @@ import {
   startDenServer,
   stopServer,
 } from "../../child-servers.js";
+import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -103,9 +104,9 @@ const code = () => {
 };
 const nav = { "sec-fetch-site": "none", accept: "text/html" };
 /** The edge's X-Forwarded-For for a client on another machine (0.4.3). */
-const AWAY = { "x-forwarded-for": "203.0.113.7" };
+const AWAY = { "x-forwarded-for": "203.0.113.7", ...EDGE_PROOF };
 /** The edge's X-Forwarded-For for a browser on this machine (it attests loopback). */
-const HERE = { "x-forwarded-for": "127.0.0.1" };
+const HERE = { "x-forwarded-for": "127.0.0.1", ...EDGE_PROOF };
 const cookieName = () => `den_session_${port}`;
 /** The Set-Cookie line for the session cookie, or "". */
 const setCookie = (r: Reply) =>
@@ -165,6 +166,8 @@ async function freePort(): Promise<number> {
   return p;
 }
 function serverEnv(dist: string, home: string, p: number) {
+  // H1: the edge's proof, as the real edge sends it.
+  writeTestEdgeProof(path.join(tmp, "edge-state"));
   return {
     ...process.env,
     DEN_ROOT: dist,

@@ -39,6 +39,15 @@ config and manifest changes a distribution must make to move to it under
   first start copies it to each install's `user.yml`; remove the line
   from the org config afterwards (doctor reminds you).
 
+### Security
+
+- Forwarded-header trust: Den now believes what its edge says about a
+  client only when the edge vouches for the request. An edge set up
+  before 0.4.48 is brought up to date at Den's next start; until then,
+  requests through it sign in. `edge up --rotate-proof` replaces the
+  edge's credential. Doctor says whether the edge is up to date. Details
+  follow after the release.
+
 ### Fixed
 
 - While Den couldn't read its Hub token (the secrets store refused for a

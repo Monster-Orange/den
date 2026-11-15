@@ -4,6 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 import {
+  accessLogArgs,
   certNames,
   edgeCommand,
   renderEdgeCompose,
@@ -73,6 +74,56 @@ describe("certificate names", () => {
       "*.acme.localhost",
       "acme.internal",
       "*.acme.internal",
+    ]);
+  });
+});
+
+describe("H1: the edge's proof on Den's own route", () => {
+  const PROOF = "ab".repeat(32);
+  const cfg = {
+    ...edge,
+    routes: {
+      den: "http://host.docker.internal:7000",
+      app: "http://host.docker.internal:3000",
+    },
+  };
+
+  it("Den's own route (its port on this host) gets the proof header; other routes never do", () => {
+    const doc = yaml.parse(
+      renderEdgeDynamic(cfg, { proof: PROOF, ports: new Set([7000]) }),
+    );
+    expect(doc.http.routers["route-den"].middlewares).toEqual([
+      "den-edge-proof",
+    ]);
+    expect(doc.http.routers["route-app"].middlewares).toBeUndefined();
+    expect(doc.http.middlewares["den-edge-proof"]).toEqual({
+      headers: { customRequestHeaders: { "X-Den-Edge-Proof": PROOF } },
+    });
+  });
+
+  it("with no proof, or no route to Den, nothing is added (as before)", () => {
+    expect(renderEdgeDynamic(cfg)).toBe(
+      renderEdgeDynamic(cfg, { proof: PROOF, ports: new Set([9]) }),
+    );
+    expect(renderEdgeDynamic(cfg)).not.toContain("den-edge-proof");
+  });
+
+  it("the access log keeps no request headers, so the proof never lands in it", () => {
+    const args = accessLogArgs({
+      ...cfg,
+      accessLog: { enabled: true },
+    } as EdgeConfig);
+    expect(args).toContain("--accesslog=true");
+    expect(args.join(" ")).not.toMatch(/fields\.headers|defaultmode=keep/i);
+  });
+
+  it("keeps the https redirect middleware beside it", () => {
+    const doc = yaml.parse(
+      renderEdgeDynamic(cfg, { proof: PROOF, ports: new Set([7000]) }),
+    );
+    expect(Object.keys(doc.http.middlewares).sort()).toEqual([
+      "den-edge-proof",
+      "to-https",
     ]);
   });
 });

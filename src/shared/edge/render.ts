@@ -79,6 +79,19 @@ export function webRouteHosts(
   cfg: EdgeConfig,
   ports: ReadonlySet<number>,
 ): { host: string; url: string }[] {
+  return webRouteNames(cfg, ports).flatMap((name) =>
+    edgeDomains(cfg).map((d) => ({
+      host: routeHost(name, d).toLowerCase(),
+      url: routeUrl(name, cfg, d),
+    })),
+  );
+}
+
+/** The route names whose upstream is a web server on `ports` on this host. */
+export function webRouteNames(
+  cfg: EdgeConfig,
+  ports: ReadonlySet<number>,
+): string[] {
   return Object.entries(cfg.routes)
     .filter(([, upstream]) => {
       try {
@@ -93,12 +106,19 @@ export function webRouteHosts(
         return false;
       }
     })
-    .flatMap(([name]) =>
-      edgeDomains(cfg).map((d) => ({
-        host: routeHost(name, d).toLowerCase(),
-        url: routeUrl(name, cfg, d),
-      })),
-    );
+    .map(([name]) => name);
+}
+
+/** H1: the middleware that adds the edge's proof (edge/proof.ts). */
+export const EDGE_PROOF_MIDDLEWARE = "den-edge-proof";
+
+/**
+ * H1 (0.4.48): what renderEdgeDynamic adds for Den: the edge's proof, as
+ * a request header on Den's own web route (its `ports` on this host).
+ */
+export interface EdgeProofRender {
+  proof: string;
+  ports: ReadonlySet<number>;
 }
 
 /** Names that go on the org's certificate. */
@@ -125,7 +145,11 @@ export const UPSTREAM_TRANSPORT = "den-upstream";
  * `tls: none` every router is on the http entrypoint, with no TLS and no
  * redirect.
  */
-export function renderEdgeDynamic(cfg: EdgeConfig): string {
+export function renderEdgeDynamic(
+  cfg: EdgeConfig,
+  den?: EdgeProofRender,
+): string {
+  const proved = new Set(den ? webRouteNames(cfg, den.ports) : []);
   const httpsPort = cfg.ports?.https ?? 443;
   const redirectPort = httpsPort !== 443 ? { port: String(httpsPort) } : {};
   const https = edgeHttps(cfg);
@@ -163,6 +187,7 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
     routers[key] = {
       entryPoints: entryPoints(),
       rule: hostRule(name, cfg),
+      ...(proved.has(name) ? { middlewares: [EDGE_PROOF_MIDDLEWARE] } : {}),
       service: key,
       ...routerTls(cfg),
     };
@@ -182,16 +207,32 @@ export function renderEdgeDynamic(cfg: EdgeConfig): string {
     yaml.stringify({
       http: {
         routers,
-        ...(redirect
+        ...(redirect || proved.size
           ? {
               middlewares: {
-                "to-https": {
-                  redirectScheme: {
-                    scheme: "https",
-                    permanent: false,
-                    ...redirectPort,
-                  },
-                },
+                ...(redirect
+                  ? {
+                      "to-https": {
+                        redirectScheme: {
+                          scheme: "https",
+                          permanent: false,
+                          ...redirectPort,
+                        },
+                      },
+                    }
+                  : {}),
+                // H1: set (never passed through from the client) on Den's route.
+                ...(proved.size && den
+                  ? {
+                      [EDGE_PROOF_MIDDLEWARE]: {
+                        headers: {
+                          customRequestHeaders: {
+                            "X-Den-Edge-Proof": den.proof,
+                          },
+                        },
+                      },
+                    }
+                  : {}),
               },
             }
           : {}),

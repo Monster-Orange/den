@@ -928,6 +928,16 @@ later plugins.
   (from before 0.3.0-dev.40) is adopted only from the default state dir,
   never under an overriding `DEN_EDGE_DIR`. The only override is
   `edge up --take-over`. (0.3.0-dev.40.)
+- **The edge vouches for Den's own route** (0.4.48). Edge up keeps a
+  secret in the edge's state dir (`den-edge-proof`, 0600) and the edge
+  sends it on every request to Den's web route. Den believes what the edge
+  says about a client only with it: without it, a request on the edge
+  hostname signs in, this machine's included. An edge set up before 0.4.48
+  gets it at Den's next start (only `dynamic/edge.yml` is rewritten;
+  Traefik reloads it, nothing restarts). `edge up --rotate-proof` makes a
+  new one, and the old one stops working at once. Doctor's "Edge proof"
+  line (`doctor --json`: check `edge_proof`) says whether the edge carries
+  it; the secret itself is never printed or logged.
 - **A recreated edge keeps its routes.** After edge up creates, recreates
   or starts the edge, it rejoins the routed networks of every running stack
   whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,

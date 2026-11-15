@@ -20,6 +20,7 @@ import {
   readWebSecret,
 } from "../../../src/shared/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -122,6 +123,8 @@ beforeAll(async () => {
     ].join("\n"),
   );
   userYml = path.join(root, "config", "local", "user.yml");
+  // H1: the edge's proof, as the real edge sends it.
+  writeTestEdgeProof(path.join(tmp, "edge-state"));
   const started = await startDenServer(
     TSX,
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
@@ -207,14 +210,30 @@ describe("the Host allowlist (DNS rebinding)", () => {
   });
 
   it("the edge hostname that routes to Den passes the Host check (local when the edge attests this machine; for another, or one it can't place, it needs a sign-in)", async () => {
-    const away = { "x-forwarded-for": "203.0.113.7" };
-    const here = { "x-forwarded-for": "127.0.0.1" };
+    const away = { "x-forwarded-for": "203.0.113.7", ...EDGE_PROOF };
+    const here = { "x-forwarded-for": "127.0.0.1", ...EDGE_PROOF };
     for (const host of ["den.acme.localhost", "den.acme.localhost:443"]) {
       expect(
         (await call("GET", "/api/server-info", { host, ...here })).status,
       ).toBe(200);
+      // H1: claiming this machine without the edge's proof (a container
+      // on the edge's network), or with a wrong one: a sign-in.
+      for (const proof of [{}, { "x-den-edge-proof": "00".repeat(32) }]) {
+        const spoof = await call("GET", "/api/server-info", {
+          host,
+          "x-forwarded-for": "127.0.0.1",
+          ...proof,
+        });
+        expect([spoof.status, json(spoof).code]).toEqual([
+          401,
+          "signin_required",
+        ]);
+      }
       // SEC-2a (0.4.5): one the edge can't place (no X-Forwarded-For).
-      const unplaced = await call("GET", "/api/server-info", { host });
+      const unplaced = await call("GET", "/api/server-info", {
+        host,
+        ...EDGE_PROOF,
+      });
       expect([unplaced.status, json(unplaced).code]).toEqual([
         401,
         "signin_required",

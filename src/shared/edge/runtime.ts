@@ -7,6 +7,8 @@ import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
 import { must, sh } from "./exec.js";
+import { readWebPort } from "./config.js";
+import { ensureEdgeProof, readEdgeProof, rotateEdgeProof } from "./proof.js";
 import {
   droppedEdgeArgs,
   EDGE_ROOT_LABEL,
@@ -33,6 +35,42 @@ export { assertCaUsable, caDir, caTrusted, sharedCa };
 function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content, "utf-8");
+}
+
+/**
+ * H1: the generated edge.yml carries the edge's proof: 0600, and replaced
+ * whole (a rename), so Traefik's watch never reads half of it.
+ */
+function writeSecret(file: string, content: string): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, content, { encoding: "utf-8", mode: 0o600 });
+  fs.chmodSync(tmp, 0o600);
+  fs.renameSync(tmp, file);
+}
+
+/**
+ * H1 (0.4.48): at Den's start, an edge set up here whose edge.yml lacks the
+ * current proof (set up before 0.4.48, or rotated) gets it: the file only,
+ * which Traefik reloads by itself; nothing restarts. No edge.yml here: no
+ * edge to sync (and no proof is made).
+ */
+export function syncEdgeProof(
+  cfg: EdgeConfig,
+  ports: ReadonlySet<number>,
+): "written" | "current" | "no-edge" {
+  const file = path.join(cfg.stateDir, "dynamic", GENERATED);
+  let now: string;
+  try {
+    now = fs.readFileSync(file, "utf8");
+  } catch {
+    return "no-edge";
+  }
+  const have = readEdgeProof(cfg.stateDir);
+  if (have && now.includes(have)) return "current";
+  const proof = ensureEdgeProof(cfg.stateDir);
+  writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
+  return "written";
 }
 
 function ensureNetwork(name: string): void {
@@ -281,7 +319,12 @@ export function edgeUpNotices(
 
 export async function edgeUp(
   cfg: EdgeConfig,
-  opts: { takeOver?: boolean; log?: (line: string) => void } = {},
+  opts: {
+    takeOver?: boolean;
+    log?: (line: string) => void;
+    /** H1: a new edge proof; the old one stops working at once. */
+    rotateProof?: boolean;
+  } = {},
 ) {
   // Before anything is written or started: an edge of this name that
   // another state dir owns is never replaced.
@@ -314,7 +357,14 @@ export async function edgeUp(
   const included = syncIncluded(cfg);
   // #63: Den makes the raw access file (0600) so Traefik never does.
   if (cfg.accessLog?.enabled) prepareAccessRaw(cfg.stateDir);
-  write(path.join(cfg.stateDir, "dynamic", GENERATED), renderEdgeDynamic(cfg));
+  // H1: the proof Den's own route carries (made once, or a new one).
+  const proof = opts.rotateProof
+    ? rotateEdgeProof(cfg.stateDir)
+    : ensureEdgeProof(cfg.stateDir);
+  writeSecret(
+    path.join(cfg.stateDir, "dynamic", GENERATED),
+    renderEdgeDynamic(cfg, { proof, ports: new Set([readWebPort()]) }),
+  );
   const compose = path.join(cfg.stateDir, "compose.yml");
   // SEC-2a: say what changed before compose recreates the edge for it.
   const log = opts.log ?? ((l: string) => console.log(l));

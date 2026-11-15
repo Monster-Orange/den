@@ -18,12 +18,15 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+/** The edge folder, with the invented proof in it (H1). */
+const edgeProofDir = (d: string) => (writeTestEdgeProof(d), d);
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
 const SHORT = os.hostname().split(".")[0];
 /** The edge's X-Forwarded-For for a client on another machine. */
-const AWAY = { "x-forwarded-for": "203.0.113.7" };
+const AWAY = { "x-forwarded-for": "203.0.113.7", ...EDGE_PROOF };
 let browser: Browser | null = null;
 let tmp = "";
 let stateDir = "";
@@ -67,7 +70,7 @@ beforeAll(async () => {
         ...process.env,
         DEN_ROOT: root,
         DEN_ENGINE_ROOT: ENGINE,
-        DEN_EDGE_DIR: path.join(tmp, "edge-state"),
+        DEN_EDGE_DIR: edgeProofDir(path.join(tmp, "edge-state")),
         DEN_HOME: stateDir,
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",

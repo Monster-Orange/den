@@ -201,7 +201,9 @@ describe("#67: a POST through the edge after idle", () => {
   it("not a 502 on a route Den didn't write either (Docker labels): the edge's idle limit is every route's", async () => {
     if (!ok) return;
     const until = Date.now() + 30_000;
-    while ((await post("labels.idle.localhost").catch(() => null))?.status !== 200)
+    while (
+      (await post("labels.idle.localhost").catch(() => null))?.status !== 200
+    )
       if (Date.now() > until) throw new Error("the labels route never routed");
       else await new Promise((r) => setTimeout(r, 300));
     seen.length = 0;

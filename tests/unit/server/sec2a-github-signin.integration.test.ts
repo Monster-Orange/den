@@ -24,6 +24,9 @@ import * as path from "path";
 import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+/** The edge folder, with the invented proof in it (H1). */
+const edgeProofDir = (d: string) => (writeTestEdgeProof(d), d);
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -104,6 +107,8 @@ const edge = (extra: Record<string, string> = {}) => ({
   host: EDGE,
   origin: `http://${EDGE}`,
   "sec-fetch-site": "same-origin",
+  // H1: the real edge adds its proof to every request it forwards.
+  ...EDGE_PROOF,
   ...extra,
 });
 const bearer = () => ({
@@ -165,7 +170,7 @@ beforeAll(async () => {
         ...process.env,
         DEN_ROOT: root,
         DEN_ENGINE_ROOT: ENGINE,
-        DEN_EDGE_DIR: path.join(tmp, "edge-state"),
+        DEN_EDGE_DIR: edgeProofDir(path.join(tmp, "edge-state")),
         DEN_HOME: stateDir,
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",
@@ -316,7 +321,7 @@ describe("Sign in with GitHub through the edge", () => {
   });
 
   it("a client the edge attests (another machine) is recorded with its address", async () => {
-    const away = { "x-forwarded-for": "203.0.113.7" };
+    const away = { "x-forwarded-for": "203.0.113.7", ...EDGE_PROOF };
     const start = await call("POST", "/api/github/signin", edge(away), "{}");
     gh.approve(lastCode(), OWNER);
     const done = await settle(
