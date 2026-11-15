@@ -134,7 +134,12 @@ export function startGateChip(o) {
     pop.setAttribute("role", "dialog");
     pop.setAttribute("aria-labelledby", "gate-pop-h");
     paintPop();
-    button.after(pop);
+    // On the body, as every Den pop-up is (Report finds it there), under
+    // the chip.
+    const r = button.getBoundingClientRect();
+    pop.style.top = `${Math.round(r.bottom + 6)}px`;
+    pop.style.left = `${Math.round(Math.max(16, Math.min(r.left, window.innerWidth - 16 - Math.min(420, window.innerWidth - 32))))}px`;
+    document.body.append(pop);
     button.setAttribute("aria-expanded", "true");
     pop.addEventListener("click", (e) => {
       const li = e.target.closest?.(".gate-li");

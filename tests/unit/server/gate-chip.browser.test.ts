@@ -85,13 +85,13 @@ describe("den#144: the gate chip on Agents", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 860 },
     });
+    // What's new opens on a new version's first visit, over the page.
     await ctx.addInitScript(() => {
-      try {
-        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-          localStorage.setItem(k, "9.9.9");
-      } catch {
-        /* none */
-      }
+      document.addEventListener("DOMContentLoaded", () => {
+        const st = document.createElement("style");
+        st.textContent = "#cl-overlay{display:none!important}";
+        document.head.appendChild(st);
+      });
     });
     const p = await ctx.newPage();
     let slots: unknown[] = [HOLDER, WAITER];
@@ -158,34 +158,23 @@ describe("den#144: the gate chip on Agents", () => {
     expect(await ask.count()).toBe(0);
     expect(ended).toEqual([]);
 
-    // End slot: one POST with the id, through the working pop-up.
+    // End slot: one POST with the id, through the working pop-up (a
+    // quick answer closes it by itself), and the queue repaints.
     await waiter.locator("[data-gate-end]").click();
     await waiter.locator("[data-gate-go]").click();
-    await p.waitForFunction(() =>
-      /ended/.test(document.querySelector("dialog.bz-dlg")?.textContent ?? ""),
-    );
-    expect(ended).toEqual([{ id: WAITER.id }]);
     await p.waitForFunction(
       () =>
         !/waiting/.test(document.querySelector("#ag-gate")?.textContent ?? ""),
     );
+    expect(ended).toEqual([{ id: WAITER.id }]);
+    await pop.locator(".gate-li").first().waitFor();
+    expect(await pop.locator(".gate-li").count()).toBe(1);
 
     // Esc closes the queue; focus goes back to the chip.
-    await p.waitForFunction(
-      () =>
-        !(document.querySelector("dialog.bz-dlg") as HTMLDialogElement | null)
-          ?.open,
-      undefined,
-      { timeout: 5_000 },
-    );
-    if (await pop.count()) {
-      await pop.locator("button").first().focus();
-      await p.keyboard.press("Escape");
-      expect(await pop.count()).toBe(0);
-      expect(await p.evaluate(() => document.activeElement?.id)).toBe(
-        "ag-gate",
-      );
-    }
+    await pop.locator("[data-gate-end]").first().focus();
+    await p.keyboard.press("Escape");
+    expect(await pop.count()).toBe(0);
+    expect(await p.evaluate(() => document.activeElement?.id)).toBe("ag-gate");
     await ctx.close();
   }, 60_000);
 
