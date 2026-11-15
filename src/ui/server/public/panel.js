@@ -715,6 +715,12 @@ export function disposePanel() {
   disposers = [];
 }
 
+/**
+ * den#143: popped out, the details are a pop-up: their Report footer is
+ * drawn with them, so a repaint (another node, another tab) keeps it.
+ */
+const popReport = () => window.denShell?.reportFoot?.() ?? "";
+
 /** Fill `el` with the panel for `sel`. Returns false if the selection is gone. */
 export function renderPanel(el, sel) {
   disposePanel();
@@ -767,7 +773,7 @@ export function renderPanel(el, sel) {
     <div class="sub">${esc(kind === "repo" ? `${gw("gr.services", "{n} services", { n: x.services.length })} · ${s0.path}` : x.id)}</div>
     ${actionBar(x)}
     <div class="dg-tabs" role="tablist">${tabs.map((t) => `<button role="tab" aria-selected="${t.id === st.tab}" data-tab="${t.id}">${esc(tabLabel(t))}</button>`).join("")}</div>
-  </div><div class="dg-pbody" role="tabpanel"></div>`;
+  </div><div class="dg-pbody" role="tabpanel"></div>${st.popped ? popReport() : ""}`;
   const body = el.querySelector(".dg-pbody");
   for (const c of SECTIONS.filter(
     (c) => c.tab === st.tab && c.for.includes(kind) && (!c.when || c.when(x)),

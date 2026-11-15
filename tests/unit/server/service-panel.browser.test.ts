@@ -47,6 +47,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
 import { readRecord } from "../../../src/shared/agents/records.js";
+import { reportAtOnce, reportMisses, reportSeen } from "./report-at-once.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -171,6 +172,8 @@ async function page(
       /* none */
     }
   }, latest);
+  // den#143: its Report from the moment it shows (report-at-once.ts).
+  await reportAtOnce(ctx);
   const p = await ctx.newPage();
   const asked: string[] = [];
   p.on("request", (r) => {
@@ -417,6 +420,16 @@ describe("the panel", () => {
         e.map((x) => x.textContent),
       ),
     ).toEqual(["elsewhere"]);
+    // den#143: Report first in its own row, there from the moment it showed
+    // and through its repaints (the agents painted in after it opened).
+    expect(
+      await p.$eval(
+        `${panel} .den-svp-foot`,
+        (f) => !!f.firstElementChild?.matches("[data-den-report]"),
+      ),
+    ).toBe(true);
+    expect(await reportSeen(p)).toContain(".den-svp");
+    expect(await reportMisses(p)).toEqual([]);
     // A click outside closes it (D50: a tick later, so focus goes back).
     await p.mouse.click(1200, 600);
     await p.waitForFunction(() => !document.querySelector(".den-svp"));

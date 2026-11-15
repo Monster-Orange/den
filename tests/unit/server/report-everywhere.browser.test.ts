@@ -19,6 +19,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
+import { reportAtOnce, reportMisses, reportSeen } from "./report-at-once.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -56,15 +57,24 @@ const KNOWN: Record<string, { n: number; how: string }> = {
   "header.js": { n: 1, how: "What's new: reportButton() in .cl-footer" },
   "topbar.js": {
     n: 6,
-    how: "admin password ask, status drawer, palette: a footer of their own",
+    how: "admin password ask: reportFoot() drawn with it (den#143); status drawer, palette: a footer of their own",
   },
-  "svc-panel.js": { n: 1, how: "service panel: .den-svp-foot" },
-  "agents-page.js": { n: 1, how: "agent details: a footer of its own" },
+  "svc-panel.js": {
+    n: 1,
+    how: "service panel: reportButton(true) drawn in .den-svp-foot (den#143)",
+  },
+  "agents-page.js": {
+    n: 1,
+    how: "agent details: reportFoot() drawn with them (den#143)",
+  },
   "bell.js": {
     n: 2,
-    how: "the bell's panel: a footer of its own; its inline ask is skipped",
+    how: "the bell's panel: reportFoot() drawn with it (den#143); its inline ask is skipped",
   },
-  "graph.js": { n: 1, how: "the popped detail panel: a footer of its own" },
+  "graph.js": {
+    n: 1,
+    how: "the popped detail panel: reportFoot() drawn with it (panel.js, den#143)",
+  },
   "report-dialog.js": {
     n: 2,
     how: "the form itself, and My reports (part of Report: its own way to it)",
@@ -222,6 +232,61 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     expect(await p.isVisible("#den-lock-pop")).toBe(true);
     await p.context().close();
   });
+
+  it("den#143: the bell, the admin password ask and the graph's popped details have Report the moment they show, and through a repaint", async () => {
+    if (skip()) return;
+    const ctx = await browser!.newContext({
+      viewport: { width: 1440, height: 900 },
+      reducedMotion: "reduce",
+    });
+    await reportAtOnce(ctx);
+    const p = await ctx.newPage();
+    await p.goto(signInUrl(s!.stateDir, s!.base, "/graph?ws=north"));
+    await p.waitForFunction(
+      () => !!(window as { denShell?: unknown }).denShell,
+    );
+    await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+    // The bell: shown, then its refresh while open repaints it (every 5 s).
+    await p.click("#den-bell");
+    await p.waitForSelector("#den-bell-pop:not([hidden])");
+    await p.waitForTimeout(5_600);
+    await p.keyboard.press("Escape");
+    // The graph's details, popped out, then another tab (a repaint).
+    await p.waitForSelector(".dg-card");
+    await p.click(".dg-card");
+    await p.waitForSelector(".dg-panel:not([hidden])");
+    await p.click(".dg-panel [data-popout]");
+    await p.waitForSelector(".dg-panel[role=dialog]");
+    const tabs = p.locator(
+      '.dg-panel[role=dialog] [role="tab"][aria-selected="false"]',
+    );
+    if (await tabs.count()) await tabs.first().click();
+    await p.waitForTimeout(300);
+    await p.keyboard.press("Escape");
+    // The admin password ask (the test's routes: no password, no vault).
+    await p.route("**/api/sudo-password/**", (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: false,
+          set: false,
+          backendAvailable: false,
+          hasStored: false,
+        }),
+      }),
+    );
+    await p.evaluate(
+      `import("/topbar.js").then((m) => { void m.askSudo({ command: "make install" }); })`,
+    );
+    await p.waitForSelector("#den-lock-pop");
+    await p.waitForTimeout(300);
+    expect((await reportSeen(p)).sort()).toEqual(
+      ["#den-bell-pop", "#den-lock-pop", ".dg-panel[role=dialog]"].sort(),
+    );
+    expect(await reportMisses(p)).toEqual([]);
+    await ctx.close();
+  }, 60_000);
 
   it("What's new, and Start an agent", async () => {
     if (skip()) return;

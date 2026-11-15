@@ -6537,10 +6537,12 @@
    * speech bubble, the word, ⌘⇧F (phones hide it). A click anywhere on a
    * [data-den-report] opens Report an issue over the pop-up, which stays.
    */
-  function reportButton() {
+  function reportButton(inFoot) {
     if (state.reportOff) return "";
     return (
-      '<button type="button" class="den-rb" data-den-report aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
+      '<button type="button" class="den-rb' +
+      (inFoot ? " den-rb-in" : "") +
+      '" data-den-report aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
       esc(t("fb.tip")) +
       '">' +
       icon("report") +
@@ -6548,6 +6550,15 @@
       esc(t("fb.word")) +
       '</span><kbd aria-hidden="true">⌘⇧F</kbd></button>'
     );
+  }
+  /**
+   * issue 143: a pop-up's own Report footer, for one that draws or repaints
+   * itself after it shows: drawn with it, it is there at once and stays
+   * through a repaint (the injector's comes a frame late and is wiped).
+   */
+  function reportFoot() {
+    var b = reportButton();
+    return b ? '<div class="den-rb-foot">' + b + "</div>" : "";
   }
   document.addEventListener("click", function (e) {
     var b =
@@ -6614,8 +6625,13 @@
     report: openReport,
     /** FB: My reports (the person's reports and the drafts). */
     myReports: openMyReports,
-    /** FB: the footer Report button's HTML ("" when reports are off). */
+    /**
+     * FB: the footer Report button's HTML ("" when reports are off);
+     * reportButton(true): first in a pop-up's own button row (issue 143).
+     */
     reportButton: reportButton,
+    /** issue 143: that button in a footer of its own ("" when off). */
+    reportFoot: reportFoot,
     /**
      * UK-2: the working pop-up for a slow action, the kit's (busy-den.js
      * names Den's actions): busyAction(name, run(headers), opts).

@@ -129,6 +129,11 @@ config and manifest changes a distribution must make to move to it under
   them. Now they show once their details are in (or after the working
   pop-up's short wait), with their Report button, placed once; details
   that come later fill in where they are and scroll inside. (den#143)
+- The bell's panel, the service panel, the graph's popped-out details and
+  the admin password ask had their Report button added a frame after they
+  showed. The bell and the service panel lost it on every refresh while
+  open (every 5 s), so Report blinked. They now draw it with themselves:
+  there when they show, and through every refresh. (den#143)
 - On Linux, a request through the edge got a 502: the edge container
   reaches the host on the Docker bridge, and Den listened only on
   127.0.0.1 unless you set `DEN_BIND_HOST` by hand. Now, with an edge set

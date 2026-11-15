@@ -1476,7 +1476,8 @@ function openLock() {
   pop.id = "den-lock-pop";
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-labelledby", "den-lock-t");
-  pop.innerHTML = lockFormHtml(w.need);
+  // den#143: its Report footer drawn with it, there when it opens.
+  pop.innerHTML = lockFormHtml(w.need) + (sh()?.reportFoot?.() ?? "");
   const onSubmit = async (e) => {
     e.preventDefault();
     const input = $("den-lock-pw");

@@ -297,7 +297,11 @@ export function initBell(doc = document) {
             ? `[data-scope="${CSS.escape(at.dataset.scope)}"]`
             : "")
         : "";
-    pop.innerHTML = bellHtml(last ?? { groups: [], unread: 0 }, ui);
+    // den#143: its Report footer drawn with it, so a repaint (every
+    // refresh while open) doesn't wipe it for a frame.
+    pop.innerHTML =
+      bellHtml(last ?? { groups: [], unread: 0 }, ui) +
+      (doc.defaultView?.denShell?.reportFoot?.() ?? "");
     if (keep) pop.querySelector(keep)?.focus?.();
   };
   const refresh = async () => {

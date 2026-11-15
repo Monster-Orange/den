@@ -306,7 +306,8 @@ export function panelHtml(s) {
         `</details>`
       : "") +
     `<div><button type="button" class="den-btn sm" data-svx="startag">+ ${esc(t("svp.startHere"))}</button></div></div>` +
-    `<div class="den-svp-foot"><button type="button" class="den-lnk" data-svx="services">${esc(t("svp.openSvc"))}</button>` +
+    // den#143: Report drawn in its own row, so a refresh doesn't wipe it.
+    `<div class="den-svp-foot">${window.denShell?.reportButton?.(true) ?? ""}<button type="button" class="den-lnk" data-svx="services">${esc(t("svp.openSvc"))}</button>` +
     `<button type="button" class="den-lnk" data-svx="graph">${esc(t("svp.openGraph"))}</button><span class="den-svp-grow"></span>` +
     `<button type="button" class="den-lnk" data-svx="${pinned ? "unpin" : "pin"}">${esc(t(pinned ? "act.unpin" : "act.pin"))}</button></div>`
   );

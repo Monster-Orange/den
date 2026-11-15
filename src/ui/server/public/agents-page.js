@@ -4615,10 +4615,7 @@ function detailsHtml(r, det) {
  * so it is there when they are shown and stays through a repaint. Left to
  * the page's injector, it came a frame after and the details grew.
  */
-function reportFoot() {
-  const b = window.denShell?.reportButton?.() ?? "";
-  return b ? `<div class="den-rb-foot">${b}</div>` : "";
-}
+const reportFoot = () => window.denShell?.reportFoot?.() ?? "";
 
 function placeDetails() {
   if (!agd.el) return;
