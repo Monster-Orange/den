@@ -29,6 +29,13 @@ import {
   type RegisteredRepo,
 } from "./onboard-reads.js";
 import { printJson } from "./json-out.js";
+import {
+  readDenConfig,
+  readWebServiceConfig,
+} from "../../shared/den-config.js";
+import { getStateDir } from "../../shared/paths.js";
+import { serviceJobState, webOnlyHostDetail } from "./doctor-where.js";
+import { askLiveHost, hostLabel } from "./service-command.js";
 
 /** Every repo in a workspace, at the folder Den runs it from. */
 export function registeredRepos(): RegisteredRepo[] {
@@ -89,6 +96,29 @@ export async function defaultStatusDeps(o: {
   const bin = runnableCli();
   return {
     bin,
+    // Drill (a): the server agent reads this (onboard_status), as doctor.
+    hostOwner: async () => {
+      if (process.platform !== "darwin") return null;
+      const home = os.homedir();
+      const uid = process.getuid?.() ?? 0;
+      const { label } = readWebServiceConfig(
+        readDenConfig(),
+        getDistRoot(),
+        home,
+      );
+      const svc = serviceJobState(label, home, uid);
+      if (!svc || svc.state === "not-loaded") return null;
+      const hostJob = serviceJobState(hostLabel(label), home, uid);
+      if (hostJob && hostJob.state !== "not-loaded") return null;
+      const live = await askLiveHost(getStateDir());
+      if (!live) return null;
+      return {
+        id: "host",
+        status: "warn",
+        detail: webOnlyHostDetail(live.pid, bin),
+        fix: `${bin} service install`,
+      };
+    },
     distribution: fs.existsSync(path.join(getDistRoot(), "bin", product().cli)),
     doctor: {
       ...doctor,

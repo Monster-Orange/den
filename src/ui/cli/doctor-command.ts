@@ -491,6 +491,24 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         return null;
       }
     },
+    hostJobInstalled: () => {
+      try {
+        const { label } = readWebServiceConfig(
+          cfg(),
+          getDistRoot(),
+          os.homedir(),
+        );
+        const job = serviceJobState(
+          hostLabel(label),
+          os.homedir(),
+          process.getuid?.() ?? 0,
+        );
+        return !!job && job.state !== "not-loaded";
+      } catch {
+        // Can't tell: say nothing.
+        return true;
+      }
+    },
   };
 }
 

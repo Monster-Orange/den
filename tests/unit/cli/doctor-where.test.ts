@@ -102,6 +102,38 @@ describe("whereRows", () => {
     );
   });
 
+  it("drill (a): the service has no host job, and a host runs: ⚠ it won't come back after a restart, with the fix", async () => {
+    const rows = await whereRows(
+      base({
+        host: async () => ({ launchd: "Aqua", pid: 2240 }),
+        hostJob: () => null,
+        hostJobInstalled: () => false,
+      }),
+    );
+    const h = rows.find((r) => r.what === "session host")!;
+    expect(h.status).toBe("warn");
+    expect(h.detail).toBe(
+      "The service runs only the web part here: it has no host job, so the host running now (pid 2240) was started outside it and won't come back by itself after a restart. Its terminals and agents end then. Fix: acme service install (it adds the host job; nothing running stops).",
+    );
+    expect(whereCheck(h).status).toBe("warn");
+  });
+
+  it("drill (a): no warning when the host job is there, or there's no service at all", async () => {
+    for (const over of [
+      { hostJobInstalled: () => true },
+      { hostJobInstalled: () => false, service: () => null },
+    ]) {
+      const rows = await whereRows(
+        base({
+          host: async () => ({ launchd: "Background", pid: 7 }),
+          ...over,
+        }),
+      );
+      const h = rows.find((r) => r.what === "session host")!;
+      expect(h.detail ?? "").not.toContain("won't come back");
+    }
+  });
+
   it("an older host with no service host behind it: ℹ, from before this version, nothing to do", async () => {
     const rows = await whereRows(
       base({

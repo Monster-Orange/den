@@ -114,6 +114,13 @@ config and manifest changes a distribution must make to move to it under
   how many agents or terminals it runs. The service's host already waited
   for that one to end and never started a second one beside it; until now
   install said nothing. Found in the restart drill.
+- `doctor` and the server agent's `onboard_status` warn when the web
+  service is installed but has no host job, and a host is running: that
+  host won't come back by itself after a restart, so its terminals and
+  agents end then. The fix is `<cli> service install`, which adds the
+  host job and stops nothing that is running. An install made before
+  0.4.22 (when the host job came in) and never installed again is like
+  this. Found in the restart drill.
 
 - Den's web server and CLI entry files, and the manifest schema, are
   type-checked again (they were left out, so a missing import there

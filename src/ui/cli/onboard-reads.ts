@@ -469,6 +469,11 @@ export interface OnboardStatusDeps {
   running: () => string[];
   /** Whether an agent has Den's MCP (mcpRegistration). */
   mcp: () => StatusCheck;
+  /**
+   * Drill (a), 0.4.48: a warning when the service has no host job and a
+   * host runs (it won't come back after a restart), else null.
+   */
+  hostOwner?: () => Promise<StatusCheck | null>;
 }
 
 export interface OnboardStatus {
@@ -499,6 +504,7 @@ const STEPS: Record<string, string> = {
   repos: "Add your first repo. Den can find the repos in a folder for you.",
   service: "Start one service.",
   mcp: "Connect your agent to Den's MCP, so it can see and run your services.",
+  host: "Install the service again, so your agents come back after a restart.",
 };
 
 /** What is set up, and the one next step (see the module comment). */
@@ -578,6 +584,8 @@ export async function onboardStatus(
         },
     d.mcp(),
   ];
+  const host = (await d.hostOwner?.().catch(() => null)) ?? null;
+  if (host) checks.push(host);
   // The order a person does them in: a repo needs the web server up first.
   const order = [
     "node",
@@ -589,6 +597,7 @@ export async function onboardStatus(
     "docker",
     "service",
     "mcp",
+    "host",
   ];
   const pending = order
     .map((id) => checks.find((c) => c.id === id))

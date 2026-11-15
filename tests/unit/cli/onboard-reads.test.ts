@@ -434,6 +434,48 @@ describe("onboardStatus", () => {
     });
   });
 
+  it("drill (a): a host that won't come back after a restart is a warning, after the setup steps", async () => {
+    const warn = {
+      id: "host",
+      status: "warn" as const,
+      detail: "The service runs only the web part here: it has no host job",
+      fix: "./bin/acme service install",
+    };
+    const r = await onboardStatus(deps({ hostOwner: async () => warn }));
+    expect(r.checks.at(-1)).toEqual(warn);
+    expect(r.ok).toBe(false);
+    // The setup steps come first: a fresh Den's next step is still a repo.
+    expect(r.next.id).toBe("repos");
+    const set = await onboardStatus(
+      deps({
+        hostOwner: async () => warn,
+        workspaces: () => ({
+          names: ["web"],
+          active: ["web"],
+          repos: ["acme"],
+        }),
+        running: () => ["http://acme.localhost"],
+      }),
+    );
+    expect(set.next).toEqual({
+      id: "host",
+      step: "Install the service again, so your agents come back after a restart.",
+      command: "./bin/acme service install",
+    });
+  });
+
+  it("drill (a): no host check when there's nothing to say, or the probe fails", async () => {
+    for (const hostOwner of [
+      async () => null,
+      async () => {
+        throw new Error("no socket");
+      },
+    ]) {
+      const r = await onboardStatus(deps({ hostOwner }));
+      expect(r.checks.map((c) => c.id)).not.toContain("host");
+    }
+  });
+
   it("the web server down comes before the repos", async () => {
     const r = await onboardStatus(
       deps({

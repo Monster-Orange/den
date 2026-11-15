@@ -50,6 +50,11 @@ export interface WhereDeps {
   service: () => ServiceJob | null;
   /** The service's own host job's pid (it may stand by), or null. */
   hostJob?: () => number | null;
+  /**
+   * Drill (a), 0.4.48: whether the service has a host job at all (its
+   * `.sessions` plist is loaded). False on a web-only install.
+   */
+  hostJobInstalled?: () => boolean;
 }
 
 export interface WhereRow {
@@ -79,6 +84,21 @@ function sessionRow(
   };
 }
 
+/**
+ * Drill (a), 0.4.48: the service has no host job, so the host running now
+ * won't come back after a restart. doctor's row and onboard_status say it.
+ */
+export function webOnlyHostDetail(
+  pid: number | undefined,
+  cli: string,
+): string {
+  return (
+    `The service runs only the web part here: it has no host job, so the host running now (pid ${pid ?? "?"}) ` +
+    `was started outside it and won't come back by itself after a restart. Its terminals and agents end then. ` +
+    `Fix: ${cli} service install (it adds the host job; nothing running stops).`
+  );
+}
+
 export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
   if (d.platform !== "darwin") return [];
   const rows: WhereRow[] = [];
@@ -105,6 +125,14 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
   const since = host?.startedAt ? `, since ${host.startedAt.slice(0, 10)}` : "";
   const older = `an older session host (pid ${host?.pid ?? "?"}${since})`;
   const switchNow = `To switch now (ends running terminals and agents): ${d.cli} sessions host --stop`;
+  // Drill (a): the web service is installed but it has no host job, so
+  // the host running now came from a terminal or the web server and
+  // nothing brings it back after a restart.
+  const webOnly =
+    !!host &&
+    !!svc &&
+    svc.state !== "not-loaded" &&
+    d.hostJobInstalled?.() === false;
   rows.push(
     host && standsBy
       ? {
@@ -131,6 +159,15 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
               detail: "it starts when the first terminal or agent does",
             },
   );
+  if (webOnly) {
+    const row = rows[rows.length - 1]!;
+    rows[rows.length - 1] = {
+      ...row,
+      session: host!.launchd || `not the service's (pid ${host!.pid ?? "?"})`,
+      status: "warn",
+      detail: webOnlyHostDetail(host!.pid, d.cli),
+    };
+  }
   const fda = host?.access;
   if (fda && fda.fullDiskAccess !== null) {
     const own = /-sessions-host$/.test(fda.exe);
