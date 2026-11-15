@@ -79,6 +79,14 @@ config and manifest changes a distribution must make to move to it under
   anywhere), sets one reduced-motion rule, and keeps Japanese words whole
   when a line breaks. The active theme still decides every colour; the
   kit's tokens sit underneath it. Den serves the kit at `/kit/`.
+- Every "working…" pop-up in Den is now the kit's, the same one Hub
+  uses: the same words, buttons and phone layout in both. Restart Den
+  waits in it too ("Restarting Den…", then "Den is back." with the
+  version, and it closes by itself; "Den didn't come back." offers Check
+  again). After Den answers with an error, Try again sends the request
+  under a new id, so the stored failure isn't replayed; with no answer it
+  keeps the same id, so nothing runs twice. On a phone, the main button
+  sits alone on the last row. Den's own `/busy.js` is gone. (UK-2)
 - A theme may set two more colours in each mode, both optional: `info`
   (neutral notes) and `violet` (cross-group edges). Each is
   contrast-checked when set; unset, the kit's defaults hold.
