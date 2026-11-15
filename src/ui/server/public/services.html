@@ -494,9 +494,9 @@
             return;
           }
           const sure = await askConfirm({
-            title: T("dlg.delProjT"),
-            message: T("dlg.delProj", { ws: name }),
-            okLabel: T("dlg.delete"),
+            title: t("dlg.delProjT"),
+            message: t("dlg.delProj", { ws: name }),
+            okLabel: t("dlg.delete"),
             danger: true,
           });
           if (!sure) return;
