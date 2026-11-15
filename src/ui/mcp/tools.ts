@@ -364,6 +364,7 @@ const READ_TOOLS: DenTool[] = [
         estimateMin:
           typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
         agent: true,
+        ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
       });
       mySlots.add(e.id);
       return slotView(store, e.id);

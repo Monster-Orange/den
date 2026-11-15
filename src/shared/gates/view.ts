@@ -12,6 +12,7 @@ export interface GateSlotView {
   label: string;
   granted: boolean;
   agent: boolean;
+  actor?: string;
   grantedAt?: string;
   expectedEnd?: string;
   overrun?: boolean;
@@ -29,6 +30,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     label: e.label,
     granted: !!e.grantedAt,
     agent: e.agent === true,
+    ...(e.actor ? { actor: e.actor } : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,

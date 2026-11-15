@@ -191,6 +191,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     pid: d.pid,
     estimateMin,
     agent: isAgentTokenEnv(d.env),
+    ...(d.env.DEN_AGENT ? { actor: d.env.DEN_AGENT.trim() } : {}),
   });
   let done = false;
   const off = d.onSignal(() => {

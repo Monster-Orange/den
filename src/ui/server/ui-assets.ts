@@ -66,6 +66,8 @@ export const UI_MODULES: readonly string[] = [
   "/log-source.js",
   // D50: how every pop-over closes (a press outside, Esc).
   "/popover.js",
+  // den#144: the Agents page's gate chip (heavy test runs take turns).
+  "/gate-chip.js",
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",

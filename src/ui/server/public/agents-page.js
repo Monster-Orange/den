@@ -91,6 +91,7 @@ import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { dismissable } from "/popover.js";
+import { startGateChip } from "/gate-chip.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
 import {
@@ -756,9 +757,15 @@ function rowHtml(r) {
   const wTag = whereTag(r);
   const mTag = mcpStaleTag(r, false);
   const modeTag = modeTagHtml(r, false);
+  // den#144: this agent holds (or waits for) the machine's gate slot.
+  const gateText =
+    r.kind === "agent" ? (st.gate?.tagFor(`agent:${r.agent}`) ?? "") : "";
+  const gateTag = gateText
+    ? `<span class="tagx" data-gate-tag>${esc(gateText)}</span>`
+    : "";
   const tags =
-    rotTag || revokedTag || ovTags || wTag || mTag || modeTag
-      ? `<span class="agtags">${revokedTag}${mTag}${modeTag}${rotTag}${wTag}${ovTags}</span>`
+    rotTag || revokedTag || ovTags || wTag || mTag || modeTag || gateTag
+      ? `<span class="agtags">${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -5047,6 +5054,16 @@ export async function mountAgentsPage(root) {
   window.addEventListener("focus", looking);
   document.addEventListener("visibilitychange", looking);
 
+  // den#144: the machine's gate slot (heavy test runs take turns).
+  const gateBtn = st.root.querySelector("#ag-gate");
+  if (gateBtn && !st.gate)
+    st.gate = startGateChip({
+      button: gateBtn,
+      t,
+      api,
+      busyAction: (...a) => window.denShell.busyAction(...a),
+      onChange: () => paintList(),
+    });
   const [, saved] = await Promise.all([loadScope(), savedLayout()]);
   // A link's &layout= wins for this page; else the person's.
   st.layout = linked ?? saved;

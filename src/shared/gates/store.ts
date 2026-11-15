@@ -343,6 +343,7 @@ export class GateStore {
     pid: number;
     estimateMin: number;
     agent?: boolean;
+    actor?: string;
   }): GateEntry {
     return this.locked(() => {
       const at = new Date(this.now()).toISOString();
@@ -356,6 +357,9 @@ export class GateStore {
         aliveAt: at,
         estimateMin: o.estimateMin,
         ...(o.agent ? { agent: true } : {}),
+        ...(o.actor && /^agent:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(o.actor)
+          ? { actor: o.actor }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       fs.writeFileSync(this.file(e.id), JSON.stringify(e), { flag: "wx" });

@@ -70,6 +70,16 @@ export const DEN_ACTIONS = {
       failure: "busy.startF",
     },
   },
+  // den#144: a person ends a gate slot early (the run goes on).
+  "gate-end": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.gateEndW",
+      success: "busy.gateEndS",
+      failure: "busy.gateEndF",
+    },
+  },
   "restart-agent": {
     who: "Den",
     autoClose: true,

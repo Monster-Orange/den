@@ -32,6 +32,8 @@ export interface GateEntry {
   estimateMin: number;
   /** An agent asked (an agent token), not a person. */
   agent?: boolean;
+  /** Which agent (`agent:<id>`), when it said; its row on the Agents page shows the slot. */
+  actor?: string;
 }
 
 export interface GateSettings {

@@ -97,6 +97,59 @@
         margin-top: 4px;
         overflow-wrap: anywhere;
       }
+      /* den#144: the machine's gate slot, and its queue. */
+      .gate-wrap {
+        position: relative;
+        display: inline-block;
+      }
+      .gate-chip {
+        font: 11px var(--mono);
+        color: var(--muted);
+        background: none;
+        border: 1px solid var(--border-strong);
+        border-radius: 999px;
+        padding: 1px 8px;
+        margin-left: 6px;
+        cursor: pointer;
+      }
+      .gate-chip[hidden] {
+        display: none;
+      }
+      .gate-chip[data-over="1"] {
+        color: var(--warn);
+        border-color: var(--warn);
+      }
+      .gate-pop {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 30;
+        width: min(420px, calc(100vw - 32px));
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--text);
+      }
+      .gate-h {
+        font: 600 14px/1.3 var(--display);
+        margin: 0 0 8px;
+      }
+      .gate-ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+      }
+      .gate-who {
+        overflow-wrap: anywhere;
+      }
+      .gate-when {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 2px 0 4px;
+      }
       .ph .act {
         margin-left: auto;
         display: flex;
@@ -963,6 +1016,14 @@
           <div class="sub" id="ag-sub">
             <span id="ag-count"></span> ·
             <span class="mono" id="ag-url">/agents</span>
+            <span class="gate-wrap"
+              ><button
+                type="button"
+                class="gate-chip"
+                id="ag-gate"
+                hidden
+              ></button
+            ></span>
           </div>
         </div>
         <div class="act">
