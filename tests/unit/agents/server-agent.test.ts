@@ -108,7 +108,7 @@ describe("the server agent", () => {
     // The persona: Den's server pack, with the plain-writing rule.
     const prompt = p.args[p.args.indexOf("--append-system-prompt") + 1];
     expect(prompt).toMatch(/this Den's own server agent/);
-    expect(prompt).toMatch(/You belong to no workspace/);
+    expect(prompt).toMatch(/You belong to no project: your scope is/);
     expect(prompt).toMatch(/Write plainly\. Use short sentences\./);
     expect(prompt).toMatch(/repos_detect/);
     // SRV-1b: its folder is the distribution's repo; it updates Den and

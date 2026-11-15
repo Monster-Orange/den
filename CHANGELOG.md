@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
   stopped and started fresh there. A project's agent asks for its own
   project only; Den's own agent never moves. A mode change that loosens
   says so first and runs only on the person's own Allow.
+- Den's own agent's instructions say it works alongside the person and
+  list every tool it has; a test keeps the list complete and names no
+  tool Den doesn't have (they told it to "call doctor"; it now checks
+  with `onboard_status` and `status`).
 
 ### Changed
 
