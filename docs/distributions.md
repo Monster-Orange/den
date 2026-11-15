@@ -3051,6 +3051,17 @@ project may take that name.
   `persona_update` lists the fields it changes and takes only those.
   Only a local persona changes: a built-in one, or one the distribution
   ships, is refused before anything waits (add a copy instead).
+- **It clones repos** (0.4.48, `repo_clone { source, name?, branch? }`,
+  the held action `repo_clone`). `source` is `owner/name` (GitHub) or a
+  git URL. Den clones it into the folder it finds repos in
+  (`repos_root`), in a new folder named after the repo; a folder that is
+  there already is refused (add it with `repo_add`). A GitHub repo is
+  cloned with the person's gh login; any other remote with plain git and
+  the person's own credentials, never gh's. The Allow says from where,
+  into where, and with whose login. Then the agent drafts the manifest
+  (`manifest_draft`) and asks to add it (`repo_add`), each its own Allow.
+  Den's own agent or a person asks; the folder is shared by every
+  project, so a project's agent is refused.
 - **Den keeps itself current** (0.4.48). Every
   `server_agent.update_check_minutes` (org config; default 30, at least
   5, 0 for never) the web server asks npm for the newest Den. The lead

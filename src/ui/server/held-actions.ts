@@ -31,8 +31,18 @@
  *   persona_update    persona and edit do (agent-ops.ts); only a local
  *                     persona changes, and the Review has the
  *                     instructions in full
+ *   repo_clone        SRV-P3: clone a repo into repos_root (repo-clone.ts),
+ *                     for manifest_draft and repo_add (each its own Allow)
+ *                     to take up; Den's own agent or a person asks, as the
+ *                     folder is every project's
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
+import {
+  cloneTarget,
+  runClone,
+  type GitRunner,
+} from "../../shared/repo-clone.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
@@ -93,6 +103,10 @@ export interface HeldActionDeps {
     check: (args: Record<string, unknown>, who?: HeldAsker) => AgentCreateCheck;
     run: (args: Record<string, unknown>) => Promise<unknown>;
   };
+  /** SRV-P3: the folder repo_clone clones into (repos_root). */
+  reposRoot?: () => string;
+  /** SRV-P3: runs git for the clone (a test's fake; default: git). */
+  gitRun?: GitRunner;
   /** SRV-P2: persona_create's and persona_update's checks and writes. */
   personas?: {
     checkCreate: (args: Record<string, unknown>) => PersonaHeldCheck;
@@ -380,6 +394,63 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     run: (a) => d.personas!.update(a),
   };
 
+  const repoClone: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.reposRoot)
+        return { ok: false, error: "this Den can't clone repos here" };
+      if (who?.project && !isServerScope(who.project))
+        return {
+          ok: false,
+          error: `the repos folder is shared by every project: Den's own agent or a person asks to clone into it, not ${who.agent ?? "a project's agent"}`,
+        };
+      const t = cloneTarget(
+        {
+          source: str(a.source) ?? "",
+          name: str(a.name),
+          branch: str(a.branch),
+        },
+        d.reposRoot(),
+      );
+      if (!t.ok) return t;
+      return {
+        ok: true,
+        args: {
+          source: str(a.source)!,
+          ...(str(a.name) ? { name: str(a.name) } : {}),
+          ...(t.branch ? { branch: t.branch } : {}),
+        },
+        summary: `clone ${t.shown} into ${t.dest}`,
+        params: { source: t.shown, path: t.dest },
+        details: [
+          `From: ${t.shown}${t.branch ? `, branch ${t.branch}` : ", its default branch"}.`,
+          t.gh
+            ? "With your gh login (a GitHub repo)."
+            : "With git and your own credentials (not gh: it isn't GitHub).",
+          `Into: ${t.dest} (a new folder; nothing there changes).`,
+          "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
+        ],
+      };
+    },
+    async run(a) {
+      const t = cloneTarget(
+        {
+          source: String(a.source),
+          name: str(a.name),
+          branch: str(a.branch),
+        },
+        d.reposRoot!(),
+      );
+      if (!t.ok) return t;
+      const out = await runClone(t, d.gitRun);
+      return out.ok
+        ? {
+            ...out,
+            next: `Cloned. Draft its manifest with manifest_draft { path: "${out.path}" }, then ask to add it with repo_add.`,
+          }
+        : out;
+    },
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
@@ -389,5 +460,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     agent_create: agentCreate,
     persona_create: personaCreate,
     persona_update: personaUpdate,
+    repo_clone: repoClone,
   };
 }

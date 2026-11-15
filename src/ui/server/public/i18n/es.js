@@ -1057,6 +1057,7 @@
     "ap.do.den_restart": "Reiniciar Den ({reason})",
     "ap.do.persona_create": "Añadir la persona {name} ({id})",
     "ap.do.persona_update": "Cambiar la persona {id}: {fields}",
+    "ap.do.repo_clone": "Clonar {source} en {path}",
     "ap.do.agent_create":
       "Iniciar el agente {name} ({persona}) en {where}, modo {mode}",
     "ap.do.service_try.activates":

@@ -1816,6 +1816,7 @@
     "ap.do.den_restart": "Restart Den ({reason})",
     "ap.do.persona_create": "Add the persona {name} ({id})",
     "ap.do.persona_update": "Change the persona {id}: {fields}",
+    "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.agent_create":
       "Start agent {name} ({persona}) in {where}, mode {mode}",
     "ap.do.service_try.activates":

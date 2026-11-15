@@ -294,7 +294,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1609,6 +1609,41 @@ const APPROVAL_TOOLS: DenTool[] = [
         "persona_update",
         "persona_update",
         { id, ...personaArgs(a) },
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "repo_clone",
+    title: "Clone a repo",
+    description:
+      "Clone a repo into the folder Den finds repos in: `source` is owner/name (GitHub, with the person's gh login) or a git URL (with git and the person's own credentials). A folder that is there already is refused: add it with repo_add instead. Then draft its manifest (manifest_draft) and ask to add it (repo_add). Den's own agent asks this; the folder is shared by every project." +
+      HELD,
+    action: true,
+    shape: {
+      source: z.string().describe("owner/name (GitHub), or the repo's git URL"),
+      name: z
+        .string()
+        .optional()
+        .describe("The folder's name (default: the repo's)"),
+      branch: z
+        .string()
+        .optional()
+        .describe("The branch to check out (default: the repo's default)"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      const source = needArg(
+        "repo_clone",
+        a,
+        "source",
+        "owner/name or a git URL",
+      );
+      return askPerson(
+        "repo_clone",
+        "repo_clone",
+        { source, name: str(a.name), branch: str(a.branch) },
         a.note,
         ctx,
       );

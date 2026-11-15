@@ -439,6 +439,26 @@ describe("SRV-P2: persona_create and persona_update", () => {
   });
 });
 
+describe("SRV-P3: repo_clone", () => {
+  it("asks with the source, and the name and branch when given", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, path: "/r/notes" },
+    }));
+    const r = await callTool(
+      "repo_clone",
+      { source: "acme/notes", branch: "dev" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls[0].body).toEqual({
+      action: "repo_clone",
+      args: { source: "acme/notes", branch: "dev" },
+    });
+  });
+});
+
 describe("SRV-1a: den_restart_server", () => {
   it("asks for den_restart with its reason; allowed at once (auto): no wait, and it says to end the turn", async () => {
     const { api, calls } = fakeApi([], () => ({

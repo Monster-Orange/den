@@ -138,6 +138,7 @@ import {
 } from "../../shared/process/spawn-streaming.js";
 import {
   assertDenConfigValid,
+  getReposRoot,
   sectionConfigError,
   readDenConfig,
   readMcpConfig,
@@ -2317,6 +2318,8 @@ function approvalDeps(): ApprovalDeps {
       check: (a, who) => checkAgentCreate(agentWebDeps(), a, who),
       run: (a) => createAgent(agentWebDeps(), a),
     },
+    // SRV-P3: clones go where Den finds repos.
+    reposRoot: () => getReposRoot(),
     // SRV-P2: an agent asks to add or change a persona.
     personas: {
       checkCreate: (a) => checkPersonaCreate(agentWebDeps(), a),

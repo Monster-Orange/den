@@ -30,6 +30,10 @@ config and manifest changes a distribution must make to move to it under
 - Agents can ask to add a persona (`persona_create`) or change one of
   the local personas (`persona_update`), held for the person's Allow.
   The Allow shows every field and the instructions in full.
+- The server agent can ask to clone a repo (`repo_clone`: GitHub
+  `owner/name` or a git URL) into the repos folder, held for the
+  person's Allow. A GitHub repo uses the person's gh login; any other
+  remote, plain git. Adding it stays `manifest_draft` and `repo_add`.
 
 ### Changed
 

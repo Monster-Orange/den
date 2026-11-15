@@ -5,6 +5,9 @@
  * the one Allow. Nothing an agent calls activates a workspace otherwise.
  */
 import { describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
   heldActions,
   type HeldActionDeps,
@@ -173,5 +176,53 @@ describe("SRV-P2: persona_create and persona_update", () => {
       ["create", { id: "x" }],
       ["update", { id: "x" }],
     ]);
+  });
+});
+
+describe("SRV-P3: repo_clone", () => {
+  it("says what it clones, where, with whose login; on Allow clones; a project's agent can't ask", async () => {
+    const f = fakes();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-held-clone-"));
+    try {
+      const ran: string[][] = [];
+      const acts = heldActions({
+        ...f.deps,
+        reposRoot: () => root,
+        gitRun: async (args) => {
+          ran.push(args);
+        },
+      });
+      const c = await acts.repo_clone.check({ source: "acme/notes" }, {});
+      expect(c.ok).toBe(true);
+      if (!c.ok) return;
+      expect(c.summary).toBe(
+        `clone acme/notes into ${path.join(root, "notes")}`,
+      );
+      expect(c.params).toEqual({
+        source: "acme/notes",
+        path: path.join(root, "notes"),
+      });
+      expect(c.details.join("\n")).toMatch(/your gh login/);
+      expect(c.details.join("\n")).toMatch(/manifest_draft.*repo_add/);
+      expect(await acts.repo_clone.run(c.args)).toEqual({
+        ok: true,
+        path: path.join(root, "notes"),
+        next: expect.stringMatching(/manifest_draft/),
+      });
+      expect(ran).toHaveLength(1);
+      const lead = await acts.repo_clone.check(
+        { source: "acme/notes" },
+        { agent: "lead", project: "north" },
+      );
+      expect(lead.ok ? "" : lead.error).toMatch(
+        /the repos folder is shared by every project: Den's own agent or a person asks/,
+      );
+      const none = await heldActions(f.deps).repo_clone.check({
+        source: "a/b",
+      });
+      expect(none.ok ? "" : none.error).toBe("this Den can't clone repos here");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
