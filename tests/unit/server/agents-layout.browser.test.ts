@@ -929,7 +929,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await toBottom();
     await check("dock open, scrolled");
     // The dock left open (a saved choice) and the page loaded again, not
-    // scrolled: what a person sees first (Lair's gate on 0.4.49-dev.1).
+    // scrolled: what a person sees first (a dogfood gate on 0.4.49-dev.1).
     // A second tab, as a person opening Agents again.
     const p2 = await ctx.newPage();
     p2.on("pageerror", (e) => errors.push(`issue 170: ${e.message}`));
