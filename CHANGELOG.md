@@ -18,6 +18,14 @@ config and manifest changes a distribution must make to move to it under
   `hub.inbox_poll_seconds` (30) and `hub.inbox_backoff_max_seconds`
   (600, the longest wait while Hub doesn't answer).
 
+- Hub's approvals and change requests in the delivery feed now reach the
+  agent in plain words (issue 166): who decided, "approved" or "asked
+  for changes to" the doc, the version, the note if any, the link, and
+  what to do next (carry on, or read the note and revise). An approval
+  after a change request on the same version arrives as two messages, in
+  order, each once. A kind Den doesn't know arrives as a plain notice,
+  never dropped. Comments are unchanged.
+
 ### Fixed
 
 - Settings › Agents › Unclear matches (issue 164): the help and the list

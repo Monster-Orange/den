@@ -319,6 +319,8 @@ export class DeliveryLoop {
       !dv.id.startsWith(LOCAL_PREFIX) &&
       !a.id.startsWith(LOCAL_PREFIX) &&
       a.thread.id === dv.thread.id &&
+      a.kind === dv.kind &&
+      a.version === dv.version &&
       a.author.id === dv.author.id &&
       a.body === dv.body &&
       (a.forwarded?.body ?? "") === (dv.forwarded?.body ?? "");
