@@ -14,6 +14,8 @@
  *   web_bridge: { listen?: auto | off, probe_seconds? }
  *                                     user.yml web.bridge_listen,
  *                                     web.bridge_probe_seconds (0.4.48)
+ *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
+ *                                     user.yml agents_list.* (den#156)
  */
 
 /** The settings a person changes and an agent never does. */
@@ -26,6 +28,8 @@ export const PERSON_ONLY_SETTINGS = [
   "crash_loop",
   // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
   "web_bridge",
+  // den#156: how long the Agents list waits for the terminal host.
+  "agents_list",
   // Review M5 (0.4.46): what agents may do without asking.
   "hub_allow_tools",
   // The programs Den runs when a person opens a file or a terminal.
@@ -105,6 +109,21 @@ const CRASH: Record<string, Limit> = {
 
 const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
+};
+
+const AGENTS_LIST: Record<string, Limit> = {
+  host_timeout_seconds: {
+    key: "host_timeout_seconds",
+    min: 1,
+    max: 600,
+    int: false,
+  },
+  refresh_timeout_seconds: {
+    key: "refresh_timeout_seconds",
+    min: 1,
+    max: 600,
+    int: false,
+  },
 };
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
@@ -251,7 +270,15 @@ export function patchCliRows(
       body.panes_reconnect,
       apply,
     ) ??
-    patchBlock(user, "crash_loop", "web", crash, body.crash_loop, apply);
+    patchBlock(user, "crash_loop", "web", crash, body.crash_loop, apply) ??
+    patchBlock(
+      user,
+      "agents_list",
+      "agents_list",
+      AGENTS_LIST,
+      body.agents_list,
+      apply,
+    );
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

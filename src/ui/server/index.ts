@@ -159,6 +159,7 @@ import {
   type UserConfig,
   writeUserConfig,
   panesReconnect,
+  agentsListWaits,
   webUrlCheckSeconds,
   readReleaseConfig,
   resolveReleaseTarget,
@@ -5751,6 +5752,14 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // den#156: the Agents list's waits (agents_list.*).
+        agents_list: (() => {
+          try {
+            return agentsListWaits(() => user);
+          } catch {
+            return null;
+          }
+        })(),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {
@@ -5792,6 +5801,7 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          agents_list?: unknown;
         };
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
@@ -5817,6 +5827,7 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            agents_list: body.agents_list,
           });
           if (!c.ok) return send400(res, c.error);
         }

@@ -24,7 +24,7 @@ import type {
 /** A request the host refused. */
 export class HostError extends Error {
   constructor(
-    readonly code: HostErrorCode | "closed",
+    readonly code: HostErrorCode | "closed" | "timeout",
     message: string,
   ) {
     super(message);
@@ -102,6 +102,12 @@ export class HostClient extends EventEmitter {
   request(
     op: string,
     body: Record<string, unknown> = {},
+    /**
+     * den#156: at most this long, else it fails ("timeout") and a late
+     * answer is dropped. Without it, it waits for the host as long as the
+     * connection lasts.
+     */
+    timeoutMs?: number,
   ): Promise<Record<string, unknown>> {
     if (this.socket.destroyed)
       return Promise.reject(
@@ -109,7 +115,24 @@ export class HostClient extends EventEmitter {
       );
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const done =
+        <T>(f: (v: T) => void) =>
+        (v: T) => {
+          if (timer) clearTimeout(timer);
+          f(v);
+        };
+      this.pending.set(id, { resolve: done(resolve), reject: done(reject) });
+      if (timeoutMs !== undefined)
+        timer = setTimeout(() => {
+          if (!this.pending.delete(id)) return;
+          reject(
+            new HostError(
+              "timeout",
+              `the terminal host did not answer within ${Math.round(timeoutMs / 100) / 10} s`,
+            ),
+          );
+        }, timeoutMs);
       this.socket.write(frame({ v: PROTOCOL_VERSION, id, op, ...body }));
     });
   }
@@ -180,8 +203,10 @@ export class HostClient extends EventEmitter {
     return r.info as SessionInfo;
   }
 
-  async list(): Promise<SessionInfo[]> {
-    return (await this.request("list")).sessions as SessionInfo[];
+  /** `timeoutMs` (den#156): at most this long (see request). */
+  async list(opts: { timeoutMs?: number } = {}): Promise<SessionInfo[]> {
+    return (await this.request("list", {}, opts.timeoutMs))
+      .sessions as SessionInfo[];
   }
 
   /**

@@ -985,14 +985,34 @@ describe("D25: Rename, visible, by touch or keyboard (D37: a running agent's)", 
     });
   });
 
-  /** namer's pane, then ⋯ › Rename…. */
+  /**
+   * namer's pane, then ⋯ › Rename…. den#156: namer's row is found by the
+   * id /api/sessions gives it (running), never by its text; when the list
+   * hasn't got it in time, the failure prints that list.
+   */
   async function rename(p: Page) {
-    const agr = p
-      .locator('#agl .agr[data-kind="agent"][data-state="running"]', {
-        hasText: "namer",
-      })
-      .first();
-    const id = await agr.getAttribute("data-id");
+    let last = "";
+    let id: string | undefined;
+    for (const t0 = Date.now(); Date.now() - t0 < 20_000; ) {
+      last = await p.evaluate(async () =>
+        (await fetch("/api/sessions?ws=north")).text(),
+      );
+      const rows = (
+        JSON.parse(last) as {
+          sessions: { id: string; agent?: string; state?: string }[];
+        }
+      ).sessions;
+      id = rows.find((r) => r.agent === "namer" && r.state === "running")?.id;
+      if (id) break;
+      await p.waitForTimeout(500);
+    }
+    if (!id) throw new Error(`namer isn't running in /api/sessions: ${last}`);
+    const agr = p.locator(
+      `#agl .agr[data-kind="agent"][data-state="running"][data-id="${id}"]`,
+    );
+    await agr.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {
+      throw new Error(`namer's row ${id} isn't shown; /api/sessions: ${last}`);
+    });
     await agr.click();
     const bar = p.locator(`.pane[data-id="${id}"] .bar2`);
     await bar.locator('[data-act="more"]').click();
@@ -1248,6 +1268,67 @@ describe("D72: Move to project…", () => {
     expect((await res).status()).toBe(200);
     await p.waitForSelector(note, { state: "detached", timeout: 15_000 });
     expect(readRecord(s!.stateDir, "stray")?.workspace).toBe("south");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+});
+
+describe("den#156: a list that doesn't come doesn't freeze the Agents list", () => {
+  it("a stuck list says so, keeps asking, and the note goes when a list comes", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    // "ok": the real list, with the page's wait at 1 s; "stuck": never answered.
+    let mode: "ok" | "stuck" = "ok";
+    let asked = 0;
+    await p.route("**/api/sessions?ws=north", async (route) => {
+      asked++;
+      if (mode === "stuck") return; // never fulfilled: a host that hangs
+      const r = await route.fetch();
+      const body = { ...(await r.json()), refreshTimeoutSeconds: 1 };
+      await route.fulfill({ response: r, json: body });
+    });
+    const note = p.locator('#agl [data-note="host"]');
+    // Let one list with the 1 s wait come in, then hang every next one.
+    const before = asked;
+    for (const t0 = Date.now(); asked === before && Date.now() - t0 < 15_000; )
+      await p.waitForTimeout(200);
+    expect(asked).toBeGreaterThan(before);
+    mode = "stuck";
+    const stuckAt = asked;
+    await note.waitFor({ state: "visible", timeout: 15_000 });
+    expect(await note.getAttribute("role")).toBe("status");
+    expect(await note.textContent()).toMatch(
+      /couldn't reach the terminal host/,
+    );
+    // It keeps asking: one stuck answer doesn't stop the next.
+    for (
+      const t0 = Date.now();
+      asked < stuckAt + 2 && Date.now() - t0 < 20_000;
+    )
+      await p.waitForTimeout(200);
+    expect(asked).toBeGreaterThanOrEqual(stuckAt + 2);
+    // Answers again: the note goes, the rows stay.
+    mode = "ok";
+    await note.waitFor({ state: "detached", timeout: 15_000 });
+    expect(await p.locator("#agl .agr").count()).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("a list that says the host didn't answer shows the same note", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    await p.route("**/api/sessions?ws=north", async (route) => {
+      const r = await route.fetch();
+      const body = {
+        ...(await r.json()),
+        hostError: "the terminal host did not answer within 10 s",
+      };
+      await route.fulfill({ response: r, json: body });
+    });
+    await p
+      .locator('#agl [data-note="host"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);

@@ -1494,6 +1494,12 @@
     "set.agents.pane_reconnect_wait": "Longest wait between tries",
     "set.agents.pane_reconnect_wait.d":
       "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.list_host_wait": "Terminal host wait",
+    "set.agents.list_host_wait.d":
+      "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.list_refresh_wait": "Agents list wait",
+    "set.agents.list_refresh_wait.d":
+      "How long the Agents page waits for its list. After this, it says the list may be out of date and tries again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
     "set.server.address": "__DEN_TITLE__'s address",
     "set.server.address.d":
       "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",
@@ -2122,6 +2128,8 @@
     "ag.size.take": "Take over",
     "ag.noBackend":
       "Terminals need the optional PTY module (den-pty is unavailable): {cli} doctor says why",
+    "ag.hostDown":
+      "Den couldn't reach the terminal host in time, so this list may be out of date. Trying again every few seconds.",
     "ag.noHost": "No session host is running: nothing has started yet",
     "ag.ws": "Project",
     "ag.pal": "Agents › {ws} / {name}",

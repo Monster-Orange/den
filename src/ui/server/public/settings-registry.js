@@ -1388,6 +1388,34 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ panes_reconnect: { max_seconds: v } }),
   },
   {
+    // den#156: the Agents list's waits (user.yml agents_list.*).
+    id: "agents.list_host_wait",
+    category: "agents",
+    label: "Terminal host wait",
+    description:
+      "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    keywords: ["timeout", "terminal", "host", "list", "wait"],
+    scope: "user",
+    keys: ["agents_list.host_timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_list?.host_timeout_seconds ?? 10,
+    write: (v, ctx) => ctx.post({ agents_list: { host_timeout_seconds: v } }),
+  },
+  {
+    id: "agents.list_refresh_wait",
+    category: "agents",
+    label: "Agents list wait",
+    description:
+      "How long the Agents page waits for its list. After this, it says the list may be out of date and tries again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
+    keywords: ["timeout", "list", "refresh", "wait", "out of date"],
+    scope: "user",
+    keys: ["agents_list.refresh_timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_list?.refresh_timeout_seconds ?? 15,
+    write: (v, ctx) =>
+      ctx.post({ agents_list: { refresh_timeout_seconds: v } }),
+  },
+  {
     id: "agents.layout",
     category: "agents",
     label: "Agents tab layout",

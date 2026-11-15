@@ -646,6 +646,12 @@
     "set.agents.pane_reconnect_wait": "試行の間の最長の待ち時間",
     "set.agents.pane_reconnect_wait.d":
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.list_host_wait": "ターミナルホストの待ち時間",
+    "set.agents.list_host_wait.d":
+      "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.list_refresh_wait": "エージェント一覧の待ち時間",
+    "set.agents.list_refresh_wait.d":
+      "エージェントのページが一覧を待つ時間です。これを過ぎると、一覧が古い可能性があることを表示して再試行します。__DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
     "set.server.address": "__DEN_TITLE__ のアドレス",
     "set.server.address.d":
       "ほかの人やデバイスがこの __DEN_TITLE__ を開くアドレスです(例: https://__DEN_CLI__.local.example.com)。「確認して保存」は、まずそのアドレスが応答するか確かめ、応答したときだけ保存します。__DEN_CLI__ web url と同じです。",
@@ -1328,6 +1334,8 @@
     "ag.size.take": "このサイズにする",
     "ag.noBackend":
       "ターミナルにはオプションの PTY モジュールが必要です（den-pty は使えません）。理由は {cli} doctor で確認できます",
+    "ag.hostDown":
+      "Den が時間内にターミナルホストに接続できなかったため、この一覧は古い可能性があります。数秒ごとに再試行しています。",
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
     "ag.ws": "プロジェクト",
     "ag.pal": "エージェント › {ws} / {name}",

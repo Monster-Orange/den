@@ -274,9 +274,10 @@ describe("the Settings page writes only what you change (R21)", () => {
     // the URL keeps ?q=.
     expect(await p.getAttribute("#set-count", "aria-live")).toBe("polite");
     await q.fill("terminal");
-    // 0.4.46: Agents › the terminals' three reconnect limits match too.
+    // 0.4.46: Agents › the terminals' three reconnect limits match too,
+    // and (den#156) the Agents list's wait for the terminal host.
     expect(await sectionIds(p)).toEqual(["editor", "agents", "cli"]);
-    expect(await p.textContent("#set-count")).toBe("5 settings match");
+    expect(await p.textContent("#set-count")).toBe("6 settings match");
     expect(new URL(p.url()).searchParams.get("q")).toBe("terminal");
     expect(
       await p.$$eval("#cat-editor .set-row", (r) =>

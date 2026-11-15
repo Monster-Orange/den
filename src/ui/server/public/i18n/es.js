@@ -661,6 +661,12 @@
     "set.agents.pane_reconnect_wait": "Espera máxima entre intentos",
     "set.agents.pane_reconnect_wait.d":
       "El primer intento espera 1 s y cada espera se duplica, hasta este valor. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.list_host_wait": "Espera al host de terminales",
+    "set.agents.list_host_wait.d":
+      "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.list_refresh_wait": "Espera de la lista de agentes",
+    "set.agents.list_refresh_wait.d":
+      "Cuánto espera la página de agentes su lista. Pasado este tiempo, dice que la lista puede estar desactualizada y lo intenta de nuevo. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
     "set.server.address": "La dirección de __DEN_TITLE__",
     "set.server.address.d":
       "La dirección con la que las personas y otros dispositivos abren este __DEN_TITLE__, por ejemplo https://__DEN_CLI__.local.example.com. Comprobar y guardar le pide primero que responda, y solo guarda si responde. Igual que __DEN_CLI__ web url.",
@@ -1367,6 +1373,8 @@
     "ag.size.take": "Usar este tamaño",
     "ag.noBackend":
       "Los terminales necesitan el módulo PTY opcional (den-pty no está disponible): {cli} doctor explica por qué",
+    "ag.hostDown":
+      "Den no pudo contactar a tiempo con el host de terminales, así que esta lista puede estar desactualizada. Lo intenta de nuevo cada pocos segundos.",
     "ag.noHost":
       "No hay ningún host de sesiones en marcha: aún no se ha iniciado nada",
     "ag.ws": "Proyecto",

@@ -88,6 +88,7 @@ import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import type { HelperSettings } from "../../shared/agents/helpers.js";
 import {
+  agentsListWaits,
   readAgentsConfig,
   DEFAULT_EXITED_SHELL_MINUTES,
   readSessionsConfig,
@@ -165,6 +166,14 @@ export interface SessionRouteDeps {
   /** D65 v2: workspace `ws`'s repo names (null: it can't be read). */
   repoNames?: (ws: string) => ReadonlySet<string> | null;
   now?: () => Date;
+  /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
+  listWaits?: () => ListWaits;
+}
+
+/** den#156: how long a list waits for the host, and the page for a list. */
+interface ListWaits {
+  host_timeout_seconds: number;
+  refresh_timeout_seconds: number;
 }
 
 interface Resolved {
@@ -187,6 +196,7 @@ interface Resolved {
   closeGrace: () => number;
   repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
+  listWaits: () => ListWaits;
 }
 
 /** A workspace name as `?ws=` may give it. */
@@ -197,6 +207,16 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
   return {
     stateDir,
     dist: d.dist ?? (() => product().name),
+    listWaits:
+      d.listWaits ??
+      (() => {
+        try {
+          return agentsListWaits();
+        } catch {
+          // A wrong value in user.yml: Settings says so; the defaults hold.
+          return { host_timeout_seconds: 10, refresh_timeout_seconds: 15 };
+        }
+      }),
     connectExisting:
       d.connectExisting ??
       (async () => {
@@ -665,12 +685,18 @@ export async function handleSessionList(
   let sessions: SessionInfo[] = [];
   let host = false;
   let hostError: string | undefined;
+  const waits = d.listWaits();
   try {
     const c = await d.connectExisting();
     if (c) {
       host = true;
       try {
-        sessions = await leaveExitedShells(c, await c.list(), d);
+        // den#156: a host that doesn't answer is an error, never a wait
+        // that holds this list (and the page's next one) for good.
+        const listed = await c.list({
+          timeoutMs: waits.host_timeout_seconds * 1000,
+        });
+        sessions = await leaveExitedShells(c, listed, d);
       } finally {
         c.close();
       }
@@ -702,6 +728,8 @@ export async function handleSessionList(
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
+    // den#156: how long the page waits for its next list.
+    refreshTimeoutSeconds: waits.refresh_timeout_seconds,
     backend: pty.available
       ? { id: "den-pty", available: true }
       : { id: "den-pty", available: false, reason: pty.reason },

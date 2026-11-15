@@ -43,6 +43,12 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // 0.4.48: Den on the Docker bridge for the edge (Linux).
   "web.bridge_listen": ["web_bridge", "listen"],
   "web.bridge_probe_seconds": ["web_bridge", "probe_seconds"],
+  // den#156: the Agents list's waits for the terminal host.
+  "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
+  "agents_list.refresh_timeout_seconds": [
+    "agents_list",
+    "refresh_timeout_seconds",
+  ],
 };
 
 /** Every key `config` accepts, aliases too. */

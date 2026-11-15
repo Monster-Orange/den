@@ -134,6 +134,13 @@ config and manifest changes a distribution must make to move to it under
   showed. The bell and the service panel lost it on every refresh while
   open (every 5 s), so Report blinked. They now draw it with themselves:
   there when they show, and through every refresh. (den#143)
+- The Agents list could stop changing for good: when the terminal host
+  didn't answer a list, Den waited for it with no limit, and the page
+  waited for Den. Now Den waits at most
+  `agents_list.host_timeout_seconds` (default 10) and the page at most
+  `agents_list.refresh_timeout_seconds` (default 15); both are in
+  Settings › Agents. When a list doesn't come in time, the list says so
+  and keeps asking every few seconds. (den#156)
 - On Linux, a request through the edge got a 502: the edge container
   reaches the host on the Docker bridge, and Den listened only on
   127.0.0.1 unless you set `DEN_BIND_HOST` by hand. Now, with an edge set

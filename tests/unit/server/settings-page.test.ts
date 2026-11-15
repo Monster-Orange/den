@@ -59,6 +59,8 @@ describe("search", () => {
           "agents.pane_reconnect",
           "agents.pane_reconnect_window",
           "agents.pane_reconnect_wait",
+          // den#156: the Agents list's wait for the terminal host.
+          "agents.list_host_wait",
         ],
       ],
       ["cli", ["cli.cli_tabs"]],

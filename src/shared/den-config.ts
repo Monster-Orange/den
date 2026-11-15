@@ -471,6 +471,16 @@ export interface UserConfig {
    * reconnect_window_seconds (300), with a Reconnect button. A try that
    * hasn't connected in connect_timeout_seconds (10) is a failed one.
    */
+  /**
+   * den#156: the Agents list's waits. `host_timeout_seconds` (10): how long
+   * a list waits for the terminal host before it says it couldn't reach
+   * it; `refresh_timeout_seconds` (15): how long the page waits for a list
+   * before it says so and tries again.
+   */
+  agents_list?: {
+    host_timeout_seconds?: unknown;
+    refresh_timeout_seconds?: unknown;
+  };
   panes?: {
     reconnect_seconds?: unknown;
     reconnect_max_seconds?: unknown;
@@ -673,6 +683,33 @@ function panesNumber(
   throw new Error(
     `panes.${String(key)} must be a number, at least ${min} (user.yml; got ${JSON.stringify(v)})`,
   );
+}
+
+/**
+ * den#156: the Agents list's waits (user.yml agents_list.*), in seconds,
+ * as GET /api/settings gives the page (agents_list). A wrong value throws.
+ */
+export function agentsListWaits(read: () => UserConfig = readUserConfig): {
+  host_timeout_seconds: number;
+  refresh_timeout_seconds: number;
+} {
+  const b = read().agents_list ?? {};
+  const one = (
+    k: "host_timeout_seconds" | "refresh_timeout_seconds",
+    d: number,
+  ) => {
+    const v = b[k];
+    if (v === undefined || v === null) return d;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 600)
+      return v;
+    throw new Error(
+      `agents_list.${k} must be a number from 1 to 600 (user.yml; got ${JSON.stringify(v)})`,
+    );
+  };
+  return {
+    host_timeout_seconds: one("host_timeout_seconds", 10),
+    refresh_timeout_seconds: one("refresh_timeout_seconds", 15),
+  };
 }
 
 /**

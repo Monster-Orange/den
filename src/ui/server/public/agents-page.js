@@ -864,6 +864,11 @@ function paintList() {
     notes.push(
       `<div class="agnote" data-note="backend">${esc(t("ag.noBackend", { cli: CLI }))}</div>`,
     );
+  // den#156: the host didn't answer in time: this list may be old.
+  if (st.hostDown)
+    notes.push(
+      `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
+    );
   if (!st.data) {
     setList(el, notes.join(""));
     return;
@@ -1209,14 +1214,44 @@ function repaintNames() {
   if (strip) paintTabs(strip);
 }
 
+/**
+ * den#156: the list again, then the next one, always: an answer that never
+ * comes (a host that doesn't answer) can't stop the list for good.
+ */
 async function refresh() {
   clearTimeout(st.timer);
   try {
+    await refreshOnce();
+  } finally {
+    nextRefresh();
+  }
+}
+
+/** den#156: until a list says otherwise (agents_list.refresh_timeout_seconds). */
+const LIST_WAIT_S = 15;
+
+async function refreshOnce() {
+  try {
     const ws = urlWorkspace();
-    const r = await fetch(
-      ws ? `/api/sessions?ws=${encodeURIComponent(ws)}` : "/api/sessions",
-      { headers: { accept: "json" } },
+    // den#156: a list that doesn't come in time is a problem the page
+    // says out loud (paintList), not a wait that holds it.
+    const ac = new AbortController();
+    const wait = setTimeout(
+      () => ac.abort(),
+      (st.listWaitS ?? LIST_WAIT_S) * 1000,
     );
+    let r;
+    try {
+      r = await fetch(
+        ws ? `/api/sessions?ws=${encodeURIComponent(ws)}` : "/api/sessions",
+        { headers: { accept: "json" }, signal: ac.signal },
+      );
+    } catch (e) {
+      st.hostDown = true;
+      throw e;
+    } finally {
+      clearTimeout(wait);
+    }
     // 0.4.45: the projects' names (a rename in Hub shows here within
     // 30 s of reaching this install). The first list waits for them, so
     // nothing paints a slug first.
@@ -1249,6 +1284,10 @@ async function refresh() {
     } else if (r.ok) {
       st.data = await r.json();
       st.signedOut = false;
+      // den#156: the host didn't answer (or couldn't be reached): say so.
+      st.hostDown = !!st.data?.hostError;
+      if (typeof st.data?.refreshTimeoutSeconds === "number")
+        st.listWaitS = st.data.refreshTimeoutSeconds;
       toastAutoRelaunches(st.data?.sessions ?? []);
     }
   } catch {
@@ -1274,7 +1313,10 @@ async function refresh() {
   }
   const strip = st.root.querySelector("#agr > .agtabs");
   if (strip) paintTabs(strip);
-  if (!st.root.isConnected) return;
+}
+
+function nextRefresh() {
+  if (!st.root?.isConnected) return;
   // A pane whose session just ended may have a new one soon (a persona
   // change, a resume): look again every second for a while.
   const soon = Date.now() < (st.followUntil ?? 0);
