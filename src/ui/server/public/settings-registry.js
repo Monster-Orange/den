@@ -780,6 +780,24 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
   },
   {
+    // SRV-P6 (0.4.48): how this install takes a new version
+    // (user.yml server_agent.self_update). A person's only.
+    id: "server.self_update",
+    category: "server",
+    label: "New versions",
+    description:
+      "When a new __DEN_TITLE__ is out. Ask: an update waits in the bell for your Allow. Auto: __DEN_TITLE__ updates at a quiet moment, and goes back by itself if the new version doesn't come up.",
+    keywords: ["update", "upgrade", "version", "npm", "self_update", "auto"],
+    scope: "user",
+    keys: ["server_agent_self_update"],
+    control: seg([
+      { value: "ask", label: "Ask" },
+      { value: "auto", label: "Auto" },
+    ]),
+    read: (ctx) => ctx.data.server_agent_self_update ?? "ask",
+    write: (v, ctx) => ctx.post({ server_agent_self_update: v }),
+  },
+  {
     // MODE-5 (0.4.46): this install's address (web.url, D80) as a page
     // control: Check and save asks the address to answer first.
     id: "server.address",

@@ -99,6 +99,8 @@ describe("the settings inventory (R21)", () => {
         "language",
         // SEC-2a: the name the signed-out page gives this machine.
         "machine_name",
+        // SRV-P6: whether Den updates itself without asking.
+        "server_agent_self_update",
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",

@@ -308,6 +308,8 @@ describe("its folder (SRV-1b)", () => {
         git: "pr",
         updateWaitMs: 180_000,
         promptCheckMs: 2_000,
+        updateCheckMs: 30 * 60_000,
+        role: "lead",
       });
       expect(
         readServerAgentConfig(
@@ -332,6 +334,8 @@ describe("its folder (SRV-1b)", () => {
         git: "push",
         updateWaitMs: 600_000,
         promptCheckMs: 500,
+        updateCheckMs: 30 * 60_000,
+        role: "lead",
       });
       for (const bad of [0, 0.4, 61, "2", Number.NaN])
         expect(() =>

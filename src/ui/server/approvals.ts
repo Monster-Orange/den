@@ -271,6 +271,11 @@ export class ApprovalQueue {
     details?: string[];
     note?: string;
     ticketHash?: string;
+    /**
+     * SRV-P6 (0.4.48): how long this one waits for the person (default
+     * the queue's): Den's own "update to X" waits longer than an agent's.
+     */
+    ttlMs?: number;
   }): Approval {
     this.prune();
     let waiting = 0;
@@ -309,7 +314,7 @@ export class ApprovalQueue {
         : {}),
       ...(r.ticketHash ? { ticketHash: r.ticketHash } : {}),
       requestedAt: t,
-      expiresAt: t + this.ttlMs,
+      expiresAt: t + (r.ttlMs ?? this.ttlMs),
       state: "pending",
     };
     this.items.set(a.id, a);

@@ -631,6 +631,11 @@
     "set.language": "Idioma",
     "set.appearance.org-theme": "Tema predeterminado de la org",
     "set.editor": "IDE predeterminado",
+    "set.server.self_update": "Versiones nuevas",
+    "set.server.self_update.d":
+      "Cuando sale un __DEN_TITLE__ nuevo. Preguntar: la actualización espera tu permiso en la campana. Automático: __DEN_TITLE__ se actualiza en un momento tranquilo y vuelve atrás por sí mismo si la versión nueva no arranca.",
+    "set.server.self_update.o.ask": "Preguntar",
+    "set.server.self_update.o.auto": "Automático",
     "set.server.crash_loop": "Protección contra reinicios",
     "set.server.crash_loop.d":
       "Cuando la app web de __DEN_TITLE__ se detiene sin un cierre limpio estas veces dentro de los minutos de abajo, el siguiente arranque espera antes de atender, más cada vez, y la campana lo avisa. __DEN_CLI__ config web.crash_loop_restarts=5",
@@ -1201,6 +1206,11 @@
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
+    "bell.m.updateOut":
+      "Salió __DEN_TITLE__ {v}. Permite la actualización cuando te venga bien (esta instalación usa {have})",
+    "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
+    "bell.m.rolledBack":
+      "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} terminó {n} comentarios de Hub",

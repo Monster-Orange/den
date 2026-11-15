@@ -31,6 +31,8 @@ export const PERSON_ONLY_SETTINGS = [
   "editor_open",
   // The name the signed-out page shows for this machine.
   "machine_name",
+  // SRV-P6 (0.4.48): whether Den updates itself without asking.
+  "server_agent_self_update",
 ] as const;
 
 /**

@@ -616,6 +616,11 @@
     "set.language": "言語",
     "set.appearance.org-theme": "組織の既定テーマ",
     "set.editor": "既定の IDE",
+    "set.server.self_update": "新しいバージョン",
+    "set.server.self_update.d":
+      "新しい __DEN_TITLE__ が出たとき。確認: 更新はベルで許可を待ちます。自動: __DEN_TITLE__ は落ち着いたときに更新し、新しいバージョンが起動しなければ自分で元に戻します。",
+    "set.server.self_update.o.ask": "確認",
+    "set.server.self_update.o.auto": "自動",
     "set.server.crash_loop": "再起動ガード",
     "set.server.crash_loop.d":
       "__DEN_TITLE__ の Web アプリが下の分数のうちにこの回数、正常に終了せずに止まると、次の起動は応答する前に待ちます。待ち時間は毎回延び、ベルで知らせます。__DEN_CLI__ config web.crash_loop_restarts=5",
@@ -1171,6 +1176,11 @@
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
+    "bell.m.updateOut":
+      "__DEN_TITLE__ {v} が出ました。都合のよいときに更新を許可してください (このインストールは {have})",
+    "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
+    "bell.m.rolledBack":
+      "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} が Hub のコメント {n} 件を終えました",

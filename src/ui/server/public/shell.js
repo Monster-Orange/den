@@ -1462,6 +1462,11 @@
     "hubla.why.stale": "no longer Hub's suggestion",
     "set.workspace.editor": "IDE for this project",
     "set.agents.runtimes": "Runtimes",
+    "set.server.self_update": "New versions",
+    "set.server.self_update.d":
+      "When a new __DEN_TITLE__ is out. Ask: an update waits in the bell for your Allow. Auto: __DEN_TITLE__ updates at a quiet moment, and goes back by itself if the new version doesn't come up.",
+    "set.server.self_update.o.ask": "Ask",
+    "set.server.self_update.o.auto": "Auto",
     "set.server.crash_loop": "Restart guard",
     "set.server.crash_loop.d":
       "When __DEN_TITLE__'s web app stops without a clean stop this many times within the minutes below, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",
@@ -1958,6 +1963,11 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
+    "bell.m.updateOut":
+      "__DEN_TITLE__ {v} is out. Allow the update when it suits you (this install runs {have})",
+    "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
+    "bell.m.rolledBack":
+      "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} finished {n} Hub comments",

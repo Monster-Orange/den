@@ -42,6 +42,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import semver from "semver";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
@@ -2250,7 +2251,11 @@ function approvalDeps(): ApprovalDeps {
           const marker = {
             id: asked?.id ?? "",
             reason: why,
-            ...(asked?.agent ? { agent: asked.agent } : {}),
+            // SRV-P6: no agent asked (Den's own check): the server agent,
+            // which keeps the pin, is told when Den is back.
+            ...(asked?.agent
+              ? { agent: asked.agent }
+              : { agent: SERVER_AGENT_ID, by: "den" as const }),
             allowed: (auto ? "auto" : "person") as "auto" | "person",
             fromVersion: engineVersion() ?? "?",
             fromPid: process.pid,
@@ -5585,6 +5590,7 @@ async function handleRequest(
         ui_languages: UI_LANGUAGES,
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
         feedback_enabled: (() => {
           try {
@@ -5633,6 +5639,7 @@ async function handleRequest(
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           agents_default_mode?: unknown;
+          server_agent_self_update?: unknown;
           local_dev?: unknown;
           cli_tabs?: unknown;
           log_window_lines?: unknown;
@@ -5682,6 +5689,22 @@ async function handleRequest(
           if (Object.keys(agents).length) user.agents = agents;
           else delete user.agents;
           modesChanged = true;
+        }
+        // SRV-P6: server_agent.self_update, the person's (user.yml). null
+        // is ask, written: an unset value would fall back to the team
+        // file's until the migration (den-config.ts). Set here, it no
+        // longer came from the team file.
+        if (body.server_agent_self_update !== undefined) {
+          const v = body.server_agent_self_update ?? "ask";
+          if (v !== "ask" && v !== "auto")
+            return send400(
+              res,
+              "server_agent_self_update is ask, auto or null",
+            );
+          const sa = { ...(user.server_agent ?? {}) };
+          delete sa.self_update_from;
+          sa.self_update = v;
+          user.server_agent = sa;
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Agents › Hub); null clears it (the default, on).
@@ -5820,6 +5843,7 @@ async function handleRequest(
         return sendJson(res, {
           ok: true,
           agents_default_mode: user.agents?.default_mode ?? null,
+          server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},
@@ -6547,6 +6571,8 @@ void CRASH_GATE.then(() =>
     printBanner(ADDRESS ?? readWebUrl());
     // SRV-1a: back from a restart the server agent asked for: tell it.
     void serverBack();
+    // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
+    startUpdateCheck();
     // #57: agents whose record names a project by its pre-D70 key follow it.
     void import("../../shared/agents/heal-workspace.js").then(async (m) => {
       const { isServerScope } =
@@ -6642,6 +6668,166 @@ async function serverBack(): Promise<void> {
     m.agent ? `agent:${m.agent}` : undefined,
   );
   serverLog(`  Back from a restart: ${m.reason} (${told})`, "lifecycle");
+  // SRV-P6c: a rollback is the person's news too, whoever asked.
+  if (m.rolledBack)
+    try {
+      notificationDeps().store.add({
+        kind: "service",
+        subject: `record:den-update-${m.fromVersion}`,
+        scope: "workspace/den-server",
+        text: `Den ${m.fromVersion} didn't come up here and went back to ${version}: ${m.reason}`,
+        msg: {
+          key: "bell.m.rolledBack",
+          vars: { v: m.fromVersion, from: version, why: m.reason },
+        },
+        link: "/server-agent",
+      });
+    } catch {
+      /* the bell is best effort */
+    }
+}
+
+/** SRV-P6: how long Den's own "update to X" waits in Needs you. */
+const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
+/** The update states that mean an update is under way. */
+const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
+
+/**
+ * SRV-P6 (0.4.48): every server_agent.update_check_minutes (0: never),
+ * one updateCheck tick (update-check.ts). Read once at start: a changed
+ * interval takes effect at the next restart; self_update is read per tick.
+ */
+function startUpdateCheck(): void {
+  let every: number;
+  try {
+    every = readServerAgentConfig().updateCheckMs;
+  } catch (e) {
+    serverLog(`  ⚠ update check off: ${(e as Error).message}`, "warn");
+    return;
+  }
+  if (!every) return;
+  let busy = false;
+  let updating = false;
+  const tick = async (): Promise<void> => {
+    if (busy) return;
+    busy = true;
+    try {
+      const u = await import("./den-update.js");
+      const { updateCheck } = await import("./update-check.js");
+      check ??= updateCheck({
+        running: () => engineVersion(),
+        latest: () =>
+          u.npmViewVersion(
+            u.npmCommand(),
+            `${ENGINE_PACKAGE}@latest`,
+            getDistRoot(),
+          ),
+        pinned: () => {
+          try {
+            const pkg = JSON.parse(
+              fs.readFileSync(path.join(getDistRoot(), "package.json"), "utf8"),
+            ) as { dependencies?: Record<string, string> };
+            const pin = pkg.dependencies?.[ENGINE_PACKAGE];
+            if (!pin) return null;
+            return semver.valid(pin) ?? semver.minVersion(pin)?.version ?? null;
+          } catch {
+            return null;
+          }
+        },
+        role: () => readServerAgentConfig().role,
+        mode: () => (selfUpdateAuto() ? "auto" : "ask"),
+        cantUpdate: () =>
+          u.updateProblem(getDistRoot(), getEngineRoot(), ENGINE_PACKAGE),
+        last: () => u.readUpdateState(getStateDir()),
+        idle: async () => {
+          if (updating) return false;
+          const last = u.readUpdateState(getStateDir());
+          if (
+            last &&
+            UPDATE_UNDER_WAY.has(last.state) &&
+            Date.now() - Date.parse(last.at) < 60 * 60_000
+          )
+            return false;
+          if (approvals?.queue.pending().length) return false;
+          const ops = await import("../cli/agent-ops.js");
+          const { webDeps } = await import("./agent-routes.js");
+          return (await ops.serverAgentInputState(webDeps())) !== "busy";
+        },
+        update: async (version, reason) => {
+          const ap = approvalDeps();
+          const a = ap.actions.den_update;
+          const ok = a.check({ version, reason });
+          if (!ok.ok) return { ok: false, error: ok.error };
+          updating = true;
+          try {
+            const r = await a.run(ok.args, {
+              id: "update-check",
+              decidedBy: "auto:server_agent.self_update: auto",
+            });
+            return r.ok
+              ? { ok: true }
+              : { ok: false, error: String(r.error ?? "not updated") };
+          } finally {
+            updating = false;
+          }
+        },
+        ask: (version, reason) => {
+          const ap = approvalDeps();
+          try {
+            if (!ap.enabled()) return false;
+          } catch {
+            return false;
+          }
+          const ok = ap.actions.den_update.check({ version, reason });
+          if (!ok.ok) return false;
+          try {
+            const a = ap.queue.request({
+              actor: "den:update-check",
+              action: "den_update",
+              args: ok.args,
+              summary: ok.summary,
+              params: ok.params,
+              details: ok.details,
+              ttlMs: UPDATE_ASK_TTL_MS,
+            });
+            recordAction(null, {
+              verb: "approval-ask",
+              detail: `den_update: ${a.summary} [${a.id}]`,
+            });
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        notice: (version, text, msg) => {
+          try {
+            notificationDeps().store.add({
+              kind: "service",
+              subject: `record:den-update-${version}`,
+              scope: "workspace/den-server",
+              text,
+              msg,
+              link: "/server-agent",
+            });
+          } catch {
+            /* the bell is best effort */
+          }
+        },
+      });
+      const r = await check.tick();
+      if (r.did !== "current" && r.did !== "skipped")
+        serverLog(
+          `  update check: ${r.did} ${r.version}${r.did === "failed" ? `: ${r.why}` : ""}`,
+          "lifecycle",
+        );
+    } catch (e) {
+      serverLog(`  ⚠ update check: ${(e as Error).message}`, "warn");
+    } finally {
+      busy = false;
+    }
+  };
+  let check: import("./update-check.js").UpdateCheck | undefined;
+  setInterval(() => void tick(), every).unref();
 }
 
 /** The start banner: the install's address (D80), never localhost. */

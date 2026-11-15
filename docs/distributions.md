@@ -3021,6 +3021,19 @@ project may take that name.
   rows for each step. `GET /api/server-agent` returns the last update
   (`update`: `from`, `to`, `at`, and `state`: `installing`, `watching`,
   `good`, `rolling_back`, `rolled_back` or `rollback_failed`).
+- **Den keeps itself current** (0.4.48). Every
+  `server_agent.update_check_minutes` (org config; default 30, at least
+  5, 0 for never) the web server asks npm for the newest Den. The lead
+  install (`server_agent.role: lead` in `user.yml`, the default) targets
+  npm's latest; a follower (`role: follower`) targets the distribution's
+  pin and never moves it. With `self_update: ask` one held "update Den to
+  X" waits for the person (24 hours) and the bell says X is out, once per
+  version. With `auto` Den runs `den_update` at a quiet moment: the
+  server agent not mid-turn, no Allow open, no update under way; busy, it
+  tries on a later pass. A version that rolled back here is not tried
+  again; a newer one is. A failed update and a rollback each put a notice
+  in the bell. A Den run from a checkout is skipped. Settings › Server ›
+  New versions sets `self_update` (a person's only).
 - **Where it lives.** On a fresh Den (no repo in any project yet), the
   first page, `/`, is that agent in a terminal framed as the page, with
   Open in Agents as the way out. After setup Agents lists it first, under

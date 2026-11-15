@@ -43,6 +43,8 @@ const MUST_BE_PERSON = [
   "shell",
   "editor_open",
   "local_dev",
+  // SRV-P6: auto lets Den update itself unasked.
+  "server_agent_self_update",
 ];
 
 describe("every settings field says who may change it", () => {

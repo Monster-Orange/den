@@ -6,6 +6,18 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.48] - unreleased
 
+### Added
+
+- Den keeps itself current. Every `server_agent.update_check_minutes`
+  (default 30, 0 for never) it looks at npm. With `self_update: ask` the
+  person gets one "update Den to X" to Allow and a bell notice, once per
+  version; with `auto` Den updates at a quiet moment (no agent turn, no
+  Allow open). A follower install (`server_agent.role: follower` in
+  `user.yml`) applies the distribution's pin and never moves it. A
+  version that rolled back isn't tried again. Failed updates and
+  rollbacks show in the bell. Settings › Server › New versions sets ask
+  or auto.
+
 ### Changed
 
 - `server_agent.self_update` is the person's, in `config/local/user.yml`.

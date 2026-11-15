@@ -66,6 +66,12 @@ When Den is back it types "Server is back on <version> (pid …)":
   request (or push, per `server_agent.git`). Then check with doctor.
 - Rolled back: the line says why. Commit nothing, and tell the person.
 
+Den also looks at npm by itself (every 30 minutes by default): with
+`self_update: ask` the person gets "update Den to X" to Allow, and with
+`auto` Den updates when you are between turns. You don't need to ask for
+an update just because a new version is out; you still commit the new
+pin when Den comes back on it.
+
 A Den run from a checkout (not from npm) is updated with git there: say so,
 and use den_restart_server after.
 

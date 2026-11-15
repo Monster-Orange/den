@@ -346,6 +346,12 @@ export interface UserConfig {
      * person set it.
      */
     self_update_from?: string;
+    /**
+     * SRV-P6 / LEAD-1 (0.4.48): this install is its distribution's lead
+     * (the default: it takes new Den versions and bumps the pin) or a
+     * follower (it applies the pin, never bumps it). The person's.
+     */
+    role?: unknown;
   };
   /**
    * 0.4.46: after the machine restarts, the services that were up come back
@@ -1109,6 +1115,11 @@ export interface ServerAgentConfig {
    * prompt while it shows (seconds, default 2; 0.5 to 60).
    */
   prompt_check_seconds?: number;
+  /**
+   * SRV-P6 (0.4.48): how often Den looks at npm for a newer Den, in
+   * minutes (default 30; 0: never).
+   */
+  update_check_minutes?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1131,7 +1142,14 @@ export interface ResolvedServerAgentConfig {
   updateWaitMs: number;
   /** Gate 0.4.44: the page's trust prompt check, in ms. */
   promptCheckMs: number;
+  /** SRV-P6: how often Den looks at npm, in ms; 0: never. */
+  updateCheckMs: number;
+  /** SRV-P6 / LEAD-1: lead (default) or follower, from user.yml. */
+  role: "lead" | "follower";
 }
+
+/** SRV-P6: server_agent.update_check_minutes when unset. */
+export const UPDATE_CHECK_MINUTES_DEFAULT = 30;
 
 /** Gate 0.4.44: how often the page checks for the trust prompt (seconds). */
 export const PROMPT_CHECK_SECONDS_DEFAULT = 2;
@@ -1178,6 +1196,19 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.prompt_check_seconds: seconds, 0.5 to 60 (got ${JSON.stringify(pc)})`,
     );
+  const uc = sa.update_check_minutes;
+  if (
+    uc !== undefined &&
+    (typeof uc !== "number" || !Number.isFinite(uc) || (uc !== 0 && uc < 5))
+  )
+    throw new Error(
+      `server_agent.update_check_minutes: minutes, 5 or more, or 0 for never (got ${JSON.stringify(uc)})`,
+    );
+  const role = user.server_agent?.role;
+  if (role !== undefined && role !== "lead" && role !== "follower")
+    throw new Error(
+      `server_agent.role (user.yml): lead or follower, not ${JSON.stringify(role)}`,
+    );
   // 0.4.48: until Den's first start copies the team file's choice to
   // user.yml (migrateSelfUpdate), that choice holds: never a silent ask.
   const t = sa.self_update;
@@ -1189,6 +1220,8 @@ export function readServerAgentConfig(
     git: g ?? "pr",
     updateWaitMs: Math.round((w ?? UPDATE_WAIT_SECONDS_DEFAULT) * 1000),
     promptCheckMs: Math.round((pc ?? PROMPT_CHECK_SECONDS_DEFAULT) * 1000),
+    updateCheckMs: Math.round((uc ?? UPDATE_CHECK_MINUTES_DEFAULT) * 60_000),
+    role: role ?? "lead",
   };
 }
 

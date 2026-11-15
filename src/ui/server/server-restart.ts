@@ -30,6 +30,11 @@ export interface RestartMarker {
   at: string;
   /** SRV-1b: den_update's watch rolled back; `reason` says why. */
   rolledBack?: boolean;
+  /**
+   * SRV-P6: Den's own update (its check, no agent asked). The server
+   * agent, which keeps the pin, is told all the same.
+   */
+  by?: "den";
 }
 
 /** A marker older than this is a restart that never came back: ignored. */
@@ -89,6 +94,7 @@ export function takeRestartMarker(
       fromPid: Number(m.fromPid) || 0,
       at: m.at,
       ...(m.rolledBack === true ? { rolledBack: true } : {}),
+      ...(m.by === "den" ? { by: "den" as const } : {}),
     };
   } catch {
     return null;
@@ -101,6 +107,12 @@ export function backMessage(
   version: string,
   pid: number,
 ): string {
+  if (m.by === "den")
+    return m.rolledBack
+      ? `Den is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` +
+          "Den's own update didn't take: commit no pin change. The person has it in the bell."
+      : `Den is back on ${version} (pid ${pid}) (it was ${m.fromVersion}). ` +
+          `Den updated itself: ${m.reason}. Commit the new pin in your folder (per server_agent.git), then check with doctor.`;
   if (m.rolledBack)
     return (
       `Server is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
