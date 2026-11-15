@@ -137,6 +137,7 @@ import {
   layoutKeyIndex,
   linkModifier,
   linkOpen,
+  imeOnce,
   softNewlineKey,
 } from "/term-input.js";
 
@@ -2698,6 +2699,7 @@ async function openPane(id, { front = true } = {}) {
       },
       true,
     );
+  imeOnce(el, typeIn);
   term.onData(typeIn);
   p.typeIn = typeIn;
   // AG-DROP: a file dropped or pasted here goes to the server; its path is

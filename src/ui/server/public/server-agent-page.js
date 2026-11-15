@@ -33,6 +33,7 @@
  */
 
 import { paneSettings, termPane } from "/term-pane.js";
+import { imeOnce } from "/term-input.js";
 
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -498,9 +499,12 @@ async function openTerminal(id) {
   p.observer = new ResizeObserver(refit);
   p.observer.observe(el);
   const enc = new TextEncoder();
-  term.onData((d) => {
+  const typeIn = (d) => {
     if (p.sock?.readyState === WebSocket.OPEN) p.sock.send(enc.encode(d));
-  });
+  };
+  // den#165: an IME key's text goes to the agent once.
+  imeOnce(el, typeIn);
+  term.onData(typeIn);
   const size = () => {
     if (p.sock?.readyState === WebSocket.OPEN && term.cols > 1 && term.rows > 1)
       p.sock.send(
