@@ -28,10 +28,11 @@ config and manifest changes a distribution must make to move to it under
   Spanish and Japanese; they drew many words in English before. (den#171)
 - The service commands (`service install`, `--plan`) print this install's
   address (`web.url`), never `localhost`; with no address set they say how
-  to set it. `create` now asks for the address at a terminal, proposing the
-  plain name for the first install and `<product>.<machine>.local` for
-  later ones; `--url`, `--yes` and `--json` skip the question. (den#173,
-  D80)
+  to set it. `create` now asks for the address at a terminal, proposing
+  the plain name for the first install and `<product>.<machine>.<domain>`
+  for later ones, the domain being the one the distribution already uses
+  (the first install's address, else its edge domain); `--url`, `--yes`
+  and `--json` skip the question. (den#173, D80)
 
 ## [0.4.48] - unreleased
 

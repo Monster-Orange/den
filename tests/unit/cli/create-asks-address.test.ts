@@ -84,6 +84,43 @@ describe("create asks for the address", () => {
     expect(savedUrl(dir)).toBe("https://acme.example.com");
   });
 
+  // A later install's domain is the distribution's own: the first
+  // install's, else the distribution's edge domain. Never a made-up one.
+  const askedFor = async (dir: string): Promise<string> => {
+    let def = "";
+    await quiet(() =>
+      runCreate(["acme", dir], tmp, FREE, {
+        interactive: true,
+        machine: "box2",
+        ask: async (_q, d) => ((def = d), ""),
+      }),
+    );
+    return def;
+  };
+
+  it("a later install takes the first install's domain", async () => {
+    const first = path.join(tmp, "acme");
+    await quiet(() =>
+      runCreate(
+        ["acme", first, "--url", "https://acme.dev.example.com"],
+        tmp,
+        FREE,
+      ),
+    );
+    expect(await askedFor(path.join(tmp, "acme-2"))).toBe(
+      "https://acme.box2.dev.example.com",
+    );
+  });
+
+  it("else the distribution's edge domain, and never a literal .local", async () => {
+    const first = path.join(tmp, "acme");
+    await quiet(() => runCreate(["acme", first, "--yes"], tmp, FREE));
+    // The first install has no address; its edge is acme.localhost.
+    const def = await askedFor(path.join(tmp, "acme-2"));
+    expect(def).toBe("https://acme.box2.localhost");
+    expect(def).not.toMatch(/\.local$/);
+  });
+
   it("never asks with --url, --yes, --json or when not interactive", async () => {
     let n = 0;
     const ask = async () => (n++, "");

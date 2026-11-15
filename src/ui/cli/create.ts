@@ -679,7 +679,7 @@ export interface CreateAskOptions {
   ask?: (question: string, proposal: string) => Promise<string>;
   /** This machine's short name, for later installs (default: its hostname). */
   machine?: string;
-  /** The domain for later installs (default: "local"). */
+  /** The domain for later installs (default: the distribution's own). */
   domain?: string;
 }
 
@@ -694,25 +694,70 @@ export function proposeWebUrl(o: {
   domain?: string;
   later: boolean;
 }): string {
-  return o.later
-    ? `https://${o.cli}.${o.machine}.${o.domain ?? "local"}`
-    : `https://${o.cli}`;
+  if (!o.later) return `https://${o.cli}`;
+  return `https://${[o.cli, o.machine, o.domain].filter(Boolean).join(".")}`;
 }
 
-/** Whether a sibling folder of `dir` is already an install with an address. */
-function otherInstallNear(dir: string): boolean {
+/**
+ * D80: whether `dir` is a later install of distribution `name` (it, or a
+ * folder beside it, already holds `config/<name>.yml`), and the domain the
+ * distribution already uses: the first install's address less its product
+ * name, else the edge domain less it. None known: no domain.
+ */
+export function laterInstall(
+  dir: string,
+  name: string,
+  cli: string,
+): { later: boolean; domain?: string } {
+  const has = (d: string) =>
+    fs.existsSync(path.join(d, "config", `${name}.yml`));
+  let near: string[] = [];
   try {
     const parent = path.dirname(dir);
-    return fs
+    near = fs
       .readdirSync(parent)
-      .some(
-        (n) =>
-          path.join(parent, n) !== dir &&
-          fs.existsSync(path.join(parent, n, "config", "local", "user.yml")),
-      );
+      .map((n) => path.join(parent, n))
+      .filter((d) => d !== dir && has(d));
   } catch {
-    return false;
+    /* no parent to read */
   }
+  const installs = [...(has(dir) ? [dir] : []), ...near];
+  const strip = (host: string) => {
+    for (const p of [cli, name])
+      if (host.startsWith(`${p}.`)) return host.slice(p.length + 1);
+    return host.includes(".") ? host.slice(host.indexOf(".") + 1) : "";
+  };
+  const read = (f: string): Record<string, unknown> => {
+    try {
+      return (parseYaml(fs.readFileSync(f, "utf-8")) ?? {}) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return {};
+    }
+  };
+  const fromUrl = (d: string) => {
+    const web = read(path.join(d, "config", "local", "user.yml")).web as
+      | { url?: string }
+      | undefined;
+    try {
+      return web?.url ? strip(new URL(web.url).hostname) : "";
+    } catch {
+      return "";
+    }
+  };
+  const fromEdge = (d: string) => {
+    const edge = read(path.join(d, "config", `${name}.yml`)).edge as
+      | { domain?: string }
+      | undefined;
+    return typeof edge?.domain === "string" ? strip(edge.domain) : "";
+  };
+  const domain =
+    installs.map(fromUrl).find(Boolean) ||
+    installs.map(fromEdge).find(Boolean) ||
+    undefined;
+  return { later: installs.length > 0, ...(domain ? { domain } : {}) };
 }
 
 function askWithReadline(question: string, proposal: string): Promise<string> {
@@ -758,11 +803,13 @@ export async function runCreate(
   const interactive =
     askOpts.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
   if (!args.url && !args.yes && !json && interactive) {
+    const cli = args.cli ?? args.name;
+    const near = laterInstall(args.dir, args.name, cli);
     const proposal = proposeWebUrl({
-      cli: args.cli ?? args.name,
+      cli,
       machine: askOpts.machine ?? os.hostname().split(".")[0].toLowerCase(),
-      domain: askOpts.domain,
-      later: otherInstallNear(args.dir),
+      domain: askOpts.domain ?? near.domain,
+      later: near.later,
     });
     const answer = (
       await (askOpts.ask ?? askWithReadline)(
