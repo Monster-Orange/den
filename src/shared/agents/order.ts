@@ -101,14 +101,25 @@ export function inAgentOrder<T>(
   return out;
 }
 
-/** Where a moved agent goes: up or down one, to the top, or to a place. */
-export type AgentMove = "up" | "down" | "top" | "bottom" | number;
+/**
+ * Where a moved agent goes: up or down one, to the top or bottom, to a
+ * place, or next to another agent (a drop on the page, and the page's
+ * Move up and down, which stay inside the row's group).
+ */
+export type AgentMove =
+  | "up"
+  | "down"
+  | "top"
+  | "bottom"
+  | number
+  | { before: string }
+  | { after: string };
 
 /**
  * The order after moving `id` among `shown` (the project's agents as they
  * are listed now, saved order applied). Returns the whole list, which is
  * what is stored, so the order is the same everywhere afterwards. A place
- * is 1-based and clamped.
+ * is 1-based and clamped; next to an agent it must be another of `shown`.
  */
 export function moveInOrder(
   shown: readonly string[],
@@ -123,6 +134,12 @@ export function moveInOrder(
   else if (to === "down") at = Math.min(rest.length, from + 1);
   else if (to === "top") at = 0;
   else if (to === "bottom") at = rest.length;
-  else at = Math.min(rest.length, Math.max(0, Math.floor(to) - 1));
+  else if (typeof to === "object") {
+    const other = "before" in to ? to.before : to.after;
+    if (other === id) throw new Error("an agent can't move next to itself");
+    const i = rest.indexOf(other);
+    if (i < 0) throw new Error(`no agent "${other}" in this project`);
+    at = "before" in to ? i : i + 1;
+  } else at = Math.min(rest.length, Math.max(0, Math.floor(to) - 1));
   return [...rest.slice(0, at), id, ...rest.slice(at)];
 }

@@ -160,6 +160,25 @@ describe("D79: POST .../agents/:id/order", () => {
     expect(await a.list()).toEqual(["fixer", "coder", "scout"]);
   });
 
+  it("before or after another agent: a drop, or a move inside the page's group", async () => {
+    const a = await api();
+    const r = await a.move("fixer", { to: { before: "coder" } });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ position: 2, of: 3 });
+    expect(await a.list()).toEqual(["scout", "fixer", "coder"]);
+    await a.move("scout", { to: { after: "coder" } });
+    expect(await a.list()).toEqual(["fixer", "coder", "scout"]);
+    for (const to of [
+      { before: "nobody" },
+      { after: "fixer" },
+      { before: "coder", after: "scout" },
+      { next: "coder" },
+      { before: 3 },
+    ])
+      expect([to, (await a.move("fixer", { to })).status]).toEqual([to, 400]);
+    expect(await a.list()).toEqual(["fixer", "coder", "scout"]);
+  });
+
   it("refuses a bad to, an unknown field, or an agent the project hasn't; nothing stored", async () => {
     const a = await api();
     for (const body of [
@@ -217,6 +236,10 @@ describe("D79: agents order", () => {
     expect(await a.list()).toEqual(["coder", "fixer", "scout"]);
     expect(await run(["scout", "--up"])).toBe(0);
     expect(await a.list()).toEqual(["coder", "scout", "fixer"]);
+    expect(await run(["fixer", "--before", "coder"])).toBe(0);
+    expect(await a.list()).toEqual(["fixer", "coder", "scout"]);
+    expect(await run(["fixer", "--after", "scout"])).toBe(0);
+    expect(await a.list()).toEqual(["coder", "scout", "fixer"]);
   });
 
   it("takes exactly one move, and a place from 1", async () => {
@@ -227,6 +250,8 @@ describe("D79: agents order", () => {
     expect(await run(["--up", "--down"])).not.toBe(0);
     expect(await run(["--to", "0"])).not.toBe(0);
     expect(await run(["--to", "x"])).not.toBe(0);
+    expect(await run(["--top", "--before", "scout"])).not.toBe(0);
+    expect(await run(["--after", "nobody"])).not.toBe(0);
     expect(fs.readFileSync(WS_FILE(), "utf-8")).not.toMatch(/order/);
   });
 

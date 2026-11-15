@@ -1129,7 +1129,13 @@ export async function orderAgent(
   const shown = (await listAgents(d, ws, { startHost: false })).map(
     (r) => r.agent,
   );
-  const order = setAgentOrder(ws, moveInOrder(shown, id, to));
+  let next: string[];
+  try {
+    next = moveInOrder(shown, id, to);
+  } catch (err) {
+    throw new AgentError((err as Error).message, { usage: true });
+  }
+  const order = setAgentOrder(ws, next);
   return { order, position: order.indexOf(id) + 1, of: order.length };
 }
 

@@ -74,9 +74,31 @@ describe("moving one", () => {
     expect(moveInOrder(shown, "d", 2)).toEqual(["a", "d", "b", "c"]);
     expect(moveInOrder(shown, "a", 99)).toEqual(["b", "c", "d", "a"]);
   });
-  it("an agent not in the project is said", () => {
+  it("before or after another (a drop, or a move within the page's group)", () => {
+    expect(moveInOrder(shown, "d", { before: "b" })).toEqual([
+      "a",
+      "d",
+      "b",
+      "c",
+    ]);
+    expect(moveInOrder(shown, "a", { after: "c" })).toEqual([
+      "b",
+      "c",
+      "a",
+      "d",
+    ]);
+    expect(moveInOrder(shown, "b", { before: "c" })).toEqual(shown);
+    expect(moveInOrder(shown, "b", { after: "a" })).toEqual(shown);
+  });
+  it("an agent not in the project is said, moved or named", () => {
     expect(() => moveInOrder(shown, "z", "top")).toThrow(
       'no agent "z" in this project',
+    );
+    expect(() => moveInOrder(shown, "a", { before: "z" })).toThrow(
+      'no agent "z" in this project',
+    );
+    expect(() => moveInOrder(shown, "a", { after: "a" })).toThrow(
+      "an agent can't move next to itself",
     );
   });
 });

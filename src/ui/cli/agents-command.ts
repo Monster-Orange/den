@@ -75,6 +75,7 @@ import {
   uploadsRoot,
   UPLOAD_DEFAULTS,
 } from "../../shared/agents/uploads.js";
+import type { AgentMove } from "../../shared/agents/order.js";
 import { DEFAULT_RUNTIME_ID } from "../../shared/agents/runtimes.js";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
@@ -187,7 +188,7 @@ export const AGENTS_HELP = {
     "{cli} agents list -w <ws> [--stopped] [--json]",
     "    --stopped: only the stopped, interrupted and exited ones",
     "    in the project's order (agents order; a new agent goes last)",
-    "{cli} agents order <id> -w <ws> --up | --down | --top | --bottom | --to <n>",
+    "{cli} agents order <id> -w <ws> --up | --down | --top | --bottom | --to <n> | --before <id> | --after <id>",
     "    move it in the project's order: the Agents page, the rail, the flyout",
     "    and agents list all follow it (a person's only)",
     "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>] [--repo <repo> | --folder <path>]",
@@ -314,7 +315,8 @@ export const AGENTS_HELP = {
 
 /**
  * D79 (den#96): `agents order <id> -w <ws> --up|--down|--top|--bottom|--to
- * <n>`. A person's only: refused inside an agent's session.
+ * <n>|--before <id>|--after <id>`. A person's only: refused inside an
+ * agent's session.
  */
 async function order(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents order";
@@ -329,6 +331,8 @@ async function order(args: string[], d: AgentsResolved): Promise<number> {
     "--top": false,
     "--bottom": false,
     "--to": true,
+    "--before": true,
+    "--after": true,
   });
   noExtra(where, p, 1);
   const [id] = p.positional;
@@ -339,12 +343,17 @@ async function order(args: string[], d: AgentsResolved): Promise<number> {
     (f) => p.flags[f],
   );
   const toFlag = p.flags["--to"];
-  if (moves.length + (toFlag === undefined ? 0 : 1) !== 1)
+  const before = p.flags["--before"];
+  const after = p.flags["--after"];
+  const given = [toFlag, before, after].filter((v) => v !== undefined);
+  if (moves.length + given.length !== 1)
     throw new UsageError(
-      `${where} takes one of --up, --down, --top, --bottom or --to <n>`,
+      `${where} takes one of --up, --down, --top, --bottom, --to <n>, --before <id> or --after <id>`,
     );
-  let to: "up" | "down" | "top" | "bottom" | number;
-  if (toFlag !== undefined) {
+  let to: AgentMove;
+  if (typeof before === "string") to = { before };
+  else if (typeof after === "string") to = { after };
+  else if (toFlag !== undefined) {
     const n = Number(toFlag);
     if (!Number.isInteger(n) || n < 1)
       throw new UsageError(`${where}: --to is a place from 1`);
