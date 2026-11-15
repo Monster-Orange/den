@@ -1184,6 +1184,15 @@
     "stale.aria": "Stale server: restart",
     "stale.label": "stale server",
     "stale.restart": "Restart",
+    // D61: the "Den was updated" pill over the top bar.
+    "upd.aria": "Den was updated to {v}",
+    "upd.msg": "Den was updated to {v}",
+    "upd.draft": "You have unsaved text on this page. Reload anyway?",
+    "upd.cancel": "Cancel",
+    "upd.more": "Learn more",
+    "upd.moreTip": "Release notes for {v}",
+    "upd.reload": "Reload",
+    "upd.later": "Later",
     // D64: Restart Den, in place.
     "rd.menu": "Restart Den…",
     "rd.title": "Restart Den?",

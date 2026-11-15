@@ -4,6 +4,22 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.51] - unreleased
+
+### Added
+
+- Den says when it was updated. Once the server runs a newer build than
+  the open page, a see-through strip covers the top bar (60% of the
+  background colour, a light blur) and a wide pill sits centred on it:
+  "Den was updated to <version>", Learn more (that version's release
+  notes), Report, Later (hides it in this tab until the next version) and
+  Reload. Reload asks first when a field holds text you typed. In a
+  narrow window, when the message needs two lines, the pill becomes a
+  card with the buttons below it. The page checks on load, every 12
+  seconds, when you come back to the tab and after Den restarts (D61).
+  Each page now carries the build it was served from
+  (`<meta name="den-build">`).
+
 ## [0.4.50] - unreleased
 
 ### Added
