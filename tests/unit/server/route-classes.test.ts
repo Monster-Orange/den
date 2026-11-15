@@ -101,6 +101,34 @@ describe("the route table covers every dispatched route", () => {
     }
   });
 
+  it("every word a route regex accepts is in one of its mapped entries", () => {
+    // A verb added to a regex's (a|b|c) but not to REGEX_ROUTES has no
+    // class: its POST is checked as a plain mutation, and an agent's token
+    // reaches it (no agent rule names it). Each word must be a segment of
+    // a mapped path, so the walk in agent-write-routes.test.ts sees it.
+    const unmapped: string[] = [];
+    let words = 0;
+    for (const file of DISPATCHERS) {
+      const src = fs.readFileSync(path.join(SERVER, file), "utf-8");
+      for (const m of src.matchAll(
+        /const\s+(\w+)\s*=\s*\/(\^\\\/[^\n]*)\/[a-z]*;/g,
+      )) {
+        const key = `${file}:${m[1]}`;
+        const segs = new Set(
+          (REGEX_ROUTES[key] ?? []).flatMap((p) => p.split("/")),
+        );
+        for (const g of m[2].matchAll(/\((?:\?:)?([\w|\\-]+)\)/g))
+          for (const w of g[1].replace(/\\-/g, "-").split("|")) {
+            if (!/^[a-z][\w-]*$/i.test(w)) continue;
+            words++;
+            if (!segs.has(w)) unmapped.push(`${key}: ${w}`);
+          }
+      }
+    }
+    expect(words).toBeGreaterThan(10);
+    expect(unmapped).toEqual([]);
+  });
+
   it("no entry is stale: each is in the dispatchers' source or a mapped regex", () => {
     const seen = new Set([
       ...found.map((f) => (f.prefix ? `${f.path}*` : f.path)),
