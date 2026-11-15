@@ -5,12 +5,14 @@
  *   POST /api/gate-slots/end   {id}: a person ends a slot early. Refused
  *                              with an agent's token (or an agent's claim):
  *                              an agent gives back only its own, over MCP.
- *                              Recorded in the slots' events with who.
+ *                              Recorded in the slot log with who, and
+ *                              in this install's audit, pointing there.
  * Ending a slot never stops the run that held it; it frees the slot.
  */
 import type * as http from "http";
 import type { GateStore } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
+import { recordAction } from "./audit.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
@@ -27,6 +29,8 @@ export interface GateRouteDeps {
   store: () => GateStore;
   /** Who a person is, in words, for the record. */
   title: string;
+  /** This install's audit (recordAction); tests pass a recorder. */
+  audit?: typeof recordAction;
 }
 
 export async function handleGateRoutes(
@@ -67,7 +71,17 @@ export async function handleGateRoutes(
   if (!/^[a-z0-9-]{1,64}$/.test(id))
     return sendJson(res, { ok: false, error: "give the slot's id" }, 400);
   const by = `${d.title} · ${principalOf(req) ?? "a person in the browser"}`;
-  if (!d.store().endEarly(id, by))
-    return sendJson(res, { ok: false, error: "no such slot" }, 404);
+  const row = d.store().endEarly(id, by);
+  if (!row) return sendJson(res, { ok: false, error: "no such slot" }, 404);
+  // This install's own record says who did it, and points to the slot
+  // log's entry (the machine's record of the slot).
+  (d.audit ?? recordAction)(
+    null,
+    {
+      verb: "gate-end",
+      detail: `ended gate slot ${row.id} (${row.label}; ${row.who}) early; slot log ${d.store().eventsFile} at ${row.at}`,
+    },
+    principalOf(req),
+  );
   return sendJson(res, { ok: true, slots: gateView(d.store()).slots });
 }

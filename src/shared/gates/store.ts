@@ -191,18 +191,23 @@ export class GateStore {
     fs.renameSync(tmp, file);
   }
 
-  private record(row: Omit<GateEventRow, "at">): void {
+  /** The slot log: every grant, release, take-back and early end. */
+  get eventsFile(): string {
+    return path.join(this.dir, "events.jsonl");
+  }
+
+  /** Appends to the slot log; returns the row's time. */
+  private record(row: Omit<GateEventRow, "at">): string {
     fs.mkdirSync(this.dir, { recursive: true });
-    fs.appendFileSync(
-      path.join(this.dir, "events.jsonl"),
-      JSON.stringify({ at: new Date(this.now()).toISOString(), ...row }) + "\n",
-    );
+    const at = new Date(this.now()).toISOString();
+    fs.appendFileSync(this.eventsFile, JSON.stringify({ at, ...row }) + "\n");
+    return at;
   }
 
   events(): GateEventRow[] {
     try {
       return fs
-        .readFileSync(path.join(this.dir, "events.jsonl"), "utf-8")
+        .readFileSync(this.eventsFile, "utf-8")
         .split("\n")
         .filter(Boolean)
         .map((l) => JSON.parse(l) as GateEventRow);
@@ -406,22 +411,26 @@ export class GateStore {
     });
   }
 
-  /** A person ends someone's slot early; recorded with who. */
-  endEarly(id: string, by: string): boolean {
+  /**
+   * A person ends someone's slot early; recorded with who. Returns the
+   * slot log's row (an install's audit points to it), or null if no slot.
+   */
+  endEarly(id: string, by: string): GateEventRow | null {
     return this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
-      if (!e) return false;
+      if (!e) return null;
       this.remove(id);
-      this.record({
+      const row: Omit<GateEventRow, "at"> = {
         event: "ended-early",
         id,
         kind: e.kind,
         who: e.who,
         label: e.label,
         by: by.slice(0, 200),
-      });
+      };
+      const at = this.record(row);
       this.settle();
-      return true;
+      return { at, ...row };
     });
   }
 }

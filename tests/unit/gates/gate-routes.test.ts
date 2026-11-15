@@ -26,6 +26,11 @@ async function serve() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-gateroute-"));
   tmps.push(dir);
   const store = new GateStore({ dir, alive: () => true });
+  const audited: {
+    actor: unknown;
+    action: { verb: string; detail: string };
+    principal?: string;
+  }[] = [];
   const server = http.createServer((req, res) => {
     if (req.headers.authorization === "Bearer agent")
       setPrincipal(req, {
@@ -38,7 +43,14 @@ async function serve() {
     if (req.headers.authorization === "Bearer person")
       setPrincipal(req, { kind: "person", actor: "person:pat" });
     const p = new URL(req.url ?? "/", "http://localhost").pathname;
-    void handleGateRoutes(req, res, p, { store: () => store, title: "Acme" });
+    void handleGateRoutes(req, res, p, {
+      store: () => store,
+      title: "Acme",
+      audit: ((actor, action, principal) => {
+        audited.push({ actor, action, principal });
+        return {} as never;
+      }) as never,
+    });
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -59,7 +71,7 @@ async function serve() {
       json: (await r.json()) as Record<string, unknown>,
     };
   };
-  return { store, call };
+  return { store, call, audited };
 }
 
 describe("gate-slot routes", () => {
@@ -81,7 +93,7 @@ describe("gate-slot routes", () => {
   });
 
   it("an agent can't end a slot early, by token or by claim", async () => {
-    const { store, call } = await serve();
+    const { store, call, audited } = await serve();
     const a = store.ask({
       kind: "browser",
       who: "A",
@@ -117,10 +129,11 @@ describe("gate-slot routes", () => {
     );
     expect(byClaim.status).toBe(403);
     expect(store.list()).toHaveLength(1);
+    expect(audited).toEqual([]);
   });
 
   it("a person ends it; recorded with who; a wrong id is said", async () => {
-    const { store, call } = await serve();
+    const { store, call, audited } = await serve();
     const a = store.ask({
       kind: "browser",
       who: "A",
@@ -141,9 +154,21 @@ describe("gate-slot routes", () => {
       },
     );
     expect(r).toEqual({ status: 200, json: { ok: true, slots: [] } });
-    expect(store.events().at(-1)).toMatchObject({
+    const row = store.events().at(-1)!;
+    expect(row).toMatchObject({
       event: "ended-early",
       by: "Acme · person:pat",
     });
+    // This install's audit says who, and points to the slot log's entry.
+    expect(audited).toEqual([
+      {
+        actor: null,
+        principal: "person:pat",
+        action: {
+          verb: "gate-end",
+          detail: `ended gate slot ${a.id} (e2e; A) early; slot log ${store.eventsFile} at ${row.at}`,
+        },
+      },
+    ]);
   });
 });

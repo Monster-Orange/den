@@ -168,6 +168,34 @@ describe("gate run", () => {
     ]);
   }, 30_000);
 
+  it("a live run keeps its slot past the lease: the lease counts silence, not run time", async () => {
+    let now = Date.now();
+    const t = deps({ now: () => now });
+    t.d.store = new GateStore({
+      dir: t.d.store.dir,
+      alive: () => true,
+      now: () => now,
+    });
+    let held = 0;
+    t.d.exec = async () => {
+      // 45 minutes, the heartbeat each minute; the lease is 30.
+      for (let m = 0; m < 45; m++) {
+        now += 60_000;
+        t.beats[0]!();
+        if (t.d.store.list().length === 1) held++;
+      }
+      return 0;
+    };
+    expect(t.d.store.settings().leaseMinutes).toBe(30);
+    expect(await cmdGate(["run", "--estimate", "40m", "--", "x"], t.d)).toBe(0);
+    expect(held).toBe(45);
+    expect(t.d.store.events().map((e) => e.event)).toEqual([
+      "asked",
+      "granted",
+      "released",
+    ]);
+  });
+
   it("past its estimate plus the margin, it says so once, and keeps the slot", async () => {
     let now = Date.now();
     const t = deps({ now: () => now });

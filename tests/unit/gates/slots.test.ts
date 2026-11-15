@@ -170,7 +170,9 @@ describe("the store", () => {
   it("ending early is recorded with who", () => {
     const s = new GateStore({ dir: tmp() });
     const a = ask(s, "browser");
-    expect(s.endEarly(a.id, "a person at the terminal")).toBe(true);
+    expect(s.endEarly(a.id, "a person at the terminal")).toMatchObject({
+      event: "ended-early",
+    });
     expect(s.events().at(-1)).toMatchObject({
       event: "ended-early",
       by: "a person at the terminal",
