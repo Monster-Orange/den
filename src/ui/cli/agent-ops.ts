@@ -252,6 +252,11 @@ import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
 import {
+  jobsUnder,
+  readProcesses,
+  type ProcessRow,
+} from "../../shared/process/jobs.js";
+import {
   contractInfo,
   loadWorkspaces,
   resolveDeps,
@@ -339,6 +344,8 @@ export interface AgentsDeps extends SessionsDeps {
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
+  /** 0.4.48: this machine's processes (default: ps), for jobs an agent left running. */
+  processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
@@ -387,6 +394,7 @@ export interface AgentsResolved extends Resolved {
    * store refused it), in plain words; null otherwise.
    */
   hubProblem: () => string | null;
+  processes: () => ProcessRow[];
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -652,6 +660,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
+    processes: d.processes ?? readProcesses,
   });
 }
 
@@ -3981,16 +3990,19 @@ export const TURN_WAIT_MS = 30 * 60_000;
 /**
  * Whether agent `rec` is mid-turn: true or false from its runtime (den-
  * claude: its transcript), null when it can't tell. Not running: false.
+ * 0.4.48: a turn that ended with a job it started still running under it
+ * (a gate in the background) is busy too, so "after its turn" never
+ * kills a running gate.
  */
 async function agentBusy(
   d: AgentsResolved,
   rec: AgentRecord,
 ): Promise<boolean | null> {
-  const live = await withClient(d, async (c) => {
+  const pid = await withClient(d, async (c) => {
     const s = sessionOf(await c.list(), rec);
-    return Boolean(s && !s.exited);
+    return s && !s.exited ? s.pid : null;
   });
-  if (!live) return false;
+  if (pid === null) return false;
   const rt = getRuntime(rec.runtime);
   if (!rt?.turnBusy || !rec.resumeToken) return null;
   let readMaxBytes: number | undefined;
@@ -3999,7 +4011,9 @@ async function agentBusy(
   } catch {
     /* unreadable config: the default */
   }
-  return rt.turnBusy(rec.resumeToken, d.env, { readMaxBytes });
+  const busy = rt.turnBusy(rec.resumeToken, d.env, { readMaxBytes });
+  if (busy !== false || !rt.jobPattern) return busy;
+  return jobsUnder(pid, rt.jobPattern, d.processes()).length > 0;
 }
 
 /** Why agent `rec` can't change persona (it can't resume), or null. */

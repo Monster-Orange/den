@@ -38,6 +38,8 @@ import {
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { listedSessions } from "../../../src/ui/server/session-routes.js";
 import { DEN_BASE, cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { connectHost } from "../../../src/shared/sessions/client.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 const servers: http.Server[] = [];
@@ -403,6 +405,65 @@ describe("D44: Restart keeps the conversation and never cuts a turn", () => {
       HUB_MCP,
     );
     expect(await staleAgents(d)).toEqual([]);
+  });
+
+  it("0.4.48: after its turn also waits while a background job it started runs (a gate), then resumes", async () => {
+    const { r, token } = await startedBeforeHub(ENDED);
+    const c = await connectHost(sessionPaths(r.stateDir).socket);
+    const pid = (await c.list()).find((x) => !x.exited)!.pid;
+    c.close();
+    // Its turn ended, but a shell it started in the background still runs
+    // under it (the runtime's own command shell), beside an MCP server.
+    let job = true;
+    r.deps.processes = () => [
+      { pid: pid + 1, ppid: pid, command: "node /x/acme mcp" },
+      ...(job
+        ? [
+            {
+              pid: pid + 2,
+              ppid: pid,
+              command:
+                "/bin/zsh -c source /home/x/.claude/shell-snapshots/snapshot-zsh-1-ab.sh && eval 'npm test'",
+            },
+            { pid: pid + 3, ppid: pid + 2, command: "node jest" },
+          ]
+        : []),
+    ];
+    const d = resolveAgentsDeps(r.deps);
+    let done = false;
+    const p = restartAgent(d, "planner", "north", "after-turn", {
+      pollMs: 20,
+    }).then((x) => {
+      done = true;
+      return x;
+    });
+    await new Promise((res) => setTimeout(res, 200));
+    expect(done).toBe(false);
+    expect(r.made[0].signals).toEqual([]);
+    job = false;
+    const out = await p;
+    expect(out.rec.id).toBe("planner");
+    expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
+  });
+
+  it("0.4.48: a command shell under another process is not its job: it restarts at once", async () => {
+    const { r } = await startedBeforeHub(ENDED);
+    r.deps.processes = () => [
+      {
+        pid: 999_001,
+        ppid: 999_000,
+        command:
+          "/bin/zsh -c source /h/.claude/shell-snapshots/snapshot-zsh-1.sh",
+      },
+    ];
+    const out = await restartAgent(
+      resolveAgentsDeps(r.deps),
+      "planner",
+      "north",
+      "after-turn",
+      { pollMs: 20 },
+    );
+    expect(out.rec.id).toBe("planner");
   });
 
   it("now: stops at once and resumes", async () => {

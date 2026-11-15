@@ -162,6 +162,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     invokeCwd: () => dir,
     // Never this machine's Hub config or secrets store (HUB-1.5).
     hub: async () => null,
+    // Never this machine's Hub token cache, nor its processes (0.4.48).
+    hubProblem: () => null,
+    processes: () => [],
     workspaceRepos: () => [],
     // D52: Den's own address as agents reach it (never this machine's port).
     denBase: () => DEN_BASE,

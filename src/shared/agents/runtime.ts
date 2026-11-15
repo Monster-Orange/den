@@ -312,6 +312,13 @@ export interface Runtime {
     opts?: { readMaxBytes?: number },
   ): boolean | null;
   /**
+   * 0.4.48: the command line of the shell the runtime runs a command in.
+   * One still alive under the agent's session after its turn ended is a
+   * job it left running (a gate in the background): "after its turn"
+   * waits for it. None: Den can't tell, and doesn't wait.
+   */
+  jobPattern?: RegExp;
+  /**
    * D45: the last thing a person asked in conversation `token`, one line,
    * and when; null when there is none or it can't be read. Never throws.
    */

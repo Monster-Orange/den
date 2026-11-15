@@ -774,6 +774,9 @@ export const denClaude: Runtime = {
   // AG-18: mid-turn, from its transcript's tail (never the whole file).
   // No transcript Den can read is "can't tell" (null), never "idle": a
   // move or restart that waits for the turn's end refuses rather than cut it.
+  // 0.4.48: Claude Code runs each command (foreground or background) in a
+  // shell that sources its shell snapshot first.
+  jobPattern: /\/shell-snapshots\/snapshot-[^\s/]+\.sh/,
   turnBusy(token, env = process.env, opts = {}) {
     try {
       const file = transcriptFile(token, env);

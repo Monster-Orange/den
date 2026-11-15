@@ -35,6 +35,11 @@ config and manifest changes a distribution must make to move to it under
   and kept none after Den read it again. Den now restarts them after
   their turn to load Hub's tools (the same conversation), as it does after
   a Hub outage.
+- "After its turn" (Restart, a move, a persona change, and Den's own
+  restart to load Hub's tools) didn't wait for a command the agent had
+  left running in the background, such as a long test run, and the
+  restart ended it. Den now also waits while a command shell the agent
+  started is still running under it (up to the same limit as a turn).
 - Two Hub calls at the same moment each read the token; both failed and
   the first wait doubled to two minutes. Calls now share one read, and a
   read still out when Connect or a rotation sets the token can't undo it.
