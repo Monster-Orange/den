@@ -1265,6 +1265,201 @@ function _renderStalePill(info) {
   pill.style.display = "";
 }
 
+// ── D61: "Den was updated · Reload" ──────────────────────────────────────────
+// The page knows the build it was served from (<meta name="den-build">).
+// Once the server runs another (and isn't itself behind the disk: that is
+// MD-2's banner), the update pill shows. Its look is the one the product
+// owner approved, the same structure and values as the pill in its sibling
+// product (to move to the shared UI kit): a semi-transparent strip the
+// height of the global nav (60% of --bg, a 3px backdrop blur) over the
+// whole nav, and centred on it a pill, min(560px, 100%) wide, fully
+// rounded, on --surface with a --border-strong border and a soft shadow.
+// The strip softens the nav around the pill; the pill's own background
+// keeps the nav's text from reading through behind its words. A message
+// longer than one line (a narrow window) makes it a card: the text on
+// top, the buttons below on the right.
+//
+// "Den was updated to <v>", then Learn more (that version's release
+// notes), Report, Later (this tab, this build) and Reload, the primary
+// last. Reload asks first when a field holds text the person typed.
+
+const UPD_LATER = "den.update.later";
+let _updStylesInjected = false;
+
+function _injectUpdateStyles() {
+  if (_updStylesInjected) return;
+  _updStylesInjected = true;
+  const s = document.createElement("style");
+  s.id = "den-upd-css";
+  s.textContent = `
+    #den-update { position: fixed; top: 0; left: 0; right: 0; z-index: var(--z-bar, 30);
+      min-height: 48px; box-sizing: border-box; padding: 6px 8px; display: flex;
+      align-items: center; justify-content: center;
+      background: color-mix(in srgb, var(--bg) 60%, transparent);
+      backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+    #den-update[hidden] { display: none; }
+    .upd-pill { display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: min(560px, 100%); box-sizing: border-box; padding: 4px 16px;
+      background: var(--surface); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 999px; box-shadow: 0 6px 24px rgb(0 0 0 / .18); font-size: 13px; }
+    .upd-msg { flex: 1 1 auto; min-width: 0; }
+    .upd-acts { display: flex; align-items: center; gap: 8px; flex: none; }
+    .upd-pill.card { flex-wrap: wrap; width: 100%; padding: 10px 16px; border-radius: var(--r); }
+    .upd-pill.card .upd-msg { flex: 1 0 100%; }
+    .upd-pill.card .upd-acts { margin-left: auto; }
+    .upd-pill .upd-lnk { background: none; border: 0; padding: 0; font: inherit;
+      color: var(--accent-text, var(--accent)); text-decoration: underline;
+      text-underline-offset: 2px; cursor: pointer; white-space: nowrap; }
+    .upd-pill .den-rb { min-height: 0; margin: 0; }
+    .upd-pill .den-rb kbd { display: none; }
+    .upd-pill :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  `;
+  document.head.appendChild(s);
+}
+
+/** The build this page was served from; null on a page without one. */
+function _pageBuild() {
+  return (
+    document.querySelector('meta[name="den-build"]')?.getAttribute("content") ||
+    null
+  );
+}
+
+function _laterFor() {
+  try {
+    return sessionStorage.getItem(UPD_LATER);
+  } catch {
+    return null;
+  }
+}
+
+/** A field outside the pill holds text the person typed. */
+function _typed() {
+  return [...document.querySelectorAll("textarea, input")].some(
+    (f) =>
+      !f.closest("#den-update, [role=search], .den-pal") &&
+      !f.disabled &&
+      !f.readOnly &&
+      (f.tagName === "TEXTAREA" ||
+        /^(text|email|url|tel|number)$/.test(f.type)) &&
+      f.value !== f.defaultValue,
+  );
+}
+
+/** Opens the release notes as the server has them now (the new version's). */
+async function _openNewNotes() {
+  try {
+    const r = await fetch("/api/changelog", { cache: "no-store" });
+    if (r.ok) _changelogEntries = await r.json();
+  } catch {
+    /* the notes this page loaded */
+  }
+  window.openChangelog?.();
+}
+
+let _upd = null;
+
+function _updateBox() {
+  if (_upd) return _upd;
+  _injectUpdateStyles();
+  const box = document.createElement("div");
+  box.id = "den-update";
+  box.hidden = true;
+  box.setAttribute("role", "region");
+  box.innerHTML =
+    '<div class="upd-pill"><span class="upd-msg" role="status"></span>' +
+    '<span class="upd-acts">' +
+    '<button type="button" class="upd-lnk" data-upd="notes"></button>' +
+    (window.denShell?.reportButton?.() || "") +
+    '<button type="button" class="den-btn sm" data-upd="later"></button>' +
+    '<button type="button" class="den-btn sm primary" data-upd="reload"></button>' +
+    "</span></div>";
+  const pill = box.firstElementChild;
+  const msg = pill.querySelector(".upd-msg");
+  const more = pill.querySelector('[data-upd="notes"]');
+  const go = pill.querySelector('[data-upd="reload"]');
+  const other = pill.querySelector('[data-upd="later"]');
+  const st = { build: "", v: "", asking: false };
+  // Text is written only when it changes: WebKit drops a click whose
+  // mouse-down node is replaced before mouse-up.
+  const put = (el, s) => {
+    if (el.textContent !== s) el.textContent = s;
+  };
+  // Longer than one line: a card. Measured as a pill each time, so a
+  // wider window turns it back.
+  const fit = () => {
+    if (box.hidden) return;
+    pill.classList.remove("card");
+    const r = document.createRange();
+    r.selectNodeContents(msg);
+    const tops = new Set([...r.getClientRects()].map((x) => Math.round(x.top)));
+    if (tops.size > 1) pill.classList.add("card");
+  };
+  const render = () => {
+    put(msg, st.asking ? t("upd.draft") : t("upd.msg", { v: st.v }));
+    put(more, t("upd.more"));
+    more.title = t("upd.moreTip", { v: st.v });
+    more.hidden = st.asking;
+    put(go, t("upd.reload"));
+    put(other, st.asking ? t("upd.cancel") : t("upd.later"));
+    box.setAttribute("aria-label", t("upd.aria", { v: st.v }));
+    fit();
+  };
+  window.addEventListener("resize", fit);
+  more.addEventListener("click", () => void _openNewNotes());
+  go.addEventListener("click", () => {
+    if (!st.asking && _typed()) {
+      st.asking = true;
+      render();
+      return;
+    }
+    location.reload();
+  });
+  other.addEventListener("click", () => {
+    if (st.asking) {
+      st.asking = false;
+      render();
+      return;
+    }
+    try {
+      sessionStorage.setItem(UPD_LATER, st.build);
+    } catch {
+      /* no storage: Later still hides it on this page */
+    }
+    box.hidden = true;
+  });
+  document.body.appendChild(box);
+  _upd = {
+    box,
+    show(build, v) {
+      if (!box.hidden && st.build === build) return;
+      Object.assign(st, { build, v, asking: false });
+      box.hidden = false;
+      render();
+    },
+    hide() {
+      box.hidden = true;
+    },
+  };
+  return _upd;
+}
+
+function _renderUpdatePill(info) {
+  const mine = _pageBuild();
+  const now = info?.loaded?.buildId || null;
+  const show =
+    !!mine &&
+    !!now &&
+    now !== mine &&
+    info.engineStale !== true &&
+    _laterFor() !== now;
+  if (!show) {
+    _upd?.hide();
+    return;
+  }
+  _updateBox().show(now, info.loaded?.version || info.version || "");
+}
+
 async function _fetchServerInfo() {
   try {
     return await fetch("/api/server-info", {
@@ -1281,6 +1476,7 @@ async function _staleTick() {
   const info = await _fetchServerInfo();
   if (info && info.pid != null) _lastServerInfo = info;
   _renderStalePill(info);
+  if (info) _renderUpdatePill(info);
   // MD-2: a newer engine on disk than the one this server runs.
   if (info && "engineStale" in info)
     window.denShell?.setEngine?.({
@@ -1305,6 +1501,14 @@ async function _requestRestart() {
 // Self-init: begin watching once there's a <header> to anchor the pill into.
 if (typeof document !== "undefined") {
   const _bootStaleWatch = () => _staleTick();
+  // D61: also on coming back to the tab and after Den restarts.
+  const _updCheck = async () => {
+    if (apiOff()) return;
+    const info = await _fetchServerInfo();
+    if (info) _renderUpdatePill(info);
+  };
+  window.addEventListener("focus", _updCheck);
+  window.addEventListener("den:server-back", _updCheck);
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", _bootStaleWatch);
   else _bootStaleWatch();
