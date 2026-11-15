@@ -577,6 +577,147 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       await p.context().close();
     }, 60_000);
 
+    it("D50 PROBE (#143): the press-outside steps, 50 times, with a focus trace in the log", async () => {
+      if (skip()) return;
+      const misses: string[] = [];
+      for (let n = 0; n < 50; n++) {
+        const p = await open("north");
+        await p.evaluate(() => {
+          const w = window as unknown as { __tr: string[] };
+          w.__tr = [];
+          const d = (el: unknown) => {
+            const e = el as HTMLElement | null;
+            if (!e || !e.tagName) return String(e);
+            const a = e.closest?.(".agst")?.getAttribute("data-agent");
+            return `${e.tagName.toLowerCase()}${e.id ? "#" + e.id : ""}.${(e.className || "").toString().split(" ").join(".")}${a ? "[" + a + "]" : ""}`;
+          };
+          const at = () => performance.now().toFixed(1);
+          for (const ty of [
+            "focusin",
+            "focusout",
+            "pointerdown",
+            "mousedown",
+            "mouseup",
+            "click",
+          ])
+            document.addEventListener(
+              ty,
+              (e) =>
+                w.__tr.push(
+                  `${at()} ${ty} ${d(e.target)} rel=${d((e as FocusEvent).relatedTarget ?? null)} active=${d(document.activeElement)}`,
+                ),
+              true,
+            );
+          new MutationObserver((ms) => {
+            for (const m of ms) {
+              for (const x of m.addedNodes)
+                if (
+                  x instanceof HTMLElement &&
+                  (x.matches("dialog, [role=dialog], .den-agd, .den-pop") ||
+                    x.querySelector?.("dialog"))
+                )
+                  w.__tr.push(`${at()} added ${d(x)}`);
+              for (const x of m.removedNodes)
+                if (
+                  x instanceof HTMLElement &&
+                  x.matches(".den-agd, dialog, .den-pop")
+                )
+                  w.__tr.push(`${at()} removed ${d(x)}`);
+              if (
+                m.target instanceof HTMLElement &&
+                m.target.id === "agl" &&
+                m.type === "childList"
+              )
+                w.__tr.push(
+                  `${at()} agl-redraw active=${d(document.activeElement)}`,
+                );
+              if (
+                m.type === "attributes" &&
+                m.target instanceof HTMLElement &&
+                m.target.matches("details[data-stopped], dialog")
+              )
+                w.__tr.push(
+                  `${at()} attr ${m.attributeName} ${d(m.target)} open=${(m.target as HTMLDetailsElement).open}`,
+                );
+            }
+          }).observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ["open"],
+          });
+        });
+        await shown(p);
+        await btn(p, "scout").click();
+        await det(p).waitFor();
+        const box = (await det(p).boundingBox())!;
+        await p.mouse.click(box.x + box.width - 12, box.y + box.height - 8);
+        await p.evaluate(() => {
+          const m = document.createElement("div");
+          m.className = "den-pop";
+          m.setAttribute("role", "menu");
+          m.id = "d50-menu";
+          m.style.cssText =
+            "position:fixed;left:0;bottom:0;width:120px;height:40px;z-index:2147483647;background:#888";
+          document.body.append(m);
+        });
+        const mb = (await p.locator("#d50-menu").boundingBox())!;
+        await p.mouse.click(mb.x + 10, mb.y + 10);
+        await p.evaluate(() => document.getElementById("d50-menu")?.remove());
+        const at = await p.evaluate(() => {
+          const pop = document.querySelector(".den-agd")!;
+          for (let y = 200; y < innerHeight - 10; y += 23)
+            for (let x = innerWidth - 20; x > 20; x -= 37) {
+              const el = document.elementFromPoint(x, y);
+              if (
+                el &&
+                !pop.contains(el) &&
+                !el.closest(
+                  "a, button, input, select, textarea, summary, [tabindex], .den-pop, dialog",
+                )
+              )
+                return { x, y };
+            }
+          return null;
+        });
+        await p.evaluate(
+          (pt) =>
+            (window as unknown as { __tr: string[] }).__tr.push(
+              `--- press at ${JSON.stringify(pt)}`,
+            ),
+          at,
+        );
+        await p.mouse.move(at!.x, at!.y);
+        await p.mouse.down();
+        await det(p).waitFor({ state: "detached" });
+        const afterClose = await p.evaluate(() =>
+          (document.activeElement as HTMLElement)
+            ?.closest(".agst")
+            ?.getAttribute("data-agent"),
+        );
+        await p.mouse.up();
+        const got = await p.evaluate(() =>
+          (document.activeElement as HTMLElement)
+            ?.closest(".agst")
+            ?.getAttribute("data-agent"),
+        );
+        if (got !== "scout") {
+          const tr = await p.evaluate(() =>
+            (window as unknown as { __tr: string[] }).__tr.join("\n"),
+          );
+          misses.push(`#${n}: afterClose=${afterClose} final=${got}\n${tr}`);
+        }
+        await p.context().close();
+      }
+      // The probe's output is the job log (#143).
+      process.stdout.write(
+        misses.length
+          ? `D50PROBE ${misses.length} miss(es) in 50\n${misses.join("\n\n=====\n\n")}\nD50PROBE end\n`
+          : "D50PROBE no miss in 50\n",
+      );
+      expect(misses.length).toBe(0);
+    }, 600_000);
+
     it("a runtime that can't resume: Start fresh is first, and there is no Resume", async () => {
       if (skip()) return;
       const p = await open("north");
