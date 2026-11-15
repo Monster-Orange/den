@@ -751,7 +751,9 @@ describe("the admin password, asked only when sudo needs it (R8, LK-0)", () => {
     expect(await p.isVisible("#den-lock")).toBe(true);
     expect(await text(p, "#den-lock")).toBe("🔑 Admin password needed");
     expect(await p.getAttribute("#den-lock-pop", "role")).toBe("dialog");
-    // FB (den#81): the Report button closes it, as in every pop-up.
+    // FB (den#81): the Report button closes it, as in every pop-up. It is
+    // added on the next frame (report-inject.js), so wait for it (#153).
+    await p.waitForSelector("#den-lock-pop [data-den-report]");
     expect(await text(p, "#den-lock-pop")).toBe(
       "sudo touch /etc/acme-test needs your admin password shop/db Save to 1Password Continue Den uses it only for sudo. Agents can't enter it. Report ⌘⇧F",
     );
@@ -1143,6 +1145,28 @@ describe("D64: Restart Den from the browser, in place", () => {
       window.addEventListener("den:server-back", () => {
         (window as unknown as { __backs: number }).__backs++;
       });
+      // #153: how long "Den is back." stays up, timed by the page itself
+      // (not the test's clock, which a busy machine's round trips stretch).
+      const w = window as unknown as {
+        __backShown: number;
+        __closedAt: number;
+      };
+      w.__backShown = 0;
+      w.__closedAt = 0;
+      new MutationObserver(() => {
+        const d = document.getElementById("rd-dlg") as HTMLDialogElement | null;
+        if (!d) return;
+        const msg = d.querySelector(".rd-msg")?.textContent;
+        if (!w.__backShown && msg === "Den is back.")
+          w.__backShown = performance.now();
+        if (w.__backShown && !w.__closedAt && !d.open)
+          w.__closedAt = performance.now();
+      }).observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+      });
     });
     await p.fill("#draft", "half a thought");
     await p.click("#appearance-btn");
@@ -1179,9 +1203,17 @@ describe("D64: Restart Den from the browser, in place", () => {
       undefined,
       { timeout: 5_000 },
     );
-    const closedIn = Date.now() - backAt();
     expect(backAt()).toBeGreaterThan(0);
-    expect(closedIn).toBeLessThan(2_500);
+    // Back stays up about a second (RESTART_BACK_MS), then it closes.
+    const shown = await p.evaluate(() => {
+      const w = window as unknown as {
+        __backShown: number;
+        __closedAt: number;
+      };
+      return w.__closedAt - w.__backShown;
+    });
+    expect(shown).toBeGreaterThanOrEqual(900);
+    expect(shown).toBeLessThan(2_500);
     expect(posts.filter((x) => x.path === "/api/web/restart")).toHaveLength(1);
     // In place: same page, same draft, and the page was told.
     expect(
