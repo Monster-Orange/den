@@ -8,9 +8,10 @@ import { teamSelfUpdateKey } from "../../../src/ui/cli/doctor-command.js";
 
 describe("doctor: self_update in the team file", () => {
   it("names it as doing nothing there, and where the person sets it", () => {
-    const out = teamSelfUpdateKey(() => ({
-      server_agent: { self_update: "auto" },
-    }));
+    const out = teamSelfUpdateKey(
+      () => ({ server_agent: { self_update: "auto" } }),
+      () => ({ server_agent: { self_update: "ask" } }),
+    );
     expect(out).toHaveLength(1);
     expect(out[0]).toMatch(/server_agent\.self_update does nothing there/);
     expect(out[0]).toMatch(/config\/local\/user\.yml/);

@@ -27,6 +27,7 @@ import {
   readAgentsConfig,
   readDenConfig,
   readUserConfig,
+  type UserConfig,
   readMcpConfig,
   sectionConfigError,
   type DenConfig,
@@ -809,20 +810,37 @@ export function deprecatedKeys(
 }
 
 /**
- * Review M4 (0.4.46): server_agent.self_update is the person's, in
+ * Review M4 (0.4.48): server_agent.self_update is the person's, in
  * config/local/user.yml. Set in the team file, where the server agent
- * works, it does nothing (0.4.47).
+ * works: Den's first start copies it to user.yml once (migrateSelfUpdate);
+ * after that it does nothing there. Doctor says which, so nobody is left
+ * believing either file is the one that counts.
  */
 export function teamSelfUpdateKey(
   read: () => { server_agent?: unknown } = readDenConfig,
+  readUser: () => UserConfig = readUserConfig,
 ): string[] {
   try {
-    const sa = read().server_agent;
-    return sa && typeof sa === "object" && "self_update" in sa
-      ? [
-          `${product().configFile}: server_agent.self_update does nothing there (0.4.47): it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on its own Allow`,
-        ]
-      : [];
+    const sa = read().server_agent as { self_update?: unknown } | undefined;
+    if (!sa || typeof sa !== "object" || !("self_update" in sa)) return [];
+    const file = product().configFile;
+    const t = sa.self_update;
+    const mine = readUser().server_agent;
+    if (t !== "ask" && t !== "auto")
+      return [
+        `${file}: server_agent.self_update is ask or auto, not ${JSON.stringify(t)}; it is the person's now, set in config/local/user.yml`,
+      ];
+    if (mine?.self_update === undefined)
+      return [
+        `${file}: server_agent.self_update: ${t} is copied to config/local/user.yml at Den's next start, once; from then on it is the person's, set there`,
+      ];
+    if (mine.self_update_from)
+      return [
+        `${file}: server_agent.self_update was copied to config/local/user.yml (${mine.self_update_from}) and does nothing in ${file} now: remove it there`,
+      ];
+    return [
+      `${file}: server_agent.self_update does nothing there: it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on its own Allow`,
+    ];
   } catch {
     return [];
   }

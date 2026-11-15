@@ -245,10 +245,22 @@ describe("server_agent.self_update", () => {
         server_agent: { self_update: "auto" },
       }).selfUpdate,
     ).toBe("auto");
-    const team = readServerAgentConfig(
+    // 0.4.48: before the first start copies it, the team file's choice
+    // holds (never a silent ask); once user.yml has one, the team file's
+    // does nothing.
+    const pending = readServerAgentConfig(
       { server_agent: { self_update: "auto" } } as never,
       undefined,
       {},
+    );
+    expect([pending.selfUpdate, pending.teamSelfUpdateIgnored]).toEqual([
+      "auto",
+      false,
+    ]);
+    const team = readServerAgentConfig(
+      { server_agent: { self_update: "auto" } } as never,
+      undefined,
+      { server_agent: { self_update: "ask" } },
     );
     expect([team.selfUpdate, team.teamSelfUpdateIgnored]).toEqual([
       "ask",

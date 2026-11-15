@@ -41,6 +41,7 @@ import {
 } from "./agents/git-signing.js";
 
 import { product } from "./product.js";
+import { auditConfig, type ConfigAuditRow } from "./config-audit.js";
 const ROOT = getDistRoot();
 const DEN_CONFIG_PATH = path.join(ROOT, product().configFile);
 const USER_CONFIG_PATH = path.join(ROOT, "config", "local", "user.yml");
@@ -337,7 +338,15 @@ export interface UserConfig {
    * person's: whether the server agent's own restarts and updates run
    * without an Allow. Only here; the team file's is ignored.
    */
-  server_agent?: { self_update?: unknown };
+  server_agent?: {
+    self_update?: unknown;
+    /**
+     * 0.4.48: where self_update came from when Den copied it from the
+     * team file at its first start (the file and the date). Unset when the
+     * person set it.
+     */
+    self_update_from?: string;
+  };
   /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
@@ -1109,7 +1118,10 @@ export interface ResolvedServerAgentConfig {
    * server agent works, so it can't switch on its own Allow.
    */
   selfUpdate: "ask" | "auto";
-  /** The team file sets self_update, which is ignored (doctor says so). */
+  /**
+   * The team file sets self_update and the person's user.yml does too:
+   * the team file's is ignored (doctor says so).
+   */
   teamSelfUpdateIgnored: boolean;
   /** SRV-1b: its folder, absolute (an existing directory). */
   folder: string;
@@ -1166,14 +1178,63 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.prompt_check_seconds: seconds, 0.5 to 60 (got ${JSON.stringify(pc)})`,
     );
+  // 0.4.48: until Den's first start copies the team file's choice to
+  // user.yml (migrateSelfUpdate), that choice holds: never a silent ask.
+  const t = sa.self_update;
+  const pending = v === undefined && (t === "ask" || t === "auto");
   return {
-    selfUpdate: v ?? "ask",
-    teamSelfUpdateIgnored: sa.self_update !== undefined,
+    selfUpdate: v ?? (pending ? t : "ask"),
+    teamSelfUpdateIgnored: v !== undefined && t !== undefined,
     folder,
     git: g ?? "pr",
     updateWaitMs: Math.round((w ?? UPDATE_WAIT_SECONDS_DEFAULT) * 1000),
     promptCheckMs: Math.round((pc ?? PROMPT_CHECK_SECONDS_DEFAULT) * 1000),
   };
+}
+
+/**
+ * Review M4 (0.4.48): server_agent.self_update is the person's, in
+ * user.yml. Once, at Den's first start without it there: the team
+ * file's ask or auto is copied (with where from), else ask is written, so
+ * a value an agent adds to the team file later does nothing. One audit
+ * row. Null when user.yml has it already, or the team file's value is
+ * neither (doctor names it; nothing is guessed).
+ */
+export function migrateSelfUpdate(
+  config: DenConfig = readDenConfig(),
+  d: {
+    read?: () => UserConfig;
+    merge?: (p: Partial<UserConfig>) => unknown;
+    audit?: (r: ConfigAuditRow) => void;
+    at?: Date;
+  } = {},
+): { value: "ask" | "auto"; from: "team" | "default" } | null {
+  const read = d.read ?? readUserConfig;
+  const merge = d.merge ?? mergeUserConfig;
+  const audit = d.audit ?? auditConfig;
+  const user = read();
+  const had = user.server_agent ?? {};
+  if (had.self_update !== undefined) return null;
+  const t = config.server_agent?.self_update;
+  if (t !== undefined && t !== "ask" && t !== "auto") return null;
+  const file = product().configFile;
+  const day = (d.at ?? new Date()).toISOString().slice(0, 10);
+  const value = t ?? "ask";
+  const from = t ? "team" : "default";
+  merge({
+    server_agent: {
+      ...had,
+      self_update: value,
+      ...(t ? { self_update_from: `${file}, ${day}` } : {}),
+    },
+  });
+  audit({
+    verb: "config-write",
+    detail: t
+      ? `server_agent.self_update: ${value}, copied from ${file} to config/local/user.yml (it is the person's from 0.4.48; the value in ${file} does nothing now)`
+      : `server_agent.self_update: ask written to config/local/user.yml (the default; it is the person's from 0.4.48, set in that file)`,
+  });
+  return { value, from };
 }
 
 /** `mcp:` in the org config. */

@@ -6,6 +6,22 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.48] - unreleased
 
+### Changed
+
+- `server_agent.self_update` is the person's, in `config/local/user.yml`.
+  The server agent works beside the org config, so a value there could
+  switch on its own Allow. A choice already made carries over: Den's
+  first start on 0.4.48 copies the org config's `ask` or `auto` to
+  `user.yml`, once, with an audit row, and writes `ask` when there was
+  none. Until that start the org config's value holds. Doctor says it
+  was copied and that the line in the org config can go.
+
+### Migrations
+
+- Nothing to do. If the org config sets `server_agent.self_update`, the
+  first start copies it to each install's `user.yml`; remove the line
+  from the org config afterwards (doctor reminds you).
+
 ### Fixed
 
 - Agents were shown as missing Hub's tools, with a restart offered, when

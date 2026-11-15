@@ -138,6 +138,7 @@ import {
   readDenConfig,
   readMcpConfig,
   readServerAgentConfig,
+  migrateSelfUpdate,
   readAgentsConfig,
   isProductionEnv,
   isLocalEnabled,
@@ -6464,6 +6465,17 @@ const ADDRESS = migrateWebUrl(() => {
     return undefined; // no edge config: nothing to take
   }
 });
+// Review M4 (0.4.48): server_agent.self_update is the person's (user.yml).
+// Once, at the first start without it there, the team file's ask or auto
+// is copied (an audit row; doctor says so), so the person's choice carries
+// over and is never silently ask.
+try {
+  migrateSelfUpdate();
+} catch (err) {
+  console.error(
+    `server_agent.self_update was not copied to user.yml (${err instanceof Error ? err.message : String(err)}); doctor says what holds`,
+  );
+}
 // den#85: every start is recorded; a stop with code 0 marks it clean. Run
 // by a service manager, a start after too many unclean ones in a short
 // time waits before it serves (doubling, capped) and rings the bell.

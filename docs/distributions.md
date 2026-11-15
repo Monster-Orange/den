@@ -247,9 +247,12 @@ with "If you didn't ask an agent to do this, Deny." under it.
   so its turn carries on. `server_agent.self_update` in the person's
   `config/local/user.yml` says who allows it: `ask` (the default) holds
   it for the person; `auto` runs the server agent's own ask at once.
-  Since 0.4.47 the org config's value does nothing (the server agent
-  works beside that file, so it could switch on its own Allow); doctor
-  says so. Another agent's, or an
+  From 0.4.48 the org config's value does nothing (the server agent
+  works beside that file, so it could switch on its own Allow). A value
+  already there carries over: Den's first start on 0.4.48 copies it to
+  `user.yml` once (an audit row; `server_agent.self_update_from` says
+  from where), and writes `ask` when there was none. Doctor says which,
+  and that the org config's line can go. Another agent's, or an
   ask with no agent token, is always held. The trail has each step:
   `approval-ask`, `approval-decide` (`auto-allow …` under auto),
   `server-restart` and, from the new Den, `server-back`.
