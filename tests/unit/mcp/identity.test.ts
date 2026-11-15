@@ -173,6 +173,33 @@ describe("the identity check's cache", () => {
     await new Promise<void>((r) => probe.close(() => r()));
   });
 
+  it("a refused connection is 'not running', and the next call checks again", async () => {
+    // A refused connect, as fetch reports it. Not a real closed port: a
+    // freed port can be taken by another test's server before the request.
+    const real = globalThis.fetch;
+    const c = counted([{ kind: "ours" }, { kind: "ours" }]);
+    const api = createDenApi({
+      baseUrl: oursBase,
+      cli: "acme",
+      headers,
+      identity: c.check,
+    });
+    globalThis.fetch = (async () => {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("connect ECONNREFUSED"), {
+          code: "ECONNREFUSED",
+        }),
+      });
+    }) as typeof fetch;
+    try {
+      await expect(api.get("/api/health")).rejects.toThrow(/not running/);
+    } finally {
+      globalThis.fetch = real;
+    }
+    await api.get("/api/health");
+    expect(c.asked).toHaveLength(2);
+  });
+
   it("nothing listening is 'not running'; no answer in time is not served", async () => {
     for (const [id, msg] of [
       [{ kind: "none" }, /web server is not running/],
