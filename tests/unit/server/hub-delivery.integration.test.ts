@@ -228,7 +228,9 @@ describe("0.4.40: Hub comments reach the agent", () => {
     const end = Date.now() + 10_000;
     let texts: string[] = [];
     while (Date.now() < end) {
-      const g = (await call("GET", "/api/notifications")).json.groups as {
+      // ATTN-5 (den#142): an answer is an update, not a needs-you item.
+      const g = (await call("GET", "/api/notifications")).json.updates
+        .groups as {
         subjects: { items: { text: string; kind: string }[] }[];
       }[];
       texts = g.flatMap((x) =>
