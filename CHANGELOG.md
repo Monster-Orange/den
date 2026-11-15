@@ -141,12 +141,6 @@ config and manifest changes a distribution must make to move to it under
   `agents_list.refresh_timeout_seconds` (default 15); both are in
   Settings › Agents. When a list doesn't come in time, the list says so
   and keeps asking every few seconds. (den#156)
-- Typing fast or holding a key in an agent's pane, with an input method
-  on (for example a Japanese input source that Caps Lock switches to ABC),
-  could garble the prompt: letters sent twice, the line sent again from
-  its start, letters dropped. Each key's text now reaches the agent once,
-  in order. Kana-to-kanji input works as before. It works around a
-  terminal library bug (xterm.js issue 5778). (den#165)
 - On Linux, a request through the edge got a 502: the edge container
   reaches the host on the Docker bridge, and Den listened only on
   127.0.0.1 unless you set `DEN_BIND_HOST` by hand. Now, with an edge set
