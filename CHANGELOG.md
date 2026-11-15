@@ -39,7 +39,11 @@ config and manifest changes a distribution must make to move to it under
   restart to load Hub's tools) didn't wait for a command the agent had
   left running in the background, such as a long test run, and the
   restart ended it. Den now also waits while a command shell the agent
-  started is still running under it (up to the same limit as a turn).
+  started is still running under it. How long it waits is a setting,
+  `agents.restart_wait_minutes` (default 120; it was a fixed 30). When it
+  runs out nothing is stopped: Den's own restart is skipped and tried
+  again later. A person's Restart while such a job runs asks first: "a
+  job is still running (N min); restart anyway?"
 - Two Hub calls at the same moment each read the token; both failed and
   the first wait doubled to two minutes. Calls now share one read, and a
   read still out when Connect or a rotation sets the token can't undo it.

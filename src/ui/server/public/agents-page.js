@@ -1758,20 +1758,81 @@ function mcpStaleTag(r, withButton) {
   );
 }
 
-/** D44: Restart at its next idle; the list shows it come back. */
+/**
+ * D44: Restart at its next idle; the list shows it come back. 0.4.48: a
+ * job it left running (a test run) is asked about first; Restart anyway
+ * restarts it now, which ends the job.
+ */
 async function restartForTools(r, button) {
   const name = { name: r.agent };
+  let job = null;
   // BUSY-1: the working pop-up, then what happened.
   await window.denShell.busyAction({
     button,
     who: "Den",
     title: t("busy.restartW", name),
     failed: t("busy.restartF", name),
-    done: t("ag.mcp.restarting", { id: r.agent }),
+    done: (out) =>
+      out?.job
+        ? t("ag.job.held", { id: r.agent })
+        : t("ag.mcp.restarting", { id: r.agent }),
     run: (headers) =>
-      api("POST", agentPath(r, "restart"), { when: "after-turn" }, { headers }),
+      api(
+        "POST",
+        agentPath(r, "restart"),
+        { when: "after-turn" },
+        { headers },
+      ).catch((e) => {
+        if (e?.code !== "job_running") throw e;
+        job = e.data?.job ?? { minutes: 0 };
+        return { job };
+      }),
   });
+  if (job && (await confirmJob(r, job.minutes)))
+    await window.denShell.busyAction({
+      button,
+      who: "Den",
+      title: t("busy.restartW", name),
+      failed: t("busy.restartF", name),
+      done: t("ag.mcp.restarting", { id: r.agent }),
+      run: (headers) =>
+        api("POST", agentPath(r, "restart"), { when: "now" }, { headers }),
+    });
   await refresh();
+}
+
+/** 0.4.48: "a job is still running (N min); restart anyway?" */
+function confirmJob(r, minutes) {
+  const dlg = $d("#ag-job");
+  if (!dlg) return Promise.resolve(false);
+  $d("#ag-job-h").textContent = t("ag.job.h");
+  $d("#ag-job-q").textContent = t("ag.job.q", {
+    id: displayName(r),
+    min: minutes,
+  });
+  $d("#ag-job-cancel").textContent = t("ag.rn.cancel");
+  $d("#ag-job-go").textContent = t("ag.job.go");
+  return new Promise((resolve) => {
+    const done = (yes) => {
+      dlg.removeEventListener("cancel", onCancel);
+      dlg.close?.();
+      dlg.removeAttribute("open");
+      resolve(yes);
+    };
+    const onCancel = (e) => {
+      e.preventDefault();
+      done(false);
+    };
+    dlg.addEventListener("cancel", onCancel);
+    $d("#ag-job-cancel").onclick = () => done(false);
+    $d("#ag-job-form").onsubmit = (e) => {
+      e.preventDefault();
+      done(true);
+    };
+    if (typeof dlg.showModal === "function") dlg.showModal();
+    else dlg.setAttribute("open", "");
+    $d("#ag-job-cancel").focus();
+  });
 }
 
 /** Which of the bar's controls `el` is: its data-act, or its place. */

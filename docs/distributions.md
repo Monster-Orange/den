@@ -3278,6 +3278,22 @@ as…" line as Bring in.
     turn_read_max_mb: 8 # a number of MB, above 0 and at most 4096
   ```
 
+  A turn that ended with a command the agent left running in the
+  background (a long test run) still counts as working (0.4.48): Den
+  sees the runtime's command shell alive under the agent's session.
+  "After its turn" waits for both, at most `agents.restart_wait_minutes`
+  (default 120). When that runs out nothing is stopped: Den's own
+  restart (to load Hub's tools) is skipped and tried again later, and
+  the change a person asked for is refused with why. A person's Restart
+  while such a job runs asks first ("a job is still running (N min);
+  restart anyway?", `job_running` with `job.minutes`); Restart anyway
+  restarts it now, which ends the job.
+
+  ```yaml
+  agents:
+    restart_wait_minutes: 120 # minutes, above 0
+  ```
+
 - **A person's only.** An agent could widen its own permissions with it,
   so an agent's token is refused (403), the CLI refuses inside an agent's
   session, and there is no MCP tool.

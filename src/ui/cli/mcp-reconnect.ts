@@ -12,6 +12,7 @@
 import { readHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
 import { listRecords } from "../../shared/agents/records.js";
 import {
+  AgentError,
   hubNow,
   restartAgent,
   typeIntoAgent,
@@ -90,11 +91,21 @@ export function mcpReconnect(
           .then(() =>
             opts.log?.(`agent ${m.id}: restarted to load Hub's tools`),
           )
-          .catch((err: unknown) =>
+          .catch((err: unknown) => {
+            // 0.4.48: still working (a turn, or a job it left running) when
+            // agents.restart_wait_minutes ran out: skipped, tried again on a
+            // later pass, and the try isn't spent.
+            if (err instanceof AgentError && err.code === "still_busy") {
+              tries.set(m.id, n);
+              opts.log?.(
+                `agent ${m.id}: still running a job or its turn; Hub's tools restart tried again later`,
+              );
+              return;
+            }
             opts.log?.(
               `agent ${m.id}: not restarted for Hub's tools: ${(err as Error)?.message ?? err}`,
-            ),
-          )
+            );
+          })
           .finally(() => running.delete(m.id));
         running.set(m.id, p);
       }

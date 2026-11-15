@@ -37,8 +37,8 @@ const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
  */
 const KNOWN: Record<string, { n: number; how: string }> = {
   "agents.html": {
-    n: 4,
-    how: "Start an agent, Rename, Link repo, Move: .btns footer",
+    n: 6,
+    how: "Start an agent, Rename, Link repo, Move, a job still running (0.4.48; an alertdialog, so two): .btns footer",
   },
   "persona-ui.js": { n: 1, how: "persona editor: .btns footer" },
   "shell.js": {

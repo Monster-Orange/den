@@ -2160,6 +2160,11 @@
       "Its tab, row and pane header show it; the id {id} never changes. Other agents see it as {peer} from its next start or resume. Empty: back to {id}.",
     "ag.rn.go": "Rename",
     "ag.rn.cancel": "Cancel",
+    "ag.job.h": "A job is still running",
+    "ag.job.q":
+      "{id} has a job it started still running ({min} min), such as a test run. Restart anyway? That ends the job.",
+    "ag.job.go": "Restart anyway",
+    "ag.job.held": "{id} has a job still running: not restarted yet",
     "ag.mv.item": "Move to project…",
     "ag.orphan.one":
       "{names} has no project: its project was deleted. Give it one with ⋯ › Move to project….",

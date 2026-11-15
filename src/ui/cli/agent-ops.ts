@@ -88,6 +88,7 @@ import {
   readAgentsConfig,
   readDenConfig,
   readServerAgentConfig,
+  RESTART_WAIT_MINUTES_DEFAULT,
   readUserConfig,
   setUserRuntimeBin,
   userConfigPath,
@@ -418,6 +419,8 @@ export class AgentError extends Error {
   readonly hints: string[];
   /** AG-10.10: the running agent a start collided with, so a page can open it. */
   readonly running?: { id: string; sessionId: string };
+  /** 0.4.48: job_running: how long the job it left running has run. */
+  readonly job?: { minutes: number };
   constructor(
     message: string,
     o: {
@@ -426,6 +429,7 @@ export class AgentError extends Error {
       code?: string;
       hints?: string[];
       running?: { id: string; sessionId: string };
+      job?: { minutes: number };
     } = {},
   ) {
     super(message);
@@ -435,6 +439,7 @@ export class AgentError extends Error {
     this.code = o.code;
     this.hints = o.hints ?? [];
     if (o.running) this.running = o.running;
+    if (o.job) this.job = o.job;
   }
 }
 
@@ -444,6 +449,9 @@ const usage = (message: string, status = 400) =>
 /** A refusal (CLI exit 1; HTTP 409 unless given). */
 const refused = (message: string, hints: string[] = [], status = 409) =>
   new AgentError(message, { status, hints });
+/** 0.4.48: "after its turn" ran out of time; nothing was stopped. */
+const stillBusy = (message: string) =>
+  new AgentError(message, { status: 409, code: "still_busy" });
 
 let workspaceDirFn: ((ws: string) => string) | null = null;
 let servicesFn: ((ws: string) => { address: string; path: string }[]) | null =
@@ -3983,9 +3991,11 @@ export interface PersonaChanged extends Resumed {
 export const FRESH_NOTE =
   "nothing to resume yet; started fresh (same conversation id, folder and scope)";
 
-/** How often, and how long, "after this turn" checks its turn (AG-18). */
+/**
+ * How often "after this turn" checks its turn (AG-18). How long: the
+ * setting agents.restart_wait_minutes (0.4.48; restartWaitOf).
+ */
 export const TURN_POLL_MS = 1_000;
-export const TURN_WAIT_MS = 30 * 60_000;
 
 /**
  * Whether agent `rec` is mid-turn: true or false from its runtime (den-
@@ -4012,8 +4022,60 @@ async function agentBusy(
     /* unreadable config: the default */
   }
   const busy = rt.turnBusy(rec.resumeToken, d.env, { readMaxBytes });
-  if (busy !== false || !rt.jobPattern) return busy;
-  return jobsUnder(pid, rt.jobPattern, d.processes()).length > 0;
+  if (busy !== false) return busy;
+  return (await agentJob(d, rec, pid)) !== null;
+}
+
+/**
+ * 0.4.48: the job agent `rec` left running under its session (the longest
+ * running one), or null: none, or its runtime can't tell.
+ */
+export async function agentJob(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  pid?: number | null,
+): Promise<{ minutes: number } | null> {
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.jobPattern) return null;
+  const root =
+    pid ??
+    (await withClient(d, async (c) => {
+      const s = sessionOf(await c.list(), rec);
+      return s && !s.exited ? s.pid : null;
+    }));
+  if (root === null || root === undefined) return null;
+  const jobs = jobsUnder(root, rt.jobPattern, d.processes());
+  if (!jobs.length) return null;
+  const secs = Math.max(...jobs.map((j) => j.secs ?? 0));
+  return { minutes: Math.round(secs / 60) };
+}
+
+/**
+ * 0.4.48: a person's Restart at the agent's next idle, while a job it left
+ * running still runs: asked first (job_running, with its minutes), never
+ * waited out silently. Restart now ends the job.
+ */
+export async function askAboutJob(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+): Promise<void> {
+  const rec = agentRecord(d, id, ws);
+  const job = await agentJob(d, rec);
+  if (job)
+    throw new AgentError(
+      `agent ${rec.id} has a job still running (${job.minutes} min). Restart anyway? That ends the job (--now).`,
+      { status: 409, code: "job_running", job },
+    );
+}
+
+/** 0.4.48: agents.restart_wait_minutes, in ms (its default if unreadable). */
+function restartWaitOf(d: AgentsResolved): number {
+  try {
+    return d.agentsConfig().restartWaitMs;
+  } catch {
+    return RESTART_WAIT_MINUTES_DEFAULT * 60_000;
+  }
 }
 
 /** Why agent `rec` can't change persona (it can't resume), or null. */
@@ -4084,11 +4146,11 @@ export async function changePersona(
     },
   });
   try {
-    const deadline = Date.now() + (opts.maxMs ?? TURN_WAIT_MS);
+    const deadline = Date.now() + (opts.maxMs ?? restartWaitOf(d));
     while (busy) {
       if (Date.now() >= deadline)
-        throw refused(
-          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? TURN_WAIT_MS) / 60_000)} min; nothing changed`,
+        throw stillBusy(
+          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? restartWaitOf(d)) / 60_000)} min; nothing changed`,
         );
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
@@ -4112,7 +4174,15 @@ export async function restartAgent(
   id: string,
   ws: string | undefined,
   when: "now" | "after-turn" = "after-turn",
-  opts: { pollMs?: number; maxMs?: number } = {},
+  opts: {
+    pollMs?: number;
+    maxMs?: number;
+    /**
+     * 0.4.48: a person asked. A job the agent left running is asked about
+     * first (job_running) rather than waited for; Restart now ends it.
+     */
+    askIfJob?: boolean;
+  } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
   const rec = agentRecord(d, id, ws);
@@ -4128,12 +4198,14 @@ export async function restartAgent(
     throw refused(
       `${where}: Den can't tell when agent ${rec.id}'s turn ends; restart it now instead (--now)`,
     );
+  if (when === "after-turn" && opts.askIfJob)
+    await askAboutJob(d, rec.id, rec.workspace);
   if (when === "after-turn") {
-    const deadline = Date.now() + (opts.maxMs ?? TURN_WAIT_MS);
+    const deadline = Date.now() + (opts.maxMs ?? restartWaitOf(d));
     while (busy) {
       if (Date.now() >= deadline)
-        throw refused(
-          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? TURN_WAIT_MS) / 60_000)} min; not restarted`,
+        throw stillBusy(
+          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? restartWaitOf(d)) / 60_000)} min; not restarted`,
         );
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
@@ -4220,11 +4292,11 @@ export async function moveAgent(
       `${where}: Den can't tell when agent ${rec.id}'s turn ends; move it now instead (--now)`,
     );
   if (when === "after-turn") {
-    const deadline = Date.now() + (opts.maxMs ?? TURN_WAIT_MS);
+    const deadline = Date.now() + (opts.maxMs ?? restartWaitOf(d));
     while (busy) {
       if (Date.now() >= deadline)
-        throw refused(
-          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? TURN_WAIT_MS) / 60_000)} min; not moved`,
+        throw stillBusy(
+          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? restartWaitOf(d)) / 60_000)} min; not moved`,
         );
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, rec.workspace));

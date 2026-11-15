@@ -123,6 +123,7 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
+  askAboutJob,
   staleAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -321,6 +322,7 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
         ...(e.code && e.code !== NOT_IN_WORKSPACE ? { code: e.code } : {}),
         ...(e.hints.length ? { hints: e.hints } : {}),
         ...(e.running ? { running: e.running } : {}),
+        ...(e.job ? { job: e.job } : {}),
       },
       e.status,
     );
@@ -1162,6 +1164,8 @@ export async function handleAgentRoutes(
         });
       what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
       if (when === "after-turn") {
+        // 0.4.48: a job it left running is asked about first (job_running).
+        await askAboutJob(d, id!, ws);
         // It may wait for a long turn: answer now, audit when it's done.
         void restartAgent(
           d,

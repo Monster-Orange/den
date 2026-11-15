@@ -1149,6 +1149,26 @@
           </div>
         </form>
       </dialog>
+      <dialog
+        class="ag-dlg"
+        id="ag-job"
+        role="alertdialog"
+        aria-labelledby="ag-job-h"
+        aria-describedby="ag-job-q"
+      >
+        <form method="dialog" id="ag-job-form" novalidate>
+          <h2 id="ag-job-h">A job is still running</h2>
+          <p class="help" id="ag-job-q"></p>
+          <div class="btns">
+            <button type="button" class="den-btn" id="ag-job-cancel">
+              Cancel
+            </button>
+            <button type="submit" class="den-btn primary" id="ag-job-go">
+              Restart anyway
+            </button>
+          </div>
+        </form>
+      </dialog>
       <dialog class="ag-dlg" id="ag-ln" aria-labelledby="ag-ln-h">
         <form method="dialog" id="ag-ln-form" novalidate>
           <h2 id="ag-ln-h">Repo</h2>

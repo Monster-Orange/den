@@ -1391,6 +1391,9 @@ export interface PersonaPackConfig {
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 
 /** The keys of `agents:` that are not an agent id. */
+/** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
+export const RESTART_WAIT_MINUTES_DEFAULT = 120;
+
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
   // #70: an agent's token only from its own processes.
@@ -1403,6 +1406,7 @@ export const AGENTS_RESERVED_KEYS = [
   "helpers",
   // D39: how far back the mid-turn check reads.
   "turn_read_max_mb",
+  "restart_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
   "exited_shell_minutes",
   // AG-DROP: files dropped onto an agent's terminal.
@@ -1461,6 +1465,13 @@ export interface ResolvedAgentsConfig {
   helpers?: HelperSettings;
   /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */
   turnReadMaxBytes?: number;
+  /**
+   * 0.4.48: agents.restart_wait_minutes (default 120): how long "after its
+   * turn" (Restart, a move, a persona change, Den's own restarts) waits for
+   * the turn and any job the agent left running. Out of time, Den's own
+   * restart is skipped and tried later; nothing is ever cut off.
+   */
+  restartWaitMs: number;
   /** agents.exited_shell_minutes; unset: DEFAULT_EXITED_SHELL_MINUTES. */
   exitedShellMinutes?: number;
   /** agents.uploads (AG-DROP) with its defaults. */
@@ -1641,6 +1652,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     );
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+    restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
     tokenBinding: tb !== false,
     personaPacks: [],
     packGuardrails: [],
@@ -1679,6 +1691,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.turn_read_max_mb: must be a number of MB, above 0 and at most 4096 (got ${JSON.stringify(turnMb)})`,
       );
     out.turnReadMaxBytes = Math.round(turnMb * 1024 * 1024);
+  }
+  const rw = raw.restart_wait_minutes;
+  if (rw !== undefined && rw !== null) {
+    if (typeof rw !== "number" || !Number.isFinite(rw) || rw <= 0)
+      throw new Error(
+        `agents.restart_wait_minutes: minutes, above 0 (got ${JSON.stringify(rw)})`,
+      );
+    out.restartWaitMs = Math.round(rw * 60_000);
   }
   const exitedMin = raw.exited_shell_minutes;
   if (exitedMin !== undefined && exitedMin !== null) {

@@ -12,21 +12,37 @@ import { execFileSync } from "child_process";
 export interface ProcessRow {
   pid: number;
   ppid: number;
+  /** How long it has run, in seconds (ps etime), when known. */
+  secs?: number;
   command: string;
+}
+
+/** ps's etime ([[dd-]hh:]mm:ss) in seconds; undefined when unreadable. */
+export function etimeSecs(v: string): number | undefined {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(v.trim());
+  if (!m) return undefined;
+  return (+(m[1] ?? 0) * 24 + +(m[2] ?? 0)) * 3600 + +m[3] * 60 + +m[4];
 }
 
 /** Every process on this machine: pid, parent and command. [] when ps fails. */
 export function readProcesses(): ProcessRow[] {
   try {
-    const out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], {
+    const out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,etime=,command="], {
       encoding: "utf-8",
       maxBuffer: 32 * 1024 * 1024,
       timeout: 5_000,
     });
     const rows: ProcessRow[] = [];
     for (const line of out.split("\n")) {
-      const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-      if (m) rows.push({ pid: +m[1], ppid: +m[2], command: m[3] });
+      const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
+      if (!m) continue;
+      const secs = etimeSecs(m[3]);
+      rows.push({
+        pid: +m[1],
+        ppid: +m[2],
+        ...(secs !== undefined ? { secs } : {}),
+        command: m[4],
+      });
     }
     return rows;
   } catch {

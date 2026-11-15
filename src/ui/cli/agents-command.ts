@@ -652,6 +652,7 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
     id,
     workspaceFlag(where, p),
     now ? "now" : "after-turn",
+    { askIfJob: true },
   );
   return report(
     d,
