@@ -1206,7 +1206,7 @@ function permission(args: string[], d: AgentsResolved): number {
   d.saveWorkspacePermission(ws, intent);
   d.out(
     intent
-      ? `${ws}: agents now start in ${intent} unless the start names a mode; running agents keep theirs until they start again`
+      ? `${ws}: agents now start in ${intent} unless the start names a mode; running agents switch after their current turn`
       : `${ws}: no default now; agents start in their persona's mode`,
   );
   return 0;

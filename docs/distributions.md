@@ -3155,7 +3155,21 @@ runtime?, mode?, repo?, folder? }`, the held action `agent_create`).
   loosens it (ask → auto, or clearing it when the install's or a
   persona's mode is wider) says so first ("This lets agents in <project>
   act without asking you") and runs only on the person's own Allow: no
-  auto-allow setting runs it.
+  auto-allow setting runs it. Agents with a mode of their own keep it
+  (0.4.51, issue 199): the Allow names each ("pinned (own mode: auto)")
+  and offers "Also make these follow the project", off by default; on,
+  it clears their own mode in the same Allow. The result names who
+  follows the project now and who keeps their own mode.
+- **It makes an agent follow its project's mode** (0.4.51, issue 199,
+  `agent_mode { agent, project? }`, the held action `agent_mode`): it
+  clears the agent's own mode. The Allow says what it lets the agent do
+  ("This lets <agent> act without asking you: auto → follow project
+  (all)") and only the person's own Allow runs it. A running agent
+  restarts after its turn, on the same conversation, in that mode. A
+  project's agent asks for its own project's agents; Den's own agent for
+  any. A person does it directly with POST
+  `/api/workspaces/<project>/agents/<id>/mode { mode: null }`; an
+  agent's own write there is refused.
 - **It moves an agent's folder** (0.4.48, `agent_folder { agent, repo |
 folder, project? }`, the held action `agent_folder`): a repo of the
   agent's project, or a folder in it, as `agents folder` does. The Allow

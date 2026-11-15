@@ -1164,6 +1164,15 @@
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_folder": "Mover el agente {agent} a {where}",
+    "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
+    "ap.do.agent_mode.loosens":
+      "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
+    "ap.own.h":
+      "Estos agentes conservan su propio modo y no seguirán el proyecto:",
+    "ap.own.item": "{agent} (modo propio: {mode})",
+    "ap.own.follow": "Hacer también que estos sigan el proyecto",
+    "ap.res.following": "Siguen el proyecto ahora: {list}.",
+    "ap.res.own": "Conservan su propio modo: {list}.",
     "ap.do.project_mode.loosens":
       "Esto permite que los agentes de {project} actúen sin preguntarte. Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_create":
@@ -1196,6 +1205,8 @@
     "pm.name.auto": "Auto",
     "pm.name.all": "Todo",
     "ag.mode.tag": "modo: {m}",
+    "ag.mode.own": "modo propio: {m}",
+    "ag.mode.ownNot": "modo propio: {m} (no sigue el proyecto: {p})",
     "ag.mode.drift": "Fijado en {want}, funciona en {running}",
     "ag.mode.apply": "Reiniciar para aplicar",
     "ag.mode.applyName": "Reiniciar {id} ahora para que funcione en su modo",

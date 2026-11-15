@@ -8,6 +8,20 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- A project mode change says which agents keep their own mode (issue
+  199). The Allow lists each agent with a mode of its own ("pinned (own
+  mode: auto)") and offers one choice, "Also make these follow the
+  project", off by default. On, it clears their own mode in the same
+  Allow. After Allow, Den says which agents follow the project now and
+  which keep their own mode. On the Agents page, such an agent says "own
+  mode: auto (not following project: all)".
+- An agent, or Den's own agent, can ask to make another agent follow its
+  project's mode (the held write `agent_mode`). The person sees "This
+  lets <agent> act without asking you: auto → follow project (all)" and
+  Allows it themselves; Den restarts that agent after its turn, on the
+  same conversation. A person can do it directly too (POST
+  `/api/workspaces/<project>/agents/<id>/mode`); an agent's own write
+  there is refused.
 - Den says when it was updated. Once the server runs a newer build than
   the open page, a see-through strip covers the top bar (60% of the
   background colour, a light blur) and a wide pill sits centred on it:

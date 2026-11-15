@@ -20,6 +20,7 @@ import type { Browser, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
+import { writeRecord } from "../../../src/shared/agents/records.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -32,7 +33,11 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await chromium.connect(ws, { exposeNetwork: "<loopback>" })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -262,6 +267,75 @@ describe("the approval dialog (ON-3)", () => {
     await p.waitForSelector('dialog.bz-dlg[open][data-state="working"]', {
       timeout: 15_000,
     });
+    await p.context().close();
+  }, 90_000);
+
+  it("issue 199: a project's mode names the agents with their own; Allow keeps theirs unless the person makes them follow", async () => {
+    if (skip()) return;
+    // Project web (the first test made it): pinned has its own mode, scout follows.
+    const rec = (id: string, own: boolean) =>
+      writeRecord(stateDir, {
+        id,
+        persona: "builder",
+        runtime: "den-claude",
+        workspace: "web",
+        session: { backend: "den-pty", id: `gone-${id}` },
+        sessionName: `acme-web:${id}`,
+        startedAt: "2026-11-01T09:59:00.000Z",
+        permission: "auto",
+        ...(own ? { overrides: ["permission" as const] } : {}),
+      });
+    rec("pinned", true);
+    rec("scout", false);
+    const own = () =>
+      (
+        JSON.parse(
+          fs.readFileSync(
+            path.join(stateDir, "agents", "pinned.json"),
+            "utf-8",
+          ),
+        ) as { overrides?: string[] }
+      ).overrides ?? [];
+    const p = await page(true);
+    const show = async (want: RegExp) => {
+      for (let i = 0; i < 5; i++) {
+        await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+        if (want.test((await p.textContent("#den-ap-what")) ?? "")) return;
+        await p.click("#den-ap-deny");
+        await closed(p);
+      }
+    };
+    const first = await ask("project_mode", { project: "web", mode: "all" });
+    await show(/web's mode: .* → all/);
+    expect(await p.isVisible("#den-ap-own")).toBe(true);
+    expect(await p.textContent("#den-ap-own-h")).toBe(
+      "These agents keep their own mode and won't follow the project:",
+    );
+    expect(await p.textContent("#den-ap-own-list")).toBe(
+      "pinned (own mode: auto)",
+    );
+    expect(await p.textContent("#den-ap-follow-row")).toContain(
+      "Also make these follow the project",
+    );
+    expect(await p.isChecked("#den-ap-follow")).toBe(false);
+    await p.click("#den-ap-allow");
+    await closed(p);
+    expect(await stateOf(first)).toBe("done");
+    expect(await p.textContent(".den-toast")).toContain(
+      "Keep their own mode: pinned (own mode: auto).",
+    );
+    expect(own()).toContain("permission");
+    // Again, with the choice: pinned follows.
+    const second = await ask("project_mode", { project: "web", mode: "edits" });
+    await show(/web's mode: all → edits/);
+    await p.check("#den-ap-follow");
+    await p.click("#den-ap-allow");
+    await closed(p);
+    expect(await stateOf(second)).toBe("done");
+    expect(await p.textContent(".den-toast")).toContain(
+      "Follow the project now: pinned, scout.",
+    );
+    expect(own()).not.toContain("permission");
     await p.context().close();
   }, 90_000);
 

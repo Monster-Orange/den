@@ -4216,18 +4216,58 @@ export type HeldOpCheck<A> =
       params: Record<string, string>;
       details: string[];
       args: A;
+      /**
+       * Issue 199: the project's agents with a mode of their own, which
+       * won't follow it (the Allow dialog names them).
+       */
+      ownMode?: OwnModeAgent[];
+      /**
+       * Issue 199: what the person may turn on as they Allow (off by
+       * default; an agent's ask never sets one): "follow".
+       */
+      choices?: string[];
     }
   | { ok: false; error: string };
 
 export interface ProjectModeArgs {
   project: string;
   mode: PermissionIntent | null;
+  /** Issue 199: also clear its agents' own mode (the person's choice). */
+  follow?: true;
+}
+
+/** Issue 199: an agent with a mode of its own (an override). */
+export interface OwnModeAgent {
+  agent: string;
+  mode: PermissionIntent;
+}
+
+/**
+ * Issue 199: project `ws`'s agents that take a mode from Den, split into
+ * those that follow its mode and those with their own (an override), by id.
+ */
+export function projectAgentModes(
+  d: AgentsResolved,
+  ws: string,
+): { following: string[]; ownMode: OwnModeAgent[] } {
+  const following: string[] = [];
+  const ownMode: OwnModeAgent[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (rec.workspace !== ws || !getRuntime(rec.runtime)?.permissions) continue;
+    if (rec.permission && rec.overrides?.includes("permission"))
+      ownMode.push({ agent: rec.id, mode: rec.permission });
+    else following.push(rec.id);
+  }
+  following.sort();
+  ownMode.sort((a, b) => a.agent.localeCompare(b.agent));
+  return { following, ownMode };
 }
 
 /**
  * SRV-P4 (0.4.48): checks a project_mode ask: a project's mode, or none
  * (null). A project's agent asks for its own project; Den's agent for any.
- * Running agents keep the mode they started with until they start again.
+ * Running agents switch after their current turn, in the same conversation
+ * (Den's mode check).
  */
 export function checkProjectMode(
   d: AgentsResolved,
@@ -4271,9 +4311,14 @@ export function checkProjectMode(
       (after === undefined ? INTENT_RANK.all + 1 : INTENT_RANK[after]) > before;
     const warn = `This lets agents in ${ws} act without asking you.`;
     const line = `set project ${ws}'s mode: ${from} → ${to}`;
+    // Issue 199: the agents with their own mode keep it, unless the
+    // person also makes them follow.
+    const { ownMode } = projectAgentModes(d, ws);
+    const follow = ownMode.length > 0 && raw.follow === true;
     return {
       ok: true,
       ...(loosens ? { personOnly: true } : {}),
+      ...(ownMode.length ? { ownMode, choices: ["follow"] } : {}),
       summary: loosens
         ? `${warn} ${line.charAt(0).toUpperCase()}${line.slice(1)}`
         : line,
@@ -4283,27 +4328,54 @@ export function checkProjectMode(
         `Project: ${ws}`,
         `Now: ${from}`,
         `Then: ${to}${mode === null ? " (agents start in the install's mode, else their persona's)" : ""}`,
-        "New agents start in it; running agents keep theirs until they start again.",
+        "New agents start in it; running agents switch after their current turn, in the same conversation.",
+        ...(ownMode.length
+          ? [
+              `These keep their own mode and won't follow the project: ${ownMode.map((o) => `${o.agent} (own mode: ${o.mode})`).join(", ")}`,
+            ]
+          : []),
+        ...(follow
+          ? ["And makes them follow the project: their own mode is cleared."]
+          : []),
       ],
-      args: { project: ws, mode },
+      args: { project: ws, mode, ...(follow ? { follow: true as const } : {}) },
     };
   } catch (e) {
     return no((e as Error).message);
   }
 }
 
-/** SRV-P4: on Allow, saves it. */
+/**
+ * SRV-P4: on Allow, saves it. Issue 199: with "follow", its agents' own
+ * mode is cleared too; the answer names who follows the project now and
+ * who keeps a mode of their own (when it has agents).
+ */
 export async function runProjectMode(
   d: AgentsResolved,
   raw: Record<string, unknown>,
 ): Promise<
-  | { ok: true; project: string; mode: PermissionIntent | null }
+  | {
+      ok: true;
+      project: string;
+      mode: PermissionIntent | null;
+      following?: string[];
+      ownMode?: OwnModeAgent[];
+    }
   | { ok: false; error: string }
 > {
   const c = checkProjectMode(d, raw);
   if (!c.ok) return c;
-  d.saveWorkspacePermission(c.args.project, c.args.mode);
-  return { ok: true, project: c.args.project, mode: c.args.mode };
+  const ws = c.args.project;
+  d.saveWorkspacePermission(ws, c.args.mode);
+  if (c.args.follow)
+    for (const o of c.ownMode ?? []) setAgentPermission(d, o.agent, ws, null);
+  const now = projectAgentModes(d, ws);
+  return {
+    ok: true,
+    project: ws,
+    mode: c.args.mode,
+    ...(now.following.length || now.ownMode.length ? now : {}),
+  };
 }
 
 export interface AgentFolderArgs {
@@ -4433,6 +4505,135 @@ export async function runAgentFolder(
     cwd: rec.cwd ?? "",
     ...(rec.repo ? { repo: rec.repo } : {}),
     restarted: running,
+  };
+}
+
+export interface AgentModeArgs {
+  agent: string;
+  project: string;
+}
+
+/**
+ * Issue 199: checks an agent_mode ask: clear agent `agent`'s own mode, so
+ * it follows its project's again (else the install's, else its
+ * persona's). Only ever cleared: a mode of its own is a person's to set.
+ * A project's agent asks for its own project's agents; Den's agent for
+ * any. Always the person's own Allow: it changes what an agent may do.
+ */
+export function checkAgentMode(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<AgentModeArgs> {
+  const no = (error: string): HeldOpCheck<AgentModeArgs> => ({
+    ok: false,
+    error,
+  });
+  const str = (k: string): string | undefined => {
+    const v = raw[k];
+    if (v === undefined || v === null || v === "") return undefined;
+    if (typeof v !== "string") throw usage(`${k} must be text`);
+    return v.trim();
+  };
+  try {
+    const m = raw.mode;
+    if (m !== undefined && m !== null && m !== "follow")
+      return no(
+        "agent_mode clears an agent's own mode only, so it follows its project's; a person sets a mode of its own",
+      );
+    const id = str("agent");
+    if (!id) return no("agent is required (the agent's id)");
+    const rec = agentRecord(d, id, str("project"));
+    if (isServerScope(rec.workspace))
+      return no(
+        "Den's own agent has no project to follow: a person sets its mode in Settings",
+      );
+    if (
+      who.project &&
+      !isServerScope(who.project) &&
+      who.project !== rec.workspace
+    )
+      return no(
+        `${who.agent ?? "this agent"} works in project ${who.project}: it can ask for that project's agents only, not ${id} in project ${rec.workspace}`,
+      );
+    const rt = getRuntime(rec.runtime);
+    if (!rt?.permissions)
+      return no(`${rec.runtime} can't take a permission mode from Den yet`);
+    const own = rec.overrides?.includes("permission")
+      ? rec.permission
+      : undefined;
+    if (!own)
+      return no(`${id} has no own mode: it follows its project's already`);
+    const p = personaLookup(d)(rec);
+    const to =
+      followedPermissionOf(d, rec.workspace) ??
+      (p ? intentOf(p.permissionMode) : undefined) ??
+      DEFAULT_INTENT;
+    const shown = rec.displayName ?? id;
+    const loosens = INTENT_RANK[to] > INTENT_RANK[own];
+    const change = `${own} → follow project (${to})`;
+    const running = !rec.stoppedAt;
+    return {
+      ok: true,
+      personOnly: true,
+      summary: loosens
+        ? `This lets ${shown} act without asking you: ${change}`
+        : `${shown}: ${change}`,
+      params: {
+        agent: shown,
+        from: own,
+        to,
+        ...(loosens ? { loosens: "1" } : {}),
+      },
+      details: [
+        ...(loosens ? [`This lets ${shown} act without asking you.`] : []),
+        `Agent: ${shown}${shown !== id ? ` (${id})` : ""}, project ${rec.workspace}`,
+        `Now: its own mode, ${own}`,
+        `Then: it follows the project, ${to}`,
+        running
+          ? `It is running: Den restarts it after its turn, on the same conversation, in ${to}.`
+          : `It is stopped: its next start is in ${to}.`,
+      ],
+      args: { agent: id, project: rec.workspace },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/**
+ * Issue 199: on Allow, clears its own mode. A running agent is restarted
+ * after its turn, on the same conversation, by Den's mode check (`apply`:
+ * the web server's applyModesNow), as any mode change is.
+ */
+export async function runAgentMode(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  opts: { apply?: () => Promise<unknown> } = {},
+): Promise<
+  | {
+      ok: true;
+      agent: string;
+      project: string;
+      from: string;
+      mode: string;
+      restarts: boolean;
+    }
+  | { ok: false; error: string }
+> {
+  const c = checkAgentMode(d, raw);
+  if (!c.ok) return c;
+  const { agent, project } = c.args;
+  const rec = setAgentPermission(d, agent, project, null);
+  const restarts = !rec.stoppedAt;
+  if (restarts && opts.apply) await opts.apply();
+  return {
+    ok: true,
+    agent,
+    project,
+    from: c.params.from,
+    mode: c.params.to,
+    restarts,
   };
 }
 
@@ -5483,6 +5684,10 @@ export interface AgentMode {
   want: PermissionIntent;
   /** Its process's, when its command line says; else its record's. */
   running?: PermissionIntent;
+  /** Issue 199: a mode of its own (an override), not its project's. */
+  own?: true;
+  /** Issue 199: with its own: the mode its project would give it. */
+  followed?: PermissionIntent;
 }
 
 /**
@@ -5510,7 +5715,19 @@ export function modeResolver(
     const running =
       (pid ? runningIntent(pid, rec.resumeToken, commandLineOf) : undefined) ??
       rec.permission;
-    return { want, ...(running ? { running } : {}) };
+    const own = !!rec.permission && !!rec.overrides?.includes("permission");
+    let followed: PermissionIntent | undefined;
+    if (own)
+      try {
+        followed = followedPermissionOf(d, rec.workspace);
+      } catch {
+        followed = undefined; // a bad project mode: said where it is set
+      }
+    return {
+      want,
+      ...(running ? { running } : {}),
+      ...(own ? { own: true as const, ...(followed ? { followed } : {}) } : {}),
+    };
   };
 }
 
