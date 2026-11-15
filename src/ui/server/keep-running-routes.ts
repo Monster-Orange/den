@@ -1,0 +1,139 @@
+/**
+ * Issue 163: Settings › Keep agents running after logout › Apply.
+ *
+ *   POST /api/keep-running-after-logout {on}   a person's only. Saves the Setting
+ *        (agents.keep_running_after_logout) and re-installs Den's launchd
+ *        jobs in its mode through `service install --mode <m>` (cmdService,
+ *        handed off: install.sh runs detached, since it replaces the job
+ *        this server runs in). on: always (LaunchDaemons running as the
+ *        person); off: login (LaunchAgents).
+ *
+ * The admin password is for sudo only (LK-0, R8), asked only when sudo
+ * will run: for always, and to remove the LaunchDaemons a login install
+ * replaces. Then, with no password held and no passwordless sudo, the
+ * answer is `needsSudo` (the page asks, as for any run, then applies
+ * again) and nothing is saved or run. Never for login over login.
+ *
+ * Answers:
+ *   { ok: false, needsSudo: { command } }      ask, then Apply again
+ *   { ok: true, applied: true, mode }           re-installing; Den restarts
+ *   { ok: true, applied: false, mode, message } saved; nothing to re-install
+ *
+ * An install that fails to start puts the Setting back (500); install.sh
+ * itself asks sudo once before it changes anything, so a refusal there
+ * leaves the old mode too.
+ */
+import type * as http from "http";
+import type { ServiceMode } from "../cli/doctor-where.js";
+
+export interface KeepRunningDeps {
+  /** An agent's request (its token or actor header): never applies it. */
+  isAgent: (req: http.IncomingMessage) => boolean;
+  platform: () => NodeJS.Platform;
+  /** The mode of the installed web job, or null when Den isn't a service. */
+  installed: () => ServiceMode | null;
+  /** A password is held, or sudo needs none (sudo-store.ts). */
+  sudoReady: () => boolean;
+  /** The Setting as it is now (undefined: unset), to put it back. */
+  current?: () => boolean | undefined;
+  /** Write agents.keep_running_after_logout (null clears it). */
+  save: (on: boolean | null) => void;
+  /** `service install --mode <m>`, handed off: 0 once it started. */
+  install: (mode: ServiceMode) => Promise<number>;
+  /** The CLI's name, for the command line it names. */
+  cli: string;
+  readBody: (req: http.IncomingMessage) => Promise<string>;
+  sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
+}
+
+/** Whether `service install` into `mode` over `installed` runs sudo. */
+export function installRunsSudo(
+  mode: ServiceMode,
+  installed: ServiceMode | null,
+): boolean {
+  return mode === "always" || installed === "always";
+}
+
+export function handleKeepRunningRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: KeepRunningDeps,
+): boolean {
+  if (pathname !== "/api/keep-running-after-logout" || req.method !== "POST")
+    return false;
+  void (async () => {
+    if (d.isAgent(req))
+      return d.sendJson(
+        res,
+        { ok: false, error: "only a person changes how Den runs" },
+        403,
+      );
+    let body: { on?: unknown };
+    try {
+      body = JSON.parse(await d.readBody(req)) as { on?: unknown };
+    } catch {
+      return d.sendJson(res, { ok: false, error: "not JSON" }, 400);
+    }
+    if (typeof body.on !== "boolean")
+      return d.sendJson(res, { ok: false, error: "on is true or false" }, 400);
+    if (d.platform() !== "darwin")
+      return d.sendJson(
+        res,
+        {
+          ok: false,
+          error: "keeping agents running after logout is for macOS (launchd)",
+        },
+        409,
+      );
+    const on = body.on;
+    const mode: ServiceMode = on ? "always" : "login";
+    const installed = d.installed();
+    const command = `${d.cli} service install --mode ${mode}`;
+    if (installed === null) {
+      d.save(on);
+      return d.sendJson(res, {
+        ok: true,
+        applied: false,
+        mode,
+        message: `Saved. Den isn't running as a service yet: ${command} applies it.`,
+      });
+    }
+    if (installed === mode) {
+      d.save(on);
+      return d.sendJson(res, {
+        ok: true,
+        applied: false,
+        mode,
+        message: "Saved. Den already runs this way.",
+      });
+    }
+    if (installRunsSudo(mode, installed) && !d.sudoReady())
+      return d.sendJson(res, { ok: false, needsSudo: { command } });
+    const before = d.current?.();
+    d.save(on);
+    let code: number;
+    try {
+      code = await d.install(mode);
+    } catch (e) {
+      d.save(before ?? null);
+      return d.sendJson(res, { ok: false, error: (e as Error).message }, 500);
+    }
+    if (code !== 0) {
+      d.save(before ?? null);
+      return d.sendJson(
+        res,
+        {
+          ok: false,
+          error: `${command} did not start (exit ${code}). Nothing changed.`,
+        },
+        500,
+      );
+    }
+    return d.sendJson(res, { ok: true, applied: true, mode });
+  })().catch((e) => {
+    if (!res.headersSent)
+      d.sendJson(res, { ok: false, error: (e as Error).message }, 500);
+  });
+  return true;
+}

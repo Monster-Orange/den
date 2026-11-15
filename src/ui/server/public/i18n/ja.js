@@ -418,6 +418,23 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "keep.label": "ログアウト後もエージェントを動かす",
+    "keep.warn":
+      "デーモンでは、エージェントがサインイン情報（ログインキーチェーン）に届かないことがあります（まだ確認されていません）。",
+    "keep.apply": "適用",
+    "keep.pending":
+      "保存済みですが、まだ適用されていません。「適用」を押してください。",
+    "keep.w": "適用しています…",
+    "keep.s": "適用しました。__DEN_TITLE__ が再起動します。",
+    "keep.needs": "管理者パスワードが必要です。",
+    "keep.failed": "適用されませんでした。何も変わっていません。",
+    "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
+    "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
+    "keep.saved":
+      "保存しました。__DEN_TITLE__ はすでにこの方法で動いています。",
+    "keep.noService":
+      "保存しました。__DEN_TITLE__ がサービスとして動くと適用されます: __DEN_CLI__ service install",
+    "keep.refused": "管理者パスワードがないため、何も変わっていません。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",

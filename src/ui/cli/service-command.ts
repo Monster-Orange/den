@@ -36,7 +36,7 @@ import {
   recordOwnerGithub,
   type OwnerGithubResult,
 } from "../../shared/owner-github.js";
-import { spawnSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -90,6 +90,34 @@ const SUBCOMMAND_FLAGS: Record<(typeof SUBCOMMANDS)[number], string[]> = {
 const defaultRunner: ServiceRunner = (cmd, args, env) =>
   spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } })
     .status ?? 1;
+
+/**
+ * Issue 163: a runner for the web server's own Apply. install.sh replaces
+ * the job this server runs in, so it runs detached (its own process
+ * group, which launchd's bootout of this server doesn't reach), output to
+ * `logFile`. 0 once it started. `extra` goes under the job's env (the
+ * sudo shim's PATH).
+ */
+export function detachedRunner(
+  logFile: string,
+  extra: () => NodeJS.ProcessEnv = () => ({}),
+): ServiceRunner {
+  return (cmd, args, env) => {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    const fd = fs.openSync(logFile, "a");
+    try {
+      const child = spawn(cmd, args, {
+        detached: true,
+        stdio: ["ignore", fd, fd],
+        env: { ...process.env, ...extra(), ...env },
+      });
+      child.unref();
+      return child.pid ? 0 : 1;
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+}
 
 /** How long `install` waits for the web server to answer. */
 export const READY_TIMEOUT_MS = 30_000;
@@ -146,6 +174,12 @@ export interface ServiceDeps {
    * or undefined when unset). Default: user.yml, unless `run` is a test's.
    */
   keepRunning?: () => boolean | undefined;
+  /**
+   * Issue 163: the web server's Apply runs install (detachedRunner). It
+   * replaces this very server, so install neither stops a plain server
+   * nor waits for one to answer: it returns once the script started.
+   */
+  handOff?: boolean;
   /** D17: record web.owner_github (default: from gh, unless `run` is a test's). */
   recordOwner?: () => OwnerGithubResult;
   config?: DenConfig;
@@ -468,7 +502,7 @@ export async function cmdService(
 
   // D26: a plain `web up` server of this install on the port would answer
   // for the job (which then crash-loops on the taken port): stop it first.
-  if (sub === "install") {
+  if (sub === "install" && !deps.handOff) {
     const id = await identify(port, own);
     const pid = id.kind === "ours" ? id.pid : undefined;
     const theJob = installed ? jobPid(installed, label) : null;
@@ -531,6 +565,10 @@ export async function cmdService(
     );
   } catch {
     /* sessions then start a host of their own, as before */
+  }
+  if (deps.handOff) {
+    log(`… ${label} re-installing (${mode}); ${product().title} restarts`);
+    return 0;
   }
 
   const url = `${denWebBase(port)}/api/server-info`;

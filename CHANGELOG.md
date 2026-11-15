@@ -17,6 +17,13 @@ config and manifest changes a distribution must make to move to it under
   mode already installed. `service install --plan` now prints both jobs'
   plists, the web job's and the host job's. Real logout not shown;
   keychain under the daemon not yet shown. (#163)
+- Keep agents running after logout has Apply. It re-installs Den's two
+  launchd jobs in the chosen mode, with the working pop-up, then waits
+  for Den to come back. Den asks for your admin password only when sudo
+  will run: turning it on, or turning it off over LaunchDaemons (sudo
+  removes them). Never for off over LaunchAgents. With no password, or
+  sudo refused, nothing changes: install asks sudo once before it touches
+  any job, so the old mode stays. (#163)
 
 ### Fixed
 

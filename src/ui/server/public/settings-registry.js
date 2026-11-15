@@ -768,6 +768,93 @@ const ACCESS_ROWS = [
   },
 ];
 
+/**
+ * Issue 163: Apply for Keep agents running after logout. The server says
+ * when sudo needs the password (needsSudo, LK-0); only then the page asks
+ * (askSudo), and applies again. Applied: Den re-installs its jobs and
+ * restarts, and the page waits for it (waitBack). Resolves with
+ * { state: applied | saved | refused | failed, mode? }.
+ */
+export async function applyKeepRunning(on, { post, askSudo, waitBack }) {
+  let r = await post({ on });
+  if (r?.needsSudo) {
+    if (!(await askSudo(r.needsSudo))) return { state: "refused" };
+    r = await post({ on });
+  }
+  if (!r?.ok) return { state: "failed" };
+  if (!r.applied) return { state: "saved", mode: r.mode };
+  await waitBack();
+  return { state: "applied", mode: r.mode };
+}
+
+/** Issue 163: the switch, Apply, and what it means under the daemon. */
+function renderKeepRunning(host, ctx) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  const on0 = ctx.data.keep_running_after_logout === true;
+  const mode = ctx.data.service_mode;
+  // Set one way, running the other: Apply hasn't run (or didn't take).
+  const pending = mode && (mode === "always") !== on0;
+  host.innerHTML =
+    `<div data-keep style="display:grid;gap:8px">` +
+    `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
+    `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
+    `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
+    `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
+    `</div>`;
+  const box = host.querySelector("[data-keep-on]");
+  const warn = host.querySelector("[data-keep-warn]");
+  const btn = host.querySelector("[data-keep-apply]");
+  const note = host.querySelector("[data-keep-note]");
+  const say = (msg) => {
+    note.hidden = !msg;
+    note.textContent = msg || "";
+  };
+  box.addEventListener("change", () => {
+    warn.hidden = !box.checked;
+  });
+  btn.addEventListener("click", async () => {
+    const on = box.checked;
+    btn.disabled = true;
+    say("");
+    try {
+      const r = await applyKeepRunning(on, {
+        // The working pop-up while the server answers.
+        post: (body) =>
+          ctx.shell.busyAction(
+            "keep-running",
+            (headers) =>
+              ctx.shell.api("POST", "/api/keep-running-after-logout", body, {
+                headers,
+              }),
+            {
+              button: btn,
+              success: (r) =>
+                r?.needsSudo
+                  ? t("keep.needs")
+                  : r?.applied
+                    ? t("keep.s")
+                    : t("busy.saveS"),
+            },
+          ),
+        askSudo: async (need) => (await import("/topbar.js")).askSudo(need),
+        // Den restarts under its new jobs: wait for it, in place.
+        waitBack: () => restartDen({ confirm: false, post: false }),
+      });
+      say(
+        r.state === "applied"
+          ? t(on ? "keep.onNow" : "keep.offNow")
+          : r.state === "saved"
+            ? t(mode ? "keep.saved" : "keep.noService")
+            : r.state === "refused"
+              ? t("keep.refused")
+              : t("keep.failed"),
+      );
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 /** D64: Settings › Server's Restart Den button. */
 function drawRestart(host) {
   const label = window.denShell?.t?.("rd.setButton") ?? "Restart Den";
@@ -1566,8 +1653,8 @@ export const DEN_SETTINGS = [
   },
 
   {
-    // Issue 163: opt-in, off by default. On, `service install` runs Den as
-    // LaunchDaemons (mode always) that outlive a logout.
+    // Issue 163: opt-in, off by default. Apply re-installs Den's launchd
+    // jobs: on, as LaunchDaemons (mode always) that outlive a logout.
     id: "agents.keep_running",
     category: "agents",
     label: "Keep agents running after logout",
@@ -1582,11 +1669,8 @@ export const DEN_SETTINGS = [
       "background",
     ],
     scope: "user",
-    control: { type: "readonly" },
-    read: (ctx) =>
-      ctx.data.keep_running_after_logout === true
-        ? L("set.ui.on", "On")
-        : L("set.ui.off", "Off"),
+    control: { type: "custom", render: renderKeepRunning },
+    read: () => null,
   },
 
   // ── Command line ───────────────────────────────────────────────────────

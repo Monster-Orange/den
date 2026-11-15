@@ -288,6 +288,17 @@ case "$MODE" in
     if [ "$SVC_MODE" = always ] && [ -n "$SUDO" ]; then
       echo "… $SVC_MODE: LaunchDaemons running as $USER_N need your admin password once (sudo)"
     fi
+    # Issue 163: sudo runs for mode always, and to remove LaunchDaemons a
+    # login install replaces. Ask it once, before anything changes: a
+    # refusal leaves the jobs, and so the mode, as they were.
+    if [ -n "$SUDO" ] && { [ "$SVC_MODE" = always ] ||
+      [ -f "$(plist_for "$LABEL" always)" ] ||
+      [ -f "$(plist_for "$HOST_LABEL" always)" ]; }; then
+      if ! as_mode always true; then
+        echo "✗ sudo was refused: nothing changed, the jobs keep their mode" >&2
+        exit 1
+      fi
+    fi
     load_job "$HOST_LABEL" host
     load_job "$LABEL" web
     if [ "${DEN_SERVICE_READY_CHECK:-}" = external ]; then

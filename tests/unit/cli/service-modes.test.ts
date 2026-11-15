@@ -419,3 +419,69 @@ describe("keep running after logout: install follows the Setting", () => {
     expect(daemonUser(p.out)).toEqual([]);
   });
 });
+
+/**
+ * Issue 163: install asks sudo once, before it changes anything, whenever
+ * sudo will run (mode always, or LaunchDaemons to remove). A refusal
+ * leaves the jobs as they were: the old mode stays.
+ */
+describe("sudo refused: the old mode stays", () => {
+  /** A rig whose sudo always refuses (no password held). */
+  function refusing(): Rig {
+    const r = rig();
+    fs.writeFileSync(
+      r.env.DEN_SERVICE_SUDO,
+      `#!/bin/sh\necho "sudo $*" >> "${r.calls}"\necho "sudo: a password is required" >&2\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    return r;
+  }
+
+  mac("login → always: nothing is removed or loaded", () => {
+    const r = refusing();
+    const agents = path.join(r.home, "Library", "LaunchAgents");
+    fs.mkdirSync(agents, { recursive: true });
+    for (const l of ["web", "sessions"])
+      fs.writeFileSync(path.join(agents, `local.acme-test.${l}.plist`), "old");
+    const out = run(r, ["install"], { DEN_SERVICE_MODE: "always" });
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/nothing changed/);
+    for (const l of ["web", "sessions"])
+      expect(
+        fs.readFileSync(
+          path.join(agents, `local.acme-test.${l}.plist`),
+          "utf-8",
+        ),
+      ).toBe("old");
+    const calls = fs.readFileSync(r.calls, "utf-8");
+    expect(calls).not.toMatch(/launchctl (bootout|bootstrap|kickstart)/);
+    expect(fs.readdirSync(r.daemons)).toEqual([]);
+  });
+
+  mac("always → login: the daemons stay, no LaunchAgent is written", () => {
+    const r = refusing();
+    for (const l of ["web", "sessions"])
+      fs.writeFileSync(
+        path.join(r.daemons, `local.acme-test.${l}.plist`),
+        "old",
+      );
+    const out = run(r, ["install"]);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/nothing changed/);
+    expect(fs.readdirSync(r.daemons).sort()).toEqual([
+      "local.acme-test.sessions.plist",
+      "local.acme-test.web.plist",
+    ]);
+    expect(fs.existsSync(path.join(r.home, "Library", "LaunchAgents"))).toBe(
+      false,
+    );
+  });
+
+  mac("login → login asks sudo nothing", () => {
+    const r = refusing();
+    expect(run(r, ["install"]).status).toBe(0);
+    expect(
+      fs.existsSync(r.calls) ? fs.readFileSync(r.calls, "utf-8") : "",
+    ).not.toMatch(/^sudo/m);
+  });
+});

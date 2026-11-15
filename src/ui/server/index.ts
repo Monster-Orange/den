@@ -161,6 +161,7 @@ import {
   panesReconnect,
   agentsListWaits,
   agentsKeepRunningAfterLogout,
+  readWebServiceConfig,
   webUrlCheckSeconds,
   readReleaseConfig,
   resolveReleaseTarget,
@@ -303,6 +304,9 @@ import {
   setWebUrl,
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
+import { handleKeepRunningRoutes } from "./keep-running-routes.js";
+import { serviceJobState } from "../cli/doctor-where.js";
+import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
   decideReport,
   handleReportRoutes,
@@ -2472,6 +2476,27 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
+/**
+ * Issue 163: the mode of this install's launchd web job (login, always),
+ * or null when Den isn't installed as a service (or off macOS).
+ */
+function installedServiceMode(): "login" | "always" | null {
+  if (process.platform !== "darwin") return null;
+  try {
+    const { label } = readWebServiceConfig(
+      readDenConfig(),
+      getDistRoot(),
+      os.homedir(),
+    );
+    return (
+      serviceJobState(label, os.homedir(), process.getuid?.() ?? 0)?.mode ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -2893,6 +2918,43 @@ async function handleRequest(
       set: (url) => setWebUrl(url),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // Issue 163: Settings › Keep agents running after logout › Apply.
+  if (
+    handleKeepRunningRoutes(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      platform: () => process.platform,
+      installed: installedServiceMode,
+      sudoReady: () => hasSudoPassword() || hasPasswordlessSudo(),
+      current: () => {
+        try {
+          return agentsKeepRunningAfterLogout();
+        } catch {
+          return undefined;
+        }
+      },
+      save: (on) => {
+        const user = readUserConfig() as Record<string, unknown>;
+        const r = patchCliRows(user, { keep_running_after_logout: on });
+        if (!r.ok) throw new Error(r.error);
+        writeUserConfig(user as UserConfig);
+      },
+      install: (mode) =>
+        cmdService(["install", "--mode", mode], {
+          handOff: true,
+          // install.sh replaces this server's job: detached, with the
+          // sudo shim on its PATH (LK-0).
+          run: detachedRunner(
+            path.join(getStateDir(), "logs", "service-apply.log"),
+            () => getSudoEnv(),
+          ),
+          log: (l) => serverLog(l, "lifecycle"),
+        }),
+      cli: product().cli,
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -5753,6 +5815,8 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // Issue 163: the launchd job's mode now (null: not a service).
+        service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout (off when unset).
         keep_running_after_logout: (() => {
           try {

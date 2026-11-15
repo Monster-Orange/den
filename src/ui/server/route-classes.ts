@@ -392,6 +392,12 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/settings"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
+  // Issue 163: Keep agents running after logout › Apply (a person's only).
+  M(
+    ["POST"],
+    "/api/keep-running-after-logout",
+    "re-installs Den's launchd jobs in the chosen mode",
+  ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
     ["POST"],
