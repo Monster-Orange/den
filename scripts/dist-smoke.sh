@@ -333,6 +333,10 @@ SEC_HDR=""
 # the page's Origin and CSRF token (never echoed) reach an agent start.
 # The edge counts as local when its X-Forwarded-For says this machine; a
 # client it can't place (none, 0.4.5) or another machine signs in.
+# H1 (0.4.48): only with the edge's proof, which only a real edge has (its
+# path is tests/unit/edge/edge-proof-traefik.integration.test.ts, a real
+# Traefik). This install runs no edge: a hand-set X-Forwarded-For is what a
+# peer on the Docker network could send, and signs in.
 SEC_CSRF="$(curl -sS -H 'Sec-Fetch-Site: same-origin' "http://localhost:$PORT/api/session" |
   node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).csrf||""))}catch{}})')"
 SEC_BODY="$WORK/agent-start.json"
@@ -343,10 +347,11 @@ SEC_CSRF=""
 if [ -n "$code" ] && [ "$code" != "401" ] && [ "$code" != "403" ] && ! grep -q signin_required "$SEC_BODY"; then
   ok "agent start on localhost needs no sign-in (past the checks: $code)"
 else bad "agent start on localhost answered $code (a sign-in or a refused check)"; fi
-code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: acme.acme.localhost" \
+code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" \
   -H "X-Forwarded-For: 127.0.0.1" "http://localhost:$PORT/api/settings")"
-[ "$code" = "200" ] && ok "the edge hostname from this machine needs no sign-in: 200" ||
-  bad "the edge hostname from this machine answered $code"
+if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then
+  ok "the edge hostname with a hand-set X-Forwarded-For and no edge proof needs a sign-in: 401 signin_required"
+else bad "the edge hostname with a hand-set X-Forwarded-For and no edge proof answered $code"; fi
 code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" "http://localhost:$PORT/api/settings")"
 if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then
   ok "the edge hostname for a client it can't place needs a sign-in: 401 signin_required"

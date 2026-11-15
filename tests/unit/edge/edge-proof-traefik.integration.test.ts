@@ -1,0 +1,264 @@
+/**
+ * H1 (0.4.48) on the real path: a real Traefik, in a throwaway container,
+ * in front of a real Den web server, with an edge set up before 0.4.48
+ * (its dynamic/edge.yml has no proof). Den adds the proof at its start;
+ * the edge picks the file up by watching it, and from then on:
+ *
+ *   - a request from this machine through the edge hostname needs no
+ *     sign-in (the edge carries the proof, so Den believes where it says
+ *     the request came from; with web.edge_unattested: local, as a Docker
+ *     gateway's address has needed since SEC-2a);
+ *   - the same request straight to Den's port, with X-Forwarded-For set by
+ *     hand and no proof (what a peer on the Docker network could send),
+ *     signs in: 401 signin_required;
+ *   - a proof the client sends through the edge is replaced by the edge's.
+ *
+ * Each Traefik image an install may run (the pinned default and v2.11).
+ * Needs Docker; DEN_SKIP_DOCKER_TESTS=1 (or no Docker) skips it. Never
+ * touches any other edge: its containers have their own names and are
+ * removed, and every port is a free one.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import { execFileSync } from "child_process";
+import * as crypto from "crypto";
+import * as fs from "fs";
+import * as http from "http";
+import * as os from "os";
+import * as path from "path";
+import type { ChildProcess } from "child_process";
+import { DEFAULT_TRAEFIK_IMAGE } from "../../../src/shared/edge/config.js";
+import { edgeCommand } from "../../../src/shared/edge/render.js";
+import type { EdgeConfig } from "../../../src/shared/edge/types.js";
+import { startDenServer, stopServer } from "../../child-servers.js";
+import { dockerOk, freePort } from "./helpers/docker-edge.js";
+
+const ENGINE = path.join(__dirname, "../../..");
+const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
+const IMAGES = [DEFAULT_TRAEFIK_IMAGE, "traefik:v2.11"];
+const tag = `${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
+
+let ok = false;
+let tmp = "";
+let denPort = 0;
+let server: ChildProcess | null = null;
+const containers: string[] = [];
+
+interface Reply {
+  status: number;
+  body: string;
+}
+function get(
+  port: number,
+  p: string,
+  headers: Record<string, string>,
+): Promise<Reply> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: p,
+        method: "GET",
+        agent: false,
+        headers,
+      },
+      (res) => {
+        let t = "";
+        res.on("data", (d: Buffer) => (t += d.toString()));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: t }));
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+const edgeState = () => path.join(tmp, "edge-state");
+const edgeYml = () => path.join(edgeState(), "dynamic", "edge.yml");
+/** Den's route's hostname (the product's name on the edge's domain). */
+const denHost = () => "den.acme.localhost";
+
+function cfg(): EdgeConfig {
+  return {
+    org: "acme",
+    domain: "acme.localhost",
+    aliases: [],
+    image: DEFAULT_TRAEFIK_IMAGE,
+    workspaces: [],
+    routes: {},
+    ports: null,
+    stateDir: edgeState(),
+    tls: { strategy: "none" },
+    tlsFrom: "explicit",
+    httpsRedirect: false,
+    dockerLabels: null,
+    include: null,
+    mounts: {},
+    networks: [],
+    args: [],
+  } as unknown as EdgeConfig;
+}
+
+beforeAll(async () => {
+  ok = dockerOk();
+  if (!ok) return;
+  // Under the home dir: Docker Desktop and OrbStack share it with the VM.
+  tmp = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.homedir(), ".den-test-edge-proof-")),
+  );
+  denPort = await freePort();
+  const root = path.join(tmp, "dist");
+  fs.mkdirSync(path.join(root, "config"), { recursive: true });
+  fs.writeFileSync(path.join(root, "den.yml"), "product:\n  name: den\n");
+  fs.writeFileSync(
+    path.join(root, "config", "den.yml"),
+    [
+      "environments: [local]",
+      "web:",
+      `  port: ${denPort}`,
+      "edge:",
+      "  org: acme",
+      "  domain: acme.localhost",
+      "  tls: none",
+      "",
+    ].join("\n"),
+  );
+  // Docker Desktop and OrbStack hand the edge their gateway's address for
+  // this machine (and Linux its bridge's): a client Den can't place, which
+  // signs in unless the person says local (SEC-2a, before H1).
+  fs.mkdirSync(path.join(root, "config", "local"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "config", "local", "user.yml"),
+    "web:\n  edge_unattested: local\n",
+  );
+  // An edge set up before 0.4.48: an edge.yml, no proof yet.
+  fs.mkdirSync(path.dirname(edgeYml()), { recursive: true });
+  fs.writeFileSync(edgeYml(), "# set up before 0.4.48\n");
+  const home = path.join(tmp, "home");
+  const started = await startDenServer(
+    TSX,
+    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        DEN_ROOT: root,
+        DEN_ENGINE_ROOT: ENGINE,
+        DEN_EDGE_DIR: edgeState(),
+        DEN_HOME: path.join(home, ".den"),
+        HOME: home,
+        DEN_NO_OPEN: "1",
+        NO_COLOR: "1",
+        PORT: String(denPort),
+      },
+    },
+    // The port the edge's route names (web.port), not one of its own.
+    { timeoutMs: 40_000, pickPort: () => Promise.resolve(denPort) },
+  );
+  server = started.server;
+  // Den adds the proof to the edge's file once it listens, on its route.
+  const until = Date.now() + 20_000;
+  while (!fs.readFileSync(edgeYml(), "utf8").includes("X-Den-Edge-Proof"))
+    if (Date.now() > until) throw new Error("Den never wrote the proof");
+    else await new Promise((r) => setTimeout(r, 200));
+}, 90_000);
+
+afterAll(async () => {
+  for (const c of containers)
+    try {
+      execFileSync("docker", ["rm", "-f", c], {
+        stdio: "ignore",
+        timeout: 60_000,
+      });
+    } catch {
+      /* already gone */
+    }
+  if (server) await stopServer(server);
+  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+/** A throwaway edge on `image`, reading Den's dynamic folder. */
+async function startEdge(image: string): Promise<number> {
+  const name = `den-test-edge-proof-${image.replace(/\W+/g, "-")}-${tag}`;
+  const port = await freePort();
+  containers.push(name);
+  execFileSync(
+    "docker",
+    [
+      "run",
+      "-d",
+      "--name",
+      name,
+      "-p",
+      `127.0.0.1:${port}:80`,
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      "-v",
+      `${path.dirname(edgeYml())}:/etc/edge/dynamic:ro`,
+      image,
+      ...edgeCommand(cfg()),
+    ],
+    { stdio: "ignore", timeout: 240_000 },
+  );
+  // Up when Den's route answers through it.
+  const until = Date.now() + 60_000;
+  for (;;) {
+    const r = await get(port, "/api/health", { host: denHost() }).catch(
+      () => null,
+    );
+    if (r && r.status !== 404 && r.status !== 502) return port;
+    if (Date.now() > until) {
+      const rules = fs
+        .readFileSync(edgeYml(), "utf8")
+        .split("\n")
+        .filter((l) => /rule:|url:|entryPoints/.test(l))
+        .join("\n");
+      let log = "";
+      try {
+        log = execFileSync("docker", ["logs", "--tail", "15", name], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (e) {
+        log = String((e as { stderr?: string }).stderr ?? e);
+      }
+      throw new Error(
+        `the ${image} edge never routed (last: ${r?.status ?? "no answer"})\n${rules}\n${log}`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+describe.each(IMAGES)("H1 on a real edge (%s)", (image) => {
+  let edgePort = 0;
+  beforeAll(async () => {
+    if (ok) edgePort = await startEdge(image);
+  }, 300_000);
+
+  it("this machine through the edge hostname: no sign-in", async () => {
+    if (!ok) return;
+    const r = await get(edgePort, "/api/settings", { host: denHost() });
+    expect([r.status, /signin_required/.test(r.body)]).toEqual([200, false]);
+  }, 30_000);
+
+  it("a client's own proof through the edge is replaced by the edge's", async () => {
+    if (!ok) return;
+    const r = await get(edgePort, "/api/settings", {
+      host: denHost(),
+      "x-den-edge-proof": "0".repeat(64),
+    });
+    expect(r.status).toBe(200);
+  }, 30_000);
+});
+
+describe("H1 without the edge", () => {
+  it("straight to Den's port with X-Forwarded-For by hand and no proof: 401 signin_required, whatever edge_unattested says", async () => {
+    if (!ok) return;
+    const r = await get(denPort, "/api/settings", {
+      host: denHost(),
+      "x-forwarded-for": "127.0.0.1",
+    });
+    expect([r.status, /signin_required/.test(r.body)]).toEqual([401, true]);
+  }, 30_000);
+});
