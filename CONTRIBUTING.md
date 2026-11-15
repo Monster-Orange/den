@@ -41,6 +41,11 @@ DEN_ORG_NAMES_FILE=<patterns file> node scripts/org-name-gate.mjs
 
 A new test, lint rule or gate must be seen failing before it is trusted.
 
+On a busy machine, fewer jest workers means fewer flakes from load:
+`DEN_TEST_WORKERS` sets how many (a number, or a percentage such as
+`50%`). Unset, jest picks its own. `npm run preflight` uses 8 unless it is
+set.
+
 The sign-in smoke (`tests/unit/server/d17-claim.browser.test.ts`) runs in
 Chromium by default; `DEN_D17_BROWSER=firefox` or `webkit` runs it in the
 others. WebKit on macOS needs a GUI session: when `launchctl managername`

@@ -1,4 +1,12 @@
+// den#143: on a busy machine fewer workers means fewer load flakes. A
+// setting, never a number here: DEN_TEST_WORKERS (8, or 50%); unset or
+// blank, jest's own default (CI). `npm run preflight` asks for 8.
+const workers = (process.env.DEN_TEST_WORKERS ?? "").trim();
+
 export default {
+  ...(workers
+    ? { maxWorkers: /^\d+$/.test(workers) ? Number(workers) : workers }
+    : {}),
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
   roots: ["<rootDir>/tests"],
