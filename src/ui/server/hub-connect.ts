@@ -348,7 +348,7 @@ function linkedWords(
   l: { linked: string[]; unclear: string[] } | { cannot: true },
 ): string {
   if ("cannot" in l)
-    return " Hub can't link projects yet: link them in Settings › Agents › Link projects to Hub when it can.";
+    return " Hub can't link projects yet: link them in Settings › Agents › Unclear matches when it can.";
   const n = l.linked.length;
   const m = l.unclear.length;
   if (!n && !m) return "";

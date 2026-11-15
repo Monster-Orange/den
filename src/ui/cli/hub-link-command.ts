@@ -6,8 +6,8 @@
  * A person's ask only: refused inside an agent's session.
  *
  * #68: `<cli> hub link --suggested [--json]` lists every unlinked project
- * with Hub's suggestion and gives the Settings link that links the ticked
- * ones in one go. It never links by itself.
+ * with Hub's suggestion and gives the Settings link (Agents › Unclear
+ * matches, issue 167) that links each. It never links by itself.
  */
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import {
@@ -22,7 +22,7 @@ import { product } from "../../shared/product.js";
 export const HUB_LINK_USAGE =
   "hub link -p <project> [<hub project> | --none] [--json] | hub link --suggested [--json]";
 
-/** Where Settings links every suggestion in one confirm (#68). */
+/** Where Settings links each suggestion (#68; Unclear matches, issue 167). */
 export const HUB_LINK_ALL_PAGE = "/settings#agents.hub_link_all";
 
 export interface HubLinkDeps {
@@ -276,9 +276,7 @@ async function suggestedAll(
   } else {
     out(`Hub suggests (${todo.length}):`);
     for (const r of todo) out(`  ${r.project} → ${label(r.suggestion!)}`);
-    out(
-      `Link them in one go: ${page ?? "Settings › Agents › Link projects to Hub"}`,
-    );
+    out(`Link each: ${page ?? "Settings › Agents › Unclear matches"}`);
     out(`Or one at a time: ${cli} hub link -p <project> <hub project>`);
   }
   for (const r of lone)

@@ -910,8 +910,6 @@
       "When an agent's conversation has compacted this many times (or its pull request merged), Den starts it again from its handoff: a fresh conversation, the same name, persona, project and folder. Auto asks the agent for its handoff when it is idle, then relaunches it by itself; Ask shows buttons on the agent; Off does nothing. Overrides win over this install's value: agent, persona in a project, persona, project, service. __DEN_CLI__ agents rotate",
     "set.agents.hub.d":
       "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its company comes from this install's token, its Hub project from Project setup › Hub project.",
-    "set.agents.hub_link_all.d":
-      "Every project here with Hub's suggestion for it (the same repos, or the same name). Tick the ones to link and link them in one go; each one can still be changed in Project setup › Hub project.",
     "set.agents.hub_github.d":
       "How many of your company's GitHub repos Den Hub can read, asked live from Hub, with GitHub's link to give it access or change its repos.",
     "set.agents.personas.d":
@@ -1450,14 +1448,7 @@
     "hubgh.change": "Change repos",
     "set.distribution.hub_github": "Den Hub's GitHub access",
     "set.agents.hub_github": "Den Hub's GitHub access",
-    "set.agents.hub_link_all": "Link projects to Hub",
-    "hubla.unclear": "Den can't tell which Hub project fits. Pick one.",
-    "hubla.linkTicked": "Link ticked",
-    "hubla.linkedTo": "linked to",
-    "hubla.noSuggestion":
-      "Hub has no suggestion; pick one in Project setup › Hub project.",
     "hubla.noProjects": "No projects here yet.",
-    "hubla.nothing": "Nothing left to link.",
     "hubla.linked.one": "Linked {n} project.",
     "hubla.linked": "Linked {n} projects.",
     "hubla.skipped": "Skipped {project}: {why}.",
@@ -1465,6 +1456,22 @@
     "hubla.why.linked": "already linked",
     "hubla.why.offline": "Hub didn't answer",
     "hubla.why.stale": "no longer Hub's suggestion",
+    "set.agents.hub_link_all": "Unclear matches",
+    "set.agents.hub_link_all.d":
+      "Shown only when Den can't tell which Hub project fits a project: two Hub projects share its repos, or its repos and its name point to different ones. Pick one for each. Nothing is filed for that project until you do.",
+    "ub.intro":
+      "Den couldn't tell which Hub project fits these projects. Pick one for each; nothing is filed for a project until you pick.",
+    "ub.why.repos": "Two Hub projects share its repos",
+    "ub.why.split": "Its repos match one Hub project; its name matches another",
+    "ub.why.names": "Two Hub projects have its name",
+    "ub.pick": "Pick the Hub project for {project}",
+    "ub.link": "Link",
+    "ub.waiting": "Nothing is filed for this project yet.",
+    "ub.empty":
+      "All your projects are linked to a Hub project. Den lists a project here only when it can't tell which one fits.",
+    "ub.repos": "same repos",
+    "ub.name": "same name",
+    "ub.clear": "{project}: Hub suggests",
     "set.workspace.editor": "IDE for this project",
     "set.agents.runtimes": "Runtimes",
     "set.server.self_update": "New versions",

@@ -325,7 +325,7 @@ describe("finish: what comes back from Hub", () => {
       [{ linked: [], unclear: [] }, "Connected to Hub (Acme Co)."],
       [
         { cannot: true },
-        "Connected to Hub (Acme Co). Hub can't link projects yet: link them in Settings › Agents › Link projects to Hub when it can.",
+        "Connected to Hub (Acme Co). Hub can't link projects yet: link them in Settings › Agents › Unclear matches when it can.",
       ],
     ] as const) {
       const h = harness({ linkAfter: async () => after });

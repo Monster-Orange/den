@@ -57,7 +57,7 @@ export const HUB_HELP = {
     "",
     "{cli} hub link --suggested [--json]",
     "    Every unlinked project with Hub's suggestion, and the Settings page",
-    "    that links the ticked ones in one go. Links nothing itself.",
+    "    that links each (Agents › Unclear matches). Links nothing itself.",
     "",
     "From an agent Den started: through Den, with that agent's own Den",
     "token (Den adds Hub's). Never a Hub token here.",

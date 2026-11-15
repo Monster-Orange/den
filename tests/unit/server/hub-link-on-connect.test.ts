@@ -104,31 +104,108 @@ describe("Connect links the clear ones", () => {
   });
 });
 
-describe("Settings › Agents › Link projects to Hub: the unclear ones", () => {
-  it("each choice to pick, none picked; Link ticked is there", async () => {
-    const { hubLinkAllHtml } =
-      await import("../../../src/ui/server/public/settings-registry.js");
-    const html = hubLinkAllHtml(
-      {
-        connected: true,
-        projects: [
-          {
-            project: "south",
-            hub: null,
-            suggestion: null,
-            unclear: [P("s1", "repo"), P("s2", "name")],
-          },
-        ],
-      },
-      (k: string) => `[${k}]`,
+describe("why a match is unclear (issue 167)", () => {
+  it("two by repos; repos and name apart; two by name", async () => {
+    const { unclearReason } =
+      await import("../../../src/ui/server/hub-link-all-routes.js");
+    expect(unclearReason([P("a", "repo"), P("b", "repo")])).toBe("repos");
+    expect(
+      unclearReason([P("a", "repo"), P("b", "repo"), P("c", "name")]),
+    ).toBe("repos");
+    expect(unclearReason([P("a", "repo"), P("b", "name")])).toBe("split");
+    expect(unclearReason([P("a", "name"), P("b", "name")])).toBe("names");
+  });
+
+  it("GET says why on each unclear one", async () => {
+    const http = await import("http");
+    const { hubLinkAllRoute, HUB_LINK_ALL_PATH } =
+      await import("../../../src/ui/server/hub-link-all-routes.js");
+    const t = deps({ south: [P("s1", "repo"), P("s2", "name")] });
+    const s = http.createServer(
+      (req, res) => void hubLinkAllRoute(req, res, t.d),
     );
-    expect(html).toContain('data-hubla-state="todo"');
-    expect(html).toContain("[hubla.unclear]");
-    const radios = html.match(/<input type="radio"[^>]*>/g) ?? [];
-    expect(radios).toHaveLength(2);
-    expect(radios.every((r) => /name="hubla-pick-south"/.test(r))).toBe(true);
+    await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
+    try {
+      const port = (s.address() as { port: number }).port;
+      const b = (await (
+        await fetch(`http://127.0.0.1:${port}${HUB_LINK_ALL_PATH}`)
+      ).json()) as { projects: { project: string; reason?: string }[] };
+      expect(b.projects.find((r) => r.project === "south")?.reason).toBe(
+        "split",
+      );
+    } finally {
+      s.close();
+    }
+  });
+});
+
+/**
+ * Issue 167 (mock v6 B): Settings › Agents › Unclear matches. Each unclear
+ * project in its own group: why, that nothing is filed for it yet, one
+ * radio per Hub project (none picked), and its own Link, off until a pick.
+ * Nothing unclear: the empty line. A clear one not linked yet keeps its own
+ * Link, below.
+ */
+describe("Settings › Agents › Unclear matches", () => {
+  const tt = (k: string, v?: Record<string, unknown>) =>
+    `[${k}${v ? `:${Object.values(v).join("|")}` : ""}]`;
+  const html = async (projects: unknown[]) =>
+    (
+      await import("../../../src/ui/server/public/settings-registry.js")
+    ).hubLinkAllHtml({ connected: true, projects }, tt);
+
+  it("one group per unclear project: why, nothing filed, radios, its own Link off", async () => {
+    const h = await html([
+      {
+        project: "south",
+        hub: null,
+        suggestion: null,
+        reason: "repos",
+        unclear: [P("s1", "repo"), P("s2", "repo")],
+      },
+      {
+        project: "west",
+        hub: null,
+        suggestion: null,
+        reason: "split",
+        unclear: [P("w1", "repo"), P("w2", "name")],
+      },
+      { project: "east", hub: P("e1"), suggestion: null },
+    ]);
+    expect(h).toContain('data-hubla-state="todo"');
+    expect(h).toContain("[ub.intro]");
+    const groups = h.match(/<fieldset[^>]*data-hubla-row="[^"]+"/g) ?? [];
+    expect(groups).toHaveLength(2);
+    expect(h).toContain("[ub.why.repos]");
+    expect(h).toContain("[ub.why.split]");
+    expect(h).toContain("[ub.waiting]");
+    expect(h).toMatch(/role="radiogroup"[^>]*aria-label="\[ub.pick:south\]"/);
+    const radios = h.match(/<input type="radio"[^>]*>/g) ?? [];
+    expect(radios).toHaveLength(4);
     expect(radios.some((r) => / checked/.test(r))).toBe(false);
-    expect(radios[0]).toContain('data-hubla-hub="s1"');
-    expect(html).toContain('data-hubla-action="link"');
+    const links = h.match(/<button[^>]*data-hubla-link="[^"]+"[^>]*>/g) ?? [];
+    expect(links).toHaveLength(2);
+    expect(links.every((b) => / disabled/.test(b))).toBe(true);
+    // A linked one isn't listed; no tick table.
+    expect(h).not.toContain("east");
+    expect(h).not.toContain('type="checkbox"');
+    expect(h).not.toContain("hubla.linkTicked");
+  });
+
+  it("nothing unclear: the empty line", async () => {
+    const h = await html([{ project: "east", hub: P("e1"), suggestion: null }]);
+    expect(h).toContain('data-hubla-state="done"');
+    expect(h).toContain("[ub.empty]");
+    expect(h).not.toContain("<fieldset");
+  });
+
+  it("a clear one not linked yet: its own Link, below", async () => {
+    const h = await html([
+      { project: "north", hub: null, suggestion: P("n1", "repo") },
+    ]);
+    expect(h).toContain("[ub.empty]");
+    expect(h).toMatch(
+      /data-hubla-clear="north"[\s\S]*data-hubla-link="north"[^>]*data-hubla-hub="n1"/,
+    );
   });
 });

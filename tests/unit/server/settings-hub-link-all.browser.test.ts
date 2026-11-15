@@ -1,11 +1,12 @@
 /**
- * #68: Settings › Agents › Link projects to Hub.
+ * #68, issue 167 (mock v6 B): Settings › Agents › Unclear matches.
  *
  * Not connected (the real server, no Hub): says so and where to connect.
- * Connected: each project with Hub's suggestion, the unlinked ones with a
- * suggestion ticked; nothing is linked until Link ticked, which sends only
- * the ticked pairs, then says how many were linked and what was skipped
- * and why. In Japanese the row is Japanese. Fits a phone.
+ * Connected: one group per project Den can't match, saying why and that
+ * nothing is filed for it yet, its radios none picked and its own Link off
+ * until a pick; Link sends that one pair, then says how many were linked
+ * and what was skipped and why. Nothing unclear: the empty line. In
+ * Japanese the row is Japanese. Fits a phone, with 40px targets.
  *
  * The demo distribution (helpers/agents-page-server.ts). Needs Playwright's
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names only.
@@ -102,18 +103,37 @@ const rowText = (p: Page) => p.$eval(ROW, (el) => el.textContent ?? "");
 const fits = (p: Page) =>
   p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 
+const SOUTH = { id: "proj_south3", slug: "south-studio", name: "South Studio" };
+
 const suggestions = () => ({
   ok: true,
   connected: true,
   projects: [
-    { project: "north", hub: null, suggestion: { ...BACK, why: "repo" } },
-    { project: "south", hub: null, suggestion: { ...BLOG, why: "name" } },
-    { project: "west", hub: null, suggestion: null },
+    {
+      project: "north",
+      hub: null,
+      suggestion: null,
+      reason: "repos",
+      unclear: [
+        { ...BACK, why: "repo" },
+        { ...SOUTH, why: "repo" },
+      ],
+    },
+    {
+      project: "south",
+      hub: null,
+      suggestion: null,
+      reason: "split",
+      unclear: [
+        { ...BLOG, why: "repo" },
+        { ...SOUTH, why: "name" },
+      ],
+    },
     { project: "east", hub: BLOG, suggestion: null },
   ],
 });
 
-describe("Settings › Agents › Link projects to Hub (#68)", () => {
+describe("Settings › Agents › Unclear matches (#68, issue 167)", () => {
   it("not connected (the real server): says so and where to connect", async () => {
     if (skip()) return;
     const { p } = await page();
@@ -125,7 +145,7 @@ describe("Settings › Agents › Link projects to Hub (#68)", () => {
     await p.context().close();
   }, 60_000);
 
-  it("suggestions ticked; Link ticked sends only the ticked pairs, then says what happened", async () => {
+  it("a group per unclear project; its Link waits for a pick, then sends that pair", async () => {
     if (skip()) return;
     let done = false;
     const { p, posts } = await page((method) => {
@@ -147,29 +167,55 @@ describe("Settings › Agents › Link projects to Hub (#68)", () => {
       return b;
     });
     const text = await rowText(p);
+    expect(text).toContain("Unclear matches");
+    expect(text).toContain("Two Hub projects share its repos");
     expect(text).toContain(
-      "north → Back office (back-office): has these repos",
+      "Its repos match one Hub project; its name matches another",
     );
-    expect(text).toContain("south → Blog (blog): same name");
-    expect(text).toContain("west: Hub has no suggestion");
-    expect(text).toContain("east: linked to Blog (blog)");
+    expect(text).toContain("Nothing is filed for this project yet.");
+    expect(text).not.toContain("east");
     expect(posts).toEqual([]);
-    const north = p.locator(`${ROW} [data-hubla-pick="north"]`);
-    const south = p.locator(`${ROW} [data-hubla-pick="south"]`);
-    expect(await north.isChecked()).toBe(true);
-    expect(await south.isChecked()).toBe(true);
-    await south.uncheck();
-    await p.click(`${ROW} [data-hubla-action="link"]`);
+    const link = p.locator(`${ROW} [data-hubla-link="north"]`);
+    expect(await link.isDisabled()).toBe(true);
+    await p.check(
+      `${ROW} [data-hubla-pick="north"][data-hubla-hub="${BACK.id}"]`,
+    );
+    expect(await link.isDisabled()).toBe(false);
+    // The other project's Link stays off.
+    expect(
+      await p.locator(`${ROW} [data-hubla-link="south"]`).isDisabled(),
+    ).toBe(true);
+    // 40px touch targets.
+    const h = await p.$eval(
+      `${ROW} .hubla-choice`,
+      (el) => el.getBoundingClientRect().height,
+    );
+    expect(h).toBeGreaterThanOrEqual(40);
+    await link.click();
     await p.waitForSelector(`${ROW} [data-hubla-result]:not([hidden])`);
     expect(posts).toEqual([{ links: [{ project: "north", hub: BACK.id }] }]);
     expect(await rowText(p)).toContain("Linked 1 project.");
-    expect(await rowText(p)).toContain("north: linked to Back office");
+    expect(await p.$(`${ROW} [data-hubla-row="north"]`)).toBeNull();
     expect(await fits(p)).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
 
-  it("a skipped pair says why, in Japanese", async () => {
+  it("nothing unclear: the empty line", async () => {
+    if (skip()) return;
+    const { p } = await page(() => ({
+      ok: true,
+      connected: true,
+      projects: [{ project: "east", hub: BLOG, suggestion: null }],
+    }));
+    expect(await rowText(p)).toContain(
+      "All your projects are linked to a Hub project.",
+    );
+    expect(await p.$(`${ROW} fieldset`)).toBeNull();
+    await p.context().close();
+  }, 60_000);
+
+  it("a skipped pick says why, in Japanese", async () => {
     if (skip()) return;
     try {
       const { p } = await page(
@@ -189,8 +235,9 @@ describe("Settings › Agents › Link projects to Hub (#68)", () => {
             : suggestions(),
         "ja",
       );
-      expect(await rowText(p)).toContain("チェックしたものをリンク");
-      await p.click(`${ROW} [data-hubla-action="link"]`);
+      expect(await rowText(p)).toContain("判断できない候補");
+      await p.check(`${ROW} [data-hubla-pick="north"]`);
+      await p.click(`${ROW} [data-hubla-link="north"]`);
       await p.waitForSelector(`${ROW} [data-hubla-result]:not([hidden])`);
       const t = await rowText(p);
       expect(t).toContain("north をスキップ: Hub の候補ではなくなりました");

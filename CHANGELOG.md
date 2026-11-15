@@ -16,6 +16,11 @@ config and manifest changes a distribution must make to move to it under
   that says what changes. A project waiting for a pick says nothing is
   filed for it yet and links to the pick. Not linked: a list with Hub's
   suggestion first, and Link. Not connected: Connect to Hub.
+  Settings › Agents › Link projects to Hub is now Unclear matches: one
+  group per project Den can't match, saying why (two Hub projects share
+  its repos, or its repos match one and its name another) and that nothing
+  is filed for it yet, with a choice per Hub project and its own Link,
+  off until you pick. When every match is clear, it says so.
 
 ### Fixed
 

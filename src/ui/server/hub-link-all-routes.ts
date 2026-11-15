@@ -1,12 +1,14 @@
 /**
- * #68: link every project to Hub's suggestion in one confirm (Settings ›
- * Agents › Link projects to Hub; `<cli> hub link --suggested` sends the
- * person there).
+ * #68: link projects to Hub's suggestion (Settings › Agents › Unclear
+ * matches, issue 167; `<cli> hub link --suggested` sends the person
+ * there).
  *
  *   GET  /api/hub/link-suggestions → { connected, projects: [{project,
- *        hub, suggestion}] }: each project, its Hub project (or null), and
- *        Hub's first suggestion for an unlinked one (the same repos, then
- *        the same name). Nothing is written.
+ *        hub, suggestion, unclear?, reason?}] }: each project, its Hub
+ *        project (or null), and Hub's first suggestion for an unlinked one
+ *        (the same repos, then the same name); one Den can't match lists
+ *        each choice (unclear) and why (reason, unclearReason). Nothing is
+ *        written.
  *   POST { links: [{project, hub: <Hub project id>}] } → { linked,
  *        skipped }: links each pair that is still that project's
  *        suggestion and still unlinked; the rest are skipped, saying why.
@@ -62,6 +64,18 @@ export function hubMatchOf(
 }
 
 /**
+ * Issue 167: why a match is unclear, for Settings › Agents › Unclear
+ * matches. repos: two Hub projects share its repos. split: its repos
+ * match one Hub project, its name another. names: two have its name.
+ */
+export function unclearReason(
+  unclear: Suggestion[],
+): "repos" | "split" | "names" {
+  const byRepo = unclear.filter((s) => s.why === "repo").length;
+  return byRepo >= 2 ? "repos" : byRepo === 1 ? "split" : "names";
+}
+
+/**
  * 0.4.45 (projects follow Connect): link every unlinked project whose Hub
  * project is clear; the unclear ones wait for a person's pick. Hub can't
  * suggest (an older Hub, or it doesn't answer): nothing is linked.
@@ -113,6 +127,7 @@ export async function hubLinkAllRoute(
             project,
             hub: null,
             suggestion: null,
+            reason: unclearReason(m.unclear),
             unclear: m.unclear.map((x) => ({
               id: x.id,
               slug: x.slug,
@@ -261,7 +276,7 @@ export async function defaultLinkAllDeps(
   };
 }
 
-/** Where a person picks: Settings › Agents › Link projects to Hub. */
+/** Where a person picks: Settings › Agents › Unclear matches. */
 export const HUB_PICK_LINK = "/settings#agents.hub_link_all";
 
 /**

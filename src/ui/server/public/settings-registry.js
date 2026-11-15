@@ -1523,10 +1523,11 @@ export const DEN_SETTINGS = [
   {
     id: "agents.hub_link_all",
     category: "agents",
-    label: "Link projects to Hub",
+    // Issue 167 (mock v6 B): the anchor stays; the row is Unclear matches.
+    label: "Unclear matches",
     description:
-      "Every project here with Hub's suggestion for it (the same repos, or the same name). Tick the ones to link and link them in one go; each one can still be changed in Project setup › Hub project.",
-    keywords: ["hub", "link", "projects", "suggested", "all", "bulk"],
+      "Shown only when Den can't tell which Hub project fits a project: two Hub projects share its repos, or its repos and its name point to different ones. Pick one for each. Nothing is filed for that project until you do.",
+    keywords: ["hub", "link", "projects", "unclear", "pick", "match"],
     scope: "user",
     control: { type: "custom", render: renderHubLinkAll },
     read: () => null,
@@ -2811,9 +2812,12 @@ function wireHubProject(host, ctx, url, t, b) {
 }
 
 /**
- * #68: every project with Hub's suggestion; the unlinked ones with a
- * suggestion are ticked; Link ticked links them in one POST and says what
- * was skipped and why.
+ * Issue 167 (mock v6 B): Settings › Agents › Unclear matches. Each project
+ * Den can't match in its own group: why (b.projects[].reason), that
+ * nothing is filed for it yet, one radio per Hub project (none picked),
+ * and its own Link, off until a pick. Nothing unclear: the empty line. A
+ * clear one not linked yet (Hub didn't answer at Connect) keeps its own
+ * Link, below.
  */
 export function hubLinkAllHtml(b, t) {
   if (!b || !b.connected)
@@ -2822,51 +2826,54 @@ export function hubLinkAllHtml(b, t) {
       `<p class="set-note">${escR(t("hubp.offline"))} <a href="/settings#agents.hub">${escR(t("hubp.connect"))}</a></p></div>`
     );
   const rows = Array.isArray(b.projects) ? b.projects : [];
-  const name = (p) =>
-    p.name === p.slug ? escR(p.slug) : `${escR(p.name)} (${escR(p.slug)})`;
-  const why = (w) => (w === "repo" ? t("hubp.whyRepo") : t("hubp.whyName"));
-  const unclear = (r) => Array.isArray(r.unclear) && r.unclear.length > 0;
-  const todo = rows.filter((r) => !r.hub && (r.suggestion || unclear(r)));
   if (!rows.length)
     return `<div data-hubla data-hubla-state="none"><p class="set-note">${escR(t("hubla.noProjects"))}</p></div>`;
-  const line = (r) => {
-    if (r.hub)
-      return `<li data-hubla-row="${escR(r.project)}" data-hubla-linked><span class="rt-dot ok"></span> ${escR(r.project)}: ${escR(t("hubla.linkedTo"))} ${name(r.hub)}</li>`;
-    // 0.4.45: Den can't tell which fits: each choice, none picked.
-    if (unclear(r)) {
-      const group = `hubla-pick-${escR(r.project)}`;
-      return (
-        `<li data-hubla-row="${escR(r.project)}" data-hubla-unclear><fieldset class="hubla-pick">` +
-        `<legend><span class="rt-dot warn"></span> ${escR(r.project)}: ${escR(t("hubla.unclear"))}</legend>` +
-        r.unclear
-          .map((c, i) => {
-            const id = `${group}-${i}`;
-            return (
-              `<label for="${id}"><input type="radio" id="${id}" name="${group}" data-hubla-pick="${escR(r.project)}" data-hubla-hub="${escR(c.id)}"> ` +
-              `${name(c)}${c.why ? `: ${escR(why(c.why))}` : ""}</label>`
-            );
-          })
-          .join("") +
-        `</fieldset></li>`
-      );
-    }
-    if (!r.suggestion)
-      return `<li data-hubla-row="${escR(r.project)}"><span class="rt-dot warn"></span> ${escR(r.project)}: ${escR(t("hubla.noSuggestion"))}</li>`;
-    const id = `hubla-${escR(r.project)}`;
+  const name = (p) =>
+    p.name === p.slug ? escR(p.slug) : `${escR(p.name)} (${escR(p.slug)})`;
+  const unclear = rows.filter(
+    (r) => !r.hub && Array.isArray(r.unclear) && r.unclear.length > 0,
+  );
+  const clear = rows.filter(
+    (r) => !r.hub && r.suggestion && !unclear.includes(r),
+  );
+  const reason = (r) =>
+    t(
+      `ub.why.${["repos", "split", "names"].includes(r.reason) ? r.reason : "repos"}`,
+    );
+  const group = (r) => {
+    const g = `hubla-pick-${escR(r.project)}`;
     return (
-      `<li data-hubla-row="${escR(r.project)}"><label for="${id}">` +
-      `<input type="checkbox" id="${id}" data-hubla-pick="${escR(r.project)}" data-hubla-hub="${escR(r.suggestion.id)}" checked> ` +
-      `${escR(r.project)} → ${name(r.suggestion)}` +
-      (r.suggestion.why ? `: ${escR(why(r.suggestion.why))}` : "") +
-      `</label></li>`
+      `<fieldset class="hubla-group" data-hubla-row="${escR(r.project)}">` +
+      `<legend><b>${escR(r.project)}</b></legend>` +
+      `<p class="set-note">${escR(reason(r))}</p>` +
+      `<p class="set-note">${escR(t("ub.waiting"))}</p>` +
+      `<div role="radiogroup" aria-label="${escR(t("ub.pick", { project: r.project }))}">` +
+      r.unclear
+        .map((c, i) => {
+          const id = `${g}-${i}`;
+          return (
+            `<label class="hubla-choice" for="${id}"><input type="radio" id="${id}" name="${g}" data-hubla-pick="${escR(r.project)}" data-hubla-hub="${escR(c.id)}"> ` +
+            `<span><b>${name(c)}</b>${c.why ? ` · ${escR(t(c.why === "repo" ? "ub.repos" : "ub.name"))}` : ""}</span></label>`
+          );
+        })
+        .join("") +
+      `</div>` +
+      `<button type="button" class="btn sm primary" data-hubla-link="${escR(r.project)}" disabled>${escR(t("ub.link"))}</button>` +
+      `</fieldset>`
     );
   };
+  const one = (r) =>
+    `<li data-hubla-clear="${escR(r.project)}"><span>${escR(t("ub.clear", { project: r.project }))} <b>${name(r.suggestion)}</b></span> ` +
+    `<button type="button" class="btn sm" data-hubla-link="${escR(r.project)}" data-hubla-hub="${escR(r.suggestion.id)}">${escR(t("ub.link"))}</button></li>`;
   return (
-    `<div data-hubla data-hubla-state="${todo.length ? "todo" : "done"}">` +
-    `<ul class="hubla-list">${rows.map(line).join("")}</ul>` +
-    (todo.length
-      ? `<button type="button" class="btn sm primary" data-hubla-action="link">${escR(t("hubla.linkTicked"))}</button>`
-      : `<p class="set-note">${escR(t("hubla.nothing"))}</p>`) +
+    `<div data-hubla data-hubla-state="${unclear.length ? "todo" : "done"}">` +
+    (unclear.length
+      ? `<p class="set-note">${escR(t("ub.intro"))}</p>` +
+        unclear.map(group).join("")
+      : `<p class="set-note">${escR(t("ub.empty"))}</p>`) +
+    (clear.length
+      ? `<ul class="hubla-list">${clear.map(one).join("")}</ul>`
+      : "") +
     `<div class="set-note" data-hubla-result hidden></div>` +
     `<div class="rt-err" role="alert" hidden></div></div>`
   );
@@ -2912,50 +2919,64 @@ function drawHubLinkAll(host, ctx, result) {
         out.textContent = parts.join(" ");
         out.hidden = false;
       }
-      const btn = host.querySelector('[data-hubla-action="link"]');
-      btn?.addEventListener("click", () => {
-        const links = [...host.querySelectorAll("[data-hubla-pick]")]
-          .filter((c) => c.checked)
-          .map((c) => ({
-            project: c.dataset.hublaPick,
-            hub: c.dataset.hublaHub,
-          }));
-        if (!links.length) return;
-        // BUSY-1: the working pop-up says it is linking, then what happened.
-        const lock = (on) =>
-          host
-            .querySelectorAll("button, input")
-            .forEach((x) => (x.disabled = on));
-        lock(true);
-        ctx.shell
-          .busyAction(
-            "link",
-            (headers) => ctx.shell.api("POST", url, { links }, { headers }),
-            {
-              button: btn,
-              success: (r) => {
-                const names = (r?.linked ?? []).map(
-                  (x) => x?.hub?.name || x?.project,
-                );
-                return t("busy.linkS", {
-                  n: names.length,
-                  names: listWords(names),
-                });
+      // A project's Link is on once it has a pick (a clear one has it).
+      const picked = (project) =>
+        [...host.querySelectorAll("input[data-hubla-pick]")].find(
+          (r) => r.dataset.hublaPick === project && r.checked,
+        )?.dataset.hublaHub;
+      const links = () => [...host.querySelectorAll("[data-hubla-link]")];
+      const fresh = () =>
+        links().forEach(
+          (b) =>
+            (b.disabled = !b.dataset.hublaHub && !picked(b.dataset.hublaLink)),
+        );
+      host
+        .querySelectorAll("input[data-hubla-pick]")
+        .forEach((r) => r.addEventListener("change", fresh));
+      links().forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const project = btn.dataset.hublaLink;
+          const hub = btn.dataset.hublaHub || picked(project);
+          if (!hub) return;
+          const links = [{ project, hub }];
+          // BUSY-1: the working pop-up says it is linking, then what happened.
+          const lock = (on) => {
+            host
+              .querySelectorAll("button, input")
+              .forEach((x) => (x.disabled = on));
+            if (!on) fresh();
+          };
+          lock(true);
+          ctx.shell
+            .busyAction(
+              "link",
+              (headers) => ctx.shell.api("POST", url, { links }, { headers }),
+              {
+                button: btn,
+                success: (r) => {
+                  const names = (r?.linked ?? []).map(
+                    (x) => x?.hub?.name || x?.project,
+                  );
+                  return t("busy.linkS", {
+                    n: names.length,
+                    names: listWords(names),
+                  });
+                },
+                onFail: (e) => {
+                  const err = host.querySelector(".rt-err");
+                  if (err) {
+                    err.hidden = false;
+                    err.textContent = e?.message || t("hubp.failed");
+                  }
+                },
               },
-              onFail: (e) => {
-                const err = host.querySelector(".rt-err");
-                if (err) {
-                  err.hidden = false;
-                  err.textContent = e?.message || t("hubp.failed");
-                }
-              },
-            },
-          )
-          .then((r) => {
-            if (r) drawHubLinkAll(host, ctx, r);
-            else lock(false);
-          });
-      });
+            )
+            .then((r) => {
+              if (r) drawHubLinkAll(host, ctx, r);
+              else lock(false);
+            });
+        }),
+      );
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note" data-hubla data-hubla-state="error">${escR(e?.message || t("hubp.failed"))}</p>`;

@@ -756,14 +756,7 @@
     "hubgh.change": "Cambiar repos",
     "set.distribution.hub_github": "Acceso de Den Hub a GitHub",
     "set.agents.hub_github": "Acceso de Den Hub a GitHub",
-    "set.agents.hub_link_all": "Vincular proyectos a Hub",
-    "hubla.unclear": "Den no sabe qué proyecto de Hub corresponde. Elige uno.",
-    "hubla.linkTicked": "Vincular los marcados",
-    "hubla.linkedTo": "vinculado a",
-    "hubla.noSuggestion":
-      "Hub no tiene sugerencia; elige uno en Configuración del proyecto › Proyecto de Hub.",
     "hubla.noProjects": "Aún no hay proyectos.",
-    "hubla.nothing": "No queda nada por vincular.",
     "hubla.linked.one": "{n} proyecto vinculado.",
     "hubla.linked": "{n} proyectos vinculados.",
     "hubla.skipped": "Omitido {project}: {why}.",
@@ -771,6 +764,23 @@
     "hubla.why.linked": "ya estaba vinculado",
     "hubla.why.offline": "Hub no respondió",
     "hubla.why.stale": "ya no es la sugerencia de Hub",
+    "set.agents.hub_link_all": "Coincidencias dudosas",
+    "set.agents.hub_link_all.d":
+      "Solo aparece cuando Den no sabe qué proyecto de Hub corresponde a un proyecto: dos proyectos de Hub comparten sus repositorios, o sus repositorios y su nombre apuntan a proyectos distintos. Elige uno para cada caso. No se guarda nada de ese proyecto hasta que lo hagas.",
+    "ub.intro":
+      "Den no supo qué proyecto de Hub corresponde a estos proyectos. Elige uno para cada uno; no se guarda nada de un proyecto hasta que elijas.",
+    "ub.why.repos": "Dos proyectos de Hub comparten sus repositorios",
+    "ub.why.split":
+      "Sus repositorios coinciden con un proyecto de Hub; su nombre, con otro",
+    "ub.why.names": "Dos proyectos de Hub tienen su nombre",
+    "ub.pick": "Elige el proyecto de Hub para {project}",
+    "ub.link": "Vincular",
+    "ub.waiting": "Aún no se guarda nada de este proyecto.",
+    "ub.empty":
+      "Todos tus proyectos están vinculados a un proyecto de Hub. Den lista aquí un proyecto solo cuando no sabe cuál corresponde.",
+    "ub.repos": "mismos repositorios",
+    "ub.name": "mismo nombre",
+    "ub.clear": "{project}: Hub sugiere",
     "set.workspace.editor": "IDE de este proyecto",
     "set.agents.runtimes": "Runtimes",
     "set.agents.layout": "Disposición de la pestaña Agentes",
@@ -2124,8 +2134,6 @@
       "Cuando la conversación de un agente se ha compactado este número de veces (o se fusionó su pull request), Den lo vuelve a iniciar desde su traspaso: una conversación nueva con el mismo nombre, persona, proyecto y carpeta. Automático pide el traspaso al agente cuando está libre y luego lo relanza solo; Preguntar muestra botones en el agente; Desactivado no hace nada. Las excepciones tienen prioridad sobre el valor de esta instalación: agente, persona en un proyecto, persona, proyecto, servicio. __DEN_CLI__ agents rotate",
     "set.agents.hub.d":
       "Conecta esta instalación al Hub de tu empresa: inicia sesión allí y apruébala. Así cada agente recibe las herramientas de Hub: buscar en Hub y publicar allí documentos y maquetas. Su empresa viene del token de esta instalación, y su proyecto de Hub, de Configuración del proyecto › Proyecto de Hub.",
-    "set.agents.hub_link_all.d":
-      "Cada proyecto de aquí con la sugerencia de Hub para él (los mismos repositorios o el mismo nombre). Marca los que quieras vincular y vincúlalos de una vez; cada uno se puede cambiar después en Configuración del proyecto › Proyecto de Hub.",
     "set.agents.hub_github.d":
       "Cuántos repositorios de GitHub de tu empresa puede leer Den Hub, consultado a Hub en directo, con el enlace de GitHub para darle acceso o cambiar sus repositorios.",
     "set.agents.personas.d":

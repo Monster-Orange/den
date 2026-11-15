@@ -742,21 +742,30 @@
     "hubgh.change": "リポジトリを変更",
     "set.distribution.hub_github": "Den Hub の GitHub アクセス",
     "set.agents.hub_github": "Den Hub の GitHub アクセス",
-    "set.agents.hub_link_all": "プロジェクトを Hub にリンク",
-    "hubla.unclear":
-      "Den はどの Hub プロジェクトが合うか判断できません。1つ選んでください。",
-    "hubla.linkTicked": "チェックしたものをリンク",
-    "hubla.linkedTo": "リンク先:",
-    "hubla.noSuggestion":
-      "Hub に候補がありません。プロジェクト設定 › Hub プロジェクトで選んでください。",
     "hubla.noProjects": "まだプロジェクトがありません。",
-    "hubla.nothing": "リンクするものは残っていません。",
     "hubla.linked": "{n} 件のプロジェクトをリンクしました。",
     "hubla.skipped": "{project} をスキップ: {why}。",
     "hubla.why.unknown": "そのプロジェクトはありません",
     "hubla.why.linked": "すでにリンク済み",
     "hubla.why.offline": "Hub から応答がありません",
     "hubla.why.stale": "Hub の候補ではなくなりました",
+    "set.agents.hub_link_all": "判断できない候補",
+    "set.agents.hub_link_all.d":
+      "Den がどの Hub プロジェクトが合うか判断できないときだけ表示します。2つの Hub プロジェクトが同じリポジトリを持つ場合や、リポジトリと名前が別々のプロジェクトを指す場合です。それぞれ1つ選んでください。選ぶまで、そのプロジェクトの分は何も保存されません。",
+    "ub.intro":
+      "Den はこれらのプロジェクトに合う Hub プロジェクトを判断できませんでした。それぞれ1つ選んでください。選ぶまで、そのプロジェクトの分は何も保存されません。",
+    "ub.why.repos": "2つの Hub プロジェクトが同じリポジトリを持っています",
+    "ub.why.split":
+      "リポジトリは1つの Hub プロジェクトに、名前は別の Hub プロジェクトに一致します",
+    "ub.why.names": "2つの Hub プロジェクトが同じ名前です",
+    "ub.pick": "{project} の Hub プロジェクトを選ぶ",
+    "ub.link": "リンク",
+    "ub.waiting": "このプロジェクトの分は、まだ何も保存されていません。",
+    "ub.empty":
+      "すべてのプロジェクトが Hub プロジェクトにリンク済みです。判断できないときだけ、ここに表示されます。",
+    "ub.repos": "同じリポジトリ",
+    "ub.name": "同じ名前",
+    "ub.clear": "{project}: Hub の候補",
     "set.workspace.editor": "このプロジェクトの IDE",
     "set.agents.runtimes": "ランタイム",
     "set.agents.layout": "エージェントタブのレイアウト",
@@ -2079,8 +2088,6 @@
       "エージェントの会話がこの回数だけ圧縮されると (またはプルリクエストがマージされると)、Den は引き継ぎからエージェントを再開始します。新しい会話で、名前、ペルソナ、プロジェクト、フォルダーは同じです。「自動」は待機中のエージェントに引き継ぎを書かせてから自動で再起動し、「たずねる」はエージェントにボタンを表示し、「オフ」は何もしません。上書き設定はこのインストールの値より優先されます: エージェント、プロジェクト内のペルソナ、ペルソナ、プロジェクト、サービスの順です。__DEN_CLI__ agents rotate",
     "set.agents.hub.d":
       "このインストールを会社の Hub に接続します。Hub でサインインして承認してください。すると各エージェントが Hub のツールを使えるようになります: Hub の検索、ドキュメントやモックの公開。会社はこのインストールのトークンから、Hub のプロジェクトはプロジェクト設定 › Hub プロジェクトから決まります。",
-    "set.agents.hub_link_all.d":
-      "ここにある各プロジェクトと、それに対する Hub の提案 (同じリポジトリ、または同じ名前) です。リンクするものにチェックを入れてまとめてリンクします。あとからプロジェクト設定 › Hub プロジェクトで個別に変更できます。",
     "set.agents.hub_github.d":
       "会社の GitHub リポジトリのうち Den Hub が読めるものの数を Hub にその場で問い合わせて表示します。アクセスを許可したりリポジトリを変更したりする GitHub のリンクもあります。",
     "set.agents.personas.d":

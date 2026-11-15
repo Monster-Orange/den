@@ -134,7 +134,7 @@ describe("hub link --suggested (#68)", () => {
     expect(text).toContain("Hub suggests (1):");
     expect(text).toContain("back-office → Back Office (back-office)");
     expect(text).toContain(
-      "Link them in one go: https://den.example.test/settings#agents.hub_link_all",
+      "Link each: https://den.example.test/settings#agents.hub_link_all",
     );
     expect(text).toContain("lone: no suggestion");
     expect(text).not.toContain("site →");
