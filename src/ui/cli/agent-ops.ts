@@ -4201,6 +4201,11 @@ function folderTarget(
 export type HeldOpCheck<A> =
   | {
       ok: true;
+      /**
+       * Only the person's own Allow runs it: no auto-allow setting (Vision
+       * 11-14: a project_mode that loosens).
+       */
+      personOnly?: boolean;
       summary: string;
       /** The summary's parts, for the Allow dialog to word in its language. */
       params: Record<string, string>;
@@ -4252,11 +4257,24 @@ export function checkProjectMode(
       return no(`project ${ws}'s mode is already ${mode ?? "none"}`);
     const from = now ?? "none";
     const to = mode ?? "none";
+    // What agents start in before and after. With none, the install's;
+    // before, else ask; after, else their persona's (any: count it wide).
+    const install = installPermissionOf(d);
+    const before = INTENT_RANK[now ?? install ?? DEFAULT_INTENT];
+    const after = mode ?? install;
+    const loosens =
+      (after === undefined ? INTENT_RANK.all + 1 : INTENT_RANK[after]) > before;
+    const warn = `This lets agents in ${ws} act without asking you.`;
+    const line = `set project ${ws}'s mode: ${from} → ${to}`;
     return {
       ok: true,
-      summary: `set project ${ws}'s mode: ${from} → ${to}`,
-      params: { project: ws, from, to },
+      ...(loosens ? { personOnly: true } : {}),
+      summary: loosens
+        ? `${warn} ${line.charAt(0).toUpperCase()}${line.slice(1)}`
+        : line,
+      params: { project: ws, from, to, ...(loosens ? { loosens: "1" } : {}) },
       details: [
+        ...(loosens ? [warn] : []),
         `Project: ${ws}`,
         `Now: ${from}`,
         `Then: ${to}${mode === null ? " (agents start in the install's mode, else their persona's)" : ""}`,

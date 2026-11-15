@@ -34,7 +34,24 @@ const restarts: unknown[] = [];
 /** SRV-P1: who each agent_create check was told asked. */
 const askers: unknown[] = [];
 const created: unknown[] = [];
+/** SRV-P4: project_mode asks that ran. */
+const modes: unknown[] = [];
 const actions: HeldActions = {
+  project_mode: {
+    check: (a) => ({
+      ok: true,
+      args: { project: "north", mode: String(a.mode) },
+      summary: `set project north's mode: edits → ${String(a.mode)}`,
+      params: {},
+      details: [],
+      // A loosening (edits → auto) is the person's Allow only.
+      ...(a.mode === "auto" ? { personOnly: true } : {}),
+    }),
+    run: async (a) => {
+      modes.push(a.mode);
+      return { ok: true };
+    },
+  },
   agent_create: {
     check: (a, who) => {
       askers.push(who);
@@ -83,6 +100,8 @@ const queue = createApprovalQueue(actions, () => stateDir);
 let enabled = true;
 /** SRV-1a: server_agent.self_update as the handler reads it. */
 let selfUpdate: "ask" | "auto" = "ask";
+/** SRV-P4: an auto-allow that allows every ask, held writes' worst case. */
+let autoEvery = false;
 let server: http.Server;
 let base = "";
 
@@ -123,11 +142,13 @@ beforeAll(async () => {
         actions,
         enabled: () => enabled,
         autoAllow: (action, agent) =>
-          action === "den_restart" &&
-          agent === "server" &&
-          selfUpdate === "auto"
-            ? "server_agent.self_update: auto"
-            : null,
+          autoEvery
+            ? "a setting that allows every ask"
+            : action === "den_restart" &&
+                agent === "server" &&
+                selfUpdate === "auto"
+              ? "server_agent.self_update: auto"
+              : null,
       },
     ).then((handled) => {
       if (!handled) {
@@ -314,6 +335,36 @@ describe("SRV-1a: server_agent.self_update", () => {
       expect(restarts).toHaveLength(1);
     } finally {
       selfUpdate = "ask";
+    }
+  });
+});
+
+describe("SRV-P4: a loosening project_mode is the person's Allow only", () => {
+  const ask = (mode: string) =>
+    fetch(
+      `${base}/api/approvals`,
+      as("lead", { action: "project_mode", args: { mode } }),
+    ).then(async (r) => (await r.json()) as { id: string; state: string });
+
+  it("no auto-allow runs it, even one that allows every ask; a tightening it may", async () => {
+    mintActorToken(stateDir, {
+      agentId: "lead",
+      workspace: "north",
+      sessionName: "acme-north:lead",
+    });
+    autoEvery = true;
+    try {
+      const loosen = await ask("auto");
+      expect(loosen.state).toBe("pending");
+      expect(modes).toEqual([]);
+      const tighten = await ask("ask");
+      expect(tighten.state).toBe("done");
+      expect(modes).toEqual(["ask"]);
+      // The person's Allow runs it.
+      await queue.decide(loosen.id, "allow", "s1");
+      expect(modes).toEqual(["ask", "auto"]);
+    } finally {
+      autoEvery = false;
     }
   });
 });

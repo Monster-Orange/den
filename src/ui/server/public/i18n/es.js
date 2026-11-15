@@ -1065,6 +1065,8 @@
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_folder": "Mover el agente {agent} a {where}",
+    "ap.do.project_mode.loosens":
+      "Esto permite que los agentes de {project} actúen sin preguntarte. Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_create":
       "Iniciar el agente {name} ({persona}) en {where}, modo {mode}",
     "ap.do.service_try.activates":

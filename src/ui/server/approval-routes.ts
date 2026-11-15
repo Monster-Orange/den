@@ -51,6 +51,11 @@ export type HeldCheck =
       params: Record<string, string>;
       /** Review: what it will do, line by line. */
       details: string[];
+      /**
+       * Only the person's own Allow runs it: no auto-allow setting does
+       * (a project_mode that loosens, Vision 11-14).
+       */
+      personOnly?: boolean;
     }
   | { ok: false; error: string };
 
@@ -277,7 +282,10 @@ export async function handleApprovalRoutes(
     );
     let auto: string | null = null;
     try {
-      auto = a.agent ? (deps.autoAllow?.(action, a.agent) ?? null) : null;
+      auto =
+        a.agent && !checked.personOnly
+          ? (deps.autoAllow?.(action, a.agent) ?? null)
+          : null;
     } catch {
       auto = null; // a bad setting: held, as with ask
     }

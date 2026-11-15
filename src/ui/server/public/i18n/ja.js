@@ -1039,6 +1039,8 @@
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
+    "ap.do.project_mode.loosens":
+      "これにより {project} のエージェントはあなたに確認せずに動作します。プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_create":
       "エージェント {name} ({persona}) を {where} で起動、モード {mode}",
     "ap.do.service_try.activates":

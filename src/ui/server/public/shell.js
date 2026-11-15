@@ -1823,6 +1823,8 @@
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
+    "ap.do.project_mode.loosens":
+      "This lets agents in {project} act without asking you. Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_create":
       "Start agent {name} ({persona}) in {where}, mode {mode}",
     "ap.do.service_try.activates":
@@ -6055,7 +6057,9 @@
           ? ".activates"
           : p.inProject
             ? ".project"
-            : "");
+            : p.loosens
+              ? ".loosens"
+              : "");
     var s = t(key, p);
     if (s !== key) return s;
     s = String(a.summary || a.action);

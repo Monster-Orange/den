@@ -47,7 +47,8 @@ config and manifest changes a distribution must make to move to it under
   (`agent_folder`), each held for the person's Allow. Running agents keep
   their mode until they start again; a running agent that moves is
   stopped and started fresh there. A project's agent asks for its own
-  project only; Den's own agent never moves.
+  project only; Den's own agent never moves. A mode change that loosens
+  says so first and runs only on the person's own Allow.
 
 ### Changed
 

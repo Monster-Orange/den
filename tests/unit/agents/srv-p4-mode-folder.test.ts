@@ -67,31 +67,78 @@ async function repoRig(): Promise<Rig> {
 describe("SRV-P4: project_mode", () => {
   it("shows the change and that running agents keep theirs", async () => {
     const r = await repoRig();
-    r.wsPermission.north = "ask";
+    r.wsPermission.north = "auto";
     const c = checkProjectMode(resolveAgentsDeps(r.deps), {
       project: "north",
       mode: "edits",
     });
     expect(c.ok).toBe(true);
     if (!c.ok) return;
-    expect(c.summary).toBe("set project north's mode: ask → edits");
-    expect(c.params).toEqual({ project: "north", from: "ask", to: "edits" });
+    expect(c.summary).toBe("set project north's mode: auto → edits");
+    expect(c.params).toEqual({ project: "north", from: "auto", to: "edits" });
     expect(c.details.join("\n")).toMatch(
       /running agents keep theirs until they start again/,
     );
     expect(c.args).toEqual({ project: "north", mode: "edits" });
   });
 
+  it("a loosening says so first, plainly, and is the person's Allow only; a tightening is not", async () => {
+    const r = await repoRig();
+    const d = resolveAgentsDeps(r.deps);
+    r.wsPermission.north = "ask";
+    const loose = checkProjectMode(d, { project: "north", mode: "auto" });
+    expect(loose.ok).toBe(true);
+    if (!loose.ok) return;
+    expect(loose.summary).toBe(
+      "This lets agents in north act without asking you. Set project north's mode: ask → auto",
+    );
+    expect(loose.details[0]).toBe(
+      "This lets agents in north act without asking you.",
+    );
+    expect(loose.params.loosens).toBe("1");
+    expect(loose.personOnly).toBe(true);
+    r.wsPermission.north = "all";
+    const tight = checkProjectMode(d, { project: "north", mode: "edits" });
+    expect(tight.ok && tight.summary).toBe(
+      "set project north's mode: all → edits",
+    );
+    expect(tight.ok && tight.personOnly).toBeFalsy();
+    expect(tight.ok && tight.params.loosens).toBeUndefined();
+  });
+
+  it("clearing a project's mode loosens only when the install's is wider", async () => {
+    const r = await repoRig();
+    r.wsPermission.north = "ask";
+    r.deps.installPermission = () => "all";
+    const wider = checkProjectMode(resolveAgentsDeps(r.deps), {
+      project: "north",
+      mode: null,
+    });
+    expect(wider.ok && wider.personOnly).toBe(true);
+    r.wsPermission.north = "auto";
+    r.deps.installPermission = () => "edits";
+    const narrower = checkProjectMode(resolveAgentsDeps(r.deps), {
+      project: "north",
+      mode: null,
+    });
+    expect(narrower.ok && narrower.personOnly).toBeFalsy();
+  });
+
   it("none set, and clearing one, say so", async () => {
     const r = await repoRig();
     const d = resolveAgentsDeps(r.deps);
     const set = checkProjectMode(d, { project: "north", mode: "auto" });
-    expect(set.ok && set.summary).toBe("set project north's mode: none → auto");
+    expect(set.ok && set.summary).toBe(
+      "This lets agents in north act without asking you. Set project north's mode: none → auto",
+    );
     r.wsPermission.north = "auto";
+    // With no install mode either, agents follow their persona's, which
+    // may be wider: a loosening.
     const clear = checkProjectMode(d, { project: "north", mode: null });
     expect(clear.ok && clear.summary).toBe(
-      "set project north's mode: auto → none",
+      "This lets agents in north act without asking you. Set project north's mode: auto → none",
     );
+    expect(clear.ok && clear.personOnly).toBe(true);
     expect(clear.ok && clear.args).toEqual({ project: "north", mode: null });
   });
 

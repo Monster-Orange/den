@@ -3073,7 +3073,11 @@ project may take that name.
   the held action `project_mode`). `mode` is ask, edits, auto or all, or
   none to clear it. The Allow shows the change (from → to). New agents
   start in it; running agents keep theirs until they start again. A
-  project's agent sets its own project's mode only.
+  project's agent sets its own project's mode only. A change that
+  loosens it (ask → auto, or clearing it when the install's or a
+  persona's mode is wider) says so first ("This lets agents in <project>
+  act without asking you") and runs only on the person's own Allow: no
+  auto-allow setting runs it.
 - **It moves an agent's folder** (0.4.48, `agent_folder { agent, repo |
   folder, project? }`, the held action `agent_folder`): a repo of the
   agent's project, or a folder in it, as `agents folder` does. The Allow
