@@ -17,6 +17,18 @@
  */
 import semver from "semver";
 import type { UpdateState } from "./den-update.js";
+import type { UpdateTick } from "../../shared/update-check-state.js";
+
+// The state file and doctor's line live in src/shared (the CLI reads them).
+export {
+  readCheckState,
+  selfUpdateSummary,
+  tickText,
+  updateCheckFile,
+  writeCheckState,
+  type CheckState,
+  type UpdateTick,
+} from "../../shared/update-check-state.js";
 
 export interface UpdateCheckDeps {
   /** The version running now, or null. */
@@ -52,12 +64,6 @@ export interface UpdateCheckDeps {
     msg: { key: string; vars: Record<string, string> },
   ): void;
 }
-
-export type UpdateTick =
-  | { did: "current" }
-  | { did: "skipped"; version?: string; why: string }
-  | { did: "asked" | "waiting" | "updating"; version: string }
-  | { did: "failed"; version: string; why: string };
 
 export interface UpdateCheck {
   tick(): Promise<UpdateTick>;

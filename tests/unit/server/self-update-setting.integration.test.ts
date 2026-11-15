@@ -32,13 +32,19 @@ const userYml = () =>
 
 describe("SRV-P6: Settings › New versions", () => {
   it("ask at first; a person sets auto, it lands in user.yml, and GET shows it", async () => {
-    expect((await s.settingsGet()).server_agent_self_update).toBe("ask");
+    const first = await s.settingsGet();
+    expect(first.server_agent_self_update).toBe("ask");
+    // Where it came from (Den's first start wrote ask to user.yml), and
+    // the update checks.
+    expect(first.server_agent_self_update_from).toBe("user");
+    expect(first).toHaveProperty("update_check");
     expect(await s.settings({ server_agent_self_update: "auto" })).toBe(200);
     expect(userYml()).toMatch(
       /server_agent:\n(?:\s+.*\n)*?\s+self_update: auto/,
     );
     expect(userYml()).not.toContain("self_update_from");
     expect((await s.settingsGet()).server_agent_self_update).toBe("auto");
+    expect((await s.settingsGet()).server_agent_self_update_from).toBe("user");
   });
 
   it("an agent's claim is refused; a bad value is refused; null is ask", async () => {

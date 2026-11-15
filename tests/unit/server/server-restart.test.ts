@@ -281,10 +281,11 @@ describe("server_agent.self_update", () => {
       undefined,
       {},
     );
-    expect([pending.selfUpdate, pending.teamSelfUpdateIgnored]).toEqual([
-      "auto",
-      false,
-    ]);
+    expect([
+      pending.selfUpdate,
+      pending.teamSelfUpdateIgnored,
+      pending.selfUpdateFrom,
+    ]).toEqual(["auto", false, "org"]);
     const team = readServerAgentConfig(
       { server_agent: { self_update: "auto" } } as never,
       undefined,

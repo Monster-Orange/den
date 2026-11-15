@@ -3033,7 +3033,11 @@ project may take that name.
   tries on a later pass. A version that rolled back here is not tried
   again; a newer one is. A failed update and a rollback each put a notice
   in the bell. A Den run from a checkout is skipped. Settings › Server ›
-  New versions sets `self_update` (a person's only).
+  New versions sets `self_update` (a person's only). Doctor's "New
+  versions" line (`doctor --json`: check `self_update`) and Settings ›
+  Server › Update checks say its value, where it came from (`user.yml`,
+  the org config not yet copied, or the default), and the last and next
+  check (`server-agent/update/check.json` in the state folder).
 - **Where it lives.** On a fresh Den (no repo in any project yet), the
   first page, `/`, is that agent in a terminal framed as the page, with
   Open in Agents as the way out. After setup Agents lists it first, under

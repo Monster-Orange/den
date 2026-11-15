@@ -43,6 +43,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import semver from "semver";
+import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
@@ -5591,6 +5592,8 @@ async function handleRequest(
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
+        // SRV-P6: where it came from, and the update checks' last and next.
+        ...updateCheckSettings(),
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
         feedback_enabled: (() => {
           try {
@@ -6687,6 +6690,23 @@ async function serverBack(): Promise<void> {
     }
 }
 
+/** SRV-P6: GET /api/settings' self_update source and update checks. */
+function updateCheckSettings(): {
+  server_agent_self_update_from: "user" | "org" | "default";
+  update_check: import("./update-check.js").CheckState | null;
+} {
+  let from: "user" | "org" | "default" = "default";
+  try {
+    from = readServerAgentConfig().selfUpdateFrom;
+  } catch {
+    /* unreadable: the default's words; doctor says why */
+  }
+  return {
+    server_agent_self_update_from: from,
+    update_check: readCheckStateSync(getStateDir()),
+  };
+}
+
 /** SRV-P6: how long Den's own "update to X" waits in Needs you. */
 const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
 /** The update states that mean an update is under way. */
@@ -6705,6 +6725,23 @@ function startUpdateCheck(): void {
     serverLog(`  ⚠ update check off: ${(e as Error).message}`, "warn");
     return;
   }
+  const everyMinutes = Math.round(every / 60_000);
+  // SRV-P6: doctor and Settings say the last pass and the next.
+  const noteState = (last?: import("./update-check.js").CheckState["last"]) =>
+    void import("./update-check.js")
+      .then((m) => {
+        // At a start, the pass before the restart stays the last one.
+        const was = last ?? m.readCheckState(getStateDir())?.last;
+        m.writeCheckState(getStateDir(), {
+          everyMinutes,
+          next: every ? new Date(Date.now() + every).toISOString() : null,
+          ...(was ? { last: was } : {}),
+        });
+      })
+      .catch(() => {
+        /* best effort: doctor says "no check yet" */
+      });
+  noteState();
   if (!every) return;
   let busy = false;
   let updating = false;
@@ -6815,6 +6852,7 @@ function startUpdateCheck(): void {
         },
       });
       const r = await check.tick();
+      noteState({ at: new Date().toISOString(), ...r });
       if (r.did !== "current" && r.did !== "skipped")
         serverLog(
           `  update check: ${r.did} ${r.version}${r.did === "failed" ? `: ${r.why}` : ""}`,

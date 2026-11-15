@@ -1130,6 +1130,11 @@ export interface ResolvedServerAgentConfig {
    */
   selfUpdate: "ask" | "auto";
   /**
+   * SRV-P6 (0.4.48): where selfUpdate came from: the person's user.yml,
+   * the org config (not yet copied to user.yml), or the default (ask).
+   */
+  selfUpdateFrom: "user" | "org" | "default";
+  /**
    * The team file sets self_update and the person's user.yml does too:
    * the team file's is ignored (doctor says so).
    */
@@ -1215,6 +1220,7 @@ export function readServerAgentConfig(
   const pending = v === undefined && (t === "ask" || t === "auto");
   return {
     selfUpdate: v ?? (pending ? t : "ask"),
+    selfUpdateFrom: v !== undefined ? "user" : pending ? "org" : "default",
     teamSelfUpdateIgnored: v !== undefined && t !== undefined,
     folder,
     git: g ?? "pr",

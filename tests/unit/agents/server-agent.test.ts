@@ -303,6 +303,7 @@ describe("its folder (SRV-1b)", () => {
       fs.mkdirSync(path.join(root, "ops"));
       expect(readServerAgentConfig({}, root, {})).toEqual({
         selfUpdate: "ask",
+        selfUpdateFrom: "default",
         teamSelfUpdateIgnored: false,
         folder: root,
         git: "pr",
@@ -329,6 +330,7 @@ describe("its folder (SRV-1b)", () => {
         // Review M4: the person's file switches it on; the team file's
         // value is ignored and flagged.
         selfUpdate: "auto",
+        selfUpdateFrom: "user",
         teamSelfUpdateIgnored: true,
         folder: path.join(root, "ops"),
         git: "push",

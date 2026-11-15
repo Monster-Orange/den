@@ -27,6 +27,7 @@ import {
   readAgentsConfig,
   readDenConfig,
   readUserConfig,
+  readServerAgentConfig,
   type UserConfig,
   readMcpConfig,
   sectionConfigError,
@@ -41,6 +42,11 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
+import {
+  readCheckState,
+  selfUpdateSummary,
+  type CheckState,
+} from "../../shared/update-check-state.js";
 import { product } from "../../shared/product.js";
 import { listRecords } from "../../shared/agents/records.js";
 import { eventsFile } from "../../shared/dev-metrics/emit.js";
@@ -718,6 +724,46 @@ export function addressLines(
 }
 
 /**
+ * SRV-P6 (0.4.48): server_agent.self_update, always: its value, where it
+ * came from (user.yml, the org config not yet copied, or the default),
+ * and the update check's last pass and next (the running Den writes them).
+ */
+export function selfUpdateLines(
+  title: string,
+  d: {
+    config: () => Pick<
+      ReturnType<typeof readServerAgentConfig>,
+      "selfUpdate" | "selfUpdateFrom" | "updateCheckMs"
+    >;
+    state: () => CheckState | null;
+    orgFile: string;
+  } = {
+    config: () => readServerAgentConfig(),
+    state: () => readCheckState(getStateDir()),
+    orgFile: product().configFile,
+  },
+): { lines: string[]; check: OnboardCheck } {
+  let r: { status: "ok" | "warn"; detail: string };
+  try {
+    r = selfUpdateSummary(d.config(), d.state(), d.orgFile);
+  } catch (e) {
+    r = {
+      status: "warn",
+      detail: `self_update: unknown, the config can't be read: ${(e as Error).message}`,
+    };
+  }
+  return {
+    lines: [
+      "",
+      `${title} doctor: New versions`,
+      "",
+      `  self_update  ${r.status === "ok" ? "✓" : "⚠"}  ${r.detail}`,
+    ],
+    check: { id: "self_update", status: r.status, detail: r.detail },
+  };
+}
+
+/**
  * agents.git.signing_key: whether agents' commits sign and verify with the
  * key (a commit in a temp repo, checkAgentSigning), and the line that adds
  * its .pub to GitHub as a signing key. Nothing when unset.
@@ -938,6 +984,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    r.checks.push(selfUpdateLines(readBrand().name).check);
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -979,6 +1026,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
+  for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {

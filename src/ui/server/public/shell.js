@@ -1467,6 +1467,23 @@
       "When a new __DEN_TITLE__ is out. Ask: an update waits in the bell for your Allow. Auto: __DEN_TITLE__ updates at a quiet moment, and goes back by itself if the new version doesn't come up.",
     "set.server.self_update.o.ask": "Ask",
     "set.server.self_update.o.auto": "Auto",
+    "set.server.update_check": "Update checks",
+    "set.server.update_check.d":
+      "Where the New versions choice comes from, and when __DEN_TITLE__ last looked for a new version and looks next.",
+    "set.ui.suFrom.user": "Set by you (config/local/user.yml)",
+    "set.ui.suFrom.dist":
+      "From the distribution's config, copied to config/local/user.yml at the next start",
+    "set.ui.suFrom.default": "The default: Ask",
+    "set.ui.ucOff": "Checks are off",
+    "set.ui.ucNone": "No check yet",
+    "set.ui.ucLast": "Last check {t}: {did}",
+    "set.ui.ucNext": "next {t}",
+    "set.ui.ucDid.asked": "{v} is out, waiting for your Allow",
+    "set.ui.ucDid.waiting": "{v} is out, waiting for a quiet moment",
+    "set.ui.ucDid.updating": "updating to {v}",
+    "set.ui.ucDid.failed": "couldn't update to {v}",
+    "set.ui.ucDid.skipped": "skipped",
+    "set.ui.ucDid.current": "on the newest version",
     "set.server.crash_loop": "Restart guard",
     "set.server.crash_loop.d":
       "When __DEN_TITLE__'s web app stops without a clean stop this many times within the minutes below, the next start waits before it serves, longer each time, and the bell says so. __DEN_CLI__ config web.crash_loop_restarts=5",

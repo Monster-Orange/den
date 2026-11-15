@@ -636,6 +636,23 @@
       "Cuando sale un __DEN_TITLE__ nuevo. Preguntar: la actualización espera tu permiso en la campana. Automático: __DEN_TITLE__ se actualiza en un momento tranquilo y vuelve atrás por sí mismo si la versión nueva no arranca.",
     "set.server.self_update.o.ask": "Preguntar",
     "set.server.self_update.o.auto": "Automático",
+    "set.server.update_check": "Comprobaciones de versión",
+    "set.server.update_check.d":
+      "De dónde viene la opción Versiones nuevas, y cuándo __DEN_TITLE__ buscó una versión nueva por última vez y cuándo vuelve a buscar.",
+    "set.ui.suFrom.user": "Elegido por ti (config/local/user.yml)",
+    "set.ui.suFrom.dist":
+      "De la configuración de la distribución; se copia a config/local/user.yml en el próximo arranque",
+    "set.ui.suFrom.default": "El valor por defecto: Preguntar",
+    "set.ui.ucOff": "Las comprobaciones están desactivadas",
+    "set.ui.ucNone": "Aún sin comprobar",
+    "set.ui.ucLast": "Última comprobación {t}: {did}",
+    "set.ui.ucNext": "siguiente {t}",
+    "set.ui.ucDid.asked": "salió {v}, espera tu permiso",
+    "set.ui.ucDid.waiting": "salió {v}, espera un momento tranquilo",
+    "set.ui.ucDid.updating": "actualizando a {v}",
+    "set.ui.ucDid.failed": "no se pudo actualizar a {v}",
+    "set.ui.ucDid.skipped": "omitida",
+    "set.ui.ucDid.current": "en la versión más nueva",
     "set.server.crash_loop": "Protección contra reinicios",
     "set.server.crash_loop.d":
       "Cuando la app web de __DEN_TITLE__ se detiene sin un cierre limpio estas veces dentro de los minutos de abajo, el siguiente arranque espera antes de atender, más cada vez, y la campana lo avisa. __DEN_CLI__ config web.crash_loop_restarts=5",

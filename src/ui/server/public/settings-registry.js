@@ -145,6 +145,62 @@ const distRow = (id, label, description, keywords, value) => ({
   control: { type: "readonly" },
   read: (ctx) => value(ctx.data.distribution || {}),
 });
+/** SRV-P6: a time from the update check, in the page's locale. */
+const shortTime = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+};
+/** SRV-P6: the Update checks row's text. */
+function updateCheckText(data) {
+  const from = data.server_agent_self_update_from ?? "default";
+  const parts = [
+    from === "user"
+      ? L("set.ui.suFrom.user", "Set by you (config/local/user.yml)")
+      : from === "org"
+        ? L(
+            "set.ui.suFrom.dist",
+            "From the distribution's config, copied to config/local/user.yml at the next start",
+          )
+        : L("set.ui.suFrom.default", "The default: Ask"),
+  ];
+  const c = data.update_check;
+  if (!c || !c.everyMinutes) {
+    parts.push(
+      c
+        ? L("set.ui.ucOff", "Checks are off")
+        : L("set.ui.ucNone", "No check yet"),
+    );
+    return parts.join(" · ");
+  }
+  const l = c.last;
+  if (l) {
+    const v = { v: l.version ?? "" };
+    const did =
+      l.did === "asked"
+        ? L("set.ui.ucDid.asked", "{v} is out, waiting for your Allow", v)
+        : l.did === "waiting"
+          ? L(
+              "set.ui.ucDid.waiting",
+              "{v} is out, waiting for a quiet moment",
+              v,
+            )
+          : l.did === "updating"
+            ? L("set.ui.ucDid.updating", "updating to {v}", v)
+            : l.did === "failed"
+              ? L("set.ui.ucDid.failed", "couldn't update to {v}", v)
+              : l.did === "skipped"
+                ? L("set.ui.ucDid.skipped", "skipped")
+                : L("set.ui.ucDid.current", "on the newest version");
+    parts.push(
+      L("set.ui.ucLast", "Last check {t}: {did}", { t: shortTime(l.at), did }),
+    );
+  } else parts.push(L("set.ui.ucNone", "No check yet"));
+  if (c.next)
+    parts.push(L("set.ui.ucNext", "next {t}", { t: shortTime(c.next) }));
+  return parts.join(" · ");
+}
 const effective = (list, chosen) =>
   chosen ?? (list || []).find((e) => e.available)?.key ?? null;
 
@@ -796,6 +852,19 @@ export const DEN_SETTINGS = [
     ]),
     read: (ctx) => ctx.data.server_agent_self_update ?? "ask",
     write: (v, ctx) => ctx.post({ server_agent_self_update: v }),
+  },
+  {
+    // SRV-P6: where that choice came from, and the checks' last and next
+    // pass (the running Den writes them; doctor says the same).
+    id: "server.update_check",
+    category: "server",
+    label: "Update checks",
+    description:
+      "Where the New versions choice comes from, and when __DEN_TITLE__ last looked for a new version and looks next.",
+    keywords: ["update", "version", "check", "npm", "self_update"],
+    scope: "user",
+    control: { type: "readonly" },
+    read: (ctx) => updateCheckText(ctx.data),
   },
   {
     // MODE-5 (0.4.46): this install's address (web.url, D80) as a page

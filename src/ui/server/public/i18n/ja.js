@@ -621,6 +621,23 @@
       "新しい __DEN_TITLE__ が出たとき。確認: 更新はベルで許可を待ちます。自動: __DEN_TITLE__ は落ち着いたときに更新し、新しいバージョンが起動しなければ自分で元に戻します。",
     "set.server.self_update.o.ask": "確認",
     "set.server.self_update.o.auto": "自動",
+    "set.server.update_check": "更新の確認",
+    "set.server.update_check.d":
+      "「新しいバージョン」の設定の出どころと、__DEN_TITLE__ が最後に新しいバージョンを確認した時刻と次の確認の時刻。",
+    "set.ui.suFrom.user": "あなたの設定 (config/local/user.yml)",
+    "set.ui.suFrom.dist":
+      "ディストリビューションの設定から。次の起動で config/local/user.yml にコピーされます",
+    "set.ui.suFrom.default": "既定値: 確認",
+    "set.ui.ucOff": "確認はオフです",
+    "set.ui.ucNone": "まだ確認していません",
+    "set.ui.ucLast": "最後の確認 {t}: {did}",
+    "set.ui.ucNext": "次回 {t}",
+    "set.ui.ucDid.asked": "{v} が出ました。許可を待っています",
+    "set.ui.ucDid.waiting": "{v} が出ました。落ち着いたときを待っています",
+    "set.ui.ucDid.updating": "{v} に更新中",
+    "set.ui.ucDid.failed": "{v} に更新できませんでした",
+    "set.ui.ucDid.skipped": "スキップ",
+    "set.ui.ucDid.current": "最新のバージョンです",
     "set.server.crash_loop": "再起動ガード",
     "set.server.crash_loop.d":
       "__DEN_TITLE__ の Web アプリが下の分数のうちにこの回数、正常に終了せずに止まると、次の起動は応答する前に待ちます。待ち時間は毎回延び、ベルで知らせます。__DEN_CLI__ config web.crash_loop_restarts=5",

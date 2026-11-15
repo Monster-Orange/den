@@ -15,8 +15,15 @@
  * Fakes for npm, the pin, idle and the update. Invented versions only.
  */
 import { describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
+  readCheckState,
+  selfUpdateSummary,
   updateCheck,
+  updateCheckFile,
+  writeCheckState,
   type UpdateCheckDeps,
 } from "../../../src/ui/server/update-check.js";
 
@@ -185,5 +192,91 @@ describe("the settings (SRV-P6)", () => {
         server_agent: { role: "boss" },
       }),
     ).toThrow(/server_agent\.role/);
+  });
+});
+
+describe("doctor and Settings say it (SRV-P6)", () => {
+  const cfg = {
+    selfUpdate: "auto" as const,
+    selfUpdateFrom: "user" as const,
+    updateCheckMs: 30 * 60_000,
+  };
+  const at = (h: number, m: number) =>
+    new Date(2026, 10, 14, h, m).toISOString();
+
+  it("the value, where it came from, the last check and the next", () => {
+    const r = selfUpdateSummary(
+      cfg,
+      {
+        everyMinutes: 30,
+        next: at(19, 4),
+        last: { at: at(18, 34), did: "current" },
+      },
+      "acme.config.yml",
+      Date.parse(at(18, 40)),
+    );
+    expect(r).toEqual({
+      status: "ok",
+      detail:
+        "self_update: auto, set in config/local/user.yml; last check 2026-11-14 18:34: on the newest version; next check 2026-11-14 19:04",
+    });
+  });
+
+  it("the org config's value not yet copied, and the default, say so", () => {
+    expect(
+      selfUpdateSummary(
+        { ...cfg, selfUpdateFrom: "org" },
+        null,
+        "acme.config.yml",
+      ).detail,
+    ).toMatch(
+      /^self_update: auto, from acme\.config\.yml, copied to config\/local\/user\.yml at the next start; no check yet/,
+    );
+    expect(
+      selfUpdateSummary(
+        { ...cfg, selfUpdate: "ask", selfUpdateFrom: "default" },
+        null,
+        "acme.config.yml",
+      ).detail,
+    ).toMatch(/^self_update: ask, the default \(nothing set/);
+  });
+
+  it("checks off, or a pass well overdue, say so", () => {
+    expect(
+      selfUpdateSummary({ ...cfg, updateCheckMs: 0 }, null, "x.yml").detail,
+    ).toMatch(/checks are off \(server_agent\.update_check_minutes: 0\)$/);
+    const late = selfUpdateSummary(
+      cfg,
+      {
+        everyMinutes: 30,
+        next: at(19, 4),
+        last: { at: at(18, 34), did: "waiting", version: "1.3.0" },
+      },
+      "x.yml",
+      Date.parse(at(21, 0)),
+    );
+    expect(late.status).toBe("warn");
+    expect(late.detail).toMatch(
+      /1\.3\.0 is out, waiting for a quiet moment; the next check was due 2026-11-14 19:04 and hasn't run/,
+    );
+  });
+
+  it("the state file round-trips, 0600; a missing or bad one is null", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-p6-"));
+    try {
+      expect(readCheckState(dir)).toBeNull();
+      const s = {
+        everyMinutes: 30,
+        next: at(19, 4),
+        last: { at: at(18, 34), did: "asked" as const, version: "1.3.0" },
+      };
+      writeCheckState(dir, s);
+      expect(readCheckState(dir)).toEqual(s);
+      expect(fs.statSync(updateCheckFile(dir)).mode & 0o777).toBe(0o600);
+      fs.writeFileSync(updateCheckFile(dir), "{");
+      expect(readCheckState(dir)).toBeNull();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

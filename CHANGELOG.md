@@ -17,6 +17,11 @@ config and manifest changes a distribution must make to move to it under
   version that rolled back isn't tried again. Failed updates and
   rollbacks show in the bell. Settings › Server › New versions sets ask
   or auto.
+- Doctor (and `doctor --json`, check `self_update`) and Settings ›
+  Server › Update checks always show `self_update`, where it came from
+  (`user.yml`, the org config not yet copied, or the default), and the
+  update check's last pass and next. Doctor warns when a pass is well
+  overdue.
 
 ### Changed
 
