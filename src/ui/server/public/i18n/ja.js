@@ -1139,6 +1139,15 @@
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
+    "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
+    "ap.do.agent_mode.loosens":
+      "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
+    "ap.own.h":
+      "これらのエージェントは独自のモードを保ち、プロジェクトに従いません:",
+    "ap.own.item": "{agent} (独自のモード: {mode})",
+    "ap.own.follow": "これらもプロジェクトに従わせる",
+    "ap.res.following": "今プロジェクトに従うもの: {list}。",
+    "ap.res.own": "独自のモードを保つもの: {list}。",
     "ap.do.project_mode.loosens":
       "これにより {project} のエージェントはあなたに確認せずに動作します。プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_create":
@@ -1171,6 +1180,8 @@
     "pm.name.auto": "自動",
     "pm.name.all": "すべて",
     "ag.mode.tag": "モード: {m}",
+    "ag.mode.own": "独自のモード: {m}",
+    "ag.mode.ownNot": "独自のモード: {m} (プロジェクトに従っていません: {p})",
     "ag.mode.drift": "設定は {want}、実際は {running}",
     "ag.mode.apply": "再起動して反映",
     "ag.mode.applyName": "{id} を今すぐ再起動してモードを反映",

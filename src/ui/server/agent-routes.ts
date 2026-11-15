@@ -95,6 +95,10 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import {
+  checkIntent,
+  type PermissionIntent,
+} from "../../shared/agents/permissions.js";
+import {
   agentsModeCheckSeconds,
   configuredRemoveStoppedAfter,
   getReposRoot,
@@ -157,6 +161,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  setAgentPermission,
   setAgentResumeOnRestart,
   clearAgentHelpers,
   askForHandoff,
@@ -227,7 +232,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|link|move|file))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|restart|link|move|file))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -712,6 +717,7 @@ export async function handleAgentRoutes(
     | "persona"
     | "keep"
     | "settings"
+    | "mode"
     | "handoff"
     | "clear-helpers"
     | "link"
@@ -893,6 +899,13 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can change an agent's settings", {
         status: 403,
       });
+    // Issue 199: an agent's mode is what it may do without asking: a
+    // person's (an agent asks through the held write agent_mode).
+    if (verb === "mode" && (agent || actor))
+      throw new AgentError(
+        "only a person can change an agent's mode (an agent asks with agent_mode)",
+        { status: 403 },
+      );
     // D44: a restart is the person's (it stops a session).
     if (verb === "restart" && (agent || actor))
       throw new AgentError("only a person can restart an agent", {
@@ -1027,6 +1040,33 @@ export async function handleAgentRoutes(
       what = `set ${rec.id}'s resume after a restart to ${v === null ? "its persona's" : v ? "on" : "off"} in ${ws}`;
       audit(what);
       sendJson(res, { ok: true, agent: rec.id, resumeOnRestart: v });
+    } else if (verb === "mode") {
+      // Issue 199: a mode of its own, or null: it follows its project's.
+      // A running agent takes it after its turn (Den's mode check).
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "mode")
+          throw new AgentError(`${k}: unknown field (mode takes mode)`, {
+            usage: true,
+          });
+      let intent: PermissionIntent | null = null;
+      if (body.mode !== null) {
+        if (typeof body.mode !== "string")
+          throw new AgentError(
+            "mode is ask, edits, auto or all, or null to follow its project's",
+            { usage: true },
+          );
+        try {
+          intent = checkIntent(body.mode, "mode");
+        } catch (e) {
+          throw new AgentError((e as Error).message, { usage: true });
+        }
+      }
+      const rec = setAgentPermission(d, id!, ws, intent);
+      what = `set ${rec.id}'s mode to ${intent ?? "its project's"} in ${ws}`;
+      audit(what);
+      void applyModesNow();
+      sendJson(res, { ok: true, agent: rec.id, mode: intent });
     } else if (verb === "clear-helpers") {
       const body = await jsonBody(req);
       for (const k of Object.keys(body))

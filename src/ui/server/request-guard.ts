@@ -773,6 +773,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/remove",
   "/api/workspaces/:ws/agents/:id/keep",
   "/api/workspaces/:ws/agents/:id/settings",
+  // Issue 199: what an agent may do without asking (agent_mode asks).
+  "/api/workspaces/:ws/agents/:id/mode",
   "/api/agents/clear-stopped",
   "/api/agents/restore",
   "/api/agents/rotation",

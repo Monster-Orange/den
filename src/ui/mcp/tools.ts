@@ -307,7 +307,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, agent_folder): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1782,7 +1782,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "project_mode",
     title: "Set a project's mode",
     description:
-      "Set the mode a project's agents start in (ask, edits, auto or all), or none to clear it (they then follow the install's mode, else their persona's). The person's Allow shows the change. New agents start in it; running agents keep theirs until they start again. A project's agent sets its own project's mode; Den's own agent any project's." +
+      "Set the mode a project's agents start in (ask, edits, auto or all), or none to clear it (they then follow the install's mode, else their persona's). The person's Allow shows the change. New agents start in it; running agents switch after their current turn, in the same conversation. A project's agent sets its own project's mode; Den's own agent any project's." +
       HELD,
     action: true,
     shape: {
@@ -1850,6 +1850,33 @@ const APPROVAL_TOOLS: DenTool[] = [
           folder: str(a.folder),
           project,
         },
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "agent_mode",
+    title: "Make an agent follow its project's mode",
+    description:
+      "Clear an agent's own mode (`agent`, its id), so it follows its project's mode again (else the install's, else its persona's). The person's own Allow shows what it lets the agent do; a running agent restarts after its turn, on the same conversation, in that mode. A project's agent asks for its own project's agents; Den's own agent for any. Setting a mode of its own is a person's." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg("agent_mode", a, "agent", "the agent's id");
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_mode",
+        "agent_mode",
+        { agent, project },
         a.note,
         ctx,
       );

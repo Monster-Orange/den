@@ -152,7 +152,9 @@ export interface SessionRouteDeps {
   modeOf?: () => (
     rec: AgentRecord,
     pid?: number,
-  ) => { want: string; running?: string } | undefined;
+  ) =>
+    | { want: string; running?: string; own?: true; followed?: string }
+    | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
   /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
@@ -365,6 +367,10 @@ export interface ListedSession {
   mode?: string;
   /** MODE-3: the mode its process runs in, when known. */
   modeRunning?: string;
+  /** Issue 199: its mode is its own, not its project's. */
+  modeOwn?: boolean;
+  /** Issue 199: with its own: the project's mode it doesn't follow. */
+  modeFollowed?: string;
   /** Extra allowed commands it was started with (AG-13.3). */
   allow?: string[];
   /** What it overrides of its persona (AG-10.9): its row's tags. */
@@ -569,7 +575,12 @@ export function listedSessions(
         if (!modeOf || !s || s.exited) return {};
         const m = modeOf(rec, s.pid);
         return m
-          ? { mode: m.want, ...(m.running ? { modeRunning: m.running } : {}) }
+          ? {
+              mode: m.want,
+              ...(m.running ? { modeRunning: m.running } : {}),
+              ...(m.own ? { modeOwn: true } : {}),
+              ...(m.followed ? { modeFollowed: m.followed } : {}),
+            }
           : {};
       })(),
       ...(rec.allow?.length ? { allow: [...rec.allow] } : {}),

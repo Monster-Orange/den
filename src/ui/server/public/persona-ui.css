@@ -592,6 +592,22 @@ dialog.pe-dlg::backdrop {
   font: 600 14.5px/1.45 var(--sans);
   overflow-wrap: anywhere;
 }
+/* Issue 199: the agents that keep their own mode, and the choice. */
+.den-ap-dlg .den-ap-own-list {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+  font: 13px/1.5 var(--sans);
+  overflow-wrap: anywhere;
+}
+.den-ap-dlg .den-ap-follow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font: 13px/1.4 var(--sans);
+}
+.den-ap-dlg .den-ap-follow[hidden] {
+  display: none;
+}
 .den-ap-dlg .den-ap-det {
   margin: 0;
   max-height: 260px;

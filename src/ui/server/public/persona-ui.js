@@ -407,6 +407,17 @@ export function forgetPersonaDetails() {
  * overrides of its persona, Auto-approve all always, and "newer available"
  * when it is pinned to an older version. HTML.
  */
+/**
+ * Issue 199: a running agent's mode is its own, not its project's: "own
+ * mode: auto (not following project: all)". Empty when it follows.
+ */
+export function ownModeLabel(r) {
+  if (r?.kind !== "agent" || !r.modeOwn || !r.mode) return "";
+  return r.modeFollowed && r.modeFollowed !== r.mode
+    ? t("ag.mode.ownNot", { m: r.mode, p: r.modeFollowed })
+    : t("ag.mode.own", { m: r.mode });
+}
+
 export function overrideTagsHtml(r) {
   const ov = r.overrides ?? [];
   const tags = [];

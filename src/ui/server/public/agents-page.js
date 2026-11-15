@@ -116,6 +116,7 @@ import {
   normalizeData,
   openPersonaEditor,
   overrideTagsHtml,
+  ownModeLabel,
   permBlockHtml,
   personaDetail,
   personaDetailHtml,
@@ -1839,8 +1840,10 @@ const modeName = (m) => t(`pm.name.${m}`);
 export function modeTagHtml(r, withButton) {
   if (r?.kind !== "agent" || isStopped(r) || !r.mode) return "";
   const d = modeDriftOf(r);
+  // Issue 199: a mode of its own says so, and the project's it doesn't follow.
+  const own = ownModeLabel(r);
   if (!d)
-    return `<span class="tagx${r.mode === "all" ? " warn" : ""}" data-mode="${esc(r.mode)}">${esc(t("ag.mode.tag", { m: modeName(r.mode) }))}</span>`;
+    return `<span class="tagx${r.mode === "all" || own ? " warn" : ""}" data-mode="${esc(r.mode)}"${own ? ' data-mode-own="1"' : ""}>${esc(own || t("ag.mode.tag", { m: modeName(r.mode) }))}</span>`;
   const tag = `<span class="tagx warn" data-mode-drift="${esc(d.want)}">${esc(t("ag.mode.drift", { want: modeName(d.want), running: modeName(d.running) }))}</span>`;
   return withButton
     ? `<span class="agmode">${tag}${modeApplyHtml(r)}</span>`

@@ -1923,6 +1923,15 @@
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
+    "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
+    "ap.do.agent_mode.loosens":
+      "This lets {agent} act without asking you: {from} → follow project ({to})",
+    "ap.own.h":
+      "These agents keep their own mode and won't follow the project:",
+    "ap.own.item": "{agent} (own mode: {mode})",
+    "ap.own.follow": "Also make these follow the project",
+    "ap.res.following": "Follow the project now: {list}.",
+    "ap.res.own": "Keep their own mode: {list}.",
     "ap.do.project_mode.loosens":
       "This lets agents in {project} act without asking you. Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_create":
@@ -1955,6 +1964,8 @@
     "pm.name.auto": "Auto",
     "pm.name.all": "All",
     "ag.mode.tag": "mode: {m}",
+    "ag.mode.own": "own mode: {m}",
+    "ag.mode.ownNot": "own mode: {m} (not following project: {p})",
     "ag.mode.drift": "Set to {want}, running {running}",
     "ag.mode.apply": "Restart to apply",
     "ag.mode.applyName": "Restart {id} now to run in its mode",
@@ -6551,6 +6562,24 @@
     s = String(a.summary || a.action);
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+  // Issue 199: Done, and for a project's mode, which agents follow it now
+  // and which keep their own mode.
+  function apDoneWords(a, res) {
+    var out = [t("ap.done", { what: apWhat(a) })];
+    if (res && res.following && res.following.length)
+      out.push(t("ap.res.following", { list: res.following.join(", ") }));
+    if (res && res.ownMode && res.ownMode.length)
+      out.push(
+        t("ap.res.own", {
+          list: res.ownMode
+            .map(function (o) {
+              return t("ap.own.item", { agent: o.agent, mode: o.mode });
+            })
+            .join(", "),
+        }),
+      );
+    return out.join(" ");
+  }
   function apDialog() {
     if (ap.dlg) return ap.dlg;
     var d = document.createElement("dialog");
@@ -6563,6 +6592,15 @@
       '<p class="help den-ap-who" id="den-ap-who" hidden></p>' +
       '<p class="den-ap-what" id="den-ap-what"></p>' +
       '<p class="help" id="den-ap-note" hidden></p>' +
+      // Issue 199: agents that won't follow a project's mode, and the
+      // person's one choice to make them (off by default).
+      '<div class="den-ap-own" id="den-ap-own" hidden>' +
+      '<p class="help" id="den-ap-own-h"></p>' +
+      '<ul class="den-ap-own-list" id="den-ap-own-list"></ul>' +
+      '<label class="den-ap-follow" id="den-ap-follow-row">' +
+      '<input type="checkbox" id="den-ap-follow"> ' +
+      '<span id="den-ap-follow-l"></span></label>' +
+      "</div>" +
       '<pre class="den-ap-det" id="den-ap-det" hidden></pre>' +
       '<p class="help" id="den-ap-waits"></p>' +
       '<p class="err" id="den-ap-err" role="alert" hidden></p>' +
@@ -6626,6 +6664,21 @@
     note.hidden = !a.note;
     note.textContent = a.note ? t("ap.says") + " “" + a.note + "”" : "";
     $("den-ap-det").textContent = (a.details || []).join("\n");
+    // Issue 199: the agents that keep their own mode, and the choice.
+    var own = a.ownMode || [];
+    $("den-ap-own").hidden = !own.length;
+    $("den-ap-own-h").textContent = own.length ? t("ap.own.h") : "";
+    var ol = $("den-ap-own-list");
+    ol.textContent = "";
+    own.forEach(function (o) {
+      var li = document.createElement("li");
+      li.textContent = t("ap.own.item", { agent: o.agent, mode: o.mode });
+      ol.appendChild(li);
+    });
+    var offers = (a.choices || []).indexOf("follow") >= 0;
+    $("den-ap-follow-row").hidden = !offers;
+    $("den-ap-follow-l").textContent = t("ap.own.follow");
+    if (!same) $("den-ap-follow").checked = false;
     var time = new Date(a.expiresAt);
     $("den-ap-waits").textContent = t("ap.waits", {
       time: isNaN(time)
@@ -6658,10 +6711,19 @@
     ap.busy = true;
     var btns = ap.dlg.querySelectorAll("button");
     for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    // Issue 199: the person's choice, sent with Allow only.
+    var follow =
+      decision === "allow" &&
+      (a.choices || []).indexOf("follow") >= 0 &&
+      ap.dlg.querySelector("#den-ap-follow").checked;
     fetch("/api/approvals/" + encodeURIComponent(a.id) + "/decide", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ decision: decision }),
+      body: JSON.stringify(
+        follow
+          ? { decision: decision, choices: { follow: true } }
+          : { decision: decision },
+      ),
     })
       .then(function (r) {
         return r.json().then(
@@ -6694,8 +6756,7 @@
               f({ confirm: false, post: false });
             });
             return;
-          } else if (decision === "allow")
-            toast(t("ap.done", { what: apWhat(a) }));
+          } else if (decision === "allow") toast(apDoneWords(a, res));
           apClose();
           apPoll();
         },
