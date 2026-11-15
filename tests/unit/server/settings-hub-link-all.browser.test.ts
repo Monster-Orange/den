@@ -206,6 +206,28 @@ describe("Settings › Agents › Unclear matches (#68, issue 167)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("one result line: linked, then the one that failed and what to do", async () => {
+    if (skip()) return;
+    const { p } = await page((method) =>
+      method === "POST"
+        ? {
+            ok: true,
+            linked: [{ project: "south", hub: BLOG }],
+            skipped: [{ project: "north", code: "offline", why: "x" }],
+          }
+        : suggestions(),
+    );
+    const text = await rowText(p);
+    expect(text).toContain("Linking ties a project to its Hub project");
+    await p.check(`${ROW} [data-hubla-pick="north"]`);
+    await p.click(`${ROW} [data-hubla-link="north"]`);
+    await p.waitForSelector(`${ROW} [data-hubla-result]:not([hidden])`);
+    expect(await p.textContent(`${ROW} [data-hubla-result]`)).toBe(
+      "Linked 1 project. 1 couldn't be linked: north. Try again.",
+    );
+    await p.context().close();
+  }, 60_000);
+
   it("nothing unclear: the empty line", async () => {
     if (skip()) return;
     const { p } = await page(() => ({
@@ -220,7 +242,7 @@ describe("Settings › Agents › Unclear matches (#68, issue 167)", () => {
     await p.context().close();
   }, 60_000);
 
-  it("a skipped pick says why, in Japanese", async () => {
+  it("a pick that fails says so and to try again, in Japanese", async () => {
     if (skip()) return;
     try {
       const { p } = await page(
@@ -245,7 +267,9 @@ describe("Settings › Agents › Unclear matches (#68, issue 167)", () => {
       await p.click(`${ROW} [data-hubla-link="north"]`);
       await p.waitForSelector(`${ROW} [data-hubla-result]:not([hidden])`);
       const t = await rowText(p);
-      expect(t).toContain("north をスキップ: Hub の候補ではなくなりました");
+      expect(t).toContain(
+        "north をリンクできませんでした。もう一度お試しください。",
+      );
       expect(t).not.toContain("not Hub's suggestion");
       await p.context().close();
     } finally {

@@ -4,6 +4,17 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.51] - unreleased
+
+### Fixed
+
+- Settings › Agents › Unclear matches (issue 164): the help and the list
+  now say in plain words what linking does (the project's agents file docs,
+  mocks and comments in its Hub project) and what to do (pick one, press
+  Link). After a link there is one result line, "Linked 2 projects. 1
+  couldn't be linked: north. Try again.", instead of a line per project.
+  Same words in English, Spanish and Japanese.
+
 ## [0.4.50] - unreleased
 
 ### Added

@@ -1613,7 +1613,7 @@ export const DEN_SETTINGS = [
     // Issue 167 (mock v6 B): the anchor stays; the row is Unclear matches.
     label: "Unclear matches",
     description:
-      "Shown only when Den can't tell which Hub project fits a project: two Hub projects share its repos, or its repos and its name point to different ones. Pick one for each. Nothing is filed for that project until you do.",
+      "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
     keywords: ["hub", "link", "projects", "unclear", "pick", "match"],
     scope: "user",
     control: { type: "custom", render: renderHubLinkAll },
@@ -3144,6 +3144,22 @@ function listWords(names) {
   }
 }
 
+/**
+ * Issue 164: one result line for a link run: how many were linked, then
+ * the ones that couldn't be and what to do. "Already linked" is no failure.
+ */
+export function hubLinkResultText(result, t, join = (n) => n.join(", ")) {
+  const n = (result?.linked ?? []).length;
+  const failed = (result?.skipped ?? [])
+    .filter((s) => s?.code !== "linked")
+    .map((s) => String(s?.project ?? ""));
+  if (!failed.length) return t("hubla.linked", { n });
+  const names = join(failed);
+  return n
+    ? `${t("hubla.linked", { n })} ${t("hubla.failed", { n: failed.length, names })}`
+    : t("hubla.failedAll", { names });
+}
+
 function renderHubLinkAll(host, ctx) {
   return drawHubLinkAll(host, ctx, null);
 }
@@ -3162,15 +3178,7 @@ function drawHubLinkAll(host, ctx, result) {
       host.innerHTML = hubLinkAllHtml(b, t);
       const out = host.querySelector("[data-hubla-result]");
       if (out && result && Array.isArray(result.linked)) {
-        const parts = [t("hubla.linked", { n: result.linked.length })];
-        for (const s of result.skipped ?? [])
-          parts.push(
-            t("hubla.skipped", {
-              project: s.project,
-              why: t(`hubla.why.${s.code}`),
-            }),
-          );
-        out.textContent = parts.join(" ");
+        out.textContent = hubLinkResultText(result, t, listWords);
         out.hidden = false;
       }
       // A project's Link is on once it has a pick (a clear one has it).
