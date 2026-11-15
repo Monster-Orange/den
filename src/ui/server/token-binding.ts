@@ -19,7 +19,8 @@ import { descendsFrom, loopbackPeerPid } from "../../shared/peer-process.js";
 export type TokenCaller = "ok" | "elsewhere" | "unknown";
 
 export interface BindingDeps {
-  peer?: (port: number) => number | null;
+  /** The caller's pid from its port and the server's own (issue 196). */
+  peer?: (port: number, to: number) => number | null;
   descends?: (pid: number, root: number) => boolean;
 }
 
@@ -33,7 +34,11 @@ export function callerPid(
   const sock = req.socket;
   if (!sock || !isLoopbackAddress(sock.remoteAddress)) return null;
   if (PEERS.has(sock)) return PEERS.get(sock) ?? null;
-  const pid = (d.peer ?? loopbackPeerPid)(sock.remotePort ?? 0);
+  // Both ends: a client port alone can be shared with another loopback
+  // connection (Linux reuses it per destination), which reads as no pid.
+  const pid = d.peer
+    ? d.peer(sock.remotePort ?? 0, sock.localPort ?? 0)
+    : loopbackPeerPid(sock.remotePort ?? 0, {}, sock.localPort ?? 0);
   PEERS.set(sock, pid);
   return pid;
 }

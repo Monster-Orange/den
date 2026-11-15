@@ -848,7 +848,7 @@
     "ub.link": "Vincular",
     "ub.waiting": "Aún no se guarda nada de este proyecto.",
     "ub.empty":
-      "Todos tus proyectos están vinculados a un proyecto de Hub. Den lista aquí un proyecto solo cuando no sabe cuál corresponde.",
+      "Todas las coincidencias están claras. Den lista aquí un proyecto solo cuando no sabe qué proyecto de Hub corresponde.",
     "ub.repos": "mismos repositorios",
     "ub.name": "mismo nombre",
     "ub.clear": "{project}: Hub sugiere",

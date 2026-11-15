@@ -11,7 +11,7 @@
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import type { Browser, Page } from "playwright";
+import type { Browser, Page, Request } from "playwright";
 import {
   removeFrameTmp,
   startFrameServer,
@@ -34,7 +34,13 @@ const INVALID = [
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a Playwright
+    // run-server (its localhost is this machine's: exposeNetwork).
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -53,14 +59,34 @@ const skip = () => !browser;
 /** A page, and every /api answer it got that was 422. */
 async function open(
   p: string,
-): Promise<{ page: Page; refused: string[]; errors: string[] }> {
+  before?: (page: Page) => Promise<void>,
+): Promise<{
+  page: Page;
+  refused: string[];
+  errors: string[];
+  settled: () => Promise<void>;
+}> {
   const page = await browser!.newPage({
     viewport: { width: 1440, height: 900 },
   });
+  if (before) await before(page);
   const refused: string[] = [];
   // Uncaught exceptions on the page: messages only.
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  // Every /api call the page has asked and not yet had in full. A stream
+  // (text/event-stream) never ends: it counts once its answer starts.
+  const pending = new Set<Request>();
+  page.on("request", (r) => {
+    if (r.resourceType() === "eventsource") return;
+    if (new URL(r.url()).pathname.startsWith("/api/")) pending.add(r);
+  });
+  page.on("response", (r) => {
+    if ((r.headers()["content-type"] ?? "").includes("text/event-stream"))
+      pending.delete(r.request());
+  });
+  page.on("requestfinished", (r) => pending.delete(r));
+  page.on("requestfailed", (r) => pending.delete(r));
   page.on("response", (r) => {
     const u = new URL(r.url());
     if (u.pathname.startsWith("/api/") && r.status() === 422)
@@ -68,7 +94,42 @@ async function open(
   });
   await page.goto(`${s!.base}${p}`);
   await page.waitForSelector(".den-top");
-  return { page, refused, errors };
+  return { page, refused, errors, settled: () => settle(page, pending) };
+}
+
+/**
+ * Issue 195: the page has settled. The shell is up, every /api call it
+ * asked has its answer, and the page has run what those answers start
+ * (a frame and a task later), twice in a row with nothing new asked. As
+ * long as the page needs, and no longer (a fixed 1.5 s sleep was both too
+ * short for a slow answer and wasted time on a fast one).
+ */
+async function settle(page: Page, pending: Set<Request>): Promise<void> {
+  await page.waitForFunction(
+    () => !!(window as unknown as { denShell?: unknown }).denShell,
+  );
+  const turn = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((r) =>
+          requestAnimationFrame(() => setTimeout(() => r(), 0)),
+        ),
+    );
+  for (let quiet = 0; quiet < 2; ) {
+    if (pending.size) {
+      quiet = 0;
+      await Promise.all(
+        [...pending].map((r) =>
+          r
+            .response()
+            .then((res) => res?.finished())
+            .catch(() => null),
+        ),
+      );
+    }
+    await turn();
+    quiet = pending.size ? 0 : quiet + 1;
+  }
 }
 
 describe("a page navigation with an invalid config", () => {
@@ -108,9 +169,9 @@ describe("a page navigation with an invalid config", () => {
     "%s still loads, and the shell's calls on it are not refused",
     async (p) => {
       if (skip()) return;
-      const { page, refused } = await open(p);
+      const { page, refused, settled } = await open(p);
       // (The health stream keeps the network busy: no "networkidle".)
-      await page.waitForTimeout(1_500);
+      await settled();
       // Whatever else the page asks that reads the config fails quietly:
       // no error toast.
       expect(await page.locator(".den-toast-err").count()).toBe(0);
@@ -152,11 +213,38 @@ describe("a page navigation with an invalid config", () => {
     "/logs",
   ])("%s throws nothing", async (p) => {
     if (skip()) return;
-    const { page, errors } = await open(p);
-    await page.waitForTimeout(1_500);
+    const { page, errors, settled } = await open(p);
+    await settled();
     expect(errors).toEqual([]);
     const free = p === "/settings" || p === "/logs";
     expect(await page.locator("#den-error-page").count()).toBe(free ? 0 : 1);
+    await page.close();
+  });
+
+  // Issue 195: "settled" waits for what the page asked, however long that
+  // takes. An answer that comes late (here 2.5 s) and makes the page throw
+  // is still seen.
+  it("a throw after a slow /api answer is still caught", async () => {
+    if (skip()) return;
+    const { page, errors, settled } = await open("/release", async (pg) => {
+      await pg.route("**/api/changelog", async (route) => {
+        await new Promise((r) => setTimeout(r, 2_500));
+        await route.continue();
+      });
+      await pg.addInitScript(() => {
+        const f = window.fetch.bind(window);
+        window.fetch = (input, init) =>
+          f(input, init).then((r) => {
+            if (String(r.url).includes("/api/changelog"))
+              setTimeout(() => {
+                throw new Error("late throw");
+              }, 0);
+            return r;
+          });
+      });
+    });
+    await settled();
+    expect(errors).toEqual(["late throw"]);
     await page.close();
   });
 

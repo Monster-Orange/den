@@ -58,6 +58,11 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
+    # jest's cores-minus-one the shared runner starved and the heaviest
+    # files ran 2-8 times slower, past their budgets (issues 195-198).
+    env:
+      DEN_TEST_WORKERS: "2"
     strategy:
       fail-fast: false
       matrix:

@@ -7,6 +7,7 @@ import { describe, expect, it } from "@jest/globals";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import * as yaml from "yaml";
 
 const ROOT = path.join(__dirname, "../../..");
 
@@ -50,5 +51,17 @@ describe("jest workers (den#143)", () => {
     expect(pkg.scripts.preflight).toContain(
       "DEN_TEST_WORKERS=${DEN_TEST_WORKERS:-8}",
     );
+  });
+
+  it("CI's test shards cap the workers through the setting (issue 196, 197, 198, 195)", () => {
+    // A shared runner starved by cores-minus-one workers ran the heaviest
+    // files 2-8 times slower, past their budgets. The cap is the setting,
+    // set on the job; never a number in the config.
+    for (const f of ["ci.yml", "release.yml"]) {
+      const doc = yaml.parse(
+        fs.readFileSync(path.join(ROOT, ".github", "workflows", f), "utf-8"),
+      ) as { jobs: { tests: { env?: Record<string, unknown> } } };
+      expect([f, doc.jobs.tests.env?.DEN_TEST_WORKERS]).toEqual([f, "2"]);
+    }
   });
 });

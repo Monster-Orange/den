@@ -54,7 +54,7 @@ config and manifest changes a distribution must make to move to it under
   matches, never the name itself. A commit-msg hook runs the same check before
   a commit is made, and passes quietly when no names file is set.
 
-## [0.4.50] - unreleased
+## [0.4.50] - 2026-11-15
 
 ### Added
 
@@ -169,6 +169,11 @@ config and manifest changes a distribution must make to move to it under
   for later ones, the domain being the one the distribution already uses
   (the first install's address, else its edge domain); `--url`, `--yes`
   and `--json` skip the question. (den#173, D80)
+- On Linux, an agent's own calls to Den could be refused (403) now and
+  then on a busy machine. Den finds the calling process from the
+  connection, and Linux can give the same client port to two loopback
+  connections at once; Den then couldn't tell which was the agent's. It
+  now matches both ends of the connection. (den#196)
 
 ## [0.4.48] - 2026-11-15
 
