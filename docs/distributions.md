@@ -1118,6 +1118,19 @@ hub:
   Hub sees the state: queued, delivered, working (again every
   `hub.delivery_heartbeat_seconds`, default 15), done, or failed. The
   agent's card says "Working on N Hub comments · <artifact>".
+- Hub's inbox reaches the agent (0.4.51). One watcher per install reads
+  Hub's inbox (`GET /api/inbox`, once per agent) every
+  `hub.inbox_poll_seconds` (default 30) and types each new item (an
+  approval, a change request, a comment on the agent's doc) into that
+  agent's pane through the same path as comments: at once when it waits
+  for its person, after its turn, or at its next start. The text says
+  who, what, on which doc, the note, and the Hub link. Each item is kept
+  as seen in Den's state, so a restart never repeats one; items older
+  than the watcher's first run, and comments Hub already delivered, are
+  passed over. Hub has no ack for inbox items, so none is sent. While
+  Hub doesn't answer the wait doubles, up to
+  `hub.inbox_backoff_max_seconds` (default 600). `hub.inbox_watch: false`
+  turns it off.
 - How to answer comes from Hub (0.4.44). Each delivery may carry
   `reply_with`: a short list of `{ tool, args, when }`, where `when` is
   `changed` (the agent edited the artifact) or `answer` (it only replies).

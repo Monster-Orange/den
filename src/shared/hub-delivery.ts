@@ -36,7 +36,16 @@ export interface Delivery {
    * (saved the edit) and `answer` (a reply). Absent from an older Hub.
    */
   replyWith?: ReplyWith[];
+  /**
+   * 0.4.51 (issue 166): what Den itself wrote for the agent, for an item
+   * Den made from Hub's inbox (id starts LOCAL_PREFIX). Never read from
+   * Hub: parseDelivery ignores it; only Den's own held file brings it back.
+   */
+  text?: string;
 }
+
+/** Ids of items Den made from Hub's inbox: never acked to Hub. */
+export const LOCAL_PREFIX = "inbox:";
 
 export interface ReplyWith {
   tool: string;
@@ -107,6 +116,7 @@ export function deliveryRaw(d: Delivery): Record<string, unknown> {
     created_at: d.createdAt,
     ...(d.forwarded ? { forwarded: d.forwarded } : {}),
     ...(d.replyWith ? { reply_with: d.replyWith } : {}),
+    ...(d.text !== undefined ? { text: d.text } : {}),
   };
 }
 
@@ -128,7 +138,10 @@ function readReplyWith(v: unknown): ReplyWith[] | undefined {
     if (!a || typeof a !== "object" || Array.isArray(a)) continue;
     const args: Record<string, string | string[]> = {};
     let ok = true;
-    for (const [k, val] of Object.entries(a as Record<string, unknown>).slice(0, 8)) {
+    for (const [k, val] of Object.entries(a as Record<string, unknown>).slice(
+      0,
+      8,
+    )) {
       if (!/^[a-z_]{1,40}$/.test(k)) ok = false;
       else if (typeof val === "string") args[k] = line(val.slice(0, 200));
       else if (
