@@ -1,3 +1,4 @@
+import { browserOpenRefusal } from "../../shared/browser-open.js";
 import {
   ownerGithubLine,
   recordOwnerGithub,
@@ -125,7 +126,8 @@ type BrowserFocusResult =
 type BrowserOpenResult =
   | BrowserFocusResult
   | { status: "opened" }
-  | { status: "open-failed"; error: string };
+  | { status: "open-failed"; error: string }
+  | { status: "skipped"; why: string };
 
 // Generous enough for a cold tsx start (the server now runs from live TS source
 // by default), so `den web` doesn't print a false "did not become ready" while
@@ -169,7 +171,8 @@ export function parseWebCommandArgs(
   const options: WebCommandOptions = {
     action: "up",
     port: parsePort(env.PORT),
-    openBrowser: true,
+    // DEN_NO_OPEN=1 is --no-open (0.4.48: tests set it; nothing read it).
+    openBrowser: env.DEN_NO_OPEN !== "1",
     silent: true,
     setupBrowserAccess: false,
   };
@@ -1033,13 +1036,23 @@ function openUrl(url: string): BrowserOpenResult {
  * sign-in link, minted only when it is opened). `focus: false` (`web
  * open`) always opens.
  */
-function openOrFocusDenWebUrl(
+export function openOrFocusDenWebUrl(
   url: () => string,
   port: number,
   focus = true,
+  /** A test's stubs; the env says whether it may open at all. */
+  deps: {
+    focus?: (port: number) => BrowserFocusResult;
+    open?: (url: string) => BrowserOpenResult;
+    env?: NodeJS.ProcessEnv;
+  } = {},
 ): BrowserOpenResult {
+  // 0.4.48: never under a test or CI run (browser-open.ts); nothing is
+  // focused, opened or minted.
+  const why = browserOpenRefusal(deps.env ?? process.env);
+  if (why) return { status: "skipped", why };
   if (focus) {
-    const focusResult = focusExistingBrowserTab(port);
+    const focusResult = (deps.focus ?? focusExistingBrowserTab)(port);
     if (focusResult.status === "focused") return focusResult;
 
     if (focusResult.status === "error" && process.platform === "darwin") {
@@ -1047,7 +1060,7 @@ function openOrFocusDenWebUrl(
     }
   }
 
-  return openUrl(url());
+  return (deps.open ?? openUrl)(url());
 }
 
 function buildBrowserAccessProbeScript(appName: string): string {
@@ -1519,6 +1532,15 @@ async function runWeb(args: string[]): Promise<void> {
     options.port,
     options.action !== "open",
   );
+  if (browser.status === "skipped") {
+    // Its origin (never the link): which run tried to open what.
+    console.log(
+      chalk.gray(
+        `  Browser open skipped (${browser.why}): ${addr.url.replace(/\/+$/, "")}\n`,
+      ),
+    );
+    return;
+  }
   if (browser.status === "focused") {
     console.log(chalk.green(`  OK Focused existing ${browser.app} tab`));
     console.log(chalk.gray(`  ${shown}\n`));

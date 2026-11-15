@@ -951,6 +951,7 @@ describe("a plain-http bind to one LAN address (DEN_BIND_HOST=<LAN IPv4>)", () =
         path.join(ENGINE, "src", "ui", "cli", "index.ts"),
         "web",
         "up",
+        "--no-open",
         "--port",
         String(v4Port),
       ],

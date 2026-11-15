@@ -100,6 +100,9 @@ question for the person (`ask`, sometimes with `choices`).
 | `<cli> down <repo> --json`                                        | `{ ok, workspace, services, all? }`                                          |
 | `<cli> web down --json`                                           | `{ ok, url, port, running, stopped }`                                        |
 
+`DEN_NO_OPEN=1` is the same as `--no-open`. Under a test run (Jest) or CI
+Den never opens or focuses a browser, unless `DEN_ALLOW_OPEN=1` is set.
+
 ### repo add
 
 `<cli> repo add <path|git-url> [--sidecar] [-w <project>] [--name <repo>]

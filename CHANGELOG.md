@@ -70,6 +70,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Running Den's tests could open sign-in tabs in the developer's browser,
+  one per run. `DEN_NO_OPEN=1` is now the same as `--no-open`, and Den
+  never opens or focuses a browser under a test run or CI unless
+  `DEN_ALLOW_OPEN=1` says so.
 - An agent started with no folder (`agents start -w <project>`, or the
   page) worked in the folder above the project's repos instead of in a
   repo. It now works in the repo it is started for, else the project's

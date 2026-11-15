@@ -28,6 +28,11 @@ if (!process.env.DEN_HOME)
 // env a test builds. A suite that tests the search sets its own (a fake
 // shell script, temp dirs).
 process.env.DEN_LOGIN_SHELL ??= "off";
+
+// 0.4.48: no test opens a real browser (a person's browser filled with
+// sign-in tabs from test runs). `web up` and every opener honour it; the
+// opener refuses under JEST_WORKER_ID besides (browser-open.ts).
+process.env.DEN_NO_OPEN = "1";
 process.env.DEN_RUNTIME_DIRS ??= "";
 
 // No test runs a vendor's CLI installed on this machine's PATH (AG-0.5's
