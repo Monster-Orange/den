@@ -202,6 +202,7 @@ import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { USAGE_HELP, cmdUsage } from "./usage-command.js";
+import { GATE_HELP, cmdGate } from "./gate-command.js";
 import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
@@ -559,6 +560,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   sessions: SESSIONS_HELP,
   agents: AGENTS_HELP,
   usage: USAGE_HELP,
+  gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
   feedback: FEEDBACK_HELP,
@@ -615,6 +617,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "sessions",
   "agents",
   "usage",
+  "gate",
   "hub",
   "notifications",
   "feedback",
@@ -649,6 +652,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "agents",
   // den#6: reads local transcripts and agent records, no org data.
   "usage",
+  // den#144: the machine's gate slots, no org data.
+  "gate",
   // D52: calls Den's own proxy to Hub, no org data.
   "hub",
   // NT: the bell's own file, no org data.
@@ -1133,6 +1138,10 @@ class DenCLI {
 
         case "usage":
           process.exitCode = await cmdUsage(args.slice(1));
+          break;
+
+        case "gate":
+          process.exitCode = await cmdGate(args.slice(1));
           break;
 
         case "hub":
