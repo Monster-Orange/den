@@ -453,6 +453,21 @@
     "busy.restartW": "Reiniciando {name}…",
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
+    "keep.label": "Mantener los agentes al cerrar sesión",
+    "keep.warn":
+      "Con el daemon, un agente puede no llegar a su inicio de sesión (el llavero de inicio): aún no se ha mostrado.",
+    "keep.apply": "Aplicar",
+    "keep.pending": "Guardado, aún sin aplicar: pulsa Aplicar.",
+    "keep.w": "Aplicando…",
+    "keep.s": "Aplicado. __DEN_TITLE__ se reinicia.",
+    "keep.needs": "Necesita tu contraseña de administrador.",
+    "keep.failed": "No se aplicó. Nada cambió.",
+    "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
+    "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
+    "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
+    "keep.noService":
+      "Guardado. Se aplica cuando __DEN_TITLE__ funciona como servicio: __DEN_CLI__ service install",
+    "keep.refused": "Sin contraseña de administrador: nada cambió.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -805,6 +820,7 @@
     "set.agents.layout": "Disposición de la pestaña Agentes",
     "set.cli.local_dev": "Entorno local",
     "set.cli.cli_tabs": "Pestañas de terminal",
+    "set.agents.keep_running": "Mantener los agentes al cerrar sesión",
     "set.cli.log_window_lines": "Líneas del panel de registros",
     "set.server.restart": "Reiniciar Den",
     "set.cli.web_port": "Tu puerto web",
@@ -1297,6 +1313,8 @@
       "Den no sabe qué proyecto de Hub le corresponde. Haz clic para elegir. No se guarda nada de él hasta entonces.",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
+    "bell.m.ranAway":
+      "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
@@ -1537,7 +1555,7 @@
     "ag.mv.done": "{id} se movió a {ws}.",
     "ag.where.logout": "Se detiene al cerrar sesión",
     "ag.where.logoutTip":
-      "Se ejecuta en la sesión de escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: {cli} service install --mode always (opcional, aún no probado tras cerrar sesión)",
+      "Se ejecuta en el escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: Ajustes › Mantener los agentes al cerrar sesión, o {cli} service install --mode always (opcional; el llavero con el daemon aún no se ha mostrado)",
     "ag.where.bg": "Sin GUI",
     "ag.where.bgTip":
       "Sigue ejecutándose tras cerrar sesión, fuera de la sesión de escritorio: sin el llavero de inicio de sesión ni apps con GUI. 1Password usa el token de la cuenta de servicio, los navegadores van sin interfaz y las carpetas protegidas necesitan Acceso total al disco ({cli} doctor).",
@@ -2163,6 +2181,8 @@
       "Configuraciones de agente desde las que puedes empezar. Las integradas vienen con Den, las de la distribución con tu distribución, y las tuyas están en esta máquina. Ver o Editar, Duplicar, + Nueva persona; solo las tuyas se pueden editar o eliminar.",
     "set.cli.local_dev.d":
       "Desactivado oculta Proyectos y las API de proyectos para ti. __DEN_CLI__ config local_dev=false",
+    "set.agents.keep_running.d":
+      "Activado: __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Así, un agente puede no llegar a su inicio de sesión (el llavero de inicio): aún no se ha mostrado. Desactivado (por defecto): los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "Si up y restart abren pestañas de terminal de forma predeterminada. __DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":

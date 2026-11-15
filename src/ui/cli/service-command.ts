@@ -17,8 +17,11 @@
  *
  * D18: `install --mode login|always`. login: LaunchAgents in the desktop
  * session, stopped at logout. always: LaunchDaemons that run as you, kept
- * across logout (one sudo). Without --mode, the mode already installed
- * (else login): re-running install never changes it. Both modes also
+ * across logout (one sudo). Which mode install uses (issue 163): an
+ * explicit --mode, else the Setting "Keep agents running after logout"
+ * (agents.keep_running_after_logout, when set: on is always, off is
+ * login), else the mode already installed, else login. `--plan` prints
+ * both jobs' plists (the web job's and the session host's). Both modes also
  * install the session host as its own job, on Den's node copy
  * (`<stateDir>/bin/<cli>-sessions-host`, the path Full Disk Access is
  * granted to), and `<cli> sessions` then waits for that job instead of
@@ -33,7 +36,7 @@ import {
   recordOwnerGithub,
   type OwnerGithubResult,
 } from "../../shared/owner-github.js";
-import { spawnSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -44,6 +47,7 @@ import {
   type ServiceMode,
 } from "./doctor-where.js";
 import {
+  agentsKeepRunningAfterLogout,
   readDenConfig,
   readWebServiceConfig,
   type DenConfig,
@@ -51,7 +55,7 @@ import {
 import { readWebPort } from "../../shared/edge/config.js";
 import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
-import { ALWAYS_UNPROVEN } from "../../shared/launchd-session.js";
+import { ALWAYS_CAVEAT } from "../../shared/launchd-session.js";
 import {
   classifyServerInfo,
   ForeignServerError,
@@ -86,6 +90,34 @@ const SUBCOMMAND_FLAGS: Record<(typeof SUBCOMMANDS)[number], string[]> = {
 const defaultRunner: ServiceRunner = (cmd, args, env) =>
   spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } })
     .status ?? 1;
+
+/**
+ * Issue 163: a runner for the web server's own Apply. install.sh replaces
+ * the job this server runs in, so it runs detached (its own process
+ * group, which launchd's bootout of this server doesn't reach), output to
+ * `logFile`. 0 once it started. `extra` goes under the job's env (the
+ * sudo shim's PATH).
+ */
+export function detachedRunner(
+  logFile: string,
+  extra: () => NodeJS.ProcessEnv = () => ({}),
+): ServiceRunner {
+  return (cmd, args, env) => {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    const fd = fs.openSync(logFile, "a");
+    try {
+      const child = spawn(cmd, args, {
+        detached: true,
+        stdio: ["ignore", fd, fd],
+        env: { ...process.env, ...extra(), ...env },
+      });
+      child.unref();
+      return child.pid ? 0 : 1;
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+}
 
 /** How long `install` waits for the web server to answer. */
 export const READY_TIMEOUT_MS = 30_000;
@@ -137,6 +169,17 @@ export interface ServiceDeps {
   jobPid?: (job: ServiceJob, label: string) => number | null;
   /** D26: stop a plain server of this install (default: SIGTERM, wait). */
   stopPlain?: (pid: number, port: number) => Promise<boolean>;
+  /**
+   * Issue 163: Settings › Keep agents running after logout (true, false,
+   * or undefined when unset). Default: user.yml, unless `run` is a test's.
+   */
+  keepRunning?: () => boolean | undefined;
+  /**
+   * Issue 163: the web server's Apply runs install (detachedRunner). It
+   * replaces this very server, so install neither stops a plain server
+   * nor waits for one to answer: it returns once the script started.
+   */
+  handOff?: boolean;
   /** D17: record web.owner_github (default: from gh, unless `run` is a test's). */
   recordOwner?: () => OwnerGithubResult;
   config?: DenConfig;
@@ -314,8 +357,10 @@ export function serviceHelp(cli: string): string[] {
     `  uninstall                      stop them and remove their plists`,
     ``,
     `  --mode login   (default) LaunchAgents in the desktop session: stop at logout, with every agent`,
-    `  --mode always  LaunchDaemons running as you, one sudo: meant to keep agents running across logout. Opt-in, ${ALWAYS_UNPROVEN}`,
-    `  Without --mode, install keeps the mode already installed.`,
+    `  --mode always  LaunchDaemons running as you, one sudo: agents keep running after logout. Opt-in; ${ALWAYS_CAVEAT}`,
+    `  Without --mode, install follows Settings › Keep agents running after logout`,
+    `  (agents.keep_running_after_logout: on is always, off is login); unset, it keeps`,
+    `  the mode already installed.`,
   ];
 }
 
@@ -373,8 +418,16 @@ export async function cmdService(
     deps.job ??
     ((l: string) => serviceJobState(l, home, process.getuid?.() ?? 0));
   const installed = jobOf(label);
-  // D18: without --mode, the mode it has (re-running install keeps it).
-  const mode: ServiceMode = askedMode ?? installed?.mode ?? "login";
+  // Issue 163: --mode, then the Setting, then the mode it has (re-running
+  // install keeps it), then login.
+  const keep = (
+    deps.keepRunning ??
+    (deps.run ? () => undefined : () => agentsKeepRunningAfterLogout())
+  )();
+  const settingMode: ServiceMode | undefined =
+    keep === undefined ? undefined : keep ? "always" : "login";
+  const mode: ServiceMode =
+    askedMode ?? settingMode ?? installed?.mode ?? "login";
   const stateDir = deps.stateDir ?? getStateDir();
   const env: Record<string, string> = {
     DEN_ROOT: distRoot,
@@ -412,7 +465,7 @@ export async function cmdService(
         : path.join(home, "Library", "LaunchAgents");
     log(`service install --plan (read-only: nothing is written or loaded)`);
     log(
-      `  mode:    ${mode}${mode === "always" ? ` (LaunchDaemons running as you: meant to keep running across logout, ${ALWAYS_UNPROVEN}; opt-in; one sudo)` : " (LaunchAgents: stop at logout)"}`,
+      `  mode:    ${mode}${mode === "always" ? ` (LaunchDaemons running as you: agents keep running after logout; opt-in; one sudo; ${ALWAYS_CAVEAT})` : " (LaunchAgents: stop at logout)"}`,
     );
     log(`  label:   ${label}`);
     log(`  plist:   ${path.join(dir, `${label}.plist`)}`);
@@ -434,10 +487,12 @@ export async function cmdService(
       log(
         `           install stops this plain server (pid ${id.pid}) first; the service runs it then`,
       );
-    log(`  plist it would write:`);
-    // install.sh print writes the plist to stdout only.
-    const code = run("bash", [script, "print"], env);
-    if (code !== 0) return code;
+    log(`  plists it would write (the web job's, then the host job's):`);
+    // install.sh print / print-host write a plist to stdout only.
+    for (const which of ["print", "print-host"]) {
+      const code = run("bash", [script, which], env);
+      if (code !== 0) return code;
+    }
     if (id.kind === "foreign") {
       log(`✗ install would refuse this port: ${pickAnotherPortHint()}`);
       return 1;
@@ -447,7 +502,7 @@ export async function cmdService(
 
   // D26: a plain `web up` server of this install on the port would answer
   // for the job (which then crash-loops on the taken port): stop it first.
-  if (sub === "install") {
+  if (sub === "install" && !deps.handOff) {
     const id = await identify(port, own);
     const pid = id.kind === "ours" ? id.pid : undefined;
     const theJob = installed ? jobPid(installed, label) : null;
@@ -474,7 +529,9 @@ export async function cmdService(
     const line = ownerGithubLine(rec(), product().cli);
     if (line) log(line);
     if (mode === "always")
-      log(`note: --mode always is opt-in and ${ALWAYS_UNPROVEN}`);
+      log(
+        `note: --mode always is opt-in; ${ALWAYS_CAVEAT}: under the daemon an agent may not reach its sign-in (the login keychain)`,
+      );
   }
   const code = run("bash", [script, sub!], {
     ...env,
@@ -510,6 +567,10 @@ export async function cmdService(
     );
   } catch {
     /* sessions then start a host of their own, as before */
+  }
+  if (deps.handOff) {
+    log(`… ${label} re-installing (${mode}); ${product().title} restarts`);
+    return 0;
   }
 
   const url = `${denWebBase(port)}/api/server-info`;

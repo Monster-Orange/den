@@ -199,10 +199,10 @@ token (an MCP server outside an agent's session, or anything else on this
 machine) reads "Something on this machine (no agent identity) wants to:",
 with "If you didn't ask an agent to do this, Deny." under it.
 
-| MCP tool           | What Allow runs                                                                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP tool           | What Allow runs                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workspace_create` | The Projects page's create: an empty project, made active                                                                                      |
-| `repo_add`         | `repo add <path> --json`, a local folder inside home                                                                                               |
+| `repo_add`         | `repo add <path> --json`, a local folder inside home                                                                                           |
 | `service_try`      | `up` for one service, as the Services page's Start does; an inactive project is activated first ("Start <service> (this activates <project>)") |
 
 - **Den writes the dialog.** Its line and its Review come from the action
@@ -242,7 +242,7 @@ with "If you didn't ask an agent to do this, Deny." under it.
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
   Every ask and decision is in the activity trail.
 - **The server agent restarts its own Den** (`den_restart_server
-  { reason }`, the held action `den_restart`). Den restarts in place on
+{ reason }`, the held action `den_restart`). Den restarts in place on
   the version installed now, as Settings › Restart Den does; agents and
   terminals carry on. When the new Den is up, it types
   `Server is back on <version> (pid …)` into the server agent's
@@ -890,11 +890,11 @@ edge:
   #   ca: ~/path/to/ca                         # optional: the CA that signed them
 ```
 
-| Strategy | What the edge does                                                                                                                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `none`   | Serves http on `edge.http_port` (80) only. Route URLs are `http://`. No cert, no CA, mkcert is never run.                                                                                              |
+| Strategy | What the edge does                                                                                                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`   | Serves http on `edge.http_port` (80) only. Route URLs are `http://`. No cert, no CA, mkcert is never run.                                                                                            |
 | `mkcert` | Issues its own wildcard cert for every domain, project and stack zone. Its CA is its own under the state dir (`~/.local/share/<org>/edge/ca`), or `ca`, an existing CA it never mints or uninstalls. |
-| `files`  | Issues nothing: the `include` directory (copied beside the generated config) and `mounts` hold the certs. `ca` only tells health checks which CA to trust.                                             |
+| `files`  | Issues nothing: the `include` directory (copied beside the generated config) and `mounts` hold the certs. `ca` only tells health checks which CA to trust.                                           |
 
 `tls: <id>` is short for `tls: { strategy: <id> }`. `config/local/user.yml`'s
 `edge.tls` replaces the team's whole. An unknown strategy, or a key the
@@ -1271,7 +1271,7 @@ product:
 | `manifest`       | `.<name>.yml`        | The manifest file a repo carries; the `.json` twin is also read                                                      |
 | `state_dir`      | `~/.<name>`          | Per-user state: web server, daemons, logs, history (a relative path is relative to den.yml's directory, not the cwd) |
 | `services_dir`   | `.<name>-services`   | Managed clones, relative to the distribution root                                                                    |
-| `workspaces_dir` | `<name>-workspaces`  | Project checkouts, relative to the distribution root                                                               |
+| `workspaces_dir` | `<name>-workspaces`  | Project checkouts, relative to the distribution root                                                                 |
 
 Env vars, with `ACME` as the prefix:
 
@@ -2372,7 +2372,7 @@ terminal and agent) as launchd jobs, restarted if they exit:
 
 ```bash
 ./bin/acme service install                # install (or refresh) and start them
-./bin/acme service install --mode always  # meant to keep them running across logout (opt-in, not yet proven)
+./bin/acme service install --mode always  # keep them running after logout (opt-in)
 ./bin/acme service install --plan  # what install would do; writes and loads nothing
 ./bin/acme service status      # launchd's view: state, pid, last exit code
 ./bin/acme service print       # the web plist it would install; installs nothing
@@ -2403,19 +2403,27 @@ you to run.
 
 ### Login or always
 
-| `--mode`          | Jobs                                                  | At logout                            |
-| ----------------- | ----------------------------------------------------- | ------------------------------------ |
-| `login` (default) | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent               |
-| `always`          | LaunchDaemons that run as you (`UserName`), from boot | meant to keep running, and so agents |
+| `--mode`          | Jobs                                                  | At logout                   |
+| ----------------- | ----------------------------------------------------- | --------------------------- |
+| `login` (default) | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent      |
+| `always`          | LaunchDaemons that run as you (`UserName`), from boot | keep running, and so agents |
 
-`always` is opt-in and not yet proven across a logout: no logout has
-shown it keeping an agent on the same conversation yet. Use `login` unless
-you are testing it.
+`always` is opt-in: Settings › Agents › Keep agents running after logout
+(off by default), then Apply. Whether an agent reaches its sign-in (the
+login keychain) under the daemon is not yet shown, and `doctor` says so on
+its service line. A real logout has not been shown in tests either: they
+use the launchd job files and a restart of the session host.
 
 `always` takes your admin password once (sudo writes and loads the
-LaunchDaemons in `/Library/LaunchDaemons`); it is never asked for again.
-Without `--mode`, install keeps the mode already installed, so re-running it
-after an upgrade never changes it. Switching mode removes the other mode's
+LaunchDaemons in `/Library/LaunchDaemons`). Apply in Settings asks for it
+only when sudo will run: turning it on, or turning it off over
+LaunchDaemons (sudo removes them). Install asks sudo once before it
+changes any job, so a refusal leaves the old mode.
+
+Which mode install uses: an explicit `--mode`; else the Setting
+(`agents.keep_running_after_logout` in user.yml: true is always, false is
+login); else the mode already installed, so re-running it after an
+upgrade never changes it; else login. Switching mode removes the other mode's
 jobs: never both. Use `always` on a machine you reach from elsewhere (ssh, a
 browser on another machine); `login` on a laptop.
 
@@ -2722,8 +2730,8 @@ Read tools (always registered):
 | `status`             | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known |
 | `services`           | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                     |
 | `applications`       | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                            |
-| `graph`              | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active project's; with `workspace`, that one's and its startup order; scoped, the project's own)                                                                                                                    |
-| `workspaces`         | `/api/workspaces`                          | Projects, active and focused                                                                                                                                                                                                                                                 |
+| `graph`              | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active project's; with `workspace`, that one's and its startup order; scoped, the project's own)                                                                                                                        |
+| `workspaces`         | `/api/workspaces`                          | Projects, active and focused                                                                                                                                                                                                                                                   |
 | `environments`       | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                             |
 | `logs_search`        | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                              |
 | `logs_tail`          | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                                                                                                                         |
@@ -2735,7 +2743,7 @@ Read tools (always registered):
 | `ask_human`          | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                      |
 | `notifications_list` | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                              |
 | `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
-| `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                          |
+| `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
 | `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
 | `repos_detect`       | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                     |
 | `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when it can start in several ways (call again with `run`)                                                                                              |
@@ -2880,7 +2888,7 @@ agent and kind.
   `true` or `false`). All are on but `finished` ("Agent finished its
   turn"), which is off by default. A kind that is off shows no bell item
   and doesn't count on the badge; the item is still kept, and `<cli>
-  notifications list` still lists it. A row's ⊘ turns its kind off after
+notifications list` still lists it. A row's ⊘ turns its kind off after
   one question, with Undo; "Agent is waiting for you" has none, and
   turning it off in Settings says what that means. Repeats of a kind from
   one agent fold into one row with ×N. Items older than
@@ -2936,8 +2944,7 @@ request id (`X-Den-Request-Id`):
 - Each write logs one line, `req=<id> <method> <path> <status>`, so log
   search finds it by its id. The body and the answer are never logged.
 - **Settings** (`config/local/user.yml`, `requests:`): `keep_minutes`
-  (default 15) is how long Den remembers a write. `max_entries` (default
-  2000) is how many it keeps. `max_answer_kb` (default 256) is the largest
+  (default 15) is how long Den remembers a write. `max_entries` (default 2000) is how many it keeps. `max_answer_kb` (default 256) is the largest
   answer it keeps to replay. Until 0.4.49 the old
   `ui.request_memory_seconds` still counts when `keep_minutes` is unset,
   and doctor says to move it.
@@ -3093,7 +3100,7 @@ project may take that name.
   (`update`: `from`, `to`, `at`, and `state`: `installing`, `watching`,
   `good`, `rolling_back`, `rolled_back` or `rollback_failed`).
 - **It adds agents** (0.4.48, `agent_create { project?, persona, name?,
-  runtime?, mode?, repo?, folder? }`, the held action `agent_create`).
+runtime?, mode?, repo?, folder? }`, the held action `agent_create`).
   Always held for the person: `self_update` doesn't cover it. The Allow
   says which persona, which project and repo (or folder), and the mode.
   The mode is the project's mode or stricter (`ask` < `edits` < `auto` <
@@ -3137,7 +3144,7 @@ project may take that name.
   act without asking you") and runs only on the person's own Allow: no
   auto-allow setting runs it.
 - **It moves an agent's folder** (0.4.48, `agent_folder { agent, repo |
-  folder, project? }`, the held action `agent_folder`): a repo of the
+folder, project? }`, the held action `agent_folder`): a repo of the
   agent's project, or a folder in it, as `agents folder` does. The Allow
   shows where from and where to. A running agent is stopped, moved and
   started fresh there (a new conversation); a stopped one stays stopped.
@@ -3187,13 +3194,13 @@ project may take that name.
 - **Only a person starts it or picks its runtime or model.** An agent's token, or a
   request claiming to be an agent, is refused (403).
 
-| Route                            | What it does                                                                |
-| -------------------------------- | --------------------------------------------------------------------------- |
+| Route                            | What it does                                                                                                                                                                                        |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/server-agent`          | Its name, runtime (or none), state, session, fresh, manual, `update` (the last `den_update`, or null), `prompt` (`{ kind: "trust", folder }` while its runtime asks to trust the folder, else null) |
-| `POST /api/server-agent/start`   | `{ runtime? }`: start it, or resume or relaunch it                          |
-| `POST /api/server-agent/runtime` | `{ runtime: id \| null }`: the person's choice of runtime                   |
-| `POST /api/server-agent/model`   | `{ model: id \| null }`: the person's choice of model, one of the runtime's |
-| `POST /api/server-agent/trust`   | `{ answer: "yes" \| "no" }`: the person's answer to "trust this folder?"     |
+| `POST /api/server-agent/start`   | `{ runtime? }`: start it, or resume or relaunch it                                                                                                                                                  |
+| `POST /api/server-agent/runtime` | `{ runtime: id \| null }`: the person's choice of runtime                                                                                                                                           |
+| `POST /api/server-agent/model`   | `{ model: id \| null }`: the person's choice of model, one of the runtime's                                                                                                                         |
+| `POST /api/server-agent/trust`   | `{ answer: "yes" \| "no" }`: the person's answer to "trust this folder?"                                                                                                                            |
 
 ## Agents
 
@@ -4153,7 +4160,7 @@ org config can set one too, and user.yml's wins:
 ```yaml
 agents:
   git:
-    signing_key: ~/.ssh/den_agents   # absolute, or ~/; no passphrase
+    signing_key: ~/.ssh/den_agents # absolute, or ~/; no passphrase
 ```
 
 Each agent gets it as git's own `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /

@@ -37,6 +37,34 @@ config and manifest changes a distribution must make to move to it under
   Open in Hub, and the wait ends when Den next reads that name from Hub.
   If Hub refuses or can't be reached, the row says why and the name is
   unchanged. Taking a rename back waits on Hub.
+- Settings › Agents › Keep agents running after logout. It is opt-in and
+  off by default (`agents.keep_running_after_logout` in user.yml, or
+  `<cli> config agents.keep_running_after_logout=true`). `<cli> service
+  install` without `--mode` follows it: on runs Den as LaunchDaemons that
+  run as you (mode always), off runs LaunchAgents that stop at logout. An
+  explicit `--mode` still wins; with the Setting unset, install keeps the
+  mode already installed. `service install --plan` now prints both jobs'
+  plists, the web job's and the host job's. Real logout not shown;
+  keychain under the daemon not yet shown. (#163)
+- Keep agents running after logout has Apply. It re-installs Den's two
+  launchd jobs in the chosen mode, with the working pop-up, then waits
+  for Den to come back. Den asks for your admin password only when sudo
+  will run: turning it on, or turning it off over LaunchDaemons (sudo
+  removes them). Never for off over LaunchAgents. With no password, or
+  sudo refused, nothing changes: install asks sudo once before it touches
+  any job, so the old mode stays. (#163)
+- "Ran while you were away": when Den's web app starts after it was down
+  longer than a restart (`ui.restart_wait_seconds`, 90), one bell note
+  names the agents that kept running meanwhile and the ones that came
+  back at this start. Den now notes when its web app stopped, in
+  web-boots.json. (#163)
+- Under `--mode always`, `doctor`'s service line now warns that an agent
+  may not reach its sign-in (the login keychain) under the daemon: not
+  yet shown. Every place that offers the mode (help, `--plan`, install,
+  the agent page's tip) says "opt-in; keychain under the daemon not yet
+  shown" in place of "not yet proven across a logout". Release notes:
+  keep running after logout is opt-in; real logout not shown; keychain
+  under the daemon not yet shown. (#163)
 
 ### Fixed
 

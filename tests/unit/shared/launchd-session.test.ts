@@ -68,7 +68,8 @@ describe("sessionWarning", () => {
     const w = sessionWarning("Aqua", "acme", "host");
     expect(w).toMatch(/stops? when you log out/);
     expect(w).toContain("acme service install --mode always");
-    expect(w).toContain("not yet proven across a logout");
+    expect(w).toContain("keychain under the daemon not yet shown");
+    expect(w).not.toContain("not yet proven");
   });
 
   it("says what a session outside the desktop lacks", () => {
@@ -86,9 +87,10 @@ describe("sessionWarning", () => {
 describe("webUpWarning", () => {
   it("warns from a shell outside the desktop session, naming the service", () => {
     const w = webUpWarning("Background", "acme");
-    expect(w).toMatch(/outside the desktop session \(Background, e\.g\. ssh\)/);
+    expect(w).toMatch(/outside the desktop login \(Background, e\.g\. ssh\)/);
     expect(w).toContain("acme service install --mode always");
-    expect(w).toContain("not yet proven across a logout");
+    expect(w).toContain("keychain under the daemon not yet shown");
+    expect(w).not.toContain("not yet proven");
   });
   it("says nothing in the desktop session or off macOS", () => {
     expect(webUpWarning("Aqua", "acme")).toBeNull();

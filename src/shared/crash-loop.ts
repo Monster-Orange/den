@@ -38,6 +38,8 @@ interface Boot {
   at: string;
   pid: number;
   clean?: boolean;
+  /** Issue 163: when it stopped (any exit it saw; not a SIGKILL). */
+  stoppedAt?: string;
 }
 
 /** One web.<key> number from user.yml's `web`: `dflt` when unset or bad. */
@@ -137,6 +139,38 @@ export function markCleanStop(
   if (!mine) return;
   mine.clean = true;
   writeBoots(file, boots);
+}
+
+/** Issue 163: note when `pid`'s start stopped (at any exit it sees). */
+export function markStopped(
+  stateDir: string,
+  pid: number = process.pid,
+  now: number = Date.now(),
+): void {
+  const file = path.join(stateDir, BOOTS_FILE);
+  const boots = readBoots(file);
+  const mine = [...boots].reverse().find((b) => b.pid === pid);
+  if (!mine || mine.stoppedAt) return;
+  mine.stoppedAt = new Date(now).toISOString();
+  writeBoots(file, boots);
+}
+
+/**
+ * Issue 163: how long the web server was away before `pid`'s start: from
+ * the start before it's stop to this start, in ms. null when there is no
+ * start before it, or that one never said when it stopped (killed).
+ */
+export function webAwayMs(
+  stateDir: string,
+  pid: number = process.pid,
+): number | null {
+  const boots = readBoots(path.join(stateDir, BOOTS_FILE));
+  const i = boots.map((b) => b.pid).lastIndexOf(pid);
+  if (i < 1) return null;
+  const prev = boots[i - 1]!;
+  if (!prev.stoppedAt) return null;
+  const ms = Date.parse(boots[i]!.at) - Date.parse(prev.stoppedAt);
+  return Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
 
 /**

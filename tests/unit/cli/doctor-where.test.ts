@@ -33,7 +33,7 @@ describe("whereRows", () => {
     expect(rows.map((r) => [r.what, r.session, r.status])).toEqual([
       ["server", "Background", "ok"],
       ["session host", "Background", "ok"],
-      ["service", "always (system)", "ok"],
+      ["service", "always (system)", "warn"],
     ]);
   });
 
@@ -261,12 +261,13 @@ describe("whereRows", () => {
     );
   });
 
-  it("an always service: ok, but not yet proven across a logout", async () => {
+  it("an always service: the where-line warns the keychain under the daemon is not yet shown", async () => {
     const rows = await whereRows(base());
     expect(rows.find((r) => r.what === "service")).toMatchObject({
       session: "always (system)",
-      status: "ok",
-      detail: "opt-in: not yet proven across a logout",
+      status: "warn",
+      detail:
+        "agents keep running after logout; under the daemon an agent may not reach its sign-in (the login keychain): not yet shown",
     });
     const login = await whereRows(
       base({
@@ -287,7 +288,7 @@ describe("whereRows", () => {
       session: "not installed",
       status: "ok",
       detail:
-        "acme service install (login, the default; --mode always is opt-in and not yet proven across a logout)",
+        "acme service install (login, the default; --mode always is opt-in; keychain under the daemon not yet shown)",
     });
   });
 

@@ -345,3 +345,143 @@ describe("service status", () => {
     expect(out.stdout).toContain("local.acme-test.sessions is not loaded");
   });
 });
+
+/**
+ * Issue 163: Settings › Keep agents running after logout
+ * (agents.keep_running_after_logout in user.yml). `service install` with
+ * no --mode follows it; --plan prints both jobs' plists, so a person sees
+ * the daemon and its UserName for the web job and the session host alike.
+ */
+describe("keep running after logout: install follows the Setting", () => {
+  /** cmdService with the real install.sh, under the rig's shims. */
+  async function plan(r: Rig, keep: boolean | undefined, args: string[] = []) {
+    const { cmdService } =
+      await import("../../../src/ui/cli/service-command.js");
+    const lines: string[] = [];
+    const runs: string[][] = [];
+    const code = await cmdService(["install", "--plan", ...args], {
+      run: (cmd, a, env) => {
+        runs.push(a);
+        const out = spawnSync(cmd, a, {
+          encoding: "utf-8",
+          env: { ...r.env, ...env },
+        });
+        lines.push(out.stdout);
+        return out.status ?? 1;
+      },
+      keepRunning: () => keep,
+      config: { environments: ["local"] } as never,
+      stateDir: path.join(r.t, "state"),
+      job: () => null,
+      jobPid: () => null,
+      distRoot: dist,
+      engineRoot: root,
+      home: r.home,
+      platform: "darwin",
+      webPort: 7001,
+      log: (l) => lines.push(l),
+      identify: async () => ({ kind: "none" }),
+    });
+    return { code, out: lines.join("\n"), runs };
+  }
+  const daemonUser = (xml: string) =>
+    [...xml.matchAll(/<key>UserName<\/key>\s*<string>([^<]*)<\/string>/g)].map(
+      (m) => m[1],
+    );
+
+  it("on: the plan is LaunchDaemons, with UserName for the web job AND the session host", async () => {
+    const r = rig();
+    const p = await plan(r, true);
+    expect(p.code).toBe(0);
+    expect(p.runs.map((a) => a[1])).toEqual(["print", "print-host"]);
+    expect(p.out).toContain("mode:    always");
+    expect(p.out).toContain("/Library/LaunchDaemons/");
+    const user = os.userInfo().username;
+    expect(daemonUser(p.out)).toEqual([user, user]);
+    // The labels come from the distribution (its dir name).
+    expect(p.out).toContain("<string>local.distribution.web</string>");
+    expect(p.out).toContain("<string>local.distribution.sessions</string>");
+  });
+
+  it("off: LaunchAgents, no UserName for either job", async () => {
+    const r = rig();
+    const p = await plan(r, false);
+    expect(p.code).toBe(0);
+    expect(p.out).toContain("mode:    login");
+    expect(p.out).toContain(path.join(r.home, "Library", "LaunchAgents"));
+    expect(daemonUser(p.out)).toEqual([]);
+  });
+
+  it("an explicit --mode wins over the Setting", async () => {
+    const r = rig();
+    const p = await plan(r, true, ["--mode", "login"]);
+    expect(p.out).toContain("mode:    login");
+    expect(daemonUser(p.out)).toEqual([]);
+  });
+});
+
+/**
+ * Issue 163: install asks sudo once, before it changes anything, whenever
+ * sudo will run (mode always, or LaunchDaemons to remove). A refusal
+ * leaves the jobs as they were: the old mode stays.
+ */
+describe("sudo refused: the old mode stays", () => {
+  /** A rig whose sudo always refuses (no password held). */
+  function refusing(): Rig {
+    const r = rig();
+    fs.writeFileSync(
+      r.env.DEN_SERVICE_SUDO,
+      `#!/bin/sh\necho "sudo $*" >> "${r.calls}"\necho "sudo: a password is required" >&2\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    return r;
+  }
+
+  mac("login → always: nothing is removed or loaded", () => {
+    const r = refusing();
+    const agents = path.join(r.home, "Library", "LaunchAgents");
+    fs.mkdirSync(agents, { recursive: true });
+    for (const l of ["web", "sessions"])
+      fs.writeFileSync(path.join(agents, `local.acme-test.${l}.plist`), "old");
+    const out = run(r, ["install"], { DEN_SERVICE_MODE: "always" });
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/nothing changed/);
+    for (const l of ["web", "sessions"])
+      expect(
+        fs.readFileSync(
+          path.join(agents, `local.acme-test.${l}.plist`),
+          "utf-8",
+        ),
+      ).toBe("old");
+    const calls = fs.readFileSync(r.calls, "utf-8");
+    expect(calls).not.toMatch(/launchctl (bootout|bootstrap|kickstart)/);
+    expect(fs.readdirSync(r.daemons)).toEqual([]);
+  });
+
+  mac("always → login: the daemons stay, no LaunchAgent is written", () => {
+    const r = refusing();
+    for (const l of ["web", "sessions"])
+      fs.writeFileSync(
+        path.join(r.daemons, `local.acme-test.${l}.plist`),
+        "old",
+      );
+    const out = run(r, ["install"]);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/nothing changed/);
+    expect(fs.readdirSync(r.daemons).sort()).toEqual([
+      "local.acme-test.sessions.plist",
+      "local.acme-test.web.plist",
+    ]);
+    expect(fs.existsSync(path.join(r.home, "Library", "LaunchAgents"))).toBe(
+      false,
+    );
+  });
+
+  mac("login → login asks sudo nothing", () => {
+    const r = refusing();
+    expect(run(r, ["install"]).status).toBe(0);
+    expect(
+      fs.existsSync(r.calls) ? fs.readFileSync(r.calls, "utf-8") : "",
+    ).not.toMatch(/^sudo/m);
+  });
+});

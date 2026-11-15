@@ -9,8 +9,9 @@
  *   busyAction(name, run, opts)   the kit's, with Den's words and hooks
  *
  * Auto-close (a fast success says so in a toast, a slow one closes after
- * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent, restart-agent,
- * fresh-start, report-preview, save-report-draft, discard-draft. Waits for
+ * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
+ * restart-agent, fresh-start, report-preview, save-report-draft,
+ * discard-draft, keep-running. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -152,6 +153,16 @@ export const DEN_ACTIONS = {
       working: "fb.discard",
       success: "fb.busyDone",
       failure: "fb.busyFailed",
+    },
+  },
+  // Issue 163: Keep agents running after logout › Apply.
+  "keep-running": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "keep.w",
+      success: "keep.s",
+      failure: "keep.failed",
     },
   },
   "restart-den": {

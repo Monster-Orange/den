@@ -16,6 +16,9 @@
  *                                     web.bridge_probe_seconds (0.4.48)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
+ *   keep_running_after_logout: boolean | null
+ *                                     user.yml agents.keep_running_after_logout
+ *                                     (issue 163: `service install`'s mode)
  */
 
 /** The settings a person changes and an agent never does. */
@@ -42,6 +45,8 @@ export const PERSON_ONLY_SETTINGS = [
   "machine_name",
   // SRV-P6 (0.4.48): whether Den updates itself without asking.
   "server_agent_self_update",
+  // Issue 163: whether Den runs as LaunchDaemons that outlive a logout.
+  "keep_running_after_logout",
 ] as const;
 
 /**
@@ -211,6 +216,22 @@ export function patchCliRows(
     apply.push(() => {
       if (v === null) delete user[k];
       else user[k] = v;
+    });
+  }
+  // Issue 163: agents.keep_running_after_logout; the other agents keys stay.
+  const keep = body.keep_running_after_logout;
+  if (keep !== undefined) {
+    if (keep !== null && typeof keep !== "boolean")
+      return {
+        ok: false,
+        error: "keep_running_after_logout is true, false or null",
+      };
+    apply.push(() => {
+      const a = isObj(user.agents) ? { ...user.agents } : {};
+      if (keep === null) delete a.keep_running_after_logout;
+      else a.keep_running_after_logout = keep;
+      if (Object.keys(a).length) user.agents = a;
+      else delete user.agents;
     });
   }
   const lines = body.log_window_lines;

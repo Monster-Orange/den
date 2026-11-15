@@ -438,6 +438,23 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "keep.label": "ログアウト後もエージェントを動かす",
+    "keep.warn":
+      "デーモンでは、エージェントがサインイン情報（ログインキーチェーン）に届かないことがあります（まだ確認されていません）。",
+    "keep.apply": "適用",
+    "keep.pending":
+      "保存済みですが、まだ適用されていません。「適用」を押してください。",
+    "keep.w": "適用しています…",
+    "keep.s": "適用しました。__DEN_TITLE__ が再起動します。",
+    "keep.needs": "管理者パスワードが必要です。",
+    "keep.failed": "適用されませんでした。何も変わっていません。",
+    "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
+    "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
+    "keep.saved":
+      "保存しました。__DEN_TITLE__ はすでにこの方法で動いています。",
+    "keep.noService":
+      "保存しました。__DEN_TITLE__ がサービスとして動くと適用されます: __DEN_CLI__ service install",
+    "keep.refused": "管理者パスワードがないため、何も変わっていません。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -791,6 +808,7 @@
     "set.agents.layout": "エージェントタブのレイアウト",
     "set.cli.local_dev": "ローカル環境",
     "set.cli.cli_tabs": "ターミナルのタブ",
+    "set.agents.keep_running": "ログアウト後もエージェントを動かす",
     "set.cli.log_window_lines": "ログ欄の行数",
     "set.server.restart": "Den を再起動",
     "set.cli.web_port": "あなたの web ポート",
@@ -1267,6 +1285,8 @@
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
+    "bell.m.ranAway":
+      "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":
@@ -1496,7 +1516,7 @@
     "ag.mv.done": "{id} を {ws} へ移動しました。",
     "ag.where.logout": "ログアウトで停止",
     "ag.where.logoutTip":
-      "デスクトップのログインセッションで動いているため、ログアウトすると終了します。エージェントを動かし続けるには: {cli} service install --mode always (任意。ログアウトをまたいだ動作はまだ未検証)",
+      "デスクトップのログインで動いているため、ログアウトすると終了します。エージェントを動かし続けるには: 設定 › ログアウト後もエージェントを動かす、または {cli} service install --mode always (任意。デーモンでのキーチェーンはまだ確認されていません)",
     "ag.where.bg": "GUI なし",
     "ag.where.bgTip":
       "デスクトップセッションの外で、ログアウト後も動き続けます。ログインキーチェーンと GUI アプリは使えません。1Password はサービスアカウントのトークン、ブラウザはヘッドレス、保護されたフォルダにはフルディスクアクセスが必要です ({cli} doctor)。",
@@ -2116,6 +2136,8 @@
       "エージェントを始めるときの設定です。組み込みのものは Den に、ディストリビューションのものはディストリビューションに含まれ、あなたのものはこのマシンにあります。表示 / 編集、複製、+ 新しいペルソナ。編集や削除ができるのは自分のものだけです。",
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
+    "set.agents.keep_running.d":
+      "オン: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。この場合、エージェントがサインイン情報（ログインキーチェーン）に届かないことがあります（まだ確認されていません）。オフ（既定）: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":

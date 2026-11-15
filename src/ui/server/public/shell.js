@@ -933,6 +933,8 @@
       "How many of your company's GitHub repos Den Hub can read, asked live from Hub, with GitHub's link to give it access or change its repos.",
     "set.agents.personas.d":
       "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
+    "set.agents.keep_running.d":
+      "On: __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. Under it an agent may not reach its sign-in (the login keychain): not yet shown. Off (the default): agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     "set.cli.local_dev.d":
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     "set.cli.cli_tabs.d":
@@ -1224,6 +1226,21 @@
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
+    "keep.label": "Keep agents running after logout",
+    "keep.warn":
+      "Under the daemon an agent may not reach its sign-in (the login keychain): not yet shown.",
+    "keep.apply": "Apply",
+    "keep.pending": "Saved, not applied yet: press Apply.",
+    "keep.w": "Applying…",
+    "keep.s": "Applied. __DEN_TITLE__ restarts.",
+    "keep.needs": "Needs your admin password.",
+    "keep.failed": "Not applied. Nothing changed.",
+    "keep.onNow": "On: agents keep running after you log out.",
+    "keep.offNow": "Off: agents stop when you log out.",
+    "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
+    "keep.noService":
+      "Saved. It applies when __DEN_TITLE__ runs as a service: __DEN_CLI__ service install",
+    "keep.refused": "No admin password: nothing changed.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
@@ -1568,6 +1585,7 @@
     "set.agents.default_mode.o.auto": "Auto mode",
     "set.agents.default_mode.o.all": "Auto-approve all",
     "set.agents.layout": "Agents tab layout",
+    "set.agents.keep_running": "Keep agents running after logout",
     "set.cli.local_dev": "Local environment",
     "set.cli.cli_tabs": "Terminal tabs",
     "set.cli.log_window_lines": "Log pane lines",
@@ -2052,6 +2070,8 @@
       "Den can't tell which Hub project fits it. Click to choose. Nothing is filed for it until then.",
     "bell.m.pick.one": "{n} project needs your pick",
     "bell.m.noHub": "{n} agents started without Hub",
+    "bell.m.ranAway":
+      "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
@@ -2287,7 +2307,7 @@
     "ag.mv.done": "{id} moved to {ws}.",
     "ag.where.logout": "Stops at logout",
     "ag.where.logoutTip":
-      "It runs in the desktop login session, so logging out ends it. To keep agents running: {cli} service install --mode always (opt-in, not yet proven across a logout)",
+      "It runs in the desktop login, so logging out ends it. To keep agents running: Settings › Keep agents running after logout, or {cli} service install --mode always (opt-in; keychain under the daemon not yet shown)",
     "ag.where.bg": "No GUI",
     "ag.where.bgTip":
       "It keeps running after logout, outside the desktop session: no login keychain and no GUI apps. 1Password uses the service-account token, browsers run headless, and protected folders need Full Disk Access ({cli} doctor).",
