@@ -40,6 +40,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- An open pane now follows its agent after Change persona every time
+  (issue 202). A pane opened just before the change could miss it and
+  stay on the old, ended session. The pane now knows its agent from the
+  moment it opens.
+
 - Settings › Agents › Unclear matches (issue 164): the help and the list
   now say in plain words what linking does (the project's agents file docs,
   mocks and comments in its Hub project) and what to do (pick one, press

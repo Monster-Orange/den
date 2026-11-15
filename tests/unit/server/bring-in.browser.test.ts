@@ -87,7 +87,12 @@ const answer = (model: string, stop: string, tools: string[] = []) => ({
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -343,6 +348,12 @@ describe("Bring in (AG-17.1)", () => {
     };
 
     // AG-18: the pane's ⋯ → Change persona…
+    // The pane is live first (the session's size frame came over its
+    // socket): ⋯ shows before the pane connects, and a change made
+    // sooner ends the session it was about to connect to (issue 202).
+    await p.waitForSelector(
+      `.pane[data-id="${agent.sessionId}"][data-pty-cols]`,
+    );
     const more = `.pane[data-id="${agent.sessionId}"] [data-act="more"]`;
     await p.waitForSelector(more);
     await p.click(more);
@@ -441,6 +452,8 @@ describe("Bring in (AG-17.1)", () => {
       setTimeout(() => pty.exit(143), 5);
     };
     await p.goto(`${s!.base}/agents?ws=north&open=${sid}`);
+    // Live first, as above (issue 202).
+    await p.waitForSelector(`.pane[data-id="${sid}"][data-pty-cols]`);
     const more = `.pane[data-id="${sid}"] [data-act="more"]`;
     await p.waitForSelector(more);
     await p.click(more);
