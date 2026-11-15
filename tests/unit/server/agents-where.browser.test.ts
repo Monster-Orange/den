@@ -99,7 +99,7 @@ describe("where an agent runs, on the agents page (D20)", () => {
       "service install --mode always",
     );
     expect(await btn.getAttribute("title")).toContain(
-      "not yet proven across a logout",
+      "Keep agents running after logout",
     );
     expect(errors).toEqual([]);
     await p.context().close();

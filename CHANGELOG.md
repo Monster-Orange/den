@@ -29,6 +29,13 @@ config and manifest changes a distribution must make to move to it under
   names the agents that kept running meanwhile and the ones that came
   back at this start. Den now notes when its web app stopped, in
   web-boots.json. (#163)
+- Under `--mode always`, `doctor`'s service line now warns that an agent
+  may not reach its sign-in (the login keychain) under the daemon: not
+  yet shown. Every place that offers the mode (help, `--plan`, install,
+  the agent page's tip) says "opt-in; keychain under the daemon not yet
+  shown" in place of "not yet proven across a logout". Release notes:
+  keep running after logout is opt-in; real logout not shown; keychain
+  under the daemon not yet shown. (#163)
 
 ### Fixed
 

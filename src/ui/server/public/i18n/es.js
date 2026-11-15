@@ -1501,7 +1501,7 @@
     "ag.mv.done": "{id} se movió a {ws}.",
     "ag.where.logout": "Se detiene al cerrar sesión",
     "ag.where.logoutTip":
-      "Se ejecuta en la sesión de escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: {cli} service install --mode always (opcional, aún no probado tras cerrar sesión)",
+      "Se ejecuta en el escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: Ajustes › Mantener los agentes al cerrar sesión, o {cli} service install --mode always (opcional; el llavero con el daemon aún no se ha mostrado)",
     "ag.where.bg": "Sin GUI",
     "ag.where.bgTip":
       "Sigue ejecutándose tras cerrar sesión, fuera de la sesión de escritorio: sin el llavero de inicio de sesión ni apps con GUI. 1Password usa el token de la cuenta de servicio, los navegadores van sin interfaz y las carpetas protegidas necesitan Acceso total al disco ({cli} doctor).",

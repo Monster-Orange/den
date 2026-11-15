@@ -55,7 +55,7 @@ import {
 import { readWebPort } from "../../shared/edge/config.js";
 import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
-import { ALWAYS_UNPROVEN } from "../../shared/launchd-session.js";
+import { ALWAYS_CAVEAT } from "../../shared/launchd-session.js";
 import {
   classifyServerInfo,
   ForeignServerError,
@@ -357,7 +357,7 @@ export function serviceHelp(cli: string): string[] {
     `  uninstall                      stop them and remove their plists`,
     ``,
     `  --mode login   (default) LaunchAgents in the desktop session: stop at logout, with every agent`,
-    `  --mode always  LaunchDaemons running as you, one sudo: meant to keep agents running across logout. Opt-in, ${ALWAYS_UNPROVEN}`,
+    `  --mode always  LaunchDaemons running as you, one sudo: agents keep running after logout. Opt-in; ${ALWAYS_CAVEAT}`,
     `  Without --mode, install follows Settings › Keep agents running after logout`,
     `  (agents.keep_running_after_logout: on is always, off is login); unset, it keeps`,
     `  the mode already installed.`,
@@ -465,7 +465,7 @@ export async function cmdService(
         : path.join(home, "Library", "LaunchAgents");
     log(`service install --plan (read-only: nothing is written or loaded)`);
     log(
-      `  mode:    ${mode}${mode === "always" ? ` (LaunchDaemons running as you: meant to keep running across logout, ${ALWAYS_UNPROVEN}; opt-in; one sudo)` : " (LaunchAgents: stop at logout)"}`,
+      `  mode:    ${mode}${mode === "always" ? ` (LaunchDaemons running as you: agents keep running after logout; opt-in; one sudo; ${ALWAYS_CAVEAT})` : " (LaunchAgents: stop at logout)"}`,
     );
     log(`  label:   ${label}`);
     log(`  plist:   ${path.join(dir, `${label}.plist`)}`);
@@ -529,7 +529,9 @@ export async function cmdService(
     const line = ownerGithubLine(rec(), product().cli);
     if (line) log(line);
     if (mode === "always")
-      log(`note: --mode always is opt-in and ${ALWAYS_UNPROVEN}`);
+      log(
+        `note: --mode always is opt-in; ${ALWAYS_CAVEAT}: under the daemon an agent may not reach its sign-in (the login keychain)`,
+      );
   }
   const code = run("bash", [script, sub!], {
     ...env,

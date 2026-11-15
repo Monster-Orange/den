@@ -2256,7 +2256,7 @@
     "ag.mv.done": "{id} moved to {ws}.",
     "ag.where.logout": "Stops at logout",
     "ag.where.logoutTip":
-      "It runs in the desktop login session, so logging out ends it. To keep agents running: {cli} service install --mode always (opt-in, not yet proven across a logout)",
+      "It runs in the desktop login, so logging out ends it. To keep agents running: Settings › Keep agents running after logout, or {cli} service install --mode always (opt-in; keychain under the daemon not yet shown)",
     "ag.where.bg": "No GUI",
     "ag.where.bgTip":
       "It keeps running after logout, outside the desktop session: no login keychain and no GUI apps. 1Password uses the service-account token, browsers run headless, and protected folders need Full Disk Access ({cli} doctor).",

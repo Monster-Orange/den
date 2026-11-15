@@ -18,7 +18,8 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  ALWAYS_UNPROVEN,
+  ALWAYS_CAVEAT,
+  ALWAYS_WHERE_WARNING,
   endsAtLogout,
   sessionWarning,
 } from "../../shared/launchd-session.js";
@@ -194,7 +195,7 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
       what: "service",
       session: "not installed",
       status: "ok",
-      detail: `${d.cli} service install (login, the default; --mode always is opt-in and ${ALWAYS_UNPROVEN})`,
+      detail: `${d.cli} service install (login, the default; --mode always is opt-in; ${ALWAYS_CAVEAT})`,
     });
   else if (svc.state === "not-loaded")
     rows.push({
@@ -207,11 +208,12 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
     rows.push({
       what: "service",
       session: `${svc.mode} (${svc.domain})`,
-      status: "ok",
+      // Issue 163: under the daemon the keychain is not yet shown.
+      status: svc.state !== "unknown" && svc.mode === "always" ? "warn" : "ok",
       ...(svc.state === "unknown"
         ? { detail: "launchctl could not be asked whether it is loaded" }
         : svc.mode === "always"
-          ? { detail: `opt-in: ${ALWAYS_UNPROVEN}` }
+          ? { detail: ALWAYS_WHERE_WARNING }
           : {}),
     });
   return rows;

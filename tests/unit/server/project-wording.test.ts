@@ -431,7 +431,6 @@ const SESSION_KEPT: Record<string, string> = {
   "lock.savedTo": "Den's own run",
   "lock.saveFailed": "Den's own run",
   "ag.noHost": "the session host, a process",
-  "ag.where.logoutTip": "the macOS desktop login session",
   "ag.where.bgTip": "the macOS desktop login session",
 };
 // (\w misses accents: "inició sesión".) "La sesión se mantiene": you stay signed in.
