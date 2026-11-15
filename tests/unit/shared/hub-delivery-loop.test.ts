@@ -8,7 +8,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SeenDeliveries } from "../../../src/shared/hub-delivery";
+import {
+  SeenDeliveries,
+  type DeliveryOwner,
+} from "../../../src/shared/hub-delivery";
 import {
   DeliveryLoop,
   type AgentState,
@@ -47,7 +50,13 @@ const dv = (
   ...over,
 });
 
-function setup(o: { states?: Record<string, AgentState> } = {}) {
+function setup(
+  o: {
+    states?: Record<string, AgentState>;
+    owner?: () => DeliveryOwner | null;
+    ownerWanted?: () => void;
+  } = {},
+) {
   const acks: { id: string; state: string; reason?: unknown }[] = [];
   const typed: { agent: string; text: string }[] = [];
   const finished: { agent: string; count: number; artifact?: string }[] = [];
@@ -72,7 +81,8 @@ function setup(o: { states?: Record<string, AgentState> } = {}) {
         return true;
       },
     },
-    owner: () => ({ ownerId: "u_me", company: "Acme" }),
+    owner: o.owner ?? (() => ({ ownerId: "u_me", company: "Acme" })),
+    ...(o.ownerWanted ? { ownerWanted: o.ownerWanted } : {}),
     seen: new SeenDeliveries(seenFile),
     heartbeatMs: 15_000,
     now: () => clock,
@@ -108,6 +118,25 @@ describe("who gets a delivery, and when", () => {
       artifact: "Pricing page",
       url: "https://hub.example.test/a/doc#th_d1",
     });
+  });
+
+  it("owner not known yet (Hub didn't answer who it is): held, asked again, then your person", async () => {
+    let owner: DeliveryOwner | null = null;
+    let asked = 0;
+    const s = setup({ owner: () => owner, ownerWanted: () => void asked++ });
+    await s.loop.take(dv("d1"));
+    // Never typed as "someone else": the person's edit request waits.
+    expect(s.typed).toEqual([]);
+    expect(s.of("d1")).not.toContain("delivered");
+    expect(asked).toBeGreaterThan(0);
+    owner = { ownerId: "u_me", company: "Acme" };
+    await s.loop.pump();
+    expect(s.typed).toHaveLength(1);
+    expect(s.typed[0].text.split("\n")[0]).toMatch(/\(your person · /);
+    expect(s.typed[0].text).toContain(
+      "This is an edit request from your person",
+    );
+    expect(s.of("d1")).toEqual(["delivered", "working"]);
   });
 
   it("no such agent here: refused, nothing typed", async () => {

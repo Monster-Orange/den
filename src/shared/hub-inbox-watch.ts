@@ -205,7 +205,8 @@ export interface InboxWatchDeps {
   /** This install's agents (never the server agent). */
   agents(): string[];
   loop: InboxLoop;
-  owner(): DeliveryOwner;
+  /** Null while Den doesn't know who its person is: items wait a tick. */
+  owner(): DeliveryOwner | null;
   /** Read on every tick: a change counts without a restart. */
   settings(): InboxSettings;
   /** Where the watcher keeps when it first ran. */
@@ -300,6 +301,8 @@ export class InboxWatcher {
     if (!Number.isFinite(e.at) || e.at < this.since) return l.passLocal(e.id);
     if (e.kind === "comment" && e.thread && l.coveredThread(e.thread, e.at))
       return l.passLocal(e.id);
-    await l.takeLocal(inboxDelivery(e, this.d.owner()));
+    const o = this.d.owner();
+    if (!o) return;
+    await l.takeLocal(inboxDelivery(e, o));
   }
 }

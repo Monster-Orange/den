@@ -27,6 +27,9 @@ const hub = {
   streams: [] as http.ServerResponse[],
   acks: [] as { id: string; state: string; reason?: string }[],
   lastEventIds: [] as (string | undefined)[],
+  // Hub can't say who this Den's person is while Den starts.
+  whoamiDown: true,
+  whoamiCalls: 0,
 };
 
 function push(d: Record<string, unknown>): void {
@@ -66,6 +69,11 @@ beforeAll(async () => {
       return res.end('{"error":"unauthorized"}');
     }
     if (u.pathname === "/connect/whoami") {
+      hub.whoamiCalls++;
+      if (hub.whoamiDown) {
+        res.writeHead(503, { "content-type": "application/json" });
+        return res.end('{"error":"unavailable"}');
+      }
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(
         JSON.stringify({
@@ -120,10 +128,13 @@ beforeAll(async () => {
   s = await startAgentsPageServer({
     userYml:
       `hub:\n  url: ${hub.url}\n  token: "file:${tokenFile}"\n` +
-      "  delivery_heartbeat_seconds: 5\n",
+      "  delivery_heartbeat_seconds: 5\n  delivery_poll_seconds: 5\n",
   });
   for (let i = 0; i < 100 && !hub.streams.length; i++)
     await new Promise((r) => setTimeout(r, 100));
+  // Den asked while Hub was down; Hub answers from now on.
+  expect(hub.whoamiCalls).toBeGreaterThan(0);
+  hub.whoamiDown = false;
 }, 90_000);
 
 afterAll(async () => {

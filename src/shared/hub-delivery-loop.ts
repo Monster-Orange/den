@@ -46,7 +46,14 @@ export interface DeliveryAgents {
 export interface DeliveryLoopDeps {
   hub: DeliveryHub;
   agents: DeliveryAgents;
-  owner: () => DeliveryOwner;
+  /**
+   * Who the agent's person is in Hub, or null while Den doesn't know yet
+   * (Hub didn't answer). Null holds deliveries: a person's edit request
+   * never reaches the agent as "someone else".
+   */
+  owner: () => DeliveryOwner | null;
+  /** Called when a delivery waits on the owner: look it up again. */
+  ownerWanted?: () => void;
   seen: SeenDeliveries;
   /** hub.delivery_heartbeat_seconds (default 15), in ms. */
   heartbeatMs?: number;
@@ -398,6 +405,10 @@ export class DeliveryLoop {
     }
     if (s !== "idle") return;
     const o = this.d.owner();
+    if (!o) {
+      this.d.ownerWanted?.();
+      return;
+    }
     const texts = q.map((dv) => dv.text ?? deliveryText(dv, o));
     const text =
       q.length === 1

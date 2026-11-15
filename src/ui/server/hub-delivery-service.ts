@@ -30,7 +30,15 @@ let ctl: AbortController | null = null;
 let pumpTimer: NodeJS.Timeout | null = null;
 /** NT-6: Hub's notifications into the bell, while Hub is connected. */
 let notesTimer: NodeJS.Timeout | null = null;
-let owner: DeliveryOwner = {};
+/**
+ * Who this Den's person is in Hub (whoami), or null until Hub has said.
+ * Null holds deliveries, so a person's edit request never reads as
+ * "someone else" because Hub was down when Den started.
+ */
+let owner: DeliveryOwner | null = null;
+let ownerAsking = false;
+let ownerAskedAt = 0;
+let ownerWanted: () => void = () => undefined;
 let lastOpts: Parameters<typeof startDeliveries>[0] | null = null;
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
@@ -130,7 +138,7 @@ function startHubNotes(log: (line: string) => void): void {
       const { notificationDeps } = await import("./notification-service.js");
       await syncHubNotes({
         store: notificationDeps().store,
-        owner: () => owner.ownerLogin ?? null,
+        owner: () => owner?.ownerLogin ?? null,
         list: () => hub.hubNotifications(at.url, at.token),
         markRead: (ids) => hub.hubMarkNotificationsRead(at.url, at.token, ids),
         // Once per different reason, not every pass.
@@ -168,16 +176,34 @@ export async function startDeliveries(o: {
   const hub = await import("../../shared/hub.js");
   const ops = await import("../cli/agent-ops.js");
   const { webDeps } = await import("./agent-routes.js");
-  try {
-    const w = await hub.hubWhoami(at.url, at.token);
-    owner = {
-      ...(w.personId ? { ownerId: w.personId } : {}),
-      ...(w.login ? { ownerLogin: w.login } : {}),
-      ...(w.company?.name ? { company: w.company.name } : {}),
-    };
-  } catch {
-    /* Hub unreachable now: every comment reads as information until it is */
-  }
+  // Ask Hub who this Den's person is; again when a delivery waits on it,
+  // at most once per poll interval (hub.delivery_poll_seconds).
+  const askOwner = async (): Promise<void> => {
+    if (ownerAsking) return;
+    ownerAsking = true;
+    ownerAskedAt = Date.now();
+    try {
+      const a = await hubAndToken();
+      if (!a) return;
+      const w = await hub.hubWhoami(a.url, a.token);
+      owner = {
+        ...(w.personId ? { ownerId: w.personId } : {}),
+        ...(w.login ? { ownerLogin: w.login } : {}),
+        ...(w.company?.name ? { company: w.company.name } : {}),
+      };
+    } catch {
+      /* Hub unreachable now: deliveries wait until it answers */
+    } finally {
+      ownerAsking = false;
+    }
+  };
+  ownerWanted = () => {
+    if (Date.now() - ownerAskedAt >= o.pollSeconds * 1000) void askOwner();
+  };
+  // A new connection may be a different person: never keep the old one.
+  owner = null;
+  ownerAskedAt = 0;
+  await askOwner();
   const d = webDeps();
   loop ??= new DeliveryLoop({
     hub: {
@@ -207,6 +233,7 @@ export async function startDeliveries(o: {
       type: (id, text) => ops.typeIntoAgent(d, id, text),
     },
     owner: () => owner,
+    ownerWanted: () => ownerWanted(),
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
     ),

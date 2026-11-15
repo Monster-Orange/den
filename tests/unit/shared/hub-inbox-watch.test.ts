@@ -11,7 +11,10 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import { SeenDeliveries } from "../../../src/shared/hub-delivery";
+import {
+  SeenDeliveries,
+  type DeliveryOwner,
+} from "../../../src/shared/hub-delivery";
 import {
   DeliveryLoop,
   type AgentState,
@@ -75,6 +78,7 @@ function setup(
     states?: Record<string, AgentState>;
     on?: boolean;
     agents?: string[];
+    owner?: () => DeliveryOwner | null;
   } = {},
 ) {
   let clock = T0;
@@ -99,7 +103,7 @@ function setup(
           return true;
         },
       },
-      owner: () => ({ ownerLogin: "pat" }),
+      owner: o.owner ?? (() => ({ ownerLogin: "pat" })),
       seen: new SeenDeliveries(path.join(dir, "seen.json")),
       now: () => clock,
     });
@@ -107,7 +111,7 @@ function setup(
       fetchInbox: (agent) => hubInbox(base, "tok-test", agent),
       agents: () => o.agents ?? ["ag-1"],
       loop,
-      owner: () => ({ ownerLogin: "pat" }),
+      owner: o.owner ?? (() => ({ ownerLogin: "pat" })),
       settings: () => ({
         on: o.on ?? true,
         pollSeconds: 30,
@@ -129,6 +133,21 @@ function setup(
 }
 
 describe("issue 166: Hub's inbox into the agent's pane", () => {
+  test("owner not known yet: the item waits, then reaches the agent as from your person", async () => {
+    answer["ag-1"] = approval("ag-1");
+    let owner: DeliveryOwner | null = null;
+    const s = setup({ owner: () => owner });
+    const { watcher } = s.make();
+    await watcher.tick();
+    expect(s.typed).toEqual([]);
+    expect(s.logs).toEqual([]);
+    owner = { ownerLogin: "pat" };
+    s.tick(31_000);
+    await watcher.tick();
+    expect(s.typed).toHaveLength(1);
+    expect(s.typed[0].text).toContain("your person");
+  });
+
   test("an idle agent gets the approval once, typed (it wakes)", async () => {
     answer["ag-1"] = approval("ag-1");
     const s = setup();

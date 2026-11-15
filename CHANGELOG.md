@@ -40,6 +40,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A Hub comment from your own person reaches the agent as an edit request
+  even when Hub didn't answer "who am I" while Den started. Den used to treat
+  every commenter as someone else until it restarted; now deliveries wait
+  until Hub says who your person is, and Den asks again.
+
 - An open pane now follows its agent after Change persona every time
   (issue 202). A pane opened just before the change could miss it and
   stay on the old, ended session. The pane now knows its agent from the
