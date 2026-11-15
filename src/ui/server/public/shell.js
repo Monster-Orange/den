@@ -1972,6 +1972,7 @@
     "bell.sep": ", ",
     "bell.settings": "Notification settings",
     "bell.older": "Older than {d} days ({n})",
+    "bell.updates": "Updates ({n})",
     "bell.rep": "{n} more like this",
     "bell.stop": "Stop showing this kind",
     "bell.askT": "Stop showing “{kind}”?",

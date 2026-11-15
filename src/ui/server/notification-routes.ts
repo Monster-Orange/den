@@ -25,6 +25,7 @@ import {
   type BellPrefs,
   bellPrefs,
   bellView,
+  needsYou,
   groupNotifications,
   type NotificationStore,
   type Which,
@@ -179,6 +180,12 @@ export async function handleNotificationRoutes(
         why,
       })),
       groups: groupNotifications(v.recent),
+      // ATTN-5 (den#142): updates, collapsed; never in the badge.
+      updates: {
+        count: v.updates.length,
+        unread: v.updates.filter((n) => !n.read).length,
+        groups: groupNotifications(v.updates),
+      },
       older: { count: v.older.length, groups: groupNotifications(v.older) },
       off: v.off,
       foldDays: v.foldDays,
@@ -199,6 +206,12 @@ export async function handleNotificationRoutes(
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)
       : [];
     deps.attention.lookingAt(agents);
+    // ATTN-5 (den#142): opening an agent clears its updates; what needs
+    // you stays until it's answered.
+    for (const a of agents)
+      for (const n of deps.store.list())
+        if (n.subject === `agent:${a}` && !n.read && !needsYou(n.kind))
+          deps.store.markRead({ id: n.id });
     sendJson(res, { ok: true });
     return true;
   }
@@ -239,7 +252,7 @@ export async function handleNotificationRoutes(
             deps.store.list(),
             (deps.prefs ?? bellPrefs)(null),
           );
-          return [...v.recent, ...v.older].filter((x) => !x.read);
+          return [...v.recent, ...v.updates, ...v.older].filter((x) => !x.read);
         })()
       : null;
   const n = shownAll

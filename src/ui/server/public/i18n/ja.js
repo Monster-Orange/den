@@ -1188,6 +1188,7 @@
     "bell.sep": "、",
     "bell.settings": "通知の設定",
     "bell.older": "{d}日より古い通知({n})",
+    "bell.updates": "お知らせ({n})",
     "bell.rep": "同様の通知があと {n} 件",
     "bell.stop": "この種類を表示しない",
     "bell.askT": "「{kind}」を表示しませんか?",

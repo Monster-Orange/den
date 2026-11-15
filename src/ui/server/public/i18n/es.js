@@ -1216,6 +1216,7 @@
     "bell.sep": ", ",
     "bell.settings": "Ajustes de notificaciones",
     "bell.older": "Más de {d} días ({n})",
+    "bell.updates": "Novedades ({n})",
     "bell.rep": "{n} más como este",
     "bell.stop": "Dejar de mostrar este tipo",
     "bell.askT": "¿Dejar de mostrar «{kind}»?",

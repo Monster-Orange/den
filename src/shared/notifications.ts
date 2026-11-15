@@ -598,12 +598,23 @@ export function bellPrefs(user: unknown): BellPrefs {
   return { off, foldDays };
 }
 
+/**
+ * ATTN-5 (den#142): the kinds that need the person: a wait (a permission
+ * prompt, a question), a pick or an approval, a mention. The rest (a
+ * finished turn, a reply, a release) are updates: listed, never counted.
+ */
+export function needsYou(kind: NotificationKind): boolean {
+  return kind === "waiting" || kind === "decision" || kind === "mention";
+}
+
 /** What the bell shows: switches on only, and the old ones folded apart. */
 export interface BellView {
-  /** The badge: unread items shown and not folded as old. */
+  /** The badge: unread items that need you, shown and not folded as old. */
   unread: number;
-  /** Items shown, newer than foldDays. */
+  /** Items that need you, shown, newer than foldDays (first in the panel). */
   recent: Notification[];
+  /** ATTN-5: updates, shown, newer than foldDays (one collapsed list). */
+  updates: Notification[];
   /** Items shown, older than foldDays (one "Older" row). */
   older: Notification[];
   /** The switches that are off (the empty panel says which). */
@@ -620,10 +631,12 @@ export function bellView(
   const shown = items.filter((n) => !off.has(switchOf(n.kind)));
   const from = now - prefs.foldDays * 86_400_000;
   const old = (n: Notification) => Date.parse(n.at) < from;
-  const recent = shown.filter((n) => !old(n));
+  const fresh = shown.filter((n) => !old(n));
+  const recent = fresh.filter((n) => needsYou(n.kind));
   return {
     unread: recent.filter((n) => !n.read).length,
     recent,
+    updates: fresh.filter((n) => !needsYou(n.kind)),
     older: shown.filter(old),
     off: prefs.off,
     foldDays: prefs.foldDays,

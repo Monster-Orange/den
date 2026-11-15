@@ -10,6 +10,7 @@ import {
   BELL_SWITCHES,
   bellPrefs,
   bellView,
+  needsYou,
   type Notification,
   NOTIFICATION_KINDS,
   switchOf,
@@ -67,23 +68,61 @@ describe("bell v6: what shows", () => {
     const items = [
       note("waiting", 0),
       note("finished", 0),
-      note("answer", 1),
-      note("answer", 1, true),
-      note("service", 9),
+      note("decision", 1),
+      note("decision", 1, true),
+      note("mention", 9),
     ];
     const v = bellView(items, { off: ["finished"], foldDays: 7 }, NOW);
     expect(v.recent.map((n) => n.kind)).toEqual([
       "waiting",
-      "answer",
-      "answer",
+      "decision",
+      "decision",
     ]);
-    expect(v.older.map((n) => n.kind)).toEqual(["service"]);
+    expect(v.older.map((n) => n.kind)).toEqual(["mention"]);
     expect(v.unread).toBe(2);
     expect(v).toMatchObject({ off: ["finished"], foldDays: 7 });
     // A longer fold: the 9-day item is recent again, and counts.
     const w = bellView(items, { off: [], foldDays: 14 }, NOW);
     expect(w.older).toEqual([]);
-    expect(w.unread).toBe(4);
+    expect(w.unread).toBe(3);
+  });
+});
+
+describe("ATTN-5 (den#142): the badge counts what needs you; the rest are Updates", () => {
+  it("needs you: a wait (permission, a question), a pick or approval, a mention; the rest are updates", () => {
+    expect(NOTIFICATION_KINDS.filter(needsYou)).toEqual([
+      "waiting",
+      "mention",
+      "decision",
+    ]);
+    expect(NOTIFICATION_KINDS.filter((k) => !needsYou(k))).toEqual([
+      "finished",
+      "answer",
+      "service",
+    ]);
+  });
+
+  it("a finished turn, a reply and a release go in Updates: listed, never in the badge", () => {
+    const items = [
+      note("waiting", 0),
+      note("finished", 0),
+      note("finished", 0),
+      note("answer", 1),
+      note("service", 2),
+      note("mention", 0, true),
+    ];
+    const v = bellView(items, { off: [], foldDays: 7 }, NOW);
+    expect(v.unread).toBe(1);
+    expect(v.recent.map((n) => n.kind)).toEqual(["waiting", "mention"]);
+    expect(v.updates.map((n) => n.kind)).toEqual([
+      "finished",
+      "finished",
+      "answer",
+      "service",
+    ]);
+    // A kind turned off is not an update either.
+    const off = bellView(items, { off: ["finished"], foldDays: 7 }, NOW);
+    expect(off.updates.map((n) => n.kind)).toEqual(["answer", "service"]);
   });
 });
 

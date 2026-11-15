@@ -2857,8 +2857,11 @@ agent and kind.
   turning it off in Settings says what that means. Repeats of a kind from
   one agent fold into one row with ×N. Items older than
   `notifications.fold_days` (3, 7, 14 or 30; default 7) fold under one
-  "Older than N days" row and don't count on the badge. Mark all read
-  marks what is shown. `/api/settings` serves and takes them as
+  "Older than N days" row and don't count on the badge. Only what needs
+  the person (an agent waiting, a decision, a mention) shows open and
+  counts on the badge; the rest (an agent finished, an answer, releases
+  and checks) folds into one closed "Updates (N)" row, and opening that
+  agent marks its updates read. Mark all read marks what is shown. `/api/settings` serves and takes them as
   `bell_kinds` and `bell_fold_days`.
 - **Settings** (den.yml, then user.yml): `notifications.asks_per_hour`
   (default 30, at least 1): how many `ask_human` questions one agent may

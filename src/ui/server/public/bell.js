@@ -12,6 +12,11 @@
  * from one agent fold into one row with ×N; items older than the fold
  * days fold into one "Older than N days" row. A row's ⊘ asks once, then
  * stops showing its kind, with Undo and a link to the settings.
+ *
+ * ATTN-5 (den#142): only what needs the person (an agent waiting, a
+ * decision, a mention) shows open and counts on the badge. The rest
+ * (finished, answers, releases and checks) folds into one Updates row;
+ * opening the agent clears its updates.
  */
 const POLL_MS = 5000;
 
@@ -178,13 +183,19 @@ function askHtml(sw) {
  * folds open, whether Older is open, and the ⊘ being asked about.
  */
 export function bellHtml(b, ui = {}) {
-  const u = { folds: ui.folds ?? new Set(), older: !!ui.older, ask: ui.ask };
+  const u = {
+    folds: ui.folds ?? new Set(),
+    older: !!ui.older,
+    updates: !!ui.updates,
+    ask: ui.ask,
+  };
   const groups = b?.groups ?? [];
   const older = b?.older ?? { count: 0, groups: [] };
-  const all = [...groups, ...(older.groups ?? [])];
+  const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
+  const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
   const head =
     `<div class="den-bell-hd"><h2 id="den-bell-h">${esc(tr("bell.title"))}</h2>` +
-    (b?.unread
+    (b?.unread || updates.unread
       ? `<button type="button" data-bell="all">${esc(tr("bell.markAll"))}</button>`
       : "") +
     (all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
@@ -193,6 +204,11 @@ export function bellHtml(b, ui = {}) {
     `</div>` +
     (u.ask ? askHtml(u.ask) : "");
   const off = (b?.off ?? []).map(switchName);
+  // ATTN-5: what doesn't need the person folds into one Updates row.
+  const updatesHtml = updates.count
+    ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
+      (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
+    : "";
   if (!groups.length && !older.count)
     return (
       head +
@@ -200,11 +216,13 @@ export function bellHtml(b, ui = {}) {
       (off.length
         ? `<p>${esc(tr("bell.notShown", { kinds: off.join(tr("bell.sep")) }))}</p>`
         : "") +
-      `<p><a href="${SETTINGS}" data-bell="settings">${esc(tr("bell.settings"))}</a></p></div>`
+      `<p><a href="${SETTINGS}" data-bell="settings">${esc(tr("bell.settings"))}</a></p></div>` +
+      updatesHtml
     );
   return (
     head +
     groupsHtml(groups, u) +
+    updatesHtml +
     (older.count
       ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
         (u.older ? groupsHtml(older.groups ?? [], u) : "")
@@ -267,7 +285,7 @@ export function initBell(doc = document) {
   btn.setAttribute("aria-controls", pop.id);
 
   // In memory only: a reload starts with every fold closed.
-  const ui = { folds: new Set(), older: false, ask: null };
+  const ui = { folds: new Set(), older: false, updates: false, ask: null };
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -342,8 +360,9 @@ export function initBell(doc = document) {
     else if (what === "clear") await post("/api/notifications/clear", {});
     else if (what === "scope")
       await post("/api/notifications/read", { scope: el.dataset.scope });
-    else if (what === "fold" || what === "older") {
+    else if (what === "fold" || what === "older" || what === "updates") {
       if (what === "older") ui.older = !ui.older;
+      else if (what === "updates") ui.updates = !ui.updates;
       else if (!ui.folds.delete(el.dataset.key)) ui.folds.add(el.dataset.key);
       paint();
       return;

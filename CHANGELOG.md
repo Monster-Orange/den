@@ -56,6 +56,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The bell's badge counts only what needs you: an agent waiting, a
+  decision, a mention. An agent finished, an answer, and releases and
+  checks fold into one closed "Updates (N)" row in the bell, and opening
+  that agent marks its updates read. `/api/notifications` adds `updates`
+  (`count`, `unread`, `groups`). (den#142)
 - `server_agent.self_update` is the person's, in `config/local/user.yml`.
   The server agent works beside the org config, so a value there could
   switch on its own Allow. A choice already made carries over: Den's

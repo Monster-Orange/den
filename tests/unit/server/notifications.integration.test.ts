@@ -127,15 +127,12 @@ describe("NT: the bell on the real server", () => {
       (await call("POST", "/api/settings", { bell_kinds: { finished: true } }))
         .status,
     ).toBe(200);
+    // ATTN-5 (den#142): a finished turn is an update: listed, not counted.
     const bell = await call("GET", "/api/notifications");
-    expect(bell.json.unread).toBe(1);
+    expect(bell.json.unread).toBe(0);
     expect(bell.json.off).not.toContain("finished");
-    expect(
-      (await call("POST", "/api/notifications/read", { all: true })).json,
-    ).toMatchObject({ ok: true, changed: 1, unread: 0 });
-    expect(
-      (await call("POST", "/api/notifications/clear", {})).json,
-    ).toMatchObject({ ok: true, changed: 1 });
+    expect(bell.json.groups).toEqual([]);
+    expect(bell.json.updates).toMatchObject({ count: 1, unread: 1 });
   }, 30_000);
 
   it("a person can't say an agent waits; an agent can't change the bell", async () => {
@@ -215,5 +212,50 @@ describe("NT: the bell on the real server", () => {
       "agent",
     );
     expect((await call("GET", "/api/notifications")).json.unread).toBe(0);
+  }, 30_000);
+
+  it("ATTN-5: opening the agent clears its updates; clear removes them", async () => {
+    // Last here: the page says it shows the agent for a while (NT-2), so
+    // nothing new from it is kept meanwhile. Unmute it (0 minutes) first.
+    await call("POST", "/api/notifications/mute", {
+      target: "agent:planner",
+      minutes: 0,
+    });
+    // Its ask is answered (the person's prompt), then its turn ends. A
+    // resume within RESUME_AFTER_MS of the ask is from before it: wait.
+    await new Promise((r) => setTimeout(r, 1100));
+    await call(
+      "POST",
+      "/api/agents/self/attention",
+      { event: "resumed", from: "prompt" },
+      "agent",
+    );
+    await call("POST", "/api/notifications/read", { all: true });
+    await call("POST", "/api/notifications/clear", {});
+    await call(
+      "POST",
+      "/api/agents/self/attention",
+      { event: "finished" },
+      "agent",
+    );
+    expect(
+      (await call("GET", "/api/notifications")).json.updates,
+    ).toMatchObject({ count: 1, unread: 1 });
+    // Opening the agent clears its updates (marks them read).
+    expect(
+      (
+        await call("POST", "/api/notifications/looking", {
+          agents: ["planner"],
+        })
+      ).status,
+    ).toBe(200);
+    const seen = await call("GET", "/api/notifications");
+    expect(seen.json.updates).toMatchObject({ count: 1, unread: 0 });
+    expect(
+      (await call("POST", "/api/notifications/clear", {})).json,
+    ).toMatchObject({ ok: true, changed: 1 });
+    expect(
+      (await call("GET", "/api/notifications")).json.updates,
+    ).toMatchObject({ count: 0, unread: 0 });
   }, 30_000);
 });

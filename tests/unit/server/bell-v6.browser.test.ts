@@ -12,6 +12,8 @@
  *      and the settings link.
  *   6. Settings › Notifications: a switch per kind; waiting off warns.
  *   7. At 390 px the panel is the full width.
+ *   8. ATTN-5 (den#142): releases and checks fold into one Updates row,
+ *      closed, and never count on the badge.
  *
  * The demo distribution; items written to the store here. Invented names
  * only. Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -136,12 +138,21 @@ describe("bell v6: a quieter bell", () => {
   it("only kinds on show; the badge counts them, not old or hidden ones; ×N folds repeats; Older folds", async () => {
     if (skip()) return;
     const p = await open("/services");
-    // The waiting question and the newest release: 2. Not the turn's end
-    // (off by default), not the read ones, not the 10-day-old one.
-    await badge(p, "2");
+    // ATTN-5 (den#142): the waiting question only. Releases are updates;
+    // not the turn's end (off by default), not the 10-day-old one.
+    await badge(p, "1");
     await openBell(p);
     const pop = p.locator("#den-bell-pop");
     expect(await pop.locator('[data-kind="finished"]').count()).toBe(0);
+    // Releases fold into one Updates row, closed.
+    const upd = pop.locator('[data-bell="updates"]');
+    await expect(upd.textContent()).resolves.toBe("Updates (3)");
+    await expect(upd.getAttribute("aria-expanded")).resolves.toBe("false");
+    expect(await pop.locator('[data-kind="service"]').count()).toBe(0);
+    await upd.click();
+    await expect(
+      pop.locator('[data-bell="updates"]').getAttribute("aria-expanded"),
+    ).resolves.toBe("true");
     // Three releases from one agent: one row, ×3.
     const x = pop.locator('.den-bell-x[data-bell="fold"]');
     expect(await x.count()).toBe(1);
@@ -197,9 +208,10 @@ describe("bell v6: a quieter bell", () => {
   it("⊘ asks once; Esc cancels; yes stops showing the kind, with Undo and the settings link", async () => {
     if (skip()) return;
     const p = await open("/services");
-    await badge(p, "2");
+    await badge(p, "1");
     await openBell(p);
     const pop = p.locator("#den-bell-pop");
+    await pop.locator('[data-bell="updates"]').click();
     const stop = pop.locator('[data-bell="stop"][data-sw="release"]').first();
     await expect(stop.getAttribute("aria-label")).resolves.toBe(
       "Stop showing this kind",
@@ -227,16 +239,22 @@ describe("bell v6: a quieter bell", () => {
     await expect(
       toast.locator("a.den-tlink").getAttribute("href"),
     ).resolves.toBe("/settings#notifications");
-    // Its rows go, and the badge counts the question only.
+    // Its rows go, and Updates with them; the badge still counts the question.
+    await pop.locator('[data-bell="updates"]').waitFor({ state: "detached" });
     await badge(p, "1");
     expect(await s!.settingsGet()).toMatchObject({
       bell_kinds: { release: false },
     });
     await toast.locator("button").click();
-    await badge(p, "2");
+    await p.waitForFunction(
+      () => document.querySelector(".den-toast-act") === null,
+    );
     expect(await s!.settingsGet()).toMatchObject({
       bell_kinds: { release: true },
     });
+    // Undone: the releases are back under Updates.
+    if (await p.isHidden("#den-bell-pop")) await openBell(p);
+    await pop.locator('[data-bell="updates"]').waitFor();
     await p.context().close();
   }, 90_000);
 
@@ -298,6 +316,7 @@ describe("bell v6: a quieter bell", () => {
       try {
         const p = await open("/services", 390);
         await openBell(p);
+        await p.locator('#den-bell-pop [data-bell="updates"]').click();
         await p
           .locator('#den-bell-pop [data-bell="stop"][data-sw="release"]')
           .first()
@@ -336,7 +355,11 @@ describe("bell v6: a quieter bell", () => {
         expect(box.toast.r).toBeLessThanOrEqual(390 - 15);
         // Undo, so the next language starts with releases shown.
         await toast.locator("button").click();
-        await badge(p, "2");
+        await p.waitForFunction(() =>
+          fetch("/api/notifications")
+            .then((r) => r.json())
+            .then((b) => b.updates?.count === 3),
+        );
         await p.context().close();
       } finally {
         if (lang !== "en") await s!.settings({ language: null });
@@ -357,9 +380,9 @@ describe("bell v6: a quieter bell", () => {
     );
     expect(sw).toBe(true);
     await p.context().close();
-    for (const [lang, said] of [
-      ["es", "Más de 7 días (1)"],
-      ["ja", "7日より古い通知(1)"],
+    for (const [lang, said, upd] of [
+      ["es", "Más de 7 días (1)", "Novedades (3)"],
+      ["ja", "7日より古い通知(1)", "お知らせ(3)"],
     ] as const) {
       expect(await s!.settings({ language: lang })).toBe(200);
       try {
@@ -368,6 +391,9 @@ describe("bell v6: a quieter bell", () => {
         await expect(
           q.locator('#den-bell-pop [data-bell="older"]').textContent(),
         ).resolves.toBe(said);
+        await expect(
+          q.locator('#den-bell-pop [data-bell="updates"]').textContent(),
+        ).resolves.toBe(upd);
         await q.context().close();
       } finally {
         await s!.settings({ language: null });
