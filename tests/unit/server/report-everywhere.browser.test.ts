@@ -79,6 +79,10 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     n: 2,
     how: "the form itself, and My reports (part of Report: its own way to it)",
   },
+  "settings-registry.js": {
+    n: 1,
+    how: "Unlink from a Hub project (issue 167): reportButton(true) in .hubp-dlg-acts",
+  },
   "popover.js": { n: 3, how: "not a pop-up: how pop-ups close" },
   "report-inject.js": { n: 2, how: "not a pop-up: the injector's own list" },
 };
@@ -114,7 +118,12 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

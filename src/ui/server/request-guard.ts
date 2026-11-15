@@ -744,6 +744,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/settings",
   "/api/scope",
   "/api/web-url",
+  // Issue 163: re-installs the launchd jobs (and may run sudo): a person's.
+  "/api/keep-running-after-logout",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",
