@@ -40,6 +40,23 @@ describe("the opener tripwire", () => {
   });
 });
 
+describe("opctl and op (den#143)", () => {
+  it("never this machine's own: opctl's read-only container list is an empty stand-in; any other opctl, and any op, fails the file", () => {
+    const ls = spawnSync("opctl", ["container", "ls"], { encoding: "utf-8" });
+    expect([ls.status, ls.stdout]).toEqual([0, ""]);
+    expect(tripwireCalls()).toEqual([]);
+    for (const [cmd, args] of [
+      ["opctl", ["up", "web"]],
+      ["op", ["read", "op://vault/item/field"]],
+    ] as const) {
+      const r = spawnSync(cmd, [...args], { encoding: "utf-8" });
+      expect(r.status).toBe(1);
+    }
+    expect(tripwireCalls()).toEqual(["opctl up", "op read"]);
+    clearTripwire();
+  });
+});
+
 describe("the config/local check", () => {
   it("names a file added, changed or removed under a config/local", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-cfglocal-"));

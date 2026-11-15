@@ -56,7 +56,7 @@ afterAll(() => {
       [
         ...(calls.length
           ? [
-              "This test file tried to open an app on the developer's machine (stub it, or pass --no-open):",
+              "This test file ran a program of the developer's machine that a test never runs (open, osascript, opctl…; stub it, or pass --no-open):",
               ...calls.map((c) => `  ${c}`),
             ]
           : []),
