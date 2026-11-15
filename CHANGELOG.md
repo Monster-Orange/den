@@ -21,6 +21,10 @@ config and manifest changes a distribution must make to move to it under
   its repos, or its repos match one and its name another) and that nothing
   is filed for it yet, with a choice per Hub project and its own Link,
   off until you pick. When every match is clear, it says so.
+  The bell's "N projects need your pick" now says under it that Den can't
+  tell which Hub project fits and nothing is filed until you choose. It
+  counts down with each pick and goes at the last. Clicking it opens
+  Unclear matches.
 
 ### Fixed
 

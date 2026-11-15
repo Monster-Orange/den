@@ -77,6 +77,17 @@ export function noteText(n) {
   return n?.text ?? "";
 }
 
+/**
+ * Issue 167 (mock v6 B3): a line under an item's title that says what it
+ * is about; only the pick item has one.
+ */
+export function noteSub(n) {
+  const m = n?.msg;
+  if (m?.key !== "bell.m.pick") return "";
+  const said = tr("bell.pickBody", { n: m.vars?.n ?? 0 });
+  return said && said !== "bell.pickBody" ? said : "";
+}
+
 /** The switch a kind is shown by (src/shared/notifications.ts switchOf). */
 const KIND_SWITCH = {
   waiting: "waiting",
@@ -103,13 +114,14 @@ const safeLink = (l) =>
 function rowHtml(n, fold) {
   const link = safeLink(n.link);
   const text = noteText(n);
+  const sub = noteSub(n);
   const long = n.msg?.key === "bell.m.asked" && text.length > LONG;
   const sw = switchOf(n.kind);
   return (
     `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
     (link && !long
-      ? `<a href="${esc(link)}" data-bell="open">${esc(text)}</a>`
+      ? `<a href="${esc(link)}" data-bell="open">${esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
       : long && link
         ? // The question's two lines, then Open below them (never clipped).
           `<div class="den-bell-tw"><span class="den-bell-t long">${esc(text)}</span>` +

@@ -130,6 +130,37 @@ describe("#68: /api/hub/link-suggestions", () => {
     expect(audited).toEqual(["back-office → back-office"]);
   });
 
+  it("POST (issue 167): each unclear one picked counts down the bell's pick; a clear one doesn't", async () => {
+    const picks: number[] = [];
+    const { url } = await serve({
+      projects: () => ["back-office", "lone", "site", "south"],
+      choices: async (ws) =>
+        ws === "south"
+          ? {
+              suggestions: [
+                { ...BACK, why: "repo" as const },
+                { ...SITE, why: "repo" as const },
+              ],
+              projects: [BACK, SITE],
+            }
+          : {
+              suggestions: [{ ...BACK, why: "repo" as const }],
+              projects: [BACK, SITE],
+            },
+      picked: (n) => void picks.push(n),
+    });
+    await post(url, {
+      links: [
+        { project: "south", hub: SITE.id },
+        { project: "back-office", hub: BACK.id },
+      ],
+    });
+    expect(picks).toEqual([1]);
+    // Nothing unclear linked: the bell isn't touched.
+    await post(url, { links: [{ project: "lone", hub: BACK.id }] });
+    expect(picks).toEqual([1]);
+  });
+
   it("POST nothing to link: no sync", async () => {
     const { url, sent } = await serve();
     expect((await post(url, { links: [] })).status).toBe(200);
@@ -146,5 +177,47 @@ describe("#68: /api/hub/link-suggestions", () => {
     expect(r.status).toBe(403);
     expect(store.get("back-office")).toBeUndefined();
     expect((await post(url, { links: "all" })).status).toBe(400);
+  });
+});
+
+/**
+ * Issue 167 (mock v6 B3): the one bell item "N projects need your pick"
+ * counts down as picks are made and goes at the last.
+ */
+describe("the pick in the bell", () => {
+  it("counts down, then goes", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const { NotificationStore } =
+      await import("../../../src/shared/notifications.js");
+    const { pickNote, pickDone, HUB_PICK_LINK } =
+      await import("../../../src/ui/server/hub-link-all-routes.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-pick-"));
+    try {
+      const store = new NotificationStore(dir);
+      store.add(pickNote(3));
+      const pick = () =>
+        store.list().filter((n) => n.subject === "record:hub-pick");
+      expect(pick()).toHaveLength(1);
+      expect(pick()[0]).toMatchObject({
+        kind: "decision",
+        link: HUB_PICK_LINK,
+        msg: { key: "bell.m.pick", vars: { n: 3 } },
+      });
+      pickDone(store, 1);
+      expect(pick()).toHaveLength(1);
+      expect(pick()[0].msg?.vars).toEqual({ n: 2 });
+      expect(pick()[0].text).toBe("2 projects need your pick");
+      pickDone(store, 1);
+      expect(pick()[0].text).toBe("1 project needs your pick");
+      pickDone(store, 1);
+      expect(pick()).toEqual([]);
+      // No pick waiting: nothing happens.
+      pickDone(store, 1);
+      expect(store.list()).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

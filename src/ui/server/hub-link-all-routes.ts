@@ -20,6 +20,7 @@ import type {
   HubProjectChoice,
   HubProjectLink,
 } from "../../shared/hub-project-link.js";
+import type { NotificationStore } from "../../shared/notifications.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf, auditActorOf } from "./request-guard.js";
 
@@ -41,6 +42,11 @@ export interface HubLinkAllDeps {
   changed: () => void;
   /** One line per link, for the audit trail. */
   audit: (line: string) => void;
+  /**
+   * Issue 167: `n` projects Den couldn't match were just picked; the
+   * bell's "N projects need your pick" counts down (pickDone).
+   */
+  picked?: (n: number) => void;
 }
 
 const MAX_LINKS = 200;
@@ -203,6 +209,7 @@ export async function hubLinkAllRoute(
   }
   const known = new Set(projects);
   const linked: { project: string; hub: HubProjectLink }[] = [];
+  let picks = 0;
   // code: what the page translates; why: the same in words, for the CLI.
   const skipped: {
     project: string;
@@ -237,8 +244,10 @@ export async function hubLinkAllRoute(
     d.write(project, link);
     d.audit(`${project} → ${s.slug}`);
     linked.push({ project, hub: link });
+    if ("unclear" in hubMatchOf(c.suggestions)) picks++;
   }
   if (linked.length) d.changed();
+  if (picks) d.picked?.(picks);
   sendJson(res, { ok: true, linked, skipped });
   return true;
 }
@@ -273,11 +282,49 @@ export async function defaultLinkAllDeps(
     write: (ws, l) => link.setHubProject(ws, l, why),
     changed: hp.defaultChanged,
     audit,
+    picked: (n) =>
+      void import("./notification-service.js")
+        .then((m) => pickDone(m.notificationDeps().store, n))
+        .catch(() => undefined),
   };
 }
 
 /** Where a person picks: Settings › Agents › Unclear matches. */
 export const HUB_PICK_LINK = "/settings#agents.hub_link_all";
+
+const PICK_SUBJECT = "record:hub-pick";
+
+/** The bell's one pick item: "N projects need your pick" (0.4.45). */
+export function pickNote(n: number) {
+  return {
+    kind: "decision" as const,
+    subject: PICK_SUBJECT,
+    scope: "workspace/den-server",
+    text: `${n} project${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} your pick`,
+    msg: { key: "bell.m.pick", vars: { n } },
+    link: HUB_PICK_LINK,
+  };
+}
+
+/**
+ * Issue 167 (mock v6 B3): `n` picks were made: the unread pick item counts
+ * down, and goes at the last. None waiting: nothing changes.
+ */
+export function pickDone(
+  store: Pick<NotificationStore, "list" | "add" | "withdraw">,
+  n: number,
+): void {
+  const item = store
+    .list()
+    .find(
+      (x) => !x.read && x.subject === PICK_SUBJECT && x.kind === "decision",
+    );
+  if (!item) return;
+  const was = Number(item.msg?.vars?.n);
+  const left = (Number.isFinite(was) ? was : 0) - n;
+  if (left > 0) store.add(pickNote(left));
+  else store.withdraw(PICK_SUBJECT, "decision");
+}
 
 /**
  * 0.4.45: what Connect runs once connected: link the clear projects, and
@@ -297,15 +344,7 @@ export async function defaultLinkAfter(): Promise<
     .catch(() => undefined);
   if ("unclear" in r && r.unclear.length) {
     const { notificationDeps } = await import("./notification-service.js");
-    const n = r.unclear.length;
-    notificationDeps().store.add({
-      kind: "decision",
-      subject: "record:hub-pick",
-      scope: "workspace/den-server",
-      text: `${n} project${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} your pick`,
-      msg: { key: "bell.m.pick", vars: { n } },
-      link: HUB_PICK_LINK,
-    });
+    notificationDeps().store.add(pickNote(r.unclear.length));
   }
   return r;
 }

@@ -2027,6 +2027,10 @@
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.pick": "{n} projects need your pick",
+    "bell.pickBody":
+      "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
+    "bell.pickBody.one":
+      "Den can't tell which Hub project fits it. Click to choose. Nothing is filed for it until then.",
     "bell.m.pick.one": "{n} project needs your pick",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.noHub.one": "{n} agent started without Hub",
@@ -7029,6 +7033,8 @@
     ".den-bell-empty a, .den-bell-open, .den-tlink { color: var(--accent-text); }",
     // Bell v6: a long question's two lines, ×N repeats, Older, the ⊘ ask.
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
+    // Issue 167: the pick item's line under its title.
+    ".den-bell-sub { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",

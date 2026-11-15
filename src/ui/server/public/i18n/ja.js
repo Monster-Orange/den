@@ -1244,6 +1244,8 @@
     "bell.m.input": "{name} があなたを待っています",
     "bell.m.asked": "{name} からの質問: {text}",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
+    "bell.pickBody":
+      "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",

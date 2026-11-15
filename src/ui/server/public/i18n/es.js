@@ -1272,6 +1272,10 @@
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
+    "bell.pickBody":
+      "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",
+    "bell.pickBody.one":
+      "Den no sabe qué proyecto de Hub le corresponde. Haz clic para elegir. No se guarda nada de él hasta entonces.",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
