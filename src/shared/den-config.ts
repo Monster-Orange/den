@@ -651,6 +651,22 @@ export function agentsRestoreOnBoot(
 }
 
 /**
+ * D64 ui.restart_wait_seconds (user.yml, 90): how long a restart may take.
+ * Restart Den waits this long; issue 163's "ran while you were away" note
+ * is for an absence longer than it.
+ */
+export function uiRestartWaitSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  try {
+    const v = Number(read().ui?.restart_wait_seconds);
+    return Number.isFinite(v) && v > 0 ? v : 90;
+  } catch {
+    return 90;
+  }
+}
+
+/**
  * Issue 163 (0.4.50) agents.keep_running_after_logout (user.yml): true or
  * false when the person set it, undefined when unset (install then keeps
  * the mode already installed). Off is the default the page shows.

@@ -19,6 +19,7 @@ import { attentionWaiting, notificationDeps } from "./notification-service.js";
 import {
   crashLoopSettings,
   markCleanStop,
+  markStopped,
   recordBoot,
   runByServiceManager,
 } from "../../shared/crash-loop.js";
@@ -161,6 +162,7 @@ import {
   panesReconnect,
   agentsListWaits,
   agentsKeepRunningAfterLogout,
+  uiRestartWaitSeconds,
   readWebServiceConfig,
   webUrlCheckSeconds,
   readReleaseConfig,
@@ -6775,6 +6777,8 @@ const CRASH_GATE: Promise<void> = (() => {
   const s = crashLoopSettings(web);
   const boot = recordBoot(stateDir, s);
   process.on("exit", (code) => {
+    // Issue 163: when it stopped, for "ran while you were away".
+    markStopped(stateDir);
     if (code === 0) markCleanStop(stateDir);
   });
   if (!boot.waitMs || !runByServiceManager()) return Promise.resolve();
@@ -7353,10 +7357,5 @@ const REQUEST_LEDGER = createRequestLedger({
 
 /** D64: ui.restart_wait_seconds, a positive number, else 90. */
 function restartWaitSeconds(): number {
-  try {
-    const v = Number(readUserConfig().ui?.restart_wait_seconds);
-    return Number.isFinite(v) && v > 0 ? v : 90;
-  } catch {
-    return 90;
-  }
+  return uiRestartWaitSeconds();
 }

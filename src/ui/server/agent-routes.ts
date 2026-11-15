@@ -1720,6 +1720,30 @@ export function noteStartedWithoutHub(
   });
 }
 
+/**
+ * Issue 163: "ran while you were away", one bell note: the agents that kept
+ * running while the web server was down, and those restored at its start.
+ */
+export function noteRanWhileAway(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  kept: readonly string[],
+  back: readonly string[],
+): void {
+  if (!kept.length && !back.length) return;
+  const names = [...kept, ...back].join(", ");
+  store.add({
+    kind: "service",
+    subject: "record:agents-ran-while-away",
+    scope: "workspace/den-server",
+    text: `While Den was away, ${kept.length} kept running and ${back.length} came back: ${names}`,
+    msg: {
+      key: "bell.m.ranAway",
+      vars: { kept: kept.length, back: back.length, names },
+    },
+    link: "/agents",
+  });
+}
+
 /** How often stopped agents are checked against remove_stopped_after. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -1797,6 +1821,27 @@ export function startAgentUpkeep(
         } catch {
           /* the bell is best effort */
         }
+      }
+      // Issue 163: away longer than a restart: who ran on, who came back.
+      try {
+        const { webAwayMs } = await import("../../shared/crash-loop.js");
+        const { getStateDir } = await import("../../shared/paths.js");
+        const cfg = await import("../../shared/den-config.js");
+        const away = webAwayMs(getStateDir());
+        if (
+          away !== null &&
+          away > cfg.uiRestartWaitSeconds() * 1000 &&
+          (f.kept.length || f.resumed.length)
+        ) {
+          log(
+            `Ran while Den was away (${Math.round(away / 60_000)} min): kept running: ${f.kept.join(", ") || "none"} · came back: ${f.resumed.join(", ") || "none"}`,
+          );
+          const { notificationDeps } =
+            await import("./notification-service.js");
+          noteRanWhileAway(notificationDeps().store, f.kept, f.resumed);
+        }
+      } catch {
+        /* the bell is best effort */
       }
       if (f.interrupted.length)
         log(

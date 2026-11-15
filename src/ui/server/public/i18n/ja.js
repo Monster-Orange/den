@@ -1232,6 +1232,8 @@
     "bell.m.asked": "{name} からの質問: {text}",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
+    "bell.m.ranAway":
+      "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":

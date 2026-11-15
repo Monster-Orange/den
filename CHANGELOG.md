@@ -24,6 +24,11 @@ config and manifest changes a distribution must make to move to it under
   removes them). Never for off over LaunchAgents. With no password, or
   sudo refused, nothing changes: install asks sudo once before it touches
   any job, so the old mode stays. (#163)
+- "Ran while you were away": when Den's web app starts after it was down
+  longer than a restart (`ui.restart_wait_seconds`, 90), one bell note
+  names the agents that kept running meanwhile and the ones that came
+  back at this start. Den now notes when its web app stopped, in
+  web-boots.json. (#163)
 
 ### Fixed
 

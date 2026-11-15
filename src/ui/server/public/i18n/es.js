@@ -1259,6 +1259,8 @@
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
+    "bell.m.ranAway":
+      "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",

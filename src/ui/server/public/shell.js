@@ -2019,6 +2019,8 @@
     "bell.m.pick": "{n} projects need your pick",
     "bell.m.pick.one": "{n} project needs your pick",
     "bell.m.noHub": "{n} agents started without Hub",
+    "bell.m.ranAway":
+      "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",

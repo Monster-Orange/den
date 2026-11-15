@@ -5790,6 +5790,11 @@ export interface RestartFound {
   failed: { agent: string; why: string }[];
   /** 0.4.46: resumed though Hub didn't answer in time (no Hub tools). */
   withoutHub: string[];
+  /**
+   * Issue 163: agents whose session is still running: they kept running
+   * through whatever stopped the web server (its host outlived it).
+   */
+  kept: string[];
 }
 
 /** Poll `ok` until it says yes or `ms` pass; whether it said yes. */
@@ -5839,12 +5844,15 @@ export async function markInterrupted(
     resumed: [],
     failed: [],
     withoutHub: [],
+    kept: [],
   };
   const now = new Date().toISOString();
   const marked: AgentRecord[] = [];
   for (const rec of listRecords(d.stateDir())) {
+    const st = rowState(rec, sessionOf(sessions, rec));
+    if (st === "running") found.kept.push(rec.id);
     if (rec.interruptedAt) continue;
-    if (rowState(rec, sessionOf(sessions, rec)) !== "interrupted") continue;
+    if (st !== "interrupted") continue;
     const next = { ...rec, interruptedAt: now };
     writeRecord(d.stateDir(), next);
     marked.push(next);
