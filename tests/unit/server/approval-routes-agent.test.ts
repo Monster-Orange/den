@@ -31,7 +31,26 @@ import {
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-apagent-"));
 const ran: string[] = [];
 const restarts: unknown[] = [];
+/** SRV-P1: who each agent_create check was told asked. */
+const askers: unknown[] = [];
+const created: unknown[] = [];
 const actions: HeldActions = {
+  agent_create: {
+    check: (a, who) => {
+      askers.push(who);
+      return {
+        ok: true,
+        args: { project: String(a.project), persona: "planner" },
+        summary: `start agent planner (planner) in ${String(a.project)}, mode ask`,
+        params: {},
+        details: [],
+      };
+    },
+    run: async (a) => {
+      created.push(a);
+      return { ok: true, id: "planner" };
+    },
+  },
   den_restart: {
     check: (a) => ({
       ok: true,
@@ -74,7 +93,7 @@ function principalFor(req: http.IncomingMessage): Principal {
     ? {
         kind: "agent",
         actor: `agent:${id}`,
-        workspace: "north",
+        workspace: String(req.headers["x-test-project"] ?? "north"),
         grants: [],
         session: { name: `acme-north:${id}` },
       }
@@ -216,6 +235,37 @@ describe("an agent's own token", () => {
     } finally {
       enabled = true;
     }
+  });
+});
+
+describe("SRV-P1: agent_create hears who asked", () => {
+  it("a project's agent's ask names it and its project; held, then run on Allow", async () => {
+    mintActorToken(stateDir, {
+      agentId: "lead",
+      workspace: "north",
+      sessionName: "acme-north:lead",
+    });
+    askers.length = 0;
+    const r = await fetch(
+      `${base}/api/approvals`,
+      as("lead", { action: "agent_create", args: { project: "north" } }),
+    );
+    expect(r.status).toBe(202);
+    const a = (await r.json()) as { id: string; agent: string };
+    expect(a.agent).toBe("lead");
+    expect(askers[0]).toEqual({ agent: "lead", project: "north" });
+    expect(created).toEqual([]);
+    await queue.decide(a.id, "allow", "s1");
+    expect(created).toEqual([{ project: "north", persona: "planner" }]);
+  });
+
+  it("a person's ask (no agent token) names no agent", async () => {
+    askers.length = 0;
+    await fetch(
+      `${base}/api/approvals`,
+      as(undefined, { action: "agent_create", args: { project: "north" } }),
+    );
+    expect(askers[0]).toEqual({});
   });
 });
 

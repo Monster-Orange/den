@@ -1814,6 +1814,8 @@
       'Add the repo at {path} to a new project "{workspace}"',
     "ap.do.service_try": "Start {service}",
     "ap.do.den_restart": "Restart Den ({reason})",
+    "ap.do.agent_create":
+      "Start agent {name} ({persona}) in {where}, mode {mode}",
     "ap.do.service_try.activates":
       "Start {service} (this activates project {workspace})",
     "ap.says": "Agent says:",

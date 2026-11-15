@@ -22,6 +22,11 @@ config and manifest changes a distribution must make to move to it under
   (`user.yml`, the org config not yet copied, or the default), and the
   update check's last pass and next. Doctor warns when a pass is well
   overdue.
+- Agents can ask to add an agent to a project (`agent_create`), held
+  for the person's Allow. A project's agent asks for its own project;
+  the server agent for any. The Allow names who asked, the persona, the
+  project and repo, and the mode, which is the project's or stricter.
+  On Allow Den starts it as `agents start` does.
 
 ### Changed
 

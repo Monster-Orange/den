@@ -295,7 +295,9 @@ describe("SRV-1b: den_update", () => {
     expect(JSON.parse(r.text)).toMatchObject({
       approved: true,
       result: { to: "1.1.0", restarting: true },
-      next: expect.stringMatching(/End your turn now.*Server is back on.*commit/),
+      next: expect.stringMatching(
+        /End your turn now.*Server is back on.*commit/,
+      ),
     });
   });
 
@@ -304,6 +306,82 @@ describe("SRV-1b: den_update", () => {
     const r = await callTool("den_update", { reason: "x" }, ctx(api, true));
     expect(r.isError).toBe(true);
     expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+});
+
+describe("SRV-P1: agent_create", () => {
+  it("asks for agent_create with the project, persona and what else was given", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, id: "ana", project: "north", repo: "shop" },
+    }));
+    const r = await callTool(
+      "agent_create",
+      {
+        project: "north",
+        persona: "reviewer",
+        name: "Ana",
+        repo: "shop",
+        mode: "edits",
+        note: "a second pair of eyes",
+      },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls[0].body).toEqual({
+      action: "agent_create",
+      args: {
+        project: "north",
+        persona: "reviewer",
+        name: "Ana",
+        repo: "shop",
+        mode: "edits",
+      },
+      note: "a second pair of eyes",
+    });
+    expect(JSON.parse(r.text)).toMatchObject({
+      approved: true,
+      result: { id: "ana", repo: "shop" },
+    });
+  });
+
+  it("needs a project and a persona", async () => {
+    const { api, calls } = fakeApi([]);
+    const r = await callTool("agent_create", { persona: "x" }, ctx(api));
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/project/);
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+
+  it("a project's agent asks for its own project (the default); another project is refused before anything is asked", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, id: "planner" },
+    }));
+    const own = await callTool(
+      "agent_create",
+      { persona: "planner" },
+      ctx(api, true),
+    );
+    expect(own.isError).toBe(false);
+    const asked = calls.find((c) => c.path === "/api/approvals");
+    expect(asked?.body).toMatchObject({
+      action: "agent_create",
+      args: { project: "north", persona: "planner" },
+    });
+    const n = calls.length;
+    const other = await callTool(
+      "agent_create",
+      { project: "elsewhere", persona: "planner" },
+      ctx(api, true),
+    );
+    expect(other.isError).toBe(true);
+    expect(other.text).toMatch(
+      /project "north".*only.*not to project "elsewhere"/,
+    );
+    expect(calls.slice(n).some((c) => c.path === "/api/approvals")).toBe(false);
   });
 });
 

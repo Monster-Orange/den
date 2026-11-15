@@ -54,8 +54,20 @@ export type HeldCheck =
     }
   | { ok: false; error: string };
 
+/**
+ * SRV-P1: who asked, as their credential proves it: an agent's id and the
+ * project its token is for. A person's ask (no agent token): neither.
+ */
+export interface HeldAsker {
+  agent?: string;
+  project?: string;
+}
+
 export interface HeldAction {
-  check(args: Record<string, unknown>): Promise<HeldCheck> | HeldCheck;
+  check(
+    args: Record<string, unknown>,
+    who?: HeldAsker,
+  ): Promise<HeldCheck> | HeldCheck;
   /** Runs it from checked args; answers like the CLI's --json ({ ok, … }). */
   run(args: Record<string, unknown>, asked?: AskedBy): Promise<unknown>;
 }
@@ -216,7 +228,15 @@ export async function handleApprovalRoutes(
       body.args && typeof body.args === "object" && !Array.isArray(body.args)
         ? (body.args as Record<string, unknown>)
         : {};
-    const checked = await held.check(args);
+    const checked = await held.check(
+      args,
+      agent
+        ? {
+            agent: agent.actor.slice("agent:".length),
+            project: agent.workspace,
+          }
+        : {},
+    );
     if (!checked.ok) {
       recordAction(
         auditActorOf(req),

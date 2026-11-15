@@ -22,6 +22,11 @@
  *   den_update        SRV-1b: install another Den version from npm and
  *                     restart on it (den-update.ts); a version that
  *                     doesn't come up is rolled back by itself
+ *   agent_create      SRV-P1: start a new agent in a project, as
+ *                     `agents start` does (agent-ops.ts checkAgentCreate,
+ *                     createAgent); its mode the project's or stricter.
+ *                     Any agent may ask: a project's agent for its own
+ *                     project only, the server agent for any
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
@@ -32,8 +37,14 @@ import {
   type ManifestValidator,
   type RepoAddResult,
 } from "../cli/repo-command.js";
-import type { HeldAction, HeldActions, HeldCheck } from "./approval-routes.js";
+import type {
+  HeldAction,
+  HeldActions,
+  HeldAsker,
+  HeldCheck,
+} from "./approval-routes.js";
 import type { AskedBy } from "./approvals.js";
+import type { AgentCreateCheck } from "../cli/agent-ops.js";
 
 export interface TryResult {
   ok: boolean;
@@ -73,6 +84,11 @@ export interface HeldActionDeps {
     reason: string,
     asked?: AskedBy,
   ) => Promise<{ ok: boolean; restarting?: boolean; error?: string }>;
+  /** SRV-P1: agent_create's check and start (agent-ops.ts). */
+  agentCreate?: {
+    check: (args: Record<string, unknown>, who?: HeldAsker) => AgentCreateCheck;
+    run: (args: Record<string, unknown>) => Promise<unknown>;
+  };
 }
 
 /** The longest reason a restart may give (one line). */
@@ -326,11 +342,24 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const agentCreate: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.agentCreate)
+        return { ok: false, error: "this Den can't start agents here" };
+      const c = d.agentCreate.check(a, who);
+      return c.ok ? { ...c, args: { ...c.args } } : c;
+    },
+    async run(a) {
+      return d.agentCreate!.run(a);
+    },
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
     service_try: serviceTry,
     den_restart: denRestart,
     den_update: denUpdate,
+    agent_create: agentCreate,
   };
 }

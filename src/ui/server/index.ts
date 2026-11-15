@@ -968,6 +968,8 @@ import {
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
 import {
+  checkAgentCreate,
+  createAgent,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -2305,6 +2307,11 @@ function approvalDeps(): ApprovalDeps {
           : `not updated: ${res.error}`,
       );
       return res;
+    },
+    // SRV-P1: an agent asks to add an agent to a project.
+    agentCreate: {
+      check: (a, who) => checkAgentCreate(agentWebDeps(), a, who),
+      run: (a) => createAgent(agentWebDeps(), a),
     },
   });
   approvals = {

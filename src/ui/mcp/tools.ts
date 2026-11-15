@@ -294,7 +294,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1458,6 +1458,67 @@ const APPROVAL_TOOLS: DenTool[] = [
       return typeof r === "string"
         ? r
         : { ...(r as object), next: UPDATE_NEXT };
+    },
+  },
+  {
+    name: "agent_create",
+    title: "Add an agent",
+    description:
+      "Start a new agent in a project, with one of the personas (`persona`, its id: personas lists them), as `agents start` does. It works in `repo` (one of the project's repos) or `folder` (inside the project), else in the project's first repo. `mode` is the project's mode or stricter (ask < edits < auto < all); with none given, the project's. A project's agent adds agents to its own project only (`project` defaults to it); Den's own agent, to any project." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project it works in (a project's agent: its own)"),
+      persona: z.string().describe("A persona's id"),
+      name: z
+        .string()
+        .max(64)
+        .optional()
+        .describe("A name to tell it apart (default: the persona's)"),
+      runtime: z
+        .string()
+        .optional()
+        .describe("The runtime (default: the persona's)"),
+      mode: z
+        .enum(["ask", "edits", "auto", "all"])
+        .optional()
+        .describe("ask, edits, auto or all; at most the project's"),
+      repo: z.string().optional().describe("One of the project's repos"),
+      folder: z
+        .string()
+        .optional()
+        .describe("A folder inside the project, instead of a repo"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      // A project's agent asks for its own project (the default); Den
+      // checks the same from its token.
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("agent_create", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `agent_create: you work in project "${ctx.scope.workspace}" and can add agents there only, not to project "${project}"; nothing was asked.`,
+        );
+      const persona = needArg("agent_create", a, "persona", "a persona's id");
+      return askPerson(
+        "agent_create",
+        "agent_create",
+        {
+          project,
+          persona,
+          name: str(a.name),
+          runtime: str(a.runtime),
+          mode: str(a.mode),
+          repo: str(a.repo),
+          folder: str(a.folder),
+        },
+        a.note,
+        ctx,
+      );
     },
   },
   {

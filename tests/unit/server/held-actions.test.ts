@@ -90,3 +90,46 @@ describe("held actions activate the workspace they need", () => {
     expect(c).toEqual({ ok: false, error: 'there is no project "nope"' });
   });
 });
+
+describe("SRV-P1: agent_create", () => {
+  it("is agent-ops' check and start; a Den without them refuses", async () => {
+    const f = fakes();
+    expect(await heldActions(f.deps).agent_create.check({})).toEqual({
+      ok: false,
+      error: "this Den can't start agents here",
+    });
+    const ran: unknown[] = [];
+    const a = heldActions({
+      ...f.deps,
+      agentCreate: {
+        check: (x) => ({
+          ok: true,
+          summary: "start agent Ana (reviewer) in north, mode ask",
+          params: {
+            name: "Ana",
+            persona: "reviewer",
+            where: "north",
+            mode: "ask",
+          },
+          details: [],
+          args: {
+            project: String(x.project),
+            persona: "reviewer",
+            mode: "ask",
+          },
+        }),
+        run: async (x) => {
+          ran.push(x);
+          return { ok: true, id: "ana" };
+        },
+      },
+    }).agent_create;
+    const c = await a.check({ project: "north" });
+    expect(c.ok && c.params.where).toBe("north");
+    if (!c.ok) return;
+    expect(await a.run(c.args)).toEqual({ ok: true, id: "ana" });
+    expect(ran).toEqual([
+      { project: "north", persona: "reviewer", mode: "ask" },
+    ]);
+  });
+});

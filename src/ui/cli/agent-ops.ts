@@ -142,6 +142,7 @@ import {
 import {
   checkCommands,
   checkIntent,
+  DEFAULT_INTENT,
   intentOf,
   type PermissionIntent,
 } from "../../shared/agents/permissions.js";
@@ -3559,6 +3560,158 @@ export function defaultAgentFolder(
   if (isDir(linked)) return linked;
   for (const dir of repos.values()) if (isDir(dir)) return dir;
   return undefined;
+}
+
+/**
+ * SRV-P1 (0.4.48, den#135): what an agent's agent_create asks. Any agent
+ * may ask (the person's Allow is the gate): a project's agent for its own
+ * project, the server agent for any.
+ * The check says exactly what the Allow starts; the args it returns are
+ * the ones the run takes, checked again then.
+ */
+export type AgentCreateCheck =
+  | {
+      ok: true;
+      summary: string;
+      /** The summary's parts, for the Allow dialog to word in its language. */
+      params: Record<string, string>;
+      details: string[];
+      args: AgentCreateArgs;
+    }
+  | { ok: false; error: string };
+
+export interface AgentCreateArgs {
+  project: string;
+  persona: string;
+  name?: string;
+  runtime?: string;
+  mode: PermissionIntent;
+  repo?: string;
+  folder?: string;
+}
+
+const INTENT_RANK: Record<PermissionIntent, number> = {
+  ask: 0,
+  edits: 1,
+  auto: 2,
+  all: 3,
+};
+
+/**
+ * SRV-P1: checks an agent_create ask. The mode is the project's (its
+ * own, else the install's) or stricter; with none set, only ask. A repo
+ * or a folder, not both; with neither, gap 7's folder (agents start's).
+ */
+export function checkAgentCreate(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  /** Who asked: a project's agent asks for its own project only. */
+  who: { agent?: string; project?: string } = {},
+): AgentCreateCheck {
+  const no = (error: string): AgentCreateCheck => ({ ok: false, error });
+  const str = (k: string): string | undefined => {
+    const v = raw[k];
+    if (v === undefined || v === null || v === "") return undefined;
+    if (typeof v !== "string") throw usage(`${k} must be text`);
+    return v.trim();
+  };
+  try {
+    const ws = checkWorkspaceName("agent_create", str("project"));
+    if (!d.workspaceExists(ws)) return no(`no project "${ws}"`);
+    if (who.project && !isServerScope(who.project) && who.project !== ws)
+      return no(
+        `${who.agent ?? "this agent"} works in project ${who.project}: it can add agents there only, not to project ${ws}`,
+      );
+    const want = str("persona");
+    if (!want) return no("persona is required (a persona's id)");
+    const persona = personas(d, agentsConfig(d), ws).get(want);
+    if (!persona) return no(`no persona "${want}"`);
+    const name = str("name");
+    if (name !== undefined) checkDisplayName(name);
+    const runtime = str("runtime");
+    if (runtime !== undefined) runtimeFor(runtime);
+    const repo = str("repo");
+    const folder = str("folder");
+    if (repo !== undefined && folder !== undefined)
+      return no("give a repo or folder, not both");
+    const cap = followedPermissionOf(d, ws) ?? DEFAULT_INTENT;
+    const m = str("mode");
+    const mode = m === undefined ? cap : checkIntent(m, "mode");
+    if (INTENT_RANK[mode] > INTENT_RANK[cap])
+      return no(
+        `mode ${mode} is wider than project ${ws}'s (${cap}); ask for ${cap} or stricter`,
+      );
+    const dir =
+      folder !== undefined
+        ? startFolder(d, ws, folder)
+        : defaultAgentFolder(d, ws, repo, null);
+    const repoName =
+      repo ??
+      (dir
+        ? [...workspaceRepoFolders(d, ws)].find(
+            ([, f]) => path.resolve(f) === path.resolve(dir),
+          )?.[0]
+        : undefined);
+    const where = repoName
+      ? `${ws} › ${repoName}`
+      : dir
+        ? `${ws} › ${path.relative(d.workspaceDir(ws), dir) || "."}`
+        : ws;
+    const shown = name ?? persona.displayName ?? persona.id;
+    const rt = runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID;
+    return {
+      ok: true,
+      summary: `start agent ${shown} (${persona.id}) in ${where}, mode ${mode}${runtime ? `, runtime ${runtime}` : ""}`,
+      params: { name: shown, persona: persona.id, where, mode },
+      details: [
+        `Persona: ${persona.id}`,
+        `Project: ${ws}`,
+        `Folder: ${dir ?? d.workspaceDir(ws)}`,
+        `Runtime: ${rt}`,
+        `Mode: ${mode} (the project's: ${cap})`,
+      ],
+      args: {
+        project: ws,
+        persona: persona.id,
+        ...(name !== undefined ? { name } : {}),
+        ...(runtime !== undefined ? { runtime } : {}),
+        mode,
+        ...(repo !== undefined ? { repo } : {}),
+        ...(folder !== undefined ? { folder: dir ?? folder } : {}),
+      },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** SRV-P1: on Allow, starts it as `agents start` does. */
+export async function createAgent(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; id: string; project: string; repo?: string; cwd?: string }
+  | { ok: false; error: string }
+> {
+  const c = checkAgentCreate(d, raw);
+  if (!c.ok) return c;
+  const a = c.args;
+  const s = await startAgent(d, {
+    workspace: a.project,
+    persona: a.persona,
+    permission: a.mode,
+    ...(a.name !== undefined ? { name: a.name } : {}),
+    ...(a.runtime !== undefined ? { runtime: a.runtime } : {}),
+    ...(a.repo !== undefined ? { repo: a.repo } : {}),
+    ...(a.folder !== undefined ? { folder: a.folder } : {}),
+  });
+  return {
+    ok: true,
+    id: s.rec.id,
+    project: a.project,
+    ...(s.rec.repo ? { repo: s.rec.repo } : {}),
+    ...(s.rec.cwd ? { cwd: s.rec.cwd } : {}),
+  };
 }
 
 /** Whether `dir` is a folder of project `ws`'s (startFolder's check). */

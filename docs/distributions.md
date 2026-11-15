@@ -3031,6 +3031,17 @@ project may take that name.
   rows for each step. `GET /api/server-agent` returns the last update
   (`update`: `from`, `to`, `at`, and `state`: `installing`, `watching`,
   `good`, `rolling_back`, `rolled_back` or `rollback_failed`).
+- **It adds agents** (0.4.48, `agent_create { project?, persona, name?,
+  runtime?, mode?, repo?, folder? }`, the held action `agent_create`).
+  Always held for the person: `self_update` doesn't cover it. The Allow
+  says which persona, which project and repo (or folder), and the mode.
+  The mode is the project's mode or stricter (`ask` < `edits` < `auto` <
+  `all`); a project with none set allows only `ask`. With no repo or
+  folder it works where `agents start` puts it: the project's first
+  repo. Allowed, Den starts it as `agents start` does and answers with
+  its id, project, repo and folder. Any agent may ask, and the Allow
+  names it: a project's agent for its own project only (Den checks this
+  from its token), the server agent for any project.
 - **Den keeps itself current** (0.4.48). Every
   `server_agent.update_check_minutes` (org config; default 30, at least
   5, 0 for never) the web server asks npm for the newest Den. The lead
