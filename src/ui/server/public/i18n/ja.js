@@ -1203,7 +1203,6 @@
     "bell.cancel": "キャンセル",
     "bell.undo": "元に戻す",
     "bell.undoMsg": "「{kind}」を表示しなくなりました。",
-    "bell.open": "開く",
     "bell.clearRead": "既読を消去",
     "bell.read": "既読にする",
     "bell.server": "__DEN_TITLE__ エージェント",

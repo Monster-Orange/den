@@ -1989,7 +1989,6 @@
     "bell.cancel": "Cancel",
     "bell.undo": "Undo",
     "bell.undoMsg": "No longer showing “{kind}”.",
-    "bell.open": "Open",
     "bell.clearRead": "Clear read",
     "bell.read": "Mark read",
     "bell.server": "__DEN_TITLE__ agent",
@@ -6998,7 +6997,7 @@
     ".den-bell-row time { color: var(--faint); font-size: 11px; white-space: nowrap; }",
     ".den-bell-empty { padding: 16px 12px; color: var(--muted); }",
     ".den-bell-empty p { margin: 0 0 6px; }",
-    ".den-bell-empty a, .den-bell-open, .den-tlink { color: var(--accent-text); }",
+    ".den-bell-empty a, .den-tlink { color: var(--accent-text); }",
     // Bell v6: a long question's two lines, ×N repeats, Older, the ⊘ ask.
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
