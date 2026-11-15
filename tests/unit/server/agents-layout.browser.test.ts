@@ -58,8 +58,14 @@ const sid: Record<string, string> = {};
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_HELPERS_BROWSER=webkit|firefox runs it there (Safari too).
+    const pw = await import("playwright");
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    browser = await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -808,6 +814,138 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     const wide = await look(1440);
     expect(wide).toMatchObject({ project: "south", whole: true, beside: true });
   }, 90_000);
+
+  // Issue 170 (a phone, 390 px): the runs dock covered the pane's To line
+  // (the pane ran on under it), and tags cut the project's name.
+  it("issue 170: at 390x844 the runs dock never covers the To line and tags never cut the project's name", async () => {
+    if (skip()) return;
+    await s!.settings({ agents_layout: null, shell: { dock: null } });
+    const ctx = await browser!.newContext({
+      viewport: { width: 390, height: 844 },
+      reducedMotion: "reduce",
+    });
+    await ctx.addInitScript((v) => {
+      try {
+        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+          localStorage.setItem(k, v);
+      } catch {
+        /* none */
+      }
+    }, latest);
+    const p = await ctx.newPage();
+    p.on("pageerror", (e) => errors.push(`issue 170: ${e.message}`));
+    // Every tag the bar can carry, on every agent.
+    await p.route(/\/api\/sessions(\?|$)/, async (r) => {
+      const res = await r.fetch();
+      const body = (await res.json()) as {
+        sessions: Record<string, unknown>[];
+      };
+      for (const x of body.sessions)
+        if (x.kind === "agent")
+          Object.assign(x, {
+            tokenRevoked: true,
+            launchd: "Aqua",
+            mode: "all",
+            modeRunning: "all",
+            subagentModel: "inherit",
+            subagentModelFrom: "persona",
+          });
+      await r.fulfill({ response: res, body: JSON.stringify(body) });
+    });
+    await p.goto(`${s!.base}/agents?layout=tabs&open=${all()}`);
+    await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+    await termsUp(p, 1);
+    await p.waitForSelector("#agr .pane:not([hidden]) .bar2 [data-tags]");
+    const look = () =>
+      p.evaluate(() => {
+        const box = (e: Element | null) => {
+          const r = e!.getBoundingClientRect();
+          return { l: r.left, r: r.right, t: r.top, b: r.bottom };
+        };
+        const pane = document.querySelector("#agr .pane:not([hidden])")!;
+        const wsn = pane.querySelector(".bar2 .where .wsn") as HTMLElement;
+        const n = box(wsn);
+        const hit = [
+          ...pane.querySelectorAll(".bar2 [data-tags] > *, .bar2 .tagx"),
+        ]
+          .map(box)
+          .filter((t) => t.l < n.r && t.r > n.l && t.t < n.b && t.b > n.t);
+        const c = document.getElementById("den-content")!;
+        return {
+          dock: box(document.getElementById("den-dock")),
+          to: box(pane.querySelector(".agto")),
+          name: n,
+          where: box(pane.querySelector(".bar2 .where")),
+          paneBox: box(pane),
+          hit: hit.length,
+          cut: wsn.scrollWidth - wsn.clientWidth,
+          side: Math.max(
+            document.documentElement.scrollWidth -
+              document.documentElement.clientWidth,
+            c.scrollWidth - c.clientWidth,
+          ),
+        };
+      });
+    const check = async (when: string) => {
+      const m = await look();
+      process.stdout.write(
+        `issue 170 at 390x844 ${when}: To ${m.to.t}-${m.to.b}, dock top ${m.dock.t}, name ${m.name.l}-${m.name.r}, tags over it ${m.hit}\n`,
+      );
+      expect(m.to.b).toBeLessThanOrEqual(m.dock.t + 0.5);
+      expect(m.to.t).toBeGreaterThanOrEqual(0);
+      expect(m.hit).toBe(0);
+      expect(m.cut).toBeLessThanOrEqual(0);
+      // Whole inside its box and the pane: nothing clips it.
+      expect(m.name.r).toBeLessThanOrEqual(m.where.r + 0.5);
+      expect(m.name.r).toBeLessThanOrEqual(m.paneBox.r + 0.5);
+      expect(m.side).toBeLessThanOrEqual(0);
+    };
+    const toBottom = () =>
+      p.evaluate(() => {
+        const c = document.getElementById("den-content")!;
+        c.scrollTop = c.scrollHeight;
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      });
+    // The dock shut (its bar): the pane ends above it, no scrolling.
+    await check("shut");
+    // Scrolled to the bottom: still above it.
+    await toBottom();
+    await check("scrolled");
+    // The dock open (half the window at most): scrolled to the bottom,
+    // the pane still ends above it.
+    await p.click('.den-dock [data-act="dock"]');
+    await p.waitForSelector("#den-dock-out");
+    await toBottom();
+    await check("dock open, scrolled");
+    await p.click('.den-dock [data-act="dock"]');
+    await shot(p, "issue-170-390");
+    await ctx.close();
+    await s!.settings({ shell: { dock: null } });
+  }, 60_000);
+
+  it("issue 170: at 1440x900 the runs dock is where it was, at the window's foot, the panes 14px above it", async () => {
+    if (skip()) return;
+    await s!.settings({ agents_layout: null, shell: { dock: null } });
+    const p = await page(`/agents?layout=tabs&open=${all()}`);
+    await termsUp(p, 1);
+    const [d, r, c] = await Promise.all([
+      rect(p, "#den-dock"),
+      rect(p, "#agr"),
+      rect(p, "#den-content"),
+    ]);
+    expect(d.b).toBeCloseTo(900, 0);
+    // Under the content column, beside the rail, its full width.
+    expect(d.x).toBeCloseTo(c.x, 0);
+    expect(d.x + d.w).toBeCloseTo(1440, 0);
+    expect(d.y - r.b).toBeCloseTo(14, 0);
+    expect(
+      await p.$eval(
+        "#agr .pane:not([hidden]) [data-tags]",
+        (e) => getComputedStyle(e).display,
+      ),
+    ).toBe("contents");
+    await p.context().close();
+  }, 60_000);
 
   it("raised no page errors", () => {
     if (skip()) return;

@@ -657,6 +657,27 @@
           display: none;
         }
       }
+      /* Issue 170: the bar's tags sit beside the name on a wide pane... */
+      .pane .bar2 .agtags {
+        display: contents;
+      }
+      /* ...and on a phone take a line of their own under it, so they
+         never cut the project's name. */
+      @media (max-width: 720px) {
+        .pane .bar2 .agtags {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 4px 6px;
+          flex: 1 1 100%;
+          min-width: 0;
+        }
+        .pane .bar2 .agtags .tagx {
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+      }
       .pane .bar2 .x {
         margin-left: auto;
         display: flex;
@@ -928,10 +949,13 @@
         justify-content: flex-end;
       }
       @media (max-width: 860px) {
+        /* Issue 170: the panes end above the runs dock here too, as on a
+           wide screen. The list keeps its rows (at least about two) while
+           there is room; the panes take the rest, never less than their
+           own minimum; past that the page scrolls. */
         .agx {
           grid-template-columns: minmax(0, 1fr);
-          grid-template-rows: none;
-          flex: none;
+          grid-template-rows: minmax(6rem, max-content) minmax(min-content, 1fr);
         }
         .ph .act {
           flex-wrap: wrap;
@@ -943,6 +967,11 @@
         }
         .pane {
           min-height: 260px;
+        }
+        /* A pane's height comes from its row, never its terminal's (a
+           24-row terminal held it taller than the screen, under the dock). */
+        .pane .term {
+          contain: size;
         }
         .agl {
           max-height: 50vh;
