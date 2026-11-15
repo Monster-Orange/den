@@ -56,6 +56,16 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The working pop-up's request ledger (UK-2) keeps finished writes on disk,
+  so a restart keeps them, and never keeps a secret. Sign-in, sign-out, link
+  and token routes keep only their state and code, and fields named token,
+  secret, code or password are redacted. `GET /requests/<id>` answers
+  `{ id, state, result?, error?, finishedAt }` with `failed` as a state
+  (`/api/requests/<id>` answers the same until 0.4.49). Each write logs
+  `req=<id>`, its action and its status. The keep time is now
+  `requests.keep_minutes` (default 15), with `requests.max_entries` and
+  `requests.max_answer_kb` beside it. `ui.request_memory_seconds` still
+  counts until 0.4.49, and doctor says to move it.
 - Den's pages are built on its UI kit, `den-ui` (`packages/den-ui`, MIT),
   which ships inside Den. It brings one set of design tokens for colour,
   type, radius, shadow, spacing, motion and layers, in light and dark.
@@ -84,6 +94,9 @@ config and manifest changes a distribution must make to move to it under
 - Nothing to do. If the org config sets `server_agent.self_update`, the
   first start copies it to each install's `user.yml`; remove the line
   from the org config afterwards (doctor reminds you).
+- If `user.yml` sets `ui.request_memory_seconds`, change it to
+  `requests.keep_minutes`, in minutes. The old key still counts until
+  0.4.49 (doctor reminds you).
 
 ### Security
 

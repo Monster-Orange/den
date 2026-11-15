@@ -1,16 +1,23 @@
 /**
- * BUSY-1: the request ledger. The working pop-up sends each write with an id
- * of its own (X-Den-Request-Id). Den remembers how that request ended, per
- * signed-in person, so:
- *  - Try again resends the same id and Den runs the action once: a repeat
- *    while the first runs waits for it; a later repeat gets its answer again;
- *  - Check again asks GET /api/requests/<id> how it ended, and never resends.
+ * BUSY-1 / UK-2: the request ledger. The working pop-up sends each write with
+ * an id of its own (X-Den-Request-Id). Den remembers how that request ended,
+ * per signed-in person, so:
+ *  - Try again with the same id runs the action once: a repeat while the
+ *    first runs waits for it; a later repeat gets its answer again;
+ *  - Check again asks GET /requests/<id> how it ended, and never resends.
  *
- * Finished requests are kept for `ttlMs` (ui.request_memory_seconds) and at
- * most `maxEntries` of them; a running one is never dropped.
+ * Finished requests are kept for `ttlMs` (requests.keep_minutes), at most
+ * `maxEntries` of them, and on disk when `file` is set, so a restart keeps
+ * them; a running one is never dropped, and never written.
+ *
+ * Never a secret: a sign-in, sign-out, link or token route keeps only its
+ * state and code, and any field named token, secret, code or password is
+ * [redacted] before an answer is kept.
  */
 
 import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Principal } from "./request-guard.js";
 
@@ -25,20 +32,40 @@ export type LedgerBegin =
   | { kind: "new"; finish(answer: LedgerAnswer): void }
   | { kind: "wait"; done: Promise<LedgerAnswer> };
 
+/** UK-2 Settled 1: how a request ended, as GET /requests/<id> says it. */
 export type LedgerStatus =
   | { state: "running" }
-  | { state: "done"; status: number }
+  | { state: "done"; result?: unknown; finishedAt: string }
+  | {
+      state: "failed";
+      error: { code: number; message: string };
+      finishedAt: string;
+    }
   | { state: "unknown" };
 
 export interface RequestLedger {
-  begin(owner: string, id: string): LedgerBegin;
+  begin(
+    owner: string,
+    id: string,
+    opts?: { secret?: boolean; action?: string },
+  ): LedgerBegin;
   status(owner: string, id: string): LedgerStatus;
+}
+
+/** What the ledger keeps of a finished request (and writes to disk). */
+interface Kept {
+  status: number;
+  contentType?: string;
+  /** The answer, parsed and redacted; absent for a secret route or a big one. */
+  json?: unknown;
+  /** A failure's own words, when not a secret route. */
+  message?: string;
+  finishedAt: number;
 }
 
 interface Entry {
   done: Promise<LedgerAnswer>;
-  answer?: LedgerAnswer;
-  finishedAt?: number;
+  kept?: Kept;
 }
 
 const ID_RE = /^[A-Za-z0-9-]{8,64}$/;
@@ -48,34 +75,174 @@ export function validRequestId(id: unknown): id is string {
   return typeof id === "string" && ID_RE.test(id);
 }
 
+/**
+ * A route whose answer may carry a sign-in, a session, a link or a token:
+ * the ledger keeps only its state and code.
+ */
+export function secretRoute(pathname: string): boolean {
+  return /(^|\/)(auth|attest|sign-?in|sign-?out|log-?in|log-?out|logins?|sessions?|pair|claim)(\/|$)|token|secret|password|link/i.test(
+    pathname,
+  );
+}
+
+const SECRET_KEY = /token|secret|password|^code$/i;
+
+/** A copy of `v` with every field named like a secret replaced. */
+export function redact(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(redact);
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(([k, x]) => [
+        k,
+        SECRET_KEY.test(k) ? "[redacted]" : redact(x),
+      ]),
+    );
+  return v;
+}
+
+/** A failure's own words: the answer's error or message, if it has one. */
+function wordsOf(v: unknown): string {
+  if (!v || typeof v !== "object") return "";
+  const o = v as Record<string, unknown>;
+  for (const k of ["error", "message"]) {
+    if (typeof o[k] === "string") return o[k] as string;
+    const inner = o[k] as Record<string, unknown> | undefined;
+    if (inner && typeof inner.message === "string") return inner.message;
+  }
+  return "";
+}
+
+function keep(
+  answer: LedgerAnswer,
+  secret: boolean,
+  maxBytes: number,
+  at: number,
+): Kept {
+  const kept: Kept = {
+    status: answer.status,
+    contentType: answer.contentType,
+    finishedAt: at,
+  };
+  if (secret || !answer.body || answer.body.length > maxBytes) return kept;
+  if (!/json/i.test(answer.contentType ?? "")) return kept;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(answer.body.toString("utf8"));
+  } catch {
+    return kept;
+  }
+  if (answer.status >= 400) kept.message = wordsOf(parsed);
+  kept.json = redact(parsed);
+  return kept;
+}
+
+/** The answer a repeat gets: what was kept, never more. */
+function replayOf(k: Kept): LedgerAnswer {
+  return {
+    status: k.status,
+    contentType: k.json === undefined ? "application/json" : k.contentType,
+    body:
+      k.json === undefined
+        ? Buffer.from(JSON.stringify({ ok: k.status < 400, replayed: true }))
+        : Buffer.from(JSON.stringify(k.json)),
+  };
+}
+
 export function createRequestLedger(opts: {
   ttlMs: () => number;
-  maxEntries?: number;
+  maxEntries?: number | (() => number);
+  maxAnswerBytes?: () => number;
+  /** Where finished requests are kept across restarts (0600). */
+  file?: string;
+  /** One line per finished write: req=<id>, the action, the outcome. */
+  log?: (line: string) => void;
   now?: () => number;
 }): RequestLedger {
   const now = opts.now ?? Date.now;
-  const max = opts.maxEntries ?? 2000;
+  const max = (): number => {
+    const m =
+      typeof opts.maxEntries === "function"
+        ? opts.maxEntries()
+        : (opts.maxEntries ?? 2000);
+    return Number.isFinite(m) && m > 0 ? m : 2000;
+  };
+  const maxBytes = (): number => {
+    const m = opts.maxAnswerBytes?.() ?? 256 * 1024;
+    return Number.isFinite(m) && m >= 0 ? m : 256 * 1024;
+  };
   const entries = new Map<string, Entry>();
   const keyOf = (owner: string, id: string) => `${owner}\0${id}`;
 
-  function prune(): void {
+  function prune(): boolean {
     const cutoff = now() - opts.ttlMs();
     let finished = 0;
-    for (const e of entries.values())
-      if (e.finishedAt !== undefined) finished++;
+    let dropped = false;
+    for (const e of entries.values()) if (e.kept) finished++;
     // Map order is insertion order: the oldest first.
     for (const [k, e] of entries) {
-      if (e.finishedAt === undefined) continue;
-      if (e.finishedAt < cutoff || finished > max) {
+      if (!e.kept) continue;
+      if (e.kept.finishedAt < cutoff || finished > max()) {
         entries.delete(k);
         finished--;
+        dropped = true;
       }
+    }
+    return dropped;
+  }
+
+  function save(): void {
+    if (!opts.file) return;
+    const rows = [...entries]
+      .filter(([, e]) => e.kept)
+      .map(([k, e]) => {
+        const [owner, id] = k.split("\0");
+        return { owner, id, ...e.kept };
+      });
+    try {
+      fs.mkdirSync(path.dirname(opts.file), { recursive: true });
+      const tmp = `${opts.file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ v: 1, rows }), { mode: 0o600 });
+      fs.renameSync(tmp, opts.file);
+      fs.chmodSync(opts.file, 0o600);
+    } catch {
+      /* the ledger still works in memory */
     }
   }
 
+  function load(): void {
+    if (!opts.file) return;
+    let rows: unknown;
+    try {
+      rows = (
+        JSON.parse(fs.readFileSync(opts.file, "utf8")) as { rows?: unknown }
+      ).rows;
+    } catch {
+      return;
+    }
+    if (!Array.isArray(rows)) return;
+    for (const r of rows as (Kept & { owner?: unknown; id?: unknown })[]) {
+      if (typeof r?.owner !== "string" || !validRequestId(r.id)) continue;
+      if (typeof r.status !== "number" || typeof r.finishedAt !== "number")
+        continue;
+      const kept: Kept = {
+        status: r.status,
+        contentType: r.contentType,
+        json: r.json,
+        message: typeof r.message === "string" ? r.message : undefined,
+        finishedAt: r.finishedAt,
+      };
+      entries.set(keyOf(r.owner, r.id), {
+        kept,
+        done: Promise.resolve(replayOf(kept)),
+      });
+    }
+    if (prune()) save();
+  }
+  load();
+
   return {
-    begin(owner, id) {
-      prune();
+    begin(owner, id, o = {}) {
+      if (prune()) save();
       const key = keyOf(owner, id);
       const hit = entries.get(key);
       if (hit) return { kind: "wait", done: hit.done };
@@ -87,20 +254,32 @@ export function createRequestLedger(opts: {
       return {
         kind: "new",
         finish(answer) {
-          if (entry.answer) return;
-          entry.answer = answer;
-          entry.finishedAt = now();
-          resolve(answer);
+          if (entry.kept) return;
+          entry.kept = keep(answer, !!o.secret, maxBytes(), now());
+          resolve(replayOf(entry.kept));
+          if (o.action)
+            opts.log?.(`req=${id} ${o.action} ${entry.kept.status}`);
           prune();
+          save();
         },
       };
     },
     status(owner, id) {
-      prune();
+      if (prune()) save();
       const e = entries.get(keyOf(owner, id));
       if (!e) return { state: "unknown" };
-      if (!e.answer) return { state: "running" };
-      return { state: "done", status: e.answer.status };
+      if (!e.kept) return { state: "running" };
+      const k = e.kept;
+      const finishedAt = new Date(k.finishedAt).toISOString();
+      if (k.status >= 400)
+        return {
+          state: "failed",
+          error: { code: k.status, message: k.message ?? "" },
+          finishedAt,
+        };
+      return k.json === undefined
+        ? { state: "done", finishedAt }
+        : { state: "done", result: k.json, finishedAt };
     },
   };
 }
@@ -111,8 +290,8 @@ export function createRequestLedger(opts: {
 export const REQUEST_ID_HEADER = "x-den-request-id";
 
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-/** The largest answer the ledger keeps to replay (a bigger one replays as ok). */
-const MAX_BODY = 256 * 1024;
+/** Past this, the gate stops copying an answer (the ledger's own limit is a setting). */
+const MAX_BODY = 16 * 1024 * 1024;
 
 /** The browser's own id for this request, when it sent a valid one. */
 export function clientRequestId(req: IncomingMessage): string | undefined {
@@ -148,7 +327,11 @@ export async function ledgerGate(
   if (!WRITES.has(req.method ?? "")) return false;
   const id = clientRequestId(req);
   if (!id) return false;
-  const b = ledger.begin(owner, id);
+  const pathname = (req.url ?? "/").split("?")[0];
+  const b = ledger.begin(owner, id, {
+    secret: secretRoute(pathname),
+    action: `${req.method} ${pathname}`,
+  });
   if (b.kind === "wait") {
     const a = await b.done;
     req.resume();

@@ -36,9 +36,11 @@ describe("request ledger (BUSY-1)", () => {
     const later = l.begin(owner, "req-00001");
     expect(later.kind).toBe("wait");
     if (later.kind === "wait") expect((await later.done).status).toBe(201);
+    // UK-2 Settled 1: done carries the answer and when it ended.
     expect(l.status(owner, "req-00001")).toEqual({
       state: "done",
-      status: 201,
+      result: { ok: true },
+      finishedAt: expect.any(String),
     });
   });
 

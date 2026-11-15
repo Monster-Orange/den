@@ -155,7 +155,7 @@ export function serveUiAsset(
     serveFile(res, path.join(publicDir, pathname.slice(1)));
     return true;
   }
-  if (pathname === "/kit" || pathname.startsWith("/kit/")) {
+  if (pathname.startsWith("/kit/")) {
     const kit = kitAssetFile(pathname);
     if (!kit) {
       res.writeHead(404, { "Content-Type": "text/plain" });

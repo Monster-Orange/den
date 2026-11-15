@@ -807,6 +807,39 @@ export function selfUpdateLines(
 }
 
 /**
+ * UK-2 (0.4.48): ui.request_memory_seconds became requests.keep_minutes.
+ * Shown only while the old key is set: what it became, and whether it still
+ * counts (until 0.4.49, when requests.keep_minutes is unset).
+ */
+export function requestKeepLines(
+  title: string,
+  read: () => Pick<UserConfig, "ui" | "requests"> = readUserConfig,
+): { lines: string[]; check: OnboardCheck | null } {
+  let u: Pick<UserConfig, "ui" | "requests">;
+  try {
+    u = read();
+  } catch {
+    return { lines: [], check: null };
+  }
+  const old = u.ui?.request_memory_seconds;
+  if (old === undefined || old === null) return { lines: [], check: null };
+  const mins = Math.round((Number(old) / 60) * 10) / 10;
+  const detail =
+    u.requests?.keep_minutes !== undefined
+      ? "ui.request_memory_seconds no longer counts: requests.keep_minutes is set. Remove the old line."
+      : `ui.request_memory_seconds is now requests.keep_minutes (${mins} minutes). The old line still counts until 0.4.49: move it.`;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Request ledger`,
+      "",
+      `  keep time  ⚠  ${detail}`,
+    ],
+    check: { id: "request_keep", status: "warn", detail },
+  };
+}
+
+/**
  * agents.git.signing_key: whether agents' commits sign and verify with the
  * key (a commit in a temp repo, checkAgentSigning), and the line that adds
  * its .pub to GitHub as a signing key. Nothing when unset.
@@ -1029,6 +1062,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     if (addr.problem) r.ok = false;
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
+      const rk = requestKeepLines(readBrand().name);
+      if (rk.check) r.checks.push(rk.check);
+    }
+    {
       const ep = edgeProofLines(readBrand().name, product().cli);
       if (ep.check) r.checks.push(ep.check);
     }
@@ -1074,6 +1111,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
+  for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);

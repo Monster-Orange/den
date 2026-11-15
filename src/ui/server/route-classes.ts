@@ -130,6 +130,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/server-info",
     // BUSY-1: how a write sent with the working pop-up's id ended.
     "/api/requests/*",
+    // UK-2: the same, at the kit's path (the /api name goes in 0.4.49).
+    "/requests/*",
     "/api/release/config",
     "/api/release/status",
     "/api/release/runs",
@@ -720,6 +722,8 @@ export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  // UK-2: how a write sent with the working pop-up's id ended.
+  "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
   "agent-routes.ts:AGENTS_PATH": [

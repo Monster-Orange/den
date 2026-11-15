@@ -255,6 +255,27 @@ describe("the Host allowlist (DNS rebinding)", () => {
   });
 });
 
+describe("UK-2: GET /requests/<id> is checked as /api is", () => {
+  it("another machine signed out: 401 signin_required as JSON, never the sign-in page; signed in: its state", async () => {
+    const host = "den.acme.localhost";
+    const away = { "x-forwarded-for": "203.0.113.7", ...EDGE_PROOF };
+    for (const p of ["/requests/req-0000001", "/api/requests/req-0000001"]) {
+      const anon = await call("GET", p, { host, ...away });
+      expect([p, anon.status, json(anon).code]).toEqual([
+        p,
+        401,
+        "signin_required",
+      ]);
+      const r = await call("GET", p, { host, ...away, ...bearer() });
+      expect([p, r.status, json(r)]).toEqual([
+        p,
+        200,
+        { id: "req-0000001", state: "unknown" },
+      ]);
+    }
+  });
+});
+
 describe("Origin, CSRF and the bearer on a mutation (POST /api/settings)", () => {
   it("another site's Origin: 403 origin_rejected, and nothing written", async () => {
     const before = editorNow();

@@ -377,11 +377,22 @@ export interface UserConfig {
   /**
    * Browser settings. restart_wait_seconds (D64, default 90): how long the
    * Restart Den dialog waits before it shows the command line way.
-   * request_memory_seconds (BUSY-1, default 600): how long Den remembers
-   * how a write sent from the working pop-up ended, so Try again never runs
-   * it twice and Check again can say how it ended.
+   * request_memory_seconds: replaced by requests.keep_minutes in 0.4.48;
+   * still read until 0.4.49 when that is unset.
    */
   ui?: { restart_wait_seconds?: number; request_memory_seconds?: number };
+  /**
+   * UK-2: the working pop-up's request ledger. keep_minutes (default 15):
+   * how long Den remembers how a write sent from the pop-up ended, so Try
+   * again never runs it twice and Check again can say how it ended.
+   * max_entries (default 2000): how many it keeps. max_answer_kb (default
+   * 256): the largest answer it keeps to replay.
+   */
+  requests?: {
+    keep_minutes?: number;
+    max_entries?: number;
+    max_answer_kb?: number;
+  };
   /**
    * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
    * Stored as a key; the server resolves the actual executable path at open time.

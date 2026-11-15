@@ -2889,6 +2889,33 @@ agent and kind.
   (`gh auth login`) nothing is sent, and it gives a link that files the
   report in a browser.
 
+## The working pop-up and its request ledger
+
+A slow write in the browser (Save, Connect, Restart, Send report and
+others) shows the working pop-up. Each write it sends carries its own
+request id (`X-Den-Request-Id`):
+
+- **Try again** sends the same id only when no answer came back. Den then
+  runs the write once, and a repeat gets the first answer again. After an
+  answer with an error, Try again sends a new id.
+- **Check again** asks `GET /requests/<id>` how the write ended and never
+  sends it again. The answer is `{ id, state, result?, error?, finishedAt }`,
+  where `state` is `running`, `done`, `failed` or `unknown`, and `error` is
+  `{ code, message }`. `/api/requests/<id>` answers the same until 0.4.49.
+- Den keeps each person's finished writes in `requests.json` in its state
+  directory (0600), so a restart keeps them. It never keeps a secret: a
+  sign-in, sign-out, link or token route keeps only its state and code,
+  and any field named token, secret, code or password is replaced with
+  `[redacted]` first.
+- Each write logs one line, `req=<id> <method> <path> <status>`, so log
+  search finds it by its id. The body and the answer are never logged.
+- **Settings** (`config/local/user.yml`, `requests:`): `keep_minutes`
+  (default 15) is how long Den remembers a write. `max_entries` (default
+  2000) is how many it keeps. `max_answer_kb` (default 256) is the largest
+  answer it keeps to replay. Until 0.4.49 the old
+  `ui.request_memory_seconds` still counts when `keep_minutes` is unset,
+  and doctor says to move it.
+
 ## Sessions
 
 A session is a terminal that keeps running when the web server restarts:

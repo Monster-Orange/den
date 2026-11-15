@@ -185,12 +185,18 @@ describe("BUSY-1: the working pop-up", () => {
     const p = await page(1280, true);
     const st = await stub(p, [[600_000, 200]]);
     const asked: string[] = [];
-    await p.route("**/api/requests/*", async (r) => {
+    // UK-2 Settled 1 and 11: /requests/<id>, done with the answer.
+    await p.route("**/requests/*", async (r) => {
       asked.push(r.request().url());
       await r.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, state: "done", status: 200 }),
+        body: JSON.stringify({
+          id: "x",
+          state: "done",
+          result: { ok: true },
+          finishedAt: new Date().toISOString(),
+        }),
       });
     });
     await start(p, "Hub");

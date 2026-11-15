@@ -344,7 +344,7 @@ export function busyAction(opts) {
     paintWorking(0);
     let st = null;
     try {
-      const r = await fetch(`/api/requests/${encodeURIComponent(id)}`, {
+      const r = await fetch(`/requests/${encodeURIComponent(id)}`, {
         cache: "no-store",
       });
       st = r.ok ? await r.json() : null;
@@ -356,9 +356,13 @@ export function busyAction(opts) {
       paintWorking(0);
       return tick(Date.now());
     }
-    if (st?.state === "done" && st.status < 400) return answered(true, okData);
-    if (st?.state === "done")
-      return answered(false, null, { status: st.status });
+    // UK-2 Settled 1: done carries the answer; failed its { code, message }.
+    if (st?.state === "done") return answered(true, st.result ?? okData);
+    if (st?.state === "failed")
+      return answered(false, null, {
+        status: st.error?.code,
+        message: st.error?.message || undefined,
+      });
     if (st?.state === "unknown")
       return answered(false, null, { message: t("busy.unknown", { who }) });
     return answered(false, null, { network: true });

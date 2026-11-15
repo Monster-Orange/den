@@ -1847,7 +1847,7 @@ const PUBLIC_ASSET_EXTS = new Set([
 /** A GET of the UI's code or styling (never /api, a report or a page). */
 function isPublicAsset(req: http.IncomingMessage, pathname: string): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
-  if (/^\/(api|reports?)(\/|$)/.test(pathname)) return false;
+  if (/^\/(api|reports?|requests)(\/|$)/.test(pathname)) return false;
   return PUBLIC_ASSET_EXTS.has(path.extname(pathname).toLowerCase());
 }
 
@@ -1891,7 +1891,12 @@ function sendGuardRefusal(
   requestId: string,
   search = "",
 ): void {
-  if (pathname === "/api" || pathname.startsWith("/api/"))
+  // UK-2: /requests/<id> is the API's too (the working pop-up's Check again).
+  if (
+    pathname === "/api" ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/requests/")
+  )
     return sendJson(
       res,
       {
@@ -2495,15 +2500,14 @@ async function handleRequest(
   // sent again with the same id runs once (request-ledger.ts).
   if (guard.ok) {
     const owner = ledgerOwner(guard.principal);
-    if (req.method === "GET" && pathname.startsWith("/api/requests/")) {
-      const id = pathname.slice("/api/requests/".length);
+    // UK-2 Settled 1: { id, state, result?, error?, finishedAt }.
+    // /api/requests/<id> is its old name, kept until 0.4.49.
+    const requestStatusPath = /^\/(?:api\/)?requests\/([^/]*)$/.exec(pathname);
+    if (req.method === "GET" && requestStatusPath) {
+      const id = requestStatusPath[1];
       if (!validRequestId(id))
         return send400(res, "a request id is 8 to 64 letters, digits or -");
-      return sendJson(res, {
-        ok: true,
-        id,
-        ...REQUEST_LEDGER.status(owner, id),
-      });
+      return sendJson(res, { id, ...REQUEST_LEDGER.status(owner, id) });
     }
     if (await ledgerGate(REQUEST_LEDGER, req, res, owner)) return;
   }
@@ -7142,19 +7146,48 @@ process.on("SIGTERM", () => {
 });
 
 /**
- * BUSY-1: how long Den remembers how a write sent with the working pop-up's
- * id ended (ui.request_memory_seconds), a positive number, else 600.
+ * UK-2: the request ledger's settings, from user.yml `requests:`.
+ * keep_minutes (default 15): how long Den remembers how a write sent with
+ * the working pop-up's id ended. Until 0.4.49 the old
+ * ui.request_memory_seconds still counts when keep_minutes is unset.
+ * max_entries (default 2000) and max_answer_kb (default 256): how many it
+ * keeps and the largest answer it keeps to replay.
  */
-function requestMemorySeconds(): number {
+function requestSettings(): {
+  keepMs: number;
+  maxEntries: number;
+  maxAnswerBytes: number;
+} {
+  const pos = (v: unknown): number | undefined => {
+    const n = Number(v);
+    return v !== undefined && v !== null && Number.isFinite(n) && n > 0
+      ? n
+      : undefined;
+  };
   try {
-    const v = Number(readUserConfig().ui?.request_memory_seconds);
-    return Number.isFinite(v) && v > 0 ? v : 600;
+    const u = readUserConfig();
+    const old = pos(u.ui?.request_memory_seconds);
+    return {
+      keepMs: (pos(u.requests?.keep_minutes) ?? (old ? old / 60 : 15)) * 60_000,
+      maxEntries: pos(u.requests?.max_entries) ?? 2000,
+      maxAnswerBytes: (pos(u.requests?.max_answer_kb) ?? 256) * 1024,
+    };
   } catch {
-    return 600;
+    return {
+      keepMs: 15 * 60_000,
+      maxEntries: 2000,
+      maxAnswerBytes: 256 * 1024,
+    };
   }
 }
 const REQUEST_LEDGER = createRequestLedger({
-  ttlMs: () => requestMemorySeconds() * 1000,
+  ttlMs: () => requestSettings().keepMs,
+  maxEntries: () => requestSettings().maxEntries,
+  maxAnswerBytes: () => requestSettings().maxAnswerBytes,
+  // Settled 3: on disk, so a restart keeps them (0600; never a secret).
+  file: path.join(getStateDir(), "requests.json"),
+  // Settled 10: one line per write, found by its id. Never the body.
+  log: (line) => serverLog(`  ${logTimestamp()}  ${line}`, "request"),
 });
 
 /** D64: ui.restart_wait_seconds, a positive number, else 90. */

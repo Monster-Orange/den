@@ -72,11 +72,12 @@ const post = (p: Page, url: string, id: string) =>
     [url, id] as const,
   );
 
-const status = (p: Page, id: string) =>
+/** UK-2: GET /requests/<id>, or its old /api name (until 0.4.49). */
+const status = (p: Page, id: string, base = "/requests/") =>
   p.evaluate(
-    async (rid) => (await fetch(`/api/requests/${rid}`)).json(),
-    id,
-  ) as Promise<{ state: string; status?: number }>;
+    async ([b, rid]) => (await fetch(`${b}${rid}`)).json(),
+    [base, id],
+  ) as Promise<{ id: string; state: string; finishedAt?: string }>;
 
 describe("BUSY-1: a write sent again with its id runs once", () => {
   it("Try again after the answer replays it; the agent starts once", async () => {
@@ -95,10 +96,14 @@ describe("BUSY-1: a write sent again with its id runs once", () => {
     expect(again.status).toBe(first.status);
     expect(again.body).toBe(first.body);
     expect(s!.made.length).toBe(before + 1);
+    // UK-2 Settled 1: done (the start answered < 400), and when.
+    expect(first.status).toBeLessThan(400);
     expect(await status(p, id)).toMatchObject({
+      id,
       state: "done",
-      status: first.status,
+      finishedAt: expect.any(String),
     });
+    expect(await status(p, id, "/api/requests/")).toEqual(await status(p, id));
     // Another signed-in browser never sees this person's ids.
     const other = await signedIn();
     expect(await status(other, id)).toMatchObject({ state: "unknown" });
