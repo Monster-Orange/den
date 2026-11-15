@@ -24,7 +24,7 @@ beforeAll(async () => {
   server = http.createServer((req, res) => {
     seen.set(
       String(req.headers["x-who"]),
-      loopbackPeerPid(req.socket.remotePort ?? 0),
+      loopbackPeerPid(req.socket.remotePort ?? 0, {}, req.socket.localPort),
     );
     res.end("ok");
   });
@@ -172,6 +172,54 @@ describe("Linux: /proc, as a fake tree", () => {
       },
     };
     expect(loopbackPeerPid(0xce2a, noNet)).toBeNull();
+  });
+});
+
+describe("issue 196: a client port shared with another loopback connection", () => {
+  // Linux reuses an ephemeral port for a connect() to another destination:
+  // 127.0.0.1:0xCE2A → :0x1F40 (our server, pid 400) and → :0x2328 (another
+  // server, pid 500), both ESTABLISHED. The server's own port picks ours.
+  const tcp = [
+    "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+    "   0: 0100007F:CE2A 0100007F:1F40 01 00000000:00000000 00:00000000 00000000   501        0 4242 1",
+    "   1: 0100007F:CE2A 0100007F:2328 01 00000000:00000000 00:00000000 00000000   501        0 4343 1",
+  ].join("\n");
+  const links: Record<string, string> = {
+    "/proc/400/fd/7": "socket:[4242]",
+    "/proc/500/fd/9": "socket:[4343]",
+  };
+  const d = {
+    platform: "linux" as const,
+    self: 100,
+    read: (p: string) => {
+      if (p === "/proc/net/tcp") return tcp;
+      throw new Error("ENOENT");
+    },
+    readdir: (p: string) =>
+      p === "/proc"
+        ? ["100", "400", "500"]
+        : Object.keys(links)
+            .filter((k) => k.startsWith(p + "/"))
+            .map((k) => k.slice(p.length + 1)),
+    readlink: (p: string) => {
+      if (p in links) return links[p];
+      throw new Error("ENOENT");
+    },
+  };
+
+  it("Linux: the row to this server's port is the caller's", () => {
+    expect(loopbackPeerPid(0xce2a, d, 0x1f40)).toBe(400);
+    expect(loopbackPeerPid(0xce2a, d, 0x2328)).toBe(500);
+    // A server port no row goes to: no pid.
+    expect(loopbackPeerPid(0xce2a, d, 0x1234)).toBeNull();
+  });
+
+  it("macOS: the row whose remote end is this server's port", () => {
+    const run = () =>
+      "p100\nn127.0.0.1:8000->127.0.0.1:52921\np400\nn127.0.0.1:52921->127.0.0.1:8000\np500\nn127.0.0.1:52921->127.0.0.1:9000\n";
+    expect(
+      loopbackPeerPid(52921, { platform: "darwin", self: 100, run }, 8000),
+    ).toBe(400);
   });
 });
 

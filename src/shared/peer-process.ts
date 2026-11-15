@@ -9,6 +9,11 @@
  * (the socket's inode in /proc/net/tcp{,6}, the pid holding it, each
  * pid's parent in /proc/<pid>/stat). Anything else, or a lookup that
  * can't tell: null, which callers treat as "not proved", never as "yes".
+ *
+ * A connection is its two ends, not the client's port alone: Linux reuses
+ * an ephemeral port for a connect() to another destination, so two live
+ * loopback connections can share the client port (issue 196). Given the
+ * server's port, only the row to it counts.
  */
 import * as fs from "fs";
 import { spawnSync } from "child_process";
@@ -53,23 +58,32 @@ const defaults = (d: PeerDeps) => ({
 
 /**
  * The pid holding the client end of the loopback connection whose client
- * port is `port` (the server sees it as the socket's remotePort). Null:
- * none found, more than one, or this platform can't tell.
+ * port is `port` (the server sees it as the socket's remotePort) and, when
+ * given, whose server port is `to` (the socket's localPort). Null: none
+ * found, more than one, or this platform can't tell.
  */
-export function loopbackPeerPid(port: number, d: PeerDeps = {}): number | null {
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+export function loopbackPeerPid(
+  port: number,
+  d: PeerDeps = {},
+  to?: number,
+): number | null {
+  if (!validPort(port)) return null;
+  if (to !== undefined && !validPort(to)) return null;
   const o = defaults(d);
   try {
-    if (o.platform === "darwin") return darwinPeer(port, o);
-    if (o.platform === "linux") return linuxPeer(port, o);
+    if (o.platform === "darwin") return darwinPeer(port, to, o);
+    if (o.platform === "linux") return linuxPeer(port, to, o);
   } catch {
     return null;
   }
   return null;
 }
 
+const validPort = (p: number) => Number.isInteger(p) && p > 0 && p <= 65535;
+
 function darwinPeer(
   port: number,
+  to: number | undefined,
   o: ReturnType<typeof defaults>,
 ): number | null {
   const out = o.run(DARWIN_LSOF, [
@@ -86,8 +100,13 @@ function darwinPeer(
   for (const line of out.split("\n")) {
     if (line.startsWith("p")) pid = Number(line.slice(1));
     else if (line.startsWith("n") && pid > 0) {
-      const local = line.slice(1).split("->")[0] ?? "";
-      if (isLoopbackEnd(local, port) && pid !== o.self) found.add(pid);
+      const [local = "", remote = ""] = line.slice(1).split("->");
+      if (
+        isLoopbackEnd(local, port) &&
+        (to === undefined || isLoopbackEnd(remote, to)) &&
+        pid !== o.self
+      )
+        found.add(pid);
     }
   }
   return found.size === 1 ? [...found][0] : null;
@@ -107,9 +126,12 @@ function isLoopbackEnd(end: string, port: number): boolean {
 
 function linuxPeer(
   port: number,
+  to: number | undefined,
   o: ReturnType<typeof defaults>,
 ): number | null {
-  const hex = port.toString(16).toUpperCase().padStart(4, "0");
+  const hex4 = (n: number) => n.toString(16).toUpperCase().padStart(4, "0");
+  const hex = hex4(port);
+  const toHex = to === undefined ? undefined : hex4(to);
   const inodes = new Set<string>();
   for (const f of ["/proc/net/tcp", "/proc/net/tcp6"]) {
     let text = "";
@@ -124,6 +146,10 @@ function linuxPeer(
       if (c.length < 10 || c[3] !== "01") continue;
       const [addr, p] = c[1].split(":");
       if (p !== hex || !linuxLoopback(addr)) continue;
+      if (toHex !== undefined) {
+        const [raddr, rp] = c[2].split(":");
+        if (rp !== toHex || !linuxLoopback(raddr)) continue;
+      }
       inodes.add(c[9]);
     }
   }
