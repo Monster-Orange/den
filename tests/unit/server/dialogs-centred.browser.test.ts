@@ -14,20 +14,16 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
 
 beforeAll(async () => {
   try {
-    const pw = await import("playwright");
-    const kind =
-      process.env.DEN_DIALOGS_BROWSER === "webkit" ? pw.webkit : pw.chromium;
-    browser = process.env.DEN_PW_WS
-      ? await kind.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await kind.launch();
+    browser = await openBrowser(
+      process.env.DEN_DIALOGS_BROWSER === "webkit" ? "webkit" : "chromium",
+    );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

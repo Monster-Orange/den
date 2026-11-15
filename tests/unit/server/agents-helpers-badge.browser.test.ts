@@ -27,6 +27,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 const TOKEN = "00000000-0000-4000-8000-0000000000e1";
 let browser: Browser | null = null;
@@ -75,8 +76,7 @@ const started: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

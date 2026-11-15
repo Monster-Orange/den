@@ -43,6 +43,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -73,8 +74,7 @@ const id = (name: string) => sess[name].ref.id;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -623,7 +623,9 @@ describe("the Agents tab", () => {
     expect(await p.getAttribute(head, "href")).toBe("/local-dev?project=north");
     expect(await p.textContent(head)).toBe("north");
     const group = '#agl .wsg[data-ws="north"] .wsh a.wslink';
-    expect(await p.getAttribute(group, "href")).toBe("/local-dev?project=north");
+    expect(await p.getAttribute(group, "href")).toBe(
+      "/local-dev?project=north",
+    );
     // ⌘K: an agent's name finds its workspace.
     await p.click("#den-search");
     await p.fill("#den-pal-q", "scout");

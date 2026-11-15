@@ -19,6 +19,7 @@ import type { Browser, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { signInUrl } from "./helpers/den-auth.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+import { openBrowser } from "./helpers/browser.js";
 /** The edge folder, with the invented proof in it (H1). */
 const edgeProofDir = (d: string) => (writeTestEdgeProof(d), d);
 
@@ -35,8 +36,7 @@ let server: ChildProcess;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch({
+    browser = await openBrowser("chromium", {
       args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
     });
   } catch (err) {

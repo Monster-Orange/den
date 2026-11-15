@@ -18,14 +18,14 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vm from "vm";
 import type { Browser, Page } from "playwright";
+import { openBrowser } from "./helpers/browser.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 let browser: Browser | null = null;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

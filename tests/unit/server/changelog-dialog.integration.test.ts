@@ -13,12 +13,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { chromium, type Browser, type Page } from "playwright";
+import type { Browser, Page } from "playwright";
 import {
   startSlowGitServer,
   write,
   type SlowGitServer,
 } from "./helpers/slow-git-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let tmp = "";
 let srv: SlowGitServer;
@@ -50,7 +51,7 @@ beforeAll(async () => {
     "active: [default]\nfocus: default\nworkspaces:\n  default:\n    services:\n      shop:\n        mode: dev-managed\n        path: /nowhere/shop\n",
   );
   srv = await startSlowGitServer({ tmp, root, slow: [], delayS: 0 });
-  browser = await chromium.launch();
+  browser = await openBrowser();
   page = await browser.newPage({ viewport: { width: 1280, height: 700 } });
 }, 120_000);
 

@@ -22,6 +22,7 @@ import type { Browser, Page } from "playwright";
 import { readWebOwner } from "../../../src/shared/web-owner.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { openBrowser } from "./helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
@@ -42,21 +43,18 @@ let server: ChildProcess;
 
 beforeAll(async () => {
   try {
-    const pw = await import("playwright");
     // DEN_D17_BROWSER=firefox or webkit (Safari's engine) runs the same
     // round trip there; *.localhost is loopback in both.
     // DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a Playwright
     // run-server instead (the Linux image, when this shell can't start a
     // GUI app: `launchctl managername` isn't Aqua). Its localhost and
     // *.localhost are this machine's (exposeNetwork), as for a local one.
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[ENGINE_NAME].connect(ws, { exposeNetwork: "<loopback>" })
-      : ENGINE_NAME === "chromium"
-        ? await pw.chromium.launch({
-            args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-          })
-        : await pw[ENGINE_NAME].launch();
+    browser = await openBrowser(
+      ENGINE_NAME,
+      ENGINE_NAME === "chromium"
+        ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
+        : undefined,
+    );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

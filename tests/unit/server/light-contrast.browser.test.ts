@@ -20,6 +20,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { openBrowser } from "./helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -29,8 +30,7 @@ let server: ChildProcess;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

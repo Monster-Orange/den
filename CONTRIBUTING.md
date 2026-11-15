@@ -63,7 +63,9 @@ docker stop pw
 ```
 
 The browser's `localhost` and `*.localhost` are this machine's
-(`exposeNetwork`), so the test runs as it would locally.
+(`exposeNetwork`), so the test runs as it would locally. Every browser
+test gets its browser from `tests/unit/server/helpers/browser.ts`, so
+`DEN_PW_WS` sends all of them there.
 
 ## Adding a strategy
 

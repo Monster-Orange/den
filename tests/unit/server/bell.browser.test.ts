@@ -17,6 +17,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -26,8 +27,7 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -172,7 +172,11 @@ describe("NT-3: the bell", () => {
     for (const k of ["title", "row", "all", "scope"] as const)
       expect([k, f[k]?.family]).toEqual([k, f.sans]);
     // "Mark read" reads like "Mark all read".
-    expect(f.scope).toMatchObject({ transform: "none", spacing: "normal", size: "12px" });
+    expect(f.scope).toMatchObject({
+      transform: "none",
+      spacing: "normal",
+      size: "12px",
+    });
     expect(f.all?.size).toBe("12px");
     // Leave nothing unread for the tests after this one.
     await p.click('#den-bell-pop [data-bell="all"]');

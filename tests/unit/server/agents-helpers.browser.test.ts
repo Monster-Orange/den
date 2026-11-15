@@ -32,6 +32,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -117,7 +118,6 @@ function writeHelpers(): void {
 
 beforeAll(async () => {
   try {
-    const pw = await import("playwright");
     // DEN_HELPERS_BROWSER=webkit (Safari's engine) or firefox runs the
     // same tests there. DEN_PW_WS=ws://localhost:<port>/ uses a browser
     // behind a Playwright run-server (when this shell can't start a GUI
@@ -127,10 +127,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await openBrowser(engine);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

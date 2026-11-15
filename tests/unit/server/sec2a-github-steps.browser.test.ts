@@ -24,6 +24,7 @@ import type { Browser, Page } from "playwright";
 import { clearWebOwner, writeWebOwner } from "../../../src/shared/web-owner.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { openBrowser } from "./helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
@@ -39,8 +40,7 @@ let server: ChildProcess;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch({
+    browser = await openBrowser("chromium", {
       args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
     });
   } catch (err) {

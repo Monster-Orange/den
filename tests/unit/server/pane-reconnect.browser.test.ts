@@ -34,6 +34,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -60,16 +61,12 @@ function panes(n: number): void {
 
 beforeAll(async () => {
   try {
-    const pw = await import("playwright");
     const engine = (
       ["firefox", "webkit"].includes(process.env.DEN_RECONNECT_BROWSER ?? "")
         ? process.env.DEN_RECONNECT_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await openBrowser(engine);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

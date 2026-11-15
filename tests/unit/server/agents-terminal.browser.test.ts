@@ -34,6 +34,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -51,7 +52,6 @@ let MOD: "Meta" | "Control" = "Control";
 
 beforeAll(async () => {
   try {
-    const pw = await import("playwright");
     // DEN_TERMINAL_BROWSER=webkit (Safari's engine) or firefox runs the
     // same tests there. DEN_PW_WS=ws://localhost:<port>/ uses a browser
     // behind a Playwright run-server (when this shell can't start a GUI
@@ -61,10 +61,7 @@ beforeAll(async () => {
         ? process.env.DEN_TERMINAL_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await openBrowser(engine);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

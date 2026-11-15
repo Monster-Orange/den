@@ -14,14 +14,14 @@ import {
   startFrameServer,
   type FrameServer,
 } from "./helpers/error-frame-server.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

@@ -13,6 +13,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { openBrowser } from "../server/helpers/browser.js";
 
 interface Guard {
   guardShot: (
@@ -40,8 +41,7 @@ beforeAll(async () => {
   guard = (await import(path.join(SCRIPTS, "doc-shots-guard.js"))) as Guard;
   names = (await import(path.join(SCRIPTS, "org-names.js"))) as OrgNames;
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

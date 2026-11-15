@@ -28,6 +28,7 @@ import * as path from "path";
 import * as yaml from "yaml";
 import type { Browser, Page } from "playwright";
 import { spawnServer, stopServer } from "../../child-servers.js";
+import { openBrowser } from "./helpers/browser.js";
 
 const ENGINE = process.cwd();
 const PORT = 23876 + Math.floor(Math.random() * 1000);
@@ -91,8 +92,7 @@ const changedSince = (before: Record<string, string>) => {
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

@@ -16,6 +16,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { openBrowser } from "./helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -25,8 +26,7 @@ let browser: Browser | null = null;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     // No browser: fail loudly, never pass by skipping (set
     // DEN_SKIP_BROWSER_TESTS=1 where none can be installed).

@@ -16,6 +16,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
+import { openBrowser } from "./helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -23,8 +24,7 @@ let sid = "";
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

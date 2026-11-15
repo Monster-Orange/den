@@ -24,6 +24,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { openBrowser } from "./helpers/browser.js";
 
 /** SEC-1a: the CLI's credential for the test server. */
 const auth = () => denAuth(path.join(tmp, "home", ".den"));
@@ -118,8 +119,7 @@ beforeAll(async () => {
       }[]
     )[0]?.version ?? "";
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await openBrowser();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
