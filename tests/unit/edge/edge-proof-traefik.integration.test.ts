@@ -252,6 +252,55 @@ describe.each(IMAGES)("H1 on a real edge (%s)", (image) => {
   }, 30_000);
 });
 
+/**
+ * 0.4.48: another container on this machine's Docker network, straight to
+ * Den (on Linux, Den's listener on the bridge's gateway; on macOS, Docker
+ * delivers host.docker.internal to loopback), with X-Forwarded-For set by
+ * hand and no proof. `000`: nothing answered (Linux before 0.4.48).
+ */
+function fromContainer(host: string): string {
+  const name = `den-test-bridge-peer-${tag}`;
+  containers.push(name);
+  return execFileSync(
+    "docker",
+    [
+      "run",
+      "--rm",
+      "--name",
+      name,
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      "curlimages/curl:8.10.1",
+      "-s",
+      "-o",
+      "/dev/null",
+      "-w",
+      "%{http_code}",
+      "--max-time",
+      "20",
+      "-H",
+      `Host: ${host}`,
+      "-H",
+      "X-Forwarded-For: 127.0.0.1",
+      `http://host.docker.internal:${denPort}/api/settings`,
+    ],
+    { encoding: "utf8", timeout: 240_000 },
+  ).trim();
+}
+
+describe("Den on the Docker bridge (0.4.48)", () => {
+  it("a container sending the edge's hostname and X-Forwarded-For: 127.0.0.1 by hand, no proof: 401", async () => {
+    if (!ok) return;
+    expect(fromContainer(denHost())).toBe("401");
+  }, 300_000);
+
+  it("on Linux, a container sending Host 127.0.0.1 by hand: still beyond loopback, 401", async () => {
+    // macOS: Docker hands host.docker.internal to loopback; no bridge peer.
+    if (!ok || process.platform !== "linux") return;
+    expect(fromContainer(`127.0.0.1:${denPort}`)).toBe("401");
+  }, 300_000);
+});
+
 describe("H1 without the edge", () => {
   it("straight to Den's port with X-Forwarded-For by hand and no proof: 401 signin_required, whatever edge_unattested says", async () => {
     if (!ok) return;

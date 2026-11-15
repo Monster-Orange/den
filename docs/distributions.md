@@ -2185,10 +2185,19 @@ logout --all` the old token is refused; the CLI reads the new one.
   the file. With it, the machine's own addresses and host name are accepted
   with the port, and every route there needs a session.
 - **The edge** reaches Den on loopback (macOS, through
-  `host.docker.internal`), so it needs no other bind. On Linux, where the
-  edge container reaches the host on the Docker bridge, the one other bind
-  allowed without the key is the bridge address (`172.16.0.0/12`, for
-  example `DEN_BIND_HOST=172.17.0.1`), and only with the edge configured.
+  `host.docker.internal`), so it needs no other bind. On Linux the edge
+  container reaches the host on the Docker bridge's gateway (usually
+  `172.17.0.1`). With an edge set up, Den listens there too, besides
+  `127.0.0.1`: it reads the address from `docker network inspect bridge`
+  at every start and says so in its start-up log and in `doctor`
+  ("Listening on the Docker bridge (172.17.0.1) for the edge", with "plain
+  HTTP because tls: none" when the edge has no TLS). A request on the
+  bridge is never this machine: it signs in like any other peer, and only
+  the edge's proof makes its `X-Forwarded-For` believed. No docker CLI, a
+  daemon that doesn't answer (within `web.bridge_probe_seconds`, default
+  10), or an address outside `172.16.0.0/12`: Den stays on `127.0.0.1` and
+  says why. `web.bridge_listen: off` turns it off; `DEN_BIND_HOST` set
+  means that address only.
 - **The edge hostname is believed only from the edge.** A request whose
   `Host` is the edge hostname is accepted only from a peer the edge could
   be (loopback, the Docker bridge range or Docker Desktop's VM network);

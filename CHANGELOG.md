@@ -115,6 +115,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- On Linux, a request through the edge got a 502: the edge container
+  reaches the host on the Docker bridge, and Den listened only on
+  127.0.0.1 unless you set `DEN_BIND_HOST` by hand. Now, with an edge set
+  up, Den also listens on the bridge's gateway address (read at every
+  start), and its log and `doctor` say where, or why not (no docker CLI, a
+  daemon that's down, an address outside 172.16.0.0/12). A request on the
+  bridge signs in like any other peer; only the edge's proof makes its
+  forwarded address believed. `web.bridge_listen: off` turns it off.
 - `service install` (and `service status`) say so when a host that the
   service didn't start holds this install's terminal socket: its pid, and
   how many agents or terminals it runs. The service's host already waited

@@ -284,6 +284,8 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       allowPlainHttpRemote: false,
       ignored: [],
       edgeUnattested: "signin",
+      bridgeListen: "auto",
+      bridgeProbeSeconds: 10,
       // D16: a sign-in link lasts 5 minutes unless set.
       loginLinkTtlMs: 5 * 60_000,
     });

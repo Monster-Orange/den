@@ -57,6 +57,10 @@ import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
 import {
+  bridgeLine,
+  readBridgeState,
+} from "../../shared/edge/bridge-listen.js";
+import {
   edgeAccessHealthy,
   edgeAccessWarnings,
 } from "../../shared/edge/access-sweep.js";
@@ -785,6 +789,31 @@ export function edgeProofLines(
 }
 
 /**
+ * 0.4.48: whether the running Den listens on the Docker bridge for the
+ * edge (Linux), and where, or why not, as it recorded at its start.
+ * Nothing when it recorded nothing (not Linux, or no edge here).
+ */
+export function bridgeListenLines(
+  title: string,
+  state: () => ReturnType<typeof readBridgeState> = () =>
+    readBridgeState(getStateDir()),
+): { lines: string[]; check?: OnboardCheck } {
+  const o = state();
+  if (!o) return { lines: [] };
+  const ok = o.state === "listening";
+  const detail = bridgeLine(o, title);
+  return {
+    lines: [
+      "",
+      `${title} doctor: Docker bridge`,
+      "",
+      `  bridge  ${ok ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "bridge_listen", status: ok ? "ok" : "warn", detail },
+  };
+}
+
+/**
  * SRV-P6 (0.4.48): server_agent.self_update, always: its value, where it
  * came from (user.yml, the org config not yet copied, or the default),
  * and the update check's last pass and next (the running Den writes them).
@@ -1087,6 +1116,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const ep = edgeProofLines(readBrand().name, product().cli);
       if (ep.check) r.checks.push(ep.check);
     }
+    {
+      const bl = bridgeListenLines(readBrand().name);
+      if (bl.check) r.checks.push(bl.check);
+    }
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1132,6 +1165,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
+  for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {

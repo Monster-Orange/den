@@ -45,6 +45,14 @@ import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
 import { syncEdgeProof } from "../../shared/edge/runtime.js";
+import {
+  bridgeGateway,
+  bridgeLine,
+  bridgeStateFile,
+  bridgeWanted,
+  writeBridgeState,
+  type BridgeOutcome,
+} from "../../shared/edge/bridge-listen.js";
 import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
@@ -1325,6 +1333,56 @@ function lanHosts(): string[] {
 }
 
 /** HTTPS in front of this server: an edge with TLS that routes to it. */
+/**
+ * 0.4.48: on Linux, with an edge here, Den also listens on the Docker
+ * bridge's gateway (bridge-listen.ts). Its connections go to the same
+ * server, so every request check applies as on loopback: a peer on the
+ * bridge is beyond loopback, and X-Forwarded-For counts only with the
+ * edge's proof (H1). Never delays the start; never stops it.
+ */
+async function startBridgeListener(): Promise<void> {
+  const record = (o: BridgeOutcome) => {
+    try {
+      writeBridgeState(getStateDir(), o);
+    } catch {
+      /* doctor says nothing then */
+    }
+    serverLog(
+      `  ${o.state === "listening" ? "" : "⚠ "}${bridgeLine(o, product().title)}`,
+      o.state === "listening" ? "lifecycle" : "warn",
+    );
+  };
+  const wanted = bridgeWanted({
+    platform: process.platform,
+    setting: WEB_AUTH.bridgeListen,
+    bindHost: process.env.DEN_BIND_HOST,
+    edgeHere: denEdgeHosts().length > 0,
+  });
+  if (wanted) {
+    if (!wanted.quiet) record({ state: "skipped", why: wanted.why });
+    else fs.rmSync(bridgeStateFile(getStateDir()), { force: true });
+    return;
+  }
+  const g = await bridgeGateway(undefined, WEB_AUTH.bridgeProbeSeconds * 1000);
+  if ("why" in g) return record({ state: "skipped", why: g.why });
+  const srv = net.createServer((sock) => server.emit("connection", sock));
+  srv.once("error", (e: NodeJS.ErrnoException) =>
+    record({
+      state: "skipped",
+      why: `it couldn't listen on ${g.address}:${PORT} (${e.code ?? e.message})`,
+    }),
+  );
+  srv.listen(PORT, g.address, () => {
+    let plainHttp = true;
+    try {
+      plainHttp = readEdgeConfig().tls.strategy === "none";
+    } catch {
+      /* no edge config: said as plain */
+    }
+    record({ state: "listening", address: g.address, plainHttp });
+  });
+}
+
 function edgeFronted(): boolean {
   try {
     return (
@@ -6653,6 +6711,10 @@ void CRASH_GATE.then(() =>
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
+    // 0.4.48: on Linux, the Docker bridge too, for the edge.
+    void startBridgeListener().catch((e: unknown) =>
+      serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),
+    );
     // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
     try {
       const r = syncEdgeProof(

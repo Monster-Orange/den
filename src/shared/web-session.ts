@@ -200,6 +200,14 @@ export interface WebAuthConfig {
   /** The distribution config's file when it sets `web.edge_unattested`: ignored there. */
   edgeUnattestedInDistribution?: string;
   /**
+   * `web.bridge_listen` (0.4.48; user.yml over the distribution's): on
+   * Linux with an edge here, also listen on the Docker bridge's gateway
+   * address, for the edge. `auto` (the default) or `off`.
+   */
+  bridgeListen: "auto" | "off";
+  /** `web.bridge_probe_seconds`: how long the bridge probe waits (default 10). */
+  bridgeProbeSeconds: number;
+  /**
    * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
    */
@@ -373,6 +381,19 @@ export function readWebAuthConfig(
     throw new Error(
       `web.edge_unattested must be local or signin, got ${JSON.stringify(unattested)}`,
     );
+  const bridge = user.bridge_listen ?? team.bridge_listen;
+  if (bridge !== undefined && bridge !== "auto" && bridge !== "off")
+    throw new Error(
+      `web.bridge_listen must be auto or off, got ${JSON.stringify(bridge)}`,
+    );
+  const probe = user.bridge_probe_seconds ?? team.bridge_probe_seconds;
+  if (
+    probe !== undefined &&
+    (typeof probe !== "number" || !Number.isFinite(probe) || probe <= 0)
+  )
+    throw new Error(
+      `web.bridge_probe_seconds must be a number of seconds above 0, got ${JSON.stringify(probe)}`,
+    );
   const clientId =
     clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
   const machineName = parseMachineName(user.machine_name);
@@ -413,6 +434,8 @@ export function readWebAuthConfig(
     allowPlainHttpRemote: plain === true,
     ignored,
     edgeUnattested: unattested ?? "signin",
+    bridgeListen: bridge ?? "auto",
+    bridgeProbeSeconds: probe ?? 10,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
     ...(team.allow_plain_http_remote !== undefined
       ? { plainHttpInDistribution: configFile }
