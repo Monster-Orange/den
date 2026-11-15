@@ -74,9 +74,17 @@ function snapshot(): Record<string, string> {
   walk(tmp);
   return out;
 }
+/**
+ * R21 is about config: the files a save changed, and the audit row that
+ * names the writer. Den's other state (home/.den: the UK-2 request ledger,
+ * sessions) changes as the server runs and is not what a save writes.
+ */
+const STATE = "home/.den/";
+const AUDIT = "home/.den/audit.jsonl";
 const changedSince = (before: Record<string, string>) => {
   const after = snapshot();
   return Object.keys({ ...before, ...after })
+    .filter((f) => !f.startsWith(STATE) || f === AUDIT)
     .filter((f) => before[f] !== after[f])
     .sort();
 };
