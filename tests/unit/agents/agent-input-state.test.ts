@@ -127,6 +127,26 @@ describe("typeIntoAgent", () => {
     expect(sent.endsWith("\r")).toBe(true);
   }, 30_000);
 
+  it("two at once into one agent: one after the other, never mixed", async () => {
+    const r = await rig();
+    await started(r, ask + answer);
+    r.made[0].emit("> ");
+    const d = resolveAgentsDeps(r.deps);
+    const one = "A".repeat(4000);
+    const two = "B".repeat(4000);
+    const oks = await Promise.all([
+      typeIntoAgent(d, "planner", one),
+      typeIntoAgent(d, "planner", two),
+    ]);
+    expect(oks).toEqual([true, true]);
+    await settle();
+    const sent = Buffer.concat(r.made[0].writes)
+      .toString()
+      .replace(/[^AB\r]/g, "");
+    // Each text whole, then its Enter; the second only after the first.
+    expect(sent).toBe(`${one}\r${two}\r`);
+  }, 60_000);
+
   it("no such agent: false", async () => {
     const r = await rig();
     expect(await typeIntoAgent(resolveAgentsDeps(r.deps), "nobody", "x")).toBe(

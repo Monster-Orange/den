@@ -6170,13 +6170,28 @@ export async function typeIntoAgent(
   id: string,
   text: string,
 ): Promise<boolean> {
-  const rec = readRecord(d.stateDir(), id);
-  if (!rec) return false;
-  return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
-    quietMs: 1500,
-    maxMs: 10_000,
+  // Everything Den types into one agent (Hub comments, the tools note)
+  // goes one at a time: two texts at once would land mixed in the pane.
+  const before = typing.get(id) ?? Promise.resolve();
+  const mine = before.then(async () => {
+    const rec = readRecord(d.stateDir(), id);
+    if (!rec) return false;
+    return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
+      quietMs: 1500,
+      maxMs: 10_000,
+    });
   });
+  const done = mine.then(
+    () => undefined,
+    () => undefined,
+  );
+  typing.set(id, done);
+  void done.then(() => {
+    if (typing.get(id) === done) typing.delete(id);
+  });
+  return mine;
 }
+const typing = new Map<string, Promise<void>>();
 
 /** A plain session started from the page (AG-10.1 "Plain session"). */
 export interface PlainStarted {

@@ -122,6 +122,13 @@ export interface HubConfig {
    * Den restarts one agent for Hub's tools before it leaves it to a person.
    */
   mcpRetryAttempts: number;
+  /**
+   * 0.4.52 hub.tools_check_seconds (default 300, at least 5): how often Den
+   * reads Hub's tool list, to tell an agent whose conversation began on an
+   * older one what changed (issue 193). It is also read when an agent
+   * starts or resumes.
+   */
+  toolsCheckSeconds: number;
 }
 
 type RawHub =
@@ -140,6 +147,7 @@ type RawHub =
       inbox_backoff_max_seconds?: unknown;
       mcp_retry_seconds?: unknown;
       mcp_retry_attempts?: unknown;
+      tools_check_seconds?: unknown;
     }
   | undefined;
 
@@ -249,6 +257,7 @@ export function readHubConfig(
     600,
   );
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
+  const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -275,6 +284,7 @@ export function readHubConfig(
     inboxBackoffMaxSeconds: inboxBackoff,
     mcpRetrySeconds: retry,
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
+    toolsCheckSeconds: toolsCheck,
   };
 }
 

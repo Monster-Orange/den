@@ -1131,6 +1131,21 @@ hub:
   Hub doesn't answer the wait doubles, up to
   `hub.inbox_backoff_max_seconds` (default 600). `hub.inbox_watch: false`
   turns it off.
+- Hub's tool changes reach a resumed agent (0.4.52, issue 193). An agent
+  resumed on the same conversation keeps the tool list its client read
+  when that conversation began, so it doesn't know a parameter Hub added
+  since. Den reads Hub's `tools/list` (with the install's token) at
+  start, when an agent starts or resumes, and every
+  `hub.tools_check_seconds` (default 300, at least 5); one read serves
+  every agent. It keeps, per agent, the conversation and the shape of the
+  list it began on (`<state>/hub/tools-seen.json`, mode 0600). When Hub's
+  list differs, the agent gets one note when it next waits for its
+  person, never mid-turn: "Hub's tools changed since this conversation
+  started: <tool>: new parameters <names>; <name> no longer required. You
+  can call them with the new parameters now." (also "new tool <name>",
+  "<name> was removed"). Once per change; a restart never repeats it; a
+  new conversation records the current list and gets no note. While Hub
+  doesn't answer, nothing is typed and the log says so once.
 - How to answer comes from Hub (0.4.44). Each delivery may carry
   `reply_with`: a short list of `{ tool, args, when }`, where `when` is
   `changed` (the agent edited the artifact) or `answer` (it only replies).

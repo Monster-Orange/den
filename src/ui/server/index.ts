@@ -6897,6 +6897,14 @@ void CRASH_GATE.then(() =>
         log: (l) => serverLog(`  ${l}`, "warn"),
       });
     });
+    // Issue 193: an agent resumed on an older Hub tool list is told what
+    // changed (hub.tools_check_seconds).
+    void import("./hub-tools-service.js").then((m) =>
+      m.startHubToolsWatch({
+        waiting: waitingAgentIds,
+        log: (l) => serverLog(`  ${l}`, "warn"),
+      }),
+    );
   }),
 );
 

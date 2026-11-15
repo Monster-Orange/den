@@ -4,6 +4,22 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.52] - unreleased
+
+### Fixed
+
+- Den types into an agent one text at a time. A Hub comment and another
+  note arriving at the same moment used to land mixed in the pane.
+
+- An agent Den resumes on the same conversation now learns when Hub's
+  tools changed since that conversation began (issue 193). Before, it
+  kept the old list: it never knew Hub's `hub_artifact_upload_part`
+  takes `base64` now. Den reads Hub's tool list when an agent starts or
+  resumes and every `hub.tools_check_seconds` (default 300). When the
+  list differs from the one the conversation began on, the agent gets
+  one short note at its next prompt saying what changed. Once per
+  change; never again after a restart; a new conversation gets none.
+
 ## [0.4.51] - unreleased
 
 ### Added
