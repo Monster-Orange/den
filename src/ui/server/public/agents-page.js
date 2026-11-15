@@ -93,6 +93,7 @@ import { focusBack, refindKey } from "/transcript-view.js";
 import { dismissable } from "/popover.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
+import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
 import {
   attachFiles,
   guardPageDrops,
@@ -170,6 +171,10 @@ const REFRESH_MS = 5_000;
 
 const st = {
   root: null,
+  /** D79: the row being dragged (the list isn't redrawn meanwhile). */
+  drag: null,
+  /** D79: on a phone, the project whose agents show Up and Down. */
+  reorderWs: null,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
   reconnect: reconnectOptions(undefined),
   /** 0.4.45: /api/workspaces, for the projects' names (projName). */
@@ -660,10 +665,11 @@ function stoppedHtml(r, wsTag = false) {
   return (
     `<div class="agst agst1" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
     // D45: a click (or Enter) opens its details, with Resume in them.
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}" data-details=""` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}" data-details=""${dragAttr(r)}` +
     ` aria-haspopup="dialog" aria-expanded="${agd.r?.id === r.id}"` +
     ` title="${esc(stoppedTip(r))}"` +
     ` aria-label="${esc(t("ag.det.label", { id: `${r.workspace} / ${name}` }))}">` +
+    gripHtml(r) +
     `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
     `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
     `<span class="stchip" title="${esc(chip)}">${esc(chip)}</span>` +
@@ -761,9 +767,10 @@ function rowHtml(r) {
       ? `<span class="agtags">${revokedTag}${mTag}${modeTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"${dragAttr(r)}` +
     ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + (said ? ` · ${said}` : ""))}">` +
+    gripHtml(r) +
     `<span class="den-dot ${r.waiting ? "warn" : stateTone(r)}" aria-hidden="true"></span>` +
     `<span class="nm">${nm}</span>${right}` +
     (chip
@@ -828,10 +835,12 @@ function listFocusKey(el) {
   if (el.matches("button.agr[data-id]"))
     return `#agl button.agr[data-id="${q(el.dataset.id)}"]`;
   if (el.matches("[data-act]")) {
-    const row = el.closest(".agst[data-agent]");
+    // D79: a phone's Up and Down sit in the row's .agord, beside .agst.
+    const row = el.closest(".agst[data-agent], .agord[data-agent]");
+    const cls = row?.classList.contains("agord") ? "agord" : "agst";
     const act = `[data-act="${q(el.dataset.act)}"]`;
     return row
-      ? `#agl .agst[data-agent="${q(row.dataset.agent)}"][data-ws="${q(row.dataset.ws)}"] ${act}`
+      ? `#agl .${cls}[data-agent="${q(row.dataset.agent)}"][data-ws="${q(row.dataset.ws)}"] ${act}`
       : `#agl ${act}`;
   }
   return "";
@@ -840,6 +849,9 @@ function listFocusKey(el) {
 /** The list's HTML, written only when it changed; focus inside it is kept
  * (the refresh poll redraws it every few seconds). */
 function setList(el, html) {
+  // D79: never under a drag (its rows and drop line would go); a drop or
+  // its end paints the list again.
+  if (st.drag) return;
   if (el.denHtml === html) return;
   el.denHtml = html;
   const had = el.contains(document.activeElement)
@@ -947,8 +959,8 @@ function paintList() {
       ? groups
           .map(
             (g) =>
-              `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
-              g.rows.map(rowHtml).join("") +
+              `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
+              g.rows.map((r) => reorderRowHtml(g, r)).join("") +
               `</div>`,
           )
           .join("") + stoppedGroupHtml(stopped)
@@ -2819,6 +2831,173 @@ async function closeShell(p, button) {
 const agentPath = (r, verb) =>
   `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
 
+// ── D79 (den#96): a project's agents in the person's order ─────────────
+// A grip and a drag (not on a phone), ⋯ Move up, Move down and Move to
+// top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in the project's
+// header (Up and Down per row, then Done). A row moves inside its group
+// (agent-order.js); the server stores the order and every list follows.
+
+/** The agent ids of r's group, as the list shows them. */
+const groupOf = (r) => orderGroup(st.data?.sessions ?? [], r, inStopped);
+
+/** A row a drag can pick up: an agent's, and not on a phone. */
+const canDrag = (r) => orderable(r, SERVER_WS) && !phone();
+const dragAttr = (r) => (canDrag(r) ? ' draggable="true"' : "");
+const gripHtml = (r) =>
+  canDrag(r)
+    ? `<span class="agrip" aria-hidden="true" title="${esc(t("ag.ord.grip"))}">⠿</span>`
+    : "";
+
+/** A phone's Reorder (or Done) in a project's header, when it has two agents to order. */
+function reorderButtonHtml(g) {
+  if (!phone() || g.ws === SERVER_WS) return "";
+  if (g.rows.filter((r) => orderable(r, SERVER_WS)).length < 2) return "";
+  const on = st.reorderWs === g.ws;
+  return `<button type="button" class="den-btn sm agord-t" data-act="reorder" data-ws="${esc(g.ws)}" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderOne", { ws: projName(g.ws) }))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button>`;
+}
+
+/** A running row; in a phone's Reorder, with its Up and Down beside it. */
+function reorderRowHtml(g, r) {
+  const html = rowHtml(r);
+  if (!phone() || st.reorderWs !== g.ws || !orderable(r, SERVER_WS))
+    return html;
+  const ids = groupOf(r);
+  const btn = (dir, key, sign) =>
+    `<button type="button" class="den-btn sm" data-act="ord-${dir}" aria-label="${esc(t(key, { id: displayName(r) }))}"${orderTo(ids, r.agent, dir) ? "" : ' aria-disabled="true"'}>${sign}</button>`;
+  return (
+    `<div class="agord" data-agent="${esc(r.agent)}" data-ws="${esc(r.workspace)}"><div class="agord-r">${html}</div>` +
+    `<span class="agord-b">${btn("up", "ag.ord.upOne", "↑")}${btn("down", "ag.ord.downOne", "↓")}</span></div>`
+  );
+}
+
+/** ⋯'s Move up, Move down and Move to top, those that can move it. */
+function orderItems(r, focusRow) {
+  if (!orderable(r, SERVER_WS)) return [];
+  const ids = groupOf(r);
+  return [
+    ["up", "ag.ord.up"],
+    ["down", "ag.ord.down"],
+    ["top", "ag.ord.top"],
+  ]
+    .filter(([dir]) => orderTo(ids, r.agent, dir))
+    .map(([dir, key]) => ({
+      label: t(key),
+      onSelect: () => void moveDir(r, dir, focusRow),
+    }));
+}
+
+const moveDir = (r, dir, focusRow) =>
+  moveOrder(r, orderTo(groupOf(r), r.agent, dir), focusRow);
+
+/**
+ * POST the move; then the list again, "<name> moved to position N of M"
+ * for a screen reader, and (from the list) focus on the moved row.
+ */
+async function moveOrder(r, to, focusRow) {
+  if (!to) return;
+  const out = await window.denShell.busyAction(
+    "agent-order",
+    (headers) => api("POST", agentPath(r, "order"), { to }, { headers }),
+    { vars: { id: displayName(r) }, toastFast: false },
+  );
+  if (!out) return;
+  await refresh();
+  const now =
+    (st.data?.sessions ?? []).find(
+      (s) =>
+        s.kind === "agent" &&
+        s.agent === r.agent &&
+        s.workspace === r.workspace,
+    ) ?? r;
+  const ids = groupOf(now);
+  announceOrder(
+    t("ag.ord.moved", {
+      name: displayName(now),
+      n: ids.indexOf(r.agent) + 1,
+      of: ids.length,
+    }),
+  );
+  if (focusRow)
+    st.root
+      ?.querySelector(`#agl button.agr[data-id="${CSS.escape(now.id)}"]`)
+      ?.focus();
+}
+
+/** The polite live line under the list (the list itself is redrawn). */
+function announceOrder(text) {
+  const el = st.root?.querySelector("#ag-order-live");
+  if (!el) return;
+  el.textContent = "";
+  requestAnimationFrame(() => (el.textContent = text));
+}
+
+/** Alt+↑ and Alt+↓ on a row, and a drag with its ember drop line. */
+function wireOrder(agl) {
+  agl.addEventListener("keydown", (e) => {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    const b = e.target.closest?.("button.agr[data-id]");
+    const r = b ? rowOf(b.dataset.id) : null;
+    if (!orderable(r, SERVER_WS)) return;
+    e.preventDefault();
+    void moveDir(r, e.key === "ArrowUp" ? "up" : "down", true);
+  });
+  const clearDrop = () => {
+    for (const x of agl.querySelectorAll("[data-drop]"))
+      x.removeAttribute("data-drop");
+  };
+  const hit = (e) => {
+    const r = st.drag;
+    const b = r ? e.target.closest?.("button.agr[data-id]") : null;
+    const over = b ? rowOf(b.dataset.id) : null;
+    if (
+      !over ||
+      over.kind !== "agent" ||
+      over.workspace !== r.workspace ||
+      inStopped(over) !== inStopped(r)
+    )
+      return null;
+    const box = b.getBoundingClientRect();
+    const after = e.clientY > box.top + box.height / 2;
+    const to = dropTo(groupOf(r), r.agent, over.agent, after);
+    return to ? { b, after, to } : null;
+  };
+  const end = () => {
+    if (!st.drag) return;
+    st.drag = null;
+    clearDrop();
+    paintList();
+  };
+  agl.addEventListener("dragstart", (e) => {
+    const b = e.target.closest?.("button.agr[draggable]");
+    const r = b ? rowOf(b.dataset.id) : null;
+    if (!canDrag(r)) return;
+    st.drag = r;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", r.agent);
+  });
+  agl.addEventListener("dragover", (e) => {
+    const h = hit(e);
+    clearDrop();
+    if (!h) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    h.b.setAttribute("data-drop", h.after ? "after" : "before");
+  });
+  agl.addEventListener("dragleave", (e) => {
+    if (!agl.contains(e.relatedTarget)) clearDrop();
+  });
+  agl.addEventListener("drop", (e) => {
+    const h = hit(e);
+    const r = st.drag;
+    end();
+    if (!h || !r) return;
+    e.preventDefault();
+    void moveOrder(r, h.to, true);
+  });
+  agl.addEventListener("dragend", end);
+}
+
 // ── the double-click fix: one action per agent at a time ───────────────
 // Held while the server answers. Every redraw (the list's poll, a pane's
 // header) paints the agent's buttons disabled, the pressed one "Working…",
@@ -4533,6 +4712,7 @@ function stoppedMenuItems(r, opener) {
       : []),
     restartResumeItem(r),
     { label: t("ag.mv.item"), onSelect: () => openMove(r, opener) },
+    ...orderItems(r, !!opener?.closest?.("#agl")),
     { label: t("ag.remove"), onSelect: () => void removeRow(r, opener) },
   ];
 }
@@ -4794,6 +4974,7 @@ export async function mountAgentsPage(root) {
     // D34: after Clear done (the Helpers list), the list again.
     () => refresh(),
   );
+  wireOrder(root.querySelector("#agl"));
   root.querySelector("#agl").addEventListener("click", (e) => {
     // D37: a person's open or closed "Stopped (n)" is kept.
     const sum = e.target.closest("details[data-stopped] > summary");
@@ -4815,6 +4996,21 @@ export async function mountAgentsPage(root) {
         if (st.helpersOpen.has(k)) st.helpersOpen.delete(k);
         else st.helpersOpen.add(k);
         paintList();
+        return;
+      }
+      // D79: a phone's Reorder, and its Up and Down per row.
+      if (which === "reorder") {
+        st.reorderWs = st.reorderWs === act.dataset.ws ? null : act.dataset.ws;
+        paintList();
+        return;
+      }
+      if (which === "ord-up" || which === "ord-down") {
+        const w = act.closest(".agord");
+        const r = visibleRows().find(
+          (x) => x.agent === w?.dataset.agent && x.workspace === w?.dataset.ws,
+        );
+        if (r && act.getAttribute("aria-disabled") !== "true")
+          void moveDir(r, which === "ord-up" ? "up" : "down", false);
         return;
       }
       if (which === "remove-shell")
@@ -4946,6 +5142,7 @@ export async function mountAgentsPage(root) {
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
+                ...orderItems(r, false),
               ]),
           // D28: its rotation settings and where each comes from.
           {

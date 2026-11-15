@@ -34,6 +34,17 @@ export const DEN_ACTIONS = {
       failure: "busy.saveF",
     },
   },
+  // D79: a move in a project's order; fast, so no pop-up and no toast
+  // (the page says where it went in its live line).
+  "agent-order": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.ordW",
+      success: "busy.ordS",
+      failure: "busy.ordF",
+    },
+  },
   link: {
     who: "Hub",
     autoClose: true,

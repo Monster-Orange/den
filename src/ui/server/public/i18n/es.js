@@ -1421,7 +1421,7 @@
     "ag.l.tile": "Mosaico",
     "ag.l.tip": "{name} ({key})",
     "ag.hint.keys":
-      "⌃⇧1 / ⌃⇧2 / ⌃⇧3 cambian la disposición. ⌘ y clic (Ctrl y clic) abre un enlace o una ruta.",
+      "⌃⇧1 / ⌃⇧2 / ⌃⇧3 cambian la disposición. ⌘ y clic (Ctrl y clic) abre un enlace o una ruta. Alt+↑ / Alt+↓ mueven un agente en su proyecto.",
     "ag.pal.layout": "Disposición: {name}",
     "ag.copied": "Copiado",
     "ag.linkHint": "{key}+clic para abrir",
@@ -1458,6 +1458,19 @@
     "ag.job.go": "Reiniciar de todos modos",
     "ag.job.held": "{id} tiene una tarea en curso: aún no se ha reiniciado",
     "ag.mv.item": "Mover a otro proyecto…",
+    "ag.ord.up": "Subir",
+    "ag.ord.down": "Bajar",
+    "ag.ord.top": "Mover al principio",
+    "ag.ord.upOne": "Subir {id}",
+    "ag.ord.downOne": "Bajar {id}",
+    "ag.ord.reorder": "Reordenar",
+    "ag.ord.reorderOne": "Reordenar los agentes de {ws}",
+    "ag.ord.done": "Listo",
+    "ag.ord.grip": "Arrastra para cambiar su orden en el proyecto",
+    "ag.ord.moved": "{name} pasó a la posición {n} de {of}",
+    "busy.ordW": "Moviendo {id}…",
+    "busy.ordS": "Hecho: {id} se movió.",
+    "busy.ordF": "No se pudo mover {id}.",
     "ag.orphan.one":
       "{names} no tiene proyecto: se eliminó. Asígnale uno con ⋯ › Mover a otro proyecto….",
     "ag.orphan.many":
