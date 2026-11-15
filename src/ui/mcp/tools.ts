@@ -294,7 +294,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, agent_folder): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1656,6 +1656,83 @@ const APPROVAL_TOOLS: DenTool[] = [
         "repo_clone",
         "repo_clone",
         { source, name: str(a.name), branch: str(a.branch) },
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_mode",
+    title: "Set a project's mode",
+    description:
+      "Set the mode a project's agents start in (ask, edits, auto or all), or none to clear it (they then follow the install's mode, else their persona's). The person's Allow shows the change. New agents start in it; running agents keep theirs until they start again. A project's agent sets its own project's mode; Den's own agent any project's." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      mode: z
+        .enum(["ask", "edits", "auto", "all", "none"])
+        .describe("The mode, or none to clear it"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("project_mode", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `project_mode: you work in project "${ctx.scope.workspace}" and can set its mode only, not project "${project}"'s; nothing was asked.`,
+        );
+      const mode = needArg(
+        "project_mode",
+        a,
+        "mode",
+        "ask, edits, auto, all or none",
+      );
+      return askPerson(
+        "project_mode",
+        "project_mode",
+        { project, mode: mode === "none" ? null : mode },
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "agent_folder",
+    title: "Move an agent's folder",
+    description:
+      "Move an agent (`agent`, its id) to a repo of its project, or a folder in it. A running agent is stopped, moved and started fresh there (a new conversation; the old one stays in its history); a stopped one stays stopped. The person's Allow shows where from and where to. A project's agent moves its own project's agents, itself too (it stops on Allow). Den's own agent never moves." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      repo: z.string().optional().describe("A repo of its project"),
+      folder: z
+        .string()
+        .optional()
+        .describe("A folder inside its project, instead of a repo"),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg("agent_folder", a, "agent", "the agent's id");
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_folder",
+        "agent_folder",
+        {
+          agent,
+          repo: str(a.repo),
+          folder: str(a.folder),
+          project,
+        },
         a.note,
         ctx,
       );

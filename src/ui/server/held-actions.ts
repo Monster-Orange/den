@@ -60,7 +60,11 @@ import type {
   HeldCheck,
 } from "./approval-routes.js";
 import type { AskedBy } from "./approvals.js";
-import type { AgentCreateCheck, PersonaHeldCheck } from "../cli/agent-ops.js";
+import type {
+  AgentCreateCheck,
+  HeldOpCheck,
+  PersonaHeldCheck,
+} from "../cli/agent-ops.js";
 
 export interface TryResult {
   ok: boolean;
@@ -105,6 +109,10 @@ export interface HeldActionDeps {
     check: (args: Record<string, unknown>, who?: HeldAsker) => AgentCreateCheck;
     run: (args: Record<string, unknown>) => Promise<unknown>;
   };
+  /** SRV-P4: project_mode's check and save (agent-ops.ts). */
+  projectMode?: HeldOp;
+  /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
+  agentFolder?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -122,6 +130,15 @@ export interface HeldActionDeps {
     ) => PersonaHeldCheck;
     update: (args: Record<string, unknown>) => Promise<unknown>;
   };
+}
+
+/** SRV-P4: a held write agent-ops checks and runs. */
+export interface HeldOp {
+  check: (
+    args: Record<string, unknown>,
+    who?: HeldAsker,
+  ) => HeldOpCheck<object>;
+  run: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
 /** The longest reason a restart may give (one line). */
@@ -402,6 +419,20 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     run: (a) => d.personas!.update(a),
   };
 
+  const op = (o: HeldOp | undefined, missing: string): HeldAction => ({
+    check(a, who): HeldCheck {
+      if (!o) return { ok: false, error: missing };
+      const c = o.check(a, who);
+      return c.ok ? { ...c, args: { ...c.args } } : c;
+    },
+    run: (a) => o!.run(a),
+  });
+  const projectMode = op(
+    d.projectMode,
+    "this Den can't set a project's mode here",
+  );
+  const agentFolder = op(d.agentFolder, "this Den can't move agents here");
+
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
       if (!d.reposRoot)
@@ -469,5 +500,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     persona_create: personaCreate,
     persona_update: personaUpdate,
     repo_clone: repoClone,
+    project_mode: projectMode,
+    agent_folder: agentFolder,
   };
 }

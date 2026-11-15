@@ -137,6 +137,53 @@ describe("SRV-P1: agent_create", () => {
   });
 });
 
+describe("SRV-P4: project_mode and agent_folder", () => {
+  it("are agent-ops' checks and runs, with who asked; a Den without them refuses", async () => {
+    const f = fakes();
+    expect(await heldActions(f.deps).project_mode.check({})).toEqual({
+      ok: false,
+      error: "this Den can't set a project's mode here",
+    });
+    expect(await heldActions(f.deps).agent_folder.check({})).toEqual({
+      ok: false,
+      error: "this Den can't move agents here",
+    });
+    const asked: unknown[] = [];
+    const ran: unknown[] = [];
+    const op = (summary: string) => ({
+      check: (x: Record<string, unknown>, who?: unknown) => {
+        asked.push(who);
+        return {
+          ok: true as const,
+          summary,
+          params: {},
+          details: [],
+          args: { ...x },
+        };
+      },
+      run: async (x: Record<string, unknown>) => {
+        ran.push(x);
+        return { ok: true };
+      },
+    });
+    const acts = heldActions({
+      ...f.deps,
+      projectMode: op("set project north's mode: ask → edits"),
+      agentFolder: op("move agent ana to north › shop"),
+    });
+    const who = { agent: "lead", project: "north" };
+    const m = await acts.project_mode.check({ project: "north" }, who);
+    expect(m.ok && m.summary).toBe("set project north's mode: ask → edits");
+    const g = await acts.agent_folder.check({ agent: "ana" }, who);
+    expect(g.ok && g.summary).toBe("move agent ana to north › shop");
+    expect(asked).toEqual([who, who]);
+    if (!m.ok || !g.ok) return;
+    await acts.project_mode.run(m.args);
+    await acts.agent_folder.run(g.args);
+    expect(ran).toEqual([{ project: "north" }, { agent: "ana" }]);
+  });
+});
+
 describe("SRV-P2: persona_create and persona_update", () => {
   it("are agent-ops' checks and writes; a Den without them refuses", async () => {
     const f = fakes();

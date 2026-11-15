@@ -42,6 +42,12 @@ config and manifest changes a distribution must make to move to it under
   `owner/name` or a git URL) into the repos folder, held for the
   person's Allow. A GitHub repo uses the person's gh login; any other
   remote, plain git. Adding it stays `manifest_draft` and `repo_add`.
+- Agents can ask to set a project's mode (`project_mode`, or none) and
+  to move an agent to another repo or folder of its project
+  (`agent_folder`), each held for the person's Allow. Running agents keep
+  their mode until they start again; a running agent that moves is
+  stopped and started fresh there. A project's agent asks for its own
+  project only; Den's own agent never moves.
 
 ### Changed
 

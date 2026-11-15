@@ -970,11 +970,15 @@ import {
 } from "./agent-routes.js";
 import {
   checkAgentCreate,
+  checkAgentFolder,
   checkPersonaCreate,
   checkPersonaUpdate,
+  checkProjectMode,
   createAgent,
+  runAgentFolder,
   runPersonaCreate,
   runPersonaUpdate,
+  runProjectMode,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -2317,6 +2321,15 @@ function approvalDeps(): ApprovalDeps {
     agentCreate: {
       check: (a, who) => checkAgentCreate(agentWebDeps(), a, who),
       run: (a) => createAgent(agentWebDeps(), a),
+    },
+    // SRV-P4: an agent asks to set a project's mode, or move an agent.
+    projectMode: {
+      check: (a, who) => checkProjectMode(agentWebDeps(), a, who),
+      run: (a) => runProjectMode(agentWebDeps(), a),
+    },
+    agentFolder: {
+      check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
+      run: (a) => runAgentFolder(agentWebDeps(), a),
     },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),

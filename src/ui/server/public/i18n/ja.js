@@ -1036,6 +1036,9 @@
     "ap.do.persona_update.project":
       "プロジェクト {where} のペルソナ {id} を変更: {fields}",
     "ap.do.repo_clone": "{source} を {path} にクローン",
+    "ap.do.project_mode":
+      "プロジェクト {project} のモードを変更: {from} → {to}",
+    "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
     "ap.do.agent_create":
       "エージェント {name} ({persona}) を {where} で起動、モード {mode}",
     "ap.do.service_try.activates":

@@ -1062,6 +1062,9 @@
     "ap.do.persona_update.project":
       "Cambiar la persona {id} en el proyecto {where}: {fields}",
     "ap.do.repo_clone": "Clonar {source} en {path}",
+    "ap.do.project_mode":
+      "Cambiar el modo del proyecto {project}: {from} → {to}",
+    "ap.do.agent_folder": "Mover el agente {agent} a {where}",
     "ap.do.agent_create":
       "Iniciar el agente {name} ({persona}) en {where}, modo {mode}",
     "ap.do.service_try.activates":

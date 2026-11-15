@@ -439,6 +439,86 @@ describe("SRV-P2: persona_create and persona_update", () => {
   });
 });
 
+describe("SRV-P4: project_mode and agent_folder", () => {
+  it("project_mode asks with the project and mode; none clears it", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, project: "north", mode: null },
+    }));
+    const r = await callTool(
+      "project_mode",
+      { project: "north", mode: "none" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "project_mode",
+      args: { project: "north", mode: null },
+    });
+  });
+
+  it("a project's agent sets its own project's mode (the default); another project is refused before anything is asked", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true },
+    }));
+    const own = await callTool(
+      "project_mode",
+      { mode: "edits" },
+      ctx(api, true),
+    );
+    expect(own.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toMatchObject({
+      args: { project: "north", mode: "edits" },
+    });
+    const n = calls.length;
+    const other = await callTool(
+      "project_mode",
+      { project: "elsewhere", mode: "ask" },
+      ctx(api, true),
+    );
+    expect(other.isError).toBe(true);
+    expect(other.text).toMatch(
+      /project "north".*only.*not project "elsewhere"/,
+    );
+    expect(calls.slice(n).some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+
+  it("agent_folder asks with the agent and its repo or folder; a project's agent's ask names its project", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, id: "ana", restarted: true },
+    }));
+    const r = await callTool(
+      "agent_folder",
+      { agent: "ana", repo: "shop" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "agent_folder",
+      args: { agent: "ana", repo: "shop" },
+    });
+    const n = calls.length;
+    await callTool(
+      "agent_folder",
+      { agent: "ana", folder: "docs" },
+      ctx(api, true),
+    );
+    expect(
+      calls.slice(n).find((c) => c.path === "/api/approvals")?.body,
+    ).toMatchObject({
+      args: { agent: "ana", folder: "docs", project: "north" },
+    });
+    const none = await callTool("agent_folder", { repo: "shop" }, ctx(api));
+    expect(none.isError).toBe(true);
+    expect(none.text).toMatch(/agent/);
+  });
+});
+
 describe("SRV-P3: repo_clone", () => {
   it("asks with the source, and the name and branch when given", async () => {
     const { api, calls } = fakeApi([], () => ({

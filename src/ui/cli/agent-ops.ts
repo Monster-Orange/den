@@ -4166,18 +4166,7 @@ export function setAgentFolder(
     throw refused(
       `agent ${id} is running: stop it first (\`${d.cli} agents stop ${id}\`), then change its folder`,
     );
-  const repos = workspaceRepoFolders(d, rec.workspace);
-  let dir: string;
-  if (to.repo !== undefined) {
-    const r = repos.get(to.repo);
-    if (!r)
-      throw usage(
-        `agents folder: project ${rec.workspace} has no repo "${to.repo}" (its repos: ${[...repos.keys()].sort().join(", ") || "none"})`,
-        404,
-      );
-    dir = startFolder(d, rec.workspace, r);
-  } else dir = startFolder(d, rec.workspace, to.folder ?? "");
-  const repo = to.repo ?? proposeRepo(d, rec.workspace, dir);
+  const { dir, repo } = folderTarget(d, rec.workspace, to);
   const next: AgentRecord = { ...rec, cwd: dir, project: rec.workspace };
   if (repo) next.repo = repo;
   else delete next.repo;
@@ -4185,6 +4174,243 @@ export function setAgentFolder(
   delete next.resumeToken;
   writeRecord(d.stateDir(), next);
   return next;
+}
+
+/** Gap 7: the folder `to` names in project `ws`, and the repo it is. */
+function folderTarget(
+  d: AgentsResolved,
+  ws: string,
+  to: { repo?: string; folder?: string },
+): { dir: string; repo?: string } {
+  let dir: string;
+  if (to.repo !== undefined) {
+    const repos = workspaceRepoFolders(d, ws);
+    const r = repos.get(to.repo);
+    if (!r)
+      throw usage(
+        `agents folder: project ${ws} has no repo "${to.repo}" (its repos: ${[...repos.keys()].sort().join(", ") || "none"})`,
+        404,
+      );
+    dir = startFolder(d, ws, r);
+  } else dir = startFolder(d, ws, to.folder ?? "");
+  const repo = to.repo ?? proposeRepo(d, ws, dir);
+  return { dir, ...(repo ? { repo } : {}) };
+}
+
+/** SRV-P4: a held write's check (project_mode, agent_folder). */
+export type HeldOpCheck<A> =
+  | {
+      ok: true;
+      summary: string;
+      /** The summary's parts, for the Allow dialog to word in its language. */
+      params: Record<string, string>;
+      details: string[];
+      args: A;
+    }
+  | { ok: false; error: string };
+
+export interface ProjectModeArgs {
+  project: string;
+  mode: PermissionIntent | null;
+}
+
+/**
+ * SRV-P4 (0.4.48): checks a project_mode ask: a project's mode, or none
+ * (null). A project's agent asks for its own project; Den's agent for any.
+ * Running agents keep the mode they started with until they start again.
+ */
+export function checkProjectMode(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<ProjectModeArgs> {
+  const no = (error: string): HeldOpCheck<ProjectModeArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const p = raw.project;
+    if (p !== undefined && p !== null && typeof p !== "string")
+      return no("project must be text");
+    const ws = typeof p === "string" ? p.trim() : "";
+    if (isServerScope(ws))
+      return no(
+        `${ws} is Den's own agent's place, not a project: a person sets its mode in Settings`,
+      );
+    checkWorkspaceName("project_mode", ws);
+    if (!d.workspaceExists(ws)) return no(`no project "${ws}"`);
+    if (who.project && !isServerScope(who.project) && who.project !== ws)
+      return no(
+        `${who.agent ?? "this agent"} works in project ${who.project}: it can set that project's mode only, not project ${ws}'s`,
+      );
+    const m = raw.mode;
+    if (m !== null && typeof m !== "string")
+      return no("mode is ask, edits, auto or all, or null for none");
+    const mode = m === null ? null : checkIntent(m.trim(), "mode");
+    const now = workspacePermissionOf(d, ws) ?? null;
+    if (now === mode)
+      return no(`project ${ws}'s mode is already ${mode ?? "none"}`);
+    const from = now ?? "none";
+    const to = mode ?? "none";
+    return {
+      ok: true,
+      summary: `set project ${ws}'s mode: ${from} → ${to}`,
+      params: { project: ws, from, to },
+      details: [
+        `Project: ${ws}`,
+        `Now: ${from}`,
+        `Then: ${to}${mode === null ? " (agents start in the install's mode, else their persona's)" : ""}`,
+        "New agents start in it; running agents keep theirs until they start again.",
+      ],
+      args: { project: ws, mode },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** SRV-P4: on Allow, saves it. */
+export async function runProjectMode(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; project: string; mode: PermissionIntent | null }
+  | { ok: false; error: string }
+> {
+  const c = checkProjectMode(d, raw);
+  if (!c.ok) return c;
+  d.saveWorkspacePermission(c.args.project, c.args.mode);
+  return { ok: true, project: c.args.project, mode: c.args.mode };
+}
+
+export interface AgentFolderArgs {
+  agent: string;
+  project: string;
+  repo?: string;
+  folder?: string;
+}
+
+/**
+ * SRV-P4 (0.4.48): checks an agent_folder ask: an agent's folder, a repo
+ * of its project or a folder in it (gap 7's). A project's agent asks for
+ * its own project's agents (itself too: the Allow warns it stops); Den's
+ * agent for any. Den's own agent's folder is never moved.
+ */
+export function checkAgentFolder(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<AgentFolderArgs> {
+  const no = (error: string): HeldOpCheck<AgentFolderArgs> => ({
+    ok: false,
+    error,
+  });
+  const str = (k: string): string | undefined => {
+    const v = raw[k];
+    if (v === undefined || v === null || v === "") return undefined;
+    if (typeof v !== "string") throw usage(`${k} must be text`);
+    return v.trim();
+  };
+  try {
+    const id = str("agent");
+    if (!id) return no("agent is required (the agent's id)");
+    if (id === SERVER_AGENT_ID)
+      return no("Den's own agent works in its own folder: it never moves");
+    const repo = str("repo");
+    const folder = str("folder");
+    if (repo !== undefined && folder !== undefined)
+      return no("give a repo or folder, not both");
+    if (repo === undefined && folder === undefined)
+      return no("give a repo of its project, or a folder in it");
+    const rec = agentRecord(d, id, str("project"));
+    if (isServerScope(rec.workspace))
+      return no("Den's own agent works in its own folder: it never moves");
+    if (
+      who.project &&
+      !isServerScope(who.project) &&
+      who.project !== rec.workspace
+    )
+      return no(
+        `${who.agent ?? "this agent"} works in project ${who.project}: it can move that project's agents only, not ${id} in project ${rec.workspace}`,
+      );
+    const t = folderTarget(d, rec.workspace, {
+      ...(repo !== undefined ? { repo: checkRepoName(repo) } : {}),
+      ...(folder !== undefined ? { folder } : {}),
+    });
+    if (rec.cwd && path.resolve(rec.cwd) === path.resolve(t.dir))
+      return no(`agent ${id} already works in ${t.dir}`);
+    const where = t.repo
+      ? `${rec.workspace} › ${t.repo}`
+      : `${rec.workspace} › ${path.relative(d.workspaceDir(rec.workspace), t.dir) || "."}`;
+    const running = !rec.stoppedAt;
+    const shown = rec.displayName ?? id;
+    return {
+      ok: true,
+      summary: `move agent ${shown} to ${where}`,
+      params: { agent: shown, where },
+      details: [
+        `Agent: ${shown}${shown !== id ? ` (${id})` : ""}, project ${rec.workspace}`,
+        `From: ${rec.cwd ?? d.workspaceDir(rec.workspace)}`,
+        `To: ${t.dir}`,
+        running
+          ? "It is running: Den stops it, moves it, and starts it fresh there (a new conversation; the old one stays in its history)."
+          : "It is stopped and stays so: its next start is a new conversation there.",
+        ...(who.agent === id
+          ? [
+              "This is the agent that asked: it stops when you Allow, and its answer to you ends there.",
+            ]
+          : []),
+      ],
+      args: {
+        agent: id,
+        project: rec.workspace,
+        ...(t.repo && repo !== undefined ? { repo: t.repo } : {}),
+        ...(repo === undefined ? { folder: t.dir } : {}),
+      },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** SRV-P4: on Allow, moves it; a running agent is stopped, moved and started fresh. */
+export async function runAgentFolder(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | {
+      ok: true;
+      id: string;
+      cwd: string;
+      repo?: string;
+      restarted: boolean;
+    }
+  | { ok: false; error: string }
+> {
+  const c = checkAgentFolder(d, raw);
+  if (!c.ok) return c;
+  const a = c.args;
+  const running = !agentRecord(d, a.agent, a.project).stoppedAt;
+  if (running) {
+    const stopped = await stopAgent(d, a.agent, a.project, { wait: true });
+    if (stopped.stillStopping)
+      return {
+        ok: false,
+        error: `agent ${a.agent} is still stopping: its folder is unchanged; ask again in a moment`,
+      };
+  }
+  const rec = setAgentFolder(d, a.agent, a.project, {
+    ...(a.repo !== undefined ? { repo: a.repo } : {}),
+    ...(a.folder !== undefined ? { folder: a.folder } : {}),
+  });
+  if (running) await startFresh(d, a.agent, a.project);
+  return {
+    ok: true,
+    id: a.agent,
+    cwd: rec.cwd ?? "",
+    ...(rec.repo ? { repo: rec.repo } : {}),
+    restarted: running,
+  };
 }
 
 /**

@@ -3069,6 +3069,18 @@ project may take that name.
   (`manifest_draft`) and asks to add it (`repo_add`), each its own Allow.
   Den's own agent or a person asks; the folder is shared by every
   project, so a project's agent is refused.
+- **It sets a project's mode** (0.4.48, `project_mode { project?, mode }`,
+  the held action `project_mode`). `mode` is ask, edits, auto or all, or
+  none to clear it. The Allow shows the change (from → to). New agents
+  start in it; running agents keep theirs until they start again. A
+  project's agent sets its own project's mode only.
+- **It moves an agent's folder** (0.4.48, `agent_folder { agent, repo |
+  folder, project? }`, the held action `agent_folder`): a repo of the
+  agent's project, or a folder in it, as `agents folder` does. The Allow
+  shows where from and where to. A running agent is stopped, moved and
+  started fresh there (a new conversation); a stopped one stays stopped.
+  A project's agent moves its own project's agents, itself too (the
+  Allow warns it stops). Den's own agent never moves.
 - **Den keeps itself current** (0.4.48). Every
   `server_agent.update_check_minutes` (org config; default 30, at least
   5, 0 for never) the web server asks npm for the newest Den. The lead
