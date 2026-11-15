@@ -81,6 +81,9 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Settings: a click on a category could land on another one when rows
+  above it loaded during the scroll (the page grew). Den now goes to your
+  pick again once the scroll ends; a scroll of your own is never undone.
 - An agent refused at the Agents page was told to use `agent_spawn`, a
   tool that doesn't exist. It now names `agent_create`, which waits for
   the person's Allow, and a test fails on any tool Den's text names that

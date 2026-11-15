@@ -683,6 +683,69 @@ describe("aria-current holds your pick while the page scrolls (SA's dev.21 run)"
   }, 30_000);
 });
 
+describe("den#143: the page grows while it scrolls to your pick", () => {
+  it("you still land on the category you picked, and only it is marked", async () => {
+    if (!browser) return;
+    const { p } = await open("/settings");
+    const ids = await sectionIds(p);
+    const far = ids.at(-2)!;
+    await p.evaluate(() => {
+      const w = window as unknown as { marks: string[] };
+      w.marks = [];
+      const nav = document.getElementById("set-nav")!;
+      new MutationObserver(() => {
+        const cur = nav
+          .querySelector('[aria-current="true"]')
+          ?.getAttribute("data-cat");
+        if (cur && w.marks.at(-1) !== cur) w.marks.push(cur);
+      }).observe(nav, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["aria-current"],
+      });
+    });
+    await p.click(`#set-nav [data-cat="${far}"]`);
+    // Rows above it load late, mid-scroll (SA's and the suite's runs:
+    // the page grew ~1600px while it scrolled).
+    await p.waitForTimeout(80);
+    await p.evaluate(() => {
+      const grow = document.createElement("div");
+      grow.style.height = "1600px";
+      const body = document.getElementById("set-body")!;
+      body.insertBefore(grow, body.firstChild);
+    });
+    await p.waitForFunction(
+      () => {
+        const w = window as unknown as { y?: number; still?: number };
+        const y = document.getElementById("den-content")!.scrollTop;
+        w.still = w.y === y ? (w.still ?? 0) + 1 : 0;
+        w.y = y;
+        return w.still > 15;
+      },
+      undefined,
+      { polling: 100, timeout: 8000 },
+    );
+    expect(
+      await p.evaluate(() => (window as unknown as { marks: string[] }).marks),
+    ).toEqual([far]);
+    // Where a click puts a category: its top at the sticky header's foot.
+    const off = await p.evaluate((id) => {
+      const sc = document.getElementById("den-content")!;
+      const under =
+        parseFloat(getComputedStyle(sc).getPropertyValue("--set-top")) || 0;
+      const atEnd = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 2;
+      const top =
+        document.getElementById(`cat-${id}`)!.getBoundingClientRect().top -
+        sc.getBoundingClientRect().top -
+        under;
+      // At the foot, a short last section stops below the header: in view.
+      return atEnd && top > 0 && top < sc.clientHeight ? 0 : Math.abs(top);
+    }, far);
+    expect(off).toBeLessThan(40);
+    await p.context().close();
+  }, 30_000);
+});
+
 describe("R21a (Ward QA 2026-11-05): the search and the category list stay put", () => {
   it("scrolled to the foot, the search box and the categories are still in view, below the bar, and the search still clicks", async () => {
     if (!browser) return;

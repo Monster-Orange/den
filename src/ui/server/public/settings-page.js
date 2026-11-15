@@ -819,15 +819,39 @@ export async function mountSettings(deps) {
   // a while, at most ~1s after the last move; then the spy looks again.
   let locked = null;
   let lockTimer = 0;
+  /** The page's height when the pick locked (den#143: it may grow). */
+  let lockedHeight = 0;
   const hasScrollEnd = scroller && "onscrollend" in scroller;
   function unlock() {
     if (!locked) return;
+    const id = locked;
     locked = null;
     clearTimeout(lockTimer);
+    // den#143: rows that load late can grow the page while it scrolls, so
+    // the scroll ends where your pick was, not where it is. Go there again,
+    // only then: a scroll of your own is never undone.
+    if (scroller && scroller.scrollHeight !== lockedHeight && offTarget(id))
+      scrollToCategory(id, false);
     spy();
+  }
+  /** Whether section `id` is away from where a category click puts it. */
+  function offTarget(id) {
+    const el = $(`cat-${id}`);
+    if (!el || !scroller) return false;
+    const under =
+      parseFloat(getComputedStyle(scroller).getPropertyValue("--set-top")) || 0;
+    const box = scroller.getBoundingClientRect();
+    const top = el.getBoundingClientRect().top - box.top - under;
+    if (Math.abs(top) <= 8) return false;
+    // At the foot, a short last section can't reach the header: in view is
+    // where it goes.
+    const atEnd =
+      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+    return !(atEnd && top > 0 && top < scroller.clientHeight);
   }
   function lockCurrent(id) {
     locked = id;
+    lockedHeight = scroller ? scroller.scrollHeight : 0;
     clearTimeout(lockTimer);
     // No scroll may come at all (already there): let go after ~1s.
     lockTimer = setTimeout(unlock, 1000);
