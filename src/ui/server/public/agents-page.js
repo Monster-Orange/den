@@ -90,6 +90,7 @@
 import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
+import { OPEN_MS } from "/kit/busy.js";
 import { dismissable } from "/popover.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -4630,12 +4631,30 @@ function placeDetails() {
     });
 }
 
-function paintAgentDetails() {
+/**
+ * Paint the details. `inPlace` (den#143: details that came after it was
+ * shown): it keeps its top edge and place and is not placed again; what
+ * it gains scrolls inside it, down to the window's bottom when it sits
+ * below its row, at its own height when it sits above it or is a sheet.
+ */
+function paintAgentDetails(inPlace = false) {
   if (!agd.el || !agd.r) return;
   const a = document.activeElement;
   const key = a && agd.el.contains(a) ? a.dataset?.agd : null;
+  const was = inPlace ? agd.el.getBoundingClientRect() : null;
+  const sc = agd.el.scrollTop;
   agd.el.innerHTML = detailsHtml(agd.r, agd.det);
-  placeDetails();
+  if (!was) placeDetails();
+  else {
+    const op = agd.opener?.isConnected
+      ? agd.opener.getBoundingClientRect()
+      : null;
+    const below =
+      !agd.el.classList.contains("den-sheet") && !!op && was.top >= op.top;
+    const room = below ? window.innerHeight - was.top - 8 : was.height;
+    agd.el.style.maxHeight = `${Math.max(80, Math.floor(room))}px`;
+    agd.el.scrollTop = sc;
+  }
   if (key) agd.el.querySelector(`[data-agd="${key}"]`)?.focus();
 }
 
@@ -4699,11 +4718,23 @@ async function openDetails(r, opener) {
   el.tabIndex = -1;
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", t("ag.det.label", { id: displayName(r) }));
+  // den#143: out of sight until its details are in (or OPEN_MS has passed
+  // without them, the working pop-up's own wait), then painted, placed
+  // and focused once, so it never grows or moves under a press.
+  // data-state says which: "loading", then "ready".
+  el.dataset.state = "loading";
+  el.style.visibility = "hidden";
   document.body.append(el);
   Object.assign(agd, { r, opener, el, det: null });
   opener.setAttribute("aria-expanded", "true");
-  paintAgentDetails();
-  (el.querySelector(".den-svp-acts .den-btn") || el).focus();
+  const reveal = () => {
+    if (agd.r !== r || el.dataset.state === "ready") return;
+    paintAgentDetails();
+    el.style.visibility = "";
+    el.dataset.state = "ready";
+    (el.querySelector(".den-svp-acts .den-btn") || el).focus();
+  };
+  const late = setTimeout(reveal, OPEN_MS);
   document.addEventListener("click", detailsAct, true);
   agd.release = dismissable(el, {
     opener: detailsOpener,
@@ -4720,9 +4751,12 @@ async function openDetails(r, opener) {
   } catch {
     /* no details: the row's own facts */
   }
+  clearTimeout(late);
   if (agd.r !== r) return;
   agd.det = det;
-  paintAgentDetails();
+  // Shown already (a slow answer): its details fill in where it is.
+  if (el.dataset.state === "ready") paintAgentDetails(true);
+  else reveal();
 }
 
 function openStoppedMenu(r, opener) {

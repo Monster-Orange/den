@@ -520,12 +520,121 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       await p.context().close();
     }, 60_000);
 
+    /**
+     * #143: open the details with their answer `delay` ms late; every place
+     * and size they have while seen, and every time they are placed (a
+     * write of their top edge).
+     */
+    async function openLate(delay: number) {
+      const p = await open("north");
+      await shown(p);
+      // A long last ask: the details change size when it comes.
+      await p.route(
+        "**/api/workspaces/north/agents/scout/details",
+        async (r) => {
+          await new Promise((z) => setTimeout(z, delay));
+          await r.fulfill({
+            json: {
+              lastPrompt: {
+                text: Array(12)
+                  .fill(
+                    "Count the notes in every folder and say which are new.",
+                  )
+                  .join(" "),
+                at: "2026-11-06T09:30:00.000Z",
+              },
+            },
+          });
+        },
+      );
+      await p.evaluate((delay) => {
+        const w = window as unknown as {
+          __rects: string[];
+          __tops: number[];
+          __placed: number;
+        };
+        w.__rects = [];
+        w.__tops = [];
+        w.__placed = 0;
+        const set = CSSStyleDeclaration.prototype.setProperty;
+        CSSStyleDeclaration.prototype.setProperty = function (
+          this: CSSStyleDeclaration,
+          k: string,
+          ...rest: [string | null, string?]
+        ) {
+          const g = document.querySelector(".den-agd") as HTMLElement | null;
+          if (k === "top" && g && g.style === this) w.__placed++;
+          return set.call(this, k, ...rest);
+        };
+        const t0 = performance.now();
+        const look = () => {
+          const g = document.querySelector(".den-agd") as HTMLElement | null;
+          if (g && getComputedStyle(g).visibility !== "hidden") {
+            const b = g.getBoundingClientRect();
+            const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
+            if (w.__rects.at(-1) !== k) w.__rects.push(k);
+            if (w.__tops.at(-1) !== Math.round(b.y))
+              w.__tops.push(Math.round(b.y));
+          }
+          if (performance.now() - t0 < delay + 1500)
+            requestAnimationFrame(look);
+        };
+        requestAnimationFrame(look);
+      }, delay);
+      await btn(p, "scout").click();
+      await p.locator('.den-agd[data-state="ready"]').waitFor();
+      await p.waitForTimeout(delay + 1600);
+      const seen = await p.evaluate(() => {
+        const w = window as unknown as {
+          __rects: string[];
+          __tops: number[];
+          __placed: number;
+        };
+        return { rects: w.__rects, tops: w.__tops, placed: w.__placed };
+      });
+      return { p, ...seen };
+    }
+
+    it("#143: they open where they stay: shown once their details are in, never growing or moving after", async () => {
+      if (skip()) return;
+      const { p, rects, placed } = await openLate(150);
+      expect(rects).toHaveLength(1);
+      expect(placed).toBe(1);
+      expect(await p.locator(".den-agd").textContent()).toContain(
+        "Count the notes in every folder",
+      );
+      // Focus moved into them when they appeared.
+      expect(
+        await p.evaluate(() => !!document.activeElement?.closest(".den-agd")),
+      ).toBe(true);
+      await p.context().close();
+    }, 60_000);
+
+    it("#143: details that come after they are shown fill in where they are: placed once, the top edge never moves", async () => {
+      if (skip()) return;
+      const { p, tops, placed } = await openLate(800);
+      expect(placed).toBe(1);
+      expect(tops).toHaveLength(1);
+      const g = p.locator(".den-agd");
+      expect(await g.textContent()).toContain(
+        "Count the notes in every folder",
+      );
+      // What they gained stays inside the window (it scrolls in them).
+      const b = (await g.boundingBox())!;
+      expect(b.y + b.height).toBeLessThanOrEqual(900);
+      expect(
+        await p.evaluate(() => !!document.activeElement?.closest(".den-agd")),
+      ).toBe(true);
+      await p.context().close();
+    }, 60_000);
+
     it("D50: a press outside closes them, with no click after it (a terminal eats clicks), and focus goes back to the row; a press inside, or in a menu over them, keeps them", async () => {
       if (skip()) return;
       const p = await open("north");
       await shown(p);
       await btn(p, "scout").click();
-      await det(p).waitFor();
+      // #143: measured once they are placed (they never move after).
+      await p.locator('.den-agd[data-state="ready"]').waitFor();
       // Inside, on no button: still open.
       const box = (await det(p).boundingBox())!;
       await p.mouse.click(box.x + box.width - 12, box.y + box.height - 8);
