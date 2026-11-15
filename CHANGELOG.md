@@ -4,6 +4,20 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.51] - unreleased
+
+### Added
+
+- Approvals, change requests and comments in Hub now reach the agent
+  that wrote the doc, with nobody typing (issue 166). One watcher per
+  install reads Hub's inbox for this install's agents and types each new
+  item into the agent's pane: right away when it waits for its person
+  (that wakes it), after its turn when it is busy, at its next start
+  when it is stopped. Nothing is typed twice, even after a restart. The
+  agent's card says how many wait. Settings: `hub.inbox_watch` (on),
+  `hub.inbox_poll_seconds` (30) and `hub.inbox_backoff_max_seconds`
+  (600, the longest wait while Hub doesn't answer).
+
 ## [0.4.50] - unreleased
 
 ### Added

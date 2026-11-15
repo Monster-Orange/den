@@ -15,7 +15,12 @@ import {
   DeliveryLoop,
   type AgentHubWork,
 } from "../../shared/hub-delivery-loop.js";
-import { readRecord } from "../../shared/agents/records.js";
+import { listRecords, readRecord } from "../../shared/agents/records.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
+import {
+  InboxWatcher,
+  type InboxSettings,
+} from "../../shared/hub-inbox-watch.js";
 import { getStateDir } from "../../shared/paths.js";
 
 const PUMP_MS = 2000;
@@ -27,6 +32,9 @@ let pumpTimer: NodeJS.Timeout | null = null;
 let notesTimer: NodeJS.Timeout | null = null;
 let owner: DeliveryOwner = {};
 let lastOpts: Parameters<typeof startDeliveries>[0] | null = null;
+/** Issue 166: Hub's inbox, read for this install's agents. */
+let inbox: InboxWatcher | null = null;
+let inboxTimer: NodeJS.Timeout | null = null;
 
 async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   const hub = await import("../../shared/hub.js");
@@ -64,6 +72,25 @@ export function stopDeliveries(): void {
   pumpTimer = null;
   if (notesTimer) clearInterval(notesTimer);
   notesTimer = null;
+  if (inboxTimer) clearInterval(inboxTimer);
+  inboxTimer = null;
+}
+
+/** hub.inbox_* read each time (a bad hub block: the defaults). */
+async function inboxSettings(): Promise<InboxSettings> {
+  const hub = await import("../../shared/hub.js");
+  try {
+    const c = hub.readHubConfig();
+    if (c)
+      return {
+        on: c.inboxWatch,
+        pollSeconds: c.inboxPollSeconds,
+        backoffMaxSeconds: c.inboxBackoffMaxSeconds,
+      };
+  } catch {
+    /* doctor says so; the defaults meanwhile */
+  }
+  return { on: true, pollSeconds: 30, backoffMaxSeconds: 600 };
 }
 
 /** notifications.hub_poll_seconds, read each time (0: off; bad: 60). */
@@ -205,6 +232,33 @@ export async function startDeliveries(o: {
   }, PUMP_MS);
   pumpTimer.unref();
   startHubNotes(o.log);
+  // Issue 166: Hub's inbox (approvals, requested changes, comments) into
+  // the same loop, so they wake an idle agent or wait for its next turn.
+  let settings: InboxSettings = await inboxSettings();
+  inbox ??= new InboxWatcher({
+    fetchInbox: async (agent) => {
+      const a = await hubAndToken();
+      if (!a) throw new Error("not connected");
+      return hub.hubInbox(a.url, a.token, agent);
+    },
+    agents: () =>
+      listRecords(getStateDir())
+        .filter((r) => !isServerScope(r.workspace))
+        .map((r) => r.id),
+    loop: l,
+    owner: () => owner,
+    settings: () => settings,
+    stateFile: path.join(getStateDir(), "hub", "inbox-watch.json"),
+    log: o.log,
+  });
+  const w = inbox;
+  inboxTimer = setInterval(() => {
+    void inboxSettings()
+      .then((v) => (settings = v))
+      .then(() => w.tick())
+      .catch(() => undefined);
+  }, PUMP_MS);
+  inboxTimer.unref();
   void l
     .run(c.signal)
     .catch((e) =>

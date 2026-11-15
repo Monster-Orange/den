@@ -125,6 +125,9 @@ const cfgFor = (url: string, file: string): HubConfig => ({
   mcpRetryAttempts: 0,
   deliveryHeartbeatSeconds: 15,
   deliveryPollSeconds: 30,
+  inboxWatch: true,
+  inboxPollSeconds: 30,
+  inboxBackoffMaxSeconds: 600,
 });
 const readFile = (f: string) => fs.readFileSync(f, "utf8").trim();
 

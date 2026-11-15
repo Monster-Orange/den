@@ -96,6 +96,22 @@ export interface HubConfig {
    */
   deliveryPollSeconds: number;
   /**
+   * 0.4.51 hub.inbox_watch (default true): one watcher per install reads
+   * Hub's inbox for this install's agents and types each new item into
+   * its agent's pane (issue 166). False: no reading at all.
+   */
+  inboxWatch: boolean;
+  /**
+   * 0.4.51 hub.inbox_poll_seconds (default 30, at least 5): how often the
+   * inbox watcher reads Hub.
+   */
+  inboxPollSeconds: number;
+  /**
+   * 0.4.51 hub.inbox_backoff_max_seconds (default 600, at least 5): the
+   * longest wait between reads while Hub doesn't answer.
+   */
+  inboxBackoffMaxSeconds: number;
+  /**
    * 0.4.46 hub.mcp_retry_seconds (default 30, at least 5): how often Den
    * asks whether Hub answers again, for agents that started without its
    * tools (ui/cli/mcp-reconnect.ts).
@@ -119,6 +135,9 @@ type RawHub =
       names_check_seconds?: unknown;
       delivery_heartbeat_seconds?: unknown;
       delivery_poll_seconds?: unknown;
+      inbox_watch?: unknown;
+      inbox_poll_seconds?: unknown;
+      inbox_backoff_max_seconds?: unknown;
       mcp_retry_seconds?: unknown;
       mcp_retry_attempts?: unknown;
     }
@@ -220,6 +239,15 @@ export function readHubConfig(
   );
   const poll = secs(h.delivery_poll_seconds, "delivery_poll_seconds", 30);
   const names = secs(h.names_check_seconds, "names_check_seconds", 300);
+  const iw = h.inbox_watch;
+  if (iw !== undefined && iw !== null && typeof iw !== "boolean")
+    throw new Error("hub.inbox_watch must be true or false");
+  const inboxPoll = secs(h.inbox_poll_seconds, "inbox_poll_seconds", 30);
+  const inboxBackoff = secs(
+    h.inbox_backoff_max_seconds,
+    "inbox_backoff_max_seconds",
+    600,
+  );
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const tries = h.mcp_retry_attempts;
   if (
@@ -242,6 +270,9 @@ export function readHubConfig(
     namesCheckSeconds: names,
     deliveryHeartbeatSeconds: beat,
     deliveryPollSeconds: poll,
+    inboxWatch: iw !== false,
+    inboxPollSeconds: inboxPoll,
+    inboxBackoffMaxSeconds: inboxBackoff,
     mcpRetrySeconds: retry,
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
   };
@@ -921,6 +952,31 @@ export async function hubListDeliveries(
   );
   const list = b.deliveries ?? b.items;
   return Array.isArray(list) ? list.slice(0, 50) : [];
+}
+
+/**
+ * 0.4.51 (issue 166): what waits on one of this install's agents in Hub:
+ * GET <url>/api/inbox with the install's token, the agent named by
+ * X-Den-Agent-Id. Hub's answer as it is; hub-inbox-watch.ts reads it.
+ */
+export async function hubInbox(
+  url: string,
+  token: string,
+  agentId: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<Record<string, unknown>> {
+  return hubCall(
+    `${url}/api/inbox`,
+    {
+      method: "GET",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "X-Den-Agent-Id": headerSafe(agentId),
+      },
+    },
+    { timeoutMs: 10_000, ...opts },
+  );
 }
 
 /** 0.4.40: a delivery's state: POST <url>/api/installs/self/deliveries/<id>/ack. */

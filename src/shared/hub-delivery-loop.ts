@@ -18,6 +18,7 @@ import {
   ackBody,
   deliveryRaw,
   deliveryText,
+  LOCAL_PREFIX,
   parseDelivery,
   SseReader,
   type AckState,
@@ -84,6 +85,16 @@ interface Active {
 /** A turn that never shows as started is over after this long. */
 const NO_START_MS = 2 * 60_000;
 
+/** What Den's held file brings back: a delivery, and Den's own text for an inbox item. */
+function parseHeld(r: unknown): Delivery | null {
+  const dv = parseDelivery(r);
+  if (!dv) return null;
+  const text = (r as { text?: unknown }).text;
+  if (dv.id.startsWith(LOCAL_PREFIX) && typeof text === "string")
+    dv.text = text.slice(0, 40_000);
+  return dv;
+}
+
 export class DeliveryLoop {
   private readonly queue = new Map<string, Delivery[]>();
   private readonly active = new Map<string, Active>();
@@ -103,6 +114,8 @@ export class DeliveryLoop {
    * paste is under way (the 0.4.40 gate's bug 1).
    */
   private readonly typing = new Set<string>();
+  /** Thread id → the newest Hub delivery's time on it (issue 166 de-dup). */
+  private readonly threadsAt = new Map<string, number>();
   /** What persist() last wrote. */
   private persisted = "null";
   private readonly hb: number;
@@ -129,7 +142,7 @@ export class DeliveryLoop {
     for (const [agent, list] of Object.entries(h.queue ?? {})) {
       if (!Array.isArray(list)) continue;
       const q = list
-        .map((r) => parseDelivery(r))
+        .map((r) => parseHeld(r))
         .filter((x): x is Delivery => !!x && x.agent === agent);
       if (q.length) this.queue.set(agent, q);
     }
@@ -190,6 +203,11 @@ export class DeliveryLoop {
     o: { reason?: string; version?: number } = {},
   ): Promise<void> {
     if (this.superseded.has(id)) return;
+    // Made from Hub's inbox (issue 166): Hub has no ack for it.
+    if (id.startsWith(LOCAL_PREFIX)) {
+      this.states.set(id, state);
+      return;
+    }
     for (const old of this.replaced.get(id) ?? [])
       await this.ack(old, state, o);
     this.states.set(id, state);
@@ -246,6 +264,47 @@ export class DeliveryLoop {
       if (st) await this.ack(dv.id, st);
       return;
     }
+    const at = Date.parse(dv.createdAt);
+    if (dv.thread.id && Number.isFinite(at))
+      this.threadsAt.set(
+        dv.thread.id,
+        Math.max(at, this.threadsAt.get(dv.thread.id) ?? 0),
+      );
+    await this.hold(dv);
+  }
+
+  /**
+   * 0.4.51 (issue 166): an item Den made from Hub's inbox (its id starts
+   * LOCAL_PREFIX, its text is Den's). Held and typed like a delivery; never
+   * acked. False when it was seen before (a restart never repeats it).
+   */
+  async takeLocal(dv: Delivery): Promise<boolean> {
+    if (!dv.id.startsWith(LOCAL_PREFIX)) return false;
+    if (this.d.seen.has(dv.id) || this.states.has(dv.id)) return false;
+    await this.hold(dv);
+    return true;
+  }
+
+  /** Whether an inbox item was seen (taken, or passed over). */
+  seenLocal(id: string): boolean {
+    return this.d.seen.has(id);
+  }
+
+  /** Mark an inbox item seen without typing it (older, or a delivery had it). */
+  passLocal(id: string): void {
+    if (id.startsWith(LOCAL_PREFIX)) this.d.seen.add(id);
+  }
+
+  /**
+   * Whether Hub's own delivery already brought this thread's comment at
+   * `at` or later (a mention is both a delivery and an inbox item).
+   */
+  coveredThread(thread: string, at: number): boolean {
+    const t = this.threadsAt.get(thread);
+    return t !== undefined && t >= at;
+  }
+
+  private async hold(dv: Delivery): Promise<void> {
     this.d.seen.add(dv.id);
     const s = await this.d.agents.state(dv.agent);
     if (s === "missing") {
@@ -257,6 +316,8 @@ export class DeliveryLoop {
     // Hub's Try again on one still held here: the new copy takes its
     // place, so the comment is typed once.
     const same = (a: Delivery) =>
+      !dv.id.startsWith(LOCAL_PREFIX) &&
+      !a.id.startsWith(LOCAL_PREFIX) &&
       a.thread.id === dv.thread.id &&
       a.author.id === dv.author.id &&
       a.body === dv.body &&
@@ -335,7 +396,7 @@ export class DeliveryLoop {
     }
     if (s !== "idle") return;
     const o = this.d.owner();
-    const texts = q.map((dv) => deliveryText(dv, o));
+    const texts = q.map((dv) => dv.text ?? deliveryText(dv, o));
     const text =
       q.length === 1
         ? texts[0]

@@ -61,6 +61,9 @@ describe("readHubConfig", () => {
       mcpRetryAttempts: 0,
       deliveryHeartbeatSeconds: 15,
       deliveryPollSeconds: 30,
+      inboxWatch: true,
+      inboxPollSeconds: 30,
+      inboxBackoffMaxSeconds: 600,
     });
   });
 
@@ -201,6 +204,40 @@ describe("hub.inbox_on_stop (D41)", () => {
         noSecrets,
       ),
     ).toThrow(/hub\.delivery_poll_seconds must be a number, at least 5/);
+  });
+});
+
+describe("issue 166: the inbox watcher's settings", () => {
+  const url = "https://hub.example.test";
+  it("on, every 30 s, waits at most 600 s; set per install; bad values throw", () => {
+    const c = readHubConfig({ hub: { url } }, {}, noSecrets)!;
+    expect([
+      c.inboxWatch,
+      c.inboxPollSeconds,
+      c.inboxBackoffMaxSeconds,
+    ]).toEqual([true, 30, 600]);
+    const d = readHubConfig(
+      { hub: { url } },
+      {
+        hub: {
+          inbox_watch: false,
+          inbox_poll_seconds: 10,
+          inbox_backoff_max_seconds: 60,
+        },
+      },
+      noSecrets,
+    )!;
+    expect([
+      d.inboxWatch,
+      d.inboxPollSeconds,
+      d.inboxBackoffMaxSeconds,
+    ]).toEqual([false, 10, 60]);
+    expect(() =>
+      readHubConfig({ hub: { url, inbox_watch: "no" } }, {}, noSecrets),
+    ).toThrow(/hub\.inbox_watch must be true or false/);
+    expect(() =>
+      readHubConfig({ hub: { url, inbox_poll_seconds: 1 } }, {}, noSecrets),
+    ).toThrow(/hub\.inbox_poll_seconds must be a number, at least 5/);
   });
 });
 
