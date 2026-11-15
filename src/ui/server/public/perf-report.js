@@ -1,3 +1,10 @@
+/**
+ * A word in the page's language (issue 171): shell.js's catalog, "perf.*".
+ * Without the shell (a test that installs none) the key comes back. A
+ * report's own names (metrics, modules, checks) are data, never translated.
+ */
+const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -79,7 +86,7 @@ function formatDisplayValue(value, options = {}) {
 
 function renderMetricList(metrics) {
   if (!metrics?.length) {
-    return '<div class="perf-empty">No metrics captured.</div>';
+    return `<div class="perf-empty">${escapeHtml(t("perf.noMetrics"))}</div>`;
   }
 
   return metrics
@@ -111,7 +118,7 @@ function renderMetricValueMap(values, metricType, metricContains) {
     return leftIndex - rightIndex;
   });
   if (!entries.length) {
-    return '<span class="perf-muted">No metric values captured</span>';
+    return `<span class="perf-muted">${escapeHtml(t("perf.noValues"))}</span>`;
   }
 
   const unit = metricContains === "time" ? "ms" : undefined;
@@ -130,7 +137,7 @@ function renderMetricValueMap(values, metricType, metricContains) {
     .join("");
 }
 
-function renderTable(headers, rows, emptyMessage = "No data captured.") {
+function renderTable(headers, rows, emptyMessage = t("perf.noData")) {
   if (!rows.length) {
     return `<div class="perf-empty">${escapeHtml(emptyMessage)}</div>`;
   }
@@ -167,12 +174,11 @@ export function buildReportPaneModel({ pillar, selectedView, perfReportUrl }) {
     // reports/journeys/<run-id>/ (no Playwright HTML report); the pane
     // shows the raw run output which links to those artifacts.
     return {
-      title: "Journeys Output",
+      title: t("perf.pane.journeys"),
       activeView: "raw",
       openUrl: null,
       tabsVisible: false,
-      emptyMessage:
-        "Run journeys to see run output; per-run reports land under reports/journeys/",
+      emptyMessage: t("perf.pane.journeys.empty"),
     };
   }
 
@@ -180,41 +186,40 @@ export function buildReportPaneModel({ pillar, selectedView, perfReportUrl }) {
     // ZAP writes report.json/report.html per scan under
     // reports/security/<env>/<run>/ (no Playwright HTML report).
     return {
-      title: "Security Scan Output",
+      title: t("perf.pane.security"),
       activeView: "raw",
       openUrl: null,
       tabsVisible: false,
-      emptyMessage:
-        "Run security scans to see run output; ZAP reports land under reports/security/",
+      emptyMessage: t("perf.pane.security.empty"),
     };
   }
 
   if (pillar === "suites") {
     return {
-      title: "Suite Output",
+      title: t("perf.pane.suites"),
       activeView: "raw",
       openUrl: null,
       tabsVisible: false,
-      emptyMessage: "Run the repo suites to see their output",
+      emptyMessage: t("perf.pane.suites.empty"),
     };
   }
 
   if (pillar !== "performance") {
     return {
-      title: "Playwright Report",
+      title: t("perf.pane.playwright"),
       activeView: "playwright",
       openUrl: "/report/",
       tabsVisible: false,
-      emptyMessage: "Run tests to see the Playwright report",
+      emptyMessage: t("perf.pane.playwright.empty"),
     };
   }
 
   return {
-    title: "Performance Report",
+    title: t("perf.pane.perf"),
     activeView: selectedView === "raw" ? "raw" : "rendered",
     openUrl: perfReportUrl ?? null,
     tabsVisible: true,
-    emptyMessage: "Run performance tests to see the rendered report",
+    emptyMessage: t("perf.pane.perf.empty"),
   };
 }
 
@@ -238,7 +243,12 @@ export function renderPerfReportHtml(report) {
   const moduleSections = (report.modules ?? [])
     .map((moduleReport) => {
       const thresholds = renderTable(
-        ["Metric", "Expression", "Actual", "Status"],
+        [
+          t("perf.col.metric"),
+          t("perf.col.expression"),
+          t("perf.col.actual"),
+          t("perf.col.status"),
+        ],
         (moduleReport.thresholds ?? []).map((threshold) => [
           threshold.metric,
           threshold.expression,
@@ -249,13 +259,18 @@ export function renderPerfReportHtml(report) {
                 ? threshold.unit
                 : undefined,
           }),
-          threshold.passed ? "passed" : "failed",
+          threshold.passed ? t("perf.passed") : t("perf.failed"),
         ]),
-        "No thresholds configured.",
+        t("perf.noThresholds"),
       );
 
       const checks = renderTable(
-        ["Check", "Passes", "Fails", "Pass rate"],
+        [
+          t("perf.col.check"),
+          t("perf.col.passes"),
+          t("perf.col.fails"),
+          t("perf.col.passRate"),
+        ],
         (moduleReport.checks ?? []).map((check) => [
           check.name,
           check.passes,
@@ -264,21 +279,21 @@ export function renderPerfReportHtml(report) {
             ? null
             : `${(check.passRate * 100).toFixed(1)}%`,
         ]),
-        "No checks captured.",
+        t("perf.noChecks"),
       );
 
       const scenarios = renderTable(
-        ["Scenario", "Executor", "Details"],
+        [t("perf.col.scenario"), t("perf.col.executor"), t("perf.col.details")],
         (moduleReport.scenarios ?? []).map((scenario) => [
           scenario.name,
           scenario.executor ?? "—",
           JSON.stringify(scenario.options ?? {}),
         ]),
-        "No scenarios captured.",
+        t("perf.noScenarios"),
       );
 
       const customMetrics = renderTable(
-        ["Metric", "Values", "Thresholds"],
+        [t("perf.col.metric"), t("perf.col.values"), t("perf.thresholds")],
         (moduleReport.customMetrics ?? []).map((metric) => [
           metric.key,
           {
@@ -292,12 +307,12 @@ export function renderPerfReportHtml(report) {
             ? metric.thresholds
                 .map(
                   (threshold) =>
-                    `${threshold.expression} (${threshold.passed ? "pass" : "fail"})`,
+                    `${threshold.expression} (${threshold.passed ? t("perf.pass") : t("perf.fail")})`,
                 )
                 .join(", ")
             : "—",
         ]),
-        "No custom metrics captured.",
+        t("perf.noCustom"),
       );
 
       return `
@@ -310,31 +325,31 @@ export function renderPerfReportHtml(report) {
             <span class="perf-badge ${moduleReport.status === "passed" ? "perf-ok" : "perf-fail"}">${escapeHtml(moduleReport.status)}</span>
           </summary>
           <div class="perf-section">
-            <h4>Summary</h4>
+            <h4>${escapeHtml(t("perf.summary"))}</h4>
             <div class="perf-stat-grid">${renderMetricList(moduleReport.coreMetrics)}</div>
           </div>
           <div class="perf-section">
-            <h4>Latency</h4>
+            <h4>${escapeHtml(t("perf.latency"))}</h4>
             <div class="perf-stat-grid">${renderMetricList(moduleReport.latencyMetrics)}</div>
           </div>
           <div class="perf-section">
-            <h4>Throughput &amp; Errors</h4>
+            <h4>${escapeHtml(t("perf.throughput"))}</h4>
             <div class="perf-stat-grid">${renderMetricList(moduleReport.throughputMetrics)}</div>
           </div>
           <div class="perf-section">
-            <h4>Thresholds</h4>
+            <h4>${escapeHtml(t("perf.thresholds"))}</h4>
             ${thresholds}
           </div>
           <div class="perf-section">
-            <h4>Scenarios</h4>
+            <h4>${escapeHtml(t("perf.scenarios"))}</h4>
             ${scenarios}
           </div>
           <div class="perf-section">
-            <h4>Checks</h4>
+            <h4>${escapeHtml(t("perf.checks"))}</h4>
             ${checks}
           </div>
           <div class="perf-section">
-            <h4>Custom Metrics</h4>
+            <h4>${escapeHtml(t("perf.custom"))}</h4>
             ${customMetrics}
           </div>
         </details>`;
@@ -345,13 +360,13 @@ export function renderPerfReportHtml(report) {
     <article class="perf-report">
       <header class="perf-run-header">
         <div>
-          <h2>Summary</h2>
+          <h2>${escapeHtml(t("perf.summary"))}</h2>
           <p>${escapeHtml(report.environment)} · ${escapeHtml(report.status)}</p>
         </div>
         <div class="perf-run-meta">
-          <span>Modules: ${escapeHtml(report.modules?.length ?? 0)}</span>
-          <span>Started: ${escapeHtml(report.startedAt ?? "—")}</span>
-          <span>Finished: ${escapeHtml(report.finishedAt ?? "—")}</span>
+          <span>${escapeHtml(t("perf.modules", { n: String(report.modules?.length ?? 0) }))}</span>
+          <span>${escapeHtml(t("perf.started", { at: report.startedAt ?? "—" }))}</span>
+          <span>${escapeHtml(t("perf.finished", { at: report.finishedAt ?? "—" }))}</span>
         </div>
       </header>
       ${moduleSections}

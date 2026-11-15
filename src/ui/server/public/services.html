@@ -336,7 +336,7 @@
          Focus (where commands go), not a select of its own. -->
       <div class="page-main">
         <div class="services-pane" id="services-pane">
-          <div class="empty-state">Loading services…</div>
+          <div class="empty-state" data-t="svc.loading">Loading services…</div>
         </div>
       </div>
 
@@ -356,6 +356,8 @@
         import { ownersLabel } from "/workspace-picker.js";
         // issue 133: Den's own dialogs, never the browser's confirm().
         import { askConfirm } from "/dialog-den.js";
+        // The page's words (issue 171): shell.js's catalog, "svc.*".
+        const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
 
         let es = null;
         // The run tab `es` feeds in the shell's runs dock (R16): one per
@@ -423,17 +425,17 @@
           );
           const listEl = document.getElementById("ws-service-list");
           if (services.length === 0) {
-            listEl.innerHTML = '<span class="ws-msg">No services yet.</span>';
+            listEl.innerHTML = `<span class="ws-msg">${t("svc.ws.none")}</span>`;
           } else {
             listEl.innerHTML = services
               .map(([addr, entry]) => {
                 const meta =
                   entry.mode === "dev-managed"
-                    ? `<span style="color:var(--muted);font-size:11px">dev-managed · ${entry.path ?? ""}</span>`
-                    : `<span style="color:var(--muted);font-size:11px">managed · ${entry.branch ?? "main"}</span>`;
+                    ? `<span style="color:var(--muted);font-size:11px">${t("svc.ws.devManaged", { path: entry.path ?? "" })}</span>`
+                    : `<span style="color:var(--muted);font-size:11px">${t("svc.ws.managed", { branch: entry.branch ?? "main" })}</span>`;
                 return `<div class="ws-service-row">
             <span>${addr}</span>${meta}
-            <button title="Remove" onclick="removeService('${addr}')">×</button>
+            <button title="${t("svc.ws.remove")}" onclick="removeService('${addr}')">×</button>
           </div>`;
               })
               .join("");
@@ -445,12 +447,12 @@
             .catch(() => []);
           const repoSel = document.getElementById("ws-repo-sel");
           repoSel.innerHTML =
-            '<option value="">Select repo…</option>' +
+            `<option value="">${t("svc.ws.selectRepo")}</option>` +
             repos
               .map((r) => {
                 const label = r.hasManifest ? `${r.name} ✓` : r.name;
                 const disabled = r.alreadyAdded ? " disabled" : "";
-                const suffix = r.alreadyAdded ? " (added)" : "";
+                const suffix = r.alreadyAdded ? ` ${t("svc.ws.added")}` : "";
                 return `<option value="${r.name}" data-path="${r.absPath}"${disabled}>${label}${suffix}</option>`;
               })
               .join("");
@@ -460,7 +462,7 @@
           const name = document.getElementById("ws-name-input").value.trim();
           const msg = document.getElementById("ws-create-msg");
           if (!name) {
-            msg.textContent = "Name required";
+            msg.textContent = t("svc.ws.nameRequired");
             msg.className = "ws-msg err";
             return;
           }
@@ -474,7 +476,7 @@
             msg.className = "ws-msg err";
             return;
           }
-          msg.textContent = `✓ Created "${name}"`;
+          msg.textContent = t("svc.ws.created", { name });
           msg.className = "ws-msg ok";
           document.getElementById("ws-name-input").value = "";
           await refreshWsPanel();
@@ -487,15 +489,14 @@
           const name = data.focus ?? data.active?.[0] ?? "default";
           const msg = document.getElementById("ws-delete-msg");
           if (name === "default") {
-            msg.textContent = "Cannot delete default";
+            msg.textContent = t("svc.ws.keepDefault");
             msg.className = "ws-msg err";
             return;
           }
-          const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
           const sure = await askConfirm({
-            title: dT("dlg.delProjT"),
-            message: dT("dlg.delProj", { ws: name }),
-            okLabel: dT("dlg.delete"),
+            title: T("dlg.delProjT"),
+            message: T("dlg.delProj", { ws: name }),
+            okLabel: T("dlg.delete"),
             danger: true,
           });
           if (!sure) return;
@@ -529,7 +530,7 @@
             msg.className = "ws-msg err";
             return;
           }
-          msg.textContent = `✓ Deleted "${name}"`;
+          msg.textContent = t("svc.ws.deleted", { name });
           msg.className = "ws-msg ok";
           await Promise.all([loadServices(), refreshWsPanel()]);
         };
@@ -540,7 +541,7 @@
           const msg = document.getElementById("ws-add-msg");
           const repoName = repoSel.value;
           if (!repoName) {
-            msg.textContent = "Select a repo";
+            msg.textContent = t("svc.ws.pickRepo");
             msg.className = "ws-msg err";
             return;
           }
@@ -558,7 +559,7 @@
             msg.className = "ws-msg err";
             return;
           }
-          msg.textContent = `✓ Added ${repoName}`;
+          msg.textContent = t("svc.ws.addedRepo", { repo: repoName });
           msg.className = "ws-msg ok";
           await Promise.all([loadServices(), refreshWsPanel()]);
         };
@@ -582,7 +583,7 @@
         async function loadServices() {
           const env = document.getElementById("env-sel").value;
           const pane = document.getElementById("services-pane");
-          pane.innerHTML = '<div class="empty-state">Loading…</div>';
+          pane.innerHTML = `<div class="empty-state">${t("svc.loadingShort")}</div>`;
 
           let services;
           let apps = [];
@@ -594,13 +595,12 @@
             services = await svcRes.json();
             if (appRes?.ok) apps = (await appRes.json()).applications ?? [];
           } catch {
-            pane.innerHTML =
-              '<div class="empty-state">Failed to load services</div>';
+            pane.innerHTML = `<div class="empty-state">${t("svc.loadFailed")}</div>`;
             return;
           }
 
           if (!services.length) {
-            pane.innerHTML = `<div class="empty-state">No services registered.<br><code>__DEN_CLI__ register &lt;path&gt;</code> to add a repo.</div>`;
+            pane.innerHTML = `<div class="empty-state">${t("svc.none")}<br>${t("svc.none.how", { cmd: "<code>__DEN_CLI__ register &lt;path&gt;</code>" })}</div>`;
             return;
           }
 
@@ -655,7 +655,7 @@
           const pinBtn = (id) => {
             const on = window.denShell?.isPinned(id);
             if (!window.denShell) return "";
-            return `<button class="pin-btn" data-pin-toggle="${esc(id)}" aria-pressed="${on ? "true" : "false"}" title="${on ? "Unpin" : "Pin"} ${esc(id)}" aria-label="${on ? "Unpin" : "Pin"} ${esc(id)}">${on ? "★" : "☆"}</button>`;
+            return `<button class="pin-btn" data-pin-toggle="${esc(id)}" aria-pressed="${on ? "true" : "false"}" title="${esc(t(on ? "svc.unpin" : "svc.pin", { id }))}" aria-label="${esc(t(on ? "svc.unpin" : "svc.pin", { id }))}">${on ? "★" : "☆"}</button>`;
           };
           const cardHtml = (s) => {
             const addr = s.address ?? `${s.repo}/${s.service}`;
@@ -676,21 +676,21 @@
               )
               .join("");
             const logsButton = s.logs
-              ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs</button>`
+              ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">${t("svc.logs")}</button>`
               : "";
             const hasCaps = usableCmds.length > 0 || s.logs;
             const emptyNote =
               s.cloned === false
-                ? "not cloned yet — run Sync in Projects"
+                ? t("svc.notCloned.note")
                 : isSub
-                  ? "managed by its system"
-                  : "no commands for this env";
+                  ? t("svc.sub.note")
+                  : t("svc.noCmds");
             const modeBadge = s.mode
               ? `<span class="badge ${s.mode}">${s.mode}</span>`
               : "";
             const unclonedBadge =
               s.cloned === false
-                ? `<span class="badge" style="border-color:var(--warn);color:var(--warn)" title="Not cloned yet">⬇ not cloned</span>`
+                ? `<span class="badge" style="border-color:var(--warn);color:var(--warn)" title="${t("svc.notCloned.title")}">⬇ ${t("svc.notCloned")}</span>`
                 : "";
             const branchBadge = s.branch
               ? `<span class="badge branch">${s.branch}</span>`
@@ -698,7 +698,7 @@
             // Which manifest layers built this card: repo or held, + override.
             const layersBadge =
               Array.isArray(s.manifestLayers) && s.manifestLayers.length > 0
-                ? `<span class="badge layers" title="Manifest layers applied">manifest: ${s.manifestLayers.join(" + ")}</span>`
+                ? `<span class="badge layers" title="${t("svc.layers.title")}">${esc(t("svc.layers", { layers: s.manifestLayers.join(" + ") }))}</span>`
                 : "";
             return `
           <div class="service-card${isSub ? " subservice" : ""}"${isSub ? "" : ` id="repo-${esc(s.repo)}"`}>
@@ -708,7 +708,7 @@
                 <div class="service-name"><button type="button" class="svc-name-btn" data-svpanel-open="${esc(isSub ? addr : s.repo)}" aria-haspopup="dialog" aria-expanded="false" title="${esc(window.denShell?.t?.("svp.more", { s: isSub ? addr : s.repo }) ?? addr)}">${esc(addr)}</button></div>
                 <div class="service-repo">${s.repo}${
                   ownersLabel(s.inWorkspaces)
-                    ? `<span class="owners" title="Shared: listed once for every project in view that defines it">${esc(ownersLabel(s.inWorkspaces))}</span>`
+                    ? `<span class="owners" title="${esc(t("svc.shared"))}">${esc(ownersLabel(s.inWorkspaces))}</span>`
                     : ""
                 }</div>
                 <a class="site-link" id="site-${s.repo}-${s.service}" target="_blank" rel="noopener" hidden></a>
@@ -744,8 +744,8 @@
           if (standalone.length)
             sections.push({
               app: {
-                title: "Single-repo applications",
-                description: "Each repo is its own application.",
+                title: t("svc.app.single"),
+                description: t("svc.app.single.d"),
               },
               cards: standalone,
             });
@@ -754,8 +754,8 @@
             sections.push({
               app: apps.length
                 ? {
-                    title: "Not in an application",
-                    description: "In view, but in no application.",
+                    title: t("svc.app.none"),
+                    description: t("svc.app.none.d"),
                   }
                 : null,
               cards: rest,
@@ -768,7 +768,7 @@
             app
               ? `<div class="app-section-head">
             <span class="app-section-title">${esc(app.title)}</span>
-            ${app.owner ? `<span class="app-section-owner" title="Owner">${esc(app.owner)}</span>` : ""}
+            ${app.owner ? `<span class="app-section-owner" title="${esc(t("svc.owner"))}">${esc(app.owner)}</span>` : ""}
             ${app.description ? `<span class="app-section-desc">${esc(app.description)}</span>` : ""}
           </div>`
               : ""
@@ -894,7 +894,7 @@
               const ok = msg.exitCode === 0;
               if (msg.duration > 0) {
                 appendLine(
-                  `\n${ok ? "✓ Done" : "✗ Failed"} in ${fmtDuration(msg.duration)}\n`,
+                  `\n${t(ok ? "svc.done" : "svc.failed", { time: fmtDuration(msg.duration) })}\n`,
                   ok ? "done-ok" : "done-fail",
                 );
               }
@@ -909,7 +909,7 @@
             }
           };
           evtSrc.onerror = () => {
-            appendLine("Connection closed", "err");
+            appendLine(t("svc.closed"), "err");
             // A tail ending is not a health signal — leave the dot to the poll.
             if (!isStream) {
               setDot(repo, service, "err");
@@ -953,7 +953,7 @@
               if (h.openUrl) {
                 link.href = h.openUrl;
                 link.textContent = `${h.openUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")} ↗`;
-                link.title = `Open ${h.openUrl} in a new tab`;
+                link.title = t("svc.openTab", { url: h.openUrl });
                 link.hidden = false;
               } else {
                 link.hidden = true;

@@ -1015,35 +1015,54 @@
           target="_blank"
           rel="noopener"
           title="Open app"
+          data-t-attr="title:tst.openApp"
           style="
             font-size: 11px;
             color: var(--muted);
             text-decoration: none;
             display: none;
           "
-          >↗ open app</a
+          >↗ <span data-t="tst.openApp.link">open app</span></a
         >
 
         <!-- Tests context: run status + layout toggle + run button -->
         <div class="bar2-slot active" id="bar2-tests">
           <div class="status">
             <span class="dot" id="run-dot"></span>
-            <span id="run-status">idle</span>
+            <span id="run-status" data-t="tst.idle">idle</span>
           </div>
           <div class="spacer"></div>
           <div class="seg" id="layout-seg">
-            <button data-layout="top" class="active" title="Controls on top">
+            <button
+              data-layout="top"
+              class="active"
+              title="Controls on top"
+              data-t-attr="title:tst.layout.top.title"
+              data-t="tst.layout.top"
+            >
               top
             </button>
-            <button data-layout="side" title="Controls on left">side</button>
+            <button
+              data-layout="side"
+              title="Controls on left"
+              data-t-attr="title:tst.layout.side.title"
+              data-t="tst.layout.side"
+            >
+              side
+            </button>
           </div>
-          <button class="run-btn" id="run-btn">&#9654; Run</button>
+          <button class="run-btn" id="run-btn">
+            &#9654; <span data-t="tst.run">Run</span>
+          </button>
         </div>
 
         <!-- Services context: exec status -->
         <div class="bar2-slot" id="bar2-services">
           <div class="spacer"></div>
-          <span id="svc-status" style="font-size: 11px; color: var(--muted)"
+          <span
+            id="svc-status"
+            style="font-size: 11px; color: var(--muted)"
+            data-t="tst.idle"
             >idle</span
           >
         </div>
@@ -1056,16 +1075,27 @@
             <div class="controls">
               <div class="seg pillars" id="pillars">
                 <button class="active" data-pillar="synthetic">
-                  &#127760; browser
+                  &#127760; <span data-t="tst.p.browser">browser</span>
                 </button>
-                <button data-pillar="integration">&#128279; api</button>
-                <button data-pillar="smoke">&#128168; smoke</button>
-                <button data-pillar="performance">&#9889; perf</button>
-                <button data-pillar="journeys">&#129517; journeys</button>
+                <button data-pillar="integration">
+                  &#128279; <span data-t="tst.p.api">api</span>
+                </button>
+                <button data-pillar="smoke">
+                  &#128168; <span data-t="tst.p.smoke">smoke</span>
+                </button>
+                <button data-pillar="performance">
+                  &#9889; <span data-t="tst.p.perf">perf</span>
+                </button>
+                <button data-pillar="journeys">
+                  &#129517; <span data-t="tst.p.journeys">journeys</span>
+                </button>
                 <button data-pillar="security">
-                  &#128737;&#65039; security
+                  &#128737;&#65039;
+                  <span data-t="tst.p.security">security</span>
                 </button>
-                <button data-pillar="suites">&#129514; suites</button>
+                <button data-pillar="suites">
+                  &#129514; <span data-t="tst.p.suites">suites</span>
+                </button>
               </div>
               <div class="module-picker" id="module-picker">
                 <button
@@ -1073,25 +1103,30 @@
                   id="module-picker-btn"
                   type="button"
                 >
-                  <span id="module-picker-label">All modules</span>
+                  <span id="module-picker-label" data-t="tst.allModules"
+                    >All modules</span
+                  >
                   <span class="module-picker-arrow">▾</span>
                 </button>
                 <div class="module-picker-dropdown" id="module-picker-dropdown">
                   <label class="module-check-item module-check-all">
                     <input type="checkbox" id="module-check-all" checked />
-                    <span>All modules</span>
+                    <span data-t="tst.allModules">All modules</span>
                   </label>
                   <div class="module-check-divider"></div>
                   <div id="module-check-list"></div>
                 </div>
               </div>
               <div class="smoke-override" id="smoke-api-url-wrap">
-                <span class="smoke-override-label">api url</span>
+                <span class="smoke-override-label" data-t="tst.apiUrl"
+                  >api url</span
+                >
                 <input
                   id="smoke-api-url"
                   class="text-input"
                   type="text"
                   placeholder="Optional override; blank uses repo/env default"
+                  data-t-attr="placeholder:tst.apiUrl.ph"
                   spellcheck="false"
                 />
               </div>
@@ -1101,16 +1136,22 @@
                   class="toggle-input"
                   type="checkbox"
                 />
-                <span class="smoke-override-label">use local checkout</span>
+                <span class="smoke-override-label" data-t="tst.localCheckout"
+                  >use local checkout</span
+                >
               </label>
               <label class="smoke-override" id="security-mode-wrap">
-                <span class="smoke-override-label">scan</span>
+                <span class="smoke-override-label" data-t="tst.scan">scan</span>
                 <select id="security-mode" class="text-input">
-                  <option value="baseline">
+                  <option value="baseline" data-t="tst.scan.baseline">
                     baseline: passive, local + beta
                   </option>
-                  <option value="api">api: OpenAPI, active, local only</option>
-                  <option value="full">full: active attacks, local only</option>
+                  <option value="api" data-t="tst.scan.api">
+                    api: OpenAPI, active, local only
+                  </option>
+                  <option value="full" data-t="tst.scan.full">
+                    full: active attacks, local only
+                  </option>
                 </select>
               </label>
               <!-- Per-perf-test optional launch fields, rendered generically from
@@ -1126,28 +1167,41 @@
           <div class="report-pane">
             <div class="pane-bar">
               <div class="pane-bar-left">
-                <span id="report-pane-title">Playwright Report</span>
+                <span id="report-pane-title" data-t="perf.pane.playwright"
+                  >Playwright Report</span
+                >
                 <div class="seg report-tabs" id="report-view-tabs">
                   <button
                     data-report-view="rendered"
                     class="active"
                     type="button"
+                    data-t="tst.view.rendered"
                   >
                     Rendered Report
                   </button>
-                  <button data-report-view="raw" type="button">
+                  <button
+                    data-report-view="raw"
+                    type="button"
+                    data-t="tst.view.raw"
+                  >
                     Raw Output
                   </button>
                 </div>
               </div>
-              <button id="open-report-tab">Open in new tab &#8599;</button>
+              <button id="open-report-tab">
+                <span data-t="tst.openTab">Open in new tab</span> &#8599;
+              </button>
             </div>
-            <div id="report-placeholder">
+            <div id="report-placeholder" data-t="perf.pane.playwright.empty">
               Run tests to see the Playwright report
             </div>
             <div id="perf-report-container"></div>
             <pre id="report-raw-output"></pre>
-            <iframe id="report-frame" title="Playwright Report"></iframe>
+            <iframe
+              id="report-frame"
+              title="Playwright Report"
+              data-t-attr="title:perf.pane.playwright"
+            ></iframe>
           </div>
         </div>
       </div>
@@ -1155,7 +1209,7 @@
       <!-- ── SERVICES VIEW ──────────────────────────────────────────────────────── -->
       <div class="view" id="view-services">
         <div class="services-pane" id="services-pane">
-          <div class="empty-state">Loading services&#8230;</div>
+          <div class="empty-state" data-t="svc.loading">Loading services…</div>
         </div>
 
         <!-- A command's output is a tab in the shell's runs dock (R16). -->
@@ -1174,6 +1228,8 @@
           sudoRun,
         } from "/header.js";
         import { ownersLabel } from "/workspace-picker.js";
+        // The page's words (issue 171): shell.js's catalog, "tst.*".
+        const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
         import {
           buildReportPaneModel,
           getNextReportViewOnPillarChange,
@@ -1445,8 +1501,7 @@
           if (!Array.isArray(sources) || sources.length === 0) {
             const empty = document.createElement("div");
             empty.className = "test-source test-source-empty";
-            empty.textContent =
-              "No source repo detected for this pillar — add one to your project or register-repos.";
+            empty.textContent = t("tst.noSource");
             bar.appendChild(empty);
             return;
           }
@@ -1454,12 +1509,16 @@
             const row = document.createElement("div");
             row.className = "test-source";
             if (s.repoPath) row.title = s.repoPath;
-            appendSpan(row, "test-source-label", "source:");
-            appendSpan(row, "test-source-repo", s.repoName ?? "(unknown)");
+            appendSpan(row, "test-source-label", t("tst.source"));
+            appendSpan(row, "test-source-repo", s.repoName ?? t("tst.unknown"));
             if (s.workspace)
               appendSpan(row, "test-source-ws", `@ ${s.workspace}`);
             appendSpan(row, "test-source-label", "·");
-            appendSpan(row, "test-source-branch", s.branch ?? "(no branch)");
+            appendSpan(
+              row,
+              "test-source-branch",
+              s.branch ?? t("tst.noBranch"),
+            );
             if (s.shortSha)
               appendSpan(row, "test-source-sha", `(${s.shortSha})`);
             if (s.repoPath)
@@ -1542,11 +1601,11 @@
           ).length;
           const label = document.getElementById("module-picker-label");
           if (sel.length === 0 || sel.length === all) {
-            label.textContent = "All modules";
+            label.textContent = t("tst.allModules");
           } else if (sel.length === 1) {
             label.textContent = sel[0];
           } else {
-            label.textContent = `${sel.length} modules`;
+            label.textContent = t("tst.modules", { n: sel.length });
           }
           localStorage.setItem(
             `__DEN_CLI__-modules-${pillar}`,
@@ -1835,8 +1894,8 @@
               ? ""
               : selected.length === 1
                 ? selected[0]
-                : `${selected.length} modules`) + optLabel;
-          setRunStatus("running", "running\u2026");
+                : t("tst.modules", { n: selected.length })) + optLabel;
+          setRunStatus("running", t("tst.running"));
           document.getElementById("run-btn").disabled = true;
           resetReportPane();
           // The output is one tab in the shell's runs dock (R16), kept across
@@ -1864,20 +1923,19 @@
               const dur = fmtDuration(msg.duration);
               // Every suite skipped: nothing ran, never a pass (0.4.45).
               const none = !!msg.nothingRan;
-              const tr = (k, v) => window.denShell?.t?.(k, v) ?? k;
               testAppendLine(
                 none
-                  ? `\n${tr("run.nothingRan", { d: dur })}\n`
-                  : `\n${ok ? "\u2713 Passed" : "\u2717 Failed"} in ${dur}\n`,
+                  ? `\n${t("run.nothingRan", { d: dur })}\n`
+                  : `\n${t(ok ? "tst.passedIn" : "tst.failedIn", { d: dur })}\n`,
                 none ? "done-none" : ok ? "done-ok" : "done-fail",
               );
               setRunStatus(
                 none ? "nothing-ran" : ok ? "passed" : "failed",
                 none
-                  ? tr("run.nothingRanShort", { d: dur })
+                  ? t("run.nothingRanShort", { d: dur })
                   : ok
-                    ? `passed (${dur})`
-                    : `failed (${dur})`,
+                    ? t("tst.passed", { d: dur })
+                    : t("tst.failed", { d: dur }),
               );
               runs().finish(TEST_RUN, { ok });
               document.getElementById("run-btn").disabled = false;
@@ -1889,9 +1947,7 @@
                 } else {
                   latestPerfReportUrl = null;
                   reportView = "raw";
-                  syncReportPane(
-                    "Structured perf report unavailable. Showing raw output instead.",
-                  );
+                  syncReportPane(t("tst.perfUnavailable"));
                 }
               } else if (
                 pillar !== "journeys" &&
@@ -1905,9 +1961,9 @@
             }
           };
           testEs.onerror = () => {
-            testAppendLine("Connection closed", "err");
+            testAppendLine(t("svc.closed"), "err");
             runs().finish(TEST_RUN, { ok: false });
-            setRunStatus("failed", "error");
+            setRunStatus("failed", t("tst.error"));
             document.getElementById("run-btn").disabled = false;
             testEs?.close();
             testEs = null;
@@ -2037,8 +2093,7 @@
           if (model.activeView === "raw") {
             rawOutput.style.display = "block";
             if (!rawOutput.textContent.trim()) {
-              rawOutput.textContent =
-                overrideMessage || "Raw performance output will appear here.";
+              rawOutput.textContent = overrideMessage || t("tst.rawEmpty");
             }
             return;
           }
@@ -2081,34 +2136,41 @@
             syncReportPane();
             return;
           }
-          const RISKS = ["High", "Medium", "Low", "Informational"];
+          // ZAP's risk levels (a finding's `risk`, data), each in words.
+          const riskWord = {
+            High: t("tst.risk.high"),
+            Medium: t("tst.risk.medium"),
+            Low: t("tst.risk.low"),
+            Informational: t("tst.risk.info"),
+          };
+          const RISKS = Object.keys(riskWord);
           const count = (fs, r) =>
             (fs || []).filter((f) => f.risk === r).length;
           box.innerHTML = runs
             .map(
               (run) => `
         <section class="sec-run">
-          <h3>${esc(run.mode)} scan · ${esc(run.env)} · ${esc(new Date(run.finishedAt).toLocaleString())}</h3>
+          <h3>${esc(t("tst.sec.head", { mode: run.mode, env: run.env, at: new Date(run.finishedAt).toLocaleString() }))}</h3>
           <table class="sec-table">
-            <thead><tr><th>Service</th>${RISKS.map((r) => `<th>${r === "Informational" ? "Info" : r}</th>`).join("")}<th>New</th><th></th></tr></thead>
+            <thead><tr><th>${esc(t("env.service"))}</th>${RISKS.map((r) => `<th>${esc(riskWord[r])}</th>`).join("")}<th>${esc(t("tst.sec.new"))}</th><th></th></tr></thead>
             <tbody>${run.results
-              .map((t) =>
-                t.findings === null
-                  ? `<tr><td>${esc(t.id)}</td><td colspan="5" class="sec-err">scan failed: ${esc(t.error)}</td><td></td></tr>`
+              .map((tg) =>
+                tg.findings === null
+                  ? `<tr><td>${esc(tg.id)}</td><td colspan="5" class="sec-err">${esc(t("tst.sec.failed", { error: tg.error }))}</td><td></td></tr>`
                   : `<tr>
-                  <td title="${esc(t.url)}">${esc(t.id)}</td>
+                  <td title="${esc(tg.url)}">${esc(tg.id)}</td>
                   ${RISKS.map((r) => {
-                    const n = count(t.findings, r);
+                    const n = count(tg.findings, r);
                     return `<td class="sec-${r.toLowerCase()}${n ? " sec-hit" : ""}">${n}</td>`;
                   }).join("")}
-                  <td>${t.newSince?.length || ""}</td>
-                  <td>${t.report ? `<a href="/reports/security/${t.report.split("/").map(encodeURIComponent).join("/")}" target="_blank" rel="noopener">report &#8599;</a>` : ""}</td>
+                  <td>${tg.newSince?.length || ""}</td>
+                  <td>${tg.report ? `<a href="/reports/security/${tg.report.split("/").map(encodeURIComponent).join("/")}" target="_blank" rel="noopener">${esc(t("tst.sec.report"))} &#8599;</a>` : ""}</td>
                 </tr>
-                ${t.findings
+                ${tg.findings
                   .filter((f) => f.risk !== "Informational")
                   .map(
                     (f) => `
-                <tr class="sec-finding"><td colspan="7"><span class="sec-${f.risk.toLowerCase()}">${esc(f.risk)}</span> ${esc(f.name)} (&times;${f.count})${t.newSince?.includes(f.pluginId) ? " <b>new</b>" : ""}</td></tr>`,
+                <tr class="sec-finding"><td colspan="7"><span class="sec-${f.risk.toLowerCase()}">${esc(riskWord[f.risk] ?? f.risk)}</span> ${esc(f.name)} (&times;${f.count})${tg.newSince?.includes(f.pluginId) ? ` <b>${esc(t("tst.sec.newOne"))}</b>` : ""}</td></tr>`,
                   )
                   .join("")}`,
               )
@@ -2125,7 +2187,7 @@
           try {
             const report = await fetch(url).then((r) => {
               if (!r.ok)
-                throw new Error(`Failed to load perf report (${r.status})`);
+                throw new Error(t("tst.perfLoadFailed", { status: r.status }));
               return r.json();
             });
             latestPerfReportUrl = url;
@@ -2136,9 +2198,7 @@
           } catch {
             latestPerfReportUrl = null;
             reportView = "raw";
-            syncReportPane(
-              "Structured perf report unavailable. Showing raw output instead.",
-            );
+            syncReportPane(t("tst.perfUnavailable"));
           }
         }
 
@@ -2146,7 +2206,7 @@
         async function loadServices() {
           const env = document.getElementById("env-sel").value;
           const pane = document.getElementById("services-pane");
-          pane.innerHTML = '<div class="empty-state">Loading\u2026</div>';
+          pane.innerHTML = `<div class="empty-state">${t("svc.loadingShort")}</div>`;
 
           let services;
           try {
@@ -2154,13 +2214,12 @@
               r.json(),
             );
           } catch {
-            pane.innerHTML =
-              '<div class="empty-state">Failed to load services</div>';
+            pane.innerHTML = `<div class="empty-state">${t("svc.loadFailed")}</div>`;
             return;
           }
 
           if (!services.length) {
-            pane.innerHTML = `<div class="empty-state">No services registered for <strong>${env}</strong>.<br>Add a <code>services</code> block to <code>__DEN_MANIFEST_YML__</code>.</div>`;
+            pane.innerHTML = `<div class="empty-state">${t("tst.svc.none", { env: `<strong>${env}</strong>` })}<br>${t("tst.svc.how", { block: "<code>services</code>", file: "<code>__DEN_MANIFEST_YML__</code>" })}</div>`;
             return;
           }
 
@@ -2179,7 +2238,7 @@
                 )
                 .join("");
               const logsBtn = s.logs
-                ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">logs ↗</button>`
+                ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">${t("svc.logs")} ↗</button>`
                 : "";
               const hasCaps = s.commands.length > 0 || s.logs;
               return `
@@ -2192,7 +2251,7 @@
               </div>
             </div>
             <div class="cmd-row">
-              ${hasCaps ? cmdBtns + logsBtn : '<span style="color:var(--muted);font-size:11px">no capabilities for this env</span>'}
+              ${hasCaps ? cmdBtns + logsBtn : `<span style="color:var(--muted);font-size:11px">${t("tst.svc.noCaps")}</span>`}
             </div>
           </div>`;
             })
@@ -2224,7 +2283,7 @@
           return [
             {
               id: "stop",
-              label: execDetachable ? "Detach" : "Stop",
+              label: execDetachable ? t("tst.detach") : t("tst.stop"),
               run: stopCmd,
             },
           ];
@@ -2236,9 +2295,9 @@
           document
             .querySelectorAll('.cmd-btn[data-type="exec"]')
             .forEach((b) => (b.disabled = false));
-          document.getElementById("svc-status").textContent = "idle";
+          document.getElementById("svc-status").textContent = t("tst.idle");
           cmdAppendLine(
-            detachable ? "--- Detached ---" : "--- Stopped ---",
+            `--- ${detachable ? t("tst.detached") : t("tst.stopped")} ---`,
             "err",
           );
           if (execRun) runs().set(execRun, { running: false, actions: [] });
@@ -2266,11 +2325,13 @@
             `${cmd} ${repo}/${service}`,
             {
               doneLine: false,
-              actions: [{ id: "stop", label: "Stop", run: stopCmd }],
+              actions: [{ id: "stop", label: t("tst.stop"), run: stopCmd }],
             },
           );
-          document.getElementById("svc-status").textContent =
-            `running ${service}:${cmd}\u2026`;
+          document.getElementById("svc-status").textContent = t(
+            "tst.runningCmd",
+            { what: `${service}:${cmd}` },
+          );
 
           cmdAppendLine(
             `\n\u25b6 ${repo}/${service} \u00b7 ${cmd} \u00b7 ${env}\n`,
@@ -2298,11 +2359,11 @@
               const ok = msg.exitCode === 0;
               const dur = fmtDuration(msg.duration);
               cmdAppendLine(
-                `\n${ok ? "\u2713 Done" : "\u2717 Failed"} in ${dur}\n`,
+                `\n${t(ok ? "svc.done" : "svc.failed", { time: dur })}\n`,
                 ok ? "done-ok" : "done-fail",
               );
               setSvcDot(repo, service, ok ? "ok" : "err");
-              document.getElementById("svc-status").textContent = "idle";
+              document.getElementById("svc-status").textContent = t("tst.idle");
               runs().set(execRun, { actions: [] });
               runs().finish(execRun, { ok });
               document
@@ -2314,9 +2375,9 @@
             }
           };
           execEs.onerror = () => {
-            cmdAppendLine("Connection closed", "err");
+            cmdAppendLine(t("svc.closed"), "err");
             setSvcDot(repo, service, "err");
-            document.getElementById("svc-status").textContent = "idle";
+            document.getElementById("svc-status").textContent = t("tst.idle");
             runs().set(execRun, { actions: [] });
             runs().finish(execRun, { ok: false });
             document

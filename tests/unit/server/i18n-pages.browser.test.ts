@@ -110,8 +110,14 @@ const NAMES = [
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_HELPERS_BROWSER=webkit|firefox runs it there (Safari too).
+    const pw = await import("playwright");
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    browser = await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -278,4 +284,78 @@ describe("pages in a pseudo-locale: no literal inside <main>", () => {
     await p.close();
     expect(found).toEqual([]);
   }, 60_000);
+});
+
+describe("den#171: Edge, Tests, Release, Logs, Environments and Services in es and ja", () => {
+  // The real catalogs this time: words these pages drew in English before
+  // den#171, each now through the catalog, must not show in either language.
+  const PAGES = [
+    "/edge",
+    "/tests",
+    "/release",
+    "/logs",
+    "/environments",
+    "/services",
+  ];
+  const ENGLISH = [
+    "Reading the edge",
+    "Routes",
+    "Domains",
+    "Not configured",
+    "All modules",
+    "Rendered Report",
+    "Raw Output",
+    "Controls on top",
+    "deploy to:",
+    "Loading deployed state",
+    "Waves…",
+    "Side by side",
+    "Search across all logs",
+    "No active log streams",
+    "Re-check",
+    "health checks, run against every environment",
+    "nothing failing",
+    "as the top bar's View",
+    "Loading services",
+    "Single-repo applications",
+    "Not in an application",
+  ];
+
+  it.each(["es", "ja"])(
+    "%s: none of the moved words is left in English",
+    async (lang) => {
+      if (!browser) return;
+      await s!.settings({ language: lang });
+      const found: string[] = [];
+      try {
+        for (const url of PAGES) {
+          const p = await browser.newPage({
+            viewport: { width: 1440, height: 1000 },
+          });
+          await p.goto(signInUrl(s!.stateDir, s!.base, url));
+          await p.waitForLoadState("networkidle").catch(() => {});
+          await p.waitForTimeout(300);
+          const shown = await p.evaluate(() => {
+            const main = document.querySelector("#den-content");
+            if (!main) return "";
+            const attrs = Array.from(
+              main.querySelectorAll("[title], [aria-label], [placeholder]"),
+            ).flatMap((el) =>
+              ["title", "aria-label", "placeholder"].map(
+                (a) => el.getAttribute(a) ?? "",
+              ),
+            );
+            return [(main as HTMLElement).innerText, ...attrs].join("\n");
+          });
+          for (const w of ENGLISH)
+            if (shown.includes(w)) found.push(`${url}: ${w}`);
+          await p.close();
+        }
+      } finally {
+        await s!.settings({ language: "es" });
+      }
+      expect(found).toEqual([]);
+    },
+    120_000,
+  );
 });

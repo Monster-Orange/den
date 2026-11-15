@@ -23,6 +23,12 @@
  * (HTML from /api/edge's JSON), so tests need no server.
  */
 
+/**
+ * A word in the page's language (issue 171): shell.js's catalog, "edge.*".
+ * Without the shell (a test that installs none) the key comes back.
+ */
+const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
+
 function esc(v) {
   return String(v ?? "").replace(
     /[&<>"']/g,
@@ -43,11 +49,9 @@ function link(url, text) {
 /** Where the TLS strategy came from, in a line. */
 export function tlsNote(tls) {
   if (!tls) return "";
-  if (tls.from === "implicit" || tls.implicit)
-    return "implicit: edge.tls is not set (mkcert with a local CA, deprecated)";
-  if (tls.from === "legacy")
-    return "from the legacy keys (caroot / issue_cert), mapped";
-  return "set in edge.tls";
+  if (tls.from === "implicit" || tls.implicit) return t("edge.tls.implicit");
+  if (tls.from === "legacy") return t("edge.tls.legacy");
+  return t("edge.tls.set");
 }
 
 function tile(k, v, s, bad) {
@@ -76,36 +80,36 @@ function table(cols, rows, empty) {
  * 0.3.0-dev.32). mkcert (and none): Den's own cert, issued or planned.
  */
 export function certHeading(strategy, issued) {
-  if (strategy === "files") return "Names the included certs should cover";
-  return `Certificate names${issued ? "" : " (planned)"}`;
+  if (strategy === "files") return t("edge.cert.files");
+  return t(issued ? "edge.cert.names" : "edge.cert.planned");
 }
 
 /** The page's content (below the header) from /api/edge's JSON. */
 export function edgeView(st) {
   if (!st || st.configured === false)
     return (
-      `<div class="empty"><b>No edge configured.</b> ` +
+      `<div class="empty"><b>${esc(t("edge.none"))}</b> ` +
       `${esc(st?.error ?? "")}</div>`
     );
   const tls = st.tls ?? { strategy: "none" };
   const none = tls.strategy === "none";
   const ports = st.ports
     ? none
-      ? `:${st.ports.http} (http only)`
+      ? t("edge.ports.httpOnly", { http: st.ports.http })
       : `:${st.ports.http} / :${st.ports.https}`
-    : "not published";
+    : t("edge.ports.none");
   // Fronted: no host ports (edge.publish: false). The proxy in front
   // terminates TLS for browsers, so this machine's CA trust is moot.
   const fronted = !st.ports;
   const trust = none
     ? "—"
     : fronted
-      ? "not needed: fronted"
+      ? t("edge.trust.fronted")
       : st.caTrusted === null || st.caTrusted === undefined
-        ? "unknown"
+        ? t("edge.trust.unknown")
         : st.caTrusted
-          ? "trusted"
-          : "not trusted";
+          ? t("edge.trust.yes")
+          : t("edge.trust.no");
   const included = Array.isArray(st.included) ? st.included : [];
   const stacks = Array.isArray(st.stacks) ? st.stacks : [];
   const errors = [
@@ -115,38 +119,42 @@ export function edgeView(st) {
   const certNames = Array.isArray(st.certNames) ? st.certNames : [];
   const tiles = [
     tile(
-      "Container",
-      st.up ? "up" : "down",
+      t("edge.k.container"),
+      st.up ? t("edge.up") : t("edge.down"),
       `<span class="mono">${esc(st.container)}</span>: ${esc(st.state)}`,
       !st.up,
     ),
     tile(
-      "Ports",
+      t("edge.k.ports"),
       ports,
-      `network <span class="mono">${esc(st.network)}</span>`,
+      `${esc(t("edge.network"))} <span class="mono">${esc(st.network)}</span>`,
       false,
     ),
     tile("TLS", tls.strategy, esc(tlsNote(tls)), false),
     tile(
-      "CA trust",
+      t("edge.k.trust"),
       trust,
       none
-        ? "http only: no CA"
+        ? esc(t("edge.trust.httpOnly"))
         : fronted
-          ? "a proxy in front owns browser trust"
+          ? esc(t("edge.trust.proxy"))
           : tls.ca
             ? `<span class="mono">${esc(tls.ca)}</span>`
-            : "no CA set",
+            : esc(t("edge.trust.noCa")),
       st.caTrusted === false && !fronted,
     ),
     tile(
-      "Certificate",
-      none ? "—" : st.certIssued ? "issued" : "not issued",
+      t("edge.k.cert"),
       none
-        ? "http only: no cert"
+        ? "—"
+        : st.certIssued
+          ? t("edge.cert.issued")
+          : t("edge.cert.notIssued"),
+      none
+        ? esc(t("edge.cert.httpOnly"))
         : tls.strategy === "files"
-          ? "from the included config"
-          : `${certNames.length} name${certNames.length === 1 ? "" : "s"}`,
+          ? esc(t("edge.cert.fromFiles"))
+          : esc(t("edge.cert.n", { n: certNames.length })),
       false,
     ),
   ];
@@ -155,7 +163,7 @@ export function edgeView(st) {
     `<span class="mono">${esc(r.name)}</span>`,
     link(r.url),
     `<span class="mono">${esc(r.upstream)}</span>`,
-    `<span class="src">den</span>`,
+    `<span class="src" translate="no">den</span>`,
   ]);
   // Like Den's own rows: the URL with its scheme (https:// when the router
   // has TLS or is on websecure), and the upstream URL when its file
@@ -175,7 +183,7 @@ export function edgeView(st) {
   const inc = included.map((r) =>
     routerRow(
       r,
-      `<span class="src" title="included dynamic file">${esc(r.file)}</span>`,
+      `<span class="src" title="${esc(t("edge.src.included"))}">${esc(r.file)}</span>`,
     ),
   );
   // The stacks' own route files (stack up writes them): source "stack",
@@ -183,31 +191,31 @@ export function edgeView(st) {
   const stk = stacks.map((r) =>
     routerRow(
       r,
-      `<span class="src" title="written by stack up">stack</span> ` +
+      `<span class="src" title="${esc(t("edge.src.stack"))}" translate="no">stack</span> ` +
         `<span class="mono sub">${esc(r.file)}</span>`,
     ),
   );
   return (
     `<div class="sum">${tiles.join("")}</div>` +
-    `<section aria-labelledby="edge-h-routes"><h2 class="sec" id="edge-h-routes">Routes</h2>` +
+    `<section aria-labelledby="edge-h-routes"><h2 class="sec" id="edge-h-routes">${esc(t("edge.routes"))}</h2>` +
     table(
-      ["Name", "URL", "Upstream", "Source"],
+      [t("edge.col.name"), "URL", t("edge.col.upstream"), t("edge.col.source")],
       [...routes, ...inc, ...stk],
-      "No routes.",
+      t("edge.routes.none"),
     ) +
     (errors.length
       ? `<ul class="errs">` +
         errors
           .map(
             (e) =>
-              `<li><span class="mono">${esc(e.file)}</span>: not read (${esc(e.error)})</li>`,
+              `<li><span class="mono">${esc(e.file)}</span>: ${esc(t("edge.notRead", { error: e.error }))}</li>`,
           )
           .join("") +
         `</ul>`
       : "") +
-    `<p class="note">Den's own routes, then the routers in the included dynamic files (edge include), each with its source file, then the routers the stacks wrote (stack).</p>` +
+    `<p class="note">${esc(t("edge.routes.note"))}</p>` +
     `</section>` +
-    `<section aria-labelledby="edge-h-domains"><h2 class="sec" id="edge-h-domains">Domains</h2>` +
+    `<section aria-labelledby="edge-h-domains"><h2 class="sec" id="edge-h-domains">${esc(t("edge.domains"))}</h2>` +
     `<ul class="names">` +
     (st.domains ?? [])
       .map(
@@ -221,14 +229,14 @@ export function edgeView(st) {
       : `<section aria-labelledby="edge-h-cert"><h2 class="sec" id="edge-h-cert">${esc(certHeading(tls.strategy, st.certIssued))}</h2>` +
         (certNames.length
           ? `<ul class="names">${certNames.map((n) => `<li class="mono">${esc(n)}</li>`).join("")}</ul>`
-          : `<p class="none">None: the included config holds the certs.</p>`) +
+          : `<p class="none">${esc(t("edge.cert.none"))}</p>`) +
         `</section>`)
   );
 }
 
 /** The header's sub line: org / container · state. */
 export function edgeSub(st) {
-  if (!st || st.configured === false) return "Not configured";
+  if (!st || st.configured === false) return t("edge.notConfigured");
   return `${st.org} / ${st.container} · ${st.state}`;
 }
 
@@ -239,7 +247,10 @@ export async function mountEdge(root, sub, fetchFn = fetch) {
     const r = await fetchFn("/api/edge");
     st = await r.json();
   } catch (e) {
-    st = { configured: false, error: (e && e.message) || "unreachable" };
+    st = {
+      configured: false,
+      error: (e && e.message) || t("edge.unreachable"),
+    };
   }
   if (sub) sub.textContent = edgeSub(st);
   root.innerHTML = edgeView(st);
