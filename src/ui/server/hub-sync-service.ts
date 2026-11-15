@@ -92,6 +92,11 @@ export async function refreshHubNamesNow(): Promise<string[]> {
     write: (ws, l) => link.setHubProject(ws, l, "Hub (its project's name)"),
     // Issue 167: the Name row says when Hub last answered.
     checked: (ok) => recordHubNamesCheck(getStateDir(), ok),
+    // Issue 167: a rename asked of Hub ends when Hub has that name.
+    named: (ws, name) => {
+      if (link.hubRenameOf(ws)?.to === name)
+        link.setHubRename(ws, null, "Hub (the rename was approved)");
+    },
   });
 }
 

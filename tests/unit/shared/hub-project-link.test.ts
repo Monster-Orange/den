@@ -101,3 +101,51 @@ describe("a Hub project id (H5)", () => {
       expect(m.parseHubProjectLink({ id, slug: "b", name: "B" })).toBeNull();
   });
 });
+
+/**
+ * Issue 167 (mock v6 A3): a rename asked of Hub waits next to the link,
+ * `<ws>.hub_rename: {to, held, url, askedAt}`, until a sync brings that
+ * name. Unlinking, or linking another Hub project, drops it.
+ */
+describe("a rename waiting in Hub (a real file)", () => {
+  const STAR = { id: "proj_star1", slug: "north-star", name: "North Star" };
+  const ASK = {
+    to: "Polaris",
+    held: "held_1",
+    url: "https://hub.example.test/acme/held/held_1",
+    askedAt: "2026-11-15T10:00:00.000Z",
+  };
+
+  it("is kept next to the link and read back", () => {
+    m.setHubProject("north", STAR);
+    expect(m.hubRenameOf("north")).toBeNull();
+    m.setHubRename("north", ASK);
+    expect(m.hubRenameOf("north")).toEqual(ASK);
+    expect(m.hubProjectOf("north")).toEqual(STAR);
+    m.setHubRename("north", null);
+    expect(m.hubRenameOf("north")).toBeNull();
+  });
+
+  it("a bad value reads as none; a link that isn't http(s) is dropped", () => {
+    expect(m.parseHubRename({ to: "", held: "h" })).toBeNull();
+    expect(m.parseHubRename({ to: "X", held: "" })).toBeNull();
+    expect(m.parseHubRename({ ...ASK, url: "javascript:alert(1)" })).toEqual({
+      to: "Polaris",
+      held: "held_1",
+      askedAt: ASK.askedAt,
+    });
+  });
+
+  it("unlinking, or linking another Hub project, drops it; the same link keeps it", () => {
+    m.setHubProject("north", STAR);
+    m.setHubRename("north", ASK);
+    m.setHubProject("north", { ...STAR, name: "North Star 2" });
+    expect(m.hubRenameOf("north")).toEqual(ASK);
+    m.setHubProject("north", { id: "proj_other1", slug: "o", name: "O" });
+    expect(m.hubRenameOf("north")).toBeNull();
+    m.setHubProject("north", STAR);
+    m.setHubRename("north", ASK);
+    m.setHubProject("north", null);
+    expect(m.hubRenameOf("north")).toBeNull();
+  });
+});

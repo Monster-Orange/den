@@ -22,6 +22,11 @@ export interface HubNamesDeps {
   write: (ws: string, link: HubProjectLink) => void;
   /** Issue 167: whether Hub answered this check (recordHubNamesCheck). */
   checked?: (ok: boolean) => void;
+  /**
+   * Issue 167: Hub's name now for each linked project it lists, changed or
+   * not (a rename waiting in Hub ends when this brings its name).
+   */
+  named?: (ws: string, name: string) => void;
 }
 
 /** The projects whose link changed. */
@@ -42,6 +47,11 @@ export async function refreshHubNames(d: HubNamesDeps): Promise<string[]> {
   for (const [ws, link] of linked) {
     const now = byId.get(link.id);
     if (!now?.name?.trim()) continue;
+    try {
+      d.named?.(ws, now.name);
+    } catch {
+      /* the next check */
+    }
     if (now.name === link.name && now.slug === link.slug) continue;
     try {
       d.write(ws, { id: link.id, slug: now.slug, name: now.name });

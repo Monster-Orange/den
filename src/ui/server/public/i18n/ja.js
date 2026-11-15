@@ -196,6 +196,18 @@
     "pname.retryW": "Hub に名前を問い合わせています…",
     "pname.retryS": "Hub が応答しました。名前は最新です。",
     "pname.retryF": "まだ Hub に接続できません。",
+    "pname.rename": "名前を変更…",
+    "pname.newName": "新しい名前",
+    "pname.ask": "Hub に名前の変更を依頼",
+    "pname.cancel": "キャンセル",
+    "pname.askHelp":
+      "保留中の変更として Hub に送ります。承認されるまで、ここの名前は変わりません。",
+    "pname.pending": "「{to}」への名前変更は、Hub での決定待ちです。",
+    "pname.openHub": "Hub で開く",
+    "pname.askW": "Hub に「{name}」への名前変更を依頼しています…",
+    "pname.askS": "依頼しました。Hub で人が決めます。",
+    "pname.askF":
+      "Hub は名前の変更を受け付けませんでした。名前は変わっていません。",
     "set.workspace.name": "名前",
     "set.shell.projectOrder": "プロジェクトの並び順",
     "ws.allN": "すべてのアクティブ ({n})",

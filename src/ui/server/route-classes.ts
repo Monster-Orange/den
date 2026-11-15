@@ -487,6 +487,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/hub-project",
     "H5: link a project to one of the company's Hub projects, or unlink it; a person's only",
   ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/hub-rename",
+    "issue 167: ask Hub to rename a linked project's Hub project, as a held change a person decides in Hub; a person's only",
+  ),
   R(
     "/api/hub",
     "HUB-1.5: Den Hub: its URL, connected or not, the team and the install's label (never the token)",
@@ -762,6 +767,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],
+  "hub-rename-routes.ts:HUB_RENAME_ROUTE": ["/api/workspaces/:ws/hub-rename"],
   "agent-routes.ts:HELPERS_PATH": [
     "/api/workspaces/:ws/agents/:id/helpers",
     "/api/workspaces/:ws/agents/:id/helpers/:helper",

@@ -2486,11 +2486,26 @@ export function projectNameHtml(p, t) {
               : t("pname.offline", { n: stale }),
           )}</p>` +
           `<button type="button" class="btn sm" data-pname-retry>${escR(t("pname.retry"))}</button>`;
+    // Issue 167 (A3): a rename asked of Hub, waiting there. Withdraw
+    // waits on mo-den-hub issue 72 (Hub has no API to take it back yet).
+    const ask = p?.cfg?.hub_rename;
+    const waiting =
+      ask && typeof ask.to === "string" && ask.to
+        ? `<div class="pname-held" data-pname-pending><p class="set-status"><span class="rt-dot warn"></span> ${escR(t("pname.pending", { to: ask.to }))}</p>` +
+          (typeof ask.url === "string" && /^https?:\/\//.test(ask.url)
+            ? `<a class="btn sm" href="${escR(ask.url)}" target="_blank" rel="noopener noreferrer" data-pname-open>${escR(t("pname.openHub"))}</a>`
+            : "") +
+          `</div>`
+        : "";
+    const off = waiting || stale !== null;
     return (
       `<div data-pname data-pname-state="hub">` +
-      `<p class="set-status"><strong data-pname-value>${escR(hub.trim())}</strong> ` +
-      `<span class="pname-chip" data-pname-chip><i aria-hidden="true"></i>${escR(t("pname.hubChip"))}</span></p>` +
       `<p class="set-note">${escR(t("pname.hubHelp"))}</p>` +
+      `<p class="set-status pname-nm"><strong data-pname-value>${escR(hub.trim())}</strong> ` +
+      `<span class="pname-chip" data-pname-chip><i aria-hidden="true"></i>${escR(t("pname.hubChip"))}</span> ` +
+      `<button type="button" class="btn sm" data-pname-rename${off ? " disabled" : ""}>${escR(t("pname.rename"))}</button></p>` +
+      `<div data-pname-slot></div>` +
+      waiting +
       offline +
       `</div>`
     );
@@ -2507,6 +2522,82 @@ export function projectNameHtml(p, t) {
     `<div class="rt-err" role="alert" data-pname-err hidden></div>` +
     `<p class="set-note" role="status" data-pname-ok hidden>${escR(t("pname.saved"))}</p></form>`
   );
+}
+
+/**
+ * Issue 167 (mock v6 A2): Rename for a linked project: a new name, sent to
+ * Hub as a held change; the name here stays until a person approves it.
+ */
+export function pnameRenameHtml(current, t) {
+  return (
+    `<form class="pname-held" data-pname-ask-form novalidate>` +
+    `<label for="pname-new">${escR(t("pname.newName"))}</label>` +
+    `<input id="pname-new" type="text" value="${escR(current)}" maxlength="${PNAME_MAX}" autocomplete="off" aria-describedby="pname-new-help">` +
+    `<p class="set-note" id="pname-new-help">${escR(t("pname.askHelp"))}</p>` +
+    `<div class="rt-err" role="alert" data-pname-ask-err hidden></div>` +
+    `<div class="pname-acts"><button type="submit" class="btn sm primary" data-pname-ask>${escR(t("pname.ask"))}</button>` +
+    `<button type="button" class="btn sm" data-pname-cancel>${escR(t("pname.cancel"))}</button></div>` +
+    `</form>`
+  );
+}
+
+/** Issue 167: Rename… opens the form; Ask Hub to rename sends it. */
+function wireHubRename(host, ctx, ws, current, t) {
+  const btn = host.querySelector("[data-pname-rename]");
+  const slot = host.querySelector("[data-pname-slot]");
+  if (!btn || !slot) return;
+  const close = () => {
+    slot.innerHTML = "";
+    btn.hidden = false;
+    btn.focus();
+  };
+  btn.addEventListener("click", () => {
+    btn.hidden = true;
+    slot.innerHTML = pnameRenameHtml(current, t);
+    const form = slot.querySelector("form");
+    const input = form.querySelector("input");
+    const err = form.querySelector("[data-pname-ask-err]");
+    const say = (msg) => {
+      err.hidden = !msg;
+      err.textContent = msg || "";
+    };
+    input.focus();
+    input.select();
+    form.querySelector("[data-pname-cancel]").addEventListener("click", close);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const c = projectNameCheck(input.value, current);
+      if (!c.ok) {
+        if (c.why === "empty") say(t("pname.empty"));
+        else if (c.why === "same") close();
+        return;
+      }
+      say("");
+      const ask = form.querySelector("[data-pname-ask]");
+      ctx.shell
+        .busyAction(
+          "ask-hub",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              `/api/workspaces/${encodeURIComponent(ws)}/hub-rename`,
+              { name: c.name },
+              { headers },
+            ),
+          {
+            button: ask,
+            vars: { name: c.name },
+            onFail: (x) => say(x?.message || t("pname.askF")),
+          },
+        )
+        .then((r) => {
+          if (r !== undefined) return renderProjectName(host, ctx);
+        });
+    });
+  });
 }
 
 function renderProjectName(host, ctx) {
@@ -2530,6 +2621,7 @@ function renderProjectName(host, ctx) {
     })
     .then(({ cfg, check }) => {
       host.innerHTML = projectNameHtml({ slug: ws, cfg, check }, t);
+      wireHubRename(host, ctx, ws, cfg?.hub_project?.name ?? "", t);
       const retry = host.querySelector("[data-pname-retry]");
       retry?.addEventListener("click", () =>
         ctx.shell

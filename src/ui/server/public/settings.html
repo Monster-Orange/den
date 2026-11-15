@@ -50,6 +50,31 @@
         border-radius: 50%;
         background: var(--accent);
       }
+      /* Issue 167 (mock v6 A2, A3): Rename asked of Hub, and waiting. */
+      .pname-nm {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+      }
+      .pname-held {
+        margin: 8px 0;
+        padding: 10px 12px;
+        border: 1px dashed var(--border-strong, var(--border));
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .pname-held input {
+        width: min(100%, 360px);
+      }
+      .pname-acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
       /* Issue 167 (mock v6 A0): the Hub project row's read-only pair, its
          More, and the Unlink question. */
       .hubp-pair {

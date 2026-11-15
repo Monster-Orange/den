@@ -126,3 +126,24 @@ describe("the last check of Hub's names", () => {
     }
   });
 });
+
+describe("Hub's name for each linked project (issue 167)", () => {
+  it("is told for every linked project Hub lists, changed or not", async () => {
+    const seen: [string, string][] = [];
+    const t = deps(
+      { north: L("p1", "north", "North"), south: L("p2", "south", "South") },
+      [
+        { id: "p1", slug: "north", name: "Polaris" },
+        { id: "p2", slug: "south", name: "South" },
+      ],
+    );
+    await refreshHubNames({
+      ...t.d,
+      named: (ws, name) => void seen.push([ws, name]),
+    });
+    expect(seen).toEqual([
+      ["north", "Polaris"],
+      ["south", "South"],
+    ]);
+  });
+});

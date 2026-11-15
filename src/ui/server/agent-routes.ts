@@ -528,6 +528,13 @@ export async function handleAgentRoutes(
     const hub = HUB_PROJECT_ROUTE.exec(pathname);
     if (hub) return hubProjectRoute(req, res, hub[1], deps.hubProject);
   }
+  // Issue 167: ask Hub to rename a linked project (a held change).
+  if (pathname.endsWith("/hub-rename")) {
+    const m = await import("./hub-rename-routes.js");
+    const hit = m.HUB_RENAME_ROUTE.exec(pathname);
+    if (hit)
+      return m.hubRenameRoute(req, res, hit[1], await m.defaultHubRenameDeps());
+  }
   // #68: link every project to Hub's suggestion in one confirm.
   if (pathname === "/api/hub/link-suggestions") {
     const [la, audit, guard] = await Promise.all([

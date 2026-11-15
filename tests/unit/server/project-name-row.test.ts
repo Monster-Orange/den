@@ -7,6 +7,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   hubProjectHtml,
+  pnameRenameHtml,
   projectNameHtml,
   projectNameCheck,
   projectOrderHtml,
@@ -89,6 +90,74 @@ describe("the Name row", () => {
     );
     expect(h).toContain("pname.offlineNever");
     expect(h).toContain("data-pname-retry");
+  });
+
+  it("linked (A1): Rename…, and no Withdraw", () => {
+    const h = projectNameHtml(
+      {
+        slug: "north",
+        cfg: { hub_project: { id: "p1", slug: "north", name: "North Star" } },
+      },
+      t,
+    );
+    expect(h).toMatch(
+      /<button[^>]+data-pname-rename(?![^>]*disabled)[^>]*>pname.rename<\/button>/,
+    );
+    expect(h).not.toContain("pname.pending");
+    expect(h).not.toMatch(/withdraw/i);
+  });
+
+  it("linked, a rename waiting in Hub (A3): says so, Open in Hub, Rename off", () => {
+    const h = projectNameHtml(
+      {
+        slug: "north",
+        cfg: {
+          hub_project: { id: "p1", slug: "north", name: "North Star" },
+          hub_rename: {
+            to: "Polaris",
+            held: "held_1",
+            url: "https://hub.example.test/acme/held/held_1",
+            askedAt: "2026-11-15T10:00:00.000Z",
+          },
+        },
+      },
+      t,
+    );
+    expect(h).toContain("North Star");
+    expect(h).toContain("pname.pending{&quot;to&quot;:&quot;Polaris&quot;}");
+    expect(h).toMatch(
+      /<a[^>]+href="https:\/\/hub\.example\.test\/acme\/held\/held_1"[^>]*>pname.openHub<\/a>/,
+    );
+    expect(h).toMatch(/<button[^>]+data-pname-rename[^>]*disabled/);
+    expect(h).not.toMatch(/withdraw/i);
+  });
+
+  it("linked, Hub not reachable: Rename off", () => {
+    const h = projectNameHtml(
+      {
+        slug: "north",
+        cfg: { hub_project: { id: "p1", slug: "north", name: "North Star" } },
+        check: { failAt: "2026-11-15T10:11:00.000Z" },
+      },
+      t,
+    );
+    expect(h).toMatch(/<button[^>]+data-pname-rename[^>]*disabled/);
+  });
+
+  it("the Rename form (A2): New name, Ask Hub to rename, Cancel, what it does", () => {
+    const h = pnameRenameHtml("North Star", t);
+    expect(h).toMatch(/<label[^>]+for="pname-new"[^>]*>pname.newName<\/label>/);
+    expect(h).toMatch(
+      /<input[^>]+id="pname-new"[^>]+value="North Star"[^>]+maxlength="60"/,
+    );
+    expect(h).toMatch(
+      /<button type="submit"[^>]+data-pname-ask[^>]*>pname.ask<\/button>/,
+    );
+    expect(h).toMatch(
+      /<button type="button"[^>]+data-pname-cancel[^>]*>pname.cancel<\/button>/,
+    );
+    expect(h).toContain("pname.askHelp");
+    expect(h).toContain('role="alert"');
   });
 
   it("not linked: an input with its own name, Save name off until changed", () => {

@@ -77,21 +77,86 @@ export function setHubProject(
   const cfg = file.workspaces[ws];
   if (!cfg) throw new Error(`project "${ws}" does not exist`);
   const next = { ...cfg };
+  const was = parseHubProjectLink(cfg.hub_project);
   if (link) {
     const ok = parseHubProjectLink(link);
     if (!ok) throw new Error(`"${link.id}" is not a Hub project id`);
     next.hub_project = ok;
+    // Issue 167: a rename asked of another Hub project isn't this one's.
+    if (was?.id !== ok.id) delete next.hub_rename;
   } else {
     // 0.4.45 (Vision 11-13): unlink keeps Hub's last name as the project's
     // own, so the name shown does not change. The slug never changes.
     const last = parseHubProjectLink(cfg.hub_project)?.name?.trim();
     if (last) next.name = last.slice(0, WORKSPACE_NAME_MAX);
     delete next.hub_project;
+    delete next.hub_rename;
   }
   file.workspaces[ws] = next;
   writeWorkspacesFile(file, by);
   // An unlink the person asked for: doctor doesn't call it lost.
   if (!link) forgetLinkSeen(ws);
+}
+
+/**
+ * Issue 167 (mock v6 A3): a rename asked of Hub, waiting for a person's
+ * decision there: `<ws>.hub_rename: {to, held, url?, askedAt}`, kept next
+ * to the link until a sync brings that name (hub-sync-service). The name
+ * shown stays Hub's until then.
+ */
+export interface HubRename {
+  to: string;
+  /** Hub's held change id. */
+  held: string;
+  /** Hub's page for it (http(s) only). */
+  url?: string;
+  askedAt: string;
+}
+
+/** A waiting rename as written, checked: null when missing or bad. */
+export function parseHubRename(v: unknown): HubRename | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const to = plain(o.to, WORKSPACE_NAME_MAX);
+  const held = plain(o.held, 100);
+  if (!to || !held) return null;
+  const url = plain(o.url, 2048);
+  const at = typeof o.askedAt === "string" ? Date.parse(o.askedAt) : NaN;
+  return {
+    to,
+    held,
+    ...(/^https?:\/\//.test(url) ? { url } : {}),
+    askedAt: new Date(Number.isNaN(at) ? 0 : at).toISOString(),
+  };
+}
+
+/** Project `ws`'s rename waiting in Hub, or null. */
+export function hubRenameOf(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): HubRename | null {
+  try {
+    return parseHubRename(read().workspaces[ws]?.hub_rename);
+  } catch {
+    return null;
+  }
+}
+
+/** Keep a rename asked of Hub for `ws`, or drop it (null). */
+export function setHubRename(
+  ws: string,
+  r: HubRename | null,
+  by: string = callerName(),
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
+  const next = { ...cfg };
+  const ok = r ? parseHubRename(r) : null;
+  if (ok) next.hub_rename = ok;
+  else delete next.hub_rename;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file, by);
 }
 
 /** What Hub's /api/projects/suggest answers (projects of the token's company). */

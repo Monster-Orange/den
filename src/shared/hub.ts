@@ -770,6 +770,47 @@ export async function hubProjectChoices(
 }
 
 /**
+ * Issue 167 (mock v6 A2): ask Hub to rename one of its projects, as a held
+ * change a person decides in Hub: POST <url>/api/projects/plan with
+ * {changes: [{op: "rename", project: <Hub slug>, name}], reason}. Hub
+ * answers {held, state, summary, url}; a link that isn't http(s) is
+ * dropped. Hub has no withdraw yet (mo-den-hub issue 72).
+ */
+export async function hubPlanRename(
+  url: string,
+  token: string,
+  ask: { project: string; name: string; reason: string },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{ held: string; state: string; summary?: string; url?: string }> {
+  const b = await hubCall(
+    `${url}/api/projects/plan`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        changes: [{ op: "rename", project: ask.project, name: ask.name }],
+        reason: ask.reason,
+      }),
+    },
+    opts,
+  );
+  const held = str(b.held);
+  if (!held) throw new HubCallError("refused", "Hub held no change for it");
+  const link = str(b.url);
+  const summary = str(b.summary);
+  return {
+    held,
+    state: str(b.state) ?? "pending",
+    ...(summary ? { summary } : {}),
+    ...(link && /^https?:\/\//.test(link) ? { url: link } : {}),
+  };
+}
+
+/**
  * H5: tell Hub this install's full project list: PUT
  * <url>/api/installs/self/projects (GITHUB-COVERAGE / H5 sync). The raw
  * answer; hub-project-sync reads it.

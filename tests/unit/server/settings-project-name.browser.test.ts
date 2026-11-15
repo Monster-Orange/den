@@ -2,7 +2,10 @@
  * Issue 167 (mock v6 A6): Settings › Project setup › Name, linked to Hub,
  * when Den's last check of Hub's names failed: the last name, how old it
  * is, and Try again (the working pop-up while Den asks Hub). Hub answering
- * again takes the line away.
+ * again takes the line away. Rename (A1-A3): Rename… opens New name, Ask
+ * Hub to rename and Cancel; asking posts the new name, then the row says
+ * the rename waits in Hub with Open in Hub and Rename off, and the name
+ * shown is still Hub's. Hub refusing: its words inline, the name as it was.
  *
  * The demo distribution (helpers/agents-page-server.ts). Needs Playwright's
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names only.
@@ -52,6 +55,7 @@ const ROW = '[data-setting="workspace.name"]';
  */
 async function page(
   extra: Record<string, (r: Route) => unknown> = {},
+  pending: () => unknown = () => null,
 ): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 375, height: 900 },
@@ -72,7 +76,11 @@ async function page(
     const b = (await res.json()) as {
       workspaces: Record<string, Record<string, unknown>>;
     };
-    if (b.workspaces?.north) b.workspaces.north.hub_project = STAR;
+    if (b.workspaces?.north) {
+      b.workspaces.north.hub_project = STAR;
+      const w = pending();
+      if (w) b.workspaces.north.hub_rename = w;
+    }
     return r.fulfill({ response: res, body: JSON.stringify(b) });
   });
   for (const [glob, h] of Object.entries(extra))
@@ -119,6 +127,84 @@ describe("Settings › Project setup › Name, Hub not reachable (A6)", () => {
     });
     expect(posts).toBe(1);
     expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("Rename asks Hub; the row then says it waits there, the name unchanged", async () => {
+    if (skip()) return;
+    const posts: unknown[] = [];
+    let waiting: unknown = null;
+    const held = "https://hub.example.test/acme/held/held_1";
+    const p = await page(
+      {
+        "**/api/hub/names-check": (r) =>
+          json(r, { ok: true, okAt: new Date().toISOString() }),
+        "**/api/workspaces/north/hub-rename": (r) => {
+          posts.push(r.request().postDataJSON());
+          waiting = {
+            to: "Polaris",
+            held: "held_1",
+            url: held,
+            askedAt: new Date().toISOString(),
+          };
+          return json(r, { ok: true, project: "north", pending: waiting });
+        },
+      },
+      () => waiting,
+    );
+    await p.click(`${ROW} [data-pname-rename]`);
+    await p.waitForSelector(`${ROW} #pname-new`);
+    expect(await p.textContent(`${ROW} label[for="pname-new"]`)).toBe(
+      "New name",
+    );
+    expect(await p.textContent(`${ROW} #pname-new-help`)).toBe(
+      "This sends a held change to Hub. The name here stays as it is until it is approved.",
+    );
+    // Cancel: back as it was, nothing sent.
+    await p.click(`${ROW} [data-pname-cancel]`);
+    expect(await p.$(`${ROW} #pname-new`)).toBeNull();
+    expect(posts).toEqual([]);
+    await p.click(`${ROW} [data-pname-rename]`);
+    await p.fill(`${ROW} #pname-new`, "Polaris");
+    await p.click(`${ROW} [data-pname-ask]`);
+    await p.waitForSelector(`${ROW} [data-pname-pending]`);
+    expect(posts).toEqual([{ name: "Polaris" }]);
+    expect(await p.textContent(`${ROW} [data-pname-pending]`)).toContain(
+      "Rename to “Polaris” is waiting for a decision in Hub.",
+    );
+    expect(await p.getAttribute(`${ROW} [data-pname-open]`, "href")).toBe(held);
+    expect(await p.textContent(`${ROW} [data-pname-value]`)).toBe("North Star");
+    expect(await p.isDisabled(`${ROW} [data-pname-rename]`)).toBe(true);
+    expect(await p.$(`${ROW} :text("Withdraw")`)).toBeNull();
+    expect(await fits(p)).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("Hub refuses the rename: its words inline, the name as it was", async () => {
+    if (skip()) return;
+    const p = await page({
+      "**/api/hub/names-check": (r) =>
+        json(r, { ok: true, okAt: new Date().toISOString() }),
+      "**/api/workspaces/north/hub-rename": (r) =>
+        r.fulfill({
+          status: 502,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: "Hub could not be reached: ECONNREFUSED",
+          }),
+        }),
+    });
+    await p.click(`${ROW} [data-pname-rename]`);
+    await p.fill(`${ROW} #pname-new`, "Polaris");
+    await p.click(`${ROW} [data-pname-ask]`);
+    await p.waitForSelector(`${ROW} [data-pname-ask-err]:not([hidden])`);
+    expect(await p.textContent(`${ROW} [data-pname-ask-err]`)).toContain(
+      "Hub could not be reached",
+    );
+    expect(await p.textContent(`${ROW} [data-pname-value]`)).toBe("North Star");
+    expect(await p.$(`${ROW} [data-pname-pending]`)).toBeNull();
     await p.context().close();
   }, 60_000);
 });

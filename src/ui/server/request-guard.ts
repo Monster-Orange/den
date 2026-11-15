@@ -763,6 +763,7 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/services/mode",
   "/api/workspaces/services/autostart",
   "/api/workspaces/:ws/hub-project",
+  "/api/workspaces/:ws/hub-rename",
   // Another agent's life and record: a person's (an agent resumes and
   // imports only when opted in, above).
   "/api/workspaces/:ws/agents/:id/stop",

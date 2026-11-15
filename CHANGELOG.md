@@ -29,6 +29,13 @@ config and manifest changes a distribution must make to move to it under
   how old the name is ("checked 12 min ago"), with Try again. Den now
   keeps when Hub last answered its check of the project names, and when
   it last didn't.
+  A project linked to Hub shows Hub's name read-only, marked "Named in
+  Hub", with Rename…: it asks Hub for the new name as a held change (New
+  name, Ask Hub to rename, Cancel). The name here stays until a person
+  approves it in Hub; meanwhile the row says the rename is waiting, with
+  Open in Hub, and the wait ends when Den next reads that name from Hub.
+  If Hub refuses or can't be reached, the row says why and the name is
+  unchanged. Taking a rename back waits on Hub.
 
 ### Fixed
 
