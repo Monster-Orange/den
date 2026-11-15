@@ -107,6 +107,11 @@ const start = (p: Page) =>
       attributeFilter: ["open"],
     });
     w.bzT0 = performance.now();
+    // A probe timer of the kit's wait, started now: a loaded runner fires
+    // both late, so the pop-up is judged against it, never a wider wait.
+    const wp = window as unknown as { bzProbeAt: number | null };
+    wp.bzProbeAt = null;
+    setTimeout(() => (wp.bzProbeAt = performance.now()), 300);
     (window as unknown as { bzDone: unknown }).bzDone = shell.busyAction(
       "link",
       (headers: Record<string, string>) =>
@@ -122,6 +127,10 @@ describe("BUSY-1: the working pop-up", () => {
     if (skip()) return;
     const p = await page();
     await stub(p, [[2000, 200]]);
+    // The kit loaded first: its load time is the page's, not its wait.
+    // A string: compiled, an import() in a function becomes a helper the page
+    // hasn't got.
+    await p.evaluate(`import("/busy-den.js").then(() => true)`);
     await start(p);
     await expect(p.locator("#bz-btn").isDisabled()).resolves.toBe(true);
     await expect(p.locator("#bz-btn").getAttribute("aria-busy")).resolves.toBe(
@@ -129,12 +138,19 @@ describe("BUSY-1: the working pop-up", () => {
     );
     await dlg(p).waitFor({ state: "visible", timeout: 2000 });
     // By 400 ms, on the page's clock (the kit's wait is 300).
-    const shownIn = await p.evaluate(() => {
-      const w = window as unknown as { bzT0: number; bzShownAt: number };
-      return w.bzShownAt - w.bzT0;
+    // den#155: on the page's clock, it shows with the kit's wait (300 ms),
+    // not later: within 100 ms of a probe timer of the same wait, started
+    // at the same moment (a loaded runner makes both late, not one).
+    const t = await p.evaluate(() => {
+      const w = window as unknown as {
+        bzT0: number;
+        bzShownAt: number;
+        bzProbeAt: number;
+      };
+      return { shown: w.bzShownAt - w.bzT0, probe: w.bzProbeAt - w.bzT0 };
     });
-    expect(shownIn).toBeGreaterThan(0);
-    expect(shownIn).toBeLessThan(400);
+    expect(t.shown).toBeGreaterThan(0);
+    expect(t.shown - t.probe).toBeLessThan(100);
     await expect(dlg(p).locator("h2").textContent()).resolves.toContain(
       "Linking projects…",
     );
