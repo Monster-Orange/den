@@ -170,6 +170,58 @@ function imeKeys(p: Page, text: string) {
   );
 }
 
+/**
+ * The report itself: Tab held while typing. Before each key of `text`, a
+ * Tab keydown (repeat after the first, as a held key auto-repeats; no
+ * keyup until the end), then the key as an IME key (keyCode 229).
+ */
+function tabHeldIme(p: Page, text: string) {
+  return p.evaluate(
+    ([sel, text]) => {
+      const ta = document.querySelector(sel) as HTMLTextAreaElement;
+      const key = (type: string, k: string, code: number, repeat = false) => {
+        const e = new KeyboardEvent(type, {
+          key: k,
+          code: k === "Tab" ? "Tab" : "",
+          repeat,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        });
+        Object.defineProperty(e, "keyCode", { get: () => code });
+        Object.defineProperty(e, "which", { get: () => code });
+        ta.dispatchEvent(e);
+      };
+      let first = true;
+      for (const ch of text) {
+        key("keydown", "Tab", 9, !first);
+        first = false;
+        key("keydown", "Process", 229);
+        const before = new InputEvent("beforeinput", {
+          data: ch,
+          inputType: "insertText",
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        });
+        if (!ta.dispatchEvent(before)) continue;
+        ta.value += ch;
+        ta.dispatchEvent(
+          new InputEvent("input", {
+            data: ch,
+            inputType: "insertText",
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
+      key("keyup", "Process", 229);
+      key("keyup", "Tab", 9);
+    },
+    [`.pane[data-id="${sid}"] textarea.xterm-helper-textarea`, text] as const,
+  );
+}
+
 /** A kana-to-kanji composition that commits `out` (it shows `reading`). */
 function compose(p: Page, reading: string, out: string) {
   return p.evaluate(
@@ -220,6 +272,30 @@ describe.each([1440, 375])("den#165 at %i px", (width) => {
     const want = "I DID NOT SAY REMOVE IT! I SAID FIX.";
     await imeKeys(p, want.slice("I DID ".length));
     const got = await waitTyped(from, want);
+    expect(JSON.stringify(got)).toBe(JSON.stringify(want));
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("Tab held while typing (the report): each key and each Tab once, in order", async () => {
+    if (!browser) return;
+    const { p, errors } = await open(width);
+    // Real keys: Tab goes down and auto-repeats between the letters.
+    let from = pty.writes.length;
+    await p.keyboard.down("Tab");
+    for (const ch of "GIVE ME") {
+      await p.keyboard.type(ch);
+      await p.keyboard.down("Tab");
+    }
+    await p.keyboard.up("Tab");
+    let want = "\tG\tI\tV\tE\t \tM\tE\t";
+    let got = await waitTyped(from, want);
+    expect(JSON.stringify(got)).toBe(JSON.stringify(want));
+    // The same with an input method on (each letter an IME key).
+    from = pty.writes.length;
+    await tabHeldIme(p, "I SAID FIX.");
+    want = [..."I SAID FIX."].map((c) => `\t${c}`).join("");
+    got = await waitTyped(from, want);
     expect(JSON.stringify(got)).toBe(JSON.stringify(want));
     expect(errors).toEqual([]);
     await p.context().close();
