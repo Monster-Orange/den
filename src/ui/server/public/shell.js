@@ -298,6 +298,14 @@
     "pname.saved": "Saved.",
     "pname.empty": "Enter a name. It can't be empty.",
     "pname.failed": "The name wasn't saved.",
+    "pname.offline":
+      "Hub can't be reached. Showing the last name Den got from Hub (checked {n} min ago).",
+    "pname.offlineNever":
+      "Hub can't be reached. Showing the last name Den got from Hub.",
+    "pname.retry": "Try again",
+    "pname.retryW": "Asking Hub for its names…",
+    "pname.retryS": "Hub answered. The name is up to date.",
+    "pname.retryF": "Hub still can't be reached.",
     "set.workspace.name": "Name",
     "set.ui.rt.toolsComing": "Den tools: coming",
     "set.ui.rt.installed": "installed",

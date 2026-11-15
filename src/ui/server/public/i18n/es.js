@@ -191,6 +191,14 @@
     "pname.saved": "Guardado.",
     "pname.empty": "Escribe un nombre. No puede quedar vacío.",
     "pname.failed": "No se guardó el nombre.",
+    "pname.offline":
+      "No se puede contactar con Hub. Se muestra el último nombre que Den recibió de Hub (hace {n} min).",
+    "pname.offlineNever":
+      "No se puede contactar con Hub. Se muestra el último nombre que Den recibió de Hub.",
+    "pname.retry": "Reintentar",
+    "pname.retryW": "Pidiendo los nombres a Hub…",
+    "pname.retryS": "Hub respondió. El nombre está al día.",
+    "pname.retryF": "Sigue sin poder contactarse con Hub.",
     "set.workspace.name": "Nombre",
     "set.shell.projectOrder": "Orden de los proyectos",
     "ws.allN": "Todos los activos ({n})",

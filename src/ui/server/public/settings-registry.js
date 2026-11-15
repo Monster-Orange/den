@@ -2453,20 +2453,48 @@ export function projectNameCheck(raw, current) {
 }
 
 /**
+ * Issue 167 (mock v6 A6): whether Hub's names are stale: Den's last check
+ * of them failed, after the last that worked. "never": Hub never answered.
+ * Else the whole minutes since Hub last answered.
+ */
+export function hubNamesStale(check, now = Date.now()) {
+  const ok = Date.parse(check?.okAt ?? "");
+  const fail = Date.parse(check?.failAt ?? "");
+  if (Number.isNaN(fail) || (!Number.isNaN(ok) && ok >= fail)) return null;
+  if (Number.isNaN(ok)) return "never";
+  return Math.max(0, Math.round((now - ok) / 60000));
+}
+
+/**
  * 0.4.45 Settings › Project setup › Name (mock v5 A1, A4). `p` is
- * { slug, cfg } with cfg the project's workspaces.yml entry. Linked to Hub:
- * Hub's name, read-only, "Named in Hub" in words. Not linked: an input and
- * Save name, off until the name changed.
+ * { slug, cfg, check?, now? } with cfg the project's workspaces.yml entry
+ * and check GET /api/hub/names-check's answer. Linked to Hub: Hub's name,
+ * read-only, "Named in Hub" in words; Hub not reachable (issue 167, A6):
+ * how old the name is, and Try again. Not linked: an input and Save name,
+ * off until the name changed.
  */
 export function projectNameHtml(p, t) {
   const hub = p?.cfg?.hub_project?.name;
-  if (typeof hub === "string" && hub.trim())
+  if (typeof hub === "string" && hub.trim()) {
+    const stale = hubNamesStale(p?.check, p?.now ?? Date.now());
+    const offline =
+      stale === null
+        ? ""
+        : `<p class="set-status" data-pname-offline><span class="rt-dot warn"></span> ${escR(
+            stale === "never"
+              ? t("pname.offlineNever")
+              : t("pname.offline", { n: stale }),
+          )}</p>` +
+          `<button type="button" class="btn sm" data-pname-retry>${escR(t("pname.retry"))}</button>`;
     return (
       `<div data-pname data-pname-state="hub">` +
       `<p class="set-status"><strong data-pname-value>${escR(hub.trim())}</strong> ` +
       `<span class="pname-chip" data-pname-chip><i aria-hidden="true"></i>${escR(t("pname.hubChip"))}</span></p>` +
-      `<p class="set-note">${escR(t("pname.hubHelp"))}</p></div>`
+      `<p class="set-note">${escR(t("pname.hubHelp"))}</p>` +
+      offline +
+      `</div>`
     );
+  }
   const own =
     typeof p?.cfg?.name === "string" && p.cfg.name.trim()
       ? p.cfg.name.trim()
@@ -2492,7 +2520,33 @@ function renderProjectName(host, ctx) {
     .api("GET", "/api/workspaces")
     .then((b) => {
       const cfg = b?.workspaces?.[ws] ?? {};
-      host.innerHTML = projectNameHtml({ slug: ws, cfg }, t);
+      // Issue 167: linked, when Hub last answered (A6).
+      return cfg?.hub_project
+        ? ctx.shell
+            .api("GET", "/api/hub/names-check")
+            .catch(() => null)
+            .then((check) => ({ cfg, check }))
+        : { cfg, check: null };
+    })
+    .then(({ cfg, check }) => {
+      host.innerHTML = projectNameHtml({ slug: ws, cfg, check }, t);
+      const retry = host.querySelector("[data-pname-retry]");
+      retry?.addEventListener("click", () =>
+        ctx.shell
+          .busyAction(
+            "check-hub",
+            (headers) =>
+              ctx.shell.api("POST", "/api/hub/names-check", {}, { headers }),
+            {
+              button: retry,
+              success: (r) =>
+                t(hubNamesStale(r) === null ? "pname.retryS" : "pname.retryF"),
+            },
+          )
+          .then((r) => {
+            if (r !== undefined) return renderProjectName(host, ctx);
+          }),
+      );
       const form = host.querySelector("form[data-pname]");
       if (!form) return;
       const input = form.querySelector("[data-pname-input]");

@@ -785,6 +785,7 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/hub/disconnect",
   "/api/hub/sync",
   "/api/hub/link-suggestions",
+  "/api/hub/names-check",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */

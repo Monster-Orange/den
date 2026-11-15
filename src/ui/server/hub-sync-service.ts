@@ -65,7 +65,8 @@ export function startProjectSync(checkSeconds: number): void {
 export async function refreshHubNamesNow(): Promise<string[]> {
   const at = await hubAndToken();
   if (!at) return [];
-  const { refreshHubNames } = await import("../../shared/hub-project-names.js");
+  const { refreshHubNames, recordHubNamesCheck } =
+    await import("../../shared/hub-project-names.js");
   const link = await import("../../shared/hub-project-link.js");
   const hub = await import("../../shared/hub.js");
   return refreshHubNames({
@@ -89,6 +90,8 @@ export async function refreshHubNamesNow(): Promise<string[]> {
       return c?.projects ?? null;
     },
     write: (ws, l) => link.setHubProject(ws, l, "Hub (its project's name)"),
+    // Issue 167: the Name row says when Hub last answered.
+    checked: (ok) => recordHubNamesCheck(getStateDir(), ok),
   });
 }
 

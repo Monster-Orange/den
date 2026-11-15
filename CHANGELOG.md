@@ -25,6 +25,10 @@ config and manifest changes a distribution must make to move to it under
   tell which Hub project fits and nothing is filed until you choose. It
   counts down with each pick and goes at the last. Clicking it opens
   Unclear matches.
+  When Hub can't be reached, Settings › Project setup › Name says so and
+  how old the name is ("checked 12 min ago"), with Try again. Den now
+  keeps when Hub last answered its check of the project names, and when
+  it last didn't.
 
 ### Fixed
 

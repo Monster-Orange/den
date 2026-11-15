@@ -41,6 +41,56 @@ describe("the Name row", () => {
     expect(h).not.toMatch(/<input/);
   });
 
+  it("linked, Hub not reachable (A6): the last name, how old, and Try again", () => {
+    const h = projectNameHtml(
+      {
+        slug: "north",
+        cfg: { hub_project: { id: "p1", slug: "north", name: "North Star" } },
+        check: {
+          okAt: "2026-11-15T10:00:00.000Z",
+          failAt: "2026-11-15T10:11:00.000Z",
+        },
+        now: Date.parse("2026-11-15T10:12:00.000Z"),
+      },
+      t,
+    );
+    expect(h).toContain("North Star");
+    expect(h).toContain("pname.offline{&quot;n&quot;:12}");
+    expect(h).toMatch(
+      /<button[^>]+data-pname-retry[^>]*>pname.retry<\/button>/,
+    );
+  });
+
+  it("linked, Hub answered last: no offline line", () => {
+    const h = projectNameHtml(
+      {
+        slug: "north",
+        cfg: { hub_project: { id: "p1", slug: "north", name: "North Star" } },
+        check: {
+          okAt: "2026-11-15T10:11:00.000Z",
+          failAt: "2026-11-15T10:00:00.000Z",
+        },
+        now: Date.parse("2026-11-15T10:12:00.000Z"),
+      },
+      t,
+    );
+    expect(h).not.toContain("pname.offline");
+    expect(h).not.toContain("data-pname-retry");
+  });
+
+  it("linked, Hub never answered: says so, with no time", () => {
+    const h = projectNameHtml(
+      {
+        slug: "north",
+        cfg: { hub_project: { id: "p1", slug: "north", name: "North Star" } },
+        check: { failAt: "2026-11-15T10:11:00.000Z" },
+      },
+      t,
+    );
+    expect(h).toContain("pname.offlineNever");
+    expect(h).toContain("data-pname-retry");
+  });
+
   it("not linked: an input with its own name, Save name off until changed", () => {
     const h = projectNameHtml({ slug: "beta", cfg: { name: "Écrin" } }, t);
     expect(h).toContain('data-pname-state="local"');

@@ -549,6 +549,11 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 167: when Hub last answered a check of its names; Try again.
+  if (pathname === "/api/hub/names-check") {
+    const m = await import("./hub-names-routes.js");
+    return m.hubNamesRoute(req, res, await m.defaultHubNamesDeps());
+  }
   // H5: Den Hub's GitHub App coverage, and a sync on demand.
   if (pathname === "/api/hub/github" || pathname === "/api/hub/sync") {
     const svc = await import("./hub-sync-service.js");

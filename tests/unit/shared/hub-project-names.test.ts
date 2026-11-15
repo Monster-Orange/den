@@ -80,3 +80,49 @@ describe("Hub's names reach Den", () => {
     ).toThrow("hub.names_check_seconds must be a number, at least 5");
   });
 });
+
+/**
+ * Issue 167 (mock v6 A6): each check is recorded: when Hub last answered,
+ * and when it last didn't, so the Name row can say Hub can't be reached
+ * and how old the name is.
+ */
+describe("the last check of Hub's names", () => {
+  it("says whether Hub answered", async () => {
+    const seen: boolean[] = [];
+    const links = { north: L("p1", "north", "North") };
+    for (const hub of [
+      [{ id: "p1", slug: "north", name: "North" }],
+      null,
+      "throw",
+    ] as const) {
+      const t = deps(links, hub as never);
+      await refreshHubNames({ ...t.d, checked: (ok) => void seen.push(ok) });
+    }
+    expect(seen).toEqual([true, false, false]);
+  });
+
+  it("is kept in the state folder: the last good time and the last failure", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const { recordHubNamesCheck, readHubNamesCheck } =
+      await import("../../../src/shared/hub-project-names.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-names-"));
+    try {
+      expect(readHubNamesCheck(dir)).toEqual({});
+      recordHubNamesCheck(dir, true, new Date("2026-11-15T10:00:00Z"));
+      recordHubNamesCheck(dir, false, new Date("2026-11-15T10:12:00Z"));
+      expect(readHubNamesCheck(dir)).toEqual({
+        okAt: "2026-11-15T10:00:00.000Z",
+        failAt: "2026-11-15T10:12:00.000Z",
+      });
+      recordHubNamesCheck(dir, true, new Date("2026-11-15T10:15:00Z"));
+      expect(readHubNamesCheck(dir)).toEqual({
+        okAt: "2026-11-15T10:15:00.000Z",
+        failAt: "2026-11-15T10:12:00.000Z",
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

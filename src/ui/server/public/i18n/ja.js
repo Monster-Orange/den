@@ -188,6 +188,14 @@
     "pname.saved": "保存しました。",
     "pname.empty": "名前を入力してください。空にはできません。",
     "pname.failed": "名前を保存できませんでした。",
+    "pname.offline":
+      "Hub に接続できません。Den が Hub から最後に受け取った名前を表示しています({n} 分前に確認)。",
+    "pname.offlineNever":
+      "Hub に接続できません。Den が Hub から最後に受け取った名前を表示しています。",
+    "pname.retry": "再試行",
+    "pname.retryW": "Hub に名前を問い合わせています…",
+    "pname.retryS": "Hub が応答しました。名前は最新です。",
+    "pname.retryF": "まだ Hub に接続できません。",
     "set.workspace.name": "名前",
     "set.shell.projectOrder": "プロジェクトの並び順",
     "ws.allN": "すべてのアクティブ ({n})",
