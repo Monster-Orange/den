@@ -15,7 +15,7 @@ import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import type { Browser, Page } from "playwright";
+import type { Browser, BrowserContext, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { signInUrl } from "./helpers/den-auth.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
@@ -31,14 +31,21 @@ let browser: Browser | null = null;
 let tmp = "";
 let stateDir = "";
 let port = 0;
+/** The newest release in the changelog (What's new). */
+let latest = "";
 let server: ChildProcess;
 
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch({
-      args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-    });
+    // DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a Playwright
+    // run-server; its localhost and *.localhost are this machine's.
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await chromium.connect(ws, { exposeNetwork: "<loopback>" })
+      : await chromium.launch({
+          args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
+        });
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -81,6 +88,13 @@ beforeAll(async () => {
   );
   server = started.server;
   port = started.port;
+  latest =
+    (
+      (await (
+        await fetch(`http://localhost:${port}/api/changelog`)
+      ).json()) as { version: string }[]
+    )[0]?.version ?? "";
+  expect(latest).not.toBe("");
 }, 60_000);
 
 afterAll(async () => {
@@ -97,15 +111,27 @@ const chip = (p: Page) =>
     href: await p.getAttribute("#den-ident", "href"),
   }));
 /**
- * What's new on this Den: it has no repo yet, so the shell marks the
- * release seen and never opens it (ON-6). Wait for that, so nothing opens
- * over the page later.
+ * What's new never opens over the page (issue 198). The context starts
+ * with this release seen (seeWhatsNew), so whether it opens no longer
+ * hangs on the page's second answer (ON-6's fresh, from
+ * /api/server-info) arriving before the test looks: with the release
+ * seen, the page never opens it, early or late.
  */
-async function closeWhatsNew(p: Page): Promise<void> {
-  await p.waitForFunction(() =>
-    Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
-  );
+async function whatsNewStaysShut(p: Page): Promise<void> {
+  expect(
+    await p.evaluate(() => localStorage.getItem("den-changelog-seen")),
+  ).toBe(latest);
   expect(await p.$("#cl-overlay.open")).toBeNull();
+}
+/** This release counts as seen in `ctx`, on every page load. */
+async function seeWhatsNew(ctx: BrowserContext): Promise<void> {
+  await ctx.addInitScript((v) => {
+    try {
+      localStorage.setItem("den-changelog-seen", v);
+    } catch {
+      /* storage blocked: nothing to seed */
+    }
+  }, latest);
 }
 
 describe("the identity chip", () => {
@@ -152,6 +178,7 @@ describe("the identity chip", () => {
       viewport: { width: 1280, height: 900 },
       extraHTTPHeaders: AWAY,
     });
+    await seeWhatsNew(ctx);
     const p = await ctx.newPage();
     const origin = `http://${EDGE}:${port}`;
     const r = await p.goto(signInUrl(stateDir, origin, "/settings#access"));
@@ -166,7 +193,7 @@ describe("the identity chip", () => {
       kind: "device",
       href: "/settings#access",
     });
-    await closeWhatsNew(p);
+    await whatsNewStaysShut(p);
     // Linked devices: this sign-in, by its method, marked This device.
     const row = p.locator(".set-device").filter({ hasText: "This device" });
     await row.waitFor();
