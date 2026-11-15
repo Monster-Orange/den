@@ -109,6 +109,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- `service install` (and `service status`) say so when a host that the
+  service didn't start holds this install's terminal socket: its pid, and
+  how many agents or terminals it runs. The service's host already waited
+  for that one to end and never started a second one beside it; until now
+  install said nothing. Found in the restart drill.
+
 - Den's web server and CLI entry files, and the manifest schema, are
   type-checked again (they were left out, so a missing import there
   passed). Fixing their errors fixed what people see:

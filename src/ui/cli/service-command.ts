@@ -63,6 +63,8 @@ import {
   type ServerIdentity,
 } from "./server-identity.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import { connectHost } from "../../shared/sessions/client.js";
+import { sessionPaths } from "../../shared/sessions/paths.js";
 
 /** Runs a command with extra env vars; returns its exit code. */
 export type ServiceRunner = (
@@ -156,6 +158,68 @@ export interface ServiceDeps {
   log?: (line: string) => void;
   /** Whose server answers on a port (default: identifyServer). */
   identify?: (port: number, own: OwnServer) => Promise<ServerIdentity>;
+  /**
+   * Drill (c), 0.4.48: the host answering on this install's socket, its
+   * pid and how many it runs, or null (default: asks it, 3 s at most).
+   */
+  liveHost?: () => Promise<LiveHost | null>;
+}
+
+/** The host on the socket: its pid and how many agents or terminals run. */
+export interface LiveHost {
+  pid: number;
+  running: number;
+}
+
+/** Ask the host on the socket who it is (null: none answers in `ms`). */
+export async function askLiveHost(
+  stateDir: string,
+  ms = 3000,
+): Promise<LiveHost | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const ask = (async () => {
+    const c = await connectHost(sessionPaths(stateDir).socket);
+    try {
+      const list = await c.list();
+      return { pid: c.hostPid, running: list.filter((x) => !x.exited).length };
+    } finally {
+      c.close();
+    }
+  })();
+  try {
+    return await Promise.race([
+      ask,
+      new Promise<null>((r) => (timer = setTimeout(() => r(null), ms))),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Drill (c), 0.4.48: a host the service didn't start holds the socket (one
+ * from a terminal or an older web server). The service's host never takes
+ * a socket another host answers on: it waits for that one to end. Say so,
+ * in plain words, instead of nothing. "" when the service's host is the
+ * one answering, or none answers.
+ */
+export function strayHostLine(
+  live: LiveHost | null,
+  servicePid: number | null,
+): string {
+  if (!live || !live.pid || live.pid === servicePid) return "";
+  const n = live.running;
+  const what =
+    n === 0
+      ? "is running nothing"
+      : `is running ${n} agent${n === 1 ? "" : "s"} or terminal${n === 1 ? "" : "s"}`;
+  return (
+    `! A host the service didn't start (pid ${live.pid}) ${what}. ` +
+    `The service's host waits until that one ends, and never starts a second one beside it. ` +
+    `When this Mac restarts, ${n === 0 ? "the service's host takes over" : "they start again under the service"}.`
+  );
 }
 
 /** One line on whose server answers on `port`. */
@@ -331,6 +395,16 @@ export async function cmdService(
     deps.identify ?? ((p: number, o: OwnServer) => identifyServer(p, o));
 
   const jobPid = deps.jobPid ?? defaultJobPid;
+  /** Drill (c): name a host on the socket that isn't the host job's. */
+  const sayStrayHost = async () => {
+    const hl = hostLabel(label);
+    const hostJob = jobOf(hl);
+    const line = strayHostLine(
+      await (deps.liveHost ?? (() => askLiveHost(stateDir)))(),
+      hostJob ? jobPid(hostJob, hl) : null,
+    );
+    if (line) log(line);
+  };
   if (plan) {
     const dir =
       mode === "always"
@@ -410,6 +484,7 @@ export async function cmdService(
   if (sub === "uninstall" && code === 0)
     fs.rmSync(hostJobFile(stateDir), { force: true });
   if (sub === "status") {
+    await sayStrayHost();
     const id = await identify(port, own);
     if (id.kind === "foreign") log(`✗ ${identityLine(port, id)}`);
     // D26: the server on the port is the job's, or say whose it is.
@@ -468,6 +543,7 @@ export async function cmdService(
     log(
       `✓ ${label} running (${mode}) at http://localhost:${port} (logs: ${path.join(logs, "web.log")})`,
     );
+    await sayStrayHost();
     return 0;
   }
   log(
