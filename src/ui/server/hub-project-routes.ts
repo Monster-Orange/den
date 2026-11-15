@@ -46,6 +46,20 @@ export interface HubProjectRouteDeps {
   uncovered: (ws: string) => Uncovered[];
   /** After a link or unlink: send the project list again. */
   changed: () => void;
+  /**
+   * Issue 167: a project Den couldn't match was just linked here; the
+   * bell's "N projects need your pick" counts down (pickDone).
+   */
+  picked?: (n: number) => void;
+}
+
+function defaultPicked(n: number): void {
+  void Promise.all([
+    import("./hub-link-all-routes.js"),
+    import("./notification-service.js"),
+  ])
+    .then(([la, ns]) => la.pickDone(ns.notificationDeps().store, n))
+    .catch(() => undefined);
 }
 
 async function defaultUncovered(ws: string): Promise<Uncovered[]> {
@@ -105,6 +119,7 @@ export async function hubProjectRoute(
   const write = over.write ?? setHubProject;
   const choicesOf = over.choices ?? defaultChoices;
   const changed = over.changed ?? defaultChanged;
+  const picked = over.picked ?? defaultPicked;
   const uncovered = over.uncovered
     ? async (w: string) => over.uncovered!(w)
     : defaultUncovered;
@@ -217,8 +232,11 @@ export async function hubProjectRoute(
     return true;
   }
   const link = { id: pick.id, slug: pick.slug, name: pick.name };
+  // Issue 167: unlinked and unclear before: this link is a person's pick.
+  const wasPick = !read(ws) && "unclear" in hubMatchOf(c.suggestions);
   write(ws, link, by);
   changed();
+  if (wasPick) picked(1);
   sendJson(res, { ok: true, project: ws, hub: link });
   return true;
 }

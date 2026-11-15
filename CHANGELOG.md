@@ -23,7 +23,8 @@ config and manifest changes a distribution must make to move to it under
   off until you pick. When every match is clear, it says so.
   The bell's "N projects need your pick" now says under it that Den can't
   tell which Hub project fits and nothing is filed until you choose. It
-  counts down with each pick and goes at the last. Clicking it opens
+  counts down with each pick (in Unclear matches or in Project setup ›
+  Hub project) and goes at the last. Clicking it opens
   Unclear matches.
   When Hub can't be reached, Settings › Project setup › Name says so and
   how old the name is ("checked 12 min ago"), with Try again. Den now

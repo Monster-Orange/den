@@ -96,6 +96,31 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
     expect(b.pick).toBe(true);
   });
 
+  it("PUT (issue 167): linking an unclear one counts the bell's pick down; a clear one or a switch doesn't", async () => {
+    const picks: number[] = [];
+    const unclear = {
+      choices: async () => ({
+        suggestions: [
+          { ...BACK, why: "repo" as const },
+          { ...SITE, why: "repo" as const },
+        ],
+        projects: [BACK, SITE],
+      }),
+      picked: (n: number) => void picks.push(n),
+    };
+    const a = await serve(unclear);
+    const u = `${a.base}/back-office/hub-project`;
+    expect((await put(u, { hub: SITE.id })).status).toBe(200);
+    expect(picks).toEqual([1]);
+    // Already linked: a switch isn't a pick.
+    expect((await put(u, { hub: BACK.id })).status).toBe(200);
+    expect(picks).toEqual([1]);
+    // A clear one: not a pick either.
+    const b = await serve({ picked: (n) => void picks.push(n) });
+    await put(`${b.base}/back-office/hub-project`, { hub: BACK.id });
+    expect(picks).toEqual([1]);
+  });
+
   it("GET (issue 167): linked, never a pick, whatever Hub suggests", async () => {
     const { base, store } = await serve({
       choices: async () => ({
