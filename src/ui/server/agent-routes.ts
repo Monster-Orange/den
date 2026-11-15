@@ -143,6 +143,7 @@ import {
   renameAgent,
   moveAgent,
   setAgentRepo,
+  orderAgent,
   checkRepoName,
   workspaceRepoFolders,
   migrateAgentLinks,
@@ -227,7 +228,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|link|move|file))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|handoff|clear-helpers|restart|link|move|file|order))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -706,6 +707,7 @@ export async function handleAgentRoutes(
     | "move"
     | "restart"
     | "file"
+    | "order"
     | undefined;
 
   // The double-click fix: the same start, resume, fresh, relaunch,
@@ -896,6 +898,11 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can link an agent to a repo", {
         status: 403,
       });
+    // D79: the order a person sees is the person's.
+    if (verb === "order" && (agent || actor))
+      throw new AgentError("only a person can reorder agents", {
+        status: 403,
+      });
     // D34: clearing what a person sees is a person's.
     if (verb === "clear-helpers" && (agent || actor))
       throw new AgentError("only a person can clear an agent's helpers", {
@@ -1060,6 +1067,31 @@ export async function handleAgentRoutes(
         agent: rec.id,
         ...(rec.displayName ? { displayName: rec.displayName } : {}),
       });
+    } else if (verb === "order") {
+      // D79: {to: "up" | "down" | "top" | "bottom" | <1-based place>}.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "to")
+          throw new AgentError(`${k}: unknown field (order takes to)`, {
+            usage: true,
+          });
+      const to = body.to;
+      if (
+        !(
+          to === "up" ||
+          to === "down" ||
+          to === "top" ||
+          to === "bottom" ||
+          (typeof to === "number" && Number.isInteger(to) && to >= 1)
+        )
+      )
+        throw new AgentError("to is up, down, top, bottom or a place from 1", {
+          usage: true,
+        });
+      const r = await orderAgent(d, ws, id!, to);
+      what = `move ${id} in ${ws} to ${r.position} of ${r.of}`;
+      audit(what);
+      sendJson(res, { ok: true, agent: id, ...r });
     } else if (verb === "link") {
       // D65 v2: the repo of its project it works on. Body {repo: <name>|null}.
       const body = await jsonBody(req);

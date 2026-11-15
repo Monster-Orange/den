@@ -121,6 +121,7 @@ import {
   setAgentPermission,
   setAgentFolder,
   setAgentRepo,
+  orderAgent,
   checkRepoName,
   agentLinkReport,
   workspaceRepoFolders,
@@ -185,6 +186,10 @@ export const AGENTS_HELP = {
     "",
     "{cli} agents list -w <ws> [--stopped] [--json]",
     "    --stopped: only the stopped, interrupted and exited ones",
+    "    in the project's order (agents order; a new agent goes last)",
+    "{cli} agents order <id> -w <ws> --up | --down | --top | --bottom | --to <n>",
+    "    move it in the project's order: the Agents page, the rail, the flyout",
+    "    and agents list all follow it (a person's only)",
     "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>] [--repo <repo> | --folder <path>]",
     "    runs in the project's repo (--repo, else its first) as <dist>-<ws>:<id>,",
     "    or in --folder (a folder of the project's, a worktree); MCP pinned to <ws>",
@@ -306,6 +311,49 @@ export const AGENTS_HELP = {
     "LC_*, TZ and TMPDIR, plus what its runtime declares: nothing else of yours.",
   ],
 };
+
+/**
+ * D79 (den#96): `agents order <id> -w <ws> --up|--down|--top|--bottom|--to
+ * <n>`. A person's only: refused inside an agent's session.
+ */
+async function order(args: string[], d: AgentsResolved): Promise<number> {
+  const where = "agents order";
+  if (isAgentTokenEnv(d.env))
+    throw new AgentError(
+      `${where}: only a person can reorder agents (this is an agent)`,
+    );
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--up": false,
+    "--down": false,
+    "--top": false,
+    "--bottom": false,
+    "--to": true,
+  });
+  noExtra(where, p, 1);
+  const [id] = p.positional;
+  if (!id) throw new UsageError(`${where} needs <id>`);
+  const ws = workspaceFlag(where, p);
+  if (!ws) throw new UsageError(`${where} needs -w <project>`);
+  const moves = (["--up", "--down", "--top", "--bottom"] as const).filter(
+    (f) => p.flags[f],
+  );
+  const toFlag = p.flags["--to"];
+  if (moves.length + (toFlag === undefined ? 0 : 1) !== 1)
+    throw new UsageError(
+      `${where} takes one of --up, --down, --top, --bottom or --to <n>`,
+    );
+  let to: "up" | "down" | "top" | "bottom" | number;
+  if (toFlag !== undefined) {
+    const n = Number(toFlag);
+    if (!Number.isInteger(n) || n < 1)
+      throw new UsageError(`${where}: --to is a place from 1`);
+    to = n;
+  } else to = moves[0]!.slice(2) as "up" | "down" | "top" | "bottom";
+  const r = await orderAgent(d, ws, id, to);
+  d.out(`${id} is now ${r.position} of ${r.of} in ${ws}`);
+  return 0;
+}
 
 async function list(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents list";
@@ -1833,6 +1881,8 @@ export async function cmdAgents(
       switch (sub) {
         case "list":
           return await list(rest, d);
+        case "order":
+          return await order(rest, d);
         case "start":
           await loadAgentWorkspaces(deps);
           return await start(rest, d);

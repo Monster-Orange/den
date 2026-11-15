@@ -691,6 +691,8 @@ export interface WorkspaceConfig {
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
     permission?: unknown;
+    /** D79: the person's order for this project's agents (agent ids). */
+    order?: unknown;
   };
   /**
    * Service entries keyed by service address.

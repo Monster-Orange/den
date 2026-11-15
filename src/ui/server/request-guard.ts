@@ -718,6 +718,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/link",
   // D72: an agent never moves itself (or another) out of its scope.
   "/api/workspaces/:ws/agents/:id/move",
+  // D79: the order a person sees their agents in is the person's.
+  "/api/workspaces/:ws/agents/:id/order",
 ];
 
 /**
