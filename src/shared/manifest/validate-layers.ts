@@ -42,7 +42,11 @@ export interface SchemaTools {
   /** Validate one whole manifest (validateManifest). */
   validate: (input: unknown) => ValidationResult;
   /** Map Zod issues to ValidationErrors, as validateManifest does. */
-  issuesToErrors: (issues: z.core.$ZodIssue[]) => ValidationError[];
+  issuesToErrors: (
+    issues: z.core.$ZodIssue[],
+    /** What was validated, at the issues' paths (their messages read it). */
+    input?: unknown,
+  ) => ValidationError[];
 }
 
 export interface LayerValidation {
@@ -110,6 +114,8 @@ function overrideSchemaErrors(
     ? []
     : tools.issuesToErrors(
         result.error.issues.map((i) => ({ ...i, path: [...at, ...i.path] })),
+        // The candidate, where those paths find it.
+        at.reduceRight<unknown>((inner, k) => ({ [k]: inner }), candidate),
       );
 }
 

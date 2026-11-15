@@ -81,6 +81,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Den's web server and CLI entry files, and the manifest schema, are
+  type-checked again (they were left out, so a missing import there
+  passed). Fixing their errors fixed what people see:
+  - a manifest field that is missing says `"name" is required`, and a
+    wrong one says what it got (it said "received undefined" for both);
+    a value not in a list names it and the list;
+  - "This is my computer" with an address that isn't this Den's own
+    showed "Something went wrong"; it now says why;
+  - the CLI's spinner comes back after a notice while a service starts.
 - Settings: a click on a category could land on another one when rows
   above it loaded during the scroll (the page grew). Den now goes to your
   pick again once the scroll ends; a scroll of your own is never undone.

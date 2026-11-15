@@ -84,7 +84,10 @@ const healthConfig = z.union([
   z.object({
     type: z.literal("shell"),
     cmd: z.string({
-      required_error: '"cmd" is required for shell health checks',
+      error: (iss) =>
+        iss.input === undefined
+          ? '"cmd" is required for shell health checks'
+          : undefined,
     }),
     label: z.string().optional(),
   }),
@@ -92,7 +95,10 @@ const healthConfig = z.union([
   z.object({
     type: z.union([z.literal("http"), z.undefined()]).optional(),
     url: z.string({
-      required_error: '"url" is required for HTTP health checks',
+      error: (iss) =>
+        iss.input === undefined
+          ? '"url" is required for HTTP health checks'
+          : undefined,
     }),
     label: z.string().optional(),
   }),
@@ -350,7 +356,9 @@ export const v1ManifestSchema = z.object({
   // Accept any integer version — the validator handles known/unknown version
   // warnings separately so that future versions don't fail schema validation.
   version: z.number().int().positive().optional(),
-  name: z.string({ required_error: "name is required" }),
+  name: z.string({
+    error: (iss) => (iss.input === undefined ? "name is required" : undefined),
+  }),
   entrypoint: z.string().optional(),
   services: z.record(z.string(), serviceManagementConfig).optional(),
   smoke: z.record(z.string(), smokeServiceConfig).optional(),

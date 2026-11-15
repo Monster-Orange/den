@@ -964,7 +964,12 @@ export function mountErrorPage(root) {
     return;
   }
 
-  if (d.status === 421 || d.status === 403 || d.status === 401) {
+  if (
+    d.status === 421 ||
+    d.status === 403 ||
+    d.status === 401 ||
+    d.status === 400
+  ) {
     // SEC-1a: the request checks refused it (a host that isn't this
     // server's, a cross-site request). A 421 links to the same path on
     // localhost, the canonical loopback name.

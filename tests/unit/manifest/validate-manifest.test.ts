@@ -672,3 +672,43 @@ describe("validateManifest — health type container", () => {
     ]);
   });
 });
+
+describe("its messages (den#145: zod v4 dropped `received`)", () => {
+  const errs = (m: unknown) =>
+    validateManifest(m, { environments: ["local"] }).errors.map((e) => [
+      e.path,
+      e.message,
+    ]);
+
+  it("a missing field is required; a wrong type names what it got", () => {
+    expect(errs({})).toEqual([["name", '"name" is required']]);
+    expect(errs({ name: 5 })).toEqual([
+      ["name", "expected string, received number"],
+    ]);
+    expect(errs({ name: ["a"] })).toEqual([
+      ["name", "expected string, received array"],
+    ]);
+  });
+
+  it("a value not in the list names it, and the list", () => {
+    expect(
+      errs({
+        name: "a",
+        smoke: { api: { testDir: "t", testMatch: "*", auth: ["root"] } },
+      }),
+    ).toContainEqual([
+      "smoke.api.auth[0]",
+      'invalid value "root" — must be one of: admin, user, beta',
+    ]);
+  });
+});
+
+describe("the schema's own messages (den#145: zod v4 has no required_error)", () => {
+  it("a missing name says so in the schema's words", async () => {
+    const { v1ManifestSchema } =
+      await import("../../../src/shared/manifest/schema.js");
+    const r = v1ManifestSchema.safeParse({});
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe("name is required");
+  });
+});

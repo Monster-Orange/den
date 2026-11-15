@@ -265,8 +265,9 @@ export interface ErrorPageData {
   /**
    * 422: the config fails validation (a ConfigError). 401, 403, 421: the
    * request checks refused it (SEC-1a): `message` says why, `code` names it.
+   * 400: a request Den can't take as asked (/attest's return), the same.
    */
-  status: 401 | 403 | 404 | 421 | 422 | 500;
+  status: 400 | 401 | 403 | 404 | 421 | 422 | 500;
   /** 401, 403, 421: the refusal's code (misdirected, origin_rejected, …). */
   code?: string;
   /** 404 and 422: the path asked for (no query). */
@@ -296,17 +297,42 @@ export interface ErrorPageData {
     scope: "terminal" | "agents" | "den";
     name: string;
     cmd: string;
+    /** SEC-2a: the machine that runs the commands. */
+    machine: string;
+    /** SEC-2a: how to reach it over ssh. */
+    ssh: {
+      target: string;
+      /** SEC-2a-UX: the account to log in as ("" for none). */
+      user: string;
+      /** Open Terminal (ssh://) only for a name, never an IP literal. */
+      name: boolean;
+      login: string;
+    };
     localhost?: string;
     expired?: boolean;
+    /** A login link asks first ("Sign in on this browser?"). */
+    confirm?: boolean;
     /**
-     * SEC-2a: Sign in with GitHub. `state` ready, or why it can't be offered
-     * (no client id configured, no owner linked); `owner` the command that
-     * links one; `message` what to set while no client id is configured.
+     * SEC-2a: Sign in with GitHub. `state` ready, claim (D17: no owner
+     * yet, the first sign-in on this computer claims it), or why it can't
+     * be offered (no client id configured, no owner linked); `owner` the
+     * command that links one; `message` what to set while no client id is
+     * configured.
      */
     github?: {
-      state: "ready" | "no_client_id" | "no_owner";
+      state: "ready" | "claim" | "no_client_id" | "no_owner";
       owner: string;
+      /** SEC-2a-UX: the linked owner's login, when ready. */
+      ownerLogin?: string;
+      /** The docs on Sign in with GitHub. */
+      learnMore: string;
       message?: string;
+      /** D17 claim: the GitHub org whose members may claim it. */
+      org?: string;
+      /** D17 claim: the one GitHub login that may claim it. */
+      ownerGithub?: string;
+      /** D17 claim: "This is my computer"'s start, on localhost. */
+      attest?: string;
     };
   };
 }

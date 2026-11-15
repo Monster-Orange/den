@@ -24,22 +24,44 @@ import {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Convert a Zod issue path to a dot-separated string. */
-function zodPathToString(path: (string | number)[]): string {
+function zodPathToString(path: readonly PropertyKey[]): string {
   return path
-    .map((p, i) => (typeof p === "number" ? `[${p}]` : i === 0 ? p : `.${p}`))
+    .map((p, i) =>
+      typeof p === "number" ? `[${p}]` : i === 0 ? String(p) : `.${String(p)}`,
+    )
     .join("");
 }
 
-/** Friendly message for common Zod issue codes. */
-function zodIssueMessage(issue: z.ZodIssue): string {
+/** The value at `path` in `data` (undefined when it isn't there). */
+function valueAt(data: unknown, path: readonly PropertyKey[]): unknown {
+  let v: unknown = data;
+  for (const k of path) {
+    if (v === null || typeof v !== "object") return undefined;
+    v = (v as Record<PropertyKey, unknown>)[k];
+  }
+  return v;
+}
+
+/** What a value is, as a message names it: array and null by name. */
+function kindOf(v: unknown): string {
+  return v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+}
+
+/**
+ * Friendly message for common Zod issue codes. Zod v4 issues carry no
+ * `received` (den#145): what was there is read from the input itself.
+ */
+function zodIssueMessage(issue: z.core.$ZodIssue, input: unknown): string {
   switch (issue.code) {
-    case z.ZodIssueCode.invalid_type:
-      if (issue.received === "undefined")
-        return `"${issue.path.at(-1)}" is required`;
-      return `expected ${issue.expected}, received ${issue.received}`;
-    case z.ZodIssueCode.invalid_enum_value:
-      return `invalid value "${issue.received}" — must be one of: ${issue.options.join(", ")}`;
-    case z.ZodIssueCode.invalid_union:
+    case "invalid_type": {
+      const got = valueAt(input, issue.path);
+      if (got === undefined)
+        return `"${String(issue.path.at(-1))}" is required`;
+      return `expected ${issue.expected}, received ${kindOf(got)}`;
+    }
+    case "invalid_value":
+      return `invalid value "${String(valueAt(input, issue.path))}" — must be one of: ${issue.values.map(String).join(", ")}`;
+    case "invalid_union":
       return "value does not match any valid shape";
     default:
       return issue.message;
@@ -47,7 +69,7 @@ function zodIssueMessage(issue: z.ZodIssue): string {
 }
 
 /** Suggestion text for specific paths / issues. */
-function suggestionFor(issue: z.ZodIssue): string | undefined {
+function suggestionFor(issue: z.core.$ZodIssue): string | undefined {
   const pathStr = zodPathToString(issue.path);
 
   // auth arrays in smoke / synthetics
@@ -65,11 +87,13 @@ function suggestionFor(issue: z.ZodIssue): string | undefined {
 
 /** Map Zod issues to ValidationErrors. */
 export function issuesToErrors(
-  issues: readonly z.ZodIssue[],
+  issues: readonly z.core.$ZodIssue[],
+  /** What was validated: a message names what it found there. */
+  input?: unknown,
 ): ValidationError[] {
   return issues.map((issue) => ({
-    path: zodPathToString(issue.path as (string | number)[]),
-    message: zodIssueMessage(issue),
+    path: zodPathToString(issue.path),
+    message: zodIssueMessage(issue, input),
     suggestion: suggestionFor(issue),
   }));
 }
@@ -171,7 +195,7 @@ export function validateManifest(
   }
 
   // 6. Map Zod issues → ValidationError[]
-  const errors = issuesToErrors(result.error.issues);
+  const errors = issuesToErrors(result.error.issues, parsed);
 
   return {
     valid: false,
@@ -187,7 +211,7 @@ const schemaTools: SchemaTools = {
   version: CURRENT_SCHEMA_VERSION,
   schema: schemaByVersion[CURRENT_SCHEMA_VERSION],
   validate: (input) => validateManifest(input),
-  issuesToErrors: (issues) => issuesToErrors(issues as z.ZodIssue[]),
+  issuesToErrors: (issues, input) => issuesToErrors(issues, input),
 };
 
 /**

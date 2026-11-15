@@ -1649,123 +1649,6 @@ class DenCLI {
     );
   }
 
-  /** Return addresses from the workspace that have the given local command in their manifest. */
-  private workspaceAddressesWithCommand(command: string): string[] {
-    return getWorkspaceServices()
-      .filter((s) => !!localCommandsFor(s, this.focusedWs())[command])
-      .map((s) => s.address);
-  }
-
-  private async manageWorkspacesInteractive(): Promise<void> {
-    let running = true;
-    while (running) {
-      const action = await cliPrompts.promptForWorkspaceAction();
-      const file = readWorkspacesFile();
-
-      switch (action) {
-        case "list":
-          await this.cmdWorkspace(["list"]);
-          break;
-        case "use": {
-          const names = Object.keys(file.workspaces);
-          const selected = await cliPrompts.promptSelectWorkspace(
-            names,
-            file.focus ?? file.active[0],
-          );
-          setActiveWorkspace(selected);
-          console.log(
-            chalk.green(
-              `\n  ✓ Activated and focused project: ${chalk.bold(selected)}\n`,
-            ),
-          );
-          break;
-        }
-        case "create": {
-          const name = await cliPrompts.promptForWorkspaceName(
-            Object.keys(file.workspaces),
-          );
-          const slug = createWorkspace(name, { services: {} });
-          const activate = await cliPrompts.confirm(
-            `Switch to project "${name}" now?`,
-            true,
-          );
-          if (activate) setActiveWorkspace(slug);
-          console.log(
-            chalk.green(`\n  ✓ Created project: ${chalk.bold(name)}\n`),
-          );
-          break;
-        }
-        case "add-service":
-          // Register handles the full flow: path → gh slug → mode/branch → workspace entry
-          await this.cmdRegister([]);
-          break;
-        case "remove-service": {
-          const ws = getActiveWorkspace();
-          if (!ws) {
-            console.log(chalk.red("\n  No active project.\n"));
-            break;
-          }
-
-          const existing = Object.keys(ws.config.services);
-          if (existing.length === 0) {
-            console.log(chalk.yellow("\n  No services in this project.\n"));
-            break;
-          }
-
-          const selected = await cliPrompts.promptSelectServices(
-            existing,
-            `Remove from project "${ws.name}":`,
-          );
-          if (selected.length === 0) break;
-
-          const updatedFile = readWorkspacesFile();
-          for (const addr of selected) {
-            delete updatedFile.workspaces[ws.name].services[addr];
-          }
-          writeWorkspacesFile(updatedFile);
-          console.log(
-            chalk.green(
-              `\n  ✓ Removed ${selected.length} service(s) from ${ws.name}\n`,
-            ),
-          );
-          break;
-        }
-        case "delete": {
-          const names = Object.keys(file.workspaces).filter(
-            (n) => n !== "default",
-          );
-          if (names.length === 0) {
-            console.log(
-              chalk.yellow(
-                "\n  No projects to delete (cannot delete default).\n",
-              ),
-            );
-            break;
-          }
-          const name = await cliPrompts.promptSelectWorkspace(names, "");
-          // D71: its agents first, so a refusal never follows a Yes.
-          const kept = workspaceAgentsRefusal(name);
-          if (kept) {
-            console.log(chalk.red(`\n  ${kept}\n`));
-            break;
-          }
-          const confirmed = await cliPrompts.confirm(
-            `Delete project "${name}"?`,
-            false,
-          );
-          if (!confirmed) break;
-          deleteWorkspaceDirectory(name);
-          deleteWorkspaceConfig(name);
-          console.log(chalk.green(`\n  ✓ Deleted project: ${name}\n`));
-          break;
-        }
-        case "back":
-          running = false;
-          break;
-      }
-    }
-  }
-
   // ── Environment manager: non-interactive commands ─────────────────────────
 
   /** Run a named command (up/down/restart) on one or more service addresses. */
@@ -2195,7 +2078,7 @@ class DenCLI {
             if (isNotice(line)) {
               spinner.clear();
               printNotice(line);
-              if (spinner.isEnabled) spinner.render();
+              if (spinner.isSpinning) spinner.render();
             }
             spinner.text = `${command} ${chalk.bold(address)}: ${chalk.gray(line.slice(0, 80))}`;
             const trimmed = line.trim();

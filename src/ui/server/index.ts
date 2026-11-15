@@ -148,6 +148,7 @@ import {
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
+  type UserConfig,
   writeUserConfig,
   panesReconnect,
   webUrlCheckSeconds,
@@ -412,6 +413,8 @@ interface HealthResult {
   /** With ok null: a check ran but has not answered (pending, not down). */
   pending?: boolean;
   status?: number;
+  /** How long the check took, or the time it was given when it timed out. */
+  ms?: number;
   error?: string;
   /** A 3xx answer's target (MCP-2.4): ok null, not down. */
   redirect?: string;
@@ -737,10 +740,10 @@ function escAttr(v: string): string {
 
 /**
  * R26a: the shell's error page for a failed page request (404 or 500).
- * HEAD gets the status and headers only.
+ * HEAD gets the status and headers only (Node's server sends no body).
  */
 function sendErrorPage(
-  req: http.IncomingMessage,
+  _req: http.IncomingMessage,
   res: http.ServerResponse,
   data: Omit<ErrorPageData, "time" | "version" | "engine">,
 ): void {
@@ -1085,9 +1088,13 @@ function readGitField(gitArgs: string[], cwd: string): string | null {
   return r.stdout.trim() || null;
 }
 
-function collectTestSources(
-  pillar: "synthetic" | "smoke" | "journeys" | "security",
-): TestSource[] {
+/** The pillars whose sources are a repo manifest's own sections. */
+type SourcePillar = Extract<
+  Pillar,
+  "synthetic" | "smoke" | "journeys" | "security"
+>;
+
+function collectTestSources(pillar: SourcePillar): TestSource[] {
   const workspace = getActiveWorkspace()?.name ?? null;
   const sources: TestSource[] = [];
   for (const repo of discoverRepos()) {
@@ -3013,7 +3020,8 @@ async function handleRequest(
         // ZAP's report pulls its own scripts; keep it away from Den's origin data.
         ...UNTRUSTED_FILE_HEADERS,
       });
-      return res.end(body);
+      res.end(body);
+      return;
     } catch {
       return send404(res);
     }
@@ -3395,7 +3403,7 @@ async function handleRequest(
       compose,
       container,
       noManifest,
-    }) => {
+    }: (typeof sortedEntries)[number]): Promise<HealthResult> => {
       if (checkType !== "none") {
         const started = Date.now();
         const ping =
@@ -3617,7 +3625,8 @@ async function handleRequest(
       for (const r of hit.results)
         send({ type: "result", result: forViewer(r) });
       send({ type: "done", cached: true });
-      return res.end();
+      res.end();
+      return;
     }
 
     try {
@@ -3635,7 +3644,8 @@ async function handleRequest(
     } catch (e) {
       send({ type: "error", error: (e as Error).message });
     }
-    return res.end();
+    res.end();
+    return;
   }
 
   // ── API: services list (catalog-aware) ───────────────────────────────────
@@ -4626,7 +4636,7 @@ async function handleRequest(
     // pillar (`tests:`) and a repo's performance modules included.
     const tested = await reposOfRun(String(pillar), String(env), modules, {
       pillarSources: (p) =>
-        collectTestSources(p as Pillar).map((x) => x.repoName),
+        collectTestSources(p as SourcePillar).map((x) => x.repoName),
       suiteRepos: (e, only) =>
         planSuites(listServicesWithManifests(), e as Environment, only).run.map(
           (x) => x.repo,

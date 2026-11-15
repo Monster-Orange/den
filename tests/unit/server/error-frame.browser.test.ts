@@ -73,6 +73,19 @@ describe("the error pages", () => {
     await page.close();
   });
 
+  it("a 400 (/attest with no return of this Den's own) says why, not 'Something went wrong' (den#145)", async () => {
+    if (skip()) return;
+    const page = await open("/attest");
+    await page.waitForSelector("#den-error-page h1");
+    expect(await page.textContent("#den-error-page h1")).toBe(
+      "Request refused",
+    );
+    expect(await page.textContent("#den-error-page .lead")).toContain(
+      "isn't one of this Den's own",
+    );
+    await page.close();
+  });
+
   it("a near-miss suggests the page it misses", async () => {
     if (skip()) return;
     const page = await open("/servics");
