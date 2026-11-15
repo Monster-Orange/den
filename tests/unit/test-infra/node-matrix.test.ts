@@ -51,35 +51,48 @@ function blockingOnBoth(j: Job | undefined): void {
   );
 }
 
+function everyShard(t: Job | undefined): void {
+  expect(t).toBeDefined();
+  const shards = [...(t!.strategy?.matrix?.shard ?? [])].sort((a, b) => a - b);
+  expect(shards.length).toBeGreaterThan(0);
+  expect(shards).toEqual(shards.map((_, i) => i + 1));
+  const run = (t!.steps ?? []).find((s) =>
+    /\bnpm test\b/.test(s.run ?? ""),
+  )?.run;
+  expect(run).toContain(`--shard=\${{ matrix.shard }}/${shards.length}`);
+}
+
+function checksAndTests(j: Record<string, Job>): void {
+  blockingOnBoth(j.checks);
+  expect(
+    (j.checks!.steps ?? []).some((s) => /typecheck/.test(s.run ?? "")),
+  ).toBe(true);
+  blockingOnBoth(j.tests);
+  expect(runsTests(j.tests!)).toBe(true);
+}
+
 describe("the Node matrix (den#84)", () => {
   it("ci.yml: the checks, the tests and the install smoke block on both ends", () => {
     const j = jobs("ci.yml");
-    blockingOnBoth(j.checks);
-    expect(
-      (j.checks!.steps ?? []).some((s) => /typecheck/.test(s.run ?? "")),
-    ).toBe(true);
-    blockingOnBoth(j.tests);
-    expect(runsTests(j.tests!)).toBe(true);
+    checksAndTests(j);
     blockingOnBoth(j["dist-smoke"]);
   });
 
   it("ci.yml: the tests' shards are 1..N and each runs its own part of N, so every test runs", () => {
-    const t = jobs("ci.yml").tests!;
-    const shards = [...(t.strategy?.matrix?.shard ?? [])].sort((a, b) => a - b);
-    expect(shards.length).toBeGreaterThan(0);
-    expect(shards).toEqual(shards.map((_, i) => i + 1));
-    const run = (t.steps ?? []).find((s) =>
-      /\bnpm test\b/.test(s.run ?? ""),
-    )?.run;
-    expect(run).toContain(`--shard=\${{ matrix.shard }}/${shards.length}`);
+    everyShard(jobs("ci.yml").tests);
   });
 
-  it("release.yml: the gates block on both ends, before the tarball is built", () => {
+  it("release.yml: the checks and the tests block on both ends, before the tarball is built and tagged", () => {
     const j = jobs("release.yml");
-    blockingOnBoth(j.gates);
-    expect(runsTests(j.gates!)).toBe(true);
-    const needs = ([] as string[]).concat(j.pack?.needs ?? []);
-    expect(needs).toContain("gates");
+    checksAndTests(j);
+    for (const after of ["pack", "tag"])
+      expect(([] as string[]).concat(j[after]?.needs ?? [])).toEqual(
+        expect.arrayContaining(["checks", "tests"]),
+      );
+  });
+
+  it("release.yml: the tests' shards are 1..N and each runs its own part of N", () => {
+    everyShard(jobs("release.yml").tests);
   });
 
   it("release.yml: the tarball is built on the lowest Node", () => {
