@@ -513,3 +513,83 @@ describe("Hub's Try again (a new delivery id for the same comment)", () => {
     expect(s.loop.work("ag-1")).toMatchObject({ queued: 2 });
   });
 });
+
+describe("decisions in the feed (issue 166 / Hub issue 65)", () => {
+  const decision = (
+    id: string,
+    kind: string | undefined,
+    over: Record<string, unknown> = {},
+  ) => {
+    const base = dv(id, "ag-1", {
+      thread: {
+        kind: "artifact",
+        id: null,
+        url: "https://hub.example.test/a/doc/v/3",
+        artifact: "Pricing page",
+      },
+      body: "",
+      version: 3,
+      reply_with: [],
+      ...over,
+    });
+    return kind === undefined ? base : { ...base, kind };
+  };
+
+  it("approve: says who, the version, the link, and what next", async () => {
+    const s = setup();
+    await s.loop.take(decision("a1", "approve"));
+    expect(s.typed).toHaveLength(1);
+    const t = s.typed[0].text;
+    expect(t).toContain('Pat Example approved "Pricing page", version 3.');
+    expect(t).toContain("https://hub.example.test/a/doc/v/3");
+    expect(t).toContain("They left no note.");
+    expect(t).toContain("Carry on with the next step.");
+    expect(s.of("a1")).toEqual(["delivered", "working"]);
+  });
+
+  it("request_changes: the note is quoted; says to revise", async () => {
+    const s = setup();
+    await s.loop.take(
+      decision("c1", "request_changes", { body: "Fix the price table" }),
+    );
+    const t = s.typed[0].text;
+    expect(t).toContain('asked for changes to "Pricing page", version 3.');
+    expect(t).toContain("> Fix the price table");
+    expect(t).toContain("revise");
+  });
+
+  it("approve after request_changes on one version: two deliveries, each once, both acked", async () => {
+    const s = setup({ states: { "ag-1": "stopped" } });
+    await s.loop.take(decision("c1", "request_changes"));
+    await s.loop.take(decision("a1", "approve"));
+    await s.loop.take(decision("a1", "approve"));
+    expect(s.of("c1")).toEqual(["queued"]);
+    expect(s.of("a1").slice(0, 1)).toEqual(["queued"]);
+    s.states["ag-1"] = "idle";
+    await s.loop.pump();
+    expect(s.typed).toHaveLength(1);
+    const t = s.typed[0].text;
+    expect(t.match(/asked for changes to/g)).toHaveLength(1);
+    expect(t.match(/ approved /g)).toHaveLength(1);
+    expect(t.indexOf("asked for changes to")).toBeLessThan(
+      t.indexOf(" approved "),
+    );
+  });
+
+  it("no kind is a comment; an unknown kind is a plain notice, never dropped", async () => {
+    const s = setup();
+    await s.loop.take(dv("n1"));
+    expect(s.typed[0].text.split("\n")[0]).toMatch(/^from: Pat Example/);
+    expect(s.typed[0].text).toContain("This is an edit request");
+  });
+
+  it("an unknown kind is a plain notice, never dropped", async () => {
+    const s2 = setup();
+    await s2.loop.take(decision("u1", "archived", { body: "bye" }));
+    expect(s2.typed).toHaveLength(1);
+    expect(s2.typed[0].text).toContain("doesn't know");
+    expect(s2.typed[0].text).toContain('"archived"');
+    expect(s2.typed[0].text).toContain("> bye");
+    expect(s2.of("u1")).toEqual(["delivered", "working"]);
+  });
+});
