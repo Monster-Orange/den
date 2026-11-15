@@ -5,7 +5,14 @@
  * a second whoami. A token Den doesn't keep stays, and Settings and doctor
  * say to reconnect. A fake Hub on localhost, a temp token file.
  */
-import { afterAll, afterEach, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
@@ -18,9 +25,15 @@ import {
   readHubToken,
   type HubConfig,
   type HubTokenRotation,
+  resetHubTokenCache,
 } from "../../../src/shared/hub.js";
 import { hubTokenRotation } from "../../../src/ui/server/hub-connect.js";
 import { hubLines } from "../../../src/ui/cli/doctor-command.js";
+
+// 0.4.47: each test starts with nothing kept from the last one.
+beforeEach(() => {
+  resetHubTokenCache();
+});
 import { hubHtml } from "../../../src/ui/server/public/settings-registry.js";
 
 const OLD = "hubi_TESTONLYlegacy111";

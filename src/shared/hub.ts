@@ -263,22 +263,168 @@ export function patchHubAllowTools(
   return { ok: true };
 }
 
+/**
+ * 0.4.47: the Hub token as this process last read it. Den reads it from
+ * the store once and keeps it: a read per Hub call, times every agent,
+ * ran the store's rate limit dry, and then every agent lost Hub and kept
+ * asking. A failed read keeps the last good token and waits before it
+ * asks again (a minute, doubling to HUB_TOKEN_RETRY_MAX_MS). Never on
+ * disk.
+ */
+export interface HubTokenCache {
+  /** Which source it was read from: a change (Connect again) reads anew. */
+  key?: string;
+  token?: string;
+  /** Read again on the next call (Hub turned it down, or Connect). */
+  stale: boolean;
+  /** When a 401 last let it read again (at most once a minute). */
+  forgotAt?: number;
+  failures: number;
+  /** No read before this, after a failure. */
+  retryAt?: number;
+  /** The store's own words for the last failure, one line. */
+  error?: string;
+}
+
+export const HUB_TOKEN_RETRY_MS = 60_000;
+export const HUB_TOKEN_RETRY_MAX_MS = 10 * 60_000;
+
+export function newHubTokenCache(): HubTokenCache {
+  return { stale: false, failures: 0 };
+}
+
+const processHubToken = newHubTokenCache();
+
+/** Forget everything this process kept about the Hub token (tests). */
+export function resetHubTokenCache(): void {
+  Object.assign(processHubToken, newHubTokenCache(), {
+    key: undefined,
+    token: undefined,
+    forgotAt: undefined,
+    retryAt: undefined,
+    error: undefined,
+  });
+}
+
+/**
+ * Let the next call read the token again: Hub answered 401 (at most once a
+ * minute, so a token Hub keeps refusing can't hammer the store), or a
+ * person connected again (`now: true`, at once). True when it will.
+ */
+export function forgetHubToken(
+  cache: HubTokenCache = processHubToken,
+  at: number = Date.now(),
+  o: { now?: boolean } = {},
+): boolean {
+  if (!o.now && cache.forgotAt !== undefined && at - cache.forgotAt < 60_000)
+    return false;
+  cache.stale = true;
+  cache.forgotAt = at;
+  if (o.now) {
+    cache.retryAt = undefined;
+    cache.failures = 0;
+  }
+  return true;
+}
+
+/** Den wrote this token itself (Connect, a rotation): keep it, no read. */
+export function rememberHubToken(
+  cfg: HubConfig,
+  token: string,
+  cache: HubTokenCache = processHubToken,
+): void {
+  const key = cfg.tokenSource
+    ? JSON.stringify(cfg.tokenSource)
+    : cfg.tokenRef
+      ? JSON.stringify(cfg.tokenRef)
+      : undefined;
+  Object.assign(cache, newHubTokenCache(), { key, token });
+}
+
+/**
+ * Why there's no token, in plain words, while a failed read waits to try
+ * again; null otherwise. Said once by doctor and the bell, never per call.
+ */
+export function hubTokenProblem(
+  cache: HubTokenCache = processHubToken,
+  at: number = Date.now(),
+): string | null {
+  if (cache.token || !cache.error || cache.retryAt === undefined) return null;
+  const left = Math.max(0, cache.retryAt - at);
+  const when =
+    left >= 60_000
+      ? `${Math.ceil(left / 60_000)} min`
+      : `${Math.ceil(left / 1000)} s`;
+  return `Den can't read the Hub token from its secrets store (${cache.error}); trying again in ${when}`;
+}
+
+function oneLine(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  return (
+    m
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find(Boolean)
+      // 1Password's "[ERROR] 2026/11/14 12:00:00 " prefix.
+      ?.replace(/^\[ERROR\]\s*(\d{4}\/\d\d\/\d\d \d\d:\d\d:\d\d\s*)?/, "")
+      .slice(0, 200) || "no answer"
+  );
+}
+
 /** The token from this install's store, or null (none set, or unreadable). */
 export async function readHubToken(
   cfg: HubConfig,
   provider: () => SecretsProvider = getSecretsProvider,
+  cache: HubTokenCache = processHubToken,
+  at: number = Date.now(),
 ): Promise<string | null> {
+  const key = cfg.tokenSource
+    ? JSON.stringify(cfg.tokenSource)
+    : cfg.tokenRef
+      ? JSON.stringify(cfg.tokenRef)
+      : null;
+  if (!key) return null;
+  if (cache.key !== key) Object.assign(cache, newHubTokenCache(), { key });
+  if (cache.token && !cache.stale) return cache.token;
+  if (cache.retryAt !== undefined && at < cache.retryAt)
+    return cache.token ?? null;
+  let token: string | null = null;
+  let error: string | null = null;
   if (cfg.tokenSource) {
-    const r = await readOpToken(cfg.tokenSource).catch(() => null);
-    return r?.ok && r.token.trim() ? r.token.trim() : null;
+    const r = await readOpToken(cfg.tokenSource).catch((e: unknown) => ({
+      ok: false as const,
+      reason: oneLine(e),
+    }));
+    if (r.ok) token = r.token.trim() || null;
+    else error = oneLine(r.reason);
+  } else {
+    try {
+      const v = await provider().get(cfg.tokenRef!);
+      token = v && v.trim() ? v.trim() : null;
+    } catch (e) {
+      error = oneLine(e);
+    }
   }
-  if (!cfg.tokenRef) return null;
-  try {
-    const v = await provider().tryGet(cfg.tokenRef);
-    return v && v.trim() ? v.trim() : null;
-  } catch {
-    return null;
+  cache.stale = false;
+  if (token) {
+    Object.assign(cache, {
+      token,
+      failures: 0,
+      retryAt: undefined,
+      error: undefined,
+    });
+    return token;
   }
+  // Unreadable, or not set: wait before asking again, longer each time.
+  cache.failures++;
+  cache.error = error ?? "no token is set";
+  cache.retryAt =
+    at +
+    Math.min(
+      HUB_TOKEN_RETRY_MS * 2 ** (cache.failures - 1),
+      HUB_TOKEN_RETRY_MAX_MS,
+    );
+  return cache.token ?? null;
 }
 
 /** Who calls, as Hub reads it: plain names, never a secret. */
@@ -892,6 +1038,7 @@ async function rotateHubToken(
   };
   try {
     await owner.write(cfg, fresh);
+    rememberHubToken(cfg, fresh);
   } catch (e) {
     note(
       `Hub offered a new token, and Den couldn't store it (${scrubToken(
@@ -989,7 +1136,9 @@ async function hubStatusOnce(
       ...base,
       connected: false,
       state: "no_token",
-      problem: `${cfg.tokenFrom} could not be read from this install's secrets store`,
+      problem:
+        hubTokenProblem() ??
+        `${cfg.tokenFrom} could not be read from this install's secrets store`,
     };
   const ask = deps.whoami ?? ((u, t, o) => hubWhoami(u, t, o));
   let owner: HubTokenRotation | null = null;
@@ -1006,6 +1155,8 @@ async function hubStatusOnce(
       // #71: a 401 may mean another process rotated the token and wrote
       // the new one here: read the store again before saying Reconnect.
       if (!(e instanceof HubCallError && e.kind === "rejected")) throw e;
+      // 0.4.47: the kept token may be stale; read again, once a minute.
+      if (!deps.token) forgetHubToken();
       const again = await readTok(cfg).catch(() => null);
       if (!again || again === token) throw e;
       token = again;

@@ -37,6 +37,7 @@ import {
   newPkce,
   readHubConfig,
   readHubToken,
+  forgetHubToken,
   type HubConfig,
   type HubGrant,
   type HubTokenRotation,
@@ -512,6 +513,8 @@ export class HubConnect {
       hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
     this.deps.writeUser({ ...user, hub });
+    // 0.4.47: the token Den keeps in memory is the old one: read anew.
+    forgetHubToken(undefined, Date.now(), { now: true });
     return {
       ok: true,
       ...(grant.company?.name ? { team: grant.company.name } : {}),
@@ -552,6 +555,7 @@ export class HubConnect {
       }
     }
     await this.deps.forget(cfg).catch(() => undefined);
+    forgetHubToken(undefined, Date.now(), { now: true });
     const user = this.deps.readUser();
     const hub = {
       ...((user.hub as Record<string, unknown> | undefined) ?? {}),
