@@ -27,3 +27,28 @@
     word-break: auto-phrase;
   }
 }
+
+/* UK-3, one placement for Report (issue 94). Where it sits is the kit's,
+   for every page and pop-up, in Den and in any product on the kit:
+   - top bar: right group, in the order Report, bell, account, at every
+     width; the shortcut shows beside the word only where there is room
+     (the tooltip always has it);
+   - dialog, drawer and popover: first in the footer, on the left, and
+     the pop-up's other buttons follow;
+   - never only in a menu. */
+:where(.den-rb-top) {
+  flex: none;
+  margin: 0;
+}
+@media (max-width: 720px) {
+  :where(.den-rb-top kbd) {
+    display: none;
+  }
+}
+:where(.den-rb-in) {
+  order: -1;
+  margin-right: auto;
+}
+:where(.den-rb-foot) {
+  justify-content: flex-start;
+}

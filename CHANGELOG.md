@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.51] - unreleased
+
+### Fixed
+
+- Report an issue sits in one place on every page and in every pop-up (issue 94). In the top bar it is right before the bell, with its word, at every width; it is no longer in the left rail. In a pop-up it is first in the footer. The place is set once, in the shared UI kit.
+
 ## [0.4.50] - unreleased
 
 ### Added
