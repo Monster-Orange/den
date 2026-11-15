@@ -634,78 +634,109 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
               if (
                 m.type === "attributes" &&
                 m.target instanceof HTMLElement &&
-                m.target.matches("details[data-stopped], dialog")
+                m.target.matches("details[data-stopped], dialog, .den-agd")
               )
                 w.__tr.push(
-                  `${at()} attr ${m.attributeName} ${d(m.target)} open=${(m.target as HTMLDetailsElement).open}`,
+                  `${at()} attr ${m.attributeName} ${d(m.target)} open=${(m.target as HTMLDetailsElement).open} rect=${JSON.stringify(m.target.getBoundingClientRect())}`,
                 );
             }
           }).observe(document.body, {
             subtree: true,
             childList: true,
             attributes: true,
-            attributeFilter: ["open"],
+            attributeFilter: ["open", "style"],
           });
         });
-        await shown(p);
-        await btn(p, "scout").click();
-        await det(p).waitFor();
-        const box = (await det(p).boundingBox())!;
-        await p.mouse.click(box.x + box.width - 12, box.y + box.height - 8);
-        await p.evaluate(() => {
-          const m = document.createElement("div");
-          m.className = "den-pop";
-          m.setAttribute("role", "menu");
-          m.id = "d50-menu";
-          m.style.cssText =
-            "position:fixed;left:0;bottom:0;width:120px;height:40px;z-index:2147483647;background:#888";
-          document.body.append(m);
-        });
-        const mb = (await p.locator("#d50-menu").boundingBox())!;
-        await p.mouse.click(mb.x + 10, mb.y + 10);
-        await p.evaluate(() => document.getElementById("d50-menu")?.remove());
-        const at = await p.evaluate(() => {
-          const pop = document.querySelector(".den-agd")!;
-          for (let y = 200; y < innerHeight - 10; y += 23)
-            for (let x = innerWidth - 20; x > 20; x -= 37) {
-              const el = document.elementFromPoint(x, y);
-              if (
-                el &&
-                !pop.contains(el) &&
-                !el.closest(
-                  "a, button, input, select, textarea, summary, [tabindex], .den-pop, dialog",
-                )
-              )
-                return { x, y };
-            }
-          return null;
-        });
-        await p.evaluate(
-          (pt) =>
-            (window as unknown as { __tr: string[] }).__tr.push(
-              `--- press at ${JSON.stringify(pt)}`,
-            ),
-          at,
-        );
-        await p.mouse.move(at!.x, at!.y);
-        await p.mouse.down();
-        await det(p).waitFor({ state: "detached" });
-        const afterClose = await p.evaluate(() =>
-          (document.activeElement as HTMLElement)
-            ?.closest(".agst")
-            ?.getAttribute("data-agent"),
-        );
-        await p.mouse.up();
-        const got = await p.evaluate(() =>
-          (document.activeElement as HTMLElement)
-            ?.closest(".agst")
-            ?.getAttribute("data-agent"),
-        );
-        if (got !== "scout") {
-          const tr = await p.evaluate(() =>
-            (window as unknown as { __tr: string[] }).__tr.join("\n"),
+        // A step's mark: whether the details are there, where, and focus.
+        const mark = (label: string) =>
+          p.evaluate((l) => {
+            const w = window as unknown as { __tr: string[] };
+            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            const a = document.activeElement as HTMLElement | null;
+            w.__tr.push(
+              `${performance.now().toFixed(1)} STEP ${l} agd=${!!g} rect=${g ? JSON.stringify(g.getBoundingClientRect()) : "-"} active=${a?.tagName}.${a?.className ?? ""}`,
+            );
+          }, label);
+        const trace = () =>
+          p
+            .evaluate(() =>
+              (window as unknown as { __tr: string[] }).__tr.join("\n"),
+            )
+            .catch((e) => `no trace: ${e}`);
+        try {
+          await shown(p);
+          await btn(p, "scout").click();
+          await det(p).waitFor();
+          await mark("opened");
+          const box = (await det(p).boundingBox())!;
+          await p.evaluate(
+            (b) =>
+              (window as unknown as { __tr: string[] }).__tr.push(
+                `inside click at ${b.x + b.width - 12},${b.y + b.height - 8} from box ${JSON.stringify(b)}`,
+              ),
+            box,
           );
-          misses.push(`#${n}: afterClose=${afterClose} final=${got}\n${tr}`);
+          await p.mouse.click(box.x + box.width - 12, box.y + box.height - 8);
+          await mark("after inside click");
+          await p.evaluate(() => {
+            const m = document.createElement("div");
+            m.className = "den-pop";
+            m.setAttribute("role", "menu");
+            m.id = "d50-menu";
+            m.style.cssText =
+              "position:fixed;left:0;bottom:0;width:120px;height:40px;z-index:2147483647;background:#888";
+            document.body.append(m);
+          });
+          const mb = (await p.locator("#d50-menu").boundingBox())!;
+          await p.mouse.click(mb.x + 10, mb.y + 10);
+          await mark("after menu click");
+          await p.evaluate(() => document.getElementById("d50-menu")?.remove());
+          await mark("menu removed");
+          const at = await p.evaluate(() => {
+            const pop = document.querySelector(".den-agd")!;
+            for (let y = 200; y < innerHeight - 10; y += 23)
+              for (let x = innerWidth - 20; x > 20; x -= 37) {
+                const el = document.elementFromPoint(x, y);
+                if (
+                  el &&
+                  !pop.contains(el) &&
+                  !el.closest(
+                    "a, button, input, select, textarea, summary, [tabindex], .den-pop, dialog",
+                  )
+                )
+                  return { x, y };
+              }
+            return null;
+          });
+          await p.evaluate(
+            (pt) =>
+              (window as unknown as { __tr: string[] }).__tr.push(
+                `--- press at ${JSON.stringify(pt)}`,
+              ),
+            at,
+          );
+          await p.mouse.move(at!.x, at!.y);
+          await p.mouse.down();
+          await det(p).waitFor({ state: "detached" });
+          const afterClose = await p.evaluate(() =>
+            (document.activeElement as HTMLElement)
+              ?.closest(".agst")
+              ?.getAttribute("data-agent"),
+          );
+          await p.mouse.up();
+          const got = await p.evaluate(() =>
+            (document.activeElement as HTMLElement)
+              ?.closest(".agst")
+              ?.getAttribute("data-agent"),
+          );
+          if (got !== "scout")
+            misses.push(
+              `#${n}: afterClose=${afterClose} final=${got}\n${await trace()}`,
+            );
+        } catch (err) {
+          misses.push(
+            `#${n}: threw ${String(err).slice(0, 300)}\n${await trace()}`,
+          );
         }
         await p.context().close();
       }
