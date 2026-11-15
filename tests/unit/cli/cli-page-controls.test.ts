@@ -146,6 +146,8 @@ const LISTING: Record<string, Entry> = {
   "agents rename": page("agents-page.js", 'agentPath(r, "name"'),
   "agents move": page("agents-page.js", 'agentPath(r, "move"'),
   "agents link": page("agents-page.js", 'agentPath(r, "link"'),
+  // Gap 7 (0.4.48): the CLI first; the agent menu's "Change folder" after.
+  "agents folder": slot("0.4.50", "move a stopped agent to another folder"),
   "agents unlink": page("agents-page.js", 'agentPath(r, "link"'),
   "agents rm": page("agents-page.js", 'agentPath(r, "remove"'),
   "agents handback-check": script("a linter for agents' hand-backs"),

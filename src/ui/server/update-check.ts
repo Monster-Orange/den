@@ -53,7 +53,7 @@ export interface UpdateCheckDeps {
     reason: string,
   ): Promise<{ ok: boolean; error?: string }>;
   /** Hold "update Den to X" for the person; false when it couldn't. */
-  ask(version: string, reason: string): boolean;
+  ask(version: string, reason: string): Promise<boolean> | boolean;
   /**
    * A bell notice about `version` (Den X is out; an update failed): the
    * English text, and its key and values for the page's language.
@@ -105,7 +105,7 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
       if (d.mode() === "ask") {
         if (!asked.has(want)) {
           asked.add(want);
-          d.ask(want, reason);
+          await d.ask(want, reason);
           d.notice(
             want,
             `Den ${want} is out. Allow the update when it suits you (this install runs ${have}).`,

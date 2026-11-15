@@ -119,6 +119,7 @@ import {
   renameAgent,
   moveAgent,
   setAgentPermission,
+  setAgentFolder,
   setAgentRepo,
   checkRepoName,
   agentLinkReport,
@@ -184,8 +185,9 @@ export const AGENTS_HELP = {
     "",
     "{cli} agents list -w <ws> [--stopped] [--json]",
     "    --stopped: only the stopped, interrupted and exited ones",
-    "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>]",
-    "    runs in the project's dir as <dist>-<ws>:<id>; its MCP is pinned to <ws>",
+    "{cli} agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>] [--repo <repo> | --folder <path>]",
+    "    runs in the project's repo (--repo, else its first) as <dist>-<ws>:<id>,",
+    "    or in --folder (a folder of the project's, a worktree); MCP pinned to <ws>",
     "    (plus agents.<id>.grants); capped by agents.max_concurrent",
     "{cli} agents stop <id> [-w <ws>] [--no-wait]",
     "    waits up to 5 s for the session to end (else: still stopping, exit 1);",
@@ -250,6 +252,9 @@ export const AGENTS_HELP = {
     "{cli} agents rename <id> --clear [-w <ws>]",
     "    name an agent (its tab, row and pane header); the id never changes.",
     "    Other sessions see it as {cli}-<ws>:<name> from its next start or resume.",
+    "{cli} agents folder <id> (--repo <repo> | --folder <path>) [-w <ws>]",
+    "    move a stopped agent to another folder of its project; its next start",
+    "    is a new conversation there. A person's only",
     "{cli} agents link <id> --repo <repo> [-w <ws>]",
     "{cli} agents unlink <id> [-w <ws>]",
     "    the repo of its project it works on: that repo's service cards list it,",
@@ -396,6 +401,9 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
     "--model": true,
     "--name": true,
     "--id": true,
+    // Gap 7: the repo it works in, or a folder of the project's (a worktree).
+    "--repo": true,
+    "--folder": true,
   });
   noExtra(where, p);
   const ws = workspaceFlag(where, p);
@@ -403,6 +411,8 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
   const persona = str(p, "--persona");
   const name = str(p, "--name");
   if (!persona) throw new UsageError(`${where} needs --persona <p>`);
+  const repo = str(p, "--repo");
+  const folder = str(p, "--folder");
   const s = await startAgent(d, {
     workspace: ws,
     persona,
@@ -410,6 +420,8 @@ async function start(args: string[], d: AgentsResolved): Promise<number> {
     model: str(p, "--model"),
     id: str(p, "--id"),
     ...(name !== undefined ? { name } : {}),
+    ...(repo !== undefined ? { repo } : {}),
+    ...(folder !== undefined ? { folder } : {}),
   });
   return report(
     d,
@@ -1314,6 +1326,36 @@ function rename(args: string[], d: AgentsResolved): number {
 }
 
 /**
+ * Gap 7 (0.4.48): `agents folder <id> (--repo <repo> | --folder <path>)`:
+ * a stopped agent's folder, a repo of its project or a folder in it. A
+ * conversation belongs to its folder, so its next start is a new one.
+ */
+function folder(args: string[], d: AgentsResolved): number {
+  const where = "agents folder";
+  personOnly(where, d, "an agent's folder");
+  const p = parseArgs(where, args, {
+    "--workspace": true,
+    "--repo": true,
+    "--folder": true,
+  });
+  noExtra(where, p, 1);
+  const [id] = p.positional;
+  if (!id) throw new UsageError(`${where} needs <id>`);
+  const repo = str(p, "--repo");
+  const dir = str(p, "--folder");
+  if ((repo === undefined) === (dir === undefined))
+    throw new UsageError(`${where} needs --repo <repo> or --folder <path>`);
+  const rec = setAgentFolder(d, id, workspaceFlag(where, p), {
+    ...(repo !== undefined ? { repo: checkRepoName(repo) } : {}),
+    ...(dir !== undefined ? { folder: dir } : {}),
+  });
+  d.out(
+    `agent ${id} now works in ${rec.cwd}${rec.repo ? ` (${rec.project} › ${rec.repo})` : ""}; its next start is a new conversation there`,
+  );
+  return 0;
+}
+
+/**
  * D65 v2: `agents link <id> --repo <repo>` / `agents unlink <id>`: the
  * repo of its project it works on. Its service cards list it under "On
  * this repo"; unlinked, under "Also in <project>". Kept through every
@@ -1832,6 +1874,9 @@ export async function cmdAgents(
           // D65: the project's repos come from its services, loaded here.
           await loadAgentWorkspaces(deps);
           return link(rest, d, "add");
+        case "folder":
+          await loadAgentWorkspaces(deps);
+          return folder(rest, d);
         case "unlink":
           await loadAgentWorkspaces(deps);
           return link(rest, d, "remove");

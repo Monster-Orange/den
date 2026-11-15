@@ -3090,7 +3090,8 @@ An agent is a **persona** (who) in a **project** (where), run by a
 server scoped to its project.
 
 ```
-<cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>]
+<cli> agents start -w <ws> --persona <p> [--runtime <r>] [--model <m>] [--name <name>] [--id <id>] [--repo <repo> | --folder <path>]
+<cli> agents folder <id> (--repo <repo> | --folder <path>) [-w <ws>]   # a stopped agent's folder
 <cli> agents list -w <ws> [--json]
 <cli> agents stop <id> [-w <ws>]
 <cli> agents resume <id> [-w <ws>]
@@ -3163,7 +3164,15 @@ server scoped to its project.
   project until projects come from Hub) and `repo` (optional). Den
   proposes the repo from the agent's folder once, at start or bring-in,
   and again only in the one-time migration of older records. Nothing
-  that shows an agent reads its folder. `agents link <id> --repo
+  that shows an agent reads its folder. **Its folder (0.4.48):** with no
+  `--folder`, an agent works in the repo it is started for (`--repo`), else
+  the one its record names, else the project's first repo; only a project
+  with no repos runs it in the project's own folder. A record left in that
+  top folder while the project has repos moves to a repo at its next
+  start. `agents folder <id> --repo <repo>` (or `--folder <path>`, a
+  folder of the project's) moves a stopped agent; its next start is a new
+  conversation there, because a conversation belongs to its folder. A
+  person's only. `agents link <id> --repo
 <repo>` and `agents unlink <id>` change it. The API is `POST
 /api/workspaces/:ws/agents/:id/link {repo: <name>|null}`, a person's
   only. `GET /api/personas?workspace=<ws>` lists the repos to choose

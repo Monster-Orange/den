@@ -17,6 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
+import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
 import { signInUrl } from "./helpers/den-auth.js";
@@ -252,7 +253,8 @@ describe("the Agents section", () => {
     const [named] = await cells(p, "planner");
     expect(named.replace(/\s+/g, " ").trim()).toBe("planner persona planner");
     expect(s!.made).toHaveLength(1);
-    expect(s!.made[0].opts.cwd).toBe(s!.wsDir("north"));
+    // Gap 7: no folder given, it works in north's repo.
+    expect(s!.made[0].opts.cwd).toBe(path.join(s!.tmp, "repos", "notes"));
     expect(fs.existsSync(s!.ran)).toBe(false);
     await p.waitForFunction(
       (n) =>

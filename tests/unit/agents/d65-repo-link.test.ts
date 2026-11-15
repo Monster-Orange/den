@@ -121,12 +121,25 @@ function idle(r: Rig, id = "planner"): void {
   r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
 }
 
-/** Ward's case: started in the workspace's own folder, then linked to notes. */
+/**
+ * Ward's case: started in the workspace's own folder, then linked to notes.
+ * Since gap 7 (0.4.48) no folder means a repo, so the top folder is asked
+ * for outright.
+ */
 async function topFolderLinked(): Promise<Rig> {
   const r = await linkedRig();
-  expect(await agents(r, "start", "-w", "north", "--persona", "planner")).toBe(
-    0,
-  );
+  expect(
+    await agents(
+      r,
+      "start",
+      "-w",
+      "north",
+      "--persona",
+      "planner",
+      "--folder",
+      r.wsDir("north"),
+    ),
+  ).toBe(0);
   expect(rec(r).cwd).toBe(r.wsDir("north"));
   // The top folder is no repo's: the proposal is none.
   expect(link(r)).toEqual({ project: "north", repo: undefined });

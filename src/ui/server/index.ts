@@ -6787,7 +6787,7 @@ function startUpdateCheck(): void {
       const u = await import("./den-update.js");
       const { updateCheck } = await import("./update-check.js");
       check ??= updateCheck({
-        running: () => engineVersion(),
+        running: () => engineVersion() ?? null,
         latest: () =>
           u.npmViewVersion(
             u.npmCommand(),
@@ -6828,14 +6828,14 @@ function startUpdateCheck(): void {
         update: async (version, reason) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
-          const ok = a.check({ version, reason });
+          const ok = await a.check({ version, reason });
           if (!ok.ok) return { ok: false, error: ok.error };
           updating = true;
           try {
-            const r = await a.run(ok.args, {
+            const r = (await a.run(ok.args, {
               id: "update-check",
               decidedBy: "auto:server_agent.self_update: auto",
-            });
+            })) as { ok?: boolean; error?: unknown };
             return r.ok
               ? { ok: true }
               : { ok: false, error: String(r.error ?? "not updated") };
@@ -6843,14 +6843,14 @@ function startUpdateCheck(): void {
             updating = false;
           }
         },
-        ask: (version, reason) => {
+        ask: async (version, reason) => {
           const ap = approvalDeps();
           try {
             if (!ap.enabled()) return false;
           } catch {
             return false;
           }
-          const ok = ap.actions.den_update.check({ version, reason });
+          const ok = await ap.actions.den_update.check({ version, reason });
           if (!ok.ok) return false;
           try {
             const a = ap.queue.request({

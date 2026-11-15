@@ -2867,6 +2867,12 @@ export async function startAgent(
       throw refused(
         `agent ${id} belongs to project ${prev.workspace}; give this one another --id`,
       );
+    // Gap 7: with no folder, the project's own repo, never the folder above.
+    // The server agent's folder is server_agent.folder's, always.
+    const home =
+      req.folder === undefined && !more.bringIn && !isServerScope(ws)
+        ? defaultAgentFolder(d, ws, req.repo, prev)
+        : undefined;
     ptyOrRefuse(d);
     const allow = allowedFor(d, persona, ch.extras);
     // D24: the name peers see it by, from the name it will have (below).
@@ -2898,7 +2904,9 @@ export async function startAgent(
       // 0.4.18: Start agent here: in a folder of the workspace's.
       ...(req.folder !== undefined && !more.bringIn
         ? { worktree: startFolder(d, ws, req.folder) }
-        : {}),
+        : home
+          ? { worktree: startFolder(d, ws, home) }
+          : {}),
       // AG-17.1: the runtime's resume, in the folder the conversation ran in.
       ...(more.bringIn
         ? { worktree: more.bringIn.cwd, resumeToken: more.bringIn.token }
@@ -3510,6 +3518,59 @@ export function checkRepoName(v: unknown): string {
   return v.trim();
 }
 
+/**
+ * Gap 7 (0.4.48): where an agent started with no folder works: the repo
+ * it is started for (refused when the project hasn't it), else the folder
+ * its record has (`agents folder`, a stop and start), else the repo it is
+ * linked to, else the project's first repo. A project with no repos, or
+ * `repo: null` (None): undefined, the project's own folder.
+ */
+export function defaultAgentFolder(
+  d: AgentsResolved,
+  ws: string,
+  repo: string | null | undefined,
+  prev: AgentRecord | null | undefined,
+): string | undefined {
+  const repos = workspaceRepoFolders(d, ws);
+  const isDir = (p: string | undefined): p is string =>
+    !!p && !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
+  if (typeof repo === "string") {
+    const dir = repos.get(repo);
+    if (!dir)
+      throw usage(
+        `agents start: project ${ws} has no repo "${repo}" (its repos: ${[...repos.keys()].sort().join(", ") || "none"})`,
+        404,
+      );
+    return dir;
+  }
+  if (repo === null) return undefined;
+  // The folder its record has, while it is one of this project's (a move
+  // keeps the old project's). One left in the project's top folder (gap
+  // 7's bug) moves to a repo.
+  const top = path.resolve(d.workspaceDir(ws));
+  if (
+    prev?.workspace === ws &&
+    isDir(prev.cwd) &&
+    !(repos.size && path.resolve(prev.cwd) === top) &&
+    inProject(d, ws, prev.cwd)
+  )
+    return prev.cwd;
+  const linked = prev?.repo ? repos.get(prev.repo) : undefined;
+  if (isDir(linked)) return linked;
+  for (const dir of repos.values()) if (isDir(dir)) return dir;
+  return undefined;
+}
+
+/** Whether `dir` is a folder of project `ws`'s (startFolder's check). */
+function inProject(d: AgentsResolved, ws: string, dir: string): boolean {
+  try {
+    startFolder(d, ws, dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** D65 v2: workspace `ws`'s repos, by name, with their folders. */
 export function workspaceRepoFolders(
   d: AgentsResolved,
@@ -3574,6 +3635,47 @@ function linkFields(
       ? { subpath: prev.subpath }
       : {}),
   };
+}
+
+/**
+ * Gap 7 (0.4.48): a stopped agent's folder: a repo of its project, or a
+ * folder in it (startFolder's checks). Its conversation stays behind (it
+ * belongs to the old folder): the next start is a new one there.
+ */
+export function setAgentFolder(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  to: { repo?: string; folder?: string },
+): AgentRecord {
+  const rec = agentRecord(
+    d,
+    id,
+    ws ?? readRecord(d.stateDir(), id)?.workspace ?? "",
+  );
+  if (!rec.stoppedAt)
+    throw refused(
+      `agent ${id} is running: stop it first (\`${d.cli} agents stop ${id}\`), then change its folder`,
+    );
+  const repos = workspaceRepoFolders(d, rec.workspace);
+  let dir: string;
+  if (to.repo !== undefined) {
+    const r = repos.get(to.repo);
+    if (!r)
+      throw usage(
+        `agents folder: project ${rec.workspace} has no repo "${to.repo}" (its repos: ${[...repos.keys()].sort().join(", ") || "none"})`,
+        404,
+      );
+    dir = startFolder(d, rec.workspace, r);
+  } else dir = startFolder(d, rec.workspace, to.folder ?? "");
+  const repo = to.repo ?? proposeRepo(d, rec.workspace, dir);
+  const next: AgentRecord = { ...rec, cwd: dir, project: rec.workspace };
+  if (repo) next.repo = repo;
+  else delete next.repo;
+  delete next.subpath;
+  delete next.resumeToken;
+  writeRecord(d.stateDir(), next);
+  return next;
 }
 
 /**

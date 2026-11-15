@@ -246,7 +246,8 @@ describe("rotated agents on the Agents page (den#4)", () => {
     expect(args[1]).not.toBe(TOKEN.relay);
     expect(args).not.toContain("--resume");
     expect(args[args.length - 1]).toContain(GOOD_HANDOFF);
-    expect(made[0].opts.cwd).toBe(s!.wsDir("north"));
+    // A new conversation: in north's repo (gap 7), not the folder above it.
+    expect(made[0].opts.cwd).toBe(path.join(s!.tmp, "repos", "notes"));
     await p.waitForSelector(
       '#agl .agr[data-kind="agent"][data-state="running"]',
     );

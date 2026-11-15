@@ -50,6 +50,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- An agent started with no folder (`agents start -w <project>`, or the
+  page) worked in the folder above the project's repos instead of in a
+  repo. It now works in the repo it is started for, else the project's
+  first repo. `agents start` takes `--repo <repo>` or `--folder <path>`
+  (a worktree, say), and `agents folder <id>` moves a stopped agent to
+  another folder of its project. An agent already left in that top
+  folder moves to a repo at its next start.
 - While Den couldn't read its Hub token (the secrets store refused for a
   while), agents were told "Hub isn't connected here. The person connects
   it in Settings", so they sent the person to reconnect, which was the
