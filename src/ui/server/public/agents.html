@@ -965,8 +965,11 @@
         .agp.n4 {
           grid-template-columns: minmax(0, 1fr);
         }
+        /* Issue 170: small enough that, with the runs dock open as the page
+           loads (a saved choice), the bar, five or so terminal rows and the
+           To line fit above it at 390x844; 260px ran about 56px under it. */
         .pane {
-          min-height: 260px;
+          min-height: 180px;
         }
         /* A pane's height comes from its row, never its terminal's (a
            24-row terminal held it taller than the screen, under the dock). */

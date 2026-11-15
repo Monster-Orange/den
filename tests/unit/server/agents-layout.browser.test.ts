@@ -917,6 +917,14 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await p.waitForSelector("#den-dock-out");
     await toBottom();
     await check("dock open, scrolled");
+    // The dock left open (a saved choice) and the page loaded again, not
+    // scrolled: what a person sees first (Lair's gate on 0.4.49-dev.1).
+    await p.reload();
+    await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+    await termsUp(p, 1);
+    await p.waitForSelector("#den-dock-out");
+    await p.waitForSelector("#agr .pane:not([hidden]) .bar2 [data-tags]");
+    await check("dock open, as loaded");
     await p.click('.den-dock [data-act="dock"]');
     await shot(p, "issue-170-390");
     await ctx.close();
