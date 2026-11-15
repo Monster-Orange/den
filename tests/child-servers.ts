@@ -181,6 +181,7 @@ export async function startDenServer(
     const port = await (o.pickPort ?? freePort)();
     let out = "";
     let exited = false;
+    let how = "";
     const server = spawnServer(cmd, args, {
       stdio: ["ignore", "pipe", "pipe"],
       ...opts,
@@ -188,7 +189,11 @@ export async function startDenServer(
     });
     server.stdout?.on("data", (d: Buffer) => (out += d.toString()));
     server.stderr?.on("data", (d: Buffer) => (out += d.toString()));
-    server.once("exit", () => (exited = true));
+    server.once("exit", (code, signal) => {
+      exited = true;
+      // den#143: say how it ended, so a flake names its cause.
+      how = signal ? ` (signal ${signal})` : ` (exit code ${code})`;
+    });
     const deadline = Date.now() + (o.timeoutMs ?? 20_000);
     let foreign = false;
     while (!exited && Date.now() < deadline) {
@@ -204,7 +209,11 @@ export async function startDenServer(
     }
     await stopServer(server);
     log += `\n--- try ${attempt} on port ${port}: ${
-      foreign ? "another server answered" : exited ? "it exited" : "timed out"
+      foreign
+        ? "another server answered"
+        : exited
+          ? `it exited${how}`
+          : "timed out"
     }\n${out}`;
     // A server that exits for its own reasons, or never answers, fails now;
     // only a port someone else holds is worth another try.

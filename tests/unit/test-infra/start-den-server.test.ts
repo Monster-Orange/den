@@ -86,7 +86,7 @@ ${FAKE}`;
     expect(fs.existsSync(once)).toBe(true);
   });
 
-  it("a server that exits for its own reasons fails at once, with what it printed", async () => {
+  it("a server that exits for its own reasons fails at once, with how it ended and what it printed", async () => {
     const root = tmpRoot();
     await expect(
       startDenServer(
@@ -95,6 +95,9 @@ ${FAKE}`;
         { cwd: root, env: { ...process.env, DEN_ROOT: root } },
         { timeoutMs: 10_000 },
       ),
-    ).rejects.toThrow(/try 1 on port \d+: it exited\nbad config/);
+    ).rejects.toThrow(
+      // den#143: the exit code too, so a flake names its cause.
+      /try 1 on port \d+: it exited \(exit code 1\)\nbad config/,
+    );
   });
 });
