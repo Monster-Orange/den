@@ -75,3 +75,39 @@ describe("SRV-P5: the charter lists the tools", () => {
     expect(unknown).toEqual([]);
   });
 });
+
+/**
+ * Vision 11-14: a refusal told agents "agents use MCP agent_spawn", a tool
+ * that never was. Every tool Den's own text names after MCP, call or tool
+ * (errors, refusals, descriptions, and the comments beside them) is one
+ * Den registers, or another server's that Den's text names on purpose.
+ */
+describe("Den's text names only tools that exist", () => {
+  /** Other servers' tools Den's text names on purpose (Hub, Playwright). */
+  const ELSEWHERE = new Set([
+    "hub_inbox",
+    "hub_artifact_update",
+    "browser_snapshot",
+  ]);
+  const SRC = path.join(__dirname, "../../../src");
+  function files(dir: string): string[] {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) return e.name === "node_modules" ? [] : files(p);
+      return /\.(ts|js|md)$/.test(e.name) ? [p] : [];
+    });
+  }
+
+  it("no made-up tool after MCP, call or tool", () => {
+    const bad: string[] = [];
+    for (const f of files(SRC)) {
+      const text = fs.readFileSync(f, "utf-8");
+      for (const m of text.matchAll(
+        /\b(?:MCP|[Cc]all|tool)\s+`?([a-z][a-z0-9]*_[a-z0-9_]+)\b(?![.(])/g,
+      ))
+        if (!registered.has(m[1]) && !ELSEWHERE.has(m[1]))
+          bad.push(`${path.relative(SRC, f)}: ${m[1]}`);
+    }
+    expect(bad).toEqual([]);
+  });
+});

@@ -5,7 +5,7 @@
  *   - the org config opts in: `mcp.actions` lists agent_resume (off by
  *     default, like every MCP action);
  *   - the agent to resume is in the caller's workspace, or one its
- *     agents.<id>.grants gives it (the scope agent_spawn has, AG spec §5);
+ *     agents.<id>.grants gives it;
  *   - it isn't the caller itself.
  *
  * The request checks (request-guard.ts agentRefusal) and the route

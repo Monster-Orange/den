@@ -1,6 +1,6 @@
 /**
  * MCP agent_resume (AG-14.4): opt-in through mcp.actions, for orchestrators,
- * scoped as agent_spawn is (its own workspace, or a granted one), never the
+ * scoped to its own workspace, or a granted one, never the
  * caller itself. The web server checks the same rule again
  * (agent-resume-grant.ts), and only that one route is open to an agent's
  * token. The API is a fake that records what was asked of it.

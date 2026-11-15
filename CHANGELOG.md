@@ -81,8 +81,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- An agent refused at the Agents page was told to use `agent_spawn`, a
+  tool that doesn't exist. It now names `agent_create`, which waits for
+  the person's Allow, and a test fails on any tool Den's text names that
+  Den doesn't have.
 - Running Den's tests could open sign-in tabs in the developer's browser,
-  one per run. `DEN_NO_OPEN=1` is now the same as `--no-open`, and Den
+  up to six per run. `DEN_NO_OPEN=1` is now the same as `--no-open`, and Den
   never opens or focuses a browser under a test run or CI unless
   `DEN_ALLOW_OPEN=1` says so.
 - An agent started with no folder (`agents start -w <project>`, or the

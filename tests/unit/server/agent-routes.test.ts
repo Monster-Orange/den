@@ -406,7 +406,7 @@ describe("POST /api/workspaces/<ws>/agents (start)", () => {
     expect((await rows(a, "south")).length).toBe(0);
   });
 
-  it("refuses an agent (its actor token, SEC-1c: 403): agents use MCP agent_spawn", async () => {
+  it("refuses an agent (its actor token, SEC-1c: 403), naming what works: MCP agent_create, held for the person's Allow", async () => {
     const a = await api();
     expect((await start(a, "north", { persona: "planner" })).status).toBe(200);
     const token = actorTokenOf(a.r.made[0].opts.env) ?? "";
@@ -418,6 +418,9 @@ describe("POST /api/workspaces/<ws>/agents (start)", () => {
       const { status, json } = await a.call("POST", p, body, auth);
       expect([p, status]).toEqual([p, 403]);
       expectR26(json, "forbidden");
+      expect(JSON.stringify(json)).toMatch(
+        /ask with the MCP tool agent_create, which waits for the person's Allow/,
+      );
     }
     expect(a.r.made).toHaveLength(1);
     expect(recentActions().at(-1)).toMatchObject({

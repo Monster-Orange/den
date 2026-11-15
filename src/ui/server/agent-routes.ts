@@ -76,8 +76,8 @@
  *
  * Guards on Start, Stop and Resume:
  *   - a person only: an agent (its actor token, SEC-1c) can't start or
- *     stop agents from the page (403; agents use MCP agent_spawn, §5,
- *     under its own guards);
+ *     stop agents from the page (403; an agent asks with MCP agent_create,
+ *     a held write the person Allows, SRV-P1);
  *   - agents.max_concurrent (the host's cap on agents, never plain
  *     sessions: 429 cap).
  * The admin password (R8) is no guard here (LK-0): it is for sudo, and
@@ -1664,7 +1664,7 @@ async function runtimePath(
 function guard(actor: Actor): void {
   if (actor && !actor.unverified)
     throw new AgentError(
-      "an agent can't start, stop or resume agents from the page; agents use MCP agent_spawn",
+      "an agent can't start, stop or resume agents from the page: to add one, ask with the MCP tool agent_create, which waits for the person's Allow",
       { status: 403 },
     );
 }
