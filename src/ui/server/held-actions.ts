@@ -27,6 +27,10 @@
  *                     createAgent); its mode the project's or stricter.
  *                     Any agent may ask: a project's agent for its own
  *                     project only, the server agent for any
+ *   persona_create    SRV-P2: add a persona, as the Personas page's New
+ *   persona_update    persona and edit do (agent-ops.ts); only a local
+ *                     persona changes, and the Review has the
+ *                     instructions in full
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
@@ -44,7 +48,7 @@ import type {
   HeldCheck,
 } from "./approval-routes.js";
 import type { AskedBy } from "./approvals.js";
-import type { AgentCreateCheck } from "../cli/agent-ops.js";
+import type { AgentCreateCheck, PersonaHeldCheck } from "../cli/agent-ops.js";
 
 export interface TryResult {
   ok: boolean;
@@ -88,6 +92,13 @@ export interface HeldActionDeps {
   agentCreate?: {
     check: (args: Record<string, unknown>, who?: HeldAsker) => AgentCreateCheck;
     run: (args: Record<string, unknown>) => Promise<unknown>;
+  };
+  /** SRV-P2: persona_create's and persona_update's checks and writes. */
+  personas?: {
+    checkCreate: (args: Record<string, unknown>) => PersonaHeldCheck;
+    create: (args: Record<string, unknown>) => Promise<unknown>;
+    checkUpdate: (args: Record<string, unknown>) => PersonaHeldCheck;
+    update: (args: Record<string, unknown>) => Promise<unknown>;
   };
 }
 
@@ -354,6 +365,21 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const noPersonas = {
+    ok: false as const,
+    error: "this Den can't change personas here",
+  };
+  const personaCreate: HeldAction = {
+    check: (a): HeldCheck =>
+      d.personas ? d.personas.checkCreate(a) : noPersonas,
+    run: (a) => d.personas!.create(a),
+  };
+  const personaUpdate: HeldAction = {
+    check: (a): HeldCheck =>
+      d.personas ? d.personas.checkUpdate(a) : noPersonas,
+    run: (a) => d.personas!.update(a),
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
@@ -361,5 +387,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     den_restart: denRestart,
     den_update: denUpdate,
     agent_create: agentCreate,
+    persona_create: personaCreate,
+    persona_update: personaUpdate,
   };
 }

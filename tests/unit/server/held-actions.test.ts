@@ -133,3 +133,45 @@ describe("SRV-P1: agent_create", () => {
     ]);
   });
 });
+
+describe("SRV-P2: persona_create and persona_update", () => {
+  it("are agent-ops' checks and writes; a Den without them refuses", async () => {
+    const f = fakes();
+    for (const k of ["persona_create", "persona_update"])
+      expect(await heldActions(f.deps)[k].check({})).toEqual({
+        ok: false,
+        error: "this Den can't change personas here",
+      });
+    const wrote: unknown[] = [];
+    const ok = {
+      ok: true as const,
+      summary: "s",
+      params: {},
+      details: [],
+      args: { id: "x" },
+    };
+    const acts = heldActions({
+      ...f.deps,
+      personas: {
+        checkCreate: () => ok,
+        create: async (a) => {
+          wrote.push(["create", a]);
+          return { ok: true };
+        },
+        checkUpdate: () => ok,
+        update: async (a) => {
+          wrote.push(["update", a]);
+          return { ok: true };
+        },
+      },
+    });
+    for (const k of ["persona_create", "persona_update"]) {
+      const c = await acts[k].check({});
+      if (c.ok) await acts[k].run(c.args);
+    }
+    expect(wrote).toEqual([
+      ["create", { id: "x" }],
+      ["update", { id: "x" }],
+    ]);
+  });
+});

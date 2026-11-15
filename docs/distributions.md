@@ -3042,6 +3042,15 @@ project may take that name.
   its id, project, repo and folder. Any agent may ask, and the Allow
   names it: a project's agent for its own project only (Den checks this
   from its token), the server agent for any project.
+- **It adds and changes personas** (0.4.48, `persona_create` and
+  `persona_update { id, …fields }`, held actions of the same names).
+  Any agent may ask; the person's Allow is the gate. The fields are the
+  Personas page's (name, role, category, description, instructions,
+  runtime, model, version, mode, allowed commands), checked the same
+  way. The Allow shows each field and the instructions in full;
+  `persona_update` lists the fields it changes and takes only those.
+  Only a local persona changes: a built-in one, or one the distribution
+  ships, is refused before anything waits (add a copy instead).
 - **Den keeps itself current** (0.4.48). Every
   `server_agent.update_check_minutes` (org config; default 30, at least
   5, 0 for never) the web server asks npm for the newest Den. The lead

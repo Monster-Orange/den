@@ -294,7 +294,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1314,6 +1314,62 @@ const UPDATE_NEXT =
 const HELD =
   " Nothing changes until the person allows it in Den's browser dialog: the request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
 
+/** SRV-P2: a persona's fields, as the Personas page's form has them. */
+function personaShape(update: boolean) {
+  const need = <T extends z.ZodTypeAny>(t: T) => (update ? t.optional() : t);
+  return {
+    ...(update
+      ? { id: z.string().describe("The persona's id (personas lists them)") }
+      : {}),
+    displayName: z
+      .string()
+      .max(40)
+      .optional()
+      .describe("Its name; the id comes from it"),
+    role: need(z.string().describe("A role from personas' roles")),
+    category: need(z.string().describe("A category from personas' categories")),
+    description: need(z.string().max(200).describe("One line: what it does")),
+    instructions: need(
+      z.string().describe("What it is told at every start (its prompt)"),
+    ),
+    runtime: need(z.string().describe("A runtime id (personas lists them)")),
+    model: z.string().optional().describe("One of the runtime's models"),
+    version: z
+      .string()
+      .optional()
+      .describe("latest (the default) or one of the model's versions"),
+    permission: z
+      .enum(["ask", "edits", "auto", "all"])
+      .optional()
+      .describe("Its mode: ask (the default), edits, auto or all"),
+    allowedCommands: z
+      .array(z.string())
+      .optional()
+      .describe("Commands it may run without asking"),
+    note: noteArg,
+  };
+}
+
+const PERSONA_FIELDS = [
+  "displayName",
+  "role",
+  "category",
+  "description",
+  "instructions",
+  "runtime",
+  "model",
+  "version",
+  "permission",
+  "allowedCommands",
+] as const;
+
+/** The persona fields given, as they were given (Den checks them). */
+function personaArgs(a: Args): Args {
+  return Object.fromEntries(
+    PERSONA_FIELDS.filter((k) => a[k] !== undefined).map((k) => [k, a[k]]),
+  );
+}
+
 const APPROVAL_TOOLS: DenTool[] = [
   {
     name: "workspace_create",
@@ -1516,6 +1572,43 @@ const APPROVAL_TOOLS: DenTool[] = [
           repo: str(a.repo),
           folder: str(a.folder),
         },
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "persona_create",
+    title: "Add a persona",
+    description:
+      "Add a persona (a reusable role an agent starts from), as the Personas page's New persona does. The person's Allow shows every field and the instructions in full. personas lists the roles, categories and runtimes it may name. It gets an id from its name." +
+      HELD,
+    action: true,
+    shape: personaShape(false),
+    async run(a, ctx) {
+      return askPerson(
+        "persona_create",
+        "persona_create",
+        personaArgs(a),
+        a.note,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "persona_update",
+    title: "Change a persona",
+    description:
+      "Change a persona you or the person added (`id`), giving only the fields that change. A built-in persona, or one the distribution ships, can't change: add a copy with persona_create." +
+      HELD,
+    action: true,
+    shape: personaShape(true),
+    async run(a, ctx) {
+      const id = needArg("persona_update", a, "id", "the persona's id");
+      return askPerson(
+        "persona_update",
+        "persona_update",
+        { id, ...personaArgs(a) },
         a.note,
         ctx,
       );

@@ -128,6 +128,7 @@ import {
   localPersonaExists,
   localPersonasDir,
   newPersonaId,
+  PERSONA_KEYS,
   PersonaInputError,
   writeLocalPersona,
   type PersonaInput,
@@ -1886,6 +1887,146 @@ export function updatePersona(
     );
   writeLocalPersona(d.stateDir(), id, checkedInput(d, body));
   return personaDetail(d, id);
+}
+
+/** SRV-P2: what a held persona write says it will do (HeldCheck's shape). */
+export type PersonaHeldCheck =
+  | {
+      ok: true;
+      summary: string;
+      params: Record<string, string>;
+      details: string[];
+      args: Record<string, unknown>;
+    }
+  | { ok: false; error: string };
+
+/** The Review's lines for a persona: its fields, then its instructions in full. */
+function personaReview(input: PersonaInput): string[] {
+  return [
+    ...(input.displayName ? [`Name: ${input.displayName}`] : []),
+    `Role: ${input.role}`,
+    `Category: ${input.category}`,
+    `Description: ${input.description}`,
+    `Runtime: ${input.runtime}${input.model ? `, model ${input.model} (${input.version})` : ""}`,
+    `Mode: ${input.permission}`,
+    `Allowed commands: ${input.allowedCommands.join(", ") || "none"}`,
+    "Instructions:",
+    input.instructions,
+  ];
+}
+
+const heldError = (e: unknown): { ok: false; error: string } => ({
+  ok: false,
+  error: (e as Error).message,
+});
+
+/**
+ * SRV-P2: checks a persona_create ask, writing nothing: the persona the
+ * Personas page's New persona would write, and the id it would get.
+ */
+export function checkPersonaCreate(
+  d: AgentsResolved,
+  raw: unknown,
+): PersonaHeldCheck {
+  try {
+    const input = checkedInput(d, raw);
+    const id = newPersonaId(
+      input,
+      new Set(personas(d, agentsConfig(d)).keys()),
+    );
+    const name = input.displayName ?? id;
+    return {
+      ok: true,
+      summary: `add persona ${name} (${id})`,
+      params: { name, id },
+      details: personaReview(input),
+      args: { ...input },
+    };
+  } catch (e) {
+    return heldError(e);
+  }
+}
+
+/** Persona `p` as the page's form holds it (PersonaInput's fields). */
+function personaInputOf(p: Persona): Record<string, unknown> {
+  return {
+    ...(p.displayName ? { displayName: p.displayName } : {}),
+    role: p.role,
+    category: p.category,
+    description: p.description,
+    instructions: p.prompt,
+    runtime: p.runtime ?? DEFAULT_RUNTIME_ID,
+    ...(p.model ? { model: p.model } : {}),
+    version: p.version ?? "latest",
+    permission: intentOf(p.permissionMode) ?? "ask",
+    allowedCommands: [...p.allowedCommands],
+  };
+}
+
+/**
+ * SRV-P2: checks a persona_update ask: `id` and only the fields that
+ * change, laid over the persona as it is. A built-in or a distribution's
+ * persona is read-only, as on the page.
+ */
+export function checkPersonaUpdate(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): PersonaHeldCheck {
+  try {
+    const id = typeof raw.id === "string" ? raw.id.trim() : "";
+    if (!id) return { ok: false, error: "id is required (a persona's id)" };
+    const p = personas(d, agentsConfig(d)).get(id);
+    if (!p) return { ok: false, error: `no persona "${id}"` };
+    if (p.origin !== "local" || !localPersonaExists(d.stateDir(), id))
+      return {
+        ok: false,
+        error: `${id} is ${p.origin === "builtin" ? "built in" : `the ${p.origin}'s`}: duplicate it (persona_create) to change a copy of your own`,
+      };
+    const was = personaInputOf(p);
+    const given = Object.fromEntries(
+      Object.entries(raw).filter(([k, v]) => k !== "id" && v !== undefined),
+    );
+    for (const k of Object.keys(given))
+      if (!(PERSONA_KEYS as readonly string[]).includes(k))
+        return {
+          ok: false,
+          error: `${k}: unknown field (a persona takes ${PERSONA_KEYS.join(", ")})`,
+        };
+    const input = checkedInput(d, { ...was, ...given });
+    const changed = PERSONA_KEYS.filter(
+      (k) =>
+        JSON.stringify((input as unknown as Record<string, unknown>)[k]) !==
+        JSON.stringify(was[k]),
+    );
+    if (!changed.length)
+      return { ok: false, error: `nothing to change in persona ${id}` };
+    const fields = changed.join(", ");
+    return {
+      ok: true,
+      summary: `change persona ${id}: ${fields}`,
+      params: { id, fields },
+      details: [
+        ...changed.map((k) => {
+          const v = (input as unknown as Record<string, unknown>)[k];
+          return `${k}: ${Array.isArray(v) ? v.join(", ") || "none" : String(v ?? "")}`;
+        }),
+        "As it will read:",
+        ...personaReview(input),
+      ],
+      args: { id, ...input },
+    };
+  } catch (e) {
+    return heldError(e);
+  }
+}
+
+/** SRV-P2: on Allow, persona_update's write (the page's edit). */
+export async function runPersonaUpdate(
+  d: AgentsResolved,
+  args: Record<string, unknown>,
+): Promise<ListedPersona> {
+  const { id, ...input } = args;
+  return updatePersona(d, String(id), input);
 }
 
 /** Delete local persona `id` (never a built-in or a distribution's). */

@@ -153,7 +153,7 @@ describe("tool registration", () => {
 
   it("approvalsState says which state is in effect", () => {
     expect(approvalsState(cfg())).toMatch(
-      /^held writes on: workspace_create, repo_add, den_restart_server, den_update, agent_create, service_try run only after the person's Allow/,
+      /^held writes on: workspace_create, repo_add, den_restart_server, den_update, agent_create, persona_create, persona_update, service_try run only after the person's Allow/,
     );
     expect(approvalsState(cfg({ approvals: false }))).toMatch(
       /^held writes off \(mcp\.approvals: false\)/,

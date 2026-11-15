@@ -969,7 +969,11 @@ import {
 } from "./agent-routes.js";
 import {
   checkAgentCreate,
+  checkPersonaCreate,
+  checkPersonaUpdate,
   createAgent,
+  createPersona,
+  runPersonaUpdate,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -2312,6 +2316,19 @@ function approvalDeps(): ApprovalDeps {
     agentCreate: {
       check: (a, who) => checkAgentCreate(agentWebDeps(), a, who),
       run: (a) => createAgent(agentWebDeps(), a),
+    },
+    // SRV-P2: an agent asks to add or change a persona.
+    personas: {
+      checkCreate: (a) => checkPersonaCreate(agentWebDeps(), a),
+      create: async (a) => ({
+        ok: true,
+        persona: createPersona(agentWebDeps(), a),
+      }),
+      checkUpdate: (a) => checkPersonaUpdate(agentWebDeps(), a),
+      update: async (a) => ({
+        ok: true,
+        persona: await runPersonaUpdate(agentWebDeps(), a),
+      }),
     },
   });
   approvals = {

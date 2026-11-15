@@ -54,7 +54,8 @@ export const MAX_INSTRUCTIONS = 20_000;
 export const MAX_DESCRIPTION = 200;
 export const MAX_PERSONA_NAME = 40;
 
-const KEYS = [
+/** The fields a persona takes (the page's, persona_update's). */
+export const PERSONA_KEYS = [
   "displayName",
   "role",
   "category",
@@ -66,6 +67,7 @@ const KEYS = [
   "permission",
   "allowedCommands",
 ] as const;
+const KEYS = PERSONA_KEYS;
 
 /** A usage error: a field a person sent isn't what it may be. */
 export class PersonaInputError extends Error {

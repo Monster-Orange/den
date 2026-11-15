@@ -385,6 +385,60 @@ describe("SRV-P1: agent_create", () => {
   });
 });
 
+describe("SRV-P2: persona_create and persona_update", () => {
+  it("persona_create asks with the persona's fields; any agent may ask", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, persona: { id: "copy-checker" } },
+    }));
+    const r = await callTool(
+      "persona_create",
+      {
+        displayName: "Copy checker",
+        role: "reviewer",
+        category: "marketing",
+        description: "Checks copy.",
+        instructions: "Read the copy.",
+        runtime: "den-claude",
+        allowedCommands: ["git diff"],
+      },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "persona_create",
+      args: {
+        displayName: "Copy checker",
+        role: "reviewer",
+        category: "marketing",
+        description: "Checks copy.",
+        instructions: "Read the copy.",
+        runtime: "den-claude",
+        allowedCommands: ["git diff"],
+      },
+    });
+  });
+
+  it("persona_update asks with the id and only the fields given", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true },
+    }));
+    const r = await callTool(
+      "persona_update",
+      { id: "copy-checker", description: "Checks copy." },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls[0].body).toEqual({
+      action: "persona_update",
+      args: { id: "copy-checker", description: "Checks copy." },
+    });
+  });
+});
+
 describe("SRV-1a: den_restart_server", () => {
   it("asks for den_restart with its reason; allowed at once (auto): no wait, and it says to end the turn", async () => {
     const { api, calls } = fakeApi([], () => ({

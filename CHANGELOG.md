@@ -27,6 +27,9 @@ config and manifest changes a distribution must make to move to it under
   the server agent for any. The Allow names who asked, the persona, the
   project and repo, and the mode, which is the project's or stricter.
   On Allow Den starts it as `agents start` does.
+- Agents can ask to add a persona (`persona_create`) or change one of
+  the local personas (`persona_update`), held for the person's Allow.
+  The Allow shows every field and the instructions in full.
 
 ### Changed
 

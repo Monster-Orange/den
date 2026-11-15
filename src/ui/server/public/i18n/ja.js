@@ -1029,6 +1029,8 @@
       "{path} のリポジトリを新しいプロジェクト「{workspace}」に追加",
     "ap.do.service_try": "{service} を起動",
     "ap.do.den_restart": "Den を再起動 ({reason})",
+    "ap.do.persona_create": "ペルソナ {name} ({id}) を追加",
+    "ap.do.persona_update": "ペルソナ {id} を変更: {fields}",
     "ap.do.agent_create":
       "エージェント {name} ({persona}) を {where} で起動、モード {mode}",
     "ap.do.service_try.activates":

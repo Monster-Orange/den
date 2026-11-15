@@ -1814,6 +1814,8 @@
       'Add the repo at {path} to a new project "{workspace}"',
     "ap.do.service_try": "Start {service}",
     "ap.do.den_restart": "Restart Den ({reason})",
+    "ap.do.persona_create": "Add the persona {name} ({id})",
+    "ap.do.persona_update": "Change the persona {id}: {fields}",
     "ap.do.agent_create":
       "Start agent {name} ({persona}) in {where}, mode {mode}",
     "ap.do.service_try.activates":
