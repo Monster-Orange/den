@@ -14,7 +14,10 @@ const INSTALLS_RUN = "24.13.0";
 
 interface Job {
   needs?: string | string[];
-  strategy?: { matrix?: { node?: string[] }; "fail-fast"?: boolean };
+  strategy?: {
+    matrix?: { node?: string[]; shard?: number[] };
+    "fail-fast"?: boolean;
+  };
   "continue-on-error"?: boolean;
   steps?: { run?: string; with?: Record<string, unknown> }[];
 }
@@ -49,11 +52,26 @@ function blockingOnBoth(j: Job | undefined): void {
 }
 
 describe("the Node matrix (den#84)", () => {
-  it("ci.yml: the gates and the install smoke block on both ends", () => {
+  it("ci.yml: the checks, the tests and the install smoke block on both ends", () => {
     const j = jobs("ci.yml");
-    blockingOnBoth(j.gates);
-    expect(runsTests(j.gates!)).toBe(true);
+    blockingOnBoth(j.checks);
+    expect(
+      (j.checks!.steps ?? []).some((s) => /typecheck/.test(s.run ?? "")),
+    ).toBe(true);
+    blockingOnBoth(j.tests);
+    expect(runsTests(j.tests!)).toBe(true);
     blockingOnBoth(j["dist-smoke"]);
+  });
+
+  it("ci.yml: the tests' shards are 1..N and each runs its own part of N, so every test runs", () => {
+    const t = jobs("ci.yml").tests!;
+    const shards = [...(t.strategy?.matrix?.shard ?? [])].sort((a, b) => a - b);
+    expect(shards.length).toBeGreaterThan(0);
+    expect(shards).toEqual(shards.map((_, i) => i + 1));
+    const run = (t.steps ?? []).find((s) =>
+      /\bnpm test\b/.test(s.run ?? ""),
+    )?.run;
+    expect(run).toContain(`--shard=\${{ matrix.shard }}/${shards.length}`);
   });
 
   it("release.yml: the gates block on both ends, before the tarball is built", () => {
