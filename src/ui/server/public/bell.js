@@ -101,7 +101,7 @@ export const switchOf = (kind) => KIND_SWITCH[kind] ?? "release";
 /** A switch's name: its Settings › Notifications label. */
 const switchName = (sw) => tr(`set.notifications.${sw}`);
 const SETTINGS = "/settings#notifications";
-/** An asked question this long shows two lines and an Open link. */
+/** An asked question this long shows two lines (its row opens it). */
 const LONG = 90;
 
 /** Only Den's own pages, or http(s): a row's link. */
@@ -120,13 +120,11 @@ function rowHtml(n, fold) {
   return (
     `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
-    (link && !long
-      ? `<a href="${esc(link)}" data-bell="open">${esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
-      : long && link
-        ? // The question's two lines, then Open below them (never clipped).
-          `<div class="den-bell-tw"><span class="den-bell-t long">${esc(text)}</span>` +
-          `<a href="${esc(link)}" data-bell="open" class="den-bell-open">${esc(tr("bell.open"))}</a></div>`
-        : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}</span>`) +
+    // den#93: the row opens on a click anywhere (its link holds the text,
+    // two lines at most for a long question); no separate Open link.
+    (link
+      ? `<a href="${esc(link)}" data-bell="open"${long ? ' class="den-bell-tw"' : ""}>${long ? `<span class="den-bell-t long">${esc(text)}</span>` : esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
+      : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}</span>`) +
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`
       : "") +
@@ -356,7 +354,15 @@ export function initBell(doc = document) {
   });
   pop.addEventListener("click", async (e) => {
     const el = e.target.closest("[data-bell]");
-    if (!el) return;
+    if (!el) {
+      // den#93: anywhere else on a row with a link (its dot, its time, the
+      // space between) opens it as its link does.
+      const a = e.target
+        .closest(".den-bell-row")
+        ?.querySelector('a[data-bell="open"]');
+      if (a) a.click();
+      return;
+    }
     const what = el.dataset.bell;
     if (what === "settings") return;
     if (what === "open") {

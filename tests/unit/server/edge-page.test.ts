@@ -2,7 +2,8 @@
  * The Edge page's view (public/edge-page.js, PL-SPEC §10): HTML from
  * /api/edge's JSON. The TLS strategy with where it came from (edge.tls, the
  * legacy keys, or implicit), CA trust, the included routers marked by
- * source file, and nothing to click but links.
+ * source file, and nothing to click but links. Its words come from the
+ * shell's catalog (den#171); here, en's.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -11,6 +12,9 @@ import {
   edgeView,
   tlsNote,
 } from "../../../src/ui/server/public/edge-page.js";
+import { installEnShell } from "./helpers/en-catalog.js";
+
+installEnShell();
 
 const st = {
   configured: true,
@@ -155,7 +159,7 @@ describe("the stacks' routes (a consumer's finding, 0.3.0-dev.32)", () => {
       '<a href="https://web.shop.acme.localhost" target="_blank" rel="noopener noreferrer">https://web.shop.acme.localhost</a>',
     );
     expect(html).toMatch(
-      /<td><span class="src" title="written by stack up">stack<\/span> <span class="mono sub">stack-shop-main\.yml<\/span><\/td>/,
+      /<td><span class="src" title="written by stack up" translate="no">stack<\/span> <span class="mono sub">stack-shop-main\.yml<\/span><\/td>/,
     );
     // After Den's own and the included routers.
     expect(html.indexOf("stack-shop-web")).toBeGreaterThan(

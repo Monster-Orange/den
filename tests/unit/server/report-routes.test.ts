@@ -40,12 +40,18 @@ const apiCalls: { method: string; path: string; body?: unknown }[] = [];
 const timers: (() => void)[] = [];
 const fakeClient: GithubDeviceClient = {
   start: async () => ({
-    deviceCode: "dc",
+    // Distinct values: a short one ("dc") matched the random flow id by
+    // chance and failed CI (den#184).
+    deviceCode: "device-code-never-shown",
     userCode: "ABCD-1234",
     expiresIn: 900,
     interval: 5,
   }),
-  poll: async () => ({ kind: "token", token: "t", expiring: false }),
+  poll: async () => ({
+    kind: "token",
+    token: "user-token-never-shown",
+    expiring: false,
+  }),
   user: async () => ({ id: 1, login: "pat" }),
   orgMember: async () => "unreadable",
   api: async (_t, method, p, body) => {
@@ -386,7 +392,9 @@ describe("FB: no gh, Den's GitHub App files it (the device flow)", () => {
     });
     expect(JSON.stringify(apiCalls[0].body)).not.toMatch(/rocket|\/Users\/pat/);
     expect((await call("GET", "/api/report")).body.sentThisHour).toBe(1);
-    expect(JSON.stringify(v.body)).not.toMatch(/"t"|dc/);
+    expect(JSON.stringify(v.body)).not.toMatch(
+      /user-token-never-shown|device-code-never-shown/,
+    );
   });
 
   it("GitHub refuses (the app isn't installed there): nothing counted, it says which repo", async () => {

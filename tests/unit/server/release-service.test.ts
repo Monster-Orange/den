@@ -154,6 +154,7 @@ describe("verifyEnv — status classification (per repo)", () => {
     expect(r.status).toEqual({
       kind: "error",
       text: "could not read main branch",
+      t: { key: "rel.st.noBranch", vars: { branch: "main" } },
     });
     expect(r.mainSha).toBeNull();
     expect(r.runUrl).toBeNull();
@@ -172,6 +173,7 @@ describe("verifyEnv — status classification (per repo)", () => {
     expect(r.status).toEqual({
       kind: "conflict",
       text: "✗ deployments API error",
+      t: { key: "rel.st.deploymentsErr" },
     });
     expect(r.mainSha).toBe(MAIN);
   });
@@ -183,6 +185,7 @@ describe("verifyEnv — status classification (per repo)", () => {
     expect(r.status).toEqual({
       kind: "no-deploy",
       text: "? no successful cd.yml deployment to dev",
+      t: { key: "rel.st.noDeploy", vars: { workflow: "cd.yml", env: "dev" } },
     });
   });
 
@@ -228,6 +231,7 @@ describe("verifyEnv — status classification (per repo)", () => {
     expect(r.status).toEqual({
       kind: "no-deploy",
       text: "? last CD deploy failure (none succeeded)",
+      t: { key: "rel.st.lastFailed", vars: { state: "failure" } },
     });
   });
 
@@ -266,6 +270,7 @@ describe("verifyEnv — status classification (per repo)", () => {
     expect(r.status).toEqual({
       kind: "conflict",
       text: "✗ deploy run failure — NOT rolled out",
+      t: { key: "rel.st.runConcl", vars: { state: "failure" } },
     });
     // Actor was empty → falls back to the deployment creator.
     expect(r.deployer).toBe("creator-c");
@@ -948,6 +953,10 @@ describe("verifyEnv — manifest release sources", () => {
     expect(r.status).toEqual({
       kind: "no-deploy",
       text: "? no release source for prod in .den.yml",
+      t: {
+        key: "rel.st.noSource",
+        vars: { env: "prod", file: ".den.yml" },
+      },
     });
   });
 });

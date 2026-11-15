@@ -678,1248 +678,1339 @@
 
     <!-- The page's one main landmark: everything after the shell. -->
     <main id="den-content">
-    <div class="controls">
-      <label class="env-label" for="rel-env">deploy to:</label>
-      <select id="rel-env" title="Deploy target"></select>
-      <button class="btn" id="refresh-btn" title="Re-check deployed state">
-        ⟳ Refresh
-      </button>
-      <span id="status-text">idle</span>
-      <span id="view-note"></span>
-      <div class="h-spacer" style="flex: 1"></div>
-      <button class="btn" id="waves-btn" title="Edit wave assignment">
-        Waves…
-      </button>
-      <button class="btn primary" id="deploy-all-btn">Deploy all →</button>
-      <span
-        id="read-only-tag"
-        title="Deploys are off. Set release.deploy: true in __DEN_CONFIG_FILE__ to enable them."
-        >read-only</span
-      >
-    </div>
-
-    <div class="page-main">
-      <div class="table-pane">
-        <table id="rel-table">
-          <thead>
-            <tr id="rel-head"></tr>
-          </thead>
-          <tbody id="rel-body">
-            <tr>
-              <td class="loading-note" colspan="8">
-                Loading deployed state<span class="loading-dots"></span>
-                <span class="sub"
-                  >Checking every repo against GitHub — this can take a
-                  minute.</span
-                >
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="controls">
+        <label class="env-label" for="rel-env" data-t="rel.deployTo"
+          >deploy to:</label
+        >
+        <select
+          id="rel-env"
+          title="Deploy target"
+          data-t-attr="title:rel.target"
+        ></select>
+        <button
+          class="btn"
+          id="refresh-btn"
+          title="Re-check deployed state"
+          data-t-attr="title:rel.refresh.title"
+        >
+          ⟳ <span data-t="rel.refresh">Refresh</span>
+        </button>
+        <span id="status-text" data-t="rel.idle">idle</span>
+        <span id="view-note"></span>
+        <div class="h-spacer" style="flex: 1"></div>
+        <button
+          class="btn"
+          id="waves-btn"
+          title="Edit wave assignment"
+          data-t-attr="title:rel.waves.title"
+          data-t="rel.waves"
+        >
+          Waves…
+        </button>
+        <button class="btn primary" id="deploy-all-btn" data-t="rel.deployAll">
+          Deploy all →
+        </button>
+        <span
+          id="read-only-tag"
+          title="Deploys are off. Set release.deploy: true in __DEN_CONFIG_FILE__ to enable them."
+          data-t-attr="title:rel.readOnly.title"
+          data-t="rel.readOnly"
+          >read-only</span
+        >
       </div>
 
-      <!-- Each deploy session is a tab in the shell's runs dock (R16):
-         selecting one attaches its log, its × closes the session. -->
-    </div>
-
-    <!-- Generic modal -->
-    <div class="overlay" id="overlay">
-      <div class="modal">
-        <div class="modal-hdr">
-          <h3 id="modal-title">…</h3>
-          <button class="modal-close" id="modal-x" title="Close">×</button>
+      <div class="page-main">
+        <div class="table-pane">
+          <table id="rel-table">
+            <thead>
+              <tr id="rel-head"></tr>
+            </thead>
+            <tbody id="rel-body">
+              <tr>
+                <td class="loading-note" colspan="8">
+                  <span data-t="rel.loading">Loading deployed state</span
+                  ><span class="loading-dots"></span>
+                  <span class="sub" data-t="rel.loading.sub"
+                    >Checking every repo against GitHub — this can take a
+                    minute.</span
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="modal-body" id="modal-body"></div>
-        <div class="modal-ftr" id="modal-ftr"></div>
+
+        <!-- Each deploy session is a tab in the shell's runs dock (R16):
+         selecting one attaches its log, its × closes the session. -->
       </div>
-    </div>
 
-    <script type="module">
-      import {
-        applyDenConfig,
-        initChangelog,
-        initLogBadge,
-        initHealth,
-        refreshHealth,
-        initWorkspacePill,
-      } from "/header.js";
-      import { viewNoteHtml, viewRepos, viewScope } from "/view-scope.js";
+      <!-- Generic modal -->
+      <div class="overlay" id="overlay">
+        <div class="modal">
+          <div class="modal-hdr">
+            <h3 id="modal-title">…</h3>
+            <button
+              class="modal-close"
+              id="modal-x"
+              title="Close"
+              data-t-attr="title:rel.close"
+            >
+              ×
+            </button>
+          </div>
+          <div class="modal-body" id="modal-body"></div>
+          <div class="modal-ftr" id="modal-ftr"></div>
+        </div>
+      </div>
 
-      // The header's dots report LOCAL service health here: #den-shell pins
-      // data-health-env="local" (shell.js). The env picker is the shell's
-      // view; #rel-env below is the deploy target. Changing the deploy
-      // target must NOT re-point the dots — that was the bug where
-      // selecting sandbox made the header ask /api/health?env=sandbox and show
-      // every system red while docker was perfectly healthy.
-      const HEADER_HEALTH_ENV = "local";
+      <script type="module">
+        import {
+          applyDenConfig,
+          initChangelog,
+          initLogBadge,
+          initHealth,
+          refreshHealth,
+          initWorkspacePill,
+        } from "/header.js";
+        import { viewNoteHtml, viewRepos, viewScope } from "/view-scope.js";
+        // The page's words (issue 171): shell.js's catalog, "rel.*". A deploy's
+        // own log lines (the server's) are output, not translated.
+        const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
+        const lang = document.documentElement.lang || "en";
 
-      const LS_ENV = "__DEN_CLI__-release-env";
-      // Remembers the active/last deploy session so its log survives navigation.
-      const LS_DEPLOY = "__DEN_CLI__-release-deploy";
-      const COLS = [
-        { key: "repo", label: "Repo" },
-        { key: "deployedAt", label: "Deployed At" },
-        { key: "deployer", label: "Deployer" },
-        { key: "main", label: "Source" },
-        { key: "deployed", label: "Deployed" },
-        { key: "branch", label: "Branch" },
-        { key: "status", label: "Status" },
-        { key: "deploy", label: "Deploy", noSort: true },
-      ];
-      const ST_RANK = {
-        "up-to-date": 0,
-        ahead: 1,
-        "off-main": 2,
-        behind: 3,
-        "no-deploy": 4,
-        conflict: 5,
-        error: 6,
-      };
-      const ST_CLASS = {
-        "up-to-date": "st-up",
-        ahead: "st-warn",
-        "off-main": "st-warn",
-        behind: "st-bad",
-        "no-deploy": "st-none",
-        conflict: "st-bad",
-        error: "st-bad",
-      };
+        // The header's dots report LOCAL service health here: #den-shell pins
+        // data-health-env="local" (shell.js). The env picker is the shell's
+        // view; #rel-env below is the deploy target. Changing the deploy
+        // target must NOT re-point the dots — that was the bug where
+        // selecting sandbox made the header ask /api/health?env=sandbox and show
+        // every system red while docker was perfectly healthy.
+        const HEADER_HEALTH_ENV = "local";
 
-      const state = {
-        config: null,
-        env: null,
-        rows: [],
-        sort: { key: "status", dir: "desc" }, // worst first by default
-        deploying: false, // is the ATTACHED session still running?
-        deploySession: null, // id of the server-side deploy session we're attached to
-        // Deploys run concurrently server-side; only one log is shown at a
-        // time. `sessions` is every restorable session (newest first) so the
-        // chip bar can switch between them, and `deployingRepos` is the set
-        // with a live deploy — only those repos' buttons are disabled.
-        // null | "initial" | "refresh" — a status fetch is in flight, so the
-        // table shows a loading row rather than the "no repos" empty state.
-        loading: null,
-        sessions: [],
-        deployingRepos: new Set(),
-        // Repos with a CD run in flight that WE didn't start — another
-        // engineer's dispatch, a push to main, a re-run from the Actions tab.
-        // Kept separate from deployingRepos so the two sources never fight.
-        externalRuns: new Set(),
-        runs: new Map(), // repo -> { status, conclusion, url, createdAt, external }
-      };
+        const LS_ENV = "__DEN_CLI__-release-env";
+        // Remembers the active/last deploy session so its log survives navigation.
+        const LS_DEPLOY = "__DEN_CLI__-release-deploy";
+        const COLS = [
+          { key: "repo", label: t("rel.col.repo") },
+          { key: "deployedAt", label: t("rel.col.deployedAt") },
+          { key: "deployer", label: t("rel.col.deployer") },
+          { key: "main", label: t("rel.col.source") },
+          { key: "deployed", label: t("rel.col.deployed") },
+          { key: "branch", label: t("rel.col.branch") },
+          { key: "status", label: t("rel.col.status") },
+          { key: "deploy", label: t("rel.col.deploy"), noSort: true },
+        ];
+        const ST_RANK = {
+          "up-to-date": 0,
+          ahead: 1,
+          "off-main": 2,
+          behind: 3,
+          "no-deploy": 4,
+          conflict: 5,
+          error: 6,
+        };
+        const ST_CLASS = {
+          "up-to-date": "st-up",
+          ahead: "st-warn",
+          "off-main": "st-warn",
+          behind: "st-bad",
+          "no-deploy": "st-none",
+          conflict: "st-bad",
+          error: "st-bad",
+        };
 
-      /** A repo is un-deployable while any CD run is in flight, ours or not. */
-      const isRepoBusy = (repo) =>
-        state.deployingRepos.has(repo) || state.externalRuns.has(repo);
+        const state = {
+          config: null,
+          env: null,
+          rows: [],
+          sort: { key: "status", dir: "desc" }, // worst first by default
+          deploying: false, // is the ATTACHED session still running?
+          deploySession: null, // id of the server-side deploy session we're attached to
+          // Deploys run concurrently server-side; only one log is shown at a
+          // time. `sessions` is every restorable session (newest first) so the
+          // chip bar can switch between them, and `deployingRepos` is the set
+          // with a live deploy — only those repos' buttons are disabled.
+          // null | "initial" | "refresh" — a status fetch is in flight, so the
+          // table shows a loading row rather than the "no repos" empty state.
+          loading: null,
+          sessions: [],
+          deployingRepos: new Set(),
+          // Repos with a CD run in flight that WE didn't start — another
+          // engineer's dispatch, a push to main, a re-run from the Actions tab.
+          // Kept separate from deployingRepos so the two sources never fight.
+          externalRuns: new Set(),
+          runs: new Map(), // repo -> { status, conclusion, url, createdAt, external }
+        };
 
-      let es = null;
-      window.addEventListener("pagehide", () => {
-        try {
-          es?.close();
-        } catch {}
-        es = null;
-      });
+        /** A repo is un-deployable while any CD run is in flight, ours or not. */
+        const isRepoBusy = (repo) =>
+          state.deployingRepos.has(repo) || state.externalRuns.has(repo);
 
-      const $ = (id) => document.getElementById(id);
-      const esc = (s) =>
-        String(s ?? "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
-
-      // 0.4.17: the repos follow the top bar's View (Org and Workspace),
-      // as on Environments: no picker of this page's own (view-scope.js).
-      let viewIn = null;
-      const viewReady = viewScope().then(async (v) => {
-        const note = document.getElementById("view-note");
-        if (note) note.innerHTML = viewNoteHtml(v);
-        viewIn = await viewRepos(v);
-      });
-
-      // ── Init ──────────────────────────────────────────────────────────────────
-      async function init() {
-        try {
-          state.config = await fetch("/api/release/config").then((r) =>
-            r.json(),
-          );
-        } catch {
-          state.config = {
-            environments: ["dev", "sandbox", "staging", "prod"],
-            repos: [],
-          };
-        }
-        document.body.classList.toggle(
-          "read-only",
-          state.config.deploy !== true,
-        );
-
-        // Read-only unless __DEN_CONFIG_FILE__ sets release.deploy: true. The page
-        // then only checks what is deployed; every deploy control is hidden.
-        state.canDeploy = state.config.deploy === true;
-        if (!state.canDeploy) {
-          $("deploy-all-btn").hidden = true;
-          $("waves-btn").hidden = true;
-          document.body.classList.add("read-only");
-          COLS.find((c) => c.key === "deploy").label = "Deploy run";
-        }
-
-        const envSel = $("rel-env");
-        envSel.innerHTML = state.config.environments
-          .map((e) => `<option value="${esc(e)}">${esc(e)}</option>`)
-          .join("");
-        const saved = localStorage.getItem(LS_ENV);
-        state.env =
-          saved && state.config.environments.includes(saved)
-            ? saved
-            : state.config.environments.includes("sandbox")
-              ? "sandbox"
-              : state.config.environments[0];
-        envSel.value = state.env;
-
-        envSel.addEventListener("change", () => {
-          state.env = envSel.value;
-          localStorage.setItem(LS_ENV, state.env);
-          state.runs.clear();
-          // Local health is unaffected by the deploy target; re-ping the same
-          // env so the dots stay live without following the selector.
-          refreshHealth(HEADER_HEALTH_ENV);
-          loadStatus();
-        });
-        $("refresh-btn").addEventListener("click", () => loadStatus(true));
-        $("deploy-all-btn").addEventListener("click", openDeployAllModal);
-        $("waves-btn").addEventListener("click", openWaveEditor);
-        $("modal-x").addEventListener("click", closeModal);
-        $("overlay").addEventListener("click", (e) => {
-          if (e.target === $("overlay")) closeModal();
-        });
-        document.addEventListener("keydown", (e) => {
-          if (e.key === "Escape") closeModal();
+        let es = null;
+        window.addEventListener("pagehide", () => {
+          try {
+            es?.close();
+          } catch {}
+          es = null;
         });
 
-        renderHead();
-        await Promise.all([
-          applyDenConfig(),
-          initChangelog(),
-          initWorkspacePill(),
-        ]);
-        initLogBadge();
-        initHealth();
-        loadStatus();
-        restoreDeploy(); // reattach to an in-flight/last deploy log if any
-        startRunsPoll(); // keep "is this system deploying" fresh
-      }
+        const $ = (id) => document.getElementById(id);
+        const esc = (s) =>
+          String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
 
-      // ── Load status ─────────────────────────────────────────────────────────────
-      async function loadStatus(refresh = false) {
-        // No deploy environment (environments: [local] only): nothing to ask.
-        if (!state.env) {
-          state.rows = [];
-          state.loading = null;
-          setStatus("no deploy environment configured");
-          renderTable();
-          return;
-        }
-        state.loading = refresh ? "refresh" : "initial";
-        setStatus(refresh ? "refreshing…" : "checking deployed state…");
-        renderTable(); // shows the loading row; see renderTable
-        try {
-          const data = await fetch(
-            `/api/release/status?env=${encodeURIComponent(state.env)}&refresh=${refresh ? 1 : 0}`,
-          ).then((r) => r.json());
-          await viewReady;
-          state.rows = (data.rows || []).filter(
-            (r) => !viewIn || viewIn.has(r.repo),
-          );
-          setStatus(
-            data.error
-              ? `error: ${data.error}`
-              : `${state.rows.length} repo(s) · updated ${fmtClock(data.fetchedAt)}`,
-          );
-        } catch (e) {
-          state.rows = [];
-          setStatus("failed to load status");
-        } finally {
-          // Clear before the final render, or the table would stay on the
-          // loading row forever if the fetch threw.
-          state.loading = null;
-        }
-        renderTable();
-      }
-
-      // ── Rendering ───────────────────────────────────────────────────────────────
-      function renderHead() {
-        $("rel-head").innerHTML = COLS.map((c) => {
-          if (c.noSort)
-            return `<th class="no-sort${c.key === "deploy" ? " deploy-cell" : ""}">${c.label}</th>`;
-          const active = state.sort.key === c.key;
-          const arrow = active
-            ? `<span class="arrow">${state.sort.dir === "asc" ? "▲" : "▼"}</span>`
-            : "";
-          return `<th data-key="${c.key}">${c.label}${arrow}</th>`;
-        }).join("");
-        $("rel-head")
-          .querySelectorAll("th[data-key]")
-          .forEach((th) => {
-            th.addEventListener("click", () => toggleSort(th.dataset.key));
-          });
-      }
-
-      function toggleSort(key) {
-        if (state.sort.key === key)
-          state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
-        else state.sort = { key, dir: key === "repo" ? "asc" : "desc" };
-        renderHead();
-        renderTable();
-      }
-
-      function sortVal(row, key) {
-        switch (key) {
-          case "repo":
-            return row.repo;
-          case "deployedAt":
-            return row.deployedAt ? Date.parse(row.deployedAt) : -Infinity;
-          case "deployer":
-            return (row.deployer || "").toLowerCase();
-          case "main":
-            return row.mainShort || "";
-          case "deployed":
-            return row.deployedShort || "";
-          case "branch":
-            return row.branch || "";
-          case "status":
-            return ST_RANK[row.status?.kind] ?? 99;
-          default:
-            return 0;
-        }
-      }
-
-      /**
-       * Placeholder rows shown while an env is being verified.
-       *
-       * `verifyEnv` fans out per repo (branch + deployments + a compare per
-       * deployment scanned), so a cold check regularly runs 30-60s. A single
-       * static line for that long reads as a hung page, so render the SHAPE of
-       * the table — one shimmering row per repo we already know about — plus
-       * copy that sets the expectation.
-       */
-      function loadingRowsHtml() {
-        // Prefer the real repo count so the skeleton matches what's coming;
-        // fall back to a sensible block on the very first load.
-        const n = Math.min(Math.max(state.rows.length || 8, 3), 8);
-        const verb = state.loading === "refresh" ? "Re-checking" : "Checking";
-        const widths = ["55%", "70%", "45%", "60%", "60%", "50%", "40%", "35%"];
-        const skelRows = Array.from(
-          { length: n },
-          (_, i) =>
-            `<tr class="skel-row">${widths
-              .map(
-                (w) =>
-                  `<td><span class="skel" style="width:${w};opacity:${(1 - i * 0.07).toFixed(2)}"></span></td>`,
-              )
-              .join("")}</tr>`,
-        ).join("");
-        return (
-          `<tr><td class="loading-note" colspan="8">` +
-          `${verb} <strong>${esc(state.env)}</strong><span class="loading-dots"></span>` +
-          `<span class="sub">Comparing every repo against GitHub — this may take a minute.</span>` +
-          `</td></tr>${skelRows}`
-        );
-      }
-
-      function renderTable() {
-        // Loading wins over the empty state. loadStatus() awaits a slow verify,
-        // and anything that re-renders in that window (the CD-run poll, a deploy
-        // event) would otherwise replace "Re-checking…" with "No repos
-        // configured" — which reads as a broken config rather than a pending
-        // fetch. Checked here so every caller gets it, not just loadStatus.
-        if (state.loading) {
-          $("rel-body").innerHTML = loadingRowsHtml();
-          return;
-        }
-        if (!state.rows.length) {
-          $("rel-body").innerHTML =
-            `<tr><td class="empty-state" colspan="8">No repos to check. Give a repo's <code>__DEN_MANIFEST_YML__</code> a <code>release:</code> block saying where each environment's deployed commit is read.</td></tr>`;
-          return;
-        }
-        const rows = [...state.rows].sort((a, b) => {
-          const av = sortVal(a, state.sort.key),
-            bv = sortVal(b, state.sort.key);
-          const cmp = av < bv ? -1 : av > bv ? 1 : a.repo < b.repo ? -1 : 1;
-          return state.sort.dir === "asc" ? cmp : -cmp;
+        // 0.4.17: the repos follow the top bar's View (Org and Workspace),
+        // as on Environments: no picker of this page's own (view-scope.js).
+        let viewIn = null;
+        const viewReady = viewScope().then(async (v) => {
+          const note = document.getElementById("view-note");
+          if (note) note.innerHTML = viewNoteHtml(v);
+          viewIn = await viewRepos(v);
         });
-        $("rel-body").innerHTML = rows.map(rowHtml).join("");
-        $("rel-body")
-          .querySelectorAll(".dep-btn")
-          .forEach((btn) => {
-            btn.addEventListener("click", () =>
-              openDeployModal(btn.dataset.repo),
+
+        // ── Init ──────────────────────────────────────────────────────────────────
+        async function init() {
+          try {
+            state.config = await fetch("/api/release/config").then((r) =>
+              r.json(),
             );
-          });
-      }
+          } catch {
+            state.config = {
+              environments: ["dev", "sandbox", "staging", "prod"],
+              repos: [],
+            };
+          }
+          document.body.classList.toggle(
+            "read-only",
+            state.config.deploy !== true,
+          );
 
-      function rowHtml(r) {
-        const stClass = ST_CLASS[r.status?.kind] || "st-none";
-        const note =
-          (r.status?.warn
-            ? `<span class="st-note">${esc(r.status.warn)}</span>`
-            : "") +
-          (r.source ? `<span class="st-note">via ${esc(r.source)}</span>` : "");
-        const run = state.runs.get(r.repo);
-        const deployCell = run ? runPillHtml(run) : "";
-        const btnDisabled = isRepoBusy(r.repo) ? "disabled" : "";
-        const srcTag = `<span class="branch" title="branch this environment ships from">${esc(r.sourceBranch || "main")}</span> `;
-        const mainCell = r.mainShort
-          ? r.deployedShort && r.deployedShort !== r.mainShort
-            ? `${srcTag}<span class="sha">${esc(r.mainShort)}</span>`
-            : `${srcTag}<span class="sha" style="color:var(--ok)">${esc(r.mainShort)}</span>`
-          : '<span class="sha">—</span>';
-        // The GitHub Environment checked, when it isn't the env's own name
-        // (mapped CD environments, one row per tenant cell).
-        const envTag =
-          r.environment && r.environment !== state.env
-            ? `<span class="sha" title="GitHub Environment" style="display:block">${esc(r.environment)}</span>`
-            : "";
-        const dep = r.deployer;
-        const depIsBot =
-          !!dep && (dep.endsWith("[bot]") || dep === "github-actions");
-        const deployerCell = !dep
-          ? '<span class="sha">—</span>'
-          : depIsBot
-            ? `<span class="deployer bot" title="automated">${esc(dep)}</span>`
-            : `<a class="deployer" href="https://github.com/${encodeURIComponent(dep)}" target="_blank" rel="noopener" title="View ${esc(dep)} on GitHub">@${esc(dep)}</a>`;
-        return `<tr>
+          // Read-only unless __DEN_CONFIG_FILE__ sets release.deploy: true. The page
+          // then only checks what is deployed; every deploy control is hidden.
+          state.canDeploy = state.config.deploy === true;
+          if (!state.canDeploy) {
+            $("deploy-all-btn").hidden = true;
+            $("waves-btn").hidden = true;
+            document.body.classList.add("read-only");
+            COLS.find((c) => c.key === "deploy").label = t("rel.col.run");
+          }
+
+          const envSel = $("rel-env");
+          envSel.innerHTML = state.config.environments
+            .map((e) => `<option value="${esc(e)}">${esc(e)}</option>`)
+            .join("");
+          const saved = localStorage.getItem(LS_ENV);
+          state.env =
+            saved && state.config.environments.includes(saved)
+              ? saved
+              : state.config.environments.includes("sandbox")
+                ? "sandbox"
+                : state.config.environments[0];
+          envSel.value = state.env;
+
+          envSel.addEventListener("change", () => {
+            state.env = envSel.value;
+            localStorage.setItem(LS_ENV, state.env);
+            state.runs.clear();
+            // Local health is unaffected by the deploy target; re-ping the same
+            // env so the dots stay live without following the selector.
+            refreshHealth(HEADER_HEALTH_ENV);
+            loadStatus();
+          });
+          $("refresh-btn").addEventListener("click", () => loadStatus(true));
+          $("deploy-all-btn").addEventListener("click", openDeployAllModal);
+          $("waves-btn").addEventListener("click", openWaveEditor);
+          $("modal-x").addEventListener("click", closeModal);
+          $("overlay").addEventListener("click", (e) => {
+            if (e.target === $("overlay")) closeModal();
+          });
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeModal();
+          });
+
+          renderHead();
+          await Promise.all([
+            applyDenConfig(),
+            initChangelog(),
+            initWorkspacePill(),
+          ]);
+          initLogBadge();
+          initHealth();
+          loadStatus();
+          restoreDeploy(); // reattach to an in-flight/last deploy log if any
+          startRunsPoll(); // keep "is this system deploying" fresh
+        }
+
+        // ── Load status ─────────────────────────────────────────────────────────────
+        async function loadStatus(refresh = false) {
+          // No deploy environment (environments: [local] only): nothing to ask.
+          if (!state.env) {
+            state.rows = [];
+            state.loading = null;
+            setStatus(t("rel.noEnv"));
+            renderTable();
+            return;
+          }
+          state.loading = refresh ? "refresh" : "initial";
+          setStatus(refresh ? t("rel.refreshing") : t("rel.checking"));
+          renderTable(); // shows the loading row; see renderTable
+          try {
+            const data = await fetch(
+              `/api/release/status?env=${encodeURIComponent(state.env)}&refresh=${refresh ? 1 : 0}`,
+            ).then((r) => r.json());
+            await viewReady;
+            state.rows = (data.rows || []).filter(
+              (r) => !viewIn || viewIn.has(r.repo),
+            );
+            setStatus(
+              data.error
+                ? t("rel.error", { error: data.error })
+                : t("rel.updated", {
+                    n: state.rows.length,
+                    time: fmtClock(data.fetchedAt),
+                  }),
+            );
+          } catch (e) {
+            state.rows = [];
+            setStatus(t("rel.loadFailed"));
+          } finally {
+            // Clear before the final render, or the table would stay on the
+            // loading row forever if the fetch threw.
+            state.loading = null;
+          }
+          renderTable();
+        }
+
+        // ── Rendering ───────────────────────────────────────────────────────────────
+        function renderHead() {
+          $("rel-head").innerHTML = COLS.map((c) => {
+            if (c.noSort)
+              return `<th class="no-sort${c.key === "deploy" ? " deploy-cell" : ""}">${esc(c.label)}</th>`;
+            const active = state.sort.key === c.key;
+            const arrow = active
+              ? `<span class="arrow">${state.sort.dir === "asc" ? "▲" : "▼"}</span>`
+              : "";
+            return `<th data-key="${c.key}">${esc(c.label)}${arrow}</th>`;
+          }).join("");
+          $("rel-head")
+            .querySelectorAll("th[data-key]")
+            .forEach((th) => {
+              th.addEventListener("click", () => toggleSort(th.dataset.key));
+            });
+        }
+
+        function toggleSort(key) {
+          if (state.sort.key === key)
+            state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
+          else state.sort = { key, dir: key === "repo" ? "asc" : "desc" };
+          renderHead();
+          renderTable();
+        }
+
+        function sortVal(row, key) {
+          switch (key) {
+            case "repo":
+              return row.repo;
+            case "deployedAt":
+              return row.deployedAt ? Date.parse(row.deployedAt) : -Infinity;
+            case "deployer":
+              return (row.deployer || "").toLowerCase();
+            case "main":
+              return row.mainShort || "";
+            case "deployed":
+              return row.deployedShort || "";
+            case "branch":
+              return row.branch || "";
+            case "status":
+              return ST_RANK[row.status?.kind] ?? 99;
+            default:
+              return 0;
+          }
+        }
+
+        /**
+         * Placeholder rows shown while an env is being verified.
+         *
+         * `verifyEnv` fans out per repo (branch + deployments + a compare per
+         * deployment scanned), so a cold check regularly runs 30-60s. A single
+         * static line for that long reads as a hung page, so render the SHAPE of
+         * the table — one shimmering row per repo we already know about — plus
+         * copy that sets the expectation.
+         */
+        function loadingRowsHtml() {
+          // Prefer the real repo count so the skeleton matches what's coming;
+          // fall back to a sensible block on the very first load.
+          const n = Math.min(Math.max(state.rows.length || 8, 3), 8);
+          const verb =
+            state.loading === "refresh" ? "rel.rechecking" : "rel.checkingEnv";
+          const widths = [
+            "55%",
+            "70%",
+            "45%",
+            "60%",
+            "60%",
+            "50%",
+            "40%",
+            "35%",
+          ];
+          const skelRows = Array.from(
+            { length: n },
+            (_, i) =>
+              `<tr class="skel-row">${widths
+                .map(
+                  (w) =>
+                    `<td><span class="skel" style="width:${w};opacity:${(1 - i * 0.07).toFixed(2)}"></span></td>`,
+                )
+                .join("")}</tr>`,
+          ).join("");
+          return (
+            `<tr><td class="loading-note" colspan="8">` +
+            `${t(verb, { env: `<strong>${esc(state.env)}</strong>` })}<span class="loading-dots"></span>` +
+            `<span class="sub">${esc(t("rel.comparing"))}</span>` +
+            `</td></tr>${skelRows}`
+          );
+        }
+
+        function renderTable() {
+          // Loading wins over the empty state. loadStatus() awaits a slow verify,
+          // and anything that re-renders in that window (the CD-run poll, a deploy
+          // event) would otherwise replace "Re-checking…" with "No repos
+          // configured" — which reads as a broken config rather than a pending
+          // fetch. Checked here so every caller gets it, not just loadStatus.
+          if (state.loading) {
+            $("rel-body").innerHTML = loadingRowsHtml();
+            return;
+          }
+          if (!state.rows.length) {
+            $("rel-body").innerHTML =
+              `<tr><td class="empty-state" colspan="8">${t("rel.none", { file: "<code>__DEN_MANIFEST_YML__</code>", block: "<code>release:</code>" })}</td></tr>`;
+            return;
+          }
+          const rows = [...state.rows].sort((a, b) => {
+            const av = sortVal(a, state.sort.key),
+              bv = sortVal(b, state.sort.key);
+            const cmp = av < bv ? -1 : av > bv ? 1 : a.repo < b.repo ? -1 : 1;
+            return state.sort.dir === "asc" ? cmp : -cmp;
+          });
+          $("rel-body").innerHTML = rows.map(rowHtml).join("");
+          $("rel-body")
+            .querySelectorAll(".dep-btn")
+            .forEach((btn) => {
+              btn.addEventListener("click", () =>
+                openDeployModal(btn.dataset.repo),
+              );
+            });
+        }
+
+        function rowHtml(r) {
+          const stClass = ST_CLASS[r.status?.kind] || "st-none";
+          const note =
+            (r.status?.warn
+              ? `<span class="st-note">${esc(statusWords(r.status.warnT, r.status.warn))}</span>`
+              : "") +
+            (r.source
+              ? `<span class="st-note">${esc(t("rel.via", { source: sourceWords(r.source) }))}</span>`
+              : "");
+          const run = state.runs.get(r.repo);
+          const deployCell = run ? runPillHtml(run) : "";
+          const btnDisabled = isRepoBusy(r.repo) ? "disabled" : "";
+          const srcTag = `<span class="branch" title="${esc(t("rel.srcBranch"))}">${esc(r.sourceBranch || "main")}</span> `;
+          const mainCell = r.mainShort
+            ? r.deployedShort && r.deployedShort !== r.mainShort
+              ? `${srcTag}<span class="sha">${esc(r.mainShort)}</span>`
+              : `${srcTag}<span class="sha" style="color:var(--ok)">${esc(r.mainShort)}</span>`
+            : '<span class="sha">—</span>';
+          // The GitHub Environment checked, when it isn't the env's own name
+          // (mapped CD environments, one row per tenant cell).
+          const envTag =
+            r.environment && r.environment !== state.env
+              ? `<span class="sha" title="${esc(t("rel.ghEnv"))}" style="display:block">${esc(r.environment)}</span>`
+              : "";
+          const dep = r.deployer;
+          const depIsBot =
+            !!dep && (dep.endsWith("[bot]") || dep === "github-actions");
+          const deployerCell = !dep
+            ? '<span class="sha">—</span>'
+            : depIsBot
+              ? `<span class="deployer bot" title="${esc(t("rel.automated"))}">${esc(dep)}</span>`
+              : `<a class="deployer" href="https://github.com/${encodeURIComponent(dep)}" target="_blank" rel="noopener" title="${esc(t("rel.viewOnGh", { who: dep }))}">@${esc(dep)}</a>`;
+          return `<tr>
         <td class="repo-cell">${
           r.gh && r.workflow
-            ? `<a class="repo-link" href="https://github.com/${esc(r.gh)}/actions/workflows/${encodeURIComponent(r.workflow)}" target="_blank" rel="noopener" title="Open ${esc(r.workflow)} for ${esc(r.gh)} on GitHub">${esc(r.repo)}</a>`
+            ? `<a class="repo-link" href="https://github.com/${esc(r.gh)}/actions/workflows/${encodeURIComponent(r.workflow)}" target="_blank" rel="noopener" title="${esc(t("rel.openWorkflow", { workflow: r.workflow, repo: r.gh }))}">${esc(r.repo)}</a>`
             : esc(r.repo)
-        }${state.canDeploy ? `<span class="wave-tag" title="wave">w${r.wave}</span>` : ""}${envTag}</td>
+        }${state.canDeploy ? `<span class="wave-tag" title="${esc(t("rel.wave"))}">w${r.wave}</span>` : ""}${envTag}</td>
         <td class="when">${whenHtml(r.deployedAt, !!r.deployedSha)}</td>
         <td>${deployerCell}</td>
         <td>${mainCell}</td>
         <td><span class="sha">${esc(r.deployedShort || "—")}</span></td>
         <td>${r.branch ? `<span class="branch" title="${esc(r.branch)}">${esc(r.branch)}</span>` : '<span class="sha">—</span>'}</td>
-        <td><span class="st ${stClass}">${esc(r.status?.text || "—")}</span>${note}</td>
+        <td><span class="st ${stClass}">${esc(statusWords(r.status?.t, r.status?.text) || "—")}</span>${note}</td>
         <td class="deploy-cell">
           ${deployCell}
-          ${state.canDeploy ? `<button class="dep-btn" data-repo="${esc(r.repo)}" ${btnDisabled}>Deploy →</button>` : ""}
+          ${state.canDeploy ? `<button class="dep-btn" data-repo="${esc(r.repo)}" ${btnDisabled}>${esc(t("rel.deploy"))}</button>` : ""}
         </td>
       </tr>`;
-      }
+        }
 
-      function runPillHtml(run) {
-        const s = run.status,
-          c = run.conclusion;
-        let cls = "busy",
-          label = s;
-        if (s === "completed") {
-          if (c === "success") {
-            cls = "ok";
-            label = "✓ success";
+        function runPillHtml(run) {
+          const s = run.status,
+            c = run.conclusion;
+          let cls = "busy",
+            label = s;
+          if (s === "completed") {
+            if (c === "success") {
+              cls = "ok";
+              label = `✓ ${t("rel.run.success")}`;
+            } else {
+              cls = "err";
+              label = `✗ ${c || t("rel.run.failed")}`;
+            }
+          } else if (s === "skipped") {
+            cls = "";
+            label = t("rel.run.skipped");
+          } else if (s === "dispatching") {
+            cls = "busy";
+            label = t("rel.run.dispatching");
+          } else if (s === "in_progress" || s === "queued") {
+            cls = "busy";
+            // Name the environment when we know it. Without this, a run targeting
+            // another env reads as "this row is deploying" while its Deploy button
+            // stays enabled — which looks like a bug rather than the point.
+            label =
+              (s === "queued" ? t("rel.run.queued") : t("rel.run.running")) +
+              (run.envHint ? ` → ${run.envHint}` : "");
           } else {
-            cls = "err";
-            label = `✗ ${c || "failed"}`;
+            cls = "busy";
+            label = s;
           }
-        } else if (s === "skipped") {
-          cls = "";
-          label = "skipped";
-        } else if (s === "dispatching") {
-          cls = "busy";
-          label = "dispatching…";
-        } else if (s === "in_progress" || s === "queued") {
-          cls = "busy";
-          // Name the environment when we know it. Without this, a run targeting
-          // another env reads as "this row is deploying" while its Deploy button
-          // stays enabled — which looks like a bug rather than the point.
-          label =
-            (s === "queued" ? "queued" : "running") +
-            (run.envHint ? ` → ${run.envHint}` : "");
-        } else {
-          cls = "busy";
-          label = s;
+          const inner = `<span class="dot"></span>${esc(label)}`;
+          return run.url
+            ? `<a class="run-pill ${cls}" href="${esc(run.url)}" target="_blank" rel="noopener" style="margin-right:6px">${inner}</a>`
+            : `<span class="run-pill ${cls}" style="margin-right:6px">${inner}</span>`;
         }
-        const inner = `<span class="dot"></span>${esc(label)}`;
-        return run.url
-          ? `<a class="run-pill ${cls}" href="${esc(run.url)}" target="_blank" rel="noopener" style="margin-right:6px">${inner}</a>`
-          : `<span class="run-pill ${cls}" style="margin-right:6px">${inner}</span>`;
-      }
 
-      function whenHtml(iso, known) {
-        // A commit read from a version endpoint has no date: unknown, not never.
-        if (!iso)
-          return known
-            ? '<span class="sha" title="the service reports its commit, not when it shipped">—</span>'
-            : '<span class="sha">never</span>';
-        const d = new Date(iso);
-        const abs = d.toISOString().slice(0, 16).replace("T", " ");
-        return `<span class="rel" title="${esc(iso)}">${esc(relTime(d))}</span> <span class="abs">${esc(abs)}Z</span>`;
-      }
-
-      function relTime(d) {
-        const s = Math.floor((Date.now() - d.getTime()) / 1000);
-        if (s < 60) return "just now";
-        const m = Math.floor(s / 60);
-        if (m < 60) return `${m}m ago`;
-        const h = Math.floor(m / 60);
-        if (h < 24) return `${h}h ago`;
-        const days = Math.floor(h / 24);
-        if (days < 30) return `${days}d ago`;
-        return `${Math.floor(days / 30)}mo ago`;
-      }
-
-      function fmtClock(iso) {
-        try {
-          return new Date(iso).toLocaleTimeString();
-        } catch {
-          return "";
+        function whenHtml(iso, known) {
+          // A commit read from a version endpoint has no date: unknown, not never.
+          if (!iso)
+            return known
+              ? `<span class="sha" title="${esc(t("rel.noDate"))}">—</span>`
+              : `<span class="sha">${esc(t("rel.never"))}</span>`;
+          const d = new Date(iso);
+          const abs = d.toISOString().slice(0, 16).replace("T", " ");
+          return `<span class="rel" title="${esc(iso)}">${esc(relTime(d))}</span> <span class="abs">${esc(abs)}Z</span>`;
         }
-      }
-      function setStatus(t) {
-        $("status-text").textContent = t;
-      }
 
-      // ── Deploy modals ───────────────────────────────────────────────────────────
-      let modalKeyHandler = null;
+        // "5 min ago" in the page's language (Intl, issue 171).
+        const rtf = new Intl.RelativeTimeFormat(lang, {
+          numeric: "auto",
+          style: "narrow",
+        });
+        function relTime(d) {
+          const s = Math.floor((Date.now() - d.getTime()) / 1000);
+          if (s < 60) return rtf.format(0, "second");
+          const m = Math.floor(s / 60);
+          if (m < 60) return rtf.format(-m, "minute");
+          const h = Math.floor(m / 60);
+          if (h < 24) return rtf.format(-h, "hour");
+          const days = Math.floor(h / 24);
+          if (days < 30) return rtf.format(-days, "day");
+          return rtf.format(-Math.floor(days / 30), "month");
+        }
 
-      function openModal(title, bodyHtml, footerHtml) {
-        $("modal-title").textContent = title;
-        $("modal-body").innerHTML = bodyHtml;
-        $("modal-ftr").innerHTML = footerHtml;
-        $("overlay").classList.add("open");
+        /**
+         * A status line from the server: its key and values (`t`) in the
+         * page's language when it sends them, else its English text.
+         */
+        function statusWords(st, text) {
+          return st?.key ? t(st.key, st.vars) : text;
+        }
 
-        // Enter submits the primary action. Typing the confirmation word and
-        // pressing Enter is the natural flow, and doing nothing reads as the
-        // modal being stuck. Bound on the overlay so it also covers inputs
-        // rendered later (the prod confirm box appears after branch load).
-        modalKeyHandler = (e) => {
-          if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
-          // A focused button or textarea handles Enter itself — don't
-          // double-fire, and don't hijack multi-line input.
-          const el = e.target;
-          if (
-            el instanceof HTMLButtonElement ||
-            el instanceof HTMLTextAreaElement
-          )
-            return;
-          const primary = $("modal-ftr").querySelector(
-            ".btn.primary:not([disabled])",
-          );
-          if (!primary) return; // still incomplete — leave the modal open
-          e.preventDefault();
-          primary.click();
+        /** Where a row's deployed commit was read (the server's `source`). */
+        const SOURCE_KEYS = {
+          "version endpoint": "rel.src.version",
+          "workflow run": "rel.src.run",
+          "GitHub deployment": "rel.src.deployment",
         };
-        $("overlay").addEventListener("keydown", modalKeyHandler);
-      }
-      function closeModal() {
-        if (modalKeyHandler) {
-          $("overlay").removeEventListener("keydown", modalKeyHandler);
-          modalKeyHandler = null;
-        }
-        $("overlay").classList.remove("open");
-      }
+        const sourceWords = (src) =>
+          SOURCE_KEYS[src] ? t(SOURCE_KEYS[src]) : src;
 
-      async function openDeployModal(repo) {
-        const isProd = state.env === "prod";
-        openModal(
-          `Deploy ${repo} → ${state.env}`,
-          `<label>Branch / ref</label>
-         <select id="dep-branch"><option value="main">main</option></select>
+        function fmtClock(iso) {
+          try {
+            return new Date(iso).toLocaleTimeString();
+          } catch {
+            return "";
+          }
+        }
+        function setStatus(t) {
+          $("status-text").textContent = t;
+        }
+
+        // ── Deploy modals ───────────────────────────────────────────────────────────
+        let modalKeyHandler = null;
+
+        function openModal(title, bodyHtml, footerHtml) {
+          $("modal-title").textContent = title;
+          $("modal-body").innerHTML = bodyHtml;
+          $("modal-ftr").innerHTML = footerHtml;
+          $("overlay").classList.add("open");
+
+          // Enter submits the primary action. Typing the confirmation word and
+          // pressing Enter is the natural flow, and doing nothing reads as the
+          // modal being stuck. Bound on the overlay so it also covers inputs
+          // rendered later (the prod confirm box appears after branch load).
+          modalKeyHandler = (e) => {
+            if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+            // A focused button or textarea handles Enter itself — don't
+            // double-fire, and don't hijack multi-line input.
+            const el = e.target;
+            if (
+              el instanceof HTMLButtonElement ||
+              el instanceof HTMLTextAreaElement
+            )
+              return;
+            const primary = $("modal-ftr").querySelector(
+              ".btn.primary:not([disabled])",
+            );
+            if (!primary) return; // still incomplete — leave the modal open
+            e.preventDefault();
+            primary.click();
+          };
+          $("overlay").addEventListener("keydown", modalKeyHandler);
+        }
+        function closeModal() {
+          if (modalKeyHandler) {
+            $("overlay").removeEventListener("keydown", modalKeyHandler);
+            modalKeyHandler = null;
+          }
+          $("overlay").classList.remove("open");
+        }
+
+        async function openDeployModal(repo) {
+          const isProd = state.env === "prod";
+          openModal(
+            t("rel.dep.title", { repo, env: state.env }),
+            `<label>${esc(t("rel.dep.ref"))}</label>
+         <select id="dep-branch"><option value="main" translate="no">main</option></select>
          <div id="dep-hotfix"></div>
          <div id="dep-confirm-wrap"></div>
          <div id="dep-err" class="err-text"></div>`,
-          `<button class="btn" id="dep-cancel">Cancel</button>
-         <button class="btn primary" id="dep-go" disabled>Deploy</button>`,
-        );
+            `<button class="btn" id="dep-cancel">${esc(t("rel.cancel"))}</button>
+         <button class="btn primary" id="dep-go" disabled>${esc(t("rel.dep.go"))}</button>`,
+          );
 
-        const branchSel = $("dep-branch");
-        // Load branches lazily
-        fetch(`/api/release/branches?repo=${encodeURIComponent(repo)}`)
-          .then((r) => r.json())
-          .then((branches) => {
-            if (Array.isArray(branches) && branches.length) {
-              branchSel.innerHTML = branches
-                .map((b) => `<option value="${esc(b)}">${esc(b)}</option>`)
-                .join("");
-              branchSel.value = branches.includes("main")
-                ? "main"
-                : branches[0];
-              updateDeployModal(repo, isProd);
-            }
-          })
-          .catch(() => {});
+          const branchSel = $("dep-branch");
+          // Load branches lazily
+          fetch(`/api/release/branches?repo=${encodeURIComponent(repo)}`)
+            .then((r) => r.json())
+            .then((branches) => {
+              if (Array.isArray(branches) && branches.length) {
+                branchSel.innerHTML = branches
+                  .map((b) => `<option value="${esc(b)}">${esc(b)}</option>`)
+                  .join("");
+                branchSel.value = branches.includes("main")
+                  ? "main"
+                  : branches[0];
+                updateDeployModal(repo, isProd);
+              }
+            })
+            .catch(() => {});
 
-        branchSel.addEventListener("change", () =>
-          updateDeployModal(repo, isProd),
-        );
-        $("dep-cancel").addEventListener("click", closeModal);
-        updateDeployModal(repo, isProd);
-      }
-
-      function updateDeployModal(repo, isProd) {
-        const branch = $("dep-branch").value;
-        const isHotfix = isProd && branch !== "main";
-        const go = $("dep-go");
-        const row = state.rows.find((r) => r.repo === repo);
-
-        // Hotfix banner
-        let hot = "";
-        if (isHotfix) {
-          const drift =
-            row?.status?.kind === "off-main"
-              ? ` (deployed is ${esc(row.status.text)})`
-              : "";
-          hot = `<div class="banner hotfix">⚠ <b>HOTFIX</b>: deploying non-main branch <code>${esc(branch)}</code> to <b>PRODUCTION</b>${drift}. This bypasses the main-only prod policy — proceed only for an urgent fix.</div>`;
+          branchSel.addEventListener("change", () =>
+            updateDeployModal(repo, isProd),
+          );
+          $("dep-cancel").addEventListener("click", closeModal);
+          updateDeployModal(repo, isProd);
         }
-        $("dep-hotfix").innerHTML = hot;
 
-        // Confirmation input(s)
-        let confirmHtml = "";
-        if (isProd) {
-          confirmHtml += `<div class="banner prod">Producing a <b>production</b> deploy.</div>`;
-          confirmHtml += `<label>Type <code>prod</code> to confirm</label><input type="text" id="dep-confirm" autocomplete="off" placeholder="prod">`;
-          if (isHotfix)
-            confirmHtml += `<label>Type the branch name <code>${esc(branch)}</code> to confirm the hotfix</label><input type="text" id="dep-confirm-branch" autocomplete="off" placeholder="${esc(branch)}">`;
-        }
-        $("dep-confirm-wrap").innerHTML = confirmHtml;
+        function updateDeployModal(repo, isProd) {
+          const branch = $("dep-branch").value;
+          const isHotfix = isProd && branch !== "main";
+          const go = $("dep-go");
+          const row = state.rows.find((r) => r.repo === repo);
 
-        const validate = () => {
-          let ok = true;
-          if (isProd) {
-            ok = $("dep-confirm")?.value.trim() === "prod";
-            if (isHotfix)
-              ok = ok && $("dep-confirm-branch")?.value.trim() === branch;
+          // Hotfix banner
+          let hot = "";
+          if (isHotfix) {
+            const drift =
+              row?.status?.kind === "off-main"
+                ? " " +
+                  t("rel.hot.drift", {
+                    status: statusWords(row.status.t, row.status.text),
+                  })
+                : "";
+            hot = `<div class="banner hotfix">⚠ ${t("rel.hot", {
+              hotfix: `<b>${esc(t("rel.hot.word"))}</b>`,
+              branch: `<code>${esc(branch)}</code>`,
+              prod: `<b>${esc(t("rel.prodWord"))}</b>`,
+              drift: esc(drift),
+            })}</div>`;
           }
-          // Only THIS repo being mid-deploy blocks it; other systems deploying
-          // concurrently are irrelevant.
-          go.disabled = !ok || isRepoBusy(repo);
-        };
-        $("dep-confirm")?.addEventListener("input", validate);
-        $("dep-confirm-branch")?.addEventListener("input", validate);
-        go.textContent = isHotfix ? "Deploy hotfix →" : "Deploy →";
-        go.className = "btn primary" + (isHotfix ? " danger" : "");
-        go.onclick = () => {
-          closeModal();
-          startDeploy({
-            mode: "single",
-            repo,
-            ref: branch,
-            confirm: isProd ? "prod" : "",
-          });
-        };
-        validate();
-      }
+          $("dep-hotfix").innerHTML = hot;
 
-      function openDeployAllModal() {
-        const cfg = state.config;
-        const enabled = (cfg.repos || []).filter((r) => r.enabled !== false);
-        const waves = [...new Set(enabled.map((r) => r.wave))].sort(
-          (a, b) => a - b,
-        );
-        const isProd = state.env === "prod";
+          // Confirmation input(s)
+          let confirmHtml = "";
+          if (isProd) {
+            confirmHtml += `<div class="banner prod">${esc(t("rel.prodDeploy"))}</div>`;
+            confirmHtml += `<label>${t("rel.typeProd", { word: "<code>prod</code>" })}</label><input type="text" id="dep-confirm" autocomplete="off" placeholder="prod" translate="no">`;
+            if (isHotfix)
+              confirmHtml += `<label>${t("rel.typeBranch", { branch: `<code>${esc(branch)}</code>` })}</label><input type="text" id="dep-confirm-branch" autocomplete="off" placeholder="${esc(branch)}" translate="no">`;
+          }
+          $("dep-confirm-wrap").innerHTML = confirmHtml;
 
-        const planHtml = waves
-          .map((w) => {
-            const repos = enabled.filter((r) => r.wave === w);
-            return (
-              `<div class="plan-wave"><h4>Wave ${w} · ${repos.length} repo(s)</h4>` +
-              repos
-                .map((r) => {
-                  const ref = r.ref || "main";
-                  const off =
-                    ref !== "main"
-                      ? ` <span class="off">@${esc(ref)}</span>`
-                      : "";
-                  return `<div class="plan-repo">${esc(r.name)} <span class="wf" style="color:var(--muted)">${esc(r.workflow)}</span>${off}</div>`;
-                })
-                .join("") +
-              `</div>`
-            );
-          })
-          .join("");
-
-        const nonMain = enabled.filter((r) => (r.ref || "main") !== "main");
-        let policy = "";
-        if (isProd && nonMain.length) {
-          policy = `<div class="banner prod">✗ Deploy-all to <b>prod</b> is <b>main-only</b>. These are configured off-main: ${nonMain.map((r) => `<code>${esc(r.name)}@${esc(r.ref)}</code>`).join(", ")}. Fix the config or use a per-repo <b>Hotfix</b>.</div>`;
-        } else if (isProd) {
-          policy = `<div class="banner prod">Deploying <b>main</b> of ${enabled.length} repo(s) to <b>PRODUCTION</b> across ${waves.length} wave(s). Each wave must succeed before the next.</div>
-                  <label>Type <code>prod</code> to confirm</label><input type="text" id="all-confirm" autocomplete="off" placeholder="prod">`;
+          const validate = () => {
+            let ok = true;
+            if (isProd) {
+              ok = $("dep-confirm")?.value.trim() === "prod";
+              if (isHotfix)
+                ok = ok && $("dep-confirm-branch")?.value.trim() === branch;
+            }
+            // Only THIS repo being mid-deploy blocks it; other systems deploying
+            // concurrently are irrelevant.
+            go.disabled = !ok || isRepoBusy(repo);
+          };
+          $("dep-confirm")?.addEventListener("input", validate);
+          $("dep-confirm-branch")?.addEventListener("input", validate);
+          go.textContent = isHotfix ? t("rel.deployHotfix") : t("rel.deploy");
+          go.className = "btn primary" + (isHotfix ? " danger" : "");
+          go.onclick = () => {
+            closeModal();
+            startDeploy({
+              mode: "single",
+              repo,
+              ref: branch,
+              confirm: isProd ? "prod" : "",
+            });
+          };
+          validate();
         }
 
-        const blocked = isProd && nonMain.length > 0;
-        openModal(
-          `Deploy all → ${state.env}`,
-          `${policy}<div style="margin-top:6px">${planHtml || '<div class="empty-state">No repos enabled.</div>'}</div>
-         <div class="hint">Backends (lower waves) deploy first; the next wave only starts once the previous concludes success (20s stagger between dispatches).</div>`,
-          `<button class="btn" id="all-cancel">Cancel</button>
-         <button class="btn primary" id="all-go" ${blocked ? "disabled" : ""}>Deploy all →</button>`,
-        );
+        function openDeployAllModal() {
+          const cfg = state.config;
+          const enabled = (cfg.repos || []).filter((r) => r.enabled !== false);
+          const waves = [...new Set(enabled.map((r) => r.wave))].sort(
+            (a, b) => a - b,
+          );
+          const isProd = state.env === "prod";
 
-        $("all-cancel").addEventListener("click", closeModal);
-        const go = $("all-go");
-        const validate = () => {
-          // "Deploy all" overlaps anything already in flight, so any live
-          // deploy blocks it (the server would 409 on the overlap anyway).
-          go.disabled =
-            blocked ||
-            (isProd && $("all-confirm")?.value.trim() !== "prod") ||
-            state.deployingRepos.size > 0;
-        };
-        $("all-confirm")?.addEventListener("input", validate);
-        go.onclick = () => {
-          closeModal();
-          startDeploy({ mode: "all", confirm: isProd ? "prod" : "" });
-        };
-        validate();
-      }
+          const planHtml = waves
+            .map((w) => {
+              const repos = enabled.filter((r) => r.wave === w);
+              return (
+                `<div class="plan-wave"><h4>${esc(t("rel.plan.wave", { wave: w, n: repos.length }))}</h4>` +
+                repos
+                  .map((r) => {
+                    const ref = r.ref || "main";
+                    const off =
+                      ref !== "main"
+                        ? ` <span class="off">@${esc(ref)}</span>`
+                        : "";
+                    return `<div class="plan-repo">${esc(r.name)} <span class="wf" style="color:var(--muted)">${esc(r.workflow)}</span>${off}</div>`;
+                  })
+                  .join("") +
+                `</div>`
+              );
+            })
+            .join("");
 
-      // ── Wave editor ─────────────────────────────────────────────────────────────
-      function openWaveEditor() {
-        const repos = state.config.repos || [];
-        const rowsHtml = repos
-          .map(
-            (r, i) => `
+          const nonMain = enabled.filter((r) => (r.ref || "main") !== "main");
+          let policy = "";
+          if (isProd && nonMain.length) {
+            policy = `<div class="banner prod">✗ ${t("rel.all.mainOnly", {
+              repos: nonMain
+                .map((r) => `<code>${esc(r.name)}@${esc(r.ref)}</code>`)
+                .join(", "),
+            })}</div>`;
+          } else if (isProd) {
+            policy = `<div class="banner prod">${esc(t("rel.all.prod", { n: enabled.length, waves: waves.length }))}</div>
+                  <label>${t("rel.typeProd", { word: "<code>prod</code>" })}</label><input type="text" id="all-confirm" autocomplete="off" placeholder="prod" translate="no">`;
+          }
+
+          const blocked = isProd && nonMain.length > 0;
+          openModal(
+            t("rel.all.title", { env: state.env }),
+            `${policy}<div style="margin-top:6px">${planHtml || `<div class="empty-state">${esc(t("rel.all.none"))}</div>`}</div>
+         <div class="hint">${esc(t("rel.all.hint"))}</div>`,
+            `<button class="btn" id="all-cancel">${esc(t("rel.cancel"))}</button>
+         <button class="btn primary" id="all-go" ${blocked ? "disabled" : ""}>${esc(t("rel.deployAll"))}</button>`,
+          );
+
+          $("all-cancel").addEventListener("click", closeModal);
+          const go = $("all-go");
+          const validate = () => {
+            // "Deploy all" overlaps anything already in flight, so any live
+            // deploy blocks it (the server would 409 on the overlap anyway).
+            go.disabled =
+              blocked ||
+              (isProd && $("all-confirm")?.value.trim() !== "prod") ||
+              state.deployingRepos.size > 0;
+          };
+          $("all-confirm")?.addEventListener("input", validate);
+          go.onclick = () => {
+            closeModal();
+            startDeploy({ mode: "all", confirm: isProd ? "prod" : "" });
+          };
+          validate();
+        }
+
+        // ── Wave editor ─────────────────────────────────────────────────────────────
+        function openWaveEditor() {
+          const repos = state.config.repos || [];
+          const rowsHtml = repos
+            .map(
+              (r, i) => `
         <div class="wave-row" data-i="${i}">
           <span class="rname">${esc(r.name)}</span>
           <input type="number" min="0" max="20" value="${r.wave}" data-field="wave">
           <span class="wf">${esc(r.workflow)}</span>
-          <label style="display:flex;align-items:center;gap:5px;margin:0;color:var(--text)"><input type="checkbox" data-field="enabled" ${r.enabled === false ? "" : "checked"}> on</label>
+          <label style="display:flex;align-items:center;gap:5px;margin:0;color:var(--text)"><input type="checkbox" data-field="enabled" ${r.enabled === false ? "" : "checked"}> ${esc(t("rel.wave.on"))}</label>
         </div>`,
-          )
-          .join("");
-        openModal(
-          "Wave assignment",
-          `<div class="wave-row head"><span>Repo</span><span>Wave</span><span>Workflow</span><span>Enabled</span></div>
+            )
+            .join("");
+          openModal(
+            t("rel.wave.title"),
+            `<div class="wave-row head"><span>${esc(t("rel.col.repo"))}</span><span>${esc(t("rel.wave.col"))}</span><span>${esc(t("rel.wave.workflow"))}</span><span>${esc(t("rel.wave.enabled"))}</span></div>
          ${rowsHtml}
          <div id="wave-err" class="err-text"></div>
-         <div class="hint">Saved to your personal <code>config/local/user.yml</code> (gitignored) — the committed team default in <code>__DEN_CONFIG_FILE__</code> is unchanged. Lower wave numbers deploy first.</div>`,
-          `<button class="btn" id="wave-cancel">Cancel</button>
-         <button class="btn primary" id="wave-save">Save (personal)</button>`,
-        );
-        $("wave-cancel").addEventListener("click", closeModal);
-        $("wave-save").addEventListener("click", saveWaves);
-      }
-
-      async function saveWaves() {
-        const repos = [];
-        document.querySelectorAll(".wave-row[data-i]").forEach((el) => {
-          const i = Number(el.dataset.i);
-          const base = state.config.repos[i];
-          const wave = Number(el.querySelector("input[data-field=wave]").value);
-          const enabled = el.querySelector("input[data-field=enabled]").checked;
-          repos.push({
-            name: base.name,
-            workflow: base.workflow,
-            wave,
-            enabled,
-            ...(base.ref ? { ref: base.ref } : {}),
-          });
-        });
-        try {
-          // R26c: the server's message on a failure, not "save failed".
-          const updated = await window.denShell.api(
-            "PUT",
-            "/api/release/config",
-            { repos },
+         <div class="hint">${t("rel.wave.hint", { mine: "<code>config/local/user.yml</code>", shared: "<code>__DEN_CONFIG_FILE__</code>" })}</div>`,
+            `<button class="btn" id="wave-cancel">${esc(t("rel.cancel"))}</button>
+         <button class="btn primary" id="wave-save">${esc(t("rel.wave.save"))}</button>`,
           );
-          state.config = updated;
-          closeModal();
-          renderTable();
-        } catch (e) {
-          $("wave-err").textContent = "Save failed: " + e.message;
+          $("wave-cancel").addEventListener("click", closeModal);
+          $("wave-save").addEventListener("click", saveWaves);
         }
-      }
 
-      // ── Deploy stream (SSE) ─────────────────────────────────────────────────────
-      // Kick off a deploy: POST creates a server-side session (which runs the
-      // deploy decoupled from this page), then we attach to stream its log. The
-      // session id is remembered so the log survives navigation / reload.
-      async function startDeploy(params) {
-        const label =
-          params.mode === "all"
-            ? `all → ${state.env}`
-            : `${params.repo} → ${state.env}`;
-        // Until the server names the session, the request has its own tab.
-        curRun = runs().start(REQUEST_RUN, `deploy ${label}`, {
-          clear: true,
-          doneLine: false,
-        });
-        appendLine(`▶ requesting deploy ${label}`, "cmd");
-        setStatus(`starting ${label}…`);
-
-        let session;
-        try {
-          // R26c: a refusal (a 409 names the repos already in flight) is the
-          // server's message in the run's output; a lost server is said too.
-          session = await window.denShell.api("POST", "/api/release/deploy", {
-            env: state.env,
-            mode: params.mode,
-            repo: params.repo,
-            ref: params.ref,
-            confirm: params.confirm,
-          });
-        } catch (e) {
-          if (e.denApi && !e.network) {
-            appendLine(
-              e.message + (e.requestId ? ` (request id ${e.requestId})` : ""),
-              "err",
+        async function saveWaves() {
+          const repos = [];
+          document.querySelectorAll(".wave-row[data-i]").forEach((el) => {
+            const i = Number(el.dataset.i);
+            const base = state.config.repos[i];
+            const wave = Number(
+              el.querySelector("input[data-field=wave]").value,
             );
+            const enabled = el.querySelector(
+              "input[data-field=enabled]",
+            ).checked;
+            repos.push({
+              name: base.name,
+              workflow: base.workflow,
+              wave,
+              enabled,
+              ...(base.ref ? { ref: base.ref } : {}),
+            });
+          });
+          try {
+            // R26c: the server's message on a failure, not "save failed".
+            const updated = await window.denShell.api(
+              "PUT",
+              "/api/release/config",
+              { repos },
+            );
+            state.config = updated;
+            closeModal();
+            renderTable();
+          } catch (e) {
+            $("wave-err").textContent = t("rel.wave.saveFailed", {
+              error: e.message,
+            });
+          }
+        }
+
+        // ── Deploy stream (SSE) ─────────────────────────────────────────────────────
+        // Kick off a deploy: POST creates a server-side session (which runs the
+        // deploy decoupled from this page), then we attach to stream its log. The
+        // session id is remembered so the log survives navigation / reload.
+        async function startDeploy(params) {
+          const label =
+            params.mode === "all"
+              ? t("rel.all.label", { env: state.env })
+              : `${params.repo} → ${state.env}`;
+          // Until the server names the session, the request has its own tab.
+          curRun = runs().start(REQUEST_RUN, t("rel.tab", { label }), {
+            clear: true,
+            doneLine: false,
+          });
+          appendLine(`▶ ${t("rel.requesting", { label })}`, "cmd");
+          setStatus(t("rel.starting", { label }));
+
+          let session;
+          try {
+            // R26c: a refusal (a 409 names the repos already in flight) is the
+            // server's message in the run's output; a lost server is said too.
+            session = await window.denShell.api("POST", "/api/release/deploy", {
+              env: state.env,
+              mode: params.mode,
+              repo: params.repo,
+              ref: params.ref,
+              confirm: params.confirm,
+            });
+          } catch (e) {
+            if (e.denApi && !e.network) {
+              appendLine(
+                e.message +
+                  (e.requestId
+                    ? " " + t("rel.requestId", { id: e.requestId })
+                    : ""),
+                "err",
+              );
+              runs().finish(REQUEST_RUN, { ok: false });
+              setStatus(t("rel.notStarted"));
+              await refreshSessions();
+              return;
+            }
+            appendLine(t("rel.startFailed", { error: e.message }), "err");
             runs().finish(REQUEST_RUN, { ok: false });
-            setStatus("deploy not started");
+            setStatus(t("rel.notStarted"));
             await refreshSessions();
             return;
           }
-          appendLine("Failed to start deploy: " + e.message, "err");
-          runs().finish(REQUEST_RUN, { ok: false });
-          setStatus("deploy not started");
-          await refreshSessions();
-          return;
+
+          localStorage.setItem(
+            LS_DEPLOY,
+            JSON.stringify({ sessionId: session.id }),
+          );
+          runs().remove(REQUEST_RUN);
+          // Show the new session immediately, then reconcile against the server.
+          state.sessions = [
+            session,
+            ...state.sessions.filter((s) => s.id !== session.id),
+          ];
+          attachDeploy(session.id, {
+            status: session.status,
+            label: session.label,
+          });
+          refreshSessions();
         }
 
-        localStorage.setItem(
-          LS_DEPLOY,
-          JSON.stringify({ sessionId: session.id }),
-        );
-        runs().remove(REQUEST_RUN);
-        // Show the new session immediately, then reconcile against the server.
-        state.sessions = [
-          session,
-          ...state.sessions.filter((s) => s.id !== session.id),
-        ];
-        attachDeploy(session.id, {
-          status: session.status,
-          label: session.label,
-        });
-        refreshSessions();
-      }
-
-      // Attach an SSE stream to a deploy session: the server replays the full
-      // log so far, then streams live events. Used both for a fresh deploy and
-      // to restore a running/finished deploy after navigating back to Release.
-      function attachDeploy(sessionId, { status, label }) {
-        if (es) {
-          es.close();
-          es = null;
-        }
-        const running = status !== "done";
-        // Drop the OUTGOING session's rows before switching; the replay below
-        // rebuilds the incoming one. Other sessions' repos keep their
-        // poll-derived status.
-        clearRunsForSession(state.deploySession);
-        state.deploySession = sessionId;
-        state.deploying = running;
-        clearRunsForSession(sessionId);
-        // Its tab, cleared: the replay rebuilds the full log from scratch.
-        curRun = runs().start(
-          runKey(sessionId),
-          `deploy ${label || sessionId}`,
-          { ...sessionTabOpts(sessionId), clear: true, running },
-        );
-        setStatus(running ? "attaching to deploy…" : "deploy finished");
-        // Button state comes from the full session list, not from whichever log
-        // happens to be on screen — switching logs must not free a busy repo.
-        recomputeDeployingRepos();
-        renderTable();
-
-        es = new EventSource(
-          `/api/release/deploy?session=${encodeURIComponent(sessionId)}`,
-        );
-        es.onmessage = (e) => {
-          let msg;
-          try {
-            msg = JSON.parse(e.data);
-          } catch {
-            return;
-          }
-          if (msg.type === "log")
-            appendLine(
-              msg.text,
-              msg.level === "error"
-                ? "err"
-                : msg.level === "warn"
-                  ? "warn"
-                  : "",
-            );
-          else if (msg.type === "phase")
-            appendLine(`\n— ${msg.name} —`, "phase");
-          else if (msg.type === "run") {
-            state.runs.set(msg.repo, {
-              status: msg.status,
-              conclusion: msg.conclusion,
-              url: msg.url,
-            });
-            updateRowRun(msg.repo);
-          } else if (msg.type === "done") {
-            appendLine(
-              `\n${msg.ok ? "✓" : "✗"} ${msg.summary}`,
-              msg.ok ? "ok" : "err",
-            );
-            runs().finish(runKey(sessionId), { ok: !!msg.ok });
-            finishDeploy();
-          }
-        };
-        es.onerror = () => {
-          // The stream dropped (navigation / reload / network). The deploy
-          // itself lives on server-side — do NOT mark it finished; just stop
-          // this attachment. Reopening Release reattaches and replays.
+        // Attach an SSE stream to a deploy session: the server replays the full
+        // log so far, then streams live events. Used both for a fresh deploy and
+        // to restore a running/finished deploy after navigating back to Release.
+        function attachDeploy(sessionId, { status, label }) {
           if (es) {
             es.close();
             es = null;
           }
-          if (state.deploying)
-            setStatus("stream disconnected — reopen Releases to reattach");
-        };
-      }
-
-      // Deploy reached a terminal state. Keep the log pane + session open so it
-      // survives navigation; the user closes it explicitly via ✕ Close.
-      function finishDeploy() {
-        if (es) {
-          es.close();
-          es = null;
-        }
-        state.deploying = false;
-        // This session finished, but others may still be running — ask the
-        // server rather than assuming everything is now free.
-        refreshSessions();
-        setStatus("deploy finished — re-checking…");
-        renderTable();
-        setTimeout(() => loadStatus(true), 2500);
-      }
-
-      function readSavedDeploy() {
-        try {
-          return JSON.parse(localStorage.getItem(LS_DEPLOY) || "null");
-        } catch {
-          return null;
-        }
-      }
-
-      // On load, pull every live session (deploys outlive the page and run
-      // concurrently) and reattach to the one we were last watching. If that
-      // one is gone, fall back to the newest still-running deploy rather than
-      // showing nothing while a deploy is in flight.
-      async function restoreDeploy() {
-        await refreshSessions();
-        if (state.sessions.length === 0) {
-          localStorage.removeItem(LS_DEPLOY);
-          return;
-        }
-        const saved = readSavedDeploy();
-        const target =
-          state.sessions.find((s) => s.id === saved?.sessionId) ??
-          state.sessions.find((s) => s.status === "running");
-        if (!target) {
-          localStorage.removeItem(LS_DEPLOY);
-          return;
-        }
-        localStorage.setItem(
-          LS_DEPLOY,
-          JSON.stringify({ sessionId: target.id }),
-        );
-        attachDeploy(target.id, {
-          status: target.status,
-          label: target.label,
-        });
-      }
-
-      // User closed the log (its tab's ×): dismiss ONLY that session. Other
-      // deploys keep running, so if the one on screen closes and one is left,
-      // switch to it instead of hiding the log entirely.
-      async function closeDeployLog(id = state.deploySession) {
-        if (id && id !== state.deploySession) {
-          fetch(`/api/release/deploy?session=${encodeURIComponent(id)}`, {
-            method: "DELETE",
-          }).catch(() => {});
-          state.sessions = state.sessions.filter((s) => s.id !== id);
-          runs().remove(runKey(id));
+          const running = status !== "done";
+          // Drop the OUTGOING session's rows before switching; the replay below
+          // rebuilds the incoming one. Other sessions' repos keep their
+          // poll-derived status.
+          clearRunsForSession(state.deploySession);
+          state.deploySession = sessionId;
+          state.deploying = running;
+          clearRunsForSession(sessionId);
+          // Its tab, cleared: the replay rebuilds the full log from scratch.
+          curRun = runs().start(
+            runKey(sessionId),
+            t("rel.tab", { label: label || sessionId }),
+            { ...sessionTabOpts(sessionId), clear: true, running },
+          );
+          setStatus(running ? t("rel.attaching") : t("rel.finished"));
+          // Button state comes from the full session list, not from whichever log
+          // happens to be on screen — switching logs must not free a busy repo.
           recomputeDeployingRepos();
-          return;
-        }
-        const closing = state.deploySession;
-        if (closing) runs().remove(runKey(closing));
-        if (closing) {
-          fetch(`/api/release/deploy?session=${encodeURIComponent(closing)}`, {
-            method: "DELETE",
-          }).catch(() => {});
-          state.sessions = state.sessions.filter((s) => s.id !== closing);
-        }
-        if (es) {
-          es.close();
-          es = null;
-        }
-        state.deploying = false;
-        clearRunsForSession(state.deploySession);
-        state.deploySession = null;
-
-        const next =
-          state.sessions.find((s) => s.status === "running") ??
-          state.sessions[0];
-        if (next) {
-          localStorage.setItem(
-            LS_DEPLOY,
-            JSON.stringify({ sessionId: next.id }),
-          );
-          attachDeploy(next.id, { status: next.status, label: next.label });
-          return;
-        }
-
-        localStorage.removeItem(LS_DEPLOY);
-        recomputeDeployingRepos();
-        setStatus("idle");
-        renderTable();
-      }
-
-      function updateRowRun(repo) {
-        // Re-render just the affected row's deploy cell if present.
-        const btn = $("rel-body").querySelector(
-          `.dep-btn[data-repo="${cssEsc(repo)}"]`,
-        );
-        const cell = btn?.closest(".deploy-cell");
-        if (!cell) {
           renderTable();
-          return;
-        }
-        const run = state.runs.get(repo);
-        cell.innerHTML =
-          (run ? runPillHtml(run) : "") +
-          `<button class="dep-btn" data-repo="${esc(repo)}" ${isRepoBusy(repo) ? "disabled" : ""}>Deploy →</button>`;
-        cell
-          .querySelector(".dep-btn")
-          .addEventListener("click", (ev) =>
-            openDeployModal(ev.target.dataset.repo),
+
+          es = new EventSource(
+            `/api/release/deploy?session=${encodeURIComponent(sessionId)}`,
           );
-      }
-
-      function cssEsc(s) {
-        return window.CSS && CSS.escape
-          ? CSS.escape(s)
-          : String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-      }
-
-      // Only a repo with a live deploy is blocked — a global lock stopped
-      // deploys that never collided. "Deploy all" is disabled while anything
-      // runs, since its plan would overlap whatever is already in flight (the
-      // server 409s on that). Refresh is never blocked.
-      function syncButtons() {
-        const anyRunning =
-          state.deployingRepos.size > 0 || state.externalRuns.size > 0;
-        const allBtn = $("deploy-all-btn");
-        if (allBtn) {
-          allBtn.disabled = anyRunning;
-          allBtn.title = anyRunning
-            ? "A CD run is in flight — wait for it to finish"
-            : "";
-        }
-        const refresh = $("refresh-btn");
-        if (refresh) refresh.disabled = false;
-        document.querySelectorAll(".dep-btn").forEach((b) => {
-          const repo = b.dataset.repo;
-          b.disabled = isRepoBusy(repo);
-          const ext = state.runs.get(repo);
-          b.title = state.deployingRepos.has(repo)
-            ? "Already deploying this system"
-            : state.externalRuns.has(repo)
-              ? ext?.envHint
-                ? `A CD run for ${repo} → ${ext.envHint} is already in flight`
-                : `A CD run for ${repo} is in flight; its target environment can't be determined, so redeploy is blocked`
-              : "";
-        });
-      }
-
-      /**
-       * Forget run state for one session's repos only.
-       *
-       * Clearing the whole map would also discard poll-derived status for repos
-       * in OTHER concurrent sessions — which nothing would rebuild, since the
-       * replay only covers the session being attached.
-       */
-      function clearRunsForSession(sessionId) {
-        const s = state.sessions.find((x) => x.id === sessionId);
-        for (const repo of s?.repos ?? []) state.runs.delete(repo);
-      }
-
-      /** Recompute which repos are mid-deploy from the session list. */
-      function recomputeDeployingRepos() {
-        const live = new Set();
-        for (const s of state.sessions) {
-          if (s.status !== "running") continue;
-          for (const r of s.repos || []) live.add(r);
-        }
-        state.deployingRepos = live;
-        syncButtons();
-        syncSessionTabs();
-      }
-
-      // ── Live CD run poll ──────────────────────────────────────────────────────
-      // Deploys start in places this page can't see — another engineer, a push
-      // to main, a re-run from the Actions tab — so poll GitHub for in-flight CD
-      // runs rather than only knowing about deploys we started. Runs only while
-      // the tab is visible; a hidden tab polling GitHub burns rate limit for a
-      // table nobody is looking at.
-      const RUNS_POLL_MS = 15_000;
-      let runsTimer = null;
-      let lastRunsSig = "";
-
-      async function pollRuns() {
-        let runs = [];
-        try {
-          const j = await fetch("/api/release/runs").then((r) => r.json());
-          runs = j.runs || [];
-        } catch {
-          return; // transient — keep the last known state
-        }
-
-        const external = new Set();
-        // Carve out only the repos of the session whose SSE we are ATTACHED to.
-        //
-        // Deploys run concurrently server-side but only one log is attached at
-        // a time, so `deployingRepos` (every running session) is the wrong set
-        // to skip: repos in the other sessions get no `run` events — nothing is
-        // listening to them — AND were skipped here, so their Status cell
-        // stayed empty for the whole deploy. Deploying four systems showed one
-        // "running" and three blanks.
-        const attached = state.sessions.find(
-          (s) => s.id === state.deploySession,
-        );
-        const attachedRepos = new Set(attached?.repos ?? []);
-        for (const r of runs) {
-          // The attached session's SSE is finer-grained than this poll, so let
-          // it own those repos. Every other repo — including ones we started in
-          // another session — is this poll's job.
-          if (attachedRepos.has(r.repo)) continue;
-
-          if (r.running) {
-            // Block only when the run actually targets the env on screen.
-            // envHint is null when the run's title carries no environment (see
-            // CdRun.envHint) — unknown must stay conservative, since dispatching
-            // a second run into the same env would collide. A run we KNOW is
-            // for another env does not block: the workflows use
-            // `concurrency: <repo>-cd-<env>`, so prod and sandbox are separate
-            // groups that GitHub runs in parallel by design.
-            const hint = r.running.envHint;
-            const blocks = hint === null || hint === state.env;
-            if (blocks) external.add(r.repo);
-            state.runs.set(r.repo, {
-              status: r.running.status, // queued | in_progress
-              conclusion: null,
-              url: r.running.url,
-              createdAt: r.running.createdAt,
-              title: r.running.title,
-              envHint: hint,
-              otherEnv: !blocks,
-              external: true,
-            });
-          } else if (r.last) {
-            // The newest FINISHED run is the truth for a repo we're not
-            // deploying. This is what retires a stale ✗ pill: once a later run
-            // has succeeded, the older failure is simply older and gets
-            // replaced.
-            const prev = state.runs.get(r.repo);
-            if (!prev?.createdAt || prev.createdAt <= r.last.createdAt) {
-              state.runs.set(r.repo, {
-                status: "completed",
-                conclusion: r.last.conclusion,
-                url: r.last.url,
-                createdAt: r.last.createdAt,
-                title: r.last.title,
-                external: true,
-              });
+          es.onmessage = (e) => {
+            let msg;
+            try {
+              msg = JSON.parse(e.data);
+            } catch {
+              return;
             }
+            if (msg.type === "log")
+              appendLine(
+                msg.text,
+                msg.level === "error"
+                  ? "err"
+                  : msg.level === "warn"
+                    ? "warn"
+                    : "",
+              );
+            else if (msg.type === "phase")
+              appendLine(`\n— ${msg.name} —`, "phase");
+            else if (msg.type === "run") {
+              state.runs.set(msg.repo, {
+                status: msg.status,
+                conclusion: msg.conclusion,
+                url: msg.url,
+              });
+              updateRowRun(msg.repo);
+            } else if (msg.type === "done") {
+              appendLine(
+                `\n${msg.ok ? "✓" : "✗"} ${msg.summary}`,
+                msg.ok ? "ok" : "err",
+              );
+              runs().finish(runKey(sessionId), { ok: !!msg.ok });
+              finishDeploy();
+            }
+          };
+          es.onerror = () => {
+            // The stream dropped (navigation / reload / network). The deploy
+            // itself lives on server-side — do NOT mark it finished; just stop
+            // this attachment. Reopening Release reattaches and replays.
+            if (es) {
+              es.close();
+              es = null;
+            }
+            if (state.deploying) setStatus(t("rel.disconnected"));
+          };
+        }
+
+        // Deploy reached a terminal state. Keep the log pane + session open so it
+        // survives navigation; the user closes it explicitly via ✕ Close.
+        function finishDeploy() {
+          if (es) {
+            es.close();
+            es = null;
+          }
+          state.deploying = false;
+          // This session finished, but others may still be running — ask the
+          // server rather than assuming everything is now free.
+          refreshSessions();
+          setStatus(t("rel.finishedRechecking"));
+          renderTable();
+          setTimeout(() => loadStatus(true), 2500);
+        }
+
+        function readSavedDeploy() {
+          try {
+            return JSON.parse(localStorage.getItem(LS_DEPLOY) || "null");
+          } catch {
+            return null;
           }
         }
-        state.externalRuns = external;
 
-        // Only touch the DOM when something actually changed — a 15s re-render
-        // would otherwise drop the row you're hovering.
-        const sig = JSON.stringify(
-          runs.map((r) => [
-            r.repo,
-            r.running?.id ?? "",
-            r.last?.id ?? "",
-            r.last?.conclusion ?? "",
-          ]),
-        );
-        syncButtons();
-        if (sig !== lastRunsSig) {
-          lastRunsSig = sig;
+        // On load, pull every live session (deploys outlive the page and run
+        // concurrently) and reattach to the one we were last watching. If that
+        // one is gone, fall back to the newest still-running deploy rather than
+        // showing nothing while a deploy is in flight.
+        async function restoreDeploy() {
+          await refreshSessions();
+          if (state.sessions.length === 0) {
+            localStorage.removeItem(LS_DEPLOY);
+            return;
+          }
+          const saved = readSavedDeploy();
+          const target =
+            state.sessions.find((s) => s.id === saved?.sessionId) ??
+            state.sessions.find((s) => s.status === "running");
+          if (!target) {
+            localStorage.removeItem(LS_DEPLOY);
+            return;
+          }
+          localStorage.setItem(
+            LS_DEPLOY,
+            JSON.stringify({ sessionId: target.id }),
+          );
+          attachDeploy(target.id, {
+            status: target.status,
+            label: target.label,
+          });
+        }
+
+        // User closed the log (its tab's ×): dismiss ONLY that session. Other
+        // deploys keep running, so if the one on screen closes and one is left,
+        // switch to it instead of hiding the log entirely.
+        async function closeDeployLog(id = state.deploySession) {
+          if (id && id !== state.deploySession) {
+            fetch(`/api/release/deploy?session=${encodeURIComponent(id)}`, {
+              method: "DELETE",
+            }).catch(() => {});
+            state.sessions = state.sessions.filter((s) => s.id !== id);
+            runs().remove(runKey(id));
+            recomputeDeployingRepos();
+            return;
+          }
+          const closing = state.deploySession;
+          if (closing) runs().remove(runKey(closing));
+          if (closing) {
+            fetch(
+              `/api/release/deploy?session=${encodeURIComponent(closing)}`,
+              {
+                method: "DELETE",
+              },
+            ).catch(() => {});
+            state.sessions = state.sessions.filter((s) => s.id !== closing);
+          }
+          if (es) {
+            es.close();
+            es = null;
+          }
+          state.deploying = false;
+          clearRunsForSession(state.deploySession);
+          state.deploySession = null;
+
+          const next =
+            state.sessions.find((s) => s.status === "running") ??
+            state.sessions[0];
+          if (next) {
+            localStorage.setItem(
+              LS_DEPLOY,
+              JSON.stringify({ sessionId: next.id }),
+            );
+            attachDeploy(next.id, { status: next.status, label: next.label });
+            return;
+          }
+
+          localStorage.removeItem(LS_DEPLOY);
+          recomputeDeployingRepos();
+          setStatus(t("rel.idle"));
           renderTable();
         }
-      }
 
-      function startRunsPoll() {
-        stopRunsPoll();
-        void pollRuns();
-        runsTimer = setInterval(pollRuns, RUNS_POLL_MS);
-      }
-      function stopRunsPoll() {
-        if (runsTimer) clearInterval(runsTimer);
-        runsTimer = null;
-      }
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) stopRunsPoll();
-        else startRunsPoll(); // refresh immediately on return, then resume
-      });
-      window.addEventListener("pagehide", stopRunsPoll);
-
-      /** Pull the authoritative session list from the server. */
-      async function refreshSessions() {
-        try {
-          const list = await fetch("/api/release/deploy/active").then((r) =>
-            r.json(),
+        function updateRowRun(repo) {
+          // Re-render just the affected row's deploy cell if present.
+          const btn = $("rel-body").querySelector(
+            `.dep-btn[data-repo="${cssEsc(repo)}"]`,
           );
-          state.sessions = Array.isArray(list) ? list : [];
-        } catch {
-          /* server unreachable — keep what we have */
+          const cell = btn?.closest(".deploy-cell");
+          if (!cell) {
+            renderTable();
+            return;
+          }
+          const run = state.runs.get(repo);
+          cell.innerHTML =
+            (run ? runPillHtml(run) : "") +
+            `<button class="dep-btn" data-repo="${esc(repo)}" ${isRepoBusy(repo) ? "disabled" : ""}>${esc(t("rel.deploy"))}</button>`;
+          cell
+            .querySelector(".dep-btn")
+            .addEventListener("click", (ev) =>
+              openDeployModal(ev.target.dataset.repo),
+            );
         }
-        recomputeDeployingRepos();
-      }
 
-      // ── The runs dock (R16): one tab per deploy session ──────────────────────
-      const runs = () => window.denShell.runs;
-      const runKey = (id) => `deploy:${id}`;
-      const REQUEST_RUN = "deploy:request";
-      let curRun = null; // the tab appendLine writes to
-      function sessionTabOpts(id) {
-        return {
-          doneLine: false,
-          onClose: () => closeDeployLog(id),
-          // Selecting a session's tab attaches its log (the server replays it).
-          onSelect: () => {
-            const s = state.sessions.find((x) => x.id === id);
-            if (s && s.id !== state.deploySession)
-              attachDeploy(s.id, { status: s.status, label: s.label });
-          },
-        };
-            }
-      // N sessions, N tabs: each names its session and pulses while it runs.
-      function syncSessionTabs() {
-        const ids = new Set(state.sessions.map((s) => runKey(s.id)));
-        for (const s of state.sessions)
-          runs().add(runKey(s.id), `deploy ${s.label || s.id}`, {
-            ...sessionTabOpts(s.id),
-            running: s.status === "running",
-            ...(s.status === "running" ? {} : { error: s.ok === false }),
+        function cssEsc(s) {
+          return window.CSS && CSS.escape
+            ? CSS.escape(s)
+            : String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+        }
+
+        // Only a repo with a live deploy is blocked — a global lock stopped
+        // deploys that never collided. "Deploy all" is disabled while anything
+        // runs, since its plan would overlap whatever is already in flight (the
+        // server 409s on that). Refresh is never blocked.
+        function syncButtons() {
+          const anyRunning =
+            state.deployingRepos.size > 0 || state.externalRuns.size > 0;
+          const allBtn = $("deploy-all-btn");
+          if (allBtn) {
+            allBtn.disabled = anyRunning;
+            allBtn.title = anyRunning ? t("rel.busy.any") : "";
+          }
+          const refresh = $("refresh-btn");
+          if (refresh) refresh.disabled = false;
+          document.querySelectorAll(".dep-btn").forEach((b) => {
+            const repo = b.dataset.repo;
+            b.disabled = isRepoBusy(repo);
+            const ext = state.runs.get(repo);
+            b.title = state.deployingRepos.has(repo)
+              ? t("rel.busy.this")
+              : state.externalRuns.has(repo)
+                ? ext?.envHint
+                  ? t("rel.busy.ext", { repo, env: ext.envHint })
+                  : t("rel.busy.extUnknown", { repo })
+                : "";
           });
-        for (const r of runs().list())
-          if (
-            r.id.startsWith("deploy:") &&
-            r.id !== REQUEST_RUN &&
-            !ids.has(r.id) &&
-            r.id !== runKey(state.deploySession)
-          )
-            runs().remove(r.id);
-      }
+        }
 
-      // ── Output helpers ──────────────────────────────────────────────────────────
-      function appendLine(text, cls) {
-        if (curRun) runs().append(curRun, text, cls);
-      }
+        /**
+         * Forget run state for one session's repos only.
+         *
+         * Clearing the whole map would also discard poll-derived status for repos
+         * in OTHER concurrent sessions — which nothing would rebuild, since the
+         * replay only covers the session being attached.
+         */
+        function clearRunsForSession(sessionId) {
+          const s = state.sessions.find((x) => x.id === sessionId);
+          for (const repo of s?.repos ?? []) state.runs.delete(repo);
+        }
 
-      window.__rel = { closeDeployLog };
+        /** Recompute which repos are mid-deploy from the session list. */
+        function recomputeDeployingRepos() {
+          const live = new Set();
+          for (const s of state.sessions) {
+            if (s.status !== "running") continue;
+            for (const r of s.repos || []) live.add(r);
+          }
+          state.deployingRepos = live;
+          syncButtons();
+          syncSessionTabs();
+        }
 
-      init();
-    </script>
-      </main>
+        // ── Live CD run poll ──────────────────────────────────────────────────────
+        // Deploys start in places this page can't see — another engineer, a push
+        // to main, a re-run from the Actions tab — so poll GitHub for in-flight CD
+        // runs rather than only knowing about deploys we started. Runs only while
+        // the tab is visible; a hidden tab polling GitHub burns rate limit for a
+        // table nobody is looking at.
+        const RUNS_POLL_MS = 15_000;
+        let runsTimer = null;
+        let lastRunsSig = "";
+
+        async function pollRuns() {
+          let runs = [];
+          try {
+            const j = await fetch("/api/release/runs").then((r) => r.json());
+            runs = j.runs || [];
+          } catch {
+            return; // transient — keep the last known state
+          }
+
+          const external = new Set();
+          // Carve out only the repos of the session whose SSE we are ATTACHED to.
+          //
+          // Deploys run concurrently server-side but only one log is attached at
+          // a time, so `deployingRepos` (every running session) is the wrong set
+          // to skip: repos in the other sessions get no `run` events — nothing is
+          // listening to them — AND were skipped here, so their Status cell
+          // stayed empty for the whole deploy. Deploying four systems showed one
+          // "running" and three blanks.
+          const attached = state.sessions.find(
+            (s) => s.id === state.deploySession,
+          );
+          const attachedRepos = new Set(attached?.repos ?? []);
+          for (const r of runs) {
+            // The attached session's SSE is finer-grained than this poll, so let
+            // it own those repos. Every other repo — including ones we started in
+            // another session — is this poll's job.
+            if (attachedRepos.has(r.repo)) continue;
+
+            if (r.running) {
+              // Block only when the run actually targets the env on screen.
+              // envHint is null when the run's title carries no environment (see
+              // CdRun.envHint) — unknown must stay conservative, since dispatching
+              // a second run into the same env would collide. A run we KNOW is
+              // for another env does not block: the workflows use
+              // `concurrency: <repo>-cd-<env>`, so prod and sandbox are separate
+              // groups that GitHub runs in parallel by design.
+              const hint = r.running.envHint;
+              const blocks = hint === null || hint === state.env;
+              if (blocks) external.add(r.repo);
+              state.runs.set(r.repo, {
+                status: r.running.status, // queued | in_progress
+                conclusion: null,
+                url: r.running.url,
+                createdAt: r.running.createdAt,
+                title: r.running.title,
+                envHint: hint,
+                otherEnv: !blocks,
+                external: true,
+              });
+            } else if (r.last) {
+              // The newest FINISHED run is the truth for a repo we're not
+              // deploying. This is what retires a stale ✗ pill: once a later run
+              // has succeeded, the older failure is simply older and gets
+              // replaced.
+              const prev = state.runs.get(r.repo);
+              if (!prev?.createdAt || prev.createdAt <= r.last.createdAt) {
+                state.runs.set(r.repo, {
+                  status: "completed",
+                  conclusion: r.last.conclusion,
+                  url: r.last.url,
+                  createdAt: r.last.createdAt,
+                  title: r.last.title,
+                  external: true,
+                });
+              }
+            }
+          }
+          state.externalRuns = external;
+
+          // Only touch the DOM when something actually changed — a 15s re-render
+          // would otherwise drop the row you're hovering.
+          const sig = JSON.stringify(
+            runs.map((r) => [
+              r.repo,
+              r.running?.id ?? "",
+              r.last?.id ?? "",
+              r.last?.conclusion ?? "",
+            ]),
+          );
+          syncButtons();
+          if (sig !== lastRunsSig) {
+            lastRunsSig = sig;
+            renderTable();
+          }
+        }
+
+        function startRunsPoll() {
+          stopRunsPoll();
+          void pollRuns();
+          runsTimer = setInterval(pollRuns, RUNS_POLL_MS);
+        }
+        function stopRunsPoll() {
+          if (runsTimer) clearInterval(runsTimer);
+          runsTimer = null;
+        }
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) stopRunsPoll();
+          else startRunsPoll(); // refresh immediately on return, then resume
+        });
+        window.addEventListener("pagehide", stopRunsPoll);
+
+        /** Pull the authoritative session list from the server. */
+        async function refreshSessions() {
+          try {
+            const list = await fetch("/api/release/deploy/active").then((r) =>
+              r.json(),
+            );
+            state.sessions = Array.isArray(list) ? list : [];
+          } catch {
+            /* server unreachable — keep what we have */
+          }
+          recomputeDeployingRepos();
+        }
+
+        // ── The runs dock (R16): one tab per deploy session ──────────────────────
+        const runs = () => window.denShell.runs;
+        const runKey = (id) => `deploy:${id}`;
+        const REQUEST_RUN = "deploy:request";
+        let curRun = null; // the tab appendLine writes to
+        function sessionTabOpts(id) {
+          return {
+            doneLine: false,
+            onClose: () => closeDeployLog(id),
+            // Selecting a session's tab attaches its log (the server replays it).
+            onSelect: () => {
+              const s = state.sessions.find((x) => x.id === id);
+              if (s && s.id !== state.deploySession)
+                attachDeploy(s.id, { status: s.status, label: s.label });
+            },
+          };
+        }
+        // N sessions, N tabs: each names its session and pulses while it runs.
+        function syncSessionTabs() {
+          const ids = new Set(state.sessions.map((s) => runKey(s.id)));
+          for (const s of state.sessions)
+            runs().add(runKey(s.id), t("rel.tab", { label: s.label || s.id }), {
+              ...sessionTabOpts(s.id),
+              running: s.status === "running",
+              ...(s.status === "running" ? {} : { error: s.ok === false }),
+            });
+          for (const r of runs().list())
+            if (
+              r.id.startsWith("deploy:") &&
+              r.id !== REQUEST_RUN &&
+              !ids.has(r.id) &&
+              r.id !== runKey(state.deploySession)
+            )
+              runs().remove(r.id);
+        }
+
+        // ── Output helpers ──────────────────────────────────────────────────────────
+        function appendLine(text, cls) {
+          if (curRun) runs().append(curRun, text, cls);
+        }
+
+        window.__rel = { closeDeployLog };
+
+        init();
+      </script>
+    </main>
   </body>
 </html>

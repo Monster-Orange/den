@@ -4,6 +4,10 @@ import {
   getNextReportViewOnPillarChange,
   renderPerfReportHtml,
 } from "../../../src/ui/server/public/perf-report.js";
+import { installEnShell } from "../server/helpers/en-catalog.js";
+
+// The pane's words are the shell's catalog's (den#171): en's here.
+installEnShell();
 
 describe("buildReportPaneModel", () => {
   it("defaults performance runs to the rendered report view", () => {

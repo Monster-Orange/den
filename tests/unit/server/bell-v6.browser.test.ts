@@ -36,8 +36,14 @@ const ASKED =
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_HELPERS_BROWSER=webkit|firefox runs it there (den#93: Safari too).
+    const pw = await import("playwright");
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    browser = await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -194,14 +200,27 @@ describe("bell v6: a quieter bell", () => {
         ),
       );
     expect(lines).toBeLessThanOrEqual(2);
+    // den#93: the row is the link (its two lines inside it), no Open link.
     await expect(
-      asked.locator("a.den-bell-open").getAttribute("href"),
+      asked.locator('a[data-bell="open"]').getAttribute("href"),
     ).resolves.toBe("/agents?project=north&agent=asker");
-    // Open is outside the two lines: never clipped away.
-    expect(await asked.locator("a.den-bell-open").isVisible()).toBe(true);
-    expect(await asked.locator(".den-bell-t a").count()).toBe(0);
+    expect(await asked.locator('a[data-bell="open"] .den-bell-t').count()).toBe(
+      1,
+    );
+    expect(await asked.locator("a").count()).toBe(1);
+    expect(await asked.textContent()).not.toMatch(/\bOpen\b/);
     // Waiting is the one kind with no ⊘ in the row.
     expect(await asked.locator('[data-bell="stop"]').count()).toBe(0);
+    // A click anywhere on the row (here its time) opens it, marked read
+    // first. The read is answered here, so the next test's bell is as it was.
+    let read: unknown = null;
+    await p.route("**/api/notifications/read", (r) => {
+      read = r.request().postDataJSON();
+      return r.fulfill({ json: { ok: true } });
+    });
+    await asked.locator("time").click();
+    await p.waitForURL(/\/agents\?project=north&agent=asker/);
+    expect(read).toMatchObject({ id: expect.any(String) });
     await p.context().close();
   }, 90_000);
 

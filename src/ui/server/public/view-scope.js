@@ -34,13 +34,16 @@ export async function viewScope() {
   };
 }
 
+/** A word in the page's language (issue 171): shell.js's catalog, "view.*". */
+const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
+
 /** The same note on every page that follows the View. */
 export function viewNoteHtml(view) {
   const what =
     view.scope === "all"
-      ? "all active projects"
-      : `project <b>${esc(view.scope)}</b>`;
-  return `<span class="note view-note" data-view="${esc(view.scope)}">Shows ${what}, as the top bar's View. Change it there.</span>`;
+      ? esc(t("view.all"))
+      : t("view.one", { name: `<b>${esc(view.scope)}</b>` });
+  return `<span class="note view-note" data-view="${esc(view.scope)}">${t("view.note", { what })}</span>`;
 }
 
 /** The health and services query for the View: one workspace, or none. */

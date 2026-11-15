@@ -55,6 +55,7 @@ import {
 import { readWebPort } from "../../shared/edge/config.js";
 import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
+import { notSetLine, readWebUrl } from "../../shared/web-url.js";
 import { ALWAYS_CAVEAT } from "../../shared/launchd-session.js";
 import {
   classifyServerInfo,
@@ -475,7 +476,7 @@ export async function cmdService(
     log(`  logs:    ${path.join(logs, "web.log")}`);
     log(`  root:    ${distRoot}`);
     log(`  engine:  ${path.dirname(path.dirname(script))}`);
-    log(`  url:     http://localhost:${port}`);
+    log(`  url:     ${readWebUrl()?.url ?? notSetLine(product().cli)}`);
     const id = await identify(port, own);
     log(`  server:  ${identityLine(port, id)}`);
     // D26: what install does with a plain server of this install.
@@ -602,7 +603,7 @@ export async function cmdService(
       return 1;
     }
     log(
-      `✓ ${label} running (${mode}) at http://localhost:${port} (logs: ${path.join(logs, "web.log")})`,
+      `✓ ${label} running (${mode}) at ${readWebUrl()?.url ?? notSetLine(product().cli)} (logs: ${path.join(logs, "web.log")})`,
     );
     await sayStrayHost();
     return 0;

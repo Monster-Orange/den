@@ -1642,6 +1642,9 @@
           projectNameSource,
         } from "/workspace-picker.js";
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
+        // issue 133: Den's own dialogs, in the page's language, never the
+        // browser's confirm(), prompt() or alert().
+        import { askConfirm, askText, tell } from "/dialog-den.js";
         import {
           mountGraph,
           graphEmptyNote,
@@ -4192,7 +4195,14 @@
 
         // ── Remove service ────────────────────────────────────────────────────────
         window.removeService = async function (wsName, address) {
-          if (!confirm(`Remove "${address}" from "${wsName}"?`)) return;
+          const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
+          const sure = await askConfirm({
+            title: dT("dlg.removeSvcT"),
+            message: dT("dlg.removeSvc", { svc: address, ws: wsName }),
+            okLabel: dT("dlg.remove"),
+            danger: true,
+          });
+          if (!sure) return;
           await fetch("/api/workspaces/services", {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
@@ -4398,7 +4408,14 @@
           e.stopPropagation();
 
           // Step 1: confirm workspace removal
-          if (!confirm(`Delete project "${name}"?`)) return;
+          const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
+          const sure = await askConfirm({
+            title: dT("dlg.delProjT"),
+            message: dT("dlg.delProj", { ws: name }),
+            okLabel: dT("dlg.delete"),
+            danger: true,
+          });
+          if (!sure) return;
 
           // Fetch cleanup preview to know what qualifies for deletion
           const preview = await fetch(
@@ -4426,9 +4443,13 @@
           let cleanupDirectory = false;
           const wsDir = wsData?.resolvedDirs?.[name];
           if (wsDir) {
-            cleanupDirectory = confirm(
-              `Also delete the project's directory from your machine?\n\n${wsDir}\n\nThis removes all files in the directory. Any unpushed commits will be lost.`,
-            );
+            cleanupDirectory = await askConfirm({
+              title: dT("dlg.dirT"),
+              message: dT("dlg.dir", { dir: wsDir }),
+              okLabel: dT("dlg.delete"),
+              cancelLabel: dT("dlg.keep"),
+              danger: true,
+            });
           }
 
           // Step 3: dev-managed repos (only shown if any qualify)
@@ -4437,9 +4458,16 @@
             const repoList = preview.devManaged
               .map((r) => `  • ${r.address}`)
               .join("\n");
-            cleanupDev = confirm(
-              `Also delete ${preview.devManaged.length} dev-managed repo${preview.devManaged.length > 1 ? "s" : ""} from your machine?\n\n${repoList}\n\nAny unpushed commits will be lost.`,
-            );
+            cleanupDev = await askConfirm({
+              title: dT("dlg.reposT"),
+              message: dT("dlg.devRepos", {
+                n: preview.devManaged.length,
+                list: repoList,
+              }),
+              okLabel: dT("dlg.delete"),
+              cancelLabel: dT("dlg.keep"),
+              danger: true,
+            });
           }
 
           // Step 4: managed repos exclusively owned by this workspace
@@ -4448,9 +4476,16 @@
             const repoList = preview.denManaged
               .map((r) => `  • ${r.address}`)
               .join("\n");
-            cleanupDen = confirm(
-              `Also delete ${preview.denManaged.length} managed repo${preview.denManaged.length > 1 ? "s" : ""} only used by this project?\n\n${repoList}\n\nNo other project uses these clones.`,
-            );
+            cleanupDen = await askConfirm({
+              title: dT("dlg.reposT"),
+              message: dT("dlg.denRepos", {
+                n: preview.denManaged.length,
+                list: repoList,
+              }),
+              okLabel: dT("dlg.delete"),
+              cancelLabel: dT("dlg.keep"),
+              danger: true,
+            });
           }
 
           let deleted = true;
@@ -4554,7 +4589,13 @@
         // D70: the name changes; the slug (oldName here) stays.
         async function renameWorkspace(oldName) {
           const shown = wsData?.workspaces?.[oldName]?.name || oldName;
-          const newName = prompt(`Rename project "${shown}" to:`, shown);
+          const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
+          const newName = await askText({
+            title: dT("dlg.renameT"),
+            message: dT("dlg.rename", { ws: shown }),
+            value: shown,
+            okLabel: dT("dlg.renameGo"),
+          });
           if (!newName || newName === shown) return;
           try {
             await window.denShell.api("POST", "/api/workspaces/rename", {
@@ -5122,9 +5163,14 @@
             if (e.message.includes("No editor")) {
               location.href = "/settings#editor";
             } else if (err.runCmd) {
-              alert(
-                `Could not open Terminal.app automatically.\n\nRun this in your terminal:\n\n  ${err.runCmd}\n\n${e.message}`,
-              );
+              await tell({
+                title: window.denShell?.t?.("dlg.openT") ?? "",
+                message:
+                  window.denShell?.t?.("dlg.editorFail", {
+                    cmd: err.runCmd,
+                    msg: e.message,
+                  }) ?? "",
+              });
             } else {
               window.denShell.errorToast(e);
             }
@@ -5142,9 +5188,14 @@
             if (e.message.includes("No terminal")) {
               location.href = "/settings#editor";
             } else if (err.runCmd) {
-              alert(
-                `Could not open the terminal automatically.\n\nRun this in your terminal:\n\n  ${err.runCmd}\n\n${e.message}`,
-              );
+              await tell({
+                title: window.denShell?.t?.("dlg.openT") ?? "",
+                message:
+                  window.denShell?.t?.("dlg.termFail", {
+                    cmd: err.runCmd,
+                    msg: e.message,
+                  }) ?? "",
+              });
             } else {
               window.denShell.errorToast(e);
             }

@@ -137,6 +137,7 @@ import {
   layoutKeyIndex,
   linkModifier,
   linkOpen,
+  imeOnce,
   softNewlineKey,
 } from "/term-input.js";
 
@@ -2000,12 +2001,9 @@ function paintBar(p) {
     r?.kind === "agent"
       ? `<button type="button" class="den-btn sm" data-act="more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`
       : "";
-  const html =
-    `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
-    `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
-    (r && isStopped(r)
-      ? `<span class="why" data-why title="${esc(stoppedTip(r))}">${esc(stopReason(r))}</span>`
-      : "") +
+  // Issue 170: the tags in one box. Beside the name on a wide pane; on a
+  // phone a line of their own, so they never cut the project's name.
+  const tags =
     (r?.tokenRevoked
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
@@ -2014,7 +2012,14 @@ function paintBar(p) {
     modeTagHtml(r, true) +
     whereTag(r, true) +
     linkTag(r) +
-    subagentTag(r) +
+    subagentTag(r);
+  const html =
+    `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
+    `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
+    (r && isStopped(r)
+      ? `<span class="why" data-why title="${esc(stoppedTip(r))}">${esc(stopReason(r))}</span>`
+      : "") +
+    (tags ? `<span class="agtags" data-tags>${tags}</span>` : "") +
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
       : "") +
@@ -2698,6 +2703,7 @@ async function openPane(id, { front = true } = {}) {
       },
       true,
     );
+  imeOnce(el, typeIn);
   term.onData(typeIn);
   p.typeIn = typeIn;
   // AG-DROP: a file dropped or pasted here goes to the server; its path is

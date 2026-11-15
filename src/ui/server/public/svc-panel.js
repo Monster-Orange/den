@@ -547,7 +547,7 @@ function stream(url, key, label, opts, done) {
     }
   };
   es.onerror = () => {
-    out("Connection closed", "err");
+    out(t("svc.closed"), "err");
     es.close();
     if (opts.running === false) r?.set(id, { running: false });
     else r?.finish(id, { ok: false });

@@ -63,14 +63,30 @@ export type ReleaseStatusKind =
   | "conflict"
   | "error";
 
+/**
+ * A status line's words for the web UI (den#171): the catalog key
+ * (public/shell.js, "rel.st.*") and its values. `text` stays English, for
+ * the CLI and the MCP tools.
+ */
+export interface StatusWords {
+  key: string;
+  vars?: Record<string, string | number>;
+}
+const said = (key: string, vars?: StatusWords["vars"]): StatusWords =>
+  vars ? { key, vars } : { key };
+
 export interface ReleaseStatus {
   kind: ReleaseStatusKind;
   /** Human text mirroring the script's STATUS column (with glyph). */
   text: string;
+  /** `text` for the web UI: a catalog key and its values. */
+  t?: StatusWords;
   aheadBy?: number;
   behindBy?: number;
   /** Soft "a newer deploy is failing/in-flight on top of the live one" note. */
   warn?: string;
+  /** `warn` for the web UI. */
+  warnT?: StatusWords;
 }
 
 export interface ReleaseRow {
@@ -465,7 +481,11 @@ export class ReleaseService {
       ".commit.sha",
     ]);
     if (!mainSha || mainSha === "null") {
-      return errorRow({ kind: "error", text: `could not read ${src} branch` });
+      return errorRow({
+        kind: "error",
+        text: `could not read ${src} branch`,
+        t: said("rel.st.noBranch", { branch: src }),
+      });
     }
 
     // --- manifest sources: a version endpoint, else the release workflow's
@@ -477,6 +497,7 @@ export class ReleaseService {
         {
           kind: "no-deploy",
           text: `? no release source for ${env} in ${product().manifestYml}`,
+          t: said("rel.st.noSource", { env, file: product().manifestYml }),
         },
         mainSha,
       );
@@ -499,7 +520,11 @@ export class ReleaseService {
       if (!source.deployment && !repo.workflow) {
         return {
           ...errorRow(
-            { kind: "error", text: `✗ version endpoint: ${sha.error}` },
+            {
+              kind: "error",
+              text: `✗ version endpoint: ${sha.error}`,
+              t: said("rel.st.versionErr", { error: sha.error }),
+            },
             mainSha,
           ),
           source: "version endpoint",
@@ -519,7 +544,11 @@ export class ReleaseService {
       if (!repo.workflow || !sha) {
         return {
           ...errorRow(
-            { kind: "no-deploy", text: `? no successful deploy run on ${src}` },
+            {
+              kind: "no-deploy",
+              text: `? no successful deploy run on ${src}`,
+              t: said("rel.st.noRun", { branch: src }),
+            },
             mainSha,
           ),
           source: "workflow run",
@@ -553,7 +582,11 @@ export class ReleaseService {
     ]);
     if (!deploymentsRaw) {
       return errorRow(
-        { kind: "conflict", text: "✗ deployments API error" },
+        {
+          kind: "conflict",
+          text: "✗ deployments API error",
+          t: said("rel.st.deploymentsErr"),
+        },
         mainSha,
       );
     }
@@ -650,16 +683,25 @@ export class ReleaseService {
 
     if (!deployedSha) {
       let note = `no successful ${repo.workflow || "CD"} deployment to ${deployEnv}`;
+      let t = said("rel.st.noDeploy", {
+        workflow: repo.workflow || "CD",
+        env: deployEnv,
+      });
       if (newestState && newestState !== "success") {
         note = `last CD deploy ${newestState} (none succeeded)`;
+        t = said("rel.st.lastFailed", { state: newestState });
       }
-      return errorRow({ kind: "no-deploy", text: `? ${note}` }, mainSha);
+      return errorRow({ kind: "no-deploy", text: `? ${note}`, t }, mainSha);
     }
 
     // CONFLICT 1 (hard): reported success actually belongs to a failed run.
     if (runConcl && runConcl !== "success") {
       return errorRow(
-        { kind: "conflict", text: `✗ deploy run ${runConcl} — NOT rolled out` },
+        {
+          kind: "conflict",
+          text: `✗ deploy run ${runConcl} — NOT rolled out`,
+          t: said("rel.st.runConcl", { state: runConcl }),
+        },
         mainSha,
         deployedSha,
         deployedRef,
@@ -671,8 +713,13 @@ export class ReleaseService {
 
     // CONFLICT 2 (soft): a newer, not-yet-successful deploy sits on top.
     let warn: string | undefined;
+    let warnT: StatusWords | undefined;
     if (newestState && newestState !== "success" && newestAt > deployedAt) {
       warn = `⚠ newer deploy ${newestState} @ ${newestAt.slice(0, 19)}Z`;
+      warnT = said("rel.st.newer", {
+        state: newestState,
+        at: `${newestAt.slice(0, 19)}Z`,
+      });
     }
 
     // Classify deployed-vs-main.
@@ -683,6 +730,7 @@ export class ReleaseService {
       warn,
       src,
     );
+    if (warnT) status.warnT = warnT;
 
     return {
       ...base,
@@ -1036,7 +1084,12 @@ export async function classifyAgainstMain(
 ): Promise<ReleaseStatus> {
   let status: ReleaseStatus;
   if (deployedSha === mainSha) {
-    status = { kind: "up-to-date", text: "✓ up-to-date", warn };
+    status = {
+      kind: "up-to-date",
+      text: "✓ up-to-date",
+      t: said("rel.st.upToDate"),
+      warn,
+    };
   } else {
     const cmpRaw = await ghSafe([
       "api",
@@ -1048,6 +1101,7 @@ export async function classifyAgainstMain(
       status = {
         kind: "conflict",
         text: "✗ drift (compare API error)",
+        t: said("rel.st.compareErr"),
         warn,
       };
     } else {
@@ -1064,6 +1118,7 @@ export async function classifyAgainstMain(
           status = {
             kind: "behind",
             text: `✗ behind ${src} by ${aheadBy} commit(s)`,
+            t: said("rel.st.behind", { branch: src, n: aheadBy }),
             aheadBy,
             warn,
           };
@@ -1072,6 +1127,11 @@ export async function classifyAgainstMain(
           status = {
             kind: "off-main",
             text: `⚠ off-${src} (${src} +${aheadBy}/-${behindBy})`,
+            t: said("rel.st.off", {
+              branch: src,
+              ahead: aheadBy,
+              behind: behindBy,
+            }),
             aheadBy,
             behindBy,
             warn,
@@ -1081,6 +1141,7 @@ export async function classifyAgainstMain(
           status = {
             kind: "ahead",
             text: `⚠ ahead of ${src} by ${behindBy} commit(s)`,
+            t: said("rel.st.ahead", { branch: src, n: behindBy }),
             behindBy,
             warn,
           };
@@ -1089,6 +1150,7 @@ export async function classifyAgainstMain(
           status = {
             kind: "conflict",
             text: `✗ drift (status=${cmp.status ?? "?"})`,
+            t: said("rel.st.drift", { status: cmp.status ?? "?" }),
             warn,
           };
       }

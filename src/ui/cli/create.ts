@@ -13,7 +13,9 @@
  */
 import { checkWebUrl } from "../../shared/web-url-check.js";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
+import * as readline from "node:readline";
 import { execFileSync } from "node:child_process";
 import { ENGINE_PACKAGE, getEngineRoot } from "../../shared/paths.js";
 import { profileFrom } from "../../shared/profile.js";
@@ -446,8 +448,9 @@ config/environments/local.json, manifests/ and tests/pillars/.
                          (default: the owner of the GitHub repo [dir] is in)
   --url <address>        this install's address (web.url), the one people
                          open, for example https://<cli>.local.example.com.
-                         Without it, set it next: <cli> web url <address>
-  --yes, -y              never prompt (create never does; for agents)
+                         Without it, at a terminal, create asks (and
+                         proposes one); else set it next: <cli> web url <address>
+  --yes, -y              never prompt (for agents)
   --json                 print one JSON object: { ok, dir, cli, existed, port, next }
 
 Safe to re-run: a [dir] that already holds this distribution answers ok
@@ -668,11 +671,114 @@ export async function createResult(
   }
 }
 
+/** D80: where create can ask the person for this install's address. */
+export interface CreateAskOptions {
+  /** A person is at the prompt (default: stdin and stdout are a terminal). */
+  interactive?: boolean;
+  /** Ask `question`; the answer, "" for the default (default: readline). */
+  ask?: (question: string, proposal: string) => Promise<string>;
+  /** This machine's short name, for later installs (default: its hostname). */
+  machine?: string;
+  /** The domain for later installs (default: the distribution's own). */
+  domain?: string;
+}
+
+/**
+ * D80: the address create proposes. The first install on a machine gets the
+ * plain name from the distribution; later ones `<product>.<machine>.<domain>`.
+ * The person can change it.
+ */
+export function proposeWebUrl(o: {
+  cli: string;
+  machine: string;
+  domain?: string;
+  later: boolean;
+}): string {
+  if (!o.later) return `https://${o.cli}`;
+  return `https://${[o.cli, o.machine, o.domain].filter(Boolean).join(".")}`;
+}
+
+/**
+ * D80: whether `dir` is a later install of distribution `name` (it, or a
+ * folder beside it, already holds `config/<name>.yml`), and the domain the
+ * distribution already uses: the first install's address less its product
+ * name, else the edge domain less it. None known: no domain.
+ */
+export function laterInstall(
+  dir: string,
+  name: string,
+  cli: string,
+): { later: boolean; domain?: string } {
+  const has = (d: string) =>
+    fs.existsSync(path.join(d, "config", `${name}.yml`));
+  let near: string[] = [];
+  try {
+    const parent = path.dirname(dir);
+    near = fs
+      .readdirSync(parent)
+      .map((n) => path.join(parent, n))
+      .filter((d) => d !== dir && has(d));
+  } catch {
+    /* no parent to read */
+  }
+  const installs = [...(has(dir) ? [dir] : []), ...near];
+  const strip = (host: string) => {
+    for (const p of [cli, name])
+      if (host.startsWith(`${p}.`)) return host.slice(p.length + 1);
+    return host.includes(".") ? host.slice(host.indexOf(".") + 1) : "";
+  };
+  const read = (f: string): Record<string, unknown> => {
+    try {
+      return (parseYaml(fs.readFileSync(f, "utf-8")) ?? {}) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return {};
+    }
+  };
+  const fromUrl = (d: string) => {
+    const web = read(path.join(d, "config", "local", "user.yml")).web as
+      | { url?: string }
+      | undefined;
+    try {
+      return web?.url ? strip(new URL(web.url).hostname) : "";
+    } catch {
+      return "";
+    }
+  };
+  const fromEdge = (d: string) => {
+    const edge = read(path.join(d, "config", `${name}.yml`)).edge as
+      | { domain?: string }
+      | undefined;
+    return typeof edge?.domain === "string" ? strip(edge.domain) : "";
+  };
+  const domain =
+    installs.map(fromUrl).find(Boolean) ||
+    installs.map(fromEdge).find(Boolean) ||
+    undefined;
+  return { later: installs.length > 0, ...(domain ? { domain } : {}) };
+}
+
+function askWithReadline(question: string, proposal: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return new Promise((resolve) =>
+    rl.question(`${question} [${proposal}] `, (a) => {
+      rl.close();
+      resolve(a);
+    }),
+  );
+}
+
 /** Run `create` end to end; resolves to the process exit code. */
 export async function runCreate(
   argv: string[],
   cwd: string,
   portOpts: CreatePortOptions = { startPort: startPortFromEnv() },
+  askOpts: CreateAskOptions = {},
 ): Promise<number> {
   if (argv.includes("-h") || argv.includes("--help")) {
     console.log(CREATE_HELP);
@@ -693,6 +799,31 @@ export async function runCreate(
       );
     } else console.error(`create: ${(e as Error).message}`);
     return 1;
+  }
+  const interactive =
+    askOpts.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if (!args.url && !args.yes && !json && interactive) {
+    const cli = args.cli ?? args.name;
+    const near = laterInstall(args.dir, args.name, cli);
+    const proposal = proposeWebUrl({
+      cli,
+      machine: askOpts.machine ?? os.hostname().split(".")[0].toLowerCase(),
+      domain: askOpts.domain ?? near.domain,
+      later: near.later,
+    });
+    const answer = (
+      await (askOpts.ask ?? askWithReadline)(
+        "This install's address, the one people open (web.url)?",
+        proposal,
+      )
+    ).trim();
+    const checked = checkWebUrl(
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(answer || proposal)
+        ? answer || proposal
+        : `https://${answer}`,
+    );
+    if ("url" in checked) args = { ...args, url: checked.url };
+    else console.error(`create: ${checked.error} (set it later: web url)`);
   }
   const r = await createResult(args, cwd, runningDenVersion(), portOpts);
   if (json) {

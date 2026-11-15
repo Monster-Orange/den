@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 jobs:
-  # Every gate on both ends of the supported range: the lowest Node that
-  # package.json's engines allows, and the Node installs run (24.13, the
-  # one den#84's V8 crash was seen on). Both block a merge.
-  gates:
+  # The fast gates, once per Node at both ends of the supported range: the
+  # lowest Node that package.json's engines allows, and the Node installs
+  # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # the suite takes 13–19 min on a hosted runner
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -38,14 +38,33 @@ jobs:
       # org, user, session… (company, install, project, person, agent).
       - run: node scripts/words-gate.mjs
       - run: npm run lint
-      # The browser tests (tests/unit/server/*.browser.test.ts) need a real
-      # chromium; this installs the one the pinned Playwright expects.
-      - run: npx playwright install --with-deps chromium
-      - run: npm test
       - name: Org-name gate
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
         run: node scripts/org-name-gate.mjs
+
+  # The whole unit suite on both Nodes, split in four parts that run side by
+  # side (jest --shard): every test runs once per Node, as before; the suite
+  # took 13–19 min (up to 30 with setup) in one job.
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.13.0", "24.13.0"]
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # The browser tests (tests/unit/server/*.browser.test.ts) need a real
+      # chromium; this installs the one the pinned Playwright expects.
+      - run: npx playwright install --with-deps chromium
+      - run: npm test -- --shard=${{ matrix.shard }}/4
 
   # Den as an installed package: npm pack, scaffold a distribution from the
   # tarball (create acme), install the tarball into it, then run its CLI, make

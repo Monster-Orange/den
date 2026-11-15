@@ -90,6 +90,36 @@ config and manifest changes a distribution must make to move to it under
   and HEAD only, still only for an agent's own Den token. No Hub token is
   read or printed. (den#49)
 
+## [0.4.49] - 2026-11-15
+
+### Fixed
+
+- Typing fast or holding a key in an agent's pane, with an input method
+  on (for example a Japanese input source that Caps Lock switches to ABC),
+  could garble the prompt: letters sent twice, the line sent again from
+  its start, letters dropped. Each key's text now reaches the agent once,
+  in order. Kana-to-kanji input works as before. It works around a
+  terminal library bug (xterm.js issue 5778). (den#165)
+- The bell: a click anywhere on a row opens it (its dot, its time, the
+  space between), marked read first. The separate Open link is gone.
+  (den#93)
+- Deleting a project, and the other questions on the Projects and Services
+  pages, ask with Den's own dialog in the page's language, with Report in
+  it, in place of the browser's confirm, prompt and alert. Esc cancels.
+  (den#133)
+- Agents at phone width: the runs dock no longer covers the To line, and
+  an agent's tags sit on their own line instead of cutting the project
+  name. (den#170)
+- The Edge, Tests, Release, Logs, Environments and Services pages speak
+  Spanish and Japanese; they drew many words in English before. (den#171)
+- The service commands (`service install`, `--plan`) print this install's
+  address (`web.url`), never `localhost`; with no address set they say how
+  to set it. `create` now asks for the address at a terminal, proposing
+  the plain name for the first install and `<product>.<machine>.<domain>`
+  for later ones, the domain being the one the distribution already uses
+  (the first install's address, else its edge domain); `--url`, `--yes`
+  and `--json` skip the question. (den#173, D80)
+
 ## [0.4.48] - 2026-11-15
 
 ### Added

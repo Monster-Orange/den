@@ -73,6 +73,8 @@ export const UI_MODULES: readonly string[] = [
   "/restart-den.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
   "/busy-den.js",
+  // issue 133: Den's words and Report on the kit's dialogs (/kit/dialog.js).
+  "/dialog-den.js",
   // FB (den#81): Report an issue, the dialog.
   "/report-dialog.js",
   // FB (den#81): the screenshot and its mask.
@@ -127,6 +129,7 @@ export const KIT_FILES: readonly string[] = [
   "base.css",
   "busy.js",
   "busy-words.js",
+  "dialog.js",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",
