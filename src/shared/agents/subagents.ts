@@ -11,7 +11,8 @@
  * with CLAUDE_CODE_SUBAGENT_MODEL_FORCE).
  *
  * `agents.claude_ai_connectors` (default false): whether an agent loads
- * the account's claude.ai connectors. Off, an agent has Den's MCP only.
+ * the account's claude.ai connectors. Off, an agent has Den's MCP only;
+ * on, Den's and the connectors, and no other server (den#265).
  */
 const isMapping = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
