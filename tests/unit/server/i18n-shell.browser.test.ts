@@ -20,6 +20,7 @@ import * as vm from "vm";
 import type { Browser, Page } from "playwright";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
+const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
 let browser: Browser | null = null;
 
 beforeAll(async () => {
@@ -83,6 +84,13 @@ async function mount(): Promise<Page> {
   await p.route("http://den.test/**", async (r) => {
     const url = new URL(r.request().url());
     const json = (j: unknown, status = 200) => r.fulfill({ status, json: j });
+    // The UI kit (/kit/*.js), as Den serves it: bell.js reads its time.
+    const kit = /^\/kit\/([\w-]+\.js)$/.exec(url.pathname);
+    if (kit && fs.existsSync(path.join(KIT, kit[1])))
+      return r.fulfill({
+        contentType: "text/javascript; charset=utf-8",
+        body: fs.readFileSync(path.join(KIT, kit[1]), "utf-8"),
+      });
     const file = /^\/([\w-]+\.js)$/.exec(url.pathname);
     if (file && fs.existsSync(path.join(PUBLIC, file[1])))
       return r.fulfill({
