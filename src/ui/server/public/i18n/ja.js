@@ -358,8 +358,9 @@
     "dock.done": "{s} 秒で完了",
     "dock.failed": "{s} 秒で失敗",
     "run.nothingRan":
-      "– {d} で何も実行されませんでした：すべてのスイートがスキップされました。成功も失敗もありません。",
+      "– {d} で何も実行されませんでした。成功も失敗もありません。",
     "run.nothingRanShort": "何も実行されず（{d}）",
+    "v.v_cancelled": "キャンセル",
     "dock.close": "実行を隠す",
     "dock.show": "実行を表示",
     "dock.copy": "コピー",

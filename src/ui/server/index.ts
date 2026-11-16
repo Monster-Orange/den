@@ -77,6 +77,7 @@ import type {
   WorkspaceConfig,
 } from "../../shared/types/index.js";
 import { getRunDonePayload } from "./perf-report.js";
+import { oldKindWarning } from "../../shared/run-outcome.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
   getActiveWorkspace,
@@ -4823,17 +4824,21 @@ async function handleRequest(
       });
     };
 
+    // The seven old kinds still run, and say what replaces them (issue 207).
+    const oldKind = oldKindWarning(pillar);
+    if (oldKind) emit({ type: "line", text: oldKind });
+
     const runStep = (i: number): void => {
       if (i >= steps.length) {
-        finishLifecycle(overallExit);
-        emit(
-          getRunDonePayload({
-            pillar,
-            exitCode: overallExit,
-            duration: Date.now() - startTime,
-            rootDir: ROOT,
-          }),
-        );
+        // The one exit-code table for every kind (issue 207).
+        const done = getRunDonePayload({
+          pillar,
+          exitCode: overallExit,
+          duration: Date.now() - startTime,
+          rootDir: ROOT,
+        });
+        finishLifecycle(done.exitCode);
+        emit(done);
         res.end();
         return;
       }
@@ -4849,25 +4854,28 @@ async function handleRequest(
           mirrorLine(runId, line);
           emit({ type: "line", text: line });
         },
-        (exitCode) => {
-          if (exitCode !== 0) {
+        (exitCode, signal) => {
+          if (exitCode !== 0 || signal) {
             if (overallExit === 0) {
               overallExit = exitCode;
             }
-            if (!step.continueOnFailure) {
+            const done = getRunDonePayload({
+              pillar,
+              exitCode,
+              duration: Date.now() - startTime,
+              rootDir: ROOT,
+              signal,
+            });
+            if (!step.continueOnFailure || done.cancelled) {
               emit({
                 type: "error",
-                text: `Step "${step.label}" failed (exit ${exitCode}) — aborting`,
+                text: `Step "${step.label}" ${done.cancelled ? "was cancelled" : done.nothingRan ? "ran nothing" : "failed"} (exit ${exitCode}) — aborting`,
               });
-              finishLifecycle(exitCode, `step "${step.label}" failed`);
-              emit(
-                getRunDonePayload({
-                  pillar,
-                  exitCode,
-                  duration: Date.now() - startTime,
-                  rootDir: ROOT,
-                }),
+              finishLifecycle(
+                done.exitCode,
+                `step "${step.label}" ${done.verdict}`,
               );
+              emit(done);
               res.end();
               return;
             }
