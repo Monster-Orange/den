@@ -11,7 +11,9 @@
  * Auto-close (a fast success says so in a toast, a slow one closes after
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
  * restart-agent, fresh-start, report-preview, save-report-draft,
- * discard-draft, keep-running, send-message, allow-web-app. Waits for
+ * discard-draft, keep-running, send-message, allow-web-app, verify-plan,
+ * verify-ask,
+ * verify-allow, verify-run, verify-decline, verify-cancel. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -183,6 +185,61 @@ export const DEN_ACTIONS = {
       working: "busy.emcW",
       success: "busy.emcS",
       failure: "busy.emcF",
+    },
+  },
+  // Issue 210: the Verify page's writes (Plan and Allow, Running).
+  "verify-plan": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrPlanW",
+      success: "busy.vrPlanS",
+      failure: "busy.vrPlanF",
+    },
+  },
+  "verify-ask": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrAskW",
+      success: "busy.vrAskS",
+      failure: "busy.vrAskF",
+    },
+  },
+  "verify-allow": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrRunW",
+      success: "busy.vrRunS",
+      failure: "busy.vrRunF",
+    },
+  },
+  "verify-run": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrRunW",
+      success: "busy.vrRunS",
+      failure: "busy.vrRunF",
+    },
+  },
+  "verify-decline": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrDecW",
+      success: "busy.vrDecS",
+      failure: "busy.vrDecF",
+    },
+  },
+  "verify-cancel": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrCanW",
+      success: "busy.vrCanS",
+      failure: "busy.vrCanF",
     },
   },
   "restart-den": {

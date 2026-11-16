@@ -11,6 +11,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import type { Verdict } from "../run-outcome.js";
 import type { ModuleRun, RunResult } from "./run.js";
 
 /** Who did something to a run. */
@@ -20,7 +21,13 @@ export interface RunActor {
   name?: string;
 }
 
-export interface ModuleRecord extends ModuleRun {
+/** A module's state in a record: a run's result, or (issue 210) its progress. */
+export type ModuleRecordState = ModuleRun["state"] | "queued" | "running";
+
+export interface ModuleRecord extends Omit<ModuleRun, "state"> {
+  state: ModuleRecordState;
+  /** Queued behind a layer that hasn't passed yet: that layer (issue 210). */
+  waitsFor?: string;
   /** The last lines of its command's output (its report). */
   tail?: string[];
 }
@@ -30,14 +37,18 @@ export interface RunRecord {
   project: string;
   env: string;
   scope: string;
-  verdict: RunResult["verdict"];
-  exitCode: number;
+  /** "running" until it ends (issue 210: kept after each module). */
+  verdict: Verdict | "running";
+  exitCode: number | null;
   reason?: RunResult["reason"];
-  /** ISO times. */
+  /** ISO times; endedAt once it has ended. */
   startedAt: string;
-  endedAt: string;
+  endedAt?: string;
   startedBy?: RunActor;
   allowedBy?: RunActor;
+  /** Issue 210: who cancelled it, and when (ISO). */
+  cancelledBy?: RunActor;
+  cancelledAt?: string;
   /** The commit the run checked (the first repo's), when known. */
   commit?: string | null;
   modules: ModuleRecord[];
@@ -50,6 +61,17 @@ function runsDir(stateDir: string, project: string): string {
   if (!PROJECT_RE.test(project))
     throw new Error(`"${project}" is not a project's name`);
   return path.join(stateDir, "verify", project, "runs");
+}
+
+/** A run that has ended: what an answer and the activity are made of. */
+export type EndedRunRecord = RunRecord & {
+  verdict: Verdict;
+  exitCode: number;
+  endedAt: string;
+};
+
+export function hasEnded(r: RunRecord): r is EndedRunRecord {
+  return r.verdict !== "running" && typeof r.endedAt === "string";
 }
 
 /** Keeps a run's record (replacing one with the same id). */
@@ -101,6 +123,8 @@ export function listRunRecords(
   return ids
     .map((id) => readRunRecord(stateDir, project, id))
     .filter((r): r is RunRecord => r !== null)
-    .sort((a, b) => b.endedAt.localeCompare(a.endedAt))
+    .sort((a, b) =>
+      (b.endedAt ?? b.startedAt).localeCompare(a.endedAt ?? a.startedAt),
+    )
     .slice(0, Math.max(0, limit));
 }

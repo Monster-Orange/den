@@ -42,9 +42,11 @@
  *                     to take up; Den's own agent or a person asks, as the
  *                     folder is every project's
  *   verify_run        issue 208: a Verify run on a shared environment
- *                     (verify-routes.ts checkVerifyRun, runVerify); the
+ *                     (verify-routes.ts checkVerifyRun, startVerify); the
  *                     Review is the plan, each module with its mark. It
- *                     always asks the person (CRITICAL_HELD_ACTIONS)
+ *                     always asks the person (CRITICAL_HELD_ACTIONS).
+ *                     Issue 210: Allow starts it in the background and
+ *                     answers its run id (MCP verify_result reads it)
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {

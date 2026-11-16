@@ -9,15 +9,26 @@
  *     by smoke"); a layer that depends on one that failed is blocked by
  *     it ("blocked by api"). Blocked is never a pass
  *
- * The verdict and exit code (the one table): passed 0, failed 1 (any
- * module failed, errored or was blocked), nothing ran 3. A plan with
- * nothing to run runs nothing, writes nothing, and hands back the latest
- * answer, so a page keeps showing it.
+ * The verdict and exit code (the one table, run-outcome.ts): passed 0,
+ * failed 1 (any module failed, errored or was blocked), nothing ran 3,
+ * cancelled 4. A plan with nothing to run runs nothing, and hands back
+ * the latest answer, so a page keeps showing it.
+ *
+ * Issue 210: the run's record is kept from the start ("running", each
+ * module "queued", one behind a layer saying which) and again after each
+ * module, so a page can show progress. Cancel (`signal`) stops the
+ * command that is running; it and every module not finished become
+ * "cancelled", and the run is "cancelled" (exit 4), never a pass. Only
+ * finished modules become latest results.
  */
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { NOTHING_RAN_EXIT } from "../run-outcome.js";
+import {
+  NOTHING_RAN_EXIT,
+  VERDICT_EXIT,
+  type Verdict,
+} from "../run-outcome.js";
 import {
   readLatest,
   writeLatest,
@@ -26,16 +37,17 @@ import {
 } from "./changes.js";
 import type { VerifyModule } from "./config.js";
 import type { VerifyPlan } from "./plan.js";
-import { writeRunRecord, type ModuleRecord, type RunActor } from "./records.js";
+import {
+  writeRunRecord,
+  type ModuleRecord,
+  type RunActor,
+  type RunRecord,
+} from "./records.js";
 
-export type ModuleState = ResultState;
-export type Verdict = "passed" | "failed" | "nothing ran";
+export { VERDICT_EXIT, type Verdict };
 
-export const VERDICT_EXIT: Readonly<Record<Verdict, number>> = {
-  passed: 0,
-  failed: 1,
-  "nothing ran": NOTHING_RAN_EXIT,
-};
+/** A module's state after a run: a result, or cancelled (never a result). */
+export type ModuleState = ResultState | "cancelled";
 
 export interface ModuleRun {
   id: string;
@@ -71,6 +83,8 @@ export interface CmdContext {
   env: string;
   runId: string;
   resultsDir: string;
+  /** Aborted on Cancel: stop the command (issue 210). */
+  signal?: AbortSignal;
 }
 
 export interface RunDeps {
@@ -86,10 +100,14 @@ export interface RunDeps {
   now?: () => Date;
   /** Issue 209: who started the run and who allowed it, for its record. */
   by?: { startedBy?: RunActor; allowedBy?: RunActor };
+  /** Issue 210: Cancel, and who cancelled (for the record). */
+  signal?: AbortSignal;
+  cancelled?: () => { by: RunActor; at: string } | undefined;
 }
 
 /** The verdict of a set of module states (VERIFY-SPEC section 5). */
 export function verdictOf(states: readonly ModuleState[]): Verdict {
+  if (states.includes("cancelled")) return "cancelled";
   if (states.some((s) => s !== "passed")) return "failed";
   return states.length ? "passed" : "nothing ran";
 }
@@ -129,7 +147,7 @@ async function smoke(
   return { state: "passed" };
 }
 
-const newRunId = () =>
+export const newRunId = () =>
   `${new Date()
     .toISOString()
     .replace(/[-:.TZ]/g, "")
@@ -142,31 +160,28 @@ export async function runPlan(
   const runId = (d.runId ?? newRunId)();
   const now = d.now ?? (() => new Date());
   const startedAt = now().toISOString();
-  const keep = (
-    r: RunResult,
-    tails: Map<string, string[]>,
-    commit?: string | null,
-  ): RunResult => {
+  const tails = new Map<string, string[]>();
+  const record = (
+    r: Pick<RunRecord, "verdict" | "exitCode" | "modules"> &
+      Partial<
+        Pick<RunRecord, "reason" | "commit" | "cancelledBy" | "cancelledAt">
+      >,
+  ) =>
     writeRunRecord(d.stateDir, {
       runId,
-      project: r.project,
-      env: r.env,
-      scope: r.scope,
-      verdict: r.verdict,
-      exitCode: r.exitCode,
-      ...(r.reason ? { reason: r.reason } : {}),
+      project: plan.project,
+      env: plan.env,
+      scope: plan.scope,
       startedAt,
-      endedAt: now().toISOString(),
       ...(d.by?.startedBy ? { startedBy: d.by.startedBy } : {}),
       ...(d.by?.allowedBy ? { allowedBy: d.by.allowedBy } : {}),
-      ...(commit !== undefined ? { commit } : {}),
+      ...r,
+      ...(r.verdict !== "running" ? { endedAt: now().toISOString() } : {}),
       modules: r.modules.map((m): ModuleRecord => {
         const tail = tails.get(m.id);
         return tail?.length ? { ...m, tail } : m;
       }),
     });
-    return r;
-  };
   const base = {
     ok: true as const,
     runId,
@@ -174,32 +189,57 @@ export async function runPlan(
     env: plan.env,
     scope: plan.scope,
   };
-  if (plan.nothingToRun)
-    return keep(
-      {
-        ...base,
-        verdict: "nothing ran",
-        exitCode: NOTHING_RAN_EXIT,
-        ...(plan.reason ? { reason: plan.reason } : {}),
-        modules: [],
-        latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
-      },
-      new Map(),
-    );
-  const tails = new Map<string, string[]>();
+  if (plan.nothingToRun) {
+    const r: RunResult = {
+      ...base,
+      verdict: "nothing ran",
+      exitCode: NOTHING_RAN_EXIT,
+      ...(plan.reason ? { reason: plan.reason } : {}),
+      modules: [],
+      latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
+    };
+    record(r);
+    return r;
+  }
   const smokeFailed = new Set<string>();
   const badLayers = new Set<string>();
   const out: ModuleRun[] = [];
-  for (const m of plan.modules) {
+  const rowOf = (m: (typeof plan.modules)[number]) => ({
+    id: m.id,
+    name: m.name,
+    repo: m.repo,
+    layer: m.layer,
+    kind: m.kind,
+    mark: m.mark,
+  });
+  /** The record while it runs: done, the one running, the rest queued. */
+  const progress = (running: number) =>
+    record({
+      verdict: "running",
+      exitCode: null,
+      modules: plan.modules.map((m, n): ModuleRecord => {
+        if (n < out.length) return out[n];
+        // A layer it depends on with modules still to finish.
+        const waitsFor = dependsOn(plan.layers, m.layer).find((l) =>
+          plan.modules.some((x, k) => k >= out.length && x.layer === l),
+        );
+        return {
+          ...rowOf(m),
+          state: n === running ? "running" : "queued",
+          ms: 0,
+          ...(n !== running && waitsFor ? { waitsFor } : {}),
+        };
+      }),
+    });
+  const cancelled = () => d.signal?.aborted === true;
+  for (const [n, m] of plan.modules.entries()) {
+    const row = rowOf(m);
+    if (cancelled()) {
+      out.push({ ...row, state: "cancelled", ms: 0 });
+      continue;
+    }
+    progress(n);
     const started = Date.now();
-    const row = {
-      id: m.id,
-      name: m.name,
-      repo: m.repo,
-      layer: m.layer,
-      kind: m.kind,
-      mark: m.mark,
-    };
     const blocker =
       m.kind !== "smoke" && smokeFailed.has(m.layer)
         ? "smoke"
@@ -218,11 +258,17 @@ export async function runPlan(
       );
       try {
         fs.mkdirSync(resultsDir, { recursive: true });
-        const x = await d.runCmd(m, { env: plan.env, runId, resultsDir });
+        const x = await d.runCmd(m, {
+          env: plan.env,
+          runId,
+          resultsDir,
+          ...(d.signal ? { signal: d.signal } : {}),
+        });
         const last = x.lines?.filter((l) => l.trim()).at(-1);
         if (x.lines?.length) tails.set(m.id, x.lines.slice(-KEEP_LINES));
-        r =
-          x.exitCode === 0
+        r = cancelled()
+          ? { state: "cancelled", exitCode: x.exitCode }
+          : x.exitCode === 0
             ? { state: "passed", exitCode: 0 }
             : x.exitCode === null
               ? { state: "error", exitCode: null, message: last ?? "stopped" }
@@ -232,7 +278,9 @@ export async function runPlan(
                   ...(last ? { message: last } : {}),
                 };
       } catch (e) {
-        r = { state: "error", message: (e as Error).message };
+        r = cancelled()
+          ? { state: "cancelled" }
+          : { state: "error", message: (e as Error).message };
       }
     }
     if (r.state !== "passed") {
@@ -248,35 +296,45 @@ export async function runPlan(
     if (!heads.has(p)) heads.set(p, d.head(p));
     return heads.get(p) ?? null;
   };
-  writeLatest(
-    d.stateDir,
-    plan.project,
-    plan.env,
-    Object.fromEntries(
-      out.map((r) => [
-        r.id,
-        {
-          commit: headOf(byModule.get(r.id)!.repoPath),
-          state: r.state,
-          at,
-          runId,
-        },
-      ]),
-    ),
+  // Cancelled is never a result: only finished modules become latest.
+  const finished = out.filter(
+    (r): r is ModuleRun & { state: ResultState } => r.state !== "cancelled",
   );
+  if (finished.length)
+    writeLatest(
+      d.stateDir,
+      plan.project,
+      plan.env,
+      Object.fromEntries(
+        finished.map((r) => [
+          r.id,
+          {
+            commit: headOf(byModule.get(r.id)!.repoPath),
+            state: r.state,
+            at,
+            runId,
+          },
+        ]),
+      ),
+    );
   const verdict = verdictOf(out.map((r) => r.state));
   const first = plan.modules[0];
-  return keep(
-    {
-      ...base,
-      verdict,
-      exitCode: VERDICT_EXIT[verdict],
-      modules: out,
-      latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
-    },
-    tails,
-    first ? headOf(first.repoPath) : null,
-  );
+  const result: RunResult = {
+    ...base,
+    verdict,
+    exitCode: VERDICT_EXIT[verdict],
+    modules: out,
+    latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
+  };
+  const c = verdict === "cancelled" ? d.cancelled?.() : undefined;
+  record({
+    verdict,
+    exitCode: result.exitCode,
+    modules: out,
+    commit: first ? headOf(first.repoPath) : null,
+    ...(c ? { cancelledBy: c.by, cancelledAt: c.at } : {}),
+  });
+  return result;
 }
 
 /** The last lines a command's output keeps for its result. */
@@ -297,7 +355,18 @@ export function spawnCmd(
         DEN_RESULTS_DIR: ctx.resultsDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
+      // Its own process group, so Cancel stops what it started too.
+      detached: true,
     });
+    const stop = () => {
+      try {
+        if (child.pid) process.kill(-child.pid, "SIGTERM");
+      } catch {
+        child.kill("SIGTERM");
+      }
+    };
+    if (ctx.signal?.aborted) stop();
+    ctx.signal?.addEventListener("abort", stop, { once: true });
     let tail = "";
     const keep = (b: Buffer) => {
       tail = (tail + b.toString("utf-8"))
@@ -308,9 +377,10 @@ export function spawnCmd(
     child.stdout.on("data", keep);
     child.stderr.on("data", keep);
     child.on("error", reject);
-    child.on("close", (code) =>
-      resolve({ exitCode: code, lines: tail.split("\n") }),
-    );
+    child.on("close", (code) => {
+      ctx.signal?.removeEventListener("abort", stop);
+      resolve({ exitCode: code, lines: tail.split("\n") });
+    });
   });
 }
 

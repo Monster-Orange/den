@@ -305,6 +305,27 @@ const READ_TOOLS: DenTool[] = [
     {},
     async (_a, { api }) => api.get("/api/notifications"),
   ),
+  // Issue 210: a run on a shared environment starts when the person
+  // allows it, and approval_check's result names its run id.
+  read(
+    "verify_result",
+    "A Verify run's progress and verdict",
+    "Issue 210: one Verify run, by its id (verify_run's answer, or approval_check's `result.runId` once the person allowed a run on a shared environment): `verdict` (running, passed, failed, nothing ran, cancelled), `exitCode` (0 passed, 1 failed, 3 nothing ran, 4 cancelled; null while running), each module's `state` (queued, running, passed, failed, error, blocked, cancelled) and first failure line, and who started, allowed and cancelled it. `live: false` on a run still marked running means Den stopped during it. Reads only, in your own project.",
+    {
+      run: z.string().describe("The run id"),
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+    },
+    async (a, { api, scope }) => {
+      const run = str(a.run);
+      if (!run || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(run))
+        throw new Refusal("verify_result: run must be a run id");
+      const project = scope ? scope.workspace : str(a.project);
+      return api.get(`/api/verify/runs/${run}`, project ? { project } : {});
+    },
+  ),
   read(
     "approval_check",
     "Check an approval",

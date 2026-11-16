@@ -15,7 +15,12 @@
  */
 import type { LatestByEnv, ResultState } from "./changes.js";
 import type { VerifyModule } from "./config.js";
-import type { RunActor, RunRecord } from "./records.js";
+import {
+  hasEnded,
+  type EndedRunRecord,
+  type RunActor,
+  type RunRecord,
+} from "./records.js";
 
 export type EnvAnswer = "failed" | "nothing" | "notrun" | "partly" | "ready";
 
@@ -31,7 +36,7 @@ export const ANSWER_ORDER: readonly EnvAnswer[] = [
 export interface RunSummary {
   runId: string;
   endedAt: string;
-  verdict: RunRecord["verdict"];
+  verdict: EndedRunRecord["verdict"];
   scope: string;
   startedBy?: RunActor;
   allowedBy?: RunActor;
@@ -79,7 +84,7 @@ export interface CheckRow {
 export interface ActivityItem {
   runId: string;
   env: string;
-  verdict: RunRecord["verdict"];
+  verdict: EndedRunRecord["verdict"];
   startedAt: string;
   endedAt: string;
   startedBy?: RunActor;
@@ -105,7 +110,7 @@ export interface OverviewInput {
   modules: readonly VerifyModule[];
   layers: Record<string, string[]>;
   latest: LatestByEnv;
-  /** The project's run records, newest first. */
+  /** The project's run records, newest first (ones still running are left out). */
   runs: readonly RunRecord[];
 }
 
@@ -115,7 +120,7 @@ const ACTIVITY_RUNS = 8;
 const runsHere = (m: VerifyModule, env: string) =>
   m.environments === "all" || m.environments.includes(env);
 
-function summary(r: RunRecord): RunSummary {
+function summary(r: EndedRunRecord): RunSummary {
   return {
     runId: r.runId,
     endedAt: r.endedAt,
@@ -128,7 +133,7 @@ function summary(r: RunRecord): RunSummary {
   };
 }
 
-function envOverview(i: OverviewInput, env: string): EnvOverview {
+function envOverview(i: Ended, env: string): EnvOverview {
   const here = i.modules.filter((m) => runsHere(m, env));
   const latest = i.latest[env] ?? {};
   const lastRun = i.runs.find((r) => r.env === env);
@@ -189,7 +194,11 @@ function envOverview(i: OverviewInput, env: string): EnvOverview {
 }
 
 /** The project's answer on each environment, worst first. */
-export function verifyOverview(i: OverviewInput): VerifyOverview {
+/** The input with ended runs only: a run still going never is the answer. */
+type Ended = Omit<OverviewInput, "runs"> & { runs: readonly EndedRunRecord[] };
+
+export function verifyOverview(input: OverviewInput): VerifyOverview {
+  const i: Ended = { ...input, runs: input.runs.filter(hasEnded) };
   const envs = i.envs
     .map((e, n) => ({ o: envOverview(i, e), n }))
     .sort(

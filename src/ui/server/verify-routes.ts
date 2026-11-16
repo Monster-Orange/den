@@ -16,9 +16,20 @@
  *
  * Issue 209, what the Verify page reads (GET):
  *   /api/verify/overview?project=       the answer on each environment
- *   /api/verify/runs/:id?project=       one run's record
+ *   /api/verify/runs/:id?project=       one run's record (issue 210:
+ *                                       `live` while it is "running")
  *   /api/verify/runs/:id/report?project=&module=
  *                                       a module's kept output, as text
+ *
+ * Issue 210, runs that go on in the background (shared/verify/active.ts):
+ *   POST /api/verify/run { background: true }   local: starts, answers
+ *                                       202 { runId } at once
+ *   POST /api/verify/runs/:id/cancel?project=   Cancel: the person, or
+ *                                       the agent that started it
+ * A held run starts when it is allowed and answers its run id at once
+ * (startVerify), so Allow never waits for the whole run. One run at a
+ * time per project and environment: a second is refused with the id of
+ * the one going (409 run_going).
  */
 import type * as http from "http";
 import {
@@ -42,13 +53,16 @@ import {
 } from "../../shared/verify/plan.js";
 import {
   httpProbe,
+  newRunId,
   runPlan,
   spawnCmd,
   type RunDeps,
   type RunResult,
 } from "../../shared/verify/run.js";
+import { ActiveRuns } from "../../shared/verify/active.js";
 import { verifyOverview } from "../../shared/verify/overview.js";
 import {
+  hasEnded,
   listRunRecords,
   readRunRecord,
   type RunActor,
@@ -79,7 +93,12 @@ export interface VerifyServerDeps {
   git?: GitProbe;
   runCmd?: RunDeps["runCmd"];
   probe?: RunDeps["probe"];
+  /** Issue 210: the runs going on (one per server when absent). */
+  active?: ActiveRuns;
 }
+
+const ACTIVE = new ActiveRuns();
+const activeOf = (d: VerifyServerDeps) => d.active ?? ACTIVE;
 
 export interface VerifyRunArgs {
   project: string;
@@ -290,21 +309,11 @@ export function checkVerifyRun(
   };
 }
 
-/** Runs the plan for these args (the held write's run, and local's). */
-/**
- * Runs the plan for an ask. `asked`: a held run's request (the agent that
- * asked, the session that allowed it); without it, whoever called started
- * it (an agent, or a person). The run's record keeps both (issue 209).
- */
-export async function runVerify(
-  d: VerifyServerDeps,
-  raw: Record<string, unknown>,
-  who: Who = {},
+/** Who started a run and who allowed it (issue 209), for its record. */
+function actorsOf(
+  who: Who,
   asked?: AskedBy,
-): Promise<RunResult | { ok: false; error: string }> {
-  const r = verifyPlanOf(d, raw, who);
-  if (!r.ok) return r;
-  const git = d.git ?? realGit;
+): { startedBy: RunActor; allowedBy?: RunActor } {
   const agent = asked ? asked.agent : who.agent;
   const startedBy: RunActor = agent
     ? { kind: "agent", name: agent }
@@ -314,17 +323,92 @@ export async function runVerify(
       ? { kind: "den" }
       : { kind: "person" }
     : undefined;
-  return runPlan(r.plan, {
+  return { startedBy, ...(allowedBy ? { allowedBy } : {}) };
+}
+
+function runDeps(d: VerifyServerDeps, by: RunDeps["by"]): RunDeps {
+  const git = d.git ?? realGit;
+  return {
     stateDir: d.stateDir(),
     head: (p) => git.head(p),
     runCmd: d.runCmd ?? spawnCmd,
     probe: d.probe ?? httpProbe,
-    by: { startedBy, ...(allowedBy ? { allowedBy } : {}) },
-  });
+    ...(by ? { by } : {}),
+  };
+}
+
+/**
+ * Runs the plan for an ask and answers when it ends. `asked`: a held
+ * run's request (the agent that asked, the session that allowed it);
+ * without it, whoever called started it (an agent, or a person). The
+ * run's record keeps both (issue 209).
+ */
+export async function runVerify(
+  d: VerifyServerDeps,
+  raw: Record<string, unknown>,
+  who: Who = {},
+  asked?: AskedBy,
+): Promise<RunResult | { ok: false; error: string }> {
+  const r = verifyPlanOf(d, raw, who);
+  if (!r.ok) return r;
+  return runPlan(r.plan, runDeps(d, actorsOf(who, asked)));
+}
+
+export type StartResult =
+  | {
+      ok: true;
+      runId: string;
+      project: string;
+      env: string;
+      /** False when the plan had nothing to run: it ended at once. */
+      running: boolean;
+    }
+  | { ok: false; error: string; code?: "run_going"; runId?: string };
+
+/**
+ * Issue 210: starts the plan in the background and answers its run id at
+ * once (a held run's Allow, and the page's Run). The record says
+ * "running" and shows progress; Cancel stops it.
+ */
+export async function startVerify(
+  d: VerifyServerDeps,
+  raw: Record<string, unknown>,
+  who: Who = {},
+  asked?: AskedBy,
+): Promise<StartResult> {
+  const r = verifyPlanOf(d, raw, who);
+  if (!r.ok) return r;
+  const { project, env } = r.plan;
+  const by = actorsOf(who, asked);
+  const base = runDeps(d, by);
+  if (r.plan.nothingToRun) {
+    const done = await runPlan(r.plan, base);
+    return { ok: true, runId: done.runId, project, env, running: false };
+  }
+  const active = activeOf(d);
+  const going = active.going(project, env);
+  const runId = newRunId();
+  const started =
+    !going &&
+    active.start(
+      { project, env, runId, startedBy: by.startedBy },
+      (signal, cancelled) =>
+        runPlan(r.plan, { ...base, runId: () => runId, signal, cancelled }),
+    );
+  if (!started)
+    return {
+      ok: false,
+      code: "run_going",
+      ...(going ? { runId: going } : {}),
+      error: `a run is already going on ${env} in project ${project}: wait for it, or cancel it`,
+    };
+  return { ok: true, runId, project, env, running: true };
 }
 
 const RUN_PATH =
   /^\/api\/verify\/runs\/([A-Za-z0-9][A-Za-z0-9._-]{0,79})(\/report)?$/;
+const CANCEL_PATH =
+  /^\/api\/verify\/runs\/([A-Za-z0-9][A-Za-z0-9._-]{0,79})\/cancel$/;
 
 /** Issue 209: the page's reads (GET); false when `pathname` is none of them. */
 function handleVerifyReads(
@@ -377,7 +461,15 @@ function handleVerifyReads(
     return true;
   }
   if (!run[2]) {
-    sendJson(res, { ok: true, ...rec });
+    sendJson(res, {
+      ok: true,
+      ...rec,
+      // Issue 210: a record still "running" that no run in this Den is
+      // behind (Den stopped during it) is not live.
+      ...(rec.verdict === "running"
+        ? { live: activeOf(deps).isLive(p.project, rec.runId) }
+        : {}),
+    });
     return true;
   }
   const name = q.get("module") ?? "";
@@ -414,6 +506,111 @@ async function bodyOf(
   }
 }
 
+/** How many past runs an estimate averages. */
+const ESTIMATE_RUNS = 5;
+
+/**
+ * Issue 210: each planned module's estimate, in ms: the average of its
+ * last runs on this environment that finished (passed or failed). A
+ * module with no such run has none.
+ */
+function estimatesOf(
+  stateDir: string,
+  plan: VerifyPlan,
+): Record<string, number> {
+  const want = new Set(plan.modules.map((m) => m.id));
+  const seen = new Map<string, number[]>();
+  for (const r of listRunRecords(stateDir, plan.project)) {
+    if (r.env !== plan.env || !hasEnded(r)) continue;
+    for (const m of r.modules) {
+      if (!want.has(m.id) || m.ms <= 0) continue;
+      if (m.state !== "passed" && m.state !== "failed") continue;
+      const xs = seen.get(m.id) ?? [];
+      if (xs.length < ESTIMATE_RUNS) seen.set(m.id, [...xs, m.ms]);
+    }
+  }
+  return Object.fromEntries(
+    [...seen].map(([id, xs]) => [
+      id,
+      Math.round(xs.reduce((a, b) => a + b, 0) / xs.length),
+    ]),
+  );
+}
+
+/** Issue 210: Cancel. The person, or the agent that started the run. */
+function handleCancel(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  runId: string,
+  d: VerifyServerDeps,
+): void {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    sendJson(res, { ok: false, error: "POST only" }, 405);
+    return;
+  }
+  const q = new URL(req.url ?? "/", "http://den").searchParams;
+  const agent = agentPrincipalOf(req);
+  const who: Who = agent
+    ? { agent: agent.actor.slice("agent:".length), project: agent.workspace }
+    : {};
+  const p = projectOf(d, q.get("project") ?? undefined, who);
+  if (!p.ok) {
+    sendJson(res, { ok: false, error: p.error }, 400);
+    return;
+  }
+  const rec = readRunRecord(d.stateDir(), p.project, runId);
+  if (!rec) {
+    sendJson(
+      res,
+      { ok: false, code: "not_found", error: `there is no run "${runId}"` },
+      404,
+    );
+    return;
+  }
+  const active = activeOf(d);
+  if (!active.isLive(p.project, runId)) {
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "not_running",
+        error:
+          rec.verdict === "running"
+            ? `run ${runId} stopped when Den restarted: there is nothing to cancel`
+            : `run ${runId} has ended (${rec.verdict})`,
+      },
+      409,
+    );
+    return;
+  }
+  const started = active.startedBy(runId);
+  if (who.agent && !(started?.kind === "agent" && started.name === who.agent)) {
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "not_yours",
+        error: `${who.agent} can cancel only a run it started`,
+      },
+      403,
+    );
+    return;
+  }
+  const by: RunActor = who.agent
+    ? { kind: "agent", name: who.agent }
+    : { kind: "person" };
+  active.cancel(p.project, runId, by);
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "verify-cancel",
+      detail: `${p.project} on ${rec.env}: run ${runId}`,
+    },
+    principalOf(req),
+  );
+  sendJson(res, { ok: true, runId, cancelling: true });
+}
+
 /** The routes above; false when `pathname` is none of them. */
 export async function handleVerifyRoutes(
   req: http.IncomingMessage,
@@ -421,6 +618,11 @@ export async function handleVerifyRoutes(
   pathname: string,
   deps: () => VerifyServerDeps,
 ): Promise<boolean> {
+  const cancel = CANCEL_PATH.exec(pathname);
+  if (cancel) {
+    handleCancel(req, res, cancel[1], deps());
+    return true;
+  }
   if (handleVerifyReads(req, res, pathname, deps)) return true;
   const plan = pathname === "/api/verify/plan";
   if (!plan && pathname !== "/api/verify/run") return false;
@@ -448,7 +650,12 @@ export async function handleVerifyRoutes(
   if (plan) {
     const r = verifyPlanOf(d, body, who);
     if (!r.ok) sendJson(res, { ok: false, error: r.error }, 400);
-    else sendJson(res, { ok: true, ...r.plan });
+    else
+      sendJson(res, {
+        ok: true,
+        ...r.plan,
+        estimates: estimatesOf(d.stateDir(), r.plan),
+      });
     return true;
   }
   const env = body.env === undefined ? "local" : body.env;
@@ -462,6 +669,31 @@ export async function handleVerifyRoutes(
       },
       409,
     );
+    return true;
+  }
+  if (body.background !== undefined && typeof body.background !== "boolean") {
+    sendJson(res, { ok: false, error: "background is true or false" }, 400);
+    return true;
+  }
+  // Issue 210: the page's Run goes on in the background (202 { runId }).
+  if (body.background === true) {
+    const s = await startVerify(d, body, who);
+    recordAction(
+      auditActorOf(req),
+      s.ok
+        ? {
+            verb: "verify-run",
+            detail: `${s.project} on ${s.env}: started run ${s.runId}`,
+          }
+        : {
+            verb: "verify-run",
+            detail: "local",
+            outcome: "refused",
+            reason: s.error,
+          },
+      principalOf(req),
+    );
+    sendJson(res, s, s.ok ? 202 : s.code === "run_going" ? 409 : 400);
     return true;
   }
   const r = await runVerify(d, body, who);

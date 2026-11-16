@@ -4,6 +4,41 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.57] - unreleased
+
+### Added
+
+- Plan a run from the Checks page, and Allow it there (issue 210). Each
+  environment's card has Plan a run. The plan lists what runs, in order,
+  each check's mark (enforced, declared read-only, reads code only,
+  declared by the service), its time from earlier runs, the hosts it
+  reaches, and what can't run and why. Switch between What changed and
+  Everything. On a shared environment, Allow and Decline go through Den's
+  held action (the same Allow as an agent's ask); Decline runs nothing.
+  On local the button is Run. An agent's ask opens there too: the bell's
+  pop-up has See the full plan.
+- A run's page shows it as it goes: how many checks are done, what each
+  is doing, and what a queued check waits for. Cancel run asks once, then
+  stops the command that is running. Every unfinished check becomes
+  cancelled, and the run is Cancelled (exit 4), never a pass. Only the
+  checks that finished count as results.
+- Agents: `verify_result` reads a run's progress and verdict by its id.
+- How long a held write waits for the person is a setting:
+  `mcp.approval_wait_minutes` (10 at first, as before). An ask that waits
+  longer expires, runs nothing, and the plan says so.
+
+### Changed
+
+- A run on a shared environment starts when it is allowed and goes on in
+  the background: Allow answers at once with the run's id (in
+  `approval_check`'s result), not when the run ends. Read the run with
+  `verify_result`, or `GET /api/verify/runs/:id`.
+- One run at a time per project and environment: a second is refused
+  with the id of the one going (`409 run_going`).
+- New routes: `POST /api/verify/run` takes `background: true` (answers
+  `202 { runId }`), `POST /api/verify/runs/:id/cancel`, and the plan
+  carries `estimates` per check.
+
 ## [0.4.56] - unreleased
 
 ### Added

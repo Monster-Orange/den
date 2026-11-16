@@ -154,6 +154,7 @@ import {
   getReposRoot,
   sectionConfigError,
   readDenConfig,
+  readApprovalWaitMinutes,
   readMcpConfig,
   orgEnvironments,
   readServerAgentConfig,
@@ -989,7 +990,7 @@ import { heldActions } from "./held-actions.js";
 import {
   checkVerifyRun,
   handleVerifyRoutes,
-  runVerify,
+  startVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
 import { callerPid, tokenCaller } from "./token-binding.js";
@@ -2222,6 +2223,7 @@ type ApprovalDeps = {
   queue: ApprovalQueue;
   actions: HeldActions;
   enabled: () => boolean;
+  waitMs: () => number;
   autoAllow: (action: string, agent: string) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
@@ -2452,8 +2454,9 @@ function approvalDeps(): ApprovalDeps {
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
-      // Issue 209: its record says who asked and who allowed it.
-      run: (a, asked) => runVerify(verifyDeps(), a, {}, asked),
+      // Issue 209: its record says who asked and who allowed it. Issue
+      // 210: it goes on in the background; Allow answers its run id.
+      run: (a, asked) => startVerify(verifyDeps(), a, {}, asked),
     },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),
@@ -2477,6 +2480,8 @@ function approvalDeps(): ApprovalDeps {
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
+    // Issue 210: how long an ask waits for the person (a setting).
+    waitMs: () => readApprovalWaitMinutes() * 60_000,
     // SRV-1a: the server agent's own restart, per server_agent.self_update.
     autoAllow: (action, agent) =>
       (action === "den_restart" || action === "den_update") &&

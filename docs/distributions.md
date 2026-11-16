@@ -266,6 +266,10 @@ with "If you didn't ask an agent to do this, Deny." under it.
   instructions and `mcp --list` (on stderr) say which is in effect. A
   project-scoped MCP server refuses `workspace_create` and `repo_add`:
   they change Den beyond its project.
+- **An ask waits 10 minutes, then expires.** `mcp.approval_wait_minutes`
+  sets how long (minutes, above 0); Den reads it on each new ask, so an
+  edit needs no restart. An expired ask runs nothing; the agent asks
+  again.
 
 ### The approval policy (0.4.52, issue 160)
 

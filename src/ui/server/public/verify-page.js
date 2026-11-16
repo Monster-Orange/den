@@ -12,6 +12,16 @@
  *   S8  nothing ran, or no check runs on an environment: never a pass
  *   S9  an agent's run says the agent started it and a person allowed it
  *
+ * Issue 210:
+ *   S2  Plan and Allow (?plan=<env>, or ?allow=<held id> for an agent's
+ *       ask): the scope switch, what runs in order with each mark and
+ *       estimate, the hosts it reaches, what can't run and why, and Allow
+ *       and Decline (on local, Run). Allow is Den's held action: the page
+ *       asks and allows it, or decides the agent's ask; never a second flow
+ *   S3  Running and cancelled (?run=<id>): progress, each module's state
+ *       (a queued one says what it waits for), Cancel with one confirm.
+ *       Cancelled is never shown as a pass
+ *
  * Reads GET /api/verify/overview (verify-routes.ts). The views are pure
  * (HTML from that JSON), so tests need no server. Words come from the
  * shell's catalog ("v.*"); environment and module names stay as they are.
@@ -61,6 +71,9 @@ export function worstFirst(envs) {
 }
 
 const STATE = {
+  queued: { word: "v.s_queued", tone: "neutral", mark: "○" },
+  running: { word: "v.s_running", tone: "info", mark: "◐" },
+  cancelled: { word: "v.s_cancelled", tone: "neutral", mark: "⊘" },
   passed: { word: "v.s_passed", tone: "ok", mark: "✓" },
   failed: { word: "v.s_failed", tone: "bad", mark: "✕" },
   error: { word: "v.s_error", tone: "bad", mark: "!" },
@@ -145,10 +158,14 @@ export function metaLine(run) {
 
 function card(e) {
   const a = ANSWER[e.answer] ?? ANSWER.notrun;
+  const env = encodeURIComponent(e.env);
+  const plan = `<a class="den-btn vf-plan" href="?plan=${env}" data-nav>${esc(t("v.plan_btn"))}</a>`;
   const why =
-    e.answer === "failed"
-      ? `<div class="vf-btns"><a class="den-btn primary vf-why" href="?why=${encodeURIComponent(e.env)}" data-why="${esc(e.env)}">${esc(t("v.b_why"))}</a></div>`
-      : "";
+    `<div class="vf-btns">` +
+    (e.answer === "failed"
+      ? `<a class="den-btn primary vf-why" href="?why=${env}" data-why="${esc(e.env)}">${esc(t("v.b_why"))}</a>`
+      : "") +
+    `${plan}</div>`;
   return (
     `<section class="vf-ans vf-${a.tone}" data-env="${esc(e.env)}" data-answer="${esc(e.answer)}" aria-label="${esc(envName(e.env))}">` +
     `<div class="vf-env"><b>${esc(envName(e.env))}</b>${badge(e.answer)}</div>` +
@@ -346,6 +363,364 @@ export function whyView(ov, env) {
   );
 }
 
+const MARK_WORD = {
+  enforced: "v.mk_enforced",
+  "declared-read-only": "v.mk_declared",
+  "reads-code-only": "v.mk_code",
+  "declared-by-service": "v.mk_service",
+};
+
+function lang() {
+  return globalThis.document?.documentElement?.lang || undefined;
+}
+
+/** A duration in the page's language: "45 s", "3 min", "1 h 5 min". */
+export function duration(ms) {
+  const fmt = (n, unit) => {
+    try {
+      return new Intl.NumberFormat(lang(), {
+        style: "unit",
+        unit,
+        unitDisplay: "short",
+      }).format(n);
+    } catch {
+      return `${n} ${unit}`;
+    }
+  };
+  const s = Math.max(0, Math.round((ms ?? 0) / 1000));
+  if (s < 60) return fmt(s, "second");
+  const m = Math.round(s / 60);
+  if (m < 60) return fmt(m, "minute");
+  return `${fmt(Math.floor(m / 60), "hour")} ${fmt(m % 60, "minute")}`;
+}
+
+function hostsOf(plan) {
+  const out = new Set();
+  for (const m of plan.modules ?? [])
+    for (const u of m.healthUrls?.[plan.env] ?? []) {
+      try {
+        out.add(new URL(u).host);
+      } catch {
+        /* not a URL: left out */
+      }
+    }
+  return [...out];
+}
+
+function cantLine(c, env) {
+  switch (c.reason) {
+    case "environment":
+      return t("v.cant_environment", {
+        m: c.name,
+        l:
+          c.environments === "all"
+            ? ""
+            : c.environments.map((x) => envName(x)).join(", "),
+      });
+    case "production":
+      return t("v.cant_production", { m: c.name });
+    case "adapter-later":
+      return t("v.cant_adapter", { m: c.name, x: c.adapter });
+    default:
+      return t("v.cant_nohealth", { m: c.name, e: envName(env) });
+  }
+}
+
+const SCOPES = [
+  ["changed", "v.sc_changed", "v.sc_changed_h"],
+  ["all", "v.sc_all", "v.sc_all_h"],
+];
+
+/**
+ * S2: the plan, and Allow or Decline (Run on local). `v`:
+ *   plan       POST /api/verify/plan's answer (with `estimates`)
+ *   asker      the agent that asked (an agent's ask), or none (the person's)
+ *   state      ready | waiting | busy | declined | expired | decided | going
+ *   error      a line for a refusal
+ *   going      the run already going on this environment (its id)
+ *   fixed      true for an agent's ask: the plan is what it asked, no switch
+ */
+export function planView(v) {
+  const p = v.plan;
+  const env = envName(p.env);
+  const n = p.modules.length;
+  const local = !p.shared;
+  const back = `<p class="vf-back"><a href="?" data-nav>${esc(t("v.back"))}</a></p>`;
+  const title = v.asker
+    ? t("v.pr_t", { a: v.asker, n, e: env })
+    : t("v.pr_t_me", { n, e: env });
+  const scope = v.fixed
+    ? ""
+    : `<div class="vf-seg" role="group" aria-label="${esc(t("v.sc_label"))}">` +
+      SCOPES.map(
+        ([k, w]) =>
+          `<button type="button" class="den-btn vf-segb" data-vf-scope="${k}" aria-pressed="${p.scope === k && !p.chosen}">${esc(t(w))}</button>`,
+      ).join("") +
+      `</div><p class="vf-muted vf-sch">${esc(t(SCOPES.find((x) => x[0] === p.scope)?.[2] ?? "v.sc_changed_h"))}</p>`;
+  if (p.nothingToRun)
+    return (
+      back +
+      `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.pr_none_t", { e: env }))}</h2></div></div>` +
+      scope +
+      `<section class="vf-card vf-plan-card"><p class="vf-say">${esc(
+        t(
+          p.reason === "unchanged"
+            ? "v.pr_unchanged"
+            : p.reason === "none-declared"
+              ? "v.pr_nonedeclared"
+              : "v.pr_nonehere",
+          { e: env },
+        ),
+      )}</p></section>`
+    );
+  const est = v.plan.estimates ?? {};
+  const known = p.modules.filter((m) => est[m.id] > 0);
+  const total = known.reduce((a, m) => a + est[m.id], 0);
+  const row = (m, i) =>
+    `<li class="vf-prow"><span class="vf-pn">${i + 1}</span><div class="vf-pm"><code>${esc(m.name)}</code>` +
+    `<span class="vf-muted"> ${esc(kindWord(m.kind))}</span></div>` +
+    `<span class="vf-mark vf-mark-${esc(m.mark)}">${esc(t(MARK_WORD[m.mark] ?? "v.mk_declared"))}</span>` +
+    (est[m.id] > 0
+      ? `<span class="vf-est">${esc(t("v.est_mod", { d: duration(est[m.id]) }))}</span>`
+      : "") +
+    `</li>`;
+  // The order in groups, as it runs: smoke, a layer, the code scans.
+  const groups = [];
+  p.modules.forEach((m, i) => {
+    const key =
+      m.mark === "reads-code-only"
+        ? "code"
+        : m.kind === "smoke"
+          ? "smoke"
+          : `l:${m.layer}`;
+    const last = groups.at(-1);
+    if (last?.key === key) last.rows.push(row(m, i));
+    else groups.push({ key, layer: m.layer, rows: [row(m, i)] });
+  });
+  const groupHead = (g) => {
+    if (g.key === "code") return t("v.g_code", { e: env });
+    if (g.key === "smoke") return t("v.g_smoke");
+    const deps = p.layers?.[g.layer] ?? [];
+    return deps.length
+      ? t("v.g_after", { l: g.layer, d: deps.join(", ") })
+      : t("v.g_layer", { l: g.layer });
+  };
+  const rows = groups
+    .map(
+      (g) =>
+        `<li class="vf-pg"><p class="vf-pgh">${esc(groupHead(g))}</p><ol class="vf-plist">${g.rows.join("")}</ol></li>`,
+    )
+    .join("");
+  const hosts = hostsOf(p);
+  const writers = p.modules.filter((m) => m.writes).map((m) => m.name);
+  const touch =
+    `<section class="vf-card vf-guard"><h3>${esc(t("v.touch_t"))}</h3><dl class="vf-dl">` +
+    `<dt>${esc(t("v.hosts"))}</dt><dd>${
+      hosts.length
+        ? hosts.map((h) => `<code>${esc(h)}</code>`).join(" ")
+        : esc(t("v.hosts_none"))
+    }</dd>` +
+    `<dt>${esc(t("v.rate"))}</dt><dd>${esc(t("v.rate_none"))}</dd>` +
+    `<dt>${esc(t("v.writes"))}</dt><dd>${esc(
+      writers.length
+        ? t("v.writes_some", { m: writers.join(", ") })
+        : t("v.writes_none"),
+    )}</dd></dl></section>`;
+  const cant = p.cantRun?.length
+    ? `<section class="vf-card vf-cant" role="note"><h3>${esc(t("v.cant_t", { n: p.cantRun.length }))}</h3><ul>` +
+      p.cantRun.map((c) => `<li>${esc(cantLine(c, p.env))}</li>`).join("") +
+      `</ul></section>`
+    : "";
+  const status =
+    {
+      waiting: `<p class="vf-status" role="status">${esc(t("v.pr_wait"))}</p>`,
+      busy: `<p class="vf-status" role="status">${esc(t("v.pr_busy"))}</p>`,
+      declined: `<p class="vf-status" role="status">${esc(t("v.pr_declined"))}</p>`,
+      expired: `<p class="vf-err" role="alert">${esc(t("v.pr_expired"))}</p>`,
+      decided: `<p class="vf-status" role="status">${esc(t("v.pr_decided"))}</p>`,
+      going: `<p class="vf-status" role="status">${esc(t("v.pr_going", { e: env }))} <a href="?run=${encodeURIComponent(v.going ?? "")}" data-nav>${esc(t("v.b_see_run"))}</a></p>`,
+    }[v.state] ?? "";
+  const err = v.error
+    ? `<p class="vf-err" role="alert">${esc(v.error)}</p>`
+    : "";
+  const open = v.state === "ready" || v.state === "waiting";
+  const busy = v.state === "busy";
+  const btns =
+    open || busy
+      ? `<div class="vf-btns vf-decide">` +
+        (local
+          ? `<button type="button" class="den-btn primary" data-act="run"${busy ? " disabled" : ""}>${esc(t("v.run"))}</button>`
+          : `<button type="button" class="den-btn primary" data-act="allow"${busy ? " disabled" : ""}>${esc(t("v.allow"))}</button>` +
+            `<button type="button" class="den-btn" data-act="decline"${busy ? " disabled" : ""}>${esc(t("v.decline"))}</button>`) +
+        `</div>` +
+        (local
+          ? ""
+          : `<p class="vf-muted">${esc(v.asker ? t("v.allow_note", { a: v.asker }) : t("v.allow_note_me"))}</p>`)
+      : "";
+  // The mock (frame 2a): the waiting tag first, then who asks and what.
+  const top = v.state === "waiting" ? status : "";
+  return (
+    back +
+    top +
+    `<div class="vf-head">${v.asker ? avatar({ kind: "agent", name: v.asker }) : ""}<div><h2 tabindex="-1">${esc(title)}</h2><p class="vf-lede">${esc(t("v.pr_s"))}</p></div></div>` +
+    scope +
+    touch +
+    `<section class="vf-card vf-plan-card" aria-label="${esc(t("v.pr_order"))}"><h3>${esc(t("v.pr_order"))}</h3><ol class="vf-pgs">${rows}</ol>` +
+    `<p class="vf-muted">${esc(t("v.mk_help"))}</p>` +
+    (known.length
+      ? `<p class="vf-muted">${esc(t("v.est_total", { d: duration(total) }))}</p>`
+      : "") +
+    `</section>${cant}${top ? "" : status}${err}${btns}`
+  );
+}
+
+/** Planning: a skeleton (S2's first state). */
+export function planningView() {
+  return (
+    `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.plan_btn"))}</h2><p class="vf-lede">${esc(t("v.pr_planning"))}</p></div></div>` +
+    `<div class="vf-skel" aria-hidden="true"></div><div class="vf-skel" aria-hidden="true"></div>`
+  );
+}
+
+/** The plan couldn't be made: why, and the way back. */
+export function planFailedView(reason) {
+  return (
+    `<p class="vf-back"><a href="?" data-nav>${esc(t("v.back"))}</a></p>` +
+    `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.plan_btn"))}</h2></div></div>` +
+    `<div class="vf-err" role="alert">${esc(t("v.pr_fail", { x: reason }))}</div>`
+  );
+}
+
+function whoWord(a) {
+  if (a?.kind === "agent") return a.name ?? t("v.actor_agent");
+  if (a?.kind === "den") return "Den";
+  return t("v.who_person");
+}
+
+function clock(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    return d.toLocaleTimeString(lang(), { timeStyle: "short" });
+  } catch {
+    return d.toISOString();
+  }
+}
+
+/**
+ * S3: a run going on, or how it ended. `v`: confirming (Cancel asked once),
+ * reconnecting (a read failed: refetching), now (ms, for the time so far).
+ */
+export function runView(rec, v = {}) {
+  const env = envName(rec.env);
+  const mods = rec.modules ?? [];
+  const n = mods.length;
+  const ended = rec.verdict !== "running";
+  const lost = !ended && rec.live === false;
+  const done = mods.filter(
+    (m) => m.state !== "queued" && m.state !== "running",
+  ).length;
+  const failed = mods.filter((m) =>
+    ["failed", "error", "blocked"].includes(m.state),
+  ).length;
+  const since = Math.max(
+    0,
+    (v.now ?? Date.now()) - new Date(rec.startedAt).getTime(),
+  );
+  const back = `<p class="vf-back"><a href="?" data-nav>${esc(t("v.back"))}</a></p>`;
+  const title = ended
+    ? rec.verdict === "cancelled"
+      ? t("v.v_cancelled")
+      : t("v.rn_done_t", { e: env })
+    : t("v.rn_t", { e: env });
+  const verdictTag = ended
+    ? badge(
+        rec.verdict === "passed"
+          ? "ready"
+          : rec.verdict === "failed"
+            ? "failed"
+            : "nothing",
+        VERDICT_WORD[rec.verdict] ?? "v.s_failed",
+      )
+    : "";
+  let line;
+  if (lost) line = `<p class="vf-err" role="alert">${esc(t("v.rn_lost"))}</p>`;
+  else if (!ended)
+    line =
+      `<p class="vf-status" role="status">${esc(
+        [
+          t("v.rn_p", { d: done, n }),
+          failed ? t("v.rn_bad", { n: failed }) : t("v.rn_ok"),
+          t("v.rn_time", { s: duration(since) }),
+        ].join(" "),
+      )}</p>` +
+      `<progress class="vf-prog" max="${n}" value="${done}" aria-label="${esc(t("v.rn_pb", { d: done, n }))}"></progress>`;
+  else if (rec.verdict === "cancelled") {
+    const stopped = mods.filter((m) => m.state === "cancelled").length;
+    line = `<p class="vf-status" role="status">${esc(
+      [
+        rec.cancelledBy
+          ? t("v.cn_by", {
+              w: whoWord(rec.cancelledBy),
+              t: clock(rec.cancelledAt),
+            })
+          : "",
+        t("v.cn_counts", { d: n - stopped, s: stopped }),
+        t("v.cn_not"),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    )}</p>`;
+  } else
+    line = `<p class="vf-status" role="status">${esc(t("v.rn_end", { v: t(VERDICT_WORD[rec.verdict] ?? "v.s_failed") }))}</p>`;
+  const rows = mods
+    .map((m) => {
+      const note =
+        m.state === "queued"
+          ? m.waitsFor
+            ? t("v.q_api", { l: m.waitsFor })
+            : t("v.s_queued")
+          : m.state === "running"
+            ? t("v.q_runs")
+            : m.state === "cancelled" && !m.ms
+              ? t("v.cn_stopped")
+              : m.state === "passed"
+                ? t("v.q_done")
+                : m.message || "";
+      return (
+        `<li class="vf-rrow" data-state="${esc(m.state)}"><code>${esc(m.name)}</code>${stateTag(m.state)}` +
+        (note && note !== t(STATE[m.state]?.word ?? "")
+          ? `<span class="vf-muted vf-rnote">${esc(note)}</span>`
+          : "") +
+        `</li>`
+      );
+    })
+    .join("");
+  const reconnect = v.reconnecting
+    ? `<p class="vf-status" role="status">${esc(t("v.reconnect"))}</p>`
+    : "";
+  const going = !ended && !lost;
+  // The mock (frame 3a): Cancel run in the header; it asks once below.
+  const cancelBtn =
+    going && !v.confirming
+      ? `<button type="button" class="den-btn vf-cancel" data-act="cancel">${esc(t("v.cancel"))}</button>`
+      : "";
+  const confirm =
+    going && v.confirming
+      ? `<div class="vf-confirm" role="group" aria-label="${esc(t("v.cancel"))}"><p>${esc(t("v.cancel_q"))}</p><div class="vf-btns">` +
+        `<button type="button" class="den-btn danger" data-act="cancel-yes">${esc(t("v.cancel_yes"))}</button>` +
+        `<button type="button" class="den-btn" data-act="cancel-no">${esc(t("v.cancel_no"))}</button></div></div>`
+      : "";
+  return (
+    back +
+    `<div class="vf-head"><div><h2 tabindex="-1">${esc(title)}</h2></div>${verdictTag}${cancelBtn}</div>` +
+    confirm +
+    `<section class="vf-card vf-run-status">${line}${reconnect}` +
+    `<p class="vf-meta">${esc(metaLine(ended ? rec : { ...rec, endedAt: undefined }))}</p></section>` +
+    `<section class="vf-card vf-run-card"><ol class="vf-rlist">${rows}</ol></section>`
+  );
+}
+
 export function loadingView() {
   return (
     `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.ov_t"))}</h2><p class="vf-lede">${esc(t("v.loading"))}</p></div></div>` +
@@ -360,51 +735,375 @@ export function errorView() {
   );
 }
 
-/** Mounts the page in `root`, reading the overview and following ?why=. */
-export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
+/** Mounts the page in `root`: the answer, why, a plan, or a run, by the URL. */
+export async function mountVerify(
+  root,
+  { fetchImpl = globalThis.fetch, pollMs = 1500 } = {},
+) {
   const narrow = () =>
     globalThis.matchMedia?.("(max-width: 700px)")?.matches ?? false;
+  const params = () => new URLSearchParams(globalThis.location?.search ?? "");
+  const project = () => params().get("project");
+  const withProject = (url) => {
+    const p = project();
+    return p
+      ? `${url}${url.includes("?") ? "&" : "?"}project=${encodeURIComponent(p)}`
+      : url;
+  };
+  const json = async (url, init) => {
+    const res = await fetchImpl(withProject(url), {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+    });
+    let body = {};
+    try {
+      body = await res.json();
+    } catch {
+      /* not JSON */
+    }
+    return { res, body };
+  };
   let ov = null;
-  const draw = () => {
+  /** S2's state: { plan, asker, heldId, state, error, going, fixed, ask }. */
+  let pv = null;
+  /** S3's state. */
+  let rv = { rec: null, confirming: false, reconnecting: false, timer: 0 };
+  let view = "";
+  const busy = (on) => root.setAttribute("aria-busy", on ? "true" : "false");
+  const focusHead = () => root.querySelector(".vf-head h2")?.focus?.();
+  const stopPoll = () => {
+    if (rv.timer) globalThis.clearTimeout(rv.timer);
+    rv.timer = 0;
+  };
+
+  const drawAnswer = () => {
     if (!ov) return;
-    const why = new URLSearchParams(globalThis.location?.search ?? "").get(
-      "why",
-    );
+    const why = params().get("why");
     root.innerHTML = why
       ? whyView(ov, why)
       : answerView(ov, { wide: !narrow() });
-    root.setAttribute("aria-busy", "false");
+    busy(false);
   };
-  const load = async () => {
-    root.setAttribute("aria-busy", "true");
+  const loadAnswer = async () => {
+    busy(true);
     root.innerHTML = loadingView();
     try {
-      const res = await fetchImpl("/api/verify/overview", {
-        headers: { Accept: "application/json" },
-      });
-      const body = await res.json();
-      if (!res.ok || !body.ok)
-        throw new Error(body.error ?? String(res.status));
+      const { res, body } = await json("/api/verify/overview");
+      if (!res.ok || !body.ok) throw new Error(body.error ?? res.status);
       ov = body;
-      draw();
+      drawAnswer();
     } catch {
       root.innerHTML = errorView();
-      root.setAttribute("aria-busy", "false");
+      busy(false);
     }
   };
-  root.addEventListener("click", (ev) => {
-    const el = ev.target instanceof globalThis.Element ? ev.target : null;
-    if (el?.closest("[data-retry]")) {
-      void load();
+
+  const drawPlan = () => {
+    root.innerHTML = planView(pv);
+    busy(false);
+  };
+  const plan = async (ask) => {
+    busy(true);
+    root.innerHTML = planningView();
+    // A POST that runs nothing, on the working pop-up all the same: a
+    // slow plan says it is working (BUSY-1).
+    let body = null;
+    let why = "";
+    try {
+      body = await write("verify-plan", "/api/verify/plan", ask);
+    } catch (err) {
+      why = err?.message ?? "";
+    }
+    if (!body?.ok) {
+      root.innerHTML = planFailedView(why || t("v.err_load"));
+      busy(false);
+      return null;
+    }
+    return body;
+  };
+  const loadPlan = async () => {
+    const q = params();
+    const heldId = q.get("allow");
+    if (heldId) {
+      // An agent's ask: the plan it asked for, read as the person.
+      globalThis.window?.denShell?.approvalHere?.(heldId);
+      busy(true);
+      root.innerHTML = planningView();
+      const a = await globalThis.window?.denShell?.approval?.(heldId);
+      if (!a?.ok || a.action !== "verify_run") {
+        root.innerHTML = planFailedView(a?.error ?? t("v.pr_gone"));
+        busy(false);
+        return;
+      }
+      const ask = {
+        ...(a.params?.project ? { project: a.params.project } : {}),
+        env: a.params?.env,
+        modules: String(a.params?.list ?? "")
+          .split(", ")
+          .filter(Boolean),
+      };
+      const p = await plan(ask);
+      if (!p) return;
+      pv = {
+        plan: p,
+        asker: a.agent,
+        heldId,
+        fixed: true,
+        ask,
+        state:
+          a.state === "pending"
+            ? "waiting"
+            : a.state === "expired"
+              ? "expired"
+              : a.state === "denied"
+                ? "declined"
+                : "decided",
+      };
+      if (a.state === "done" && a.result?.runId) return go(a.result.runId);
+      drawPlan();
       return;
     }
-    const a = el?.closest("a[data-why], .vf-back a");
+    const ask = {
+      env: q.get("plan"),
+      ...(q.get("scope") ? { scope: q.get("scope") } : {}),
+    };
+    const p = await plan(ask);
+    if (!p) return;
+    pv = { plan: p, ask, state: "ready", fixed: false };
+    drawPlan();
+  };
+
+  const go = (runId) => {
+    globalThis.history?.pushState(
+      null,
+      "",
+      `?run=${encodeURIComponent(runId)}${project() ? `&project=${encodeURIComponent(project())}` : ""}`,
+    );
+    return route();
+  };
+
+  /**
+   * A write, on the working pop-up (BUSY-1): the answer's JSON, or null
+   * when the pop-up said it failed. A quick refusal comes back as a throw
+   * (its `code` and `data`), for the page to say inline.
+   */
+  const write = (name, url, body, button) => {
+    const sh = globalThis.window?.denShell;
+    return sh.busyAction(
+      name,
+      (headers) => sh.api("POST", withProject(url), body ?? {}, { headers }),
+      { button, quietFail: true, inlineError: true, toastFast: false },
+    );
+  };
+
+  /** Allow, Decline or Run, from S2. */
+  const decide = async (act, button) => {
+    if (!pv) return;
+    const p = pv.plan;
+    const was = pv.state;
+    pv.error = "";
+    const back = () => {
+      pv.state = was;
+      drawPlan();
+    };
+    const fail = (err) => {
+      const code = err?.code ?? err?.data?.code;
+      if (code === "run_going") {
+        pv.state = "going";
+        pv.going = err?.data?.runId;
+      } else if (code === "expired") pv.state = "expired";
+      else if (code === "already_decided") pv.state = "decided";
+      else {
+        pv.state = was;
+        pv.error = err?.message ?? t("v.err_load");
+      }
+      drawPlan();
+    };
+    try {
+      if (act === "run") {
+        const r = await write(
+          "verify-run",
+          "/api/verify/run",
+          { ...pv.ask, background: true },
+          button,
+        );
+        return r ? go(r.runId) : back();
+      }
+      let id = pv.heldId;
+      if (!id) {
+        // The person's own run on a shared environment: Den's held action,
+        // asked and allowed here (never a second approval flow).
+        const asked = await write(
+          "verify-ask",
+          "/api/approvals",
+          {
+            action: "verify_run",
+            args: {
+              project: p.project,
+              env: p.env,
+              scope: p.scope,
+              modules: p.modules.map((m) => m.id),
+            },
+          },
+          button,
+        );
+        if (!asked?.id) return back();
+        id = asked.id;
+        pv.heldId = id;
+        globalThis.window?.denShell?.approvalHere?.(id);
+      }
+      const r = await write(
+        act === "allow" ? "verify-allow" : "verify-decline",
+        `/api/approvals/${encodeURIComponent(id)}/decide`,
+        { decision: act === "allow" ? "allow" : "deny" },
+        button,
+      );
+      if (!r) return back();
+      if (act !== "allow") {
+        pv.state = "declined";
+        return drawPlan();
+      }
+      const res = r.approval?.result;
+      if (res?.ok && res.runId) return go(res.runId);
+      return fail({ code: res?.code, data: res, message: res?.error });
+    } catch (err) {
+      return fail(err);
+    }
+  };
+
+  const drawRun = () => {
+    if (!rv.rec) return;
+    root.innerHTML = runView(rv.rec, {
+      confirming: rv.confirming,
+      reconnecting: rv.reconnecting,
+    });
+    busy(false);
+  };
+  const readRun = async (runId) => {
+    stopPoll();
+    try {
+      const { res, body } = await json(
+        `/api/verify/runs/${encodeURIComponent(runId)}`,
+      );
+      if (!res.ok || !body.ok) {
+        if (res.status === 404 && !rv.rec) {
+          root.innerHTML = planFailedView(body.error ?? "");
+          busy(false);
+          return;
+        }
+        throw new Error(body.error ?? String(res.status));
+      }
+      rv.rec = body;
+      rv.reconnecting = false;
+    } catch {
+      // Lost the server: say so, then read the run again (never guess).
+      rv.reconnecting = true;
+    }
+    if (view !== `run:${runId}`) return;
+    // The confirm stays put while it is open: the list redraws under it.
+    if (!rv.confirming) drawRun();
+    else {
+      const card = root.querySelector(".vf-run-card");
+      const tpl = root.ownerDocument.createElement("template");
+      if (rv.rec) tpl.innerHTML = runView(rv.rec);
+      const fresh = tpl.content.querySelector(".vf-run-card");
+      if (card && fresh) card.replaceWith(fresh);
+    }
+    if (
+      rv.reconnecting ||
+      (rv.rec?.verdict === "running" && rv.rec.live !== false)
+    )
+      rv.timer = globalThis.setTimeout(() => void readRun(runId), pollMs);
+  };
+
+  const route = async () => {
+    stopPoll();
+    const q = params();
+    if (q.get("run")) {
+      const id = q.get("run");
+      view = `run:${id}`;
+      rv = { rec: null, confirming: false, reconnecting: false, timer: 0 };
+      busy(true);
+      root.innerHTML = planningView();
+      await readRun(id);
+    } else if (q.get("plan") || q.get("allow")) {
+      view = "plan";
+      await loadPlan();
+    } else {
+      const was = view;
+      view = "answer";
+      if (ov && was !== "plan" && !was.startsWith("run:")) drawAnswer();
+      else await loadAnswer();
+    }
+    focusHead();
+  };
+
+  root.addEventListener("click", (ev) => {
+    const el = ev.target instanceof globalThis.Element ? ev.target : null;
+    if (!el) return;
+    if (el.closest("[data-retry]")) {
+      void loadAnswer();
+      return;
+    }
+    const act = el.closest("[data-act]")?.getAttribute("data-act");
+    if (act === "allow" || act === "decline" || act === "run") {
+      void decide(act, el.closest("[data-act]"));
+      return;
+    }
+    if (act === "cancel" || act === "cancel-no") {
+      rv.confirming = act === "cancel";
+      drawRun();
+      root
+        .querySelector(
+          rv.confirming ? "[data-act=cancel-no]" : "[data-act=cancel]",
+        )
+        ?.focus?.();
+      return;
+    }
+    if (act === "cancel-yes" && rv.rec) {
+      const id = rv.rec.runId;
+      const button = el.closest("[data-act]");
+      void write(
+        "verify-cancel",
+        `/api/verify/runs/${encodeURIComponent(id)}/cancel`,
+        {},
+        button,
+      )
+        .catch(() => null)
+        .then(() => {
+          rv.confirming = false;
+          return readRun(id);
+        });
+      return;
+    }
+    const scope = el.closest("[data-vf-scope]")?.getAttribute("data-vf-scope");
+    if (scope && pv && !pv.fixed) {
+      const q = params();
+      q.set("scope", scope);
+      globalThis.history?.replaceState(null, "", `?${q}`);
+      void loadPlan();
+      return;
+    }
+    const a = el.closest("a[data-why], a[data-nav], .vf-back a");
     if (!a || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
     ev.preventDefault();
-    globalThis.history?.pushState(null, "", a.getAttribute("href"));
-    draw();
-    root.querySelector(".vf-head h2")?.focus?.();
+    const href = a.getAttribute("href");
+    const keep = project();
+    globalThis.history?.pushState(
+      null,
+      "",
+      keep && !href.includes("project=")
+        ? `${href}${href === "?" ? "" : "&"}project=${encodeURIComponent(keep)}`
+        : href,
+    );
+    if (a.matches("a[data-why]")) {
+      drawAnswer();
+      focusHead();
+    } else void route();
   });
-  globalThis.addEventListener?.("popstate", draw);
-  await load();
+  globalThis.addEventListener?.("popstate", () => void route());
+  await route();
 }

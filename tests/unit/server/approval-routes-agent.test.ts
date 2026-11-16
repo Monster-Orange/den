@@ -102,6 +102,8 @@ let enabled = true;
 let selfUpdate: "ask" | "auto" = "ask";
 /** SRV-P4: an auto-allow that allows every ask, held writes' worst case. */
 let autoEvery = false;
+/** Issue 210: mcp.approval_wait_minutes as the handler reads it (ms; absent: the queue's). */
+let waitMs: number | undefined;
 let server: http.Server;
 let base = "";
 
@@ -141,6 +143,7 @@ beforeAll(async () => {
         queue,
         actions,
         enabled: () => enabled,
+        ...(waitMs !== undefined ? { waitMs: () => waitMs! } : {}),
         autoAllow: (action, agent) =>
           autoEvery
             ? "a setting that allows every ask"
@@ -255,6 +258,25 @@ describe("an agent's own token", () => {
       ]);
     } finally {
       enabled = true;
+    }
+  });
+});
+
+describe("issue 210: how long an ask waits is a setting", () => {
+  it("a new ask expires after mcp.approval_wait_minutes", async () => {
+    waitMs = 45 * 60_000;
+    try {
+      const before = Date.now();
+      const r = await fetch(
+        `${base}/api/approvals`,
+        as("server", { action: "workspace_create", args: { name: "waits" } }),
+      );
+      const b = (await r.json()) as { expiresAt: string };
+      const left = Date.parse(b.expiresAt) - before;
+      expect(left).toBeGreaterThan(44 * 60_000);
+      expect(left).toBeLessThan(46 * 60_000);
+    } finally {
+      waitMs = undefined;
     }
   });
 });
