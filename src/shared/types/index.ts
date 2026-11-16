@@ -689,10 +689,13 @@ export interface WorkspaceConfig {
    * agents, which wins over user.yml's and the search. den#48:
    * `agents.permission`, the permission mode (ask, edits, auto, all) its
    * agents start with when the start names none, over their persona's.
+   * 0.4.56 `agents.hub_tools_restart` (true or false): this project's
+   * hub.tools_restart, over the install's (issue 193).
    */
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
     permission?: unknown;
+    hub_tools_restart?: unknown;
   };
   /**
    * Issue 160: this project's approval policy, over the install's

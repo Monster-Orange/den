@@ -1156,6 +1156,9 @@
     "ag.apiOnlyOffTip":
       "Este runtime no tiene un hook que Den pueda usar, así que no se le limita a la API de {names}. Usa den-claude para los agentes que deban estarlo.",
     "ag.mcp.adds": "Las herramientas de Hub llegan al reiniciar",
+    "ag.mcp.reloading": "Reiniciando para cargar las herramientas de Hub",
+    "ag.mcp.reloadingTip":
+      "Las herramientas de Hub cambiaron. Den reinicia este agente cuando esté inactivo para que pueda usarlas. Mantiene su conversación.",
     "ag.mcp.addsTip":
       "Hub se conectó después de que este agente empezó, así que aún no tiene las herramientas de Hub. Reiniciar mantiene su conversación y espera a que termine su turno.",
     "ag.mcp.drops": "Las herramientas de Hub se van al reiniciar",

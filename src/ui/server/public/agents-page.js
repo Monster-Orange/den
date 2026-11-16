@@ -1849,6 +1849,9 @@ function apiOnlyTag(r) {
  * its next idle, same conversation).
  */
 function mcpStaleTag(r, withButton) {
+  // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
+  if (r?.kind === "agent" && r.toolsRestarting)
+    return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
   const sx = r?.kind === "agent" && !isStopped(r) ? r.mcpStale : null;
   if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
   const k = sx.adds?.length ? "adds" : "drops";

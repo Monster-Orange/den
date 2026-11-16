@@ -11,6 +11,15 @@
  * is the live one, so the note is never repeated, even after a restart. A
  * new conversation records the current list and gets no note.
  *
+ * Reopened (0.4.56): a runtime that reads its tool list once, at launch
+ * (Claude Code), can't use a tool Hub added while it runs. Den also keeps
+ * the list each agent's launch read. When that is older than Hub's, Den
+ * restarts the agent at its next idle, on the same conversation, and
+ * types nothing; its new launch reads Hub's list, and then the note is
+ * true. One restart per new list per agent: a restart that fails, or comes
+ * back on the old launch, gets the note that says a restart is needed
+ * instead. So does every agent of a project with hub.tools_restart off.
+ *
  * Hub and the agents are injected (tests use fakes); no timers of its own.
  */
 import { createHash } from "node:crypto";
@@ -74,8 +83,23 @@ export function toolsHash(s: ToolShape): string {
     .slice(0, 32);
 }
 
+/**
+ * How a note ends. `loaded`: the agent's tool list has Hub's current one
+ * (its launch read it, or its runtime reloads in place). `restart`: it
+ * doesn't, so the note never says it can use them.
+ */
+export const NOTE_END = {
+  loaded: "Your tool list has Hub's current tools now.",
+  restart:
+    "Your tool list is still the one you started with, so you can't use these yet. A restart loads them and keeps this conversation: ask your person to press Restart on you in Den.",
+} as const;
+
 /** The note for an agent whose conversation began on `was`; null when nothing changed. */
-export function toolsChangeNote(was: ToolShape, now: ToolShape): string | null {
+export function toolsChangeNote(
+  was: ToolShape,
+  now: ToolShape,
+  end: keyof typeof NOTE_END = "loaded",
+): string | null {
   const parts: string[] = [];
   for (const name of Object.keys(now).sort()) {
     const n = now[name];
@@ -104,7 +128,7 @@ export function toolsChangeNote(was: ToolShape, now: ToolShape): string | null {
   if (!parts.length) return null;
   let list = parts.join("; ");
   if (list.length > NOTE_MAX) list = `${list.slice(0, NOTE_MAX)}…`;
-  return `Hub's tools changed since this conversation started: ${list}. You can call them with the new parameters now.`;
+  return `Hub's tools changed since this conversation started: ${list}. ${NOTE_END[end]}`;
 }
 
 type FetchFn = typeof fetch;
@@ -224,6 +248,18 @@ export interface HubToolsWatchDeps {
   /** busy: mid-turn, or Den can't tell (never typed into then). */
   state(id: string): Promise<AgentState>;
   type(id: string, text: string): Promise<boolean>;
+  /**
+   * Whether the agent's runtime reloads its MCP tool list while it runs
+   * (Runtime.reloadsToolsInPlace). False: the list its launch read stays.
+   */
+  reloadsInPlace(id: string): boolean;
+  /**
+   * Restart it at its next idle, on the same conversation, so its launch
+   * reads Hub's list (Den's own action). Settles when done; throws when not.
+   */
+  restart(id: string): Promise<unknown>;
+  /** hub.tools_restart for its project (default: on). Off: the note only. */
+  restartOn?(id: string): boolean;
   /** The state file (mode 0600). */
   file: string;
   log?: (line: string) => void;
@@ -235,11 +271,24 @@ interface Seen {
   tools: ToolShape;
 }
 
+/** An agent's launch, and the hash of Hub's list it read (absent: unknown). */
+interface Launch {
+  at: string;
+  hash?: string;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
 export class HubToolsWatch {
   private live: { hash: string; tools: ToolShape } | null = null;
   private seen: Record<string, Seen> = {};
   /** Each agent's launch as last seen: a new one wants a fresh list. */
-  private readonly launches = new Map<string, string>();
+  private readonly launches = new Map<string, Launch>();
+  /** The list hash each agent was restarted for: one restart per list. */
+  private tried: Record<string, string> = {};
+  /** Restarts under way. */
+  private readonly running = new Map<string, Promise<void>>();
   private checking: Promise<void> | null = null;
   private lastSaid = "";
 
@@ -247,11 +296,33 @@ export class HubToolsWatch {
     try {
       const raw = JSON.parse(fs.readFileSync(d.file, "utf8")) as {
         agents?: Record<string, Seen>;
+        launches?: Record<string, Launch>;
+        tried?: Record<string, string>;
       };
-      if (raw?.agents && typeof raw.agents === "object") this.seen = raw.agents;
+      if (isRecord(raw?.agents)) this.seen = raw.agents;
+      if (isRecord(raw?.launches))
+        for (const [id, l] of Object.entries(raw.launches))
+          if (isRecord(l) && typeof l.at === "string")
+            this.launches.set(id, {
+              at: l.at,
+              ...(typeof l.hash === "string" ? { hash: l.hash } : {}),
+            });
+      if (isRecord(raw?.tried))
+        for (const [id, h] of Object.entries(raw.tried))
+          if (typeof h === "string") this.tried[id] = h;
     } catch {
       /* none yet, or unreadable: start empty */
     }
+  }
+
+  /** The agents Den is restarting to load Hub's tools (their rows say so). */
+  restarting(): string[] {
+    return [...this.running.keys()];
+  }
+
+  /** Restarts under way, settled (tests). */
+  async settled(): Promise<void> {
+    await Promise.all([...this.running.values()]);
   }
 
   /** Read Hub's list now (one read at a time; it serves every agent). */
@@ -273,21 +344,41 @@ export class HubToolsWatch {
     return this.checking;
   }
 
-  /** One pass: record new conversations; tell idle agents what changed. */
+  /**
+   * One pass: record new conversations; restart an idle agent whose launch
+   * read an older list than Hub's (when its runtime doesn't reload); tell
+   * idle agents what changed once their tool list has it.
+   */
   async pump(): Promise<void> {
     const agents = this.d.agents().filter((a) => a.conv);
+    let dirty = false;
     // A started or resumed agent: read Hub's list first (once for all).
-    if (agents.some((a) => this.launches.get(a.id) !== a.launchedAt)) {
-      for (const a of agents) this.launches.set(a.id, a.launchedAt);
+    const launched = agents.filter(
+      (a) => this.launches.get(a.id)?.at !== a.launchedAt,
+    );
+    if (launched.length) {
       await this.check();
+      for (const a of launched) {
+        const prev = this.launches.get(a.id);
+        const s = this.seen[a.id];
+        // Never seen launch (a state file from before 0.4.56): it read
+        // what Den last knew it had, not what Hub has now.
+        const hash = !prev && s?.conv === a.conv ? s.hash : this.live?.hash;
+        this.launches.set(a.id, { at: a.launchedAt, ...(hash ? { hash } : {}) });
+      }
+      dirty = true;
     }
     const live = this.live;
-    if (!live) return;
-    let dirty = false;
+    if (!live) return; // nothing known yet: nothing to save
     const ids = new Set(agents.map((a) => a.id));
-    for (const id of Object.keys(this.seen))
+    for (const id of new Set([
+      ...Object.keys(this.seen),
+      ...this.launches.keys(),
+      ...Object.keys(this.tried),
+    ]))
       if (!ids.has(id)) {
         delete this.seen[id];
+        delete this.tried[id];
         this.launches.delete(id);
         dirty = true;
       }
@@ -298,12 +389,30 @@ export class HubToolsWatch {
         dirty = true;
         continue;
       }
-      if (s.hash === live.hash) continue;
-      const note = toolsChangeNote(s.tools, live.tools);
+      if (s.hash === live.hash || this.running.has(a.id)) continue;
+      // Hub's list as its tool list has it: its launch's (unknown: Hub's).
+      const loaded =
+        this.d.reloadsInPlace(a.id) ||
+        (this.launches.get(a.id)?.hash ?? live.hash) === live.hash;
+      const restartOn = this.d.restartOn?.(a.id) ?? true;
+      if (!loaded && restartOn && this.tried[a.id] !== live.hash) {
+        if ((await this.d.state(a.id).catch(() => "busy")) !== "idle") continue;
+        this.tried[a.id] = live.hash;
+        this.persist();
+        this.restartFor(a.id);
+        continue;
+      }
+      const note = toolsChangeNote(
+        s.tools,
+        live.tools,
+        loaded ? "loaded" : "restart",
+      );
       if (note) {
         if ((await this.d.state(a.id).catch(() => "busy")) !== "idle") continue;
         if (!(await this.d.type(a.id, note).catch(() => false))) continue;
-        this.d.log?.(`agent ${a.id}: told Hub's tools changed`);
+        this.d.log?.(
+          `agent ${a.id}: told Hub's tools changed${loaded ? "" : " (a restart loads them)"}`,
+        );
       }
       this.seen[a.id] = { conv: a.conv!, ...live };
       dirty = true;
@@ -311,13 +420,35 @@ export class HubToolsWatch {
     if (dirty) this.persist();
   }
 
+  /** Den restarts agent `id` (same conversation) to load Hub's list. */
+  private restartFor(id: string): void {
+    this.d.log?.(`agent ${id}: restarting to load Hub's tools`);
+    const p = (async () => {
+      try {
+        await this.d.restart(id);
+      } catch (e) {
+        this.d.log?.(
+          `agent ${id}: not restarted for Hub's tools: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+        );
+      }
+    })().finally(() => this.running.delete(id));
+    this.running.set(id, p);
+  }
+
   private persist(): void {
     try {
       fs.mkdirSync(path.dirname(this.d.file), { recursive: true });
       const tmp = `${this.d.file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify({ v: 1, agents: this.seen }), {
-        mode: 0o600,
-      });
+      fs.writeFileSync(
+        tmp,
+        JSON.stringify({
+          v: 1,
+          agents: this.seen,
+          launches: Object.fromEntries(this.launches),
+          tried: this.tried,
+        }),
+        { mode: 0o600 },
+      );
       fs.renameSync(tmp, this.d.file);
     } catch (e) {
       this.d.log?.(

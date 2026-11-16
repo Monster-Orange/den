@@ -111,6 +111,7 @@ import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import { hubToolsRestarting } from "./hub-tools-service.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -424,6 +425,8 @@ export interface ListedSession {
   helpers?: AgentRow["helpers"];
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
+  /** Issue 193: Den is restarting it to load Hub's new tools. */
+  toolsRestarting?: true;
 }
 
 /**
@@ -522,6 +525,7 @@ export function listedSessions(
   });
   const records = all.filter((r) => active.has(r.workspace));
   const revoked = revokedAgentIds(d.stateDir());
+  const toolsRestarting = hubToolsRestarting();
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const why = d.waitingWhy?.() ?? new Map<string, string>();
   const out: ListedSession[] = [];
@@ -635,6 +639,7 @@ export function listedSessions(
         });
         return st ? { mcpStale: st } : {};
       })(),
+      ...(toolsRestarting.has(rec.id) ? { toolsRestarting: true as const } : {}),
       // D32: the helpers it started in its own session.
       ...(() => {
         const h = rowHelpers(

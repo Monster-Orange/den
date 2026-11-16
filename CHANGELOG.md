@@ -4,6 +4,21 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.56] - unreleased
+
+### Added
+
+- `hub.tools_restart` (default true): Den restarts an agent to load Hub's
+  new tools. Set it to false for the install, or per project with
+  `agents.hub_tools_restart` in workspaces.yml. Off, the agent is told a
+  restart is needed, and that Restart keeps its conversation.
+
+### Fixed
+
+- Claude Code agents now restart on the same conversation to load new Hub
+  tools, instead of being told about tools they can't see. Their row says
+  "Restarting to load Hub's tools" until it's done.
+
 ## [0.4.55] - 2026-11-15
 
 ### Fixed

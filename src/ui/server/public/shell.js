@@ -1936,6 +1936,9 @@
     "ag.mcp.drops": "Hub tools go on restart",
     "ag.mcp.dropsTip":
       "Hub was disconnected after this agent started; its Hub tools no longer work. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.reloading": "Restarting to load Hub's tools",
+    "ag.mcp.reloadingTip":
+      "Hub's tools changed. Den restarts this agent at its next idle so it can use them. It keeps its conversation.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":

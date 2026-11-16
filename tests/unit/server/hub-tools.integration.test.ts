@@ -44,7 +44,7 @@ const NEW = [
   ),
 ];
 const NOTE =
-  "Hub's tools changed since this conversation started: hub_artifact_upload_part: new parameters base64; text no longer required. You can call them with the new parameters now.";
+  "Hub's tools changed since this conversation started: hub_artifact_upload_part: new parameters base64; text no longer required. Your tool list has Hub's current tools now.";
 
 const hub = {
   url: "",

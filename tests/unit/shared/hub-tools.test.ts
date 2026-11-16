@@ -37,6 +37,12 @@ const tool = (
   },
 });
 
+/** The end of the note when its tool list has the change (issue 193). */
+const LOADED = "Your tool list has Hub's current tools now.";
+/** The end of the note when it doesn't: a restart is needed, and offered. */
+const RESTART =
+  "Your tool list is still the one you started with, so you can't use these yet. A restart loads them and keeps this conversation: ask your person to press Restart on you in Den.";
+
 const OLD = [
   tool(
     "hub_artifact_upload_part",
@@ -57,14 +63,14 @@ const NEW = [
 describe("issue 193: what changed, in one note", () => {
   it("a new parameter and a now-optional one", () => {
     expect(toolsChangeNote(toolShape(OLD), toolShape(NEW))).toBe(
-      "Hub's tools changed since this conversation started: hub_artifact_upload_part: new parameters base64; text no longer required. You can call them with the new parameters now.",
+      `Hub's tools changed since this conversation started: hub_artifact_upload_part: new parameters base64; text no longer required. ${LOADED}`,
     );
   });
 
   it("a new tool and a removed one", () => {
     const now = [...NEW.slice(1), tool("hub_put", ["path"], ["path"])];
     expect(toolsChangeNote(toolShape(NEW), toolShape(now))).toBe(
-      "Hub's tools changed since this conversation started: new tool hub_put; hub_artifact_upload_part was removed. You can call them with the new parameters now.",
+      `Hub's tools changed since this conversation started: new tool hub_put; hub_artifact_upload_part was removed. ${LOADED}`,
     );
   });
 
@@ -163,16 +169,34 @@ describe("issue 193: reading Hub's tools/list", () => {
 
 type St = "missing" | "stopped" | "busy" | "idle";
 
-function rig(o: { list: () => unknown[] | null }) {
+function rig(o: {
+  list: () => unknown[] | null;
+  /** Its runtime re-reads its tool list while it runs (default: not). */
+  reloads?: (id: string) => boolean;
+  /** hub.tools_restart for its project (default on). */
+  restartOn?: (id: string) => boolean;
+  /** What a restart does (default: a new launch, same conversation). */
+  restart?: (id: string) => Promise<void>;
+}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-hubtools-"));
   const file = path.join(dir, "hub", "tools-seen.json");
   const agents = new Map<string, { conv: string | null; launchedAt: string }>();
   const states = new Map<string, St>();
   const typed: { id: string; text: string }[] = [];
+  const restarts: string[] = [];
   const logs: string[] = [];
   let fetches = 0;
+  let launches = 0;
   const make = () =>
     new HubToolsWatch({
+      reloadsInPlace: (id) => o.reloads?.(id) ?? false,
+      restartOn: (id) => o.restartOn?.(id) ?? true,
+      restart: async (id) => {
+        restarts.push(id);
+        if (o.restart) return o.restart(id);
+        const a = agents.get(id)!;
+        agents.set(id, { ...a, launchedAt: `relaunch-${++launches}` });
+      },
       fetchTools: async () => {
         fetches++;
         const l = o.list();
@@ -194,6 +218,7 @@ function rig(o: { list: () => unknown[] | null }) {
     agents,
     states,
     typed,
+    restarts,
     logs,
     make,
     fetches: () => fetches,
@@ -255,7 +280,7 @@ describe("issue 193: the note, per conversation", () => {
       expect(r.typed).toEqual([
         {
           id: "ada",
-          text: "Hub's tools changed since this conversation started: hub_artifact_upload_part: new parameters base64; text no longer required. You can call them with the new parameters now.",
+          text: `Hub's tools changed since this conversation started: hub_artifact_upload_part: new parameters base64; text no longer required. ${LOADED}`,
         },
       ]);
       await w.pump();
@@ -328,9 +353,191 @@ describe("issue 193: the note, per conversation", () => {
   });
 });
 
+describe("issue 193 reopened: a runtime that reads its tools once is restarted, not told", () => {
+  // The reopen comment's case: Claude Code reads its MCP tool list once at
+  // launch. Hub adds hub_artifact_status while it runs: a note saying "call
+  // them now" was false, and marking the list seen meant nothing retried.
+  const A = [tool("hub_search", ["q"], ["q"])];
+  const AS = [...A, tool("hub_artifact_status", ["id"], ["id"])];
+  const NEW_TOOL = "Hub's tools changed since this conversation started: new tool hub_artifact_status.";
+  const seenHash = (file: string) =>
+    (
+      JSON.parse(fs.readFileSync(file, "utf8")) as {
+        agents: Record<string, { hash: string }>;
+      }
+    ).agents.ada.hash;
+
+  it("restarts it once (no note, nothing marked seen); after the new launch, the note once and no second restart", async () => {
+    let list: unknown[] = A;
+    const r = rig({ list: () => list });
+    try {
+      r.agents.set("ada", { conv: "den-claude c-1", launchedAt: "t1" });
+      r.states.set("ada", "idle");
+      const w = r.make();
+      await w.pump();
+      list = AS;
+      await w.check(); // the timer's read: same launch, Hub changed
+      await w.pump();
+      expect(r.typed).toEqual([]);
+      expect(r.restarts).toEqual(["ada"]);
+      expect(seenHash(r.file)).toBe(toolsHash(toolShape(A)));
+      await w.settled();
+      // Its new launch read Hub's list: now the note is true, once.
+      await w.pump();
+      expect(r.typed).toEqual([{ id: "ada", text: `${NEW_TOOL} ${LOADED}` }]);
+      expect(seenHash(r.file)).toBe(toolsHash(toolShape(AS)));
+      await w.check();
+      await w.pump();
+      await w.pump();
+      expect(r.restarts).toEqual(["ada"]);
+      expect(r.typed).toHaveLength(1);
+    } finally {
+      r.done();
+    }
+  });
+
+  it("busy: no restart until it is idle", async () => {
+    let list: unknown[] = A;
+    const r = rig({ list: () => list });
+    try {
+      r.agents.set("ada", { conv: "den-claude c-1", launchedAt: "t1" });
+      r.states.set("ada", "idle");
+      const w = r.make();
+      await w.pump();
+      list = AS;
+      await w.check();
+      r.states.set("ada", "busy");
+      await w.pump();
+      expect(r.restarts).toEqual([]);
+      r.states.set("ada", "idle");
+      await w.pump();
+      expect(r.restarts).toEqual(["ada"]);
+    } finally {
+      r.done();
+    }
+  });
+
+  it("a failed restart, or one that comes back on the old launch, never loops: one restart per new list, then the restart-needed note", async () => {
+    for (const how of ["throws", "same launch"] as const) {
+      let list: unknown[] = A;
+      const r = rig({
+        list: () => list,
+        restart: async () => {
+          if (how === "throws") throw new Error("Den can't tell when its turn ends");
+        },
+      });
+      try {
+        r.agents.set("ada", { conv: "den-claude c-1", launchedAt: "t1" });
+        r.states.set("ada", "idle");
+        const w = r.make();
+        await w.pump();
+        list = AS;
+        await w.check();
+        for (let i = 0; i < 4; i++) {
+          await w.pump();
+          await w.settled();
+        }
+        expect(r.restarts).toEqual(["ada"]);
+        expect(r.typed).toEqual([{ id: "ada", text: `${NEW_TOOL} ${RESTART}` }]);
+        // Even after Den itself restarts.
+        const again = r.make();
+        await again.pump();
+        await again.check();
+        await again.pump();
+        await again.settled();
+        expect(r.restarts).toEqual(["ada"]);
+        expect(r.typed).toHaveLength(1);
+      } finally {
+        r.done();
+      }
+    }
+  });
+
+  it("hub.tools_restart off for its project: no restart, the restart-needed note once", async () => {
+    let list: unknown[] = A;
+    const r = rig({ list: () => list, restartOn: () => false });
+    try {
+      r.agents.set("ada", { conv: "den-claude c-1", launchedAt: "t1" });
+      r.states.set("ada", "idle");
+      const w = r.make();
+      await w.pump();
+      list = AS;
+      await w.check();
+      await w.pump();
+      await w.pump();
+      expect(r.restarts).toEqual([]);
+      expect(r.typed).toEqual([{ id: "ada", text: `${NEW_TOOL} ${RESTART}` }]);
+      expect(r.typed[0].text).not.toMatch(/call them|has Hub's current/);
+    } finally {
+      r.done();
+    }
+  });
+
+  it("a runtime that reloads its tools in place keeps the note, no restart", async () => {
+    let list: unknown[] = A;
+    const r = rig({ list: () => list, reloads: () => true });
+    try {
+      r.agents.set("ada", { conv: "other c-1", launchedAt: "t1" });
+      r.states.set("ada", "idle");
+      const w = r.make();
+      await w.pump();
+      list = AS;
+      await w.check();
+      await w.pump();
+      expect(r.restarts).toEqual([]);
+      expect(r.typed).toEqual([{ id: "ada", text: `${NEW_TOOL} ${LOADED}` }]);
+    } finally {
+      r.done();
+    }
+  });
+
+  it("while a restart is under way, its id is in restarting() (the row says so)", async () => {
+    let list: unknown[] = A;
+    let release = () => undefined as void;
+    const r = rig({
+      list: () => list,
+      restart: (id) =>
+        new Promise<void>((res) => {
+          release = () => {
+            const a = r.agents.get(id)!;
+            r.agents.set(id, { ...a, launchedAt: "t2" });
+            res();
+          };
+        }),
+    });
+    try {
+      r.agents.set("ada", { conv: "den-claude c-1", launchedAt: "t1" });
+      r.states.set("ada", "idle");
+      const w = r.make();
+      await w.pump();
+      list = AS;
+      await w.check();
+      await w.pump();
+      expect(w.restarting()).toEqual(["ada"]);
+      await w.pump();
+      expect(r.restarts).toEqual(["ada"]);
+      release();
+      await w.settled();
+      expect(w.restarting()).toEqual([]);
+    } finally {
+      r.done();
+    }
+  });
+});
+
 describe("hub.tools_check_seconds", () => {
   const url = "https://hub.example.test";
   const none = () => ({});
+  it("hub.tools_restart: on unset, off when false, true or false only", () => {
+    expect(readHubConfig({ hub: { url } }, {}, none)?.toolsRestart).toBe(true);
+    expect(
+      readHubConfig({ hub: { url, tools_restart: false } }, {}, none)
+        ?.toolsRestart,
+    ).toBe(false);
+    expect(() =>
+      readHubConfig({ hub: { url, tools_restart: "no" } }, {}, none),
+    ).toThrow("hub.tools_restart must be true or false");
+  });
   it("300 unset, set per install, at least 5", () => {
     expect(readHubConfig({ hub: { url } }, {}, none)?.toolsCheckSeconds).toBe(
       300,

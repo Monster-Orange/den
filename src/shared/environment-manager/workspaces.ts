@@ -1119,6 +1119,24 @@ export function workspaceAgentPermission(
 }
 
 /**
+ * Issue 193: whether Den restarts project `ws`'s agents to load Hub's new
+ * tools: its `agents.hub_tools_restart` when true or false, else
+ * `install` (hub.tools_restart). An unreadable file: the install's.
+ */
+export function workspaceHubToolsRestart(
+  ws: string,
+  install: boolean,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): boolean {
+  try {
+    const v = read().workspaces[ws]?.agents?.hub_tools_restart;
+    return typeof v === "boolean" ? v : install;
+  } catch {
+    return install;
+  }
+}
+
+/**
  * Set (an intent) or clear (null) workspace `ws`'s `agents.permission`.
  * The caller checks the intent first.
  */

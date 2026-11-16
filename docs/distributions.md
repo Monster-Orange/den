@@ -1195,6 +1195,23 @@ hub:
   "<name> was removed"). Once per change; a restart never repeats it; a
   new conversation records the current list and gets no note. While Hub
   doesn't answer, nothing is typed and the log says so once.
+- Hub's new tools reach a running agent (0.4.56, issue 193). Claude Code
+  reads its tool list once, when it starts, so a tool Hub adds while it
+  runs isn't usable until it restarts. Den keeps the list each agent's
+  launch read. When Hub's is newer and the agent's runtime doesn't reload
+  in place (a runtime's `reloadsToolsInPlace`; none of the built-in ones
+  does), Den restarts it at its next idle on the same conversation
+  (`--resume`), types nothing first, and writes an audit row. Its row
+  says "Restarting to load Hub's tools" meanwhile. Its new launch reads
+  Hub's list; then it gets the note, ending "Your tool list has Hub's
+  current tools now." One restart per new list per agent: if it fails, or
+  the agent comes back on its old launch, it gets the note ending "Your
+  tool list is still the one you started with, so you can't use these
+  yet. A restart loads them and keeps this conversation: ask your person
+  to press Restart on you in Den." `hub.tools_restart` (default true)
+  turns the restart off for the install; a project's
+  `agents.hub_tools_restart` (true or false, in workspaces.yml) wins over
+  it. Off, the agent gets that second note instead.
 - How to answer comes from Hub (0.4.44). Each delivery may carry
   `reply_with`: a short list of `{ tool, args, when }`, where `when` is
   `changed` (the agent edited the artifact) or `answer` (it only replies).

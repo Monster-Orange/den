@@ -129,6 +129,14 @@ export interface HubConfig {
    * starts or resumes.
    */
   toolsCheckSeconds: number;
+  /**
+   * 0.4.56 hub.tools_restart (default true): an agent whose runtime reads
+   * its tool list only at launch (Claude Code) is restarted at its next
+   * idle, on the same conversation, when Hub's tools change (issue 193).
+   * False: it is told a restart is needed instead. A project's
+   * `agents.hub_tools_restart` (workspaces.yml) wins over it.
+   */
+  toolsRestart: boolean;
 }
 
 type RawHub =
@@ -148,6 +156,7 @@ type RawHub =
       mcp_retry_seconds?: unknown;
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
+      tools_restart?: unknown;
     }
   | undefined;
 
@@ -258,6 +267,9 @@ export function readHubConfig(
   );
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
+  const tr = h.tools_restart;
+  if (tr !== undefined && tr !== null && typeof tr !== "boolean")
+    throw new Error("hub.tools_restart must be true or false");
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -285,6 +297,7 @@ export function readHubConfig(
     mcpRetrySeconds: retry,
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
+    toolsRestart: tr !== false,
   };
 }
 
