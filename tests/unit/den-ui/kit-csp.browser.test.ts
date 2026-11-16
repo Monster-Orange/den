@@ -34,6 +34,16 @@ type KitWin = {
     whatsNew: { load(): Promise<unknown>; close(): void };
     update: { set(o: object): void; hide(): void };
     report: { open(): Promise<unknown> };
+    busy: {
+      run(
+        action: string,
+        run: (
+          h: Record<string, string>,
+          progress: (t: string) => void,
+        ) => Promise<unknown>,
+        opts: object,
+      ): Promise<unknown>;
+    };
   };
 };
 
@@ -78,6 +88,10 @@ const PAGE = `<!doctype html>
 /** The page's own code: a file, as the CSP wants. */
 const APP = `
 import DenUI from "/kit/kit.js";
+import { registerActions } from "/kit/busy.js";
+registerActions({
+  save: { who: "Acme", words: { en: { working: "Saving", success: "Saved", failure: "Could not save" } } },
+});
 window.filed = [];
 DenUI.configure({
   lang: "en",
@@ -230,6 +244,35 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
     await expect(
       p.locator('dialog.fb-dlg [data-act="send"]').count(),
     ).resolves.toBe(0);
+    expect(bad).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("runs the working pop-up (busy.js) with no violation", async () => {
+    if (!browser) return;
+    const { p, bad } = await open(1280);
+    await p.evaluate(() => {
+      void (window as unknown as KitWin).DenUI.busy
+        .run(
+          "save",
+          (_h: Record<string, string>, progress: (t: string) => void) => {
+            progress("Step one");
+            return new Promise((_, no) =>
+              setTimeout(() => no({ status: 500 }), 600),
+            );
+          },
+          {},
+        )
+        .catch(() => {});
+    });
+    await p.locator("dialog.bz-dlg ol.bz-prog").waitFor();
+    await p.locator('dialog.bz-dlg [data-bz="retry"]').waitFor();
+    // Styled by busy.css: the buttons have the kit's tap height.
+    expect(
+      await p
+        .locator('dialog.bz-dlg [data-bz="retry"]')
+        .evaluate((b) => b.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(36);
     expect(bad).toEqual([]);
     await p.context().close();
   }, 60_000);

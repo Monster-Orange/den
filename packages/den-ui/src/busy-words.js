@@ -22,6 +22,8 @@ export const BUSY_WORDS = {
       "{who} has no record of this request any more. Check the page before you try again.",
     err_code: "{who} answered with an error ({code}).",
     network: "Couldn't reach {who}.",
+    next: "Trying again won't help. Do this first:",
+    progress: "Progress",
   },
   es: {
     wait: "Esperando a {who}…",
@@ -41,6 +43,8 @@ export const BUSY_WORDS = {
       "{who} ya no tiene registro de esta solicitud. Revisa la página antes de intentarlo de nuevo.",
     err_code: "{who} respondió con un error ({code}).",
     network: "No se pudo contactar con {who}.",
+    next: "Intentar de nuevo no servirá. Haz esto primero:",
+    progress: "Progreso",
   },
   ja: {
     wait: "{who} の応答を待っています…",
@@ -61,5 +65,7 @@ export const BUSY_WORDS = {
       "{who} にこのリクエストの記録がもうありません。もう一度試す前にページを確認してください。",
     err_code: "{who} がエラーを返しました({code})。",
     network: "{who} に接続できませんでした。",
+    next: "もう一度試しても解決しません。先にこちらを:",
+    progress: "進行状況",
   },
 };

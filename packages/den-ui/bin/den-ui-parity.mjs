@@ -140,7 +140,7 @@ export const COMPONENTS = {
     markup: [cls("bz-dlg")],
     css: ["bz-dlg"],
     code: ["configureBusy", "registerActions"],
-    files: ["busy.js", "busy-words.js"],
+    files: ["busy.js", "busy-words.js", "busy.css"],
   },
 };
 

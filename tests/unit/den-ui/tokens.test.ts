@@ -102,6 +102,13 @@ const MARKS = ["accent", "border-strong", "violet"];
 const MARK_BACKS = ["bg", "surface", "raised"];
 const PILLS = ["ok", "warn", "bad", "info", "remote"];
 const PILL_BACKS = ["bg", "surface", "sunken"];
+/**
+ * A disc: a mark's own colour on its 16% tint (an agent's initial in its
+ * disc, say), over each background. The remote colour's disc was 4.33:1
+ * over --sunken in light.
+ */
+const DISCS = ["remote"];
+const DISC_TINT = 0.16;
 
 /** Every pair below its bar, as "fg on bg (mode): 3.9". */
 function failures(modes: Record<Mode, Tokens>): string[] {
@@ -121,6 +128,9 @@ function failures(modes: Record<Mode, Tokens>): string[] {
     for (const p of PILLS)
       for (const b of PILL_BACKS)
         check(c(p), tint(c(p), c(b)), 4.5, `${p} pill over ${b}`);
+    for (const p of DISCS)
+      for (const b of PILL_BACKS)
+        check(c(p), tint(c(p), c(b), DISC_TINT), 4.5, `${p} disc over ${b}`);
   }
   return out;
 }

@@ -196,7 +196,7 @@ describe("the package ships every kit file", () => {
     for (const f of src) expect([f, KIT_FILES.includes(f)]).toEqual([f, true]);
   });
   it("packs src/ and bin/, with den-ui-parity as its bin", () => {
-    expect(pkg.version).toBe("0.6.0");
+    expect(pkg.version).toMatch(/^0\.6\.\d+$/);
     expect(pkg.files).toEqual(expect.arrayContaining(["src/", "bin/"]));
     expect(pkg.bin["den-ui-parity"]).toBe("bin/den-ui-parity.mjs");
     expect(fs.existsSync(path.join(PKG, pkg.bin["den-ui-parity"]))).toBe(true);

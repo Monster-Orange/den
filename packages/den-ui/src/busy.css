@@ -1,0 +1,155 @@
+/* den-ui: the working pop-up's look (busy.js). Tokens only (UK-1): no
+   colour of its own. Linked, never injected: clean under style-src 'self'. */
+.bz-dlg {
+  font-family: var(--sans);
+  position: fixed;
+  inset-block: auto;
+  inset-inline: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0 auto;
+  height: auto;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  width: min(420px, calc(100vw - 32px));
+  max-width: 100%;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-dialog);
+}
+.bz-dlg::backdrop {
+  background: color-mix(in srgb, var(--sunken) 70%, transparent);
+}
+.bz-b {
+  padding: var(--space-4) calc(var(--space-4) + 2px);
+  display: grid;
+  gap: 10px;
+}
+.bz-b h2 {
+  font-size: var(--fs-l);
+  margin: 0;
+  outline: none;
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.bz-b p {
+  margin: 0;
+  font-size: var(--fs-s);
+  line-height: 1.5;
+}
+.bz-ico {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.bz-ok {
+  color: var(--ok);
+}
+.bz-bad {
+  color: var(--bad);
+}
+.bz-dlg[data-state="noanswer"] .bz-clock {
+  color: var(--warn);
+}
+.bz-bar {
+  height: 2px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  position: relative;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.bz-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: var(--accent);
+  animation: bz-ind 1.4s ease-in-out infinite;
+}
+@keyframes bz-ind {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bz-bar i {
+    animation: none;
+    width: 100%;
+    opacity: 0.7;
+  }
+}
+.bz-b details {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.bz-b pre {
+  margin: 6px 0 0;
+  font: 11.5px/1.5 var(--mono);
+  background: var(--sunken);
+  padding: var(--space-2);
+  border-radius: var(--radius-button);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bz-ft {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  align-items: center;
+}
+.bz-btn {
+  font: inherit;
+  font-size: var(--fs-s);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-button);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.bz-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.bz-btn.bz-primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
+}
+@media (max-width: 480px) {
+  .bz-btn {
+    min-height: var(--tap);
+  }
+  .bz-ft .bz-primary {
+    flex-basis: 100%;
+    order: 9;
+  }
+}
+.bz-prog {
+  margin: 0;
+  padding-inline-start: 1.25em;
+  font-size: var(--fs-s);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.bz-prog li:last-child {
+  color: var(--text);
+}
+.bz-next {
+  font-weight: 500;
+}
+a.bz-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  box-sizing: border-box;
+}

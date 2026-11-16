@@ -135,6 +135,8 @@ export const KIT_FILES: readonly string[] = [
   "base.css",
   "busy.js",
   "busy-words.js",
+  // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).
+  "busy.css",
   "dialog.js",
   // issue 206: date-times in the person's own zone.
   "time.js",
@@ -239,6 +241,9 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/shell.css",
   "/kit/whatsnew.css",
   "/kit/report.css",
+  // den-ui 0.6.1: the working pop-up's look, on the page from the start
+  // (busy.js links it itself on a page without it).
+  "/kit/busy.css",
 ];
 
 /**

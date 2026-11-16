@@ -142,11 +142,14 @@ back to English.
 
 ### Content Security Policy
 
-The kit works under `script-src 'self'; style-src 'self'`: no inline
-`style` attributes, no inline scripts or handlers, no `eval`. It sets
-custom properties through the CSSOM (`style.setProperty`), which the
-policy allows. A browser test loads a kit page under that policy and fails
-on any violation.
+The shell, the version chip, What's new, the update pill, Report and the
+working pop-up work under `script-src 'self'; style-src 'self'`: no
+inline `style` attributes, no inline scripts, handlers or `<style>`, no
+`eval`. They set custom properties through the CSSOM
+(`style.setProperty`), which the policy allows. A browser test loads a
+kit page under that policy and fails on any violation. `dialog.js` (the
+ask-and-tell dialogs) still adds a `<style>` of its own; it is not part
+of that test yet.
 
 ### The parity gate: `den-ui-parity`
 
@@ -168,6 +171,36 @@ repository root, one row per component, with a reason:
 `version`, `whatsnew`, `update`, `report` and `working`. A row without a
 reason does not count. With no DIVERGE.md, every copy fails.
 
+## The working pop-up and types (0.6.1)
+
+- `src/busy.js`, `src/busy-words.js` and `src/busy.css` (exports `./busy`,
+  `./busy-words`, `./busy.css`): the working pop-up. Its look is
+  `busy.css`, linked, never injected. Link it in the page's `<head>`;
+  without that, busy.js links it from beside itself the first time it
+  opens.
+
+      busyAction("save", async (headers, progress) => {
+        progress("Copying files");          // a line under the title
+        const r = await fetch("/api/save", { method: "POST", headers });
+        if (!r.ok) throw { status: r.status };
+        return r.json();
+      }, {
+        // A failure trying again won't fix: its link in place of Try again.
+        next: (err) => (err.status === 403
+          ? { label: "Sign in", href: "/sign-in" } : null),
+      });
+
+  `next` is `{ label, href }` or a function of the failure that returns
+  one (or null for Try again). The pop-up then says that trying again
+  won't help, and the link is its primary button. `progress(text)` lines
+  show in order while it works. `quietFail`, `inlineError`, `skipDone`
+  and `extra` are as before, and a success still closes at once with a
+  toast.
+
+- Types: every `src/*.js` has a `.d.ts` beside it; the package's `types`
+  is `src/kit.d.ts`. A test compiles a consumer against them with
+  `--strict`.
+
 ## Themes
 
 A theme may override every colour in both modes, the shadow, the bar,
@@ -179,7 +212,8 @@ spacing, motion or layers, so layouts stay the same.
 - Components use tokens only: a test fails on a raw colour outside
   `tokens.css`.
 - Every text and background pair passes WCAG AA in both modes (4.5:1 for
-  text, 3:1 for marks); status pills are checked on their own tint.
+  text, 3:1 for marks); status pills are checked on their own tint, and
+  the remote colour on its 16% disc.
 - The fonts stay within 120 KB.
 
 ## Licence

@@ -85,8 +85,10 @@
   --warn: #865700;
   --bad: #af0900;
   --info: hsl(213 22% 36%);
-  /* #0e7280 failed the pill rule over --sunken (4.20:1); 4.59:1 now. */
-  --remote: #0d6b79;
+  /* #0e7280 failed the pill rule over --sunken (4.20:1). #0d6b79 failed
+     the disc rule (an agent's initial on its 16% tint) over --sunken
+     (4.33:1); 4.56:1 now, the pill 4.84:1. */
+  --remote: #0c6774;
   --violet: #6a4bc4;
   --shadow: 0 8px 28px rgb(0 0 0 / 0.14);
   /* The shared update pill's shadow (update-pill.css). */

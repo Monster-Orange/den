@@ -14,6 +14,12 @@ config and manifest changes a distribution must make to move to it under
   product can draw the same frame with its own pages and words.
 - A new check, `npm run gate:den-ui`, fails when Den keeps its own copy of
   a UI kit part. It runs in CI.
+- The UI kit is now 0.6.1. Its working pop-up can offer a link to the next
+  step in place of Try again, and show progress lines while it works.
+  Its styles come from a stylesheet file, so a page with a strict
+  Content Security Policy can use it. The kit also ships types.
+- The light theme's remote colour is a shade darker. An agent's initial
+  on its tinted disc now meets the 4.5:1 contrast bar.
 
 ### Fixed
 
