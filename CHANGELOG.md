@@ -4,6 +4,13 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.60] - unreleased
+
+### Fixed
+
+- Agents' own calls to Den (attention, Hub inbox) are no longer refused as
+  from an unknown process when Den is busy, such as just after restarts.
+
 ## [0.4.59] - unreleased
 
 ### Fixed

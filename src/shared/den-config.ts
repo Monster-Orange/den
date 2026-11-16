@@ -1537,10 +1537,15 @@ export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
 export const RESTART_WAIT_MINUTES_DEFAULT = 120;
 
+/** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
+export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
+
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
   // #70: an agent's token only from its own processes.
   "token_binding",
+  // Issue 242: how long an agent's call waits for Den to find its process.
+  "token_peer_wait_ms",
   "persona_packs",
   "runtime_catalog",
   "default_pack",
@@ -1590,6 +1595,12 @@ export interface ResolvedAgentsConfig {
    * (agents.token_binding, default true). false: from any process here.
    */
   tokenBinding?: boolean;
+  /**
+   * Issue 242: agents.token_peer_wait_ms (default
+   * TOKEN_PEER_WAIT_MS_DEFAULT): how long an agent's call waits for Den to
+   * find the process that made it before refusing it as unknown.
+   */
+  tokenPeerWaitMs?: number;
   /** As configured (relative to the distribution root). */
   personaPacks: string[];
   /** Each pack's guardrails as configured, by index of personaPacks. */
@@ -1801,10 +1812,19 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     throw new Error(
       `agents.token_binding: true or false (got ${JSON.stringify(tb)})`,
     );
+  const pw = (raw as { token_peer_wait_ms?: unknown }).token_peer_wait_ms;
+  if (
+    pw !== undefined &&
+    (typeof pw !== "number" || !Number.isInteger(pw) || pw < 0 || pw > 600_000)
+  )
+    throw new Error(
+      `agents.token_peer_wait_ms: a whole number of ms from 0 to 600000 (got ${JSON.stringify(pw)})`,
+    );
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
     tokenBinding: tb !== false,
+    tokenPeerWaitMs: typeof pw === "number" ? pw : TOKEN_PEER_WAIT_MS_DEFAULT,
     personaPacks: [],
     packGuardrails: [],
     defaultPackGuardrails: guardrailsBlock(

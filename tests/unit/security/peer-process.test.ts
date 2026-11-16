@@ -8,8 +8,10 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn, type ChildProcess } from "child_process";
 import * as http from "http";
 import type { AddressInfo } from "net";
+import * as net from "net";
 import {
   descendsFrom,
+  loopbackPeerLine,
   loopbackPeerPid,
 } from "../../../src/shared/peer-process.js";
 
@@ -82,6 +84,41 @@ describe("the caller of a loopback connection (this machine)", () => {
     }
   }, 30_000);
 
+  it("issue 242: found as it connects, without holding the loop, with its line of parents", async () => {
+    if (!real) return;
+    const srv = net.createServer();
+    const lines: Promise<number[] | null>[] = [];
+    srv.on("connection", (sock) => {
+      lines.push(loopbackPeerLine(sock.remotePort ?? 0, sock.localPort));
+      sock.on("error", () => undefined);
+    });
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    const p = (srv.address() as AddressInfo).port;
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        `const s=require("net").connect(${p},"127.0.0.1",()=>{console.log("P"+process.pid);process.stdin.on("end",()=>s.destroy());process.stdin.resume()})`,
+      ],
+      { stdio: ["pipe", "pipe", "inherit"] },
+    );
+    try {
+      const pid = await new Promise<number>((resolve) =>
+        child.stdout!.on("data", (d: Buffer) => {
+          const m = /P(\d+)/.exec(d.toString());
+          if (m) resolve(Number(m[1]));
+        }),
+      );
+      const line = await lines[0];
+      expect(line?.[0]).toBe(pid);
+      // Its parent is this process: the line reaches it.
+      expect(line).toContain(process.pid);
+    } finally {
+      child.stdin!.end();
+      await new Promise((r) => srv.close(r));
+    }
+  }, 30_000);
+
   it("no such connection, or a bad port: null", () => {
     expect(loopbackPeerPid(0)).toBeNull();
     expect(loopbackPeerPid(70_000)).toBeNull();
@@ -130,6 +167,13 @@ describe("Linux: /proc, as a fake tree", () => {
   it("finds the pid holding the client end (never this process)", () => {
     expect(loopbackPeerPid(0xce2a, d)).toBe(400);
     expect(loopbackPeerPid(0x1234, d)).toBeNull();
+  });
+
+  it("issue 242: the async lookup gives the caller and its parents", async () => {
+    expect(await loopbackPeerLine(0xce2a, undefined, d)).toEqual([
+      400, 300, 200, 1,
+    ]);
+    expect(await loopbackPeerLine(0x1234, undefined, d)).toBeNull();
   });
 
   it("walks the parents, a comm with spaces and parens too", () => {
@@ -236,6 +280,24 @@ describe("macOS: lsof's rows", () => {
     expect(
       loopbackPeerPid(52921, { platform: "darwin", self: 100, run: two }),
     ).toBeNull();
+  });
+
+  it("issue 242: the async lookup asks lsof, then ps, never holding the loop", async () => {
+    const asked: string[] = [];
+    const run = async (cmd: string) => {
+      asked.push(cmd);
+      return cmd.endsWith("lsof")
+        ? "p400\nn127.0.0.1:52921->127.0.0.1:8000\n"
+        : "  400   300\n  300   200\n  200     1\n";
+    };
+    expect(
+      await loopbackPeerLine(52921, 8000, {
+        platform: "darwin",
+        self: 100,
+        run,
+      }),
+    ).toEqual([400, 300, 200, 1]);
+    expect(asked).toEqual(["/usr/sbin/lsof", "/bin/ps"]);
   });
 
   it("an unknown platform: null and false", () => {

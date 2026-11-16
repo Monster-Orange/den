@@ -106,7 +106,7 @@ describe("#70: an agent's token only from its own processes", () => {
       reason: "token_elsewhere",
     });
     expect(row!.detail).toMatch(
-      /agent:planner's token from outside its session \(pid \d+\): POST \/api\/agents\/self\/attention/,
+      /agent:planner's token from outside the agent's own processes \(pid \d+, agent pid \d+\): POST \/api\/agents\/self\/attention/,
     );
     // The token itself is never in the trail.
     expect(JSON.stringify(audit())).not.toContain(token);
