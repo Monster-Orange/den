@@ -176,22 +176,43 @@ export function versionChipHtml({ version, lang } = {}) {
 
 /**
  * The Report button: the flat speech bubble, the word, ⌘⇧F (hidden on a
- * phone). `inFoot`: a pop-up's footer; `inTop`: the top bar. A click on
- * any [data-den-report] opens the Report form (the client's job).
+ * phone). `inFoot`: a pop-up's footer; `inTop`: the top bar. `label`:
+ * the button's own words (a row's "Report this"), its name too. `prefill`:
+ * { kind?, title?, description? }, kept as JSON on the button; the kit's
+ * click opens Report with it. A click on any [data-den-report] opens the
+ * Report form (the client's job).
  */
-export function reportButtonHtml({ inFoot, inTop, lang } = {}) {
+export function reportButtonHtml({ inFoot, inTop, lang, label, prefill } = {}) {
   return (
     '<button type="button" class="den-rb' +
     (inFoot ? " den-rb-in" : "") +
     (inTop ? " den-rb-top" : "") +
-    '" data-den-report aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
+    '" data-den-report' +
+    (prefill
+      ? ' data-den-report-prefill="' + esc(JSON.stringify(prefill)) + '"'
+      : "") +
+    (label != null ? ' aria-label="' + esc(label) + '"' : "") +
+    ' aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
     esc(kitT(lang, "kit.report.tip")) +
     '">' +
     icon("report") +
     "<span>" +
-    esc(kitT(lang, "kit.report.word")) +
+    esc(label != null ? label : kitT(lang, "kit.report.word")) +
     '</span><kbd aria-hidden="true">⌘⇧F</kbd></button>'
   );
+}
+
+/** A Report button's prefill (data-den-report-prefill), or undefined. */
+export function reportPrefillOf(el) {
+  const raw =
+    el && el.getAttribute && el.getAttribute("data-den-report-prefill");
+  if (!raw) return undefined;
+  try {
+    const p = JSON.parse(raw);
+    return p && typeof p === "object" ? p : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

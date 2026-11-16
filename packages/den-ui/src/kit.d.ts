@@ -15,6 +15,7 @@ import type {
   navItemHtml,
   versionChipHtml,
   reportButtonHtml,
+  reportPrefillOf,
   icon,
   esc,
 } from "./shell-html.js";
@@ -84,7 +85,12 @@ export declare const report: {
     prefill?: { kind?: string; title?: string; description?: string };
     draft?: string;
   }): Promise<unknown>;
-  button(o?: { inFoot?: boolean; inTop?: boolean }): string;
+  button(o?: {
+    inFoot?: boolean;
+    inTop?: boolean;
+    label?: string;
+    prefill?: { kind?: string; title?: string; description?: string };
+  }): string;
 };
 export declare const busy: {
   run<T = unknown>(
@@ -116,6 +122,7 @@ export interface DenUIKit {
   navItemHtml: typeof navItemHtml;
   versionChipHtml: typeof versionChipHtml;
   reportButtonHtml: typeof reportButtonHtml;
+  reportPrefillOf: typeof reportPrefillOf;
   syncPinToggles: typeof syncPinToggles;
   icon: typeof icon;
   esc: typeof esc;

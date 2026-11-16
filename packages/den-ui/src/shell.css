@@ -22,6 +22,15 @@ body.den-has-shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  padding-top: var(--den-top-h);
+  box-sizing: border-box;
+}
+/* The page's one main (#den-content, the skip link's target) takes what
+   is left under the top bar, so a short page's last row can reach the
+   window's bottom. */
+body.den-has-shell > #den-content {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .den-shell {
   display: contents;
@@ -59,9 +68,15 @@ body.den-has-shell {
   box-sizing: border-box;
   padding: 0 12px;
   flex-shrink: 0;
-  position: relative;
+  /* Pinned, as the rail under it is: fixed, whatever the host does with
+     html and body (sticky is held by the body's box, and a body of
+     height 100% lets the bar scroll away). The body's padding-top keeps
+     the page out from under it. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 20;
-  margin-left: calc(-1 * var(--den-rail-w));
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   min-width: 0;
