@@ -59,6 +59,8 @@ config and manifest changes a distribution must make to move to it under
   row can have its own Report button that opens the form filled in.
 - The UI kit is now 0.6.4. The top bar no longer changes shade when the
   update pill shows.
+- The UI kit is now 0.6.6. A date or time in a part of a page that is
+  still in English reads in English too, not in the page's language.
 - The UI kit is now 0.6.5. In Safari, focus goes back to the button that
   opened Report, an ask-or-tell pop-up or What's new when it closes.
 - The light theme's remote colour is a shade darker. An agent's initial

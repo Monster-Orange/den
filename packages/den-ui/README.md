@@ -201,6 +201,14 @@ reason does not count. With no DIVERGE.md, every copy fails.
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.6.6
+
+- A time drawn by `upgradeTimes` reads in the language of the part of
+  the page it sits in: the nearest `[lang]` around the `<time>` first,
+  then `<html lang>`, then the browser's. Text and title both. A row
+  still in English on a translated page no longer reads "connected 今".
+- No new files: hosts serving a fixed list change nothing.
+
 ## 0.6.5
 
 - Focus goes back to what opened a pop-up when it closes, in Safari too.
