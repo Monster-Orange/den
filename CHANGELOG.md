@@ -4,6 +4,32 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.61] - unreleased
+
+### Added
+
+- One queue per machine for heavy test runs. Wrap a gate in
+  `<cli> gate run --kind browser --estimate 6m -- <command>`: it waits for
+  its turn, runs the command, and gives the turn back when the command
+  ends, passes, fails or is killed. A browser run has the machine alone;
+  unit runs share it, 2 at a time by default. Every repo and install on
+  the machine shares the same queue.
+- A run that waits says who holds the machine and until about when. No
+  run is ever stopped by another one.
+- A turn whose process has ended is freed at once. A run past its
+  estimate is flagged, and never stopped.
+- `<cli> gate status` and the Agents page show who holds the machine and
+  who waits; an agent's row says when it holds or waits. A person can end
+  a turn early from the Agents page or with `<cli> gate end`; an agent
+  can't.
+- Agents read the queue with the `gate_slot_status` tool, and hold a turn
+  across several commands with `gate_slot_request` and
+  `gate_slot_release`.
+- Every ask, wait, grant, release and early end is written to the
+  machine's slot log, so waiting time can be counted.
+- Settings › Server: how many unit runs share the machine, and how long
+  past its estimate a run is flagged.
+
 ## [0.4.59] - unreleased
 
 ### Fixed

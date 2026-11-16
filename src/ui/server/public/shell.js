@@ -1612,6 +1612,12 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.gate_cpu": "Unit test runs at once, on this machine",
+    "set.server.gate_cpu.d":
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
+    "set.server.gate_overrun.d":
+      "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2480,6 +2486,26 @@
     "busy.delProjW": "Deleting {name}…",
     "busy.delProjS": "Deleted {name}.",
     "busy.delProjF": "Couldn't delete {name}.",
+    // Issue 144: the Agents page's gate chip (heavy test runs take turns).
+    "gate.chip": "Gate: {kind} · {who} · until {at}",
+    "gate.chipWaiting": " · {n} waiting",
+    "gate.kind.browser": "browser tests",
+    "gate.kind.cpu": "unit tests",
+    "gate.popH": "Test runs on this machine",
+    "gate.holds": "Runs {kind}, until about {at}",
+    "gate.waits": "Waits to run {kind}, from about {at}",
+    "gate.over": "past its estimate",
+    "gate.none": "No test runs hold or wait.",
+    "gate.end": "End early",
+    "gate.endT": "End this slot early?",
+    "gate.endQ":
+      "End the slot for {label}? Its run is not stopped; the next one may start.",
+    "gate.endGo": "End slot",
+    "gate.rowHolds": "gate: {kind}",
+    "gate.rowWaits": "waits for gate: {kind}",
+    "busy.gateEndW": "Ending the slot for {name}…",
+    "busy.gateEndS": "The slot for {name} ended.",
+    "busy.gateEndF": "Couldn't end the slot for {name}.",
     "busy.rmSvcW": "Removing {name}…",
     "busy.rmSvcS": "Removed {name}.",
     "busy.rmSvcF": "Couldn't remove {name}.",

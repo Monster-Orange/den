@@ -29,6 +29,15 @@ if (!process.env.DEN_HOME)
     ".den",
   );
 
+// Issue 144: no test takes or reads a turn in this machine's real gate-slot
+// queue (a developer's own gate runs wait there). Not created here.
+if (!process.env.DEN_GATE_DIR)
+  process.env.DEN_GATE_DIR = path.join(
+    os.tmpdir(),
+    `den-test-${process.pid}`,
+    "gate-slots",
+  );
+
 // No test asks this machine's login shell for its PATH (its startup files
 // are the developer's), and no test finds a runtime CLI installed here
 // (~/.local/bin/claude) by its install directories: AG-0.1's search is the
