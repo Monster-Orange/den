@@ -15,6 +15,10 @@ config and manifest changes a distribution must make to move to it under
   in a row (default 2) it counts as needing you. Den never updates past
   a pending Allow. After a self-update, a new pin left uncommitted in the
   distribution's folder is reported too.
+- Den's log now says where held Hub comments go: when an agent's
+  comments wait (busy, or waiting on its person), when a restart brings
+  held ones back, when they're typed in and how long the oldest waited,
+  and when Hub's Try again repeats one already held.
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new
