@@ -62,9 +62,13 @@ A running agent keeps the tools it started with. After Connect or Disconnect, Se
 In Settings › Hub, change the address or clear it, and press **Save**. Save writes it to your user
 config (`config/local/user.yml`) and restarts Den itself.
 
-To move to another Hub, Disconnect first, so the old Hub revokes this install's token. Then change the
-address and Connect. To stop using Hub, Disconnect, then clear the address. With no address, Den shows
-nothing about Hub and agents get no Hub tools.
+When this install is connected, Save of a different address and Clear disconnect from the old Hub
+first, so it revokes this install's token. If that Hub can't be reached, the token is removed here
+anyway. Den never sends a token to a Hub that didn't issue it. After a new address, press **Connect**.
+With no address, Den shows nothing about Hub and agents get no Hub tools.
+
+Den's own agent can do the same with its held write `hub_connect`: it runs on your Allow, and you
+press Connect after.
 
 ### Disconnect
 
@@ -125,6 +129,9 @@ Den restarts that agent at its next idle, in the same conversation, now with Hub
 Each project here can be linked to one project in Hub. Its agents' docs, mocks and comments are filed
 there. A project that isn't linked has its agents' work filed in Unfiled in Hub. A linked project
 shows Hub's name for it.
+
+Den links to a Hub project by its hidden ID, so renaming the project or its short name in Hub doesn't
+break the link.
 
 **Connect links them.** After Connect, Den links each project whose match is clear: one Hub project
 with the same repos, or, when none has its repos, one with the same name. Connect's message says how
