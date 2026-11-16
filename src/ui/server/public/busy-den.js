@@ -11,7 +11,8 @@
  * Auto-close (a fast success says so in a toast, a slow one closes after
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
  * restart-agent, fresh-start, report-preview, save-report-draft,
- * discard-draft, follow-project, keep-running, send-message, allow-web-app. Waits for
+ * discard-draft, follow-project, keep-running, send-message, allow-web-app,
+ * agent-order. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -33,6 +34,17 @@ export const DEN_ACTIONS = {
       working: "busy.saveW",
       success: "busy.saveS",
       failure: "busy.saveF",
+    },
+  },
+  // Issue 96: a move in a project's order; fast, so no pop-up and no toast
+  // (the page says where it went in its live line).
+  "agent-order": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.ordW",
+      success: "busy.ordS",
+      failure: "busy.ordF",
     },
   },
   link: {

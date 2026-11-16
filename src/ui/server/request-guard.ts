@@ -779,6 +779,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agent-modes",
   // Issue 103: a composer's Send types into an agent's session.
   "/api/workspaces/:ws/agents/:id/say",
+  // Issue 96: the order a person sees their agents in is the person's.
+  "/api/workspaces/:ws/agents/:id/order",
   // Issue 103: letting a web app use an agent is a person's.
   "/api/embed/keys",
   "/api/agents/clear-stopped",

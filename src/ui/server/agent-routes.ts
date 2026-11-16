@@ -105,6 +105,7 @@ import {
   readAgentsConfig,
   readMcpConfig,
 } from "../../shared/den-config.js";
+import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
@@ -149,6 +150,7 @@ import {
   renameAgent,
   moveAgent,
   setAgentRepo,
+  orderAgent,
   checkRepoName,
   workspaceRepoFolders,
   migrateAgentLinks,
@@ -236,7 +238,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|restart|link|move|file|say))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|restart|link|move|file|say|order))?$/;
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
@@ -744,6 +746,7 @@ export async function handleAgentRoutes(
     | "restart"
     | "file"
     | "say"
+    | "order"
     | undefined;
 
   // The double-click fix: the same start, resume, fresh, relaunch,
@@ -947,6 +950,11 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can link an agent to a repo", {
         status: 403,
       });
+    // Issue 96: the order a person sees is the person's.
+    if (verb === "order" && (agent || actor))
+      throw new AgentError("only a person can reorder agents", {
+        status: 403,
+      });
     // D34: clearing what a person sees is a person's.
     if (verb === "clear-helpers" && (agent || actor))
       throw new AgentError("only a person can clear an agent's helpers", {
@@ -1146,6 +1154,25 @@ export async function handleAgentRoutes(
         agent: rec.id,
         ...(rec.displayName ? { displayName: rec.displayName } : {}),
       });
+    } else if (verb === "order") {
+      // Issue 96: {to: "up" | "down" | "top" | "bottom" | <1-based place> |
+      // {before: <id>} | {after: <id>}}.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "to")
+          throw new AgentError(`${k}: unknown field (order takes to)`, {
+            usage: true,
+          });
+      const to = agentMoveOf(body.to);
+      if (to === null)
+        throw new AgentError(
+          "to is up, down, top, bottom, a place from 1, {before: <id>} or {after: <id>}",
+          { usage: true },
+        );
+      const r = await orderAgent(d, ws, id!, to);
+      what = `move ${id} in ${ws} to ${r.position} of ${r.of}`;
+      audit(what);
+      sendJson(res, { ok: true, agent: id, ...r });
     } else if (verb === "link") {
       // D65 v2: the repo of its project it works on. Body {repo: <name>|null}.
       const body = await jsonBody(req);
@@ -2527,4 +2554,17 @@ function agentRoots(d: AgentsResolved, rec: AgentRecord, ws: string): string[] {
   const up = agentUploads(d, rec);
   if (up) roots.push(up);
   return roots.filter(Boolean);
+}
+
+/** Issue 96: a move as the order route takes it, or null when it isn't one. */
+function agentMoveOf(v: unknown): AgentMove | null {
+  if (v === "up" || v === "down" || v === "top" || v === "bottom") return v;
+  if (typeof v === "number") return Number.isInteger(v) && v >= 1 ? v : null;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const keys = Object.keys(v);
+  const id = (v as Record<string, unknown>)[keys[0]];
+  if (keys.length !== 1 || typeof id !== "string" || !id) return null;
+  if (keys[0] === "before") return { before: id };
+  if (keys[0] === "after") return { after: id };
+  return null;
 }

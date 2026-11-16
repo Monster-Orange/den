@@ -553,6 +553,8 @@ export interface UserConfig {
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
     helpers_shown?: unknown;
+    /** Issue 96: the person's order for each project's agents (agents/order.ts). */
+    order?: unknown;
   };
   /**
    * The web server's per-machine keys (src/shared/web-session.ts

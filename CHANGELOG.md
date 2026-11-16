@@ -25,12 +25,17 @@ config and manifest changes a distribution must make to move to it under
   when some agents' own mode is stricter than the project's, that ask
   always waits for the person's own Allow.
 
-### Fixed
-
-- What the page shows and what an agent runs in now come from one rule
-  (issue 225): its own setting, else its project's, else the mode for
-  every agent, else its persona's, else ask. Every start, resume, restart
-  and the mode check read it.
+- Put a project's agents in your own order (issue 96). On the Agents
+  page, drag an agent by the grip on its left edge to a new place in its
+  project; a finger on a phone or tablet drags too. With an agent row
+  focused, Alt+↑ and Alt+↓ move it, and a screen reader hears its new
+  place. The ⋯ menu has Move up, Move down and Move to top, and on a
+  phone Reorder shows Up and Down buttons. The order is yours: it is kept
+  in your own settings (config/local/user.yml, `agents.order`), not in
+  the agent, so it holds after a reload and a Den restart. The Projects
+  page and the service flyout list the agents in the same order. A new
+  agent goes at the end; a removed one drops out. Only a person can
+  change it: an agent is refused.
 
 ### Changed
 
@@ -41,6 +46,13 @@ config and manifest changes a distribution must make to move to it under
   hides it for that version until the tab closes. The pill and its styles
   ship in the UI kit, served at /kit/update-pill.js and
   /kit/update-pill.css. In English, Spanish and Japanese (issue 222).
+
+### Fixed
+
+- What the page shows and what an agent runs in now come from one rule
+  (issue 225): its own setting, else its project's, else the mode for
+  every agent, else its persona's, else ask. Every start, resume, restart
+  and the mode check read it.
 
 ## [0.4.53] - 2026-11-15
 
