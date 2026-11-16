@@ -24,6 +24,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { pageImport } from "./helpers/page-import.js";
 
 jest.setTimeout(60_000);
 
@@ -342,7 +343,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     );
     // (A string: the test's compiler would rewrite import() in a function.)
     await p.evaluate(
-      `import("/topbar.js").then((m) => { void m.askSudo({ command: "make install" }); })`,
+      `${pageImport("/topbar.js")}.then((m) => { void m.askSudo({ command: "make install" }); })`,
     );
     await p.waitForSelector("#den-lock-pop");
     await clean(p);
@@ -397,7 +398,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
       }),
     );
     await p.evaluate(
-      `import("/topbar.js").then((m) => { void m.askSudo({ command: "make install" }); })`,
+      `${pageImport("/topbar.js")}.then((m) => { void m.askSudo({ command: "make install" }); })`,
     );
     await p.waitForSelector("#den-lock-pop");
     await p.waitForTimeout(300);

@@ -22,6 +22,7 @@ import {
   writeDistribution,
 } from "../../../src/ui/cli/create.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { pageImport } from "./helpers/page-import.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const FAKES = ["gh", "op", "doppler", "mkcert"];
@@ -165,7 +166,7 @@ describe("a fresh den create distribution in the browser", () => {
     // as a run's needs-sudo would.
     // A string, so the browser does the import (not the test's compiler).
     await p.evaluate(
-      "import('/topbar.js').then((m) => void m.askSudo({ command: 'sudo true' }))",
+      `${pageImport("/topbar.js")}.then((m) => void m.askSudo({ command: "sudo true" }))`,
     );
     await p.waitForSelector("#den-lock-pop .den-lock-cfg:not([hidden])");
     const note = await p.$eval(
