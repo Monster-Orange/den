@@ -172,6 +172,74 @@ repository root, one row per component, with a reason:
 `scope`, `search`, `bell`, `appearance` and `account`. A row without a
 reason does not count. With no DIVERGE.md, every copy fails.
 
+### Nav inventory
+
+`inventory/nav-inventory.js` (export `./inventory`, types beside it): one
+spec every product runs, so two products' top bars and rails never
+quietly differ. It lists the global nav element by element and compares
+it with the kit's reference: Den's nav as signed off, in
+`inventory/reference/den-<browser>-<width>.json` (export
+`./inventory/reference/*`), for `chromium` and `webkit` at `1280` and
+`390`.
+
+    import { collectNav, compareNav, formatNavDiffs }
+      from "@monster-orange/den-ui/inventory";
+    import { readFileSync } from "node:fs";
+    import { createRequire } from "node:module";
+
+    const ref = JSON.parse(readFileSync(createRequire(import.meta.url)
+      .resolve("@monster-orange/den-ui/inventory/reference/den-chromium-1280.json"),
+      "utf-8"));
+    // `page`: a Playwright Page on the host's own page, viewport 1280 wide,
+    // light, the same browser as the reference.
+    const diffs = compareNav(await collectNav(page), ref, {
+      hostSlots: ["#my-status", ".den-scope"],   // what the host fills itself
+      themeTokens: ["--accent"],                 // colours it may re-theme
+    });
+    expect(formatNavDiffs(diffs)).toBe("");      // one line per difference
+
+- `collectNav(page)` returns `{ version, viewport, userAgent, elements,
+tokens }`. `elements`: `header.den-top`, `nav.den-rail` and every
+  element under them with a box, in DOM order (hidden ones and an
+  `<svg>`'s shapes left out). Each has `key`, `parent`, `slot` (`top`,
+  `rail`, or `foot`: after the rail's spacer), `role`, `tag`, `name`
+  (aria-label, aria-labelledby, alt, its text for a control or a leaf,
+  title), `classes`, `box` `{ x, y, w, h }` and `style`: display,
+  visibility, height, the four corner radii, background-color, each side's
+  border width, style and colour, font-size, -weight, -family, -style,
+  line-height, letter-spacing, text-transform, padding, row-gap,
+  column-gap, color, opacity, box-shadow. A key is `#id`,
+  `[data-nav="x"]`, or the parent's key `>` tag.class (`[n]` among
+  like siblings): `#den-search > kbd`.
+- `compareNav(actual, reference, { hostSlots, themeTokens, tolerance })`
+  returns `[{ key, slot, property, reference, actual }]`, empty when the
+  navs match. It fails on an element missing, extra or out of order
+  (`property` `element`, `order`); a role, tag, name or class list that
+  differs; a box edge moved more than `tolerance` px (default 2:
+  `box.left`, …); any computed style that differs (`style.font-weight`).
+- `hostSlots`: keys (`#den-status`) or one class (`.den-scope`) whose
+  element and everything under it are the host's own: not compared, on
+  either side. A host slot wider or narrower than the reference (or on
+  one side only) may move or stretch its neighbours sideways by exactly
+  that much, never by anything else.
+- `themeTokens`: a colour may differ when, on both sides, it comes from a
+  token in the list. How a colour's token is found: every custom property
+  declared on `:root` or `html` (in any sheet the page can read, inside
+  `@media` and `@layer` too) is read from `<html>`'s computed style; a
+  colour value is set on a probe element and read back, so it is in the
+  form computed colours take. `snapshot.tokens` maps each colour seen to
+  the tokens that compute to it.
+- Fonts: the reference was taken with the system faces pinned to the
+  kit's own Rubik and Space Mono (see Den's test), so text lays out alike
+  on every machine. Pin them the same way, or boxes with text may differ.
+
+Den runs it in `tests/unit/den-ui/nav-inventory.browser.test.ts`, with
+red cases that must fail: the search field 3 px over, its corners, the
+bell gone, two elements swapped, a font weight, the search's ⌘K and icon
+gone; a host slot's new contents must pass. To take the reference again,
+on purpose only: `DEN_UI_NAV_CAPTURE=1` with that test (Den's real
+server on the demo distribution, `/settings`).
+
 ## The working pop-up and types (0.6.1)
 
 - `src/busy.js`, `src/busy-words.js` and `src/busy.css` (exports `./busy`,
@@ -287,6 +355,14 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   `appearance` and `account`, and the update-waiting pill as part of
   `version`. A product's own copy of one fails the gate. A product's
   own rows inside the bell, or its own menu inside a crumb, are not copies.
+
+## 0.6.6
+
+- A time drawn by `upgradeTimes` reads in the language of the part of
+  the page it sits in: the nearest `[lang]` around the `<time>` first,
+  then `<html lang>`, then the browser's. Text and title both. A row
+  still in English on a translated page no longer reads "connected 今".
+- No new files: hosts serving a fixed list change nothing.
 
 ## 0.6.5
 

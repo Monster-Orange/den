@@ -59,6 +59,8 @@ config and manifest changes a distribution must make to move to it under
   row can have its own Report button that opens the form filled in.
 - The UI kit is now 0.6.4. The top bar no longer changes shade when the
   update pill shows.
+- The UI kit is now 0.6.6. A date or time in a part of a page that is
+  still in English reads in English too, not in the page's language.
 - The UI kit is now 0.6.5. In Safari, focus goes back to the button that
   opened Report, an ask-or-tell pop-up or What's new when it closes.
 - The light theme's remote colour is a shade darker. An agent's initial
@@ -137,6 +139,15 @@ config and manifest changes a distribution must make to move to it under
   row says how many projects override it, each linked. The Agents list
   says "from the Den-wide default" too. A Settings link to a row now
   opens at that row.
+
+### Fixed
+
+- A Settings link to one row (an agent's mode, for example) now scrolls
+  the row to just below the settings header. Its name and controls show,
+  rather than sitting hidden under the top bar.
+- Where an agent's mode comes from: when nobody has set the Den-wide
+  default, the Agents page now says "from Den's built-in default", so it
+  can't be mistaken for the Den-wide default.
 
 ## [0.4.60] - 2026-11-16
 

@@ -28,10 +28,16 @@
     "./whatsnew.css": "./src/whatsnew.css",
     "./report.css": "./src/report.css",
     "./busy.css": "./src/busy.css",
-    "./dialog.css": "./src/dialog.css"
+    "./dialog.css": "./src/dialog.css",
+    "./inventory": {
+      "types": "./inventory/nav-inventory.d.ts",
+      "default": "./inventory/nav-inventory.js"
+    },
+    "./inventory/reference/*": "./inventory/reference/*"
   },
   "files": [
     "src/",
+    "inventory/",
     "bin/",
     "LICENSE",
     "README.md"

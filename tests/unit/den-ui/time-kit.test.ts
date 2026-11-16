@@ -128,6 +128,37 @@ describe("setTimeZone", () => {
   });
 });
 
+describe("upgradeTimes: each <time> in the language of the part it sits in", () => {
+  // A host page in ja with one part still in English (lang="en"): a time in
+  // that part reads in English, text and title; elsewhere the page's own.
+  const el = (lang: string | null) => {
+    const near = lang === null ? null : { getAttribute: () => lang };
+    return {
+      textContent: "",
+      title: "",
+      getAttribute: (k: string) =>
+        k === "datetime" ? "2026-11-16T00:32:05Z" : "datetime",
+      hasAttribute: () => false,
+      closest: (sel: string) => (sel === "[lang]" ? near : null),
+    };
+  };
+  const g = globalThis as { document?: unknown };
+  it("a part marked lang=en in a ja page reads in English", () => {
+    const html = { lang: "ja" };
+    g.document = { documentElement: html };
+    const inEn = el("en");
+    const inPage = { ...el(null), closest: () => html };
+    try {
+      upgradeTimes({ querySelectorAll: () => [inEn, inPage] } as never);
+    } finally {
+      delete g.document;
+    }
+    expect(inEn.textContent).toMatch(/Nov/);
+    expect(inEn.title).toMatch(/Nov/);
+    expect(inPage.textContent).toMatch(/11月/);
+  });
+});
+
 describe("the kit ships it", () => {
   it("package.json exports ./time", () => {
     const pkg = JSON.parse(
