@@ -388,7 +388,8 @@ describe("one main landmark (a consumer's dev.17 run)", () => {
     "/local-dev",
     "/services",
     "/logs",
-    "/tests",
+    "/verify",
+    "/test-runs",
     "/environments",
     "/release",
   ])(

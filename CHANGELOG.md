@@ -52,6 +52,27 @@ config and manifest changes a distribution must make to move to it under
   Den's own "Allow the update" do count. Only the newest update ask is
   kept, and it goes once Den runs that version. Opening an agent now
   takes its updates out of the list, so the Updates count drops.
+- A new Checks page at `/verify` answers "Can we ship?" (issue 209). It
+  shows one answer for each environment, worst first. "Nothing ran" is
+  never shown as ready. A failing environment has a See why button: it
+  lists the first failures, the checks still waiting and what passed, and
+  each failure's Open report shows that check's output. Each run is now
+  kept, with who started it and who allowed it. New routes:
+  `/api/verify/overview`, `/api/verify/runs/:id` and
+  `/api/verify/runs/:id/report`.
+
+### Changed
+
+- `/tests` now redirects (301) to `/verify`. The nav's new Checks item
+  (es "Comprobaciones", ja "チェック") opens `/verify`. The old Tests page
+  moved to `/test-runs`, and the nav's Tests item opens it. Links or
+  bookmarks to `/tests` land on the new Checks page.
+
+### Fixed
+
+- At phone width (below 480 px), every button in the top bar and the runs
+  bar is at least 32 px each way, so it is easy to tap (issue 209).
+
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new

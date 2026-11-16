@@ -2511,7 +2511,8 @@ function approvalDeps(): ApprovalDeps {
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
-      run: (a) => runVerify(verifyDeps(), a),
+      // Issue 209: its record says who asked and who allowed it.
+      run: (a, asked) => runVerify(verifyDeps(), a, {}, asked),
     },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),
@@ -3004,7 +3005,7 @@ async function handleRequest(
     pathname === "/local-dev.html"
   ) {
     if (!isLocalEnabled()) {
-      res.writeHead(302, { Location: "/tests" });
+      res.writeHead(302, { Location: "/verify" });
       res.end();
       return;
     }
@@ -3023,7 +3024,7 @@ async function handleRequest(
   // The Graph page (R22): Local Dev's page in its full-width graph view.
   if (pathname === "/graph" || pathname === "/graph.html") {
     if (!isLocalEnabled()) {
-      res.writeHead(302, { Location: "/tests" });
+      res.writeHead(302, { Location: "/verify" });
       res.end();
       return;
     }
@@ -3088,7 +3089,17 @@ async function handleRequest(
     return serveFile(res, path.join(PUBLIC_DIR, "agents.html"));
   }
 
-  if (pathname === "/tests" || pathname === "/index.html") {
+  // Issue 209: Verify's page. /tests moved here (people bookmarked it);
+  // the older test kinds' page is /test-runs while they retire.
+  if (pathname === "/verify" || pathname === "/verify.html") {
+    return serveFile(res, path.join(PUBLIC_DIR, "verify.html"));
+  }
+  if (pathname === "/tests") {
+    res.writeHead(301, { Location: "/verify" });
+    res.end();
+    return;
+  }
+  if (pathname === "/test-runs" || pathname === "/index.html") {
     return serveFile(res, path.join(PUBLIC_DIR, "index.html"));
   }
 

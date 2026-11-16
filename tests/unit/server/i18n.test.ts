@@ -224,6 +224,37 @@ describe("UK-2: Den's actions on the kit's working pop-up (busy-den.js)", () => 
   });
 });
 
+describe("issue 209, T1: the Verify page's v.* words", () => {
+  // Every v.* key the page looks up, and every v.* key en has, is in en,
+  // es and ja: es and ja in their own words, plural forms where the
+  // language has them (ja has none).
+  const page = read("verify-page.js");
+  const used = new Set(
+    [...page.matchAll(/"(v\.[a-z0-9_]+(?:\.[a-z0-9_]+)*)"/g)].map((m) => m[1]),
+  );
+  const all = new Set([
+    ...used,
+    ...Object.keys(EN)
+      .filter((k) => k.startsWith("v.") && k !== "v.title")
+      .map(base),
+  ]);
+
+  it("the page looks its words up as v.* keys", () => {
+    expect(used.size).toBeGreaterThan(40);
+  });
+
+  it.each(["en", ...NON_EN])("%s has every v.* key", (lang) => {
+    const missing = [...all].filter((k) => !(k in messages[lang]));
+    expect(missing).toEqual([]);
+  });
+
+  it.each(NON_EN)("%s says most v.* words in its own words", (lang) => {
+    // A few are the same word in both (a commit, "Den", "Local").
+    const same = [...all].filter((k) => messages[lang][k] === EN[k]);
+    expect(same.length).toBeLessThanOrEqual(6);
+  });
+});
+
 describe("the Settings rows in the palette", () => {
   it("every built-in row has its label in en, word for word", () => {
     const off = (DEN_SETTINGS as { id: string; label: string }[])

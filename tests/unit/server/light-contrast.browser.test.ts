@@ -220,7 +220,8 @@ const PAGES = [
   "/",
   "/services",
   "/environments",
-  "/tests",
+  "/verify",
+  "/test-runs",
   "/agents",
   "/logs",
   "/edge",
@@ -316,7 +317,7 @@ describe("light theme text contrast (WCAG AA)", () => {
       '<div style="background: var(--sunken); padding: 8px"><span class="add-svc-pill supported">Checking pill</span> <span class="add-svc-pill no-manifest">Checking pill</span> <span class="add-svc-pill added">Checking pill</span> <span class="den-bdg bad">Checking pill</span></div>',
     ],
     [
-      "/tests",
+      "/test-runs",
       '<div style="background: var(--sunken); padding: 8px"><span class="perf-ok">Checking pill</span> <span class="perf-fail">Checking pill</span></div>',
     ],
     [

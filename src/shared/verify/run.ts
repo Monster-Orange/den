@@ -26,6 +26,7 @@ import {
 } from "./changes.js";
 import type { VerifyModule } from "./config.js";
 import type { VerifyPlan } from "./plan.js";
+import { writeRunRecord, type ModuleRecord, type RunActor } from "./records.js";
 
 export type ModuleState = ResultState;
 export type Verdict = "passed" | "failed" | "nothing ran";
@@ -83,6 +84,8 @@ export interface RunDeps {
   probe: (url: string) => Promise<number>;
   runId?: () => string;
   now?: () => Date;
+  /** Issue 209: who started the run and who allowed it, for its record. */
+  by?: { startedBy?: RunActor; allowedBy?: RunActor };
 }
 
 /** The verdict of a set of module states (VERIFY-SPEC section 5). */
@@ -138,6 +141,32 @@ export async function runPlan(
 ): Promise<RunResult> {
   const runId = (d.runId ?? newRunId)();
   const now = d.now ?? (() => new Date());
+  const startedAt = now().toISOString();
+  const keep = (
+    r: RunResult,
+    tails: Map<string, string[]>,
+    commit?: string | null,
+  ): RunResult => {
+    writeRunRecord(d.stateDir, {
+      runId,
+      project: r.project,
+      env: r.env,
+      scope: r.scope,
+      verdict: r.verdict,
+      exitCode: r.exitCode,
+      ...(r.reason ? { reason: r.reason } : {}),
+      startedAt,
+      endedAt: now().toISOString(),
+      ...(d.by?.startedBy ? { startedBy: d.by.startedBy } : {}),
+      ...(d.by?.allowedBy ? { allowedBy: d.by.allowedBy } : {}),
+      ...(commit !== undefined ? { commit } : {}),
+      modules: r.modules.map((m): ModuleRecord => {
+        const tail = tails.get(m.id);
+        return tail?.length ? { ...m, tail } : m;
+      }),
+    });
+    return r;
+  };
   const base = {
     ok: true as const,
     runId,
@@ -146,14 +175,18 @@ export async function runPlan(
     scope: plan.scope,
   };
   if (plan.nothingToRun)
-    return {
-      ...base,
-      verdict: "nothing ran",
-      exitCode: NOTHING_RAN_EXIT,
-      ...(plan.reason ? { reason: plan.reason } : {}),
-      modules: [],
-      latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
-    };
+    return keep(
+      {
+        ...base,
+        verdict: "nothing ran",
+        exitCode: NOTHING_RAN_EXIT,
+        ...(plan.reason ? { reason: plan.reason } : {}),
+        modules: [],
+        latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
+      },
+      new Map(),
+    );
+  const tails = new Map<string, string[]>();
   const smokeFailed = new Set<string>();
   const badLayers = new Set<string>();
   const out: ModuleRun[] = [];
@@ -187,6 +220,7 @@ export async function runPlan(
         fs.mkdirSync(resultsDir, { recursive: true });
         const x = await d.runCmd(m, { env: plan.env, runId, resultsDir });
         const last = x.lines?.filter((l) => l.trim()).at(-1);
+        if (x.lines?.length) tails.set(m.id, x.lines.slice(-KEEP_LINES));
         r =
           x.exitCode === 0
             ? { state: "passed", exitCode: 0 }
@@ -231,13 +265,18 @@ export async function runPlan(
     ),
   );
   const verdict = verdictOf(out.map((r) => r.state));
-  return {
-    ...base,
-    verdict,
-    exitCode: VERDICT_EXIT[verdict],
-    modules: out,
-    latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
-  };
+  const first = plan.modules[0];
+  return keep(
+    {
+      ...base,
+      verdict,
+      exitCode: VERDICT_EXIT[verdict],
+      modules: out,
+      latest: readLatest(d.stateDir, plan.project)[plan.env] ?? {},
+    },
+    tails,
+    first ? headOf(first.repoPath) : null,
+  );
 }
 
 /** The last lines a command's output keeps for its result. */
