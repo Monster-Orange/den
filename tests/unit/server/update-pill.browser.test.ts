@@ -95,7 +95,15 @@ async function open(
     });
   const stub = o.stub ?? { onDisk: "9.9.0", restarts: 0 };
   await ctx.route("**/api/server-info", async (route) => {
-    const res = await route.fetch();
+    // The page polls server-info; a poll in flight as the test closes its
+    // context has nothing left to fetch with. Only that is let go.
+    let res: Awaited<ReturnType<typeof route.fetch>>;
+    try {
+      res = await route.fetch();
+    } catch (err) {
+      if (/disposed|closed/i.test(String(err))) return;
+      throw err;
+    }
     const j = (await res.json()) as Record<string, unknown>;
     if (stub.restarts > 0) {
       // A new server: a new pid and start time.
