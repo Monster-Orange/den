@@ -237,6 +237,15 @@
     "v.h_run": "{s} at {c}, {t}",
     "v.h_range": "First failing range",
     "v.h_open": "Open the first failing run",
+    "v.h_issue": "Open an issue with this range",
+    "v.vi_t": "The issue, before it is sent",
+    "v.vi_on": "On {repo}, as you (your gh login).",
+    "v.vi_send": "Send",
+    "v.vi_cancel": "Cancel",
+    "v.vi_done": "Filed on {repo}:",
+    "v.vi_gh":
+      "Sending needs a GitHub sign-in (gh auth login). Nothing was sent. You can open it on GitHub with the text filled in.",
+    "v.vi_gh_link": "Open it on GitHub instead",
     "v.h_none": "No runs here yet.",
     "v.h_nocommit": "no commit",
     "v.fl_a":
@@ -1535,6 +1544,12 @@
     "busy.vrCanW": "Stopping the run…",
     "busy.vrCanS": "The run is stopping.",
     "busy.vrCanF": "Den couldn't stop the run.",
+    "busy.viPW": "Writing the issue…",
+    "busy.viPS": "The issue is ready to check.",
+    "busy.viPF": "Den couldn't write the issue.",
+    "busy.viSW": "Sending the issue to GitHub…",
+    "busy.viSS": "The issue is filed.",
+    "busy.viSF": "GitHub didn't take the issue.",
     "agc.kept": "Your message is still here.",
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
@@ -2259,6 +2274,10 @@
       "And makes them follow the project: their own mode is cleared.",
     // Issue 208: a Verify run's Allow (verify-routes.ts).
     "ap.do.verify_run": "Run checks on {env} in project {project}: {list}",
+    // Issue 212: an issue with a failing range (verify-routes.ts).
+    "ap.do.verify_issue": "Open an issue on {repo}: {title}",
+    "ap.vi.on": "On {repo}, as you (your gh login).",
+    "ap.vi.title": "Title: {title}",
     "ap.vr.scope.changed":
       "Scope: what changed (smoke, plus checks whose files changed since their last result).",
     "ap.vr.scope.all": "Scope: everything on this environment.",

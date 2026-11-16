@@ -2064,6 +2064,33 @@ const APPROVAL_TOOLS: DenTool[] = [
       return askPerson("verify_run", "verify_run", body, a, ctx);
     },
   },
+  {
+    // Issue 212: "Open an issue with this range", asked by an agent.
+    name: "verify_issue",
+    title: "Open an issue for a failing check",
+    description:
+      "Ask the person to open a GitHub issue for a check that fails now, on the check's own repo (its origin), never Den's. The issue carries the range: the last passing run and the first failing one with their commits, the commits in between, the failure's first line and the environment. The person sees the exact title and body, and their Allow files it as them (their gh login), always." +
+      HELD,
+    action: true,
+    shape: {
+      module: z.string().describe("The failing check, like shop:api/orders"),
+      env: z.string().optional().describe("The environment (default local)"),
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      const body = {
+        ...(project ? { project } : {}),
+        module: str(a.module),
+        env: str(a.env) ?? "local",
+      };
+      return askPerson("verify_issue", "verify_issue", body, a, ctx);
+    },
+  },
 ];
 
 /**

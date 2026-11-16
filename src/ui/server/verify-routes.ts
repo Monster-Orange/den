@@ -72,6 +72,14 @@ import {
 } from "../../shared/verify/run.js";
 import { ActiveRuns } from "../../shared/verify/active.js";
 import { moduleHistory } from "../../shared/verify/history.js";
+import { rangeIssue } from "../../shared/verify/range-issue.js";
+import {
+  fileIssueAsPerson,
+  newIssueUrl,
+  runGh,
+  type FiledIssue,
+  type ReportRouteDeps,
+} from "./report-routes.js";
 import {
   VERIFY_SETTINGS_DEFAULTS,
   type VerifySettings,
@@ -115,6 +123,8 @@ export interface VerifyServerDeps {
   active?: ActiveRuns;
   /** Issue 212: the org's `verify:` settings (the defaults when absent). */
   settings?: () => VerifySettings;
+  /** Issue 212: runs `gh` as the person (a test's fake; default: gh). */
+  gh?: ReportRouteDeps["gh"];
 }
 
 const settingsOf = (d: VerifyServerDeps): VerifySettings =>
@@ -439,6 +449,233 @@ const CANCEL_PATH =
 const HISTORY_PATH = /^\/api\/verify\/modules\/([^/]{1,300})\/history$/;
 /** How many commits a failing range lists. */
 const RANGE_COMMITS = 20;
+/** Issue 212: "Open an issue with this range" (preview, or a person's send). */
+const ISSUE_PATH = /^\/api\/verify\/modules\/([^/]{1,300})\/issue$/;
+
+type RangeIssueOf =
+  | { ok: true; repo: string; title: string; body: string }
+  | { ok: false; status: number; code?: string; error: string };
+
+/**
+ * Issue 212: the issue for a failing module's range, on its own repo's
+ * GitHub (from the repo's origin): never Den's. Sends nothing.
+ */
+function rangeIssueOf(
+  deps: VerifyServerDeps,
+  project: string,
+  id: string,
+  env: string,
+): RangeIssueOf {
+  const envs = deps.environments?.() ?? ["local"];
+  if (!envs.includes(env))
+    return {
+      ok: false,
+      status: 400,
+      error: `"${env}" is not one of: ${envs.join(", ")}`,
+    };
+  const mods = modulesOf(deps, project);
+  if (!mods.ok) return { ok: false, status: 400, error: mods.error };
+  const m = mods.modules.find((x) => x.id === id);
+  if (!m)
+    return {
+      ok: false,
+      status: 404,
+      error: `there is no module "${id}" in project ${project}`,
+    };
+  let s: VerifySettings;
+  try {
+    s = settingsOf(deps);
+  } catch (e) {
+    return {
+      ok: false,
+      status: 422,
+      code: "config_invalid",
+      error: (e as Error).message,
+    };
+  }
+  const git = deps.git ?? realGit;
+  const repo = git.origin?.(m.repoPath) ?? null;
+  if (!repo)
+    return {
+      ok: false,
+      status: 409,
+      code: "no_github_repo",
+      error: `repo ${m.repo} has no GitHub origin to file the issue on`,
+    };
+  const h = moduleHistory(listRunRecords(deps.stateDir(), project), id, env, s);
+  const from = h.range?.lastPassed?.commit;
+  const to = h.range?.firstFailed.commit;
+  const commits =
+    from && to
+      ? (git.between?.(m.repoPath, from, to, RANGE_COMMITS) ?? undefined)
+      : undefined;
+  const issue = rangeIssue({
+    project,
+    module: { id, name: m.name, kind: m.kind },
+    history: h,
+    ...(commits ? { commits } : {}),
+  });
+  if (!issue)
+    return {
+      ok: false,
+      status: 409,
+      code: "no_range",
+      error: `${m.name} is not failing on ${env}: there is no range to file`,
+    };
+  return { ok: true, repo, ...issue };
+}
+
+/** Issue 212: held write verify_issue's check (an agent's ask). */
+export function checkVerifyIssue(
+  d: VerifyServerDeps,
+  raw: Record<string, unknown>,
+  who: Who = {},
+): HeldOpCheck<{ project: string; module: string; env: string }> {
+  const p = projectOf(
+    d,
+    typeof raw.project === "string" ? raw.project : undefined,
+    who,
+  );
+  if (!p.ok) return p;
+  if (typeof raw.module !== "string" || !raw.module)
+    return { ok: false, error: "module: the failing check's id" };
+  const env = typeof raw.env === "string" ? raw.env : "local";
+  const i = rangeIssueOf(d, p.project, raw.module, env);
+  if (!i.ok) return { ok: false, error: i.error };
+  const bodyLines = i.body.trimEnd().split("\n");
+  return {
+    ok: true,
+    // Always the person's own Allow: it posts on GitHub as them.
+    personOnly: true,
+    summary: `open an issue on ${i.repo}: ${i.title}`,
+    params: { repo: i.repo, title: i.title },
+    details: [
+      `On ${i.repo}, as you (your gh login).`,
+      `Title: ${i.title}`,
+      ...bodyLines,
+    ],
+    // The body stays as GitHub will show it: in the words it is filed in.
+    detailKeys: [
+      { key: "ap.vi.on", vars: { repo: i.repo } },
+      { key: "ap.vi.title", vars: { title: i.title } },
+      ...bodyLines.map(() => null),
+    ],
+    args: { project: p.project, module: raw.module, env },
+  };
+}
+
+/** Issue 212: held write verify_issue, once the person allowed it. */
+export async function runVerifyIssue(
+  d: VerifyServerDeps,
+  a: Record<string, unknown>,
+): Promise<FiledIssue & { repo?: string }> {
+  const i = rangeIssueOf(
+    d,
+    String(a.project ?? ""),
+    String(a.module ?? ""),
+    String(a.env ?? "local"),
+  );
+  if (!i.ok) return { ok: false, error: i.error };
+  const f = await fileIssueAsPerson(d.gh ?? runGh, {
+    repo: i.repo,
+    title: i.title,
+    body: i.body,
+    label: "bug",
+  });
+  return { ...f, repo: i.repo };
+}
+
+/** Issue 212: POST /api/verify/modules/:id/issue. */
+async function handleIssue(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawId: string,
+  d: VerifyServerDeps,
+): Promise<void> {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    sendJson(res, { ok: false, error: "POST only" }, 405);
+    return;
+  }
+  const body = await bodyOf(req);
+  let id: string;
+  try {
+    id = decodeURIComponent(rawId);
+  } catch {
+    id = "";
+  }
+  if (!body || !id) {
+    sendJson(
+      res,
+      { ok: false, error: "The body is JSON: { project?, env, send? }." },
+      400,
+    );
+    return;
+  }
+  const agent = agentPrincipalOf(req);
+  if (body.send === true && agent) {
+    sendJson(
+      res,
+      {
+        ok: false,
+        error:
+          'only a person sends it here: ask with POST /api/approvals { action: "verify_issue", args: { module, env } }',
+      },
+      403,
+    );
+    return;
+  }
+  const who: Who = agent
+    ? { agent: agent.actor.slice("agent:".length), project: agent.workspace }
+    : {};
+  const p = projectOf(
+    d,
+    typeof body.project === "string" ? body.project : undefined,
+    who,
+  );
+  if (!p.ok) {
+    sendJson(res, { ok: false, error: p.error }, 400);
+    return;
+  }
+  const env = typeof body.env === "string" ? body.env : "local";
+  const i = rangeIssueOf(d, p.project, id, env);
+  if (!i.ok) {
+    sendJson(
+      res,
+      { ok: false, ...(i.code ? { code: i.code } : {}), error: i.error },
+      i.status,
+    );
+    return;
+  }
+  if (body.send !== true) {
+    sendJson(res, {
+      ok: true,
+      repo: i.repo,
+      title: i.title,
+      body: i.body,
+      // The way without a gh sign-in: GitHub's page, the text filled in.
+      newIssueUrl: newIssueUrl(i.repo, i.title, i.body),
+    });
+    return;
+  }
+  const f = await fileIssueAsPerson(d.gh ?? runGh, {
+    repo: i.repo,
+    title: i.title,
+    body: i.body,
+    label: "bug",
+  });
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "verify-issue",
+      detail: f.ok
+        ? `${p.project} on ${env}: ${id} filed as ${f.url}`
+        : `${p.project} on ${env}: ${id} not filed (${f.error})`,
+    },
+    principalOf(req),
+  );
+  if (f.ok) sendJson(res, { ok: true, url: f.url, repo: i.repo });
+  else sendJson(res, { ...f, repo: i.repo }, "need" in f ? 409 : 502);
+}
 
 /** Issue 209: the page's reads (GET); false when `pathname` is none of them. */
 function handleVerifyReads(
@@ -765,6 +1002,11 @@ export async function handleVerifyRoutes(
   const cancel = CANCEL_PATH.exec(pathname);
   if (cancel) {
     handleCancel(req, res, cancel[1], deps());
+    return true;
+  }
+  const issue = ISSUE_PATH.exec(pathname);
+  if (issue) {
+    await handleIssue(req, res, issue[1], deps());
     return true;
   }
   if (handleVerifyReads(req, res, pathname, deps)) return true;

@@ -28,6 +28,15 @@ config and manifest changes a distribution must make to move to it under
 - `GET /api/verify/modules/:id/history`, and agents' `verify_history`.
   `GET /api/verify/runs/:id/report?module=&kind=sarif` serves a scan's
   SARIF. The overview's check rows carry their `id`.
+- Verify: Open an issue with this range, on a failing check's history.
+  The issue goes to the check's own repo on GitHub (its origin), never
+  Den's: which check, the environment, the first failing run and commit,
+  the last passing one, the commits in between and the failure's first
+  line. The person sees the exact title and body first; Send files it as
+  them with their gh, or Open it on GitHub instead fills in GitHub's own
+  page. `POST /api/verify/modules/:id/issue` (a person's `send: true`);
+  an agent asks with the held write `verify_issue`, always the person's
+  own Allow. Report's GitHub send is now shared (`fileIssueAsPerson`).
 
 ## [0.4.58] - unreleased
 

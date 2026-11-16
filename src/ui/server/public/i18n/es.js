@@ -132,6 +132,15 @@
     "v.h_run": "{s} en {c}, {t}",
     "v.h_range": "Primer rango que falla",
     "v.h_open": "Abrir la primera ejecución fallida",
+    "v.h_issue": "Abrir una incidencia con este rango",
+    "v.vi_t": "La incidencia, antes de enviarla",
+    "v.vi_on": "En {repo}, como tú, con tu gh.",
+    "v.vi_send": "Enviar",
+    "v.vi_cancel": "Cancelar",
+    "v.vi_done": "Creada en {repo}:",
+    "v.vi_gh":
+      "Para enviarla hace falta iniciar sesión en GitHub (gh auth login). No se envió nada. Puedes abrirla en GitHub con el texto ya escrito.",
+    "v.vi_gh_link": "Abrirla en GitHub",
     "v.h_none": "Aún no hay ejecuciones aquí.",
     "v.h_nocommit": "sin commit",
     "v.fl_a":
@@ -755,6 +764,12 @@
     "busy.vrCanW": "Deteniendo la ejecución…",
     "busy.vrCanS": "La ejecución se está deteniendo.",
     "busy.vrCanF": "Den no pudo detener la ejecución.",
+    "busy.viPW": "Redactando la incidencia…",
+    "busy.viPS": "La incidencia está lista para revisar.",
+    "busy.viPF": "Den no pudo redactar la incidencia.",
+    "busy.viSW": "Enviando la incidencia a GitHub…",
+    "busy.viSS": "La incidencia está creada.",
+    "busy.viSF": "GitHub no aceptó la incidencia.",
     "agc.kept": "Tu mensaje sigue aquí.",
     "busy.restartW": "Reiniciando {name}…",
     "busy.restartS": "{name} reiniciado.",
@@ -1498,6 +1513,9 @@
     // Issue 208: a Verify run's Allow (verify-routes.ts).
     "ap.do.verify_run":
       "Ejecutar comprobaciones en {env} en el proyecto {project}: {list}",
+    "ap.do.verify_issue": "Abrir una incidencia en {repo}: {title}",
+    "ap.vi.on": "En {repo}, como tú, con tu gh.",
+    "ap.vi.title": "Título: {title}",
     "ap.vr.scope.changed":
       "Alcance: lo que cambió (smoke y las comprobaciones cuyos archivos cambiaron desde su último resultado).",
     "ap.vr.scope.all": "Alcance: todo en este entorno.",

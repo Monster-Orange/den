@@ -138,6 +138,9 @@ Only when Den's config turns them on (`mcp.actions`):
 - `verify_history`: one check's last runs on one environment: since when
   it fails (the first failing range and its commits), and whether it is
   flaky (passed only after a retry, often enough to be marked).
+- `verify_issue`: ask the person to open a GitHub issue for a check that
+  fails now, on the check's own repo. It carries the failing range. The
+  person sees the exact text, and their Allow files it as them, always.
 - `agent_resume`, `agent_import`: resume an agent, or bring in a
   conversation.
 

@@ -5,6 +5,9 @@
  *   from the board's panel, History opens the check's history; a run in
  *   its strip opens that run; Findings opens the scan's findings with the
  *   threshold and the SARIF report
+ *   "Open an issue with this range": the exact title and body first,
+ *   then Send files it and says where (at 390 px: nothing scrolls
+ *   sideways)
  *   T9 at 390 px in en, es and ja, light and dark: no sideways scroll,
  *   every button 32 px or more
  *
@@ -206,6 +209,11 @@ afterAll(async () => {
   await s?.stop();
 });
 
+const ISSUE_BODY =
+  "`api/orders-with-a-much-longer-name` (integration) fails on **staging** in project north.\n\n- First failing run: `r9`, at commit `e4f5a6b`\n- `b7c8d9e` orders: add discount codes to the checkout with a long subject line that goes on\n";
+/** The issue route's asks, in order: { send } per POST. */
+const issueAsks: { send?: boolean; env?: string }[] = [];
+
 async function routes(ctx: BrowserContext) {
   const json = (b: unknown) => ({
     contentType: "application/json",
@@ -215,6 +223,32 @@ async function routes(ctx: BrowserContext) {
   await ctx.route(/\/api\/verify\/modules\/[^/]+\/history/, (r) =>
     r.fulfill(json(HISTORY)),
   );
+  await ctx.route(/\/api\/verify\/modules\/[^/]+\/issue/, (r) => {
+    const b = JSON.parse(r.request().postData() || "{}") as {
+      send?: boolean;
+      env?: string;
+    };
+    issueAsks.push(b);
+    return r.fulfill(
+      json(
+        b.send
+          ? {
+              ok: true,
+              url: "https://github.com/acme/shop/issues/9",
+              repo: "acme/shop",
+            }
+          : {
+              ok: true,
+              repo: "acme/shop",
+              title:
+                "api/orders-with-a-much-longer-name fails on staging since e4f5a6b",
+              body: ISSUE_BODY,
+              newIssueUrl:
+                "https://github.com/acme/shop/issues/new?title=x&body=y",
+            },
+      ),
+    );
+  });
   await ctx.route(/\/api\/verify\/runs\/r-scan(\?|$)/, (r) =>
     r.fulfill(json(SCAN)),
   );
@@ -291,6 +325,57 @@ describe.each(ENGINES)("issue 212: history and findings in %s", (engine) => {
       expect(await p.getAttribute(".vf-report", "href")).toContain(
         "kind=sarif",
       );
+    } finally {
+      await p.context().close();
+    }
+  }, 90_000);
+
+  it("Open an issue with this range: the exact text first, then Send files it", async () => {
+    if (!browsers.has(engine)) return;
+    await s!.settings({ language: "en" });
+    issueAsks.length = 0;
+    const p = await open(engine, {
+      width: 390,
+      scheme: "dark",
+      url: "/verify?history=shop%3Aapi%2Forders-with-a-much-longer-name&env=staging",
+    });
+    try {
+      await p.click('button:has-text("Open an issue with this range")');
+      await p.waitForSelector(".vf-ipv");
+      expect(issueAsks).toEqual([{ env: "staging" }]);
+      const pv = await p.textContent(".vf-ipv");
+      expect(pv).toContain("On acme/shop, as you (your gh login).");
+      expect(pv).toContain("fails on staging since e4f5a6b");
+      expect(await p.textContent(".vf-ipv-body")).toBe(ISSUE_BODY);
+      expect(
+        await p.getAttribute(
+          '.vf-ipv a:has-text("Open it on GitHub instead")',
+          "href",
+        ),
+      ).toContain("github.com/acme/shop/issues/new");
+      // The preview fits the phone: no sideways scroll, buttons 32 px+.
+      const m = await p.evaluate(() => {
+        const main = document.querySelector("#den-content") as HTMLElement;
+        return {
+          doc: document.documentElement.scrollWidth,
+          main: main.scrollWidth - main.clientWidth,
+          small: Array.from(
+            document.querySelectorAll(".vf-ipv button, .vf-ipv a.den-btn"),
+          )
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.height < 32).length,
+        };
+      });
+      expect(m).toEqual({ doc: 390, main: 0, small: 0 });
+      await p.click('.vf-ipv button:has-text("Send")');
+      await p.waitForSelector(
+        '#vf-issue a[href="https://github.com/acme/shop/issues/9"]',
+      );
+      expect(issueAsks).toEqual([
+        { env: "staging" },
+        { env: "staging", send: true },
+      ]);
+      expect(await p.textContent("#vf-issue")).toContain("Filed on acme/shop:");
     } finally {
       await p.context().close();
     }

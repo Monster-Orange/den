@@ -254,7 +254,7 @@ async function compose(
 }
 
 /** Whether `gh` is signed in to GitHub (`gh auth status`). */
-async function ghSignedIn(d: ReportRouteDeps): Promise<boolean> {
+async function ghSignedIn(d: Pick<ReportRouteDeps, "gh">): Promise<boolean> {
   try {
     return (
       (await d.gh(["auth", "status", "--hostname", "github.com"])).code === 0
@@ -323,7 +323,7 @@ export function myReportsOf(raw: unknown): MyReport[] {
 
 /** Whether `repo` has `label` (read only: a missing one is never made). */
 async function hasLabel(
-  d: ReportRouteDeps,
+  d: Pick<ReportRouteDeps, "gh">,
   repo: string,
   label: string,
 ): Promise<boolean> {
@@ -335,6 +335,60 @@ async function hasLabel(
   } catch {
     return false;
   }
+}
+
+const SLUG_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+export type FiledIssue =
+  | { ok: true; url: string }
+  | { ok: false; need: "github"; error: string; newIssueUrl: string }
+  | { ok: false; error: string; newIssueUrl?: string };
+
+/**
+ * Issue 212 follow-up: a new issue on `repo`, filed as the person with
+ * their gh (the body on stdin). Report's send and Verify's "Open an issue
+ * with this range" both file through it; the caller decides the repo and
+ * that a person (never an agent) sends. Not signed in: nothing is sent,
+ * and the filled-in new-issue link is the way. The label only when the
+ * repo has it: Den never makes one.
+ */
+export async function fileIssueAsPerson(
+  gh: ReportRouteDeps["gh"],
+  i: { repo: string; title: string; body: string; label?: string },
+): Promise<FiledIssue> {
+  if (!SLUG_RE.test(i.repo) || i.repo.startsWith("-"))
+    return { ok: false, error: `"${i.repo}" is not a GitHub owner/repo` };
+  const d = { gh };
+  if (!(await ghSignedIn(d)))
+    return {
+      ok: false,
+      need: "github",
+      error: "sending needs a GitHub sign-in: nothing was sent",
+      newIssueUrl: newIssueUrl(i.repo, i.title, i.body),
+    };
+  const r = await gh(
+    [
+      "issue",
+      "create",
+      "-R",
+      i.repo,
+      "--title",
+      i.title,
+      ...(i.label && (await hasLabel(d, i.repo, i.label))
+        ? ["--label", i.label]
+        : []),
+      "--body-file",
+      "-",
+    ],
+    i.body,
+  );
+  if (r.code !== 0)
+    return {
+      ok: false,
+      error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
+      newIssueUrl: newIssueUrl(i.repo, i.title, i.body),
+    };
+  return { ok: true, url: r.stdout.trim().split("\n").pop() ?? "" };
 }
 
 /** An open issue on `repo` with exactly this title, if there is one. */
@@ -476,50 +530,42 @@ export function handleReportRoutes(
         const dup = await sameTitle(d, c.repo, c.title);
         if (dup) return d.sendJson(res, { ok: false, duplicate: dup }, 409);
       }
-      const r =
-        addTo !== null
-          ? await d.gh(
-              [
-                "issue",
-                "comment",
-                String(addTo),
-                "-R",
-                c.repo,
-                "--body-file",
-                "-",
-              ],
-              c.body,
-            )
-          : await d.gh(
-              [
-                "issue",
-                "create",
-                "-R",
-                c.repo,
-                "--title",
-                c.title,
-                ...((await hasLabel(d, c.repo, c.label))
-                  ? ["--label", c.label]
-                  : []),
-                "--body-file",
-                "-",
-              ],
-              c.body,
-            );
-      if (r.code !== 0)
-        return d.sendJson(
-          res,
-          {
-            ok: false,
-            error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
-            newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
-          },
-          502,
+      let url: string;
+      if (addTo !== null) {
+        const r = await d.gh(
+          ["issue", "comment", String(addTo), "-R", c.repo, "--body-file", "-"],
+          c.body,
         );
+        if (r.code !== 0)
+          return d.sendJson(
+            res,
+            {
+              ok: false,
+              error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
+              newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
+            },
+            502,
+          );
+        url = r.stdout.trim().split("\n").pop() ?? "";
+      } else {
+        // The same send Verify's range issue uses (fileIssueAsPerson).
+        const f = await fileIssueAsPerson(d.gh, {
+          repo: c.repo,
+          title: c.title,
+          body: c.body,
+          label: c.label,
+        });
+        if (!f.ok)
+          return d.sendJson(
+            res,
+            { ok: false, error: f.error, newIssueUrl: f.newIssueUrl },
+            "need" in f ? 409 : 502,
+          );
+        url = f.url;
+      }
       log.add(who, now());
       if (typeof b.draftId === "string")
         draftStore(d.stateDir()).remove(b.draftId);
-      const url = r.stdout.trim().split("\n").pop() ?? "";
       d.sendJson(res, { ok: true, url, repo: c.repo, added: addTo !== null });
     });
 

@@ -265,6 +265,18 @@ async function verifyRoutes(ctx: BrowserContext): Promise<void> {
       }),
     ),
   );
+  // Issue 212: a range issue's preview (Open an issue with this range).
+  await ctx.route(/\/api\/verify\/modules\/[^/]+\/issue/, (r) =>
+    r.fulfill(
+      json({
+        ok: true,
+        repo: "acme/shop",
+        title: "api/orders fails on staging since e4f5a6b",
+        body: "`api/orders` (integration) fails on **staging**.\n\n- First failing run: `h2`\n",
+        newIssueUrl: "https://github.com/acme/shop/issues/new?title=x&body=y",
+      }),
+    ),
+  );
   // Issue 212: a history with a flaky mark, and a scan's findings.
   await ctx.route(/\/api\/verify\/modules\/[^/]+\/history/, (r) =>
     r.fulfill(
@@ -492,6 +504,22 @@ const SURFACES: {
       await p.evaluate(() =>
         document.querySelectorAll("details").forEach((d) => (d.open = true)),
       );
+      const r = await scan(p, "#den-content");
+      await p.context().close();
+      return r;
+    },
+  },
+  {
+    name: "the Verify page's range issue, before Send",
+    async run(scheme, z) {
+      const p = await page(
+        "/verify?history=shop%3Aapi%2Forders&env=staging",
+        scheme,
+        z,
+        verifyRoutes,
+      );
+      await p.click("[data-act=issue]");
+      await p.waitForSelector(".vf-ipv");
       const r = await scan(p, "#den-content");
       await p.context().close();
       return r;

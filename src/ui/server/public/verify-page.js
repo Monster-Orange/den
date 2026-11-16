@@ -565,7 +565,9 @@ export function historyView(h) {
       (h.commits?.length
         ? `<ul class="vf-commits">${h.commits.map((c) => `<li><code>${esc(c.commit)}</code> ${esc(c.subject)}</li>`).join("")}</ul>`
         : "") +
-      `<div class="vf-btns"><a class="den-btn primary" href="?run=${encodeURIComponent(h.range.firstFailed.runId)}" data-nav>${esc(t("v.h_open"))}</a></div>`
+      `<div class="vf-btns"><a class="den-btn primary" href="?run=${encodeURIComponent(h.range.firstFailed.runId)}" data-nav>${esc(t("v.h_open"))}</a>` +
+      `<button type="button" class="den-btn" data-act="issue">${esc(t("v.h_issue"))}</button></div>` +
+      `<div class="vf-issue" id="vf-issue" aria-live="polite"></div>`
     : "";
   const tries = runs
     .filter((r) => r.flaky && r.attempts?.length)
@@ -595,6 +597,36 @@ export function historyView(h) {
     `<section class="vf-card"><p class="vf-say">${esc(historySay(h))}</p>${strip}` +
     `<p class="vf-meta">${esc(label)}</p><p class="vf-meta">${esc(t("v.h_lg"))}</p>${range}</section>` +
     flaky
+  );
+}
+
+/**
+ * Issue 212: "Open an issue with this range": the exact title and body
+ * before Send, then where it was filed. `iv`: { state: "preview" | "sent"
+ * | "github" | "error", repo, title, body, url, newIssueUrl, error }.
+ */
+export function issuePanel(iv) {
+  if (!iv) return "";
+  if (iv.state === "error")
+    return `<p class="vf-err" role="alert">${esc(iv.error)}</p>`;
+  if (iv.state === "sent")
+    return `<p class="vf-say">${esc(t("v.vi_done", { repo: iv.repo }))} <a href="${esc(iv.url)}" target="_blank" rel="noopener noreferrer">${esc(iv.url)}</a></p>`;
+  const gh =
+    iv.state === "github"
+      ? `<p class="vf-err" role="alert">${esc(t("v.vi_gh"))}</p>`
+      : "";
+  const onGithub = iv.newIssueUrl
+    ? `<a class="den-btn" href="${esc(iv.newIssueUrl)}" target="_blank" rel="noopener noreferrer">${esc(t("v.vi_gh_link"))}</a>`
+    : "";
+  return (
+    `<section class="vf-ipv" aria-labelledby="vf-ipv-h"><h3 id="vf-ipv-h" tabindex="-1">${esc(t("v.vi_t"))}</h3>` +
+    `<p class="vf-meta">${esc(t("v.vi_on", { repo: iv.repo }))}</p>` +
+    `<p class="vf-ipv-title"><b>${esc(iv.title)}</b></p>` +
+    `<pre class="vf-ipv-body">${esc(iv.body)}</pre>` +
+    gh +
+    `<div class="vf-btns"><button type="button" class="den-btn primary" data-act="issue-send">${esc(t("v.vi_send"))}</button>` +
+    onGithub +
+    `<button type="button" class="den-btn" data-act="issue-cancel">${esc(t("v.vi_cancel"))}</button></div></section>`
   );
 }
 
@@ -1129,6 +1161,8 @@ export async function mountVerify(
   /** S3's state. */
   let rv = { rec: null, confirming: false, reconnecting: false, timer: 0 };
   let view = "";
+  /** Issue 212: the range issue shown on S5 (issuePanel), or null. */
+  let issueShown = null;
   const busy = (on) => root.setAttribute("aria-busy", on ? "true" : "false");
   const focusHead = () => root.querySelector(".vf-head h2")?.focus?.();
   const stopPoll = () => {
@@ -1412,6 +1446,7 @@ export async function mountVerify(
     } else if (q.get("history") || q.get("findings")) {
       // Issue 212: S5 and S6, each read when it opens.
       view = "detail";
+      issueShown = null;
       busy(true);
       root.innerHTML = loadingView();
       const hist = q.get("history");
@@ -1489,6 +1524,59 @@ export async function mountVerify(
     const act = el.closest("[data-act]")?.getAttribute("data-act");
     if (act === "allow" || act === "decline" || act === "run") {
       void decide(act, el.closest("[data-act]"));
+      return;
+    }
+    // Issue 212: Open an issue with this range: preview, then Send.
+    if (act === "issue" || act === "issue-send") {
+      const q = params();
+      const hist = q.get("history");
+      if (!hist) return;
+      const send = act === "issue-send";
+      const box = () => root.querySelector("#vf-issue");
+      const show = (iv) => {
+        const b = box();
+        if (!b) return;
+        b.innerHTML = issuePanel(iv);
+        b.querySelector(
+          iv.state === "preview" ? "#vf-ipv-h" : "a, [role=alert], .vf-say",
+        )?.focus?.();
+      };
+      const was = issueShown;
+      void write(
+        send ? "verify-issue-send" : "verify-issue-preview",
+        `/api/verify/modules/${encodeURIComponent(hist)}/issue`,
+        { env: q.get("env") ?? "local", ...(send ? { send: true } : {}) },
+        el.closest("[data-act]"),
+      )
+        .then((r) => {
+          if (!r) return;
+          if (send)
+            issueShown = { ...was, state: "sent", url: r.url, repo: r.repo };
+          else
+            issueShown = {
+              state: "preview",
+              repo: r.repo,
+              title: r.title,
+              body: r.body,
+              newIssueUrl: r.newIssueUrl,
+            };
+          show(issueShown);
+        })
+        .catch((err) => {
+          const data = err?.data ?? {};
+          issueShown =
+            data.need === "github" && was
+              ? { ...was, state: "github" }
+              : { state: "error", error: err?.message ?? t("v.err_load") };
+          show(issueShown);
+        });
+      return;
+    }
+    if (act === "issue-cancel") {
+      issueShown = null;
+      const b = root.querySelector("#vf-issue");
+      if (b) b.innerHTML = "";
+      root.querySelector("[data-act=issue]")?.focus?.();
       return;
     }
     if (act === "cancel" || act === "cancel-no") {

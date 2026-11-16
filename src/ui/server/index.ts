@@ -989,7 +989,9 @@ import { policyFor, readPolicySetting } from "../../shared/approval-policy.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
+  checkVerifyIssue,
   checkVerifyRun,
+  runVerifyIssue,
   handleVerifyRoutes,
   startVerify,
   type VerifyServerDeps,
@@ -2458,6 +2460,11 @@ function approvalDeps(): ApprovalDeps {
       // Issue 209: its record says who asked and who allowed it. Issue
       // 210: it goes on in the background; Allow answers its run id.
       run: (a, asked) => startVerify(verifyDeps(), a, {}, asked),
+    },
+    // Issue 212: an issue with a failing range, on the check's own repo.
+    verifyIssue: {
+      check: (a, who) => checkVerifyIssue(verifyDeps(), a, who),
+      run: (a) => runVerifyIssue(verifyDeps(), a),
     },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),

@@ -123,6 +123,15 @@
     "v.h_run": "{c} で{s}、{t}",
     "v.h_range": "最初に失敗した範囲",
     "v.h_open": "最初に失敗した実行を開く",
+    "v.h_issue": "この範囲で Issue を作成",
+    "v.vi_t": "送信前の Issue",
+    "v.vi_on": "{repo} に、あなたとして（あなたの gh ログインで）。",
+    "v.vi_send": "送信",
+    "v.vi_cancel": "キャンセル",
+    "v.vi_done": "{repo} に作成しました:",
+    "v.vi_gh":
+      "送信には GitHub へのサインイン（gh auth login）が必要です。何も送信していません。テキスト入りの GitHub のページで作成できます。",
+    "v.vi_gh_link": "代わりに GitHub で開く",
     "v.h_none": "ここではまだ実行されていません。",
     "v.h_nocommit": "コミットなし",
     "v.fl_a":
@@ -719,6 +728,12 @@
     "busy.vrCanW": "実行を止めています…",
     "busy.vrCanS": "実行を止めています。",
     "busy.vrCanF": "Den は実行を止められませんでした。",
+    "busy.viPW": "Issue を作成しています…",
+    "busy.viPS": "Issue を確認できます。",
+    "busy.viPF": "Den は Issue を作成できませんでした。",
+    "busy.viSW": "Issue を GitHub に送信しています…",
+    "busy.viSS": "Issue を作成しました。",
+    "busy.viSF": "GitHub は Issue を受け付けませんでした。",
     "agc.kept": "メッセージはそのまま残っています。",
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
@@ -1455,6 +1470,9 @@
       "さらに、これらをプロジェクトに従わせます: 独自のモードは消去されます。",
     // Issue 208: a Verify run's Allow (verify-routes.ts).
     "ap.do.verify_run": "プロジェクト {project} の {env} で確認を実行: {list}",
+    "ap.do.verify_issue": "{repo} に Issue を作成: {title}",
+    "ap.vi.on": "{repo} に、あなたとして（あなたの gh ログインで）。",
+    "ap.vi.title": "タイトル: {title}",
     "ap.vr.scope.changed":
       "範囲: 変更分(スモークと、前回の結果以降にファイルが変わったチェック)。",
     "ap.vr.scope.all": "範囲: この環境のすべて。",

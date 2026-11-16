@@ -13,7 +13,8 @@
  * restart-agent, fresh-start, report-preview, save-report-draft,
  * discard-draft, keep-running, send-message, allow-web-app, verify-plan,
  * verify-ask,
- * verify-allow, verify-run, verify-decline, verify-cancel. Waits for
+ * verify-allow, verify-run, verify-decline, verify-cancel,
+ * verify-issue-preview, verify-issue-send. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -240,6 +241,24 @@ export const DEN_ACTIONS = {
       working: "busy.vrCanW",
       success: "busy.vrCanS",
       failure: "busy.vrCanF",
+    },
+  },
+  "verify-issue-preview": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.viPW",
+      success: "busy.viPS",
+      failure: "busy.viPF",
+    },
+  },
+  "verify-issue-send": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.viSW",
+      success: "busy.viSS",
+      failure: "busy.viSF",
     },
   },
   "restart-den": {

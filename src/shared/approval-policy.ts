@@ -88,6 +88,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "runs checks against a shared environment (CRITICAL_HELD_ACTIONS)",
   },
+  verify_issue: {
+    risk: "critical",
+    why: "posts an issue on GitHub as the person (CRITICAL_HELD_ACTIONS)",
+  },
 };
 
 /**

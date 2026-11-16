@@ -84,9 +84,23 @@ export interface GitProbe {
     to: string,
     limit: number,
   ): { commit: string; subject: string }[] | null;
+  /** Issue 212: the repo's GitHub `owner/repo`, from its origin; null if none. */
+  origin?(repoPath: string): string | null;
 }
 
 const COMMIT_RE = /^[0-9a-f]{4,64}$/i;
+
+/**
+ * Issue 212: `owner/repo` from a GitHub remote URL (SSH or HTTPS), or
+ * null for any other host or a name GitHub wouldn't allow.
+ */
+export function githubSlug(url: string): string | null {
+  const m =
+    /^(?:git@github\.com:|ssh:\/\/git@github\.com\/|https:\/\/github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(
+      url.trim(),
+    );
+  return m ? `${m[1]}/${m[2]}` : null;
+}
 
 function git(repoPath: string, args: string[]): string {
   return execFileSync("git", ["-C", repoPath, ...args], {
@@ -111,6 +125,13 @@ export const realGit: GitProbe = {
         .split("\n")
         .map((l) => l.trim())
         .filter(Boolean);
+    } catch {
+      return null;
+    }
+  },
+  origin(repoPath) {
+    try {
+      return githubSlug(git(repoPath, ["remote", "get-url", "origin"]));
     } catch {
       return null;
     }
