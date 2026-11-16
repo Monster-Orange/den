@@ -823,6 +823,21 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.compaction_loop": "圧縮の繰り返し: 回数",
+    "set.agents.compaction_loop.d":
+      "下の分数のうちにエージェントが自動圧縮をこの回数より多く行うと、ベルが圧縮を繰り返していると知らせます。1 回の繰り返しにつきベルは 1 回です。__DEN_CLI__ config agent_context.compaction_loop_count=3",
+    "set.agents.compaction_minutes": "圧縮の繰り返し: 分",
+    "set.agents.compaction_minutes.d":
+      "上の圧縮回数を数える時間の幅です。__DEN_CLI__ config agent_context.compaction_loop_minutes=10",
+    "set.agents.compaction_pause": "圧縮の繰り返しの後は届けるのを止める",
+    "set.agents.compaction_pause.d":
+      "オン: ベルがエージェントの圧縮の繰り返しを知らせたら、そのエージェントへの新しい配信 (Hub のコメントやお知らせ) は、人がエージェントページで解除するまで待ちます。オフ (既定): いつもどおり届けます。__DEN_CLI__ config agent_context.pause_after_loop=true",
+    "set.agents.instruction_share": "指示ファイル: この割合を超えたら警告",
+    "set.agents.instruction_share.d":
+      "エージェントが起動時に読み込む指示ファイル (CLAUDE.md、AGENTS.md など、フォルダーをさかのぼって) がモデルのコンテキストのこの割合を超えると、その行と doctor が警告し、最も大きいファイルを示します。サイズはバイト数 / 4 トークンで見積もります。__DEN_CLI__ config agent_context.instruction_share_percent=15",
+    "set.agents.context_tokens": "不明なときのコンテキストサイズ",
+    "set.agents.context_tokens.d":
+      "__DEN_TITLE__ がモデル自身のサイズを知らないときに、上の割合の基準にするコンテキストサイズ (トークン数) です。__DEN_CLI__ config agent_context.context_tokens=200000",
     "set.agents.list_refresh_wait": "エージェント一覧の待ち時間",
     "set.agents.list_refresh_wait.d":
       "エージェントのページが一覧を待つ時間です。これを過ぎると、一覧が古い可能性があることを表示して再試行します。__DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
@@ -1540,6 +1555,7 @@
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
+    "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":
@@ -1563,6 +1579,21 @@
     "bell.min": "{n} 分",
     "bell.h": "{n} 時間",
     "ag.hub.working": "Hub のコメント {n} 件に対応中",
+    "ag.ctx.tag": "圧縮を繰り返しています",
+    "ag.ctx.looping":
+      "圧縮を繰り返しています: ここ数分で自動圧縮が {n} 回ありました。",
+    "ag.ctx.causeFiles":
+      "考えられる原因: 指示ファイルが {size} あり、コンテキストの {share}% を超えていて、圧縮のたびに読み込み直されます。最も大きいのは {path} ({big}) です。",
+    "ag.ctx.causeOther":
+      "考えられる原因: 圧縮のたびにコンテキストがすぐまたいっぱいになります (大きなツール出力や、ファイルをまるごと読んでいるなど)。",
+    "ag.ctx.held": "解除するまで、このエージェントへの新しい配信は待ちます。",
+    "ag.ctx.clear": "解除",
+    "ag.ctx.clearHeld": "配信を再開",
+    "ag.ctx.clearName": "{id} の圧縮の繰り返しを解除",
+    "ag.ctx.cleared": "{id}: 解除しました",
+    "ag.ins.tag": "指示ファイルが大きい",
+    "ag.ins.tip":
+      "指示ファイルが {size} あり、コンテキストの {share}% を超えています。最も大きいのは {path} ({big}) です。",
     "ag.hub.queued": "Hub のコメント {n} 件が待っています",
     "tx.asked": "依頼",
     "tx.result": "結果",

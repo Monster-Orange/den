@@ -714,6 +714,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/api/session/logout",
   // D34: what a person sees of an agent's helpers is the person's to clear.
   "/api/workspaces/:ws/agents/:id/clear-helpers",
+  // Issue 278: deliveries held after a compaction loop wait for a person.
+  "/api/workspaces/:ws/agents/:id/compacting-clear",
   // D65: what an agent is listed under is the person's to say.
   "/api/workspaces/:ws/agents/:id/link",
   // D72: an agent never moves itself (or another) out of its scope.

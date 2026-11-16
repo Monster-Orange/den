@@ -346,6 +346,25 @@ export interface Runtime {
    */
   sessionName?(rec: AgentRecord, env?: NodeJS.ProcessEnv): string | null;
   /**
+   * Issue 278: the compactions of the agent's current conversation, as the
+   * runtime recorded them (Claude Code: its transcript's compact_boundary
+   * records), oldest first; null when it can't say. Followed from the last
+   * ask, never the whole file at once. Never throws.
+   */
+  compactions?(
+    rec: AgentRecord,
+    env?: NodeJS.ProcessEnv,
+    opts?: { readMaxBytes?: number },
+  ): import("./transcript-follow.js").Compaction[] | null;
+  /**
+   * Issue 278: the instruction files the runtime loads at start for folder
+   * `cwd`, by size (stat only). None: Den can't tell. Never throws.
+   */
+  instructionFiles?(
+    cwd: string,
+    env?: NodeJS.ProcessEnv,
+  ): import("./context-watch.js").InstructionFile[];
+  /**
    * D32: the helpers the agent started inside its own session (Claude
    * Code's Agent and Workflow subagents), in every conversation it has had,
    * running first. Read-only. None: the runtime can't tell. Never throws.

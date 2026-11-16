@@ -524,6 +524,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/compacting-clear",
+    "issue 278: a person looked at an agent stuck compacting: its loop is over for now and held deliveries go again; a person's only",
+  ),
+  M(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/move",
     "D72 move an agent to another project ({to, when}): same conversation, at its next idle by default; a person's only",
   ),
@@ -842,6 +847,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/mode",
     "/api/workspaces/:ws/agents/:id/handoff",
     "/api/workspaces/:ws/agents/:id/clear-helpers",
+    "/api/workspaces/:ws/agents/:id/compacting-clear",
     "/api/workspaces/:ws/agents/:id/restart",
     "/api/workspaces/:ws/agents/:id/link",
     "/api/workspaces/:ws/agents/:id/move",

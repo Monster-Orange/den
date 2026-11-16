@@ -113,6 +113,14 @@ import {
   type ResolvedAgentsConfig,
 } from "../../shared/den-config.js";
 import {
+  contextTokensFor,
+  contextWatchSettings,
+  type ContextWatchSettings,
+  instructionCheck,
+  instructionWarning,
+  writeInstructionCheck,
+} from "../../shared/agents/context-watch.js";
+import {
   setWorkspaceRuntimeBin,
   workspaceBinKey,
   workspaceRuntimeBin,
@@ -339,6 +347,8 @@ export interface AgentsDeps extends SessionsDeps {
    * agents.default_mode; undefined: unset), as written.
    */
   installPermission?: () => unknown;
+  /** Issue 278: user.yml agent_context.* with its defaults. */
+  contextWatch?: () => ContextWatchSettings;
   /** den#48: save a checked intent as workspace `ws`'s (null clears it). */
   saveWorkspacePermission?: (
     ws: string,
@@ -400,6 +410,7 @@ export interface AgentsResolved extends Resolved {
   workspaceRuntimeBin: (ws: string, id: string) => unknown;
   workspacePermission: (ws: string) => unknown;
   installPermission: () => unknown;
+  contextWatch: () => ContextWatchSettings;
   saveWorkspacePermission: (
     ws: string,
     intent: PermissionIntent | null,
@@ -678,6 +689,9 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspacePermission ?? ((ws) => workspaceAgentPermission(ws)),
     installPermission:
       d.installPermission ?? (() => readUserConfig().agents?.default_mode),
+    contextWatch:
+      d.contextWatch ??
+      (() => contextWatchSettings(readUserConfig().agent_context)),
     saveWorkspacePermission:
       d.saveWorkspacePermission ??
       ((ws, intent) => setWorkspaceAgentPermission(ws, intent)),
@@ -2991,6 +3005,33 @@ function launchOrThrow<T>(fn: () => T): T {
   }
 }
 
+/**
+ * Issue 278: at each start, the instruction files the runtime loads for
+ * the agent's folder, measured (stat only) against a share of its model's
+ * context; kept beside its files for its row; the warning when over, else
+ * nothing. Never throws: a measure that fails is no warning.
+ */
+function measureInstructions(
+  d: AgentsResolved,
+  rt: Runtime,
+  at: { cwd: string; filesDir: string; model?: string; version?: string },
+): string[] {
+  if (!rt.instructionFiles) return [];
+  const env = d.env;
+  try {
+    const s = d.contextWatch();
+    const c = instructionCheck(rt.instructionFiles(at.cwd, env), at.cwd, {
+      sharePercent: s.sharePercent,
+      contextTokens: contextTokensFor(at.model, at.version, s.contextTokens),
+      home: env.HOME,
+    });
+    writeInstructionCheck(at.filesDir, c);
+    return c.over ? [instructionWarning(c)] : [];
+  } catch {
+    return [];
+  }
+}
+
 /** A started (or resumed) agent. */
 export interface Started {
   rec: AgentRecord;
@@ -3356,6 +3397,12 @@ export async function startAgent(
       writeRuntimeFiles(input.filesDir, out.files);
       // den#4: a new conversation's compactions count from 0.
       launchRotation(input.filesDir, out.resumeToken, launchAfter(rt, input));
+      const sized = measureInstructions(d, rt, {
+        cwd: input.worktree,
+        filesDir: input.filesDir,
+        model: ch.model,
+        version: ch.version,
+      });
       const { rec, info } = await startSession(
         d,
         c,
@@ -3431,7 +3478,7 @@ export async function startAgent(
       return {
         rec,
         info,
-        warnings: [...(out.warnings ?? []), ...unexpressed],
+        warnings: [...(out.warnings ?? []), ...unexpressed, ...sized],
         early,
       };
     });
@@ -5157,7 +5204,15 @@ export async function resumeAgent(
         writeRuntimeFiles(input.filesDir, out.files);
         // den#4: the same conversation keeps its count.
         launchRotation(input.filesDir, token, launchAfter(rt, input));
-        return out;
+        const sized = measureInstructions(d, rt, {
+          cwd: rec.cwd,
+          filesDir: input.filesDir,
+          model: rec.model,
+          version: rec.version,
+        });
+        return sized.length
+          ? { ...out, warnings: [...(out.warnings ?? []), ...sized] }
+          : out;
       };
       const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
       const run = async (asFresh: boolean, prior: SessionInfo | undefined) => {

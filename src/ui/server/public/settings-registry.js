@@ -1736,6 +1736,75 @@ export const DEN_SETTINGS = [
       ctx.post({ agents_list: { refresh_timeout_seconds: v } }),
   },
   {
+    // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+    id: "agents.compaction_loop",
+    category: "agents",
+    label: "Compacting repeatedly: compactions",
+    description:
+      "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+    keywords: ["compaction", "compact", "loop", "context", "bell"],
+    scope: "user",
+    keys: ["agent_context.compaction_loop_count"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agent_context?.compaction_loop_count ?? 3,
+    write: (v, ctx) =>
+      ctx.post({ agent_context: { compaction_loop_count: v } }),
+  },
+  {
+    id: "agents.compaction_minutes",
+    category: "agents",
+    label: "Compacting repeatedly: minutes",
+    description:
+      "The window the compactions above are counted in. __DEN_CLI__ config agent_context.compaction_loop_minutes=10",
+    keywords: ["compaction", "compact", "loop", "minutes", "window"],
+    scope: "user",
+    keys: ["agent_context.compaction_loop_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.agent_context?.compaction_loop_minutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ agent_context: { compaction_loop_minutes: v } }),
+  },
+  {
+    id: "agents.compaction_pause",
+    category: "agents",
+    label: "Hold deliveries after a compaction loop",
+    description:
+      "On: once the bell says an agent is compacting repeatedly, new deliveries to it (Hub comments, notes) wait until a person clears it on the Agents page. Off (the default): they go as usual. __DEN_CLI__ config agent_context.pause_after_loop=true",
+    keywords: ["compaction", "pause", "hold", "deliveries", "loop"],
+    scope: "user",
+    keys: ["agent_context.pause_after_loop"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.agent_context?.pause_after_loop === true,
+    write: (v, ctx) => ctx.post({ agent_context: { pause_after_loop: v } }),
+  },
+  {
+    id: "agents.instruction_share",
+    category: "agents",
+    label: "Instruction files: warn above",
+    description:
+      "When the instruction files an agent loads at start (CLAUDE.md, AGENTS.md and the like, up its folders) are more than this share of its model's context, its row and doctor warn, naming the largest. Sizes are estimated as bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+    keywords: ["instructions", "CLAUDE.md", "AGENTS.md", "context", "size"],
+    scope: "user",
+    keys: ["agent_context.instruction_share_percent"],
+    control: { type: "number", min: 1, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.agent_context?.instruction_share_percent ?? 15,
+    write: (v, ctx) =>
+      ctx.post({ agent_context: { instruction_share_percent: v } }),
+  },
+  {
+    id: "agents.context_tokens",
+    category: "agents",
+    label: "Context size when unknown",
+    description:
+      "The context size, in tokens, the share above is taken of when __DEN_TITLE__ doesn't know the model's own. __DEN_CLI__ config agent_context.context_tokens=200000",
+    keywords: ["context", "tokens", "size", "model"],
+    scope: "user",
+    keys: ["agent_context.context_tokens"],
+    control: { type: "number", min: 1000, max: 100000000, step: 1000 },
+    read: (ctx) => ctx.data.agent_context?.context_tokens ?? 200000,
+    write: (v, ctx) => ctx.post({ agent_context: { context_tokens: v } }),
+  },
+  {
     id: "agents.layout",
     category: "agents",
     label: "Agents tab layout",

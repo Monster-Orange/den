@@ -21,6 +21,8 @@ import type { UpdateWait } from "./update-check.js";
 import { isUpdateAsk, staleUpdateAsk } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
+import { pausedAgents, startContextWatch } from "./context-watch-service.js";
+import { contextWatchSettings } from "../../shared/agents/context-watch.js";
 import {
   crashLoopSettings,
   markCleanStop,
@@ -2632,6 +2634,8 @@ function typingHeldIds(): Set<string> {
   return typingHeld(
     attentionWaiting(),
     approvals ? approvals.queue.waitingActors() : [],
+    // Issue 278: held after a compaction loop (agent_context.pause_after_loop).
+    pausedAgents(),
   );
 }
 
@@ -6105,6 +6109,17 @@ async function handleRequest(
             return false;
           }
         })(),
+        // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+        agent_context: (() => {
+          const c = contextWatchSettings(user.agent_context);
+          return {
+            compaction_loop_count: c.loopCount,
+            compaction_loop_minutes: c.loopMinutes,
+            pause_after_loop: c.pause,
+            instruction_share_percent: c.sharePercent,
+            context_tokens: c.contextTokens,
+          };
+        })(),
         // den#156: the Agents list's waits (agents_list.*).
         agents_list: (() => {
           try {
@@ -6160,6 +6175,7 @@ async function handleRequest(
           web_bridge?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
+          agent_context?: unknown;
           embed?: unknown;
         };
         const user = readUserConfig();
@@ -6187,6 +6203,7 @@ async function handleRequest(
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
             agents_list: body.agents_list,
+            agent_context: body.agent_context,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -7175,6 +7192,8 @@ void CRASH_GATE.then(() =>
     } catch (e) {
       serverLog(`  ⚠ edge proof not synced: ${(e as Error).message}`, "warn");
     }
+    // Issue 278: agents stuck compacting ring the bell (agent_context.*).
+    startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
     // #57: agents whose record names a project by its pre-D70 key follow it.
     void import("../../shared/agents/heal-workspace.js").then(async (m) => {
       const { isServerScope } =

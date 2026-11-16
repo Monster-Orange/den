@@ -845,6 +845,23 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.compaction_loop": "Compactación repetida: compactaciones",
+    "set.agents.compaction_loop.d":
+      "Cuántas compactaciones automáticas puede tener un agente dentro de los minutos de abajo antes de que la campana avise de que se compacta una y otra vez. Una campana por episodio. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+    "set.agents.compaction_minutes": "Compactación repetida: minutos",
+    "set.agents.compaction_minutes.d":
+      "El intervalo en el que se cuentan las compactaciones de arriba. __DEN_CLI__ config agent_context.compaction_loop_minutes=10",
+    "set.agents.compaction_pause":
+      "Retener entregas tras una compactación repetida",
+    "set.agents.compaction_pause.d":
+      "Activado: cuando la campana avisa de que un agente se compacta una y otra vez, las nuevas entregas (comentarios de Hub, avisos) esperan hasta que una persona lo despeje en la página de agentes. Desactivado (por defecto): se entregan como siempre. __DEN_CLI__ config agent_context.pause_after_loop=true",
+    "set.agents.instruction_share":
+      "Archivos de instrucciones: avisar por encima de",
+    "set.agents.instruction_share.d":
+      "Cuando los archivos de instrucciones que un agente carga al empezar (CLAUDE.md, AGENTS.md y similares, subiendo por sus carpetas) superan esta parte del contexto de su modelo, su fila y doctor avisan y nombran el más grande. El tamaño se estima como bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+    "set.agents.context_tokens": "Tamaño del contexto si se desconoce",
+    "set.agents.context_tokens.d":
+      "El tamaño del contexto, en tokens, sobre el que se toma la parte de arriba cuando __DEN_TITLE__ no conoce el del modelo. __DEN_CLI__ config agent_context.context_tokens=200000",
     "set.agents.list_refresh_wait": "Espera de la lista de agentes",
     "set.agents.list_refresh_wait.d":
       "Cuánto espera la página de agentes su lista. Pasado este tiempo, dice que la lista puede estar desactualizada y lo intenta de nuevo. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
@@ -1584,6 +1601,8 @@
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
+    "bell.m.compacting":
+      "{name} se compacta una y otra vez: {n} veces en {m} minutos",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
@@ -1611,6 +1630,22 @@
     "ag.hub.working.one": "Trabajando en {n} comentario de Hub",
     "ag.hub.working": "Trabajando en {n} comentarios de Hub",
     "ag.hub.queued.one": "{n} comentario de Hub lo espera",
+    "ag.ctx.tag": "Se compacta una y otra vez",
+    "ag.ctx.looping":
+      "Se compacta una y otra vez: {n} compactaciones automáticas en los últimos minutos.",
+    "ag.ctx.causeFiles":
+      "Causa probable: sus archivos de instrucciones ocupan {size}, más del {share}% de su contexto, y se cargan de nuevo tras cada compactación. El más grande es {path} ({big}).",
+    "ag.ctx.causeOther":
+      "Causa probable: su contexto se vuelve a llenar poco después de cada compactación (salidas de herramientas grandes o archivos leídos enteros).",
+    "ag.ctx.held":
+      "Las nuevas entregas a este agente esperan hasta que lo despejes.",
+    "ag.ctx.clear": "Despejar",
+    "ag.ctx.clearHeld": "Reanudar entregas",
+    "ag.ctx.clearName": "Despejar la compactación repetida de {id}",
+    "ag.ctx.cleared": "{id}: despejado",
+    "ag.ins.tag": "Instrucciones grandes",
+    "ag.ins.tip":
+      "Sus archivos de instrucciones ocupan {size}: más del {share}% de su contexto. El más grande es {path} ({big}).",
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",

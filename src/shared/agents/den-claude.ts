@@ -87,13 +87,19 @@ import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
 import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
-import { cleanName, transcriptTitle } from "./transcript-follow.js";
+import {
+  cleanName,
+  transcriptCompactions,
+  transcriptTitle,
+} from "./transcript-follow.js";
+import { instructionFiles } from "./context-watch.js";
 import {
   claudeConversations,
   claudeConversationsWhere,
   transcriptBusy,
   lastPrompt,
   transcriptSummary,
+  TURN_READ_MAX_BYTES,
 } from "./conversations.js";
 import { claudeOpenPid, claudeOpenPids } from "./open-check.js";
 
@@ -877,6 +883,26 @@ export const denClaude: Runtime = {
       return file ? unquoteTitle(transcriptTitle(file)) : null;
     } catch {
       return null;
+    }
+  },
+  // Issue 278: its compact_boundary records (trigger auto or manual),
+  // followed from the last ask, the first ask only the last D39 bytes.
+  compactions(rec, env = process.env, opts = {}) {
+    try {
+      const file = transcriptFile(rec.resumeToken, env);
+      return file
+        ? transcriptCompactions(file, opts.readMaxBytes ?? TURN_READ_MAX_BYTES)
+        : null;
+    } catch {
+      return null;
+    }
+  },
+  // Issue 278: CLAUDE.md and the rest it loads at start (stat only).
+  instructionFiles(cwd, env = process.env) {
+    try {
+      return instructionFiles(cwd, env);
+    } catch {
+      return [];
     }
   },
   // D32: its helpers, from Claude Code's subagent files beside each of its
