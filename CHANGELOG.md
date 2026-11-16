@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.57] - unreleased
 
+After this update, each Claude Code agent restarts once, the next time it is
+idle, so it loads Hub's current tools. It keeps its conversation, and it is
+told why. This happens once.
+
 ### Fixed
 
 - Agents that were told about new Hub tools before 0.4.56 now restart once
