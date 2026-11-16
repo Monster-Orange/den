@@ -15,6 +15,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- If Den restarts or the network drops while an agent's pane first opens,
+  you no longer need to reload the page. Click the agent again and its
+  pane opens. The server agent's page tries again by itself. (issue 128)
+
 - Den's pages no longer show times in UTC (issue 206). The Agents page,
   the bell, Release, Logs, Settings, the services panel, transcripts and
   the error page show your local time. A time shown as "3 min ago" gives
@@ -2778,7 +2782,6 @@ to approve or to pair a device.
   `sessions.max_concurrent`).
 - **A tester persona** in Den's default pack.
 
-
 ### Changed
 
 - `POST /api/workspaces/<ws>/agents` takes `version`, `permission`,
@@ -3739,7 +3742,6 @@ The 0.4.1 carry-overs.
 - **`up --help`**: `-w, --workspace <ws>` ran into its text ("<ws>act in
   that…"); there are two spaces now. `down`, `restart` and `setup --help`
   were already spaced.
-
 
 ### Migrations
 
@@ -6752,7 +6754,6 @@ The 0.4.1 carry-overs.
   if it is really on this machine. To
   mark more envs as production than `prod` and `production`, set
   `production_envs`.
-
 
 ## [0.1.0] - 2026-11-04
 
