@@ -465,6 +465,26 @@ describe("hubWhoami (GET /connect/whoami)", () => {
     }
   });
 
+  it("features: Hub's own words for what its feed carries; only short plain names kept", async () => {
+    const base = { install: "north-box", company: { name: "Acme" } };
+    const h = await fakeHub({
+      ...base,
+      features: [
+        "deliveries.all_comments",
+        "deliveries.decisions",
+        "x y",
+        42,
+        "a".repeat(200),
+      ],
+    });
+    expect((await hubWhoami(h.url, TOKEN)).features).toEqual([
+      "deliveries.all_comments",
+      "deliveries.decisions",
+    ]);
+    const old = await fakeHub(base);
+    expect((await hubWhoami(old.url, TOKEN)).features).toBeUndefined();
+  });
+
   it("401 is rejected (connect again); 403 is forbidden (ask an admin), with Hub's words", async () => {
     const h = await fakeHub();
     await expect(hubWhoami(h.url, "hubi_wrong")).rejects.toMatchObject({

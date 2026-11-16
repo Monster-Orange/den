@@ -570,6 +570,11 @@ export interface HubWhoami {
   /** Threads on Hub waiting on the person (the rail's badge). */
   unread?: number;
   /**
+   * What Hub's delivery feed carries (#65): "deliveries.all_comments" and
+   * "deliveries.decisions"; a name Den doesn't know means nothing.
+   */
+  features?: string[];
+  /**
    * #71: which kind of token this install is on. `legacy`: one Hub carried
    * over from before its new token format; Den rewrites it when Den keeps
    * it, else the person reconnects.
@@ -740,6 +745,16 @@ export async function hubWhoami(
     Number.isInteger(b.unread) &&
     b.unread >= 0
       ? { unread: Math.min(b.unread, 1_000_000) }
+      : {}),
+    ...(Array.isArray(b.features)
+      ? {
+          features: b.features
+            .filter(
+              (f): f is string =>
+                typeof f === "string" && /^[a-z][a-z0-9_.-]{0,63}$/.test(f),
+            )
+            .slice(0, 32),
+        }
       : {}),
     ...(b.token === "legacy" || b.token === "current"
       ? { token: b.token }

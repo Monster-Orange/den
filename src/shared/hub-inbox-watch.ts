@@ -213,6 +213,25 @@ export interface InboxWatchDeps {
   stateFile: string;
   now?: () => number;
   log?: (line: string) => void;
+  /**
+   * #65: the kinds Hub's own delivery feed carries now (whoami features);
+   * the inbox never types those, so nothing reaches the agent twice.
+   */
+  feedCarries?: () => ReadonlySet<string>;
+}
+
+/** Which inbox kinds Hub's feed carries, from whoami's features. */
+export function feedKinds(
+  features: readonly string[] | undefined,
+): Set<InboxKind> {
+  const f = new Set(features ?? []);
+  const out = new Set<InboxKind>();
+  if (f.has("deliveries.all_comments")) out.add("comment");
+  if (f.has("deliveries.decisions")) {
+    out.add("approved");
+    out.add("changes");
+  }
+  return out;
 }
 
 export class InboxWatcher {
@@ -299,6 +318,7 @@ export class InboxWatcher {
     const l = this.d.loop;
     if (l.seenLocal(e.id)) return;
     if (!Number.isFinite(e.at) || e.at < this.since) return l.passLocal(e.id);
+    if (this.d.feedCarries?.().has(e.kind)) return l.passLocal(e.id);
     if (e.kind === "comment" && e.thread && l.coveredThread(e.thread, e.at))
       return l.passLocal(e.id);
     const o = this.d.owner();

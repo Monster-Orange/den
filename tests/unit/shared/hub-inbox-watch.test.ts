@@ -79,6 +79,7 @@ function setup(
     on?: boolean;
     agents?: string[];
     owner?: () => DeliveryOwner | null;
+    feedCarries?: () => ReadonlySet<string>;
   } = {},
 ) {
   let clock = T0;
@@ -120,6 +121,7 @@ function setup(
       stateFile: path.join(dir, "inbox-watch.json"),
       now: () => clock,
       log: (l) => logs.push(l),
+      ...(o.feedCarries ? { feedCarries: o.feedCarries } : {}),
     });
     return { loop, watcher };
   };
@@ -133,6 +135,40 @@ function setup(
 }
 
 describe("issue 166: Hub's inbox into the agent's pane", () => {
+  test("Hub's feed carries comments (deliveries.all_comments): the inbox never types one; approvals still come", async () => {
+    answer["ag-1"] = {
+      events: [
+        {
+          id: "ev-c",
+          kind: "comment",
+          agent: "ag-1",
+          by: "pat",
+          title: "Pricing spec",
+          body: "Shorter heading.",
+          url: "https://hub.example.test/a/pricing-spec",
+          at: iso(T0 + 1000),
+        },
+        ...approval("ag-1", T0 + 2000).events,
+      ],
+    };
+    const s = setup({ feedCarries: () => new Set(["comment"]) });
+    const { watcher } = s.make();
+    await watcher.tick();
+    expect(s.typed).toHaveLength(1);
+    expect(s.typed[0].text).toContain("approved");
+    expect(s.typed[0].text).not.toContain("Shorter heading.");
+  });
+
+  test("decisions on the feed too: the inbox types nothing", async () => {
+    answer["ag-1"] = approval("ag-1");
+    const s = setup({
+      feedCarries: () => new Set(["comment", "approved", "changes"]),
+    });
+    const { watcher } = s.make();
+    await watcher.tick();
+    expect(s.typed).toEqual([]);
+  });
+
   test("owner not known yet: the item waits, then reaches the agent as from your person", async () => {
     answer["ag-1"] = approval("ag-1");
     let owner: DeliveryOwner | null = null;

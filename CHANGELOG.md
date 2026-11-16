@@ -54,6 +54,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Ready for Hub sending every comment on an agent's artifact as a delivery.
+  When Hub says its feed carries comments (and, separately, approvals and
+  requested changes), Den stops typing those from Hub's inbox, so nothing
+  reaches the agent twice. Hub's "info" on a delivery makes it information;
+  only Den's own check of the agent's person makes an edit request.
+
 - A Hub comment from your own person reaches the agent as an edit request
   even when Hub didn't answer "who am I" while Den started. Den used to treat
   every commenter as someone else until it restarted; now deliveries wait
