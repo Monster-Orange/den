@@ -261,6 +261,8 @@ describe("the Settings page writes only what you change (R21)", () => {
       "graph",
       "workspace",
       "agents",
+      // Issue 267: Settings › Hub.
+      "hub",
       // Bell v6 (0.4.45).
       "notifications",
       "access",

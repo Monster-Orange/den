@@ -37,6 +37,8 @@ export const PERSON_ONLY_SETTINGS = [
   "agents_list",
   // Review M5 (0.4.46): what agents may do without asking.
   "hub_allow_tools",
+  // Issue 267: Hub's address (an agent asks with hub_connect).
+  "hub_url",
   // The programs Den runs when a person opens a file or a terminal.
   "editor",
   "terminal",

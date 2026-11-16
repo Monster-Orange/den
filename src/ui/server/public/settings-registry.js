@@ -84,7 +84,7 @@ export const DEN_SETTING_CATEGORIES = [
       "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
   },
   {
-    // #267: Hub has a section of its own: its address, the connection,
+    // issue 267: Hub has a section of its own: its address, the connection,
     // what agents get from it, and its notifications.
     id: "hub",
     label: "Hub",
@@ -303,7 +303,7 @@ function bellRows() {
   return [
     ...BELL_ROWS.map(([k, label, description]) => ({
       id: `notifications.${k}`,
-      // #267: Hub's own kinds sit in Settings › Hub.
+      // issue 267: Hub's own kinds sit in Settings › Hub.
       category: HUB_BELL_KINDS.has(k) ? "hub" : "notifications",
       label,
       description,
@@ -996,7 +996,7 @@ function drawRestart(host) {
     .addEventListener("click", () => void restartDen({ from: "settings" }));
 }
 
-/** #267: the bell's kinds that come from Hub, shown in Settings › Hub. */
+/** issue 267: the bell's kinds that come from Hub, shown in Settings › Hub. */
 const HUB_BELL_KINDS = new Set(["hub", "pick", "shared"]);
 
 export const DEN_SETTINGS = [
@@ -2520,7 +2520,7 @@ function editionsHtml(e) {
 }
 
 /**
- * #267: what's wrong with an address for Hub, in the person's words, or
+ * issue 267: what's wrong with an address for Hub, in the person's words, or
  * null. The same rule as the server's hubUrlProblem: https, or http only
  * to this machine. Empty is fine (it clears the address).
  */
@@ -2547,7 +2547,7 @@ export function hubAddressProblem(v) {
   return null;
 }
 
-/** #267: Hub's address, with Save and Clear, in every state but the first. */
+/** issue 267: Hub's address, with Save and Clear, in every state but the first. */
 function hubAddressHtml(b) {
   return (
     `<form class="hub-addr" data-hub-addr>` +
@@ -2579,7 +2579,7 @@ export function hubHtml(b, flash, t = (k) => k) {
         b.problem || L("set.ui.hub.badConfig", "hub in user.yml is not valid"),
         "data-hub-problem",
       ) +
-      // #267: fix it here, no file to edit.
+      // issue 267: fix it here, no file to edit.
       hubAddressHtml(b) +
       `<div class="rt-err" role="alert" hidden></div>`
     );
@@ -2596,7 +2596,7 @@ export function hubHtml(b, flash, t = (k) => k) {
         : "") +
       `</form>` +
       `<p class="set-note set-warn" data-hub-addr-problem role="status" hidden></p>` +
-      // #267: with no Hub yet, what it is.
+      // issue 267: with no Hub yet, what it is.
       (b.url
         ? ""
         : `<p class="set-note" data-hub-empty>${escR(L("set.ui.hub.empty", "No Hub yet. Type your company's Hub address, then Connect. Save only keeps the address."))}</p>`) +
@@ -2689,7 +2689,7 @@ export function hubHtml(b, flash, t = (k) => k) {
 }
 
 /**
- * #267: Hub's address. The check as you type; Save writes it to your
+ * issue 267: Hub's address. The check as you type; Save writes it to your
  * settings and restarts Den, then the row says where it stands. Clear
  * disconnects first (Hub revokes the key; unreachable, it's removed here
  * anyway), clears it and restarts.
@@ -2713,14 +2713,37 @@ function wireHubAddress(host, ctx, err, busy) {
   input.addEventListener("input", check);
   check();
   const t = (k, v) => ctx.shell.t(k, v);
+  const connected = !!host.querySelector("[data-hub]");
+  const was = input.defaultValue.trim().replace(/\/+$/, "");
+  // One working pop-up for the whole step. Connected and moving away: the
+  // old Hub revokes its token first (unreachable: removed here anyway; the
+  // server drops a token whose address changed too). Then the address.
   const apply = async (url, button) => {
     busy(true);
     err("");
     try {
       const r = await ctx.shell.busyAction(
         "save",
-        (headers) =>
-          ctx.shell.api("POST", "/api/settings", { hub_url: url }, { headers }),
+        async (headers) => {
+          if (connected && url !== was)
+            await ctx.shell
+              .api("POST", "/api/hub/disconnect", {}, { headers })
+              .catch(() =>
+                ctx.shell.api(
+                  "POST",
+                  "/api/hub/disconnect",
+                  { force: true },
+                  { headers },
+                ),
+              )
+              .catch(() => undefined);
+          return ctx.shell.api(
+            "POST",
+            "/api/settings",
+            { hub_url: url },
+            { headers },
+          );
+        },
         { button, onFail: (e) => err(e?.message || t("busy.saveF")) },
       );
       if (!r) return busy(false);
@@ -2740,36 +2763,14 @@ function wireHubAddress(host, ctx, err, busy) {
       err(e?.message || t("busy.saveF"));
     }
   };
-  // Connected: the old Hub revokes its token first (unreachable: removed
-  // here anyway). The server drops a token whose address changed too.
-  const disconnectFirst = () =>
-    host.querySelector("[data-hub]")
-      ? ctx.shell
-          .api("POST", "/api/hub/disconnect", {})
-          .catch(() =>
-            ctx.shell.api("POST", "/api/hub/disconnect", { force: true }),
-          )
-          .catch(() => undefined)
-      : Promise.resolve();
-  const was = input.defaultValue.trim().replace(/\/+$/, "");
-  const submit = async (ev) => {
+  const submit = (ev) => {
     ev?.preventDefault?.();
     if (check()) return;
-    const url = input.value.trim().replace(/\/+$/, "");
-    if (url !== was) {
-      busy(true);
-      await disconnectFirst();
-    }
-    void apply(url, save);
+    void apply(input.value.trim().replace(/\/+$/, ""), save);
   };
   save.addEventListener("click", submit);
   host.querySelector("[data-hub-addr]")?.addEventListener("submit", submit);
-  clear?.addEventListener("click", async () => {
-    busy(true);
-    err("");
-    await disconnectFirst();
-    await apply(null, clear);
-  });
+  clear?.addEventListener("click", () => void apply(null, clear));
 }
 
 /**
