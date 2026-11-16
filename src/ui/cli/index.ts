@@ -1701,6 +1701,28 @@ class DenCLI {
       getFocusedWorkspaceName() ??
       undefined;
     const force = opts?.force ?? false;
+    // Issue 277: a repo with no runtime of its own (one that runs nothing,
+    // a module, a library) has no command to run: said, never an error.
+    if (!plan) {
+      const none = this.noRuntimeRepos(workspace ? [workspace] : undefined);
+      const repoOf = (a: string) => a.split("/")[0];
+      const idle = addresses.filter((a) => none.has(repoOf(a)));
+      if (idle.length > 0) {
+        console.log(
+          chalk.gray(
+            `  Nothing to ${command} (no runtime of their own): ${idle.map((a) => `${a} (${none.get(repoOf(a))})`).join(", ")}`,
+          ),
+        );
+        if (command === "up")
+          for (const a of idle)
+            this.upReport?.noRuntime.push({
+              repo: a,
+              why: none.get(repoOf(a))!,
+            });
+        addresses = addresses.filter((a) => !none.has(repoOf(a)));
+        if (addresses.length === 0) return;
+      }
+    }
     // R13: why a remote service is not run here, or null.
     const remoteRefusal = (address: string): string | null => {
       const placed = resolveService(address, workspace);
@@ -3770,6 +3792,17 @@ class DenCLI {
         ),
       );
       process.exit(1);
+    }
+
+    // Issue 277: a repo with no runtime has no service logs to show.
+    const why = noRuntimeReason(resolved.repoPath);
+    if (why) {
+      console.log(
+        chalk.gray(
+          `\n  ${resolved.repoName} has no runtime of its own (${why}): no service logs.\n`,
+        ),
+      );
+      return;
     }
 
     // The canonical run-state test (same as the web down-skip and log search):

@@ -314,6 +314,32 @@ describe("downstream: nothing to start, nothing unhealthy", () => {
     });
   }, 120_000);
 
+  it("restart and logs of it say it has no runtime, and exit 0", () => {
+    const restart = acme("-w", "north", "restart", "cfg");
+    expect(restart.out).toMatch(
+      /Nothing to restart \(no runtime of their own\): cfg \(runs nothing\)/,
+    );
+    expect(restart.out).not.toMatch(/not found/);
+    expect(restart.code).toBe(0);
+    const logs = acme("-w", "north", "logs", "cfg");
+    expect(logs.out).toMatch(/cfg has no runtime of its own \(runs nothing\)/);
+    expect(logs.out).not.toMatch(/not running/);
+    expect(logs.code).toBe(0);
+  }, 120_000);
+
+  it("doctor names no problem with it", () => {
+    const d = acme("doctor", "--json");
+    const checks = (d.json.checks ?? []) as {
+      id: string;
+      status: string;
+      detail?: string;
+    }[];
+    expect(checks.length).toBeGreaterThan(0);
+    for (const c of checks)
+      if (c.status !== "ok")
+        expect(`${c.id} ${c.detail ?? ""}`).not.toMatch(/\b(cfg|rules|docs)\b/);
+  }, 120_000);
+
   it("up -a in a project whose repos all run nothing is ok; status says there is nothing to check", () => {
     const rules = path.join(tmp, "repos", "rules");
     expect(acme("repo", "add", rules, "-w", "quiet", "--json").code).toBe(0);
