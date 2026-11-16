@@ -23,6 +23,8 @@ export default {
     // The pages' modules import each other by the URL the server serves
     // them at ("/term-pane.js"): under Jest, the file in public/.
     "^/([A-Za-z0-9_-]+)\\.js$": "<rootDir>/src/ui/server/public/$1.js",
+    // …and the kit's at /kit/<file>: the file in packages/den-ui/src.
+    "^/kit/([A-Za-z0-9_-]+)\\.js$": "<rootDir>/packages/den-ui/src/$1.js",
   },
   transform: {
     "^.+\\.[jt]sx?$": [

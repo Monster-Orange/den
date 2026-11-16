@@ -18,6 +18,8 @@
  * (finished, answers, releases and checks) folds into one Updates row;
  * opening the agent clears its updates.
  */
+import { formatTime, formatTitle } from "/kit/time.js";
+
 const POLL_MS = 5000;
 
 const tr = (k, v) => window.denShell?.t?.(k, v) ?? k;
@@ -30,7 +32,7 @@ const esc = (s) =>
       ],
   );
 
-/** "now", "3 min", "2 h", or the date. */
+/** "now", "3 min", "2 h", or the date in the person's zone (issue 206). */
 export function bellAgo(iso, now = Date.now()) {
   const ms = now - Date.parse(iso);
   if (!Number.isFinite(ms)) return "";
@@ -39,7 +41,7 @@ export function bellAgo(iso, now = Date.now()) {
   if (m < 60) return tr("bell.min", { n: m });
   const h = Math.round(m / 60);
   if (h < 48) return tr("bell.h", { n: h });
-  return iso.slice(0, 10);
+  return formatTime(iso, { style: "date", now });
 }
 
 /**
@@ -128,7 +130,8 @@ function rowHtml(n, fold) {
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`
       : "") +
-    `<time datetime="${esc(n.at)}">${esc(bellAgo(n.at))}</time>` +
+    // issue 206: the full local date-time on hover.
+    `<time datetime="${esc(n.at)}" title="${esc(formatTitle(n.at))}">${esc(bellAgo(n.at))}</time>` +
     (fold && !fold.rep && sw !== "waiting"
       ? `<button type="button" class="den-ib" data-bell="stop" data-sw="${esc(sw)}" title="${esc(tr("bell.stop"))}" aria-label="${esc(tr("bell.stop"))}">⊘</button>`
       : "") +
@@ -418,6 +421,14 @@ export function initBell(doc = document) {
     }
     await refresh();
   });
+  // issue 206: a new time zone pick (Settings) redraws the open panel.
+  if (typeof MutationObserver === "function")
+    new MutationObserver(() => {
+      if (!pop.hidden) paint();
+    }).observe(doc.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-den-tz"],
+    });
   void refresh();
   const timer = setInterval(() => {
     if (doc.visibilityState !== "hidden") void refresh();

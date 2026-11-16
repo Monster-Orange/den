@@ -59,6 +59,7 @@ export const SETTINGS_ANYONE: Readonly<Record<string, string>> = {
   graph: "the graph page's layout",
   appearance: "light or dark, and the accent",
   language: "the language pages are shown in",
+  time_zone: "the time zone pages show date-times in",
   agents_layout: "how the Agents page lays out its cards",
   agents_helpers_shown: "whether helper agents show on the Agents page",
   bell_kinds: "which kinds of notice the bell shows",

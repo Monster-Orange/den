@@ -21,6 +21,7 @@
  * Framework-free and self-contained (the UI-kit shape): its own CSS on the
  * theme tokens, its words through denShell.t (fb.* keys, en/es/ja).
  */
+import { formatTime, formatTitle } from "/kit/time.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -838,25 +839,8 @@ function saveSeen(v) {
   }
 }
 
-/** "2 h ago", "yesterday": the page's language. */
-function ago(iso) {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return "";
-  const lang = document.documentElement.lang || "en";
-  let rtf;
-  try {
-    rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
-  } catch {
-    rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  }
-  const s = Math.round((ms - Date.now()) / 1000);
-  const a = Math.abs(s);
-  if (a < 60) return rtf.format(s, "second");
-  if (a < 3600) return rtf.format(Math.round(s / 60), "minute");
-  if (a < 86400) return rtf.format(Math.round(s / 3600), "hour");
-  if (a < 30 * 86400) return rtf.format(Math.round(s / 86400), "day");
-  return rtf.format(Math.round(s / (30 * 86400)), "month");
-}
+/** "2 hours ago", "yesterday": the page's language (the kit's, issue 206). */
+const ago = (iso) => formatTime(iso, { style: "relative" });
 
 let mine = null;
 
@@ -900,7 +884,9 @@ export async function openMyReports() {
     const dot = unseen(r)
       ? `<span class="fb-dot" role="img" aria-label="${esc(t("fb.myNew"))}"></span>`
       : `<span class="fb-nodot"></span>`;
-    return `<li class="fb-row" data-report="${esc(`${r.repo}#${r.number}`)}">${dot}<div><b>${esc(r.title || t("fb.untitled"))}</b><span class="fb-fine">${esc(status)}</span></div><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" data-open="${esc(`${r.repo}#${r.number}`)}">${esc(t("fb.openL"))} ↗</a></li>`;
+    // issue 206: the reply's local date-time, in full, on hover.
+    const tip = r.lastReply ? formatTitle(r.lastReply.at) : "";
+    return `<li class="fb-row" data-report="${esc(`${r.repo}#${r.number}`)}">${dot}<div><b>${esc(r.title || t("fb.untitled"))}</b><span class="fb-fine"${tip ? ` title="${esc(tip)}"` : ""}>${esc(status)}</span></div><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" data-open="${esc(`${r.repo}#${r.number}`)}">${esc(t("fb.openL"))} ↗</a></li>`;
   }
 
   function draftRow(dr) {
@@ -911,7 +897,7 @@ export async function openMyReports() {
             agent: dr.by.replace(/^agent:/, ""),
             when: ago(dr.savedAt),
           });
-    return `<li class="fb-row" data-draft="${esc(dr.id)}"><span class="fb-nodot"></span><div><b>${esc(dr.title || t("fb.untitled"))}</b><span class="fb-fine">${esc(sub)}</span></div>${btn("cont", t("fb.cont"), ` data-id="${esc(dr.id)}"`)}${btn("rmdraft", t("fb.discard"), ` data-id="${esc(dr.id)}"`)}</li>`;
+    return `<li class="fb-row" data-draft="${esc(dr.id)}"><span class="fb-nodot"></span><div><b>${esc(dr.title || t("fb.untitled"))}</b><span class="fb-fine"${dr.by === "person" ? "" : ` title="${esc(formatTitle(dr.savedAt))}"`}>${esc(sub)}</span></div>${btn("cont", t("fb.cont"), ` data-id="${esc(dr.id)}"`)}${btn("rmdraft", t("fb.discard"), ` data-id="${esc(dr.id)}"`)}</li>`;
   }
 
   function render(focusSel) {

@@ -669,6 +669,7 @@
     "set.appearance.mode": "モード",
     "set.appearance.theme": "テーマ",
     "set.language": "言語",
+    "set.time_zone": "タイムゾーン",
     "set.appearance.org-theme": "組織の既定テーマ",
     "set.editor": "既定の IDE",
     "set.server.self_update": "新しいバージョン",
@@ -1841,6 +1842,7 @@
     "set.ui.unknownBrowser": "不明なブラウザ",
     "set.ui.deviceOn": "{os} の {browser}",
     "set.ui.aBrowserOn": "{os} のブラウザ",
+    "set.ui.tzBrowser": "ブラウザのタイムゾーン ({zone})",
     "set.ui.created": "{ago} に作成",
     "set.ui.fromAt": "{from} から ({name})",
     "set.ui.lastSeen": "最終確認 {ago}",
@@ -2063,6 +2065,8 @@
       "「組織の既定」はディストリビューションのテーマに従います。テーマを名前で選ぶと、ディストリビューションがテーマを変えてもそのまま使われます。", // words-ok: the en string's own word, translated
     "set.language.d":
       "Den 自身の表示に使う言語です。名前、ログ、コマンドの出力はそのままです。変更するとページを再読み込みします。",
+    "set.time_zone.d":
+      "これらのページの日付と時刻はこのタイムゾーンで表示されます。保存される値は変わりません。",
     "set.appearance.org-theme.d":
       "テーマを選ぶまで全員に適用されるテーマです (brand.theme)。",
     "set.editor.d":

@@ -23,6 +23,7 @@ import {
   endsAtLogout,
   sessionWarning,
 } from "../../shared/launchd-session.js";
+import { localDate } from "../../shared/local-time.js";
 
 export type ServiceMode = "always" | "login";
 
@@ -123,7 +124,7 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
   // takes over when that one exits: nothing to do.
   const standsBy =
     jobPid !== null && host?.pid !== undefined && jobPid !== host.pid;
-  const since = host?.startedAt ? `, since ${host.startedAt.slice(0, 10)}` : "";
+  const since = host?.startedAt ? `, since ${localDate(host.startedAt)}` : "";
   const older = `an older session host (pid ${host?.pid ?? "?"}${since})`;
   const switchNow = `To switch now (ends running terminals and agents): ${d.cli} sessions host --stop`;
   // Drill (a): the web service is installed but it has no host job, so

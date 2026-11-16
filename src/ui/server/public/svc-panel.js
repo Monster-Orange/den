@@ -27,6 +27,7 @@
  * (denShell state `pinUrls`).
  */
 import { sudoRun } from "./topbar.js";
+import { formatTime } from "/kit/time.js";
 import { logStreamUrl } from "./log-source.js";
 import { dismissable, focusBack } from "./popover.js";
 
@@ -242,10 +243,8 @@ function testsHtml(s) {
   if (S.testing.has(s.id) || r?.running)
     return `<span class="den-dot run" aria-hidden="true"></span><span>${esc(t("svp.testsRun"))}</span>`;
   if (!r) return `<span class="den-svp-none">${esc(t("svp.testsNone"))}</span>`;
-  const at = new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(r.endedAt ?? r.startedAt));
+  // issue 206: the person's own zone.
+  const at = formatTime(r.endedAt ?? r.startedAt, { style: "time" });
   const ok = r.exitCode === 0;
   return `<span class="den-svp-${ok ? "ok" : "bad"}">${esc(t(ok ? "svp.testsOk" : "svp.testsBad", { t: at }))}</span>`;
 }

@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.4.48-dev.0",
+  "version": "0.5.0",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "private": true,
   "license": "MIT",
@@ -8,7 +8,8 @@
   "exports": {
     "./tokens.css": "./src/tokens.css",
     "./fonts.css": "./src/fonts.css",
-    "./base.css": "./src/base.css"
+    "./base.css": "./src/base.css",
+    "./time": "./src/time.js"
   },
   "files": [
     "src/",

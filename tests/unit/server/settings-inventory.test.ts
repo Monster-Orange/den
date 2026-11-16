@@ -101,6 +101,8 @@ describe("the settings inventory (R21)", () => {
         "hub_allow_tools",
         // The UI's language (R19, 0.3.0-dev.39).
         "language",
+        // issue 206: the time zone date-times are shown in.
+        "time_zone",
         // SEC-2a: the name the signed-out page gives this machine.
         "machine_name",
         // SRV-P6: whether Den updates itself without asking.

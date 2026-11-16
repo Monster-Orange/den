@@ -685,6 +685,7 @@
     "set.appearance.mode": "Modo",
     "set.appearance.theme": "Tema",
     "set.language": "Idioma",
+    "set.time_zone": "Zona horaria",
     "set.appearance.org-theme": "Tema predeterminado de la org",
     "set.editor": "IDE predeterminado",
     "set.server.self_update": "Versiones nuevas",
@@ -1883,6 +1884,7 @@
     "set.ui.unknownBrowser": "Navegador desconocido",
     "set.ui.deviceOn": "{browser} en {os}",
     "set.ui.aBrowserOn": "Un navegador en {os}",
+    "set.ui.tzBrowser": "La de tu navegador ({zone})",
     "set.ui.created": "creado {ago}",
     "set.ui.fromAt": "desde {from} ({name})",
     "set.ui.lastSeen": "visto por última vez {ago}",
@@ -2108,6 +2110,8 @@
       "Predeterminado de la organización sigue el tema de la distribución. Si eliges un tema por su nombre, se mantiene aunque la distribución cambie el suyo.", // words-ok: the en string's own word, translated
     "set.language.d":
       "El idioma de los textos propios de Den. Los nombres, los registros y la salida de los comandos no cambian. Al cambiarlo se vuelve a cargar la página.",
+    "set.time_zone.d":
+      "Las fechas y horas de estas páginas se muestran en esta zona. Se guardan igual en cualquier caso.",
     "set.appearance.org-theme.d":
       "El tema que recibe todo el mundo hasta que elige uno (brand.theme).",
     "set.editor.d":

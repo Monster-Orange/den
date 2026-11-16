@@ -1,3 +1,5 @@
+import { formatTime } from "/kit/time.js";
+
 /**
  * A word in the page's language (issue 171): shell.js's catalog, "perf.*".
  * Without the shell (a test that installs none) the key comes back. A
@@ -365,8 +367,8 @@ export function renderPerfReportHtml(report) {
         </div>
         <div class="perf-run-meta">
           <span>${escapeHtml(t("perf.modules", { n: String(report.modules?.length ?? 0) }))}</span>
-          <span>${escapeHtml(t("perf.started", { at: report.startedAt ?? "—" }))}</span>
-          <span>${escapeHtml(t("perf.finished", { at: report.finishedAt ?? "—" }))}</span>
+          <span>${escapeHtml(t("perf.started", { at: formatTime(report.startedAt) || "—" }))}</span>
+          <span>${escapeHtml(t("perf.finished", { at: formatTime(report.finishedAt) || "—" }))}</span>
         </div>
       </header>
       ${moduleSections}

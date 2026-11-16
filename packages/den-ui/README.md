@@ -20,6 +20,15 @@ own copy, so a page never mixes two versions.
   latin-ext, as woff2, `font-display: swap`. Nothing is fetched from a
   third party. Japanese uses the system's fonts.
 - `src/base.css`: one reduced-motion rule (every duration token goes to 0) and Japanese line breaking.
+- `src/time.js` (export `./time`): date-times for people, in their own
+  time zone. `formatTime(iso, opts)` gives the text, `timeHtml(iso, opts)`
+  a `<time>` with the UTC stamp in `datetime` and the full local time and
+  zone in `title`. `opts`: `style` (`datetime`, `date`, `time`,
+  `relative`), `seconds`, `zone`, `locale`, `now`. The zone is `opts.zone`,
+  else `<html data-den-tz>`, else `setTimeZone`'s pick, else the browser's.
+  `upgradeTimes(root)` draws every `time[data-den-time]` again after a
+  change. The year shows only when it isn't this year. Pure: it runs in
+  Node too.
 
 ## Themes
 

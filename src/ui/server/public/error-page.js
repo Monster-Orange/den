@@ -23,6 +23,7 @@
  * suggestPage and detailsText are pure, for tests.
  */
 import { rankCommands } from "/topbar.js";
+import { timeHtml } from "/kit/time.js";
 
 // Its words are the shell's catalog (shell.js MESSAGES, R19: the err.*
 // keys), so the page is in the page's language. "Copy details" is a
@@ -998,7 +999,6 @@ export function mountErrorPage(root) {
 
   document.title = document.title.replace(/Error$/, t("err.500.title"));
   const what = `${d.method ?? "GET"} ${d.route ?? ""}`;
-  const when = new Date(d.time);
   root.innerHTML =
     header(
       t("err.500.title"),
@@ -1007,7 +1007,7 @@ export function mountErrorPage(root) {
     `<div class="empty"><p class="lead">${esc(t("err.500.lead"))}</p>` +
     `<dl class="facts">` +
     `<dt>${esc(t("err.500.what"))}</dt><dd class="mono">${esc(what)}</dd>` +
-    `<dt>${esc(t("err.500.time"))}</dt><dd><time datetime="${esc(d.time)}">${esc(isNaN(when) ? d.time : when.toLocaleString(sh.lang?.() && sh.lang() !== "en" ? sh.lang() : undefined))}</time></dd>` +
+    `<dt>${esc(t("err.500.time"))}</dt><dd>${timeHtml(d.time, { seconds: true }) || esc(d.time ?? "")}</dd>` +
     `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
     `<dt>${esc(t("err.500.version"))}</dt><dd class="mono">${esc(d.version ?? "unknown")}</dd>` +
     `</dl><div class="acts">` +

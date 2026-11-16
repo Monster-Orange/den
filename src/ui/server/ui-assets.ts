@@ -130,6 +130,8 @@ export const KIT_FILES: readonly string[] = [
   "busy.js",
   "busy-words.js",
   "dialog.js",
+  // issue 206: date-times in the person's own zone.
+  "time.js",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",

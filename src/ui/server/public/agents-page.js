@@ -91,6 +91,7 @@ import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
+import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -388,19 +389,15 @@ export const exitedShell = (r) => r?.kind === "session" && r.exited === true;
 /** 0.4.45: what the Stopped group holds: stopped agents, exited shells. */
 export const inStopped = (r) => isStopped(r) || exitedShell(r);
 
-/** "19:52" today, else "Nov 6, 19:52" (the browser's own format). */
+/** issue 206: true when `iso` is today in the person's own zone. */
+function isToday(iso) {
+  const day = formatTime(iso, { style: "date" });
+  return !!day && day === formatTime(Date.now(), { style: "date" });
+}
+
+/** "7:52 PM" today, else "Nov 6, 7:52 PM": the person's zone (issue 206). */
 function when(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const time = d.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const today = new Date().toDateString() === d.toDateString();
-  return today
-    ? time
-    : `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+  return formatTime(iso, { style: isToday(iso) ? "time" : "datetime" });
 }
 
 /** Why a stopped agent stopped (AG-14.1). */
@@ -600,17 +597,9 @@ function rotCalloutHtml(r) {
   );
 }
 
-/** D37: "22:13" today, else "Nov 6": short, for a one-line row. */
+/** D37: "10:13 PM" today, else "Nov 6": short, a <time> (issue 206). */
 function whenShort(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return new Date().toDateString() === d.toDateString()
-    ? d.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      })
-    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return timeHtml(iso, { style: isToday(iso) ? "time" : "date" });
 }
 
 /** D37: a not-running agent's chip: Stopped, Exited or Interrupted. */
@@ -669,7 +658,7 @@ function stoppedHtml(r, wsTag = false) {
     `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
     `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
     `<span class="stchip" title="${esc(chip)}">${esc(chip)}</span>` +
-    (at ? `<span class="when">${esc(at)}</span>` : "") +
+    (at ? `<span class="when">${at}</span>` : "") +
     `</button>` +
     `<span class="agacts">${first}${more}</span>` +
     (callout ? `<div class="agcallout">${callout}</div>` : "") +
@@ -3340,16 +3329,11 @@ function cwdText(r) {
   return r.outside && r.cwd ? t("ag.outside", { folder: r.cwd }) : r.cwd;
 }
 
-/** "3 min ago", "2 h ago", or the date. */
+/** "3 minutes ago", "2 hours ago", or the date: a <time> (issue 206). */
 function agoText(iso) {
   const ms = Date.now() - Date.parse(iso);
   if (!Number.isFinite(ms)) return "";
-  const m = Math.round(ms / 60000);
-  if (m < 1) return t("ag.bring.now");
-  if (m < 60) return t("ag.bring.min", { n: m });
-  const h = Math.round(m / 60);
-  if (h < 48) return t("ag.bring.h", { n: h });
-  return iso.slice(0, 10);
+  return timeHtml(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
 }
 
 /** The folder a conversation ran in, inside the workspace's when it is. */
@@ -3369,7 +3353,7 @@ function convRowHtml(c) {
   const off = c.agent || c.open;
   return (
     `<button type="button" class="pr" role="radio" data-cid="${esc(c.id)}" aria-checked="${c.id === sd.bring.pick}"${off ? ' aria-disabled="true"' : ""}>` +
-    `<span class="rd" aria-hidden="true"></span><span class="pn pnc"><span class="pt">${esc(c.title || t("ag.bring.untitled"))}</span>${taken}</span><span class="mono">${esc(agoText(c.lastAt))}</span>` +
+    `<span class="rd" aria-hidden="true"></span><span class="pn pnc"><span class="pt">${esc(c.title || t("ag.bring.untitled"))}</span>${taken}</span><span class="mono">${agoText(c.lastAt)}</span>` +
     `<span class="pd mono">${esc(convFolder(c))} · ${esc(c.id.slice(0, 8))}</span></button>`
   );
 }
@@ -4625,7 +4609,7 @@ function detailsHtml(r, det) {
       : det?.lastPrompt?.text
         ? `<div class="den-agd-v">${esc(det.lastPrompt.text)}</div>` +
           (det.lastPrompt.at
-            ? `<div class="den-svp-ms">${esc(when(det.lastPrompt.at))}</div>`
+            ? `<div class="den-svp-ms">${timeHtml(det.lastPrompt.at, { style: isToday(det.lastPrompt.at) ? "time" : "datetime" })}</div>`
             : "")
         : `<div class="den-svp-help">${esc(t("ag.det.noAsk"))}</div>`;
   const comp = r.rotation?.compactions

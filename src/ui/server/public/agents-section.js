@@ -17,6 +17,7 @@
  * (.den-sec, .den-btn, .den-dot) are reused as they are.
  */
 import { fillStartForm } from "/agent-start.js";
+import { timeHtml } from "/kit/time.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -100,18 +101,9 @@ function stateCell(state) {
   return `<span class="tbl-health${cls.tone}" data-state="${esc(state)}"><span class="den-dot ${cls.dot}" aria-hidden="true"></span><span class="tbl-ht">${esc(stateText(state))}</span></span>`;
 }
 
+/** issue 206: when, in the person's own zone (a <time>), else "—". */
 function when(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  try {
-    return new Intl.DateTimeFormat(window.denShell?.lang?.() || undefined, {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(d);
-  } catch {
-    return d.toISOString();
-  }
+  return timeHtml(iso) || "—";
 }
 
 function rowHtml(r) {
@@ -143,7 +135,7 @@ function rowHtml(r) {
               <td class="tbl-mono">${esc(r.runtime ?? "—")}${model}</td>
               <td>${stateCell(r.state)}</td>
               <td class="tbl-mono tbl-muted agent-cwd" title="${esc(r.cwd ?? "")}">${esc(r.cwd ?? "—")}</td>
-              <td class="tbl-muted">${esc(when(r.startedAt))}</td>
+              <td class="tbl-muted">${when(r.startedAt)}</td>
               <td><div class="tbl-acts">${acts}</div></td>
             </tr>`;
 }
