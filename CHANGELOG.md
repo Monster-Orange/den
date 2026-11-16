@@ -6,6 +6,29 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.61] - unreleased
 
+### Added
+
+- An agent's write on something you watch asks you first, whatever its
+  kind (issue 160). So does one on a repo or service you pinned. Set
+  what you watch in Settings, for every project or for one.
+- Secrets, deletes of data and money always ask you, by name. The
+  approval says which, for example "critical: deletes".
+- A project can set its own critical list: those kinds of write always
+  ask there.
+- Settings has rows for the approval policy, for every project and for
+  one: what runs without asking, what you watch, what is critical. In
+  English, Spanish and Japanese. The defaults stay permissive.
+- Only you change the approval policy without an Allow. An agent asks
+  with `approval_policy`, and it always waits for you.
+- `pr_close` is in the policy: closing a stale or superseded PR after a
+  Hub note runs unless you watch the repo. Den has no action for it yet.
+
+### Changed
+
+- Bringing in a conversation as an agent (`agent_import`) now asks you
+  first. It is a held write, on with the other held writes. Listing the
+  conversations still needs `mcp.actions`.
+
 ### Fixed
 
 - Den's web server no longer closes an idle connection after 5 seconds,

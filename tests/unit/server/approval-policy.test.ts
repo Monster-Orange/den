@@ -16,8 +16,11 @@ import { mintActorToken } from "../../../src/shared/actor-token.js";
 import {
   HELD_WRITE_RISK,
   isCriticalWrite,
+  pinsAsWatched,
+  POLICY_ONLY_KINDS,
   policyFor,
   readPolicySetting,
+  writeTargets,
 } from "../../../src/shared/approval-policy.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
@@ -62,10 +65,13 @@ const actions: HeldActions = {
     },
   },
   repo_clone: {
-    check: (a) =>
-      ok(`clone ${String(a.source)} into ~/repos`, {
+    // Issue 160: `wipe` stands in for a check that says it deletes data.
+    check: (a) => ({
+      ...ok(`clone ${String(a.source)} into ~/repos`, {
         source: String(a.source),
       }),
+      ...(a.wipe ? { areas: ["deletes" as const] } : {}),
+    }),
     run: async (a) => {
       clones.push(a.source);
       return { ok: true };
@@ -88,6 +94,8 @@ const queue = createApprovalQueue(actions, () => stateDir);
 /** The settings as the server reads them: user.yml's and each project's. */
 let install: unknown = undefined;
 const projects: Record<string, unknown> = {};
+/** The person's rail pins (user.yml shell.pins): their favorites. */
+const pins: string[] = [];
 const notified: { id: string; project?: string; from: string }[] = [];
 
 let server: http.Server;
@@ -131,13 +139,18 @@ beforeAll(async () => {
         queue,
         actions,
         enabled: () => true,
-        policy: (action, project, widens) =>
+        // As the server wires it (index.ts): what the write is on, the
+        // person's watch lists and rail pins.
+        policy: (action, project, widens, asked) =>
           policyFor(action, {
             widens,
+            areas: asked?.areas,
             install: readPolicySetting(install),
             project: project
               ? readPolicySetting(projects[project], `${project}.approvals`)
               : undefined,
+            targets: writeTargets(action, asked?.args ?? {}, project),
+            pins: pinsAsWatched(pins),
           }),
         notify: (a, project, from) => {
           notified.push({ id: a.id, project, from });
@@ -170,6 +183,7 @@ const ask = (body: Record<string, unknown>) =>
       id: string;
       state: string;
       code?: string;
+      askedBecause?: string;
     },
   }));
 
@@ -178,6 +192,7 @@ const reset = async () => {
   for (const a of queue.pending()) await queue.decide(a.id, "deny", "s1");
   install = undefined;
   for (const k of Object.keys(projects)) delete projects[k];
+  pins.length = 0;
   modes.length = 0;
   clones.length = 0;
   personas.length = 0;
@@ -318,7 +333,157 @@ describe("issue 160: the approval policy", () => {
   it("every held write is placed on the critical list", () => {
     const names = Object.keys(
       heldActions({} as Parameters<typeof heldActions>[0]),
-    ).sort();
-    expect(Object.keys(HELD_WRITE_RISK).sort()).toEqual(names);
+    );
+    // Issue 160: and the kinds placed before Den has their write.
+    expect(Object.keys(HELD_WRITE_RISK).sort()).toEqual(
+      [...names, ...POLICY_ONLY_KINDS].sort(),
+    );
+  });
+});
+
+describe("issue 160 (0.4.61): watched, critical, person-only, first uses", () => {
+  it("a write on something the person watches asks, even under auto", async () => {
+    await reset();
+    install = { policy: "auto", watch: ["repo:r"] };
+    const r = await ask({ action: "repo_clone", args: { source: "o/r" } });
+    expect([r.body.state, r.body.askedBecause]).toEqual([
+      "pending",
+      "watched repo:r",
+    ]);
+    expect(clones).toEqual([]);
+    // Another repo still runs.
+    expect(
+      (await ask({ action: "repo_clone", args: { source: "o/other" } })).body
+        .state,
+    ).toBe("done");
+    // A project's watch list: its own project, a bare name matching any kind.
+    await reset();
+    projects.north = { policy: "notify", watch: ["north"] };
+    const m = await ask({ action: "project_mode", args: { mode: "ask" } });
+    expect([m.body.state, m.body.askedBecause]).toEqual([
+      "pending",
+      "watched project:north",
+    ]);
+    expect(modes).toEqual([]);
+  });
+
+  it("a write on a repo or service the person pinned (their favorite) asks", async () => {
+    await reset();
+    install = { policy: "auto" };
+    pins.push("r");
+    const r = await ask({ action: "repo_clone", args: { source: "o/r" } });
+    expect([r.body.state, r.body.askedBecause]).toEqual([
+      "pending",
+      "favorited repo:r",
+    ]);
+    expect(pinsAsWatched(["api", "api/web"])).toEqual([
+      "repo:api",
+      "service:api/web",
+    ]);
+    expect(writeTargets("service_try", { service: "api/web" }, "north")).toEqual(
+      ["project:north", "service:api/web", "repo:api"],
+    );
+  });
+
+  it("secrets, deletes of data and money are critical by name, not by the unknown-write fallback", () => {
+    const auto = { install: { policy: "auto" as const, writes: {} } };
+    for (const [w, area] of [
+      ["secret_set", "secrets"],
+      ["token_rotate", "secrets"],
+      ["data_delete", "deletes"],
+      ["volume_purge", "deletes"],
+      ["payment_send", "money"],
+      ["billing_change", "money"],
+    ])
+      expect([
+        w,
+        policyFor(w, { ...auto, install: { policy: "auto", writes: { [w]: "auto" } } }),
+      ]).toEqual([w, { kind: "ask", from: `critical: ${area}` }]);
+    // A write nobody placed and that touches none of them: the fallback.
+    expect(policyFor("something_new", auto)).toEqual({
+      kind: "ask",
+      from: "critical",
+    });
+  });
+
+  it("a write whose check says it deletes data asks, though its kind is routine", async () => {
+    await reset();
+    install = { policy: "auto", writes: { repo_clone: "auto" } };
+    const r = await ask({
+      action: "repo_clone",
+      args: { source: "o/x", wipe: true },
+    });
+    expect([r.body.state, r.body.askedBecause]).toEqual([
+      "pending",
+      "critical: deletes",
+    ]);
+    expect(clones).toEqual([]);
+  });
+
+  it("a project's own critical list makes those kinds ask", async () => {
+    await reset();
+    install = { policy: "auto" };
+    projects.north = { critical: ["repo_clone"] };
+    const r = await ask({ action: "repo_clone", args: { source: "o/c" } });
+    expect([r.body.state, r.body.askedBecause]).toEqual([
+      "pending",
+      "project approvals.critical",
+    ]);
+    // Over the project's own writes setting too.
+    expect(
+      policyFor("repo_clone", {
+        project: { critical: ["repo_clone"], writes: { repo_clone: "auto" } },
+      }),
+    ).toEqual({ kind: "ask", from: "project approvals.critical" });
+    expect(() => readPolicySetting({ critical: ["Not A Kind"] })).toThrow(
+      /approvals.critical/,
+    );
+  });
+
+  it("a change to the policy itself always asks: no setting lowers it", () => {
+    expect(
+      policyFor("approval_policy", {
+        install: { policy: "auto", writes: { approval_policy: "auto" } },
+        project: { policy: "auto", writes: { approval_policy: "auto" } },
+      }),
+    ).toEqual({ kind: "ask", from: "critical" });
+  });
+
+  it("agent_import asks by default; only a writes setting naming it lowers it", () => {
+    expect(isCriticalWrite("agent_import", false)).toBe(false);
+    expect(policyFor("agent_import", {})).toEqual({
+      kind: "ask",
+      from: "agent_import's own kind",
+    });
+    expect(
+      policyFor("agent_import", {
+        install: { policy: "auto" },
+        project: { policy: "notify" },
+      }),
+    ).toEqual({ kind: "ask", from: "agent_import's own kind" });
+    expect(
+      policyFor("agent_import", {
+        install: { writes: { agent_import: "notify" } },
+      }),
+    ).toEqual({ kind: "notify", from: "approvals.writes.agent_import" });
+  });
+
+  it("pr_close (closing a stale or superseded PR after a Hub note): auto unless watched", () => {
+    expect(isCriticalWrite("pr_close", false)).toBe(false);
+    expect(policyFor("pr_close", {})).toEqual({
+      kind: "auto",
+      from: "pr_close's own kind",
+    });
+    expect(
+      policyFor("pr_close", {
+        install: { watch: ["repo:api"] },
+        targets: writeTargets("pr_close", { repo: "api" }, "north"),
+      }),
+    ).toEqual({ kind: "ask", from: "watched repo:api" });
+    // A stricter policy wins over its own kind.
+    expect(policyFor("pr_close", { install: { policy: "ask" } })).toEqual({
+      kind: "ask",
+      from: "approvals.policy",
+    });
   });
 });

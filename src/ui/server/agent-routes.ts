@@ -206,6 +206,7 @@ import {
   principalOf,
 } from "./request-guard.js";
 import {
+  AGENT_IMPORT_HELD,
   agentImportRefusal,
   agentResumeRefusal,
 } from "./agent-resume-grant.js";
@@ -1379,8 +1380,10 @@ const PERSONA_KEYS = ["persona", "model", "version", "when"];
 
 /**
  * Bring in (AG-17.1): GET lists the workspace's conversations, POST
- * …/<id>/import brings one in. A person's, or an agent's opted in through
- * mcp.actions' agent_import inside its scope. Every import is audited.
+ * …/<id>/import brings one in. The list: a person's, or an agent's opted
+ * in through mcp.actions' agent_import inside its scope. The import: a
+ * person's; an agent asks with the held write agent_import (issue 160).
+ * Every import is audited.
  */
 async function conversations(
   req: http.IncomingMessage,
@@ -1393,6 +1396,12 @@ async function conversations(
   const actor = auditActorOf(req);
   const agent = agentPrincipalOf(req);
   const allowed = () => {
+    // Issue 160: an agent never brings one in itself: it asks with the
+    // held write agent_import (the person's Allow, by default).
+    if (agent && session !== undefined)
+      throw new AgentError(`${agent.actor}: ${AGENT_IMPORT_HELD}`, {
+        status: 403,
+      });
     if (agent) {
       const why = agentImportRefusal(agent, ws, mcpActions());
       if (why) throw new AgentError(why, { status: 403 });

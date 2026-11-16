@@ -140,6 +140,10 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        // Issue 160: the install's approval policy.
+        "approvals_policy",
+        "approvals_watch",
+        "approvals_critical",
       ].sort(),
     );
   });

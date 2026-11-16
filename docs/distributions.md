@@ -282,7 +282,16 @@ agent's held write into one of two groups.
   | `persona_create`, `persona_update` | always: a persona carries a mode and commands it may run               |
   | `den_update`, `den_restart`        | always (`server_agent.self_update: auto` still covers Den's own agent) |
   | `repo_add`                         | always: the project's agents get a repo they couldn't reach            |
+  | `verify_run`                       | always: it runs checks against a shared environment                    |
+  | `approval_policy`                  | always: only a person changes the policy without an Allow (0.4.61)     |
+  | any write that touches secrets, deletes data or spends money | always (0.4.61), whatever its placement      |
   | any write not on the list          | always, until someone places it                                        |
+
+  From 0.4.61 secrets, deletes of data and money are critical by name,
+  not only through the fallback: a write named for one (`secret_*`,
+  `*_token*`, `*_delete`, `*_remove`, `*_purge`, `pay*`, `billing_*`, …)
+  or whose check says it touches one (`areas`) always asks. The
+  approval's line says which (`critical: deletes`).
 
 - **Routine: the policy.** Everything else, and a mode that gets
   stricter. The policy is one of `auto` (runs at once; the activity
@@ -298,12 +307,53 @@ agent's held write into one of two groups.
     policy: notify # auto | notify | ask, for every routine write
     writes: # one write's own, over policy
       repo_clone: ask
+    watch: # 0.4.61: a write on any of these asks
+      - project:north
+      - repo:api
+    critical: # 0.4.61: kinds of write that always ask here
+      - service_try
   ```
 
   A project's own `writes` entry wins, then its `policy`, then the
-  install's `writes` entry, then its `policy`, then `notify`. A value
-  that isn't auto, notify or ask holds the write for the person (never
-  runs it on a typo).
+  install's `writes` entry, then its `policy`, then the write's own
+  kind, then `notify`. A value that isn't auto, notify or ask holds the
+  write for the person (never runs it on a typo).
+
+- **Settings (0.4.61).** Settings › Agents has the install's rows
+  (Agent writes, Watched, Critical); Settings › Project setup has the
+  project's (Agents' writes here, Watched here, Critical here). They
+  write the same keys. Defaults are permissive: `notify`, nothing
+  watched, nothing on the critical list. Only a person changes them:
+  `POST /api/settings` (`approvals_policy`, `approvals_watch`,
+  `approvals_critical`) and `POST /api/workspaces/settings` (the same
+  keys, with `workspace`) refuse an agent's claim with 403.
+- **Watched and favorites ask (0.4.61).** A routine write asks when it is
+  on something in a `watch` list (the project's or the install's) or on
+  a repo or service the person pinned to the rail (`shell.pins`, their
+  favorites). An item is `project:<name>`, `repo:<name>`,
+  `service:<repo>/<name>`, `persona:<id>`, `agent:<id>`, or a bare name
+  (any of them). What a write is on: its project, and the repo,
+  service, persona or agent its arguments name. The answer to the agent
+  says why it waits (`askedBecause: "watched repo:api"`, `"favorited
+  service:api/web"`).
+- **A project's own critical list (0.4.61).** `critical` names kinds of
+  write that always ask in that project (or, in `user.yml`, everywhere).
+  No `writes` entry lowers them.
+- **The policy itself is a person's (0.4.61).** An agent asks to change it
+  with the held write `approval_policy` (`{ project?, approvals }`, the
+  whole setting or `null`). It is critical: it always waits for the
+  person's own Allow. A project's agent asks for its own project only;
+  the install's policy is Den's own agent's or a person's.
+- **A write's own kind (0.4.61).** Some writes carry a kind of their own,
+  used when no setting names them:
+
+  | Kind of write  | Own kind | What it is                                                                                         |
+  | -------------- | -------- | -------------------------------------------------------------------------------------------------- |
+  | `agent_import` | ask      | bring in a conversation as an agent; only `writes.agent_import` lowers it                          |
+  | `pr_close`     | auto     | close a stale or superseded PR after a Hub note; a stricter `policy` or a watched repo makes it ask |
+
+  `pr_close` is placed in the policy only: Den has no action that closes
+  a PR yet.
 
 - **An agent may still ask.** `ask: true` on any held write (with a
   `note` saying why) waits for the Allow whatever the policy says.
@@ -2897,10 +2947,15 @@ only agent route an agent's token reaches.
 
 `agent_import` (AG-17.1) brings in a conversation started outside Den as an
 agent: with no `session` it lists them, with `session` and `persona` it
-brings one in (see [Bring in a conversation](#bring-in-a-conversation)). It
-is off unless `mcp.actions` names it, and a scoped server reaches its own
-project or a granted one. Without it, an agent's token gets 403 on both
-the list and the import.
+asks to bring one in (see [Bring in a conversation](#bring-in-a-conversation)).
+From 0.4.61 (issue 160) the bring-in is a held write: it waits for the
+person's Allow by default (see
+[The approval policy](#the-approval-policy-0452-issue-160)), and the tool
+is registered with the held writes. The list is still off unless
+`mcp.actions` names `agent_import`; without it, an agent's token gets 403
+on the list. An agent's token always gets 403 on the import route itself.
+A scoped server reaches its own project or a granted one; the held write
+takes the agent's own project only.
 
 ### Guards
 
@@ -3508,8 +3563,9 @@ import -w <ws>` lists them too.
   can't bring in a conversation yet".
 - Routes: `GET /api/workspaces/<ws>/conversations[?runtime=<r>]` and `POST
 /api/workspaces/<ws>/conversations/<id>/import` `{ persona, runtime?, id?,
-model?, version?, outside? }`. A person's only, unless MCP `agent_import` is opted
-  in.
+model?, version?, outside? }`. The list: a person's, or an agent's opted
+  in through `mcp.actions`. The import: a person's; an agent asks with the
+  held write `agent_import` (0.4.61).
 
 #### Change an agent's persona
 

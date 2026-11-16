@@ -45,6 +45,13 @@
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
  *                     always asks the person (CRITICAL_HELD_ACTIONS)
+ *   agent_import      issue 160: bring a conversation started outside Den
+ *                     in as an agent of the asker's project (agent-ops.ts
+ *                     importAgent). It asks by default (approval-policy.ts)
+ *   approval_policy   issue 160: change the approval policy, the install's
+ *                     (user.yml) or a project's (workspaces.yml). Always
+ *                     the person's own Allow: only a person in the page
+ *                     changes it without one
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -53,6 +60,10 @@ import {
   type GitRunner,
 } from "../../shared/repo-clone.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import {
+  readPolicySetting,
+  type PolicySetting,
+} from "../../shared/approval-policy.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
@@ -125,6 +136,24 @@ export interface HeldActionDeps {
   agentMode?: HeldOp;
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
   verifyRun?: HeldOp;
+  /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
+  agentImport?: (args: {
+    project: string;
+    session: string;
+    persona: string;
+    runtime?: string;
+  }) => Promise<unknown>;
+  /**
+   * Issue 160: the approval policy as set (`approvals:`), the install's or
+   * a project's, and its write. read throws on a project Den doesn't have.
+   */
+  approvalPolicy?: {
+    read: (project?: string) => Record<string, unknown> | undefined;
+    write: (
+      project: string | undefined,
+      setting: Record<string, unknown> | undefined,
+    ) => void;
+  };
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -180,6 +209,8 @@ function shown(p: string, home: string): string {
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** A runtime's conversation id (Claude Code: a uuid). */
+const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 /** A refusal from a dry run, with its question and choices when it asks. */
 function draftError(r: RepoAddResult): string {
@@ -517,6 +548,137 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const agentImport: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.agentImport)
+        return {
+          ok: false,
+          error: "this Den can't bring in conversations here",
+        };
+      const project = wsArg(a.project ?? a.workspace) ?? who?.project;
+      if (!project || !NAME_RE.test(project))
+        return { ok: false, error: "name the project" };
+      if (who?.project && !isServerScope(who.project) && project !== who.project)
+        return {
+          ok: false,
+          error: `a project's agent brings conversations into its own project (${who.project}), not ${project}`,
+        };
+      if (!d.workspaceExists(project))
+        return { ok: false, error: `there is no project "${project}"` };
+      const session = str(a.session);
+      if (!session || !SESSION_RE.test(session))
+        return { ok: false, error: "session must be a conversation id" };
+      const persona = str(a.persona);
+      if (!persona || !NAME_RE.test(persona))
+        return { ok: false, error: "name the persona to run it as" };
+      const runtime = str(a.runtime);
+      if (runtime !== undefined && !NAME_RE.test(runtime))
+        return { ok: false, error: "runtime must be a runtime id" };
+      return {
+        ok: true,
+        args: { project, session, persona, ...(runtime ? { runtime } : {}) },
+        summary: `bring in conversation ${session} as a ${persona} agent of project "${project}"`,
+        params: { session, persona, project },
+        details: [
+          `Project: ${project}. Persona: ${persona}${runtime ? `. Runtime: ${runtime}` : ""}.`,
+          "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
+          "Refused if it is still open in another terminal, or an agent already continues it.",
+        ],
+      };
+    },
+    async run(a) {
+      return d.agentImport!({
+        project: String(a.project),
+        session: String(a.session),
+        persona: String(a.persona),
+        ...(str(a.runtime) ? { runtime: str(a.runtime) } : {}),
+      });
+    },
+  };
+
+  const approvalPolicy: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.approvalPolicy)
+        return {
+          ok: false,
+          error: "this Den can't change the approval policy here",
+        };
+      const project = wsArg(a.project);
+      if (project !== undefined) {
+        if (!NAME_RE.test(project) || !d.workspaceExists(project))
+          return { ok: false, error: `there is no project "${project}"` };
+        if (
+          who?.project &&
+          !isServerScope(who.project) &&
+          project !== who.project
+        )
+          return {
+            ok: false,
+            error: `a project's agent asks about its own project (${who.project}), not ${project}`,
+          };
+      } else if (who?.project && !isServerScope(who.project))
+        return {
+          ok: false,
+          error:
+            "the install's policy is every project's: Den's own agent or a person asks to change it; name your project to change its own",
+        };
+      const raw = a.approvals;
+      if (raw !== null && (typeof raw !== "object" || Array.isArray(raw)))
+        return {
+          ok: false,
+          error:
+            "approvals: { policy, writes, watch, critical }, or null to clear it",
+        };
+      let next: PolicySetting | undefined;
+      try {
+        next =
+          raw === null
+            ? undefined
+            : readPolicySetting(
+                raw,
+                project ? `${project}.approvals` : "approvals",
+              );
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+      const where = project ? `project ${project}'s` : "the install's";
+      const shown = next ? JSON.stringify(next) : "none";
+      let now = "none";
+      try {
+        const cur = d.approvalPolicy.read(project);
+        if (cur) now = JSON.stringify(cur);
+      } catch {
+        /* shown as none */
+      }
+      return {
+        ok: true,
+        args: {
+          ...(project ? { project } : {}),
+          approvals: next ? { ...next } : null,
+        },
+        summary: `change ${where} approval policy to ${shown}`,
+        params: project
+          ? { inProject: "1", where: project, to: shown }
+          : { to: shown },
+        details: [
+          `Now: ${now}.`,
+          `Then: ${shown}.`,
+          "Only a person changes the approval policy without an Allow: an agent always asks.",
+        ],
+        personOnly: true,
+      };
+    },
+    async run(a) {
+      const project = str(a.project);
+      const next =
+        a.approvals && typeof a.approvals === "object"
+          ? (a.approvals as Record<string, unknown>)
+          : undefined;
+      d.approvalPolicy!.write(project, next);
+      return { ok: true, ...(project ? { project } : {}), approvals: next ?? null };
+    },
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
@@ -531,5 +693,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,
+    agent_import: agentImport,
+    approval_policy: approvalPolicy,
   };
 }
