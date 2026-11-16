@@ -1735,6 +1735,21 @@
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.compaction_loop": "Compacting repeatedly: compactions",
+    "set.agents.compaction_loop.d":
+      "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+    "set.agents.compaction_minutes": "Compacting repeatedly: minutes",
+    "set.agents.compaction_minutes.d":
+      "The window the compactions above are counted in. __DEN_CLI__ config agent_context.compaction_loop_minutes=10",
+    "set.agents.compaction_pause": "Hold deliveries after a compaction loop",
+    "set.agents.compaction_pause.d":
+      "On: once the bell says an agent is compacting repeatedly, new deliveries to it (Hub comments, notes) wait until a person clears it on the Agents page. Off (the default): they go as usual. __DEN_CLI__ config agent_context.pause_after_loop=true",
+    "set.agents.instruction_share": "Instruction files: warn above",
+    "set.agents.instruction_share.d":
+      "When the instruction files an agent loads at start (CLAUDE.md, AGENTS.md and the like, up its folders) are more than this share of its model's context, its row and doctor warn, naming the largest. Sizes are estimated as bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+    "set.agents.context_tokens": "Context size when unknown",
+    "set.agents.context_tokens.d":
+      "The context size, in tokens, the share above is taken of when __DEN_TITLE__ doesn't know the model's own. __DEN_CLI__ config agent_context.context_tokens=200000",
     "set.agents.list_refresh_wait": "Agents list wait",
     "set.agents.list_refresh_wait.d":
       "How long the Agents page waits for its list. After this, it says the list may be out of date and tries again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
