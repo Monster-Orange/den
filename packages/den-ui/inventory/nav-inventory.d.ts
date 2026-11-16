@@ -89,7 +89,10 @@ export declare function compareNav(
 export declare function formatNavDiffs(diffs: NavDiff[]): string;
 /** The pin stylesheet: the system faces a nav names, as the kit's own files. */
 export declare const PIN_FONTS_CSS: string;
-/** What pinNavFonts needs of a Playwright BrowserContext. */
+/**
+ * What pinNavFonts needs of a Playwright BrowserContext. Its results are
+ * not used: Playwright's resolve to a Disposable (1.61), others to nothing.
+ */
 export interface NavFontContext {
   route(
     url: string,
@@ -99,10 +102,10 @@ export interface NavFontContext {
         status?: number;
         contentType?: string;
         body?: string | Buffer;
-      }): Promise<void>;
+      }): Promise<unknown>;
     }) => unknown,
-  ): Promise<void>;
-  addInitScript(script: () => void): Promise<void>;
+  ): Promise<unknown>;
+  addInitScript(script: () => void): Promise<unknown>;
 }
 /**
  * Pins a context's fonts the way the reference was taken: the pin
