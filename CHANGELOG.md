@@ -54,6 +54,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- If Den restarts or the network drops while an agent's pane first opens,
+  you no longer need to reload the page. Click the agent again and its
+  pane opens. The server agent's page tries again by itself. (issue 128)
+
 - A stopped agent's Resume and ⋯, wrapped onto their own line in a narrow
   list, start under the name instead of against the list's left edge.
 
