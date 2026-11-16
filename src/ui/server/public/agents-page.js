@@ -824,14 +824,15 @@ export function compactingHtml(r, tr = t) {
 
 /** Issue 278: a person looked: the loop is over for now; held deliveries go. */
 async function clearCompacting(r, button) {
-  button.disabled = true;
-  try {
-    await api("POST", agentPath(r, "compacting-clear"));
-    window.denShell?.toast?.(t("ag.ctx.cleared", { id: r.agent }));
-  } catch (err) {
-    button.disabled = false;
-    window.denShell?.errorToast?.(err);
-  }
+  await window.denShell.busyAction(
+    "save",
+    (headers) =>
+      api("POST", agentPath(r, "compacting-clear"), undefined, { headers }),
+    {
+      button,
+      success: () => t("ag.ctx.cleared", { id: r.agent }),
+    },
+  );
   await refresh();
 }
 
