@@ -265,6 +265,83 @@ async function verifyRoutes(ctx: BrowserContext): Promise<void> {
       }),
     ),
   );
+  // Issue 212: a history with a flaky mark, and a scan's findings.
+  await ctx.route(/\/api\/verify\/modules\/[^/]+\/history/, (r) =>
+    r.fulfill(
+      json({
+        ok: true,
+        project: "north",
+        module: "shop:api/orders",
+        name: "api/orders",
+        env: "staging",
+        runs: [
+          {
+            runId: "h1",
+            endedAt: "2026-11-15T10:00:00Z",
+            commit: "a1b2c3d",
+            state: "passed",
+            ms: 1,
+            flaky: true,
+            attempts: [
+              { state: "failed", message: "timed out", ms: 1 },
+              { state: "passed", ms: 1 },
+            ],
+          },
+          {
+            runId: "h2",
+            endedAt: "2026-11-15T11:00:00Z",
+            commit: "e4f5a6b",
+            state: "failed",
+            ms: 1,
+          },
+        ],
+        flaky: { mark: true, count: 2, window: 10, min: 2 },
+        streak: { state: "failed", runs: 1, passedBefore: 1 },
+        range: {
+          lastPassed: { runId: "h1", commit: "a1b2c3d" },
+          firstFailed: { runId: "h2", commit: "e4f5a6b" },
+        },
+        commits: [
+          { commit: "e4f5a6b", subject: "api: update database driver" },
+        ],
+      }),
+    ),
+  );
+  await ctx.route(/\/api\/verify\/runs\/r-scan(\?|$)/, (r) =>
+    r.fulfill(
+      json({
+        ok: true,
+        runId: "r-scan",
+        project: "north",
+        env: "local",
+        verdict: "passed",
+        commit: "e4f5a6b",
+        modules: [
+          {
+            id: "shop:code/deps",
+            name: "code/deps",
+            kind: "security",
+            state: "passed",
+            ms: 1,
+            findings: {
+              counts: { critical: 0, high: 0, medium: 1, low: 0 },
+              failOn: "high",
+              report: "deps.sarif",
+              list: [
+                {
+                  severity: "medium",
+                  message: "x",
+                  package: "yaml-lite",
+                  version: "0.9.3",
+                  fixedIn: "0.9.5",
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ),
+  );
   await ctx.route(/\/api\/verify\/plan(\?|$)/, (r) =>
     r.fulfill(
       json({
@@ -397,6 +474,39 @@ const SURFACES: {
       await p.waitForSelector(".vf-board");
       await p.click('[data-vf-cell="staging|api"]');
       await p.waitForSelector(".vf-panel");
+      const r = await scan(p, "#den-content");
+      await p.context().close();
+      return r;
+    },
+  },
+  {
+    name: "the Verify page's history of a check, flaky",
+    async run(scheme, z) {
+      const p = await page(
+        "/verify?history=shop%3Aapi%2Forders&env=staging",
+        scheme,
+        z,
+        verifyRoutes,
+      );
+      await p.waitForSelector(".vf-hstrip");
+      await p.evaluate(() =>
+        document.querySelectorAll("details").forEach((d) => (d.open = true)),
+      );
+      const r = await scan(p, "#den-content");
+      await p.context().close();
+      return r;
+    },
+  },
+  {
+    name: "the Verify page's security findings",
+    async run(scheme, z) {
+      const p = await page(
+        "/verify?findings=r-scan&module=shop%3Acode%2Fdeps",
+        scheme,
+        z,
+        verifyRoutes,
+      );
+      await p.waitForSelector(".vf-sevs");
       const r = await scan(p, "#den-content");
       await p.context().close();
       return r;

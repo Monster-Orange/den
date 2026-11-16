@@ -599,6 +599,30 @@ starts and one when it ends. Past 2000 lines it keeps the newest 1000.
 env, repos, startedAt, endedAt, exitCode, running } } }`. A run a restart
 cut off has no end and is not shown.
 
+## Verify settings
+
+`verify:` in the org config tunes the Checks page. Each has a default,
+so you set only what you change. Den reads them on each request.
+
+```yaml
+# config/acme.yml
+verify:
+  run: { retries: 0 } # run a failed check again this many times
+  flaky: { window: 10, min_retries: 2 }
+  history: { limit: 30 } # runs a check's history shows
+  security: { fail_on: high } # critical, high, medium or low
+```
+
+- A check that passes only after a retry is passed, and marked flaky on
+  that run. Its history shows the flaky mark when that happened in
+  `min_retries` or more of its last `window` runs. Den keeps every
+  attempt.
+- A security scan that writes SARIF to `DEN_RESULTS_DIR` passes or fails
+  by its findings: one at or above `fail_on` fails it, whatever the
+  scanner's exit code. A finding below it never fails the scan. A
+  module's own `fail_on` may tighten the setting, never loosen it.
+- A value that isn't valid is an error, never a quiet default.
+
 ## Placement
 
 Each service says where it runs, per environment: `local` (on this machine,

@@ -748,6 +748,95 @@
           overflow: auto;
         }
       }
+      /* Issue 212: S5 history and the flaky mark, S6 security findings. */
+      .vf-plinks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        font-size: 13px;
+      }
+      .vf-hstrip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin: 10px 0 6px;
+      }
+      .vf-hrun {
+        --c: var(--faint);
+        font: 600 14px var(--mono);
+        min-width: 32px;
+        min-height: 32px;
+        border: 1px solid var(--border);
+        border-bottom: 3px solid var(--c);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: var(--c);
+        cursor: pointer;
+      }
+      .vf-hrun:hover {
+        border-color: var(--border-strong);
+        border-bottom-color: var(--c);
+      }
+      .vf-commits {
+        margin: 6px 0 10px;
+        padding-inline-start: 18px;
+        font-size: 13px;
+      }
+      .vf-commits li,
+      .vf-finds li {
+        overflow-wrap: anywhere;
+        margin: 3px 0;
+      }
+      .vf-flaky h3 {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        align-items: center;
+      }
+      .vf-tries summary {
+        cursor: pointer;
+        min-height: 32px;
+        display: flex;
+        align-items: center;
+        color: var(--accent-text);
+      }
+      .vf-tries ul,
+      .vf-tries ol {
+        margin: 4px 0;
+        padding-inline-start: 18px;
+        font-size: 13px;
+      }
+      .vf-sevs {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 4px;
+      }
+      .vf-sev {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 4px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .vf-sev span {
+        text-transform: capitalize;
+      }
+      .vf-sev b {
+        font: 600 14px var(--mono);
+      }
+      .vf-thr {
+        font-size: 12px;
+        color: var(--bad);
+        border-top: 2px dashed var(--bad);
+        padding-top: 4px;
+      }
+      .vf-finds {
+        margin: 0;
+        padding-inline-start: 18px;
+        font-size: 13px;
+      }
     </style>
   </head>
   <body>

@@ -36,6 +36,13 @@ import {
   type ResultState,
 } from "./changes.js";
 import type { VerifyModule } from "./config.js";
+import {
+  atOrAbove,
+  firstFailing,
+  readFindings,
+  type Findings,
+  type Severity,
+} from "./findings.js";
 import type { VerifyPlan } from "./plan.js";
 import {
   writeRunRecord,
@@ -61,6 +68,20 @@ export interface ModuleRun {
   blockedBy?: string;
   exitCode?: number | null;
   /** The first failure, in one line. */
+  message?: string;
+  ms: number;
+  /** Issue 212: passed only after a retry. */
+  flaky?: true;
+  /** Issue 212: every attempt, when there was more than one. */
+  attempts?: Attempt[];
+  /** Issue 212: a security scan's findings, from its SARIF. */
+  findings?: Findings;
+}
+
+/** Issue 212: one try of a command module. */
+export interface Attempt {
+  state: "passed" | "failed" | "error";
+  exitCode?: number | null;
   message?: string;
   ms: number;
 }
@@ -103,6 +124,10 @@ export interface RunDeps {
   /** Issue 210: Cancel, and who cancelled (for the record). */
   signal?: AbortSignal;
   cancelled?: () => { by: RunActor; at: string } | undefined;
+  /** Issue 212: verify.run.retries (0 when absent). */
+  retries?: number;
+  /** Issue 212: verify.security.fail_on ("high" when absent). */
+  failOn?: Severity;
 }
 
 /** The verdict of a set of module states (VERIFY-SPEC section 5). */
@@ -232,6 +257,59 @@ export async function runPlan(
       }),
     });
   const cancelled = () => d.signal?.aborted === true;
+  /** One try of a command module; a scan is judged by its findings. */
+  const runOnce = async (
+    m: VerifyModule,
+    resultsDir: string,
+  ): Promise<
+    Omit<ModuleRun, "id" | "name" | "repo" | "layer" | "kind" | "mark" | "ms">
+  > => {
+    try {
+      fs.mkdirSync(resultsDir, { recursive: true });
+      const x = await d.runCmd(m, {
+        env: plan.env,
+        runId,
+        resultsDir,
+        ...(d.signal ? { signal: d.signal } : {}),
+      });
+      const last = x.lines?.filter((l) => l.trim()).at(-1);
+      if (x.lines?.length) tails.set(m.id, x.lines.slice(-KEEP_LINES));
+      if (cancelled()) return { state: "cancelled", exitCode: x.exitCode };
+      if (x.exitCode === null)
+        return { state: "error", exitCode: null, message: last ?? "stopped" };
+      // Issue 212 (T13): a scan that wrote SARIF passes or fails by its
+      // findings against the threshold, whatever the scanner's exit code.
+      const found = m.kind === "security" ? readFindings(resultsDir) : null;
+      if (found) {
+        const setting = d.failOn ?? "high";
+        const failOn =
+          m.failOn && atOrAbove(m.failOn, setting)
+            ? setting
+            : (m.failOn ?? setting);
+        const first = firstFailing(found, failOn);
+        const findings = { ...found, failOn };
+        return first
+          ? {
+              state: "failed",
+              exitCode: x.exitCode,
+              message: first.message,
+              findings,
+            }
+          : { state: "passed", exitCode: x.exitCode, findings };
+      }
+      return x.exitCode === 0
+        ? { state: "passed", exitCode: 0 }
+        : {
+            state: "failed",
+            exitCode: x.exitCode,
+            ...(last ? { message: last } : {}),
+          };
+    } catch (e) {
+      return cancelled()
+        ? { state: "cancelled" }
+        : { state: "error", message: (e as Error).message };
+    }
+  };
   for (const [n, m] of plan.modules.entries()) {
     const row = rowOf(m);
     if (cancelled()) {
@@ -248,7 +326,7 @@ export async function runPlan(
     if (blocker) r = { state: "blocked", blockedBy: blocker };
     else if (m.adapter === "smoke") r = await smoke(m, plan.env, d.probe);
     else {
-      const resultsDir = path.join(
+      const base = path.join(
         d.stateDir,
         "verify",
         plan.project,
@@ -256,32 +334,31 @@ export async function runPlan(
         runId,
         m.id.replace(/[^A-Za-z0-9._-]+/g, "_"),
       );
-      try {
-        fs.mkdirSync(resultsDir, { recursive: true });
-        const x = await d.runCmd(m, {
-          env: plan.env,
-          runId,
-          resultsDir,
-          ...(d.signal ? { signal: d.signal } : {}),
+      // Issue 212: a failed command runs again up to verify.run.retries
+      // times; each try keeps its own results folder, and every try is kept.
+      const tries = 1 + Math.max(0, d.retries ?? 0);
+      const attempts: Attempt[] = [];
+      let r1: Omit<ModuleRun, keyof typeof row | "ms"> = { state: "error" };
+      for (let a = 1; a <= tries; a++) {
+        const t0 = Date.now();
+        const resultsDir = a === 1 ? base : `${base}.try${a}`;
+        r1 = await runOnce(m, resultsDir);
+        if (r1.state === "cancelled") break;
+        attempts.push({
+          state: r1.state as Attempt["state"],
+          ...(r1.exitCode !== undefined ? { exitCode: r1.exitCode } : {}),
+          ...(r1.message ? { message: r1.message } : {}),
+          ms: Date.now() - t0,
         });
-        const last = x.lines?.filter((l) => l.trim()).at(-1);
-        if (x.lines?.length) tails.set(m.id, x.lines.slice(-KEEP_LINES));
-        r = cancelled()
-          ? { state: "cancelled", exitCode: x.exitCode }
-          : x.exitCode === 0
-            ? { state: "passed", exitCode: 0 }
-            : x.exitCode === null
-              ? { state: "error", exitCode: null, message: last ?? "stopped" }
-              : {
-                  state: "failed",
-                  exitCode: x.exitCode,
-                  ...(last ? { message: last } : {}),
-                };
-      } catch (e) {
-        r = cancelled()
-          ? { state: "cancelled" }
-          : { state: "error", message: (e as Error).message };
+        if (r1.state === "passed" || cancelled()) break;
       }
+      r = {
+        ...r1,
+        ...(attempts.length > 1 ? { attempts } : {}),
+        ...(attempts.length > 1 && r1.state === "passed"
+          ? { flaky: true as const }
+          : {}),
+      };
     }
     if (r.state !== "passed") {
       badLayers.add(m.layer);

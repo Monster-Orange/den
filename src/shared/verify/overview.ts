@@ -75,6 +75,8 @@ export interface EnvOverview {
 export type CheckState = ResultState | "none" | "off";
 
 export interface CheckRow {
+  /** Issue 212: `<repo>:<layer>/<name>`, for its history and findings. */
+  id: string;
   module: string;
   layer: string;
   kind: string;
@@ -235,6 +237,7 @@ export function verifyOverview(input: OverviewInput): VerifyOverview {
   };
   const checks = i.modules.map(
     (m): CheckRow => ({
+      id: m.id,
       module: m.name,
       layer: m.layer,
       kind: m.kind,

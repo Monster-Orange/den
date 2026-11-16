@@ -269,6 +269,8 @@ export interface VerifyModule {
   cmd?: string;
   results?: string;
   writes: boolean;
+  /** Issue 212: a security scan's own threshold (it may only tighten the setting). */
+  failOn?: "critical" | "high" | "medium" | "low";
   /** Built-in smoke: the repo's HTTP health URLs, by environment. */
   healthUrls: Record<string, string[]>;
 }
@@ -354,6 +356,7 @@ export function readVerifyModules(
         ...(m.cmd !== undefined ? { cmd: m.cmd } : {}),
         ...(m.results !== undefined ? { results: m.results } : {}),
         writes: m.writes === true,
+        ...(m.fail_on ? { failOn: m.fail_on } : {}),
         healthUrls,
       };
     },

@@ -21,6 +21,17 @@
  *   /api/verify/runs/:id/report?project=&module=
  *                                       a module's kept output, as text
  *
+ * Issue 212:
+ *   /api/verify/modules/:id/history?project=&env=
+ *                                       one module's runs, oldest first, the
+ *                                       flaky mark, the first failing range
+ *                                       and the commits in between (S5)
+ *   /api/verify/runs/:id/report?project=&module=&kind=sarif
+ *                                       a scan's SARIF (S6); a run's record
+ *                                       carries its findings
+ * Settings (verify.run.retries, flaky, history, security.fail_on) come
+ * from the org's `verify:` (shared/verify/settings.ts).
+ *
  * Issue 210, runs that go on in the background (shared/verify/active.ts):
  *   POST /api/verify/run { background: true }   local: starts, answers
  *                                       202 { runId } at once
@@ -60,6 +71,11 @@ import {
   type RunResult,
 } from "../../shared/verify/run.js";
 import { ActiveRuns } from "../../shared/verify/active.js";
+import { moduleHistory } from "../../shared/verify/history.js";
+import {
+  VERIFY_SETTINGS_DEFAULTS,
+  type VerifySettings,
+} from "../../shared/verify/settings.js";
 import { verifyOverview } from "../../shared/verify/overview.js";
 import {
   hasEnded,
@@ -70,7 +86,9 @@ import {
 import type { DetailKey, HeldOpCheck } from "../cli/agent-ops.js";
 import type { AskedBy } from "./approvals.js";
 import { recordAction } from "./audit.js";
-import { readBody, sendJson } from "./http-helpers.js";
+import * as fs from "fs";
+import * as path from "path";
+import { readBody, sendJson, UNTRUSTED_FILE_HEADERS } from "./http-helpers.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -95,7 +113,12 @@ export interface VerifyServerDeps {
   probe?: RunDeps["probe"];
   /** Issue 210: the runs going on (one per server when absent). */
   active?: ActiveRuns;
+  /** Issue 212: the org's `verify:` settings (the defaults when absent). */
+  settings?: () => VerifySettings;
 }
+
+const settingsOf = (d: VerifyServerDeps): VerifySettings =>
+  d.settings?.() ?? VERIFY_SETTINGS_DEFAULTS;
 
 const ACTIVE = new ActiveRuns();
 const activeOf = (d: VerifyServerDeps) => d.active ?? ACTIVE;
@@ -334,6 +357,9 @@ function runDeps(d: VerifyServerDeps, by: RunDeps["by"]): RunDeps {
     runCmd: d.runCmd ?? spawnCmd,
     probe: d.probe ?? httpProbe,
     ...(by ? { by } : {}),
+    // Issue 212: retries, and the threshold a scan fails at.
+    retries: settingsOf(d).retries,
+    failOn: settingsOf(d).failOn,
   };
 }
 
@@ -409,6 +435,10 @@ const RUN_PATH =
   /^\/api\/verify\/runs\/([A-Za-z0-9][A-Za-z0-9._-]{0,79})(\/report)?$/;
 const CANCEL_PATH =
   /^\/api\/verify\/runs\/([A-Za-z0-9][A-Za-z0-9._-]{0,79})\/cancel$/;
+/** Issue 212: a module's id, URL-encoded (`<repo>:<layer>/<name>`). */
+const HISTORY_PATH = /^\/api\/verify\/modules\/([^/]{1,300})\/history$/;
+/** How many commits a failing range lists. */
+const RANGE_COMMITS = 20;
 
 /** Issue 209: the page's reads (GET); false when `pathname` is none of them. */
 function handleVerifyReads(
@@ -418,7 +448,8 @@ function handleVerifyReads(
   d: () => VerifyServerDeps,
 ): boolean {
   const run = RUN_PATH.exec(pathname);
-  if (pathname !== "/api/verify/overview" && !run) return false;
+  const hist = HISTORY_PATH.exec(pathname);
+  if (pathname !== "/api/verify/overview" && !run && !hist) return false;
   if ((req.method ?? "GET").toUpperCase() !== "GET") {
     sendJson(res, { ok: false, error: "GET only" }, 405);
     return true;
@@ -435,6 +466,10 @@ function handleVerifyReads(
     return true;
   }
   const stateDir = deps.stateDir();
+  if (hist) {
+    historyRead(res, deps, p.project, hist[1], q);
+    return true;
+  }
   if (!run) {
     const mods = modulesOf(deps, p.project);
     if (!mods.ok) {
@@ -473,7 +508,47 @@ function handleVerifyReads(
     return true;
   }
   const name = q.get("module") ?? "";
-  const tail = rec.modules.find((m) => m.name === name || m.id === name)?.tail;
+  const mod = rec.modules.find((m) => m.name === name || m.id === name);
+  if (q.get("kind") === "sarif") {
+    // Issue 212: the scan's SARIF, by the name its record keeps, from the
+    // module's own results folder; served as data that runs nothing.
+    const file = mod?.findings?.report;
+    const dir = mod
+      ? path.join(
+          stateDir,
+          "verify",
+          p.project,
+          "runs",
+          rec.runId,
+          mod.id.replace(/[^A-Za-z0-9._-]+/g, "_"),
+        )
+      : "";
+    let body: Buffer | null = null;
+    if (file && path.basename(file) === file)
+      try {
+        body = fs.readFileSync(path.join(dir, file));
+      } catch {
+        body = null;
+      }
+    if (!body) {
+      sendJson(
+        res,
+        {
+          ok: false,
+          error: `run ${rec.runId} kept no findings report for "${name}"`,
+        },
+        404,
+      );
+      return true;
+    }
+    res.writeHead(200, {
+      ...UNTRUSTED_FILE_HEADERS,
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    res.end(body);
+    return true;
+  }
+  const tail = mod?.tail;
   if (!tail?.length) {
     sendJson(
       res,
@@ -489,6 +564,75 @@ function handleVerifyReads(
   });
   res.end(tail.join("\n") + "\n");
   return true;
+}
+
+/** Issue 212: S5, one module's history on one environment. */
+function historyRead(
+  res: http.ServerResponse,
+  deps: VerifyServerDeps,
+  project: string,
+  rawId: string,
+  q: URLSearchParams,
+): void {
+  let id: string;
+  try {
+    id = decodeURIComponent(rawId);
+  } catch {
+    sendJson(res, { ok: false, error: "not a module's id" }, 400);
+    return;
+  }
+  const env = q.get("env") ?? "local";
+  const envs = deps.environments?.() ?? ["local"];
+  if (!envs.includes(env)) {
+    sendJson(
+      res,
+      { ok: false, error: `"${env}" is not one of: ${envs.join(", ")}` },
+      400,
+    );
+    return;
+  }
+  const mods = modulesOf(deps, project);
+  if (!mods.ok) {
+    sendJson(res, { ok: false, error: mods.error }, 400);
+    return;
+  }
+  const m = mods.modules.find((x) => x.id === id);
+  if (!m) {
+    sendJson(
+      res,
+      { ok: false, error: `there is no module "${id}" in project ${project}` },
+      404,
+    );
+    return;
+  }
+  let s: VerifySettings;
+  try {
+    s = settingsOf(deps);
+  } catch (e) {
+    sendJson(
+      res,
+      { ok: false, code: "config_invalid", error: (e as Error).message },
+      422,
+    );
+    return;
+  }
+  const h = moduleHistory(listRunRecords(deps.stateDir(), project), id, env, s);
+  const from = h.range?.lastPassed?.commit;
+  const to = h.range?.firstFailed.commit;
+  const git = deps.git ?? realGit;
+  const commits =
+    from && to
+      ? (git.between?.(m.repoPath, from, to, RANGE_COMMITS) ?? null)
+      : null;
+  sendJson(res, {
+    ok: true,
+    project,
+    name: m.name,
+    kind: m.kind,
+    mark: m.mark,
+    ...h,
+    ...(commits ? { commits } : {}),
+  });
 }
 
 async function bodyOf(

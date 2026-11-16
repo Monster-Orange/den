@@ -183,6 +183,11 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
     re: /^\/api\/verify\/runs\/[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/,
     method: "GET",
   },
+  // Issue 212 (MCP verify_history): one module's history. A read.
+  {
+    re: /^\/api\/verify\/modules\/[A-Za-z0-9._%-]{1,300}\/history$/,
+    method: "GET",
+  },
   // D44 (MCP whoami): whether an agent's own tools are current. A read.
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/tools$/,

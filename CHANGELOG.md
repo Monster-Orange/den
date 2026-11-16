@@ -4,6 +4,31 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.62] - unreleased
+
+### Added
+
+- Verify: a check's history (S5), from the board's panel (History). It
+  says since when the check fails: the first failing range, with the
+  commits in between and Open the first failing run. A strip of its last
+  runs, oldest first; each run opens it. A check that passed only after
+  a retry in 2 of its last 10 runs is marked flaky, with every attempt
+  kept and listed.
+- Verify: a scan's security findings (S6), from the board's panel
+  (Findings): the answer, the threshold, the counts by severity, each
+  finding with the version that fixes it, and the SARIF report. A
+  finding at or above the threshold fails the scan; one below it never
+  does, and the page says so. A scan that writes SARIF to
+  `DEN_RESULTS_DIR` is judged by its findings, not its exit code.
+- Settings in the org config, each with a permissive default:
+  `verify.run.retries` (0), `verify.flaky.window` (10),
+  `verify.flaky.min_retries` (2), `verify.history.limit` (30) and
+  `verify.security.fail_on` (high; a module's `fail_on` may only tighten
+  it).
+- `GET /api/verify/modules/:id/history`, and agents' `verify_history`.
+  `GET /api/verify/runs/:id/report?module=&kind=sarif` serves a scan's
+  SARIF. The overview's check rows carry their `id`.
+
 ## [0.4.58] - unreleased
 
 ### Added

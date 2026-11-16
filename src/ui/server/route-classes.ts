@@ -398,6 +398,10 @@ export const ROUTES: readonly RouteEntry[] = [
   R("/api/verify/overview", "issue 209: Verify's answer on each environment"),
   R("/api/verify/runs/:id", "issue 209: one Verify run's record"),
   R("/api/verify/runs/:id/report", "issue 209: a module's kept output"),
+  R(
+    "/api/verify/modules/:id/history",
+    "issue 212: a module's history, flaky mark and failing range",
+  ),
   M(
     ["POST"],
     "/api/verify/plan",
@@ -862,6 +866,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   ],
   // Issue 210: Cancel.
   "verify-routes.ts:CANCEL_PATH": ["/api/verify/runs/:id/cancel"],
+  "verify-routes.ts:HISTORY_PATH": ["/api/verify/modules/:id/history"],
 };
 
 /** Whether `pathname` matches a table path. */

@@ -273,6 +273,11 @@ export interface DenConfig {
    */
   server_agent?: ServerAgentConfig;
   /**
+   * Issue 212: Verify's settings (retries, the flaky mark, history length,
+   * the scan threshold). See shared/verify/settings.ts readVerifySettings.
+   */
+  verify?: unknown;
+  /**
    * Agents: `max_concurrent` caps the agents running at once in this
    * distribution (default 4); plain sessions never count. See
    * readAgentsConfig.

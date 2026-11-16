@@ -74,7 +74,19 @@ export interface GitProbe {
    * not; null when git can't say (the commit is gone): counts as changed.
    */
   changedSince(repoPath: string, commit: string): string[] | null;
+  /**
+   * Issue 212: the commits after `from` up to and including `to`, oldest
+   * first, at most `limit`; null when git can't say.
+   */
+  between?(
+    repoPath: string,
+    from: string,
+    to: string,
+    limit: number,
+  ): { commit: string; subject: string }[] | null;
 }
+
+const COMMIT_RE = /^[0-9a-f]{4,64}$/i;
 
 function git(repoPath: string, args: string[]): string {
   return execFileSync("git", ["-C", repoPath, ...args], {
@@ -99,6 +111,28 @@ export const realGit: GitProbe = {
         .split("\n")
         .map((l) => l.trim())
         .filter(Boolean);
+    } catch {
+      return null;
+    }
+  },
+  between(repoPath, from, to, limit) {
+    // Commits only, never a flag or a range a caller could slip in.
+    if (!COMMIT_RE.test(from) || !COMMIT_RE.test(to)) return null;
+    try {
+      return git(repoPath, [
+        "log",
+        "--reverse",
+        "--format=%h%x09%s",
+        `${from}..${to}`,
+        "--",
+      ])
+        .split("\n")
+        .filter(Boolean)
+        .slice(-limit)
+        .map((l) => {
+          const [commit, ...rest] = l.split("\t");
+          return { commit, subject: rest.join("\t") };
+        });
     } catch {
       return null;
     }

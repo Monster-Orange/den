@@ -327,6 +327,42 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "verify_history",
+    "A Verify check's history",
+    "Issue 212: one check's last runs on one environment, oldest first: each run's `state`, commit, and whether it passed only after a retry (`flaky`, with every `attempts` entry). `flaky.mark` says whether it is flaky (passed after a retry in `flaky.min` of the last `flaky.window` runs; both are settings). When it fails now, `range` names the last run it passed and the first it failed, with their commits, and `commits` lists the commits in between. A scan's runs carry its `findings` by severity. Reads only, in your own project.",
+    {
+      module: z
+        .string()
+        .describe(
+          "The check's id, <repo>:<layer>/<name> (verify_result lists them)",
+        ),
+      env: z.string().describe("The environment, e.g. local or staging"),
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+    },
+    async (a, { api, scope }) => {
+      const module = str(a.module);
+      if (
+        !module ||
+        !/^[A-Za-z0-9._-]{1,64}:[A-Za-z0-9._/-]{1,200}$/.test(module) ||
+        module.includes("..")
+      )
+        throw new Refusal(
+          "verify_history: module must be a check's id, <repo>:<layer>/<name>",
+        );
+      const env = str(a.env);
+      if (!env || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(env))
+        throw new Refusal("verify_history: env must be an environment's name");
+      const project = scope ? scope.workspace : str(a.project);
+      return api.get(
+        `/api/verify/modules/${encodeURIComponent(module)}/history`,
+        { env, ...(project ? { project } : {}) },
+      );
+    },
+  ),
+  read(
     "approval_check",
     "Check an approval",
     "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",

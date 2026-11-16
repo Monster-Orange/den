@@ -135,6 +135,9 @@ Only when Den's config turns them on (`mcp.actions`):
   environment it waits for the person's Allow, always. Once allowed, the
   run goes on in the background: `approval_check` gives its run id, and
   `verify_result` reads its progress and verdict.
+- `verify_history`: one check's last runs on one environment: since when
+  it fails (the first failing range and its commits), and whether it is
+  flaky (passed only after a retry, often enough to be marked).
 - `agent_resume`, `agent_import`: resume an agent, or bring in a
   conversation.
 

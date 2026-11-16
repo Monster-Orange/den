@@ -10,6 +10,7 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
+import { readVerifySettings } from "../../shared/verify/settings.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
   handleNotificationRoutes,
@@ -2527,6 +2528,8 @@ function verifyDeps(): VerifyServerDeps {
     focusedProject: () => getFocusedWorkspaceName(),
     repos: (p) => listReposWithManifests(p),
     environments: () => orgEnvironments(),
+    // Issue 212: read per request, so an edit applies without a restart.
+    settings: () => readVerifySettings(readDenConfig().verify),
   };
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */
