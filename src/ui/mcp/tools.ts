@@ -127,6 +127,15 @@ const PILLARS = [
 ] as const;
 
 const envArg = z.enum(ENVS).optional().describe("Environment (default local)");
+
+/** Issue 277: a repo that runs nothing joins with no services. */
+const noRunArg = z
+  .boolean()
+  .optional()
+  .describe(
+    'true: the repo runs nothing (config, docs, rulesets, shared CI): it joins with no services, so nothing starts or is health-checked, and agents work in it. The "it runs nothing" choice, picked',
+  );
+
 const workspaceArg = z
   .string()
   .optional()
@@ -832,7 +841,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "manifest_draft",
     "Draft a side-car manifest",
-    "The side-car manifest `repo add` would write for one repo, checked by the same validator, with nothing written (`repo add --dry-run`): `draft` (the YAML), `validation`, `manifest.file` (where it would go, never in the repo) and `services`. When the repo can start in several ways it answers `ask` and `choices` instead: call again with `run` set to the one the person picks. A repo with its own manifest needs no draft (`manifest.source: repo`). `path`: the repo's absolute folder (or ~/…) inside the person's home.",
+    "The side-car manifest `repo add` would write for one repo, checked by the same validator, with nothing written (`repo add --dry-run`): `draft` (the YAML), `validation`, `manifest.file` (where it would go, never in the repo) and `services`. When Den can't tell how the repo starts it answers `ask` and `choices` instead: call again with `run` set to the one the person picks, or `no_run: true` when they pick 'it runs nothing'. A repo with its own manifest needs no draft (`manifest.source: repo`). `path`: the repo's absolute folder (or ~/…) inside the person's home.",
     {
       path: z.string().describe("The repo's folder: absolute, or ~/…"),
       name: z
@@ -843,6 +852,7 @@ const READ_TOOLS: DenTool[] = [
         .string()
         .optional()
         .describe("The start command, when detection asked which one"),
+      no_run: noRunArg,
       down: z.string().optional().describe("The stop command"),
       health: z
         .string()
@@ -857,6 +867,7 @@ const READ_TOOLS: DenTool[] = [
           path: p,
           name: str(a.name),
           run: str(a.run),
+          ...(a.no_run === true ? { no_run: "1" } : {}),
           down: str(a.down),
           health: str(a.health),
         }),
@@ -1679,7 +1690,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "repo_add",
     title: "Add a repo",
     description:
-      "Add the local repo at `path` to a project, as `repo add` does (manifest_draft first shows what it would write)." +
+      "Add the local repo at `path` to a project, as `repo add` does (manifest_draft first shows what it would write). A repo that runs nothing (config, docs, rulesets, shared CI) is added with `no_run: true`: never invent a start command for it. A repo can be in more than one project (a shared repo, such as one holding shared components)." +
       HELD,
     action: true,
     shape: {
@@ -1697,6 +1708,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .string()
         .optional()
         .describe("The start command, when detection asked which"),
+      no_run: noRunArg,
       down: z.string().optional().describe("The stop command"),
       health: z
         .string()
@@ -1716,6 +1728,7 @@ const APPROVAL_TOOLS: DenTool[] = [
           workspace: str(a.workspace),
           name: str(a.name),
           run: str(a.run),
+          ...(a.no_run === true ? { no_run: true } : {}),
           down: str(a.down),
           health: str(a.health),
         },

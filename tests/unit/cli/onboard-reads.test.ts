@@ -18,6 +18,10 @@ import {
   type OnboardStatusDeps,
 } from "../../../src/ui/cli/onboard-reads.js";
 import { validateManifest } from "../../../src/shared/manifest/validate-manifest.js";
+import {
+  heldActions,
+  type HeldActionDeps,
+} from "../../../src/ui/server/held-actions.js";
 import { product } from "../../../src/shared/product.js";
 
 let tmp = "";
@@ -317,6 +321,53 @@ describe("manifestDraft", () => {
     // Naming one drafts it.
     const r2 = manifestDraft(dir, rules(), validate, { run: "npm run dev" });
     expect(r2).toMatchObject({ ok: true, manifest: { detected: "--run" } });
+  });
+
+  it("issue 277: a repo that runs nothing: 'it runs nothing' is a choice; no_run drafts services: {}", () => {
+    const dir = repo("code/rules", { "README.md": "# rulesets\n" });
+    const r = manifestDraft(dir, rules(), validate);
+    expect(r).toMatchObject({ ok: false, choices: ["it runs nothing"] });
+    for (const opts of [{ noRun: true }, { run: "it runs nothing" }]) {
+      const d = manifestDraft(dir, rules(), validate, opts);
+      expect(d).toMatchObject({
+        ok: true,
+        services: [],
+        manifest: { detected: "--no-run" },
+        validation: { valid: true },
+      });
+      expect(d.draft).toMatch(/^version: 1\nname: rules\nservices: \{\}\n$/m);
+    }
+    expect(fs.existsSync(manifests)).toBe(false);
+  });
+
+  it("issue 277: repo_add's held check takes no_run, says it runs nothing, and passes it on", async () => {
+    const dir = repo("code/rules", { "README.md": "# rulesets\n" });
+    const acts = heldActions({
+      rules,
+      validate,
+      workspaceCreateRefusal: () => null,
+      createWorkspace: (n) => n,
+      activateWorkspace: () => undefined,
+      workspaceActive: () => true,
+      workspaceExists: () => true,
+      defaultWorkspace: () => "north",
+      serviceTarget: (x) => ({ ok: true, address: x }),
+      tryService: async () => ({
+        ok: true,
+        exitCode: null,
+        ready: true,
+        lines: [],
+      }),
+    } as HeldActionDeps);
+    const asked = await acts.repo_add.check({ path: dir }, {});
+    expect(asked.ok ? "" : asked.error).toMatch(/Choices: it runs nothing/);
+    const c = await acts.repo_add.check({ path: dir, no_run: true }, {});
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.args).toEqual({ path: dir, no_run: true });
+    expect(c.details.join("\n")).toMatch(/Services: none\. It runs nothing/);
+    expect(c.details.join("\n")).toMatch(/services: \{\}/);
+    expect(fs.existsSync(manifests)).toBe(false);
   });
 
   it("a repo with its own manifest: nothing to draft", () => {
