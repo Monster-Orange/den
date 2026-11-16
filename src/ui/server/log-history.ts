@@ -18,7 +18,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execFile, spawnSync } from "child_process";
+import { execFile, spawn, spawnSync } from "child_process";
 
 import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
 import { hasRunningOpctlContainers } from "../../shared/environment-manager/service-runner.js";
@@ -60,17 +60,37 @@ export function parseManifestDockerFilter(cmd: string): string | null {
   return m ? m[1] : null;
 }
 
+/** The first running container `docker ps --filter <filter>` names, or null. */
+function firstDockerName(filter: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      "docker",
+      ["ps", "--filter", filter, "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 5_000 },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        resolve(
+          (stdout ?? "")
+            .split("\n")
+            .map((l) => l.trim())
+            .find(Boolean) ?? null,
+        );
+      },
+    );
+  });
+}
+
 /**
  * Resolve where a service's log HISTORY lives. Local env only in v1 —
  * non-local envs return `unsupported` (cloudwatch backward paging is a
  * follow-up that plugs in here).
  */
-export function resolveHistorySource(
+export async function resolveHistorySource(
   repoName: string,
   svcName: string,
   env: string,
   workspace?: string | null,
-): HistorySource {
+): Promise<HistorySource> {
   // Security boundary: these names flow into filesystem paths
   // (getServiceLogPath mkdirs + reads `<repo>/<service>.log`) and docker
   // invocations. Reject anything that isn't a plain catalog-style name.
@@ -106,12 +126,8 @@ export function resolveHistorySource(
   if (logSource?.type === "shell" && logSource.cmd) {
     const filter = parseManifestDockerFilter(logSource.cmd);
     if (filter) {
-      const out = spawnSync(
-        "docker",
-        ["ps", "--filter", filter, "--format", "{{.Names}}"],
-        { encoding: "utf-8", timeout: 5_000 },
-      );
-      const name = out.stdout?.split("\n").map((l) => l.trim())[0];
+      // Async: a slow docker must not hold up the rest of the server.
+      const name = await firstDockerName(filter);
       if (name) return { kind: "docker", container: name };
     }
   }
@@ -135,33 +151,66 @@ export function resolveHistorySource(
  * immutable, so an existing snapshot is never stale — new lines belong to the
  * live tail stream). File sources ARE their own snapshot (append-only).
  */
-export function ensureSnapshot(source: HistorySource): string | null {
+export async function ensureSnapshot(
+  source: HistorySource,
+): Promise<string | null> {
   if (source.kind === "file") return source.path;
   if (source.kind !== "docker") return null;
 
-  fs.mkdirSync(HISTORY_DIR, { recursive: true });
   const snapPath = path.join(HISTORY_DIR, `${source.container}.log`);
   if (fs.existsSync(snapPath)) return snapPath;
+  // Two requests for the same container share one dump.
+  const running = snapshotsInFlight.get(snapPath);
+  if (running) return running;
+  const made = dumpDockerLogs(source.container, snapPath).finally(() =>
+    snapshotsInFlight.delete(snapPath),
+  );
+  snapshotsInFlight.set(snapPath, made);
+  return made;
+}
 
+const snapshotsInFlight = new Map<string, Promise<string | null>>();
+
+/**
+ * `docker logs --timestamps` streamed straight into a temp file, then renamed
+ * into place. Async: a large log takes as long as it takes without holding
+ * up the rest of the server (issue 131).
+ */
+function dumpDockerLogs(
+  container: string,
+  snapPath: string,
+): Promise<string | null> {
+  fs.mkdirSync(HISTORY_DIR, { recursive: true });
   const tmp = `${snapPath}.tmp`;
+  // stdout straight to the file — a multi-GB log must never transit a
+  // JS string buffer.
   const fd = fs.openSync(tmp, "w");
-  try {
-    // stdout straight to the file — a multi-GB log must never transit a
-    // JS string buffer.
-    const res = spawnSync(
-      "docker",
-      ["logs", "--timestamps", source.container],
-      { stdio: ["ignore", fd, fd], timeout: 120_000 },
-    );
-    if (res.status !== 0) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      // In a child's event handler: a throw here would take the server down.
+      try {
+        fs.closeSync(fd);
+        if (ok) {
+          fs.renameSync(tmp, snapPath);
+          return resolve(snapPath);
+        }
+      } catch {
+        /* fall through: no snapshot */
+      }
       fs.rmSync(tmp, { force: true });
-      return null;
-    }
-  } finally {
-    fs.closeSync(fd);
-  }
-  fs.renameSync(tmp, snapPath);
-  return snapPath;
+      resolve(null);
+    };
+    const child = spawn("docker", ["logs", "--timestamps", container], {
+      stdio: ["ignore", fd, fd],
+    });
+    const timer = setTimeout(() => child.kill("SIGKILL"), 120_000);
+    child.on("error", () => finish(false));
+    child.on("close", (code) => finish(code === 0));
+  });
 }
 
 /**
@@ -380,7 +429,7 @@ export async function searchSystemHistory(
   workspace?: string | null,
 ): Promise<SystemSearchResult> {
   const label = `${system.repo}/${system.service}`;
-  const source = resolveHistorySource(
+  const source = await resolveHistorySource(
     system.repo,
     system.service,
     env,
@@ -415,7 +464,7 @@ export async function searchSystemHistory(
     }
   }
 
-  const file = ensureSnapshot(source);
+  const file = await ensureSnapshot(source);
   if (!file) {
     return {
       system: label,

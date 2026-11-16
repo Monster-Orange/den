@@ -4,6 +4,19 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.59] - unreleased
+
+### Fixed
+
+- Opening a service's log history no longer freezes every other page while
+  Den copies a large container log. The copy runs in the background, and
+  two opens of the same log share one copy.
+- The Tests page no longer holds up the rest of Den while it reads each
+  repo's branch and commit with git.
+- When an update fails and putting the old version back fails too, Den now
+  says the rollback failed, with the reason, instead of saying the old
+  version is back. An update never stays stuck at "installing".
+
 ## [0.4.58] - unreleased
 
 ### Fixed

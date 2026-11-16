@@ -55,7 +55,7 @@ import {
   type BridgeOutcome,
 } from "../../shared/edge/bridge-listen.js";
 import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
-import { execFileSync, spawn, spawnSync } from "child_process";
+import { execFile, execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
 import { moduleScanner } from "../../shared/test-discovery/module-scanner.js";
@@ -1125,15 +1125,16 @@ interface TestSource {
   workspace: string | null;
 }
 
-function readGitField(gitArgs: string[], cwd: string): string | null {
-  const r = spawnSync("git", gitArgs, {
-    cwd,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: GIT_REMOTE_TIMEOUT_MS,
+/** One git answer, async: slow git never holds up the server (issue 132). */
+function readGitField(gitArgs: string[], cwd: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      gitArgs,
+      { cwd, encoding: "utf-8", timeout: GIT_REMOTE_TIMEOUT_MS },
+      (err, stdout) => resolve(err ? null : stdout.trim() || null),
+    );
   });
-  if (r.status !== 0 || !r.stdout) return null;
-  return r.stdout.trim() || null;
 }
 
 /** The pillars whose sources are a repo manifest's own sections. */
@@ -1142,10 +1143,11 @@ type SourcePillar = Extract<
   "synthetic" | "smoke" | "journeys" | "security"
 >;
 
-function collectTestSources(pillar: SourcePillar): TestSource[] {
-  const workspace = getActiveWorkspace()?.name ?? null;
-  const sources: TestSource[] = [];
-  for (const repo of discoverRepos()) {
+/** The repos whose manifests feed `pillar`'s tests (no git). */
+function testSourceRepos(
+  pillar: SourcePillar,
+): ReturnType<typeof discoverRepos> {
+  return discoverRepos().filter((repo) => {
     const manifest = repo.manifest as {
       synthetics?: unknown;
       smoke?: Record<string, unknown>;
@@ -1160,19 +1162,28 @@ function collectTestSources(pillar: SourcePillar): TestSource[] {
           : pillar === "security"
             ? Object.keys(manifest?.security ?? {}).length > 0
             : Object.keys(manifest?.smoke ?? {}).length > 0;
-    if (!matches) continue;
-    sources.push({
-      repoName: repo.repoName,
-      repoPath: repo.repoPath,
-      branch: readGitField(
-        ["rev-parse", "--abbrev-ref", "HEAD"],
-        repo.repoPath,
-      ),
-      shortSha: readGitField(["rev-parse", "--short", "HEAD"], repo.repoPath),
-      workspace,
-    });
-  }
-  return sources;
+    return matches;
+  });
+}
+
+/** Those repos with their branch and short SHA, read in parallel. */
+async function collectTestSources(pillar: SourcePillar): Promise<TestSource[]> {
+  const workspace = getActiveWorkspace()?.name ?? null;
+  return Promise.all(
+    testSourceRepos(pillar).map(async (repo) => {
+      const [branch, shortSha] = await Promise.all([
+        readGitField(["rev-parse", "--abbrev-ref", "HEAD"], repo.repoPath),
+        readGitField(["rev-parse", "--short", "HEAD"], repo.repoPath),
+      ]);
+      return {
+        repoName: repo.repoName,
+        repoPath: repo.repoPath,
+        branch,
+        shortSha,
+        workspace,
+      };
+    }),
+  );
 }
 
 function formatSourceLine(src: TestSource): string {
@@ -3356,7 +3367,7 @@ async function handleRequest(
       return sendJson(res, []);
     }
     try {
-      return sendJson(res, collectTestSources(pillar));
+      return sendJson(res, await collectTestSources(pillar));
     } catch (err) {
       serverLog(`  ⚠ /api/test-sources: ${(err as Error).message}`);
       return sendJson(res, []);
@@ -4482,7 +4493,7 @@ async function handleRequest(
     if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
       return send400(res, "invalid repo/service name");
     try {
-      const source = resolveHistorySource(
+      const source = await resolveHistorySource(
         repoName,
         svcName,
         env,
@@ -4490,7 +4501,7 @@ async function handleRequest(
       );
       if (source.kind === "unsupported")
         return sendJson(res, { unsupported: true, reason: source.reason });
-      const snapshot = ensureSnapshot(source);
+      const snapshot = await ensureSnapshot(source);
       if (!snapshot)
         return sendJson(res, {
           unsupported: true,
@@ -4851,6 +4862,7 @@ async function handleRequest(
     // Log the source(s) of truth before the first step so run output captures
     // which repo/branch/SHA was actually tested. Silent for pillars that don't
     // read tests from repos (integration, perf are den-owned).
+    let runSources: TestSource[] = [];
     if (
       pillar === "synthetic" ||
       pillar === "smoke" ||
@@ -4858,7 +4870,8 @@ async function handleRequest(
       pillar === "security"
     ) {
       try {
-        const sources = collectTestSources(pillar);
+        const sources = await collectTestSources(pillar);
+        runSources = sources;
         if (sources.length === 0) {
           emit({ type: "line", text: `→ source: (no repos discovered)` });
         } else {
@@ -4883,20 +4896,9 @@ async function handleRequest(
       { verb: "run", detail: `${runDesc} [${runId}]` },
       principalOf(req),
     );
-    if (
-      pillar === "synthetic" ||
-      pillar === "smoke" ||
-      pillar === "journeys" ||
-      pillar === "security"
-    ) {
-      try {
-        const sources = collectTestSources(pillar);
-        for (const s of sources) {
-          serverLog(`  source: ${formatSourceLine(s)} [${runId}]`, "lifecycle");
-        }
-      } catch {
-        /* already emitted above as an SSE line */
-      }
+    // The sources read above (once: no second round of git reads).
+    for (const s of runSources) {
+      serverLog(`  source: ${formatSourceLine(s)} [${runId}]`, "lifecycle");
     }
 
     const startTime = Date.now();
@@ -4907,7 +4909,7 @@ async function handleRequest(
     // pillar (`tests:`) and a repo's performance modules included.
     const tested = await reposOfRun(String(pillar), String(env), modules, {
       pillarSources: (p) =>
-        collectTestSources(p as SourcePillar).map((x) => x.repoName),
+        testSourceRepos(p as SourcePillar).map((x) => x.repoName),
       suiteRepos: (e, only) =>
         planSuites(listServicesWithManifests(), e as Environment, only).run.map(
           (x) => x.repo,

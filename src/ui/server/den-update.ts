@@ -198,11 +198,51 @@ export async function updateDen(
       at: new Date(now()).toISOString(),
       ...(why ? { why } : {}),
     } satisfies UpdateState);
-  const putBack = async () => {
-    for (const b of backups)
-      if (b.saved) fs.copyFileSync(b.saved, b.path);
-      else fs.rmSync(b.path, { force: true });
-    await d.run([...d.npm, "install", "--no-audit", "--no-fund"], d.root);
+  // Puts the saved pin back and installs the old version again. Its
+  // answer is why that failed, or null when the old version is back.
+  const putBack = async (): Promise<string | null> => {
+    try {
+      for (const b of backups)
+        if (b.saved) fs.copyFileSync(b.saved, b.path);
+        else fs.rmSync(b.path, { force: true });
+    } catch (e) {
+      return `could not put the pin files back: ${(e as Error).message}`;
+    }
+    let npm: Ran;
+    try {
+      npm = await d.run(
+        [...d.npm, "install", "--no-audit", "--no-fund"],
+        d.root,
+      );
+    } catch (e) {
+      return `npm install of ${from} did not run: ${(e as Error).message}`;
+    }
+    return npm.code === 0
+      ? null
+      : `npm install of ${from} failed (exit ${npm.code}): ${tail(npm.out)}`;
+  };
+  // Rolls back after `why`, and says honestly whether the old version is
+  // back. The state never stays at "installing".
+  const rollBack = async (why: string): Promise<UpdateResult> => {
+    state("rolling_back", why);
+    const failed = await putBack();
+    if (failed) {
+      const both = `${why}; ${failed}`;
+      state("rollback_failed", both);
+      return {
+        ok: false,
+        error: `${both}. The rollback failed: Den ${from} may not start. A person must put the pin back on ${from} in ${d.root} and run npm install there.`,
+        from,
+        to,
+      };
+    }
+    state("rolled_back", why);
+    return {
+      ok: false,
+      error: `${why}. The pin is back on ${from}.`,
+      from,
+      to,
+    };
   };
 
   // The watch that judges the new version, and rolls it back, is this
@@ -215,66 +255,66 @@ export async function updateDen(
   );
 
   state("installing");
-  const inst = await d.run(
-    [
-      ...d.npm,
-      "install",
-      "--save-exact",
-      "--no-audit",
-      "--no-fund",
-      `${d.pkg.name}@${to}`,
-    ],
-    d.root,
-  );
-  if (inst.code !== 0) {
-    await putBack();
-    const why = `npm install of ${to} failed (exit ${inst.code}): ${tail(inst.out)}`;
-    state("rolled_back", why);
-    return {
-      ok: false,
-      error: `${why}. The pin is back on ${from}.`,
-      from,
-      to,
-    };
+  let lines: string[] | null;
+  try {
+    const inst = await d.run(
+      [
+        ...d.npm,
+        "install",
+        "--save-exact",
+        "--no-audit",
+        "--no-fund",
+        `${d.pkg.name}@${to}`,
+      ],
+      d.root,
+    );
+    if (inst.code !== 0)
+      return await rollBack(
+        `npm install of ${to} failed (exit ${inst.code}): ${tail(inst.out)}`,
+      );
+
+    const doc = await d.run([...d.cli, "doctor", "--json"], d.root);
+    lines = doctorLines(doc.out);
+    if (lines === null)
+      return await rollBack(
+        `Den ${to}'s doctor didn't run (exit ${doc.code}): ${tail(doc.out)}`,
+      );
+  } catch (e) {
+    return await rollBack(
+      `the update to ${to} stopped: ${(e as Error).message}`,
+    );
   }
 
-  const doc = await d.run([...d.cli, "doctor", "--json"], d.root);
-  const lines = doctorLines(doc.out);
-  if (lines === null) {
-    await putBack();
-    const why = `Den ${to}'s doctor didn't run (exit ${doc.code}): ${tail(doc.out)}`;
-    state("rolled_back", why);
-    return {
-      ok: false,
-      error: `${why}. The pin is back on ${from}.`,
-      from,
-      to,
-    };
-  }
-
+  // Until the watch starts, a failure here is still this run's to roll back.
   const plan = path.join(dir, "plan.json");
-  writeJson(plan, {
-    port: d.port,
-    from,
-    to,
-    fromPid: d.pid,
-    waitMs: d.waitMs,
-    root: d.root,
-    backups,
-    npm: [...d.npm, "install", "--no-audit", "--no-fund"],
-    restart: [
-      ...d.cli,
-      "web",
-      "restart",
-      "--no-open",
-      "--port",
-      String(d.port),
-    ],
-    stateFile: updateStateFile(d.stateDir),
-    restartMarker: d.note(`update Den ${from} → ${to}`),
-  });
-  state("watching");
-  d.watch(script, plan);
+  try {
+    writeJson(plan, {
+      port: d.port,
+      from,
+      to,
+      fromPid: d.pid,
+      waitMs: d.waitMs,
+      root: d.root,
+      backups,
+      npm: [...d.npm, "install", "--no-audit", "--no-fund"],
+      restart: [
+        ...d.cli,
+        "web",
+        "restart",
+        "--no-open",
+        "--port",
+        String(d.port),
+      ],
+      stateFile: updateStateFile(d.stateDir),
+      restartMarker: d.note(`update Den ${from} → ${to}`),
+    });
+    state("watching");
+    d.watch(script, plan);
+  } catch (e) {
+    return await rollBack(
+      `the update to ${to} stopped before its watch started: ${(e as Error).message}`,
+    );
+  }
   d.restart();
   return { ok: true, from, to, restarting: true, doctor: lines };
 }
