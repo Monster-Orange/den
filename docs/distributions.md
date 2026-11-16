@@ -2993,10 +2993,14 @@ notifications list` still lists it. A row's ⊘ turns its kind off after
   one agent fold into one row with ×N. Items older than
   `notifications.fold_days` (3, 7, 14 or 30; default 7) fold under one
   "Older than N days" row and don't count on the badge. Only what needs
-  the person (an agent waiting, a decision, a mention) shows open and
-  counts on the badge; the rest (an agent finished, an answer, releases
-  and checks) folds into one closed "Updates (N)" row, and opening that
-  agent marks its updates read. Mark all read marks what is shown. `/api/settings` serves and takes them as
+  the person shows open and counts on the badge: an agent at a permission
+  prompt, an agent that asked them something (with `ask_human`, or by
+  ending its turn on a question), a decision such as Den's own "Allow the
+  update" (only the newest; it goes once Den runs that version), and a
+  mention. An agent sitting idle after its turn doesn't count. The rest
+  (an agent finished, an answer, releases and checks) folds into one
+  closed "Updates (N)" row, and opening that agent takes its updates out
+  of the list, so the count drops. Mark all read marks what is shown. `/api/settings` serves and takes them as
   `bell_kinds` and `bell_fold_days`.
 - **Settings** (den.yml, then user.yml): `notifications.asks_per_hour`
   (default 30, at least 1): how many `ask_human` questions one agent may

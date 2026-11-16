@@ -8,6 +8,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- The bell's count shows only what needs you. An agent sitting idle
+  after its turn no longer counts. A permission prompt, a question the
+  agent asked you (with ask_human, or by ending its turn on one), and
+  Den's own "Allow the update" do count. Only the newest update ask is
+  kept, and it goes once Den runs that version. Opening an agent now
+  takes its updates out of the list, so the Updates count drops.
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new

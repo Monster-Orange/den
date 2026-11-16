@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import { isUpdateAsk, staleUpdateAsk } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
 import {
@@ -7264,6 +7265,14 @@ function startUpdateCheck(): void {
         /* best effort: doctor says "no check yet" */
       });
   noteState();
+  // #142: an update ask for a version this Den already runs (or passed)
+  // is done with.
+  try {
+    const have = engineVersion();
+    if (have) notificationDeps().store.remove((n) => staleUpdateAsk(n, have));
+  } catch {
+    /* the bell is best effort */
+  }
   if (!every) return;
   let busy = false;
   let updating = false;
@@ -7360,8 +7369,13 @@ function startUpdateCheck(): void {
         },
         notice: (version, text, msg) => {
           try {
-            notificationDeps().store.add({
-              kind: "service",
+            const store = notificationDeps().store;
+            // #142: "Den X is out, Allow the update" waits on the person:
+            // it needs them. One at a time: a newer one replaces the older.
+            const ask = msg.key === "bell.m.updateOut";
+            if (ask) store.remove(isUpdateAsk);
+            store.add({
+              kind: ask ? "decision" : "service",
               subject: `record:den-update-${version}`,
               scope: "workspace/den-server",
               text,
