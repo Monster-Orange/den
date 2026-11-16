@@ -247,6 +247,35 @@ const KIT_SHELL_NAMES = [
   "setWaiting",
 ];
 
+/**
+ * A module's block comments left out: only a comment on lines of its own
+ * (nothing before its opening, nothing after its close).
+ */
+export function stripBlockComments(src: string): string {
+  const lines = src.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    // A comment opening a line, closing on a line with nothing after it.
+    if (/^\s*\/\*/.test(lines[i]!)) {
+      let j = i;
+      let close = lines[j]!.indexOf("*/", lines[j]!.indexOf("/*") + 2);
+      while (close < 0 && j + 1 < lines.length) {
+        j++;
+        close = lines[j]!.indexOf("*/");
+      }
+      if (close >= 0 && lines[j]!.slice(close + 2).trim() === "") {
+        i = j;
+        continue;
+      }
+    }
+    out.push(lines[i]!);
+  }
+  return out.join("\n");
+}
+
+/** The kit's names /den-ui-shell.js gives window.DenUIShell. */
+export const KIT_SHELL_EXPORTS: readonly string[] = KIT_SHELL_NAMES;
+
 /** The classic script of the kit's shell (KIT_SHELL_SCRIPT), or null. */
 export function kitShellScript(
   engineRoot: string = getEngineRoot(),
@@ -259,11 +288,9 @@ export function kitShellScript(
     parts.push(
       `// ── den-ui ${f} (its own scope) ──\n` +
         `const { ${names.join(", ")} } = (function () {\n` +
-        fs
-          .readFileSync(file, "utf-8")
-          // Its comments stay in the kit: they name files (dialog.css) a
-          // page links itself, which this script never loads.
-          .replace(/^\s*\/\*[\s\S]*?\*\/\s*$/gm, "")
+        // Its comments stay in the kit: they name files (dialog.css) a
+        // page links itself, which this script never loads.
+        stripBlockComments(fs.readFileSync(file, "utf-8"))
           .replace(/^import\s+[^;]+;\s*$/gm, "")
           .replace(/^export\s+(?=(async\s+)?function|const|let|class)/gm, "") +
         `\nreturn { ${names.join(", ")} };\n})();`,
