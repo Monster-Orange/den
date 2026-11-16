@@ -9,15 +9,29 @@
  * by DEN_ORG_NAMES_FILE. Blank lines and `#` comments are skipped; each line
  * is a case-insensitive regex.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
-/** The patterns from `env` ([] when neither variable is set). */
+/**
+ * The per-user names file, read when neither variable is set, so git hooks
+ * (which see no shell variables from an agent's session) still find it:
+ * $XDG_CONFIG_HOME/den-dev/org-names.txt, else ~/.config/den-dev/org-names.txt.
+ */
+export function userNamesFile(env = process.env) {
+  const base =
+    env.XDG_CONFIG_HOME || (env.HOME ? join(env.HOME, ".config") : "");
+  return base ? join(base, "den-dev", "org-names.txt") : "";
+}
+
+/**
+ * The patterns from `env` ([] when nothing is configured). A file named in
+ * DEN_ORG_NAMES_FILE that is missing throws: a gate set up wrongly fails
+ * closed rather than passing.
+ */
 export function orgPatterns(env = process.env) {
-  const raw =
-    env.DEN_ORG_NAMES ??
-    (env.DEN_ORG_NAMES_FILE
-      ? readFileSync(env.DEN_ORG_NAMES_FILE, "utf-8")
-      : "");
+  const own = userNamesFile(env);
+  const file = env.DEN_ORG_NAMES_FILE || (own && existsSync(own) ? own : "");
+  const raw = env.DEN_ORG_NAMES ?? (file ? readFileSync(file, "utf-8") : "");
   return raw
     .split("\n")
     .map((l) => l.trim())

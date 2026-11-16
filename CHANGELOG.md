@@ -8,6 +8,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- A `pre-push` hook runs the org-name checks on what is being pushed: the
+  new commits' messages and the pushed commit's files. A name is caught
+  before it reaches the remote, where a pushed commit stays reachable by
+  its id. The patterns can also live in a per-user file,
+  `~/.config/den-dev/org-names.txt`, which git hooks find without any
+  shell variable.
+
 - One queue per machine for heavy test runs. Wrap a gate in
   `<cli> gate run --kind browser --estimate 6m -- <command>`: it waits for
   its turn, runs the command, and gives the turn back when the command

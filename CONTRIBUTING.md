@@ -13,6 +13,14 @@ The org-name gate enforces this in CI. Its patterns come from the
 `DEN_ORG_NAMES` secret, never from the repo, and its output names only the
 file, line and pattern number.
 
+Locally, git hooks run the same checks before anything leaves the machine:
+`commit-msg` checks each message, and `pre-push` checks the new commits'
+messages and the pushed commit's files. They read the patterns from
+`DEN_ORG_NAMES`, `DEN_ORG_NAMES_FILE` or the per-user file
+`~/.config/den-dev/org-names.txt` (git hooks don't see an agent session's
+shell variables, so the file is the reliable one). Without any of them the
+hooks pass quietly. A file that is named but missing stops the push.
+
 ## Layout
 
 | Path                                                      | What lives there                                                                                                                                                                               |
