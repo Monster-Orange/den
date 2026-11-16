@@ -119,6 +119,11 @@ export interface Crumb {
   optional?: boolean;
   cls?: string;
   valueCls?: string;
+  /**
+   * A type-to-filter field at the top of a list of links: by default past
+   * 6 of them; a number sets that threshold; true always; false never.
+   */
+  filter?: boolean | number;
 }
 export interface ScopeOptions {
   crumbs?: (Crumb | null | undefined | false)[];
@@ -173,8 +178,13 @@ export interface BellPanelOptions {
 export interface Account {
   label: string;
   detail?: string;
-  /** A link; else `action: true`, a button (hydrateAccount's onAction). */
+  /**
+   * A link; else `menu: true`, a button opening the account menu
+   * (hydrateAccount's menu); else `action: true`, a button
+   * (hydrateAccount's onAction).
+   */
   href?: string;
+  menu?: boolean;
   action?: boolean;
   icon?: string;
   id?: string;
@@ -183,7 +193,10 @@ export interface Account {
   attrs?: Record<string, string | number | boolean | null | undefined>;
   current?: boolean;
 }
-export declare function scopeCrumbHtml(c: Crumb | null | undefined): string;
+export declare function scopeCrumbHtml(
+  c: Crumb | null | undefined,
+  lang?: string,
+): string;
 /** The scope crumbs; no crumbs, "". */
 export declare function scopeHtml(o?: ScopeOptions): string;
 /** The search field, ⌘K inside it. */
@@ -194,6 +207,30 @@ export declare function bellButtonHtml(o?: BellButtonOptions): string;
 export declare function bellPanelHtml(o?: BellPanelOptions): string;
 /** The rail's account entry; no label, "". */
 export declare function accountHtml(a: Account | null | undefined): string;
+/** An account menu entry: a link, a button (onPick "item"), or a form post. */
+export type AccountMenuItem =
+  | { label: string; href: string }
+  | { label: string; id: string }
+  | {
+      label: string;
+      action: {
+        method?: "post" | "get";
+        url: string;
+        csrf?: string;
+        /** The hidden field's name (default "csrf"). */
+        field?: string;
+      };
+    };
+export interface AccountMenu {
+  /** Who is signed in. */
+  name?: string;
+  /** Where ("Signed in · this device"). */
+  detail?: string;
+  items?: AccountMenuItem[];
+  lang?: string;
+}
+/** The account entry's menu content. */
+export declare function accountMenuHtml(o?: AccountMenu): string;
 export interface SettingsEntry {
   href: string;
   /** Default the kit's "Settings". */

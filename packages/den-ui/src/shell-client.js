@@ -37,7 +37,11 @@
  *       crumb with the kit's menu (links or HTML) opens it below its ▾:
  *       Enter, Space, ↓ or ↑ open it on an entry; ↑ ↓ Home End move; Esc
  *       or Tab closes it, Esc back on the ▾; a click outside closes it. A
- *       crumb whose menu is the host's (menu: true) calls onOpen.
+ *       crumb whose menu is the host's (menu: true) calls onOpen. A long
+ *       menu (the crumb's `filter`) opens on its filter field: typing
+ *       hides the entries that don't hold it ("No match" when none do);
+ *       ↓ ↑ go to the entries (↑ from the first, back to the field);
+ *       Enter takes the first shown; Esc clears it, then closes.
  *       → { close(), isOpen() }
  *   hydrateSearch(button, { onActivate(via, event), keys? })   a click (or
  *       Enter) and ⌘K / Ctrl-K anywhere call onActivate ("click" or "key")
@@ -52,8 +56,13 @@
  *       Safari too); a click outside closes it. Opening focuses its first
  *       link or button.
  *       → { el, open(), close(focus), isOpen(), paint(), setCount(n) }
- *   hydrateAccount(root, { onAction(event) })   the account entry as an
- *       action (no href): a click or Enter calls onAction.
+ *   hydrateAccount(root, { onAction(event), menu(), onPick, onSubmit,
+ *       lang })   the account entry: as an action (no href), a click or
+ *       Enter calls onAction; with `menu: true` on the entry, its menu
+ *       (accountMenuHtml's options from menu(), on <body>, as ◐ ▾'s: Esc
+ *       and focus back, a press outside closes it). A form entry posts on
+ *       its own; onSubmit(event, form) first (preventDefault: no post).
+ *       → the menu's { open(), close(refocus), isOpen() }, or nothing
  *   hydrateAppearance(button, { menu(), onPick(kind, value, row), lang })
  *       ◐ ▾ and its menu (a role="menu" on <body>, placed under the
  *       button). menu() gives appearanceMenuHtml's options each time it
@@ -68,6 +77,7 @@
  */
 import { kitT } from "./strings.js";
 import {
+  accountMenuHtml,
   appearanceMenuHtml,
   bellCount,
   bellPanelHtml,
@@ -292,7 +302,21 @@ export function hydrateScope(root, opts = {}) {
     const id = btn.getAttribute("aria-controls");
     return id ? document.getElementById(id) : null;
   };
-  const items = (menu) => all(menu, ITEMS);
+  const items = (menu) => all(menu, ITEMS).filter((el) => !el.hidden);
+  const fieldOf = (menu) => menu.querySelector("input.den-mfilter");
+  // The filter: an entry shows when its words hold what was typed.
+  function filter(menu, text) {
+    const want = String(text || "")
+      .trim()
+      .toLowerCase();
+    let shown = 0;
+    for (const el of all(menu, ".den-mi")) {
+      el.hidden = !!want && !el.textContent.toLowerCase().includes(want);
+      if (!el.hidden) shown++;
+    }
+    const none = menu.querySelector(".den-mnone");
+    if (none) none.hidden = shown > 0;
+  }
   function close(refocus) {
     if (!open) return;
     const { btn, menu } = open;
@@ -314,6 +338,14 @@ export function hydrateScope(root, opts = {}) {
     menu.hidden = false;
     btn.setAttribute("aria-expanded", "true");
     open = { btn, menu };
+    const field = fieldOf(menu);
+    if (field) {
+      // A long menu opens on its filter, empty.
+      field.value = "";
+      filter(menu, "");
+      field.focus();
+      return;
+    }
     const list = items(menu);
     if (at === "first" && list[0]) list[0].focus();
     else if (at === "last" && list.length) list[list.length - 1].focus();
@@ -340,7 +372,33 @@ export function hydrateScope(root, opts = {}) {
     }
     if (!open || !open.menu.contains(t)) return;
     const list = items(open.menu);
+    const field = fieldOf(open.menu);
+    if (field && t === field) {
+      // In the filter: ↓ ↑ to the entries, Enter takes the first shown,
+      // Esc clears what was typed, then closes.
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const to = e.key === "ArrowDown" ? list[0] : list[list.length - 1];
+        if (to) to.focus();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (list[0]) list[0].click();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (field.value) {
+          field.value = "";
+          filter(open.menu, "");
+        } else close(true);
+      } else if (e.key === "Tab") close(false);
+      return;
+    }
     const i = list.indexOf(t);
+    if (field && e.key === "ArrowUp" && i === 0) {
+      e.preventDefault();
+      field.focus();
+      return;
+    }
     let next = -1;
     if (e.key === "ArrowDown") next = (i + 1) % list.length;
     else if (e.key === "ArrowUp") next = (i - 1 + list.length) % list.length;
@@ -355,6 +413,11 @@ export function hydrateScope(root, opts = {}) {
     if (next < 0 || !list.length) return;
     e.preventDefault();
     list[next].focus();
+  });
+  root.addEventListener("input", (e) => {
+    const t = e.target;
+    if (open && t && t.matches && t.matches("input.den-mfilter"))
+      filter(open.menu, t.value);
   });
   // Esc on the ▾ itself, with its menu open.
   document.addEventListener("keydown", (e) => {
@@ -476,8 +539,19 @@ export function hydrateBell(btn, opts = {}) {
   return { el: pop, open, close, isOpen, paint, setCount };
 }
 
-/** The account entry as an action (see the top). */
+/** The account entry: an action, or its menu (see the top). */
 export function hydrateAccount(root, opts = {}) {
+  const lang = () =>
+    typeof opts.lang === "function" ? opts.lang() : opts.lang;
+  const entry = root.querySelector('[data-den-account][aria-haspopup="menu"]');
+  if (entry && opts.menu)
+    return popMenu(entry, {
+      id: "den-account",
+      label: () => entry.getAttribute("title") || "",
+      html: () => accountMenuHtml({ lang: lang(), ...(opts.menu() || {}) }),
+      onPick: opts.onPick,
+      onSubmit: opts.onSubmit,
+    });
   root.addEventListener("click", (e) => {
     const a =
       e.target && e.target.closest
@@ -494,6 +568,28 @@ const TOP_MARGIN = 8;
 export function hydrateAppearance(btn, opts = {}) {
   const lang = () =>
     typeof opts.lang === "function" ? opts.lang() : opts.lang;
+  return popMenu(btn, {
+    id: "appearance-btn",
+    label: () => kitT(lang(), "kit.appearance"),
+    html: () =>
+      appearanceMenuHtml({
+        lang: lang(),
+        ...((opts.menu ? opts.menu() : null) || {}),
+      }),
+    onPick: opts.onPick,
+  });
+}
+
+/**
+ * A kit menu on <body> for a button (◐ ▾, the account entry): placed by
+ * it, kept in the window. o: { id (the button's, if it has none), label(),
+ * html(), onPick(kind, value, row), onSubmit(event, form) }. Opens on
+ * the checked entry, else the first; ↑ ↓ Home End move; Esc or Tab
+ * closes it and focus goes back to the button; a press outside closes
+ * it. A form's submit button submits it (onSubmit first: preventDefault
+ * there keeps it from posting, and closes the menu).
+ */
+function popMenu(btn, o) {
   let pop = null;
   const rows = () => (pop ? all(pop, ".den-mi") : []);
   const isOpen = () => !!pop;
@@ -528,17 +624,13 @@ export function hydrateAppearance(btn, opts = {}) {
   }
   function open(at) {
     if (pop) return;
-    const model = (opts.menu ? opts.menu() : null) || {};
     pop = document.createElement("div");
     pop.className = "den-pop den-um";
     pop.tabIndex = -1;
-    pop.id = (btn.id || "appearance-btn") + "-menu";
+    pop.id = (btn.id || o.id) + "-menu";
     pop.setAttribute("role", "menu");
-    pop.setAttribute(
-      "aria-label",
-      btn.getAttribute("aria-label") || kitT(lang(), "kit.appearance"),
-    );
-    pop.innerHTML = appearanceMenuHtml({ lang: lang(), ...model });
+    pop.setAttribute("aria-label", btn.getAttribute("aria-label") || o.label());
+    pop.innerHTML = o.html();
     document.body.appendChild(pop);
     btn.setAttribute("aria-expanded", "true");
     btn.setAttribute("aria-controls", pop.id);
@@ -546,12 +638,17 @@ export function hydrateAppearance(btn, opts = {}) {
     pop.addEventListener("click", (e) => {
       const row =
         e.target && e.target.closest ? e.target.closest(".den-mi") : null;
-      if (!row) return;
+      // A form's own button: the form posts (see submit below).
+      if (!row || row.type === "submit") return;
       const kind = row.dataset.kind;
       const value = row.dataset.value;
       if (row.tagName !== "A") e.preventDefault();
       close(true);
-      if (opts.onPick) opts.onPick(kind, value == null ? null : value, row);
+      if (o.onPick) o.onPick(kind, value == null ? null : value, row);
+    });
+    pop.addEventListener("submit", (e) => {
+      if (o.onSubmit) o.onSubmit(e, e.target);
+      if (e.defaultPrevented) close(true);
     });
     pop.addEventListener("keydown", (e) => {
       const list = rows();

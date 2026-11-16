@@ -295,6 +295,11 @@ hidden?, optional? }`. `label` is the small-caps word (COMPANY,
   the ▾. `menu: true` means the host opens its own menu: `onOpen(key,
 button)`. A crumb left out of the list draws nothing, and no separator
   either (a host with no ENV, say). `scopeCrumbHtml(crumb)` draws one crumb.
+  A kit-drawn list of more than 6 links gets a filter field at its top
+  (`filter`: a number sets that threshold, `false` turns it off). The menu
+  opens on the field. Typing hides the links that don't hold the text, and
+  "No match" shows when none do. ↓ goes to the links, Enter takes the first
+  one shown, and Esc clears the text, then closes the menu.
 - **Search field**: `searchHtml({ placeholder, label?, id?, shortcut? })`,
   for the `start` slot. It is the placeholder with ⌘K inside the field. A
   click, Enter, ⌘K or Ctrl-K calls `onActivate(via)` (`"click"` or
@@ -312,11 +317,22 @@ time?, read? }`) or the empty state. `bellPanelHtml(...)` takes `actions`
   outside closes it. `onEscape(e)` returning true keeps it open (the
   host's own question inside it, say). `shell.bell.setCount(n)` updates the
   badge.
-- **Account entry**: `account: { label, detail?, href? | action? }` on
-  `shellHtml` or `railHtml` puts it last in the rail's foot, before the
+- **Account entry**: `account: { label, detail?, href? | menu? | action? }`
+  on `shellHtml` or `railHtml` puts it last in the rail's foot, before the
   collapse toggle. It reads "label · detail". It is a link, or with
   `action: true` a button that calls `onAction`. `accountHtml(...)` draws
   it alone.
+- **Account menu**: with `menu: true`, the entry is a button (id
+  `den-account`) that opens a menu: who is signed in, where, a rule, then
+  the entries. Wire it with `hydrate`'s `account: { menu, onPick?,
+onSubmit? }`. `menu()` gives `{ name, detail?, items }`. An item is a link
+  `{ label, href }`, a button `{ label, id }` (`onPick("item", id)`), or a
+  form post `{ label, action: { method?, url, csrf?, field? } }`. A form
+  post needs no script: Sign out posts to `url`, with `csrf` in a hidden
+  field (named `field`, `csrf` by default). `onSubmit(event, form)` runs
+  first, and `preventDefault` there stops the post. The kit owns open,
+  close, the keys, Esc and focus going back to the entry.
+  `accountMenuHtml(...)` draws the content alone.
 - **Appearance menu**: `appearanceButtonHtml({ label?, title? })`, for the
   `account` slot (last in the bar): ◐ ▾ with `aria-haspopup="menu"`. Wire
   it with `hydrate`'s `appearance: { menu, onPick }`. `menu()` gives, each

@@ -1,4 +1,5 @@
 import type {
+  AccountMenu,
   AppearanceMenu,
   BellItem,
   BellPanelOptions,
@@ -92,10 +93,22 @@ export declare function hydrateBell(
   button: HTMLElement,
   opts?: BellHydrateOptions,
 ): BellHandle;
+export interface AccountHydrateOptions {
+  lang?: string | (() => string);
+  /** The entry as an action (no href, no menu): a click calls it. */
+  onAction?: (e: Event) => void;
+  /** The entry's menu (`menu: true` on the entry), each time it opens. */
+  menu?: () => Omit<AccountMenu, "lang">;
+  /** A button entry's pick: "item" and its id. */
+  onPick?: (kind: string, value: string | null, row: HTMLElement) => void;
+  /** A form entry's submit; preventDefault keeps it from posting. */
+  onSubmit?: (e: SubmitEvent, form: HTMLFormElement) => void;
+}
+/** The account entry: its menu's handle when it has one, else nothing. */
 export declare function hydrateAccount(
   root: ParentNode & EventTarget,
-  opts?: { onAction?: (e: Event) => void },
-): void;
+  opts?: AccountHydrateOptions,
+): AppearanceHandle | void;
 export interface AppearanceHydrateOptions {
   lang?: string | (() => string);
   /** The menu's content, each time it opens. */

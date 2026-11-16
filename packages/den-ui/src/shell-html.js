@@ -310,10 +310,37 @@ export function shellHtml(o = {}) {
 /** Crumb ids: "den-scope-<key>" unless the host names its own. */
 const crumbId = (c) => c.id || "den-scope-" + (c.key || "x");
 
+/**
+ * Whether a crumb's menu of `n` links gets the filter field: `filter`
+ * false never, a number past that many, true always, else past 6.
+ */
+function hasFilter(c, n) {
+  if (c.filter === false) return false;
+  if (c.filter === true) return true;
+  return n > (typeof c.filter === "number" ? c.filter : 6);
+}
+
 /** A crumb's menu, drawn by the kit: links ({ label, href, current }) or HTML. */
-function crumbMenuHtml(c) {
+function crumbMenuHtml(c, lang) {
   const m = c.menu;
   if (!m || m === true) return "";
+  const menuId = crumbId(c) + "-menu";
+  // A long list: a type-to-filter field first, "No match" last.
+  const filter =
+    Array.isArray(m) && hasFilter(c, m.length)
+      ? [
+          '<input type="search" class="den-mfilter" id="' +
+            esc(menuId) +
+            '-filter" aria-label="' +
+            esc(kitT(lang, "kit.menu.filter", { label: c.label ?? "" })) +
+            '" placeholder="' +
+            esc(kitT(lang, "kit.menu.filter.ph")) +
+            '" autocomplete="off" spellcheck="false">',
+          '<p class="den-mnote den-mnone" role="status" hidden>' +
+            esc(kitT(lang, "kit.menu.none")) +
+            "</p>",
+        ]
+      : ["", ""];
   const body = Array.isArray(m)
     ? m
         .map(
@@ -330,11 +357,13 @@ function crumbMenuHtml(c) {
     : String(m);
   return (
     '<div class="den-pop den-scope-menu" id="' +
-    esc(crumbId(c)) +
-    '-menu" role="menu" aria-label="' +
+    esc(menuId) +
+    '" role="menu" aria-label="' +
     esc(c.label) +
     '" hidden>' +
+    filter[0] +
     body +
+    filter[1] +
     "</div>"
   );
 }
@@ -346,10 +375,12 @@ function crumbMenuHtml(c) {
  *     valueCls? }
  * `menu`: links [{ label, href, current? }] or HTML (the kit draws and
  * opens it), or true (the host opens its own: hydrateScope's onOpen).
+ * `filter`: a type-to-filter field at the top of a list of links: by
+ * default past 6 of them; a number sets that threshold; false, never.
  * `optional`: the first to give way on a narrow bar. `cls`: more classes;
  * `valueCls`: more classes on the value.
  */
-export function scopeCrumbHtml(c) {
+export function scopeCrumbHtml(c, lang) {
   if (!c) return "";
   const id = crumbId(c);
   const title = c.title != null ? ' title="' + esc(c.title) + '"' : "";
@@ -392,7 +423,7 @@ export function scopeCrumbHtml(c) {
     '">' +
     esc(c.value ?? "") +
     '</span> <span aria-hidden="true">▾</span></span></button>' +
-    crumbMenuHtml(c)
+    crumbMenuHtml(c, lang)
   );
 }
 
@@ -412,7 +443,7 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
     esc(label ?? kitT(lang, "kit.scope")) +
     '"><span class="den-sep" aria-hidden="true">/</span>';
   list.forEach((c, i) => {
-    html += scopeCrumbHtml(c);
+    html += scopeCrumbHtml(c, lang);
     if (i < list.length - 1)
       html +=
         '<span class="den-sep den-' +
@@ -556,9 +587,11 @@ export function bellPanelHtml({
  * The account entry, in the rail's foot: who is signed in, here.
  *   accountHtml({ label, detail?, href?, action?, icon?, id?, navId?,
  *                 attrs?, current? })
- * `href`: a link; else `action` true: a button (hydrateAccount's
- * onAction). The name and tooltip read "label · detail". It is a rail
- * entry (.den-ni) marked data-den-account. No label: nothing.
+ * `href`: a link; else `menu` true: a button opening the account menu
+ * (accountMenuHtml, hydrateAccount's menu; id "den-account" unless
+ * given); else `action` true: a button (hydrateAccount's onAction). The
+ * name and tooltip read "label · detail". It is a rail entry (.den-ni)
+ * marked data-den-account. No label: nothing.
  */
 export function accountHtml(a) {
   if (!a || !a.label) return "";
@@ -572,10 +605,13 @@ export function accountHtml(a) {
       ? '<span class="den-acct-d"> · ' + esc(a.detail) + "</span>"
       : "") +
     "</span>";
+  if (a.href == null && a.menu && !a.id) more.id = "den-account";
   const open =
     a.href != null
       ? '<a class="den-ni" data-den-account href="' + esc(a.href) + '"'
-      : '<button type="button" class="den-ni" data-den-account data-act="account"';
+      : a.menu
+        ? '<button type="button" class="den-ni" data-den-account aria-haspopup="menu" aria-expanded="false"'
+        : '<button type="button" class="den-ni" data-den-account data-act="account"';
   return (
     open +
     ' data-nav="' +
@@ -733,6 +769,55 @@ export function appearanceMenuHtml({
         .join(""),
     );
   return parts.join(hr);
+}
+
+/**
+ * The account entry's menu: who is signed in (name), where (detail), a
+ * rule, then the entries.
+ *   accountMenuHtml({ name, detail?, items, lang })
+ * items: [{ label, href }] links, [{ label, id }] buttons (onPick "item"),
+ * or [{ label, action: { method?, url, csrf?, field? } }]: a form that
+ * posts to url on its own, with no script (csrf, if any, in a hidden
+ * field named `field`, "csrf" by default).
+ */
+export function accountMenuHtml({ name, detail, items } = {}) {
+  const parts = [];
+  const who =
+    (name ? '<div class="den-ml">' + esc(name) + "</div>" : "") +
+    (detail ? '<p class="den-mnote">' + esc(detail) + "</p>" : "");
+  if (who) parts.push(who);
+  const rows = (items || [])
+    .map((it) => {
+      if (!it || !it.label) return "";
+      const a = it.action;
+      if (a && a.url)
+        return (
+          '<form class="den-mform" method="' +
+          esc(a.method || "post") +
+          '" action="' +
+          esc(a.url) +
+          '">' +
+          (a.csrf != null
+            ? '<input type="hidden" name="' +
+              esc(a.field || "csrf") +
+              '" value="' +
+              esc(a.csrf) +
+              '">'
+            : "") +
+          '<button type="submit" class="den-mi" tabindex="-1" role="menuitem"><span class="den-mi-l">' +
+          esc(it.label) +
+          "</span></button></form>"
+        );
+      return menuRowHtml({
+        label: it.label,
+        href: it.href,
+        kind: "item",
+        value: it.id,
+      });
+    })
+    .join("");
+  if (rows) parts.push(rows);
+  return parts.join('<div class="den-hr" role="separator"></div>');
 }
 
 /**

@@ -117,6 +117,32 @@ const full = mount(document.body, {
   },
 });
 full.appearance?.open();
+// 0.7.0: the account entry's menu, and a crumb menu's filter.
+const signedIn = mount(document.body, {
+  ...model,
+  account: { label: "Signed in", detail: "this device", menu: true },
+  slots: {
+    start: scopeHtml({
+      crumbs: [{ key: "ws", label: "Project", menu: [{ label: "A", href: "#a" }], filter: 1 }],
+    }),
+  },
+  hydrate: {
+    account: {
+      menu: () => ({
+        name: "Signed in",
+        detail: "this device",
+        items: [
+          { label: "Sessions", href: "/settings#access" },
+          { label: "Sign out", action: { method: "post", url: "/out", csrf: "t" } },
+        ],
+      }),
+      onSubmit: (e: SubmitEvent) => e.preventDefault(),
+    },
+  },
+});
+signedIn.account?.open();
+const menuHtml: string = DenUI.accountMenuHtml({ name: "x", items: [{ label: "y", id: "z" }] });
+void menuHtml;
 DenUI.version.waiting({ label: "stale", action: "Restart", onClick: () => {} });
 DenUI.version.waiting(null);
 withPieces.search?.activate();

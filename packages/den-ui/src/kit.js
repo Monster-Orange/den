@@ -48,6 +48,7 @@
 import { addStrings, kitT, setProduct } from "./strings.js";
 import {
   accountHtml,
+  accountMenuHtml,
   appearanceButtonHtml,
   appearanceMenuHtml,
   bellButtonHtml,
@@ -198,7 +199,10 @@ export function hydrate(root, opts = {}) {
   const bell = root.querySelector(".den-bell");
   if (bell && opts.bell !== false)
     shell.bell = hydrateBell(bell, { lang, ...(opts.bell || {}) });
-  if (opts.account !== false) hydrateAccount(root, opts.account || {});
+  if (opts.account !== false) {
+    const acct = hydrateAccount(root, { lang, ...(opts.account || {}) });
+    if (acct) shell.account = acct;
+  }
   const um = root.querySelector(".appearance-btn");
   if (um && opts.appearance)
     shell.appearance = hydrateAppearance(um, { lang, ...opts.appearance });
@@ -263,6 +267,7 @@ const DenUI = {
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
+  accountMenuHtml,
   settingsHtml,
   appearanceButtonHtml,
   appearanceMenuHtml,

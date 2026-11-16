@@ -860,6 +860,36 @@ body.den-has-shell .den-upd {
   padding: 4px 8px;
   max-width: 260px;
 }
+/* A long menu's type-to-filter field, a host's menu field look; an entry
+   it filters out is hidden. */
+.den-pop input.den-mfilter {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-button);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13.3333px;
+  line-height: normal;
+}
+.den-pop .den-mi[hidden],
+.den-pop .den-mnote[hidden] {
+  display: none;
+}
+/* A form in a menu (the account menu's Sign out) is just its row. */
+.den-pop form.den-mform {
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 /* ◐ ▾'s menu, on <body> above everything, placed under the button. */
 .den-um {
   margin: 0;

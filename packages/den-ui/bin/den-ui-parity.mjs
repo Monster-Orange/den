@@ -161,8 +161,14 @@ export const COMPONENTS = {
   // menu or the bell's rows (classes of its own) is not a copy.
   scope: {
     label: "scope crumbs (COMPANY / PROJECT / ENV, each with its ▾)",
-    markup: [cls("den-scope"), cls("den-scope-btn"), cls("den-scope-menu")],
-    css: ["den-scope", "den-scope-btn", "den-scope-menu"],
+    markup: [
+      cls("den-scope"),
+      cls("den-scope-btn"),
+      cls("den-scope-menu"),
+      cls("den-mfilter"),
+      cls("den-mnone"),
+    ],
+    css: ["den-scope", "den-scope-btn", "den-scope-menu", "den-mfilter"],
     code: ["scopeHtml", "scopeCrumbHtml", "scopeButton", "hydrateScope"],
     files: [],
   },
@@ -206,9 +212,9 @@ export const COMPONENTS = {
   },
   account: {
     label: "account entry in the rail's foot",
-    markup: [/\bdata-den-account\b/, cls("den-acct-d")],
-    css: ["den-acct-d"],
-    code: ["accountHtml", "hydrateAccount", "identityEntry"],
+    markup: [/\bdata-den-account\b/, cls("den-acct-d"), cls("den-mform")],
+    css: ["den-acct-d", "den-mform"],
+    code: ["accountHtml", "accountMenuHtml", "hydrateAccount", "identityEntry"],
     files: [],
   },
 };

@@ -7,6 +7,7 @@ import type {
   configureBusy,
 } from "./busy.js";
 import type {
+  AccountHydrateOptions,
   AppearanceHandle,
   AppearanceHydrateOptions,
   setWaiting,
@@ -39,6 +40,7 @@ import type {
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
+  accountMenuHtml,
   settingsHtml,
   appearanceButtonHtml,
   appearanceMenuHtml,
@@ -86,7 +88,7 @@ export interface KitHydrateOptions extends HydrateOptions {
   /** 0.7.0: the bell and its panel (false: not wired). */
   bell?: Omit<BellHydrateOptions, "lang"> | false;
   /** 0.7.0: the account entry as an action (false: not wired). */
-  account?: { onAction?: (e: Event) => void } | false;
+  account?: Omit<AccountHydrateOptions, "lang"> | false;
   /** 0.7.0: ◐ ▾ and its menu (wired when given). */
   appearance?: Omit<AppearanceHydrateOptions, "lang">;
 }
@@ -96,6 +98,8 @@ export interface KitShell extends Shell {
   search?: SearchHandle;
   bell?: BellHandle;
   appearance?: AppearanceHandle;
+  /** The account entry's menu, when it has one. */
+  account?: AppearanceHandle;
 }
 export declare function configure(o?: KitConfig): void;
 export declare function t(
@@ -177,6 +181,7 @@ export interface DenUIKit {
   bellButtonHtml: typeof bellButtonHtml;
   bellPanelHtml: typeof bellPanelHtml;
   accountHtml: typeof accountHtml;
+  accountMenuHtml: typeof accountMenuHtml;
   settingsHtml: typeof settingsHtml;
   appearanceButtonHtml: typeof appearanceButtonHtml;
   appearanceMenuHtml: typeof appearanceMenuHtml;

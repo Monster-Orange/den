@@ -18,6 +18,9 @@
  * 6. The version chip's pip (unread notes) and the update-waiting pill
  *    beside it.
  * 7. Settings in the rail's foot, before the account entry.
+ * 8. The account entry's menu: who is signed in, here, and Sign out as a
+ *    plain form post (no script needed for it).
+ * 9. A crumb's menu with many entries gets a type-to-filter field.
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * The page keeps a click from focusing a button, as Safari on macOS does.
@@ -93,12 +96,18 @@ const model = {
   nav: [{ id: "home", label: "Home", href: "/", group: "work", icon: "home", current: true }],
 };
 if (!q.has("bare")) {
+  const many = ["Garden", "Orchard", "Meadow", "Forest", "River", "Harbor", "Valley", "Ridge"];
+  const projects = q.has("many")
+    ? many.map((n, i) => ({ label: n, href: "#" + n.toLowerCase(), current: i === 0 }))
+    : [
+        { label: "Garden", href: "#garden", current: true },
+        { label: "Orchard", href: "#orchard" },
+      ];
   const crumbs = [
     { key: "org", label: "Company", value: "North Co" },
-    { key: "ws", label: "Project", value: "Garden", menu: [
-      { label: "Garden", href: "#garden", current: true },
-      { label: "Orchard", href: "#orchard" },
-    ] },
+    { key: "ws", label: "Project", value: "Garden", menu: projects,
+      ...(q.has("filter") ? { filter: Number(q.get("filter")) } : {}),
+      ...(q.has("nofilter") ? { filter: false } : {}) },
   ];
   if (!q.has("noenv")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
   model.slots = {
@@ -109,7 +118,9 @@ if (!q.has("bare")) {
   model.settings = { href: "#settings" };
   model.account = q.has("act")
     ? { label: "Signed in", detail: "this device", action: true }
-    : { label: "Signed in", detail: "this device", href: "#account" };
+    : q.has("acctmenu")
+      ? { label: "Signed in", detail: "this device", menu: true }
+      : { label: "Signed in", detail: "this device", href: "#account" };
   model.hydrate = {
     search: { onActivate: (via) => window.log.search.push(via) },
     bell: {
@@ -118,7 +129,17 @@ if (!q.has("bare")) {
       onOpen: () => window.log.opened++,
       onClose: () => window.log.closed++,
     },
-    account: { onAction: () => window.log.account++ },
+    account: {
+      onAction: () => window.log.account++,
+      menu: () => ({
+        name: "Signed in",
+        detail: "this device",
+        items: [
+          { label: "Sessions", href: "#sessions" },
+          { label: "Sign out", action: { method: "post", url: "/out", csrf: "tok-1" } },
+        ],
+      }),
+    },
     appearance: {
       menu: () => ({
         mode: "system",
@@ -142,6 +163,9 @@ window.DenUI = DenUI;
 window.ready = true;
 `;
 
+/** What reached /out (a sign-out form's post): "METHOD body". */
+const posts: string[] = [];
+
 async function open(b: Browser, query = ""): Promise<Page> {
   const ctx = await b.newContext({
     viewport: { width: 1280, height: 800 },
@@ -152,6 +176,10 @@ async function open(b: Browser, query = ""): Promise<Page> {
     const u = new URL(r.request().url());
     if (u.pathname === "/")
       return r.fulfill({ contentType: "text/html", body: PAGE });
+    if (u.pathname === "/out") {
+      posts.push(`${r.request().method()} ${r.request().postData() ?? ""}`);
+      return r.fulfill({ contentType: "text/html", body: "signed out" });
+    }
     if (u.pathname === "/app.js")
       return r.fulfill({ contentType: "text/javascript", body: APP });
     const f = u.pathname.replace(/^\/kit\//, "");
@@ -764,6 +792,154 @@ for (const engine of ["chromium", "webkit"]) {
         ),
       ).resolves.toEqual([0, 0, 0]);
       await q.context().close();
+    });
+
+    it("the account entry's menu: who, where, and Sign out as a form post; Esc and focus back", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, "?acctmenu");
+      const btn = p.locator(".den-rail [data-den-account]");
+      await expect(btn.evaluate((e) => e.tagName)).resolves.toBe("BUTTON");
+      await expect(btn.getAttribute("aria-haspopup")).resolves.toBe("menu");
+      await expect(btn.getAttribute("aria-expanded")).resolves.toBe("false");
+      await btn.click();
+      await expect(btn.getAttribute("aria-expanded")).resolves.toBe("true");
+      const menu = p.locator("#den-account-menu");
+      await expect(menu.getAttribute("role")).resolves.toBe("menu");
+      // Who is signed in and where, then a rule, then the entries.
+      await expect(
+        menu.evaluate((m) =>
+          [...m.children].map((c) =>
+            c.tagName === "FORM"
+              ? `form ${c.getAttribute("method")} ${c.getAttribute("action")}: ${(c as HTMLFormElement).elements.namedItem("csrf") ? "csrf" : "-"} | ${c.textContent}`
+              : `${c.className}: ${c.textContent}`,
+          ),
+        ),
+      ).resolves.toEqual([
+        "den-ml: Signed in",
+        "den-mnote: this device",
+        "den-hr: ",
+        "den-mi: Sessions",
+        "form post /out: csrf | Sign out",
+      ]);
+      // Opened by a click: focus on its first entry, and ↓ moves on.
+      await expect(focused(p)).resolves.toBe("#sessions");
+      await p.keyboard.press("ArrowDown");
+      await expect(
+        p.evaluate(() => document.activeElement?.textContent),
+      ).resolves.toBe("Sign out");
+      // Esc closes it; focus goes back to the entry.
+      await p.keyboard.press("Escape");
+      await expect(menu.count()).resolves.toBe(0);
+      await expect(btn.getAttribute("aria-expanded")).resolves.toBe("false");
+      await expect(focused(p)).resolves.toBe("den-account");
+      // A press outside closes it.
+      await btn.click();
+      await expect(menu.count()).resolves.toBe(1);
+      await p.mouse.click(900, 500);
+      await expect(menu.count()).resolves.toBe(0);
+      // Sign out posts the form, with no script of the host's.
+      posts.length = 0;
+      await btn.focus();
+      await p.keyboard.press("Enter");
+      await p.keyboard.press("End");
+      await Promise.all([p.waitForURL(/\/out$/), p.keyboard.press("Enter")]);
+      expect(posts).toEqual(["POST csrf=tok-1"]);
+      await p.context().close();
+    });
+
+    it("a crumb's long menu filters as you type: ↓ and Enter work, Esc clears then closes", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, "?many");
+      const ws = p.locator("#den-scope-ws");
+      const menu = p.locator("#den-scope-ws-menu");
+      const field = menu.locator("input.den-mfilter");
+      const shown = () =>
+        menu.evaluate((m) =>
+          [...m.querySelectorAll<HTMLElement>(".den-mi")]
+            .filter((a) => !a.hidden && a.offsetParent !== null)
+            .map((a) => a.textContent),
+        );
+      await ws.click();
+      // More than 6 entries: the field is first, and has the focus.
+      await expect(field.count()).resolves.toBe(1);
+      await expect(
+        menu.evaluate((m) => m.firstElementChild?.matches("input.den-mfilter")),
+      ).resolves.toBe(true);
+      await expect(field.getAttribute("type")).resolves.toBe("search");
+      await expect(field.getAttribute("aria-label")).resolves.toBe(
+        "Filter Project",
+      );
+      await expect(focused(p)).resolves.toBe("den-scope-ws-menu-filter");
+      // The field looks like the host's menu fields.
+      await expect(
+        field.evaluate((e) => {
+          const c = getComputedStyle(e);
+          return [
+            c.borderTopStyle,
+            c.borderTopWidth,
+            c.paddingTop,
+            c.paddingLeft,
+          ];
+        }),
+      ).resolves.toEqual(["solid", "1px", "6px", "8px"]);
+      await p.keyboard.type("r");
+      await expect(shown()).resolves.toEqual([
+        "Garden",
+        "Orchard",
+        "Forest",
+        "River",
+        "Harbor",
+        "Ridge",
+      ]);
+      await p.keyboard.type("iv");
+      await expect(shown()).resolves.toEqual(["River"]);
+      // ↓ goes to the first entry shown; ↑ from it, back to the field.
+      await p.keyboard.press("ArrowDown");
+      await expect(focused(p)).resolves.toBe("#river");
+      await p.keyboard.press("ArrowUp");
+      await expect(focused(p)).resolves.toBe("den-scope-ws-menu-filter");
+      // Nothing matches: a line says so.
+      await p.keyboard.type("zz");
+      await expect(shown()).resolves.toEqual([]);
+      await expect(
+        menu.locator(".den-mnote:not([hidden])").textContent(),
+      ).resolves.toBe("No match");
+      // Esc clears the field first, and the menu stays.
+      await p.keyboard.press("Escape");
+      await expect(field.inputValue()).resolves.toBe("");
+      await expect(menu.isVisible()).resolves.toBe(true);
+      await expect(shown()).resolves.toHaveLength(8);
+      // Esc again closes it; focus goes back to the crumb.
+      await p.keyboard.press("Escape");
+      await expect(menu.isVisible()).resolves.toBe(false);
+      await expect(focused(p)).resolves.toBe("den-scope-ws");
+      // Enter takes the first entry shown.
+      await ws.click();
+      await p.keyboard.type("orch");
+      await p.keyboard.press("Enter");
+      await p.waitForFunction(() => location.hash === "#orchard");
+      await p.context().close();
+    });
+
+    it("the filter: on past 6 entries by default; a number sets the threshold; false turns it off", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const count = async (q: string) => {
+        const p = await open(b, q);
+        const n = await p
+          .locator("#den-scope-ws-menu input.den-mfilter")
+          .count();
+        await p.context().close();
+        return n;
+      };
+      // Two entries: none. Eight: one. A threshold of 1 on two: one.
+      await expect(count("")).resolves.toBe(0);
+      await expect(count("?many")).resolves.toBe(1);
+      await expect(count("?filter=1")).resolves.toBe(1);
+      await expect(count("?many&filter=10")).resolves.toBe(0);
+      await expect(count("?many&nofilter")).resolves.toBe(0);
     });
   });
 }
