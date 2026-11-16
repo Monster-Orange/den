@@ -109,6 +109,7 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
+import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import {
   agentPrincipalOf,
@@ -660,11 +661,20 @@ export function listedSessions(
     });
   }
   const order = [...active];
-  return out.sort(
-    (a, b) =>
-      order.indexOf(a.workspace) - order.indexOf(b.workspace) ||
-      (a.startedAt ?? "").localeCompare(b.startedAt ?? "") ||
-      a.label.localeCompare(b.label),
+  // Issue 96: within a project, the person's order for its agents (one helper
+  // for every list: the page, the rail, the flyout read this one).
+  return inAgentOrder(
+    out.sort(
+      (a, b) =>
+        order.indexOf(a.workspace) - order.indexOf(b.workspace) ||
+        (a.startedAt ?? "").localeCompare(b.startedAt ?? "") ||
+        a.label.localeCompare(b.label),
+    ),
+    (r) =>
+      r.kind === "agent" && r.agent
+        ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
+        : null,
+    (ws) => agentOrderOf(ws),
   );
 }
 

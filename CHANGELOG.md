@@ -4,6 +4,22 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.54] - unreleased
+
+### Added
+
+- Put a project's agents in your own order (issue 96). On the Agents
+  page, drag an agent by the grip on its left edge to a new place in its
+  project; a finger on a phone or tablet drags too. With an agent row
+  focused, Alt+↑ and Alt+↓ move it, and a screen reader hears its new
+  place. The ⋯ menu has Move up, Move down and Move to top, and on a
+  phone Reorder shows Up and Down buttons. The order is yours: it is kept
+  in your own settings (config/local/user.yml, `agents.order`), not in
+  the agent, so it holds after a reload and a Den restart. The Projects
+  page and the service flyout list the agents in the same order. A new
+  agent goes at the end; a removed one drops out. Only a person can
+  change it: an agent is refused.
+
 ## [0.4.53] - 2026-11-15
 
 ### Added

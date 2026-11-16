@@ -51,6 +51,13 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
+  agentOrderOf,
+  inAgentOrder,
+  moveInOrder,
+  setAgentOrder,
+  type AgentMove,
+} from "../../shared/agents/order.js";
+import {
   psCommandLine,
   runningIntent,
   type CommandLineOf,
@@ -1099,7 +1106,41 @@ export async function listAgents(
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
   await addMcpStale(d, rows);
-  return opts.stopped ? rows.filter((r) => isStoppedState(r.state)) : rows;
+  // Issue 96: the person's order, as every list of the project's agents shows.
+  const ordered = inAgentOrder(
+    rows,
+    (r) => ({ ws, id: r.agent, startedAt: r.startedAt }),
+    (w) => agentOrderOf(w),
+  );
+  return opts.stopped
+    ? ordered.filter((r) => isStoppedState(r.state))
+    : ordered;
+}
+
+/**
+ * Issue 96: move agent `id` in project `ws`'s order (up, down, top,
+ * bottom, or a 1-based place) and store the whole order. Stopped agents
+ * are in the list too: they keep their place (the page shows them in
+ * Stopped). Returns the order and where `id` is now.
+ */
+export async function orderAgent(
+  d: AgentsResolved,
+  ws: string,
+  id: string,
+  to: AgentMove,
+): Promise<{ order: string[]; position: number; of: number }> {
+  agentRecord(d, id, ws);
+  const shown = (await listAgents(d, ws, { startHost: false })).map(
+    (r) => r.agent,
+  );
+  let next: string[];
+  try {
+    next = moveInOrder(shown, id, to);
+  } catch (err) {
+    throw new AgentError((err as Error).message, { usage: true });
+  }
+  const order = setAgentOrder(ws, next);
+  return { order, position: order.indexOf(id) + 1, of: order.length };
 }
 
 /** D59: whether each agent resumes on its own after a restart. */

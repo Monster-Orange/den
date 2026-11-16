@@ -39,6 +39,8 @@ export const UI_MODULES: readonly string[] = [
   "/agents-page.js",
   // D32: an agent's helpers, and the shared read-only transcript view.
   "/agent-helpers.js",
+  // Issue 96: where a move in a project's order goes.
+  "/agent-order.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
