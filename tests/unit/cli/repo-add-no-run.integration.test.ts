@@ -295,18 +295,45 @@ describe("a shared repo, such as one holding shared components, in more than one
 });
 
 describe("downstream: nothing to start, nothing unhealthy", () => {
+  const runsNothing = (repo: string) => ({ repo, why: "runs nothing" });
+
   it("up and down of a repo that runs nothing are ok, with nothing started", () => {
     const up = acme("-w", "north", "up", "cfg", "--json");
-    expect(up.json).toMatchObject({ ok: true, services: [] });
-    expect(up.json.runsNothing).toEqual(["cfg"]);
+    expect(up.json).toMatchObject({
+      ok: true,
+      services: [],
+      noRuntime: [runsNothing("cfg")],
+    });
     expect(up.code).toBe(0);
     const down = acme("-w", "north", "down", "cfg", "--json");
     expect(down.code).toBe(0);
-    expect(down.json).toMatchObject({ ok: true, services: [] });
+    expect(down.json).toMatchObject({
+      ok: true,
+      services: [],
+      noRuntime: [runsNothing("cfg")],
+    });
   }, 120_000);
 
-  it("status lists no service for it, and no unknown or unhealthy row", () => {
+  it("up -a in a project whose repos all run nothing is ok; status says there is nothing to check", () => {
+    const rules = path.join(tmp, "repos", "rules");
+    expect(acme("repo", "add", rules, "-w", "quiet", "--json").code).toBe(0);
+    const up = acme("-w", "quiet", "up", "-a", "--json");
+    expect(up.json).toMatchObject({
+      ok: true,
+      services: [],
+      noRuntime: [runsNothing("rules")],
+    });
+    expect(up.code).toBe(0);
+    const s = acme("-w", "quiet", "status");
+    expect(s.out).toMatch(/No services to check: rules \(runs nothing\)/);
+    expect(s.out).not.toMatch(/unknown|unhealthy|error/);
+  }, 120_000);
+
+  it("status lists no service for a repo that runs nothing, and no unknown or unhealthy row for it", () => {
     const s = acme("status", "--all-active");
+    // The repos that run something are still there.
+    expect(s.out).toMatch(/│ shop\b/);
+    expect(s.out).toMatch(/│ ci\b/);
     expect(s.out).not.toMatch(/│ cfg\b/);
     expect(s.out).not.toMatch(/│ rules\b/);
     expect(s.out).not.toMatch(/│ docs\b/);

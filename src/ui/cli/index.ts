@@ -159,8 +159,8 @@ import {
   takeAppFlag,
 } from "./applications-command.js";
 import { loadApplications } from "../../shared/environment-manager/load-applications.js";
-import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
-import type { RepoKind, ValidationResult } from "../../shared/types/index.js";
+import { noRuntimeReason, repoHasRuntime } from "../../shared/repo-kind.js";
+import type { ValidationResult } from "../../shared/types/index.js";
 import { localCommandsFor } from "../../shared/stacks/manifest-commands.js";
 import {
   buildUpPlan,
@@ -746,6 +746,8 @@ interface UpReport {
   failed: string[];
   alreadyRunning: string[];
   skipped: string[];
+  /** Repos with no runtime of their own, and why (issue 277). */
+  noRuntime: { repo: string; why: string }[];
 }
 
 class DenCLI {
@@ -2520,14 +2522,23 @@ class DenCLI {
     );
   }
 
-  /** Workspace repos with no runtime (modules, libraries) → their kind. */
-  private noRuntimeRepos(): Map<string, RepoKind> {
-    const out = new Map<string, RepoKind>();
-    for (const s of getWorkspaceServices()) {
-      const kind = repoKind(s.repoPath);
-      if (!hasRuntime(kind)) out.set(s.repoName, kind);
-    }
+  /**
+   * Workspace repos with no runtime (modules, libraries, repos that run
+   * nothing) → why.
+   */
+  private noRuntimeRepos(workspaces?: string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const ws of workspaces ?? [undefined])
+      for (const s of getWorkspaceServices(ws)) {
+        const why = noRuntimeReason(s.repoPath);
+        if (why) out.set(s.repoName, why);
+      }
     return out;
+  }
+
+  /** "cfg (runs nothing), sdk (library)": repos with no runtime, and why. */
+  private static noRuntimeList(none: Map<string, string>): string {
+    return [...none].map(([r, why]) => `${r} (${why})`).join(", ");
   }
 
   /** Drop modules/libraries from a start/stop order, saying so once. */
@@ -2540,6 +2551,8 @@ class DenCLI {
           `  Not ${verb} (no runtime of their own): ${skipped.map((r) => `${r} (${none.get(r)})`).join(", ")}`,
         ),
       );
+    for (const repo of skipped)
+      this.upReport?.noRuntime.push({ repo, why: none.get(repo)! });
     return order.filter((r) => !none.has(r));
   }
 
@@ -2554,8 +2567,7 @@ class DenCLI {
   } | null {
     // Modules and libraries ship inside another repo's runtime: never started.
     const services = getWorkspaceServices().filter(
-      (s) =>
-        (!only || only.has(s.repoName)) && hasRuntime(repoKind(s.repoPath)),
+      (s) => (!only || only.has(s.repoName)) && repoHasRuntime(s.repoPath),
     );
     if (services.length === 0) return null;
     const repos = new Set(services.map((s) => s.repoName));
@@ -2577,12 +2589,20 @@ class DenCLI {
   ): Promise<void> {
     const target = this.allWorkspaceOrder(only);
     if (!target) {
+      // Issue 277: repos that run nothing are not a failure to start.
+      const none = new Map(
+        [...this.noRuntimeRepos()].filter(([r]) => !only || only.has(r)),
+      );
+      for (const [repo, why] of none)
+        this.upReport?.noRuntime.push({ repo, why });
       console.log(
         chalk.yellow(
-          "\n  No services in the active project — nothing to start.\n",
+          none.size > 0
+            ? `\n  Nothing to start: no repo in the active project has a runtime of its own: ${DenCLI.noRuntimeList(none)}.\n`
+            : "\n  No services in the active project — nothing to start.\n",
         ),
       );
-      if (plan) process.exitCode = 1;
+      if (plan && none.size === 0) process.exitCode = 1;
       return;
     }
     const { rawOrder, graph } = target;
@@ -3149,6 +3169,7 @@ class DenCLI {
       failed: [],
       alreadyRunning: [],
       skipped: [],
+      noRuntime: [],
     };
     const bin = fs.existsSync(
       nodePath.join(getDistRoot(), "bin", product().cli),
@@ -3220,9 +3241,11 @@ class DenCLI {
         !failedExit &&
         report.failed.length === 0 &&
         unhealthy.length === 0 &&
-        touched.length > 0,
+        // Issue 277: a repo with nothing to start was asked for and is fine.
+        (touched.length > 0 || report.noRuntime.length > 0),
       workspace: workspace ?? null,
       services,
+      ...(report.noRuntime.length > 0 ? { noRuntime: report.noRuntime } : {}),
     };
     if (error) {
       out.error = error;
@@ -3236,7 +3259,7 @@ class DenCLI {
     } else if (failedExit) {
       out.error = "up failed (its log is on stderr)";
       out.fix = `${bin} up ${args.join(" ")} --plan`.replace(/\s+/g, " ");
-    } else if (touched.length === 0) {
+    } else if (touched.length === 0 && report.noRuntime.length === 0) {
       out.error =
         "nothing was started: no repo named, and the folder up ran in is not a repo in the project";
       out.fix = `${bin} up -a --json`;
@@ -3274,11 +3297,18 @@ class DenCLI {
     const terminator = args.indexOf("--");
     const own = terminator === -1 ? args : args.slice(0, terminator);
     const all = own.includes("-a") || own.includes("--all");
+    // Issue 277: a repo with no runtime had nothing to stop: said apart.
+    const none = this.noRuntimeRepos();
+    const named = own.filter((a) => !a.startsWith("-"));
+    const noRuntime = named
+      .filter((r) => none.has(r))
+      .map((repo) => ({ repo, why: none.get(repo)! }));
     const out: Record<string, unknown> = {
       ok: !error && !failedExit,
       workspace:
         process.env.DEN_WORKSPACE_OVERRIDE ?? getFocusedWorkspaceName() ?? null,
-      services: own.filter((a) => !a.startsWith("-")),
+      services: named.filter((r) => !none.has(r)),
+      ...(noRuntime.length > 0 ? { noRuntime } : {}),
       ...(all ? { all: true } : {}),
     };
     if (!out.ok) {
@@ -3639,9 +3669,13 @@ class DenCLI {
     const noAutostart = this.noAutostartSet();
 
     if (results.length === 0) {
+      // Issue 277: repos that run nothing have nothing to check.
+      const none = this.noRuntimeRepos(view.workspaces.map((w) => w.name));
       console.log(
         chalk.yellow(
-          `\n  No services registered. Run: ${product().cli} register\n`,
+          none.size > 0
+            ? `\n  No services to check: ${DenCLI.noRuntimeList(none)} have no runtime of their own.\n`
+            : `\n  No services registered. Run: ${product().cli} register\n`,
         ),
       );
       return;

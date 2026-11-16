@@ -6,7 +6,7 @@
  */
 
 import { rollupRepo, type RepoRollup } from "../health/rollup.js";
-import { hasRuntime, repoKind } from "../repo-kind.js";
+import { repoHasRuntime } from "../repo-kind.js";
 import * as https from "https";
 import * as tls from "tls";
 import { readEdgeConfig } from "../edge/config.js";
@@ -921,7 +921,7 @@ export async function checkCatalogHealth(
   for (const w of list)
     for (const r of listWorkspaceServices(w.config, catalog, w.name)) {
       // Modules and libraries have no runtime, so no health of their own.
-      if (!hasRuntime(repoKind(r.repoPath))) continue;
+      if (!repoHasRuntime(r.repoPath)) continue;
       if (!byAddress.has(r.address)) byAddress.set(r.address, r);
       const o = owners.get(r.address) ?? [];
       if (!o.includes(w.name)) owners.set(r.address, [...o, w.name]);

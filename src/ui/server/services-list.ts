@@ -32,7 +32,7 @@ import {
 import { loadManifest } from "../../shared/manifest/read-manifest.js";
 import { servicePlacement } from "../../shared/manifest/placement.js";
 import { depService } from "../../shared/manifest/deps.js";
-import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
+import { repoHasRuntime } from "../../shared/repo-kind.js";
 import { readDenConfig } from "../../shared/den-config.js";
 import { GIT_REMOTE_TIMEOUT_MS } from "../../shared/constants.js";
 import { effectiveLocalCommands } from "../../shared/stacks/manifest-commands.js";
@@ -158,7 +158,7 @@ export async function buildServicesList(
     const noAutostart = noAutostartBy.get(ws.name) ?? new Set<string>();
     return (
       listWorkspaceServices(ws.config, catalog, ws.name)
-        .filter((r) => hasRuntime(repoKind(r.repoPath)))
+        .filter((r) => repoHasRuntime(r.repoPath))
         // A shared service is listed once: the first workspace in view
         // (focus first) owns its entry.
         .filter((r) => !seen.has(r.address) && !!seen.add(r.address))

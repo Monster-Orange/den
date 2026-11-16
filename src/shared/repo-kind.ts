@@ -5,7 +5,7 @@
  */
 import { readManifest } from "./manifest/read-manifest.js";
 import type { DerivedGraph } from "./environment-manager/derivation/types.js";
-import type { RepoKind } from "./types/index.js";
+import type { RawManifest, RepoKind } from "./types/index.js";
 
 export function repoKind(repoPath: string): RepoKind {
   return readManifest(repoPath)?.kind ?? "service";
@@ -13,6 +13,41 @@ export function repoKind(repoPath: string): RepoKind {
 
 export function hasRuntime(kind: RepoKind): boolean {
   return kind === "service";
+}
+
+/**
+ * Issue 277: a repo that runs nothing (config, docs, rulesets, shared CI):
+ * its manifest declares no services and no compose stack. A repo with no
+ * manifest yet (a clone not made) is not one: Den can't tell.
+ */
+export function runsNothing(
+  manifest: Pick<RawManifest, "services" | "compose"> | null | undefined,
+): boolean {
+  return (
+    !!manifest &&
+    Object.keys(manifest.services ?? {}).length === 0 &&
+    !manifest.compose
+  );
+}
+
+/**
+ * Whether the repo at `repoPath` has a runtime of its own (up/down/health):
+ * a `service` kind that runs something. Modules, libraries and repos that
+ * run nothing are in the project for agents and worktrees only.
+ */
+export function repoHasRuntime(repoPath: string): boolean {
+  const m = readManifest(repoPath);
+  return hasRuntime(m?.kind ?? "service") && !runsNothing(m);
+}
+
+/** Why a repo has no runtime: its kind, or "runs nothing"; null if it has one. */
+export function noRuntimeReason(
+  repoPath: string,
+): Exclude<RepoKind, "service"> | "runs nothing" | null {
+  const m = readManifest(repoPath);
+  const kind = m?.kind ?? "service";
+  if (kind !== "service") return kind;
+  return runsNothing(m) ? "runs nothing" : null;
 }
 
 /**

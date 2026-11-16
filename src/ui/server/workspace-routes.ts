@@ -6,7 +6,7 @@
  * dependency checks, workspace-level commands, and sync.
  */
 
-import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
+import { repoHasRuntime } from "../../shared/repo-kind.js";
 import { reservedWorkspaceError } from "../../shared/agents/server-agent.js";
 import { loadApplicationTree } from "../../shared/environment-manager/load-applications.js";
 import { localCommandsFor } from "../../shared/stacks/manifest-commands.js";
@@ -1252,7 +1252,7 @@ export async function handleWorkspaceRoutes(
       ws.config,
       catalog,
       ws.name,
-    ).filter((s) => hasRuntime(repoKind(s.repoPath)));
+    ).filter((s) => repoHasRuntime(s.repoPath));
     if (allServices.length === 0) {
       emit({ type: "error", text: "No services in active project" });
       emit({ type: "done", exitCode: 1, duration: 0 });
