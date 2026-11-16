@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.52] - unreleased
+## [0.4.53] - unreleased
 
 ### Added
 
@@ -17,6 +17,7 @@ config and manifest changes a distribution must make to move to it under
   (256 KB at first) is refused, and the pane says why. How to embed an
   agent: docs/embedding.md, with an example page in
   examples/embed-host.html.
+
 - Another web app can show an agent pane inside its own page (issue
   103): `/embed/p/<project>/agents/<id>`. Only the web apps you list in
   Settings › Embedding can do it; none are listed at first. The pane
@@ -24,10 +25,12 @@ config and manifest changes a distribution must make to move to it under
   handshake with the page around it, and that key never leaves the pane.
   On another computer, a small Den window asks you to allow the web app
   first. The pane tells the page its height.
+
 - No Den page can be shown inside another site any more. Every page now
   says so to the browser (`frame-ancestors 'self'` and
   `X-Frame-Options: SAMEORIGIN`). Den's own frames, such as the test
   report on the Tests page, still work.
+
 - A link can open an agent with a web address already in its message
   box (issue 103): `/p/<project>/agents/<id>?context=<url>`. The link
   names the project and the agent, so it keeps working after restarts.
@@ -53,28 +56,6 @@ config and manifest changes a distribution must make to move to it under
   Deny runs nothing. This slice runs `cmd` modules and built-in smoke;
   the other adapters say they come later.
 
-- One set of exit codes for every test kind, in the CLI, on the Tests page
-  and over MCP (issue 207): 0 passed, 1 failed, 3 nothing ran, 4
-  cancelled. An error or a blocked check counts as failed. A run where
-  nothing ran is never a pass, for every kind now, not only suites. A run
-  someone stops (Ctrl-C, or its process is stopped) says "Cancelled" and
-  is never a pass. MCP's `run_tests` names the result (`outcome`).
-- The seven old test kinds still run. Each one now warns that it is
-  retiring and names its new form, for example "<layer>/<name> with kind
-  synthetic and journey: <file>.journey.yml" for journeys, or "a repo
-  check" for suites. Their own codes map to the new set: a failed journey
-  or a High security finding (2) is 1 now, and k6 stopped from outside
-  (105) is 4.
-
-- You get an Allow only for real decisions (issue 160). A change that
-  widens what an agent may do still waits for you: a looser mode, a
-  persona, a repo added to a project, a Den update or restart. Everything else an agent asks for
-  now runs at once, and your updates say "<agent> did this without your
-  Allow". A stricter mode is one of those. Set it with `approvals:` in
-  your `user.yml`, or for one project in `workspaces.yml`: auto, notify
-  (the default) or ask. No setting lowers a critical change. An agent can
-  still ask you, and says why.
-
 - Settings › Time zone (issue 206). Dates and times on Den's pages show
   in your browser's zone by default, or in the zone you pick. A change
   redraws the page's times at once, with no reload. Times are still
@@ -91,14 +72,6 @@ config and manifest changes a distribution must make to move to it under
   project, and what came of it (restarted, already restarted, refused and
   why, or still busy).
 
-- A start or resume that fails no longer takes a running agent's Hub
-  access (issue 215). An agent's older token now ends only once its new
-  session has started.
-
-- If Den restarts or the network drops while an agent's pane first opens,
-  you no longer need to reload the page. Click the agent again and its
-  pane opens. The server agent's page tries again by itself. (issue 128)
-
 - Den's pages no longer show times in UTC (issue 206). The Agents page,
   the bell, Release, Logs, Settings, the services panel, transcripts and
   the error page show your local time. A time shown as "3 min ago" gives
@@ -106,6 +79,42 @@ config and manifest changes a distribution must make to move to it under
 
 - The CLI shows dates and times in this computer's zone (`web sessions`,
   `web owner show`, `agents import`). `--json` output keeps UTC.
+
+## [0.4.52] - 2026-11-15
+
+### Added
+
+- You get an Allow only for real decisions (issue 160). A change that
+  widens what an agent may do still waits for you: a looser mode, a
+  persona, a repo added to a project, a Den update or restart. Everything else an agent asks for
+  now runs at once, and your updates say "<agent> did this without your
+  Allow". A stricter mode is one of those. Set it with `approvals:` in
+  your `user.yml`, or for one project in `workspaces.yml`: auto, notify
+  (the default) or ask. No setting lowers a critical change. An agent can
+  still ask you, and says why.
+
+- One set of exit codes for every test kind, in the CLI, on the Tests page
+  and over MCP (issue 207): 0 passed, 1 failed, 3 nothing ran, 4
+  cancelled. An error or a blocked check counts as failed. A run where
+  nothing ran is never a pass, for every kind now, not only suites. A run
+  someone stops (Ctrl-C, or its process is stopped) says "Cancelled" and
+  is never a pass. MCP's `run_tests` names the result (`outcome`).
+- The seven old test kinds still run. Each one now warns that it is
+  retiring and names its new form, for example "<layer>/<name> with kind
+  synthetic and journey: <file>.journey.yml" for journeys, or "a repo
+  check" for suites. Their own codes map to the new set: a failed journey
+  or a High security finding (2) is 1 now, and k6 stopped from outside
+  (105) is 4.
+
+### Fixed
+
+- A start or resume that fails no longer takes a running agent's Hub
+  access (issue 215). An agent's older token now ends only once its new
+  session has started.
+
+- If Den restarts or the network drops while an agent's pane first opens,
+  you no longer need to reload the page. Click the agent again and its
+  pane opens. The server agent's page tries again by itself. (issue 128)
 
 - Den types into an agent one text at a time. A Hub comment and another
   note arriving at the same moment used to land mixed in the pane.
