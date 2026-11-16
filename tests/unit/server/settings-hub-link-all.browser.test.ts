@@ -145,9 +145,14 @@ describe("Settings › Agents › Unclear matches (#68, issue 167)", () => {
   it("not connected (the real server): says so and where to connect", async () => {
     if (skip()) return;
     const { p } = await page();
-    expect(
-      await p.getAttribute(`${ROW} [data-hubla]`, "data-hubla-state"),
-    ).toBe("offline");
+    // Says what the row showed, not only its state, when it isn't offline.
+    const state = await p.getAttribute(
+      `${ROW} [data-hubla]`,
+      "data-hubla-state",
+    );
+    expect(state === "offline" ? state : `${state}: ${await rowText(p)}`).toBe(
+      "offline",
+    );
     expect(await rowText(p)).toContain("isn't connected to Hub yet");
     expect(await fits(p)).toBeLessThanOrEqual(0);
     await p.context().close();
