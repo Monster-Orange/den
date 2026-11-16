@@ -74,7 +74,7 @@ const esc = (s) =>
 
 /** Tokens only (UK-1): no colour of its own. */
 const CSS = `
-.dk-dlg{font-family:var(--sans);width:min(440px,calc(100vw - 32px));max-width:100%;max-height:calc(100dvh - 32px);padding:0;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow-dialog);box-sizing:border-box}
+.dk-dlg{font-family:var(--sans);height:fit-content;width:min(440px,calc(100vw - 32px));max-width:100%;max-height:calc(100dvh - 32px);padding:0;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow-dialog);box-sizing:border-box}
 .dk-dlg::backdrop{background:color-mix(in srgb,var(--sunken) 70%,transparent)}
 .dk-b{padding:var(--space-4) calc(var(--space-4) + 2px);display:grid;gap:10px;margin:0}
 .dk-b h2{font-size:var(--fs-l);margin:0;overflow-wrap:anywhere}

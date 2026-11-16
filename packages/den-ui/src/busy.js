@@ -144,7 +144,7 @@ const icon = (k) =>
 
 /* Tokens only (UK-1): no colour of its own. */
 const CSS = `
-.bz-dlg{font-family:var(--sans);width:min(420px,calc(100vw - 32px));max-width:100%;padding:0;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow-dialog)}
+.bz-dlg{font-family:var(--sans);height:fit-content;width:min(420px,calc(100vw - 32px));max-width:100%;padding:0;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow-dialog)}
 .bz-dlg::backdrop{background:color-mix(in srgb,var(--sunken) 70%,transparent)}
 .bz-b{padding:var(--space-4) calc(var(--space-4) + 2px);display:grid;gap:10px}
 .bz-b h2{font-size:var(--fs-l);margin:0;outline:none;display:flex;gap:var(--space-2);align-items:center}
