@@ -312,7 +312,10 @@ export async function mountSettings(deps) {
   }
   function currentCategory(list) {
     const ids = list.map((s) => s.category.id);
-    return ids.includes(state.category) ? state.category : (ids[0] ?? null);
+    if (ids.includes(state.category)) return state.category;
+    // Issue 268: a row's id (/settings#agents.default_mode) is its category.
+    const holds = list.find((s) => s.rows.some((r) => r.id === state.category));
+    return holds ? holds.category.id : (ids[0] ?? null);
   }
   function drawNav(list) {
     const cur = currentCategory(list);
@@ -781,6 +784,9 @@ export async function mountSettings(deps) {
     if (!state.category) return;
     scrollToCategory(cur);
     if (!state.q) focusHeading(cur);
+    // Issue 268: and a row's id, to that row.
+    if (state.category !== cur)
+      $(`setting-${slug(state.category)}`)?.scrollIntoView({ block: "start" });
   };
   const fromUrl = () => {
     state = readLocation(location);

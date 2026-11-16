@@ -362,7 +362,8 @@ describe("R20 page headers (0.3.0-dev.32)", () => {
     ["/graph?ws=main", "Graph"],
     ["/services", "Services"],
     ["/logs", "Logs"],
-    ["/tests", "Tests"],
+    ["/verify", "Checks"],
+    ["/test-runs", "Tests"],
     ["/environments", "Environments"],
     ["/release", "Releases"],
   ])(

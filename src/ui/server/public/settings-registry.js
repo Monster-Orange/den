@@ -1618,12 +1618,22 @@ export const DEN_SETTINGS = [
   {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
+    // Issue 268: named as the override of the Den-wide default.
     id: "workspace.agents_mode",
     category: "workspace",
-    label: "Agents' mode",
+    label: "Agents' mode: this project (overrides the Den-wide default)",
     description:
-      "The mode this project's agents run in, unless an agent has its own setting. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
-    keywords: ["agents", "mode", "permission", "auto", "ask", "own setting"],
+      "The mode this project's agents run in, over the Den-wide default. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
+    keywords: [
+      "agents",
+      "mode",
+      "permission",
+      "auto",
+      "ask",
+      "own setting",
+      "override",
+      "den-wide",
+    ],
     scope: "workspace",
     control: { type: "custom", render: renderProjectMode },
     read: () => null,
@@ -1631,21 +1641,27 @@ export const DEN_SETTINGS = [
 
   // ── Agents ─────────────────────────────────────────────────────────────
   {
-    // 0.4.46 MODE-UI: one mode for every agent, set once.
+    // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
+    // named as the Den-wide default, with what is in effect and the
+    // projects that override it.
     id: "agents.default_mode",
     category: "agents",
-    label: "Mode for every agent",
+    label: "Agents' mode: Den-wide default",
     description:
-      "Every agent runs in this mode, the __DEN_TITLE__ agent too, unless a mode was chosen for the agent or its project sets one. A change reaches running agents after their turn, on its own.",
-    keywords: ["agents", "mode", "permission", "auto", "ask", "approve"],
+      "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",
+    keywords: [
+      "agents",
+      "mode",
+      "permission",
+      "auto",
+      "ask",
+      "approve",
+      "den-wide",
+      "default",
+      "override",
+    ],
     scope: "user",
-    control: seg([
-      { value: "persona", label: "Each persona's" },
-      { value: "ask", label: "Ask for everything" },
-      { value: "edits", label: "Auto-approve edits" },
-      { value: "auto", label: "Auto mode" },
-      { value: "all", label: "Auto-approve all" },
-    ]),
+    control: { type: "custom", render: renderDenWideMode },
     keys: ["agents_default_mode"],
     read: (ctx) => ctx.data.agents_default_mode ?? "persona",
     write: (v, ctx) =>
@@ -2849,6 +2865,55 @@ function takeHubFlash() {
  */
 const PMODES = ["none", "ask", "edits", "auto", "all"];
 
+const DW_MODES = ["persona", "ask", "edits", "auto", "all"];
+
+/** Issue 268: a mode's words in the status lines (none: each persona's). */
+const modeWords = (m, t) =>
+  m && m !== "persona" ? t(`pm.${m}`) : t("dwmode.persona");
+
+/**
+ * Issue 268: Settings › Agents › the Den-wide default. `v` is its value
+ * ("persona": unset); `overrides` the projects that override it
+ * (agents_mode_overrides), each a link to its own row.
+ */
+export function denWideModeHtml(v, overrides, t) {
+  const now = DW_MODES.includes(v) ? v : "persona";
+  const btns = DW_MODES.map(
+    (m) =>
+      `<button type="button" data-dwmode="${m}" aria-pressed="${m === now}">${escR(t(`set.agents.default_mode.o.${m}`))}</button>`,
+  ).join("");
+  const list = Array.isArray(overrides) ? overrides : [];
+  const over = list.length
+    ? `${escR(t("dwmode.over", { n: list.length }))} ` +
+      list
+        .map(
+          (ws) =>
+            `<a href="/settings?project=${encodeURIComponent(ws)}#workspace.agents_mode">${escR(ws)}</a>`,
+        )
+        .join(", ")
+    : escR(t("dwmode.overNone"));
+  return (
+    `<div class="seg" role="group" data-dwmode-seg aria-label="${escR(t("set.agents.default_mode"))}">${btns}</div>` +
+    `<p class="set-note" data-dw-now>${escR(t("dwmode.now", { m: modeWords(now, t) }))}</p>` +
+    `<p class="set-note" data-dw-overrides="${list.length}">${over}</p>`
+  );
+}
+
+function renderDenWideMode(host, ctx, api) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  host.innerHTML = denWideModeHtml(
+    api?.value,
+    ctx.data?.agents_mode_overrides,
+    t,
+  );
+  host.querySelectorAll("[data-dwmode]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (b.getAttribute("aria-pressed") === "true") return;
+      api?.save(b.getAttribute("data-dwmode"));
+    }),
+  );
+}
+
 /**
  * Issue 225: Settings › Project › Agents' mode. `v` is GET
  * /api/workspaces/:ws/agent-modes: { mode, install, agents, own }. The
@@ -2888,8 +2953,15 @@ export function projectModeHtml(v, t) {
   const offer = n
     ? `<div data-pmode-offer="${n}"><button type="button" class="btn sm primary" data-pmode-follow>${escR(t("pmode.follow", { n }))}</button></div>`
     : "";
+  // Issue 268: what is in effect for this project, and where from.
+  const dw = modeWords(v?.install, t);
+  const status = v?.mode
+    ? t("pmode.setHere", { m: modeWords(v.mode, t), dw })
+    : t("pmode.following", { m: dw });
   return (
     `<div class="seg" role="group" data-pmode-seg aria-label="${escR(t("set.workspace.agents_mode"))}">${btns}</div>` +
+    `<p class="set-note"><span data-pmode-now="${v?.mode ? "project" : "den-wide"}">${escR(status)}</span> ` +
+    `<a href="/settings#agents.default_mode" data-pmode-dw>${escR(t("pmode.changeDw"))}</a></p>` +
     (agents.length
       ? `<ul class="set-note" data-pmode-list>${rows}</ul>`
       : `<p class="set-note" data-pmode-none>${escR(t("pmode.noAgents"))}</p>`) +

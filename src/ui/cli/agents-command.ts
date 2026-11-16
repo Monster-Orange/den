@@ -1254,7 +1254,7 @@ function permission(args: string[], d: AgentsResolved): number {
   // The Den agent's own place is no project: its mode is the agent's.
   if (isServerScope(ws))
     throw new UsageError(
-      `${where}: ${ws} is the Den agent's own place, not a project: set its mode with \`agents permission ${SERVER_AGENT_ID} -w ${ws} <mode>\` (or Settings › Mode for every agent)`,
+      `${where}: ${ws} is the Den agent's own place, not a project: set its mode with \`agents permission ${SERVER_AGENT_ID} -w ${ws} <mode>\` (or Settings › Agents › Agents' mode: Den-wide default)`,
     );
   if (!d.workspaceExists(ws))
     throw new UsageError(`${where}: project "${ws}" does not exist`);
