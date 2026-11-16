@@ -5,13 +5,21 @@
  * nothing reaches the agent before.
  *
  *   makeComposer({ t, name, send, onClose? })  → { el, setText, focus,
- *                                                 text }
- *     send({ text })   resolves when the agent has it; rejects with an
- *                      Error whose message is shown
+ *                                                 text, addContext,
+ *                                                 contexts }
+ *     send({ text, context? })  resolves when the agent has it; rejects
+ *                      with an Error whose message is shown
+ *     addContext({ url, title, text })  a page shared with the message
+ *                      (issue 103's "share this page"): a chip above the
+ *                      box, with Remove. The same URL again replaces it.
+ *                      It goes with the next Send, then the chips clear
  *
  * Every word is the page's catalog (`t`). Text is only ever set as text
  * (textContent, value), never as HTML.
  */
+
+/** The most pages one message carries (shared-page.ts MAX_SHARED). */
+export const MAX_SHARED = 5;
 
 /** The composer's element and its controls. */
 export function makeComposer({ t, name, send, onClose }) {
@@ -19,6 +27,42 @@ export function makeComposer({ t, name, send, onClose }) {
   el.className = "agc";
   el.noValidate = true;
   const label = t("agc.label", { name });
+  const chips = document.createElement("ul");
+  chips.className = "agc-chips";
+  chips.hidden = true;
+  chips.setAttribute("aria-label", t("agc.shared"));
+  /** The shared pages, in order: { url, title, text }. */
+  let shared = [];
+  const paintChips = () => {
+    chips.replaceChildren();
+    for (const p of shared) {
+      const li = document.createElement("li");
+      li.className = "agc-chip";
+      const words = document.createElement("span");
+      words.className = "agc-chip-t";
+      words.textContent = p.title || p.url;
+      words.title = p.url;
+      const where = document.createElement("span");
+      where.className = "agc-chip-u";
+      where.textContent = p.url;
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "agc-chip-x";
+      rm.textContent = "×";
+      rm.setAttribute(
+        "aria-label",
+        t("agc.removeShared", { title: p.title || p.url }),
+      );
+      rm.addEventListener("click", () => {
+        shared = shared.filter((x) => x !== p);
+        paintChips();
+        ta.focus();
+      });
+      li.append(words, where, rm);
+      chips.append(li);
+    }
+    chips.hidden = !shared.length;
+  };
   const ta = document.createElement("textarea");
   ta.className = "agc-in";
   ta.rows = 3;
@@ -46,7 +90,7 @@ export function makeComposer({ t, name, send, onClose }) {
     acts.append(close);
   }
   acts.append(sendBtn);
-  el.append(ta, hint, msg, acts);
+  el.append(chips, ta, hint, msg, acts);
 
   let busy = false;
   const say = (text, tone) => {
@@ -58,7 +102,7 @@ export function makeComposer({ t, name, send, onClose }) {
     e.preventDefault();
     if (busy) return;
     const text = ta.value.trim();
-    if (!text) {
+    if (!text && !shared.length) {
       say(t("agc.empty"), "warn");
       ta.focus();
       return;
@@ -67,8 +111,15 @@ export function makeComposer({ t, name, send, onClose }) {
     sendBtn.disabled = true;
     say(t("agc.sending"));
     try {
-      await send({ text });
+      const context = shared.map(({ url, title, text: words }) => ({
+        url,
+        title,
+        ...(words ? { text: words } : {}),
+      }));
+      await send(context.length ? { text, context } : { text });
       ta.value = "";
+      shared = [];
+      paintChips();
       say(t("agc.sent", { name }), "ok");
     } catch (err) {
       say(t("agc.failed", { e: err?.message || String(err) }), "err");
@@ -91,6 +142,17 @@ export function makeComposer({ t, name, send, onClose }) {
       ta.value = String(v ?? "");
     },
     text: () => ta.value,
+    addContext(p) {
+      shared = shared.filter((x) => x.url !== p.url);
+      shared.push({
+        url: String(p.url),
+        title: String(p.title ?? ""),
+        text: String(p.text ?? ""),
+      });
+      shared = shared.slice(-MAX_SHARED);
+      paintChips();
+    },
+    contexts: () => shared.map((p) => ({ ...p })),
     focus() {
       ta.focus();
       ta.setSelectionRange(ta.value.length, ta.value.length);

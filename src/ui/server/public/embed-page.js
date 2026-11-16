@@ -21,6 +21,15 @@
  *      cookie (credentials: "omit");
  *   4. Den → host   { type: "den:connected", agent: { id, project, name } }.
  *
+ * Share this page: host → Den { type: "den:context", url, title, text?,
+ * html? }, only from the host of the handshake. Its size (as JSON) is
+ * checked before anything else is read: past Settings › Embedding's
+ * limit it is refused with a reason (den:error context_too_large). HTML
+ * is reduced to text with DOMParser and textContent (inert: it runs no
+ * script and is never put in this page). The page shows as a chip, title
+ * and URL as text, which the person may remove; it reaches the agent with
+ * their next Send, quoted as data from the host's origin.
+ *
  * Then: { type: "den:size", height } whenever the pane's height changes,
  * { type: "den:sent" } after each Send, and { type: "den:error", code,
  * message } when something fails.
@@ -36,6 +45,10 @@ try {
 const ORIGINS = Array.isArray(cfg.origins)
   ? cfg.origins.filter((o) => typeof o === "string" && o)
   : [];
+const LIMITS = {
+  bytes: Number(cfg.limits?.context_max_bytes) || 256 * 1024,
+  url: Number(cfg.limits?.url_max_chars) || 8192,
+};
 
 /** Whether `origin` is on `list`: exactly. */
 export function originListed(origin, list) {
@@ -60,6 +73,8 @@ let agent = null;
 let popup = null;
 let composer = null;
 let connecting = null;
+/** Pages shared before the composer was there. */
+let pending = [];
 
 function post(msg) {
   if (host) window.parent.postMessage(msg, host);
@@ -167,6 +182,8 @@ function gotKey(j) {
   if (!composer) {
     composer = makeComposer({ t, name: agent.name || agent.id, send });
     $("emb-composer").append(composer.el);
+    for (const p of pending) composer.addContext(p);
+    pending = [];
   }
   state("");
   post({
@@ -204,6 +221,75 @@ async function send(body) {
   post({ type: "den:sent" });
 }
 
+/** A page's HTML as text: parsed inert, read with textContent. */
+export function htmlText(html) {
+  const doc = new DOMParser().parseFromString(String(html), "text/html");
+  for (const el of doc.querySelectorAll("script, style, noscript, template"))
+    el.remove();
+  for (const el of doc.querySelectorAll(
+    "br, p, div, li, tr, h1, h2, h3, h4, h5, h6",
+  ))
+    el.append(doc.createTextNode("\n"));
+  return (doc.body?.textContent ?? "")
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** JSON's size in bytes (shared-page.ts sharedSize measures the same). */
+function sizeOf(v) {
+  try {
+    return new TextEncoder().encode(JSON.stringify(v)).length;
+  } catch {
+    return Infinity;
+  }
+}
+
+function isWeb(url) {
+  if (typeof url !== "string" || url.length > LIMITS.url) return false;
+  try {
+    const u = new URL(url);
+    return (u.protocol === "http:" || u.protocol === "https:") && !!u.host;
+  } catch {
+    return false;
+  }
+}
+
+function refuse(code, message, extra = {}) {
+  state(message, "err");
+  post({ type: "den:error", code, message, ...extra });
+}
+
+/** den:context from the host: checked, then a chip in the composer. */
+function onContext(d) {
+  // Its size first: nothing of a page past the limit is read.
+  const size = sizeOf(d);
+  if (size > LIMITS.bytes)
+    return refuse(
+      "context_too_large",
+      t("emb.tooLarge", {
+        size: Math.ceil(size / 1024),
+        max: Math.floor(LIMITS.bytes / 1024),
+      }),
+      { size, limit: LIMITS.bytes },
+    );
+  for (const k of ["title", "text", "html"])
+    if (d[k] !== undefined && typeof d[k] !== "string")
+      return refuse("context_shape", t("emb.badShared"));
+  if (!isWeb(d.url)) return refuse("context_url", t("emb.badUrl"));
+  const page = {
+    url: d.url,
+    title: d.title ?? "",
+    text: d.text ?? (d.html ? htmlText(d.html) : ""),
+  };
+  state("");
+  if (composer) composer.addContext(page);
+  else pending = [...pending.filter((p) => p.url !== page.url), page].slice(-5);
+  sendSize();
+}
+
 window.addEventListener("message", (e) => {
   // The pop-up's key: from Den's own origin, from the window it opened.
   if (popup && e.source === popup) {
@@ -217,6 +303,11 @@ window.addEventListener("message", (e) => {
   if (host && e.origin !== host) return;
   const d = e.data;
   if (!d || typeof d !== "object") return;
+  // Shared pages: only from the host of the handshake.
+  if (d.type === "den:context") {
+    if (host && e.origin === host) onContext(d);
+    return;
+  }
   if (d.type === "den:hello") {
     if (!host) {
       host = e.origin;

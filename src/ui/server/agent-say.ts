@@ -4,11 +4,14 @@
  * AG-10.1): one bracketed paste when the program turned it on, then
  * Enter. Nothing reaches the session before Send.
  *
- *   POST /api/workspaces/<ws>/agents/<id>/say   { text }   (a person only)
+ *   POST /api/workspaces/<ws>/agents/<id>/say   { text, context? }
+ *                                               (a person only)
  *
  * The text is checked as an instruction is (checkInstruction: no control
  * character, no escape sequence, no bidi override, at most 8000
- * characters). A stopped agent, or one whose session ended: 409
+ * characters). `context` is the pages shared with it (shared-page.ts):
+ * each reaches the agent after the text as quoted data, never as
+ * instructions. A stopped agent, or one whose session ended: 409
  * not_running.
  */
 import type * as http from "http";
@@ -19,16 +22,43 @@ import {
   type AgentsResolved,
 } from "../cli/agent-ops.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
+import { readUserConfig } from "../../shared/den-config.js";
+import { embedSettings } from "./embed-settings.js";
 import { readBody } from "./http-helpers.js";
+import {
+  MAX_SHARED,
+  checkSharedPage,
+  composeMessage,
+  type SharedPage,
+} from "./shared-page.js";
 
-/** The largest body Send takes. */
-const SAY_BODY = 64 * 1024;
+/** What Send may carry: Settings › Embedding's limits. */
+export interface SayLimits {
+  urlMax: number;
+  maxBytes: number;
+}
 
-/** The message a POST asks to send, checked. */
-export async function sayBody(req: http.IncomingMessage): Promise<string> {
+/** The limits now (user.yml embed.*). */
+export function sayLimits(): SayLimits {
+  const e = embedSettings(readUserConfig());
+  return { urlMax: e.url_max_chars, maxBytes: e.context_max_kb * 1024 };
+}
+
+/**
+ * The message a POST asks to send, checked: `text`, and the pages shared
+ * with it (issue 103, `context`: one page or a list), each checked by
+ * checkSharedPage. A message needs one or the other.
+ */
+export async function sayBody(
+  req: http.IncomingMessage,
+  limits: SayLimits = sayLimits(),
+): Promise<{ text: string; pages: SharedPage[] }> {
   const raw = await readBody(req).catch(() => "");
-  if (raw.length > SAY_BODY)
-    throw new AgentError("request too large", { status: 413, usage: true });
+  if (Buffer.byteLength(raw) > 64 * 1024 + MAX_SHARED * limits.maxBytes)
+    throw new AgentError("request too large", {
+      status: 413,
+      code: "context_too_large",
+    });
   let v: unknown;
   try {
     v = JSON.parse(raw || "{}");
@@ -36,21 +66,34 @@ export async function sayBody(req: http.IncomingMessage): Promise<string> {
     throw new AgentError("invalid JSON", { usage: true });
   }
   if (!v || typeof v !== "object" || Array.isArray(v))
-    throw new AgentError("the body must be an object: { text }", {
+    throw new AgentError("the body must be an object: { text, context? }", {
       usage: true,
     });
   for (const k of Object.keys(v))
-    if (k !== "text")
-      throw new AgentError(`${k}: unknown field (say takes text)`, {
+    if (k !== "text" && k !== "context")
+      throw new AgentError(`${k}: unknown field (say takes text, context)`, {
         usage: true,
       });
-  const text = checkInstruction((v as { text?: unknown }).text);
-  if (!text)
+  const b = v as { text?: unknown; context?: unknown };
+  const text = checkInstruction(b.text) ?? "";
+  const given =
+    b.context === undefined || b.context === null
+      ? []
+      : Array.isArray(b.context)
+        ? b.context
+        : [b.context];
+  if (given.length > MAX_SHARED)
+    throw new AgentError(`at most ${MAX_SHARED} shared pages at once`, {
+      usage: true,
+      code: "context_shape",
+    });
+  const pages = given.map((c) => checkSharedPage(c, limits));
+  if (!text && !pages.length)
     throw new AgentError("write a message first", {
       usage: true,
       code: "empty",
     });
-  return text;
+  return { text, pages };
 }
 
 /**
@@ -88,7 +131,8 @@ export async function sayToAgent(
   rec: AgentRecord,
   req: http.IncomingMessage,
 ): Promise<string> {
-  const text = await sayBody(req);
-  await typeMessage(d, rec, text);
-  return text;
+  const { text, pages } = await sayBody(req);
+  const message = composeMessage(text, pages);
+  await typeMessage(d, rec, message);
+  return message;
 }

@@ -8,6 +8,8 @@
  *                   embedded agent pane, /embed/p/<project>/agents/<id>;
  *                   none by default. Never a pattern and never `*`
  *   key_minutes     how long an embedded pane's key lasts (15)
+ *   context_max_kb  the largest page a host may share with an agent
+ *                   ({ type: "den:context", … }, as JSON), in KB (256)
  *
  * Every other page refuses to be framed by anyone but Den itself
  * (frameHeaders: `frame-ancestors 'self'`, X-Frame-Options SAMEORIGIN):
@@ -24,14 +26,16 @@ export const EMBED_DEFAULTS = {
   url_max_chars: 8192,
   origins: [] as string[],
   key_minutes: 15,
+  context_max_kb: 256,
 };
 
-type NumKey = "url_max_chars" | "key_minutes";
+type NumKey = "url_max_chars" | "key_minutes" | "context_max_kb";
 
 /** The bounds each number may take. */
 const LIMITS: Record<NumKey, [number, number]> = {
   url_max_chars: [64, 1_000_000],
   key_minutes: [1, 1440],
+  context_max_kb: [1, 10_240],
 };
 
 /** The most origins the list holds. */
@@ -41,6 +45,7 @@ export interface EmbedSettings {
   url_max_chars: number;
   origins: string[];
   key_minutes: number;
+  context_max_kb: number;
 }
 
 /**
@@ -127,6 +132,7 @@ export function embedSettings(user: UserConfig): EmbedSettings {
     url_max_chars: num(e.url_max_chars, "url_max_chars"),
     origins: originsOf(e.origins),
     key_minutes: num(e.key_minutes, "key_minutes"),
+    context_max_kb: num(e.context_max_kb, "context_max_kb"),
   };
 }
 

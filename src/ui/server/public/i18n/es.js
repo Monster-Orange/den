@@ -870,6 +870,7 @@
     "set.embed.url_max": "Contexto de enlace más largo",
     "set.embed.origins": "Aplicaciones web que pueden incrustar agentes",
     "set.embed.key_minutes": "Duración del permiso del panel incrustado",
+    "set.embed.context_max_kb": "Página compartida más grande",
     "set.access.machine_name": "Nombre de la máquina",
     "ident.local": "Local",
     "ident.device": "Sesión iniciada · este dispositivo",
@@ -1127,6 +1128,13 @@
     "emc.noOpener":
       "Abre esto desde el panel del agente dentro de la otra aplicación web.",
     "emc.done": "Permitido. Esta ventana se cierra ahora.",
+    "agc.shared": "Páginas compartidas con este mensaje",
+    "agc.removeShared": "Quitar {title}",
+    "emb.tooLarge":
+      "Esta página ocupa {size} KB, más que el límite de {max} KB, así que no se añadió. Ajustes › Incrustación fija el límite.",
+    "emb.badShared":
+      "Una página compartida debe ser texto: una dirección, un título y texto o HTML.",
+    "emb.badUrl": "Una página compartida necesita una dirección http o https.",
     "ag.link.none":
       "No hay ningún agente {id} aquí. Puede que se haya quitado.",
     "ag.apiOnly": "Solo API: {names}",
@@ -2302,6 +2310,8 @@
       "La dirección de cada aplicación web, exacta, una por línea: https://app.example.com. Solo estas pueden mostrar un panel de agente dentro de sus páginas, y solo después de que lo permitas. Ningún otro sitio puede mostrar una página de este Den dentro de la suya.",
     "set.embed.key_minutes.d":
       "Cuánto tiempo puede enviar un panel de agente incrustado antes de volver a pedir permiso.",
+    "set.embed.context_max_kb.d":
+      "La página más grande que otra aplicación web puede compartir con un agente. Si es mayor, se rechaza y el panel explica por qué.",
     "set.access.machine_name.d":
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":

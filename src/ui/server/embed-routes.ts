@@ -13,8 +13,9 @@
  *        minted for the person (on this computer, or signed in): never an
  *        agent's. The origin must be on the list, exactly. 403
  *        origin_not_listed, 404 no_agent.
- *   POST /api/embed/say   { text }, the key in X-Den-Embed-Key: typed into
- *        the key's agent, then Enter. Sign-in and CSRF free: the key is
+ *   POST /api/embed/say   { text, context? }, the key in X-Den-Embed-Key:
+ *        typed into the key's agent, then Enter; each shared page after the
+ *        text as quoted data from the key's origin (shared-page.ts). Sign-in and CSRF free: the key is
  *        the proof (a custom header, which no other site can send without
  *        Den's CORS, and Den has none). 401 bad_key / key_expired; 403
  *        origin_not_listed when the host was taken off the list since.
@@ -31,6 +32,7 @@ import {
 } from "../../shared/agents/records.js";
 import { AgentError, type AgentsResolved } from "../cli/agent-ops.js";
 import { sayBody, typeMessage } from "./agent-say.js";
+import { composeMessage } from "./shared-page.js";
 import { recordAction } from "./audit.js";
 import { EMBED_KEY_HEADER, EmbedKeys } from "./embed-keys.js";
 import {
@@ -105,6 +107,7 @@ export function embedConfigJson(c: {
   project: string;
   agent: string;
   origins: readonly string[];
+  limits?: { context_max_bytes: number; url_max_chars: number };
 }): string {
   return JSON.stringify(c).replace(/</g, "\\u003c");
 }
@@ -132,10 +135,16 @@ export async function handleEmbedRoutes(
       res.end("Not found");
       return true;
     }
+    const set = deps.settings();
     const json = embedConfigJson({
       project,
       agent,
-      origins: deps.settings().origins,
+      origins: set.origins,
+      // Issue 103: what a shared page may be (checked again on Send).
+      limits: {
+        context_max_bytes: set.context_max_kb * 1024,
+        url_max_chars: set.url_max_chars,
+      },
     });
     res.setHeader("Referrer-Policy", "no-referrer");
     deps.servePage(res, path.join(deps.publicDir, "embed.html"), (html) =>
@@ -235,6 +244,11 @@ async function mintKey(
     key,
     expiresAt: new Date(expiresAt).toISOString(),
     agent: { id: rec.id, project: rec.workspace, name: nameOf(rec) },
+    // What a shared page may be (den:context), checked again on Send.
+    limits: {
+      context_max_bytes: s.context_max_kb * 1024,
+      url_max_chars: s.url_max_chars,
+    },
   });
   return true;
 }
@@ -285,10 +299,15 @@ async function say(
       `Project ${g.project} has no agent ${g.agent}.`,
     );
   try {
-    const text = await sayBody(req);
-    await typeMessage(deps.agents(), rec, text);
+    const s = deps.settings();
+    const { text, pages } = await sayBody(req, {
+      urlMax: s.url_max_chars,
+      maxBytes: s.context_max_kb * 1024,
+    });
+    const message = composeMessage(text, pages, g.origin);
+    await typeMessage(deps.agents(), rec, message);
     audit(
-      `message to ${rec.id} in ${rec.workspace} (${text.length} characters)`,
+      `message to ${rec.id} in ${rec.workspace} (${message.length} characters, ${pages.length} shared page${pages.length === 1 ? "" : "s"})`,
     );
     res.setHeader("Cache-Control", "no-store");
     sendJson(res, { ok: true });

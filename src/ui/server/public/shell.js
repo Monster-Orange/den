@@ -965,6 +965,8 @@
       "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
     "set.embed.key_minutes.d":
       "How long an embedded agent pane may send before it asks again.",
+    "set.embed.context_max_kb.d":
+      "The largest page another web app may share with an agent. A larger one is refused, and the pane says why.",
     "set.access.machine_name.d":
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
@@ -1650,6 +1652,7 @@
     "set.embed.url_max": "Longest link context",
     "set.embed.origins": "Web apps that may embed agents",
     "set.embed.key_minutes": "Embedded pane's permission lasts",
+    "set.embed.context_max_kb": "Largest shared page",
     "set.access.machine_name": "Machine name",
     "set.access.pair": "Pair a device",
     "set.distribution.brand": "Product name",
@@ -1896,6 +1899,13 @@
     "emc.cancel": "Cancel",
     "emc.noOpener": "Open this from the agent pane inside the other web app.",
     "emc.done": "Allowed. This window closes now.",
+    "agc.shared": "Pages shared with this message",
+    "agc.removeShared": "Remove {title}",
+    "emb.tooLarge":
+      "This page is {size} KB, more than the {max} KB limit, so it was not added. Settings › Embedding sets the limit.",
+    "emb.badShared":
+      "A shared page must be text: an address, a title, and text or HTML.",
+    "emb.badUrl": "A shared page needs an http or https address.",
     "ag.link.none": "No agent {id} here. It may have been removed.",
     "ag.apiOnly": "API only: {names}",
     "ag.apiOnlyTip":

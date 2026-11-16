@@ -8,6 +8,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- The page around an embedded agent pane can share itself with the agent
+  (issue 103). It shows in the message box as a chip with the page's title
+  and address, and you can remove it before you send. The agent gets it
+  after your message, quoted, with a line saying it is page content from
+  that web app and not instructions. HTML becomes plain text and never
+  runs. A page larger than Settings › Embedding › Largest shared page
+  (256 KB at first) is refused, and the pane says why. How to embed an
+  agent: docs/embedding.md, with an example page in
+  examples/embed-host.html.
 - Another web app can show an agent pane inside its own page (issue
   103): `/embed/p/<project>/agents/<id>`. Only the web apps you list in
   Settings › Embedding can do it; none are listed at first. The pane

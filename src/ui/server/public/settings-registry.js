@@ -756,6 +756,19 @@ const EMBED_ROWS = [
     write: (v, ctx) => ctx.post({ embed: { origins: v.length ? v : null } }),
   },
   {
+    id: "embed.context_max_kb",
+    category: "embed",
+    label: "Largest shared page",
+    description:
+      "The largest page another web app may share with an agent. A larger one is refused, and the pane says why.",
+    keywords: ["embed", "share", "page", "context", "size", "limit"],
+    scope: "user",
+    keys: ["embed.context_max_kb"],
+    control: { type: "number", min: 1, max: 10240, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.context_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { context_max_kb: v } }),
+  },
+  {
     id: "embed.key_minutes",
     category: "embed",
     label: "Embedded pane's permission lasts",

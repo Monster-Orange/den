@@ -137,6 +137,7 @@ describe("the settings inventory (R21)", () => {
         "embed.url_max_chars",
         "embed.origins",
         "embed.key_minutes",
+        "embed.context_max_kb",
       ].sort(),
     );
   });

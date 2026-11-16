@@ -1,0 +1,110 @@
+<!doctype html>
+<!--
+  A host page for Den's embedded agent pane (docs/embedding.md), in one file.
+
+  1. In Den: Settings › Embedding › Web apps that may embed agents, add the
+     exact origin this page is served from, for example http://127.0.0.1:5173
+  2. Serve this file from that origin, for example:
+       npx http-server examples -a 127.0.0.1 -p 5173
+  3. Open it with Den's origin, a project and an agent id:
+       http://127.0.0.1:5173/embed-host.html?den=https://den.example.test&project=north&agent=scout
+
+  Every postMessage here names Den's exact origin, never "*", and every
+  message from the frame is checked against it.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embed host example</title>
+    <style>
+      body {
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        max-width: 760px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      iframe {
+        width: 100%;
+        height: 240px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+      }
+      #log {
+        font:
+          12px/1.4 ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+        background: #f6f6f6;
+        padding: 8px;
+        border-radius: 6px;
+        max-height: 240px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Release notes</h1>
+    <article id="page">
+      <p>
+        Version 2 adds embedded agents. This paragraph is what "Share this page"
+        sends.
+      </p>
+    </article>
+
+    <p>
+      <button id="share" type="button" disabled>
+        Share this page with the agent
+      </button>
+    </p>
+    <iframe id="den" title="Den agent"></iframe>
+    <h2>Messages from Den</h2>
+    <div id="log"></div>
+
+    <script>
+      const q = new URLSearchParams(location.search);
+      // Den's exact origin: the only one posted to, and the only one heard.
+      const DEN = new URL(q.get("den") || "http://127.0.0.1:7000").origin;
+      const project = q.get("project") || "north";
+      const agent = q.get("agent") || "scout";
+      const frame = document.getElementById("den");
+      const share = document.getElementById("share");
+      const log = (s) => {
+        document.getElementById("log").textContent += s + "\n";
+      };
+
+      frame.src = `${DEN}/embed/p/${encodeURIComponent(project)}/agents/${encodeURIComponent(agent)}`;
+
+      const hello = () =>
+        frame.contentWindow?.postMessage({ type: "den:hello" }, DEN);
+      // Either is enough; the pane ignores a second hello.
+      frame.addEventListener("load", hello);
+
+      window.addEventListener("message", (e) => {
+        if (e.origin !== DEN || e.source !== frame.contentWindow) return;
+        const d = e.data || {};
+        // Show messages as text only, never as HTML.
+        log(JSON.stringify(d));
+        if (d.type === "den:ready") hello();
+        if (d.type === "den:connected") share.disabled = false;
+        if (d.type === "den:size" && Number.isFinite(d.height))
+          frame.style.height = `${Math.max(120, Math.ceil(d.height))}px`;
+      });
+
+      share.addEventListener("click", () => {
+        frame.contentWindow?.postMessage(
+          {
+            type: "den:context",
+            url: location.href,
+            title: document.title,
+            // Either is fine: Den turns HTML into text and never renders it.
+            text: document.getElementById("page").innerText,
+          },
+          DEN,
+        );
+      });
+    </script>
+  </body>
+</html>

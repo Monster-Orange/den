@@ -109,6 +109,53 @@
       .agc .agc-msg[data-tone="warn"] {
         color: var(--warn);
       }
+      /* Issue 103: a page the host shared, as a chip with Remove. */
+      .agc .agc-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .agc .agc-chips[hidden] {
+        display: none;
+      }
+      .agc .agc-chip {
+        display: inline-grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        column-gap: 6px;
+        align-items: center;
+        max-width: 100%;
+        padding: 4px 4px 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--sunken);
+        font-size: 12px;
+      }
+      .agc .agc-chip-t,
+      .agc .agc-chip-u {
+        grid-column: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap; /* words-ok: a CSS property */
+      }
+      .agc .agc-chip-u {
+        color: var(--muted);
+      }
+      .agc .agc-chip-x {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        min-width: var(--tap-min);
+        min-height: var(--tap-min);
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 16px;
+        cursor: pointer;
+      }
       .agc .agc-acts {
         display: flex;
         gap: 6px;
