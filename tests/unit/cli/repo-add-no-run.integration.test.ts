@@ -358,7 +358,9 @@ describe("downstream: nothing to start, nothing unhealthy", () => {
     });
     expect(up.code).toBe(0);
     const s = acme("-w", "quiet", "status");
-    expect(s.out).toMatch(/No services to check: rules \(runs nothing\)/);
+    expect(s.out).toMatch(
+      /No services to check: rules \(runs nothing\) has no runtime of its own\./,
+    );
     expect(s.out).not.toMatch(/unknown|unhealthy|error/);
   }, 120_000);
 

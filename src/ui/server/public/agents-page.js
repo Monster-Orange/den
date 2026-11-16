@@ -791,7 +791,7 @@ export function compactingTag(r, tr = t) {
  * check warned), Stop (the same Stop as its pane's) and, when Den holds its
  * deliveries, Clear. Nothing when there is neither a loop nor a hold.
  */
-export function compactingHtml(r, tr = t) {
+export function compactingHtml(r, tr = t, { withStop = true } = {}) {
   const c = r?.kind === "agent" ? r.compacting : null;
   if (!c || !(c.active || c.paused)) return "";
   const i = r.instructions;
@@ -811,7 +811,7 @@ export function compactingHtml(r, tr = t) {
     .filter(Boolean)
     .join(" ");
   const stop =
-    c.active && (r.state === "running" || r.state === "stopping")
+    withStop && c.active && (r.state === "running" || r.state === "stopping")
       ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(tr("ag.stopName", { id: r.agent }))}">${esc(tr("ag.stop"))}</button>`
       : "";
   const clear = `<button type="button" class="den-btn sm" data-act="ctx-clear" aria-label="${esc(tr("ag.ctx.clearName", { id: r.agent }))}">${esc(tr(c.paused ? "ag.ctx.clearHeld" : "ag.ctx.clear"))}</button>`;
@@ -2188,7 +2188,8 @@ function paintBar(p) {
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
     apiOnlyTag(r) +
-    // Issue 278: compacting repeatedly (Stop is on this bar); instructions.
+    // Issue 278: compacting repeatedly; instructions. Why and Clear are
+    // on a line of their own below (Stop is the bar's own).
     compactingTag(r) +
     instructionsTag(r) +
     mcpStaleTag(r, true) +
@@ -2205,6 +2206,9 @@ function paintBar(p) {
     (tags ? `<span class="agtags" data-tags>${tags}</span>` : "") +
     (r?.kind === "agent" && rotActionsHtml(r)
       ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
+      : "") +
+    (r?.kind === "agent" && compactingHtml(r, t, { withStop: false })
+      ? `<span class="agctx" data-compacting-bar>${compactingHtml(r, t, { withStop: false })}</span>`
       : "") +
     `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
@@ -5463,6 +5467,10 @@ export async function mountAgentsPage(root) {
       if (b.dataset.act === "relaunch") void relaunchNow(r, b);
       else if (b.dataset.act === "rot-write") void writeHandoff(r, b);
       else if (b.dataset.act === "rot-keep") void keepConversation(r, b);
+    } else if (b.dataset.act === "ctx-clear") {
+      // Issue 278: the bar's Clear, as under the row.
+      const r = rowOf(id);
+      if (r) void clearCompacting(r, b);
     } else if (b.dataset.act === "link") {
       const r = rowOf(id);
       if (r) void openLink(r, b);
