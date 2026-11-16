@@ -21,7 +21,9 @@ import {
   runningDenVersion,
   writeDistribution,
 } from "../../../src/ui/cli/create.js";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
+import { pageImport } from "./helpers/page-import.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const FAKES = ["gh", "op", "doppler", "mkcert"];
@@ -95,9 +97,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await stopServer(server);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server],
+    after: () => fs.rmSync(tmp, { recursive: true, force: true }),
+  });
 });
 
 async function page() {
@@ -165,7 +169,7 @@ describe("a fresh den create distribution in the browser", () => {
     // as a run's needs-sudo would.
     // A string, so the browser does the import (not the test's compiler).
     await p.evaluate(
-      "import('/topbar.js').then((m) => void m.askSudo({ command: 'sudo true' }))",
+      `${pageImport("/topbar.js")}.then((m) => void m.askSudo({ command: "sudo true" }))`,
     );
     await p.waitForSelector("#den-lock-pop .den-lock-cfg:not([hidden])");
     const note = await p.$eval(

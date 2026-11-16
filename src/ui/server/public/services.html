@@ -405,6 +405,9 @@
         };
 
         async function refreshWsPanel() {
+          // The panel's markup may be gone (issue 133 found it so): nothing
+          // to refresh then.
+          if (!document.getElementById("ws-service-list")) return;
           const data = await fetch("/api/workspaces")
             .then((r) => r.json())
             .catch(() => null);
@@ -489,8 +492,10 @@
           const name = data.focus ?? data.active?.[0] ?? "default";
           const msg = document.getElementById("ws-delete-msg");
           if (name === "default") {
-            msg.textContent = t("svc.ws.keepDefault");
-            msg.className = "ws-msg err";
+            if (msg) {
+              msg.textContent = t("svc.ws.keepDefault");
+              msg.className = "ws-msg err";
+            }
             return;
           }
           const sure = await askConfirm({
@@ -519,19 +524,25 @@
             if (!picked) return;
             agentsChoice = picked;
           }
-          try {
-            await window.denShell.api("DELETE", "/api/workspaces", {
-              name,
-              ...agentsChoice,
-            });
-          } catch (err) {
-            // R26c: the server's message (its JSON error), inline.
-            msg.textContent = err.message;
-            msg.className = "ws-msg err";
-            return;
+          // Issue 133: through the working pop-up (a slow answer shows it;
+          // a failure says so there, with Try again).
+          let deleted = false;
+          await window.denShell.busyAction(
+            "delete-project",
+            (headers) =>
+              window.denShell.api(
+                "DELETE",
+                "/api/workspaces",
+                { name, ...agentsChoice },
+                { headers },
+              ),
+            { vars: { name }, onDone: () => (deleted = true) },
+          );
+          if (!deleted) return;
+          if (msg) {
+            msg.textContent = t("svc.ws.deleted", { name });
+            msg.className = "ws-msg ok";
           }
-          msg.textContent = t("svc.ws.deleted", { name });
-          msg.className = "ws-msg ok";
           await Promise.all([loadServices(), refreshWsPanel()]);
         };
 
@@ -565,17 +576,21 @@
         };
 
         window.removeService = async function (address) {
-          const msg = document.getElementById("ws-add-msg");
-          try {
-            await window.denShell.api("DELETE", "/api/workspaces/services", {
-              address,
-            });
-          } catch (err) {
-            // R26c: the server's message (its JSON error), inline.
-            msg.textContent = err.message;
-            msg.className = "ws-msg err";
-            return;
-          }
+          // Issue 133: through the working pop-up (a slow answer shows it;
+          // a failure says so there, with Try again).
+          let removed = false;
+          await window.denShell.busyAction(
+            "remove-service",
+            (headers) =>
+              window.denShell.api(
+                "DELETE",
+                "/api/workspaces/services",
+                { address },
+                { headers },
+              ),
+            { vars: { name: address }, onDone: () => (removed = true) },
+          );
+          if (!removed) return;
           await Promise.all([loadServices(), refreshWsPanel()]);
         };
 

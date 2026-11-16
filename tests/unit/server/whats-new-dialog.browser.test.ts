@@ -15,7 +15,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -61,9 +62,13 @@ beforeAll(async () => {
 }, 40_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await stopServer(server);
-  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server],
+    after: () => {
+      if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    },
+  });
 });
 
 const state = (p: Page) =>
@@ -183,6 +188,21 @@ describe("the What's new dialog", () => {
         viewport: { width: 1024, height: 300 },
       });
       const p = await ctx.newPage();
+      // The newest release's notes can be one line: give it enough bullets
+      // that the dialog scrolls whatever CHANGELOG.md says today.
+      await p.route("**/api/changelog", async (route) => {
+        const res = await route.fetch();
+        const list = (await res.json()) as {
+          sections: Record<string, { text: string; sub: string[] }[]>;
+        }[];
+        if (list[0]) {
+          const fixed = list[0].sections.Fixed ?? [];
+          for (let i = 0; i < 12; i++)
+            fixed.push({ text: `A fixed thing, number ${i + 1}.`, sub: [] });
+          list[0].sections.Fixed = fixed;
+        }
+        await route.fulfill({ response: res, json: list });
+      });
       await p.goto(`http://127.0.0.1:${port}/services`);
       await p.waitForSelector("#cl-overlay.open", { timeout: 10_000 });
       if (expand) {
@@ -198,6 +218,7 @@ describe("the What's new dialog", () => {
       expect(await state(p)).toEqual(
         expect.objectContaining({ open: true, scrollTop: 0, expanded: false }),
       );
+      await ctx.unrouteAll({ behavior: "ignoreErrors" });
       await ctx.close();
     },
     30_000,

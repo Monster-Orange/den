@@ -19,6 +19,7 @@ import {
   startFrameServer,
   type FrameServer,
 } from "./helpers/error-frame-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
@@ -50,9 +51,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
-  removeFrameTmp(s);
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+    after: () => removeFrameTmp(s),
+  });
 });
 
 describe("a report a test run wrote", () => {

@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const SHELL = fs.readFileSync(
   path.join(process.cwd(), "src", "ui", "server", "public", "shell.js"),
@@ -37,7 +38,9 @@ beforeAll(async () => {
   }
 }, 30_000);
 afterAll(async () => {
-  await browser?.close();
+  await closeBrowserSuite({
+    browsers: [browser],
+  });
 });
 
 /** A page on a stub origin with the shell for `page`; records POSTs. */
@@ -104,7 +107,7 @@ describe("the rail", () => {
         tag: null,
         items: ["local-dev", "graph", "agents", "terminal", "services", "logs"],
       },
-      { heading: "Verify", tag: null, items: ["tests"] },
+      { heading: "Verify", tag: null, items: ["verify", "tests"] },
       { heading: "Ship", tag: null, items: ["environments", "release"] },
       "den-rail-grow",
       "settings",
@@ -211,7 +214,7 @@ describe("the rail", () => {
         null,
         ["local-dev", "graph", "agents", "terminal", "services", "logs"],
       ],
-      ["Verify", null, ["tests"]],
+      ["Verify", null, ["verify", "tests"]],
       ["Ship", null, ["environments", "release"]],
       ["Acme", "acme", ["early", "edge"]],
     ]);
@@ -1031,7 +1034,8 @@ describe("Navigation prefs (R21)", () => {
       shell: {
         pins: [],
         collapsed: false,
-        hidden: ["tests"],
+        // Both Verify pages hidden: the empty group goes too.
+        hidden: ["verify", "tests"],
         order: ["logs", "local-dev"],
       },
     });

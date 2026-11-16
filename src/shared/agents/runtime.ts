@@ -380,6 +380,14 @@ export interface Runtime {
   launchEnv?: readonly string[];
   /** den#3: it runs its subagents on LaunchInput.subagentModel. */
   subagentModel?: boolean;
+  /**
+   * Issue 193: it re-reads its MCP servers' tool lists while it runs, so a
+   * tool Hub adds is usable without a restart. Unset or false: the list it
+   * read at launch stays (den-claude: Claude Code reads it once), and Den
+   * restarts it, same conversation, when Hub's tools change. No built-in
+   * runtime sets it today.
+   */
+  reloadsToolsInPlace?: boolean;
 }
 
 /** A runtime cannot launch this agent here: a refusal, not a crash. */

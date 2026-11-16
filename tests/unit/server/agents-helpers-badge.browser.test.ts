@@ -27,6 +27,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const TOKEN = "00000000-0000-4000-8000-0000000000e1";
 let browser: Browser | null = null;
@@ -111,8 +112,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 async function open(width = 1280): Promise<Page> {

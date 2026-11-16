@@ -1195,6 +1195,23 @@ hub:
   "<name> was removed"). Once per change; a restart never repeats it; a
   new conversation records the current list and gets no note. While Hub
   doesn't answer, nothing is typed and the log says so once.
+- Hub's new tools reach a running agent (0.4.56, issue 193). Claude Code
+  reads its tool list once, when it starts, so a tool Hub adds while it
+  runs isn't usable until it restarts. Den keeps the list each agent's
+  launch read. When Hub's is newer and the agent's runtime doesn't reload
+  in place (a runtime's `reloadsToolsInPlace`; none of the built-in ones
+  does), Den restarts it at its next idle on the same conversation
+  (`--resume`), types nothing first, and writes an audit row. Its row
+  says "Restarting to load Hub's tools" meanwhile. Its new launch reads
+  Hub's list; then it gets the note, ending "Your tool list has Hub's
+  current tools now." One restart per new list per agent: if it fails, or
+  the agent comes back on its old launch, it gets the note ending "Your
+  tool list is still the one you started with, so you can't use these
+  yet. A restart loads them and keeps this conversation: ask your person
+  to press Restart on you in Den." `hub.tools_restart` (default true)
+  turns the restart off for the install; a project's
+  `agents.hub_tools_restart` (true or false, in workspaces.yml) wins over
+  it. Off, the agent gets that second note instead.
 - How to answer comes from Hub (0.4.44). Each delivery may carry
   `reply_with`: a short list of `{ tool, args, when }`, where `when` is
   `changed` (the agent edited the artifact) or `answer` (it only replies).
@@ -2573,6 +2590,11 @@ distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
 
+`web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
+server keeps an idle connection open. It sits above the page's own poll and
+a proxy's usual idle time, so a client never reuses a connection the server
+is closing (a reset). Doctor names a bad value.
+
 `install` also restarts a service that is already installed. It says the
 service is running only once the web server answers
 `http://localhost:<web.port>/api/server-info` with JSON (a fresh server
@@ -3539,6 +3561,12 @@ as…" line as Bring in.
   restart anyway?", `job_running` with `job.minutes`); Restart anyway
   restarts it now, which ends the job.
 
+  The same bound covers a slow stop during a restart (0.4.57): when the
+  agent's session takes longer to end than stop's own few seconds, the
+  restart waits for it to end, then resumes the same conversation. If it
+  still hasn't ended by then, Den marks the agent interrupted (Resume
+  brings it back) and says so in the bell and the audit trail.
+
   ```yaml
   agents:
     restart_wait_minutes: 120 # minutes, above 0
@@ -4318,6 +4346,18 @@ same token from any other process, even one running as you, is refused
 pid and the route. So is a caller Den can't place, and one that isn't on
 loopback. `agents.token_binding: false` turns this off, for a host where
 the lookup can't work.
+
+Den starts that lookup as the connection arrives, without holding up
+other requests, so a busy Den (just after restarts, say) still places an
+agent's own calls. An agent's request waits for it at most
+`agents.token_peer_wait_ms` (default 30000), then is refused as from a
+process Den couldn't place. The audit row names both pids: the caller's
+(`?` when not found) and the agent's own.
+
+```yaml
+agents:
+  token_peer_wait_ms: 30000 # ms, 0 to 600000
+```
 
 An agent's token reaches only its own session's routes, and never a
 shell-grade route, `/api/web/*`, sign-in or sign-out, or the admin

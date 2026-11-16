@@ -1520,7 +1520,8 @@ export async function handleWorkspaceRoutes(
       const chosenByRepo = new Map<string, string>();
       const skippedDev: string[] = [];
       for (const addr of ordered) {
-        const r = resolveService(addr);
+        // In this route's project, not the focused one (issue 235).
+        const r = resolveService(addr, ws.name);
         if (!r) continue;
         if (!addressSet && r.mode === "dev-managed") {
           const repoName = parseAddress(addr, catalog).repoName;
@@ -1782,7 +1783,8 @@ export async function handleWorkspaceRoutes(
             void (async () => {
               for (const depAddr of waitDeps) {
                 if (cancelled) return;
-                const depResolved = resolveService(depAddr);
+                // In this route's project, not the focused one (issue 235).
+                const depResolved = resolveService(depAddr, ws.name);
                 if (!depResolved) {
                   emit({
                     type: "line",

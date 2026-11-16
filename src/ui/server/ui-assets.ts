@@ -14,7 +14,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { getEngineRoot } from "../../shared/paths.js";
-import { serveFile } from "./http-helpers.js";
+import { serveFile, stampServed } from "./http-helpers.js";
 
 /** The graph's modules in public/, each served at /<name>. */
 export const UI_MODULES: readonly string[] = [
@@ -41,6 +41,8 @@ export const UI_MODULES: readonly string[] = [
   "/agents-page.js",
   // D32: an agent's helpers, and the shared read-only transcript view.
   "/agent-helpers.js",
+  // Issue 96: where a move in a project's order goes.
+  "/agent-order.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
@@ -138,6 +140,9 @@ export const KIT_FILES: readonly string[] = [
   "dialog.js",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  // The shared update pill: a new version of Den, Reload.
+  "update-pill.js",
+  "update-pill.css",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",
@@ -186,7 +191,12 @@ export function serveUiAsset(
         ? "public, max-age=86400"
         : "no-cache",
     });
-    res.end(fs.readFileSync(kit));
+    // Issue 231: its own imports carry Den's version, as Den's scripts do.
+    res.end(
+      kit.endsWith(".woff2")
+        ? fs.readFileSync(kit)
+        : stampServed(kit, fs.readFileSync(kit, "utf-8")),
+    );
     return true;
   }
   if (!pathname.startsWith("/vendor/")) return false;

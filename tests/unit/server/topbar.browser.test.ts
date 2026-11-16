@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -37,7 +38,9 @@ beforeAll(async () => {
   }
 }, 30_000);
 afterAll(async () => {
-  await browser?.close();
+  await closeBrowserSuite({
+    browsers: [browser],
+  });
 });
 
 type Health = {

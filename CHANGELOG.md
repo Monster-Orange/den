@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.56] - unreleased
+## [0.4.61] - unreleased
 
 ### Added
 
@@ -19,9 +19,164 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
-- `/tests` now redirects (301) to `/verify`. The old Tests page moved to
-  `/test-runs`, and the nav's Tests item opens it. Links or bookmarks to
-  `/tests` land on the new Checks page.
+- `/tests` now redirects (301) to `/verify`. The nav's new Checks item
+  (es "Comprobaciones", ja "チェック") opens `/verify`. The old Tests page
+  moved to `/test-runs`, and the nav's Tests item opens it. Links or
+  bookmarks to `/tests` land on the new Checks page.
+
+### Fixed
+
+- At phone width (below 480 px), every button in the top bar and the runs
+  bar is at least 32 px each way, so it is easy to tap (issue 209).
+
+- Den's web server no longer closes an idle connection after 5 seconds,
+  the page's own poll interval. A client that reused a connection just
+  then could get a reset (a failed request, or a proxy error). The new
+  setting `web.keep_alive_seconds` (default 120) sets how long it waits.
+
+## [0.4.60] - 2026-11-16
+
+### Fixed
+
+- Agents' own calls to Den (attention, Hub inbox) are no longer refused as
+  from an unknown process when Den is busy, such as just after restarts.
+- Hub comments now reach agents that sit idle at their prompt. Before,
+  an idle agent was taken for one waiting on its person, and its comments
+  were held. A permission prompt, a question from the agent, or a held
+  Allow still holds them.
+
+## [0.4.59] - 2026-11-16
+
+### Fixed
+
+- Opening a service's log history no longer freezes every other page while
+  Den copies a large container log. The copy runs in the background, and
+  two opens of the same log share one copy.
+- The Tests page no longer holds up the rest of Den while it reads each
+  repo's branch and commit with git.
+- When an update fails and putting the old version back fails too, Den now
+  says the rollback failed, with the reason, instead of saying the old
+  version is back. An update never stays stuck at "installing".
+- A restart that stops an agent and then can't resume it no longer leaves
+  it stopped with no way back. Den marks it interrupted, so Resume and
+  restore at start bring it back, and tells you in the bell and the audit
+  trail why it didn't come back (issue 124).
+- Restarting Den from the page (Reload in the update pill, Restart Den in
+  the menu or in Settings) now writes an audit row: who, when, and which
+  button (issue 227).
+- At phone width, stopped agents get Reorder with Up and Down too, like
+  running ones, when a project has two or more to order (issue 226).
+- Delete project and Remove service, on the Projects and Services pages,
+  now show the working pop-up while Den answers. A failure says so there,
+  with Try again. (#133)
+- Browser tests close their browsers and test servers through one shared
+  step, and a check fails any test file that doesn't. A test server with
+  an open event stream now closes at once. (#233)
+- `hub put` and `hub pull` have tests for captions, for each kind (mock,
+  image, doc), and for sending files four at a time. (#49)
+
+## [0.4.58] - 2026-11-16
+
+### Fixed
+
+- Logs tools find a project's services whichever project is focused.
+
+## [0.4.57] - 2026-11-16
+
+After this update, each Claude Code agent restarts once, the next time it is
+idle, so it loads Hub's current tools. It keeps its conversation, and it is
+told why. This happens once.
+
+### Fixed
+
+- Agents that were told about new Hub tools before 0.4.56 now restart once
+  to load them.
+- Den's restart for new Hub tools waits for a slow stop instead of leaving
+  the agent stopped.
+
+## [0.4.56] - 2026-11-16
+
+### Added
+
+- `hub.tools_restart` (default true): Den restarts an agent to load Hub's
+  new tools. Set it to false for the install, or per project with
+  `agents.hub_tools_restart` in workspaces.yml. Off, the agent is told a
+  restart is needed, and that Restart keeps its conversation.
+
+### Fixed
+
+- Claude Code agents now restart on the same conversation to load new Hub
+  tools, instead of being told about tools they can't see. Their row says
+  "Restarting to load Hub's tools" until it's done.
+
+## [0.4.55] - 2026-11-16
+
+### Fixed
+
+- Pop-ups stay centred and sized to their content on an iPad, in every
+  layout.
+- After an update, pages load the new styles and scripts, even in a tab
+  left open.
+- On an iPad, pop-ups no longer stretch from the top of the window to the
+  bottom. Each one is as tall as what it holds, up to the window's height.
+- The UI kit, `den-ui` 0.5.1: every open modal dialog places itself and
+  no longer leans on the browser's box. It is fixed at the window's middle
+  (top 50%, moved up by half its height), its height is its content's, up
+  to the window less 32 px (a vh line first, for a browser without dvh),
+  and it scrolls inside. This is in base.css, and in the kit's own dialog
+  and working pop-up. A bottom sheet keeps its place: Report at phone
+  width sets `transform: none`. A menu opened inside a dialog on a browser
+  without popover is measured and moved back to its anchor.
+
+## [0.4.54] - 2026-11-15
+
+### Added
+
+- Every agent's mode now says where it comes from (issue 225). An agent
+  with its own setting kept its own mode when a person changed the
+  project's, and nothing said so. The Agents page row says, for example,
+  "mode: Auto, from the project", "from its own setting", "from its
+  persona" or "from the mode for every agent". When the agent's process
+  still runs in another mode, the row says "Set to Auto. Runs as Ask until
+  restarted."
+- Settings › Project › Agents' mode (issue 225). Set the project's mode
+  here and see each agent's actual mode and where it comes from. When
+  agents in the project have their own setting, Den offers "Also apply to
+  the N agents with their own setting". One press clears their own
+  setting, so they follow the project; running agents move after their
+  turn, in the same conversation. Each one gets a line in the activity
+  trail. Only a person can do this; an agent asks with `project_mode`, and
+  when some agents' own mode is stricter than the project's, that ask
+  always waits for the person's own Allow.
+
+- Put a project's agents in your own order (issue 96). On the Agents
+  page, drag an agent by the grip on its left edge to a new place in its
+  project; a finger on a phone or tablet drags too. With an agent row
+  focused, Alt+↑ and Alt+↓ move it, and a screen reader hears its new
+  place. The ⋯ menu has Move up, Move down and Move to top, and on a
+  phone Reorder shows Up and Down buttons. The order is yours: it is kept
+  in your own settings (config/local/user.yml, `agents.order`), not in
+  the agent, so it holds after a reload and a Den restart. The Projects
+  page and the service flyout list the agents in the same order. A new
+  agent goes at the end; a removed one drops out. Only a person can
+  change it: an agent is refused.
+
+### Changed
+
+- A new version of Den now shows the shared update pill over the top bar,
+  the same pop-up the rest of the platform uses, in place of the dashed
+  "Restart needed" banner. Reload restarts Den in place and then reloads
+  the page. With unsaved text on the page, Reload asks first. "Not now"
+  hides it for that version until the tab closes. The pill and its styles
+  ship in the UI kit, served at /kit/update-pill.js and
+  /kit/update-pill.css. In English, Spanish and Japanese (issue 222).
+
+### Fixed
+
+- What the page shows and what an agent runs in now come from one rule
+  (issue 225): its own setting, else its project's, else the mode for
+  every agent, else its persona's, else ask. Every start, resume, restart
+  and the mode check read it.
 
 ## [0.4.53] - 2026-11-15
 

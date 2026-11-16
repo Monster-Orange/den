@@ -16,6 +16,8 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import { applyKeepAlive } from "./keep-alive.js";
+import { typingHeld } from "./attention.js";
 import {
   crashLoopSettings,
   markCleanStop,
@@ -55,7 +57,7 @@ import {
   type BridgeOutcome,
 } from "../../shared/edge/bridge-listen.js";
 import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
-import { execFileSync, spawn, spawnSync } from "child_process";
+import { execFile, execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
 import { moduleScanner } from "../../shared/test-discovery/module-scanner.js";
@@ -115,6 +117,7 @@ import {
   pruneDeadSnapshots,
   isSafeServiceName,
 } from "./log-history.js";
+import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import {
   containerTarget,
   pingContainerCheck,
@@ -159,6 +162,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  TOKEN_PEER_WAIT_MS_DEFAULT,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
@@ -174,6 +178,8 @@ import {
   resolveReleaseTarget,
   writeUserReleaseConfig,
   type ReleaseConfig,
+  readWebKeepAliveSeconds,
+  WEB_KEEP_ALIVE_SECONDS_DEFAULT,
 } from "../../shared/den-config.js";
 import {
   CONFIG_ERROR_STATUS,
@@ -749,6 +755,8 @@ setHtmlFill((html) => {
 
 // ── MD-2: the engine this server loaded, against the one on disk ─────────────
 const ENGINE = engineWatch(getEngineRoot);
+// Issue 231: pages name their styles and scripts with this version.
+setAssetVersion(ENGINE.loaded.version);
 
 /** The onboarding routes' deps, made on first use. */
 let onboardDeps: OnboardRouteDeps | null = null;
@@ -940,6 +948,7 @@ import {
   send400,
   send404,
   setHtmlFill,
+  setAssetVersion,
 } from "./http-helpers.js";
 import { orgOf, listOrgs } from "../../shared/manifest/service-links.js";
 import {
@@ -992,9 +1001,17 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
-import { callerPid, tokenCaller } from "./token-binding.js";
+import {
+  agentPeerWait,
+  callerPid,
+  peerSettled,
+  refusalDetail,
+  tokenCaller,
+  watchPeer,
+} from "./token-binding.js";
 import {
   backMessage,
+  recordPageRestart,
   restartMarkerPath,
   takeRestartMarker,
   tellBack,
@@ -1121,15 +1138,16 @@ interface TestSource {
   workspace: string | null;
 }
 
-function readGitField(gitArgs: string[], cwd: string): string | null {
-  const r = spawnSync("git", gitArgs, {
-    cwd,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: GIT_REMOTE_TIMEOUT_MS,
+/** One git answer, async: slow git never holds up the server (issue 132). */
+function readGitField(gitArgs: string[], cwd: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      gitArgs,
+      { cwd, encoding: "utf-8", timeout: GIT_REMOTE_TIMEOUT_MS },
+      (err, stdout) => resolve(err ? null : stdout.trim() || null),
+    );
   });
-  if (r.status !== 0 || !r.stdout) return null;
-  return r.stdout.trim() || null;
 }
 
 /** The pillars whose sources are a repo manifest's own sections. */
@@ -1138,10 +1156,11 @@ type SourcePillar = Extract<
   "synthetic" | "smoke" | "journeys" | "security"
 >;
 
-function collectTestSources(pillar: SourcePillar): TestSource[] {
-  const workspace = getActiveWorkspace()?.name ?? null;
-  const sources: TestSource[] = [];
-  for (const repo of discoverRepos()) {
+/** The repos whose manifests feed `pillar`'s tests (no git). */
+function testSourceRepos(
+  pillar: SourcePillar,
+): ReturnType<typeof discoverRepos> {
+  return discoverRepos().filter((repo) => {
     const manifest = repo.manifest as {
       synthetics?: unknown;
       smoke?: Record<string, unknown>;
@@ -1156,19 +1175,28 @@ function collectTestSources(pillar: SourcePillar): TestSource[] {
           : pillar === "security"
             ? Object.keys(manifest?.security ?? {}).length > 0
             : Object.keys(manifest?.smoke ?? {}).length > 0;
-    if (!matches) continue;
-    sources.push({
-      repoName: repo.repoName,
-      repoPath: repo.repoPath,
-      branch: readGitField(
-        ["rev-parse", "--abbrev-ref", "HEAD"],
-        repo.repoPath,
-      ),
-      shortSha: readGitField(["rev-parse", "--short", "HEAD"], repo.repoPath),
-      workspace,
-    });
-  }
-  return sources;
+    return matches;
+  });
+}
+
+/** Those repos with their branch and short SHA, read in parallel. */
+async function collectTestSources(pillar: SourcePillar): Promise<TestSource[]> {
+  const workspace = getActiveWorkspace()?.name ?? null;
+  return Promise.all(
+    testSourceRepos(pillar).map(async (repo) => {
+      const [branch, shortSha] = await Promise.all([
+        readGitField(["rev-parse", "--abbrev-ref", "HEAD"], repo.repoPath),
+        readGitField(["rev-parse", "--short", "HEAD"], repo.repoPath),
+      ]);
+      return {
+        repoName: repo.repoName,
+        repoPath: repo.repoPath,
+        branch,
+        shortSha,
+        workspace,
+      };
+    }),
+  );
 }
 
 function formatSourceLine(src: TestSource): string {
@@ -1495,17 +1523,32 @@ function readEdgeNetworks(): void {
  * #70: agents.token_binding (default on), read at most every 5 s. A bad
  * agents block: on (doctor names the key).
  */
-let BINDING = { at: 0, on: true };
-function tokenBindingOn(): boolean {
-  if (Date.now() - BINDING.at < 5_000) return BINDING.on;
+let BINDING = { at: 0, on: true, waitMs: TOKEN_PEER_WAIT_MS_DEFAULT };
+function readBinding(): typeof BINDING {
+  if (Date.now() - BINDING.at < 5_000) return BINDING;
   let on = true;
+  let waitMs = TOKEN_PEER_WAIT_MS_DEFAULT;
   try {
-    on = readAgentsConfig().tokenBinding !== false;
+    const a = readAgentsConfig();
+    on = a.tokenBinding !== false;
+    waitMs = a.tokenPeerWaitMs ?? TOKEN_PEER_WAIT_MS_DEFAULT;
   } catch {
     on = true;
   }
-  BINDING = { at: Date.now(), on };
-  return on;
+  BINDING = { at: Date.now(), on, waitMs };
+  return BINDING;
+}
+function tokenBindingOn(): boolean {
+  return readBinding().on;
+}
+/**
+ * Issue 242: an agent's call (its token, on loopback) waits, at most
+ * agents.token_peer_wait_ms (the ms returned), for the lookup its
+ * connection started, so a busy Den doesn't refuse it as from an unknown
+ * process. Anything else: null, and it goes on at once, as before.
+ */
+function agentPeerWaitMs(req: http.IncomingMessage): number | null {
+  return agentPeerWait(req, readBinding());
 }
 const GUARD: GuardContext = {
   port: PORT,
@@ -1528,7 +1571,14 @@ const GUARD: GuardContext = {
             null,
             {
               verb: "agent-token",
-              detail: `${rec.actor}'s token from ${from === "unknown" ? "a process Den couldn't place" : "outside its session"} (pid ${callerPid(req) ?? "?"}): ${req.method ?? "GET"} ${new URL(req.url ?? "/", "http://x").pathname}`,
+              detail: refusalDetail({
+                actor: rec.actor,
+                from,
+                caller: callerPid(req),
+                root,
+                method: req.method ?? "GET",
+                path: new URL(req.url ?? "/", "http://x").pathname,
+              }),
               outcome: "refused",
               reason: `token_${from}`,
             },
@@ -2534,6 +2584,17 @@ function waitingAgentIds(): Set<string> {
   return out;
 }
 
+/**
+ * The agents a Hub delivery or tools note waits for: a held Allow, a
+ * permission prompt or an ask_human question. Not an idle one ("input").
+ */
+function typingHeldIds(): Set<string> {
+  return typingHeld(
+    attentionWaiting(),
+    approvals ? approvals.queue.waitingActors() : [],
+  );
+}
+
 /** NT-3b: why each one waits; a held Allow over what the hooks said. */
 function waitingReasons(): Map<string, string> {
   const out = new Map<string, string>(attentionWaiting());
@@ -3363,7 +3424,7 @@ async function handleRequest(
       return sendJson(res, []);
     }
     try {
-      return sendJson(res, collectTestSources(pillar));
+      return sendJson(res, await collectTestSources(pillar));
     } catch (err) {
       serverLog(`  ⚠ /api/test-sources: ${(err as Error).message}`);
       return sendJson(res, []);
@@ -4489,10 +4550,15 @@ async function handleRequest(
     if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
       return send400(res, "invalid repo/service name");
     try {
-      const source = resolveHistorySource(repoName, svcName, env);
+      const source = await resolveHistorySource(
+        repoName,
+        svcName,
+        env,
+        url.searchParams.get("workspace"),
+      );
       if (source.kind === "unsupported")
         return sendJson(res, { unsupported: true, reason: source.reason });
-      const snapshot = ensureSnapshot(source);
+      const snapshot = await ensureSnapshot(source);
       if (!snapshot)
         return sendJson(res, {
           unsupported: true,
@@ -4536,9 +4602,10 @@ async function handleRequest(
       );
     if (q.trim().length < 2) return send400(res, "q must be at least 2 chars");
     if (targets.length === 0) return send400(res, "targets required");
-    void Promise.all(targets.map((t) => searchSystemHistory(t, q, env))).then(
-      (results) => sendJson(res, { q, results }),
-    );
+    const project = url.searchParams.get("workspace");
+    void Promise.all(
+      targets.map((t) => searchSystemHistory(t, q, env, project)),
+    ).then((results) => sendJson(res, { q, results }));
     return;
   }
 
@@ -4552,8 +4619,14 @@ async function handleRequest(
     // when the manifest has that key, use it directly — resolveService's
     // bare-repo correction rewrites the subsystem to the ENTRYPOINT (a
     // shop/db request would otherwise read api's log source).
-    const tailResolved =
-      resolveService(repoName) ?? resolveService(`${repoName}/${svcName}`);
+    // Issue 235: in the named project, else the focused one, else the one
+    // project that lists the repo (several is an error, never a guess).
+    const tailFound = resolveServiceInProjects(
+      [repoName, `${repoName}/${svcName}`],
+      url.searchParams.get("workspace"),
+    );
+    if (tailFound.error) return send400(res, tailFound.error);
+    const tailResolved = tailFound.resolved;
     const tailManifest = tailResolved
       ? readManifest(tailResolved.repoPath)
       : null;
@@ -4846,6 +4919,7 @@ async function handleRequest(
     // Log the source(s) of truth before the first step so run output captures
     // which repo/branch/SHA was actually tested. Silent for pillars that don't
     // read tests from repos (integration, perf are den-owned).
+    let runSources: TestSource[] = [];
     if (
       pillar === "synthetic" ||
       pillar === "smoke" ||
@@ -4853,7 +4927,8 @@ async function handleRequest(
       pillar === "security"
     ) {
       try {
-        const sources = collectTestSources(pillar);
+        const sources = await collectTestSources(pillar);
+        runSources = sources;
         if (sources.length === 0) {
           emit({ type: "line", text: `→ source: (no repos discovered)` });
         } else {
@@ -4878,20 +4953,9 @@ async function handleRequest(
       { verb: "run", detail: `${runDesc} [${runId}]` },
       principalOf(req),
     );
-    if (
-      pillar === "synthetic" ||
-      pillar === "smoke" ||
-      pillar === "journeys" ||
-      pillar === "security"
-    ) {
-      try {
-        const sources = collectTestSources(pillar);
-        for (const s of sources) {
-          serverLog(`  source: ${formatSourceLine(s)} [${runId}]`, "lifecycle");
-        }
-      } catch {
-        /* already emitted above as an SSE line */
-      }
+    // The sources read above (once: no second round of git reads).
+    for (const s of runSources) {
+      serverLog(`  source: ${formatSourceLine(s)} [${runId}]`, "lifecycle");
     }
 
     const startTime = Date.now();
@@ -4902,7 +4966,7 @@ async function handleRequest(
     // pillar (`tests:`) and a repo's performance modules included.
     const tested = await reposOfRun(String(pillar), String(env), modules, {
       pillarSources: (p) =>
-        collectTestSources(p as SourcePillar).map((x) => x.repoName),
+        testSourceRepos(p as SourcePillar).map((x) => x.repoName),
       suiteRepos: (e, only) =>
         planSuites(listServicesWithManifests(), e as Environment, only).run.map(
           (x) => x.repo,
@@ -5259,6 +5323,14 @@ async function handleRequest(
   // fresh daemon on the same port. Respond first, then spawn on the next tick so
   // the response flushes before the driver child arrives to stop us.
   if (pathname === "/api/web/restart" && req.method === "POST") {
+    // Issue 227: who asked, when, and from which page action.
+    let body: unknown = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch {
+      /* no body, or not JSON: the page, unnamed */
+    }
+    recordPageRestart(body, auditActorOf(req), principalOf(req));
     serverLog("↻ web restart requested from the UI", "lifecycle");
     sendJson(res, { restarting: true, pid: process.pid });
     setImmediate(() => {
@@ -6510,7 +6582,12 @@ const server = http.createServer((req, res) => {
   // rejection — which CRASHES the whole server on modern Node (freezing every
   // health dot) and leaves the request hanging. Fail the one request instead.
   // Each request in its own lock scope (SEC-1c: an agent's stays shut).
-  inRequestLockScope(() => handleRequest(req, res)).catch((err: unknown) => {
+  const wait = agentPeerWaitMs(req);
+  inRequestLockScope(() =>
+    wait === null
+      ? handleRequest(req, res)
+      : peerSettled(req, wait).then(() => handleRequest(req, res)),
+  ).catch((err: unknown) => {
     // R26: the log has the stack under the request id; the browser gets the
     // id, never the stack. The route is its template: no query values.
     const requestId = requestIdOf(req);
@@ -6592,51 +6669,78 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// #257: idle connections outlive the page's poll (web.keep_alive_seconds).
+try {
+  applyKeepAlive(server, readWebKeepAliveSeconds());
+} catch (e) {
+  applyKeepAlive(server, WEB_KEEP_ALIVE_SECONDS_DEFAULT);
+  serverLog(
+    `  ⚠ ${(e as Error).message}; using ${WEB_KEEP_ALIVE_SECONDS_DEFAULT} s`,
+    "warn",
+  );
+}
+
 // WebSocket upgrades pass the same checks (SEC-1 §3: Origin on every
 // upgrade; CSRF as the `den.csrf.<token>` subprotocol). One route takes
 // one: a session's io (AG-4a-term, session-routes.ts); any other passing
 // upgrade answers 404.
+// Issue 242: find each loopback caller as it connects, not when its
+// request is read (a busy loop, or a caller that gave up, outran that).
+server.on("connection", (sock: net.Socket) => watchPeer(sock));
+
 server.on(
   "upgrade",
   (req: http.IncomingMessage, socket: net.Socket, head: Buffer) => {
     socket.on("error", () => undefined);
-    EDGE_PROVED(req);
-    const requestId = requestIdOf(req);
-    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-    const guard = checkRequest(req, GUARD, product().cli, product().title);
-    const refuse = (status: number, error: string, code: string) =>
-      refuseUpgrade(
-        socket,
-        status,
-        { ok: false, error, code, requestId },
-        http.STATUS_CODES[status] ?? "",
-      );
-    if (!guard.ok) {
-      serverLog(
-        `  ${logTimestamp()}  ${bold("WS  ")}  ${pathname}  →  ${logStatus(guard.status)}` +
-          dim(`  req ${requestId}`),
-        "request",
-      );
-      auditGuardRefusal(req, pathname, guard);
-      return refuse(guard.status, guard.error, guard.code);
-    }
-    setPrincipal(req, guard.principal);
-    if (!isSessionIoPath(pathname))
-      return refuse(404, "No WebSocket route here", "not_found");
-    if (guard.session) trackSessionSocket(guard.session.key, socket);
-    handleSessionUpgrade(req, socket, head, pathname, requestId).catch(
-      (err: unknown) => {
-        serverLog(
-          `  ✗ WS ${routeTemplate(pathname)} failed (req ${requestId}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-          "error",
-        );
-        socket.destroy();
-      },
-    );
+    const wait = agentPeerWaitMs(req);
+    if (wait === null) return handleUpgrade(req, socket, head);
+    void peerSettled(req, wait)
+      .catch(() => undefined)
+      .then(() => handleUpgrade(req, socket, head));
   },
 );
+
+function handleUpgrade(
+  req: http.IncomingMessage,
+  socket: net.Socket,
+  head: Buffer,
+): void {
+  EDGE_PROVED(req);
+  const requestId = requestIdOf(req);
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const guard = checkRequest(req, GUARD, product().cli, product().title);
+  const refuse = (status: number, error: string, code: string) =>
+    refuseUpgrade(
+      socket,
+      status,
+      { ok: false, error, code, requestId },
+      http.STATUS_CODES[status] ?? "",
+    );
+  if (!guard.ok) {
+    serverLog(
+      `  ${logTimestamp()}  ${bold("WS  ")}  ${pathname}  →  ${logStatus(guard.status)}` +
+        dim(`  req ${requestId}`),
+      "request",
+    );
+    auditGuardRefusal(req, pathname, guard);
+    return refuse(guard.status, guard.error, guard.code);
+  }
+  setPrincipal(req, guard.principal);
+  if (!isSessionIoPath(pathname))
+    return refuse(404, "No WebSocket route here", "not_found");
+  if (guard.session) trackSessionSocket(guard.session.key, socket);
+  handleSessionUpgrade(req, socket, head, pathname, requestId).catch(
+    (err: unknown) => {
+      serverLog(
+        `  ✗ WS ${routeTemplate(pathname)} failed (req ${requestId}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        "error",
+      );
+      socket.destroy();
+    },
+  );
+}
 
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
@@ -7051,7 +7155,7 @@ void CRASH_GATE.then(() =>
       void m.startDeliveries({
         heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
         pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-        waiting: waitingAgentIds,
+        waiting: typingHeldIds,
         log: (l) => serverLog(`  ${l}`, "warn"),
       });
     });
@@ -7059,7 +7163,7 @@ void CRASH_GATE.then(() =>
     // changed (hub.tools_check_seconds).
     void import("./hub-tools-service.js").then((m) =>
       m.startHubToolsWatch({
-        waiting: waitingAgentIds,
+        waiting: typingHeldIds,
         log: (l) => serverLog(`  ${l}`, "warn"),
       }),
     );

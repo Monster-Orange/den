@@ -1295,7 +1295,11 @@ async function _requestRestart() {
   // No confirm: the pill exists only when the server IS stale, and a click
   // on it is the ask. D64: the same in-place dialog as Restart Den (no page
   // reload; live connections reconnect).
-  const info = await restartDen({ confirm: false, before: _lastServerInfo });
+  const info = await restartDen({
+    confirm: false,
+    before: _lastServerInfo,
+    from: "update-pill",
+  });
   if (info) {
     _lastServerInfo = info;
     _renderStalePill(info);

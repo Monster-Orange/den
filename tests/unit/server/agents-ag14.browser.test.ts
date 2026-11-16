@@ -32,6 +32,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -99,8 +100,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 const skip = () => !browser;
@@ -167,6 +170,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       `${RR}persona's`,
       // D72.
       "Move to project…",
+      // Issue 96: the last row moves up, never down.
+      "Move up",
+      "Move to top",
       "Remove",
     ]);
     expect(
@@ -351,6 +357,10 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     expect(await menuOf(p, "lookout")).toEqual([
       `${RR}persona's`,
       "Move to project…",
+      // Issue 96: a row in the middle moves both ways.
+      "Move up",
+      "Move down",
+      "Move to top",
       "Remove",
     ]);
     expect(

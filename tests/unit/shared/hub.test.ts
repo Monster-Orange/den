@@ -65,6 +65,7 @@ describe("readHubConfig", () => {
       inboxPollSeconds: 30,
       inboxBackoffMaxSeconds: 600,
       toolsCheckSeconds: 300,
+      toolsRestart: true,
     });
   });
 

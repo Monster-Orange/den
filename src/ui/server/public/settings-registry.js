@@ -971,7 +971,7 @@ function drawRestart(host) {
   host.innerHTML = `<button type="button" class="btn sm" id="set-restart-den">${escR(label)}</button>`;
   host
     .querySelector("#set-restart-den")
-    .addEventListener("click", () => void restartDen());
+    .addEventListener("click", () => void restartDen({ from: "settings" }));
 }
 
 export const DEN_SETTINGS = [
@@ -1559,6 +1559,20 @@ export const DEN_SETTINGS = [
     keywords: ["hub", "hub project", "link", "unfiled", "company", "project"],
     scope: "workspace",
     control: { type: "custom", render: renderHubProject },
+    read: () => null,
+  },
+
+  {
+    // Issue 225: the project's mode, and each agent's actual mode with
+    // where it comes from; agents with their own setting can follow it.
+    id: "workspace.agents_mode",
+    category: "workspace",
+    label: "Agents' mode",
+    description:
+      "The mode this project's agents run in, unless an agent has its own setting. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
+    keywords: ["agents", "mode", "permission", "auto", "ask", "own setting"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectMode },
     read: () => null,
   },
 
@@ -2638,6 +2652,111 @@ function takeHubFlash() {
  * states). Nothing is linked until the person presses Link or Switch, and
  * Unlink asks first.
  */
+const PMODES = ["none", "ask", "edits", "auto", "all"];
+
+/**
+ * Issue 225: Settings › Project › Agents' mode. `v` is GET
+ * /api/workspaces/:ws/agent-modes: { mode, install, agents, own }. The
+ * project's mode as buttons; each agent's mode and where it comes from
+ * ("runs as Ask until restarted" when its process differs); and, when
+ * agents have their own setting, the offer to make them follow.
+ */
+export function projectModeHtml(v, t) {
+  const now = v?.mode ?? "none";
+  const name = (m) => t(`pm.name.${m}`);
+  const btns = PMODES.map(
+    (m) =>
+      `<button type="button" data-pmode="${m}" aria-pressed="${m === now}">${escR(m === "none" ? t("pmode.none") : t(`pm.${m}`))}</button>`,
+  ).join("");
+  const agents = Array.isArray(v?.agents) ? v.agents : [];
+  const rows = agents
+    .map((a) => {
+      const vars = {
+        name: a.name || a.agent,
+        m: name(a.mode),
+        src: t(`ag.mode.src.${a.source}`),
+      };
+      const line = a.running
+        ? t("pmode.runsAs", { ...vars, running: name(a.running) })
+        : t("pmode.agent", vars);
+      return (
+        `<li data-pmode-agent="${escR(a.agent)}" data-pmode-source="${escR(a.source)}"${a.running ? ` data-pmode-running="${escR(a.running)}"` : ""}>` +
+        escR(line) +
+        (a.stopped
+          ? ` <span class="faint">${escR(t("pmode.stopped"))}</span>`
+          : "") +
+        `</li>`
+      );
+    })
+    .join("");
+  const n = Number(v?.own) || 0;
+  const offer = n
+    ? `<div data-pmode-offer="${n}"><button type="button" class="btn sm primary" data-pmode-follow>${escR(t("pmode.follow", { n }))}</button></div>`
+    : "";
+  return (
+    `<div class="seg" role="group" data-pmode-seg aria-label="${escR(t("set.workspace.agents_mode"))}">${btns}</div>` +
+    (agents.length
+      ? `<ul class="set-note" data-pmode-list>${rows}</ul>`
+      : `<p class="set-note" data-pmode-none>${escR(t("pmode.noAgents"))}</p>`) +
+    offer +
+    `<div class="rt-err" role="alert" hidden></div>`
+  );
+}
+
+function renderProjectMode(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  const url = `/api/workspaces/${encodeURIComponent(ws)}/agent-modes`;
+  const fail = (e, fallback) => {
+    const err = host.querySelector(".rt-err");
+    if (!err) return;
+    err.hidden = false;
+    err.textContent = e?.message || fallback;
+  };
+  const post = (kind, body, button) =>
+    ctx.shell.busyAction(
+      kind,
+      (headers) => ctx.shell.api("POST", url, body, { headers }),
+      {
+        button,
+        ...(kind === "save" ? { toastFast: false } : {}),
+        onFail: (e) =>
+          fail(e, t(kind === "save" ? "busy.saveF" : "pmode.followF")),
+      },
+    );
+  return ctx.shell
+    .api("GET", url)
+    .then((v) => {
+      host.innerHTML = projectModeHtml(v, t);
+      host.querySelectorAll("[data-pmode]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const m = b.getAttribute("data-pmode");
+          if (m === (v?.mode ?? "none")) return;
+          return post("save", { mode: m === "none" ? null : m }, b).then(
+            (r) => {
+              if (r !== undefined && r !== null)
+                return renderProjectMode(host, ctx);
+            },
+          );
+        }),
+      );
+      const follow = host.querySelector("[data-pmode-follow]");
+      follow?.addEventListener("click", () =>
+        post("follow-project", { follow: true }, follow).then((r) => {
+          if (r !== undefined && r !== null)
+            return renderProjectMode(host, ctx);
+        }),
+      );
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note" data-pmode-error>${escR(e?.message || t("pmode.failed"))}</p>`;
+    });
+}
+
 function renderHubProject(host, ctx) {
   const ws = ctx.workspace;
   if (!ws || ctx.shell?.configInvalid?.() === true) {

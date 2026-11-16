@@ -22,6 +22,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -68,8 +69,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 describe("a pane whose terminal code failed to load (issue 128)", () => {
@@ -145,7 +148,9 @@ describe("the server agent's terminal code failed to load (issue 128)", () => {
     if (browser) fresh = await startAgentsPageServer({ fresh: true });
   }, 60_000);
   afterAll(async () => {
-    await fresh?.stop();
+    await closeBrowserSuite({
+      servers: [fresh],
+    });
   });
 
   it("opens its terminal on a later check, with no reload", async () => {

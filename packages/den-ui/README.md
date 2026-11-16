@@ -29,6 +29,32 @@ own copy, so a page never mixes two versions.
   `upgradeTimes(root)` draws every `time[data-den-time]` again after a
   change. The year shows only when it isn't this year. Pure: it runs in
   Node too.
+- `src/update-pill.js` and `src/update-pill.css` (exports `./update-pill`,
+  `./update-pill.css`): the shared update pill, a see-through pill over the
+  top bar that says a new version is available, with Reload and a dismiss.
+
+      import { showUpdate } from "/kit/update-pill.js"; // and update-pill.css
+      const pill = showUpdate({
+        message: "A new version of Den is available.",
+        reloadLabel: "Reload", dismissLabel: "Not now", cancelLabel: "Cancel",
+        askFirst: () => (hasUnsavedText()
+          ? { message: "You have unsaved text on this page. Reload anyway?" }
+          : null),
+        onReload: () => location.reload(),
+        onDismiss: () => rememberDismissed(version),
+      });
+      pill.hide();
+
+  No full-width strip: the pill's own fill is the surface at 20% with
+  `blur(3px) saturate(1.4)`, so the bar shows through it, and the bar
+  beside it stays clickable. When `askFirst` returns a message (unsaved
+  text, say), Reload asks once and the × reads Cancel. A text past one line
+  turns the pill into a card. Knobs, set on `.den-upd`: `--upd-pad-y`
+  (default 8px) and `--upd-top` (default: a 50px pill centred on a 48px
+  bar, top -1px; for a 56px bar,
+  `calc(env(safe-area-inset-top, 0px) + 3px)`). It reads `--surface`,
+  `--text`, `--muted`, `--border-strong`, `--accent`, `--accent-text` and
+  `--upd-shadow`.
 
 ## Themes
 

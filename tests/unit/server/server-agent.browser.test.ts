@@ -24,6 +24,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let browser: Browser | null = null;
 const errors: string[] = [];
@@ -39,7 +40,9 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
+  await closeBrowserSuite({
+    browsers: [browser],
+  });
 });
 
 async function open(
@@ -78,7 +81,9 @@ describe("a fresh Den", () => {
     if (browser) s = await startAgentsPageServer({ fresh: true });
   }, 60_000);
   afterAll(async () => {
-    await s?.stop();
+    await closeBrowserSuite({
+      servers: [s],
+    });
   });
 
   it("opens on its own agent: started by itself in a terminal, reading only until allowed", async () => {
@@ -178,7 +183,9 @@ describe("a fresh Den with no runtime", () => {
       s = await startAgentsPageServer({ fresh: true, runtime: "missing" });
   }, 60_000);
   afterAll(async () => {
-    await s?.stop();
+    await closeBrowserSuite({
+      servers: [s],
+    });
   });
 
   it("shows how to install one and the manual path, and starts nothing", async () => {
@@ -206,7 +213,9 @@ describe("after setup", () => {
     if (browser) s = await startAgentsPageServer();
   }, 60_000);
   afterAll(async () => {
-    await s?.stop();
+    await closeBrowserSuite({
+      servers: [s],
+    });
   });
 
   it("is off the rail (0.4.45); its page never starts it by itself; Start runs it", async () => {

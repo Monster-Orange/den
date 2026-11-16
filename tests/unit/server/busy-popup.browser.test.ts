@@ -15,6 +15,8 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { pageImport } from "./helpers/page-import.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -32,8 +34,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 const skip = () => !browser;
@@ -132,7 +136,7 @@ describe("BUSY-1: the working pop-up", () => {
     // The kit loaded first: its load time is the page's, not its wait.
     // A string: compiled, an import() in a function becomes a helper the page
     // hasn't got.
-    await p.evaluate(`import("/busy-den.js").then(() => true)`);
+    await p.evaluate(`${pageImport("/busy-den.js")}.then(() => true)`);
     // Paused before the action starts: the kit's wait (300 ms) runs only as
     // the test moves the page's clock. Not at 299 ms; at 300 ms, open.
     await p.clock.pauseAt((await p.evaluate(() => Date.now())) + 1000);

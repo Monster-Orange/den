@@ -28,6 +28,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const PTY = loadPty().available;
 const SHOTS = process.env.DEN_AGENTS_SHOTS;
@@ -66,9 +67,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await missing?.stop();
-  await ready?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [missing, ready],
+  });
 });
 
 const skip = () => !browser;

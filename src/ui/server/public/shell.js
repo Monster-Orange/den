@@ -1412,9 +1412,13 @@
     "net.down": "Den's server isn't responding — retrying",
     "net.next": "next try in {s}s",
     "net.now": "Retry now",
-    "engine.stale":
-      "Den was updated to {onDisk}. This server is still running {loaded}. Restart it: {cli} web restart (or your service restart).",
-    "engine.title": "Restart needed",
+    // The shared update pill (den-ui): a newer Den on disk (MD-2).
+    "upd.msg": "A new version of Den is available.",
+    "upd.reload": "Reload",
+    "upd.notNow": "Not now",
+    "upd.cancel": "Cancel",
+    "upd.ask": "You have unsaved text on this page. Reload anyway?",
+    "upd.region": "Update",
     // The error page (R26a, error-page.js).
     "err.404.title": "Page not found",
     "err.404.sub": "Nothing here at {path}",
@@ -2013,6 +2017,9 @@
     "ag.mcp.drops": "Hub tools go on restart",
     "ag.mcp.dropsTip":
       "Hub was disconnected after this agent started; its Hub tools no longer work. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.reloading": "Restarting to load Hub's tools",
+    "ag.mcp.reloadingTip":
+      "Hub's tools changed. Den restarts this agent at its next idle so it can use them. It keeps its conversation.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":
@@ -2139,12 +2146,33 @@
     "pm.name.auto": "Auto",
     "pm.name.all": "All",
     "ag.mode.tag": "mode: {m}",
-    "ag.mode.own": "own mode: {m}",
-    "ag.mode.ownNot": "own mode: {m} (not following project: {p})",
-    "ag.mode.drift": "Set to {want}, running {running}",
+    "ag.mode.own": "mode: {m}, from its own setting",
+    "ag.mode.ownNot": "mode: {m}, from its own setting (project: {p})",
+    "ag.mode.drift": "Set to {want}. Runs as {running} until restarted.",
     "ag.mode.apply": "Restart to apply",
     "ag.mode.applyName": "Restart {id} now to run in its mode",
     "ag.mode.applied": "{id} restarts on the same conversation, in {m}.",
+    "ag.mode.from": "mode: {m}, from {src}",
+    "ag.mode.src.own": "its own setting",
+    "ag.mode.src.project": "the project",
+    "ag.mode.src.install": "the mode for every agent",
+    "ag.mode.src.persona": "its persona",
+    "ag.mode.src.default": "Den's default",
+    "set.workspace.agents_mode": "Agents' mode",
+    "set.workspace.agents_mode.d":
+      "The mode this project's agents run in, unless an agent has its own setting. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
+    "pmode.none": "Not set",
+    "pmode.agent": "{name}: {m}, from {src}",
+    "pmode.runsAs":
+      "{name}: {m}, from {src}. Runs as {running} until restarted.",
+    "pmode.stopped": "stopped",
+    "pmode.noAgents": "No agents in this project yet.",
+    "pmode.follow": "Also apply to the {n} agents with their own setting",
+    "pmode.follow.one": "Also apply to the {n} agent with its own setting",
+    "pmode.followW": "Making them follow the project…",
+    "pmode.followS": "They follow the project now.",
+    "pmode.followF": "Couldn't apply. Nothing changed.",
+    "pmode.failed": "Couldn't read this project's mode.",
     "pm.wsDefault": "This project starts agents in {m}.",
     "ov.runtime": "runtime: {r}",
     "ov.model": "model: {m}",
@@ -2292,6 +2320,7 @@
       "Den can't tell which Hub project fits it. Click to choose. Nothing is filed for it until then.",
     "bell.m.pick.one": "{n} project needs your pick",
     "bell.m.noHub": "{n} agents started without Hub",
+    "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
@@ -2476,7 +2505,7 @@
     "ag.l.tile": "Tile",
     "ag.l.tip": "{name} ({key})",
     "ag.hint.keys":
-      "⌃⇧1 / ⌃⇧2 / ⌃⇧3 switch layout. ⌘-click (Ctrl-click) opens a link or path.",
+      "⌃⇧1 / ⌃⇧2 / ⌃⇧3 switch layout. ⌘-click (Ctrl-click) opens a link or path. Alt+↑ / Alt+↓ move an agent in its project.",
     "ag.pal.layout": "Layout: {name}",
     "ag.copied": "Copied",
     "ag.linkHint": "{key}-click to open",
@@ -2513,6 +2542,28 @@
     "ag.job.go": "Restart anyway",
     "ag.job.held": "{id} has a job still running: not restarted yet",
     "ag.mv.item": "Move to project…",
+    "ag.ord.up": "Move up",
+    "ag.ord.down": "Move down",
+    "ag.ord.top": "Move to top",
+    "ag.ord.upOne": "Move {id} up",
+    "ag.ord.downOne": "Move {id} down",
+    "ag.ord.reorder": "Reorder",
+    "ag.ord.reorderOne": "Reorder the agents of {ws}",
+    "ag.ord.reorderStopped": "Reorder the stopped agents",
+    "ag.ord.done": "Done",
+    "ag.ord.grip": "Drag to move it in its project's order",
+    "ag.ord.gripOne": "Drag to move {id}",
+    "ag.ord.moved": "{name} moved to position {n} of {of}",
+    "busy.ordW": "Moving {id}…",
+    "busy.ordS": "Done: {id} moved.",
+    "busy.ordF": "Couldn't move {id}.",
+    // Issue 133: Delete project and Remove service, on the working pop-up.
+    "busy.delProjW": "Deleting {name}…",
+    "busy.delProjS": "Deleted {name}.",
+    "busy.delProjF": "Couldn't delete {name}.",
+    "busy.rmSvcW": "Removing {name}…",
+    "busy.rmSvcS": "Removed {name}.",
+    "busy.rmSvcF": "Couldn't remove {name}.",
     "ag.orphan.one":
       "{names} has no project: its project was deleted. Give it one with ⋯ › Move to project….",
     "ag.orphan.many":
@@ -3660,7 +3711,32 @@
   function topSupported(el) {
     return typeof el.showPopover === "function";
   }
+  // Without the top layer (no popover: an older iPad), a menu inside a
+  // modal dialog is fixed to the dialog, not the window: the dialog's
+  // transform (it is centred by translateY, issue 231) makes it the
+  // containing block. So after placing it, measure where it landed and
+  // take the difference off.
   function topPlace(el, anchor, opts) {
+    topPlaceAt(el, anchor, opts);
+    if (opts.sheet) return;
+    try {
+      if (el.matches(":popover-open")) return;
+    } catch (e) {
+      /* no popover: measure */
+    }
+    var want = {
+      top: parseFloat(el.style.getPropertyValue("top")),
+      left: parseFloat(el.style.getPropertyValue("left")),
+    };
+    if (isNaN(want.top) || isNaN(want.left)) return;
+    var got = el.getBoundingClientRect();
+    var dy = got.top - want.top;
+    var dx = got.left - want.left;
+    if (Math.abs(dy) < 0.5 && Math.abs(dx) < 0.5) return;
+    el.style.setProperty("top", want.top - dy + "px", "important");
+    el.style.setProperty("left", want.left - dx + "px", "important");
+  }
+  function topPlaceAt(el, anchor, opts) {
     var r = anchor.getBoundingClientRect();
     var gap = opts.gap != null ? opts.gap : 4;
     el.style.maxHeight = "";
@@ -6116,9 +6192,9 @@
   // { up }) fires on window and the status chip reads unknown.
   //
   // Banners sit at the top of the page's content (the prototype's
-  // .note-banner): the unreachable one, and the engine one (MD-2: the
-  // server fills data-engine-stale on #den-shell; header.js's server-info
-  // poll calls setEngine).
+  // .note-banner): the unreachable one. (A newer engine on disk, MD-2, is
+  // the update pill's: the server fills data-engine-stale on #den-shell;
+  // header.js's server-info poll calls setEngine.)
   function apiError(message, o) {
     var e = new Error(message);
     e.name = "DenApiError";
@@ -6403,24 +6479,111 @@
     if (ban && ban.action) ban.action.run();
   });
 
-  // MD-2: the engine on disk is not the one this server runs.
-  function setEngine(info) {
-    if (!info || !info.stale) {
-      hideBanner("engine");
-      return;
+  // MD-2: the engine on disk is not the one this server runs: a new
+  // version of Den is installed. The shared update pill (den-ui,
+  // /kit/update-pill.js) offers it over the top bar. Reload restarts Den's
+  // server in place (Restart Den, D64: the working pop-up waits for the
+  // new server), then reloads the page so it runs the new version. With
+  // unsaved text in a composer or form, Reload asks first. "Not now" holds
+  // for that version in this tab (sessionStorage), on every page.
+  var UPD_SS = "den.update.dismissed";
+  var upd = { pill: null, version: null, want: null, loading: null };
+  function updDismissed(v) {
+    try {
+      return sessionStorage.getItem(UPD_SS) === v;
+    } catch (e) {
+      return false;
     }
-    // The server's message is the English one (it names builds when the
-    // versions match); another language says it from its catalog.
-    showBanner("engine", {
-      title: t("engine.title"),
-      text:
-        (lang === "en" && info.message) ||
-        t("engine.stale", {
-          onDisk: info.onDisk || "?",
-          loaded: info.loaded || "?",
-          cli: "__DEN_CLI__",
-        }),
+  }
+  /** Typed text a reload would lose: a composer's or a form's. */
+  function unsavedText() {
+    var els = document.querySelectorAll(
+      "textarea:not(.xterm-helper-textarea), form input, [contenteditable='true']",
+    );
+    var skip = /^(hidden|checkbox|radio|button|submit|reset|file|range|color)$/;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.closest && el.closest(".den-upd")) continue;
+      if (el.isContentEditable && el.tagName !== "TEXTAREA") {
+        if ((el.textContent || "").trim()) return true;
+        continue;
+      }
+      if (el.tagName === "INPUT" && skip.test(el.type || "")) continue;
+      if (el.value !== el.defaultValue && String(el.value || "").trim() !== "")
+        return true;
+    }
+    return false;
+  }
+  function loadUpdatePill() {
+    if (upd.loading) return upd.loading;
+    var css = new Promise(function (resolve) {
+      if (document.getElementById("den-upd-css")) return resolve();
+      var l = document.createElement("link");
+      l.id = "den-upd-css";
+      l.rel = "stylesheet";
+      l.href = "/kit/update-pill.css";
+      l.onload = l.onerror = function () {
+        resolve();
+      };
+      document.head.appendChild(l);
     });
+    upd.loading = Promise.all([import("/kit/update-pill.js"), css]).then(
+      function (r) {
+        return r[0].showUpdate;
+      },
+    );
+    return upd.loading;
+  }
+  function hideUpdate() {
+    if (upd.pill) upd.pill.hide();
+    upd.pill = null;
+    upd.version = null;
+  }
+  function updReload() {
+    import("/restart-den.js")
+      .then(function (m) {
+        return m.restartDen({ confirm: false });
+      })
+      .then(function (info) {
+        if (info) location.reload();
+      });
+  }
+  function setEngine(info) {
+    var v = info && info.stale ? String(info.onDisk || "?") : null;
+    upd.want = v;
+    if (!v || updDismissed(v)) return hideUpdate();
+    if (upd.pill && upd.version === v) return;
+    loadUpdatePill().then(
+      function (showUpdate) {
+        if (upd.want !== v || updDismissed(v)) return;
+        if (upd.pill && upd.version === v) return;
+        hideUpdate();
+        upd.version = v;
+        upd.pill = showUpdate({
+          message: t("upd.msg"),
+          reloadLabel: t("upd.reload"),
+          dismissLabel: t("upd.notNow"),
+          cancelLabel: t("upd.cancel"),
+          region: t("upd.region"),
+          askFirst: function () {
+            return unsavedText() ? { message: t("upd.ask") } : null;
+          },
+          onReload: updReload,
+          onDismiss: function () {
+            upd.pill = null;
+            upd.version = null;
+            try {
+              sessionStorage.setItem(UPD_SS, v);
+            } catch (e) {
+              /* no storage: dismissed on this page only */
+            }
+          },
+        });
+      },
+      function () {
+        upd.loading = null;
+      },
+    );
   }
   if (host.dataset.engineStale) {
     try {
@@ -6428,7 +6591,7 @@
       eng.stale = true;
       setEngine(eng);
     } catch (e) {
-      /* a malformed attribute: no banner */
+      /* a malformed attribute: no pill */
     }
   }
 
@@ -8015,8 +8178,12 @@
     ".den-tx { border: 0; background: none; color: var(--faint); cursor: pointer; font: 16px/1 var(--sans); padding: 0 2px; }",
     ".den-tx:hover { color: var(--text); }",
     ".den-toast :focus-visible, .den-banners :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
-    // Banners (.note-banner): the unreachable server (R26d) and a newer
-    // engine on disk (MD-2), at the top of the content.
+    // The shared update pill over the top bar, centred on it: a 50px pill
+    // on the 48px bar (--den-top-h) sits at top -1px. Den's type.
+    "body.den-has-shell .den-upd { --upd-top: calc(env(safe-area-inset-top, 0px) + (var(--den-top-h) - 50px) / 2);",
+    "  font-family: var(--sans); }",
+    // Banners (.note-banner): the unreachable server (R26d) and others, at
+    // the top of the content.
     ".den-banners { flex: none; margin: 16px 24px 0; display: grid; gap: 8px; font: 14px/1.45 var(--sans); }",
     ".den-banners.den-banners-inset { margin: 0 0 16px; }",
     ".den-banners[hidden] { display: none; }",
@@ -8100,6 +8267,9 @@
     "@media (max-width: 479.98px) {",
     "  .den-title { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;",
     "    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
+    // A phone's tap targets: every top-bar button 32 px or more each way
+    // (issue 209, T9).
+    "  .den-top button, .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
     "}",
     "@media (prefers-reduced-motion: reduce) { .den-rail { transition: none; } }",
   ].join("\n");

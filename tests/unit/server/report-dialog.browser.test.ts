@@ -19,6 +19,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 // A page load, then the dialog: the first warms the browser up.
 jest.setTimeout(30_000);
@@ -44,8 +45,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 const skip = () => !browser;
@@ -847,7 +850,7 @@ describe("FB: the screenshot and its mask", () => {
     if (skip()) return;
     const f = fresh();
     const p = await page(f);
-    await p.route("**/vendor/html-to-image.js", (r) =>
+    await p.route("**/vendor/html-to-image.js?v=*", (r) =>
       r.fulfill({ status: 404, body: "" }),
     );
     await p.keyboard.press("ControlOrMeta+Shift+F");

@@ -103,6 +103,20 @@ process.env.NODE_ENV = "test";
 // Increase test timeout for integration tests
 jest.setTimeout(10000);
 
+// Browser suites (*.browser.test.ts) drive remote browsers: their hooks
+// (closing contexts, browsers and a test server) and tests get longer by
+// default. A hook's default timeout is this one. A setting, never a number
+// at the call: DEN_BROWSER_TEST_TIMEOUT_MS, 60 s when unset. A suite or test
+// that names its own timeout keeps it.
+{
+  const file = expect.getState().testPath ?? "";
+  if (/\.browser\.test\.ts$/.test(file)) {
+    const raw = (process.env.DEN_BROWSER_TEST_TIMEOUT_MS ?? "").trim();
+    const ms = /^\d+$/.test(raw) && Number(raw) > 0 ? Number(raw) : 60_000;
+    jest.setTimeout(ms);
+  }
+}
+
 // Mock console methods to reduce noise in tests
 global.console = {
   ...console,

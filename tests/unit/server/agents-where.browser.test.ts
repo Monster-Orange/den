@@ -20,6 +20,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let browser: Browser | null = null;
 const servers: AgentsPageServer[] = [];
@@ -40,8 +41,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  for (const s of servers) await s.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [...servers],
+  });
 });
 
 /** A server whose host stamps `launchd`, with one running agent. */

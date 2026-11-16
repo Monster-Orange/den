@@ -238,9 +238,7 @@ describe("a scoped server refuses another workspace", () => {
     expect(report?.body).toMatchObject({
       tool: "manifest_validate",
       path: "/repos/billing/.den.yml",
-      reason: expect.stringMatching(
-        /is not inside a repo of project "north"/,
-      ),
+      reason: expect.stringMatching(/is not inside a repo of project "north"/),
     });
   });
 
@@ -354,6 +352,28 @@ describe("a scoped server pins and filters", () => {
     await callTool("status", { workspace: "north" }, ctx(api, SCOPE));
     for (const c of work(calls))
       expect((c.query as Query).workspace).toBe("north");
+  });
+
+  it("logs tools read in the pinned project (issue 235)", async () => {
+    const { api, calls } = fakeApi();
+    await callTool(
+      "logs_tail",
+      { repo: "shop", service: "api" },
+      ctx(api, SCOPE),
+    );
+    await callTool(
+      "logs_search",
+      { q: "error", targets: ["shop/api"] },
+      ctx(api, SCOPE),
+    );
+    const reads = work(calls).filter(
+      (c) => c.path === "/api/service/taillog" || c.path === "/api/logs/search",
+    );
+    expect(reads.map((c) => c.path)).toEqual([
+      "/api/service/taillog",
+      "/api/logs/search",
+    ]);
+    for (const c of reads) expect((c.query as Query).workspace).toBe("north");
   });
 
   it("workspaces lists the scoped workspace only", async () => {

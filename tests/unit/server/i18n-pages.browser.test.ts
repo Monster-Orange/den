@@ -22,6 +22,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 let browser: Browser | null = null;
@@ -141,14 +142,16 @@ beforeAll(async () => {
   await s.settings({ language: "es" });
 }, 60_000);
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 async function open(next: string): Promise<Page> {
   const p = await browser!.newPage({ viewport: { width: 1440, height: 1000 } });
   const qps = JSON.stringify(pseudo());
-  await p.route(`${s!.base}/i18n/es.js`, (r) =>
+  await p.route(`${s!.base}/i18n/es.js?v=*`, (r) =>
     r.fulfill({
       contentType: "text/javascript; charset=utf-8",
       body: `(window.denMessages = window.denMessages || {}).es = ${qps};`,

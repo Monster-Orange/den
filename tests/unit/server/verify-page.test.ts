@@ -201,6 +201,10 @@ describe("issue 209: the Verify page", () => {
       /href="\/api\/verify\/runs\/r-stage\/report\?project=north&amp;module=api%2Forders"/,
     );
     expect(html).toContain("web/checkout");
+    // A blocked check points at the layer that blocked it.
+    expect(html).toMatch(
+      /because they wait on the api layer:<ul>[\s\S]*?web\/checkout/,
+    );
   });
 
   it("S8: nothing ran is never green", () => {

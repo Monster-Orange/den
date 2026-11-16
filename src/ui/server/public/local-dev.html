@@ -4199,11 +4199,19 @@
             danger: true,
           });
           if (!sure) return;
-          await fetch("/api/workspaces/services", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workspace: wsName, address }),
-          });
+          // Issue 133: through the working pop-up (a slow answer shows it;
+          // a failure says so there, with Try again).
+          await window.denShell.busyAction(
+            "remove-service",
+            (headers) =>
+              window.denShell.api(
+                "DELETE",
+                "/api/workspaces/services",
+                { workspace: wsName, address },
+                { headers },
+              ),
+            { vars: { name: address } },
+          );
           await loadWorkspaces();
           await renderContent(wsName);
         };
@@ -4484,19 +4492,26 @@
             });
           }
 
-          let deleted = true;
-          try {
-            await window.denShell.api("DELETE", "/api/workspaces", {
-              name,
-              cleanupDirectory,
-              cleanupDev,
-              cleanupDen,
-              ...agentsChoice,
-            });
-          } catch (err) {
-            deleted = false;
-            window.denShell.errorToast(err);
-          }
+          // Issue 133: through the working pop-up (a slow answer shows it;
+          // a failure says so there, with Try again).
+          let deleted = false;
+          await window.denShell.busyAction(
+            "delete-project",
+            (headers) =>
+              window.denShell.api(
+                "DELETE",
+                "/api/workspaces",
+                {
+                  name,
+                  cleanupDirectory,
+                  cleanupDev,
+                  cleanupDen,
+                  ...agentsChoice,
+                },
+                { headers },
+              ),
+            { vars: { name }, onDone: () => (deleted = true) },
+          );
           if (deleted) {
             if (activeWs === name) {
               activeWs = null;

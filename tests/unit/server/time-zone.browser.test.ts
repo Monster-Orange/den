@@ -21,6 +21,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 // Three days ago at 05:30 UTC: the evening before in Los Angeles, the
 // afternoon of that day in Tokyo, so the date shown names the zone.
@@ -61,13 +62,9 @@ beforeAll(async () => {
   try {
     const pw = await import("playwright");
     browsers.chromium = await connect(pw.chromium);
-    // WebKit where it is: Den's runner (DEN_PW_WS) has it; CI installs
-    // Chromium only, so its WebKit case is skipped there (never fails).
-    try {
-      browsers.webkit = await connect(pw.webkit);
-    } catch (err) {
-      if (process.env.DEN_PW_WS) throw err;
-    }
+    // WebKit (Safari's engine) everywhere: CI installs it too (issue 220),
+    // so a missing WebKit fails here rather than skipping.
+    browsers.webkit = await connect(pw.webkit);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -94,8 +91,10 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  for (const b of Object.values(browsers)) await b?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: Object.values(browsers),
+    servers: [s],
+  });
 });
 
 async function open(

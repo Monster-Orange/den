@@ -11,7 +11,8 @@
  * Auto-close (a fast success says so in a toast, a slow one closes after
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
  * restart-agent, fresh-start, report-preview, save-report-draft,
- * discard-draft, keep-running, send-message, allow-web-app. Waits for
+ * discard-draft, follow-project, keep-running, send-message, allow-web-app,
+ * agent-order, delete-project, remove-service. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -33,6 +34,36 @@ export const DEN_ACTIONS = {
       working: "busy.saveW",
       success: "busy.saveS",
       failure: "busy.saveF",
+    },
+  },
+  // Issue 96: a move in a project's order; fast, so no pop-up and no toast
+  // (the page says where it went in its live line).
+  "agent-order": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.ordW",
+      success: "busy.ordS",
+      failure: "busy.ordF",
+    },
+  },
+  // Issue 133: the Projects and Services pages' confirm actions.
+  "delete-project": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.delProjW",
+      success: "busy.delProjS",
+      failure: "busy.delProjF",
+    },
+  },
+  "remove-service": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.rmSvcW",
+      success: "busy.rmSvcS",
+      failure: "busy.rmSvcF",
     },
   },
   link: {
@@ -156,6 +187,17 @@ export const DEN_ACTIONS = {
     },
   },
   // Issue 163: Keep agents running after logout › Apply.
+  // Issue 225: Settings › Project › Agents' mode: agents with their own
+  // setting follow the project.
+  "follow-project": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "pmode.followW",
+      success: "pmode.followS",
+      failure: "pmode.followF",
+    },
+  },
   "keep-running": {
     who: "__DEN_TITLE__",
     autoClose: true,

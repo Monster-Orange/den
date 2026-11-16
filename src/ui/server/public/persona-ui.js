@@ -408,14 +408,30 @@ export function forgetPersonaDetails() {
  * when it is pinned to an older version. HTML.
  */
 /**
- * Issue 199: a running agent's mode is its own, not its project's: "own
- * mode: auto (not following project: all)". Empty when it follows.
+ * Issue 199: a running agent's mode is its own, not its project's. Issue
+ * 225 words it as a source: "mode: Auto, from its own setting (project:
+ * All)". Empty when it follows.
  */
 export function ownModeLabel(r) {
   if (r?.kind !== "agent" || !r.modeOwn || !r.mode) return "";
+  const name = (m) => t(`pm.name.${m}`);
   return r.modeFollowed && r.modeFollowed !== r.mode
-    ? t("ag.mode.ownNot", { m: r.mode, p: r.modeFollowed })
-    : t("ag.mode.own", { m: r.mode });
+    ? t("ag.mode.ownNot", { m: name(r.mode), p: name(r.modeFollowed) })
+    : t("ag.mode.own", { m: name(r.mode) });
+}
+
+/**
+ * Issue 225: a running agent's mode and where it comes from: "mode: Auto,
+ * from the project". A row without a source (an older Den) says its mode.
+ */
+export function modeLabel(r) {
+  if (r?.kind !== "agent" || !r.mode) return "";
+  const own = ownModeLabel(r);
+  if (own) return own;
+  const m = t(`pm.name.${r.mode}`);
+  return r.modeSource
+    ? t("ag.mode.from", { m, src: t(`ag.mode.src.${r.modeSource}`) })
+    : t("ag.mode.tag", { m });
 }
 
 export function overrideTagsHtml(r) {

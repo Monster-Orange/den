@@ -22,6 +22,7 @@ import {
   startFrameServer,
   type FrameServer,
 } from "./helpers/error-frame-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 jest.setTimeout(60_000);
 
@@ -64,10 +65,11 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
-  await bad?.stop();
-  removeFrameTmp(bad);
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s, bad],
+    after: () => removeFrameTmp(bad),
+  });
 });
 
 const skip = () => !browser;

@@ -109,7 +109,9 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
+import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import { hubToolsRestarting } from "./hub-tools-service.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -153,7 +155,13 @@ export interface SessionRouteDeps {
     rec: AgentRecord,
     pid?: number,
   ) =>
-    | { want: string; running?: string; own?: true; followed?: string }
+    | {
+        want: string;
+        source?: string;
+        running?: string;
+        own?: true;
+        followed?: string;
+      }
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
@@ -365,6 +373,8 @@ export interface ListedSession {
   permission?: string;
   /** MODE-3: the mode it should run in now (running agents). */
   mode?: string;
+  /** Issue 225: where `mode` comes from: own, project, install, persona, default. */
+  modeSource?: string;
   /** MODE-3: the mode its process runs in, when known. */
   modeRunning?: string;
   /** Issue 199: its mode is its own, not its project's. */
@@ -415,6 +425,8 @@ export interface ListedSession {
   helpers?: AgentRow["helpers"];
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
+  /** Issue 193: Den is restarting it to load Hub's new tools. */
+  toolsRestarting?: true;
 }
 
 /**
@@ -513,6 +525,7 @@ export function listedSessions(
   });
   const records = all.filter((r) => active.has(r.workspace));
   const revoked = revokedAgentIds(d.stateDir());
+  const toolsRestarting = hubToolsRestarting();
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const why = d.waitingWhy?.() ?? new Map<string, string>();
   const out: ListedSession[] = [];
@@ -577,6 +590,8 @@ export function listedSessions(
         return m
           ? {
               mode: m.want,
+              // Issue 225: where it comes from (effective-mode.ts).
+              ...(m.source ? { modeSource: m.source } : {}),
               ...(m.running ? { modeRunning: m.running } : {}),
               ...(m.own ? { modeOwn: true } : {}),
               ...(m.followed ? { modeFollowed: m.followed } : {}),
@@ -624,6 +639,7 @@ export function listedSessions(
         });
         return st ? { mcpStale: st } : {};
       })(),
+      ...(toolsRestarting.has(rec.id) ? { toolsRestarting: true as const } : {}),
       // D32: the helpers it started in its own session.
       ...(() => {
         const h = rowHelpers(
@@ -660,11 +676,20 @@ export function listedSessions(
     });
   }
   const order = [...active];
-  return out.sort(
-    (a, b) =>
-      order.indexOf(a.workspace) - order.indexOf(b.workspace) ||
-      (a.startedAt ?? "").localeCompare(b.startedAt ?? "") ||
-      a.label.localeCompare(b.label),
+  // Issue 96: within a project, the person's order for its agents (one helper
+  // for every list: the page, the rail, the flyout read this one).
+  return inAgentOrder(
+    out.sort(
+      (a, b) =>
+        order.indexOf(a.workspace) - order.indexOf(b.workspace) ||
+        (a.startedAt ?? "").localeCompare(b.startedAt ?? "") ||
+        a.label.localeCompare(b.label),
+    ),
+    (r) =>
+      r.kind === "agent" && r.agent
+        ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
+        : null,
+    (ws) => agentOrderOf(ws),
   );
 }
 

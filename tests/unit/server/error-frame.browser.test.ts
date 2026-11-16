@@ -8,7 +8,8 @@
  *     server's log line, Retry and Copy details, no stack
  *   - a failed action no page catches: a toast with the message, the
  *     request id, Retry and Copy details
- *   - the engine on disk bumped: the restart banner leads the page
+ *   - the engine on disk bumped: the shared update pill offers the new
+ *     version over the top bar (no banner in the page)
  *   - the server stopped mid-session: "Den's server isn't responding —
  *     retrying" shows and the status chip reads unknown; the banner clears
  *     itself once the server is back
@@ -22,6 +23,7 @@ import {
   startFrameServer,
   type FrameServer,
 } from "./helpers/error-frame-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
@@ -29,7 +31,12 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -38,9 +45,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
-  removeFrameTmp(s);
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+    after: () => removeFrameTmp(s),
+  });
 });
 
 async function open(p: string): Promise<Page> {
@@ -138,23 +147,18 @@ describe("a failed action", () => {
 });
 
 describe("the stale engine and the unreachable server", () => {
-  it("a newer engine on disk: the restart banner leads the page", async () => {
+  it("a newer engine on disk: the update pill offers it over the bar", async () => {
     if (skip()) return;
     s!.bumpEngine("9.9.9-test.2");
     await new Promise((r) => setTimeout(r, 3_300));
     const page = await open("/settings");
-    const banner = page.locator('[data-banner="engine"]');
-    await banner.waitFor();
-    expect(await banner.textContent()).toContain(
-      "Den was updated to 9.9.9-test.2. This server is still running",
+    const pill = page.locator(".den-upd .upd-pill");
+    await pill.waitFor();
+    expect(await page.locator(".den-upd .upd-msg").textContent()).toBe(
+      "A new version of Den is available.",
     );
-    expect(await banner.textContent()).toContain("den web restart");
-    // It leads the content.
-    expect(
-      await page.evaluate(
-        () => document.getElementById("den-content")!.firstElementChild!.id,
-      ),
-    ).toBe("den-banners");
+    expect(await page.locator(".den-upd .upd-go").textContent()).toBe("Reload");
+    expect(await page.locator('[data-banner="engine"]').count()).toBe(0);
     await page.close();
   }, 20_000);
 

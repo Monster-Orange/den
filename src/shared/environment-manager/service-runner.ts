@@ -809,7 +809,7 @@ function resolvedRepoPathsOf(d: DaemonRecord): string[] {
   const add = (r: ResolvedService | null) => {
     if (r) paths.add(r.repoPath);
   };
-  add(resolveService(d.address));
+  add(resolveService(d.address)); // focus-scoped on purpose: then every project
   for (const w of new Set([...(d.workspaces ?? []), ...getActiveWorkspaces()]))
     add(resolveService(d.address, w));
   return [...paths];

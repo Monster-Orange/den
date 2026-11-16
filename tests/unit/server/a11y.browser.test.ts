@@ -28,6 +28,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const AXE = require.resolve("axe-core/axe.min.js");
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
@@ -60,9 +61,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
-  await new Promise<void>((r) => (stub ? stub.close(() => r()) : r()));
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s, stub],
+  });
 });
 
 type Scheme = "light" | "dark";

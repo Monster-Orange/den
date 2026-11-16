@@ -22,7 +22,9 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
+import { pageImport } from "./helpers/page-import.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -114,9 +116,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await stopServer(server);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server],
+    after: () => fs.rmSync(tmp, { recursive: true, force: true }),
+  });
 });
 
 const CARD = (id: string) => `.dg-card[data-id="${id}"]`;
@@ -175,9 +179,8 @@ async function graph(): Promise<Page> {
 }
 /** One health round, through graph.js's own graphHealth. */
 async function round(p: Page, rows: object[]): Promise<void> {
-  // A string: ts-jest would rewrite a dynamic import in a function.
   await p.evaluate(
-    `import("/graph.js").then((g) => g.graphHealth(${JSON.stringify(rows)}))`,
+    `${pageImport("/graph.js")}.then((g) => g.graphHealth(${JSON.stringify(rows)}))`,
   );
 }
 

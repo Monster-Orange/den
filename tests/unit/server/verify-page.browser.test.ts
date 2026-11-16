@@ -12,6 +12,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
@@ -144,8 +145,7 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  for (const b of browsers.values()) await b.close();
-  await s?.stop();
+  await closeBrowserSuite({ browsers: browsers.values(), servers: [s] });
 });
 
 async function open(
@@ -230,13 +230,25 @@ describe.each(ENGINES)("issue 209: the Verify page in %s", (engine) => {
             try {
               const m = await p.evaluate(() => {
                 const main = document.querySelector("#den-content")!;
+                // Every button on the page, the shell's too: a tap
+                // target is 32 px or more each way.
                 const small = Array.from(
-                  main.querySelectorAll(
-                    "button, a.den-btn, summary, .vf-back a",
+                  document.querySelectorAll(
+                    'button, [role="button"], a.den-btn, summary, .vf-back a',
                   ),
                 )
-                  .map((el) => el.getBoundingClientRect())
-                  .filter((r) => r.width > 0 && r.height < 32).length;
+                  .map((el) => ({ el, r: el.getBoundingClientRect() }))
+                  .filter(
+                    ({ el, r }) =>
+                      r.width > 0 &&
+                      r.height > 0 &&
+                      getComputedStyle(el).visibility !== "hidden" &&
+                      (r.height < 32 || r.width < 32),
+                  )
+                  .map(
+                    ({ el, r }) =>
+                      `${el.tagName.toLowerCase()}#${el.id}.${(el as HTMLElement).className} "${(el.textContent ?? "").trim().slice(0, 20)}" ${Math.round(r.width)}x${Math.round(r.height)}`,
+                  );
                 return {
                   doc: document.documentElement.scrollWidth,
                   main: (main as HTMLElement).scrollWidth,
@@ -261,7 +273,7 @@ describe.each(ENGINES)("issue 209: the Verify page in %s", (engine) => {
                 lang,
                 scheme,
                 url,
-                0,
+                [],
               ]);
               expect(m.mode).toBe(scheme);
             } finally {

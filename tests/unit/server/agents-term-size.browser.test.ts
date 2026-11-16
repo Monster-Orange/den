@@ -30,6 +30,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -56,9 +57,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  host?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [host, s],
+  });
 });
 
 const skip = () => !browser;
@@ -91,7 +93,8 @@ async function viewer(
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.route("**/vendor/xterm.mjs", (r) =>
+  // Issue 231: the page asks for it stamped (?v=<version>).
+  await ctx.route("**/vendor/xterm.mjs?v=*", (r) =>
     r.fulfill({
       contentType: "text/javascript",
       body:
