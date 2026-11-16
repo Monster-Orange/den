@@ -11,6 +11,8 @@ import * as path from "path";
 import { brandHtmlTitle, readBrand } from "../../shared/brand.js";
 import { fillProductTokens } from "../../shared/product.js";
 import { addDenUiMarker } from "../../shared/ui-marker.js";
+import { engineVersion } from "../../shared/paths.js";
+import { isStampedFile, stampAssetUrls } from "./asset-stamp.js";
 
 // ── MIME types ────────────────────────────────────────────────────────────────
 
@@ -74,6 +76,23 @@ export function setHtmlFill(fn: ((html: string) => string) | null): void {
   htmlFill = fn;
 }
 
+/**
+ * Issue 231: the version stamped on every same-origin .css/.js URL in what
+ * Den serves (asset-stamp.ts). The server sets the version it loaded at
+ * start; until then, Den's own package.json, read once.
+ */
+let assetVersion: string | null | undefined;
+export function setAssetVersion(v: string | null): void {
+  assetVersion = v;
+}
+/** Text served as a page, script or stylesheet, its asset URLs stamped. */
+export function stampServed(file: string, text: string): string {
+  if (assetVersion === undefined) assetVersion = engineVersion() ?? null;
+  return assetVersion && isStampedFile(file)
+    ? stampAssetUrls(text, assetVersion)
+    : text;
+}
+
 export function serveFile(
   res: http.ServerResponse,
   filePath: string,
@@ -93,6 +112,7 @@ export function serveFile(
       data = addDenUiMarker(brandHtmlTitle(String(data), readBrand()));
       if (htmlFill) data = htmlFill(data);
     }
+    if (isStampedFile(filePath)) data = stampServed(filePath, String(data));
     const headers: Record<string, string> = { "Content-Type": mime(filePath) };
     // App code must never be stale (no ETag/Last-Modified validators are sent,
     // so any heuristic caching would have no way to revalidate).

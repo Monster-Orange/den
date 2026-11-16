@@ -847,7 +847,7 @@ describe("FB: the screenshot and its mask", () => {
     if (skip()) return;
     const f = fresh();
     const p = await page(f);
-    await p.route("**/vendor/html-to-image.js", (r) =>
+    await p.route("**/vendor/html-to-image.js?v=*", (r) =>
       r.fulfill({ status: 404, body: "" }),
     );
     await p.keyboard.press("ControlOrMeta+Shift+F");

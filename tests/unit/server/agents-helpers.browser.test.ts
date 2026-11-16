@@ -32,6 +32,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { pageImport } from "./helpers/page-import.js";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -486,7 +487,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     ]);
     // A string, so ts-jest leaves the page's own import() alone.
     const page = (await p.evaluate(
-      `import("/agent-helpers.js").then((m) => [...m.shownDepths(${JSON.stringify(list)})])`,
+      `${pageImport("/agent-helpers.js")}.then((m) => [...m.shownDepths(${JSON.stringify(list)})])`,
     )) as [string, number][];
     expect(page).toEqual([...shownDepths(list)]);
     expect(errors).toEqual([]);

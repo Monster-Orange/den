@@ -19,16 +19,24 @@ config and manifest changes a distribution must make to move to it under
   tools, instead of being told about tools they can't see. Their row says
   "Restarting to load Hub's tools" until it's done.
 
-## [0.4.55] - 2026-11-15
+## [0.4.55] - 2026-11-16
 
 ### Fixed
 
+- Pop-ups stay centred and sized to their content on an iPad, in every
+  layout.
+- After an update, pages load the new styles and scripts, even in a tab
+  left open.
 - On an iPad, pop-ups no longer stretch from the top of the window to the
   bottom. Each one is as tall as what it holds, up to the window's height.
-- The UI kit, `den-ui` 0.5.1: every open dialog is as tall as its content
-  (`height: fit-content` in base.css, and in the kit's own dialog and
-  working pop-up), so a browser that leaves a modal dialog's height auto
-  no longer fills the window with it.
+- The UI kit, `den-ui` 0.5.1: every open modal dialog places itself and
+  no longer leans on the browser's box. It is fixed at the window's middle
+  (top 50%, moved up by half its height), its height is its content's, up
+  to the window less 32 px (a vh line first, for a browser without dvh),
+  and it scrolls inside. This is in base.css, and in the kit's own dialog
+  and working pop-up. A bottom sheet keeps its place: Report at phone
+  width sets `transform: none`. A menu opened inside a dialog on a browser
+  without popover is measured and moved back to its anchor.
 
 ## [0.4.54] - 2026-11-15
 

@@ -33,6 +33,7 @@ import * as path from "path";
 import * as yaml from "yaml";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { pageImport } from "./helpers/page-import.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -519,7 +520,7 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
       // The admin-password prompt (LK-0: only when sudo needs it).
       // A string, so the browser does the import (not the test's compiler).
       await p.evaluate(
-        "import('/topbar.js').then((m) => void m.askSudo({ command: 'sudo true' }))",
+        `${pageImport("/topbar.js")}.then((m) => void m.askSudo({ command: "sudo true" }))`,
       );
       await p.waitForSelector("#den-lock-pop");
       await p.keyboard.press("Escape");

@@ -148,7 +148,7 @@ afterAll(async () => {
 async function open(next: string): Promise<Page> {
   const p = await browser!.newPage({ viewport: { width: 1440, height: 1000 } });
   const qps = JSON.stringify(pseudo());
-  await p.route(`${s!.base}/i18n/es.js`, (r) =>
+  await p.route(`${s!.base}/i18n/es.js?v=*`, (r) =>
     r.fulfill({
       contentType: "text/javascript; charset=utf-8",
       body: `(window.denMessages = window.denMessages || {}).es = ${qps};`,

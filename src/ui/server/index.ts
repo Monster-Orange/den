@@ -749,6 +749,8 @@ setHtmlFill((html) => {
 
 // ── MD-2: the engine this server loaded, against the one on disk ─────────────
 const ENGINE = engineWatch(getEngineRoot);
+// Issue 231: pages name their styles and scripts with this version.
+setAssetVersion(ENGINE.loaded.version);
 
 /** The onboarding routes' deps, made on first use. */
 let onboardDeps: OnboardRouteDeps | null = null;
@@ -940,6 +942,7 @@ import {
   send400,
   send404,
   setHtmlFill,
+  setAssetVersion,
 } from "./http-helpers.js";
 import { orgOf, listOrgs } from "../../shared/manifest/service-links.js";
 import {

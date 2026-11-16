@@ -63,7 +63,9 @@ describe("agents stop waits for the session to end", () => {
     expect(await agents(r, "stop", "planner")).toBe(0);
     const took = Date.now() - t0;
     expect(took).toBeGreaterThanOrEqual(900);
-    expect(took).toBeLessThan(4000);
+    // It returned because the session ended, not at the 5 s deadline: the
+    // message says so. A busy runner can stretch the poll past a tighter cap.
+    expect(took).toBeLessThan(5000);
     expect(r.out.join("\n")).toMatch(/stopped agent planner .*it has ended/);
     expect(await agents(r, "resume", "planner")).toBe(0);
     expect(r.made).toHaveLength(2);

@@ -91,7 +91,8 @@ async function viewer(
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.route("**/vendor/xterm.mjs", (r) =>
+  // Issue 231: the page asks for it stamped (?v=<version>).
+  await ctx.route("**/vendor/xterm.mjs?v=*", (r) =>
     r.fulfill({
       contentType: "text/javascript",
       body:

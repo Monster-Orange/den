@@ -469,11 +469,16 @@ async function openTerminal(id) {
   let lib;
   // Issue 128: the browser keeps a module that failed to load as failed,
   // so a try after a failure asks for it at a new address.
-  const again = st.xtermFails ? `?try=${st.xtermFails}` : "";
+  // Issue 231: the address already carries Den's version (?v=), so the
+  // try number joins it.
+  const again = (u) =>
+    st.xtermFails
+      ? `${u}${u.includes("?") ? "&" : "?"}try=${st.xtermFails}`
+      : u;
   try {
     const [x, f] = await Promise.all([
-      import(`/vendor/xterm.mjs${again}`),
-      import(`/vendor/addon-fit.mjs${again}`),
+      import(again("/vendor/xterm.mjs")),
+      import(again("/vendor/addon-fit.mjs")),
     ]);
     lib = { Terminal: x.Terminal, FitAddon: f.FitAddon };
   } catch (err) {

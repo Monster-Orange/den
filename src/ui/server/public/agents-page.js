@@ -1445,11 +1445,16 @@ async function loadXterm() {
   // Issue 128: the browser keeps a module that failed to load as failed,
   // so a try after a failure asks for it at a new address.
   if (st.xterm) return st.xterm;
-  const again = st.xtermFails ? `?try=${st.xtermFails}` : "";
+  // Issue 231: the address already carries Den's version (?v=), so the
+  // try number joins it.
+  const again = (u) =>
+    st.xtermFails
+      ? `${u}${u.includes("?") ? "&" : "?"}try=${st.xtermFails}`
+      : u;
   const loading = (st.xterm = Promise.all([
-    import(`/vendor/xterm.mjs${again}`),
-    import(`/vendor/addon-fit.mjs${again}`),
-    import(`/vendor/addon-web-links.mjs${again}`),
+    import(again("/vendor/xterm.mjs")),
+    import(again("/vendor/addon-fit.mjs")),
+    import(again("/vendor/addon-web-links.mjs")),
   ]).then(([x, f, w]) => {
     // 0.4.45: xterm's own words (its input's label, the screen reader's
     // overflow note) through the catalog, xterm's English when it has none.

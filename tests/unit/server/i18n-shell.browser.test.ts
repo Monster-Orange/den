@@ -18,6 +18,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vm from "vm";
 import type { Browser, Page } from "playwright";
+import { pageImport } from "./helpers/page-import.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -258,7 +259,7 @@ describe("the shell in a pseudo-locale", () => {
     // The admin-password prompt, as a run's needs-sudo opens it (LK-0).
     // A string, so the browser does the import (not the test's compiler).
     await p.evaluate(
-      "import('/topbar.js').then((m) => void m.askSudo({ command: 'sudo true' }))",
+      `${pageImport("/topbar.js")}.then((m) => void m.askSudo({ command: "sudo true" }))`,
     );
     await p.waitForSelector("#den-lock-pop form");
     for (const l of await leaks(p)) found.add(l);
