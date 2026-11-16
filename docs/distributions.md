@@ -1002,6 +1002,9 @@ Connect an install to your company's Hub and every agent Den launches
 gets Hub's tools: it can search Hub and publish docs and mocks there.
 Without it, nothing about agents changes.
 
+[docs/hub.md](hub.md) is the step-by-step guide: connecting, what agents get, projects,
+notifications and troubleshooting. This section is the technical detail.
+
 ### Connect to Hub (HUB-1.7)
 
 Settings › Agents › Hub: type Hub's address (or keep the one the

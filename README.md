@@ -108,7 +108,7 @@ runtime and model.
 ## Docs
 
 [Reference](docs/reference.md) (configuration, manifests, strategies, CLI) · [Distributions](docs/distributions.md) ·
-[Changelog](CHANGELOG.md)
+[Den Hub](docs/hub.md) (connect an install to Hub) · [Changelog](CHANGELOG.md)
 
 Found a bug or have an idea? [Open an issue](https://github.com/Monster-Orange/den/issues/new).
 
