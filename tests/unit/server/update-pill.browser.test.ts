@@ -49,10 +49,13 @@ beforeAll(async () => {
   s = await startAgentsPageServer();
 }, 90_000);
 
+// Closing two launched browsers and the server can pass 10 s on a busy
+// CI runner (seen on one shard once WebKit ran there): the same allowance
+// as the start above.
 afterAll(async () => {
   for (const b of Object.values(browsers)) await b?.close();
   await s?.stop();
-});
+}, 90_000);
 
 interface Stub {
   /** The version on disk the server reports (stale while set). */
