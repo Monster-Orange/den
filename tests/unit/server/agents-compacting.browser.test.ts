@@ -171,10 +171,35 @@ describe("issue 278: an agent stuck compacting, on the Agents page", () => {
     const ins = row(p).locator("[data-instructions]");
     expect((await ins.textContent())?.trim()).toBe("Large instructions");
     expect(await ins.getAttribute("title")).toContain("CLAUDE.md (840 KB)");
-    // The pane bar: the tag beside its own Stop.
+    // The pane bar: the tag beside its own Stop, and (a release gate
+    // found them missing) what is happening, the likely cause and Clear,
+    // on a line of its own; Stop only once, the bar's own.
     const bar = p.locator(".bar2").first();
     await bar.locator("[data-compacting]").waitFor({ timeout: 10_000 });
     expect(await bar.locator('[data-act="stop"]').count()).toBe(1);
+    const said = bar.locator("[data-compacting-bar] [data-compacting-msg]");
+    expect(await said.textContent()).toContain(
+      "Compacting repeatedly: 5 automatic compactions",
+    );
+    expect(await said.textContent()).toContain(
+      "Likely cause: its instruction files are 840 KB",
+    );
+    expect(
+      await bar.locator('[data-compacting-bar] [data-act="ctx-clear"]').count(),
+    ).toBe(1);
+    // The bar's Clear sends the same request as the row's (answered here,
+    // so the loop stays for clause 3).
+    await p.route("**/agents/scout/compacting-clear", (r) =>
+      r.fulfill({ json: { ok: true } }),
+    );
+    const cleared = p.waitForRequest(
+      (r) =>
+        r.method() === "POST" &&
+        r.url().endsWith("/api/workspaces/north/agents/scout/compacting-clear"),
+      { timeout: 15_000 },
+    );
+    await bar.locator('[data-compacting-bar] [data-act="ctx-clear"]').click();
+    await cleared;
     // One bell for the episode, however many looks.
     expect(bellNotes()).toHaveLength(1);
     expect(bellNotes()[0].subject).toBe("agent:scout");

@@ -3696,7 +3696,7 @@ class DenCLI {
       console.log(
         chalk.yellow(
           none.size > 0
-            ? `\n  No services to check: ${DenCLI.noRuntimeList(none)} have no runtime of their own.\n`
+            ? `\n  No services to check: ${DenCLI.noRuntimeList(none)} ${none.size === 1 ? "has no runtime of its own" : "have no runtime of their own"}.\n`
             : `\n  No services registered. Run: ${product().cli} register\n`,
         ),
       );
