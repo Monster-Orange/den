@@ -54,6 +54,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A start or resume that fails no longer takes a running agent's Hub
+  access (issue 215). An agent's older token now ends only once its new
+  session has started.
+
 - If Den restarts or the network drops while an agent's pane first opens,
   you no longer need to reload the page. Click the agent again and its
   pane opens. The server agent's page tries again by itself. (issue 128)
