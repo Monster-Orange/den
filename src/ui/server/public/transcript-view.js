@@ -10,6 +10,7 @@
  * resolves { items, omitted } (or rejects with an Error to show).
  */
 import { dismissable } from "/popover.js";
+import { timeHtml } from "/kit/time.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -21,25 +22,17 @@ const esc = (s) =>
       ],
   );
 
-const time = (ms) => {
-  if (typeof ms !== "number") return "";
-  try {
-    return new Date(ms).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  } catch {
-    return "";
-  }
-};
-
 /** The items as a list (no dialog): for a page that shows them in place. */
 export function transcriptHtml(items, { omitted = 0 } = {}) {
   const rows = (items ?? []).map((i) => {
-    const at = i.at
-      ? `<time class="tx-at" datetime="${esc(new Date(i.at).toISOString())}">${esc(time(i.at))}</time>`
-      : "";
+    // issue 206: the person's own zone.
+    const at =
+      typeof i.at === "number"
+        ? timeHtml(i.at, { style: "time", seconds: true }).replace(
+            "<time ",
+            '<time class="tx-at" ',
+          )
+        : "";
     if (i.kind === "tool")
       return `<li class="tx-i tx-tool">${at}<span class="tx-k">${esc(i.tool || "tool")}</span><span class="tx-t mono">${esc(i.text)}</span></li>`;
     if (i.kind === "result")

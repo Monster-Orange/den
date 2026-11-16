@@ -107,7 +107,7 @@ describe("web owner", () => {
       expect(r.out.includes(t)).toBe(false);
     }
     expect((await owner(["show"])).out).toMatch(
-      /^Owner: @octo-owner \(github:4242\), linked \d{4}-\d\d-\d\d \d\d:\d\d:\d\dZ\.\n$/,
+      /^Owner: @octo-owner \(github:4242\), linked \d{4}-\d\d-\d\d \d\d:\d\d \S+\.\n$/,
     );
   });
 

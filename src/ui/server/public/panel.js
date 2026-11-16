@@ -16,6 +16,7 @@
  * graph.js binds the context (model, hooks, view helpers) with bindPanel().
  */
 import { linkOpen } from "/term-input.js";
+import { timeHtml } from "/kit/time.js";
 import {
   commandTier,
   connections,
@@ -396,10 +397,6 @@ function logsText(l) {
     return `cloudwatch ${l.logGroup}${l.logStream ? " / " + l.logStream : ""}`;
   return l.type;
 }
-const hhmm = (ts) => {
-  const d = new Date(ts);
-  return isNaN(d) ? "" : d.toTimeString().slice(0, 5);
-};
 
 export const SECTIONS = [
   // Overview: is it OK, where is it, what does it touch
@@ -890,7 +887,7 @@ function activityList(x) {
     .then(({ entries = [] }) => {
       if (!live) return;
       el.innerHTML = entries.length
-        ? `<ol class="act">${entries.map((a) => `<li><time datetime="${esc(a.ts)}">${esc(hhmm(a.ts))}</time><span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : `[${gw("gr.who.agent", "agent")}]`) + (a.client ? " " + a.client : "") : a.claimed && a.claimed.client ? gw("gr.who.youVia", "you · {client} (unverified)", { client: a.claimed.client }) : gw("gr.who.you", "you"))}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">${esc(gw("gr.refused", "refused: {reason}", { reason: a.reason || "" }))}</em>` : ""}</span></li>`).join("")}</ol>`
+        ? `<ol class="act">${entries.map((a) => `<li>${timeHtml(a.ts, { style: "time" })}<span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : `[${gw("gr.who.agent", "agent")}]`) + (a.client ? " " + a.client : "") : a.claimed && a.claimed.client ? gw("gr.who.youVia", "you · {client} (unverified)", { client: a.claimed.client }) : gw("gr.who.you", "you"))}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">${esc(gw("gr.refused", "refused: {reason}", { reason: a.reason || "" }))}</em>` : ""}</span></li>`).join("")}</ol>`
         : none(
             N(
               "noActivity",

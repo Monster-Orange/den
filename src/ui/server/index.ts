@@ -396,6 +396,7 @@ import {
   localizePage,
   uiLanguage,
 } from "./ui-language.js";
+import { isTimeZone, timeZonePref, zonePage } from "./time-zone-pref.js";
 import { singleFlight } from "./single-flight.js";
 import { graphOrder } from "./graph-order.js";
 import { clearReadCache, enableReadCache } from "../../shared/read-cache.js";
@@ -688,15 +689,18 @@ setHtmlFill((html) => {
   let mode = "system";
   let def = "dark";
   let lang = uiLanguage(undefined);
+  let zone: string | null = null;
   try {
     const user = readUserConfig();
     lang = uiLanguage(user.language);
+    zone = timeZonePref(user.time_zone);
     mode = appearancePrefs(user.appearance).mode;
     def = activeTheme(themeDeps)?.theme.default_mode ?? "dark";
   } catch {
     /* defaults */
   }
-  let out = localizePage(html, lang)
+  // issue 206: the person's time zone, when picked, for the first paint.
+  let out = zonePage(localizePage(html, lang), zone)
     .split("@@DEN_MODE@@")
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")
@@ -5741,6 +5745,8 @@ async function handleRequest(
   //     pane opens (AG-4b, editor-open-pref.ts); null clears it (none)
   //   language: the UI's language, en | ja | es (ui-language.ts); null or
   //     "en" clears it (English is the default)
+  //   time_zone: an IANA zone for date-times (time-zone-pref.ts, issue
+  //     206); null or "" clears it (the browser's)
   //   hub_allow_tools: true | false, hub.allow_tools (HUB-1.5: agents use
   //     Hub's tools without asking); null clears it (on)
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -5799,6 +5805,8 @@ async function handleRequest(
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
+        // issue 206: the person's time zone (null: the browser's).
+        time_zone: timeZonePref(user.time_zone),
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
@@ -5873,6 +5881,7 @@ async function handleRequest(
           appearance?: unknown;
           shell?: unknown;
           language?: unknown;
+          time_zone?: unknown;
           machine_name?: unknown;
           agents_layout?: unknown;
           agents_helpers_shown?: unknown;
@@ -6046,6 +6055,14 @@ async function handleRequest(
           if (clear) delete user.language;
           else user.language = body.language as string;
         }
+        // issue 206: the person's time zone; null or "" is the browser's.
+        if (body.time_zone !== undefined) {
+          const clear = body.time_zone === null || body.time_zone === "";
+          if (!clear && !isTimeZone(body.time_zone))
+            return send400(res, "time_zone must be an IANA time zone");
+          if (clear) delete user.time_zone;
+          else user.time_zone = body.time_zone as string;
+        }
         if (body.editor === null || body.editor === "") {
           delete user.editor;
         } else if (body.editor !== undefined) {
@@ -6097,6 +6114,7 @@ async function handleRequest(
           appearance: appearancePrefs(user.appearance),
           shell: shellPrefs(user.shell),
           language: uiLanguage(user.language),
+          time_zone: timeZonePref(user.time_zone),
           machine_name: machineNameSetting(user),
           agents_layout: agentsLayout(user),
           agents_helpers_shown: helpersShown(user),

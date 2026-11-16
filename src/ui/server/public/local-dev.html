@@ -1635,6 +1635,7 @@
           buildRow,
         } from "/header.js";
         import { checkLine } from "/topbar.js";
+        import { formatTime } from "/kit/time.js";
         import {
           moveProject,
           orderProjects,
@@ -2404,11 +2405,9 @@
             [],
           );
           const cards = problemCards(row);
+          // issue 206: the person's own zone.
           const at = _lastHealthAt
-            ? new Intl.DateTimeFormat(undefined, {
-                hour: "2-digit",
-                minute: "2-digit",
-              }).format(_lastHealthAt)
+            ? formatTime(_lastHealthAt, { style: "time" })
             : "";
           return [...m.byRepo.keys()].map((repo) => {
             const svcs = m.byRepo.get(repo);
@@ -2531,10 +2530,7 @@
           if (!r) return { text: "—", cls: "", title: "" };
           const title = [r.pillar, r.env].filter(Boolean).join(" · ");
           if (r.running) return { text: "running…", cls: "", title };
-          const t = new Intl.DateTimeFormat(undefined, {
-            hour: "2-digit",
-            minute: "2-digit",
-          }).format(new Date(r.endedAt ?? r.startedAt));
+          const t = formatTime(r.endedAt ?? r.startedAt, { style: "time" });
           return r.exitCode === 0
             ? { text: `✓ ${t}`, cls: "ok", title }
             : { text: `✗ failed ${t}`, cls: "bad", title };
@@ -3378,7 +3374,7 @@
             }
             appendToTab(
               d.address,
-              `── reconnected (running since ${new Date(d.startedAt).toLocaleTimeString()}) ──`,
+              `── reconnected (running since ${formatTime(d.startedAt, { style: "time", seconds: true })}) ──`,
               "cmd",
             );
           }

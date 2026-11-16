@@ -610,6 +610,7 @@
     "set.ui.unknownBrowser": "Unknown browser",
     "set.ui.deviceOn": "{browser} on {os}",
     "set.ui.aBrowserOn": "A browser on {os}",
+    "set.ui.tzBrowser": "Your browser's ({zone})",
     "set.ui.created": "created {ago}",
     "set.ui.fromAt": "from {from} ({name})",
     "set.ui.lastSeen": "last seen {ago}",
@@ -829,6 +830,9 @@
       "Org default follows the distribution's theme. Picking a theme by name keeps it, even when the distribution changes its own.", // words-ok: the Settings row's text, moved word for word
     "set.language.d":
       "The language of Den's own words. Names, logs and command output stay as they are. Changing it reloads the page.",
+    // issue 206: Settings › Time zone.
+    "set.time_zone.d":
+      "Dates and times on these pages show in this zone. They are stored the same either way.",
     "set.appearance.org-theme.d":
       "The theme everyone gets until they pick one (brand.theme).",
     "set.editor.d":
@@ -1445,6 +1449,7 @@
     "set.appearance.mode": "Mode",
     "set.appearance.theme": "Theme",
     "set.language": "Language",
+    "set.time_zone": "Time zone",
     "set.appearance.org-theme": "Org default theme",
     "set.editor": "Default IDE",
     "set.editor.open": "Open file links in",
@@ -6546,6 +6551,36 @@
     });
     return ap.css;
   }
+  // issue 206: date-times in the person's own zone, from the kit's
+  // time.js (a module, loaded once). Until it is in, the browser's Intl
+  // with <html data-den-tz> (the person's pick) does the same.
+  var kitTime = null;
+  try {
+    import("/kit/time.js")
+      .then(function (m) {
+        kitTime = m;
+        m.upgradeTimes();
+      })
+      .catch(function () {});
+  } catch (e) {
+    /* no modules: the fallback stays */
+  }
+  function localTime(iso) {
+    if (kitTime) return kitTime.formatTime(iso, { style: "time" });
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    var root = document.documentElement;
+    try {
+      return d.toLocaleTimeString(root.lang || undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: root.getAttribute("data-den-tz") || undefined,
+      });
+    } catch (e) {
+      return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+  }
+
   function apWhat(a) {
     var p = a.params || {};
     var key =
@@ -6689,11 +6724,8 @@
     $("den-ap-follow-row").hidden = !offers;
     $("den-ap-follow-l").textContent = t("ap.own.follow");
     if (!same) $("den-ap-follow").checked = false;
-    var time = new Date(a.expiresAt);
     $("den-ap-waits").textContent = t("ap.waits", {
-      time: isNaN(time)
-        ? ""
-        : time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: localTime(a.expiresAt),
     });
     $("den-ap-more").textContent = more ? t("ap.more", { n: more }) : "";
     $("den-ap-later").textContent = t("ap.later");

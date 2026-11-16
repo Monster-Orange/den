@@ -37,6 +37,7 @@
  * are the explicit actions, through the page's own runner.
  */
 import { isMac } from "./term-input.js";
+import { formatTime } from "/kit/time.js";
 
 // ── pure parts ──────────────────────────────────────────────────────────────
 
@@ -437,11 +438,6 @@ const kindLabel = (k) =>
     : String(k).charAt(0).toUpperCase() + String(k).slice(1);
 
 const sh = () => (typeof window !== "undefined" ? window.denShell : null);
-/** The locale for dates and times: the browser's for English, else the page's. */
-function uiLocale() {
-  const l = sh()?.lang?.();
-  return l && l !== "en" ? l : undefined;
-}
 const t = tr;
 const $ = (id) => document.getElementById(id);
 function esc(v) {
@@ -656,14 +652,8 @@ function renderDrawerBody() {
     : null;
   const row = health.row;
   const pinned = (id) => !!sh()?.isPinned?.(id);
-  const at = health.at
-    ? // English keeps the browser's own clock (12 or 24 hours); another
-      // language's page reads its times in that language.
-      new Intl.DateTimeFormat(uiLocale(), {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(health.at)
-    : "";
+  // issue 206: the person's own zone and the page's language.
+  const at = health.at ? formatTime(health.at, { style: "time" }) : "";
   let html;
   if (!row) {
     html = `<p class="den-none" role="status">${esc(t("status.checking"))}</p>`;

@@ -28,6 +28,14 @@
  * config.
  */
 import { themeNotice, themeOptions } from "./appearance.js";
+import {
+  browserTimeZone,
+  formatTime,
+  formatTitle,
+  setTimeZone,
+  timeZones,
+  upgradeTimes,
+} from "/kit/time.js";
 import { qrSvg } from "./qr.js";
 import { renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
@@ -145,13 +153,8 @@ const distRow = (id, label, description, keywords, value) => ({
   control: { type: "readonly" },
   read: (ctx) => value(ctx.data.distribution || {}),
 });
-/** SRV-P6: a time from the update check, in the page's locale. */
-const shortTime = (iso) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
-};
+/** SRV-P6: a time from the update check, in the person's zone (issue 206). */
+const shortTime = (iso) => formatTime(iso) || iso;
 /** SRV-P6: the Update checks row's text. */
 function updateCheckText(data) {
   const from = data.server_agent_self_update_from ?? "default";
@@ -370,6 +373,21 @@ export function deviceLine(d, now = Date.now()) {
   return {
     title: name,
     current: !!d.current,
+    // issue 206: the full local date-times, on hover.
+    tip: [
+      d.createdAt
+        ? L("set.ui.created", "created {ago}", {
+            ago: formatTitle(d.createdAt),
+          })
+        : "",
+      d.lastSeenAt
+        ? L("set.ui.lastSeen", "last seen {ago}", {
+            ago: formatTitle(d.lastSeenAt),
+          })
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
     detail: [
       how,
       L("set.ui.created", "created {ago}", { ago: seenAgo(d.createdAt, now) }),
@@ -499,7 +517,7 @@ function drawDevices(host, ctx) {
                   ? ` <b class="set-this-device" style="font-weight:600">· ${escHtml(L("set.ui.thisDevice", "This device"))}</b>`
                   : "") +
                 `</div>` +
-                `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
+                `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
                 `<button type="button" class="btn" data-revoke="${escHtml(d.id)}">${escHtml(L("set.ui.revoke", "Revoke"))}</button></div>`
               );
             })
@@ -569,6 +587,9 @@ function drawDevices(host, ctx) {
 export function waitingLine(w, now = Date.now()) {
   return {
     title: `${w.code} · ${deviceWords(w.device)}`,
+    tip: w.createdAt
+      ? L("set.ui.asked", "asked {ago}", { ago: formatTitle(w.createdAt) })
+      : "",
     detail: [
       w.client,
       L("set.ui.asked", "asked {ago}", { ago: seenAgo(w.createdAt, now) }),
@@ -602,7 +623,7 @@ function drawWaiting(host, ctx) {
                 return (
                   `<div class="set-waiting" data-code="${escHtml(w.code)}" style="${ROW_STYLE}">` +
                   `<div style="flex:1 1 220px;min-width:0"><div class="mono">${escHtml(l.title)}</div>` +
-                  `<div class="set-note" style="overflow-wrap:anywhere">${escHtml(l.detail)}</div></div>` +
+                  `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
                   `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">${escHtml(L("set.ui.approve", "Approve"))}</button>` +
                   `<button type="button" class="btn" data-deny="${escHtml(w.code)}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
                 );
@@ -1101,6 +1122,46 @@ export const DEN_SETTINGS = [
     keys: ["language"],
     read: (ctx) => ctx.data.language ?? ctx.shell?.lang?.() ?? "en",
     write: (v, ctx) => ctx.shell.setLanguage(v),
+  },
+  // issue 206: the time zone date-times are shown in, a pref like
+  // `language` (user.yml time_zone). Unset is the browser's own zone. A
+  // change redraws every date-time on the page in place, no reload.
+  {
+    id: "time_zone",
+    category: "appearance",
+    label: "Time zone",
+    description:
+      "Dates and times on these pages show in this zone. They are stored the same either way.",
+    keywords: ["time zone", "timezone", "zone", "clock", "date", "time", "utc"],
+    scope: "user",
+    control: {
+      type: "select",
+      options: (ctx) => {
+        const own = browserTimeZone();
+        const zones = timeZones();
+        const picked = ctx.data.time_zone;
+        if (picked && !zones.includes(picked)) zones.unshift(picked);
+        return [
+          {
+            value: "",
+            label: L("set.ui.tzBrowser", "Your browser's ({zone})", {
+              zone: own,
+            }),
+          },
+          ...zones.map((z) => ({ value: z, label: z.replace(/_/g, " ") })),
+        ];
+      },
+    },
+    keys: ["time_zone"],
+    read: (ctx) => ctx.data.time_zone ?? "",
+    write: async (v, ctx) => {
+      const ok = await ctx.post({ time_zone: v || null });
+      if (ok) {
+        setTimeZone(v || null);
+        upgradeTimes();
+      }
+      return ok;
+    },
   },
   {
     id: "appearance.org-theme",

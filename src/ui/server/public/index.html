@@ -1228,6 +1228,7 @@
           sudoRun,
         } from "/header.js";
         import { ownersLabel } from "/workspace-picker.js";
+        import { formatTime } from "/kit/time.js";
         // The page's words (issue 171): shell.js's catalog, "tst.*".
         const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
         import {
@@ -2150,7 +2151,7 @@
             .map(
               (run) => `
         <section class="sec-run">
-          <h3>${esc(t("tst.sec.head", { mode: run.mode, env: run.env, at: new Date(run.finishedAt).toLocaleString() }))}</h3>
+          <h3>${esc(t("tst.sec.head", { mode: run.mode, env: run.env, at: formatTime(run.finishedAt) }))}</h3>
           <table class="sec-table">
             <thead><tr><th>${esc(t("env.service"))}</th>${RISKS.map((r) => `<th>${esc(riskWord[r])}</th>`).join("")}<th>${esc(t("tst.sec.new"))}</th><th></th></tr></thead>
             <tbody>${run.results

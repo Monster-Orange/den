@@ -86,6 +86,7 @@ import {
   personGrantRefusal,
 } from "../../shared/claim-code.js";
 import { redactSecrets } from "../../shared/redact.js";
+import { localDateTime } from "../../shared/local-time.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
   action: "up" | "down" | "restart" | "open";
@@ -2141,7 +2142,8 @@ export async function cmdWebSessions(
     io.out("No signed-in browsers.\n");
     return 0;
   }
-  const when = (iso: string) => iso.replace("T", " ").replace(/\.\d+Z$/, "Z");
+  // issue 206: a person reads these in this machine's zone (--json: ISO).
+  const when = (iso: string) => localDateTime(iso);
   const table = [
     ["ID", "CREATED", "LAST SEEN", "HOST", "USER AGENT"],
     ...rows.map((x) => [
@@ -2426,7 +2428,7 @@ export async function cmdWebOwner(
     else
       io.out(
         o
-          ? `Owner: @${o.login} (${o.owner}), linked ${o.linkedAt.replace("T", " ").replace(/\.\d+Z$/, "Z")}.\n`
+          ? `Owner: @${o.login} (${o.owner}), linked ${localDateTime(o.linkedAt)}.\n`
           : `No owner is linked. Run \`${cli} web owner link\`.\n`,
       );
     return 0;

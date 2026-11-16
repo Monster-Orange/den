@@ -266,6 +266,7 @@
           initWorkspacePill,
         } from "/header.js";
         import { viewNoteHtml, viewQuery, viewScope } from "/view-scope.js";
+        import { formatTime } from "/kit/time.js";
         void Promise.all([
           initHealth(),
           initWorkspacePill(),
@@ -463,7 +464,9 @@
           status.textContent = st.pending.size
             ? t("env.checkingN", { n: st.pending.size }) +
               (down ? " · " + t("env.failingSoFar", { n: down }) : "")
-            : t("env.checked", { time: new Date().toLocaleTimeString() }) +
+            : t("env.checked", {
+                time: formatTime(Date.now(), { style: "time", seconds: true }),
+              }) +
               " · " +
               (down ? t("env.failing", { n: down }) : t("env.nothingFailing"));
         }

@@ -716,10 +716,8 @@ export class ReleaseService {
     let warnT: StatusWords | undefined;
     if (newestState && newestState !== "success" && newestAt > deployedAt) {
       warn = `⚠ newer deploy ${newestState} @ ${newestAt.slice(0, 19)}Z`;
-      warnT = said("rel.st.newer", {
-        state: newestState,
-        at: `${newestAt.slice(0, 19)}Z`,
-      });
+      // issue 206: the page shows `at` in the person's own zone.
+      warnT = said("rel.st.newer", { state: newestState, at: newestAt });
     }
 
     // Classify deployed-vs-main.

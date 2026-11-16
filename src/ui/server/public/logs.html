@@ -494,6 +494,24 @@
           initWorkspacePill,
         } from "/header.js";
         import { isServerLog, logStreamUrl } from "/log-source.js";
+        import { currentTimeZone, formatTime, formatTitle } from "/kit/time.js";
+        // issue 206: a log line's clock in the person's own zone (24 hours,
+        // so the column stays even). The stored stamp stays UTC.
+        function logClock(iso) {
+          const d = new Date(iso ?? "");
+          if (Number.isNaN(d.getTime())) return "";
+          try {
+            return new Intl.DateTimeFormat("en-GB", {
+              timeZone: currentTimeZone(),
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hourCycle: "h23",
+            }).format(d);
+          } catch {
+            return "";
+          }
+        }
         // The page's words (issue 171): shell.js's catalog, "lg.*". A log's own
         // lines are never translated.
         const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
@@ -577,7 +595,7 @@
         function formatServerLogEntry(entry) {
           // "14:07:41  [lifecycle]  ▶ run synthetic/local · modules=all [abcxyz]"
           // An agent's action reads "[agent]" and ends "· by agent <client> …".
-          const t = (entry.ts ?? "").slice(11, 19);
+          const t = logClock(entry.ts).padEnd(8);
           const kind = (entry.actor ? "agent" : (entry.kind ?? "info")).padEnd(
             9,
           );
@@ -876,7 +894,7 @@
             span.dataset.raw = text;
             if (ts) {
               span.dataset.ts = ts;
-              span.title = ts;
+              span.title = formatTitle(ts) || ts;
             }
             if (filterTerm && text.toLowerCase().includes(filterTerm)) {
               span.classList.add("log-line-match");
@@ -1301,7 +1319,7 @@
               );
               for (const m of result.matches) {
                 line(
-                  `${m.ts ? m.ts + "  " : ""}${m.line}`,
+                  `${m.ts ? (formatTime(m.ts, { seconds: true }) || m.ts) + "  " : ""}${m.line}`,
                   "log-line-match search-hit",
                   null,
                   true,

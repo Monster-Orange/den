@@ -6,7 +6,22 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.52] - unreleased
 
+### Added
+
+- Settings › Time zone (issue 206). Dates and times on Den's pages show
+  in your browser's zone by default, or in the zone you pick. A change
+  redraws the page's times at once, with no reload. Times are still
+  stored in UTC.
+
 ### Fixed
+
+- Den's pages no longer show times in UTC (issue 206). The Agents page,
+  the bell, Release, Logs, Settings, the services panel, transcripts and
+  the error page show your local time. A time shown as "3 min ago" gives
+  the full local date and time, with its zone, on hover.
+
+- The CLI shows dates and times in this computer's zone (`web sessions`,
+  `web owner show`, `agents import`). `--json` output keeps UTC.
 
 - Den types into an agent one text at a time. A Hub comment and another
   note arriving at the same moment used to land mixed in the pane.

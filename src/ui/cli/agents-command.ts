@@ -175,6 +175,7 @@ import {
   isServerScope,
   SERVER_AGENT_ID,
 } from "../../shared/agents/server-agent.js";
+import { localDateTime } from "../../shared/local-time.js";
 
 export const AGENTS_HELP = {
   usage:
@@ -485,7 +486,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
         ...conversations.map((c) => [
           c.id,
           c.runtime,
-          c.lastAt.slice(0, 16).replace("T", " "),
+          localDateTime(c.lastAt),
           c.title ?? "(untitled)",
           c.cwd,
           c.agent ? `agent ${c.agent}` : c.open ? "open elsewhere" : "",
@@ -505,7 +506,7 @@ async function bringIn(args: string[], d: AgentsResolved): Promise<number> {
           ...away.map((c) => [
             c.id,
             c.runtime,
-            c.lastAt.slice(0, 16).replace("T", " "),
+            localDateTime(c.lastAt),
             c.title ?? "(untitled)",
             c.cwd,
             c.agent ? `agent ${c.agent}` : c.open ? "open elsewhere" : "",
@@ -1671,7 +1672,7 @@ export function apiOnlyLines(
   if (denied.length) {
     const last = denied[denied.length - 1];
     lines.push(
-      `  denied        ${denied.length} recently; the last at ${String(last.at ?? "?")}: ${String(last.agent ?? "an agent")}, ${String(last.what ?? "")} (${String(last.service ?? "")})`,
+      `  denied        ${denied.length} recently; the last at ${last.at ? localDateTime(String(last.at)) : "?"}: ${String(last.agent ?? "an agent")}, ${String(last.what ?? "")} (${String(last.service ?? "")})`,
     );
   } else lines.push("  denied        none recently");
   return lines;

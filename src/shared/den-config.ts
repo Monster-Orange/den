@@ -441,6 +441,11 @@ export interface UserConfig {
    */
   language?: string;
   /**
+   * The person's time zone for date-times (issue 206): an IANA zone; absent
+   * is the browser's. See src/ui/server/time-zone-pref.ts.
+   */
+  time_zone?: string;
+  /**
    * The rail's pins and collapse, and (R21 Navigation) the pages it hides
    * and their order (src/ui/server/shell-prefs.ts).
    */
