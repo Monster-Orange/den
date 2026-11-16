@@ -129,6 +129,14 @@ const str = (v: unknown): string | undefined =>
   typeof v === "string" && v.length > 0 ? v : undefined;
 const envOf = (args: Args): string => str(args.env) ?? "local";
 
+/**
+ * The project a logs tool reads in (issue 235): a scoped server's own, since
+ * a grant never widens logs (assertServicesInScope checks that project);
+ * else the one named, else none and the server finds it.
+ */
+const logsProject = (a: Args, scope?: McpScope): string | undefined =>
+  scope ? scope.workspace : str(a.workspace);
+
 /** Keep the last `n` lines of a stream's output. */
 function tail(r: StreamResult, n: number): string[] {
   return r.lines.slice(-n);
@@ -487,6 +495,7 @@ const READ_TOOLS: DenTool[] = [
         .max(40)
         .describe("repo/service names"),
       env: envArg,
+      workspace: workspaceArg,
     },
     async (a, { api, cfg, scope }) => {
       const env = envOf(a);
@@ -505,6 +514,7 @@ const READ_TOOLS: DenTool[] = [
         q: String(a.q),
         env,
         targets: (a.targets as string[]).join(","),
+        workspace: logsProject(a, scope),
       });
     },
   ),
@@ -523,6 +533,7 @@ const READ_TOOLS: DenTool[] = [
         .optional()
         .describe("Lines to return (default 200)"),
       env: envArg,
+      workspace: workspaceArg,
     },
     async (a, { api, cfg, scope }) => {
       const env = envOf(a);
@@ -532,7 +543,11 @@ const READ_TOOLS: DenTool[] = [
           { repo: String(a.repo), service: String(a.service) },
         ]);
       const n = (a.lines as number | undefined) ?? 200;
-      const query: Query = { repo: String(a.repo), service: String(a.service) };
+      const query: Query = {
+        repo: String(a.repo),
+        service: String(a.service),
+        workspace: logsProject(a, scope),
+      };
       const r =
         env === "local"
           ? await api.stream("/api/service/taillog", query, {

@@ -115,6 +115,7 @@ import {
   pruneDeadSnapshots,
   isSafeServiceName,
 } from "./log-history.js";
+import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import {
   containerTarget,
   pingContainerCheck,
@@ -4481,7 +4482,12 @@ async function handleRequest(
     if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
       return send400(res, "invalid repo/service name");
     try {
-      const source = resolveHistorySource(repoName, svcName, env);
+      const source = resolveHistorySource(
+        repoName,
+        svcName,
+        env,
+        url.searchParams.get("workspace"),
+      );
       if (source.kind === "unsupported")
         return sendJson(res, { unsupported: true, reason: source.reason });
       const snapshot = ensureSnapshot(source);
@@ -4528,9 +4534,10 @@ async function handleRequest(
       );
     if (q.trim().length < 2) return send400(res, "q must be at least 2 chars");
     if (targets.length === 0) return send400(res, "targets required");
-    void Promise.all(targets.map((t) => searchSystemHistory(t, q, env))).then(
-      (results) => sendJson(res, { q, results }),
-    );
+    const project = url.searchParams.get("workspace");
+    void Promise.all(
+      targets.map((t) => searchSystemHistory(t, q, env, project)),
+    ).then((results) => sendJson(res, { q, results }));
     return;
   }
 
@@ -4544,8 +4551,14 @@ async function handleRequest(
     // when the manifest has that key, use it directly — resolveService's
     // bare-repo correction rewrites the subsystem to the ENTRYPOINT (a
     // shop/db request would otherwise read api's log source).
-    const tailResolved =
-      resolveService(repoName) ?? resolveService(`${repoName}/${svcName}`);
+    // Issue 235: in the named project, else the focused one, else the one
+    // project that lists the repo (several is an error, never a guess).
+    const tailFound = resolveServiceInProjects(
+      [repoName, `${repoName}/${svcName}`],
+      url.searchParams.get("workspace"),
+    );
+    if (tailFound.error) return send400(res, tailFound.error);
+    const tailResolved = tailFound.resolved;
     const tailManifest = tailResolved
       ? readManifest(tailResolved.repoPath)
       : null;

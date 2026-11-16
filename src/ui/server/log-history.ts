@@ -21,10 +21,8 @@ import * as path from "path";
 import { execFile, spawnSync } from "child_process";
 
 import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
-import {
-  resolveService,
-  hasRunningOpctlContainers,
-} from "../../shared/environment-manager/service-runner.js";
+import { hasRunningOpctlContainers } from "../../shared/environment-manager/service-runner.js";
+import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import { checkServiceHealth } from "../../shared/environment-manager/health.js";
 import { getServiceLogPath } from "../../shared/process/spawn-streaming.js";
 import { readManifest } from "../../shared/manifest/read-manifest.js";
@@ -71,6 +69,7 @@ export function resolveHistorySource(
   repoName: string,
   svcName: string,
   env: string,
+  workspace?: string | null,
 ): HistorySource {
   // Security boundary: these names flow into filesystem paths
   // (getServiceLogPath mkdirs + reads `<repo>/<service>.log`) and docker
@@ -86,9 +85,13 @@ export function resolveHistorySource(
     };
   }
 
-  const resolved =
-    resolveService(`${repoName}/${svcName}`) ?? resolveService(repoName);
-  const repoPath = resolved?.repoPath;
+  // Issue 235: any project's service, not only the focused one's.
+  const found = resolveServiceInProjects(
+    [`${repoName}/${svcName}`, repoName],
+    workspace,
+  );
+  if (found.error) return { kind: "unsupported", reason: found.error };
+  const repoPath = found.resolved?.repoPath;
 
   // 1. The service's container: its compose stack's, else opctl's
   //    conventional one (opctl_<base>_<hash>).
@@ -374,9 +377,15 @@ export async function searchSystemHistory(
   system: { repo: string; service: string },
   q: string,
   env: string,
+  workspace?: string | null,
 ): Promise<SystemSearchResult> {
   const label = `${system.repo}/${system.service}`;
-  const source = resolveHistorySource(system.repo, system.service, env);
+  const source = resolveHistorySource(
+    system.repo,
+    system.service,
+    env,
+    workspace,
+  );
   if (source.kind === "unsupported") {
     return {
       system: label,
@@ -392,9 +401,10 @@ export async function searchSystemHistory(
   // on actual run-state (same test as the workspace down-skip: opctl
   // containers, or a healthy probe for host-run processes).
   if (source.kind === "file") {
-    const resolved =
-      resolveService(`${system.repo}/${system.service}`) ??
-      resolveService(system.repo);
+    const { resolved } = resolveServiceInProjects(
+      [`${system.repo}/${system.service}`, system.repo],
+      workspace,
+    );
     const running =
       resolved !== null &&
       (hasRunningOpctlContainers(resolved) ||

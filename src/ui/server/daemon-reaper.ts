@@ -89,6 +89,7 @@ function resolveForDaemon(
   deps: DaemonReaperDeps,
   daemon: DaemonRecord,
 ): ResolvedService | null {
+  // Focus-scoped on purpose: the focus first, then owners and the active set.
   const direct = deps.resolveService(daemon.address);
   if (direct) return direct;
   const candidates = [

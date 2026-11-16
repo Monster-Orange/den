@@ -68,6 +68,8 @@ export async function startFrameServer(
     prefix?: string;
     /** The distribution's config/den.yml (default: local only). */
     denConfig?: string;
+    /** A shim's script in place of the one that fails at once. */
+    shims?: Record<string, string>;
   } = {},
 ): Promise<FrameServer> {
   const tmp = fs.realpathSync(
@@ -105,7 +107,8 @@ export async function startFrameServer(
   ])
     write(
       path.join(shim, tool),
-      `#!/bin/sh\necho "${tool}: not here (test shim)" >&2\nexit 1\n`,
+      opts.shims?.[tool] ??
+        `#!/bin/sh\necho "${tool}: not here (test shim)" >&2\nexit 1\n`,
       0o755,
     );
   const home = path.join(tmp, "home");

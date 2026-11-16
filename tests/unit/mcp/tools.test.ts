@@ -542,6 +542,29 @@ describe("logs", () => {
     expect(s.isError).toBe(true);
   });
 
+  it("logs tools pass a named project, and none when not named (issue 235)", async () => {
+    const { api, calls } = fakeApi();
+    await callTool(
+      "logs_tail",
+      { repo: "shop", service: "api", workspace: "south" },
+      ctx(api),
+    );
+    await callTool(
+      "logs_search",
+      { q: "error", targets: ["shop/api"], workspace: "south" },
+      ctx(api),
+    );
+    await callTool("logs_tail", { repo: "shop", service: "api" }, ctx(api));
+    const reads = calls.filter(
+      (c) => c.path === "/api/service/taillog" || c.path === "/api/logs/search",
+    );
+    expect(reads.map((c) => c.query?.workspace)).toEqual([
+      "south",
+      "south",
+      undefined,
+    ]);
+  });
+
   it("log text comes back redacted", async () => {
     const { api } = fakeApi({
       lines: [
