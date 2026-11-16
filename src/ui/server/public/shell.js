@@ -3984,7 +3984,7 @@
       anchor.dataset && anchor.dataset.scope
         ? DUI.attachMenuFilter(pop, {
             label: menu.label,
-            lang: lang(),
+            lang: lang,
             onClose: function (refocus) {
               closeMenu(refocus);
             },
@@ -4791,8 +4791,7 @@
    * SEC-2a: the rail footer's identity chip: "Local" (this machine, no
    * sign-in), "Signed in · this device" (a one-time link or a code) or
    * "@login" (GitHub). The kit's account entry (den-ui 0.7.0), last in
-   * the rail's foot. Local: a link to Settings › Access. Signed in: the
-   * kit's account menu, with Access and Sign out.
+   * the rail's foot, opening Settings › Access.
    */
   function identityLabel(id) {
     if (!id) return "";
@@ -4804,30 +4803,12 @@
   function accountModel() {
     var label = identityLabel(state.identity);
     if (!label) return null;
-    var local = state.identity.kind === "local";
     return {
       navId: "identity",
-      href: local ? "/settings#access" : null,
-      menu: !local,
+      href: "/settings#access",
       label: label,
       id: "den-ident",
       attrs: { "data-ident": state.identity.kind },
-    };
-  }
-  /** The account menu: who, where, Settings › Access, Sign out. */
-  function accountMenu() {
-    var id = state.identity || {};
-    var gh = id.kind === "github" && id.login;
-    return {
-      name: gh ? "@" + id.login : t("ident.device"),
-      detail: gh ? t("ident.device") : null,
-      items: [
-        { label: t("setc.access"), href: "/settings#access" },
-        {
-          label: t("set.ui.signOut"),
-          action: { method: "post", url: "/api/session/logout" },
-        },
-      ],
     };
   }
   /** What GET /api/session said about this browser: the chip, and a toast once after a sign-in. */
@@ -4868,21 +4849,6 @@
     },
     menuOpen: function () {
       return !!openPop;
-    },
-  });
-  // The account menu (den-ui 0.7.0): Sign out posts through Den's api
-  // (its CSRF header), then the page loads again, signed out.
-  DUI.hydrateAccount(host, {
-    lang: lang,
-    menu: accountMenu,
-    onSubmit: function (e) {
-      e.preventDefault();
-      api("POST", "/api/session/logout", {}).then(
-        function () {
-          location.reload();
-        },
-        function () {},
-      );
     },
   });
   /** The rail from the registries and the state, drawn by the kit. */
