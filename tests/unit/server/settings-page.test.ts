@@ -38,6 +38,8 @@ describe("search", () => {
       // Bell v6 (0.4.45).
       "notifications",
       "access",
+      // Issue 103: Settings › Embedding.
+      "embed",
       "secrets",
       "server",
       "cli",

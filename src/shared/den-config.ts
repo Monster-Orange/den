@@ -421,6 +421,11 @@ export interface UserConfig {
    */
   editor_open?: string;
   /**
+   * Issue 103: Settings › Embedding (embed-settings.ts): deep links and
+   * the embedded agent pane. Checked where it is read.
+   */
+  embed?: Record<string, unknown>;
+  /**
    * Personal override of the team release config (config/den.yml `release:`).
    * Wave-assignment edits made in the Release tab are saved here so they stay
    * local and never get committed. Merged field-wise over the team base.

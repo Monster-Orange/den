@@ -100,6 +100,14 @@ export const DEN_SETTING_CATEGORIES = [
       "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
   },
   {
+    // Issue 103: other web apps reach an agent (links, the embedded pane).
+    id: "embed",
+    label: "Embedding",
+    order: 57.5,
+    description:
+      "Let other web apps link to your agents. A link fills an agent's message box. Nothing is sent until you press Send.",
+  },
+  {
     id: "secrets",
     label: "Secrets",
     order: 58,
@@ -727,6 +735,87 @@ function drawPair(host, ctx) {
       host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
     });
 }
+
+/**
+ * Issue 103: the web apps that may frame the embedded agent pane: one
+ * origin a line, saved as a list (the server checks each, exactly).
+ */
+function drawOrigins(host, ctx, api) {
+  const list = Array.isArray(ctx.data?.embed?.origins)
+    ? ctx.data.embed.origins
+    : [];
+  host.innerHTML =
+    `<textarea id="set-embed-origins" rows="3" spellcheck="false" style="width:100%;min-width:0;font:inherit" ` +
+    `aria-label="${escHtml(L("set.embed.origins", "Web apps that may embed agents"))}" ` +
+    `placeholder="https://app.example.com">${escHtml(list.join("\n"))}</textarea>` +
+    `<button type="button" class="btn sm" id="set-embed-origins-save">${escHtml(L("set.ui.saveOrigins", "Save list"))}</button>`;
+  host
+    .querySelector("#set-embed-origins-save")
+    .addEventListener("click", () => {
+      const v = host
+        .querySelector("#set-embed-origins")
+        .value.split(/\s+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      void api.save(v);
+    });
+}
+
+/** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
+const EMBED_ROWS = [
+  {
+    id: "embed.origins",
+    category: "embed",
+    label: "Web apps that may embed agents",
+    description:
+      "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
+    keywords: ["embed", "frame", "iframe", "origin", "allow", "web app"],
+    scope: "user",
+    keys: ["embed.origins"],
+    control: { type: "custom", render: drawOrigins },
+    read: (ctx) => ctx.data.embed?.origins ?? [],
+    write: (v, ctx) => ctx.post({ embed: { origins: v.length ? v : null } }),
+  },
+  {
+    id: "embed.context_max_kb",
+    category: "embed",
+    label: "Largest shared page",
+    description:
+      "The largest page another web app may share with an agent. A larger one is refused, and the pane says why.",
+    keywords: ["embed", "share", "page", "context", "size", "limit"],
+    scope: "user",
+    keys: ["embed.context_max_kb"],
+    control: { type: "number", min: 1, max: 10240, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.context_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { context_max_kb: v } }),
+  },
+  {
+    id: "embed.key_minutes",
+    category: "embed",
+    label: "Embedded pane's permission lasts",
+    description:
+      "How long an embedded agent pane may send before it asks again.",
+    keywords: ["embed", "key", "minutes", "expire"],
+    scope: "user",
+    keys: ["embed.key_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.embed?.key_minutes ?? 15,
+    write: (v, ctx) => ctx.post({ embed: { key_minutes: v } }),
+  },
+  {
+    id: "embed.url_max",
+    category: "embed",
+    label: "Longest link context",
+    description:
+      "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
+    keywords: ["link", "deep link", "context", "url", "length", "embed"],
+    scope: "user",
+    keys: ["embed.url_max_chars"],
+    control: { type: "number", min: 64, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.embed?.url_max_chars ?? 8192,
+    write: (v, ctx) => ctx.post({ embed: { url_max_chars: v } }),
+  },
+];
 
 const ACCESS_ROWS = [
   {
@@ -1892,6 +1981,7 @@ export const DEN_SETTINGS = [
   },
 
   ...ACCESS_ROWS,
+  ...EMBED_ROWS,
 
   // ── Distribution (read-only) ───────────────────────────────────────────
   distRow(

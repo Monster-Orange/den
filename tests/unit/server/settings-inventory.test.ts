@@ -18,6 +18,7 @@ import * as path from "path";
 import { APPEARANCE_DEFAULTS } from "../../../src/ui/server/appearance-prefs.js";
 import { GRAPH_DEFAULTS } from "../../../src/ui/server/graph-prefs.js";
 import { SHELL_DEFAULTS } from "../../../src/ui/server/shell-prefs.js";
+import { EMBED_DEFAULTS } from "../../../src/ui/server/embed-settings.js";
 import {
   DEN_SETTINGS,
   DEN_SETTING_CATEGORIES,
@@ -42,6 +43,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   web_bridge: { listen: true, probe_seconds: true },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
+  // Issue 103: Settings › Embedding.
+  embed: EMBED_DEFAULTS as unknown as Record<string, unknown>,
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -132,6 +135,11 @@ describe("the settings inventory (R21)", () => {
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",
+        // Issue 103: Settings › Embedding.
+        "embed.url_max_chars",
+        "embed.origins",
+        "embed.key_minutes",
+        "embed.context_max_kb",
       ].sort(),
     );
   });

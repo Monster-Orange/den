@@ -381,6 +381,14 @@ import {
   readHubConfig,
 } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
+import {
+  contextUrlProblem,
+  embedSettings,
+  frameHeaders,
+  patchEmbed,
+} from "./embed-settings.js";
+import { handleEmbedRoutes } from "./embed-routes.js";
+import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
@@ -2580,6 +2588,14 @@ async function handleRequest(
   // R26: one id per request, on every response and on its failure's log line.
   const requestId = requestIdOf(req);
   if (!res.headersSent) res.setHeader("X-Request-Id", requestId);
+  // Issue 103: no page is framed by another site; the embedded agent pane
+  // only by the origins Settings › Embedding lists. Before any route, so
+  // refusals and error pages carry it too.
+  if (!res.headersSent)
+    for (const [k, v] of Object.entries(
+      frameHeaders(pathname, () => embedSettings(readUserConfig()).origins),
+    ))
+      res.setHeader(k, v);
   // R26b: every /api error answers JSON, whatever the route sends.
   if (pathname === "/api" || pathname.startsWith("/api/"))
     jsonApiErrors(res, requestId);
@@ -2935,6 +2951,51 @@ async function handleRequest(
       graphPageHtml,
     );
   }
+
+  // Issue 103: a deep link to one agent, its URL in the composer.
+  if (
+    handleAgentLink(req, res, pathname, url.searchParams, {
+      stateDir: () => getStateDir(),
+      workspaceExists: (ws) => Boolean(readWorkspacesFile().workspaces[ws]),
+      urlMax: () => embedSettings(readUserConfig()).url_max_chars,
+      contextProblem: contextUrlProblem,
+      serveAgents: (r) => {
+        const bad = sectionConfigError("agents");
+        if (bad && wantsHtmlPage(req, pathname)) throw bad;
+        serveFile(r, path.join(PUBLIC_DIR, "agents.html"));
+      },
+      sendProblem: (q, r, p) =>
+        sendErrorPage(q, r, {
+          status: p.status,
+          code: "agent_link",
+          path: pathname,
+          message: p.message,
+          link: {
+            reason: p.reason,
+            project: p.project,
+            agent: p.agent,
+            ...(p.max !== undefined ? { max: p.max } : {}),
+          },
+          requestId,
+        }),
+    })
+  )
+    return;
+
+  // Issue 103: the embedded agent pane, its pop-up, its key and its Send.
+  if (
+    await handleEmbedRoutes(req, res, pathname, {
+      settings: () => embedSettings(readUserConfig()),
+      agents: () => agentWebDeps(),
+      stateDir: () => getStateDir(),
+      publicDir: PUBLIC_DIR,
+      servePage: (r, file, fill) => serveFile(r, file, fill),
+      agentCaller: (q) => !!agentPrincipalOf(q),
+      actor: (q) => auditActorOf(q),
+      principal: (q) => principalOf(q),
+    })
+  )
+    return;
 
   // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
   if (pathname === "/agents" || pathname === "/agents.html") {
@@ -5911,6 +5972,8 @@ async function handleRequest(
             return null;
           }
         })(),
+        // Issue 103: Settings › Embedding (embed.*).
+        embed: embedSettings(user),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {
@@ -5954,6 +6017,7 @@ async function handleRequest(
           crash_loop?: unknown;
           web_bridge?: unknown;
           agents_list?: unknown;
+          embed?: unknown;
         };
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
@@ -6048,6 +6112,11 @@ async function handleRequest(
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
           const e = patchEditorOpen(user, body.editor_open);
+          if (!e.ok) return send400(res, e.error);
+        }
+        // Issue 103: Settings › Embedding, a person's (PERSON_ONLY_SETTINGS).
+        if (body.embed !== undefined) {
+          const e = patchEmbed(user, body.embed);
           if (!e.ok) return send400(res, e.error);
         }
         // SEC-2a: web.machine_name (user.yml); null or "" clears it.
@@ -6177,6 +6246,7 @@ async function handleRequest(
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
           editor_open: editorOpen(user),
+          embed: embedSettings(user),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

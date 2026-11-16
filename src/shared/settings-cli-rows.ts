@@ -47,6 +47,8 @@ export const PERSON_ONLY_SETTINGS = [
   "server_agent_self_update",
   // Issue 163: whether Den runs as LaunchDaemons that outlive a logout.
   "keep_running_after_logout",
+  // Issue 103: deep links and the embedded agent pane (Settings › Embedding).
+  "embed",
 ] as const;
 
 /**

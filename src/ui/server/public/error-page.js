@@ -871,6 +871,33 @@ export function mountErrorPage(root) {
     `<div class="ph"><div><h1>${esc(title)}</h1>` +
     `<div class="sub">${sub}</div></div></div>`;
 
+  // Issue 103: a deep link to an agent that can't open says which part
+  // is wrong (the project, the agent, its context), in the page's language.
+  const LINK_REASONS = ["project", "agent", "context_scheme", "context_long"];
+  if (d.code === "agent_link" && LINK_REASONS.includes(d.link?.reason)) {
+    const L = d.link;
+    const title = t("err.link.title");
+    document.title = document.title.replace(/Error$/, title);
+    const lead = t(`err.link.${L.reason}`, {
+      project: L.project,
+      agent: L.agent,
+      max: String(L.max ?? ""),
+    });
+    const back =
+      L.reason === "project"
+        ? "/agents"
+        : `/agents?ws=${encodeURIComponent(L.project)}`;
+    root.innerHTML =
+      header(title, `<span class="mono">${esc(d.path ?? "")}</span>`) +
+      `<div class="empty"><p class="lead" id="den-err-link">${esc(lead)}</p>` +
+      `<dl class="facts">` +
+      `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
+      `</dl><div class="acts">` +
+      `<a class="btn primary" id="den-err-agents" href="${esc(back)}">${esc(t("err.link.agents"))}</a>` +
+      `</div></div>`;
+    return;
+  }
+
   if (d.status === 404) {
     document.title = document.title.replace(/Error$/, t("err.404.title"));
     const items = pageItems(sh);

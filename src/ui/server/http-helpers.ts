@@ -111,11 +111,12 @@ export function serveFile(
  * run's report: an agent may have written it). CSP `sandbox` without
  * allow-same-origin runs its scripts in an opaque origin, so they can't
  * read Den's localStorage (the approval key) or act as Den's page;
- * nosniff keeps a .json from being run as a page.
+ * nosniff keeps a .json from being run as a page. Issue 103: framed by
+ * Den's own pages only (the Tests page's report frame), as every page is.
  */
 export const UNTRUSTED_FILE_HEADERS: Readonly<Record<string, string>> = {
   "Content-Security-Policy":
-    "sandbox allow-scripts allow-popups allow-downloads",
+    "sandbox allow-scripts allow-popups allow-downloads; frame-ancestors 'self'",
   "X-Content-Type-Options": "nosniff",
   "Cache-Control": "no-store",
   "Referrer-Policy": "no-referrer",

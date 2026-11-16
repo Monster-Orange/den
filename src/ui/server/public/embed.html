@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
+          };
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/kit/fonts.css" />
+    <link rel="stylesheet" href="/kit/tokens.css" />
+    <link rel="stylesheet" href="/kit/base.css" />
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
+    <title>__DEN_TITLE__ · Agent</title>
+    <style>
+      /* Issue 103: the embedded agent pane. A frame of its own: no rail,
+         no top bar; its height is what it needs (it tells the host). */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.45 var(--sans);
+      }
+      .emb {
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px;
+        min-width: 0;
+      }
+      .emb-h {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        justify-content: space-between;
+        min-width: 0;
+      }
+      .emb-name {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .emb-h a {
+        font-size: 12px;
+        color: var(--accent);
+        flex: none;
+      }
+      .emb-state {
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+      .emb-state[data-tone="err"] {
+        color: var(--bad);
+      }
+      .agc {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+      .agc .agc-in {
+        width: 100%;
+        min-width: 0;
+        resize: vertical;
+        font: 13px/1.45 var(--sans);
+        color: var(--text);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 6px 8px;
+      }
+      .agc .agc-hint,
+      .agc .agc-msg {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+      .agc .agc-msg:empty {
+        display: none;
+      }
+      .agc .agc-msg[data-tone="err"] {
+        color: var(--bad);
+      }
+      .agc .agc-msg[data-tone="warn"] {
+        color: var(--warn);
+      }
+      /* Issue 103: a page the host shared, as a chip with Remove. */
+      .agc .agc-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .agc .agc-chips[hidden] {
+        display: none;
+      }
+      .agc .agc-chip {
+        display: inline-grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        column-gap: 6px;
+        align-items: center;
+        max-width: 100%;
+        padding: 4px 4px 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--sunken);
+        font-size: 12px;
+      }
+      .agc .agc-chip-t,
+      .agc .agc-chip-u {
+        grid-column: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap; /* words-ok: a CSS property */
+      }
+      .agc .agc-chip-u {
+        color: var(--muted);
+      }
+      .agc .agc-chip-x {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        min-width: var(--tap-min);
+        min-height: var(--tap-min);
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      .agc .agc-acts {
+        display: flex;
+        gap: 6px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="emb" id="emb">
+      <div class="emb-h">
+        <span class="emb-name" id="emb-name"></span>
+        <a
+          id="emb-open"
+          target="_blank"
+          rel="noopener noreferrer"
+          hidden
+          data-t="emb.open"
+          >Open in __DEN_TITLE__</a
+        >
+      </div>
+      <p
+        class="emb-state"
+        id="emb-state"
+        role="status"
+        aria-live="polite"
+        data-t="emb.waiting"
+      >
+        Waiting for the page around this pane.
+      </p>
+      <div>
+        <button
+          type="button"
+          class="btn primary"
+          id="emb-signin"
+          hidden
+          data-t="emb.signin"
+        >
+          Sign in to __DEN_TITLE__
+        </button>
+      </div>
+      <div id="emb-composer"></div>
+    </main>
+    <script id="den-embed" type="application/json">
+      @@DEN_EMBED@@
+    </script>
+    <script src="/shell.js"></script>
+    <script type="module" src="/embed-page.js"></script>
+  </body>
+</html>
