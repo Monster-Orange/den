@@ -9,7 +9,9 @@
     "./tokens.css": "./src/tokens.css",
     "./fonts.css": "./src/fonts.css",
     "./base.css": "./src/base.css",
-    "./time": "./src/time.js"
+    "./time": "./src/time.js",
+    "./update-pill": "./src/update-pill.js",
+    "./update-pill.css": "./src/update-pill.css"
   },
   "files": [
     "src/",

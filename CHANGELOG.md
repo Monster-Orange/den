@@ -61,6 +61,16 @@ config and manifest changes a distribution must make to move to it under
   redraws the page's times at once, with no reload. Times are still
   stored in UTC.
 
+### Changed
+
+- A new version of Den now shows the shared update pill over the top bar,
+  the same pop-up the rest of the platform uses, in place of the dashed
+  "Restart needed" banner. Reload restarts Den in place and then reloads
+  the page. With unsaved text on the page, Reload asks first. "Not now"
+  hides it for that version until the tab closes. The pill and its styles
+  ship in the UI kit, served at /kit/update-pill.js and
+  /kit/update-pill.css. In English, Spanish and Japanese.
+
 ### Fixed
 
 - Two restarts of one agent from two places at once (the CLI and the web
