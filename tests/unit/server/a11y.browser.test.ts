@@ -219,6 +219,52 @@ async function verifyRoutes(ctx: BrowserContext): Promise<void> {
     contentType: "application/json",
     body: JSON.stringify(body),
   });
+  // Issue 211: an overview for the board (a failure, a pass, a scan).
+  const states = (local: string, staging: string) => ({ local, staging });
+  const row = (module: string, layer: string, st: Record<string, string>) => ({
+    module,
+    layer,
+    kind: layer === "code" ? "security" : "integration",
+    mark: layer === "code" ? "reads-code-only" : "declared-read-only",
+    dependsOn: layer === "web" ? ["api"] : [],
+    states: st,
+    recent: { local: ["passed", "passed"], staging: ["passed", "failed"] },
+    from: {},
+  });
+  const counts = {
+    passed: 0,
+    failed: 0,
+    error: 0,
+    blocked: 0,
+    notrun: 0,
+    total: 0,
+  };
+  await ctx.route(/\/api\/verify\/overview(\?|$)/, (r) =>
+    r.fulfill(
+      json({
+        ok: true,
+        project: "north",
+        modules: 3,
+        envOrder: ["local", "staging"],
+        activity: [],
+        envs: [
+          {
+            env: "staging",
+            answer: "failed",
+            counts,
+            failures: [],
+            blocked: [],
+          },
+          { env: "local", answer: "ready", counts, failures: [], blocked: [] },
+        ],
+        checks: [
+          row("web/checkout", "web", states("passed", "blocked")),
+          row("api/orders", "api", states("passed", "failed")),
+          row("code/deps", "code", states("passed", "none")),
+        ],
+      }),
+    ),
+  );
   await ctx.route(/\/api\/verify\/plan(\?|$)/, (r) =>
     r.fulfill(
       json({
@@ -339,6 +385,18 @@ const SURFACES: {
     async run(scheme, z) {
       const p = await page("/verify?plan=staging", scheme, z, verifyRoutes);
       await p.waitForSelector(".vf-plan-card");
+      const r = await scan(p, "#den-content");
+      await p.context().close();
+      return r;
+    },
+  },
+  {
+    name: "the Verify page's All environments board, a panel open",
+    async run(scheme, z) {
+      const p = await page("/verify?tab=board", scheme, z, verifyRoutes);
+      await p.waitForSelector(".vf-board");
+      await p.click('[data-vf-cell="staging|api"]');
+      await p.waitForSelector(".vf-panel");
       const r = await scan(p, "#den-content");
       await p.context().close();
       return r;

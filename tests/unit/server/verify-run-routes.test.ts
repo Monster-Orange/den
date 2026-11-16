@@ -32,9 +32,9 @@ afterAll(() => fs.rmSync(stateDir, { recursive: true, force: true }));
 let release: (() => void) | null = null;
 const gate = () => new Promise<void>((r) => (release = r));
 
-function deps(active: ActiveRuns): VerifyServerDeps {
+function deps(active: ActiveRuns, dir = stateDir): VerifyServerDeps {
   return {
-    stateDir: () => stateDir,
+    stateDir: () => dir,
     projectExists: (p) => p === "north",
     focusedProject: () => "north",
     environments: () => ["local", "staging"],
@@ -216,11 +216,13 @@ describe("issue 210: background runs and Cancel", () => {
   });
 
   it("the plan carries each module's estimate: the average of its last runs here", async () => {
+    // Its own state: the other tests' runs on staging must not count.
+    const own = fs.mkdtempSync(path.join(os.tmpdir(), "den-verify-est-"));
     for (const [id, ms] of [
       ["r-est1", 60_000],
       ["r-est2", 120_000],
     ] as const)
-      writeRunRecord(stateDir, {
+      writeRunRecord(own, {
         runId: id,
         project: "north",
         env: "staging",
@@ -242,12 +244,12 @@ describe("issue 210: background runs and Cancel", () => {
           },
         ],
       });
-    await serve(deps(new ActiveRuns()), async (base) => {
+    await serve(deps(new ActiveRuns(), own), async (base) => {
       const p = (await (
         await post(`${base}/api/verify/plan`, { env: "staging", scope: "all" })
       ).json()) as { estimates: Record<string, number> };
       expect(p.estimates).toEqual({ "shop:api/orders": 90_000 });
-    });
+    }).finally(() => fs.rmSync(own, { recursive: true, force: true }));
   });
 
   it("a record left running by a restart is not live, and Cancel says so", async () => {

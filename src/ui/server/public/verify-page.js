@@ -22,6 +22,12 @@
  *       (a queued one says what it waits for), Cancel with one confirm.
  *       Cancelled is never shown as a pass
  *
+ * Issue 211:
+ *   S1b All environments (?tab=board): every environment across, every
+ *       layer down; a cell opens a panel of its checks with their recent
+ *       results (a full sheet when narrow), focus moves in, and Close or
+ *       Esc returns it to the cell
+ *
  * Reads GET /api/verify/overview (verify-routes.ts). The views are pure
  * (HTML from that JSON), so tests need no server. Words come from the
  * shell's catalog ("v.*"); environment and module names stay as they are.
@@ -308,6 +314,177 @@ export function answerView(ov, { wide = true } = {}) {
     `${head}<div class="vf-cols"><div class="vf-main">${cards}${allChecks(ov, wide)}${oldKinds()}</div>` +
     `${feedView(ov.activity)}</div>`
   );
+}
+
+/** Issue 211: the two tabs, the open one pressed (kept as ?tab=board). */
+export function tabsView(tab) {
+  const b = (id, key) =>
+    `<button type="button" class="vf-tab" data-vf-tab="${id}" aria-pressed="${tab === id}">${esc(t(key))}</button>`;
+  return `<div class="vf-tabs" role="group" aria-label="${esc(t("v.tabs"))}">${b("answer", "v.tab_answer")}${b("board", "v.tab_board")}</div>`;
+}
+
+/** A cell's word and tone, from its checks' states (worst first). */
+const CELL = {
+  failed: { word: "v.bd_failed", tone: "bad", mark: "✕" },
+  error: { word: "v.bd_error", tone: "bad", mark: "!" },
+  blocked: { word: "v.bd_blocked", tone: "warn", mark: "‖" },
+  cancelled: { word: "v.bd_cancelled", tone: "neutral", mark: "⊘" },
+  partly: { word: "v.bd_partly", tone: "warn", mark: "◑" },
+  passed: { word: "v.bd_passed", tone: "ok", mark: "✓" },
+  scanned: { word: "v.bd_scan", tone: "ok", mark: "✓" },
+  none: { word: "v.bd_none", tone: "neutral", mark: "–" },
+  notset: { word: "v.bd_notset", tone: "neutral", mark: "·" },
+};
+
+/** The layers, in the order their checks come (the manifest's). */
+function layersOf(ov) {
+  return [...new Set((ov.checks ?? []).map((c) => c.layer))];
+}
+
+/**
+ * One cell: an environment's checks in one layer. `state` is its key in
+ * CELL; `word` and `counts` are in the page's language. A code scan whose
+ * result is not from this environment's latest run says where it was
+ * scanned (S1b), never "Passed".
+ */
+export function cellOf(ov, env, layer) {
+  const rows = (ov.checks ?? []).filter(
+    (c) => c.layer === layer && (c.states?.[env] ?? "off") !== "off",
+  );
+  const n = (st) => rows.filter((c) => c.states[env] === st).length;
+  let state;
+  let counts = "";
+  let commit = "";
+  if (!rows.length) state = "notset";
+  else if (n("failed") || n("error")) {
+    state = n("failed") ? "failed" : "error";
+    counts = t("v.bd_n_fail", { n: n("failed") + n("error") });
+  } else if (n("blocked")) {
+    state = "blocked";
+    counts = t("v.bd_n_block", { n: n("blocked") });
+  } else if (n("cancelled")) {
+    state = "cancelled";
+    counts = t("v.bd_n_cancel", { n: n("cancelled") });
+  } else if (!n("passed")) state = "none";
+  else {
+    state = n("none") ? "partly" : "passed";
+    counts = t("v.bd_n_pass", { a: n("passed"), b: rows.length });
+    if (n("none")) counts += ` · ${t("v.bd_n_notyet", { n: n("none") })}`;
+    const latest = (ov.envs ?? []).find((e) => e.env === env)?.run?.runId;
+    const scans = rows.every((c) => c.mark === "reads-code-only");
+    const old = rows.find((c) => c.from?.[env]?.runId !== latest);
+    if (state === "passed" && scans && old) {
+      state = "scanned";
+      commit = old.from?.[env]?.commit ?? "";
+      if (!commit) state = "passed";
+    }
+  }
+  const c = CELL[state];
+  return {
+    state,
+    tone: c.tone,
+    mark: c.mark,
+    word: t(c.word, { c: commit }),
+    counts,
+    rows,
+  };
+}
+
+/** A check's recent results: marks with one name for screen readers. */
+function stripOf(states) {
+  if (!states?.length)
+    return `<span class="vf-k">${esc(t("v.bd_nohist"))}</span>`;
+  const list = states.map((s) => t((STATE[s] ?? STATE.none).word)).join(", ");
+  return (
+    `<span class="vf-strip" role="img" aria-label="${esc(t("v.bd_strip", { n: states.length, list }))}">` +
+    states
+      .map((s) => {
+        const x = STATE[s] ?? STATE.none;
+        return `<i class="vf-${x.tone}" aria-hidden="true">${x.mark}</i>`;
+      })
+      .join("") +
+    `</span>`
+  );
+}
+
+function panelView(ov, env, layer) {
+  const cell = cellOf(ov, env, layer);
+  const title = t("v.bd_panel", { l: layer, e: envName(env) });
+  const rows = cell.rows
+    .map((c) => {
+      const st = c.states[env];
+      const note =
+        st === "blocked" && c.dependsOn?.length
+          ? `<span class="vf-k">${esc(t("v.bd_waits", { l: c.dependsOn.join(", ") }))}</span>`
+          : st === "failed" || st === "error"
+            ? `<a href="?why=${encodeURIComponent(env)}" data-why>${esc(t("v.bd_why"))}</a>`
+            : "";
+      return (
+        `<li class="vf-pr"><div class="vf-pra"><span><code>${esc(c.module)}</code> <span class="vf-k">${esc(kindWord(c.kind))}</span></span>${stateTag(st)}</div>` +
+        `${note}${stripOf(c.recent?.[env])}</li>`
+      );
+    })
+    .join("");
+  return (
+    `<section class="vf-panel" aria-labelledby="vf-panel-h"><div class="vf-ph">` +
+    `<h2 id="vf-panel-h" tabindex="-1">${esc(title)}</h2>` +
+    `<button type="button" class="den-btn" data-vf-close>${esc(t("v.bd_close"))}</button></div>` +
+    `<p class="vf-pmeta">${stateTagCell(cell)} <span class="vf-k">${esc(t("v.bd_n_checks", { n: cell.rows.length }))}</span></p>` +
+    `<ul class="vf-plist">${rows}</ul></section>`
+  );
+}
+
+function stateTagCell(cell) {
+  return `<span class="vf-st vf-${cell.tone}"><span class="vf-mk" aria-hidden="true">${cell.mark}</span>${esc(cell.word)}</span>`;
+}
+
+/**
+ * S1b: every environment across, every layer down. One column per
+ * environment, so a narrow screen stacks them into one block each.
+ * `open` is the cell whose panel shows ({ env, layer }).
+ */
+export function boardView(ov, { open } = {}) {
+  const head =
+    `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.bd_t"))}</h2>` +
+    `<p class="vf-lede">${esc(t("v.bd_s"))}</p></div></div>`;
+  if (!ov.modules) return `${head}${emptyView()}`;
+  const order = ov.envOrder ?? (ov.envs ?? []).map((e) => e.env);
+  const layers = layersOf(ov);
+  const byEnv = new Map((ov.envs ?? []).map((e) => [e.env, e]));
+  const labels =
+    `<div class="vf-bcol vf-blabels" aria-hidden="true"><div class="vf-beh"></div>` +
+    layers.map((l) => `<div class="vf-bl">${esc(l)}</div>`).join("") +
+    `</div>`;
+  const cols = order
+    .map((env) => {
+      const e = byEnv.get(env);
+      const cells = layers
+        .map((l) => {
+          const c = cellOf(ov, env, l);
+          const body =
+            `<span class="vf-cl">${esc(l)}</span>${stateTagCell(c)}` +
+            (c.counts ? `<span class="vf-cn">${esc(c.counts)}</span>` : "");
+          if (c.state === "notset")
+            return `<div class="vf-cell vf-empty">${body}</div>`;
+          const name = c.counts
+            ? t("v.bd_cell", { l, e: envName(env), s: c.word, c: c.counts })
+            : t("v.bd_cell_n", { l, e: envName(env), s: c.word });
+          const on = open && open.env === env && open.layer === l;
+          return `<button type="button" class="vf-cell vf-t-${c.tone}" data-vf-cell="${esc(env)}|${esc(l)}" aria-label="${esc(name)}" aria-expanded="${on ? "true" : "false"}">${body}</button>`;
+        })
+        .join("");
+      return (
+        `<div class="vf-bcol" data-vf-env="${esc(env)}"><div class="vf-beh"><b>${esc(envName(env))}</b>` +
+        `${e ? badge(e.answer) : ""}<a class="vf-plan" href="?plan=${encodeURIComponent(env)}" data-nav>${esc(t("v.plan_btn"))}</a></div>` +
+        `${cells}</div>`
+      );
+    })
+    .join("");
+  const panel =
+    open && layers.includes(open.layer) && order.includes(open.env)
+      ? panelView(ov, open.env, open.layer)
+      : "";
+  return `${head}<div class="vf-stage${panel ? " vf-open" : ""}"><div class="vf-board" style="--rows:${layers.length}">${labels}${cols}</div>${panel}</div>`;
 }
 
 function reportHref(project, f) {
@@ -779,13 +956,33 @@ export async function mountVerify(
     rv.timer = 0;
   };
 
+  /** Issue 211: the board's open cell ({ env, layer }), or null. */
+  let open = null;
+  const tab = () => (params().get("tab") === "board" ? "board" : "answer");
   const drawAnswer = () => {
     if (!ov) return;
     const why = params().get("why");
+    if (why) open = null;
     root.innerHTML = why
       ? whyView(ov, why)
-      : answerView(ov, { wide: !narrow() });
+      : tabsView(tab()) +
+        (tab() === "board"
+          ? boardView(ov, { open })
+          : answerView(ov, { wide: !narrow() }));
     busy(false);
+  };
+  const cellButton = (c) =>
+    c
+      ? [...root.querySelectorAll("[data-vf-cell]")].find(
+          (b) => b.getAttribute("data-vf-cell") === `${c.env}|${c.layer}`,
+        )
+      : null;
+  /** Closes the board's panel, and focus goes back to its cell. */
+  const closePanel = () => {
+    const was = open;
+    open = null;
+    drawAnswer();
+    cellButton(was)?.focus?.();
   };
   const loadAnswer = async () => {
     busy(true);
@@ -1048,6 +1245,36 @@ export async function mountVerify(
       void loadAnswer();
       return;
     }
+    // Issue 211: the tabs, kept in the URL so a reload keeps the board.
+    const tb = el.closest("[data-vf-tab]")?.getAttribute("data-vf-tab");
+    if (tb) {
+      if (tb !== tab()) {
+        const q = params();
+        if (tb === "board") q.set("tab", "board");
+        else q.delete("tab");
+        const qs = q.toString();
+        globalThis.history?.pushState(null, "", qs ? `?${qs}` : "?");
+        open = null;
+        drawAnswer();
+      }
+      root.querySelector(`[data-vf-tab="${tb}"]`)?.focus?.();
+      return;
+    }
+    const cell = el.closest("[data-vf-cell]")?.getAttribute("data-vf-cell");
+    if (cell) {
+      const [env, layer] = cell.split("|");
+      if (open && open.env === env && open.layer === layer) closePanel();
+      else {
+        open = { env, layer };
+        drawAnswer();
+        root.querySelector("#vf-panel-h")?.focus?.();
+      }
+      return;
+    }
+    if (el.closest("[data-vf-close]")) {
+      closePanel();
+      return;
+    }
     const act = el.closest("[data-act]")?.getAttribute("data-act");
     if (act === "allow" || act === "decline" || act === "run") {
       void decide(act, el.closest("[data-act]"));
@@ -1104,6 +1331,15 @@ export async function mountVerify(
       focusHead();
     } else void route();
   });
-  globalThis.addEventListener?.("popstate", () => void route());
+  root.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && open && root.querySelector(".vf-panel")) {
+      ev.preventDefault();
+      closePanel();
+    }
+  });
+  globalThis.addEventListener?.("popstate", () => {
+    open = null;
+    void route();
+  });
   await route();
 }

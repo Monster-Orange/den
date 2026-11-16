@@ -4,6 +4,22 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.58] - unreleased
+
+### Added
+
+- Verify: an All environments tab beside Answer on the Checks page, kept
+  in the address (`?tab=board`). Every environment across, every layer
+  down. Each cell says its state with a mark and a word, and its counts.
+  A layer with no checks on an environment says "Not set up". A code scan
+  not re-run there says where it was scanned, not "Passed". Pressing a
+  cell opens a panel of its checks, each with its last 10 results (a full
+  sheet on a phone); focus moves in, and Close or Esc gives it back to
+  the cell.
+- `GET /api/verify/overview`: each check carries its mark, its recent
+  results on each environment (`recent`) and where its latest result came
+  from (`from`: commit and run).
+
 ## [0.4.57] - unreleased
 
 ### Added

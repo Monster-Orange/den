@@ -18,6 +18,7 @@ import type { VerifyModule } from "./config.js";
 import {
   hasEnded,
   type EndedRunRecord,
+  type ModuleRecordState,
   type RunActor,
   type RunRecord,
 } from "./records.js";
@@ -77,9 +78,22 @@ export interface CheckRow {
   module: string;
   layer: string;
   kind: string;
+  /** Issue 211: how Den knows what it touches (a scan "reads code only"). */
+  mark: VerifyModule["mark"];
   dependsOn: string[];
   states: Record<string, CheckState>;
+  /**
+   * Issue 211: its last results on each environment, oldest first, at most
+   * {@link RECENT_RUNS} (the board panel's strip). Every environment has a
+   * list, empty where it never ran.
+   */
+  recent: Record<string, ModuleRecordState[]>;
+  /** Issue 211: where its latest result on each environment came from. */
+  from: Record<string, { commit: string | null; runId?: string }>;
 }
+
+/** Issue 211: how many results a check's strip shows. */
+export const RECENT_RUNS = 10;
 
 export interface ActivityItem {
   runId: string;
@@ -207,17 +221,44 @@ export function verifyOverview(input: OverviewInput): VerifyOverview {
         a.n - b.n,
     )
     .map((x) => x.o);
+  // Newest first in i.runs; a strip reads oldest first.
+  const recentOf = (id: string, env: string): ModuleRecordState[] => {
+    const out: ModuleRecordState[] = [];
+    for (const r of i.runs) {
+      if (r.env !== env) continue;
+      const mod = r.modules.find((x) => x.id === id);
+      if (!mod) continue;
+      out.push(mod.state);
+      if (out.length === RECENT_RUNS) break;
+    }
+    return out.reverse();
+  };
   const checks = i.modules.map(
     (m): CheckRow => ({
       module: m.name,
       layer: m.layer,
       kind: m.kind,
+      mark: m.mark,
       dependsOn: i.layers[m.layer] ?? [],
       states: Object.fromEntries(
         i.envs.map((e): [string, CheckState] => [
           e,
           runsHere(m, e) ? (i.latest[e]?.[m.id]?.state ?? "none") : "off",
         ]),
+      ),
+      recent: Object.fromEntries(i.envs.map((e) => [e, recentOf(m.id, e)])),
+      from: Object.fromEntries(
+        i.envs.flatMap((e) => {
+          const l = i.latest[e]?.[m.id];
+          return l
+            ? [
+                [
+                  e,
+                  { commit: l.commit, ...(l.runId ? { runId: l.runId } : {}) },
+                ],
+              ]
+            : [];
+        }),
       ),
     }),
   );
