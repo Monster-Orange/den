@@ -32,7 +32,7 @@ import {
 import { loadManifest } from "../../shared/manifest/read-manifest.js";
 import { servicePlacement } from "../../shared/manifest/placement.js";
 import { depService } from "../../shared/manifest/deps.js";
-import { repoHasRuntime } from "../../shared/repo-kind.js";
+import { hasRuntime, repoKind, runsNothing } from "../../shared/repo-kind.js";
 import { readDenConfig } from "../../shared/den-config.js";
 import { GIT_REMOTE_TIMEOUT_MS } from "../../shared/constants.js";
 import { effectiveLocalCommands } from "../../shared/stacks/manifest-commands.js";
@@ -152,13 +152,15 @@ export async function buildServicesList(
   };
 
   // Modules and libraries have no runtime: no card, health or commands.
-  // They show as contributors on the Applications tab instead.
+  // They show as contributors on the Applications tab instead. A repo that
+  // runs nothing (issue 277) keeps its row, so the project page shows it
+  // and can remove it: no commands, `runs: "none"`, no health check.
   const pendingBranches: Promise<void>[] = [];
   const catalogEntries = inView.flatMap((ws) => {
     const noAutostart = noAutostartBy.get(ws.name) ?? new Set<string>();
     return (
       listWorkspaceServices(ws.config, catalog, ws.name)
-        .filter((r) => repoHasRuntime(r.repoPath))
+        .filter((r) => hasRuntime(repoKind(r.repoPath)))
         // A shared service is listed once: the first workspace in view
         // (focus first) owns its entry.
         .filter((r) => !seen.has(r.address) && !!seen.add(r.address))
@@ -195,6 +197,7 @@ export async function buildServicesList(
                 deps: [] as string[],
                 cloned: fs.existsSync(resolved.repoPath),
                 manifestLayers,
+                ...(runsNothing(manifest) ? { runsNothing: true } : {}),
                 ...servicePlacement(null, resolved.subsystem, env),
               },
             ];

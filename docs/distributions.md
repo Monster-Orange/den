@@ -144,9 +144,10 @@ the repo.
   `services: []`. It joins the project for agents and worktrees like any
   repo. Nothing starts and nothing is health-checked: `up`, `down`,
   `restart` and `logs` of it say it has no runtime of its own and exit 0
-  (`--json`: `ok: true` with `noRuntime`), `status`, the services page and
-  the health row have no row for it, and its `tests:` still run on the
-  Checks page. `--no-run` with `--run`, `--down` or `--health` is refused.
+  (`--json`: `ok: true` with `noRuntime`), `status` and the health row have
+  no row for it, the services and project pages show it with nothing to
+  start (`runs: "none"`, `runsNothing: true` in `/api/services`), and its
+  `tests:` still run on the Checks page. `--no-run` with `--run`, `--down` or `--health` is refused.
 - A repo added before with the old workaround, `--run "true"`, keeps its
   side-car and its one service. `--no-run` never changes a manifest: on a
   repo whose manifest already runs something it answers with the file to

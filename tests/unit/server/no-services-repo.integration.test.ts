@@ -6,9 +6,11 @@
  * south holds cfg and rules (services: [], with a test suite); quiet holds
  * rules only. cfg is a shared repo, in north and south.
  *
- * - The services page (/api/services) and the health row (/api/health)
- *   have no row for a repo that runs nothing: no "unknown", no "unhealthy".
- * - The graph has them as repo nodes, with no service card or health.
+ * - The services page (/api/services) shows a repo that runs nothing with
+ *   no commands (`runs: "none"`), so the project page can show and remove
+ *   it; the health row (/api/health) has no row for it: no "unknown", no
+ *   "unhealthy".
+ * - The graph has them as repo nodes, with nothing to run.
  * - The Checks page answers for a project of repos that run nothing.
  * - The project-wide Start (/api/workspace/exec) of a project whose repos
  *   all run nothing says so and ends with exit code 0.
@@ -157,22 +159,39 @@ type Svc = { address: string; health?: string };
 type Health = { repo: string; status?: string; health?: string };
 
 describe("a repo that runs nothing, in Den's pages (issue 277)", () => {
-  it("the services page and the health row have no row for it; the repo with a service is there", async () => {
-    const services = await getJson<Svc[]>("/api/services?refresh=1");
-    expect(services.map((s) => s.address)).toEqual(["shop"]);
+  it("the services page shows it with nothing to start (runs: none); the health row has no row for it", async () => {
+    const services = await getJson<
+      (Svc & { commands: string[]; runs?: string; runsNothing?: boolean })[]
+    >("/api/services?refresh=1");
+    expect(services.map((s) => s.address).sort()).toEqual([
+      "cfg",
+      "rules",
+      "shop",
+    ]);
+    for (const s of services.filter((x) => x.address !== "shop"))
+      expect(s).toMatchObject({
+        commands: [],
+        runs: "none",
+        runsNothing: true,
+      });
+    const shop = services.find((s) => s.address === "shop");
+    expect(shop?.commands).toContain("up");
+    expect(shop?.runsNothing).toBeUndefined();
     const health = await getJson<Health[]>("/api/health?refresh=1");
     expect(health.map((h) => h.repo)).toEqual(["shop"]);
   }, 60_000);
 
-  it("the graph has the repos as nodes, and no service card or health for them", async () => {
+  it("the graph has the repos as nodes, with nothing to run", async () => {
     const graph = await getJson<{ nodes: string[]; edges: unknown[] }>(
       "/api/graph?workspace=south",
     );
     expect([...graph.nodes].sort()).toEqual(["cfg", "rules"]);
     expect(graph.edges).toEqual([]);
-    // The graph's cards come from /api/services: none for south's repos.
-    const south = await getJson<Svc[]>("/api/services?workspace=south");
-    expect(south).toEqual([]);
+    // The graph's cards come from /api/services: nothing to run for them.
+    const south = await getJson<(Svc & { commands: string[] })[]>(
+      "/api/services?workspace=south",
+    );
+    expect(south.flatMap((s) => s.commands)).toEqual([]);
   }, 60_000);
 
   it("the Checks page answers for a project of repos that run nothing", async () => {

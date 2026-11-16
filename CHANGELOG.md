@@ -14,8 +14,8 @@ config and manifest changes a distribution must make to move to it under
   its question now offers "it runs nothing". Such a repo has an empty
   service list (a manifest may say `services: {}` or `services: []`).
   Agents and worktrees work in it; `up`, `down`, `restart`, `logs`,
-  `status`, the services page and the health row have nothing to start or
-  check for it, and no error. A repo added before with `--run "true"`
+  `status` and the health row have nothing to start or check for it, and
+  no error. The services and project pages show it with nothing to start. A repo added before with `--run "true"`
   keeps its fake service until you change its side-car.
 - A shared repo, such as one holding shared components, can be in more
   than one project, with an agent from each working in it; removing it

@@ -327,6 +327,13 @@ describe("downstream: nothing to start, nothing unhealthy", () => {
     expect(logs.code).toBe(0);
   }, 120_000);
 
+  it("project setup plans it like any repo, with no error", () => {
+    const plan = acme("setup", "--plan", "-w", "north");
+    expect(plan.code).toBe(0);
+    expect(plan.out).toMatch(/\bcfg\b.*dev-managed/);
+    expect(plan.out).not.toMatch(/error|not found/i);
+  }, 120_000);
+
   it("doctor names no problem with it", () => {
     const d = acme("doctor", "--json");
     const checks = (d.json.checks ?? []) as {
