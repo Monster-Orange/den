@@ -311,6 +311,11 @@ export async function handleApprovalRoutes(
     /** `mcp.approvals` (default on); off, nothing new is held. */
     enabled?: () => boolean;
     /**
+     * Issue 210: how long a new ask waits for the person, in ms
+     * (mcp.approval_wait_minutes), read per ask; absent: the queue's own.
+     */
+    waitMs?: () => number;
+    /**
      * SRV-1a: the setting that lets this agent's `action` run without the
      * person's Allow ("server_agent.self_update: auto"), or null. Asked
      * only for an agent its token proves, never a claim.
@@ -456,6 +461,14 @@ export async function handleApprovalRoutes(
     for (const k of checked.choices ?? []) delete stored[k];
     // An asker with no agent token proves it is the asker with a ticket.
     const ticket = agent ? null : newApprovalTicket();
+    // Issue 210: the wait is a setting, read per ask; a bad one holds nothing.
+    let wait: number | undefined;
+    try {
+      wait = deps.waitMs?.();
+    } catch (e) {
+      refuse(res, 422, "config_invalid", (e as Error).message);
+      return true;
+    }
     let a: Approval;
     try {
       a = deps.queue.request({
@@ -473,6 +486,7 @@ export async function handleApprovalRoutes(
         ...(checked.ownMode?.length ? { ownMode: checked.ownMode } : {}),
         ...(checked.choices?.length ? { choices: checked.choices } : {}),
         note: typeof body.note === "string" ? body.note : undefined,
+        ...(wait !== undefined ? { ttlMs: wait } : {}),
       });
     } catch (e) {
       refuse(res, 429, "too_many_waiting", (e as Error).message);

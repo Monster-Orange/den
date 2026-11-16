@@ -78,6 +78,8 @@ const AGENTS_MAY: Record<string, string> = {
   "POST /api/verify/plan": "issue 208: Verify's plan; runs nothing",
   "POST /api/verify/run":
     "issue 208: MCP verify_run on local; a shared environment is refused there (held)",
+  "POST /api/verify/runs/:id/cancel":
+    "issue 210: an agent cancels only a run it started (403 not_yours otherwise)",
   "POST /api/report/preview": "composes a report's text; writes nothing",
   "POST /api/report/drafts":
     "an agent's report stays a draft, stamped as its own, for its person to send",

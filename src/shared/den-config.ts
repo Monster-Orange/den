@@ -1670,6 +1670,27 @@ export interface McpConfig {
    * default, each run only after the person's Allow. false hides them.
    */
   approvals?: boolean;
+  /**
+   * Issue 210: how long a held write waits for the person before it
+   * expires, in minutes (default {@link APPROVAL_WAIT_MINUTES_DEFAULT}).
+   */
+  approval_wait_minutes?: unknown;
+}
+
+/** Issue 210: mcp.approval_wait_minutes when unset (Den's value before it was a setting). */
+export const APPROVAL_WAIT_MINUTES_DEFAULT = 10;
+
+/** How long a held write waits for the person, in minutes; a bad value throws. */
+export function readApprovalWaitMinutes(
+  config: DenConfig = readDenConfig(),
+): number {
+  const v = config.mcp?.approval_wait_minutes;
+  if (v === undefined || v === null) return APPROVAL_WAIT_MINUTES_DEFAULT;
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0)
+    throw new Error(
+      `mcp.approval_wait_minutes: minutes, above 0 (got ${JSON.stringify(v)})`,
+    );
+  return v;
 }
 
 /** `mcp:` with its defaults applied. */

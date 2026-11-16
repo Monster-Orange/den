@@ -225,7 +225,9 @@ Only when Den's config turns them on (`mcp.actions`):
 - `workspace_sync`: sync a project's managed repos.
 - `run_tests`: run tests.
 - `verify_run`: run Verify's plan. Here it runs at once; on a shared
-  environment it waits for the person's Allow, always.
+  environment it waits for the person's Allow, always. Once allowed, the
+  run goes on in the background: `approval_check` gives its run id, and
+  `verify_result` reads its progress and verdict.
 - `agent_resume`: resume an agent. `agent_import`'s list of
   conversations.
 

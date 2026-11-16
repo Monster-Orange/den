@@ -266,6 +266,98 @@
     "v.who_runner": "An outside runner",
     "v.actor_runner": "outside runner",
     "v.fd_imported": "sent its results for {t} on {e}.",
+    // Issue 210: Plan and Allow (S2), Running and cancelled (S3).
+    "v.touch_t": "What they touch",
+    "v.hosts": "Hosts",
+    "v.hosts_none": "None: no check names an address here.",
+    "v.rate": "Speed",
+    "v.rate_none": "Den doesn't limit speed on a run yet.",
+    "v.writes": "Writes",
+    "v.writes_some":
+      "Allowed for {m} only. Everything else sends safe reads only.",
+    "v.writes_none": "Every check says it sends safe reads only.",
+    "v.g_smoke": "Smoke checks first",
+    "v.g_layer": "{l} layer",
+    "v.g_after": "{l} layer, after {d} passes",
+    "v.g_code": "code scans: they only read the code and never touch {e}",
+    "v.q_done": "done",
+    "v.plan_btn": "Plan a run",
+    "v.s_queued": "queued",
+    "v.s_running": "running",
+    "v.s_cancelled": "cancelled",
+    "v.mk_enforced": "enforced",
+    "v.mk_declared": "declared read-only",
+    "v.mk_code": "reads code only",
+    "v.mk_service": "declared by the service",
+    "v.mk_help":
+      "Enforced: Den blocks other methods before a request leaves. Declared read-only: the command says it is safe, and Den cannot check.",
+    "v.sc_label": "What to run",
+    "v.sc_changed": "What changed",
+    "v.sc_changed_h":
+      "Smoke, plus checks whose files changed since their last result.",
+    "v.sc_all": "Everything",
+    "v.sc_all_h":
+      "Every check for this environment. This can take a long time.",
+    "v.pr_t": "{a} wants to run {n} checks on {e}.",
+    "v.pr_t.one": "{a} wants to run {n} check on {e}.",
+    "v.pr_t_me": "Run {n} checks on {e}",
+    "v.pr_t_me.one": "Run {n} check on {e}",
+    "v.pr_none_t": "Nothing to run on {e}",
+    "v.pr_unchanged":
+      "Nothing changed since the last results. Choose Everything to run every check.",
+    "v.pr_nonedeclared": "This project has no checks yet.",
+    "v.pr_nonehere": "No check can run on {e}.",
+    "v.pr_s": "Here is what they touch.",
+    "v.pr_order": "In this order",
+    "v.pr_planning": "Making the plan…",
+    "v.pr_fail": "Den couldn't make the plan: {x}",
+    "v.pr_gone": "This ask is gone. It may have ended when Den restarted.",
+    "v.est_mod": "about {d}",
+    "v.est_total": "About {d} in total.",
+    "v.cant_t": "{n} checks can't run",
+    "v.cant_t.one": "{n} check can't run",
+    "v.cant_environment": "{m}: it runs on {l} only.",
+    "v.cant_production": "{m}: running on production comes in a later Den.",
+    "v.cant_adapter": "{m}: its runner ({x}) comes in a later Den.",
+    "v.cant_nohealth": "{m}: no health address for {e}.",
+    "v.allow": "Allow",
+    "v.decline": "Decline",
+    "v.run": "Run",
+    "v.allow_note": "Allow covers this run only. {a} waits until you decide.",
+    "v.allow_note_me":
+      "Allow covers this run only. Nothing runs until you Allow it.",
+    "v.pr_wait": "Waiting for your Allow",
+    "v.pr_busy": "Starting the run…",
+    "v.pr_declined": "Declined. Nothing ran.",
+    "v.pr_expired": "This ask waited too long and expired. Nothing ran.",
+    "v.pr_decided": "This ask was already decided.",
+    "v.pr_going": "A run is already going on {e}.",
+    "v.b_see_run": "See the run",
+    "v.pc_full": "See the full plan",
+    "v.rn_t": "Running on {e}",
+    "v.rn_done_t": "Run on {e}",
+    "v.rn_p": "{d} of {n} checks are done.",
+    "v.rn_p.one": "{d} of {n} check is done.",
+    "v.rn_ok": "Nothing has failed yet.",
+    "v.rn_bad": "{n} have failed.",
+    "v.rn_bad.one": "{n} has failed.",
+    "v.rn_time": "{s} so far.",
+    "v.rn_pb": "Progress: {d} of {n}",
+    "v.rn_end": "The run ended: {v}.",
+    "v.rn_lost":
+      "This run stopped when Den restarted. Its results are incomplete.",
+    "v.q_api": "waits for {l} to pass",
+    "v.q_runs": "running now",
+    "v.cancel": "Cancel run",
+    "v.cancel_q":
+      "Stop this run? Checks that haven't finished will be cancelled.",
+    "v.cancel_yes": "Stop the run",
+    "v.cancel_no": "Keep running",
+    "v.cn_by": "Cancelled by {w} at {t}.",
+    "v.cn_counts": "{d} finished and {s} were stopped.",
+    "v.cn_not": "Cancelled is not a pass.",
+    "v.cn_stopped": "stopped before it ran",
+    "v.reconnect": "Reconnecting…",
     "n.environments": "Environments",
     "n.releases": "Releases",
     "n.edge": "Edge",
@@ -1549,6 +1641,22 @@
     "busy.emcW": "Allowing the web app…",
     "busy.emcS": "Web app allowed.",
     "busy.emcF": "Couldn't allow the web app.",
+    // Issue 210: the Verify page's writes.
+    "busy.vrPlanW": "Making the plan…",
+    "busy.vrPlanS": "The plan is ready.",
+    "busy.vrPlanF": "Den couldn't make the plan.",
+    "busy.vrAskW": "Holding the run for your Allow…",
+    "busy.vrAskS": "The run waits for your Allow.",
+    "busy.vrAskF": "Den couldn't hold the run.",
+    "busy.vrRunW": "Starting the run…",
+    "busy.vrRunS": "The run started.",
+    "busy.vrRunF": "The run didn't start.",
+    "busy.vrDecW": "Declining the run…",
+    "busy.vrDecS": "Declined. Nothing ran.",
+    "busy.vrDecF": "Den couldn't decline the run.",
+    "busy.vrCanW": "Stopping the run…",
+    "busy.vrCanS": "The run is stopping.",
+    "busy.vrCanF": "Den couldn't stop the run.",
     "agc.kept": "Your message is still here.",
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
@@ -8509,6 +8617,8 @@
       '<div class="btns">' +
       '<button type="button" class="den-btn" id="den-ap-review" aria-expanded="false" aria-controls="den-ap-det"></button>' +
       '<span class="sp help" id="den-ap-more"></span>' +
+      // Issue 210: a Verify run's whole plan, on the Verify page.
+      '<a class="den-btn" id="den-ap-full" hidden></a>' +
       '<button type="button" class="den-btn" id="den-ap-later"></button>' +
       '<button type="button" class="den-btn" id="den-ap-deny"></button>' +
       '<button type="button" class="den-btn primary" id="den-ap-allow"></button>' +
@@ -8526,6 +8636,10 @@
     $("den-ap-later").addEventListener("click", function () {
       apLater();
     });
+    // The page shows it in full: the dialog steps aside for it.
+    $("den-ap-full").addEventListener("click", function () {
+      apLater();
+    });
     // Esc is Later: the request keeps waiting (and the agent with it).
     d.addEventListener("cancel", function (e) {
       e.preventDefault();
@@ -8539,6 +8653,12 @@
     });
     ap.dlg = d;
     return d;
+  }
+  // Issue 210: a page that shows this request itself (the Verify page's
+  // Plan and Allow): the dialog leaves it to the page.
+  function apHere(id) {
+    ap.later[id] = 1;
+    if (ap.shown && ap.shown.id === id) apClose();
   }
   function apLater() {
     if (ap.shown) ap.later[ap.shown.id] = 1;
@@ -8585,6 +8705,18 @@
       time: localTime(a.expiresAt),
     });
     $("den-ap-more").textContent = more ? t("ap.more", { n: more }) : "";
+    var full = $("den-ap-full");
+    var vr = a.action === "verify_run";
+    full.hidden = !vr;
+    full.textContent = vr ? t("v.pc_full") : "";
+    if (vr)
+      full.href =
+        "/verify?allow=" +
+        encodeURIComponent(a.id) +
+        (a.params && a.params.project
+          ? "&project=" + encodeURIComponent(a.params.project)
+          : "");
+    else full.removeAttribute("href");
     $("den-ap-later").textContent = t("ap.later");
     $("den-ap-deny").textContent = t("ap.deny");
     $("den-ap-allow").textContent = t("ap.allow");
@@ -8723,6 +8855,35 @@
           },
         );
       });
+    });
+  }
+  // Issue 210: one held request, read as the person (the Verify page's
+  // Plan and Allow for an agent's ask). Resolves its JSON, or null.
+  function apOne(id) {
+    var ak = approveKey();
+    if (!ak) return Promise.resolve(null);
+    return csrfToken(false).then(function (token) {
+      var h = { "X-Den-Approve-Key": ak };
+      if (token) h["X-Den-CSRF"] = token;
+      return rawFetch("/api/approvals/" + encodeURIComponent(id), {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: h,
+      }).then(
+        function (r) {
+          return r.json().then(
+            function (b) {
+              return b;
+            },
+            function () {
+              return null;
+            },
+          );
+        },
+        function () {
+          return null;
+        },
+      );
     });
   }
   function apSignin(b) {
@@ -9393,6 +9554,10 @@
     runs: runsApi,
     /** The page header (R20): { el, h1, sub, act, tabs(spec), setSub }, or null. */
     pageHeader: pageHeader,
+    /** Issue 210: one held request, read as the person (null: can't). */
+    approval: apOne,
+    /** Issue 210: this page shows that request itself; the dialog skips it. */
+    approvalHere: apHere,
     /** Wire a role=tablist as WAI-ARIA tabs (roving tabindex, keys, panels). */
     wireTabs: wireTabs,
     registerSettingsCategory: registerSettingsCategory,

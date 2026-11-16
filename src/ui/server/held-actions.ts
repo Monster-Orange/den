@@ -64,9 +64,11 @@
  *   project_mcp_update bearer reference (agent-ops.ts checkProjectMcpRemove,
  *                     checkProjectMcpUpdate); always the person's own Allow
  *   verify_run        issue 208: a Verify run on a shared environment
- *                     (verify-routes.ts checkVerifyRun, runVerify); the
+ *                     (verify-routes.ts checkVerifyRun, startVerify); the
  *                     Review is the plan, each module with its mark. It
- *                     always asks the person (CRITICAL_HELD_ACTIONS)
+ *                     always asks the person (CRITICAL_HELD_ACTIONS).
+ *                     Issue 210: Allow starts it in the background and
+ *                     answers its run id (MCP verify_result reads it)
  *   agent_import      issue 160: bring a conversation started outside Den
  *                     in as an agent of the asker's project (agent-ops.ts
  *                     importAgent). It asks by default (approval-policy.ts)

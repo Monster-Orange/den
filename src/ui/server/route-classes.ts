@@ -496,6 +496,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
   ),
+  M(
+    ["POST"],
+    "/api/verify/runs/:id/cancel",
+    "issue 210: cancels a Verify run (the person, or the agent that started it)",
+  ),
   M(["POST"], "/api/local-dev"),
   M(["POST"], "/api/sudo-password", "sets the admin password, for sudo (R8)"),
   M(
@@ -1178,6 +1183,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/verify/runs/:id",
     "/api/verify/runs/:id/report",
   ],
+  // Issue 210: Cancel.
+  "verify-routes.ts:CANCEL_PATH": ["/api/verify/runs/:id/cancel"],
 };
 
 /** Whether `pathname` matches a table path. */

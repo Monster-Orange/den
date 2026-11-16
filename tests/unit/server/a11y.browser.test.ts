@@ -9,14 +9,17 @@
  * shell, never written here, so a page added later is checked too; a
  * registry page without a clean run fails.
  *
- * Five surfaces too, each in light and dark, at the same two sizes:
+ * Six surfaces too, each in light and dark, at the same two sizes:
  *
  * - the rail (at phone size, the drawer: ☰ opens it);
  * - an open pinned-service panel (a click on the rail's pinned row);
  * - the Start agent dialog on /agents;
  * - the Graph's line for Open in Graph outside the View ("blog is in
  *   south, outside this View.", Show south);
- * - the server agent's page (/server-agent).
+ * - the server agent's page (/server-agent);
+ * - the Verify page (issue 210): Plan and Allow (S2) and a run going on
+ *   (S3), from fixed answers for their routes (its answer is a registry
+ *   page, checked above).
  *
  * axe runs with WCAG 2.0 and 2.1 A and AA plus best practice. Any
  * violation fails, with its id, impact and targets. Nothing is excluded.
@@ -30,7 +33,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as http from "http";
 import type { AddressInfo } from "net";
-import type { Browser, Page } from "playwright";
+import type { Browser, BrowserContext, Page } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
@@ -94,6 +97,7 @@ async function page(
   scheme: Scheme,
   z: Size,
   init?: () => void,
+  prep?: (ctx: BrowserContext) => Promise<void>,
 ): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: z.width, height: z.height },
@@ -109,6 +113,7 @@ async function page(
     }
   }, latest);
   if (init) await ctx.addInitScript(init);
+  await prep?.(ctx);
   const p = await ctx.newPage();
   await p.emulateMedia({ colorScheme: scheme });
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
@@ -215,6 +220,77 @@ function expectClean(what: string, r: Scan): void {
   expect(report(what, r)).toBe(`${what}: clean`);
 }
 
+/** Issue 210: fixed answers for the Verify page's plan and run routes. */
+async function verifyRoutes(ctx: BrowserContext): Promise<void> {
+  const m = (name: string, kind: string, mark: string, state?: string) => ({
+    id: `shop:${name}`,
+    name,
+    repo: "shop",
+    layer: name.split("/")[0],
+    kind,
+    mark,
+    adapter: kind === "smoke" ? "smoke" : "cmd",
+    environments: ["local", "staging"],
+    healthUrls: {},
+    ...(state ? { state, ms: 0 } : {}),
+  });
+  const json = (body: unknown) => ({
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+  await ctx.route(/\/api\/verify\/plan(\?|$)/, (r) =>
+    r.fulfill(
+      json({
+        ok: true,
+        project: "north",
+        env: "staging",
+        shared: true,
+        allow: "needed",
+        scope: "changed",
+        modules: [
+          m("api/smoke", "smoke", "enforced"),
+          m("api/orders", "integration", "declared-read-only"),
+        ],
+        cantRun: [
+          {
+            ...m("web/devices", "synthetic", "declared-by-service"),
+            reason: "adapter-later",
+            adapter: "device-farm",
+          },
+        ],
+        layers: {},
+        nothingToRun: false,
+        estimates: { "shop:api/orders": 125_000 },
+      }),
+    ),
+  );
+  await ctx.route(/\/api\/verify\/runs\/r-a11y(\?|$)/, (r) =>
+    r.fulfill(
+      json({
+        ok: true,
+        runId: "r-a11y",
+        project: "north",
+        env: "staging",
+        scope: "changed",
+        verdict: "running",
+        exitCode: null,
+        live: true,
+        startedAt: new Date().toISOString(),
+        startedBy: { kind: "agent", name: "release-helper" },
+        allowedBy: { kind: "person" },
+        modules: [
+          m("api/smoke", "smoke", "enforced", "passed"),
+          m("api/orders", "integration", "declared-read-only", "running"),
+          {
+            ...m("web/checkout", "synthetic", "declared-read-only", "queued"),
+            waitsFor: "api",
+          },
+        ],
+      }),
+    ),
+  );
+}
+
 const SURFACES: {
   name: string;
   run(scheme: Scheme, z: Size): Promise<Scan>;
@@ -265,6 +341,26 @@ const SURFACES: {
         await view(p, "all");
         await p.context().close();
       }
+    },
+  },
+  {
+    name: "the Verify page's Plan and Allow",
+    async run(scheme, z) {
+      const p = await page("/verify?plan=staging", scheme, z, undefined, verifyRoutes);
+      await p.waitForSelector(".vf-plan-card");
+      const r = await scan(p, "#den-content");
+      await p.context().close();
+      return r;
+    },
+  },
+  {
+    name: "the Verify page's run going on",
+    async run(scheme, z) {
+      const p = await page("/verify?run=r-a11y", scheme, z, undefined, verifyRoutes);
+      await p.waitForSelector(".vf-run-card");
+      const r = await scan(p, "#den-content");
+      await p.context().close();
+      return r;
     },
   },
   {

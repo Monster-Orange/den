@@ -7,7 +7,10 @@ import { afterEach, describe, expect, it, jest } from "@jest/globals";
 jest.mock("fs");
 
 import * as fs from "fs";
-import { readMcpConfig } from "../../../src/shared/den-config.js";
+import {
+  readApprovalWaitMinutes,
+  readMcpConfig,
+} from "../../../src/shared/den-config.js";
 
 const mockReadFileSync = fs.readFileSync as jest.MockedFunction<
   typeof fs.readFileSync
@@ -83,5 +86,30 @@ describe("readMcpConfig", () => {
   it("refuses a non-boolean mcp.approvals: a typo must not silently keep them on", () => {
     mockOrgConfig("mcp:\n  approvals: 'no'\n");
     expect(() => readMcpConfig()).toThrow(/mcp\.approvals: true or false/);
+  });
+});
+
+// Issue 210 (S2's "expired"): how long a held write waits for the person,
+// a setting with today's value (10 minutes) as its default.
+describe("readApprovalWaitMinutes", () => {
+  it("is 10 minutes with no setting", () => {
+    mockOrgConfig(null);
+    expect(readApprovalWaitMinutes()).toBe(10);
+    mockOrgConfig("mcp:\n  approvals: true\n");
+    expect(readApprovalWaitMinutes()).toBe(10);
+  });
+
+  it("reads mcp.approval_wait_minutes", () => {
+    mockOrgConfig("mcp:\n  approval_wait_minutes: 45\n");
+    expect(readApprovalWaitMinutes()).toBe(45);
+  });
+
+  it("refuses a value that isn't minutes above 0", () => {
+    for (const v of ["0", "-5", "'soon'"]) {
+      mockOrgConfig(`mcp:\n  approval_wait_minutes: ${v}\n`);
+      expect(() => readApprovalWaitMinutes()).toThrow(
+        /mcp\.approval_wait_minutes: minutes, above 0/,
+      );
+    }
   });
 });

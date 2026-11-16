@@ -14,7 +14,8 @@
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
- * remove-service, remove-mcp, gate-end. Waits for
+ * remove-service, remove-mcp, gate-end, verify-plan, verify-ask,
+ * verify-allow, verify-run, verify-decline, verify-cancel. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -357,6 +358,61 @@ export const DEN_ACTIONS = {
       working: "busy.emcW",
       success: "busy.emcS",
       failure: "busy.emcF",
+    },
+  },
+  // Issue 210: the Verify page's writes (Plan and Allow, Running).
+  "verify-plan": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrPlanW",
+      success: "busy.vrPlanS",
+      failure: "busy.vrPlanF",
+    },
+  },
+  "verify-ask": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrAskW",
+      success: "busy.vrAskS",
+      failure: "busy.vrAskF",
+    },
+  },
+  "verify-allow": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrRunW",
+      success: "busy.vrRunS",
+      failure: "busy.vrRunF",
+    },
+  },
+  "verify-run": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrRunW",
+      success: "busy.vrRunS",
+      failure: "busy.vrRunF",
+    },
+  },
+  "verify-decline": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrDecW",
+      success: "busy.vrDecS",
+      failure: "busy.vrDecF",
+    },
+  },
+  "verify-cancel": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.vrCanW",
+      success: "busy.vrCanS",
+      failure: "busy.vrCanF",
     },
   },
   "restart-den": {

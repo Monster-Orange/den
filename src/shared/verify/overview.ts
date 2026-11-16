@@ -22,7 +22,13 @@
 import type { LatestByEnv, ResultState } from "./changes.js";
 import type { VerifyModule } from "./config.js";
 import type { ClauseRecord, ClauseResult } from "./imports.js";
-import type { ModuleRecord, RunActor, RunRecord } from "./records.js";
+import {
+  hasEnded,
+  type EndedRunRecord,
+  type ModuleRecord,
+  type RunActor,
+  type RunRecord,
+} from "./records.js";
 
 export type EnvAnswer = "failed" | "nothing" | "notrun" | "partly" | "ready";
 
@@ -38,7 +44,7 @@ export const ANSWER_ORDER: readonly EnvAnswer[] = [
 export interface RunSummary {
   runId: string;
   endedAt: string;
-  verdict: RunRecord["verdict"];
+  verdict: EndedRunRecord["verdict"];
   scope: string;
   startedBy?: RunActor;
   allowedBy?: RunActor;
@@ -117,7 +123,7 @@ export interface CheckRow {
 export interface ActivityItem {
   runId: string;
   env: string;
-  verdict: RunRecord["verdict"];
+  verdict: EndedRunRecord["verdict"];
   startedAt: string;
   endedAt: string;
   startedBy?: RunActor;
@@ -143,7 +149,7 @@ export interface OverviewInput {
   modules: readonly VerifyModule[];
   layers: Record<string, string[]>;
   latest: LatestByEnv;
-  /** The project's run records, newest first. */
+  /** The project's run records, newest first (ones still running are left out). */
   runs: readonly RunRecord[];
   /** Issue 441: the environments whose answer comes from imports. */
   imported?: readonly string[];
@@ -155,7 +161,7 @@ const ACTIVITY_RUNS = 8;
 const runsHere = (m: VerifyModule, env: string) =>
   m.environments === "all" || m.environments.includes(env);
 
-function summary(r: RunRecord): RunSummary {
+function summary(r: EndedRunRecord): RunSummary {
   return {
     runId: r.runId,
     endedAt: r.endedAt,
@@ -170,7 +176,7 @@ function summary(r: RunRecord): RunSummary {
 }
 
 /** Issue 441: an imported environment's answer, from its newest import. */
-function importedOverview(i: OverviewInput, env: string): EnvOverview {
+function importedOverview(i: Ended, env: string): EnvOverview {
   const last = i.runs.find((r) => r.env === env && r.source === "import");
   const counts = {
     passed: 0,
@@ -252,14 +258,14 @@ function importedOverview(i: OverviewInput, env: string): EnvOverview {
 }
 
 /** Issue 441: the checks the newest import on each imported environment holds. */
-function importedChecks(i: OverviewInput): ModuleRecord[][] {
+function importedChecks(i: Ended): ModuleRecord[][] {
   return (i.imported ?? []).map(
     (env) =>
       i.runs.find((r) => r.env === env && r.source === "import")?.modules ?? [],
   );
 }
 
-function envOverview(i: OverviewInput, env: string): EnvOverview {
+function envOverview(i: Ended, env: string): EnvOverview {
   const here = i.modules.filter((m) => runsHere(m, env));
   const latest = i.latest[env] ?? {};
   const lastRun = i.runs.find((r) => r.env === env);
@@ -320,7 +326,11 @@ function envOverview(i: OverviewInput, env: string): EnvOverview {
 }
 
 /** The project's answer on each environment, worst first. */
-export function verifyOverview(i: OverviewInput): VerifyOverview {
+/** The input with ended runs only: a run still going never is the answer. */
+type Ended = Omit<OverviewInput, "runs"> & { runs: readonly EndedRunRecord[] };
+
+export function verifyOverview(input: OverviewInput): VerifyOverview {
+  const i: Ended = { ...input, runs: input.runs.filter(hasEnded) };
   const imported = new Set(i.imported ?? []);
   const envs = i.envs
     .map((e, n) => ({
@@ -369,7 +379,16 @@ export function verifyOverview(i: OverviewInput): VerifyOverview {
             const here = (k === n ? mods : (importedChecks(i)[k] ?? [])).find(
               (x) => x.id === m.id,
             );
-            return [e, here ? here.state : "none"];
+            // An import's checks have ended; anything else is no result.
+            const st = here?.state;
+            return [
+              e,
+              !st
+                ? "none"
+                : st === "cancelled" || st === "queued" || st === "running"
+                  ? "notrun"
+                  : st,
+            ];
           }),
         ),
       });
