@@ -11,7 +11,7 @@ config and manifest changes a distribution must make to move to it under
 - Agents' own calls to Den (attention, Hub inbox) are no longer refused as
   from an unknown process when Den is busy, such as just after restarts.
 
-## [0.4.59] - unreleased
+## [0.4.59] - 2026-11-16
 
 ### Fixed
 
