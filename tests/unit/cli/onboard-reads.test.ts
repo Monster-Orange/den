@@ -146,7 +146,11 @@ describe("reposDetect", () => {
     // Two ways to start it: the question, with the choices.
     expect(r.repos[2]).toMatchObject({
       workspace: "work",
-      choices: ["docker compose -f compose.yaml up -d", "npm start"],
+      choices: [
+        "docker compose -f compose.yaml up -d",
+        "npm start",
+        "it runs nothing",
+      ],
     });
     expect(r.repos[2].ask).toMatch(/2 ways/);
     expect(r.workspaces).toEqual([
@@ -307,6 +311,7 @@ describe("manifestDraft", () => {
     expect(r.choices).toEqual([
       "docker compose -f compose.yaml up -d",
       "npm run dev",
+      "it runs nothing",
     ]);
     expect(r.draft).toBeUndefined();
     // Naming one drafts it.

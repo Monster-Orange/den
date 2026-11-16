@@ -361,7 +361,13 @@ export const v1ManifestSchema = z.object({
     error: (iss) => (iss.input === undefined ? "name is required" : undefined),
   }),
   entrypoint: z.string().optional(),
-  services: z.record(z.string(), serviceManagementConfig).optional(),
+  // Issue 277: a repo that runs nothing may say so as `services: []`.
+  services: z
+    .preprocess(
+      (v) => (Array.isArray(v) && v.length === 0 ? {} : v),
+      z.record(z.string(), serviceManagementConfig),
+    )
+    .optional(),
   smoke: z.record(z.string(), smokeServiceConfig).optional(),
   performance: z.record(z.string(), performanceServiceConfig).optional(),
   synthetics: syntheticsConfig.optional(),
