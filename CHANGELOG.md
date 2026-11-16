@@ -22,18 +22,6 @@ config and manifest changes a distribution must make to move to it under
   same conversation. A person can do it directly too (POST
   `/api/workspaces/<project>/agents/<id>/mode`); an agent's own write
   there is refused.
-- Den says when it was updated. Once the server runs a newer build than
-  the open page, a see-through strip covers the top bar (60% of the
-  background colour, a light blur) and a wide pill sits centred on it:
-  "Den was updated to <version>", Learn more (that version's release
-  notes), Report, Later (hides it in this tab until the next version) and
-  Reload. Reload asks first when a field holds text you typed. In a
-  narrow window, when the message needs two lines, the pill becomes a
-  card with the buttons below it. The page checks on load, every 12
-  seconds, when you come back to the tab and after Den restarts (D61).
-  Each page now carries the build it was served from
-  (`<meta name="den-build">`). It is the same pill as Hub's update pill,
-  value for value; if it changes, it changes in both at once.
 - Approvals, change requests and comments in Hub now reach the agent
   that wrote the doc, with nobody typing (issue 166). One watcher per
   install reads Hub's inbox for this install's agents and types each new
@@ -88,6 +76,8 @@ config and manifest changes a distribution must make to move to it under
   Link). After a link there is one result line, "Linked 2 projects. 1
   couldn't be linked: north. Try again.", instead of a line per project.
   Same words in English, Spanish and Japanese.
+
+### Fixed
 
 - Report an issue sits in one place on every page and in every pop-up (issue 94). In the top bar it is right before the bell, with its word, at every width; it is no longer in the left rail. In a pop-up it is first in the footer. The place is set once, in the shared UI kit.
 

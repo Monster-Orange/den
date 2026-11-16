@@ -721,15 +721,6 @@ setHtmlFill((html) => {
     );
   // MD-2: every page says when the engine on disk is not the one running.
   const engine = engineCheck();
-  // D61: every page says the build it was served from (the engine on
-  // disk: its pages and scripts), so it can offer a reload once the
-  // server runs another.
-  if (engine.onDisk.buildId)
-    out = out.replace(
-      "</head>",
-      () =>
-        `<meta name="den-build" content="${escAttr(engine.onDisk.buildId ?? "")}"></head>`,
-    );
   if (engine.stale)
     out = out.replace(
       '<div id="den-shell"',
