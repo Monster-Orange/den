@@ -8,6 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+<<<<<<< HEAD
 - Den's own update no longer waits silently. When it waits, the log and
   the audit say why, once each time the reason changes. When the Den
   agent is waiting on your Allow or your answer, the bell says Den's
@@ -22,6 +23,14 @@ config and manifest changes a distribution must make to move to it under
 - Agents connected to Hub are now told that approval happens in Hub:
   publish the doc or mock there, ask for review, and wait for the
   decision Hub sends back. They no longer ask you to approve it in chat.
+=======
+- The bell's count shows only what needs you. An agent sitting idle
+  after its turn no longer counts. A permission prompt, a question the
+  agent asked you (with ask_human, or by ending its turn on one), and
+  Den's own "Allow the update" do count. Only the newest update ask is
+  kept, and it goes once Den runs that version. Opening an agent now
+  takes its updates out of the list, so the Updates count drops.
+>>>>>>> origin/w5/142
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new

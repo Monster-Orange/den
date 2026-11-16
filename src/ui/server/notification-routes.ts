@@ -206,12 +206,11 @@ export async function handleNotificationRoutes(
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)
       : [];
     deps.attention.lookingAt(agents);
-    // ATTN-5 (den#142): opening an agent clears its updates; what needs
-    // you stays until it's answered.
-    for (const a of agents)
-      for (const n of deps.store.list())
-        if (n.subject === `agent:${a}` && !n.read && !needsYou(n.kind))
-          deps.store.markRead({ id: n.id });
+    // ATTN-5 (den#142): opening an agent clears its updates (they leave
+    // the list, and its count drops); what needs you stays until answered.
+    const opened = new Set(agents.map((a) => `agent:${a}`));
+    if (opened.size)
+      deps.store.remove((n) => opened.has(n.subject) && !needsYou(n.kind));
     sendJson(res, { ok: true });
     return true;
   }

@@ -64,6 +64,31 @@ const WAIT_TEXT: Record<UpdateWait, string> = {
   busy: "the Den agent is in the middle of a turn",
 };
 
+/** #142: a bell item asking the person to Allow a Den update. */
+export function isUpdateAsk(n: {
+  subject: string;
+  msg?: { key: string; vars?: Record<string, string | number> };
+}): boolean {
+  return (
+    n.subject.startsWith("record:den-update-") &&
+    n.msg?.key === "bell.m.updateOut"
+  );
+}
+
+/** #142: an update ask for `have` or older: done with (the item goes). */
+export function staleUpdateAsk(
+  n: Parameters<typeof isUpdateAsk>[0],
+  have: string,
+): boolean {
+  const v = String(n.msg?.vars?.v ?? "");
+  return (
+    isUpdateAsk(n) &&
+    !!semver.valid(v) &&
+    !!semver.valid(have) &&
+    semver.lte(v, have)
+  );
+}
+
 export interface UpdateCheckDeps {
   /** The version running now, or null. */
   running(): string | null;
