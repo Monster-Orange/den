@@ -41,6 +41,10 @@
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
  *                     folder is every project's
+ *   verify_run        issue 208: a Verify run on a shared environment
+ *                     (verify-routes.ts checkVerifyRun, runVerify); the
+ *                     Review is the plan, each module with its mark. It
+ *                     always asks the person (CRITICAL_HELD_ACTIONS)
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -119,6 +123,8 @@ export interface HeldActionDeps {
   agentFolder?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
+  /** Issue 208: verify_run's check and run (verify-routes.ts). */
+  verifyRun?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -137,6 +143,16 @@ export interface HeldActionDeps {
     update: (args: Record<string, unknown>) => Promise<unknown>;
   };
 }
+
+/**
+ * Issue 208: held writes that always ask the person. No setting and no
+ * approval policy lets one run without their own Allow: a Verify run on
+ * a shared environment sends requests to an environment others use.
+ * Each one's check also says personOnly, for today's auto-allow.
+ */
+export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
+  "verify_run",
+]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
 export interface HeldOp {
@@ -442,6 +458,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.agentMode,
     "this Den can't change an agent's mode here",
   );
+  const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -513,5 +530,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     project_mode: projectMode,
     agent_folder: agentFolder,
     agent_mode: agentMode,
+    verify_run: verifyRun,
   };
 }

@@ -1179,6 +1179,29 @@
     "ap.pm.own":
       "Estos conservan su propio modo y no seguirán el proyecto: {list}",
     "ap.pm.follow": "Y hace que sigan el proyecto: se borra su propio modo.",
+    // Issue 208: a Verify run's Allow (verify-routes.ts).
+    "ap.do.verify_run":
+      "Ejecutar comprobaciones en {env} en el proyecto {project}: {list}",
+    "ap.vr.scope.changed":
+      "Alcance: lo que cambió (smoke y las comprobaciones cuyos archivos cambiaron desde su último resultado).",
+    "ap.vr.scope.all": "Alcance: todo en este entorno.",
+    "ap.vr.scope.chosen": "Alcance: las comprobaciones elegidas por nombre.",
+    "ap.vr.mod.enforced": "{module} ({kind}): garantizado",
+    "ap.vr.mod.declared-read-only":
+      "{module} ({kind}): declarado de solo lectura",
+    "ap.vr.mod.reads-code-only": "{module} ({kind}): solo lee código",
+    "ap.vr.mod.declared-by-service":
+      "{module} ({kind}): declarado por el servicio",
+    "ap.vr.cant.environment":
+      "{module} no puede correr aquí: solo corre en {envs}.",
+    "ap.vr.cant.production":
+      "{module} aún no puede correr en producción: activarlo para producción llega en un Den posterior.",
+    "ap.vr.cant.adapter-later":
+      "{module} aún no puede correr: su adaptador ({adapter}) llega en un Den posterior.",
+    "ap.vr.cant.no-health-url":
+      "{module} no puede correr aquí: no hay URL de salud para {env}.",
+    "ap.vr.once":
+      "Este permiso vale solo para esta ejecución. Nada corre hasta que lo permitas.",
     "ap.own.h":
       "Estos agentes conservan su propio modo y no seguirán el proyecto:",
     "ap.own.item": "{agent} (modo propio: {mode})",

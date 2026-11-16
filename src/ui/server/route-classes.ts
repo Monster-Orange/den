@@ -380,6 +380,16 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
   M(["POST"], "/api/manifest/validate", "validates posted content (no write)"),
+  M(
+    ["POST"],
+    "/api/verify/plan",
+    "issue 208: plans a Verify run; runs nothing",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/run",
+    "issue 208: runs Verify's checks on local; any other environment is held",
+  ),
   M(["POST"], "/api/local-dev"),
   M(["POST"], "/api/sudo-password", "sets the admin password, for sudo (R8)"),
   M(

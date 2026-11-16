@@ -60,6 +60,9 @@ const AGENTS_MAY: Record<string, string> = {
   "GET /api/workspace/sync": "the same sync, streamed (as the page does)",
   "HEAD /api/workspace/sync": "as GET",
   "POST /api/manifest/validate": "validates posted content; writes nothing",
+  "POST /api/verify/plan": "issue 208: Verify's plan; runs nothing",
+  "POST /api/verify/run":
+    "issue 208: MCP verify_run on local; a shared environment is refused there (held)",
   "POST /api/report/preview": "composes a report's text; writes nothing",
   "POST /api/report/drafts":
     "an agent's report stays a draft, stamped as its own, for its person to send",

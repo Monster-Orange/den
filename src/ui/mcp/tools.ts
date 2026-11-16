@@ -12,6 +12,7 @@ import {
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
 import { redactSecrets } from "../../shared/redact.js";
+import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
 import { actorTokenOf } from "../../shared/actor-token.js";
 import {
   hubPull,
@@ -1910,6 +1911,73 @@ const APPROVAL_TOOLS: DenTool[] = [
       );
     },
   },
+  {
+    // Issue 208: on a shared environment it is held (the person's Allow
+    // shows the plan); on local it runs at once, as run_tests does.
+    name: "verify_run",
+    title: "Run Verify checks",
+    description:
+      "Run the project's Verify checks (the `verify:` block's modules) on one environment, and answer the verdict and exit code (0 passed, 1 failed, 3 nothing ran). scope `changed` (the default): smoke, plus checks whose watched files changed since their last result, plus the layers that depend on them; nothing changed means nothing ran (exit 3). scope `all`: every check; `modules`: just those. On local it runs at once (on when mcp.actions lists run_tests). On any other environment the person allows the plan first: they see each check, its mark (enforced, declared read-only, reads code only, declared by the service) and what can't run." +
+      HELD,
+    action: true,
+    shape: {
+      env: z.string().optional().describe("The environment (default local)"),
+      scope: z
+        .enum(["changed", "all"])
+        .optional()
+        .describe("What changed (default), or everything"),
+      modules: z
+        .array(z.string())
+        .optional()
+        .describe("Just these checks, like web/checkout"),
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      const env = str(a.env) ?? "local";
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      const modules = Array.isArray(a.modules)
+        ? (a.modules as unknown[]).filter(
+            (m): m is string => typeof m === "string",
+          )
+        : [];
+      const body = {
+        ...(project ? { project } : {}),
+        env,
+        scope: str(a.scope) ?? "changed",
+        ...(modules.length ? { modules } : {}),
+      };
+      if (env === "local") {
+        if (!ctx.cfg.actions.includes("run_tests"))
+          throw new Refusal(
+            "verify_run on local runs commands on this machine: it is on when mcp.actions lists run_tests. Nothing ran.",
+          );
+        return ctx.api.get("/api/verify/run", {}, "POST", body);
+      }
+      // What changed with no changes asks nobody: nothing runs.
+      const plan = (await ctx.api.get(
+        "/api/verify/plan",
+        {},
+        "POST",
+        body,
+      )) as {
+        nothingToRun?: boolean;
+        reason?: string;
+      };
+      if (plan?.nothingToRun)
+        return {
+          verdict: "nothing ran",
+          exitCode: NOTHING_RAN_EXIT,
+          ...(plan.reason ? { reason: plan.reason } : {}),
+          env,
+          ...(project ? { project } : {}),
+        };
+      return askPerson("verify_run", "verify_run", body, a.note, ctx);
+    },
+  },
 ];
 
 /**
@@ -2019,6 +2087,8 @@ export const ROUTE_SINCE: Readonly<Record<string, string>> = {
   "/api/stacks": "0.2.0",
   "/api/edge": "0.2.0",
   "/api/security/plan": "0.2.0",
+  "/api/verify/plan": "0.4.51",
+  "/api/verify/run": "0.4.51",
 };
 
 /** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */

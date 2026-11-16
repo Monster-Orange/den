@@ -63,7 +63,10 @@ import { resolveFieldEnv } from "../../shared/perf/optional-fields.js";
 import { testRunner } from "../cli/test-runner.js";
 import { discoverRepos } from "../../pillars/smoke/discover.js";
 import { planSuites } from "../../pillars/suites/run.js";
-import { listServicesWithManifests } from "../../shared/manifest/workspace-manifests.js";
+import {
+  listReposWithManifests,
+  listServicesWithManifests,
+} from "../../shared/manifest/workspace-manifests.js";
 import {
   awsProfileEnv,
   loadAwsProfiles,
@@ -151,6 +154,7 @@ import {
   sectionConfigError,
   readDenConfig,
   readMcpConfig,
+  orgEnvironments,
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
@@ -976,6 +980,12 @@ import {
 } from "./approval-routes.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
+import {
+  checkVerifyRun,
+  handleVerifyRoutes,
+  runVerify,
+  type VerifyServerDeps,
+} from "./verify-routes.js";
 import { callerPid, tokenCaller } from "./token-binding.js";
 import {
   backMessage,
@@ -2431,6 +2441,11 @@ function approvalDeps(): ApprovalDeps {
             import("./agent-routes.js").then((m) => m.applyModesNow()),
         }),
     },
+    // Issue 208: a Verify run on a shared environment.
+    verifyRun: {
+      check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
+      run: (a) => runVerify(verifyDeps(), a),
+    },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),
     // SRV-P2: an agent asks to add or change a persona.
@@ -2473,6 +2488,16 @@ function selfUpdateAuto(): boolean {
   } catch {
     return false;
   }
+}
+/** Issue 208: what Verify's plan and run read (verify-routes.ts). */
+function verifyDeps(): VerifyServerDeps {
+  return {
+    stateDir: () => getStateDir(),
+    projectExists: (p) => !!getWorkspaceByName(p),
+    focusedProject: () => getFocusedWorkspaceName(),
+    repos: (p) => listReposWithManifests(p),
+    environments: () => orgEnvironments(),
+  };
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */
 function waitingAgentIds(): Set<string> {
@@ -3216,6 +3241,9 @@ async function handleRequest(
 
   // ── API: stacks, edge, security plan (read-only; see readonly-routes.ts) ──
   if (await handleReadonlyRoutes(req, res, pathname, url)) return;
+
+  // ── API: Verify's plan, and a run on local (issue 208) ───────────────────
+  if (await handleVerifyRoutes(req, res, pathname, verifyDeps)) return;
 
   // ── API: onboarding reads (ON-3; see onboard-routes.ts) ──────────────────
   if (

@@ -14,6 +14,7 @@ import {
 } from "./schema.js";
 import type { ValidationError, ValidationResult } from "../types/index.js";
 import { placementErrors } from "./placement.js";
+import { verifyErrors, type VerifyConfig } from "../verify/config.js";
 import { builtinEnvironments, orgEnvironments } from "../den-config.js";
 import {
   validateLayers,
@@ -178,12 +179,19 @@ export function validateManifest(
 
   if (result.success) {
     // Env names in `runs` / `target.env` must be the org's (R13).
-    const placement = placementErrors(parsed, environmentsFor(opts));
-    if (placement.length > 0)
+    const envs = environmentsFor(opts);
+    const placement = placementErrors(parsed, envs);
+    // Issue 208: what the verify: block's schema can't say.
+    const verify = (result.data as { verify?: VerifyConfig }).verify;
+    const errors = [
+      ...placement,
+      ...(verify ? verifyErrors(verify, envs) : []),
+    ];
+    if (errors.length > 0)
       return {
         valid: false,
         version: detectedVersion,
-        errors: placement,
+        errors,
         warnings,
       };
     return {

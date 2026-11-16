@@ -8,6 +8,22 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Verify, first slice (issue 208). A repo's manifest can list Verify
+  checks under `verify:`. Each module is named `<layer>/<name>` and has a
+  kind (smoke, integration, synthetic, security or performance), the
+  environments it runs on, a `cost` and `watch` paths. Den checks the
+  block and names the module in every error. `POST /api/verify/plan`
+  shows what a run would do, in order, and marks each module enforced,
+  declared read-only, reads code only, or declared by the service. It
+  also says which modules can't run here, and why. The default is "what
+  changed": smoke, plus modules whose watched files changed since their
+  last result, plus the layers that depend on them. A module with no
+  `watch` counts any change in its repo. When nothing changed, nothing
+  runs and the run exits 3. The new agent tool `verify_run` runs on
+  local at once (when `mcp.actions` has `run_tests`). On any other
+  environment it asks the person first: the Allow lists the plan, and
+  Deny runs nothing. This slice runs `cmd` modules and built-in smoke;
+  the other adapters say they come later.
 - A project mode change says which agents keep their own mode (issue
   199). The Allow lists each agent with a mode of its own ("pinned (own
   mode: auto)") and offers one choice, "Also make these follow the
