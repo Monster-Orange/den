@@ -123,7 +123,8 @@ async function testsPage(): Promise<Page> {
     }
   }, latest);
   const p = await ctx.newPage();
-  await p.goto(`http://localhost:${port}/tests`);
+  // The older test kinds' page (issue 209: /tests is now a 301 to /verify).
+  await p.goto(`http://localhost:${port}/test-runs`);
   await p.waitForSelector("#run-btn");
   return p;
 }
