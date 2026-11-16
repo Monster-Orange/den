@@ -324,7 +324,8 @@ describe("the vh cap comes before the dvh cap", () => {
   it.each([
     "packages/den-ui/src/base.css",
     "packages/den-ui/src/dialog.js",
-    "packages/den-ui/src/busy.js",
+    // den-ui 0.6.1: the working pop-up's look is busy.css (was in busy.js).
+    "packages/den-ui/src/busy.css",
   ])("%s", (f) => {
     const t = readFileSync(f, "utf8").replace(/\s+/g, "");
     const vh = t.indexOf(

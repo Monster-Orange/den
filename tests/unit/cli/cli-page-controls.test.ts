@@ -57,7 +57,9 @@ const LISTING: Record<string, Entry> = {
   applications: R,
   mcp: script("the stdio MCP server and agent registration"),
   usage: R,
-  feedback: page("shell.js", "den-rb-top"),
+  // Issue 95: the top bar's Report button is drawn by the UI kit
+  // (shell-html.js's reportButtonHtml), through shell.js.
+  feedback: page("shell.js", "DUI.reportButtonHtml("),
   onboard: R,
   repo: R,
 

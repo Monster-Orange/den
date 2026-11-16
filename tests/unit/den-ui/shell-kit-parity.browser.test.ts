@@ -21,6 +21,15 @@
  *    baseline): a 0-pixel difference, compared in the browser. The PNGs
  *    are not in the repo (each is ~100 KB); CI runs check 1 only.
  *
+ * Where it runs: the fixture keeps the browser's fingerprint from the
+ * capture (its user agent, pixel ratio and the width of one line of text in
+ * each face: ENV_FINGERPRINT). On the same browser the rects match
+ * exactly. On another (CI's Linux runner: other font hinting) the tree,
+ * the counts and every computed style still match exactly, and each rect
+ * edge within GEO_TOLERANCE px: text there lays out a pixel or three
+ * apart. A real layout change still fails: it changes a style, or moves a
+ * box past the tolerance.
+ *
  * DEN_UI_CAPTURE=1 writes the fixture and the PNGs instead of comparing
  * (run once, before the move). DEN_PW_WS: Den's own Playwright server.
  * DEN_SKIP_BROWSER_TESTS=1 skips.
@@ -118,6 +127,40 @@ const STYLES = [
  * The differences the move may make, none visible, each with its reason.
  * Keyed by the attribute that differs.
  */
+/** How far a rect may move on another browser (see the top). */
+const GEO_TOLERANCE = 4;
+const ENV_KEY = "__env";
+
+/** The browser's fingerprint: what decides where text lands. */
+function envFingerprint(p: Page): Promise<string> {
+  return p.evaluate(() => {
+    const c = document.createElement("canvas").getContext("2d")!;
+    const line = "Den shell metrics: Reload, Report, 0123456789";
+    const faces = [
+      "15px Rubik",
+      "15px sans-serif",
+      "13px 'Space Mono'",
+      "13px monospace",
+    ].map((f) => {
+      c.font = f;
+      return `${f}=${c.measureText(line).width.toFixed(3)}`;
+    });
+    return [navigator.userAgent, devicePixelRatio, ...faces].join(" | ");
+  });
+}
+
+/** Rects' edges apart by more than `tol`, as "sel: [want] vs [got]". */
+function geoDiff(want: Measure[], got: Measure[], tol: number): string[] {
+  const out: string[] = [];
+  want.forEach((w, i) => {
+    const g = got[i];
+    if (!g || !w.rect || !g.rect) return;
+    if (w.rect.some((v, k) => Math.abs(v - g.rect![k]!) > tol))
+      out.push(`${w.sel}: [${w.rect.join(", ")}] vs [${g.rect.join(", ")}]`);
+  });
+  return out;
+}
+
 const ALLOWED_ATTRS = new Set([
   // CSP (issue 95 b): the version chip opened What's new with an inline
   // onclick="openChangelog()"; the kit binds a listener instead.
@@ -457,7 +500,9 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           });
           const key = `${area}-${w}`;
           const name = `den-${area}-${w}.png`;
+          const env = await envFingerprint(p);
           if (CAPTURE) {
+            (fixture as unknown as Record<string, string>)[ENV_KEY] = env;
             fs.mkdirSync(BASE_DIR, { recursive: true });
             fs.writeFileSync(path.join(OUT_DIR, name), png);
             fs.writeFileSync(path.join(BASE_DIR, name), png);
@@ -470,9 +515,22 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           expect(want).toBeDefined();
           expect(shot.tree).not.toBeNull();
           expect(treeDiff(want.tree, shot.tree)).toEqual([]);
-          expect(shot.measures).toEqual(want.measures);
+          const same =
+            (fixture as unknown as Record<string, string>)[ENV_KEY] === env;
+          if (same) expect(shot.measures).toEqual(want.measures);
+          else {
+            // Another browser: all but the rects exactly, the rects within
+            // GEO_TOLERANCE.
+            const noRect = (m: Measure[]) =>
+              m.map((x) => ({ ...x, rect: x.rect ? "rect" : null }));
+            expect(noRect(shot.measures)).toEqual(noRect(want.measures));
+            expect(
+              geoDiff(want.measures, shot.measures, GEO_TOLERANCE),
+            ).toEqual([]);
+          }
           const base = path.join(BASE_DIR, name);
-          if (fs.existsSync(base)) {
+          // The pixels: only against shots from this same browser.
+          if (same && fs.existsSync(base)) {
             fs.mkdirSync(AFTER_DIR, { recursive: true });
             fs.writeFileSync(path.join(AFTER_DIR, name), png);
             expect(await pixelDiff(p, fs.readFileSync(base), png)).toBe(0);
