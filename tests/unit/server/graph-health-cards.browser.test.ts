@@ -175,9 +175,17 @@ async function graph(): Promise<Page> {
 }
 /** One health round, through graph.js's own graphHealth. */
 async function round(p: Page, rows: object[]): Promise<void> {
-  // A string: ts-jest would rewrite a dynamic import in a function.
+  // A string: ts-jest would rewrite a dynamic import in a function. The
+  // page imports graph.js stamped ?v=<version> (as every served page names
+  // its scripts); an unstamped import would load a second copy, with its own
+  // state, so this reads the stamp off the page and imports the same URL.
   await p.evaluate(
-    `import("/graph.js").then((g) => g.graphHealth(${JSON.stringify(rows)}))`,
+    `(() => {
+      const v = [...document.querySelectorAll("link[href], script[src]")]
+        .map((e) => new URL(e.href || e.src, location.href).searchParams.get("v"))
+        .find(Boolean);
+      return import(v ? "/graph.js?v=" + encodeURIComponent(v) : "/graph.js");
+    })().then((g) => g.graphHealth(${JSON.stringify(rows)}))`,
   );
 }
 
