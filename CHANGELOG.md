@@ -56,6 +56,16 @@ config and manifest changes a distribution must make to move to it under
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new
   setting `web.keep_alive_seconds` (default 120) sets how long it waits.
+- The two settings for agents' mode now say which is which. Settings ›
+  Agents is the Den-wide default; Settings › Project setup is this
+  project's override of it. Each says which wins: an agent's own
+  setting, then the project, then the Den-wide default, then its
+  persona. The project row says "Following Den-wide: Auto mode" until
+  it is set, then "Set for this project: … (Den-wide is …)", with Use
+  Den-wide to clear it and a link to the Den-wide default. The Den-wide
+  row says how many projects override it, each linked. The Agents list
+  says "from the Den-wide default" too. A Settings link to a row now
+  opens at that row.
 
 ## [0.4.60] - 2026-11-16
 

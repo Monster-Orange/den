@@ -16,6 +16,11 @@ type Row = Record<string, unknown>;
 let modeLabel: (r: Row) => string;
 let ownModeLabel: (r: Row) => string;
 let projectModeHtml: (v: unknown, t: (k: string, v?: Row) => string) => string;
+let denWideModeHtml: (
+  v: unknown,
+  overrides: unknown,
+  t: (k: string, v?: Row) => string,
+) => string;
 let t: (k: string, v?: Row) => string;
 
 beforeAll(async () => {
@@ -27,7 +32,7 @@ beforeAll(async () => {
   ).window.denShell.t;
   ({ modeLabel, ownModeLabel } =
     await import("../../../src/ui/server/public/persona-ui.js"));
-  ({ projectModeHtml } =
+  ({ projectModeHtml, denWideModeHtml } =
     await import("../../../src/ui/server/public/settings-registry.js"));
 });
 
@@ -45,9 +50,8 @@ describe("issue 225: the Agents page row says where its mode comes from", () => 
       modeLabel({ kind: "agent", mode, modeSource });
     expect(row("auto", "project")).toBe("mode: Auto, from the project");
     expect(row("edits", "persona")).toBe("mode: Edits, from its persona");
-    expect(row("all", "install")).toBe(
-      "mode: All, from the mode for every agent",
-    );
+    // Issue 268: the Den-wide default, as Settings names it.
+    expect(row("all", "install")).toBe("mode: All, from the Den-wide default");
     expect(row("ask", "default")).toBe("mode: Ask, from Den's default");
   });
 
@@ -101,11 +105,13 @@ describe("issue 225: Settings › Project › Agents' mode", () => {
     expect(html).toContain('data-pmode="auto" aria-pressed="true"');
     expect(html).toContain('data-pmode="none" aria-pressed="false"');
     expect(text(html)).toEqual([
-      "Not set",
+      "Use Den-wide",
       "Ask for everything",
       "Auto-approve edits in the worktree",
       "Auto mode",
       "Auto-approve all",
+      "Set for this project: Auto mode (Den-wide is each persona's own mode)",
+      "Change the Den-wide default",
       "lead: Auto, from the project",
       "Scout: All, from the project. Runs as Auto until restarted.",
       "pinned: Ask, from its own setting",
@@ -124,10 +130,55 @@ describe("issue 225: Settings › Project › Agents' mode", () => {
     expect(none).not.toContain("data-pmode-offer");
   });
 
+  it("issue 268: following Den-wide until set; set, it names both; a link to the Den-wide row", () => {
+    const html = projectModeHtml({ ...view, mode: null, install: "auto" }, t);
+    expect(text(html)).toContain("Following Den-wide: Auto mode");
+    expect(html).toContain('data-pmode-now="den-wide"');
+    expect(html).toContain('data-pmode="none" aria-pressed="true"');
+    expect(html).toContain('href="/settings#agents.default_mode"');
+    expect(
+      text(projectModeHtml({ ...view, mode: "ask", install: "auto" }, t)),
+    ).toContain(
+      "Set for this project: Ask for everything (Den-wide is Auto mode)",
+    );
+  });
+
   it("no agents: says so", () => {
     expect(
       text(projectModeHtml({ mode: null, agents: [], own: 0 }, t)),
     ).toContain("No agents in this project yet.");
+  });
+});
+
+describe("issue 268: Settings › Agents › the Den-wide default", () => {
+  it("what is in effect, and the projects that override it, each linked", () => {
+    const html = denWideModeHtml("auto", ["north", "south"], t);
+    expect(html).toContain('data-dwmode="auto" aria-pressed="true"');
+    expect(text(html)).toEqual([
+      "Each persona's",
+      "Ask for everything",
+      "Auto-approve edits",
+      "Auto mode",
+      "Auto-approve all",
+      "In effect Den-wide: Auto mode",
+      "2 projects override this:",
+      "north",
+      ",",
+      "south",
+    ]);
+    expect(html).toContain(
+      'href="/settings?project=north#workspace.agents_mode"',
+    );
+    expect(text(denWideModeHtml("ask", ["north"], t))).toContain(
+      "1 project overrides this:",
+    );
+  });
+
+  it("unset: each persona's own mode; none overrides: says so", () => {
+    const html = denWideModeHtml(undefined, [], t);
+    expect(html).toContain('data-dwmode="persona" aria-pressed="true"');
+    expect(text(html)).toContain("In effect Den-wide: each persona's own mode");
+    expect(text(html)).toContain("No project overrides this.");
   });
 });
 
@@ -154,6 +205,16 @@ describe("issue 225: every new word in es and ja", () => {
     "pmode.followS",
     "pmode.followF",
     "pmode.failed",
+    // Issue 268.
+    "set.agents.default_mode",
+    "set.agents.default_mode.d",
+    "pmode.following",
+    "pmode.setHere",
+    "pmode.changeDw",
+    "dwmode.now",
+    "dwmode.persona",
+    "dwmode.over",
+    "dwmode.overNone",
   ];
   const catalog = (lang: string): Record<string, string> => {
     const window: Record<string, unknown> = {};
