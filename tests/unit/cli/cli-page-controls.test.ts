@@ -117,6 +117,12 @@ const LISTING: Record<string, Entry> = {
   "usage agents": R,
   "usage report": R,
 
+  // Issue 144: the machine's gate slots.
+  "gate run": script("wraps a test command, in a terminal or a gate script"),
+  "gate status": page("agents.html", 'id="ag-gate"'),
+  "gate end": page("gate-chip.js", "/api/gate-slots/end"),
+  "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
+
   "repo detect": R,
 
   "theme add": slot("0.4.48", "add a theme"),
@@ -179,6 +185,7 @@ const DISPATCH: Record<string, { file: string; not?: string[] }> = {
   theme: { file: "theme-command.ts" },
   plugin: { file: "plugin-command.ts" },
   usage: { file: "usage-command.ts" },
+  gate: { file: "gate-command.ts" },
   repo: { file: "repo-command.ts" },
   onboard: { file: "onboard-command.ts" },
 };

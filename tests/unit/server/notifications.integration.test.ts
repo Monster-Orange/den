@@ -214,7 +214,7 @@ describe("NT: the bell on the real server", () => {
     expect((await call("GET", "/api/notifications")).json.unread).toBe(0);
   }, 30_000);
 
-  it("ATTN-5: opening the agent clears its updates; clear removes them", async () => {
+  it("ATTN-5: opening the agent clears its updates (#142: they go)", async () => {
     // Last here: the page says it shows the agent for a while (NT-2), so
     // nothing new from it is kept meanwhile. Unmute it (0 minutes) first.
     await call("POST", "/api/notifications/mute", {
@@ -241,7 +241,8 @@ describe("NT: the bell on the real server", () => {
     expect(
       (await call("GET", "/api/notifications")).json.updates,
     ).toMatchObject({ count: 1, unread: 1 });
-    // Opening the agent clears its updates (marks them read).
+    // #142: opening the agent clears its updates: they leave the list and
+    // the count drops (not only marked read).
     expect(
       (
         await call("POST", "/api/notifications/looking", {
@@ -250,12 +251,6 @@ describe("NT: the bell on the real server", () => {
       ).status,
     ).toBe(200);
     const seen = await call("GET", "/api/notifications");
-    expect(seen.json.updates).toMatchObject({ count: 1, unread: 0 });
-    expect(
-      (await call("POST", "/api/notifications/clear", {})).json,
-    ).toMatchObject({ ok: true, changed: 1 });
-    expect(
-      (await call("GET", "/api/notifications")).json.updates,
-    ).toMatchObject({ count: 0, unread: 0 });
+    expect(seen.json.updates).toMatchObject({ count: 0, unread: 0 });
   }, 30_000);
 });

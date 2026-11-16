@@ -17,6 +17,8 @@ import {
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
 import type { UpdateWait } from "./update-check.js";
+
+import { isUpdateAsk, staleUpdateAsk } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
 import {
@@ -236,6 +238,12 @@ import {
   secretsConfigWarnings,
 } from "../../shared/secrets/index.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
+import {
+  GateStore,
+  checkGatePatch,
+  type GateSettingsPatch,
+} from "../../shared/gates/store.js";
+import { handleGateRoutes, isGatePath } from "./gate-routes.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
@@ -2610,6 +2618,10 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
+/** Issue 144: the machine's gate slots, opened on first use. */
+let gateStore: GateStore | undefined;
+const gates = () => (gateStore ??= new GateStore());
+
 /**
  * Issue 163: the mode of this install's launchd web job (login, always),
  * or null when Den isn't installed as a service (or off macOS).
@@ -2829,6 +2841,14 @@ async function handleRequest(
     pathname !== SESSION_HELPERS_PATH
   ) {
     await sendSessionHttp(req, res, pathname);
+    return;
+  }
+  // Issue 144: the machine's gate slots (read; a person ends one early).
+  if (guard.ok && isGatePath(pathname)) {
+    await handleGateRoutes(req, res, pathname, {
+      store: gates,
+      title: product().title,
+    });
     return;
   }
   // NT: the bell, and agents saying they wait for their person.
@@ -6016,6 +6036,8 @@ async function handleRequest(
         })(),
         // den#85: the crash-loop guard's settings (web.crash_loop_*).
         crash_loop: crashLoopSettings(user.web),
+        // Issue 144: the machine's gate slots, not this install's.
+        gate_slots: gates().settings(),
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         web_bridge: (() => {
           const w = (user.web ?? {}) as Record<string, unknown>;
@@ -6089,6 +6111,7 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          gate_slots?: unknown;
           agents_list?: unknown;
           embed?: unknown;
         };
@@ -6119,6 +6142,13 @@ async function handleRequest(
             agents_list: body.agents_list,
           });
           if (!c.ok) return send400(res, c.error);
+        }
+        // Issue 144: the machine's gate slots (their own file, not user.yml).
+        let gatePatch: GateSettingsPatch | undefined;
+        if (body.gate_slots !== undefined) {
+          const g = checkGatePatch(body.gate_slots);
+          if (!g.ok) return send400(res, g.error);
+          gatePatch = g.patch;
         }
         // 0.4.46 MODE-UI: agents.default_mode, the install's mode for every
         // agent; null clears it. A person's only: an agent could widen
@@ -6299,6 +6329,7 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (gatePatch) gates().writeSettings(gatePatch);
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
@@ -7265,6 +7296,14 @@ function startUpdateCheck(): void {
         /* best effort: doctor says "no check yet" */
       });
   noteState();
+  // #142: an update ask for a version this Den already runs (or passed)
+  // is done with.
+  try {
+    const have = engineVersion();
+    if (have) notificationDeps().store.remove((n) => staleUpdateAsk(n, have));
+  } catch {
+    /* the bell is best effort */
+  }
   if (!every) return;
   let busy = false;
   let updating = false;
@@ -7464,8 +7503,13 @@ function startUpdateCheck(): void {
         },
         notice: (version, text, msg) => {
           try {
-            notificationDeps().store.add({
-              kind: "service",
+            const store = notificationDeps().store;
+            // #142: "Den X is out, Allow the update" waits on the person:
+            // it needs them. One at a time: a newer one replaces the older.
+            const ask = msg.key === "bell.m.updateOut";
+            if (ask) store.remove(isUpdateAsk);
+            store.add({
+              kind: ask ? "decision" : "service",
               subject: `record:den-update-${version}`,
               scope: "workspace/den-server",
               text,

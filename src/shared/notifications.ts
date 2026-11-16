@@ -390,6 +390,19 @@ export class NotificationStore {
     return true;
   }
 
+  /**
+   * #142: take items out whether read or not (opening an agent clears its
+   * updates; a newer update ask replaces the older ones). How many went.
+   */
+  remove(match: (n: Notification) => boolean): number {
+    const f = this.read();
+    const before = f.items.length;
+    f.items = f.items.filter((x) => !match(x));
+    const n = before - f.items.length;
+    if (n) this.write(f);
+    return n;
+  }
+
   /** Mark read; how many changed. */
   markRead(w: Which): number {
     const f = this.read();

@@ -799,6 +799,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/hub/sync",
   "/api/hub/link-suggestions",
   "/api/hub/names-check",
+  // Issue 144: ending a gate slot early is a person's.
+  "/api/gate-slots/end",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */

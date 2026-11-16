@@ -739,6 +739,13 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
+    "set.server.gate_cpu.d":
+      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_overrun":
+      "Prueba marcada pasada su estimación, en minutos",
+    "set.server.gate_overrun.d":
+      "Una prueba que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página Agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1729,6 +1736,26 @@
     "busy.delProjW": "Eliminando {name}…",
     "busy.delProjS": "Se eliminó {name}.",
     "busy.delProjF": "No se pudo eliminar {name}.",
+    // Issue 144: el chip de turnos de pruebas en Agentes.
+    "gate.chip": "Turno: {kind} · {who} · hasta {at}",
+    "gate.chipWaiting": " · {n} en espera",
+    "gate.kind.browser": "pruebas de navegador",
+    "gate.kind.cpu": "pruebas unitarias",
+    "gate.popH": "Pruebas en esta máquina",
+    "gate.holds": "Ejecuta {kind}, hasta las {at} más o menos",
+    "gate.waits": "Espera para ejecutar {kind}, desde las {at} más o menos",
+    "gate.over": "pasada su estimación",
+    "gate.none": "Ninguna prueba tiene turno ni espera.",
+    "gate.end": "Terminar antes",
+    "gate.endT": "¿Terminar este turno antes?",
+    "gate.endQ":
+      "¿Terminar el turno de {label}? Su ejecución no se detiene; la siguiente puede empezar.",
+    "gate.endGo": "Terminar turno",
+    "gate.rowHolds": "turno: {kind}",
+    "gate.rowWaits": "espera turno: {kind}",
+    "busy.gateEndW": "Terminando el turno de {name}…",
+    "busy.gateEndS": "El turno de {name} terminó.",
+    "busy.gateEndF": "No se pudo terminar el turno de {name}.",
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",

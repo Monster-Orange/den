@@ -396,6 +396,58 @@ function lastTurnBusy(lines: string[]): TurnVerdict {
 }
 
 /**
+ * #142: the question the last finished answer ended on, or null. The last
+ * assistant record that ended its turn (end_turn), its last text line,
+ * when that line ends with a question mark (after closing quotes, brackets
+ * and emphasis). A turn that ended on a tool call or with no question:
+ * null. Reads back as transcriptBusy does, at most `maxBytes`.
+ */
+export function lastAnswerQuestion(
+  file: string | null,
+  bytes = ENDS_BYTES,
+  maxBytes = TURN_READ_MAX_BYTES,
+): string | null {
+  if (!file) return null;
+  for (let want = Math.max(1, Math.min(bytes, maxBytes)); ; want *= 4) {
+    const { lines, whole } = readTail(file, Math.min(want, maxBytes));
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"assistant"') && !lines[i].includes('"user"'))
+        continue;
+      const r = parse(lines[i]);
+      if (!r || r.isSidechain === true) continue;
+      if (r.type === "user") {
+        if (notATurn(r)) continue;
+        return null; // the person spoke after it
+      }
+      if (r.type !== "assistant") continue;
+      const msg = r.message as
+        | { stop_reason?: unknown; content?: unknown }
+        | undefined;
+      if (msg?.stop_reason !== "end_turn") return null;
+      const parts = Array.isArray(msg.content) ? msg.content : [];
+      const text = parts
+        .map((c) =>
+          c &&
+          typeof c === "object" &&
+          (c as { type?: unknown }).type === "text"
+            ? String((c as { text?: unknown }).text ?? "")
+            : "",
+        )
+        .join("\n")
+        .trim();
+      const last =
+        text
+          .split(/\r?\n/)
+          .filter((l) => l.trim())
+          .pop() ?? "";
+      const bare = last.trim().replace(/[\s*_`"'”’)\]]+$/u, "");
+      return /[?？]$/u.test(bare) ? last.trim().slice(0, 300) : null;
+    }
+    if (whole || want >= maxBytes) return null;
+  }
+}
+
+/**
  * D45: the last thing a person asked in a conversation, one line, and
  * when: the last user record that starts a turn and has text (D39's
  * notATurn rules: no compaction summary, no `!` command, no tool result,
