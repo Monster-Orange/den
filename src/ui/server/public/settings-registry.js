@@ -192,11 +192,23 @@ function updateCheckText(data) {
       l.did === "asked"
         ? L("set.ui.ucDid.asked", "{v} is out, waiting for your Allow", v)
         : l.did === "waiting"
-          ? L(
-              "set.ui.ucDid.waiting",
-              "{v} is out, waiting for a quiet moment",
-              v,
-            )
+          ? l.wait === "permission" || l.wait === "approval"
+            ? L(
+                "set.ui.ucDid.waitAllow",
+                "{v} is out, waiting: the __DEN_TITLE__ agent is waiting on your Allow",
+                v,
+              )
+            : l.wait === "asked"
+              ? L(
+                  "set.ui.ucDid.waitAsked",
+                  "{v} is out, waiting: the __DEN_TITLE__ agent asked you a question",
+                  v,
+                )
+              : L(
+                  "set.ui.ucDid.waiting",
+                  "{v} is out, waiting for a quiet moment",
+                  v,
+                )
           : l.did === "updating"
             ? L("set.ui.ucDid.updating", "updating to {v}", v)
             : l.did === "failed"
@@ -1073,6 +1085,34 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
+    // Issue 144: the machine's gate slots (gates/store.ts settings.json),
+    // shared by every install here. A person's only.
+    id: "server.gate_cpu",
+    category: "server",
+    label: "Unit test runs at once, on this machine",
+    description:
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+    keywords: ["gate", "slot", "tests", "queue", "cpu", "parallel"],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlots ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_slots: v } }),
+  },
+  {
+    id: "server.gate_overrun",
+    category: "server",
+    label: "Test run flagged past its estimate, in minutes",
+    description:
+      "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    keywords: ["gate", "slot", "overrun", "estimate", "tests"],
+    scope: "user",
+    keys: ["gate_slots.overrun_margin_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
+    write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

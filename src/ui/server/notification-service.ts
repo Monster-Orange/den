@@ -46,6 +46,21 @@ async function outputMark(agent: string): Promise<string | null> {
   }
 }
 
+/**
+ * #142: the question an agent's finished turn ended on (its transcript's
+ * last answer), or null. Claude Code agents only: others have no
+ * transcript Den reads.
+ */
+async function endedAsking(agent: string): Promise<string | null> {
+  const rec = readRecord(getStateDir(), agent);
+  if (!rec || !HOOKED_RUNTIMES.has(rec.runtime ?? "")) return null;
+  const [{ transcriptFile }, { lastAnswerQuestion }] = await Promise.all([
+    import("../../shared/agents/den-claude.js"),
+    import("../../shared/agents/conversations.js"),
+  ]);
+  return lastAnswerQuestion(transcriptFile(rec.resumeToken));
+}
+
 /** The runtimes whose hooks say when they wait: their bells add nothing. */
 const HOOKED_RUNTIMES = new Set(["den-claude"]);
 
@@ -112,6 +127,7 @@ export function notificationDeps(): {
     },
     hooked: (id) =>
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
+    endedAsking,
   });
   if (!timer) {
     let busy = false;

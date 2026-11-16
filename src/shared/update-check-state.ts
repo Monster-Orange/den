@@ -10,7 +10,15 @@ import * as path from "path";
 export type UpdateTick =
   | { did: "current" }
   | { did: "skipped"; version?: string; why: string }
-  | { did: "asked" | "waiting" | "updating"; version: string }
+  | { did: "asked" | "updating"; version: string }
+  /** #251: why it waits, in words (doctor and Settings say it). */
+  | {
+      did: "waiting";
+      version: string;
+      why?: string;
+      /** #251: the reason's code (UpdateWait), for the page's words. */
+      wait?: string;
+    }
   | { did: "failed"; version: string; why: string };
 
 /**
@@ -72,7 +80,9 @@ export function tickText(t: UpdateTick): string {
     case "asked":
       return `${t.version} is out, waiting for the person's Allow`;
     case "waiting":
-      return `${t.version} is out, waiting for a quiet moment`;
+      return t.why
+        ? `${t.version} is out, waiting: ${t.why}`
+        : `${t.version} is out, waiting for a quiet moment`;
     case "updating":
       return `updating to ${t.version}`;
     case "failed":

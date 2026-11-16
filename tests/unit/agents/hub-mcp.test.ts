@@ -89,6 +89,15 @@ describe("an agent's MCP config has Den Hub when hub.url is set", () => {
     expect(r.made[0].args.join(" ")).toContain(HUB_PROMPT_LINE);
   });
 
+  it("#247: the prompt says approval is decided in Hub, never in chat", async () => {
+    const r = await withHub();
+    const args = r.made[0].args.join(" ");
+    expect(args).toContain(
+      "For a person's approval of a doc or mock, publish it in Hub, ask for review there, and wait for the decision Hub sends you",
+    );
+    expect(args).toContain("Never ask the person to approve it in chat.");
+  });
+
   it("D52: the Hub token is never in argv, the env, a record, any file under Den's state (the agent's MCP config too) or the CLI's output", async () => {
     const r = await withHub();
     await settle();
@@ -213,6 +222,8 @@ describe("without Hub, nothing changes", () => {
     ).toBe(0);
     expect(Object.keys(cfg(r).mcpServers)).not.toContain(HUB_SERVER);
     expect(r.made[0].args.join(" ")).not.toContain(HUB_PROMPT_LINE);
+    // #247: the approval rule is Hub's; without Hub, it isn't said.
+    expect(r.made[0].args.join(" ")).not.toContain("approve it in chat");
   });
 
   it("a Hub lookup that fails starts the agent without Hub", async () => {

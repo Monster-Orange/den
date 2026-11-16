@@ -51,6 +51,11 @@ export interface AttentionDeps {
   lookingMs?: number;
   /** Whether the agent's runtime has Den's attention hooks (Claude Code). */
   hooked?: (agent: string) => boolean;
+  /**
+   * #142: the question the agent's finished turn ended on, or null. A turn
+   * that ends asking its person something needs them, as ask_human does.
+   */
+  endedAsking?: (agent: string) => Promise<string | null>;
 }
 
 /** Output in this long after the event is the agent drawing it, not going on. */
@@ -128,6 +133,19 @@ export class Attention {
       // Asked, then ended its turn to wait for the answer: still waiting.
       if (this.waiting.get(agent)?.why === "asked") return;
       this.clear(agent);
+      // #142: a turn that ended on a question to its person needs them.
+      const q = this.d.endedAsking
+        ? await this.d.endedAsking(agent).catch(() => null)
+        : null;
+      if (q) {
+        await this.event(agent, workspace, {
+          event: "waiting",
+          why: "asked",
+          text: q,
+          hooked: true,
+        });
+        return;
+      }
       if (!this.onScreen(agent))
         this.d.store.add({
           kind: "finished",
@@ -157,6 +175,12 @@ export class Attention {
     // Claude Code's idle "waiting for your input" while an ask is open:
     // still the ask.
     if (prev?.why === "asked" && ev.why === "input") return;
+    const hooked =
+      ev.hooked === true || prev?.byHook === true || !!this.d.hooked?.(agent);
+    // #142: an idle agent isn't waiting on its person. With hooks, its
+    // turn's end already said so (finished, in Updates; a question there
+    // is "asked"): the idle notice adds nothing.
+    if (ev.why === "input" && hooked) return;
     this.waiting.set(agent, {
       why: ev.why,
       text,
@@ -165,11 +189,18 @@ export class Attention {
       at: prev?.at ?? this.now(),
       mark: await this.d.outputMark(agent),
       workspace,
-      byHook:
-        ev.hooked === true || prev?.byHook === true || !!this.d.hooked?.(agent),
+      byHook: hooked,
     });
+    // #142: without hooks, a bell is all there is: an update, not a need.
     if (!this.onScreen(agent))
-      this.d.store.add({ kind: "waiting", subject, scope, text, msg, link });
+      this.d.store.add({
+        kind: ev.why === "input" ? "finished" : "waiting",
+        subject,
+        scope,
+        text,
+        msg,
+        link,
+      });
   }
 
   /** Its person typed into its terminal: answered, whatever it waited on. */
@@ -178,8 +209,11 @@ export class Attention {
   }
 
   private clear(agent: string): void {
+    const w = this.waiting.get(agent);
     this.waiting.delete(agent);
     this.d.store.withdraw(`agent:${agent}`);
+    // #142: a hookless bell's update ("is waiting for you") goes with it.
+    if (w?.why === "input") this.d.store.withdraw(`agent:${agent}`, "finished");
   }
 
   /**

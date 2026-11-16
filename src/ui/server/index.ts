@@ -16,6 +16,9 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import type { UpdateWait } from "./update-check.js";
+
+import { isUpdateAsk, staleUpdateAsk } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
 import {
@@ -235,6 +238,12 @@ import {
   secretsConfigWarnings,
 } from "../../shared/secrets/index.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
+import {
+  GateStore,
+  checkGatePatch,
+  type GateSettingsPatch,
+} from "../../shared/gates/store.js";
+import { handleGateRoutes, isGatePath } from "./gate-routes.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
@@ -2610,6 +2619,10 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
+/** Issue 144: the machine's gate slots, opened on first use. */
+let gateStore: GateStore | undefined;
+const gates = () => (gateStore ??= new GateStore());
+
 /**
  * Issue 163: the mode of this install's launchd web job (login, always),
  * or null when Den isn't installed as a service (or off macOS).
@@ -2829,6 +2842,14 @@ async function handleRequest(
     pathname !== SESSION_HELPERS_PATH
   ) {
     await sendSessionHttp(req, res, pathname);
+    return;
+  }
+  // Issue 144: the machine's gate slots (read; a person ends one early).
+  if (guard.ok && isGatePath(pathname)) {
+    await handleGateRoutes(req, res, pathname, {
+      store: gates,
+      title: product().title,
+    });
     return;
   }
   // NT: the bell, and agents saying they wait for their person.
@@ -6026,6 +6047,8 @@ async function handleRequest(
         })(),
         // den#85: the crash-loop guard's settings (web.crash_loop_*).
         crash_loop: crashLoopSettings(user.web),
+        // Issue 144: the machine's gate slots, not this install's.
+        gate_slots: gates().settings(),
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         web_bridge: (() => {
           const w = (user.web ?? {}) as Record<string, unknown>;
@@ -6099,6 +6122,7 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          gate_slots?: unknown;
           agents_list?: unknown;
           embed?: unknown;
         };
@@ -6129,6 +6153,13 @@ async function handleRequest(
             agents_list: body.agents_list,
           });
           if (!c.ok) return send400(res, c.error);
+        }
+        // Issue 144: the machine's gate slots (their own file, not user.yml).
+        let gatePatch: GateSettingsPatch | undefined;
+        if (body.gate_slots !== undefined) {
+          const g = checkGatePatch(body.gate_slots);
+          if (!g.ok) return send400(res, g.error);
+          gatePatch = g.patch;
         }
         // 0.4.46 MODE-UI: agents.default_mode, the install's mode for every
         // agent; null clears it. A person's only: an agent could widen
@@ -6309,6 +6340,7 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (gatePatch) gates().writeSettings(gatePatch);
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
@@ -7275,9 +7307,38 @@ function startUpdateCheck(): void {
         /* best effort: doctor says "no check yet" */
       });
   noteState();
+  // #142: an update ask for a version this Den already runs (or passed)
+  // is done with.
+  try {
+    const have = engineVersion();
+    if (have) notificationDeps().store.remove((n) => staleUpdateAsk(n, have));
+  } catch {
+    /* the bell is best effort */
+  }
   if (!every) return;
   let busy = false;
   let updating = false;
+  /** #251: why an auto update would wait now; null: a quiet moment. */
+  const updateWaitWhy = async (): Promise<UpdateWait | null> => {
+    if (updating) return "updating";
+    const u = await import("./den-update.js");
+    const last = u.readUpdateState(getStateDir());
+    if (
+      last &&
+      UPDATE_UNDER_WAY.has(last.state) &&
+      Date.now() - Date.parse(last.at) < 60 * 60_000
+    )
+      return "updating";
+    // The server agent's own wait first: it is what the person can end.
+    const w = attentionWaiting().get(SERVER_AGENT_ID);
+    if (w === "permission" || w === "asked") return w;
+    if (approvals?.queue.pending().length) return "approval";
+    const ops = await import("../cli/agent-ops.js");
+    const { webDeps } = await import("./agent-routes.js");
+    return (await ops.serverAgentInputState(webDeps())) === "busy"
+      ? "busy"
+      : null;
+  };
   const tick = async (): Promise<void> => {
     if (busy) return;
     busy = true;
@@ -7309,19 +7370,101 @@ function startUpdateCheck(): void {
         cantUpdate: () =>
           u.updateProblem(getDistRoot(), getEngineRoot(), ENGINE_PACKAGE),
         last: () => u.readUpdateState(getStateDir()),
-        idle: async () => {
-          if (updating) return false;
-          const last = u.readUpdateState(getStateDir());
-          if (
-            last &&
-            UPDATE_UNDER_WAY.has(last.state) &&
-            Date.now() - Date.parse(last.at) < 60 * 60_000
-          )
-            return false;
-          if (approvals?.queue.pending().length) return false;
-          const ops = await import("../cli/agent-ops.js");
-          const { webDeps } = await import("./agent-routes.js");
-          return (await ops.serverAgentInputState(webDeps())) !== "busy";
+        idle: async () => (await updateWaitWhy()) === null,
+        // #251: why it waits, so the log and the bell can say so.
+        waitWhy: updateWaitWhy,
+        waitChecks: () => {
+          try {
+            return readServerAgentConfig().updateWaitChecks;
+          } catch {
+            return 2;
+          }
+        },
+        log: (line) => {
+          serverLog(`  ${line}`, "lifecycle");
+          recordAction(null, { verb: "den-update-check", detail: line });
+        },
+        waitNote: (version, why, needs) => {
+          try {
+            const store = notificationDeps().store;
+            const subject = "record:den-update-wait";
+            // One item: the kind it isn't now goes.
+            store.withdraw(subject, needs ? "service" : "waiting");
+            const asked = why === "asked";
+            store.add({
+              kind: needs ? "waiting" : "service",
+              subject,
+              scope: "workspace/den-server",
+              text: asked
+                ? `${product().title}'s update to ${version} waits: the ${product().title} agent asked you a question`
+                : `${product().title}'s update to ${version} waits: the ${product().title} agent is waiting on your Allow`,
+              msg: {
+                key: asked ? "bell.m.updateWaitsAsked" : "bell.m.updateWaits",
+                vars: { v: version },
+              },
+              link: "/server-agent",
+            });
+          } catch {
+            /* the bell is best effort */
+          }
+        },
+        waitDone: () => {
+          try {
+            const store = notificationDeps().store;
+            store.withdraw("record:den-update-wait", "waiting");
+            store.withdraw("record:den-update-wait", "service");
+          } catch {
+            /* best effort */
+          }
+        },
+        pinState: () =>
+          new Promise((resolve) =>
+            execFile(
+              "git",
+              [
+                "-C",
+                getDistRoot(),
+                "status",
+                "--porcelain",
+                "--",
+                "package.json",
+                "package-lock.json",
+              ],
+              { timeout: 10_000 },
+              (err, out) =>
+                resolve(
+                  err ? null : String(out).trim() ? "uncommitted" : "committed",
+                ),
+            ),
+          ),
+        pinNote: (version, why) => {
+          try {
+            const allow = why === "permission" || why === "approval";
+            notificationDeps().store.add({
+              kind: "service",
+              subject: "record:den-pin",
+              scope: "workspace/den-server",
+              text: allow
+                ? `${product().title} ${version} runs here, but its new pin isn't committed: the ${product().title} agent is waiting on your Allow`
+                : `${product().title} ${version} runs here, but its new pin isn't committed in the distribution's folder`,
+              msg: {
+                key: allow
+                  ? "bell.m.pinNotCommittedAllow"
+                  : "bell.m.pinNotCommitted",
+                vars: { v: version },
+              },
+              link: "/server-agent",
+            });
+          } catch {
+            /* best effort */
+          }
+        },
+        pinDone: () => {
+          try {
+            notificationDeps().store.withdraw("record:den-pin", "service");
+          } catch {
+            /* best effort */
+          }
         },
         update: async (version, reason) => {
           const ap = approvalDeps();
@@ -7371,8 +7514,13 @@ function startUpdateCheck(): void {
         },
         notice: (version, text, msg) => {
           try {
-            notificationDeps().store.add({
-              kind: "service",
+            const store = notificationDeps().store;
+            // #142: "Den X is out, Allow the update" waits on the person:
+            // it needs them. One at a time: a newer one replaces the older.
+            const ask = msg.key === "bell.m.updateOut";
+            if (ask) store.remove(isUpdateAsk);
+            store.add({
+              kind: ask ? "decision" : "service",
               subject: `record:den-update-${version}`,
               scope: "workspace/den-server",
               text,
