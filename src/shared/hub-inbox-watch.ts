@@ -317,10 +317,22 @@ export class InboxWatcher {
   private async handle(e: InboxEvent): Promise<void> {
     const l = this.d.loop;
     if (l.seenLocal(e.id)) return;
-    if (!Number.isFinite(e.at) || e.at < this.since) return l.passLocal(e.id);
-    if (this.d.feedCarries?.().has(e.kind)) return l.passLocal(e.id);
+    // Each pass says why, once (it is seen after): the log answers "why
+    // didn't my agent get it?" by itself.
+    const pass = (why: string) => {
+      l.passLocal(e.id);
+      this.d.log?.(
+        `hub inbox: passed over ${e.id.slice(LOCAL_PREFIX.length)} for ${e.agent}: ${why}`,
+      );
+    };
+    if (!Number.isFinite(e.at)) return pass("Hub gave it no time");
+    if (e.at < this.since) return pass("from before the watcher first ran");
+    if (this.d.feedCarries?.().has(e.kind))
+      return pass(`Hub's feed carries ${e.kind}`);
     if (e.kind === "comment" && e.thread && l.coveredThread(e.thread, e.at))
-      return l.passLocal(e.id);
+      return pass(
+        `Hub's feed already delivered on thread ${e.thread} (a mention)`,
+      );
     const o = this.d.owner();
     if (!o) return;
     await l.takeLocal(inboxDelivery(e, o));

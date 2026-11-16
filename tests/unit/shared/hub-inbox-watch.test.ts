@@ -159,6 +159,42 @@ describe("issue 166: Hub's inbox into the agent's pane", () => {
     expect(s.typed[0].text).not.toContain("Shorter heading.");
   });
 
+  test("an item passed over says why in the log, once (no time, before the first run, a kind the feed carries)", async () => {
+    answer["ag-1"] = {
+      events: [
+        { id: "ev-nt", kind: "comment", agent: "ag-1", by: "pat", body: "x" },
+        {
+          id: "ev-old",
+          kind: "comment",
+          agent: "ag-1",
+          by: "pat",
+          body: "y",
+          at: iso(T0 - 60_000),
+        },
+        {
+          id: "ev-feed",
+          kind: "comment",
+          agent: "ag-1",
+          by: "pat",
+          body: "z",
+          at: iso(T0 + 1000),
+        },
+      ],
+    };
+    const s = setup({ feedCarries: () => new Set(["comment"]) });
+    const { watcher } = s.make();
+    await watcher.tick();
+    expect(s.typed).toEqual([]);
+    expect(s.logs).toEqual([
+      "hub inbox: passed over ev-nt for ag-1: Hub gave it no time",
+      "hub inbox: passed over ev-old for ag-1: from before the watcher first ran",
+      "hub inbox: passed over ev-feed for ag-1: Hub's feed carries comment",
+    ]);
+    s.tick(31_000);
+    await watcher.tick();
+    expect(s.logs).toHaveLength(3);
+  });
+
   test("decisions on the feed too: the inbox types nothing", async () => {
     answer["ag-1"] = approval("ag-1");
     const s = setup({
