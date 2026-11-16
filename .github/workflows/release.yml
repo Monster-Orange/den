@@ -248,3 +248,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ needs.check.outputs.version }}
+
+  # The UI kit, @monster-orange/den-ui (packages/den-ui), on its own version. It publishes only once the package
+  # exists on npm (its first publish is by hand, from the den-ui/v<version> GitHub release's tarball) and a trusted
+  # publisher for this file is set on it. Until then, and for a version already on npm or a prerelease, it skips.
+  den-ui:
+    needs: [checks]
+    runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write # the OIDC token npm trusts, instead of any npm token
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+      - name: Is this den-ui version to publish?
+        id: ui
+        run: |
+          V=$(node -p 'require("./packages/den-ui/package.json").version')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if ! npm view @monster-orange/den-ui name > /dev/null 2>&1; then
+            echo "@monster-orange/den-ui is not on npm yet: its first publish is by hand. Skipped."; echo "go=no" >> "$GITHUB_OUTPUT"
+          elif [ "$(npm view "@monster-orange/den-ui@$V" version 2>/dev/null)" = "$V" ]; then
+            echo "@monster-orange/den-ui@$V is on npm already. Skipped."; echo "go=no" >> "$GITHUB_OUTPUT"
+          elif case "$V" in *-*) true;; *) false;; esac; then
+            echo "$V is a prerelease: never published. Skipped."; echo "go=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - name: npm 11.21 (trusted publishing needs 11.5.1 or later)
+        if: steps.ui.outputs.go == 'yes'
+        run: npm install -g npm@11.21.0 && npm --version
+      - name: Publish den-ui on npm
+        if: steps.ui.outputs.go == 'yes'
+        run: cd packages/den-ui && npm publish --access public --loglevel verbose
