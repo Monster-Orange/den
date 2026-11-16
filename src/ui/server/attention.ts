@@ -23,6 +23,23 @@ import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
 
 export type WaitingWhy = "permission" | "input" | "asked";
 
+/**
+ * The agents Den won't type into (a Hub delivery, a tools note): a held
+ * Allow (`approvalActors`, "agent:<id>"), a permission prompt, or an
+ * ask_human question; typed text would answer them. An idle agent
+ * ("input": Claude Code's notice after a turn) takes them.
+ */
+export function typingHeld(
+  why: ReadonlyMap<string, string>,
+  approvalActors: Iterable<string>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [agent, w] of why) if (w !== "input") out.add(agent);
+  for (const actor of approvalActors)
+    if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
+  return out;
+}
+
 export interface AttentionDeps {
   store: NotificationStore;
   /** A short mark of the agent's output now (a hash of its tail), or null. */

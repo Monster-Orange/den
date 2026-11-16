@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import { typingHeld } from "./attention.js";
 import {
   crashLoopSettings,
   markCleanStop,
@@ -2577,6 +2578,17 @@ function waitingAgentIds(): Set<string> {
   for (const actor of approvals.queue.waitingActors())
     if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
   return out;
+}
+
+/**
+ * The agents a Hub delivery or tools note waits for: a held Allow, a
+ * permission prompt or an ask_human question. Not an idle one ("input").
+ */
+function typingHeldIds(): Set<string> {
+  return typingHeld(
+    attentionWaiting(),
+    approvals ? approvals.queue.waitingActors() : [],
+  );
 }
 
 /** NT-3b: why each one waits; a held Allow over what the hooks said. */
@@ -7118,7 +7130,7 @@ void CRASH_GATE.then(() =>
       void m.startDeliveries({
         heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
         pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-        waiting: waitingAgentIds,
+        waiting: typingHeldIds,
         log: (l) => serverLog(`  ${l}`, "warn"),
       });
     });
@@ -7126,7 +7138,7 @@ void CRASH_GATE.then(() =>
     // changed (hub.tools_check_seconds).
     void import("./hub-tools-service.js").then((m) =>
       m.startHubToolsWatch({
-        waiting: waitingAgentIds,
+        waiting: typingHeldIds,
         log: (l) => serverLog(`  ${l}`, "warn"),
       }),
     );

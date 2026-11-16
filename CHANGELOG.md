@@ -10,6 +10,10 @@ config and manifest changes a distribution must make to move to it under
 
 - Agents' own calls to Den (attention, Hub inbox) are no longer refused as
   from an unknown process when Den is busy, such as just after restarts.
+- Hub comments now reach agents that sit idle at their prompt. Before,
+  an idle agent was taken for one waiting on its person, and its comments
+  were held. A permission prompt, a question from the agent, or a held
+  Allow still holds them.
 
 ## [0.4.59] - 2026-11-16
 
