@@ -182,9 +182,11 @@ it with the kit's reference: Den's nav as signed off, in
 `390`.
 
 One browser build and one theme. The references were taken on
-Playwright's image `NAV_BROWSER_IMAGE`:
+Playwright's image `NAV_BROWSER_IMAGE`, its linux/amd64 build (the arm64
+build ships another Chromium; on an arm64 machine add
+`--platform linux/amd64`):
 
-    mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+    mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6
 
 in the theme `NAV_THEME`, Den's default theme "den" 2.0.1 (the kit's
 default tokens). A host must run the inventory on that image, in that
@@ -192,8 +194,8 @@ theme, with the shipped references, so both products are measured in one
 browser build and one look. Start the image's run-server and connect both
 browsers to it through `DEN_PW_WS`:
 
-    docker run -d --init -p 127.0.0.1:3921:3921 \
-      mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48 \
+    docker run -d --init --platform linux/amd64 -p 127.0.0.1:3921:3921 \
+      mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6 \
       npx -y playwright@1.61.1 run-server --port 3921 --host 0.0.0.0
     DEN_PW_WS=ws://localhost:3921/
 

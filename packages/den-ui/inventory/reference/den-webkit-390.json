@@ -18,7 +18,7 @@
    "500 14px serif": 444.469,
    "500 14px ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, monospace": 557.656
   },
-  "image": "mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+  "image": "mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6",
   "theme": {
    "id": "den",
    "version": "2.0.1"

@@ -86,7 +86,7 @@ jobs:
 
   # Issue 95: the global nav inventory (packages/den-ui/inventory) on the
   # one browser build its reference was taken on: Playwright's image, by
-  # version and digest (NAV_BROWSER_IMAGE in nav-inventory.js; a test keeps
+  # version and its linux/amd64 digest (NAV_BROWSER_IMAGE in nav-inventory.js; a test keeps
   # the two the same). Its run-server serves Chromium and WebKit; the test
   # connects with exposeNetwork "<loopback>", so the browsers reach Den's
   # server on this runner through the connection. Elsewhere (the shards,
@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      NAV_IMAGE: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+      NAV_IMAGE: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -106,7 +106,7 @@ jobs:
       - run: npm ci
       - name: Start the pinned Playwright server
         run: |
-          docker run -d --name pw-nav --init -p 127.0.0.1:3921:3921 "$NAV_IMAGE" \
+          docker run -d --name pw-nav --init --platform linux/amd64 -p 127.0.0.1:3921:3921 "$NAV_IMAGE" \
             npx -y playwright@1.61.1 run-server --port 3921 --host 0.0.0.0
           # Docker's port is open at once; the server is up when it says so.
           for i in $(seq 1 150); do

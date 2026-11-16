@@ -99,13 +99,15 @@ export const NAV_THEME = { id: "den", version: "2.0.1" };
 
 /**
  * The one browser build the nav is measured in: Playwright's image, by
- * version and digest. The references were taken there; a host runs its
+ * version and the digest of its linux/amd64 build (its arm64 build ships
+ * another Chromium, which lays text out apart; on an arm64 machine run
+ * it with --platform linux/amd64). The references were taken there; a host runs its
  * check there too (its run-server, reached through DEN_PW_WS), so both
  * products are measured alike. Text lays out a few px apart on any other
  * build, so boxes from another one are never compared.
  */
 export const NAV_BROWSER_IMAGE =
-  "mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48";
+  "mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6";
 
 /** The fixed line each face is measured with, for the fingerprint. */
 export const FINGERPRINT_TEXT =
