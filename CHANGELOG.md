@@ -54,6 +54,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Two restarts of one agent at once no longer race (issue 216). The agent
+  restarts once. The other restart succeeds too and says "restarted by
+  another request at <time>; same conversation", never "no session". If
+  someone stopped the agent while a restart waited, the restart says so and
+  leaves it stopped. Every restart, stop and resume from the command line
+  now leaves an audit row, like the page and MCP do: who, which agent, which
+  project, and what came of it (restarted, already restarted, refused and
+  why, or still busy).
+
 - A start or resume that fails no longer takes a running agent's Hub
   access (issue 215). An agent's older token now ends only once its new
   session has started.

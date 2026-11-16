@@ -4844,6 +4844,16 @@ export async function stopAgent(
 export interface Resumed extends Started {
   /** Never prompted: started afresh under the same conversation id. */
   fresh: boolean;
+  /**
+   * Issue 216: another request restarted it while this one waited, so
+   * this one didn't restart it again. `at`: when that session started.
+   */
+  already?: { at: string; note: string };
+}
+
+/** Issue 216: what a restart says when another request already did it. */
+export function alreadyRestartedNote(at: string): string {
+  return `restarted by another request at ${new Date(at).toLocaleString()}; same conversation`;
 }
 
 /**
@@ -5292,6 +5302,7 @@ export async function restartAgent(
   } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
+  const asked = Date.now();
   const rec = agentRecord(d, id, ws);
   const why = personaChangeRefusal(rec);
   if (why)
@@ -5300,6 +5311,12 @@ export async function restartAgent(
       [],
       422,
     );
+  // Issue 216: the session it runs as now, to tell after the wait whether
+  // another request restarted (or someone stopped) it meanwhile.
+  const seen = await withClient(d, async (c) => {
+    const s = sessionOf(await c.list(), rec);
+    return s && !s.exited ? s : undefined;
+  });
   let busy = await agentBusy(d, rec);
   if (busy === null && when === "after-turn")
     throw refused(
@@ -5321,6 +5338,38 @@ export async function restartAgent(
   // Review M1: stop and resume as one change (not the wait above, so a
   // person can still stop it while it waits).
   return withAgentLock(d.stateDir(), rec.id, async () => {
+    if (seen) {
+      const cur = agentRecord(d, rec.id, rec.workspace);
+      const now = await withClient(d, async (c) =>
+        sessionOf(await c.list(), cur),
+      );
+      const live = now && !now.exited ? now : undefined;
+      // Issue 216: a new session, started after this request: another
+      // request restarted it. Done; never a second restart.
+      if (
+        live &&
+        live.ref.id !== seen.ref.id &&
+        Date.parse(live.startedAt) >= asked - 1_000
+      )
+        return {
+          rec: cur,
+          info: live,
+          warnings: [],
+          early: null,
+          fresh: false,
+          already: {
+            at: live.startedAt,
+            note: alreadyRestartedNote(live.startedAt),
+          },
+        };
+      // It ran when asked and runs no more: someone stopped it (or it
+      // ended). A restart never undoes a stop.
+      if (!live)
+        throw refused(
+          `${where}: agent ${rec.id} stopped while this restart waited; not restarted`,
+          [`Resume it: ${d.cli} agents resume ${rec.id}`],
+        );
+    }
     const stopped = await stopAgent(d, rec.id, rec.workspace);
     if (stopped.stillStopping)
       throw refused(

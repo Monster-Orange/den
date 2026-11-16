@@ -16,11 +16,17 @@ import * as path from "path";
 import { getStateDir } from "./paths.js";
 
 export interface ConfigAuditRow {
-  verb: "config-write" | "hub-link";
+  /** issue 216: "agents" is a restart, stop or resume from the CLI. */
+  verb: "config-write" | "hub-link" | "agents";
   detail: string;
+  /** Set when it never happened: refused, or still busy. */
+  outcome?: "refused";
+  /** Why (first line). */
+  reason?: string;
 }
 
-type Sink = (row: ConfigAuditRow) => void;
+/** `stateDir`: the audit's own state dir, when the caller has one. */
+type Sink = (row: ConfigAuditRow, stateDir?: string) => void;
 
 /** Outside the server: who runs this process, and what it was asked. */
 function processWho(): string {
@@ -34,9 +40,9 @@ function processWho(): string {
   return `person:${user} (${path.basename(process.argv[1] ?? "node")}${args ? ` ${args}` : ""}, pid ${process.pid})`;
 }
 
-const appendRow: Sink = (row) => {
+const appendRow: Sink = (row, stateDir) => {
   try {
-    const file = path.join(getStateDir(), "audit.jsonl");
+    const file = path.join(stateDir ?? getStateDir(), "audit.jsonl");
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     fs.appendFileSync(
       file,
@@ -46,6 +52,10 @@ const appendRow: Sink = (row) => {
         principal: processWho(),
         verb: row.verb,
         detail: row.detail,
+        ...(row.outcome ? { outcome: row.outcome } : {}),
+        ...(row.reason
+          ? { reason: row.reason.split(/[\r\n]/)[0].slice(0, 300) }
+          : {}),
       }) + "\n",
       { mode: 0o600 },
     );
@@ -61,9 +71,9 @@ export function setConfigAuditSink(fn: Sink | null): void {
   sink = fn ?? appendRow;
 }
 
-export function auditConfig(row: ConfigAuditRow): void {
+export function auditConfig(row: ConfigAuditRow, stateDir?: string): void {
   try {
-    sink(row);
+    sink(row, stateDir);
   } catch {
     /* best effort */
   }
