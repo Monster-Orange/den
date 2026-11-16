@@ -8,6 +8,8 @@
  *   compareNav(actual, reference, { hostSlots, themeTokens, tolerance })
  *                                   → NavDiff[]   (empty: the same nav)
  *   formatNavDiffs(diffs)           → string, one line per difference
+ *   pinNavFonts(context, { fontsDir }?) → Promise<void>: the same glyphs
+ *                                   on every machine (see below)
  *
  * `page` is a Playwright Page (anything with `evaluate(fn, arg)` works),
  * already on a page that draws the kit's shell.
@@ -37,6 +39,10 @@
  * match; the comparer asks only that one listed token match on both
  * sides.
  */
+
+import { readFileSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import * as path from "node:path";
 
 /** The computed styles kept for each element. */
 export const STYLE_PROPS = [
@@ -587,4 +593,86 @@ export function formatNavDiffs(diffs) {
       (d) => `${d.slot} ${d.key} ${d.property}: ${d.reference} → ${d.actual}`,
     )
     .join("\n");
+}
+
+// ── The font pin ─────────────────────────────────────────────────────────
+
+/**
+ * The system faces a nav names, pinned to the kit's own font files, so
+ * text lays out alike on every machine: the sans faces to Rubik (400 up
+ * to 449, 500 from 450), the mono ones to Space Mono. The reference was
+ * taken with this pin.
+ */
+const PIN_SANS = [
+  "-apple-system",
+  "BlinkMacSystemFont",
+  "Segoe UI",
+  "Noto Sans",
+  "Hiragino Sans",
+  "Noto Sans JP",
+  "Helvetica",
+  "Arial",
+  "Times New Roman",
+];
+const PIN_MONO = ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas"];
+export const PIN_FONTS_CSS = [
+  ...PIN_SANS.flatMap((f) => [
+    `@font-face{font-family:"${f}";font-weight:100 449;src:url(/__pin-fonts/rubik-latin-400-normal.woff2) format("woff2")}`,
+    `@font-face{font-family:"${f}";font-weight:450 900;src:url(/__pin-fonts/rubik-latin-500-normal.woff2) format("woff2")}`,
+  ]),
+  ...PIN_MONO.map(
+    (f) =>
+      `@font-face{font-family:"${f}";src:url(/__pin-fonts/space-mono-latin-400-normal.woff2) format("woff2")}`,
+  ),
+].join("\n");
+
+/**
+ * Where the kit's font files are: this package's src/fonts. Found beside
+ * this file where the runtime says where that is (CommonJS, as a test
+ * runner may load it), else as the installed package from the working
+ * folder.
+ */
+function kitFontsDir() {
+  if (typeof __dirname === "string") {
+    const here = path.join(__dirname, "..", "src", "fonts");
+    if (existsSync(here)) return here;
+  }
+  const req = createRequire(path.join(process.cwd(), "noop.js"));
+  const pkg = req.resolve("@monster-orange/den-ui/package.json");
+  return path.join(path.dirname(pkg), "src", "fonts");
+}
+
+/**
+ * Pins a Playwright BrowserContext's fonts for the inventory (call it
+ * before the context opens a page): every page gets the pin stylesheet
+ * first in its <head>, and /__pin-fonts/* answers with the kit's own woff2
+ * files. `opts.fontsDir`: where they are, if not this package's.
+ */
+export async function pinNavFonts(context, opts = {}) {
+  const dir = opts.fontsDir || kitFontsDir();
+  await context.route("**/__pin-fonts/**", (route) => {
+    const name = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").pop() || "",
+    );
+    if (name === "pin.css")
+      return route.fulfill({ contentType: "text/css", body: PIN_FONTS_CSS });
+    // Only a font file of the kit's: no path in the name.
+    const file = path.join(dir, path.basename(name));
+    if (!/^[\w.-]+\.woff2$/.test(name) || !existsSync(file))
+      return route.fulfill({ status: 404, body: "" });
+    return route.fulfill({
+      contentType: "font/woff2",
+      body: readFileSync(file),
+    });
+  });
+  await context.addInitScript(() => {
+    const add = () => {
+      const l = document.createElement("link");
+      l.rel = "stylesheet";
+      l.href = "/__pin-fonts/pin.css";
+      document.head.prepend(l);
+    };
+    if (document.head) add();
+    else document.addEventListener("DOMContentLoaded", add);
+  });
 }

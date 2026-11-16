@@ -271,9 +271,13 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   list on its `font-family`, and read back, so it is in the form computed
   values take. `snapshot.tokens` maps each colour and family seen to the
   tokens that compute to it.
-- Fonts in Den's test: the system faces are pinned to the kit's own
-  Rubik and Space Mono, so text lays out alike from run to run. A host
-  pins them the same way (see `tests/unit/den-ui/nav-inventory-helpers.ts`).
+- Fonts: `await pinNavFonts(context)` (from `./inventory`) pins the
+  system faces a nav names to the kit's own Rubik and Space Mono, so text
+  lays out alike from run to run, as when the reference was taken. Call it
+  on the Playwright `BrowserContext` before opening the page. It puts the
+  pin stylesheet first on every page and serves `/__pin-fonts/*` from the
+  package's `src/fonts` (or `{ fontsDir }`). `NAV_BROWSER_IMAGE` and
+  `NAV_THEME` are exported beside it.
 
 Den runs it in `tests/unit/den-ui/nav-inventory.browser.test.ts` (CI's
 `den-ui-nav` job starts the image) with red cases that must fail: the

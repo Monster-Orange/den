@@ -46,15 +46,11 @@ import {
   formatNavDiffs,
   NAV_BROWSER_IMAGE,
   NAV_THEME,
+  pinNavFonts,
   type NavDiff,
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
-import {
-  DEN_HOST_SLOTS,
-  PIN_CSS,
-  PIN_DIR,
-  referenceFile,
-} from "./nav-inventory-helpers.js";
+import { DEN_HOST_SLOTS, referenceFile } from "./nav-inventory-helpers.js";
 
 const CAPTURE = process.env.DEN_UI_NAV_CAPTURE === "1";
 /** Only the pinned image's run-server can match the reference. */
@@ -116,25 +112,9 @@ async function open(
       /* none */
     }
   });
-  await ctx.route("**/__pin-fonts/**", (r) => {
-    const f = new URL(r.request().url()).pathname.split("/").pop()!;
-    if (f === "pin.css")
-      return r.fulfill({ contentType: "text/css", body: PIN_CSS });
-    return r.fulfill({
-      contentType: "font/woff2",
-      body: fs.readFileSync(path.join(PIN_DIR, path.basename(f))),
-    });
-  });
-  await ctx.addInitScript(() => {
-    const add = () => {
-      const l = document.createElement("link");
-      l.rel = "stylesheet";
-      l.href = "/__pin-fonts/pin.css";
-      document.head.prepend(l);
-    };
-    if (document.head) add();
-    else document.addEventListener("DOMContentLoaded", add);
-  });
+  // The kit's font pin (./inventory): the faces the reference was taken
+  // with, the kit's own files.
+  await pinNavFonts(ctx);
   await ctx.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
   await ctx.route("**/api/server-info", async (route) => {
     const res = await route.fetch();

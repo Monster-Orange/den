@@ -87,3 +87,30 @@ export declare function compareNav(
   opts?: NavCompareOptions,
 ): NavDiff[];
 export declare function formatNavDiffs(diffs: NavDiff[]): string;
+/** The pin stylesheet: the system faces a nav names, as the kit's own files. */
+export declare const PIN_FONTS_CSS: string;
+/** What pinNavFonts needs of a Playwright BrowserContext. */
+export interface NavFontContext {
+  route(
+    url: string,
+    handler: (route: {
+      request(): { url(): string };
+      fulfill(o: {
+        status?: number;
+        contentType?: string;
+        body?: string | Buffer;
+      }): Promise<void>;
+    }) => unknown,
+  ): Promise<void>;
+  addInitScript(script: () => void): Promise<void>;
+}
+/**
+ * Pins a context's fonts the way the reference was taken: the pin
+ * stylesheet first on every page, /__pin-fonts/* served from the kit's
+ * own font files (src/fonts, or opts.fontsDir). Call it before opening a
+ * page.
+ */
+export declare function pinNavFonts(
+  context: NavFontContext,
+  opts?: { fontsDir?: string },
+): Promise<void>;
