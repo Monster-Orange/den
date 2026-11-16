@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.57] - unreleased
+## [0.4.57] - 2026-11-16
 
 After this update, each Claude Code agent restarts once, the next time it is
 idle, so it loads Hub's current tools. It keeps its conversation, and it is
