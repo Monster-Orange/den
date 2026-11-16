@@ -3163,41 +3163,15 @@
     });
   }
 
-  // ── icons: the prototype's 24px line drawings ─────────────────────────
-  var ICONS = {
-    // FB (den#81): the flat speech bubble with "!" (the Report button).
-    report: '<path d="M4 5h16v11H9l-5 4V5z"/><path d="M12 8v4M12 14.2v.01"/>',
-    overview: '<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>',
-    graph:
-      '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.6 8M7 8.4l1.6 7.2M16.4 10.2l-5.6 6"/>',
-    services:
-      '<rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7h.01M8 17h.01"/>',
-    logs: '<path d="M5 5h14M5 9h10M5 13h14M5 17h8"/>',
-    tests:
-      '<path d="M9 4h6M10 4v5l-5 9a1.5 1.5 0 0 0 1.3 2h11.4a1.5 1.5 0 0 0 1.3-2l-5-9V4"/>',
-    envs: '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.5 2.5 2.5 13.5 0 16M12 4c-2.5 2.5-2.5 13.5 0 16"/>',
-    releases: '<path d="M12 3v12M7 10l5 5 5-5M5 20h14"/>',
-    settings:
-      '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
-    page: '<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 9h6M9 13h6"/>',
-    // The prototype's Agents icon: a terminal window with a prompt.
-    agents:
-      '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
-    edge: '<path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/>',
-    // D73: a terminal: a prompt and a cursor, no window.
-    terminal: '<path d="M4 7l5 5-5 5M12 18h8"/>',
-    // ON-6: the __DEN_TITLE__ agent, a speech bubble with a spark.
-    assistant:
-      '<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M12 8v4M10 10h4"/>',
-    // Hub: a node joined to three (the company's shared place).
-    hub: '<circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="20" r="2"/><path d="M6.6 7.2l3.5 3.2M17.4 7.2l-3.5 3.2M12 14.5V18"/>',
-    // SEC-2a: who this browser is (the rail footer's identity chip).
-    person:
-      '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
-  };
+  // ── the kit (den-ui): the shell's markup and its hydration ───────────
+  // /den-ui-shell.js, loaded just before this script, is the kit's
+  // shell-html.js and shell-client.js as one classic script
+  // (window.DenUIShell): the top bar, the rail, the version chip and the
+  // Report button are drawn by it, from Den's registries as data.
+  var DUI = window.DenUIShell;
+  /** An icon's <svg> (the kit's line drawings; a product's own markup). */
   function icon(name) {
-    var d = ICONS[name] || (/^</.test(name || "") ? name : ICONS.page);
-    return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + "</svg>";
+    return DUI.icon(name);
   }
 
   // ── registries ─────────────────────────────────────────────────────────
@@ -3539,7 +3513,7 @@
     for (var k in partial)
       if (Object.prototype.hasOwnProperty.call(partial, k))
         state[k] = partial[k];
-    applyCollapsed();
+    applyState();
     renderRail();
     if (state.pins.join("\n") !== before) pinsChanged();
   }
@@ -3561,22 +3535,11 @@
   }
   if (typeof window.addEventListener === "function")
     window.addEventListener("den:pins", function () {
-      syncPinToggles(document);
+      pinToggles(document);
     });
-  /** A pin toggle's look for its id: ★ "Unpin x" pressed, or ☆ "Pin x". */
-  function syncPinToggles(root) {
-    if (!root || !root.querySelectorAll) return;
-    var btns = root.querySelectorAll("[data-pin-toggle]");
-    for (var i = 0; i < btns.length; i++) {
-      var b = btns[i];
-      var id = b.getAttribute("data-pin-toggle");
-      var on = isPinned(id);
-      var label = t(on ? "act.unpinX" : "act.pinX", { s: id });
-      b.textContent = on ? "★" : "☆";
-      b.setAttribute("aria-pressed", on ? "true" : "false");
-      b.setAttribute("aria-label", label);
-      b.title = label;
-    }
+  /** Every pin toggle in root: the kit's ★ "Unpin x" / ☆ "Pin x". */
+  function pinToggles(root) {
+    DUI.syncPinToggles(root, isPinned, lang);
   }
   function saveShell(patch) {
     remember();
@@ -4263,55 +4226,12 @@
   // What's new (R9) and ◐ ▾ (R10, appearance.js fills #den-user). The
   // chips start neutral ("Checking…", "Runs"; the sudo chip hidden) and topbar.js
   // paints them: a cold load never shows a partial red.
-  var chips =
-    '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
-    esc(t("search.ph")) +
-    '"><span class="den-search-ph">' +
-    esc(t("search.ph")) +
-    '</span><kbd aria-hidden="true">⌘K</kbd><span class="den-search-ic" aria-hidden="true">⌕</span></button>' +
-    '<div class="den-chips">' +
-    '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
-    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
-    esc(t("status.checking")) +
-    "</span></button>" +
-    '<button type="button" class="den-chip" id="den-runs">' +
-    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n den-lbl-l">' +
-    esc(t("runs.title")) +
-    "</span></button>" +
-    // LK-0: shown only while a run waits for the admin password (topbar.js).
-    '<button type="button" class="den-chip" id="den-lock" aria-haspopup="dialog" aria-expanded="false" hidden>' +
-    '<span class="den-lock-ic" aria-hidden="true">🔑</span><span class="den-lbl-l">' +
-    esc(t("lock.waiting")) +
-    "</span></button>" +
-    // UK-3 (issue 94): Report sits right before the bell, at every width
-    // (Report, bell, account); the kit's base.css places it.
-    reportButton(false, true) +
-    // NT-3: the bell (bell.js paints its count and opens its panel).
-    '<button type="button" class="den-ib den-bell" id="den-bell" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
-    esc(t("bell.title")) +
-    '" title="' +
-    esc(t("bell.title")) +
-    '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' +
-    '<span class="den-bell-n" hidden></span></button>' +
-    '<button class="den-ib v-pill" id="version-pill" onclick="openChangelog()" title="' +
-    esc(t("v.title")) +
-    '">' +
-    '<span class="v-txt">v…</span><span class="v-pip" id="v-pip"></span></button>' +
-    '<span class="den-user" id="den-user"></span>' +
-    "</div>";
-  host.className = "den-shell";
-  host.innerHTML =
-    '<a class="den-skip" href="#den-content">' +
-    esc(t("skip")) +
-    "</a>" +
-    '<header class="den-top">' +
-    '<button class="den-ib den-menu-btn" id="den-menu-btn" aria-label="' +
-    esc(t("menu")) +
-    '" aria-expanded="false" aria-controls="den-rail">☰</button>' +
-    '<a class="den-brand" href="/" title="__DEN_TITLE__">' +
-    '<span class="den-mark" id="den-mark" aria-hidden="true"></span>' +
-    // The brand is a name, not a heading: the page's own h1 is its one.
-    '<span class="den-title">__DEN_CLI__</span></a>' +
+  // Den's own parts of the bar, in the kit's slots: the scope breadcrumb
+  // and the ⌘K search field (start), the status, Runs and sudo chips (the
+  // right group's start), the bell and ◐ ▾ (after Report). The chips start
+  // neutral ("Checking…", "Runs"; the sudo chip hidden) and topbar.js
+  // paints them: a cold load never shows a partial red.
+  var slotStart =
     // The prototype's scope breadcrumb (R4): / ORG <org> ▾ / WORKSPACE
     // <ws> ▾ / ENV <env> ▾. Each part is an .ib button with a .pop menu.
     // The org is a static label while there is one org (ORG-SPEC C4) and
@@ -4331,18 +4251,51 @@
     scopeButton("env-btn", "env", t("k.env"), "local", false) +
     '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>' +
     "</div>" +
-    chips +
-    "</header>" +
-    // The rail's box: no box of its own (display: contents). As ☰'s
-    // drawer it is the modal dialog the rail sits in, so the rail stays a
-    // nav (a <nav> may not be a dialog).
-    '<div class="den-rail-box" id="den-rail-box">' +
-    '<nav class="den-rail" id="den-rail" aria-label="' +
-    esc(t("pages")) +
-    '"></nav></div>';
-
+    '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
+    esc(t("search.ph")) +
+    '"><span class="den-search-ph">' +
+    esc(t("search.ph")) +
+    '</span><kbd aria-hidden="true">⌘K</kbd><span class="den-search-ic" aria-hidden="true">⌕</span></button>';
+  var slotEnd =
+    '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
+    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
+    esc(t("status.checking")) +
+    "</span></button>" +
+    '<button type="button" class="den-chip" id="den-runs">' +
+    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n den-lbl-l">' +
+    esc(t("runs.title")) +
+    "</span></button>" +
+    // LK-0: shown only while a run waits for the admin password (topbar.js).
+    '<button type="button" class="den-chip" id="den-lock" aria-haspopup="dialog" aria-expanded="false" hidden>' +
+    '<span class="den-lock-ic" aria-hidden="true">🔑</span><span class="den-lbl-l">' +
+    esc(t("lock.waiting")) +
+    "</span></button>";
+  // NT-3: the bell (bell.js paints its count and opens its panel).
+  var slotBell =
+    '<button type="button" class="den-ib den-bell" id="den-bell" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
+    esc(t("bell.title")) +
+    '" title="' +
+    esc(t("bell.title")) +
+    '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' +
+    '<span class="den-bell-n" hidden></span></button>';
+  host.className = "den-shell";
+  // The kit draws the frame: skip link, top bar (☰, brand, Den's slots,
+  // Report · bell · version · ◐ ▾ in that order, UK-3), and the rail, its
+  // entries drawn from the registries (railModel) once the page is up.
+  host.innerHTML = DUI.shellHtml({
+    product: { name: "__DEN_CLI__", title: "__DEN_TITLE__" },
+    lang: lang,
+    report: !state.reportOff,
+    slots: {
+      start: slotStart,
+      end: slotEnd,
+      bell: slotBell,
+      account: '<span class="den-user" id="den-user"></span>',
+    },
+  });
+  // The rail is drawn by renderRail from the registries (below).
   var nav = host.querySelector(".den-rail");
-  var railBox = host.querySelector(".den-rail-box");
+  nav.innerHTML = "";
 
   // ── the scope parts (R4) ───────────────────────────────────────────────
   // Each part's menu comes from its model, set by header.js: setOrgs (the
@@ -4639,102 +4592,42 @@
       "/agents?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
     );
   }
-  function item(n, current, extra, attrs) {
-    return (
-      '<a class="den-ni" href="' +
-      esc(n.href) +
-      '" data-nav="' +
-      esc(n.id) +
-      '"' +
-      (current ? ' aria-current="page"' : "") +
-      (attrs || "") +
-      ' title="' +
-      esc(n.tip || n.title) +
-      '">' +
-      (n.lead || icon(n.icon)) +
-      '<span class="den-lbl' +
-      (n.mono ? " den-mono" : "") +
-      '">' +
-      esc(n.title) +
-      "</span>" +
-      (extra || "") +
-      "</a>"
-    );
-  }
-  function group(id, label, from, body) {
-    return (
-      '<div class="den-rail-group" role="group" aria-labelledby="den-gh-' +
-      esc(id) +
-      '"' +
-      (from ? ' aria-describedby="den-gd-' + esc(id) + '"' : "") +
-      // The name is the label alone ("Acme", not "Acmeacme"): the tag is
-      // in the description ("from acme").
-      '><div class="den-gh"><span id="den-gh-' +
-      esc(id) +
-      '">' +
-      esc(label) +
-      "</span>" +
-      (from
-        ? '<span class="den-tagx" aria-hidden="true" title="' +
-          esc(t("from", { d: from })) +
-          '">' +
-          esc(from) +
-          "</span>"
-        : "") +
-      "</div>" +
-      (from
-        ? '<span class="den-sr" id="den-gd-' +
-          esc(id) +
-          '">' +
-          esc(t("from", { d: from })) +
-          "</span>"
-        : "") +
-      body +
-      "</div>"
-    );
-  }
-  /** The rail's markup from the registries and the state. */
-  function railHtml() {
-    var html = "";
-    if (state.pins.length)
-      html += group(
-        "pinned",
-        t("g.pinned"),
-        null,
-        state.pins
-          .map(function (p) {
-            // 0.4.18: the row (named by the id alone) opens the service's
-            // panel in place (svc-panel.js); it is still the link to
-            // Services, so ⌘-click and middle-click open that in a new
-            // tab. Delete unpins it. Visit ↗ beside it opens the service's
-            // URL, out of the tab order: the panel's first button is the
-            // keyboard's Visit. Unpin is in the panel's footer.
-            return (
-              '<div class="den-pin-row">' +
-              item(
-                {
-                  id: "pin-" + p,
-                  href: pinHref(p),
-                  title: p,
-                  lead: healthDot(p),
-                  mono: true,
-                },
-                false,
-                "",
-                ' data-pin="' +
-                  esc(p) +
-                  '" data-svpanel="' +
-                  esc(p) +
-                  '" aria-haspopup="dialog" aria-expanded="' +
-                  (state.svpOpen === p ? "true" : "false") +
-                  '" aria-keyshortcuts="Delete"',
-              ) +
-              pinVisit(p) +
-              "</div>"
-            );
-          })
-          .join(""),
-      );
+  /**
+   * The rail as the kit's data (shellHtml's nav, groups and foot): the
+   * pins, then the NAV registry by GROUPS, then Hub, Settings and who
+   * this browser is. The kit draws it (railHtml) with its collapse toggle.
+   */
+  function railModel() {
+    var groups = [];
+    var entries = [];
+    if (state.pins.length) {
+      groups.push({ id: "pinned", label: t("g.pinned") });
+      state.pins.forEach(function (p) {
+        // 0.4.18: the row (named by the id alone) opens the service's
+        // panel in place (svc-panel.js); it is still the link to
+        // Services, so ⌘-click and middle-click open that in a new
+        // tab. Delete unpins it. Visit ↗ beside it opens the service's
+        // URL, out of the tab order: the panel's first button is the
+        // keyboard's Visit. Unpin is in the panel's footer.
+        entries.push({
+          id: "pin-" + p,
+          group: "pinned",
+          href: pinHref(p),
+          label: p,
+          lead: healthDot(p),
+          mono: true,
+          pin: p,
+          after: pinVisit(p),
+          attrs: {
+            "data-pin": p,
+            "data-svpanel": p,
+            "aria-haspopup": "dialog",
+            "aria-expanded": state.svpOpen === p ? "true" : "false",
+            "aria-keyshortcuts": "Delete",
+          },
+        });
+      });
+    }
     var ordered = orderedNav();
     GROUPS.slice()
       .sort(byOrder)
@@ -4747,61 +4640,40 @@
           );
         });
         if (!items.length) return;
-        html += group(
-          g.id,
-          t(g.label),
-          g.from,
-          items
-            .map(function (n) {
-              var b = n.badge ? n.badge(state) : null;
-              var name = t(n.label);
-              return item(
-                {
-                  id: n.id,
-                  href: n.href,
-                  title: name,
-                  icon: n.icon,
-                  tip: n.tip ? t(n.tip) : "",
-                },
-                n.id === railLit,
-                b
-                  ? '<span class="den-bdg' +
-                      (b.bad ? " bad" : "") +
-                      '" aria-hidden="true">' +
-                      esc(b.n) +
-                      "</span>"
-                  : "",
-                b && b.label
-                  ? ' aria-label="' + esc(name + ", " + b.label) + '"'
-                  : "",
-              );
-            })
-            .join(""),
-        );
+        groups.push({ id: g.id, label: t(g.label), from: g.from });
+        items.forEach(function (n) {
+          var b = n.badge ? n.badge(state) : null;
+          entries.push({
+            id: n.id,
+            group: g.id,
+            href: n.href,
+            label: t(n.label),
+            icon: n.icon,
+            tip: n.tip ? t(n.tip) : "",
+            current: n.id === railLit,
+            badge: b,
+          });
+        });
       });
-    html += '<div class="den-rail-grow"></div>';
-    html += hubItem();
-    html += item(
-      {
-        id: SETTINGS.id,
-        href: SETTINGS.href,
-        title: t(SETTINGS.label),
-        icon: SETTINGS.icon,
-      },
-      page === SETTINGS.id,
-    );
-    html += identityChip();
-    html +=
-      '<button class="den-ni den-collapse-btn" type="button" data-act="collapse" aria-expanded="' +
-      (state.collapsed ? "false" : "true") +
-      '" title="' +
-      esc(state.collapsed ? t("expand") : t("collapse")) +
-      '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="' +
-      (state.collapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6") +
-      '"/></svg><span class="den-lbl">' +
-      esc(state.collapsed ? t("expand") : t("collapse")) +
-      "</span></button>";
-    return html;
+    var foot = [];
+    var hub = hubEntry();
+    if (hub) foot.push(hub);
+    foot.push({
+      id: SETTINGS.id,
+      href: SETTINGS.href,
+      label: t(SETTINGS.label),
+      icon: SETTINGS.icon,
+      current: page === SETTINGS.id,
+    });
+    var who = identityEntry();
+    if (who) foot.push(who);
+    return {
+      nav: entries,
+      groups: groups,
+      foot: foot,
+      lang: lang,
+      collapsed: state.collapsed,
+    };
   }
 
   /**
@@ -4853,52 +4725,44 @@
       (h.state === "connected" ? "hub.railBadUrl" : "hub.railUnreachable");
     return { href: "", why: t(key) };
   }
-  function hubItem() {
+  function hubEntry() {
     var h = state.hub;
     var link = hubLink();
-    if (!link) return "";
+    if (!link) return null;
     var label = t("hub.rail");
-    var href = link.href;
-    if (!href) {
+    if (!link.href) {
       var why = link.why;
-      return (
-        '<a class="den-ni den-hub den-off" href="/settings#agents.hub" data-nav="hub" data-hub="' +
-        esc(h.state || "unknown") +
-        '" title="' +
-        esc(why) +
-        '" aria-label="' +
-        esc(label + ": " + why) +
-        '">' +
-        icon("hub") +
-        '<span class="den-lbl">' +
-        esc(label) +
-        "</span></a>"
-      );
+      return {
+        id: "hub",
+        cls: "den-hub den-off",
+        href: "/settings#agents.hub",
+        label: label,
+        icon: "hub",
+        tip: why,
+        attrs: {
+          "data-hub": h.state || "unknown",
+          "aria-label": label + ": " + why,
+        },
+      };
     }
     var tip = h.team
       ? t("hub.railTip", { team: h.team })
       : t("hub.railTipPlain");
     var n = typeof h.unread === "number" && h.unread > 0 ? h.unread : 0;
     var waiting = n ? t("hub.railUnread", { n: n }) : "";
-    return (
-      '<a class="den-ni den-hub" href="' +
-      esc(href) +
-      '" data-nav="hub" data-hub="connected" title="' +
-      esc(tip) +
-      '" aria-label="' +
-      esc(label + ", " + tip + (waiting ? ", " + waiting : "")) +
-      '">' +
-      icon("hub") +
-      '<span class="den-lbl">' +
-      esc(label) +
-      "</span>" +
-      (n
-        ? '<span class="den-bdg" aria-hidden="true">' +
-          esc(n > 99 ? "99+" : n) +
-          "</span>"
-        : "") +
-      "</a>"
-    );
+    return {
+      id: "hub",
+      cls: "den-hub",
+      href: link.href,
+      label: label,
+      icon: "hub",
+      tip: tip,
+      badge: n ? { n: n > 99 ? "99+" : n } : null,
+      attrs: {
+        "data-hub": "connected",
+        "aria-label": label + ", " + tip + (waiting ? ", " + waiting : ""),
+      },
+    };
   }
 
   /**
@@ -4914,20 +4778,16 @@
     if (id.kind === "github" || id.kind === "device") return t("ident.device");
     return "";
   }
-  function identityChip() {
+  function identityEntry() {
     var label = identityLabel(state.identity);
-    if (!label) return "";
-    return item(
-      {
-        id: "identity",
-        href: "/settings#access",
-        title: label,
-        icon: "person",
-      },
-      false,
-      "",
-      ' id="den-ident" data-ident="' + esc(state.identity.kind) + '"',
-    );
+    if (!label) return null;
+    return {
+      id: "identity",
+      href: "/settings#access",
+      label: label,
+      icon: "person",
+      attrs: { id: "den-ident", "data-ident": state.identity.kind },
+    };
   }
   /** What GET /api/session said about this browser: the chip, and a toast once after a sign-in. */
   function applyIdentity(b) {
@@ -4944,102 +4804,37 @@
       );
   }
 
-  // One tab stop for the rail: the current page, else the first item.
-  function rove() {
-    var links = Array.prototype.slice.call(nav.querySelectorAll(".den-ni"));
-    var stop = null;
-    for (var i = 0; i < links.length; i++)
-      if (
-        links[i].getAttribute
-          ? links[i].getAttribute("aria-current") === "page"
-          : links[i].attrs && links[i].attrs["aria-current"] === "page"
-      )
-        stop = links[i];
-    if (!stop) stop = links[0];
-    for (var j = 0; j < links.length; j++)
-      links[j].tabIndex = links[j] === stop ? 0 : -1;
-  }
-  var lastHtml = "";
-  function renderRail() {
-    if (!nav) return;
-    var html = railHtml();
-    if (html === lastHtml) return;
-    // Keep keyboard focus on the same item across a re-render.
-    var active = document.activeElement;
-    var keep =
-      active && nav.contains && nav.contains(active) && active.dataset
-        ? active.dataset.nav
-        : null;
-    lastHtml = html;
-    nav.innerHTML = html;
-    rove();
-    if (keep && nav.querySelector) {
-      var again = nav.querySelector('[data-nav="' + keep + '"]');
-      if (again) {
-        again.tabIndex = 0;
-        again.focus();
-      }
-    }
-  }
-
-  /**
-   * Unpin from the rail (Delete on a pinned row, or its ×) and keep focus
-   * in the rail: the next pinned row, else the previous one, else the
-   * first item. One rule for both paths.
-   */
-  function unpinFromRail(pinId) {
-    var pins = Array.prototype.slice.call(
-      nav.querySelectorAll(".den-ni[data-pin]"),
-    );
-    var at = -1;
-    for (var k = 0; k < pins.length; k++)
-      if (pins[k].dataset.pin === pinId) at = k;
-    var to = at < 0 ? null : pins[at + 1] || pins[at - 1] || null;
-    var toNav = to ? to.dataset.nav : null;
-    unpin(pinId);
-    var dest =
-      (toNav && nav.querySelector('[data-nav="' + toNav + '"]')) ||
-      nav.querySelector(".den-ni");
-    if (!dest) return;
-    Array.prototype.forEach.call(nav.querySelectorAll(".den-ni"), function (a) {
-      a.tabIndex = a === dest ? 0 : -1;
-    });
-    dest.focus();
-  }
-
-  // ↑/↓, Home and End move along the rail; Tab still leaves it (except
-  // in the narrow drawer, a modal: Tab stays inside).
-  nav.addEventListener("keydown", function (e) {
-    if (e.key === "Tab" && drawerOpen()) {
-      e.preventDefault();
-      return;
-    }
-    var links = Array.prototype.slice.call(nav.querySelectorAll(".den-ni"));
-    var i = links.indexOf(document.activeElement);
-    if (i < 0) return;
-    var pinId =
-      links[i].dataset && links[i].dataset.pin ? links[i].dataset.pin : null;
-    if (pinId && (e.key === "Delete" || e.key === "Backspace")) {
-      e.preventDefault();
-      unpinFromRail(pinId);
-      return;
-    }
-    var next =
-      e.key === "ArrowDown"
-        ? (i + 1) % links.length
-        : e.key === "ArrowUp"
-          ? (i - 1 + links.length) % links.length
-          : e.key === "Home"
-            ? 0
-            : e.key === "End"
-              ? links.length - 1
-              : -1;
-    if (next < 0) return;
-    e.preventDefault();
-    links[i].tabIndex = -1;
-    links[next].tabIndex = 0;
-    links[next].focus();
+  // The kit's hydration of the rail and the ☰ drawer (shell-client.js):
+  // one tab stop (the current page); ↑/↓, Home and End move within the
+  // rail; Delete unpins a pinned row; the collapse toggle; below 720px
+  // the rail is a modal drawer behind ☰ (the top bar, the page and the
+  // runs dock inert behind it; Escape, the scrim or ☰ close it).
+  var shellUi = DUI.hydrateShell(host, {
+    lang: lang,
+    onCollapse: function (next) {
+      setState({ collapsed: next });
+      saveShell({ collapsed: state.collapsed });
+    },
+    onUnpin: function (id) {
+      unpin(id);
+    },
+    inert: function () {
+      return [
+        host.querySelector(".den-top"),
+        document.getElementById("den-content"),
+        document.getElementById("den-dock"),
+      ];
+    },
+    menuOpen: function () {
+      return !!openPop;
+    },
   });
+  /** The rail from the registries and the state, drawn by the kit. */
+  function renderRail(force) {
+    if (!nav || !shellUi) return;
+    shellUi.paint(DUI.railHtml(railModel()), force);
+  }
+  // Den's own clicks in the rail (the kit handles the collapse toggle).
   nav.addEventListener("click", function (e) {
     var tgt = e.target;
     // D73: the rail's Terminal opens in the project in view (?ws=).
@@ -5066,83 +4861,21 @@
       servicePanel.open(sp.getAttribute("data-svpanel"), sp, {
         fromRail: true,
       });
-      return;
-    }
-    var c = tgt && tgt.closest ? tgt.closest('[data-act="collapse"]') : null;
-    if (c) {
-      setState({ collapsed: !state.collapsed });
-      saveShell({ collapsed: state.collapsed });
     }
   });
 
-  function applyCollapsed() {
+  /** The body's classes from the state: collapsed, reports off. */
+  function applyState() {
     // FB (den#81): reports off hides every Report button, the injected too.
     document.documentElement.classList.toggle(
       "den-report-off",
       !!state.reportOff,
     );
-    if (document.body && document.body.classList)
+    if (shellUi) shellUi.setCollapsed(!!state.collapsed);
+    else if (document.body && document.body.classList)
       document.body.classList.toggle("den-rail-collapsed", !!state.collapsed);
   }
 
-  // ☰ opens the rail as a drawer below 720px: a modal overlay. Focus
-  // moves into the rail (the current item); the top bar and the page are
-  // inert behind a scrim; Escape or the scrim closes it and focus goes back
-  // to ☰; Tab stays inside.
-  var menu = host.querySelector(".den-menu-btn");
-  var scrim = null;
-  function drawerOpen() {
-    return document.body.classList.contains("den-rail-open");
-  }
-  function setInert(on) {
-    var els = [
-      host.querySelector(".den-top"),
-      document.getElementById("den-content"),
-      document.getElementById("den-dock"),
-    ];
-    els.forEach(function (el) {
-      if (!el) return;
-      if (on) el.setAttribute("inert", "");
-      else el.removeAttribute("inert");
-    });
-  }
-  function openDrawer() {
-    document.body.classList.add("den-rail-open");
-    if (menu) menu.setAttribute("aria-expanded", "true");
-    railBox.setAttribute("role", "dialog");
-    railBox.setAttribute("aria-modal", "true");
-    railBox.setAttribute("aria-label", t("pages"));
-    if (!scrim) {
-      scrim = document.createElement("div");
-      scrim.className = "den-scrim";
-      scrim.addEventListener("click", function () {
-        closeDrawer(true);
-      });
-    }
-    document.body.appendChild(scrim);
-    setInert(true);
-    var stop =
-      nav.querySelector('.den-ni[aria-current="page"]') ||
-      nav.querySelector('.den-ni[tabindex="0"]') ||
-      nav.querySelector(".den-ni");
-    if (stop) stop.focus();
-  }
-  function closeDrawer(refocus) {
-    if (!drawerOpen()) return;
-    document.body.classList.remove("den-rail-open");
-    if (menu) menu.setAttribute("aria-expanded", "false");
-    railBox.removeAttribute("role");
-    railBox.removeAttribute("aria-modal");
-    railBox.removeAttribute("aria-label");
-    if (scrim && scrim.remove) scrim.remove();
-    setInert(false);
-    if (refocus && menu) menu.focus();
-  }
-  if (menu)
-    menu.addEventListener("click", function () {
-      if (drawerOpen()) closeDrawer(true);
-      else openDrawer();
-    });
   // FB (den#81): ⌘⇧F (Ctrl+Shift+F) opens Report an issue from anywhere,
   // over an open dialog too.
   document.addEventListener(
@@ -5161,16 +4894,12 @@
     },
     true,
   );
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && drawerOpen() && !openPop) {
-      e.preventDefault();
-      closeDrawer(true);
-    }
-  });
-  // Wider than the drawer's step: the rail is a rail again.
-  window.addEventListener("resize", function () {
-    if (drawerOpen() && window.innerWidth > 720) closeDrawer(false);
-  });
+  // The version chip (the kit's) opens What's new (header.js).
+  var chip = document.getElementById("version-pill");
+  if (chip)
+    chip.addEventListener("click", function () {
+      if (typeof window.openChangelog === "function") window.openChangelog();
+    });
 
   // ── the page header (R20, 0.3.0-dev.32) ──────────────────────────────
   // One h1 per page, the page's own (the brand is not a heading). A page
@@ -5467,7 +5196,7 @@
   );
 
   document.body.classList.add("den-has-shell");
-  applyCollapsed();
+  applyState();
   renderRail();
 
   // ── the runs dock (R16, 0.3.0-dev.30) ──────────────────────────────────
@@ -7531,18 +7260,7 @@
    */
   function reportButton(inFoot, inTop) {
     if (state.reportOff) return "";
-    return (
-      '<button type="button" class="den-rb' +
-      (inFoot ? " den-rb-in" : "") +
-      (inTop ? " den-rb-top" : "") +
-      '" data-den-report aria-keyshortcuts="Meta+Shift+F Control+Shift+F" title="' +
-      esc(t("fb.tip")) +
-      '">' +
-      icon("report") +
-      "<span>" +
-      esc(t("fb.word")) +
-      '</span><kbd aria-hidden="true">⌘⇧F</kbd></button>'
-    );
+    return DUI.reportButtonHtml({ inFoot: inFoot, inTop: inTop, lang: lang });
   }
   /**
    * issue 143: a pop-up's own Report footer, for one that draws or repaints
@@ -7563,10 +7281,10 @@
     openReport();
   });
 
-  /** FB (den#81): the Report an issue dialog (report-dialog.js). */
+  /** FB (den#81): the Report an issue dialog (the kit's, through report-den.js). */
   function openReport(opts) {
     if (state.reportOff) return Promise.resolve(null);
-    return import("/report-dialog.js").then(function (m) {
+    return import("/report-den.js").then(function (m) {
       return m.openReport(opts || {});
     });
   }
@@ -7598,7 +7316,7 @@
   // My reports: the person's reports live from GitHub, and the drafts.
   function openMyReports() {
     if (state.reportOff) return Promise.resolve(null);
-    return import("/report-dialog.js").then(function (m) {
+    return import("/report-den.js").then(function (m) {
       return m.openMyReports();
     });
   }
@@ -7651,8 +7369,7 @@
     registerNav: registerNav,
     addMessages: function (l, msgs) {
       MESSAGES[l] = Object.assign({}, MESSAGES[l] || {}, msgs || {});
-      lastHtml = "";
-      renderRail();
+      renderRail(true);
     },
     t: t,
     tr: tr,
@@ -7707,7 +7424,7 @@
     hubLink: hubLink,
     /** Repaint the Env part from #env-sel (after setting its value). */
     syncEnv: syncEnv,
-    syncPinToggles: syncPinToggles,
+    syncPinToggles: pinToggles,
     registerCommand: registerCommand,
     unregisterCommand: unregisterCommand,
     commands: commands,
@@ -7827,47 +7544,13 @@
       })
       .catch(function () {});
 
+  // Den's own parts of the frame (the kit's shell.css, linked in each
+  // page's <head>, has the bar, the rail and the drawer): the scope, the
+  // search, the chips, menus, the page header, the toast, the banners,
+  // the status drawer, the palette, the service panel and the runs dock.
   var style = document.createElement("style");
   style.id = "den-shell-styles";
   style.textContent = [
-    // Layout: the prototype's 48px bar, 216px rail (56px collapsed); a
-    // drawer below 720px.
-    // The prototype's rail is `width: 216px` (56px collapsed) in a
-    // content box: with its padding and border it takes 233px (73px).
-    "body.den-has-shell { --den-top-h: 48px; --den-rail-cw: 216px;",
-    "  --den-rail-w: calc(var(--den-rail-cw) + 17px); padding-left: var(--den-rail-w); }",
-    "body.den-has-shell.den-rail-collapsed { --den-rail-cw: 56px; }",
-    // A column on every page (most pages are one already), so the runs
-    // dock sits at the foot even when the content is short.
-    "body.den-has-shell { display: flex; flex-direction: column; min-height: 100vh; }",
-    ".den-shell { display: contents; }",
-    ".den-top, .den-rail { font: 14px/1.45 var(--sans); }",
-    ".den-top :focus-visible, .den-rail :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
-    ".den-skip { position: fixed; left: 8px; top: -40px; z-index: 100; padding: 6px 10px;",
-    "  background: var(--surface); color: var(--text); border: 1px solid var(--accent);",
-    "  border-radius: var(--radius-button); font: 600 12px var(--sans); text-decoration: none; }",
-    ".den-skip:focus { top: 8px; }",
-    // Top bar (.top)
-    ".den-top { display: flex; align-items: center; gap: 8px; height: var(--den-top-h);",
-    "  box-sizing: border-box; padding: 0 12px; flex-shrink: 0; position: relative; z-index: 20;",
-    "  margin-left: calc(-1 * var(--den-rail-w)); background: var(--surface);",
-    "  border-bottom: 1px solid var(--border); min-width: 0; color: var(--text); }",
-    ".den-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;",
-    "  background: var(--bar, none); pointer-events: none; }",
-    // Brand (.brand, .mark)
-    ".den-brand { display: flex; align-items: center; gap: 8px; color: var(--text);",
-    "  text-decoration: none; flex-shrink: 0; white-space: nowrap; }",
-    ".den-title { font: 600 15px var(--display); margin: 0; white-space: nowrap; }",
-    "#den-shell .den-mark { width: 22px; height: 22px; }",
-    "#den-shell .den-mark img { width: 22px; height: 22px; }",
-    "#den-shell .den-mark-text { font: 700 12px/1 var(--mono); }",
-    "#den-shell .den-mark-rounded { border-radius: 6px; }",
-    // Buttons in the bar (.ib)
-    ".den-ib { background: none; border: 1px solid transparent; border-radius: var(--radius-button);",
-    "  padding: 4px 8px; cursor: pointer; color: var(--muted); display: inline-flex;",
-    "  align-items: center; gap: 6px; white-space: nowrap; font: inherit; }",
-    ".den-ib:hover { background: var(--sunken); color: var(--text); }",
-    ".den-menu-btn { display: none; }",
     // Scope (.scope, .sep, .k): / Org ▾ / Workspace ▾ / Env ▾ (R4)
     // The search gives way first (dev.20): the scope keeps its parts whole
     // (each name is capped below), so they never run into one another.
@@ -7944,8 +7627,6 @@
     ".den-search-ic { flex: none; }",
     ".den-top kbd, .den-pal kbd { font: 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px;",
     "  border-radius: 4px; padding: 0 5px; color: var(--muted); background: var(--surface); }",
-    // Chips (.chips, .chip, .dot: R6, R7, R8)
-    ".den-chips { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }",
     ".den-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);",
     "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer; font: inherit;",
     "  font-size: 13px; white-space: nowrap; flex-shrink: 0; color: var(--text); }",
@@ -8011,33 +7692,21 @@
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
     "@keyframes den-pulse { 50% { opacity: .35; } }",
     "@media (prefers-reduced-motion: reduce) { .den-dot.run, .den-dot.pending { animation: none; } }",
-    ".den-user { display: contents; }",
     // Buttons in overlays (.btn, .btn.sm, .btn.primary)
     ".den-btn { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button);",
     "  padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); }",
     ".den-btn:hover { border-color: var(--border-strong); }",
     ".den-btn.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }",
-    // FB (den#81): the footer Report button.
-    ".den-rb { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong, var(--border)); border-radius: var(--radius-button, 4px); background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }",
-    ".den-rb svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }",
-    ".den-rb kbd { font: 11px var(--mono); color: var(--muted); }",
-    "@media (max-width: 600px) { .den-rb kbd { display: none; } }",
-    // FB: where Report sits is the kit's (base.css, UK-3): first in a
-    // footer, right before the bell in the top bar.
-    ".den-rb-foot { display: flex; justify-content: flex-start; margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border); }",
     // A phone's top bar makes room for Report: Runs is in the dock bar.
     "@media (max-width: 480px) { #den-runs { display: none; } }",
     // …and the status chip's words shorten (…) rather than push the page
     // sideways, whatever they say.
     "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } #den-status .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }",
-    ".den-report-off [data-den-report] { display: none !important; }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
     // D27: Visit is a link styled as a button.
     "a.den-btn, a.den-pvisit { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }",
     "a.den-pvisit { display: grid; }",
-    // Status drawer (.scrim, .drawer, .prob-card, .grp, .svl: R15)
-    ".den-scrim { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); z-index: 40; }",
     ".den-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); z-index: 41;",
     "  box-sizing: content-box; background: var(--surface); border-left: 1px solid var(--border);",
     "  box-shadow: var(--shadow); display: flex; flex-direction: column; font: 14px/1.45 var(--sans);",
@@ -8101,70 +7770,9 @@
     ".den-pop .den-lock-save[hidden], .den-pop .den-lock-err[hidden], .den-mslot[hidden] { display: none; }",
     ".den-pop .den-lock-err { color: var(--bad); font-size: 12.5px; }",
     ".den-pop #den-lock-t { overflow-wrap: anywhere; }",
-    // What's new (.ib.whatsnew + .badge-dot)
-    "#den-shell .v-pill { font: inherit; padding: 4px 8px; border: 1px solid transparent;",
-    "  border-radius: var(--radius-button); color: var(--muted); flex-shrink: 0; }",
-    "#den-shell .v-pill:hover { background: var(--sunken); color: var(--text); border-color: transparent; }",
-    "#den-shell .v-pip { position: static; width: 7px; height: 7px; border: 0; border-radius: 50%;",
-    "  background: var(--accent); }",
-    // ◐ ▾ (the prototype's user menu, an .ib: appearance.js)
-    ".den-top .den-ib[aria-expanded='true'] { background: var(--sunken); color: var(--text); }",
-    // Rail (.rail)
-    ".den-rail-box { display: contents; }",
-    ".den-rail { position: fixed; left: 0; top: var(--den-top-h); bottom: 0; width: var(--den-rail-cw);",
-    "  box-sizing: content-box; display: flex; flex-direction: column; padding: 10px 8px;",
-    "  background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; z-index: 15;",
-    "  color: var(--text); }",
-    ".den-rail-group { display: contents; }",
-    // Group heading (.gh)
-    ".den-gh { font: 11px var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--faint);",
-    "  padding: 12px 10px 4px; display: flex; justify-content: space-between; }",
-    ".den-rail > .den-rail-group:first-child > .den-gh { padding-top: 2px; }",
-    ".den-tagx { font: 10px var(--mono); color: var(--faint); border: 1px dashed var(--border-strong);",
-    "  border-radius: 4px; padding: 0 4px; text-transform: none; letter-spacing: 0; }",
-    // Rail item (.ni)
-    ".den-ni { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;",
-    "  text-align: left; background: none; border: 0; padding: 6px 10px; border-radius: var(--radius-button);",
-    "  cursor: pointer; color: var(--muted); text-decoration: none; position: relative; font: inherit; }",
-    ".den-ni:hover { background: var(--sunken); color: var(--text); }",
-    // The rail's Hub link: ↗ (a new tab); greyed when Hub refuses it.
-    ".den-ni .den-ext { color: var(--faint); font-size: 12px; }",
-    ".den-ni.den-off { opacity: .55; }",
-    ".den-ni[aria-current='page'] { background: color-mix(in srgb, var(--accent) 13%, transparent);",
-    "  color: var(--text); font-weight: 500; }",
-    ".den-ni[aria-current='page']::before { content: ''; position: absolute; left: -8px; top: 6px;",
-    "  bottom: 6px; width: 3px; border-radius: 2px; background: var(--accent); }",
-    ".den-ni svg { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;",
-    "  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }",
-    ".den-lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
-    ".den-mono { font-family: var(--mono); font-size: 12.5px; }",
-    ".den-bdg { font: 11px var(--mono); padding: 0 6px; border-radius: 999px; background: var(--sunken);",
-    "  color: var(--muted); font-variant-numeric: tabular-nums; }",
-    ".den-bdg.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }",
-    ".den-rail-grow { flex: 1; }",
     // 0.4.45: a heading never breaks inside a word (ja has no spaces, so
     // ブランチ broke into single characters in a narrow column).
     "h1, h2, h3, th { word-break: keep-all; overflow-wrap: break-word; }",
-    ".den-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;",
-    "  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
-    // Pinned row: the dot in place of the icon (.dot, margin 0 5px)
-    ".den-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none;",
-    "  display: inline-block; margin: 0 5px; }",
-    ".den-dot.bad { background: var(--bad); } .den-dot.warn { background: var(--warn); }",
-    ".den-dot.off { background: var(--faint); }",
-    // 0.4.18: a pinned row is its name (opens the service panel) and Visit ↗.
-    ".den-pin-row { display: flex; align-items: center; gap: 2px; min-width: 0; }",
-    ".den-pin-row .den-ni { flex: 1; min-width: 0; }",
-    ".den-pin-row .den-ni[aria-expanded='true'] { background: var(--sunken); color: var(--text); }",
-    ".den-pvisit { flex: none; width: 26px; height: 26px; padding: 0; display: grid; place-items: center;",
-    "  background: none; border: 1px solid transparent; border-radius: var(--radius-button);",
-    "  color: var(--muted); cursor: pointer; font: 13px/1 var(--sans); }",
-    ".den-pvisit:hover { background: var(--sunken); color: var(--accent-text); border-color: var(--border); }",
-    ".den-pvisit[aria-disabled='true'], .den-svp .den-btn[aria-disabled='true'] { opacity: .45; cursor: not-allowed; }",
-    ".den-pvisit[aria-disabled='true']:hover { background: none; color: var(--muted); border-color: transparent; }",
-    "body.den-rail-collapsed .den-rail .den-pvisit { display: none; }",
-    "@media (max-width: 720px) { .den-pvisit { width: 32px; height: 32px; }",
-    "  body.den-rail-collapsed .den-rail .den-pvisit { display: grid; } }",
     // The service panel (svc-panel.js): beside its row, a bottom sheet at phone width.
     ".den-pop.den-svp { width: 340px; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 0;",
     "  max-height: calc(100dvh - 16px); overflow-y: auto; min-width: 0; }",
@@ -8211,12 +7819,6 @@
     ".den-pop.den-svp.den-sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px;",
     "  background: var(--border-strong); margin: 8px auto 0; }",
     ".den-pop.den-svp.den-sheet .den-svp-acts .den-btn { flex: 1 1 auto; padding: 9px 12px; }",
-    // Collapsed: icons only. The prototype hides headings and labels; they
-    // stay here for screen readers (visually hidden, no space taken).
-    "body.den-rail-collapsed .den-rail .den-lbl, body.den-rail-collapsed .den-rail .den-gh,",
-    "body.den-rail-collapsed .den-rail .den-bdg {",
-    "  position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;",
-    "  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
     // Toast (.toast)
     ".den-toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);",
     "  background: var(--raised); border: 1px solid var(--border-strong); border-radius: 8px;",
@@ -8242,10 +7844,6 @@
     ".den-tx { border: 0; background: none; color: var(--faint); cursor: pointer; font: 16px/1 var(--sans); padding: 0 2px; }",
     ".den-tx:hover { color: var(--text); }",
     ".den-toast :focus-visible, .den-banners :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
-    // The shared update pill over the top bar, centred on it: a 50px pill
-    // on the 48px bar (--den-top-h) sits at top -1px. Den's type.
-    "body.den-has-shell .den-upd { --upd-top: calc(env(safe-area-inset-top, 0px) + (var(--den-top-h) - 50px) / 2);",
-    "  font-family: var(--sans); }",
     // Banners (.note-banner): the unreachable server (R26d) and others, at
     // the top of the content.
     ".den-banners { flex: none; margin: 16px 24px 0; display: grid; gap: 8px; font: 14px/1.45 var(--sans); }",
@@ -8305,37 +7903,17 @@
     "@media (max-width: 860px) { .den-scope .den-k, .den-scope .den-sep, .den-scope .den-opt { display: none; }",
     "  .den-chip .den-lbl-l { display: none; } }",
     "@media (max-width: 720px) {",
-    "  body.den-has-shell, body.den-has-shell.den-rail-collapsed { --den-rail-w: 0px; --den-rail-cw: 244px; }",
-    "  .den-menu-btn { display: inline-flex; }",
-    "  .den-rail { transform: translateX(-105%); transition: transform .18s;",
-    "    box-shadow: var(--shadow); z-index: 42; }",
-    "  body.den-rail-open .den-rail { transform: none; }",
-    "  .den-scrim { position: fixed; inset: 0; z-index: 41; background: color-mix(in srgb, var(--bg) 60%, transparent); }",
-    "  body.den-rail-collapsed .den-rail .den-lbl, body.den-rail-collapsed .den-rail .den-gh,",
-    "  body.den-rail-collapsed .den-rail .den-bdg { position: static; width: auto; height: auto;",
-    "    clip: auto; overflow: hidden; }",
-    "  .den-collapse-btn { display: none; }",
     "  .den-scope { display: none; }",
     "  .den-search { flex: 0 0 auto; margin: 0 0 0 auto; }",
     "  .den-search-ph, .den-search kbd { display: none; }",
-    "  .den-top .v-pill { display: none; }",
-    // Never wider than the window (SA's dev.20 run: 429px at 400): a long
-    // product name gives way first, the stale-server pill keeps its ⚠.
-    "  .den-brand { min-width: 0; flex: 0 1 auto; }",
-    "  .den-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
     "  .den-top .stale-lbl { display: none; }",
-    "  .den-chips { flex-shrink: 0; }",
     "}",
-    // Below 480px only the mark shows: the title stays the link's name,
-    // visually hidden (SA's dev.21 run).
-    "@media (max-width: 479.98px) {",
-    "  .den-title { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;",
-    "    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }",
     // A phone's tap targets: every top-bar button 32 px or more each way
-    // (issue 209, T9).
+    // (issue 209, T9). The rest of this step (the title visually hidden)
+    // is the kit's shell.css.
+    "@media (max-width: 479.98px) {",
     "  .den-top button, .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
     "}",
-    "@media (prefers-reduced-motion: reduce) { .den-rail { transition: none; } }",
   ].join("\n");
   document.head.appendChild(style);
 })();

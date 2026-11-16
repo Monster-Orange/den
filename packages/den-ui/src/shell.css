@@ -1,0 +1,558 @@
+/*
+ * den-ui shell: the global shell's look (shell-html.js draws it): the
+ * 48px top bar, the 216px rail (56px collapsed, a ☰ drawer below 720px),
+ * its groups, entries, pins and badges, the Report button, the version
+ * chip, and where the update pill sits on the bar. Tokens only (tokens.css).
+ * A product's own top-bar parts (its slots) bring their own CSS.
+ *
+ * Load it in the page's <head>, after tokens.css and the theme:
+ *   <link rel="stylesheet" href="/kit/shell.css">
+ * and add class den-has-shell to <body>.
+ */
+body.den-has-shell {
+  --den-top-h: 48px;
+  --den-rail-cw: 216px;
+  --den-rail-w: calc(var(--den-rail-cw) + 17px);
+  padding-left: var(--den-rail-w);
+}
+body.den-has-shell.den-rail-collapsed {
+  --den-rail-cw: 56px;
+}
+body.den-has-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding-top: var(--den-top-h);
+  box-sizing: border-box;
+}
+/* The page's one main (#den-content, the skip link's target) takes what
+   is left under the top bar, so a short page's last row can reach the
+   window's bottom. */
+body.den-has-shell > #den-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.den-shell {
+  display: contents;
+}
+.den-top,
+.den-rail {
+  font: 14px/1.45 var(--sans);
+}
+.den-top :focus-visible,
+.den-rail :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.den-skip {
+  position: fixed;
+  left: 8px;
+  top: -40px;
+  z-index: 100;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-button);
+  font: 600 12px var(--sans);
+  text-decoration: none;
+}
+.den-skip:focus {
+  top: 8px;
+}
+.den-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--den-top-h);
+  box-sizing: border-box;
+  padding: 0 12px;
+  flex-shrink: 0;
+  /* Pinned, as the rail under it is: fixed, whatever the host does with
+     html and body (sticky is held by the body's box, and a body of
+     height 100% lets the bar scroll away). The body's padding-top keeps
+     the page out from under it. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  /* Its own layer from the start (0.6.4). The update pill's glass
+     (blur and saturate) makes Chromium draw the page's text grayscale
+     while it shows; drawn on its own layer, the bar is the same with the
+     pill shown or hidden. A fixed element inside the bar would be placed
+     against the bar, so the kit and products put none there (pop-ups go
+     on <body>); the bar never clips (no overflow), so a slot's absolute
+     menu still drops below it. */
+  will-change: transform;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  color: var(--text);
+}
+.den-top::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--bar, none);
+  pointer-events: none;
+}
+.den-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  text-decoration: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.den-title {
+  font: 600 15px var(--display);
+  margin: 0;
+  white-space: nowrap;
+}
+#den-shell .den-mark {
+  width: 22px;
+  height: 22px;
+}
+#den-shell .den-mark img {
+  width: 22px;
+  height: 22px;
+}
+#den-shell .den-mark-text {
+  font: 700 12px/1 var(--mono);
+}
+#den-shell .den-mark-rounded {
+  border-radius: 6px;
+}
+.den-ib {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font: inherit;
+}
+.den-ib:hover {
+  background: var(--sunken);
+  color: var(--text);
+}
+.den-menu-btn {
+  display: none;
+}
+.den-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.den-user {
+  display: contents;
+}
+.den-rb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-button, 4px);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.den-rb svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.den-rb kbd {
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+@media (max-width: 600px) {
+  .den-rb kbd {
+    display: none;
+  }
+}
+.den-rb-foot {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: auto;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+.den-report-off [data-den-report] {
+  display: none !important;
+}
+.den-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--kit-scrim);
+  z-index: 40;
+}
+#den-shell .v-pill {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+#den-shell .v-pill:hover {
+  background: var(--sunken);
+  color: var(--text);
+  border-color: transparent;
+}
+#den-shell .v-pip {
+  position: static;
+  width: 7px;
+  height: 7px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.den-top .den-ib[aria-expanded="true"] {
+  background: var(--sunken);
+  color: var(--text);
+}
+.den-rail-box {
+  display: contents;
+}
+.den-rail {
+  position: fixed;
+  left: 0;
+  top: var(--den-top-h);
+  bottom: 0;
+  width: var(--den-rail-cw);
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  z-index: 15;
+  color: var(--text);
+}
+.den-rail-group {
+  display: contents;
+}
+.den-gh {
+  font: 11px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  padding: 12px 10px 4px;
+  display: flex;
+  justify-content: space-between;
+}
+.den-rail > .den-rail-group:first-child > .den-gh {
+  padding-top: 2px;
+}
+.den-tagx {
+  font: 10px var(--mono);
+  color: var(--faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  padding: 0 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.den-ni {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  color: var(--muted);
+  text-decoration: none;
+  position: relative;
+  font: inherit;
+}
+.den-ni:hover {
+  background: var(--sunken);
+  color: var(--text);
+}
+.den-ni .den-ext {
+  color: var(--faint);
+  font-size: 12px;
+}
+.den-ni.den-off {
+  opacity: 0.55;
+}
+.den-ni[aria-current="page"] {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--text);
+  font-weight: 500;
+}
+.den-ni[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.den-ni svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.den-lbl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.den-mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.den-bdg {
+  font: 11px var(--mono);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--sunken);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.den-bdg.bad {
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  color: var(--bad);
+}
+.den-rail-grow {
+  flex: 1;
+}
+.den-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.den-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+  display: inline-block;
+  margin: 0 5px;
+}
+.den-dot.bad {
+  background: var(--bad);
+}
+.den-dot.warn {
+  background: var(--warn);
+}
+.den-dot.off {
+  background: var(--faint);
+}
+.den-pin-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.den-pin-row .den-ni {
+  flex: 1;
+  min-width: 0;
+}
+.den-pin-row .den-ni[aria-expanded="true"] {
+  background: var(--sunken);
+  color: var(--text);
+}
+.den-pvisit {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  color: var(--muted);
+  cursor: pointer;
+  font: 13px/1 var(--sans);
+}
+.den-pvisit:hover {
+  background: var(--sunken);
+  color: var(--accent-text);
+  border-color: var(--border);
+}
+.den-pvisit[aria-disabled="true"],
+.den-svp .den-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.den-pvisit[aria-disabled="true"]:hover {
+  background: none;
+  color: var(--muted);
+  border-color: transparent;
+}
+body.den-rail-collapsed .den-rail .den-pvisit {
+  display: none;
+}
+@media (max-width: 720px) {
+  .den-pvisit {
+    width: 32px;
+    height: 32px;
+  }
+  body.den-rail-collapsed .den-rail .den-pvisit {
+    display: grid;
+  }
+}
+body.den-rail-collapsed .den-rail .den-lbl,
+body.den-rail-collapsed .den-rail .den-gh,
+body.den-rail-collapsed .den-rail .den-bdg {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+body.den-has-shell .den-upd {
+  --upd-top: calc(
+    env(safe-area-inset-top, 0px) + (var(--den-top-h) - 50px) / 2
+  );
+  font-family: var(--sans);
+}
+@media (max-width: 720px) {
+  body.den-has-shell,
+  body.den-has-shell.den-rail-collapsed {
+    --den-rail-w: 0px;
+    --den-rail-cw: 244px;
+  }
+  .den-menu-btn {
+    display: inline-flex;
+  }
+  .den-rail {
+    transform: translateX(-105%);
+    transition: transform 0.18s;
+    box-shadow: var(--shadow);
+    z-index: 42;
+  }
+  body.den-rail-open .den-rail {
+    transform: none;
+  }
+  .den-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 41;
+    background: color-mix(in srgb, var(--bg) 60%, transparent);
+  }
+  body.den-rail-collapsed .den-rail .den-lbl,
+  body.den-rail-collapsed .den-rail .den-gh,
+  body.den-rail-collapsed .den-rail .den-bdg {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    overflow: hidden;
+  }
+  .den-collapse-btn {
+    display: none;
+  }
+  .den-top .v-pill {
+    display: none;
+  }
+  .den-brand {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .den-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .den-chips {
+    flex-shrink: 0;
+  }
+}
+@media (max-width: 479.98px) {
+  .den-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-rail {
+    transition: none;
+  }
+}
+/* The version chip's own look (it was What's new's: the shell's rules above win). */
+.v-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    color 0.1s,
+    border-color 0.1s;
+  position: relative;
+  flex-shrink: 0;
+}
+.v-pill:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.v-pip {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1.5px solid var(--bg);
+  display: none;
+  pointer-events: none;
+}

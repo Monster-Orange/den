@@ -29,6 +29,31 @@ config and manifest changes a distribution must make to move to it under
   machine's slot log, so waiting time can be counted.
 - Settings › Server: how many unit runs share the machine, and how long
   past its estimate a run is flagged.
+### Changed
+
+- Den's frame now comes from its UI kit, den-ui 0.6.0: the top bar, the
+  left rail with its pins, collapse and ☰ drawer, the version chip, What's
+  new and the Report form. Nothing looks or works differently. Another
+  product can draw the same frame with its own pages and words.
+- A new check, `npm run gate:den-ui`, fails when Den keeps its own copy of
+  a UI kit part. It runs in CI.
+- The UI kit is now 0.6.1. Its working pop-up can offer a link to the next
+  step in place of Try again, and show progress lines while it works.
+  Its styles come from a stylesheet file, so a page with a strict
+  Content Security Policy can use it. The kit also ships types.
+- The UI kit is now 0.6.2. Its ask-and-tell dialogs take their styles from
+  a stylesheet file, for strict Content Security Policy pages. A report
+  filed through the kit carries its masked screenshot. A failed action can
+  name its next step without a link. A product can show its own mark in
+  the top bar.
+- The UI kit is now 0.6.3. Den's top bar stays at the top of the window
+  on a page that scrolls. In the Report form, ⌘↵ (Ctrl+Enter) moves to
+  the next step, as in every other pop-up; it never sends the report. A
+  row can have its own Report button that opens the form filled in.
+- The UI kit is now 0.6.4. The top bar no longer changes shade when the
+  update pill shows.
+- The light theme's remote colour is a shade darker. An agent's initial
+  on its tinted disc now meets the 4.5:1 contrast bar.
 
 ### Fixed
 

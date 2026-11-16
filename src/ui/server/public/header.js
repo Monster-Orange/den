@@ -12,8 +12,8 @@
 
 import { buildScopeMenuModel } from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
-import { versionLabel } from "./version-label.js";
-import { changelogView } from "./changelog-view.js";
+import DenUI from "./den-kit.js";
+import { copyText, ensureWhatsNew } from "/kit/whatsnew.js";
 import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
 import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
 import { initBell } from "./bell.js";
@@ -147,501 +147,28 @@ export function healthEnv() {
   );
 }
 
-// ── Changelog modal ────────────────────────────────────────────────────────────
+// ── What's new and the version chip: the kit's (den-ui, issue 95) ──────────
+// The kit draws and runs the pop-up (whatsnew.js) and the chip (version.js);
+// Den gives it the changelog (den-kit.js's adapter), remembers the newest
+// version seen, and opens it on a new version's first visit.
 
 const LS_CHANGELOG_SEEN = "__DEN_CLI__-changelog-seen";
-let _changelogEntries = [];
-let _changelogInjected = false;
-/** The pop-up lists every version only after the reader asks. */
-let _clShowAll = false;
-
-function _injectChangelogStyles() {
-  if (_changelogInjected) return;
-  _changelogInjected = true;
-
-  const style = document.createElement("style");
-  style.textContent = `
-    .v-pill {
-      font-family: var(--mono); font-size: 10px;
-      padding: 2px 8px; border-radius: 10px;
-      border: 1px solid var(--border); color: var(--muted);
-      background: none; cursor: pointer; user-select: none;
-      transition: color .1s, border-color .1s; position: relative;
-      flex-shrink: 0;
-    }
-    .v-pill:hover { color: var(--accent-text); border-color: var(--accent); }
-    .v-pip {
-      position: absolute; top: -3px; right: -3px;
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--accent);
-      border: 1.5px solid var(--bg);
-      display: none; pointer-events: none;
-    }
-    .cl-overlay {
-      position: fixed; inset: 0; z-index: 1000;
-      background: rgba(0,0,0,.65);
-      display: none; align-items: center; justify-content: center;
-    }
-    .cl-overlay.open { display: flex; }
-    .cl-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px; width: min(580px, 92vw); max-height: 78vh;
-      display: flex; flex-direction: column; overflow: hidden;
-      box-shadow: var(--shadow);
-    }
-    .cl-hdr {
-      display: flex; align-items: center; gap: 10px;
-      padding: 13px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    .cl-hdr h3 {
-      font-family: var(--mono); font-size: 13px; font-weight: 600;
-      color: var(--text); flex: 1; margin: 0;
-    }
-    .cl-close {
-      background: none; border: none; color: var(--muted);
-      font-size: 18px; cursor: pointer; line-height: 1;
-      padding: 2px 5px; border-radius: 3px; transition: color .1s, background .1s;
-    }
-    .cl-close:hover { color: var(--text); background: var(--border); }
-    .cl-body { overflow-y: auto; padding: 16px 18px; flex: 1; }
-    .cl-entry { margin-bottom: 18px; }
-    .cl-ver-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-    .cl-ver {
-      margin: 0;
-      font-family: var(--mono); font-size: 13px; font-weight: 700;
-      color: var(--accent-text);
-    }
-    .cl-date { font-size: 11px; color: var(--muted); }
-    .cl-note { font-size: 12px; color: var(--muted); margin: 0 0 8px; font-style: italic; }
-    .cl-sec {
-      font-size: 10px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .07em; color: var(--muted); margin: 8px 0 4px;
-    }
-    .cl-items { list-style: none; padding: 0; margin: 0; }
-    .cl-items li {
-      font-size: 12px; color: var(--text);
-      padding: 2px 0 2px 14px; position: relative; line-height: 1.5;
-    }
-    .cl-items li::before { content: "·"; position: absolute; left: 2px; color: var(--muted); }
-    .cl-subitems { list-style: none; padding: 0; margin: 2px 0 0 0; }
-    .cl-subitems li { font-size: 11.5px; padding: 1px 0 1px 14px; color: var(--muted); }
-    .cl-subitems li::before { content: "–"; position: absolute; left: 2px; }
-    .cl-items code {
-      font-family: var(--mono); font-size: 10.5px;
-      color: var(--accent-text); background: color-mix(in srgb, var(--accent) 10%, transparent);
-      padding: 1px 4px; border-radius: 3px;
-    }
-    .cl-divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
-    .cl-copy-group { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
-    .cl-copy-btn, .cl-slack-btn {
-      background: none; border: 1px solid var(--border); color: var(--muted);
-      padding: 3px 6px; border-radius: 4px; line-height: 0;
-      cursor: pointer; flex-shrink: 0;
-      display: inline-flex; align-items: center; justify-content: center;
-      transition: color .1s, border-color .1s;
-    }
-    .cl-more-btn { padding: 4px 12px;
-      font: inherit; font-size: 11px; color: var(--muted);
-      background: none; border: 1px solid var(--border); border-radius: 6px;
-      cursor: pointer;
-    }
-    .cl-more-btn:hover { color: var(--accent-text); border-color: var(--accent); }
-    .cl-copy-btn:hover { color: var(--accent-text); border-color: var(--accent); }
-    .cl-copy-btn.copied { color: var(--ok); border-color: var(--ok); }
-    .cl-slack-btn:hover { color: var(--accent-text); border-color: var(--accent); }
-    .cl-slack-btn.copied { color: var(--ok); border-color: var(--ok); }
-    .cl-footer .den-rb { margin-right: auto; }
-    .cl-footer {
-      padding: 10px 18px; border-top: 1px solid var(--border);
-      display: flex; justify-content: flex-end; flex-shrink: 0; gap: 8px;
-      background: var(--surface);
-    }
-    .cl-got-it {
-      background: var(--accent-fill); border: none; color: var(--on-accent);
-      padding: 5px 16px; border-radius: 5px; font-size: 12px;
-      font-weight: 600; cursor: pointer;
-    }
-    .cl-got-it:hover { filter: brightness(0.92); }
-  `;
-  document.head.appendChild(style);
-
-  // Modal overlay
-  const overlay = document.createElement("div");
-  overlay.id = "cl-overlay";
-  overlay.className = "cl-overlay";
-  overlay.innerHTML =
-    '<div class="cl-box" role="dialog" aria-modal="true" aria-labelledby="cl-title">' +
-    `<div class="cl-hdr"><h3 id="cl-title" tabindex="-1">${escT("cl.title")}</h3><button type="button" class="cl-close" id="cl-close-btn" title="${escT("cl.close")}" aria-label="${escT("cl.close")}">×</button></div>` +
-    '<div class="cl-body" id="cl-body"></div>' +
-    '<div class="cl-footer">' +
-    // FB (den#81): Report, as in every pop-up.
-    (window.denShell?.reportButton?.() ?? "") +
-    '<button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">' +
-    escT("cl.gotIt") +
-    "</button></div>" +
-    "</div>";
-  document.body.appendChild(overlay);
-  document.getElementById("cl-more")?.addEventListener("click", () => {
-    _clShowAll = !_clShowAll;
-    _renderChangelogBody(_changelogEntries);
-    const body = document.getElementById("cl-body");
-    if (body) body.scrollTop = 0;
-  });
-
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) window.closeChangelog();
-  });
-  document
-    .getElementById("cl-close-btn")
-    ?.addEventListener("click", () => window.closeChangelog());
-  document
-    .getElementById("cl-got-it-btn")
-    ?.addEventListener("click", () => window.closeChangelog());
-
-  document.addEventListener("keydown", (e) => {
-    if (!overlay.classList.contains("open")) return;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      window.closeChangelog();
-    } else if (e.key === "Tab") _trapChangelogTab(e, overlay);
-  });
-}
-
-/** Tab and Shift+Tab stay inside the open dialog (aria-modal). */
-function _trapChangelogTab(e, overlay) {
-  const box = overlay.querySelector(".cl-box");
-  const stops = [
-    ...box.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])"),
-  ].filter((el) => !el.hidden && !el.disabled && el.getClientRects().length);
-  if (!stops.length) return;
-  const first = stops[0];
-  const last = stops[stops.length - 1];
-  const at = document.activeElement;
-  // Anything not one of the stops (the focused heading, or outside) counts
-  // as outside: Shift+Tab from the heading must not leave the dialog.
-  const inside = stops.includes(at);
-  if (e.shiftKey ? at === first || !inside : at === last) {
-    e.preventDefault();
-    (e.shiftKey ? last : first).focus();
-  } else if (!inside) {
-    e.preventDefault();
-    first.focus();
-  }
-}
-
-function _renderChangelogBody(entries) {
-  const body = document.getElementById("cl-body");
-  if (!body) return;
-  if (!entries.length) {
-    body.innerHTML = `<p style="color:var(--muted);font-size:12px">${escT("cl.none")}</p>`;
-    return;
-  }
-  const escHtml = (s) =>
-    String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  const renderItem = (s) =>
-    escHtml(s)
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>");
-  const view = changelogView(entries, _clShowAll);
-  body.innerHTML = view.shown
-    .map(
-      (entry, i) =>
-        (i > 0 ? '<hr class="cl-divider">' : "") +
-        '<div class="cl-entry">' +
-        '<div class="cl-ver-row">' +
-        '<h4 class="cl-ver">v' +
-        escHtml(entry.version) +
-        "</h4>" +
-        '<span class="cl-date">' +
-        escHtml(entry.date) +
-        "</span>" +
-        '<div class="cl-copy-group">' +
-        '<button class="cl-copy-btn" data-cl-version="' +
-        escHtml(entry.version) +
-        '" title="' +
-        escT("cl.copyMd") +
-        '" aria-label="' +
-        escT("cl.copyMdX", { v: entry.version }) +
-        '">' +
-        '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5"/>' +
-        '<path d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"/>' +
-        "</svg>" +
-        "</button>" +
-        '<button class="cl-slack-btn" data-cl-version="' +
-        escHtml(entry.version) +
-        '" title="' +
-        escT("cl.copySlack") +
-        '" aria-label="' +
-        escT("cl.copySlackX", { v: entry.version }) +
-        '">' +
-        '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<path d="M1 2a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L5 12v-3H2a1 1 0 0 1-1-1V2z"/>' +
-        "</svg>" +
-        "</button>" +
-        "</div>" +
-        "</div>" +
-        (entry.note
-          ? '<p class="cl-note">' + renderItem(entry.note) + "</p>"
-          : "") +
-        Object.entries(entry.sections ?? {})
-          .map(
-            ([sec, items]) =>
-              '<div class="cl-sec">' +
-              escHtml(sec) +
-              "</div>" +
-              '<ul class="cl-items">' +
-              items
-                .map(
-                  (it) =>
-                    "<li>" +
-                    renderItem(it.text) +
-                    (it.sub?.length
-                      ? '<ul class="cl-subitems">' +
-                        it.sub
-                          .map((s) => "<li>" + renderItem(s) + "</li>")
-                          .join("") +
-                        "</ul>"
-                      : "") +
-                    "</li>",
-                )
-                .join("") +
-              "</ul>",
-          )
-          .join("") +
-        "</div>",
-    )
-    .join("");
-
-  // The toggle lives in the footer, so it is in view however long the
-  // newest entry is.
-  const more = document.getElementById("cl-more");
-  if (more) {
-    more.hidden = !view.toggle;
-    if (view.toggle) {
-      // changelog-view.js's labels are its en; the button says them in
-      // the page's language.
-      more.textContent = view.toggle.expanded
-        ? t("cl.latest")
-        : t("cl.all", { n: entries.length - 1 });
-      more.setAttribute("aria-expanded", String(view.toggle.expanded));
-    }
-  }
-
-  const _slackIcon =
-    '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="M1 2a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L5 12v-3H2a1 1 0 0 1-1-1V2z"/>' +
-    "</svg>";
-  const _copyIcon =
-    '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<rect x="4" y="0.5" width="8.5" height="8.5" rx="1.5"/>' +
-    '<path d="M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"/>' +
-    "</svg>";
-  const _checkIcon =
-    '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<polyline points="2,7 5,10 11,3"/>' +
-    "</svg>";
-
-  // Markdown copy — plain text for GitHub, MD editors, etc.
-  body.querySelectorAll(".cl-copy-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const entry = _changelogEntries.find(
-        (e) => e.version === btn.dataset.clVersion,
-      );
-      if (!entry) return;
-      try {
-        await copyToClipboard(entry.raw || _buildMarkdown(entry));
-        btn.innerHTML = _checkIcon;
-        btn.classList.add("copied");
-        setTimeout(() => {
-          btn.innerHTML = _copyIcon;
-          btn.classList.remove("copied");
-        }, 2000);
-      } catch {
-        btn.title = t("cl.copyFailed");
-        setTimeout(() => (btn.title = t("cl.copyMd")), 2000);
-      }
-    });
-  });
-
-  // Rich copy — contenteditable + execCommand produces DOM-originated HTML that
-  // Slack (and Notion, Docs) trusts and renders as formatted text.
-  body.querySelectorAll(".cl-slack-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const entry = _changelogEntries.find(
-        (e) => e.version === btn.dataset.clVersion,
-      );
-      if (!entry) return;
-      try {
-        await _writeRichToClipboard(_buildRichHtml(entry));
-        btn.innerHTML = _checkIcon;
-        btn.classList.add("copied");
-        setTimeout(() => {
-          btn.innerHTML = _slackIcon;
-          btn.classList.remove("copied");
-        }, 2000);
-      } catch {
-        btn.title = t("cl.copyFailed");
-        setTimeout(() => (btn.title = t("cl.copySlack")), 2000);
-      }
-    });
-  });
-}
-
-/**
- * Write plain text to clipboard.
- * Uses navigator.clipboard when available (secure contexts), falls back
- * to execCommand('copy') for http:// origins like http://__DEN_CLI__:7777.
- * Shared utility — use this instead of rolling your own copy logic.
- */
-export function copyToClipboard(text) {
-  if (navigator.clipboard?.writeText)
-    return navigator.clipboard.writeText(text);
-  return new Promise((resolve, reject) => {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.cssText = "position:fixed;opacity:0;top:0;left:0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try {
-      document.execCommand("copy")
-        ? resolve()
-        : reject(new Error("execCommand failed"));
-    } catch (e) {
-      reject(e);
-    } finally {
-      document.body.removeChild(ta);
-    }
-  });
-}
-
-/**
- * Write rich HTML to the clipboard via a hidden contenteditable element.
- *
- * ClipboardItem produces clipboard entries that Slack ignores. Copying from
- * an actual DOM selection (the "copy from webpage" path) puts HTML on the
- * clipboard in the format Slack's paste handler trusts and renders as
- * formatted text.
- */
-function _writeRichToClipboard(html) {
-  return new Promise((resolve, reject) => {
-    const el = document.createElement("div");
-    el.contentEditable = "true";
-    el.style.cssText =
-      "position:fixed;opacity:0;top:0;left:0;pointer-events:none";
-    el.innerHTML = html;
-    document.body.appendChild(el);
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    try {
-      document.execCommand("copy")
-        ? resolve()
-        : reject(new Error("execCommand failed"));
-    } catch (e) {
-      reject(e);
-    } finally {
-      sel.removeAllRanges();
-      document.body.removeChild(el);
-    }
-  });
-}
-
-/**
- * Build rich HTML for Slack paste. Uses inline formatting Slack renders:
- * <strong> for bold, <code> for inline code, <ul><li> for bullets.
- * Block-level headings are replaced with bold paragraphs so Slack doesn't
- * strip them.
- */
-function _buildRichHtml(entry) {
-  const esc = (s) =>
-    String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  const renderItem = (s) =>
-    esc(s)
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  const sections = Object.entries(entry.sections ?? {})
-    .map(([sec, items]) => {
-      const liItems = items.flatMap((it) => [
-        `<li>${renderItem(it.text)}</li>`,
-        ...(it.sub ?? []).map((s) => `<li>${renderItem(s)}</li>`),
-      ]);
-      return `<p><strong>${esc(sec)}</strong></p><ul>${liItems.join("")}</ul>`;
-    })
-    .join("");
-  return `<p><strong>v${esc(entry.version)} — ${esc(entry.date)}</strong></p>${sections}`;
-}
-
-/** Reconstruct markdown from a structured entry as a fallback. */
-function _buildMarkdown(entry) {
-  const lines = [`## [${entry.version}] — ${entry.date}`];
-  for (const [sec, items] of Object.entries(entry.sections ?? {})) {
-    lines.push("", `### ${sec}`, "");
-    for (const item of items) {
-      lines.push(`- ${item.text}`);
-      for (const s of item.sub ?? []) lines.push(`  - ${s}`);
-    }
-  }
-  return lines.join("\n");
-}
-
-// Where focus goes back to when the dialog closes.
-let _clReturnFocus = null;
 
 window.openChangelog = function () {
-  _clShowAll = false;
-  _injectChangelogStyles();
-  _renderChangelogBody(_changelogEntries);
-  const overlay = document.getElementById("cl-overlay");
-  if (!overlay) return;
-  const wasOpen = overlay.classList.contains("open");
-  if (!wasOpen) {
-    const at = document.activeElement;
-    // Nothing focused (a first-visit auto-open): the version pill.
-    _clReturnFocus =
-      at && at !== document.body && !overlay.contains(at)
-        ? at
-        : document.getElementById("version-pill");
-  }
-  overlay.classList.add("open");
-  // Always opens at the newest release. After `.open`: while the overlay is
-  // display:none the body has no scroll box, so a reset there doesn't stick.
-  const body = document.getElementById("cl-body");
-  if (body) body.scrollTop = 0;
-  // The heading first, so a screen reader starts at the latest notes.
-  document.getElementById("cl-title")?.focus();
+  DenUI.whatsNew.open();
 };
 
 window.closeChangelog = function () {
-  const overlay = document.getElementById("cl-overlay");
-  const wasOpen = !!overlay?.classList.contains("open");
-  if (overlay) overlay.classList.remove("open");
-  if (wasOpen) {
-    const back = _clReturnFocus?.isConnected
-      ? _clReturnFocus
-      : document.getElementById("version-pill");
-    _clReturnFocus = null;
-    back?.focus();
-  }
-  if (_changelogEntries[0]?.version) {
-    try {
-      localStorage.setItem(LS_CHANGELOG_SEEN, _changelogEntries[0].version);
-    } catch {}
-  }
-  const pip = document.getElementById("v-pip");
-  if (pip) pip.style.display = "none";
+  DenUI.whatsNew.close();
 };
+
+/**
+ * Text to the clipboard (navigator.clipboard, else execCommand for an
+ * http:// origin like http://__DEN_CLI__:7777): the kit's.
+ */
+export function copyToClipboard(text) {
+  return copyText(text);
+}
 
 /**
  * Fetch changelog, populate the version pill, and auto-open if unread.
@@ -649,25 +176,18 @@ window.closeChangelog = function () {
  */
 export async function initChangelog() {
   if (apiOff()) return;
-  _injectChangelogStyles();
-  try {
-    _changelogEntries = await fetch("/api/changelog").then((r) => r.json());
-  } catch {
-    _changelogEntries = [];
-  }
-
-  const latest = _changelogEntries[0];
+  // The overlay is on the page from the start (hidden), as before.
+  ensureWhatsNew();
+  const entries = await DenUI.whatsNew.load();
+  const latest = entries[0];
   let info = null;
   try {
     info = await fetch("/api/server-info").then((r) => r.json());
   } catch {
     /* fall back to the changelog's newest version */
   }
-  const pill = document.getElementById("version-pill");
-  if (pill) {
-    const label = versionLabel(info?.version ?? null, _changelogEntries);
-    if (label) pill.querySelector(".v-txt").textContent = label;
-  }
+  const label = DenUI.version.label(info?.version ?? null, entries);
+  if (label) DenUI.version.set(label);
 
   let lastSeen = null;
   try {
@@ -685,8 +205,7 @@ export async function initChangelog() {
   }
 
   if (latest?.version && lastSeen !== latest.version) {
-    const pip = document.getElementById("v-pip");
-    if (pip) pip.style.display = "block";
+    DenUI.version.unread(true);
     window.openChangelog();
   }
 }

@@ -513,11 +513,21 @@ describe("pages", () => {
     "%s has the shell's mark slot and no favicon image in the header",
     (f) => {
       const page = fs.readFileSync(path.join(PUBLIC, f), "utf-8");
-      // The mark slot is the shell's (shell.js), on every page.
+      // The mark slot is the shell's (shell.js, drawn by the UI kit's
+      // shell-html.js since issue 95), on every page.
       expect(page).toContain('<script src="/shell.js"></script>');
-      expect(fs.readFileSync(path.join(PUBLIC, "shell.js"), "utf-8")).toMatch(
-        /<span class="den-mark" id="den-mark"/,
-      );
+      expect(
+        fs.readFileSync(
+          path.join(
+            process.cwd(),
+            "packages",
+            "den-ui",
+            "src",
+            "shell-html.js",
+          ),
+          "utf-8",
+        ),
+      ).toMatch(/<span class="den-mark" id="den-mark"/);
       expect(page).not.toMatch(/<img[^>]*src="\/favicon\.ico"/);
     },
   );

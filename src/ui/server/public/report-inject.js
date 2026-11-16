@@ -6,7 +6,7 @@
  * of its own at the end. A pop-up that repaints itself (a dialog whose
  * contents change by state, a panel that refreshes) gets it back.
  *
- * Kept apart from the form (report-dialog.js) and from how the button
+ * Kept apart from the form (the kit's report.js) and from how the button
  * looks: it is given the button's HTML and whether reports are off, so the
  * form and the button can move to the shared UI package as they are.
  *

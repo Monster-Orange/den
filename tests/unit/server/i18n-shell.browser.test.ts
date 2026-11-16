@@ -19,6 +19,7 @@ import * as path from "path";
 import * as vm from "vm";
 import type { Browser, Page } from "playwright";
 import { pageImport } from "./helpers/page-import.js";
+import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
@@ -88,6 +89,10 @@ async function mount(): Promise<Page> {
   await p.route("http://den.test/**", async (r) => {
     const url = new URL(r.request().url());
     const json = (j: unknown, status = 200) => r.fulfill({ status, json: j });
+    // Issue 95: the kit's shell, as Den serves it, with the kit's own words
+    // in the pseudo-locale too.
+    const kitShell = kitAsset(url.pathname, "qps");
+    if (kitShell) return r.fulfill(kitShell);
     // The UI kit (/kit/*.js), as Den serves it: bell.js reads its time.
     const kit = /^\/kit\/([\w-]+\.js)$/.exec(url.pathname);
     if (kit && fs.existsSync(path.join(KIT, kit[1])))
@@ -178,12 +183,13 @@ async function mount(): Promise<Page> {
     if (url.pathname.startsWith("/api/")) return json({});
     return r.fulfill({
       contentType: "text/html; charset=utf-8",
-      body:
+      body: kitPage(
         `<!doctype html><html lang="qps"><head><style>:root { --mono: monospace; --sans: sans-serif; }</style></head><body>` +
-        `<script>window.denMessages = { qps: ${qps} };</script>` +
-        `<div id="den-shell" data-page="services"></div><script src="/shell.js"></script>` +
-        `<main id="den-content"><h1>page</h1></main>` +
-        `<script type="module">window.__hdr = await import("/header.js"); window.__hdr.initHealth();</script></body></html>`,
+          `<script>window.denMessages = { qps: ${qps} };</script>` +
+          `<div id="den-shell" data-page="services"></div><script src="/shell.js"></script>` +
+          `<main id="den-content"><h1>page</h1></main>` +
+          `<script type="module">window.__hdr = await import("/header.js"); window.__hdr.initHealth();</script></body></html>`,
+      ),
     });
   });
   await p.goto("http://den.test/services");

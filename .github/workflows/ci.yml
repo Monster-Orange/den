@@ -38,6 +38,10 @@ jobs:
       # org, user, session… (company, install, project, person, agent).
       - run: node scripts/words-gate.mjs
       - run: npm run lint
+      # Issue 95: Den keeps no copy of a UI kit component (den-ui's
+      # shell, version chip, What's new, update pill, Report, working
+      # pop-up); a copy passes only when DIVERGE.md names it with a reason.
+      - run: npm run -s gate:den-ui
       - name: Org-name gate
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}

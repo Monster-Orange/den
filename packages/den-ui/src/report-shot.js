@@ -1,10 +1,10 @@
 /**
- * FB (den#81): Report an issue's screenshot, and its mask.
+ * den-ui: the Report form's screenshot, and its mask.
  *
  * capture() takes the page as the person sees it, with any dialog, drawer
  * or menu that is open, before the form opens (the form itself is left
- * out). It uses html-to-image (MIT, served at /vendor/html-to-image.js,
- * the same version as Hub's), loaded the first time. It never throws: a
+ * out). It uses html-to-image (MIT; the product serves it and names its
+ * URL with configureShots({ library })), loaded the first time. It never throws: a
  * page that can't be captured, or that takes longer than `seconds`, gives
  * null, and the form offers to send without one.
  *
@@ -12,18 +12,27 @@
  * any size the image is shown at. masked() draws them in black onto a
  * copy: what is sent is the copy, never the original.
  *
- * The screenshot never goes to Den's server. GitHub's API can't attach an
+ * The screenshot never goes to the product's server. GitHub's API can't attach an
  * image, so after sending it is saved as a file and copied, and the person
  * pastes it into the issue.
  */
 
-const LIB = "/vendor/html-to-image.js";
+let LIB = "";
 let lib = null;
+
+/** Where html-to-image is (a URL on the product's own origin). */
+export function configureShots({ library } = {}) {
+  if (library && library !== LIB) {
+    LIB = library;
+    lib = null;
+  }
+}
 
 function loadLib() {
   if (lib) return lib;
   lib = new Promise((ok, no) => {
     if (window.htmlToImage) return ok(window.htmlToImage);
+    if (!LIB) return no(new Error("html-to-image: no library configured"));
     const sc = document.createElement("script");
     sc.src = LIB;
     sc.onload = () =>
@@ -77,7 +86,7 @@ export function masked(canvas, masks) {
   const g = out.getContext("2d");
   g.drawImage(canvas, 0, 0);
   // Black in every theme: a mask hides, it is not a theme colour.
-  g.fillStyle = "rgb(0, 0, 0)";
+  g.fillStyle = "black";
   for (const m of masks)
     g.fillRect(
       Math.floor(m.x * out.width),
@@ -174,7 +183,7 @@ export async function canvasOf(src) {
 
 /*
  * Finish later's screenshot stays in this browser (IndexedDB), keyed by
- * the draft's id, with its masks: the draft's text is on Den's server, the
+ * the draft's id, with its masks: the draft's text is on the product's server, the
  * picture never is. Storage off or full: the draft keeps its text only.
  */
 const DB = "den-report";

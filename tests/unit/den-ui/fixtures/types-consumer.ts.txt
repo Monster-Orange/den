@@ -1,0 +1,119 @@
+/**
+ * A consumer of the kit, compiled with --strict by kit-types.test.ts: it
+ * uses every entry's types, so a wrong or missing declaration fails there.
+ */
+import DenUI, {
+  configure,
+  mount,
+} from "@kit/kit.js";
+import {
+  shellHtml,
+  reportButtonHtml,
+  reportPrefillOf,
+  type ShellModel,
+} from "@kit/shell-html.js";
+import { hydrateShell } from "@kit/shell-client.js";
+import {
+  kitT,
+  addStrings,
+  en,
+} from "@kit/strings.js";
+import { icon } from "@kit/icons.js";
+import { versionLabel } from "@kit/version.js";
+import {
+  changelogView,
+  openWhatsNew,
+} from "@kit/whatsnew.js";
+import {
+  openReport,
+  localPreview,
+} from "@kit/report.js";
+import { rectOf, masked } from "@kit/report-shot.js";
+import {
+  busyAction,
+  registerActions,
+  configureBusy,
+} from "@kit/busy.js";
+import { BUSY_WORDS } from "@kit/busy-words.js";
+import { askConfirm, tell } from "@kit/dialog.js";
+import { formatTime, timeHtml } from "@kit/time.js";
+import { showUpdate } from "@kit/update-pill.js";
+
+const model: ShellModel = {
+  product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
+  nav: [{ id: "home", label: "Home", href: "/", group: "work", current: true }],
+  groups: [{ id: "work", label: "Work" }],
+  slots: { account: "<span></span>" },
+};
+const html: string = shellHtml(model);
+configure({
+  lang: "en",
+  product: { name: "Acme" },
+  adapter: {
+    changelog: async () => [
+      { version: "1.0.0", sections: { Added: [{ text: "x" }] } },
+    ],
+    fileReport: async (payload) => {
+      // 0.6.2: the masked screenshot, a PNG data URL, or null.
+      const shot: string | null = payload.shot;
+      return shot === "" ? { error: "empty" } : { number: 1, url: "https://example.test/1" };
+    },
+    request: async () => ({ state: "done" }),
+    applyUpdate: async () => undefined,
+  },
+});
+const shell = mount(document.body, {
+  ...model,
+  hydrate: { onCollapse: () => {} },
+});
+shell.setCollapsed(true);
+hydrateShell(document.body, { lang: () => "en" }).rove();
+DenUI.version.set(versionLabel("1.0.0", [{ version: "1.0.0" }]) ?? "v…");
+DenUI.whatsNew.open();
+DenUI.update.set({ version: "1.1.0" }).hide();
+void DenUI.report.open({ prefill: { title: "t" } });
+// 0.6.3: a row's own Report button, its words and its prefill.
+const rowReport: string =
+  reportButtonHtml({ label: "Report this", prefill: { title: "t" } }) +
+  DenUI.report.button({ inFoot: true, label: "Report this", prefill: { kind: "bug" } });
+const pre: string | undefined = reportPrefillOf(null)?.title;
+void rowReport;
+void pre;
+void window.DenUI?.busy.run("save", async (h) => h["X-Request-Id"], {
+  quietFail: true,
+});
+const words: string =
+  kitT("ja", "kit.report.word", { n: 1 }) + en["kit.report.word"];
+addStrings("es", { "kit.report.word": "Avisar" });
+const svg: string = icon("home");
+const view = changelogView([], false);
+openWhatsNew();
+void openReport();
+const pv: { title: string; body: string } = localPreview({ title: "t" });
+const m = masked(document.createElement("canvas"), [
+  rectOf({ x: 0, y: 0 }, { x: 1, y: 1 }),
+]);
+registerActions({
+  save: { who: "Acme", words: { en: { working: "Saving" } } },
+});
+configureBusy({ toast: (t: string) => void t });
+void busyAction<number>("save", async () => 1, {
+  next: (e: unknown) => (e ? { label: "Fix", href: "/fix" } : null),
+}).then((n: number | null) => n);
+void busyAction("save", async (_h, progress) => {
+  progress("Step one");
+  return 1;
+});
+const bw: string = BUSY_WORDS.en.retry;
+void askConfirm({ title: "Sure?", danger: true }).then((ok: boolean) => ok);
+void tell({ message: "Done" });
+const when: string =
+  formatTime("2026-01-01T00:00:00Z", { style: "relative" }) +
+  timeHtml(new Date());
+showUpdate({
+  message: "m",
+  reloadLabel: "r",
+  dismissLabel: "d",
+  onReload: () => {},
+}).hide();
+export { html, words, svg, view, pv, m, bw, when };

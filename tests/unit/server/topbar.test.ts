@@ -319,16 +319,33 @@ describe("the pages", () => {
   it("the bar has the search field and the three chips, in the prototype's order", () => {
     const shell = read("shell.js");
     const at = (s: string) => shell.indexOf(s);
+    // Den's parts, in the kit's slots (issue 95): the search in `start`,
+    // the chips in `end`, ◐ ▾ in `account`.
     const order = [
       'id="den-search"',
       'id="den-status"',
       'id="den-runs"',
       'id="den-lock"',
-      'id="version-pill"',
       'id="den-user"',
     ].map(at);
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // The kit's top bar puts them in this order: the chips (end), Report,
+    // the bell, the version chip, then ◐ ▾ (account).
+    const kit = fs.readFileSync(
+      path.join(process.cwd(), "packages", "den-ui", "src", "shell-html.js"),
+      "utf-8",
+    );
+    const bar = kit.slice(kit.indexOf("export function topBarHtml"));
+    const kitOrder = [
+      "slots.end",
+      "reportButtonHtml({ inTop: true",
+      "slots.bell",
+      "versionChipHtml(",
+      "slots.account",
+    ].map((x) => bar.indexOf(x));
+    expect(kitOrder.every((i) => i > 0)).toBe(true);
+    expect([...kitOrder].sort((a, b) => a - b)).toEqual(kitOrder);
     expect(shell).toContain('<kbd aria-hidden="true">⌘K</kbd>');
     // The dot row and the "+N" chip are gone from the bar.
     expect(shell).not.toContain('id="health"');

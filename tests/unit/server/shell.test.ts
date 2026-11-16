@@ -10,6 +10,16 @@ import * as path from "path";
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
 const SHELL = read("shell.js");
+// Issue 95: the frame's markup and look are the UI kit's (den-ui):
+// shell.js draws through its shellHtml, with Den's parts as data.
+const KIT = ["shell-html.js", "shell.css"]
+  .map((f) =>
+    fs.readFileSync(
+      path.join(process.cwd(), "packages", "den-ui", "src", f),
+      "utf-8",
+    ),
+  )
+  .join("\n");
 
 /** Page file → the rail entry it marks current, and its health pin. */
 const PAGES: Record<string, { page: string; healthEnv?: string }> = {
@@ -121,7 +131,7 @@ describe("every page mounts the shell", () => {
 
 describe("the shell's source", () => {
   it("draws the title in the theme's display face", () => {
-    expect(SHELL).toMatch(/\.den-title \{ font: 600 15px var\(--display\);/);
+    expect(KIT).toMatch(/\.den-title \{\s*font: 600 15px var\(--display\);/);
   });
   it("uses no color literal (theme tokens only, R2)", () => {
     // Black alone is allowed, for a modal scrim (as ui-color-tokens says).
@@ -155,7 +165,10 @@ describe("the shell's source", () => {
     const hrefs = all.filter((h) => !h.includes("#") && !h.includes("?"));
     for (const h of all.filter((x) => x.includes("#") || x.includes("?")))
       expect([h, hrefs.includes(h.split(/[#?]/)[0])]).toEqual([h, true]);
-    expect(all.filter((h) => h.includes("#"))).toEqual(["/settings#access"]);
+    expect(all.filter((h) => h.includes("#")).sort()).toEqual([
+      "/settings#access",
+      "/settings#agents.hub",
+    ]);
     expect(all.filter((h) => h.includes("?"))).toEqual(["/agents?terminal=1"]);
     expect(hrefs.sort()).toEqual(
       [
@@ -198,7 +211,7 @@ describe("one main landmark per page (SA's dev.17 run)", () => {
     },
   );
   it("the skip link goes to it", () => {
-    expect(SHELL).toContain('href="#den-content"');
+    expect(KIT).toContain('href="#den-content"');
     expect(SHELL).toMatch(/getElementById\("den-content"\)/);
   });
 });

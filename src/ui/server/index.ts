@@ -318,7 +318,7 @@ import {
   withApproveKey,
   type WebAuthConfig,
 } from "../../shared/web-session.js";
-import { serveUiAsset } from "./ui-assets.js";
+import { kitPage, serveUiAsset } from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
 import {
   migrateWebUrl,
@@ -730,7 +730,7 @@ setHtmlFill((html) => {
     /* defaults */
   }
   // issue 206: the person's time zone, when picked, for the first paint.
-  let out = zonePage(localizePage(html, lang), zone)
+  let out = zonePage(kitPage(localizePage(html, lang)), zone)
     .split("@@DEN_MODE@@")
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")

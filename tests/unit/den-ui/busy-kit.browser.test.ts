@@ -85,7 +85,8 @@ window.kit = kit;
 window.go = (name, opts = {}) => {
   const b = document.getElementById("go");
   window.out = undefined;
-  kit.busyAction(name, async (headers) => {
+  kit.busyAction(name, async (headers, progress) => {
+    for (const line of window.steps || []) progress(line);
     const r = await fetch("/probe", { method: "POST", headers }).catch(() => {
       throw { network: true };
     });
@@ -128,6 +129,11 @@ async function open(
       return r.fulfill({
         contentType: "text/html",
         body: PAGE(o.lang ?? "en"),
+      });
+    if (u.pathname === "/busy.css")
+      return r.fulfill({
+        contentType: "text/css",
+        body: fs.readFileSync(path.join(SRC, "busy.css"), "utf-8"),
       });
     if (u.pathname === "/busy.js" || u.pathname === "/busy-words.js")
       return r.fulfill({
@@ -451,6 +457,146 @@ describe("UK-2 kit: the working pop-up", () => {
     await dlg(p).locator('[data-bz="log"]').click();
     expect((await seen(p)).opened).toEqual(["/the-log"]);
     await p.context().close();
+  });
+
+  it("its look is busy.css, linked once: no <style> of its own (a strict CSP holds)", async () => {
+    if (skip()) return;
+    const { p } = await open([[400, 500]]);
+    await go(p, "send");
+    await dlg(p).locator('[data-bz="retry"]').waitFor();
+    const css = await p.evaluate(() => ({
+      styles: document.querySelectorAll("style").length,
+      links: [...document.querySelectorAll('link[rel="stylesheet"]')]
+        .map((l) => new URL((l as HTMLLinkElement).href).pathname)
+        .filter((h) => h.endsWith("busy.css")),
+      radius: getComputedStyle(document.querySelector(".bz-btn")!)
+        .borderTopLeftRadius,
+    }));
+    expect(css.styles).toBe(0);
+    expect(css.links).toEqual(["/busy.css"]);
+    expect(css.radius).not.toBe("0px");
+    await go(p, "send");
+    expect(
+      await p.evaluate(
+        () =>
+          [...document.querySelectorAll('link[rel="stylesheet"]')].filter((l) =>
+            (l as HTMLLinkElement).href.endsWith("busy.css"),
+          ).length,
+      ),
+    ).toBe(1);
+    await p.context().close();
+  });
+
+  it("next: a failure with a next step offers its link in place of Try again", async () => {
+    if (skip()) return;
+    const { p } = await open([[400, 500]]);
+    await go(
+      p,
+      "send",
+      '{ next: { label: "Open Settings", href: "/settings" } }',
+    );
+    await dlg(p).locator("h2", { hasText: "Could not send" }).waitFor();
+    expect(await dlg(p).locator('[data-bz="retry"]').count()).toBe(0);
+    const link = dlg(p).locator("a.bz-btn.bz-primary");
+    expect(await link.textContent()).toBe("Open Settings");
+    expect(await link.getAttribute("href")).toBe("/settings");
+    expect(await dlg(p).locator(".bz-next").textContent()).toBe(
+      "Trying again won't help. Do this first:",
+    );
+    // Report and Close stay; the link is last, the primary.
+    const order = await dlg(p)
+      .locator(".bz-ft > *")
+      .evaluateAll((els) =>
+        els.map((e) => (e as HTMLElement).dataset.bz ?? e.tagName),
+      );
+    expect(order).toEqual(["report", "close", "A"]);
+    await p.context().close();
+  });
+
+  it("next: from the failure itself; none means Try again as before", async () => {
+    if (skip()) return;
+    const { p } = await open([
+      [400, 403],
+      [400, 500],
+    ]);
+    const opts =
+      '{ next: (e) => e.status === 403 ? { label: "Sign in", href: "/sign-in" } : null }';
+    await go(p, "send", opts);
+    await dlg(p).locator('a[href="/sign-in"]').waitFor();
+    expect(await dlg(p).locator('[data-bz="retry"]').count()).toBe(0);
+    await dlg(p).locator('[data-bz="close"]').click();
+    await go(p, "send", opts);
+    await dlg(p).locator('[data-bz="retry"]').waitFor();
+    expect(await dlg(p).locator(".bz-next").count()).toBe(0);
+    await p.context().close();
+  });
+
+  it("next with no href: its words in place of Try again, and Close is the primary", async () => {
+    if (skip()) return;
+    const { p } = await open([[400, 500]]);
+    await go(
+      p,
+      "send",
+      '{ next: { label: "Ask the person who set up this project." } }',
+    );
+    await dlg(p).locator("h2", { hasText: "Could not send" }).waitFor();
+    expect(await dlg(p).locator('[data-bz="retry"]').count()).toBe(0);
+    expect(await dlg(p).locator("a").count()).toBe(0);
+    expect(await dlg(p).locator(".bz-step").textContent()).toBe(
+      "Ask the person who set up this project.",
+    );
+    expect(await dlg(p).locator(".bz-next").textContent()).toBe(
+      "Trying again won't help. Do this first:",
+    );
+    const close = dlg(p).locator('[data-bz="close"]');
+    expect(await close.getAttribute("class")).toContain("bz-primary");
+    await close.click();
+    expect(await out(p)).toEqual({ ok: null });
+    await p.context().close();
+  });
+
+  it("progress: run's progress(text) lines show in order while working, then success closes with the toast", async () => {
+    if (skip()) return;
+    const { p } = await open([[1500, 200]]);
+    await p.evaluate(() => {
+      (window as unknown as { steps: string[] }).steps = [
+        "Copying files",
+        "Starting the service",
+      ];
+    });
+    await go(p, "save");
+    await dlg(p).waitFor({ state: "visible", timeout: 1000 });
+    const list = dlg(p).locator("ol.bz-prog");
+    expect(await list.getAttribute("aria-label")).toBe("Progress");
+    expect(await list.locator("li").allTextContents()).toEqual([
+      "Copying files",
+      "Starting the service",
+    ]);
+    expect(await out(p)).toEqual({ ok: { ok: true } });
+    expect(await dlg(p).count()).toBe(0);
+    expect((await seen(p)).toasts).toEqual(["Saved"]);
+    await p.context().close();
+  });
+
+  it("progress and next speak the page's language (es, ja)", async () => {
+    if (skip()) return;
+    for (const [lang, said, prog] of [
+      ["es", "Intentar de nuevo no servirá. Haz esto primero:", "Progreso"],
+      ["ja", "もう一度試しても解決しません。先にこちらを:", "進行状況"],
+    ]) {
+      const { p } = await open([[1200, 500]], { lang });
+      await p.evaluate(() => {
+        (window as unknown as { steps: string[] }).steps = ["…"];
+      });
+      await go(p, "send", '{ next: { label: "X", href: "/x" } }');
+      await dlg(p).locator("ol.bz-prog").waitFor();
+      expect(
+        await dlg(p).locator("ol.bz-prog").getAttribute("aria-label"),
+      ).toBe(prog);
+      await dlg(p).locator(".bz-next").waitFor();
+      expect(await dlg(p).locator(".bz-next").textContent()).toBe(said);
+      await p.context().close();
+    }
   });
 
   it("speaks the page's language (ja)", async () => {

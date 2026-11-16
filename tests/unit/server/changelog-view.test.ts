@@ -5,7 +5,8 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { changelogView } from "../../../src/ui/server/public/changelog-view.js";
+// Issue 95: What's new is the UI kit's (den-ui whatsnew.js).
+import { changelogView } from "../../../packages/den-ui/src/whatsnew.js";
 
 const entries = [
   { version: "0.3.0" },
@@ -37,20 +38,29 @@ describe("changelogView", () => {
     expect(changelogView([], false)).toEqual({ shown: [], toggle: null });
   });
 
-  it("the header renders through it and opens collapsed", () => {
+  it("What's new renders through it and opens collapsed", () => {
+    // Issue 95: the pop-up is the kit's (den-ui whatsnew.js); header.js
+    // opens it.
     const src = fs.readFileSync(
-      path.resolve(__dirname, "../../../src/ui/server/public/header.js"),
+      path.resolve(__dirname, "../../../packages/den-ui/src/whatsnew.js"),
       "utf-8",
     );
-    expect(src).toMatch(/changelogView\(entries, _clShowAll\)/);
+    expect(src).toMatch(/changelogView\(entries, showAll\)/);
     expect(src).toMatch(
-      /openChangelog = function \(\) \{\s*_clShowAll = false;/,
+      /export function openWhatsNew\(\) \{\s*showAll = false;/,
     );
     expect(src).toMatch(/aria-expanded/);
     // In the fixed footer, so it is visible however long the newest entry.
     // FB (den#81): Report first, as in every pop-up.
     expect(src).toMatch(
-      /class="cl-footer">'[\s\S]{0,120}reportButton[\s\S]{0,120}<button type="button" class="cl-more-btn" id="cl-more"/,
+      /class="cl-footer">'[\s\S]{0,160}report[\s\S]{0,120}<button type="button" class="cl-more-btn" id="cl-more"/,
+    );
+    const header = fs.readFileSync(
+      path.resolve(__dirname, "../../../src/ui/server/public/header.js"),
+      "utf-8",
+    );
+    expect(header).toMatch(
+      /window\.openChangelog = function \(\) \{\s*DenUI\.whatsNew\.open\(\);/,
     );
   });
 
@@ -59,6 +69,6 @@ describe("changelogView", () => {
       path.resolve(__dirname, "../../../src/ui/server/ui-assets.ts"),
       "utf-8",
     );
-    expect(assets).toMatch(/"\/changelog-view\.js"/);
+    expect(assets).toMatch(/"whatsnew\.js"/);
   });
 });

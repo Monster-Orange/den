@@ -115,7 +115,7 @@ describe("stampAssetUrls", () => {
       `<link rel="stylesheet" href="/kit/base.css">`,
       `<script type="module" src="/shell.js"></script>`,
       `import { a } from "./topbar.js";`,
-      `import("/report-dialog.js")`,
+      `import("/report-den.js")`,
       `s.src = '/vendor/elk.bundled.js';`,
       `<script src="https://cdn.example.test/x.js"></script>`,
       `<script src="//cdn.example.test/x.js"></script>`,
@@ -127,7 +127,7 @@ describe("stampAssetUrls", () => {
     expect(out).toContain(`href="/kit/base.css?v=${v}"`);
     expect(out).toContain(`src="/shell.js?v=${v}"`);
     expect(out).toContain(`from "./topbar.js?v=${v}"`);
-    expect(out).toContain(`import("/report-dialog.js?v=${v}")`);
+    expect(out).toContain(`import("/report-den.js?v=${v}")`);
     expect(out).toContain(`'/vendor/elk.bundled.js?v=${v}'`);
     expect(out).toContain(`"https://cdn.example.test/x.js"`);
     expect(out).toContain(`"//cdn.example.test/x.js"`);

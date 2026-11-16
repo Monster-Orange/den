@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const SHELL = fs.readFileSync(
@@ -60,6 +61,9 @@ async function mount(
   });
   await p.route("http://den.test/**", async (r) => {
     const url = new URL(r.request().url());
+    // Issue 95: the kit's shell, as Den serves it.
+    const kit = kitAsset(url.pathname);
+    if (kit) return r.fulfill(kit);
     if (url.pathname === "/shell.js")
       return r.fulfill({
         contentType: "text/javascript; charset=utf-8",
@@ -72,7 +76,9 @@ async function mount(
     }
     return r.fulfill({
       contentType: "text/html; charset=utf-8",
-      body: `<!doctype html><html><head><style>:root { --mono: monospace; --sans: sans-serif; --display: sans-serif; }</style></head><body>${opts.before ?? ""}<div id="den-shell" data-page="${page}"></div><script src="/shell.js"></script><main id="den-content">page${opts.after ?? ""}</main></body></html>`,
+      body: kitPage(
+        `<!doctype html><html><head><style>:root { --mono: monospace; --sans: sans-serif; --display: sans-serif; }</style></head><body>${opts.before ?? ""}<div id="den-shell" data-page="${page}"></div><script src="/shell.js"></script><main id="den-content">page${opts.after ?? ""}</main></body></html>`,
+      ),
     });
   });
   await p.goto("http://den.test/x");

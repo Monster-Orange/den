@@ -96,7 +96,7 @@ async function model(ctx: BrowserContext, noDvh: boolean): Promise<void> {
   await ctx.route("**/*", async (route: Route) => {
     const req = route.request();
     // No screenshot, so the Report dialog's content is short too.
-    if (req.url().includes("/report-shot.js"))
+    if (req.url().includes("/kit/report-shot.js"))
       return route.fulfill({ status: 404 });
     if (!["document", "stylesheet", "script"].includes(req.resourceType()))
       return route.continue();
@@ -123,7 +123,7 @@ async function agentsPage(ctx: BrowserContext): Promise<Page> {
     content: [
       'import { askConfirm } from "/dialog-den.js";',
       'import { busyAction } from "/busy-den.js";',
-      'import { openReport } from "/report-dialog.js";',
+      'import { openReport } from "/report-den.js";',
       "window.fitKit = { askConfirm, busyAction, openReport };",
     ].join("\n"),
   });
@@ -323,8 +323,10 @@ describe("iPad: pop-ups stay centred and fit their content", () => {
 describe("the vh cap comes before the dvh cap", () => {
   it.each([
     "packages/den-ui/src/base.css",
-    "packages/den-ui/src/dialog.js",
-    "packages/den-ui/src/busy.js",
+    // den-ui 0.6.2: the dialogs' look is dialog.css (was in dialog.js).
+    "packages/den-ui/src/dialog.css",
+    // den-ui 0.6.1: the working pop-up's look is busy.css (was in busy.js).
+    "packages/den-ui/src/busy.css",
   ])("%s", (f) => {
     const t = readFileSync(f, "utf8").replace(/\s+/g, "");
     const vh = t.indexOf(
