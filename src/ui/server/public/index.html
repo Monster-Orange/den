@@ -102,6 +102,9 @@
       .dot.nothing-ran {
         background: var(--warn);
       }
+      .dot.cancelled {
+        background: var(--muted);
+      }
       @keyframes pulse {
         0%,
         100% {
@@ -1920,23 +1923,36 @@
             } else if (msg.type === "error") {
               testAppendLine(msg.text, "err");
             } else if (msg.type === "done") {
-              const ok = msg.exitCode === 0;
+              // One exit-code table for every kind (issue 207): nothing
+              // ran (3) and cancelled (4) are their own results, never a
+              // pass and never drawn as one.
+              const none = !!msg.nothingRan || msg.exitCode === 3;
+              const cancelled = !!msg.cancelled || msg.exitCode === 4;
+              const ok = msg.exitCode === 0 && !none && !cancelled;
               const dur = fmtDuration(msg.duration);
-              // Every suite skipped: nothing ran, never a pass (0.4.45).
-              const none = !!msg.nothingRan;
               testAppendLine(
                 none
                   ? `\n${t("run.nothingRan", { d: dur })}\n`
-                  : `\n${t(ok ? "tst.passedIn" : "tst.failedIn", { d: dur })}\n`,
-                none ? "done-none" : ok ? "done-ok" : "done-fail",
+                  : cancelled
+                    ? `\n${t("v.v_cancelled")}\n`
+                    : `\n${t(ok ? "tst.passedIn" : "tst.failedIn", { d: dur })}\n`,
+                none || cancelled ? "done-none" : ok ? "done-ok" : "done-fail",
               );
               setRunStatus(
-                none ? "nothing-ran" : ok ? "passed" : "failed",
+                none
+                  ? "nothing-ran"
+                  : cancelled
+                    ? "cancelled"
+                    : ok
+                      ? "passed"
+                      : "failed",
                 none
                   ? t("run.nothingRanShort", { d: dur })
-                  : ok
-                    ? t("tst.passed", { d: dur })
-                    : t("tst.failed", { d: dur }),
+                  : cancelled
+                    ? t("v.v_cancelled")
+                    : ok
+                      ? t("tst.passed", { d: dur })
+                      : t("tst.failed", { d: dur }),
               );
               runs().finish(TEST_RUN, { ok });
               document.getElementById("run-btn").disabled = false;

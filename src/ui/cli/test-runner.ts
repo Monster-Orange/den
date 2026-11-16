@@ -25,7 +25,12 @@ import {
   type EngineCommand,
 } from "../../shared/engine.js";
 import { product } from "../../shared/product.js";
-import { nothingRan } from "../../shared/run-outcome.js";
+import {
+  CANCELLED_EXIT,
+  VERDICT_EXIT,
+  oldKindWarning,
+  verdictOf,
+} from "../../shared/run-outcome.js";
 
 /** Remediation when test sessions cannot be created (no vendor assumed). */
 const SETUP_SECRETS_HINT = `  make ${product().cli}-setup-secrets  - Set up the selected secrets.provider`;
@@ -73,8 +78,17 @@ export interface TestRunResult {
   success: boolean;
   exitCode: number;
   duration: number;
-  /** Every suite was skipped: not a pass, and not a test that failed. */
+  /** Nothing ran (any kind): not a pass, and not a test that failed. */
   nothingRan?: boolean;
+  /** A person stopped the run (Ctrl-C): not a pass (issue 207). */
+  cancelled?: boolean;
+}
+
+/** A shell's exit code for a process a signal ended (SIGINT 130, SIGTERM 143). */
+function signalExit(signal: NodeJS.Signals | null): number {
+  if (signal === "SIGINT") return 130;
+  if (signal === "SIGTERM") return 143;
+  return 1;
 }
 
 export class TestRunner {
@@ -99,18 +113,46 @@ export class TestRunner {
       ),
     );
 
-    const result = await this.executeTestCommand(options);
+    // The seven old kinds still run, and say what replaces them (issue 207).
+    const warning = oldKindWarning(options.pillar);
+    if (warning) console.log(chalk.yellow(`${warning}\n`));
+
+    // Ctrl-C reaches the test process too; the run ends as cancelled, not
+    // failed. A second Ctrl-C leaves at once.
+    let stopped = false;
+    const onInterrupt = (): void => {
+      if (stopped) process.exit(CANCELLED_EXIT);
+      stopped = true;
+    };
+    process.on("SIGINT", onInterrupt);
+    let result: { success: boolean; exitCode: number };
+    try {
+      result = await this.executeTestCommand(options);
+    } finally {
+      process.off("SIGINT", onInterrupt);
+    }
 
     const duration = Date.now() - startTime;
 
-    const none = nothingRan(options.pillar, result.exitCode);
+    // One exit-code table for every kind (issue 207).
+    const verdict = verdictOf(options.pillar, result.exitCode, {
+      cancelled: stopped,
+    });
+    const none = verdict === "nothing ran";
+    const cancelled = verdict === "cancelled";
     if (none) {
       console.log(
         chalk.yellow(
           `\n– Nothing ran in ${this.formatDuration(duration)}. No test passed or failed.\n`,
         ),
       );
-    } else if (result.success) {
+    } else if (cancelled) {
+      console.log(
+        chalk.yellow(
+          `\n– Cancelled after ${this.formatDuration(duration)}. Cancelled is not a pass.\n`,
+        ),
+      );
+    } else if (verdict === "passed") {
       console.log(
         chalk.green(
           `\n✅ Tests completed successfully in ${this.formatDuration(duration)}\n`,
@@ -123,8 +165,10 @@ export class TestRunner {
     }
 
     return {
-      ...result,
-      ...(none ? { success: false, nothingRan: true } : {}),
+      success: verdict === "passed",
+      exitCode: VERDICT_EXIT[verdict],
+      ...(none ? { nothingRan: true } : {}),
+      ...(cancelled ? { cancelled: true } : {}),
       duration,
     };
   }
@@ -702,10 +746,11 @@ export class TestRunner {
         stdio: "inherit", // Stream output directly to console
       });
 
-      proc.on("close", (code) => {
+      proc.on("close", (code, signal) => {
         resolve({
           success: code === 0,
-          exitCode: code || 0,
+          // A signal is not a pass: SIGINT/SIGTERM read as cancelled.
+          exitCode: code ?? signalExit(signal),
         });
       });
 
@@ -1282,7 +1327,7 @@ export class TestRunner {
     args: string[],
     env: NodeJS.ProcessEnv,
     onLine: (line: string) => void,
-    onClose: (exitCode: number) => void,
+    onClose: (exitCode: number, signal?: NodeJS.Signals | null) => void,
     cwd?: string,
     detached?: boolean,
   ): ReturnType<typeof spawn> {

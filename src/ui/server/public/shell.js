@@ -1140,9 +1140,10 @@
     "runs.allOn": "Showing every run; press for {ws}'s only",
     "dock.done": "done in {s}s",
     "dock.failed": "failed in {s}s",
-    "run.nothingRan":
-      "– Nothing ran in {d}: every suite was skipped. No test passed or failed.",
+    "run.nothingRan": "– Nothing ran in {d}. No test passed or failed.",
     "run.nothingRanShort": "nothing ran ({d})",
+    // A run a person or an agent stopped: never a pass (issue 207).
+    "v.v_cancelled": "Cancelled",
     "dock.close": "Hide runs",
     "dock.show": "Show runs",
     "dock.copy": "Copy",

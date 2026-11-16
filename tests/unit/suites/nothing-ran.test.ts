@@ -87,14 +87,17 @@ describe("the page's done event", () => {
     expect(d.exitCode).not.toBe(0);
   });
 
-  it("no other pillar's exit code is read as nothing ran", () => {
-    // ZAP exits 3 on its own errors: a security run's 3 is a failure.
+  it("a failed run of any kind is not read as nothing ran", () => {
+    // Issue 207: nothing ran is for every kind now. Security's own 3 is
+    // "nothing scanned" (ZAP's own codes never reach the exit); a failure
+    // is still a failure.
     const d = getRunDonePayload({
       pillar: "security",
-      exitCode: NOTHING_RAN_EXIT,
+      exitCode: 2,
       duration: 5,
     });
     expect(d).not.toHaveProperty("nothingRan");
+    expect(d.exitCode).toBe(1);
   });
 });
 

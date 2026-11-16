@@ -153,7 +153,7 @@ export function spawnDaemon(
  * @param args     Argument array — pass [] to invoke command as a raw shell string
  * @param env      Process environment
  * @param onLine   Called for each non-empty output line
- * @param onClose  Called with exit code when the process terminates
+ * @param onClose  Called with exit code (and the signal, when one ended it) when the process terminates
  * @param cwd      Working directory (defaults to process.cwd())
  * @param detached Put the child in its own process group (default false)
  * @param logPath  If provided together with detached=true, run as a daemon writing to this path
@@ -164,7 +164,7 @@ export function spawnStreaming(
   args: string[],
   env: NodeJS.ProcessEnv,
   onLine: (line: string) => void,
-  onClose: (exitCode: number) => void,
+  onClose: (exitCode: number, signal?: NodeJS.Signals | null) => void,
   cwd?: string,
   detached?: boolean,
   logPath?: string,
@@ -197,7 +197,8 @@ export function spawnStreaming(
   proc.stdout?.on("data", (data: Buffer) => stripAnsi(data, onLine));
   proc.stderr?.on("data", (data: Buffer) => stripAnsi(data, onLine));
 
-  proc.on("close", (code) => onClose(code ?? 1));
+  // A signal says who ended it: SIGINT/SIGTERM is a cancel (issue 207).
+  proc.on("close", (code, signal) => onClose(code ?? 1, signal));
   proc.on("error", (err) => {
     onLine(`Error: ${err.message}`);
     onClose(1);

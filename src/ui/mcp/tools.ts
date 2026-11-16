@@ -1153,12 +1153,25 @@ const ACTION_TOOLS: Record<McpAction, DenTool> = {
         },
         { method: "GET", maxLines: 20_000, timeoutMs: 60 * 60_000 },
       );
-      // Every suite skipped is its own result, never a pass (0.4.45).
-      const none = r.events.some((e) => e.type === "done" && e.nothingRan);
+      // The verdict by name, the same table as the CLI (issue 207):
+      // nothing ran and cancelled are their own results, never a pass.
+      const done = r.events.find((e) => e.type === "done");
+      const none = !!done?.nothingRan;
+      const cancelled = !!done?.cancelled;
+      const outcome =
+        typeof done?.verdict === "string"
+          ? done.verdict
+          : none
+            ? "nothing ran"
+            : cancelled
+              ? "cancelled"
+              : undefined;
       return actionResult(r, 300, {
         pillar,
         env,
-        ...(none ? { outcome: "nothing ran", nothingRan: true } : {}),
+        ...(outcome ? { outcome } : {}),
+        ...(none ? { nothingRan: true } : {}),
+        ...(cancelled ? { cancelled: true } : {}),
       });
     },
   },
