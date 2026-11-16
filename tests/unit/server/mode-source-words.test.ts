@@ -52,7 +52,9 @@ describe("issue 225: the Agents page row says where its mode comes from", () => 
     expect(row("edits", "persona")).toBe("mode: Edits, from its persona");
     // Issue 268: the Den-wide default, as Settings names it.
     expect(row("all", "install")).toBe("mode: All, from the Den-wide default");
-    expect(row("ask", "default")).toBe("mode: Ask, from Den's default");
+    expect(row("ask", "default")).toBe(
+      "mode: Ask, from Den's built-in default",
+    );
   });
 
   it("its own setting, and the project's it doesn't follow", () => {

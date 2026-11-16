@@ -138,6 +138,15 @@ config and manifest changes a distribution must make to move to it under
   says "from the Den-wide default" too. A Settings link to a row now
   opens at that row.
 
+### Fixed
+
+- A Settings link to one row (an agent's mode, for example) now scrolls
+  the row to just below the settings header. Its name and controls show,
+  rather than sitting hidden under the top bar.
+- Where an agent's mode comes from: when nobody has set the Den-wide
+  default, the Agents page now says "from Den's built-in default", so it
+  can't be mistaken for the Den-wide default.
+
 ## [0.4.60] - 2026-11-16
 
 ### Fixed

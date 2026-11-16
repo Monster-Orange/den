@@ -1405,7 +1405,7 @@
     "ag.mode.src.project": "el proyecto",
     "ag.mode.src.install": "el valor por defecto de todo Den",
     "ag.mode.src.persona": "su persona",
-    "ag.mode.src.default": "el valor por defecto de Den",
+    "ag.mode.src.default": "el valor integrado de Den",
     "set.workspace.agents_mode":
       "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":

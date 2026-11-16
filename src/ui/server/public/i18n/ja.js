@@ -1369,7 +1369,7 @@
     "ag.mode.src.project": "プロジェクト",
     "ag.mode.src.install": "Den 全体の既定",
     "ag.mode.src.persona": "ペルソナ",
-    "ag.mode.src.default": "Den の既定",
+    "ag.mode.src.default": "Den の組み込みの既定",
     "set.workspace.agents_mode":
       "エージェントのモード: このプロジェクト (Den 全体の既定を上書き)",
     "set.workspace.agents_mode.d":

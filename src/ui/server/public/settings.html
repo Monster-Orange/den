@@ -285,7 +285,9 @@
         gap: 24px;
         align-items: start;
       }
-      #set-body section[data-cat] {
+      #set-body section[data-cat],
+      #set-body [data-setting] {
+        /* Issue 268: a row's deep link lands below the sticky header too. */
         scroll-margin-top: var(--set-top, 0px);
       }
       .set-nav {
