@@ -60,6 +60,7 @@ function setup(
   const acks: { id: string; state: string; reason?: unknown }[] = [];
   const typed: { agent: string; text: string }[] = [];
   const finished: { agent: string; count: number; artifact?: string }[] = [];
+  const logs: string[] = [];
   const states: Record<string, AgentState> = { "ag-1": "idle", ...o.states };
   let clock = 1_000_000;
   const hub: DeliveryHub = {
@@ -88,8 +89,10 @@ function setup(
     now: () => clock,
     finished: (agent, w) =>
       finished.push({ agent, count: w.count, artifact: w.artifact }),
+    log: (l) => logs.push(l),
   });
   return {
+    logs,
     loop,
     hub,
     acks,
@@ -620,5 +623,45 @@ describe("decisions in the feed (issue 166 / Hub issue 65)", () => {
     expect(s2.typed[0].text).toContain('"archived"');
     expect(s2.typed[0].text).toContain("> bye");
     expect(s2.of("u1")).toEqual(["delivered", "working"]);
+  });
+});
+
+describe("#248: the log says where held comments went", () => {
+  it("held while busy (said once), typed with how long it waited, and restored after a restart", async () => {
+    const s = setup({ states: { "ag-1": "busy" } });
+    await s.loop.take(dv("d1"));
+    await s.loop.take(dv("d2"));
+    await s.loop.pump();
+    expect(s.logs.filter((l) => /holding .* for ag-1/.test(l))).toHaveLength(1);
+    // A restart while held: the new loop says what it brought back.
+    const logs: string[] = [];
+    const again = new DeliveryLoop({
+      hub: s.hub,
+      agents: { state: async () => "idle", type: async () => true },
+      owner: () => ({ ownerId: "u_me", company: "Acme" }),
+      seen: new SeenDeliveries(s.seenFile),
+      now: () => Date.parse("2026-01-01T00:01:00Z"),
+      log: (l) => logs.push(l),
+    });
+    expect(logs).toContain(
+      "hub delivery: restored 2 held Hub items for ag-1; typed when it's idle",
+    );
+    await again.pump();
+    expect(
+      logs.some((l) =>
+        /^hub delivery: typed 2 Hub items into ag-1 \(oldest waited \d+s\)$/.test(
+          l,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("a Try again repeat of a held comment is logged", async () => {
+    const s = setup({ states: { "ag-1": "busy" } });
+    await s.loop.take(dv("d1"));
+    await s.loop.take({ ...(dv("d1") as Record<string, unknown>), id: "d1b" });
+    expect(s.logs.some((l) => /d1b: repeats held d1 for ag-1/.test(l))).toBe(
+      true,
+    );
   });
 });
