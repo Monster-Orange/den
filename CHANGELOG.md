@@ -4,6 +4,18 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.61] - unreleased
+
+### Fixed
+
+- Den's own update no longer waits silently. When it waits, the log and
+  the audit say why, once each time the reason changes. When the Den
+  agent is waiting on your Allow or your answer, the bell says Den's
+  update waits on it, and after `server_agent.update_wait_checks` checks
+  in a row (default 2) it counts as needing you. Den never updates past
+  a pending Allow. After a self-update, a new pin left uncommitted in the
+  distribution's folder is reported too.
+
 ## [0.4.59] - 2026-11-16
 
 ### Fixed

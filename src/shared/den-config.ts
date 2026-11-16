@@ -1224,6 +1224,12 @@ export interface ServerAgentConfig {
    * minutes (default 30; 0: never).
    */
   update_check_minutes?: number;
+  /**
+   * #251: passes in a row an update waits on the person (the server agent
+   * at a permission prompt or a question, a held Allow) before its bell
+   * item counts as needing them (default 2).
+   */
+  update_wait_checks?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1255,7 +1261,12 @@ export interface ResolvedServerAgentConfig {
   updateCheckMs: number;
   /** SRV-P6 / LEAD-1: lead (default) or follower, from user.yml. */
   role: "lead" | "follower";
+  /** #251: server_agent.update_wait_checks. */
+  updateWaitChecks: number;
 }
+
+/** #251: server_agent.update_wait_checks when unset. */
+export const UPDATE_WAIT_CHECKS_DEFAULT = 2;
 
 /** SRV-P6: server_agent.update_check_minutes when unset. */
 export const UPDATE_CHECK_MINUTES_DEFAULT = 30;
@@ -1313,6 +1324,14 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.update_check_minutes: minutes, 5 or more, or 0 for never (got ${JSON.stringify(uc)})`,
     );
+  const wc = sa.update_wait_checks;
+  if (
+    wc !== undefined &&
+    (typeof wc !== "number" || !Number.isInteger(wc) || wc < 1)
+  )
+    throw new Error(
+      `server_agent.update_wait_checks: a whole number, 1 or more (got ${JSON.stringify(wc)})`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1332,6 +1351,7 @@ export function readServerAgentConfig(
     promptCheckMs: Math.round((pc ?? PROMPT_CHECK_SECONDS_DEFAULT) * 1000),
     updateCheckMs: Math.round((uc ?? UPDATE_CHECK_MINUTES_DEFAULT) * 60_000),
     role: role ?? "lead",
+    updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
   };
 }
 

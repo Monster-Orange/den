@@ -717,6 +717,10 @@
     "set.ui.ucNext": "siguiente {t}",
     "set.ui.ucDid.asked": "salió {v}, espera tu permiso",
     "set.ui.ucDid.waiting": "salió {v}, espera un momento tranquilo",
+    "set.ui.ucDid.waitAllow":
+      "salió {v}, espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "set.ui.ucDid.waitAsked":
+      "salió {v}, espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "set.ui.ucDid.updating": "actualizando a {v}",
     "set.ui.ucDid.failed": "no se pudo actualizar a {v}",
     "set.ui.ucDid.skipped": "omitida",
@@ -1482,6 +1486,14 @@
     "bell.m.updateOut":
       "Salió __DEN_TITLE__ {v}. Permite la actualización cuando te venga bien (esta instalación usa {have})",
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
+    "bell.m.updateWaits":
+      "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.updateWaitsAsked":
+      "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
+    "bell.m.pinNotCommitted":
+      "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada en la carpeta de la distribución",
+    "bell.m.pinNotCommittedAllow":
+      "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
