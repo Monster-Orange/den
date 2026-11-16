@@ -370,8 +370,9 @@
     "dock.done": "terminó en {s} s",
     "dock.failed": "falló en {s} s",
     "run.nothingRan":
-      "– No se ejecutó nada en {d}: se omitieron todas las suites. Ninguna prueba pasó ni falló.",
+      "– No se ejecutó nada en {d}. Ninguna prueba pasó ni falló.",
     "run.nothingRanShort": "no se ejecutó nada ({d})",
+    "v.v_cancelled": "Cancelada",
     "dock.close": "Ocultar ejecuciones",
     "dock.show": "Mostrar ejecuciones",
     "dock.copy": "Copiar",

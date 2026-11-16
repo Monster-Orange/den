@@ -125,7 +125,8 @@ describe("TestRunner performance execution", () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.exitCode).toBe(99);
+      // k6's own 99 (a threshold failed) is 1 in the one table (issue 207).
+      expect(result.exitCode).toBe(1);
       expect(spawnProcess).toHaveBeenCalledTimes(2);
       expect(spawnProcess).toHaveBeenNthCalledWith(
         1,

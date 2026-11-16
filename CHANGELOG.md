@@ -51,6 +51,18 @@ config and manifest changes a distribution must make to move to it under
   after a change request on the same version arrives as two messages, in
   order, each once. A kind Den doesn't know arrives as a plain notice,
   never dropped. Comments are unchanged.
+- One set of exit codes for every test kind, in the CLI, on the Tests page
+  and over MCP (issue 207): 0 passed, 1 failed, 3 nothing ran, 4
+  cancelled. An error or a blocked check counts as failed. A run where
+  nothing ran is never a pass, for every kind now, not only suites. A run
+  someone stops (Ctrl-C, or its process is stopped) says "Cancelled" and
+  is never a pass. MCP's `run_tests` names the result (`outcome`).
+- The seven old test kinds still run. Each one now warns that it is
+  retiring and names its new form, for example "<layer>/<name> with kind
+  synthetic and journey: <file>.journey.yml" for journeys, or "a repo
+  check" for suites. Their own codes map to the new set: a failed journey
+  or a High security finding (2) is 1 now, and k6 stopped from outside
+  (105) is 4.
 
 ### Fixed
 

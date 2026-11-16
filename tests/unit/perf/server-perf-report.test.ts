@@ -42,7 +42,9 @@ describe("getRunDonePayload", () => {
       }),
     ).toEqual({
       type: "done",
-      exitCode: 99,
+      // k6's own 99 (a threshold failed) is 1 in the one table (issue 207).
+      exitCode: 1,
+      verdict: "failed",
       duration: 45_000,
       perfReport: {
         available: true,
@@ -61,6 +63,7 @@ describe("getRunDonePayload", () => {
     ).toEqual({
       type: "done",
       exitCode: 0,
+      verdict: "passed",
       duration: 1_000,
     });
   });
@@ -78,6 +81,7 @@ describe("getRunDonePayload", () => {
     ).toEqual({
       type: "done",
       exitCode: 1,
+      verdict: "failed",
       duration: 2_000,
     });
   });
