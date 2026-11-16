@@ -199,6 +199,14 @@ const KIT_SHELL_PARTS = [
   "shell-html.js",
   "shell-client.js",
 ];
+/**
+ * den-ui 0.7.0: shell-client.js imports focusBack from dialog.js. dialog.js
+ * has names of its own (esc, open) that would clash in one scope, so it
+ * goes first in a scope of its own, giving only what shell-client needs.
+ */
+const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
+  { file: "dialog.js", names: ["openerOf", "focusBack"] },
+];
 const KIT_SHELL_NAMES = [
   "shellHtml",
   "topBarHtml",
@@ -214,6 +222,25 @@ const KIT_SHELL_NAMES = [
   "kitT",
   "addStrings",
   "setProduct",
+  // den-ui 0.7.0: the scope crumbs, the search, the bell, the account
+  // entry, Settings, ◐ ▾ and the update-waiting pill.
+  "scopeHtml",
+  "scopeCrumbHtml",
+  "searchHtml",
+  "bellButtonHtml",
+  "bellPanelHtml",
+  "bellCount",
+  "accountHtml",
+  "settingsHtml",
+  "appearanceButtonHtml",
+  "appearanceMenuHtml",
+  "waitingHtml",
+  "hydrateScope",
+  "hydrateSearch",
+  "hydrateBell",
+  "hydrateAccount",
+  "hydrateAppearance",
+  "setWaiting",
 ];
 
 /** The classic script of the kit's shell (KIT_SHELL_SCRIPT), or null. */
@@ -222,6 +249,19 @@ export function kitShellScript(
 ): string | null {
   const dir = path.join(engineRoot, "packages", "den-ui", "src");
   const parts: string[] = [];
+  for (const { file: f, names } of KIT_SHELL_SCOPED) {
+    const file = path.join(dir, f);
+    if (!fs.existsSync(file)) return null;
+    parts.push(
+      `// ── den-ui ${f} (its own scope) ──\n` +
+        `const { ${names.join(", ")} } = (function () {\n` +
+        fs
+          .readFileSync(file, "utf-8")
+          .replace(/^import\s+[^;]+;\s*$/gm, "")
+          .replace(/^export\s+(?=(async\s+)?function|const|let|class)/gm, "") +
+        `\nreturn { ${names.join(", ")} };\n})();`,
+    );
+  }
   for (const f of KIT_SHELL_PARTS) {
     const file = path.join(dir, f);
     if (!fs.existsSync(file)) return null;

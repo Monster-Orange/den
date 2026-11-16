@@ -1,7 +1,8 @@
 /**
- * Appearance: the user menu (R10, ◐ ▾ at the end of the top bar: a .pop
- * menu with Appearance (System / Dark / Light), Theme (the installed
- * themes), a hidden Language slot (dev.23) and All settings), the same
+ * Appearance: the user menu (R10, ◐ ▾ at the end of the top bar, the UI
+ * kit's since den-ui 0.7.0: Den gives its model, appearanceMenu, with
+ * Appearance (System / Dark / Light), Theme (the installed themes),
+ * Language, Restart Den… and All settings, and takes the pick), the same
  * choices as ⌘K palette commands (R17), and the active theme's mark at the
  * start of the header.
  *
@@ -381,53 +382,57 @@ export async function setTheme(value) {
   changed("prefs");
 }
 
-/** The user menu's model (shell.js openMenu's items). */
-export function userMenu() {
+/**
+ * ◐ ▾'s menu, for the kit (den-ui 0.7.0, hydrateAppearance): Appearance,
+ * Theme (with "Org default" and any notice), Language, then Restart Den…
+ * and All settings.
+ */
+export function appearanceMenu() {
   const opts = themeOptions(st.themes, st.prefsTheme, st.orgDefault);
-  const notice = themeNotice(st.themes, st.prefsTheme, st.active);
-  // "All settings": the Settings page, at Appearance (R10, R21).
-  const settings = "/settings#appearance";
-  const sh = window.denShell;
+  const sh = typeof window !== "undefined" ? window.denShell : null;
   const here = sh?.lang?.() ?? "en";
   return {
-    label: t("um.label"),
+    mode: st.mode,
+    modes: MODES.map(([value, key]) => ({ value, label: t(key) })),
+    themes: opts.map((o) => ({
+      value: o.value,
+      label: o.label,
+      selected: o.selected,
+    })),
+    notice: themeNotice(st.themes, st.prefsTheme, st.active),
+    // Language (R19, 0.3.0-dev.39): each named in itself; a pick saves
+    // the pref and reloads the page in it.
+    languages: sh?.languages
+      ? sh.languages().map((l) => ({
+          id: l.id,
+          name: l.name,
+          current: l.id === here,
+        }))
+      : [],
     items: [
-      { heading: t("um.appearance") },
-      ...MODES.map(([v, key]) => ({
-        label: t(key),
-        checked: st.mode === v,
-        onSelect: () => setMode(v),
-      })),
-      { hr: true },
-      { heading: t("um.theme") },
-      ...opts.map((o) => ({
-        label: o.label,
-        checked: o.selected,
-        onSelect: () => (o.selected ? null : setTheme(o.value)),
-      })),
-      ...(notice ? [{ note: notice }] : []),
-      // Language (R19, 0.3.0-dev.39): each named in itself; a pick saves
-      // the pref and reloads the page in it.
-      ...(sh?.languages
-        ? [
-            { hr: true },
-            { heading: t("um.language") },
-            ...sh.languages().map((l) => ({
-              label: l.name,
-              checked: l.id === here,
-              onSelect: () => (l.id === here ? null : sh.setLanguage(l.id)),
-            })),
-          ]
-        : []),
-      { hr: true },
       // D64: always here, not only when the server is stale.
-      {
-        label: t("rd.menu"),
-        onSelect: () => void restartDen({ from: "menu" }),
-      },
-      { label: t("um.all"), href: settings },
+      { label: t("rd.menu"), id: "restart" },
+      // "All settings": the Settings page, at Appearance (R10, R21).
+      { label: t("um.all"), href: "/settings#appearance" },
     ],
   };
+}
+
+/** A pick in ◐ ▾'s menu: what the kit's onPick gets. */
+export function appearancePick(kind, value) {
+  if (kind === "mode") return setMode(value);
+  if (kind === "theme") {
+    const o = themeOptions(st.themes, st.prefsTheme, st.orgDefault).find(
+      (x) => x.value === (value ?? ""),
+    );
+    return o?.selected ? null : setTheme(value);
+  }
+  const sh = typeof window !== "undefined" ? window.denShell : null;
+  if (kind === "language")
+    return value === (sh?.lang?.() ?? "en") ? null : sh?.setLanguage?.(value);
+  if (kind === "item" && value === "restart")
+    return void restartDen({ from: "menu" });
+  return null;
 }
 
 const MODES = [
@@ -474,46 +479,15 @@ function registerCommands() {
     });
 }
 
-function render(host) {
-  let btn = document.getElementById("appearance-btn");
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.id = "appearance-btn";
-    btn.type = "button";
-    host.appendChild(btn);
-  }
-  // The prototype's user menu (R10): ◐ ▾, an .ib with a .pop menu. Its
-  // name is "Appearance"; the glyphs are hidden from readers.
-  btn.className = "den-ib appearance-btn";
-  const glyph = document.createElement("span");
-  glyph.setAttribute("aria-hidden", "true");
-  glyph.textContent = "◐ ▾";
-  btn.replaceChildren(glyph);
-  btn.title = t("um.title");
-  btn.setAttribute("aria-label", t("um.label"));
-  btn.setAttribute("aria-haspopup", "menu");
-  btn.setAttribute("aria-expanded", "false");
+/** ◐ ▾, drawn by the kit in the shell's bar: its menu is Den's model. */
+function wire(btn) {
   if (btn.dataset.wired) return;
   btn.dataset.wired = "1";
-  btn.addEventListener("click", () =>
-    window.denShell?.openMenu?.(btn, userMenu()),
-  );
-  btn.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    if (btn.getAttribute("aria-expanded") !== "true")
-      window.denShell?.openMenu?.(btn, userMenu());
+  window.DenUIShell?.hydrateAppearance?.(btn, {
+    lang: () => window.denShell?.lang?.() ?? "en",
+    menu: appearanceMenu,
+    onPick: (kind, value) => void appearancePick(kind, value),
   });
-}
-
-/** The bar the control goes in: the shell's user-menu slot (shell.js). */
-function headerHost() {
-  return (
-    document.getElementById("den-user") ||
-    document.querySelector(".den-top") ||
-    document.querySelector("header") ||
-    document.querySelector(".topbar")
-  );
 }
 
 let inited = false;
@@ -536,7 +510,6 @@ export async function initAppearance() {
   injectStyles();
   applyMode();
   registerCommands();
-  const host = headerHost();
-  if (!host) return;
-  render(host);
+  const btn = document.getElementById("appearance-btn");
+  if (btn) wire(btn);
 }

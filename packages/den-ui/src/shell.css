@@ -736,6 +736,21 @@ body.den-has-shell .den-upd {
   color: var(--accent-text);
 }
 
+/* A phone: the panel the window's width, its rows tall enough to touch. */
+@media (max-width: 480px) {
+  .den-bell-pop {
+    left: 0;
+    right: 0;
+    width: auto;
+    top: 48px;
+    border-radius: 0 0 10px 10px;
+  }
+  .den-bell-row {
+    min-height: 44px;
+    align-items: center;
+  }
+}
+
 /* The account entry: its detail after the label, quieter. */
 .den-acct-d {
   color: var(--faint);

@@ -19,6 +19,10 @@
  * opening the agent clears its updates.
  */
 import { formatTime, formatTitle } from "/kit/time.js";
+// den-ui 0.7.0: the bell, its badge and its panel are the kit's; Den
+// gives what is in it and what a row does.
+import { bellPanelHtml } from "/kit/shell-html.js";
+import { hydrateBell } from "/kit/shell-client.js";
 
 const POLL_MS = 5000;
 
@@ -192,10 +196,12 @@ function askHtml(sw) {
 }
 
 /**
- * The panel's HTML for GET /api/notifications's answer. `ui`: the ×N
- * folds open, whether Older is open, and the ⊘ being asked about.
+ * What the kit's panel shows for GET /api/notifications's answer
+ * (bellPanelHtml's options): the heading's buttons, the ⊘'s question, the
+ * rows or the empty state, then Updates and Older. `ui`: the ×N folds
+ * open, whether Older is open, and the ⊘ being asked about.
  */
-export function bellHtml(b, ui = {}) {
+export function bellPanel(b, ui = {}) {
   const u = {
     folds: ui.folds ?? new Set(),
     older: !!ui.older,
@@ -206,16 +212,19 @@ export function bellHtml(b, ui = {}) {
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
-  const head =
-    `<div class="den-bell-hd"><h2 id="den-bell-h">${esc(tr("bell.title"))}</h2>` +
+  const actions =
     (b?.unread || updates.unread
       ? `<button type="button" data-bell="all">${esc(tr("bell.markAll"))}</button>`
       : "") +
     (all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
       ? `<button type="button" data-bell="clear">${esc(tr("bell.clearRead"))}</button>`
-      : "") +
-    `</div>` +
-    (u.ask ? askHtml(u.ask) : "");
+      : "");
+  const panel = {
+    title: tr("bell.title"),
+    titleId: "den-bell-h",
+    actions,
+    lead: u.ask ? askHtml(u.ask) : "",
+  };
   const off = (b?.off ?? []).map(switchName);
   // ATTN-5: what doesn't need the person folds into one Updates row.
   const updatesHtml = updates.count
@@ -223,24 +232,34 @@ export function bellHtml(b, ui = {}) {
       (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
     : "";
   if (!groups.length && !older.count)
-    return (
-      head +
-      `<div class="den-bell-empty"><p>${esc(tr("bell.empty"))}</p>` +
-      (off.length
-        ? `<p>${esc(tr("bell.notShown", { kinds: off.join(tr("bell.sep")) }))}</p>`
-        : "") +
-      `<p><a href="${SETTINGS}" data-bell="settings">${esc(tr("bell.settings"))}</a></p></div>` +
-      updatesHtml
-    );
-  return (
-    head +
-    groupsHtml(groups, u) +
-    updatesHtml +
-    (older.count
-      ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
-        (u.older ? groupsHtml(older.groups ?? [], u) : "")
-      : "")
-  );
+    return {
+      ...panel,
+      items: [],
+      empty: {
+        text: tr("bell.empty"),
+        more:
+          (off.length
+            ? `<p>${esc(tr("bell.notShown", { kinds: off.join(tr("bell.sep")) }))}</p>`
+            : "") +
+          `<p><a href="${SETTINGS}" data-bell="settings">${esc(tr("bell.settings"))}</a></p>`,
+      },
+      after: updatesHtml,
+    };
+  return {
+    ...panel,
+    body: groupsHtml(groups, u),
+    after:
+      updatesHtml +
+      (older.count
+        ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
+          (u.older ? groupsHtml(older.groups ?? [], u) : "")
+        : ""),
+  };
+}
+
+/** The panel's HTML (the kit's bellPanelHtml of bellPanel). */
+export function bellHtml(b, ui = {}) {
+  return bellPanelHtml(bellPanel(b, ui));
 }
 
 let last = null;
@@ -255,19 +274,6 @@ async function load() {
   } catch {
     return null;
   }
-}
-
-function paintCount(btn, b) {
-  const n = btn.querySelector(".den-bell-n");
-  const unread = b?.unread ?? 0;
-  if (n) {
-    n.hidden = !unread;
-    n.textContent = unread > 99 ? "99+" : String(unread);
-  }
-  btn.setAttribute(
-    "aria-label",
-    unread ? tr("bell.n", { n: unread }) : tr("bell.title"),
-  );
 }
 
 async function post(path, body) {
@@ -288,17 +294,33 @@ export function initBell(doc = document) {
     return;
   }
   btn.dataset.wired = "1";
-  const pop = doc.createElement("div");
-  pop.className = "den-bell-pop";
-  pop.id = "den-bell-pop";
-  pop.setAttribute("role", "dialog");
-  pop.setAttribute("aria-labelledby", "den-bell-h");
-  pop.hidden = true;
-  doc.body.appendChild(pop);
-  btn.setAttribute("aria-controls", pop.id);
-
   // In memory only: a reload starts with every fold closed.
   const ui = { folds: new Set(), older: false, updates: false, ask: null };
+  // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
+  // it, Esc or a click outside closes it, focus back on the bell.
+  const bell = hydrateBell(btn, {
+    lang: () => window.denShell?.lang?.() ?? "en",
+    // den#143: its Report footer drawn with it, so a repaint (every
+    // refresh while open) doesn't wipe it for a frame.
+    panel: () => ({
+      ...bellPanel(last ?? { groups: [], unread: 0 }, ui),
+      foot: doc.defaultView?.denShell?.reportFoot?.() ?? "",
+    }),
+    onOpen: () => void refresh(),
+    onClose: () => {
+      ui.ask = null;
+    },
+    // Esc in the ⊘'s question cancels it; the panel stays.
+    onEscape: () => {
+      if (!ui.ask) return false;
+      const sw = ui.ask;
+      ui.ask = null;
+      paint();
+      pop.querySelector(`[data-bell="stop"][data-sw="${sw}"]`)?.focus?.();
+      return true;
+    },
+  });
+  const pop = bell.el;
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -310,51 +332,16 @@ export function initBell(doc = document) {
             ? `[data-scope="${CSS.escape(at.dataset.scope)}"]`
             : "")
         : "";
-    // den#143: its Report footer drawn with it, so a repaint (every
-    // refresh while open) doesn't wipe it for a frame.
-    pop.innerHTML =
-      bellHtml(last ?? { groups: [], unread: 0 }, ui) +
-      (doc.defaultView?.denShell?.reportFoot?.() ?? "");
+    bell.paint();
     if (keep) pop.querySelector(keep)?.focus?.();
   };
   const refresh = async () => {
     const b = await load();
     if (!b) return;
     last = b;
-    paintCount(btn, b);
-    if (!pop.hidden) paint();
+    bell.setCount(b?.unread ?? 0);
+    if (bell.isOpen()) paint();
   };
-  const close = (focus = true) => {
-    if (pop.hidden) return;
-    pop.hidden = true;
-    ui.ask = null;
-    btn.setAttribute("aria-expanded", "false");
-    if (focus) btn.focus();
-  };
-  const open = async () => {
-    paint();
-    pop.hidden = false;
-    btn.setAttribute("aria-expanded", "true");
-    (pop.querySelector("a, button") ?? pop).focus?.();
-    await refresh();
-  };
-  btn.addEventListener("click", () => (pop.hidden ? open() : close()));
-  doc.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || pop.hidden) return;
-    // Esc in the ⊘'s question cancels it; the panel stays.
-    if (ui.ask) {
-      const sw = ui.ask;
-      ui.ask = null;
-      paint();
-      pop.querySelector(`[data-bell="stop"][data-sw="${sw}"]`)?.focus?.();
-      return;
-    }
-    close();
-  });
-  doc.addEventListener("pointerdown", (e) => {
-    if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target))
-      close(false);
-  });
   pop.addEventListener("click", async (e) => {
     const el = e.target.closest("[data-bell]");
     if (!el) {
@@ -424,7 +411,7 @@ export function initBell(doc = document) {
   // issue 206: a new time zone pick (Settings) redraws the open panel.
   if (typeof MutationObserver === "function")
     new MutationObserver(() => {
-      if (!pop.hidden) paint();
+      if (bell.isOpen()) paint();
     }).observe(doc.documentElement, {
       attributes: true,
       attributeFilter: ["data-den-tz"],

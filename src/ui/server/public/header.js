@@ -26,11 +26,6 @@ const t = (key, vars) =>
   typeof window !== "undefined" && window.denShell?.t
     ? window.denShell.t(key, vars)
     : key;
-const escT = (key, vars) =>
-  String(t(key, vars)).replace(
-    /[&<>"]/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
-  );
 
 export {
   askSudo,
@@ -736,52 +731,24 @@ export function computePrimaryByRepo(svcList) {
 
 const SERVER_INFO_POLL_MS = 12_000;
 let _lastServerInfo = null; // most recent { pid, startedAt }
-let _staleStylesInjected = false;
 
-function _injectStaleStyles() {
-  if (_staleStylesInjected) return;
-  _staleStylesInjected = true;
-  const s = document.createElement("style");
-  s.textContent = `
-    .stale-pill {
-      font-family: var(--mono); font-size: 10px; font-weight: 600;
-      padding: 2px 9px; border-radius: 10px; cursor: pointer; user-select: none;
-      border: 1px solid var(--warn); color: var(--warn);
-      background: color-mix(in srgb, var(--warn) 12%, transparent);
-      display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-      animation: stale-pulse 2s ease-in-out infinite;
-    }
-    .stale-pill:hover { color: var(--bg); background: var(--warn); }
-    .stale-pill b { font-weight: 700; }
-    @keyframes stale-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-  `;
-  document.head.appendChild(s);
-}
-
+/**
+ * The update-waiting pill after the version chip, the kit's (den-ui 0.7.0):
+ * "⚠ stale server · Restart" while the server runs older code than is on
+ * disk; a click restarts it.
+ */
 function _renderStalePill(info) {
-  let pill = document.getElementById("stale-pill");
   if (!info || !info.stale) {
-    if (pill) pill.style.display = "none";
+    DenUI.version.waiting(null);
     return;
   }
-  _injectStaleStyles();
-  if (!pill) {
-    const header =
-      document.querySelector(".den-top") || document.querySelector("header");
-    if (!header) return;
-    pill = document.createElement("button");
-    pill.id = "stale-pill";
-    pill.className = "stale-pill";
-    pill.title = t("stale.title", { cli: "__DEN_CLI__" });
-    pill.setAttribute("aria-label", t("stale.aria"));
-    pill.innerHTML = `<span aria-hidden="true">⚠</span><span class="stale-lbl"> ${escT("stale.label")} · <b>${escT("stale.restart")}</b></span>`;
-    pill.addEventListener("click", _requestRestart);
-    const vpill = document.getElementById("version-pill");
-    if (vpill && vpill.parentNode)
-      vpill.parentNode.insertBefore(pill, vpill.nextSibling);
-    else header.appendChild(pill);
-  }
-  pill.style.display = "";
+  DenUI.version.waiting({
+    label: t("stale.label"),
+    action: t("stale.restart"),
+    title: t("stale.title", { cli: "__DEN_CLI__" }),
+    name: t("stale.aria"),
+    onClick: _requestRestart,
+  });
 }
 
 async function _fetchServerInfo() {

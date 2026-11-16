@@ -261,7 +261,9 @@ describe("den-ui-parity (bin)", () => {
 
   it("finds no copy in Den", () => {
     const r = run(process.cwd());
-    expect([r.status, r.stdout.trim().split("\n").pop()]).toEqual([
+    // No DIVERGE.md: Den keeps no copy of any of them.
+    expect(fs.existsSync(path.join(process.cwd(), "DIVERGE.md"))).toBe(false);
+    expect([r.status, r.stdout.trim()]).toEqual([
       0,
       "den-ui-parity: ok, no copies of the kit's 11 components in src",
     ]);
