@@ -346,12 +346,13 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   status: {
-    usage: "status [-A <app>] [--scope <all|project>] [--verbose]",
+    usage: "status [<repo>…] [-A <app>] [--scope <all|project>] [--verbose]",
     lines: [
       "Show service health for what is in view: every active project by",
       "default (the web UI's scope), or --scope <project> for one. A",
       "service several projects share is listed once, with its owners.",
       "--verbose (or --all) shows one row per service instead of per repo.",
+      "Name repos to show only those.",
     ],
   },
   logs: {
@@ -753,6 +754,8 @@ interface UpReport {
 class DenCLI {
   /** Set while `up --json` runs. */
   private upReport: UpReport | null = null;
+  /** The project `up -w` made active (issue 291), for `up --json`. */
+  private upActivated: string | null = null;
 
   private static readonly serviceCommands = new Set([
     "up",
@@ -835,19 +838,22 @@ class DenCLI {
    */
   private applyGlobalFlags(parsed: ParsedCliArgs): void {
     if (parsed.flags.workspace) {
+      const ws = parsed.flags.workspace;
       const file = readWorkspacesFile();
-      if (!file.workspaces[parsed.flags.workspace]) {
-        throw new Error(`Project "${parsed.flags.workspace}" does not exist`);
+      if (!file.workspaces[ws]) {
+        throw new Error(`Project "${ws}" does not exist`);
       }
       if (
         workspaceFlagRequiresActive(parsed.command ?? "") &&
-        !isWorkspaceActive(parsed.flags.workspace)
+        !isWorkspaceActive(ws)
       ) {
-        throw new Error(
-          `Project "${parsed.flags.workspace}" is not active — run \`${product().cli} workspace activate ${parsed.flags.workspace}\` first`,
-        );
+        if (parsed.command !== "up")
+          throw new Error(
+            `Project "${ws}" is not active — run \`${product().cli} workspace activate ${ws}\` first`,
+          );
+        this.activateForUp(ws, parsed.args);
       }
-      process.env.DEN_WORKSPACE_OVERRIDE = parsed.flags.workspace;
+      process.env.DEN_WORKSPACE_OVERRIDE = ws;
     }
 
     if (parsed.flags.forceTabs !== undefined) {
@@ -857,6 +863,28 @@ class DenCLI {
     if (parsed.flags.skipSecrets) {
       process.env.DEN_SKIP_SECRETS = "1";
     }
+  }
+
+  /**
+   * Issue 291: `up -w <project>` in a project that is not active (one just
+   * made with `workspace create`) makes it active, as `repo add -w` does for
+   * a project it makes, and says so in one line. What runs is defined over
+   * the active set, so up never runs outside it. A dry run (--dry-run, -n,
+   * --plan) changes nothing and says it would.
+   */
+  private activateForUp(ws: string, args: string[]): void {
+    const end = args.indexOf("--");
+    const own = end === -1 ? args : args.slice(0, end);
+    const dry = ["--dry-run", "-n", "--plan"].some((f) => own.includes(f));
+    if (!dry) {
+      activateWorkspace(ws);
+      this.upActivated = ws;
+    }
+    process.stderr.write(
+      chalk.gray(
+        `\n  ${dry ? "Would make" : "Made"} project "${ws}" active to start it.\n`,
+      ),
+    );
   }
 
   private prepareServiceCommand(command: string | undefined): void {
@@ -3266,6 +3294,7 @@ class DenCLI {
         // Issue 277: a repo with nothing to start was asked for and is fine.
         (touched.length > 0 || report.noRuntime.length > 0),
       workspace: workspace ?? null,
+      ...(this.upActivated ? { activated: this.upActivated } : {}),
       services,
       ...(report.noRuntime.length > 0 ? { noRuntime: report.noRuntime } : {}),
     };
@@ -3669,7 +3698,34 @@ class DenCLI {
             focus: named.name,
           }
         : scopeView(scopeArg?.ok ? scopeArg.value : undefined);
-    const only = app ? focusedAppRepos(app) : null;
+    // Issue 291: `status <repo>…` answers for those repos only.
+    const repoArgs = canonicalTargets(args.filter((a) => !a.startsWith("-")));
+    const namedRepos = new Set(repoArgs.map((a) => parseAddress(a).repoName));
+    if (namedRepos.size > 0) {
+      const inView = new Set(
+        view.workspaces.flatMap((w) =>
+          getWorkspaceServices(w.name).map((s) => s.repoName),
+        ),
+      );
+      const missing = [...namedRepos].filter((r) => !inView.has(r));
+      if (missing.length > 0) {
+        const where =
+          view.workspaces.length === 1
+            ? `project ${view.workspaces[0].name}`
+            : "the active projects";
+        console.log(
+          chalk.red(
+            `\n  ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not in ${where}.\n`,
+          ),
+        );
+        process.exit(1);
+      }
+    }
+    const appRepos = app ? focusedAppRepos(app) : null;
+    const only =
+      namedRepos.size === 0
+        ? appRepos
+        : new Set([...namedRepos].filter((r) => !appRepos || appRepos.has(r)));
     const verbose = args.includes("--verbose") || args.includes("--all");
     const spinner = ora("Checking service health...").start();
     const raw = (
@@ -3692,11 +3748,15 @@ class DenCLI {
 
     if (results.length === 0) {
       // Issue 277: repos that run nothing have nothing to check.
-      const none = this.noRuntimeRepos(view.workspaces.map((w) => w.name));
+      const none = new Map(
+        [...this.noRuntimeRepos(view.workspaces.map((w) => w.name))].filter(
+          ([r]) => !only || only.has(r),
+        ),
+      );
       console.log(
         chalk.yellow(
           none.size > 0
-            ? `\n  No services to check: ${DenCLI.noRuntimeList(none)} have no runtime of their own.\n`
+            ? `\n  No services to check: ${DenCLI.noRuntimeList(none)} ${none.size === 1 ? "has no runtime of its own" : "have no runtime of their own"}.\n`
             : `\n  No services registered. Run: ${product().cli} register\n`,
         ),
       );
