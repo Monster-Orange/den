@@ -97,7 +97,10 @@ async function model(ctx: BrowserContext, noDvh: boolean): Promise<void> {
       return route.fulfill({ status: 404 });
     if (!["document", "stylesheet", "script"].includes(req.resourceType()))
       return route.continue();
-    const res = await route.fetch();
+    // The test fetches every page, script and sheet itself; a kept-alive
+    // socket the server closes just as one is reused answers ECONNRESET
+    // ("socket hang up"). Playwright retries only that, once.
+    const res = await route.fetch({ maxRetries: 1 });
     await route.fulfill({
       response: res,
       body: rewrite(await res.text(), noDvh),
