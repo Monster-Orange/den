@@ -124,6 +124,88 @@ describe("commit-msg hook", () => {
   });
 });
 
+describe("the names file without the variable (a per-user file)", () => {
+  const home = () => {
+    const h = path.join(dir, "home");
+    fs.mkdirSync(path.join(h, ".config", "den-dev"), { recursive: true });
+    fs.copyFileSync(names, path.join(h, ".config", "den-dev", "org-names.txt"));
+    return h;
+  };
+
+  it("range check: reads ~/.config/den-dev/org-names.txt when no variable is set", () => {
+    const r = check([`${base}..${bad}`], { HOME: home() });
+    expect(r.status).toBe(1);
+  });
+
+  it("XDG_CONFIG_HOME wins over HOME", () => {
+    const h = home();
+    const r = check([`${base}..${bad}`], {
+      HOME: path.join(dir, "nowhere"),
+      XDG_CONFIG_HOME: path.join(h, ".config"),
+    });
+    expect(r.status).toBe(1);
+  });
+});
+
+describe("pre-push hook", () => {
+  const hook = path.join(ROOT, ".husky", "pre-push");
+  const Z = "0".repeat(40);
+  const push = (lines: string, env: Record<string, string>) =>
+    spawnSync("sh", [hook, "origin", "git@example.com:x/y.git"], {
+      cwd: repo,
+      input: lines,
+      encoding: "utf-8",
+      env: {
+        PATH: process.env.PATH ?? "",
+        DEN_ROOT: ROOT,
+        DEN_PREPUSH_FILES: "0",
+        ...env,
+      },
+    });
+
+  it("refuses a push whose new commits name an org", () => {
+    const r = push(`refs/heads/x ${bad} refs/heads/x ${base}\n`, {
+      DEN_ORG_NAMES_FILE: names,
+    });
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`.toLowerCase()).not.toContain("zorblax");
+  });
+
+  it("checks a brand-new branch too (no remote tip): from where it left main", () => {
+    git("update-ref", "refs/remotes/origin/main", base);
+    const r = push(`refs/heads/new ${bad} refs/heads/new ${Z}\n`, {
+      DEN_ORG_NAMES_FILE: names,
+    });
+    expect(r.status).not.toBe(0);
+  });
+
+  it("lets a clean push through, and a branch delete", () => {
+    expect(
+      push(`refs/heads/x ${clean} refs/heads/x ${base}\n`, {
+        DEN_ORG_NAMES_FILE: names,
+      }).status,
+    ).toBe(0);
+    expect(
+      push(`(delete) ${Z} refs/heads/x ${clean}\n`, {
+        DEN_ORG_NAMES_FILE: names,
+      }).status,
+    ).toBe(0);
+  });
+
+  it("passes quietly with no names configured (a contributor's machine)", () => {
+    const r = push(`refs/heads/x ${bad} refs/heads/x ${base}\n`, {});
+    expect(r.status).toBe(0);
+    expect(r.stdout + r.stderr).toBe("");
+  });
+
+  it("fails closed when a names file is set but missing", () => {
+    const r = push(`refs/heads/x ${clean} refs/heads/x ${base}\n`, {
+      DEN_ORG_NAMES_FILE: path.join(dir, "missing.txt"),
+    });
+    expect(r.status).not.toBe(0);
+  });
+});
+
 describe("ci.yml", () => {
   it("runs the commit check on the PR range and the push range, with full history", () => {
     const ci = fs.readFileSync(
