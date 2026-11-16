@@ -127,6 +127,39 @@ const STYLES = [
  * The differences the move may make, none visible, each with its reason.
  * Keyed by the attribute that differs.
  */
+/**
+ * The same glyphs on every machine: the system faces Den's pages name are
+ * pinned, in this test only, to the kit's own font files (Rubik for the
+ * sans and serif names, Space Mono for the mono ones). GitHub's runner and
+ * the Playwright image have different system fonts; a line there wrapped
+ * or stood a little taller, and the Report form's buttons, below a dozen
+ * lines, came out 6 px apart (#272). Pinned, the text lays out alike, and
+ * the rects keep the same 4 px.
+ */
+const PIN_DIR = path.join(__dirname, "../../../packages/den-ui/src/fonts");
+const PIN_SANS = [
+  "-apple-system",
+  "BlinkMacSystemFont",
+  "Segoe UI",
+  "Noto Sans",
+  "Hiragino Sans",
+  "Noto Sans JP",
+  "Helvetica",
+  "Arial",
+  "Times New Roman",
+];
+const PIN_MONO = ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas"];
+const PIN_CSS = [
+  ...PIN_SANS.flatMap((f) => [
+    `@font-face{font-family:"${f}";font-weight:100 449;src:url(/__pin-fonts/rubik-latin-400-normal.woff2) format("woff2")}`,
+    `@font-face{font-family:"${f}";font-weight:450 900;src:url(/__pin-fonts/rubik-latin-500-normal.woff2) format("woff2")}`,
+  ]),
+  ...PIN_MONO.map(
+    (f) =>
+      `@font-face{font-family:"${f}";src:url(/__pin-fonts/space-mono-latin-400-normal.woff2) format("woff2")}`,
+  ),
+].join("\n");
+
 /** How far a rect may move on another browser (see the top). */
 const GEO_TOLERANCE = 4;
 const ENV_KEY = "__env";
@@ -250,6 +283,26 @@ async function open(
       seed = (seed * 16807) % 2147483647;
       return (seed - 1) / 2147483646;
     };
+  });
+  // The pinned faces (PIN_CSS), linked from the page's own origin.
+  await ctx.route("**/__pin-fonts/**", (r) => {
+    const f = new URL(r.request().url()).pathname.split("/").pop()!;
+    if (f === "pin.css")
+      return r.fulfill({ contentType: "text/css", body: PIN_CSS });
+    return r.fulfill({
+      contentType: "font/woff2",
+      body: fs.readFileSync(path.join(PIN_DIR, path.basename(f))),
+    });
+  });
+  await ctx.addInitScript(() => {
+    const add = () => {
+      const l = document.createElement("link");
+      l.rel = "stylesheet";
+      l.href = "/__pin-fonts/pin.css";
+      document.head.prepend(l);
+    };
+    if (document.head) add();
+    else document.addEventListener("DOMContentLoaded", add);
   });
   await ctx.route("**/api/changelog", (r) => r.fulfill({ json: NOTES }));
   await ctx.route("**/api/server-info", async (route) => {
@@ -540,4 +593,39 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           await ctx.close();
         }
       }, 60_000);
+
+  // The check still sees a real move: Report's button row 6 px lower (a
+  // transform, which no compared style shows) fails it, on any browser.
+  it("fails when Report's button row moves 6 px (1280)", async () => {
+    if (skip() || CAPTURE) return;
+    const want = fixture["report-1280"];
+    expect(want).toBeDefined();
+    const { p, ctx } = await open(1280, 900);
+    try {
+      await ctx.route("**/__pin-fonts/shift.css", (r) =>
+        r.fulfill({
+          contentType: "text/css",
+          body: ".fb-btns{transform:translateY(6px)}",
+        }),
+      );
+      await show(p, "report");
+      await p.evaluate(
+        () =>
+          new Promise((ok) => {
+            const l = document.createElement("link");
+            l.rel = "stylesheet";
+            l.href = "/__pin-fonts/shift.css";
+            l.onload = ok;
+            document.head.append(l);
+          }),
+      );
+      const shot = await measure(p, "report");
+      expect(geoDiff(want.measures, shot.measures, GEO_TOLERANCE)).toEqual([
+        expect.stringMatching(/^dialog\.fb-dlg \.fb-btns: /),
+      ]);
+    } finally {
+      await ctx.unrouteAll({ behavior: "ignoreErrors" });
+      await ctx.close();
+    }
+  }, 60_000);
 });
