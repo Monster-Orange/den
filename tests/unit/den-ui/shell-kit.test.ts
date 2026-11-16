@@ -213,11 +213,48 @@ describe("den-ui-parity (bin)", () => {
     expect(r.stdout).toMatch(/report: .*1 copy/);
   });
 
+  // 0.7.0: the scope crumbs, the search, the bell and the account entry.
+  it("fails on a product's own scope crumbs, search, bell or account entry", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "bar.js"),
+      [
+        'const a = \'<div class="den-scope" role="group"></div>\';',
+        "const b = '<button class=\"den-search\"></button>';",
+        'pop.className = "den-bell-pop";',
+        "function identityEntry() { return null; }",
+      ].join("\n") + "\n",
+    );
+    const r = run(root);
+    expect(r.status).toBe(1);
+    for (const c of ["scope", "search", "bell", "account"])
+      expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
+  });
+
+  it("a product's own words in the kit's options, or its rows in the bell, are not copies", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "bar.js"),
+      [
+        "const s = DUI.scopeHtml({ crumbs: [{ key: 'env', label: 'Env' }] });",
+        "const row = '<div class=\"den-bell-row\"><a>x</a></div>';",
+        "btn.querySelector('.den-bell-n');",
+      ].join("\n") + "\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "bar.css"),
+      ".den-bell-row a { color: red; }\n.den-scope .den-k { display: none; }\n",
+    );
+    expect(run(root).status).toBe(0);
+  });
+
   it("finds no copy in Den", () => {
     const r = run(process.cwd());
-    expect([r.status, r.stdout.trim()]).toEqual([
+    expect([r.status, r.stdout.trim().split("\n").pop()]).toEqual([
       0,
-      "den-ui-parity: ok, no copies of the kit's 6 components in src",
+      "den-ui-parity: ok, no copies of the kit's 10 components in src",
     ]);
   });
 });
@@ -243,7 +280,7 @@ describe("the package ships every kit file", () => {
     for (const f of src) expect([f, KIT_FILES.includes(f)]).toEqual([f, true]);
   });
   it("packs src/ and bin/, with den-ui-parity as its bin", () => {
-    expect(pkg.version).toMatch(/^0\.6\.\d+$/);
+    expect(pkg.version).toMatch(/^0\.7\.\d+$/);
     expect(pkg.files).toEqual(expect.arrayContaining(["src/", "bin/"]));
     expect(pkg.bin["den-ui-parity"]).toBe("bin/den-ui-parity.mjs");
     expect(fs.existsSync(path.join(PKG, pkg.bin["den-ui-parity"]))).toBe(true);

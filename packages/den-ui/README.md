@@ -168,7 +168,8 @@ repository root, one row per component, with a reason:
     | report | our reports go to a ticket desk, not an issue tracker |
 
 (or a list: `- report: our reports go to …`). The components are `shell`,
-`version`, `whatsnew`, `update`, `report` and `working`. A row without a
+`version`, `whatsnew`, `update`, `report` and `working`, and since 0.7.0
+`scope`, `search`, `bell` and `account`. A row without a
 reason does not count. With no DIVERGE.md, every copy fails.
 
 ## The working pop-up and types (0.6.1)
@@ -200,6 +201,62 @@ reason does not count. With no DIVERGE.md, every copy fails.
 - Types: every `src/*.js` has a `.d.ts` beside it; the package's `types`
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
+
+## 0.7.0
+
+No new file. One import changes, for hosts that serve a fixed list of kit files:
+
+`shell-client.js` now imports `dialog.js` (and `shell-html.js`): serve `dialog.js` wherever `shell-client.js` is served.
+
+Four pieces of the top bar and the rail that a host drew itself move
+into the kit, so every host draws them the same way. The host gives words,
+values and callbacks. The kit draws the markup and owns focus and keys.
+Each piece is optional: one left out draws nothing.
+
+- **Scope crumbs**: `scopeHtml({ crumbs, label?, after? })`, for the
+  `start` slot. Each crumb is `{ key, label, value, menu?, id?, title?,
+hidden?, optional? }`. `label` is the small-caps word (COMPANY,
+  PROJECT, ENV). With a `menu`, the crumb is a ▾ button. Without one, it is
+  a plain label. `menu` is a list of links `[{ label, href, current? }]`
+  or HTML, and the kit draws and opens it below the ▾. Enter, Space, ↓ and
+  ↑ open it, and ↑ ↓ Home End move in it. Esc closes it and goes back to
+  the ▾. `menu: true` means the host opens its own menu: `onOpen(key,
+button)`. A crumb left out of the list draws nothing, and no separator
+  either (a host with no ENV, say). `scopeCrumbHtml(crumb)` draws one crumb.
+- **Search field**: `searchHtml({ placeholder, label?, id?, shortcut? })`,
+  for the `start` slot. It is the placeholder with ⌘K inside the field. A
+  click, Enter, ⌘K or Ctrl-K calls `onActivate(via)` (`"click"` or
+  `"key"`) and fires `den-ui:search` on the field. The kit owns no
+  palette.
+- **Bell**: `bellButtonHtml({ count, label? })`, for the `bell` slot. It is
+  a button with a count badge (99+ past 99, none at 0) and
+  `aria-haspopup="dialog"`. Its name says the count. The panel is a dialog
+  on `<body>`: a heading, then the host's `items` as rows (`{ text, href?,
+time?, read? }`) or the empty state. `bellPanelHtml(...)` takes `actions`
+  (buttons beside the heading), `lead`, `body` (the host's own rows),
+  `empty`, `after` and `foot`. A click on the bell toggles the panel.
+  Opening it focuses its first link or button. Esc closes it and focus goes
+  back to the bell, in Safari too (`focusBack` from `dialog.js`). A click
+  outside closes it. `onEscape(e)` returning true keeps it open (the
+  host's own question inside it, say). `shell.bell.setCount(n)` updates the
+  badge.
+- **Account entry**: `account: { label, detail?, href? | action? }` on
+  `shellHtml` or `railHtml` puts it last in the rail's foot, before the
+  collapse toggle. It reads "label · detail". It is a link, or with
+  `action: true` a button that calls `onAction`. `accountHtml(...)` draws
+  it alone.
+- Wiring: `DenUI.hydrate(root, { scope, search, bell, account })` (or
+  `mount`'s `model.hydrate`) wires each piece it finds. The shell it
+  returns has `.scope`, `.search` and `.bell`. For a host's own wiring,
+  use `hydrateScope`, `hydrateSearch`, `hydrateBell` and `hydrateAccount`
+  in `shell-client.js`.
+- The words: `kit.scope`, `kit.search.ph`, `kit.bell`, `kit.bell.n` and
+  `kit.bell.empty`, in en, es and ja. The look is in `shell.css`. At 860px
+  the crumbs' keys and any `optional` crumb give way. At 720px the crumbs
+  hide and the search is only its icon.
+- `den-ui-parity` knows the four as components `scope`, `search`, `bell`
+  and `account`. A product's own copy of one fails the gate. A product's
+  own rows inside the bell, or its own menu inside a crumb, are not copies.
 
 ## 0.6.5
 

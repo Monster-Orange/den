@@ -443,11 +443,11 @@ for (const engine of ["chromium", "webkit"]) {
       // Esc: closed, focus on the bell (a click never focused it).
       await bell.click();
       await pop.waitFor({ state: "visible" });
-      await expect(bell).toHaveAttribute("aria-expanded", "true");
+      await expect(bell.getAttribute("aria-expanded")).resolves.toBe("true");
       await expect(focused(p)).resolves.toBe("#build");
       await p.keyboard.press("Escape");
       await pop.waitFor({ state: "hidden" });
-      await expect(bell).toHaveAttribute("aria-expanded", "false");
+      await expect(bell.getAttribute("aria-expanded")).resolves.toBe("false");
       await expect(focused(p)).resolves.toBe("den-bell");
       // The bell again closes it.
       await bell.click();
@@ -494,12 +494,12 @@ for (const engine of ["chromium", "webkit"]) {
       const ws = p.locator("#den-scope-ws");
       await ws.focus();
       await p.keyboard.press("ArrowDown");
-      await expect(ws).toHaveAttribute("aria-expanded", "true");
+      await expect(ws.getAttribute("aria-expanded")).resolves.toBe("true");
       await expect(focused(p)).resolves.toBe("#garden");
       await p.keyboard.press("ArrowDown");
       await expect(focused(p)).resolves.toBe("#orchard");
       await p.keyboard.press("Escape");
-      await expect(ws).toHaveAttribute("aria-expanded", "false");
+      await expect(ws.getAttribute("aria-expanded")).resolves.toBe("false");
       await expect(focused(p)).resolves.toBe("den-scope-ws");
       // Enter opens it too; the menu's entries are menu items.
       await p.keyboard.press("Enter");

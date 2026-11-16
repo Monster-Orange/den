@@ -6,7 +6,20 @@ import type {
   Progress,
   configureBusy,
 } from "./busy.js";
-import type { HydrateOptions, Shell } from "./shell-client.js";
+import type {
+  BellHandle,
+  BellHydrateOptions,
+  HydrateOptions,
+  ScopeHandle,
+  ScopeHydrateOptions,
+  SearchHandle,
+  SearchHydrateOptions,
+  Shell,
+  hydrateAccount,
+  hydrateBell,
+  hydrateScope,
+  hydrateSearch,
+} from "./shell-client.js";
 import type {
   ShellModel,
   shellHtml,
@@ -16,6 +29,12 @@ import type {
   versionChipHtml,
   reportButtonHtml,
   reportPrefillOf,
+  scopeHtml,
+  scopeCrumbHtml,
+  searchHtml,
+  bellButtonHtml,
+  bellPanelHtml,
+  accountHtml,
   icon,
   esc,
 } from "./shell-html.js";
@@ -52,6 +71,20 @@ export interface KitHydrateOptions extends HydrateOptions {
   versionChip?: boolean;
   /** false: no [data-den-report] clicks or ⌘⇧F. */
   report?: boolean;
+  /** 0.7.0: the scope crumbs' menus (false: not wired). */
+  scope?: ScopeHydrateOptions | false;
+  /** 0.7.0: the search field (false: not wired). */
+  search?: SearchHydrateOptions | false;
+  /** 0.7.0: the bell and its panel (false: not wired). */
+  bell?: Omit<BellHydrateOptions, "lang"> | false;
+  /** 0.7.0: the account entry as an action (false: not wired). */
+  account?: { onAction?: (e: Event) => void } | false;
+}
+/** The shell hydrate returns: the 0.7.0 pieces it found and wired. */
+export interface KitShell extends Shell {
+  scope?: ScopeHandle;
+  search?: SearchHandle;
+  bell?: BellHandle;
 }
 export declare function configure(o?: KitConfig): void;
 export declare function t(
@@ -108,11 +141,11 @@ export declare const busy: {
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
-): Shell;
+): KitShell;
 export declare function mount(
   root: Element,
   model?: ShellModel & { hydrate?: KitHydrateOptions },
-): Shell;
+): KitShell;
 
 export interface DenUIKit {
   configure: typeof configure;
@@ -125,6 +158,16 @@ export interface DenUIKit {
   versionChipHtml: typeof versionChipHtml;
   reportButtonHtml: typeof reportButtonHtml;
   reportPrefillOf: typeof reportPrefillOf;
+  scopeHtml: typeof scopeHtml;
+  scopeCrumbHtml: typeof scopeCrumbHtml;
+  searchHtml: typeof searchHtml;
+  bellButtonHtml: typeof bellButtonHtml;
+  bellPanelHtml: typeof bellPanelHtml;
+  accountHtml: typeof accountHtml;
+  hydrateScope: typeof hydrateScope;
+  hydrateSearch: typeof hydrateSearch;
+  hydrateBell: typeof hydrateBell;
+  hydrateAccount: typeof hydrateAccount;
   syncPinToggles: typeof syncPinToggles;
   icon: typeof icon;
   esc: typeof esc;

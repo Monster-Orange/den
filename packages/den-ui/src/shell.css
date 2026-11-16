@@ -556,3 +556,258 @@ body.den-has-shell .den-upd {
   display: none;
   pointer-events: none;
 }
+
+/* ── 0.7.0: the scope crumbs, the search, the bell, the account ───────── */
+
+/* The scope crumbs: / KEY value ▾ / … The search gives way first: the
+   crumbs keep their parts whole (each value is capped), so they never run
+   into one another. */
+.den-scope {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex-shrink: 0;
+  position: relative;
+}
+.den-sep {
+  color: var(--faint);
+}
+.den-scope [hidden] {
+  display: none;
+}
+.den-scope .den-ib {
+  color: var(--text);
+  font-size: 13px;
+  min-width: 0;
+}
+.den-k {
+  font: 11px var(--mono);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.den-scope .den-ib[aria-expanded="true"] {
+  background: var(--sunken);
+}
+/* A long value ends in an ellipsis; the whole value is in the menu. */
+.den-scope-btn .den-vn,
+.den-scope .den-opt .den-vn {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+/* A crumb's own menu (links or the host's HTML), below its ▾. */
+.den-scope-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: var(--den-menu-x, 0px);
+  z-index: 45;
+  min-width: 200px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 6px;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  font: 14px/1.45 var(--sans);
+}
+.den-scope-menu a,
+.den-scope-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.den-scope-menu a:hover,
+.den-scope-menu a:focus,
+.den-scope-menu button:hover,
+.den-scope-menu button:focus {
+  background: var(--sunken);
+  outline: none;
+}
+.den-scope-menu [aria-current="true"]::after {
+  content: "✓" / "";
+  margin-left: auto;
+  color: var(--accent-text);
+}
+
+/* The search field, ⌘K inside it. Its sizes are content-box (a page may
+   reset everything to border-box). */
+.den-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  padding: 5px 10px;
+  color: var(--faint);
+  cursor: text;
+  min-width: 0;
+  font: inherit;
+  box-sizing: content-box;
+}
+.den-search-ph {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.den-search-ic {
+  flex: none;
+}
+.den-search kbd {
+  font: 11px var(--mono);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+/* The bell, its count, and its panel (on <body>, outside the bar). */
+.den-bell {
+  position: relative;
+}
+.den-bell-n {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: var(--bg);
+  font: 600 10px/16px var(--mono);
+  text-align: center;
+}
+.den-bell-n[hidden] {
+  display: none;
+}
+.den-bell-pop {
+  position: fixed;
+  top: 52px;
+  right: 12px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--text) 25%, transparent);
+  /* On <body>: its own font, not a page's default (a serif). */
+  z-index: 60;
+  padding: 8px 0;
+  font: 13px/1.45 var(--sans);
+}
+.den-bell-pop[hidden] {
+  display: none;
+}
+.den-bell-pop:focus {
+  outline: none;
+}
+.den-bell-hd {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.den-bell-hd h2 {
+  font-size: 13px;
+  margin: 0;
+  flex: 1;
+}
+.den-bell-hd button {
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  border: 0;
+  color: var(--accent-text);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.den-bell-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 12px;
+}
+.den-bell-row:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.den-bell-row a {
+  flex: 1;
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.den-bell-row.read a {
+  color: var(--muted);
+}
+.den-bell-row time {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.den-bell-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+}
+.den-bell-empty p {
+  margin: 0 0 6px;
+}
+.den-bell-empty a {
+  color: var(--accent-text);
+}
+
+/* The account entry: its detail after the label, quieter. */
+.den-acct-d {
+  color: var(--faint);
+}
+
+/* Narrow: the crumbs' keys and the optional crumb give way, then the
+   crumbs hide and the search is its icon. */
+@media (max-width: 860px) {
+  .den-scope .den-k,
+  .den-scope .den-sep,
+  .den-scope .den-opt {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .den-scope {
+    display: none;
+  }
+  .den-search {
+    flex: 0 0 auto;
+    margin: 0 0 0 auto;
+  }
+  .den-search-ph,
+  .den-search kbd {
+    display: none;
+  }
+}

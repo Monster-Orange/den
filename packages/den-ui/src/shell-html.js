@@ -8,7 +8,8 @@
  * No inline style attributes, no inline handlers: the markup is clean
  * under `script-src 'self'; style-src 'self'`. Its look is shell.css.
  *
- *   shellHtml({ product, nav, groups, foot, lang, slots, collapsed, report })
+ *   shellHtml({ product, nav, groups, foot, account, lang, slots, collapsed,
+ *               report })
  *     product  { name, title?, version?, href?, mark? }   the brand: `name` is the
  *              word beside the mark, `title` its tooltip (default name),
  *              `version` the chip's text ("v" + version; "v…" when unknown),
@@ -21,6 +22,8 @@
  *              entry is left out
  *     foot     entries under the rail's spacer (Settings, say), then the
  *              kit's collapse toggle
+ *     account  (0.7.0) the account entry, last in the foot: { label,
+ *              detail?, href? | action? } (accountHtml)
  *     lang     "en", "es" or "ja" (the kit's words; else en)
  *     slots    { start, end, bell, account }: the product's own HTML in
  *              the top bar. start: after the brand; end: the right group's
@@ -34,6 +37,10 @@
  *   attributes { name: value } (escaped); `cls` more classes; `pin` the
  *   pinned id (the row is a pin row: Delete unpins it); `after` HTML after
  *   the link inside the pin row (a Visit link).
+ *
+ * 0.7.0, for the slots: scopeHtml (the scope crumbs), searchHtml (the
+ * search field with ⌘K inside), bellButtonHtml and bellPanelHtml (the
+ * bell and its panel); and accountHtml (the rail's account entry).
  */
 import { esc, kitT } from "./strings.js";
 import { icon } from "./icons.js";
@@ -146,6 +153,7 @@ export function railHtml({
   nav = [],
   groups = [],
   foot = [],
+  account,
   lang,
   collapsed,
 } = {}) {
@@ -159,6 +167,7 @@ export function railHtml({
   html += foot
     .map((n) => (typeof n === "string" ? n : navItemHtml(n)))
     .join("");
+  html += accountHtml(account);
   html += collapseHtml(!!collapsed, lang);
   return html;
 }
@@ -285,5 +294,296 @@ export function shellHtml(o = {}) {
     '">' +
     railHtml(o) +
     "</nav></div>"
+  );
+}
+
+// ── 0.7.0: the scope crumbs, the search field, the bell, the account ────
+// Pieces of the top bar and the rail a host gave as its own HTML before.
+// The host gives the words and the values; the kit draws them, and
+// shell-client.js wires them (hydrateScope, hydrateSearch, hydrateBell,
+// hydrateAccount). A piece left out draws nothing.
+
+/** Crumb ids: "den-scope-<key>" unless the host names its own. */
+const crumbId = (c) => c.id || "den-scope-" + (c.key || "x");
+
+/** A crumb's menu, drawn by the kit: links ({ label, href, current }) or HTML. */
+function crumbMenuHtml(c) {
+  const m = c.menu;
+  if (!m || m === true) return "";
+  const body = Array.isArray(m)
+    ? m
+        .map(
+          (l) =>
+            '<a class="den-mi" role="menuitem" href="' +
+            esc(l.href) +
+            '"' +
+            (l.current ? ' aria-current="true"' : "") +
+            ">" +
+            esc(l.label) +
+            "</a>",
+        )
+        .join("")
+    : String(m);
+  return (
+    '<div class="den-scope-menu" id="' +
+    esc(crumbId(c)) +
+    '-menu" role="menu" aria-label="' +
+    esc(c.label) +
+    '" hidden>' +
+    body +
+    "</div>"
+  );
+}
+
+/**
+ * One scope crumb: its small-caps key and its value. With a menu, a
+ * button with ▾ (aria-haspopup="menu"); without, a plain label.
+ *   { key, label, value, menu?, id?, title?, hidden?, optional?, cls?,
+ *     valueCls? }
+ * `menu`: links [{ label, href, current? }] or HTML (the kit draws and
+ * opens it), or true (the host opens its own: hydrateScope's onOpen).
+ * `optional`: the first to give way on a narrow bar. `cls`: more classes;
+ * `valueCls`: more classes on the value.
+ */
+export function scopeCrumbHtml(c) {
+  if (!c) return "";
+  const id = crumbId(c);
+  const title = c.title != null ? ' title="' + esc(c.title) + '"' : "";
+  const hidden = c.hidden ? " hidden" : "";
+  const more = (c.cls ? " " + esc(c.cls) : "") + (c.optional ? " den-opt" : "");
+  const key = '<span class="den-k">' + esc(c.label) + "</span> ";
+  if (!c.menu)
+    return (
+      '<span id="' +
+      esc(id) +
+      '" class="den-ib' +
+      more +
+      '"' +
+      hidden +
+      title +
+      ">" +
+      key +
+      '<span class="' +
+      esc(c.valueCls || "den-vn") +
+      '">' +
+      esc(c.value ?? "") +
+      "</span></span>"
+    );
+  const own = c.menu !== true;
+  return (
+    '<button type="button" id="' +
+    esc(id) +
+    '" class="den-ib den-scope-btn' +
+    more +
+    '" data-scope="' +
+    esc(c.key || "") +
+    '" aria-haspopup="menu" aria-expanded="false"' +
+    (own ? ' aria-controls="' + esc(id) + '-menu"' : "") +
+    hidden +
+    title +
+    ">" +
+    key +
+    '<span class="den-v"><span class="den-vn' +
+    (c.valueCls ? " " + esc(c.valueCls) : "") +
+    '">' +
+    esc(c.value ?? "") +
+    '</span> <span aria-hidden="true">▾</span></span></button>' +
+    crumbMenuHtml(c)
+  );
+}
+
+/**
+ * The scope crumbs: / KEY value ▾ / KEY value ▾ …, a group named "Scope".
+ *   scopeHtml({ crumbs, label?, lang, after? })
+ * A crumb left out (null, or not in the list) draws nothing, and no
+ * separator. Each separator after a crumb is "den-sep den-<key>-sep",
+ * hidden with it. `after`: the host's HTML at the group's end (a hidden
+ * <select> its pages read, say). No crumbs: nothing at all.
+ */
+export function scopeHtml({ crumbs, label, lang, after } = {}) {
+  const list = (crumbs || []).filter(Boolean);
+  if (!list.length) return "";
+  let html =
+    '<div class="den-scope" role="group" aria-label="' +
+    esc(label ?? kitT(lang, "kit.scope")) +
+    '"><span class="den-sep" aria-hidden="true">/</span>';
+  list.forEach((c, i) => {
+    html += scopeCrumbHtml(c);
+    if (i < list.length - 1)
+      html +=
+        '<span class="den-sep den-' +
+        esc(c.key || "x") +
+        '-sep" aria-hidden="true"' +
+        (c.hidden ? " hidden" : "") +
+        ">/</span>";
+  });
+  return html + (after || "") + "</div>";
+}
+
+/**
+ * The search field: the placeholder, then ⌘K inside it, as a button (the
+ * host's palette or page opens on it: hydrateSearch).
+ *   searchHtml({ placeholder?, label?, id?, shortcut?, lang })
+ * `label`: its name (default the placeholder); `shortcut: false`: no ⌘K.
+ */
+export function searchHtml({ placeholder, label, id, shortcut, lang } = {}) {
+  const ph = placeholder ?? kitT(lang, "kit.search.ph");
+  const keys = shortcut !== false;
+  return (
+    '<button type="button" class="den-search" id="' +
+    esc(id || "den-search") +
+    '" aria-haspopup="dialog"' +
+    (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
+    ' aria-label="' +
+    esc(label ?? ph) +
+    '"><span class="den-search-ph">' +
+    esc(ph) +
+    "</span>" +
+    (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +
+    '<span class="den-search-ic" aria-hidden="true">⌕</span></button>'
+  );
+}
+
+/** The bell's count on its badge: "" for none, 99+ past 99. */
+export function bellCount(n) {
+  const c = Number(n) || 0;
+  return c <= 0 ? "" : c > 99 ? "99+" : String(c);
+}
+
+/**
+ * The bell: a button that opens the notifications panel, with its count.
+ *   bellButtonHtml({ count?, label?, id?, lang })
+ * Its name says the count ("Notifications: 3 unread").
+ */
+export function bellButtonHtml({ count, label, id, lang } = {}) {
+  const n = Number(count) || 0;
+  const word = label ?? kitT(lang, "kit.bell");
+  const name = n > 0 ? kitT(lang, "kit.bell.n", { n }) : word;
+  return (
+    '<button type="button" class="den-ib den-bell" id="' +
+    esc(id || "den-bell") +
+    '" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
+    esc(name) +
+    '" title="' +
+    esc(word) +
+    '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' +
+    '<span class="den-bell-n"' +
+    (n > 0 ? "" : " hidden") +
+    ">" +
+    esc(bellCount(n)) +
+    "</span></button>"
+  );
+}
+
+/** One row of the bell's panel. */
+function bellRowHtml(it) {
+  const text = esc(it.text ?? "");
+  return (
+    '<div class="den-bell-row' +
+    (it.read ? " read" : "") +
+    '"' +
+    (it.id != null ? ' data-id="' + esc(it.id) + '"' : "") +
+    ">" +
+    (it.href != null
+      ? '<a href="' + esc(it.href) + '">' + text + "</a>"
+      : '<span class="den-bell-t">' + text + "</span>") +
+    (it.time
+      ? "<time" +
+        (it.datetime ? ' datetime="' + esc(it.datetime) + '"' : "") +
+        ">" +
+        esc(it.time) +
+        "</time>"
+      : "") +
+    "</div>"
+  );
+}
+
+/**
+ * The bell's panel content: its heading, then rows or the empty state.
+ *   bellPanelHtml({ title?, titleId?, actions?, lead?, items?, body?,
+ *                   empty?, after?, foot?, lang })
+ * `items`: [{ text, href?, time?, datetime?, read?, id? }], drawn as rows;
+ * or `body`, the host's own HTML for them. Neither (or no items): the
+ * empty state, `empty` { text?, more? } (more: HTML under the words).
+ * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
+ * under the heading; `after`: HTML after the rows; `foot`: the footer (a
+ * Report button). Every HTML part is the host's own.
+ */
+export function bellPanelHtml({
+  title,
+  titleId,
+  actions,
+  lead,
+  items,
+  body,
+  empty,
+  after,
+  foot,
+  lang,
+} = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const e = empty || {};
+  const rows =
+    body != null && body !== ""
+      ? body
+      : list.length
+        ? list.map(bellRowHtml).join("")
+        : '<div class="den-bell-empty"><p>' +
+          esc(e.text ?? kitT(lang, "kit.bell.empty")) +
+          "</p>" +
+          (e.more || "") +
+          "</div>";
+  return (
+    '<div class="den-bell-hd"><h2 id="' +
+    esc(titleId || "den-bell-h") +
+    '">' +
+    esc(title ?? kitT(lang, "kit.bell")) +
+    "</h2>" +
+    (actions || "") +
+    "</div>" +
+    (lead || "") +
+    rows +
+    (after || "") +
+    (foot || "")
+  );
+}
+
+/**
+ * The account entry, in the rail's foot: who is signed in, here.
+ *   accountHtml({ label, detail?, href?, action?, icon?, id?, navId?,
+ *                 attrs?, current? })
+ * `href`: a link; else `action` true: a button (hydrateAccount's
+ * onAction). The name and tooltip read "label · detail". No label:
+ * nothing.
+ */
+export function accountHtml(a) {
+  if (!a || !a.label) return "";
+  const full = a.detail ? a.label + " · " + a.detail : a.label;
+  const more = { ...(a.attrs || {}) };
+  if (a.id) more.id = a.id;
+  const words =
+    '<span class="den-lbl">' +
+    esc(a.label) +
+    (a.detail
+      ? '<span class="den-acct-d"> · ' + esc(a.detail) + "</span>"
+      : "") +
+    "</span>";
+  const open =
+    a.href != null
+      ? '<a class="den-ni den-acct" href="' + esc(a.href) + '"'
+      : '<button type="button" class="den-ni den-acct" data-act="account"';
+  return (
+    open +
+    ' data-nav="' +
+    esc(a.navId || "account") +
+    '"' +
+    (a.current ? ' aria-current="page"' : "") +
+    attrs(more) +
+    ' title="' +
+    esc(full) +
+    '">' +
+    icon(a.icon || "person") +
+    words +
+    (a.href != null ? "</a>" : "</button>")
   );
 }

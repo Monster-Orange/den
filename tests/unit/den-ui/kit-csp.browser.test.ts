@@ -114,11 +114,25 @@ const model = {
     { id: "home", label: "Home", href: "/", group: "work", icon: "home", current: true },
     { id: "logs", label: "Logs", href: "/logs", group: "work", icon: "logs", pin: "logs" },
   ],
-  slots: { account: '<span id="who">me</span>' },
+  slots: {
+    start:
+      DenUI.scopeHtml({ crumbs: [
+        { key: "org", label: "Company", value: "North" },
+        { key: "ws", label: "Project", value: "Garden", menu: [{ label: "Garden", href: "#g", current: true }] },
+      ] }) + DenUI.searchHtml({ placeholder: "Find…" }),
+    bell: DenUI.bellButtonHtml({ count: 1 }),
+    account: '<span id="who">me</span>',
+  },
+  account: { label: "Signed in", detail: "this device", href: "#me" },
 };
+window.searched = 0;
 window.shell = DenUI.mount(document.getElementById("shell"), {
   ...model,
-  hydrate: { onCollapse: (on) => window.shell.setCollapsed(on) },
+  hydrate: {
+    onCollapse: (on) => window.shell.setCollapsed(on),
+    search: { onActivate: () => window.searched++ },
+    bell: { items: [{ text: "Done", href: "#d", time: "now" }] },
+  },
 });
 window.DenUI = DenUI;
 window.ready = true;
@@ -282,6 +296,33 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
         .locator('dialog.bz-dlg [data-bz="retry"]')
         .evaluate((b) => b.getBoundingClientRect().height),
     ).toBeGreaterThanOrEqual(36);
+    expect(bad).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  // 0.7.0: the scope crumbs (a menu placed through the CSSOM), the
+  // search, the bell's panel and the account entry.
+  it("runs the scope crumbs, the search, the bell and the account entry with no violation", async () => {
+    if (!browser) return;
+    const { p, bad } = await open(1280);
+    await click(p, "#den-scope-ws");
+    await p.locator("#den-scope-ws-menu").waitFor({ state: "visible" });
+    await p.keyboard.press("Escape");
+    await click(p, ".den-search");
+    await p.keyboard.press("Control+k");
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { searched: number }).searched,
+      ),
+    ).toBe(2);
+    await click(p, ".den-bell");
+    await p.locator(".den-bell-pop .den-bell-row").waitFor();
+    await p.keyboard.press("Escape");
+    await p.locator(".den-bell-pop").waitFor({ state: "hidden" });
+    await expect(p.locator(".den-acct").getAttribute("href")).resolves.toBe(
+      "#me",
+    );
+    expect(await p.locator("style").count()).toBe(0);
     expect(bad).toEqual([]);
     await p.context().close();
   }, 60_000);

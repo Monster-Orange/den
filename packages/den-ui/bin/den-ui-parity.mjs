@@ -142,6 +142,49 @@ export const COMPONENTS = {
     code: ["configureBusy", "registerActions"],
     files: ["busy.js", "busy-words.js", "busy.css"],
   },
+  // 0.7.0: pieces of the top bar and rail a product drew itself before.
+  // Its words and values go in the kit's options; its own HTML in a crumb's
+  // menu or the bell's rows (classes of its own) is not a copy.
+  scope: {
+    label: "scope crumbs (COMPANY / PROJECT / ENV, each with its ▾)",
+    markup: [cls("den-scope"), cls("den-scope-btn"), cls("den-scope-menu")],
+    css: ["den-scope", "den-scope-btn", "den-scope-menu"],
+    code: ["scopeHtml", "scopeCrumbHtml", "scopeButton", "hydrateScope"],
+    files: [],
+  },
+  search: {
+    label: "search field with ⌘K inside",
+    markup: [cls("den-search"), cls("den-search-ph"), cls("den-search-ic")],
+    css: ["den-search", "den-search-ph", "den-search-ic"],
+    code: ["searchHtml", "hydrateSearch"],
+    files: [],
+  },
+  bell: {
+    label: "bell (its button, count and panel)",
+    markup: [
+      cls("den-bell"),
+      cls("den-bell-n"),
+      cls("den-bell-pop"),
+      cls("den-bell-hd"),
+      cls("den-bell-empty"),
+    ],
+    css: [
+      "den-bell",
+      "den-bell-n",
+      "den-bell-pop",
+      "den-bell-hd",
+      "den-bell-empty",
+    ],
+    code: ["bellButtonHtml", "bellPanelHtml", "hydrateBell"],
+    files: [],
+  },
+  account: {
+    label: "account entry in the rail's foot",
+    markup: [cls("den-acct"), cls("den-acct-d")],
+    css: ["den-acct", "den-acct-d"],
+    code: ["accountHtml", "hydrateAccount", "identityEntry"],
+    files: [],
+  },
 };
 
 const SCAN_EXT = /\.(m?[jt]sx?|css|html?)$/;

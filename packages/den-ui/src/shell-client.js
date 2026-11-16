@@ -30,8 +30,34 @@
  * into the rail (the current entry); the top bar and the page are inert
  * behind a scrim; Escape or the scrim closes it and focus goes back to ☰;
  * Tab stays inside. Wider than that, it is a rail again.
+ *
+ * 0.7.0, the pieces a host puts in the slots (shell-html.js draws them):
+ *
+ *   hydrateScope(root, { onOpen(key, button) })   the crumbs' menus. A
+ *       crumb with the kit's menu (links or HTML) opens it below its ▾:
+ *       Enter, Space, ↓ or ↑ open it on an entry; ↑ ↓ Home End move; Esc
+ *       or Tab closes it, Esc back on the ▾; a click outside closes it. A
+ *       crumb whose menu is the host's (menu: true) calls onOpen.
+ *       → { close(), isOpen() }
+ *   hydrateSearch(button, { onActivate(via, event), keys? })   a click (or
+ *       Enter) and ⌘K / Ctrl-K anywhere call onActivate ("click" or "key")
+ *       and fire "den-ui:search" on the field. keys: false, no ⌘K.
+ *       → { activate(via), destroy() }
+ *   hydrateBell(button, opts)   the bell and its panel (a dialog on
+ *       <body>). opts: items (a list, or a function of none) and title,
+ *       empty, foot (a function giving HTML), or panel() giving the whole
+ *       content (HTML, or bellPanelHtml's options); onOpen, onClose,
+ *       onEscape(e) (true: the host took that Esc), id, lang. A click
+ *       toggles it; Esc closes it and focus goes back to the bell (in
+ *       Safari too); a click outside closes it. Opening focuses its first
+ *       link or button.
+ *       → { el, open(), close(focus), isOpen(), paint(), setCount(n) }
+ *   hydrateAccount(root, { onAction(event) })   the account entry as an
+ *       action (no href): a click or Enter calls onAction.
  */
 import { kitT } from "./strings.js";
+import { bellCount, bellPanelHtml } from "./shell-html.js";
+import { focusBack } from "./dialog.js";
 
 const all = (root, sel) =>
   Array.prototype.slice.call(root.querySelectorAll(sel));
@@ -237,4 +263,211 @@ export function hydrateShell(root, opts = {}) {
     drawerOpen,
     syncPinToggles: (r, isPinned) => syncPinToggles(r, isPinned, lang()),
   };
+}
+
+// ── 0.7.0: the scope crumbs, the search, the bell, the account ──────────
+
+const ITEMS = '[role="menuitem"], a[href], button:not([disabled])';
+
+/** The scope crumbs' menus (see the top). */
+export function hydrateScope(root, opts = {}) {
+  let open = null; // { btn, menu }
+  const menuOf = (btn) => {
+    const id = btn.getAttribute("aria-controls");
+    return id ? document.getElementById(id) : null;
+  };
+  const items = (menu) => all(menu, ITEMS);
+  function close(refocus) {
+    if (!open) return;
+    const { btn, menu } = open;
+    open = null;
+    menu.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    if (refocus) focusBack(btn);
+  }
+  function show(btn, at) {
+    const menu = menuOf(btn);
+    if (!menu) return;
+    if (open && open.btn !== btn) close(false);
+    // Below its ▾: the menu sits in the scope group, which places it.
+    const group = btn.closest(".den-scope");
+    const x = group
+      ? btn.getBoundingClientRect().left - group.getBoundingClientRect().left
+      : 0;
+    menu.style.setProperty("--den-menu-x", Math.round(x) + "px");
+    menu.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    open = { btn, menu };
+    const list = items(menu);
+    if (at === "first" && list[0]) list[0].focus();
+    else if (at === "last" && list.length) list[list.length - 1].focus();
+  }
+  root.addEventListener("click", (e) => {
+    const btn =
+      e.target && e.target.closest ? e.target.closest(".den-scope-btn") : null;
+    if (!btn || !root.contains(btn)) return;
+    if (!menuOf(btn)) {
+      if (opts.onOpen) opts.onOpen(btn.dataset.scope, btn);
+      return;
+    }
+    if (open && open.btn === btn) return close(false);
+    // A keyboard's Enter or Space (detail 0) starts on the first entry.
+    show(btn, e.detail === 0 ? "first" : null);
+  });
+  root.addEventListener("keydown", (e) => {
+    const t = e.target;
+    const btn = t && t.closest ? t.closest(".den-scope-btn") : null;
+    if (btn && menuOf(btn) && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      show(btn, e.key === "ArrowDown" ? "first" : "last");
+      return;
+    }
+    if (!open || !open.menu.contains(t)) return;
+    const list = items(open.menu);
+    const i = list.indexOf(t);
+    let next = -1;
+    if (e.key === "ArrowDown") next = (i + 1) % list.length;
+    else if (e.key === "ArrowUp") next = (i - 1 + list.length) % list.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = list.length - 1;
+    else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+      return;
+    } else if (e.key === "Tab") close(false);
+    if (next < 0 || !list.length) return;
+    e.preventDefault();
+    list[next].focus();
+  });
+  // Esc on the ▾ itself, with its menu open.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && open && !e.defaultPrevented) {
+      e.preventDefault();
+      close(true);
+    }
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!open) return;
+    if (open.menu.contains(e.target) || open.btn.contains(e.target)) return;
+    close(false);
+  });
+  return { close: () => close(false), isOpen: () => !!open };
+}
+
+/** The search field: a click and ⌘K / Ctrl-K activate it (see the top). */
+export function hydrateSearch(btn, opts = {}) {
+  if (!btn) return { activate() {}, destroy() {} };
+  function activate(via, e) {
+    btn.dispatchEvent(
+      new CustomEvent("den-ui:search", { bubbles: true, detail: { via } }),
+    );
+    if (opts.onActivate) opts.onActivate(via, e);
+  }
+  const onClick = (e) => activate("click", e);
+  const onKey = (e) => {
+    if (
+      (e.metaKey || e.ctrlKey) &&
+      !e.altKey &&
+      (e.key === "k" || e.key === "K" || e.code === "KeyK")
+    ) {
+      e.preventDefault();
+      activate("key", e);
+    }
+  };
+  btn.addEventListener("click", onClick);
+  if (opts.keys !== false) document.addEventListener("keydown", onKey);
+  return {
+    activate: (via) => activate(via || "call"),
+    destroy() {
+      btn.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKey);
+    },
+  };
+}
+
+/** The bell and its panel (see the top). */
+export function hydrateBell(btn, opts = {}) {
+  const lang = () =>
+    typeof opts.lang === "function" ? opts.lang() : opts.lang;
+  const val = (v) => (typeof v === "function" ? v() : v);
+  const pop = document.createElement("div");
+  pop.className = "den-bell-pop";
+  pop.id = opts.id || "den-bell-pop";
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-labelledby", opts.titleId || "den-bell-h");
+  pop.tabIndex = -1;
+  pop.hidden = true;
+  document.body.appendChild(pop);
+  btn.setAttribute("aria-controls", pop.id);
+  const word = btn.getAttribute("title") || kitT(lang(), "kit.bell");
+
+  function paint() {
+    const own = opts.panel ? opts.panel() : null;
+    pop.innerHTML =
+      typeof own === "string"
+        ? own
+        : bellPanelHtml({
+            lang: lang(),
+            title: opts.title,
+            titleId: opts.titleId,
+            items: val(opts.items) || [],
+            empty: opts.empty,
+            foot: val(opts.foot) || "",
+            ...(own || {}),
+          });
+  }
+  const isOpen = () => !pop.hidden;
+  function open() {
+    if (isOpen()) return;
+    paint();
+    pop.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    if (opts.onOpen) opts.onOpen();
+    const first = pop.querySelector("a[href], button:not([disabled])");
+    (first || pop).focus();
+  }
+  function close(focus = true) {
+    if (!isOpen()) return;
+    pop.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    if (opts.onClose) opts.onClose();
+    if (focus) focusBack(btn);
+  }
+  function setCount(n) {
+    const c = Number(n) || 0;
+    const badge = btn.querySelector(".den-bell-n");
+    if (badge) {
+      badge.hidden = c <= 0;
+      badge.textContent = c <= 0 ? "0" : bellCount(c);
+    }
+    btn.setAttribute(
+      "aria-label",
+      c > 0 ? kitT(lang(), "kit.bell.n", { n: c }) : word,
+    );
+  }
+  btn.addEventListener("click", () => (isOpen() ? close() : open()));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !isOpen()) return;
+    if (opts.onEscape && opts.onEscape(e) === true) return;
+    e.preventDefault();
+    close(true);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (isOpen() && !pop.contains(e.target) && !btn.contains(e.target))
+      close(false);
+  });
+  return { el: pop, open, close, isOpen, paint, setCount };
+}
+
+/** The account entry as an action (see the top). */
+export function hydrateAccount(root, opts = {}) {
+  root.addEventListener("click", (e) => {
+    const a =
+      e.target && e.target.closest
+        ? e.target.closest('.den-acct[data-act="account"]')
+        : null;
+    if (!a || !root.contains(a)) return;
+    if (opts.onAction) opts.onAction(e);
+  });
 }

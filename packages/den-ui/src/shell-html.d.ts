@@ -53,6 +53,8 @@ export interface RailModel {
   groups?: NavGroup[];
   /** Entries (or HTML) under the rail's spacer, before the collapse toggle. */
   foot?: (NavItem | string)[];
+  /** 0.7.0: the account entry, last in the foot. */
+  account?: Account | null;
   lang?: string;
   collapsed?: boolean;
 }
@@ -89,3 +91,104 @@ export declare function reportPrefillOf(
 export declare function topBarHtml(model?: ShellModel): string;
 /** The whole shell: skip link, top bar and rail, as HTML. Pure: runs in Node. */
 export declare function shellHtml(model?: ShellModel): string;
+
+/** 0.7.0: a link in a crumb's own menu. */
+export interface CrumbLink {
+  label: string;
+  href: string;
+  current?: boolean;
+}
+/** 0.7.0: one scope crumb (COMPANY, PROJECT, ENV …). */
+export interface Crumb {
+  /** Its kind: data-scope, the id "den-scope-<key>", "den-<key>-sep". */
+  key?: string;
+  /** The small-caps word. */
+  label: string;
+  value?: string;
+  /**
+   * Links or HTML: the kit draws and opens the menu. true: the host opens
+   * its own (hydrateScope's onOpen). None: a plain label, no ▾.
+   */
+  menu?: CrumbLink[] | string | true | null;
+  id?: string;
+  title?: string;
+  hidden?: boolean;
+  /** The first to give way on a narrow bar. */
+  optional?: boolean;
+  cls?: string;
+  valueCls?: string;
+}
+export interface ScopeOptions {
+  crumbs?: (Crumb | null | undefined | false)[];
+  /** The group's name (default the kit's "Scope"). */
+  label?: string;
+  lang?: string;
+  /** The host's HTML at the group's end. */
+  after?: string;
+}
+export interface SearchOptions {
+  placeholder?: string;
+  /** Its name (default the placeholder). */
+  label?: string;
+  id?: string;
+  /** false: no ⌘K inside, and no aria-keyshortcuts. */
+  shortcut?: boolean;
+  lang?: string;
+}
+export interface BellButtonOptions {
+  count?: number;
+  /** Its word (default the kit's "Notifications"). */
+  label?: string;
+  id?: string;
+  lang?: string;
+}
+export interface BellItem {
+  text: string;
+  href?: string;
+  /** The time as shown ("2 min"). */
+  time?: string;
+  /** Its ISO stamp, for <time datetime>. */
+  datetime?: string;
+  read?: boolean;
+  id?: string;
+}
+export interface BellPanelOptions {
+  title?: string;
+  titleId?: string;
+  /** Buttons beside the heading (HTML). */
+  actions?: string;
+  /** HTML under the heading. */
+  lead?: string;
+  items?: BellItem[];
+  /** The host's own HTML in place of rows. */
+  body?: string | null;
+  /** The empty state: its words, and HTML under them. */
+  empty?: { text?: string; more?: string };
+  after?: string;
+  foot?: string;
+  lang?: string;
+}
+export interface Account {
+  label: string;
+  detail?: string;
+  /** A link; else `action: true`, a button (hydrateAccount's onAction). */
+  href?: string;
+  action?: boolean;
+  icon?: string;
+  id?: string;
+  /** Its data-nav (default "account"). */
+  navId?: string;
+  attrs?: Record<string, string | number | boolean | null | undefined>;
+  current?: boolean;
+}
+export declare function scopeCrumbHtml(c: Crumb | null | undefined): string;
+/** The scope crumbs; no crumbs, "". */
+export declare function scopeHtml(o?: ScopeOptions): string;
+/** The search field, ⌘K inside it. */
+export declare function searchHtml(o?: SearchOptions): string;
+/** A count as the badge shows it: "" for none, "99+" past 99. */
+export declare function bellCount(n: number | null | undefined): string;
+export declare function bellButtonHtml(o?: BellButtonOptions): string;
+export declare function bellPanelHtml(o?: BellPanelOptions): string;
+/** The rail's account entry; no label, "". */
+export declare function accountHtml(a: Account | null | undefined): string;

@@ -25,6 +25,10 @@
  *   DenUI.mount(root, model)    draws shellHtml(model) into root, then
  *                               hydrates it (a page with no server render)
  *   DenUI.shellHtml(model)      the markup (shell-html.js)
+ *   DenUI.scopeHtml, searchHtml, bellButtonHtml, bellPanelHtml,
+ *   accountHtml (0.7.0)         the scope crumbs, the search with ⌘K
+ *                               inside, the bell and its panel, and the
+ *                               rail's account entry; hydrate wires them
  *   DenUI.version.set(label), .unread(on), .label(running, changelog)
  *   DenUI.whatsNew.open(), .close(), .load(), .setEntries(list)
  *   DenUI.update.set({ version, message, reloadLabel, dismissLabel,
@@ -38,17 +42,30 @@
  */
 import { addStrings, kitT, setProduct } from "./strings.js";
 import {
+  accountHtml,
+  bellButtonHtml,
+  bellPanelHtml,
   esc,
   icon,
   navItemHtml,
   railHtml,
   reportButtonHtml,
   reportPrefillOf,
+  scopeCrumbHtml,
+  scopeHtml,
+  searchHtml,
   shellHtml,
   topBarHtml,
   versionChipHtml,
 } from "./shell-html.js";
-import { hydrateShell, syncPinToggles } from "./shell-client.js";
+import {
+  hydrateAccount,
+  hydrateBell,
+  hydrateScope,
+  hydrateSearch,
+  hydrateShell,
+  syncPinToggles,
+} from "./shell-client.js";
 import { setUnread, setVersion, versionLabel } from "./version.js";
 import {
   closeWhatsNew,
@@ -149,9 +166,25 @@ export const busy = {
   configure: configureBusy,
 };
 
-/** Binds the drawn shell, the chip and Report (see the top). */
+/**
+ * Binds the drawn shell, the chip and Report (see the top), and the 0.7.0
+ * pieces it finds: the scope crumbs (opts.scope), the search
+ * (opts.search: { onActivate }), the bell (opts.bell: { items, title,
+ * empty, onOpen, … }) and the account entry (opts.account: { onAction }).
+ * The shell it returns has .scope, .search and .bell for those found.
+ * false for any of them: not wired.
+ */
 export function hydrate(root, opts = {}) {
   const shell = hydrateShell(root, { lang, ...opts });
+  if (opts.scope !== false && root.querySelector(".den-scope"))
+    shell.scope = hydrateScope(root, opts.scope || {});
+  const search = root.querySelector(".den-search");
+  if (search && opts.search !== false)
+    shell.search = hydrateSearch(search, opts.search || {});
+  const bell = root.querySelector(".den-bell");
+  if (bell && opts.bell !== false)
+    shell.bell = hydrateBell(bell, { lang, ...(opts.bell || {}) });
+  if (opts.account !== false) hydrateAccount(root, opts.account || {});
   const chip = root.querySelector("#version-pill");
   if (chip && opts.versionChip !== false)
     chip.addEventListener("click", () => whatsNew.open());
@@ -207,6 +240,16 @@ const DenUI = {
   versionChipHtml,
   reportButtonHtml,
   reportPrefillOf,
+  scopeHtml,
+  scopeCrumbHtml,
+  searchHtml,
+  bellButtonHtml,
+  bellPanelHtml,
+  accountHtml,
+  hydrateScope,
+  hydrateSearch,
+  hydrateBell,
+  hydrateAccount,
   syncPinToggles,
   icon,
   esc,
