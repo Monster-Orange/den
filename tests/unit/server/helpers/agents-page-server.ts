@@ -69,6 +69,8 @@ export interface AgentsPageServer {
   webDown(): Promise<void>;
   /** Starts the web server again, on the same port. */
   webUp(): Promise<void>;
+  /** The web server's process group (issue 242: a test pauses it, as a busy Den). */
+  serverPid(): number | undefined;
   stop(): Promise<void>;
 }
 
@@ -356,6 +358,7 @@ export async function startAgentsPageServer(
       if (server) await stopServer(server);
       server = null;
     },
+    serverPid: () => server?.pid,
     async webUp() {
       if (server) return;
       server = (await startWeb(async () => port)).server;

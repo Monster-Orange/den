@@ -2590,6 +2590,11 @@ distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
 
+`web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
+server keeps an idle connection open. It sits above the page's own poll and
+a proxy's usual idle time, so a client never reuses a connection the server
+is closing (a reset). Doctor names a bad value.
+
 `install` also restarts a service that is already installed. It says the
 service is running only once the web server answers
 `http://localhost:<web.port>/api/server-info` with JSON (a fresh server
@@ -4351,6 +4356,18 @@ same token from any other process, even one running as you, is refused
 pid and the route. So is a caller Den can't place, and one that isn't on
 loopback. `agents.token_binding: false` turns this off, for a host where
 the lookup can't work.
+
+Den starts that lookup as the connection arrives, without holding up
+other requests, so a busy Den (just after restarts, say) still places an
+agent's own calls. An agent's request waits for it at most
+`agents.token_peer_wait_ms` (default 30000), then is refused as from a
+process Den couldn't place. The audit row names both pids: the caller's
+(`?` when not found) and the agent's own.
+
+```yaml
+agents:
+  token_peer_wait_ms: 30000 # ms, 0 to 600000
+```
 
 An agent's token reaches only its own session's routes, and never a
 shell-grade route, `/api/web/*`, sign-in or sign-out, or the admin

@@ -299,6 +299,7 @@ describe("doctor names a bad agents: or sessions: key and carries on", () => {
     expect(r.checks.map((c) => [c.id, c.status])).toEqual([
       ["config:agents", "fail"],
       ["config:sessions", "fail"],
+      ["config:web", "ok"],
     ]);
   });
 
@@ -306,7 +307,16 @@ describe("doctor names a bad agents: or sessions: key and carries on", () => {
     dist("environments: [local]\nagents:\n  max_concurrent: 2\n");
     const r = configLines("Acme");
     expect([r.problem, r.lines]).toEqual([false, []]);
-    expect(r.checks.map((c) => c.status)).toEqual(["ok", "ok"]);
+    expect(r.checks.map((c) => c.status)).toEqual(["ok", "ok", "ok"]);
+  });
+
+  it("#257: a bad web.keep_alive_seconds is one ✗ line naming the key", () => {
+    dist("environments: [local]\nweb:\n  keep_alive_seconds: 0\n");
+    const r = configLines("Acme");
+    expect(r.problem).toBe(true);
+    expect(r.lines.filter((l) => l.includes("✗"))).toEqual([
+      "  web  ✗  web.keep_alive_seconds: seconds, 1 to 3600 (got 0)",
+    ]);
   });
 });
 
