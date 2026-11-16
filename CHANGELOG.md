@@ -54,6 +54,9 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A stopped agent's Resume and ⋯, wrapped onto their own line in a narrow
+  list, start under the name instead of against the list's left edge.
+
 - The working pop-up no longer waits for Done after a success. It closes at
   once and the usual toast says what happened, as for a quick action. It
   stays open only on an error (the reason, Try again, Report, Close).

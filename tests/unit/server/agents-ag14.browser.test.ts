@@ -233,7 +233,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       try {
         const p = await open("north");
         await row(p, "scout").waitFor();
-        for (const w of [300, 260, 360]) {
+        for (const w of [300, 260, 360, 520]) {
           // The list's width with a pane open beside it at 1280.
           await p.evaluate((w) => {
             (document.querySelector("#agl") as HTMLElement).style.width =
@@ -257,6 +257,26 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
               const btns = [...r.querySelectorAll(".agacts .den-btn")].map(
                 (b) => b.getBoundingClientRect(),
               );
+              // Wrapped onto their own line, the buttons start under the
+              // name, as the row's other second lines do (Ward: Resume had
+              // no margin on the left).
+              const nm = box(r.querySelector(".nm"));
+              if (btns.length && nm && btns[0].top >= agr.bottom - 0.5) {
+                const left = Math.min(...btns.map((b) => b.left));
+                if (Math.abs(left - nm.left) > 1)
+                  out.push(
+                    `${id} wrapped buttons start at ${Math.round(left - (r as HTMLElement).getBoundingClientRect().left)}px, not under the name (at ${Math.round(nm.left - (r as HTMLElement).getBoundingClientRect().left)}px)`,
+                  );
+              }
+              // On the row's own line, they stay at its right end.
+              if (btns.length && nm && btns[0].top < agr.bottom - 0.5) {
+                const right = Math.max(...btns.map((b) => b.right));
+                const rr = (r as HTMLElement).getBoundingClientRect().right;
+                if (rr - right > 9)
+                  out.push(
+                    `${id} buttons on the row's line are not at its end`,
+                  );
+              }
               for (const [sel, b] of parts) {
                 if (b!.right > agr.right + 0.5)
                   out.push(`${id} ${sel} spills out of its row`);
