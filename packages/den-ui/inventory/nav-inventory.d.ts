@@ -24,18 +24,35 @@ export interface NavElement {
   /** Computed styles, by property name (STYLE_PROPS). */
   style: Record<string, string>;
 }
+export interface NavTheme {
+  id: string;
+  version: string;
+}
+export interface NavEnv {
+  userAgent: string;
+  /** Each face ("<weight> <size> <family>") → its fixed line's width, px. */
+  faces: Record<string, number>;
+  /** Where the browser ran (collectNav's `image`), if given. */
+  image?: string;
+  /** The theme the page drew in (collectNav's `theme`), if given. */
+  theme?: NavTheme;
+}
 export interface NavSnapshot {
   version: number;
   viewport: { w: number; h: number };
-  userAgent: string;
+  /** The browser build: boxes compare only between equal fingerprints. */
+  env: NavEnv;
   elements: NavElement[];
-  /** Each colour seen → the :root --tokens that compute to it. */
+  /** Each colour and font-family seen → the :root --tokens that compute to it. */
   tokens: Record<string, string[]>;
 }
 export interface NavCompareOptions {
   /** Keys ("#den-status") or one class (".den-scope"): left out, with all under them. */
   hostSlots?: string[];
-  /** Tokens ("--accent") whose colour may differ. */
+  /**
+   * Tokens ("--accent", "--sans") whose colour or font-family may differ.
+   * Default empty; never for a parity run (both products run in NAV_THEME).
+   */
   themeTokens?: string[];
   /** How far a box edge may move, in px (default 2). */
   tolerance?: number;
@@ -43,15 +60,27 @@ export interface NavCompareOptions {
 export interface NavDiff {
   key: string;
   slot: NavSlot | "";
-  /** "element", "order", "slot", "role", "tag", "name", "classes", "box.<edge>", "style.<prop>", "version". */
+  /** "env" (another browser build), "theme" (another theme), "element", "order", "slot", "role", "tag", "name", "classes", "box.<edge>", "style.<prop>", "version". */
   property: string;
   reference: string | number;
   actual: string | number;
 }
 export declare const STYLE_PROPS: string[];
 export declare const COLOR_PROPS: string[];
+/** Colours and font-family: what a theme token may stand for. */
+export declare const TOKEN_PROPS: string[];
 export declare const NAV_INVENTORY_VERSION: number;
-export declare function collectNav(page: NavPage): Promise<NavSnapshot>;
+/** The pinned Playwright image (version and digest) the nav is measured in. */
+export declare const NAV_BROWSER_IMAGE: string;
+export declare const FINGERPRINT_TEXT: string;
+/** The theme the reference was taken in ("den" 2.0.1): every parity run uses it. */
+export declare const NAV_THEME: NavTheme;
+export declare function collectNav(
+  page: NavPage,
+  opts?: { image?: string; theme?: NavTheme },
+): Promise<NavSnapshot>;
+/** The browser build's fingerprint: user agent and the faces' widths. */
+export declare function fingerprint(snap: NavSnapshot): string;
 export declare function compareNav(
   actual: NavSnapshot,
   reference: NavSnapshot,
