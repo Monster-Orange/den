@@ -158,6 +158,30 @@ if (!q.has("bare")) {
   };
 }
 document.addEventListener("den-ui:search", () => window.log.events++);
+// A host's own menu (its own rows and keys) given the kit's filter.
+window.hostMenu = () => {
+  const b = document.getElementById("host-btn");
+  const m = document.createElement("div");
+  m.className = "den-pop den-um";
+  m.id = "host-menu";
+  m.setAttribute("role", "menu");
+  m.innerHTML = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta"]
+    .map((w) => '<button type="button" class="den-mi" role="menuitem">' + w + "</button>")
+    .join("");
+  m.addEventListener("click", (e) => {
+    const r = e.target.closest(".den-mi");
+    if (r) { window.log.picks.push(["host", r.textContent]); m.remove(); }
+  });
+  m.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { window.log.picks.push(["host-esc"]); m.remove(); b.focus(); }
+  });
+  const field = DenUI.attachMenuFilter(m, {
+    label: "Things",
+    onClose: () => { window.log.picks.push(["closed"]); m.remove(); b.focus(); },
+  });
+  document.body.appendChild(m);
+  field.focus();
+};
 window.shell = DenUI.mount(document.getElementById("den-shell"), model);
 window.DenUI = DenUI;
 window.ready = true;
@@ -940,6 +964,50 @@ for (const engine of ["chromium", "webkit"]) {
       await expect(count("?filter=1")).resolves.toBe(1);
       await expect(count("?many&filter=10")).resolves.toBe(0);
       await expect(count("?many&nofilter")).resolves.toBe(0);
+    });
+
+    it("a host's own menu gets the same filter (attachMenuFilter)", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      await p.evaluate(() =>
+        (window as unknown as { hostMenu: () => void }).hostMenu(),
+      );
+      const menu = p.locator("#host-menu");
+      await expect(focused(p)).resolves.toBe("host-menu-filter");
+      await expect(
+        menu.locator("input.den-mfilter").getAttribute("aria-label"),
+      ).resolves.toBe("Filter Things");
+      await p.keyboard.type("eta");
+      await expect(
+        menu.evaluate((m) =>
+          [...m.querySelectorAll<HTMLElement>(".den-mi")]
+            .filter((x) => !x.hidden)
+            .map((x) => x.textContent),
+        ),
+      ).resolves.toEqual(["Beta", "Zeta", "Eta"]);
+      // Esc clears first, and the host's own Esc does not run.
+      await p.keyboard.press("Escape");
+      await expect(
+        menu.locator("input.den-mfilter").inputValue(),
+      ).resolves.toBe("");
+      await expect(menu.count()).resolves.toBe(1);
+      // Esc again: the host's onClose, not its own key.
+      await p.keyboard.press("Escape");
+      await expect(menu.count()).resolves.toBe(0);
+      await expect(focused(p)).resolves.toBe("host-btn");
+      // Enter takes the first shown.
+      await p.evaluate(() =>
+        (window as unknown as { hostMenu: () => void }).hostMenu(),
+      );
+      await p.keyboard.type("gam");
+      await p.keyboard.press("Enter");
+      await expect(
+        p.evaluate(
+          () => (window as unknown as { log: { picks: unknown[] } }).log.picks,
+        ),
+      ).resolves.toEqual([["closed"], ["host", "Gamma"]]);
+      await p.context().close();
     });
   });
 }

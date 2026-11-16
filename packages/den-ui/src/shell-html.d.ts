@@ -229,6 +229,17 @@ export interface AccountMenu {
   items?: AccountMenuItem[];
   lang?: string;
 }
+/** Whether a menu of n entries gets the filter field (see Crumb.filter). */
+export declare function menuHasFilter(
+  filter: boolean | number | undefined,
+  n: number,
+): boolean;
+/** A menu's filter field and its "No match" line: [field, none]. */
+export declare function menuFilterParts(
+  menuId: string,
+  label?: string,
+  lang?: string,
+): [string, string];
 /** The account entry's menu content. */
 export declare function accountMenuHtml(o?: AccountMenu): string;
 export interface SettingsEntry {

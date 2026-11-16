@@ -231,6 +231,9 @@ const KIT_SHELL_NAMES = [
   "bellPanelHtml",
   "bellCount",
   "accountHtml",
+  "accountMenuHtml",
+  "menuHasFilter",
+  "menuFilterParts",
   "settingsHtml",
   "appearanceButtonHtml",
   "appearanceMenuHtml",
@@ -239,6 +242,7 @@ const KIT_SHELL_NAMES = [
   "hydrateSearch",
   "hydrateBell",
   "hydrateAccount",
+  "attachMenuFilter",
   "hydrateAppearance",
   "setWaiting",
 ];

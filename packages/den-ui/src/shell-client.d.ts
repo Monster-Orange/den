@@ -104,6 +104,20 @@ export interface AccountHydrateOptions {
   /** A form entry's submit; preventDefault keeps it from posting. */
   onSubmit?: (e: SubmitEvent, form: HTMLFormElement) => void;
 }
+/**
+ * A type-to-filter field for a host's own menu (.den-mi entries), when it
+ * has more entries than `filter` allows (past 6 by default): the field
+ * (focus it once the menu shows), else null.
+ */
+export declare function attachMenuFilter(
+  menu: HTMLElement,
+  o?: {
+    label?: string;
+    lang?: string;
+    filter?: boolean | number;
+    onClose?: (refocus: boolean) => void;
+  },
+): HTMLInputElement | null;
 /** The account entry: its menu's handle when it has one, else nothing. */
 export declare function hydrateAccount(
   root: ParentNode & EventTarget,

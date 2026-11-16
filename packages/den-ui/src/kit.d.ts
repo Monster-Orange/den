@@ -21,6 +21,7 @@ import type {
   SearchHydrateOptions,
   Shell,
   hydrateAccount,
+  attachMenuFilter,
   hydrateBell,
   hydrateScope,
   hydrateSearch,
@@ -192,6 +193,7 @@ export interface DenUIKit {
   hydrateSearch: typeof hydrateSearch;
   hydrateBell: typeof hydrateBell;
   hydrateAccount: typeof hydrateAccount;
+  attachMenuFilter: typeof attachMenuFilter;
   syncPinToggles: typeof syncPinToggles;
   icon: typeof icon;
   esc: typeof esc;

@@ -43,6 +43,10 @@
  *       ↓ ↑ go to the entries (↑ from the first, back to the field);
  *       Enter takes the first shown; Esc clears it, then closes.
  *       → { close(), isOpen() }
+ *   attachMenuFilter(menu, { label, lang, filter?, onClose(refocus) })
+ *       the same filter for a host's own menu (.den-mi entries): call it
+ *       before showing the menu, then focus the field it returns (null:
+ *       too few entries). Its Esc on an empty field calls onClose.
  *   hydrateSearch(button, { onActivate(via, event), keys? })   a click (or
  *       Enter) and ⌘K / Ctrl-K anywhere call onActivate ("click" or "key")
  *       and fire "den-ui:search" on the field. keys: false, no ⌘K.
@@ -81,6 +85,8 @@ import {
   appearanceMenuHtml,
   bellCount,
   bellPanelHtml,
+  menuFilterParts,
+  menuHasFilter,
   waitingHtml,
 } from "./shell-html.js";
 import { focusBack } from "./dialog.js";
@@ -295,6 +301,85 @@ export function hydrateShell(root, opts = {}) {
 
 const ITEMS = '[role="menuitem"], a[href], button:not([disabled])';
 
+/** A menu's filter: an entry shows when its words hold what was typed. */
+function filterMenu(menu, text) {
+  const want = String(text || "")
+    .trim()
+    .toLowerCase();
+  let shown = 0;
+  for (const el of all(menu, ".den-mi")) {
+    el.hidden = !!want && !el.textContent.toLowerCase().includes(want);
+    if (!el.hidden) shown++;
+  }
+  const none = menu.querySelector(".den-mnone");
+  if (none) none.hidden = shown > 0;
+}
+
+/**
+ * A key in a menu with a filter field: in the field, ↓ ↑ go to the
+ * entries shown, Enter takes the first, Esc clears what was typed, then
+ * closes (close(true)), Tab closes; ↑ on the first entry goes back to the
+ * field. True when it took the key.
+ */
+function filterKey(e, menu, field, close) {
+  const list = all(menu, ".den-mi").filter((el) => !el.hidden);
+  if (e.target === field) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const to = e.key === "ArrowDown" ? list[0] : list[list.length - 1];
+      if (to) to.focus();
+    } else if (e.key === "Enter") {
+      if (list[0]) list[0].click();
+    } else if (e.key === "Escape") {
+      if (field.value) {
+        field.value = "";
+        filterMenu(menu, "");
+      } else close(true);
+    } else if (e.key === "Tab") {
+      close(false);
+      return true;
+    } else return true;
+    e.preventDefault();
+    e.stopPropagation();
+    return true;
+  }
+  if (e.key === "ArrowUp" && list[0] === e.target) {
+    e.preventDefault();
+    e.stopPropagation();
+    field.focus();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A type-to-filter field for a host's own menu (a role="menu" with .den-mi
+ * entries), as the kit's crumb menus have: put first in it, "No match"
+ * last, when it has more entries than `filter` allows (see the top).
+ * Call it before the menu is shown; focus the field it returns.
+ *   o: { label, lang, filter?, onClose(refocus) }   → the field, or null
+ */
+export function attachMenuFilter(menu, o = {}) {
+  if (!menu || !menuHasFilter(o.filter, all(menu, ".den-mi").length))
+    return null;
+  const parts = menuFilterParts(menu.id || "den-menu", o.label, o.lang);
+  menu.insertAdjacentHTML("afterbegin", parts[0]);
+  menu.insertAdjacentHTML("beforeend", parts[1]);
+  const field = menu.querySelector("input.den-mfilter");
+  const close = (refocus) => {
+    if (o.onClose) o.onClose(refocus);
+  };
+  field.addEventListener("input", () => filterMenu(menu, field.value));
+  // First, before the host's own keys for its menu.
+  menu.addEventListener(
+    "keydown",
+    (e) => {
+      filterKey(e, menu, field, close);
+    },
+    true,
+  );
+  return field;
+}
+
 /** The scope crumbs' menus (see the top). */
 export function hydrateScope(root, opts = {}) {
   let open = null; // { btn, menu }
@@ -304,19 +389,6 @@ export function hydrateScope(root, opts = {}) {
   };
   const items = (menu) => all(menu, ITEMS).filter((el) => !el.hidden);
   const fieldOf = (menu) => menu.querySelector("input.den-mfilter");
-  // The filter: an entry shows when its words hold what was typed.
-  function filter(menu, text) {
-    const want = String(text || "")
-      .trim()
-      .toLowerCase();
-    let shown = 0;
-    for (const el of all(menu, ".den-mi")) {
-      el.hidden = !!want && !el.textContent.toLowerCase().includes(want);
-      if (!el.hidden) shown++;
-    }
-    const none = menu.querySelector(".den-mnone");
-    if (none) none.hidden = shown > 0;
-  }
   function close(refocus) {
     if (!open) return;
     const { btn, menu } = open;
@@ -342,7 +414,7 @@ export function hydrateScope(root, opts = {}) {
     if (field) {
       // A long menu opens on its filter, empty.
       field.value = "";
-      filter(menu, "");
+      filterMenu(menu, "");
       field.focus();
       return;
     }
@@ -373,32 +445,8 @@ export function hydrateScope(root, opts = {}) {
     if (!open || !open.menu.contains(t)) return;
     const list = items(open.menu);
     const field = fieldOf(open.menu);
-    if (field && t === field) {
-      // In the filter: ↓ ↑ to the entries, Enter takes the first shown,
-      // Esc clears what was typed, then closes.
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        const to = e.key === "ArrowDown" ? list[0] : list[list.length - 1];
-        if (to) to.focus();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        if (list[0]) list[0].click();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (field.value) {
-          field.value = "";
-          filter(open.menu, "");
-        } else close(true);
-      } else if (e.key === "Tab") close(false);
-      return;
-    }
+    if (field && filterKey(e, open.menu, field, close)) return;
     const i = list.indexOf(t);
-    if (field && e.key === "ArrowUp" && i === 0) {
-      e.preventDefault();
-      field.focus();
-      return;
-    }
     let next = -1;
     if (e.key === "ArrowDown") next = (i + 1) % list.length;
     else if (e.key === "ArrowUp") next = (i - 1 + list.length) % list.length;
@@ -417,7 +465,7 @@ export function hydrateScope(root, opts = {}) {
   root.addEventListener("input", (e) => {
     const t = e.target;
     if (open && t && t.matches && t.matches("input.den-mfilter"))
-      filter(open.menu, t.value);
+      filterMenu(open.menu, t.value);
   });
   // Esc on the ▾ itself, with its menu open.
   document.addEventListener("keydown", (e) => {
@@ -543,15 +591,25 @@ export function hydrateBell(btn, opts = {}) {
 export function hydrateAccount(root, opts = {}) {
   const lang = () =>
     typeof opts.lang === "function" ? opts.lang() : opts.lang;
-  const entry = root.querySelector('[data-den-account][aria-haspopup="menu"]');
-  if (entry && opts.menu)
-    return popMenu(entry, {
+  let menu;
+  if (opts.menu) {
+    // Delegated: a host may draw the rail again (and the entry with it).
+    const sel = '[data-den-account][aria-haspopup="menu"]';
+    const at = (e) =>
+      e.target && e.target.closest ? e.target.closest(sel) : null;
+    menu = popMenu(null, {
+      delegated: true,
       id: "den-account",
-      label: () => entry.getAttribute("title") || "",
+      label: () => "",
       html: () => accountMenuHtml({ lang: lang(), ...(opts.menu() || {}) }),
       onPick: opts.onPick,
       onSubmit: opts.onSubmit,
     });
+    root.addEventListener("click", (e) => {
+      const b = at(e);
+      if (b && root.contains(b)) menu.toggle(b, null);
+    });
+  }
   root.addEventListener("click", (e) => {
     const a =
       e.target && e.target.closest
@@ -560,6 +618,7 @@ export function hydrateAccount(root, opts = {}) {
     if (!a || !root.contains(a)) return;
     if (opts.onAction) opts.onAction(e);
   });
+  return menu;
 }
 
 const TOP_MARGIN = 8;
@@ -589,7 +648,9 @@ export function hydrateAppearance(btn, opts = {}) {
  * it. A form's submit button submits it (onSubmit first: preventDefault
  * there keeps it from posting, and closes the menu).
  */
-function popMenu(btn, o) {
+function popMenu(el, o) {
+  // The button it is open for: `el`, or (delegated) the one open() got.
+  let btn = el;
   let pop = null;
   const rows = () => (pop ? all(pop, ".den-mi") : []);
   const isOpen = () => !!pop;
@@ -622,8 +683,9 @@ function popMenu(btn, o) {
     pop.style.setProperty("top", Math.max(TOP_MARGIN, top) + "px");
     pop.style.setProperty("left", left + "px");
   }
-  function open(at) {
+  function open(at, from) {
     if (pop) return;
+    if (from) btn = from;
     pop = document.createElement("div");
     pop.className = "den-pop den-um";
     pop.tabIndex = -1;
@@ -684,12 +746,14 @@ function popMenu(btn, o) {
     if (first) first.focus();
     else pop.focus();
   }
-  btn.addEventListener("click", () => (pop ? close(false) : open()));
-  btn.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    if (!pop) open(e.key === "ArrowUp" ? "last" : null);
-  });
+  if (!o.delegated) {
+    btn.addEventListener("click", () => (pop ? close(false) : open()));
+    btn.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      if (!pop) open(e.key === "ArrowUp" ? "last" : null);
+    });
+  }
   document.addEventListener("mousedown", (e) => {
     if (!pop) return;
     if (pop.contains(e.target) || btn.contains(e.target)) return;
@@ -702,7 +766,14 @@ function popMenu(btn, o) {
     }
   });
   window.addEventListener("resize", () => close(false));
-  return { open: () => open(), close: (r) => close(!!r), isOpen };
+  return {
+    open: (from) => open(null, from),
+    close: (r) => close(!!r),
+    isOpen,
+    // Delegated: a click on `from` opens it there, or closes it.
+    toggle: (from, at) =>
+      pop && btn === from ? close(false) : (close(false), open(at, from)),
+  };
 }
 
 /** The update-waiting pill after the version chip (see the top). */

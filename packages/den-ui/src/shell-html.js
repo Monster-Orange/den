@@ -311,13 +311,32 @@ export function shellHtml(o = {}) {
 const crumbId = (c) => c.id || "den-scope-" + (c.key || "x");
 
 /**
- * Whether a crumb's menu of `n` links gets the filter field: `filter`
- * false never, a number past that many, true always, else past 6.
+ * Whether a menu of `n` entries gets the filter field: `filter` false
+ * never, a number past that many, true always, else past 6.
  */
-function hasFilter(c, n) {
-  if (c.filter === false) return false;
-  if (c.filter === true) return true;
-  return n > (typeof c.filter === "number" ? c.filter : 6);
+export function menuHasFilter(filter, n) {
+  if (filter === false) return false;
+  if (filter === true) return true;
+  return n > (typeof filter === "number" ? filter : 6);
+}
+
+/**
+ * A menu's type-to-filter field (first in it) and its "No match" line
+ * (last): [field, none]. `label`: the menu's name ("Filter <label>").
+ */
+export function menuFilterParts(menuId, label, lang) {
+  return [
+    '<input type="search" class="den-mfilter" id="' +
+      esc(menuId) +
+      '-filter" aria-label="' +
+      esc(kitT(lang, "kit.menu.filter", { label: label ?? "" })) +
+      '" placeholder="' +
+      esc(kitT(lang, "kit.menu.filter.ph")) +
+      '" autocomplete="off" spellcheck="false">',
+    '<p class="den-mnote den-mnone" role="status" hidden>' +
+      esc(kitT(lang, "kit.menu.none")) +
+      "</p>",
+  ];
 }
 
 /** A crumb's menu, drawn by the kit: links ({ label, href, current }) or HTML. */
@@ -327,19 +346,8 @@ function crumbMenuHtml(c, lang) {
   const menuId = crumbId(c) + "-menu";
   // A long list: a type-to-filter field first, "No match" last.
   const filter =
-    Array.isArray(m) && hasFilter(c, m.length)
-      ? [
-          '<input type="search" class="den-mfilter" id="' +
-            esc(menuId) +
-            '-filter" aria-label="' +
-            esc(kitT(lang, "kit.menu.filter", { label: c.label ?? "" })) +
-            '" placeholder="' +
-            esc(kitT(lang, "kit.menu.filter.ph")) +
-            '" autocomplete="off" spellcheck="false">',
-          '<p class="den-mnote den-mnone" role="status" hidden>' +
-            esc(kitT(lang, "kit.menu.none")) +
-            "</p>",
-        ]
+    Array.isArray(m) && menuHasFilter(c.filter, m.length)
+      ? menuFilterParts(menuId, c.label, lang)
       : ["", ""];
   const body = Array.isArray(m)
     ? m

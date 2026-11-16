@@ -70,6 +70,7 @@ import {
 } from "./shell-html.js";
 import {
   hydrateAccount,
+  attachMenuFilter,
   hydrateAppearance,
   hydrateBell,
   hydrateScope,
@@ -278,6 +279,7 @@ const DenUI = {
   hydrateSearch,
   hydrateBell,
   hydrateAccount,
+  attachMenuFilter,
   syncPinToggles,
   icon,
   esc,
