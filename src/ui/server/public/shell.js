@@ -2184,7 +2184,7 @@
     "ag.mode.src.project": "the project",
     "ag.mode.src.install": "the Den-wide default",
     "ag.mode.src.persona": "its persona",
-    "ag.mode.src.default": "Den's default",
+    "ag.mode.src.default": "Den's built-in default",
     "set.workspace.agents_mode":
       "Agents' mode: this project (overrides the Den-wide default)",
     "set.workspace.agents_mode.d":

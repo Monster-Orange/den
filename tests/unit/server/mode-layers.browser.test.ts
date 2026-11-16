@@ -246,6 +246,45 @@ describe("issue 268: the Den-wide default and a project's override say which is 
     await p.context().close();
   }, 60_000);
 
+  // Found in a release gate: a deep link scrolled the row to the very top, under
+  // the sticky top bar and the settings header, with its label hidden.
+  for (const [name, url, sel] of [
+    ["the Den-wide row", "/settings#agents.default_mode", DW],
+    ["a project's row", "/settings?project=south#workspace.agents_mode", PR],
+  ] as const)
+    for (const width of [1280, 375])
+      it(`a deep link to ${name} at ${width} px shows its label, below the bars`, async () => {
+        if (skip()) return;
+        const p = await open(url, `${sel} .l`);
+        await p.setViewportSize({ width, height: 900 });
+        await p.goto(`${s!.base}${url}`);
+        await p.waitForSelector(`${sel} .l`);
+        await p.waitForTimeout(400);
+        const r = await p.evaluate((q) => {
+          const label = document.querySelector(`${q} .l`)!;
+          const box = label.getBoundingClientRect();
+          const bottomOf = (s2: string) =>
+            document.querySelector(s2)?.getBoundingClientRect().bottom ?? 0;
+          const hit = document.elementFromPoint(
+            box.left + Math.min(20, box.width / 2),
+            box.top + box.height / 2,
+          );
+          return {
+            top: box.top,
+            under: Math.max(
+              bottomOf(".den-top"),
+              bottomOf("#den-content > .ph"),
+            ),
+            hitsLabel: !!hit && label.contains(hit),
+            inView: box.bottom <= window.innerHeight,
+          };
+        }, sel);
+        expect(r.hitsLabel).toBe(true);
+        expect(r.top).toBeGreaterThanOrEqual(r.under);
+        expect(r.inView).toBe(true);
+        await p.context().close();
+      }, 60_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);
