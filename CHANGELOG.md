@@ -4,6 +4,23 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.62] - unreleased
+
+### Added
+
+- A repo that runs nothing (config, docs, rulesets, shared CI) can join a
+  project: `repo add <folder> --no-run`, or `no_run: true` on the MCP
+  `repo_add` and `manifest_draft`. When Den can't tell how a repo starts,
+  its question now offers "it runs nothing". Such a repo has an empty
+  service list (a manifest may say `services: {}` or `services: []`).
+  Agents and worktrees work in it; `up`, `down`, `restart`, `logs`,
+  `status`, the services page and the health row have nothing to start or
+  check for it, and no error. A repo added before with `--run "true"`
+  keeps its fake service until you change its side-car.
+- A shared repo, such as one holding shared components, can be in more
+  than one project, with an agent from each working in it; removing it
+  from one project leaves the others as they were.
+
 ## [0.4.61] - unreleased
 
 ### Added
