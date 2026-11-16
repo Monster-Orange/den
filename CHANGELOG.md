@@ -4,6 +4,15 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.61] - unreleased
+
+### Fixed
+
+- Den's web server no longer closes an idle connection after 5 seconds,
+  the page's own poll interval. A client that reused a connection just
+  then could get a reset (a failed request, or a proxy error). The new
+  setting `web.keep_alive_seconds` (default 120) sets how long it waits.
+
 ## [0.4.60] - 2026-11-16
 
 ### Fixed

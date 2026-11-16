@@ -2590,6 +2590,11 @@ distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
 
+`web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
+server keeps an idle connection open. It sits above the page's own poll and
+a proxy's usual idle time, so a client never reuses a connection the server
+is closing (a reset). Doctor names a bad value.
+
 `install` also restarts a service that is already installed. It says the
 service is running only once the web server answers
 `http://localhost:<web.port>/api/server-info` with JSON (a fresh server

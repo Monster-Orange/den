@@ -941,7 +941,7 @@ function asConfigError<T>(
  * edge. A file that can't be read is left to readDenConfig's callers.
  */
 export function sectionConfigError(
-  section: "agents" | "sessions",
+  section: "agents" | "sessions" | "web",
 ): ConfigError | null {
   let config: DenConfig;
   try {
@@ -951,10 +951,14 @@ export function sectionConfigError(
   }
   try {
     if (section === "agents") readAgentsConfig(config, readUserConfigQuiet());
+    else if (section === "web") readWebKeepAliveSeconds(config);
     else readSessionsConfig(config);
     return null;
   } catch (e) {
     if (isConfigError(e)) return e;
+    // #257: web's own checks throw a plain Error naming the key.
+    if (section === "web" && e instanceof Error)
+      return new ConfigError(e.message);
     throw e;
   }
 }
@@ -2022,6 +2026,12 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
 /** `web:` in the org config. */
 export interface WebConfig {
   port?: number;
+  /**
+   * #257: how long the web server keeps an idle connection open, in
+   * seconds (default 120). Above the page's poll and a proxy's idle time,
+   * so a client never reuses a connection the server is closing.
+   */
+  keep_alive_seconds?: number;
   /** The launchd service that runs the web UI (`<cli> service install`). */
   service?: { label?: string; logs?: string };
 }
@@ -2216,6 +2226,24 @@ export interface ResolvedWebService {
 }
 
 const WEB_SERVICE_KEYS = ["label", "logs"];
+
+/** #257: web.keep_alive_seconds when unset. */
+export const WEB_KEEP_ALIVE_SECONDS_DEFAULT = 120;
+
+/** #257: web.keep_alive_seconds, checked (1 to 3600). A bad value throws. */
+export function readWebKeepAliveSeconds(
+  config: DenConfig = readDenConfig(),
+): number {
+  const v: unknown = (
+    config.web as { keep_alive_seconds?: unknown } | undefined
+  )?.keep_alive_seconds;
+  if (v === undefined || v === null) return WEB_KEEP_ALIVE_SECONDS_DEFAULT;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 1 || v > 3600)
+    throw new Error(
+      `web.keep_alive_seconds: seconds, 1 to 3600 (got ${JSON.stringify(v)})`,
+    );
+  return v;
+}
 
 /**
  * The web UI's launchd service. The defaults are service/install.sh's own

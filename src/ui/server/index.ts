@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
 import {
   crashLoopSettings,
@@ -177,6 +178,8 @@ import {
   resolveReleaseTarget,
   writeUserReleaseConfig,
   type ReleaseConfig,
+  readWebKeepAliveSeconds,
+  WEB_KEEP_ALIVE_SECONDS_DEFAULT,
 } from "../../shared/den-config.js";
 import {
   CONFIG_ERROR_STATUS,
@@ -6654,6 +6657,17 @@ const server = http.createServer((req, res) => {
     }
   });
 });
+
+// #257: idle connections outlive the page's poll (web.keep_alive_seconds).
+try {
+  applyKeepAlive(server, readWebKeepAliveSeconds());
+} catch (e) {
+  applyKeepAlive(server, WEB_KEEP_ALIVE_SECONDS_DEFAULT);
+  serverLog(
+    `  ⚠ ${(e as Error).message}; using ${WEB_KEEP_ALIVE_SECONDS_DEFAULT} s`,
+    "warn",
+  );
+}
 
 // WebSocket upgrades pass the same checks (SEC-1 §3: Origin on every
 // upgrade; CSRF as the `den.csrf.<token>` subprotocol). One route takes
