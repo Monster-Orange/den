@@ -92,6 +92,14 @@ export const DEN_SETTING_CATEGORIES = [
       "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
   },
   {
+    // Issue 103: other web apps reach an agent (links, the embedded pane).
+    id: "embed",
+    label: "Embedding",
+    order: 57.5,
+    description:
+      "Let other web apps link to your agents. A link fills an agent's message box. Nothing is sent until you press Send.",
+  },
+  {
     id: "secrets",
     label: "Secrets",
     order: 58,
@@ -706,6 +714,23 @@ function drawPair(host, ctx) {
       host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
     });
 }
+
+/** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
+const EMBED_ROWS = [
+  {
+    id: "embed.url_max",
+    category: "embed",
+    label: "Longest link context",
+    description:
+      "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
+    keywords: ["link", "deep link", "context", "url", "length", "embed"],
+    scope: "user",
+    keys: ["embed.url_max_chars"],
+    control: { type: "number", min: 64, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.embed?.url_max_chars ?? 8192,
+    write: (v, ctx) => ctx.post({ embed: { url_max_chars: v } }),
+  },
+];
 
 const ACCESS_ROWS = [
   {
@@ -1831,6 +1856,7 @@ export const DEN_SETTINGS = [
   },
 
   ...ACCESS_ROWS,
+  ...EMBED_ROWS,
 
   // ── Distribution (read-only) ───────────────────────────────────────────
   distRow(

@@ -106,6 +106,7 @@ import {
   readMcpConfig,
 } from "../../shared/den-config.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
+import { sayToAgent } from "./agent-say.js";
 import {
   readWorkspacesFile,
   conversationFolders,
@@ -232,7 +233,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|restart|link|move|file))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|restart|link|move|file|say))?$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -724,6 +725,7 @@ export async function handleAgentRoutes(
     | "move"
     | "restart"
     | "file"
+    | "say"
     | undefined;
 
   // The double-click fix: the same start, resume, fresh, relaunch,
@@ -916,6 +918,12 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can move an agent", {
         status: 403,
       });
+    // Issue 103: what a person sends from a composer; an agent never
+    // types into another agent's session.
+    if (verb === "say" && (agent || actor))
+      throw new AgentError("only a person can send an agent a message", {
+        status: 403,
+      });
     // D65: what an agent is listed under is the person's call.
     if (verb === "link" && (agent || actor))
       throw new AgentError("only a person can link an agent to a repo", {
@@ -1099,6 +1107,14 @@ export async function handleAgentRoutes(
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
       audit(what, s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
+    } else if (verb === "say") {
+      // Issue 103: the composer's Send: typed into its session as one
+      // message, then Enter (the host's write path, as a first
+      // instruction is). Its text is never logged; its length is.
+      const said = await sayToAgent(d, agentRecord(d, id!, ws), req);
+      what = `send ${id} a message in ${ws} (${said.length} characters)`;
+      audit(what);
+      sendJson(res, { ok: true, agent: id });
     } else if (verb === "name") {
       const body = await jsonBody(req);
       if (!("name" in body))

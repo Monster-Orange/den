@@ -376,6 +376,12 @@ import {
   readHubConfig,
 } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
+import {
+  contextUrlProblem,
+  embedSettings,
+  patchEmbed,
+} from "./embed-settings.js";
+import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
@@ -2885,6 +2891,36 @@ async function handleRequest(
       graphPageHtml,
     );
   }
+
+  // Issue 103: a deep link to one agent, its URL in the composer.
+  if (
+    handleAgentLink(req, res, pathname, url.searchParams, {
+      stateDir: () => getStateDir(),
+      workspaceExists: (ws) => Boolean(readWorkspacesFile().workspaces[ws]),
+      urlMax: () => embedSettings(readUserConfig()).url_max_chars,
+      contextProblem: contextUrlProblem,
+      serveAgents: (r) => {
+        const bad = sectionConfigError("agents");
+        if (bad && wantsHtmlPage(req, pathname)) throw bad;
+        serveFile(r, path.join(PUBLIC_DIR, "agents.html"));
+      },
+      sendProblem: (q, r, p) =>
+        sendErrorPage(q, r, {
+          status: p.status,
+          code: "agent_link",
+          path: pathname,
+          message: p.message,
+          link: {
+            reason: p.reason,
+            project: p.project,
+            agent: p.agent,
+            ...(p.max !== undefined ? { max: p.max } : {}),
+          },
+          requestId,
+        }),
+    })
+  )
+    return;
 
   // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
   if (pathname === "/agents" || pathname === "/agents.html") {
@@ -5847,6 +5883,8 @@ async function handleRequest(
             return null;
           }
         })(),
+        // Issue 103: Settings › Embedding (embed.*).
+        embed: embedSettings(user),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {
@@ -5889,6 +5927,7 @@ async function handleRequest(
           crash_loop?: unknown;
           web_bridge?: unknown;
           agents_list?: unknown;
+          embed?: unknown;
         };
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
@@ -5983,6 +6022,11 @@ async function handleRequest(
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
           const e = patchEditorOpen(user, body.editor_open);
+          if (!e.ok) return send400(res, e.error);
+        }
+        // Issue 103: Settings › Embedding, a person's (PERSON_ONLY_SETTINGS).
+        if (body.embed !== undefined) {
+          const e = patchEmbed(user, body.embed);
           if (!e.ok) return send400(res, e.error);
         }
         // SEC-2a: web.machine_name (user.yml); null or "" clears it.
@@ -6103,6 +6147,7 @@ async function handleRequest(
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
           editor_open: editorOpen(user),
+          embed: embedSettings(user),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

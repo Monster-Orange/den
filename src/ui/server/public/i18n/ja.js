@@ -551,6 +551,15 @@
     "err.421.lead":
       "このサーバーは自身のアドレスでのみ応答するため、別の名前のページからは届きません。",
     "err.421.open": "localhost で開く",
+    "err.link.title": "このエージェントへのリンクは開けません",
+    "err.link.project": "この Den にプロジェクト {project} はありません。",
+    "err.link.agent":
+      "プロジェクト {project} にエージェント {agent} はありません。削除された可能性があります。",
+    "err.link.context_scheme":
+      "リンクのコンテキストは http または https のウェブアドレスである必要があります。",
+    "err.link.context_long":
+      "リンクのコンテキストが {max} 文字を超えています。上限は 設定 › 埋め込み で設定します。",
+    "err.link.agents": "エージェントを開く",
     "err.refused.title": "リクエストが拒否されました",
     "err.signin.terminal": "ターミナルを使うにはサインインしてください",
     "err.signin.agents": "エージェントを起動するにはサインインしてください",
@@ -844,6 +853,7 @@
     "set.access.owner": "オーナー",
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",
+    "set.embed.url_max": "リンクのコンテキストの最大長",
     "set.access.machine_name": "マシン名",
     "ident.local": "ローカル",
     "ident.device": "サインイン済み · このデバイス",
@@ -1062,6 +1072,16 @@
     "ag.chip.stopped": "停止",
     "ag.chip.exited": "終了",
     "ag.chip.interrupted": "中断",
+    "agc.label": "{name} へのメッセージ",
+    "agc.hint": "送信を押すまで何も送られません。",
+    "agc.send": "送信",
+    "agc.close": "閉じる",
+    "agc.empty": "先にメッセージを書いてください。",
+    "agc.sending": "送信中…",
+    "agc.sent": "{name} に送信しました。",
+    "agc.failed": "送信できませんでした: {e}",
+    "agc.stopped":
+      "{name} は停止しています。再開してから、もう一度リンクを開いてください。",
     "ag.link.none":
       "エージェント {id} はここにありません。削除された可能性があります。",
     "ag.apiOnly": "API のみ: {names}",
@@ -2054,6 +2074,9 @@
     "setc.access": "アクセス",
     "setc.access.d":
       "ほかのデバイスからこの Den にアクセスします。オーナーとして GitHub でサインインするか、一回限りのリンクでデバイスをペアリングします。localhost では何も求められません。",
+    "setc.embed": "埋め込み",
+    "setc.embed.d":
+      "ほかのウェブアプリからエージェントにリンクできるようにします。リンクはエージェントのメッセージ欄に入力します。送信を押すまで何も送られません。",
     "setc.secrets": "シークレット",
     "setc.secrets.d":
       "Den がシークレットの解決に使う認証情報を、このマシンがどこから取得するかです。マシンごとの設定 (config/local/user.yml) で、表示されるのは取得元だけで、シークレットは表示されません。",
@@ -2204,6 +2227,8 @@
       "この Den にサインインしているブラウザです。「取り消す」ですぐにサインアウトさせます。__DEN_CLI__ web logout --all ですべてサインアウトさせます。",
     "set.access.waiting.d":
       "サインアウト中のページにコードが表示されているコンピューターです。承認すると、そのページは自動でサインインします。コードの有効期限は 10 分です。__DEN_CLI__ web approve <code> でもコマンドラインから同じことができます。",
+    "set.embed.url_max.d":
+      "エージェントへのリンクがメッセージ欄に渡せるウェブアドレスの最大長です。これより長いと、その旨を示すページが開きます。",
     "set.access.machine_name.d":
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":

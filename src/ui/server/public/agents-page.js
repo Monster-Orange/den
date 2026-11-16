@@ -94,6 +94,7 @@ import { OPEN_MS } from "/kit/busy.js";
 import { dismissable } from "/popover.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
+import { makeComposer } from "/agent-composer.js";
 import {
   attachFiles,
   guardPageDrops,
@@ -217,6 +218,8 @@ const st = {
   helpersShown: 3,
   // AG-4b: where a path link opens (Settings editor_open).
   editorOpen: "none",
+  // Issue 103: the deep link this page opened on, until its agent opens.
+  deep: null,
 };
 
 /** ?layout=, when it names one; else null. */
@@ -251,6 +254,30 @@ export function openFromUrl(search) {
     if (id && !ids.includes(id)) ids.push(id);
   }
   return ids.slice(-MAX_PANES);
+}
+
+/**
+ * Issue 103: a deep link, /p/<project>/agents/<id>[?context=<url>]: the
+ * page's own address for it (?agent=<id>&ws=<project>, which D43 opens),
+ * and the context for the composer. Null when the path isn't one. The
+ * server checked the project, the agent and the context before the page.
+ */
+export function deepLinkOf(pathname, search) {
+  const m = /^\/p\/([^/]+)\/agents\/([^/]+)\/?$/.exec(pathname || "");
+  if (!m) return null;
+  let ws, agent;
+  try {
+    ws = decodeURIComponent(m[1]);
+    agent = decodeURIComponent(m[2]);
+  } catch {
+    return null;
+  }
+  const q = new URLSearchParams(search || "");
+  const context = q.get("context");
+  q.delete("context");
+  q.set("agent", agent);
+  q.set("ws", ws);
+  return { ws, agent, context, href: `/agents?${q.toString()}` };
 }
 
 /** D73: the panes this browser has open, so a Terminal link adds a tab. */
@@ -4848,6 +4875,13 @@ export async function mountAgentsPage(root) {
     }).observe(root, { childList: true, subtree: true });
   translateStatic(root);
   if (window.denShell?.apiOff?.()) return;
+  // Issue 103: a deep link is read as ?agent=&ws= (D43); its context goes
+  // to the agent's composer, once (the address drops it).
+  const deep = deepLinkOf(location.pathname, location.search);
+  if (deep) {
+    history.replaceState(history.state, "", deep.href);
+    st.deep = deep;
+  }
   st.open = [];
   // D73: a Terminal link (the rail's, a project's Terminal here) adds a
   // tab: the panes this browser had open come along, and the page shows
@@ -5234,8 +5268,15 @@ async function openTerminal(asked = "") {
  */
 async function openLinkedAgent(agent, ws) {
   // #80: in this view, else in any project (and then switch to it).
+  // Issue 103: a deep link names the project too: only that one's agent
+  // (an id may repeat across projects).
+  const deep = st.deep;
+  st.deep = null;
   const all = st.data?.sessions ?? [];
-  const named = (x) => x.kind === "agent" && x.agent === agent;
+  const named = (x) =>
+    x.kind === "agent" &&
+    x.agent === agent &&
+    (!deep || x.workspace === deep.ws);
   let r =
     visibleRows().find((x) => named(x) && (!ws || x.workspace === ws)) ??
     all.find(named);
@@ -5257,9 +5298,47 @@ async function openLinkedAgent(agent, ws) {
     if (group && !group.open) group.open = true;
     row?.scrollIntoView({ block: "nearest" });
     row?.focus();
+    if (deep?.context)
+      window.denShell?.toast?.(t("agc.stopped", { name: displayName(r) }));
     await openDetails(r, row);
     return;
   }
   if (r.attachable === false) return;
   await pick(r.id, false);
+  if (deep?.context) openComposer(r, deep.context);
+}
+
+/**
+ * Issue 103: the composer under an agent's terminal, `text` in it.
+ * Nothing is sent until the person presses Send (POST …/say).
+ */
+function openComposer(r, text) {
+  const p = st.panes.get(r.id);
+  if (!p) return;
+  if (!p.composer) {
+    const name = displayName(r);
+    const c = makeComposer({
+      t,
+      name,
+      send: ({ text: said }) =>
+        api(
+          "POST",
+          `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/say`,
+          { text: said },
+        ),
+      onClose: () => {
+        c.el.remove();
+        p.composer = null;
+        refit(p);
+        p.term?.focus();
+      },
+    });
+    p.composer = c;
+    p.el.insertBefore(c.el, p.el.querySelector(".agto"));
+    refit(p);
+  }
+  p.composer.setText(text);
+  // The keyboard is the composer's now, not the terminal's once it opens.
+  if (st.focusOnOpen === r.id) st.focusOnOpen = null;
+  p.composer.focus();
 }

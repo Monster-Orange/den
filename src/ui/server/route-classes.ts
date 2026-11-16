@@ -103,6 +103,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/report/*",
     "/reports/security/*",
   ].map((p) => R(p)),
+  R(
+    "/p/:project/agents/:id",
+    "issue 103: a deep link to one agent; the page, its composer filled, nothing sent",
+  ),
   R("/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
   R("/api/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
 
@@ -465,6 +469,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/agents/:id/mode",
     "issue 199 an agent's own mode, or null to follow its project's; a person's only (an agent asks with agent_mode)",
   ),
+  S(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/say",
+    "issue 103 a composer's Send: types a person's message into the agent's terminal, then Enter; a person's only",
+  ),
   M(
     ["POST"],
     "/api/workspaces/:ws/agents/:id/clear-helpers",
@@ -749,6 +758,7 @@ export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   // UK-2: how a write sent with the working pop-up's id ended.
   "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
+  "agent-link-routes.ts:LINK_PATH": ["/p/:project/agents/:id"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
   "agent-routes.ts:AGENTS_PATH": [
@@ -770,6 +780,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/restart",
     "/api/workspaces/:ws/agents/:id/link",
     "/api/workspaces/:ws/agents/:id/move",
+    "/api/workspaces/:ws/agents/:id/say",
   ],
   "agent-routes.ts:TOOLS_PATH": ["/api/workspaces/:ws/agents/:id/tools"],
   "agent-routes.ts:RUNTIME_PATH": ["/api/agents/runtimes/:id/path"],

@@ -806,6 +806,9 @@
     "setc.access": "Access",
     "setc.access.d":
       "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
+    "setc.embed": "Embedding",
+    "setc.embed.d":
+      "Let other web apps link to your agents. A link fills an agent's message box. Nothing is sent until you press Send.",
     "setc.secrets": "Secrets",
     "setc.secrets.d":
       "Where this machine gets the credentials Den resolves secrets with. Per machine (config/local/user.yml); only the source is shown, never a secret.",
@@ -955,6 +958,8 @@
       "The browsers signed in to this Den. Revoke ends one at once. __DEN_CLI__ web logout --all ends them all.",
     "set.access.waiting.d":
       "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+    "set.embed.url_max.d":
+      "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
     "set.access.machine_name.d":
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
@@ -1338,6 +1343,15 @@
     "err.421.lead":
       "This server answers only on its own addresses, so a page on another name can't reach it.",
     "err.421.open": "Open on localhost",
+    "err.link.title": "This agent link can't open",
+    "err.link.project": "There is no project {project} in this Den.",
+    "err.link.agent":
+      "Project {project} has no agent {agent}. It may have been removed.",
+    "err.link.context_scheme":
+      "The link's context must be an http or https web address.",
+    "err.link.context_long":
+      "The link's context is longer than {max} characters. Settings › Embedding sets the limit.",
+    "err.link.agents": "Open Agents",
     "err.refused.title": "Request refused",
     "err.signin.terminal": "Sign in to use the terminal",
     "err.signin.agents": "Sign in to start agents",
@@ -1628,6 +1642,7 @@
     "ident.device": "Signed in · this device",
     "ident.toast": "This device is signed in to {name} on {host}",
     "set.access.waiting": "Waiting devices",
+    "set.embed.url_max": "Longest link context",
     "set.access.machine_name": "Machine name",
     "set.access.pair": "Pair a device",
     "set.distribution.brand": "Product name",
@@ -1849,6 +1864,15 @@
     "ag.chip.stopped": "Stopped",
     "ag.chip.exited": "Exited",
     "ag.chip.interrupted": "Interrupted",
+    "agc.label": "Message to {name}",
+    "agc.hint": "Nothing is sent until you press Send.",
+    "agc.send": "Send",
+    "agc.close": "Close",
+    "agc.empty": "Write a message first.",
+    "agc.sending": "Sending…",
+    "agc.sent": "Sent to {name}.",
+    "agc.failed": "Not sent: {e}",
+    "agc.stopped": "{name} is stopped. Resume it, then open the link again.",
     "ag.link.none": "No agent {id} here. It may have been removed.",
     "ag.apiOnly": "API only: {names}",
     "ag.apiOnlyTip":

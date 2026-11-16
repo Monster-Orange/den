@@ -285,6 +285,16 @@ export interface ErrorPageData {
   time: string;
   version: string | null;
   plugin?: PluginRoute | null;
+  /**
+   * Issue 103: a deep link (/p/<project>/agents/<id>) that can't open:
+   * which part is wrong, so the page says so in its language.
+   */
+  link?: {
+    reason: "project" | "agent" | "context_scheme" | "context_long";
+    project: string;
+    agent: string;
+    max?: number;
+  };
   /** MD-2: the restart message, when the engine on disk is newer. */
   engine?: { loaded: string | null; onDisk: string | null; message: string };
   /**

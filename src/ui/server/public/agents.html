@@ -556,13 +556,56 @@
       }
       .pane {
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr) auto;
+        /* The bar, the terminal, issue 103's composer (when open), To. */
+        grid-template-rows: auto minmax(0, 1fr) auto auto;
         border: 1px solid var(--border);
         border-radius: var(--radius);
         background: var(--sunken);
         min-height: 0;
         min-width: 0;
         overflow: hidden;
+      }
+      /* Issue 103: a composer under the terminal (a deep link's). */
+      .pane .agc {
+        display: grid;
+        gap: 6px;
+        padding: 8px 10px;
+        border-top: 1px solid var(--border);
+        background: var(--surface);
+        min-width: 0;
+      }
+      .pane .agc .agc-in {
+        width: 100%;
+        min-width: 0;
+        resize: vertical;
+        font: 13px/1.45 var(--sans);
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 6px 8px;
+      }
+      .pane .agc .agc-hint,
+      .pane .agc .agc-msg {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+      .pane .agc .agc-msg:empty {
+        display: none;
+      }
+      .pane .agc .agc-msg[data-tone="err"] {
+        color: var(--bad);
+      }
+      .pane .agc .agc-msg[data-tone="warn"] {
+        color: var(--warn);
+      }
+      .pane .agc .agc-acts {
+        display: flex;
+        gap: 6px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
       }
       /* 0.4.44: who the keyboard types to, in the project's colour. */
       .pane .agto {

@@ -775,6 +775,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/settings",
   // Issue 199: what an agent may do without asking (agent_mode asks).
   "/api/workspaces/:ws/agents/:id/mode",
+  // Issue 103: a composer's Send types into an agent's session.
+  "/api/workspaces/:ws/agents/:id/say",
   "/api/agents/clear-stopped",
   "/api/agents/restore",
   "/api/agents/rotation",

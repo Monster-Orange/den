@@ -8,6 +8,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- A link can open an agent with a web address already in its message
+  box (issue 103): `/p/<project>/agents/<id>?context=<url>`. The link
+  names the project and the agent, so it keeps working after restarts.
+  Nothing is sent until you press Send. A project or agent that isn't
+  there, or a context that isn't an http or https address, opens a page
+  that says which. Settings › Embedding sets the longest address a link
+  may carry (8192 characters by default).
 - A project mode change says which agents keep their own mode (issue
   199). The Allow lists each agent with a mode of its own ("pinned (own
   mode: auto)") and offers one choice, "Also make these follow the

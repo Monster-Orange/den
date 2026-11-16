@@ -568,6 +568,15 @@
     "err.421.lead":
       "Este servidor solo responde en sus propias direcciones, así que una página con otro nombre no puede alcanzarlo.",
     "err.421.open": "Abrir en localhost",
+    "err.link.title": "Este enlace al agente no se puede abrir",
+    "err.link.project": "No hay ningún proyecto {project} en este Den.",
+    "err.link.agent":
+      "El proyecto {project} no tiene el agente {agent}. Puede que se haya quitado.",
+    "err.link.context_scheme":
+      "El contexto del enlace debe ser una dirección web http o https.",
+    "err.link.context_long":
+      "El contexto del enlace supera los {max} caracteres. Ajustes › Incrustación fija el límite.",
+    "err.link.agents": "Abrir Agentes",
     "err.refused.title": "Solicitud rechazada",
     "err.signin.terminal": "Inicia sesión para usar la terminal",
     "err.signin.agents": "Inicia sesión para iniciar agentes",
@@ -858,6 +867,7 @@
     "set.access.owner": "Propietario",
     "set.access.devices": "Dispositivos vinculados",
     "set.access.waiting": "Dispositivos en espera",
+    "set.embed.url_max": "Contexto de enlace más largo",
     "set.access.machine_name": "Nombre de la máquina",
     "ident.local": "Local",
     "ident.device": "Sesión iniciada · este dispositivo",
@@ -1086,6 +1096,16 @@
     "ag.chip.stopped": "Detenido",
     "ag.chip.exited": "Terminado",
     "ag.chip.interrupted": "Interrumpido",
+    "agc.label": "Mensaje para {name}",
+    "agc.hint": "No se envía nada hasta que pulses Enviar.",
+    "agc.send": "Enviar",
+    "agc.close": "Cerrar",
+    "agc.empty": "Escribe primero un mensaje.",
+    "agc.sending": "Enviando…",
+    "agc.sent": "Enviado a {name}.",
+    "agc.failed": "No se envió: {e}",
+    "agc.stopped":
+      "{name} está detenido. Reanúdalo y vuelve a abrir el enlace.",
     "ag.link.none":
       "No hay ningún agente {id} aquí. Puede que se haya quitado.",
     "ag.apiOnly": "Solo API: {names}",
@@ -2099,6 +2119,9 @@
     "setc.access": "Acceso",
     "setc.access.d":
       "Accede a este Den desde tus otros dispositivos: inicia sesión con GitHub como su propietario o empareja un dispositivo con un enlace de un solo uso. En localhost no se pide nada.",
+    "setc.embed": "Incrustación",
+    "setc.embed.d":
+      "Permite que otras aplicaciones web enlacen a tus agentes. Un enlace rellena el cuadro de mensaje de un agente. No se envía nada hasta que pulses Enviar.",
     "setc.secrets": "Secretos",
     "setc.secrets.d":
       "De dónde obtiene esta máquina las credenciales con las que Den resuelve los secretos. Por máquina (config/local/user.yml); solo se muestra el origen, nunca un secreto.",
@@ -2251,6 +2274,8 @@
       "Los navegadores con la sesión iniciada en este Den. Revocar cierra uno al instante. __DEN_CLI__ web logout --all los cierra todos.",
     "set.access.waiting.d":
       "Ordenadores cuya página sin iniciar sesión muestra un código. Aprueba uno y su página inicia sesión sola; el código dura 10 minutos. __DEN_CLI__ web approve <code> hace lo mismo desde la línea de comandos.",
+    "set.embed.url_max.d":
+      "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
     "set.access.machine_name.d":
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
