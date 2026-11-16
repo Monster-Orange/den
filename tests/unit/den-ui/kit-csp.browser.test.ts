@@ -324,9 +324,9 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
     await p.locator(".den-bell-pop .den-bell-row").waitFor();
     await p.keyboard.press("Escape");
     await p.locator(".den-bell-pop").waitFor({ state: "hidden" });
-    await expect(p.locator(".den-acct").getAttribute("href")).resolves.toBe(
-      "#me",
-    );
+    await expect(
+      p.locator("[data-den-account]").getAttribute("href"),
+    ).resolves.toBe("#me");
     // ◐ ▾'s menu, placed through the CSSOM; the update-waiting pill.
     await click(p, ".appearance-btn");
     await p.locator("#appearance-btn-menu").waitFor();

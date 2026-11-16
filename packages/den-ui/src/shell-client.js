@@ -481,7 +481,7 @@ export function hydrateAccount(root, opts = {}) {
   root.addEventListener("click", (e) => {
     const a =
       e.target && e.target.closest
-        ? e.target.closest('.den-acct[data-act="account"]')
+        ? e.target.closest('[data-den-account][data-act="account"]')
         : null;
     if (!a || !root.contains(a)) return;
     if (opts.onAction) opts.onAction(e);

@@ -217,7 +217,7 @@ for (const engine of ["chromium", "webkit"]) {
         const search = top.querySelector(".den-search");
         const bell = top.querySelector(".den-bell");
         const acct = document.querySelector(
-          ".den-rail .den-acct",
+          ".den-rail [data-den-account]",
         ) as HTMLAnchorElement | null;
         // The search sits after the scope, both after the brand.
         const order = [...top.children].map((e) => e.className.split(" ")[0]);
@@ -322,7 +322,7 @@ for (const engine of ["chromium", "webkit"]) {
             ".den-search",
             ".den-bell",
             ".den-bell-pop",
-            ".den-acct",
+            "[data-den-account]",
           ].map((s) => document.querySelectorAll(s).length),
         ),
       ).resolves.toEqual([0, 0, 0, 0, 0]);
@@ -553,18 +553,18 @@ for (const engine of ["chromium", "webkit"]) {
       const b = browsers[engine];
       if (!b) return;
       const p = await open(b);
-      await p.locator(".den-acct").click();
+      await p.locator("[data-den-account]").click();
       await expect(p.evaluate(() => location.hash)).resolves.toBe("#account");
-      await expect(p.locator(".den-acct").getAttribute("title")).resolves.toBe(
-        "Signed in · this device",
-      );
+      await expect(
+        p.locator("[data-den-account]").getAttribute("title"),
+      ).resolves.toBe("Signed in · this device");
       await p.context().close();
       const q = await open(b, "?act");
       await expect(
-        q.evaluate(() => document.querySelector(".den-acct")!.tagName),
+        q.evaluate(() => document.querySelector("[data-den-account]")!.tagName),
       ).resolves.toBe("BUTTON");
-      await q.locator(".den-acct").click();
-      await q.locator(".den-acct").focus();
+      await q.locator("[data-den-account]").click();
+      await q.locator("[data-den-account]").focus();
       await q.keyboard.press("Enter");
       expect((await log(q)).account).toBe(2);
       await q.context().close();

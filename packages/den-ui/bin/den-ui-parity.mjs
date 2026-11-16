@@ -206,8 +206,8 @@ export const COMPONENTS = {
   },
   account: {
     label: "account entry in the rail's foot",
-    markup: [cls("den-acct"), cls("den-acct-d")],
-    css: ["den-acct", "den-acct-d"],
+    markup: [/\bdata-den-account\b/, cls("den-acct-d")],
+    css: ["den-acct-d"],
     code: ["accountHtml", "hydrateAccount", "identityEntry"],
     files: [],
   },

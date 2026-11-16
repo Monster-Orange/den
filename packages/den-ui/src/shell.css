@@ -590,8 +590,9 @@ body.den-has-shell .den-upd {
 .den-scope .den-ib[aria-expanded="true"] {
   background: var(--sunken);
 }
-/* A long value ends in an ellipsis; the whole value is in the menu. */
-.den-scope-btn .den-vn,
+/* A long value ends in an ellipsis; the whole value is in the menu. An
+   env's name is short: never capped. */
+.den-scope-btn:not([data-scope="env"]) .den-vn,
 .den-scope .den-opt .den-vn {
   display: inline-block;
   max-width: 200px;

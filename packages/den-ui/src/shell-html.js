@@ -557,8 +557,8 @@ export function bellPanelHtml({
  *   accountHtml({ label, detail?, href?, action?, icon?, id?, navId?,
  *                 attrs?, current? })
  * `href`: a link; else `action` true: a button (hydrateAccount's
- * onAction). The name and tooltip read "label · detail". No label:
- * nothing.
+ * onAction). The name and tooltip read "label · detail". It is a rail
+ * entry (.den-ni) marked data-den-account. No label: nothing.
  */
 export function accountHtml(a) {
   if (!a || !a.label) return "";
@@ -574,8 +574,8 @@ export function accountHtml(a) {
     "</span>";
   const open =
     a.href != null
-      ? '<a class="den-ni den-acct" href="' + esc(a.href) + '"'
-      : '<button type="button" class="den-ni den-acct" data-act="account"';
+      ? '<a class="den-ni" data-den-account href="' + esc(a.href) + '"'
+      : '<button type="button" class="den-ni" data-den-account data-act="account"';
   return (
     open +
     ' data-nav="' +
