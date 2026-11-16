@@ -11,7 +11,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { spawnServer, stopServer } from "../../child-servers.js";
-import { ROUTES } from "../../../src/ui/server/route-classes.js";
+import { SERVED_PAGES } from "./helpers/served-pages.js";
 import { KIT_FILES } from "../../../src/ui/server/ui-assets.js";
 import { stampAssetUrls } from "../../../src/ui/server/asset-stamp.js";
 
@@ -67,17 +67,7 @@ function assetRefs(text: string): { url: string; stamped: boolean }[] {
 }
 
 /** The page paths in the server's route list. */
-const PAGES = ROUTES.filter(
-  (r) =>
-    r.methods.includes("GET") &&
-    !/[:*]/.test(r.path) &&
-    !r.path.startsWith("/api/") &&
-    !r.path.startsWith("/_den/") &&
-    (r.path.endsWith(".html") || !/\.[a-z0-9]+$/i.test(r.path)),
-)
-  .map((r) => r.path)
-  // Not Den's pages: the test runner's own report, the theme favicon.
-  .filter((p) => !["/report", "/theme-favicon"].includes(p));
+const PAGES = SERVED_PAGES;
 
 beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-asset-stamp-"));
