@@ -8,6 +8,8 @@ import DenUI, {
 } from "@kit/kit.js";
 import {
   shellHtml,
+  reportButtonHtml,
+  reportPrefillOf,
   type ShellModel,
 } from "@kit/shell-html.js";
 import { hydrateShell } from "@kit/shell-client.js";
@@ -70,6 +72,13 @@ DenUI.version.set(versionLabel("1.0.0", [{ version: "1.0.0" }]) ?? "v…");
 DenUI.whatsNew.open();
 DenUI.update.set({ version: "1.1.0" }).hide();
 void DenUI.report.open({ prefill: { title: "t" } });
+// 0.6.3: a row's own Report button, its words and its prefill.
+const rowReport: string =
+  reportButtonHtml({ label: "Report this", prefill: { title: "t" } }) +
+  DenUI.report.button({ inFoot: true, label: "Report this", prefill: { kind: "bug" } });
+const pre: string | undefined = reportPrefillOf(null)?.title;
+void rowReport;
+void pre;
 void window.DenUI?.busy.run("save", async (h) => h["X-Request-Id"], {
   quietFail: true,
 });

@@ -201,6 +201,26 @@ reason does not count. With no DIVERGE.md, every copy fails.
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.6.3
+
+- Report: ⌘↵ (Ctrl+Enter) is the form's primary button on Write and on
+  Include, as in every pop-up: Write → Include → Review. Review still
+  sends nothing until the person clicks.
+- shell.css: the page's main (`#den-content`) takes what is left of the
+  window under the top bar (`flex: 1 1 auto`), so a short page's last row
+  can reach the window's bottom at every width.
+- shell.css: the top bar is pinned. It is `position: fixed` at the top,
+  as the rail under it is, and the body has `padding-top` of the bar's
+  height (and `box-sizing: border-box`, so its 100vh minimum still holds).
+  On a page whose body scrolls, or whose `html, body` are `height: 100%`,
+  the bar stays put and no gap opens above the rail.
+- `reportButtonHtml({ label, prefill })` (and `DenUI.report.button`): a
+  row's own Report button. `label` replaces the word and names the button;
+  `prefill` (`{ kind?, title?, description? }`) is kept on it as JSON
+  (`data-den-report-prefill`), and the kit's click opens Report filled
+  from it. `reportPrefillOf(el)` reads it back. With neither, the button
+  is as before.
+
 ## 0.6.2
 
 - `src/dialog.css` (export `./dialog.css`): the ask-and-tell dialogs'

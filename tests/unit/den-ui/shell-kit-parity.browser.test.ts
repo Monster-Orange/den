@@ -194,6 +194,40 @@ function geoDiff(want: Measure[], got: Measure[], tol: number): string[] {
   return out;
 }
 
+/**
+ * Computed styles the kit may change with no visible difference, each with
+ * its reason: "selector property" → [before, after].
+ */
+const ALLOWED_STYLES: Record<string, Array<[string, string]>> = {
+  // den-ui 0.6.3: the top bar is pinned (fixed at the top, as the rail is),
+  // so it no longer scrolls away; at the top of the page it is where it
+  // was, as its rect (unchanged) shows. Fixed, it spans the window from
+  // left 0 itself, so it no longer reaches back over the rail's padding.
+  "header.den-top position": [["relative", "fixed"]],
+  "header.den-top margin-left": [["-233px", "0px"]],
+};
+
+/** `want` with the allowed style changes applied. */
+function allowStyles(want: Measure[]): Measure[] {
+  return want.map((m) => {
+    if (!m.style) return m;
+    const style = { ...m.style };
+    for (const [k, v] of Object.entries(style))
+      for (const [from, to] of ALLOWED_STYLES[`${m.sel} ${k}`] ?? [])
+        if (v === from) style[k] = to;
+    return { ...m, style };
+  });
+}
+
+/**
+ * Pixels: a channel within PIXEL_ROUNDING counts as the same. A fixed
+ * element is its own layer (0.6.3 pins the top bar), so a backdrop, or a
+ * blur sampling the page behind What's new or the update pill, rounds a
+ * channel a few steps differently; no one can see that. A moved or
+ * recoloured part differs by tens of steps, and still fails.
+ */
+const PIXEL_ROUNDING = 8;
+
 const ALLOWED_ATTRS = new Set([
   // CSP (issue 95 b): the version chip opened What's new with an inline
   // onclick="openChangelog()"; the kit binds a listener instead.
@@ -500,10 +534,15 @@ function treeDiff(a: Node | null, b: Node | null, at = ""): string[] {
 }
 
 /** The number of pixels that differ between two PNGs (in the browser). */
-async function pixelDiff(p: Page, a: Buffer, b: Buffer): Promise<number> {
+async function pixelDiff(
+  p: Page,
+  a: Buffer,
+  b: Buffer,
+  skip: number[][] = [],
+): Promise<number> {
   if (a.equals(b)) return 0;
   return p.evaluate(
-    async ({ x, y }) => {
+    async ({ x, y, skip, tol }) => {
       const load = async (b64: string) => {
         const img = new Image();
         img.src = "data:image/png;base64," + b64;
@@ -518,17 +557,29 @@ async function pixelDiff(p: Page, a: Buffer, b: Buffer): Promise<number> {
       const [ia, ib] = await Promise.all([load(x), load(y)]);
       if (ia.width !== ib.width || ia.height !== ib.height) return -1;
       let n = 0;
-      for (let i = 0; i < ia.data.length; i += 4)
+      for (let i = 0; i < ia.data.length; i += 4) {
+        const px = (i / 4) % ia.width;
+        const py = Math.floor(i / 4 / ia.width);
         if (
-          ia.data[i] !== ib.data[i] ||
-          ia.data[i + 1] !== ib.data[i + 1] ||
-          ia.data[i + 2] !== ib.data[i + 2] ||
-          ia.data[i + 3] !== ib.data[i + 3]
+          skip.some(
+            ([l, t, r, btm]) => px >= l! && px < r! && py >= t! && py < btm!,
+          )
         )
-          n++;
+          continue;
+        for (let k = 0; k < 4; k++)
+          if (Math.abs(ia.data[i + k]! - ib.data[i + k]!) > tol) {
+            n++;
+            break;
+          }
+      }
       return n;
     },
-    { x: a.toString("base64"), y: b.toString("base64") },
+    {
+      x: a.toString("base64"),
+      y: b.toString("base64"),
+      skip,
+      tol: PIXEL_ROUNDING,
+    },
   );
 }
 
@@ -570,23 +621,34 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           expect(treeDiff(want.tree, shot.tree)).toEqual([]);
           const same =
             (fixture as unknown as Record<string, string>)[ENV_KEY] === env;
-          if (same) expect(shot.measures).toEqual(want.measures);
+          const wantM = allowStyles(want.measures);
+          if (same) expect(shot.measures).toEqual(wantM);
           else {
             // Another browser: all but the rects exactly, the rects within
             // GEO_TOLERANCE.
             const noRect = (m: Measure[]) =>
               m.map((x) => ({ ...x, rect: x.rect ? "rect" : null }));
-            expect(noRect(shot.measures)).toEqual(noRect(want.measures));
-            expect(
-              geoDiff(want.measures, shot.measures, GEO_TOLERANCE),
-            ).toEqual([]);
+            expect(noRect(shot.measures)).toEqual(noRect(wantM));
+            expect(geoDiff(wantM, shot.measures, GEO_TOLERANCE)).toEqual([]);
           }
           const base = path.join(BASE_DIR, name);
           // The pixels: only against shots from this same browser.
           if (same && fs.existsSync(base)) {
             fs.mkdirSync(AFTER_DIR, { recursive: true });
             fs.writeFileSync(path.join(AFTER_DIR, name), png);
-            expect(await pixelDiff(p, fs.readFileSync(base), png)).toBe(0);
+            // Report's screenshot preview is a picture of the page, not the
+            // kit's look: left out.
+            const skipRects = await p.evaluate(() =>
+              [
+                ...document.querySelectorAll(".fb-shot canvas, .fb-shot img"),
+              ].map((e) => {
+                const r = e.getBoundingClientRect();
+                return [r.left, r.top, r.right, r.bottom];
+              }),
+            );
+            expect(
+              await pixelDiff(p, fs.readFileSync(base), png, skipRects),
+            ).toBe(0);
           }
         } finally {
           await ctx.unrouteAll({ behavior: "ignoreErrors" });

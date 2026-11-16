@@ -729,7 +729,20 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
   });
   // The page's own Esc handlers may stop the dialog's cancel: Esc is
   // handled here first.
+  // ⌘↵ (Ctrl+Enter) is the primary on Write and Include, as in every
+  // pop-up. Review is left out: nothing is sent without a click.
   dlg.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Enter" &&
+      (e.metaKey || e.ctrlKey) &&
+      !e.isComposing &&
+      (st.step === "write" || st.step === "include")
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      dlg.querySelector(".fb-btns .fb-pri")?.click();
+      return;
+    }
     if (e.key !== "Escape") return;
     e.preventDefault();
     e.stopPropagation();

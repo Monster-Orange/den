@@ -77,7 +77,15 @@ export declare function reportButtonHtml(o?: {
   inFoot?: boolean;
   inTop?: boolean;
   lang?: string;
+  /** The button's own words, and its accessible name (escaped). */
+  label?: string;
+  /** Kept on the button as JSON; the kit's click opens Report with it. */
+  prefill?: { kind?: string; title?: string; description?: string };
 }): string;
+/** A Report button's prefill (its data-den-report-prefill), or undefined. */
+export declare function reportPrefillOf(
+  el: Element | null | undefined,
+): { kind?: string; title?: string; description?: string } | undefined;
 export declare function topBarHtml(model?: ShellModel): string;
 /** The whole shell: skip link, top bar and rail, as HTML. Pure: runs in Node. */
 export declare function shellHtml(model?: ShellModel): string;

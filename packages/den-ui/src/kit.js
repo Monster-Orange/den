@@ -41,6 +41,7 @@ import {
   navItemHtml,
   railHtml,
   reportButtonHtml,
+  reportPrefillOf,
   shellHtml,
   topBarHtml,
   versionChipHtml,
@@ -160,7 +161,8 @@ export function hydrate(root, opts = {}) {
           : null;
       if (!b) return;
       e.preventDefault();
-      void report.open();
+      const prefill = reportPrefillOf(b);
+      void report.open(prefill ? { prefill } : {});
     });
     // ⌘⇧F (Ctrl+Shift+F) opens Report from anywhere, over a dialog too.
     document.addEventListener(
@@ -202,6 +204,7 @@ const DenUI = {
   navItemHtml,
   versionChipHtml,
   reportButtonHtml,
+  reportPrefillOf,
   syncPinToggles,
   icon,
   esc,
