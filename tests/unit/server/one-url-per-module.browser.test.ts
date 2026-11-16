@@ -85,11 +85,13 @@ beforeAll(async () => {
     )[0]?.version ?? "";
 }, 90_000);
 
+// Two remote browsers and a seeded server to close: more than Jest's
+// default 10 s on a loaded runner, as the setup above has its own 90 s.
 afterAll(async () => {
   for (const b of Object.values(browsers)) await b?.close();
   host?.close();
   await s?.stop();
-});
+}, 60_000);
 
 const skip = () => !s;
 
