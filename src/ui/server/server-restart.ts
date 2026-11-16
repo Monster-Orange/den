@@ -16,6 +16,8 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { recordAction, type AuditEntry } from "./audit.js";
+import type { Actor } from "../../shared/agent-actor.js";
 
 export interface RestartMarker {
   /** The approval it ran for. */
@@ -157,4 +159,39 @@ export async function tellBack(
     await sleep(d.pollMs ?? 1000);
   }
   return (await d.type(text)) ? "told" : "not_typed";
+}
+
+/**
+ * Issue 227: the page actions that restart Den (POST /api/web/restart's
+ * `from`), in the audit row's words.
+ */
+export const PAGE_RESTART_FROM: Readonly<Record<string, string>> = {
+  "update-pill": "Reload in the update pill",
+  menu: "Restart Den in the menu",
+  settings: "Restart Den in Settings",
+};
+
+/**
+ * Issue 227: a person's restart from the page, one audit row (as an
+ * agent's held restart has): who (the credential's principal), when, and
+ * which page action. An action the page doesn't name is just the page.
+ */
+export function recordPageRestart(
+  body: unknown,
+  actor: Actor,
+  principal: string | undefined,
+): AuditEntry {
+  const from = (body as { from?: unknown } | null | undefined)?.from;
+  const words =
+    typeof from === "string" && Object.hasOwn(PAGE_RESTART_FROM, from)
+      ? PAGE_RESTART_FROM[from]
+      : "";
+  return recordAction(
+    actor,
+    {
+      verb: "server-restart",
+      detail: `asked by the person from the page${words ? `: ${words}` : ""}`,
+    },
+    principal,
+  );
 }

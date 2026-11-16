@@ -1706,6 +1706,7 @@
     "ag.ord.downOne": "Bajar {id}",
     "ag.ord.reorder": "Reordenar",
     "ag.ord.reorderOne": "Reordenar los agentes de {ws}",
+    "ag.ord.reorderStopped": "Reordenar los agentes detenidos",
     "ag.ord.done": "Listo",
     "ag.ord.grip": "Arrastra para cambiar su orden en el proyecto",
     "ag.ord.gripOne": "Arrastra para mover {id}",

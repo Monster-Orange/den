@@ -2468,6 +2468,7 @@
     "ag.ord.downOne": "Move {id} down",
     "ag.ord.reorder": "Reorder",
     "ag.ord.reorderOne": "Reorder the agents of {ws}",
+    "ag.ord.reorderStopped": "Reorder the stopped agents",
     "ag.ord.done": "Done",
     "ag.ord.grip": "Drag to move it in its project's order",
     "ag.ord.gripOne": "Drag to move {id}",

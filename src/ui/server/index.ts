@@ -999,6 +999,7 @@ import {
 import { callerPid, tokenCaller } from "./token-binding.js";
 import {
   backMessage,
+  recordPageRestart,
   restartMarkerPath,
   takeRestartMarker,
   tellBack,
@@ -5266,6 +5267,14 @@ async function handleRequest(
   // fresh daemon on the same port. Respond first, then spawn on the next tick so
   // the response flushes before the driver child arrives to stop us.
   if (pathname === "/api/web/restart" && req.method === "POST") {
+    // Issue 227: who asked, when, and from which page action.
+    let body: unknown = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch {
+      /* no body, or not JSON: the page, unnamed */
+    }
+    recordPageRestart(body, auditActorOf(req), principalOf(req));
     serverLog("↻ web restart requested from the UI", "lifecycle");
     sendJson(res, { restarting: true, pid: process.pid });
     setImmediate(() => {

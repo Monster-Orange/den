@@ -183,6 +183,8 @@ const st = {
   dragClick: false,
   /** Issue 96: on a phone, the project whose agents show Up and Down. */
   reorderWs: null,
+  /** Issue 226: on a phone, whether the Stopped group's agents show them. */
+  reorderStopped: false,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
   reconnect: reconnectOptions(undefined),
   /** 0.4.45: /api/workspaces, for the projects' names (projName). */
@@ -1037,9 +1039,17 @@ function stoppedGroupHtml(rows) {
   return (
     `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
     `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span></summary>` +
+    reorderStoppedHtml(rows) +
     rows
       .map((r) =>
-        exitedShell(r) ? exitedShellHtml(r, wsTag) : stoppedHtml(r, wsTag),
+        exitedShell(r)
+          ? exitedShellHtml(r, wsTag)
+          : // Issue 226: a phone's Reorder gives stopped agents Up and Down too.
+            orderRowHtml(
+              stoppedHtml(r, wsTag),
+              r,
+              phone() && st.reorderStopped && stoppedMovable(r),
+            ),
       )
       .join("") +
     `</details>`
@@ -2961,11 +2971,31 @@ function reorderButtonHtml(g) {
   return `<button type="button" class="den-btn sm agord-t" data-act="reorder" data-ws="${esc(g.ws)}" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderOne", { ws: projName(g.ws) }))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button>`;
 }
 
+/**
+ * Issue 226: a phone's Reorder (or Done) for the Stopped group, when one
+ * of its projects has two stopped agents to order.
+ */
+function reorderStoppedHtml(rows) {
+  if (!phone() || !rows.some(stoppedMovable)) return "";
+  const on = st.reorderStopped;
+  return `<div class="agord-sb"><button type="button" class="den-btn sm agord-t" data-act="reorder" data-stopped="" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderStopped"))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button></div>`;
+}
+
+/** Issue 226: a stopped row that can move: its group has two or more. */
+const stoppedMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
+
 /** A running row; in a phone's Reorder, with its Up and Down beside it. */
 function reorderRowHtml(g, r) {
-  const html = rowHtml(r);
-  if (!phone() || st.reorderWs !== g.ws || !orderable(r, SERVER_WS))
-    return html;
+  return orderRowHtml(
+    rowHtml(r),
+    r,
+    phone() && st.reorderWs === g.ws && orderable(r, SERVER_WS),
+  );
+}
+
+/** `html`, the row of `r`; with its Up and Down beside it when `on`. */
+function orderRowHtml(html, r, on) {
+  if (!on) return html;
   const ids = groupOf(r);
   const btn = (dir, key, sign) =>
     `<button type="button" class="den-btn sm" data-act="ord-${dir}" aria-label="${esc(t(key, { id: displayName(r) }))}"${orderTo(ids, r.agent, dir) ? "" : ' aria-disabled="true"'}>${sign}</button>`;
@@ -5218,7 +5248,11 @@ export async function mountAgentsPage(root) {
       }
       // Issue 96: a phone's Reorder, and its Up and Down per row.
       if (which === "reorder") {
-        st.reorderWs = st.reorderWs === act.dataset.ws ? null : act.dataset.ws;
+        if (act.hasAttribute("data-stopped"))
+          st.reorderStopped = !st.reorderStopped;
+        else
+          st.reorderWs =
+            st.reorderWs === act.dataset.ws ? null : act.dataset.ws;
         paintList();
         return;
       }

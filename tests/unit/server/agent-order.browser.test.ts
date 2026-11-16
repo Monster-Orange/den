@@ -14,6 +14,9 @@
  *   3. At 375 px: a touch drag (pointer events) moves a row; Alt+↓ moves
  *      one and is announced; Reorder shows 44 px Up and Down; nothing
  *      scrolls sideways.
+ *   4. Issue 226, at 375 px: the Stopped group offers Reorder too, with
+ *      44 px Up and Down on each stopped agent that can move; a stopped
+ *      agent moves, and the order holds through a reload.
  *
  * The demo distribution with a session host in this process and a
  * scripted PTY: nothing really runs. DEN_PW_WS connects to a running
@@ -71,6 +74,18 @@ beforeAll(async () => {
   await run("ada", "2026-11-15T01:00:00.000Z");
   await run("bo", "2026-11-15T02:00:00.000Z");
   await run("cy", "2026-11-15T03:00:00.000Z");
+  // Issue 226: two stopped agents in north (their sessions are gone).
+  for (const [id, at] of [
+    ["dee", "2026-11-15T04:00:00.000Z"],
+    ["eve", "2026-11-15T05:00:00.000Z"],
+  ])
+    s!.seed({
+      id,
+      persona: "planner",
+      workspace: "north",
+      startedAt: at,
+      stoppedAt: at,
+    });
 }, 120_000);
 
 afterAll(async () => {
@@ -237,7 +252,10 @@ describe.each(ENGINES)(
       // Stored in the person's user config, by agent id.
       for (let i = 0; i < 50 && !userYml().agents?.order?.north; i++)
         await p.waitForTimeout(100);
-      expect(userYml().agents?.order?.north).toEqual(["cy", "ada", "bo"]);
+      // (Issue 226's stopped dee and eve are saved in it too.)
+      expect(
+        userYml().agents?.order?.north?.filter((x) => sid[x] !== undefined),
+      ).toEqual(["cy", "ada", "bo"]);
       await p.reload();
       await p.locator(row(sid.cy)).waitFor();
       expect(await order(p)).toEqual(["cy", "ada", "bo"]);
@@ -253,11 +271,14 @@ describe.each(ENGINES)(
         .locator('#agents-section[data-ws="north"] #agent-table tr.agent')
         .first()
         .waitFor({ timeout: 20_000 });
+      // (Its running ones; issue 226's stopped dee and eve are listed too.)
       expect(
-        await p.$$eval(
-          '#agents-section[data-ws="north"] #agent-table tr.agent',
-          (rs) => rs.map((r) => (r as HTMLElement).dataset.agent),
-        ),
+        (
+          await p.$$eval(
+            '#agents-section[data-ws="north"] #agent-table tr.agent',
+            (rs) => rs.map((r) => (r as HTMLElement).dataset.agent ?? ""),
+          )
+        ).filter((x) => sid[x] !== undefined),
       ).toEqual(["cy", "ada", "bo"]);
       await p.context().close();
     }, 90_000);
@@ -332,6 +353,75 @@ describe.each(ENGINES)(
             document.documentElement.clientWidth,
         ),
       ).toBe(true);
+      await p.context().close();
+    }, 60_000);
+
+    it("issue 226, at 375: a stopped agent gets Reorder's Up and Down too, and its move holds", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine, 375, true);
+      const stopped = "#agl details[data-stopped]";
+      const names = () =>
+        p.$$eval(`${stopped} .agst[data-agent]`, (rs) =>
+          rs.map((r) => (r as HTMLElement).dataset.agent ?? ""),
+        );
+      const untilStopped = async (want: string[]) => {
+        for (let i = 0; i < 60; i++) {
+          if (JSON.stringify(await names()) === JSON.stringify(want)) return;
+          await p.waitForTimeout(100);
+        }
+        expect(await names()).toEqual(want);
+      };
+      // Open, whatever a person left it as.
+      await p.evaluate((sel) => {
+        const d = document.querySelector(sel) as HTMLDetailsElement | null;
+        if (d) d.open = true;
+      }, stopped);
+      await untilStopped(["dee", "eve"]);
+      const reorder = p.locator(`${stopped} [data-act="reorder"]`);
+      await reorder.click();
+      expect(await reorder.getAttribute("aria-pressed")).toBe("true");
+      const up = p.locator(
+        `${stopped} .agord[data-agent="eve"] [data-act="ord-up"]`,
+      );
+      const down = p.locator(
+        `${stopped} .agord[data-agent="eve"] [data-act="ord-down"]`,
+      );
+      await up.waitFor();
+      for (const b of [up, down]) {
+        const box = (await b.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+      expect(await down.getAttribute("aria-disabled")).toBe("true");
+      await up.click();
+      await untilStopped(["eve", "dee"]);
+      for (
+        let i = 0;
+        i < 50 && !userYml().agents?.order?.north?.includes("eve");
+        i++
+      )
+        await p.waitForTimeout(100);
+      const saved = userYml().agents?.order?.north ?? [];
+      expect(saved.indexOf("eve")).toBeLessThan(saved.indexOf("dee"));
+      // The running ones keep theirs.
+      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
+      await reorder.click();
+      expect(await p.locator(`${stopped} .agord`).count()).toBe(0);
+      expect(
+        await p.evaluate(
+          () =>
+            document.documentElement.scrollWidth <=
+            document.documentElement.clientWidth,
+        ),
+      ).toBe(true);
+      await p.reload();
+      await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
+      await p.evaluate((sel) => {
+        const d = document.querySelector(sel) as HTMLDetailsElement | null;
+        if (d) d.open = true;
+      }, stopped);
+      await untilStopped(["eve", "dee"]);
       await p.context().close();
     }, 60_000);
   },
