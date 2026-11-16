@@ -8,6 +8,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Another web app can show an agent pane inside its own page (issue
+  103): `/embed/p/<project>/agents/<id>`. Only the web apps you list in
+  Settings › Embedding can do it; none are listed at first. The pane
+  sends no Den cookie. It gets a short-lived key for you, after a
+  handshake with the page around it, and that key never leaves the pane.
+  On another computer, a small Den window asks you to allow the web app
+  first. The pane tells the page its height.
+- No Den page can be shown inside another site any more. Every page now
+  says so to the browser (`frame-ancestors 'self'` and
+  `X-Frame-Options: SAMEORIGIN`). Den's own frames, such as the test
+  report on the Tests page, still work.
 - A link can open an agent with a web address already in its message
   box (issue 103): `/p/<project>/agents/<id>?context=<url>`. The link
   names the project and the agent, so it keeps working after restarts.

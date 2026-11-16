@@ -135,6 +135,8 @@ describe("the settings inventory (R21)", () => {
         "agents_list.refresh_timeout_seconds",
         // Issue 103: Settings › Embedding.
         "embed.url_max_chars",
+        "embed.origins",
+        "embed.key_minutes",
       ].sort(),
     );
   });

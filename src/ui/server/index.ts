@@ -379,8 +379,10 @@ import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
   embedSettings,
+  frameHeaders,
   patchEmbed,
 } from "./embed-settings.js";
+import { handleEmbedRoutes } from "./embed-routes.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
@@ -2536,6 +2538,14 @@ async function handleRequest(
   // R26: one id per request, on every response and on its failure's log line.
   const requestId = requestIdOf(req);
   if (!res.headersSent) res.setHeader("X-Request-Id", requestId);
+  // Issue 103: no page is framed by another site; the embedded agent pane
+  // only by the origins Settings › Embedding lists. Before any route, so
+  // refusals and error pages carry it too.
+  if (!res.headersSent)
+    for (const [k, v] of Object.entries(
+      frameHeaders(pathname, () => embedSettings(readUserConfig()).origins),
+    ))
+      res.setHeader(k, v);
   // R26b: every /api error answers JSON, whatever the route sends.
   if (pathname === "/api" || pathname.startsWith("/api/"))
     jsonApiErrors(res, requestId);
@@ -2918,6 +2928,21 @@ async function handleRequest(
           },
           requestId,
         }),
+    })
+  )
+    return;
+
+  // Issue 103: the embedded agent pane, its pop-up, its key and its Send.
+  if (
+    await handleEmbedRoutes(req, res, pathname, {
+      settings: () => embedSettings(readUserConfig()),
+      agents: () => agentWebDeps(),
+      stateDir: () => getStateDir(),
+      publicDir: PUBLIC_DIR,
+      servePage: (r, file, fill) => serveFile(r, file, fill),
+      agentCaller: (q) => !!agentPrincipalOf(q),
+      actor: (q) => auditActorOf(q),
+      principal: (q) => principalOf(q),
     })
   )
     return;

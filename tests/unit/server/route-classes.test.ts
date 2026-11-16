@@ -160,19 +160,24 @@ describe("the classes", () => {
     expect(routeClass("POST", "/api/session/logout")).toBe("mutating");
     expect(routeClass("GET", "/api/web/sessions")).toBe("shell-grade");
     expect(routeClass("POST", "/api/web/logout")).toBe("shell-grade");
-    expect([...SIGNIN_FREE].sort()).toEqual([
-      "/api/github/signin",
-      "/api/github/signin/:id",
-      "/api/session",
-      "/api/signin/code",
-      "/api/signin/code/:id",
-      // MODE-5: the address check's other end: 204 or 404, nothing else.
-      "/api/web-url/probe",
-      "/attest",
-      "/auth",
-      "/hub/callback",
-      "/signin",
-    ]);
+    expect([...SIGNIN_FREE].sort()).toEqual(
+      [
+        "/api/github/signin",
+        "/api/github/signin/:id",
+        "/api/session",
+        "/api/signin/code",
+        "/api/signin/code/:id",
+        // MODE-5: the address check's other end: 204 or 404, nothing else.
+        "/api/web-url/probe",
+        "/attest",
+        "/auth",
+        "/hub/callback",
+        "/signin",
+        // Issue 103: the embedded pane (no data) and its Send (its own key).
+        "/embed/p/:project/agents/:id",
+        "/api/embed/say",
+      ].sort(),
+    );
     // HUB-1.7: Hub's redirect back carries no session cookie; the state
     // this server issued is the proof, so the route is sign-in free.
     expect(routeClass("GET", "/hub/callback")).toBe("readonly");
@@ -190,6 +195,8 @@ describe("the classes", () => {
       "/api/github/signin",
       "/api/signin/code",
       "/auth",
+      // Issue 103: the embedded pane's key, in a header, is the proof.
+      "/api/embed/say",
     ]);
     expect(routeClass("GET", "/api/web/owner")).toBe("readonly");
     for (const [m, p] of [

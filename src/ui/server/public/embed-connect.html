@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Mode before first paint: yours (the server fills it in below),
+      // else the system's, else the theme's default, else dark.
+      (function () {
+        var m = "@@DEN_MODE@@";
+        if (m !== "dark" && m !== "light") {
+          var q = function (s) {
+            return (
+              window.matchMedia &&
+              matchMedia("(prefers-color-scheme: " + s + ")").matches
+            );
+          };
+          m = q("light")
+            ? "light"
+            : q("dark")
+              ? "dark"
+              : "@@DEN_DEFAULT_MODE@@";
+        }
+        document.documentElement.dataset.mode =
+          m === "light" ? "light" : "dark";
+      })();
+    </script>
+    <link rel="stylesheet" href="/kit/fonts.css" />
+    <link rel="stylesheet" href="/kit/tokens.css" />
+    <link rel="stylesheet" href="/kit/base.css" />
+    <link rel="stylesheet" href="/theme.css" id="theme-css" />
+    <title>__DEN_TITLE__ · Allow a web app</title>
+    <style>
+      /* Issue 103: the pop-up that lets a listed web app use one agent. */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      html body.den-has-shell > #den-content {
+        overflow: auto;
+        min-width: 0;
+        padding: 20px 24px 32px 24px;
+        font: 14px/1.45 var(--sans);
+        color: var(--text);
+        display: block;
+      }
+      #emc-what {
+        overflow-wrap: anywhere;
+      }
+      #emc-msg[data-tone="err"] {
+        color: var(--bad);
+      }
+      .emc-acts {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="den-shell" data-page="embed-connect"></div>
+    <script src="/shell.js"></script>
+    <main id="den-content">
+      <div class="ph">
+        <div>
+          <h1 data-t="emc.title">Allow a web app</h1>
+        </div>
+      </div>
+      <p id="emc-what"></p>
+      <p data-t="emc.how">
+        It can put a page in the agent's message box. Nothing is sent until you
+        press Send there. The permission lasts a short time.
+      </p>
+      <p id="emc-msg" role="status" aria-live="polite"></p>
+      <div class="emc-acts">
+        <button
+          type="button"
+          class="btn primary"
+          id="emc-allow"
+          data-t="emc.allow"
+        >
+          Allow
+        </button>
+        <button type="button" class="btn" id="emc-cancel" data-t="emc.cancel">
+          Cancel
+        </button>
+      </div>
+      <script type="module" src="/embed-connect.js"></script>
+    </main>
+  </body>
+</html>

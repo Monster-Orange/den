@@ -854,6 +854,8 @@
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",
     "set.embed.url_max": "リンクのコンテキストの最大長",
+    "set.embed.origins": "エージェントを埋め込めるウェブアプリ",
+    "set.embed.key_minutes": "埋め込みパネルの許可の有効時間",
     "set.access.machine_name": "マシン名",
     "ident.local": "ローカル",
     "ident.device": "サインイン済み · このデバイス",
@@ -1082,6 +1084,25 @@
     "agc.failed": "送信できませんでした: {e}",
     "agc.stopped":
       "{name} は停止しています。再開してから、もう一度リンクを開いてください。",
+    "emb.open": "__DEN_TITLE__ で開く",
+    "emb.waiting": "このパネルを表示するページを待っています。",
+    "emb.signin": "__DEN_TITLE__ にサインイン",
+    "emb.signinWhy":
+      "ここでこのエージェントを使うには __DEN_TITLE__ にサインインしてください。",
+    "emb.connecting": "接続中…",
+    "emb.failed": "問題が発生しました: {e}",
+    "emb.notFramed":
+      "このパネルはほかのウェブアプリのページの中で使います。エージェントは __DEN_TITLE__ で開いてください。",
+    "emc.title": "ウェブアプリを許可",
+    "emc.how":
+      "エージェントのメッセージ欄にページを入れられます。そこで送信を押すまで何も送られません。許可は短い時間だけ有効です。",
+    "emc.what":
+      "{origin} がプロジェクト {project} のエージェント {agent} を使うことを許可しますか？",
+    "emc.allow": "許可",
+    "emc.cancel": "キャンセル",
+    "emc.noOpener":
+      "ほかのウェブアプリの中にあるエージェントのパネルから開いてください。",
+    "emc.done": "許可しました。このウィンドウは閉じます。",
     "ag.link.none":
       "エージェント {id} はここにありません。削除された可能性があります。",
     "ag.apiOnly": "API のみ: {names}",
@@ -1906,6 +1927,7 @@
     "set.ui.devicesSignedIn":
       "デバイスの一覧はサインイン中にのみ表示されます。",
     "set.ui.asked": "{ago} に要求",
+    "set.ui.saveOrigins": "リストを保存",
     "set.ui.approve": "承認",
     "set.ui.deny": "拒否",
     "set.ui.noWaiting":
@@ -2229,6 +2251,10 @@
       "サインアウト中のページにコードが表示されているコンピューターです。承認すると、そのページは自動でサインインします。コードの有効期限は 10 分です。__DEN_CLI__ web approve <code> でもコマンドラインから同じことができます。",
     "set.embed.url_max.d":
       "エージェントへのリンクがメッセージ欄に渡せるウェブアドレスの最大長です。これより長いと、その旨を示すページが開きます。",
+    "set.embed.origins.d":
+      "各ウェブアプリのアドレスを正確に、1 行に 1 つずつ: https://app.example.com。これらだけが自分のページの中にエージェントのパネルを表示でき、それもあなたが許可した後だけです。ほかのサイトは、この Den のどのページも自分のページの中に表示できません。",
+    "set.embed.key_minutes.d":
+      "埋め込まれたエージェントのパネルが、もう一度許可を求めるまでに送信できる時間です。",
     "set.access.machine_name.d":
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":

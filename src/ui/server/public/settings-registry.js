@@ -715,8 +715,59 @@ function drawPair(host, ctx) {
     });
 }
 
+/**
+ * Issue 103: the web apps that may frame the embedded agent pane: one
+ * origin a line, saved as a list (the server checks each, exactly).
+ */
+function drawOrigins(host, ctx, api) {
+  const list = Array.isArray(ctx.data?.embed?.origins)
+    ? ctx.data.embed.origins
+    : [];
+  host.innerHTML =
+    `<textarea id="set-embed-origins" rows="3" spellcheck="false" style="width:100%;min-width:0;font:inherit" ` +
+    `aria-label="${escHtml(L("set.embed.origins", "Web apps that may embed agents"))}" ` +
+    `placeholder="https://app.example.com">${escHtml(list.join("\n"))}</textarea>` +
+    `<button type="button" class="btn sm" id="set-embed-origins-save">${escHtml(L("set.ui.saveOrigins", "Save list"))}</button>`;
+  host
+    .querySelector("#set-embed-origins-save")
+    .addEventListener("click", () => {
+      const v = host
+        .querySelector("#set-embed-origins")
+        .value.split(/\s+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      void api.save(v);
+    });
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
+  {
+    id: "embed.origins",
+    category: "embed",
+    label: "Web apps that may embed agents",
+    description:
+      "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
+    keywords: ["embed", "frame", "iframe", "origin", "allow", "web app"],
+    scope: "user",
+    keys: ["embed.origins"],
+    control: { type: "custom", render: drawOrigins },
+    read: (ctx) => ctx.data.embed?.origins ?? [],
+    write: (v, ctx) => ctx.post({ embed: { origins: v.length ? v : null } }),
+  },
+  {
+    id: "embed.key_minutes",
+    category: "embed",
+    label: "Embedded pane's permission lasts",
+    description:
+      "How long an embedded agent pane may send before it asks again.",
+    keywords: ["embed", "key", "minutes", "expire"],
+    scope: "user",
+    keys: ["embed.key_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.embed?.key_minutes ?? 15,
+    write: (v, ctx) => ctx.post({ embed: { key_minutes: v } }),
+  },
   {
     id: "embed.url_max",
     category: "embed",

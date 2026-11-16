@@ -868,6 +868,8 @@
     "set.access.devices": "Dispositivos vinculados",
     "set.access.waiting": "Dispositivos en espera",
     "set.embed.url_max": "Contexto de enlace más largo",
+    "set.embed.origins": "Aplicaciones web que pueden incrustar agentes",
+    "set.embed.key_minutes": "Duración del permiso del panel incrustado",
     "set.access.machine_name": "Nombre de la máquina",
     "ident.local": "Local",
     "ident.device": "Sesión iniciada · este dispositivo",
@@ -1106,6 +1108,25 @@
     "agc.failed": "No se envió: {e}",
     "agc.stopped":
       "{name} está detenido. Reanúdalo y vuelve a abrir el enlace.",
+    "emb.open": "Abrir en __DEN_TITLE__",
+    "emb.waiting": "Esperando a la página que rodea este panel.",
+    "emb.signin": "Iniciar sesión en __DEN_TITLE__",
+    "emb.signinWhy":
+      "Inicia sesión en __DEN_TITLE__ para usar este agente aquí.",
+    "emb.connecting": "Conectando…",
+    "emb.failed": "Algo salió mal: {e}",
+    "emb.notFramed":
+      "Este panel va dentro de la página de otra aplicación web. Abre el agente en __DEN_TITLE__.",
+    "emc.title": "Permitir una aplicación web",
+    "emc.how":
+      "Puede poner una página en el cuadro de mensaje del agente. No se envía nada hasta que pulses Enviar allí. El permiso dura poco tiempo.",
+    "emc.what":
+      "¿Permitir que {origin} use el agente {agent} del proyecto {project}?",
+    "emc.allow": "Permitir",
+    "emc.cancel": "Cancelar",
+    "emc.noOpener":
+      "Abre esto desde el panel del agente dentro de la otra aplicación web.",
+    "emc.done": "Permitido. Esta ventana se cierra ahora.",
     "ag.link.none":
       "No hay ningún agente {id} aquí. Puede que se haya quitado.",
     "ag.apiOnly": "Solo API: {names}",
@@ -1949,6 +1970,7 @@
     "set.ui.devicesSignedIn":
       "Los dispositivos solo se listan con la sesión iniciada.",
     "set.ui.asked": "lo pidió {ago}",
+    "set.ui.saveOrigins": "Guardar lista",
     "set.ui.approve": "Aprobar",
     "set.ui.deny": "Denegar",
     "set.ui.noWaiting":
@@ -2276,6 +2298,10 @@
       "Ordenadores cuya página sin iniciar sesión muestra un código. Aprueba uno y su página inicia sesión sola; el código dura 10 minutos. __DEN_CLI__ web approve <code> hace lo mismo desde la línea de comandos.",
     "set.embed.url_max.d":
       "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
+    "set.embed.origins.d":
+      "La dirección de cada aplicación web, exacta, una por línea: https://app.example.com. Solo estas pueden mostrar un panel de agente dentro de sus páginas, y solo después de que lo permitas. Ningún otro sitio puede mostrar una página de este Den dentro de la suya.",
+    "set.embed.key_minutes.d":
+      "Cuánto tiempo puede enviar un panel de agente incrustado antes de volver a pedir permiso.",
     "set.access.machine_name.d":
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":

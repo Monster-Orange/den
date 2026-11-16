@@ -640,6 +640,7 @@
     "set.ui.signOutAllDone": "Signed out everywhere",
     "set.ui.devicesSignedIn": "The devices can only be listed signed in.",
     "set.ui.asked": "asked {ago}",
+    "set.ui.saveOrigins": "Save list",
     "set.ui.approve": "Approve",
     "set.ui.deny": "Deny",
     "set.ui.noWaiting":
@@ -960,6 +961,10 @@
       "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
     "set.embed.url_max.d":
       "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
+    "set.embed.origins.d":
+      "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
+    "set.embed.key_minutes.d":
+      "How long an embedded agent pane may send before it asks again.",
     "set.access.machine_name.d":
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
@@ -1643,6 +1648,8 @@
     "ident.toast": "This device is signed in to {name} on {host}",
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
+    "set.embed.origins": "Web apps that may embed agents",
+    "set.embed.key_minutes": "Embedded pane's permission lasts",
     "set.access.machine_name": "Machine name",
     "set.access.pair": "Pair a device",
     "set.distribution.brand": "Product name",
@@ -1873,6 +1880,22 @@
     "agc.sent": "Sent to {name}.",
     "agc.failed": "Not sent: {e}",
     "agc.stopped": "{name} is stopped. Resume it, then open the link again.",
+    "emb.open": "Open in __DEN_TITLE__",
+    "emb.waiting": "Waiting for the page around this pane.",
+    "emb.signin": "Sign in to __DEN_TITLE__",
+    "emb.signinWhy": "Sign in to __DEN_TITLE__ to use this agent here.",
+    "emb.connecting": "Connecting…",
+    "emb.failed": "Something went wrong: {e}",
+    "emb.notFramed":
+      "This pane belongs inside another web app's page. Open the agent in __DEN_TITLE__ instead.",
+    "emc.title": "Allow a web app",
+    "emc.how":
+      "It can put a page in the agent's message box. Nothing is sent until you press Send there. The permission lasts a short time.",
+    "emc.what": "Let {origin} use agent {agent} in project {project}?",
+    "emc.allow": "Allow",
+    "emc.cancel": "Cancel",
+    "emc.noOpener": "Open this from the agent pane inside the other web app.",
+    "emc.done": "Allowed. This window closes now.",
     "ag.link.none": "No agent {id} here. It may have been removed.",
     "ag.apiOnly": "API only: {names}",
     "ag.apiOnlyTip":

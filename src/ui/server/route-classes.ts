@@ -107,6 +107,14 @@ export const ROUTES: readonly RouteEntry[] = [
     "/p/:project/agents/:id",
     "issue 103: a deep link to one agent; the page, its composer filled, nothing sent",
   ),
+  R(
+    "/embed/p/:project/agents/:id",
+    "issue 103: the embedded agent pane, framed only by listed origins; holds no data (sign-in free)",
+  ),
+  R(
+    "/embed/connect",
+    "issue 103: the pop-up that lets a listed web app use an agent (a person, signed in)",
+  ),
   R("/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
   R("/api/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
 
@@ -469,6 +477,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/agents/:id/mode",
     "issue 199 an agent's own mode, or null to follow its project's; a person's only (an agent asks with agent_mode)",
   ),
+  M(
+    ["POST"],
+    "/api/embed/keys",
+    "issue 103: a short-lived key for an embedded pane, for a listed origin; a person's only",
+  ),
+  S(
+    ["POST"],
+    "/api/embed/say",
+    "issue 103: an embedded pane's Send, its key the proof (X-Den-Embed-Key): types into that one agent",
+  ),
   S(
     ["POST"],
     "/api/workspaces/:ws/agents/:id/say",
@@ -719,6 +737,10 @@ export const SIGNIN_FREE: readonly string[] = [
   // MODE-5: the address check comes back in through the edge with no
   // cookie; it answers 204 or 404 for a one-time token, nothing else.
   "/api/web-url/probe",
+  // Issue 103: the embedded pane has no cookie. Its page holds no data,
+  // and its Send carries its own key (embed-keys.ts).
+  "/embed/p/:project/agents/:id",
+  "/api/embed/say",
 ];
 
 /**
@@ -731,6 +753,9 @@ export const SIGNIN_CSRF_FREE: readonly string[] = [
   "/api/signin/code",
   // SEC-2a: a waited-on link's page posts the code `web login` printed.
   "/auth",
+  // Issue 103: the embedded pane's key is in a header no other site can
+  // send (no CORS here): it is the proof, as a CSRF token would be.
+  "/api/embed/say",
 ];
 
 /**
@@ -759,6 +784,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   // UK-2: how a write sent with the working pop-up's id ended.
   "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
   "agent-link-routes.ts:LINK_PATH": ["/p/:project/agents/:id"],
+  "embed-routes.ts:EMBED_PATH": ["/embed/p/:project/agents/:id"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
   "agent-routes.ts:AGENTS_PATH": [

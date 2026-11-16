@@ -51,6 +51,8 @@ export const UI_MODULES: readonly string[] = [
   "/term-drop.js",
   // Issue 103: a composer for one agent (deep links, the embedded pane).
   "/agent-composer.js",
+  "/embed-page.js",
+  "/embed-connect.js",
   // SEC-2a: Pair a device's QR code (a tiny encoder of Den's own).
   "/qr.js",
   // The UI's catalogs other than English (R19; en is in shell.js).
