@@ -5317,12 +5317,28 @@ function openComposer(r, text) {
     const c = makeComposer({
       t,
       name,
-      send: ({ text: said }) =>
-        api(
-          "POST",
-          `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/say`,
-          { text: said },
-        ),
+      // BUSY-1: Send goes through the working pop-up. A quick refusal
+      // comes back to the composer, which says it; the pop-up closed
+      // after a failure resolves null, and the text stays in the box.
+      send: async ({ text: said }) => {
+        const out = await window.denShell.busyAction(
+          "send-message",
+          (headers) =>
+            api(
+              "POST",
+              `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/say`,
+              { text: said },
+              { headers },
+            ),
+          {
+            vars: { name },
+            quietFail: true,
+            inlineError: true,
+            toastFast: false,
+          },
+        );
+        if (!out) throw new Error(t("agc.kept"));
+      },
       onClose: () => {
         c.el.remove();
         p.composer = null;

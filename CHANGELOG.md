@@ -63,6 +63,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Send in an agent's message box, and Allow in the "Allow a web app"
+  window, now use the working pop-up (issue 103). A slow send says what is
+  happening, and Try again sends the message once, never twice. If you
+  close the pop-up after a failure, your message stays in the box.
+
 - Two restarts of one agent at once no longer race (issue 216). The agent
   restarts once. The other restart succeeds too and says "restarted by
   another request at <time>; same conversation", never "no session". If

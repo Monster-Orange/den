@@ -379,7 +379,14 @@ describe("issue 103: the pop-up for a browser on another computer", () => {
     expect(
       await pop.locator(`[data-den-report], [data-act="report"]`).count(),
     ).toBeGreaterThan(0);
+    // BUSY-1: Allow goes through the working pop-up: its request id rides.
+    const keyReq = pop.waitForRequest(
+      (r) =>
+        r.method() === "POST" &&
+        new URL(r.url()).pathname === "/api/embed/keys",
+    );
     await pop.locator("#emc-allow").click();
+    expect((await keyReq).headers()["x-den-request-id"]).toBeTruthy();
     await p.waitForFunction(
       () => (window as unknown as { keys: unknown[] }).keys.length > 0,
       undefined,

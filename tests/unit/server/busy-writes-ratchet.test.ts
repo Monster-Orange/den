@@ -31,6 +31,18 @@ const LEFT: Record<string, number> = {
   "topbar.js": 2,
 };
 
+/**
+ * Writes on pages without Den's shell, so no working pop-up exists there.
+ * embed-page.js is the embedded agent pane (issue 103): it runs in another
+ * web app's frame, with no cookie and no denShell (embed.html mounts no
+ * shell; tests/unit/server/shell.test.ts lists it). Its two writes (the
+ * key, and Send with the key) say what happened in the pane itself. Held
+ * exactly: a new write there, or a write gone, changes this number.
+ */
+const NO_SHELL: Record<string, number> = {
+  "embed-page.js": 2,
+};
+
 const WRITE =
   /api\(\s*"(?:POST|PUT|PATCH|DELETE)"|method:\s*"(?:POST|PUT|PATCH|DELETE)"/g;
 const BUSY_HEADERS = /\{\s*headers\s*,?\s*\}/;
@@ -68,6 +80,13 @@ describe("BUSY-1: writes go through the working pop-up", () => {
     }
     // A higher number: put the new button on denShell.busyAction. A lower
     // one: lower LEFT to match (the list only shrinks).
-    expect(now).toEqual(LEFT);
+    expect(now).toEqual({ ...LEFT, ...NO_SHELL });
+  });
+
+  it("a script exempt for having no shell really has none", () => {
+    for (const f of Object.keys(NO_SHELL)) {
+      const src = fs.readFileSync(path.join(PUBLIC, f), "utf-8");
+      expect(src).not.toMatch(/denShell|busyAction/);
+    }
   });
 });

@@ -27,6 +27,19 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "server-agent.html": { page: "server-agent" },
   // The error page (R26a): a failed page request's, in the frame.
   "error.html": { page: "error" },
+  // Issue 103: Allow a web app, the embedded pane's pop-up (signed in).
+  "embed-connect.html": { page: "embed-connect" },
+};
+
+/**
+ * Pages in public/ that mount no shell, on purpose. Each is here with its
+ * reason; every other .html must be in PAGES.
+ */
+const NO_SHELL: Record<string, string> = {
+  // Issue 103: the embedded agent pane, inside another web app's frame. It
+  // sends no cookie, so there is no signed-in shell to show; it has its
+  // own small header and the composer only.
+  "embed.html": "the embedded agent pane (no cookie in the frame)",
 };
 
 describe("every page mounts the shell", () => {
@@ -34,13 +47,19 @@ describe("every page mounts the shell", () => {
     expect(read(file)).toMatch(/<title>__DEN_TITLE__ · [A-Z][\w ]+<\/title>/);
   });
 
-  it("covers every page in public/", () => {
+  it("covers every page in public/: in PAGES or in NO_SHELL, not both", () => {
+    const listed = [...Object.keys(PAGES), ...Object.keys(NO_SHELL)];
+    expect(new Set(listed).size).toBe(listed.length);
     expect(
       fs
         .readdirSync(PUBLIC)
         .filter((f) => f.endsWith(".html"))
         .sort(),
-    ).toEqual(Object.keys(PAGES).sort());
+    ).toEqual(listed.sort());
+  });
+
+  it.each(Object.keys(NO_SHELL))("%s really mounts no shell", (file) => {
+    expect(read(file)).not.toMatch(/id="den-shell"/);
   });
 
   it.each(Object.entries(PAGES))(

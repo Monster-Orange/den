@@ -127,7 +127,14 @@ describe("issue 103: a deep link to an agent", () => {
 
     // Send: the message, then Enter.
     await box(p).fill(`Read this: ${CONTEXT}`);
+    // BUSY-1: Send goes through the working pop-up, so it carries the
+    // pop-up's request id (Try again resends it; Den runs it once).
+    const sayReq = p.waitForRequest(
+      (r) =>
+        r.method() === "POST" && new URL(r.url()).pathname.endsWith("/say"),
+    );
     await p.locator(`.pane[data-id="${sid}"] .agc .agc-send`).click();
+    expect((await sayReq).headers()["x-den-request-id"]).toBeTruthy();
     const t0 = Date.now();
     while (!typed(from).includes("\r") && Date.now() - t0 < 15_000)
       await new Promise((r) => setTimeout(r, 100));

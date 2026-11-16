@@ -29,20 +29,30 @@ function start() {
     $("emc-allow").disabled = true;
   }
   $("emc-cancel").addEventListener("click", () => window.close());
+  // BUSY-1: Allow goes through the working pop-up (this page mounts the
+  // shell). A quick refusal comes back here and is said on the page.
   $("emc-allow").addEventListener("click", async () => {
-    $("emc-allow").disabled = true;
+    const button = $("emc-allow");
     try {
-      const j = await sh().api("POST", "/api/embed/keys", {
-        project,
-        agent,
-        origin,
-      });
+      const j = await sh().busyAction(
+        "allow-web-app",
+        (headers) =>
+          sh().api(
+            "POST",
+            "/api/embed/keys",
+            { project, agent, origin },
+            { headers },
+          ),
+        { button, quietFail: true, inlineError: true, toastFast: false },
+      );
+      // Closed after a failure: nothing was minted; Allow is back.
+      if (!j) return;
       window.opener?.postMessage({ type: "den:key", ...j }, location.origin);
       say(t("emc.done"));
       setTimeout(() => window.close(), 400);
     } catch (err) {
       say(t("emb.failed", { e: err?.message || String(err) }), "err");
-      $("emc-allow").disabled = false;
+      button.disabled = false;
     }
   });
 }

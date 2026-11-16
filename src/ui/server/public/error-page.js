@@ -886,7 +886,7 @@ export function mountErrorPage(root) {
     const back =
       L.reason === "project"
         ? "/agents"
-        : `/agents?ws=${encodeURIComponent(L.project)}`;
+        : `/agents?project=${encodeURIComponent(L.project)}`;
     root.innerHTML =
       header(title, `<span class="mono">${esc(d.path ?? "")}</span>`) +
       `<div class="empty"><p class="lead" id="den-err-link">${esc(lead)}</p>` +
