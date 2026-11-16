@@ -142,9 +142,14 @@ describe("the shell's source", () => {
   it("draws the scope as the prototype's .ib menus, one Workspace control (R4)", () => {
     // / ORG / WORKSPACE ▾ / ENV ▾: no View select, no Focus pill, no menu
     // of header.js's own (the old pill and its .ws-menu are gone).
+    // The kit draws the crumbs (den-ui 0.7.0): Den's crumbs, in order, are
+    // the org label, one Workspace ▾ (#ws-pill) and the Env ▾ (#env-btn),
+    // each ▾ opening Den's own menu (menu: true).
     expect(SHELL).toMatch(
-      /<span id="org-crumb"[\s\S]*?scopeButton\("ws-pill", "ws"[\s\S]*?scopeButton\("env-btn", "env"/,
+      /DUI\.scopeHtml\(\{[\s\S]*?orgCrumb\([\s\S]*?id: "ws-pill",\s*key: "ws",[\s\S]*?menu: true,[\s\S]*?id: "env-btn",\s*key: "env",[\s\S]*?menu: true,/,
     );
+    expect(SHELL.match(/id: "ws-pill"/g)).toHaveLength(1);
+    expect(SHELL).toMatch(/function orgCrumb\([\s\S]*?id: "org-crumb",/);
     expect(SHELL).not.toMatch(/scope-sel|scope-wrap|den-ws-pill/);
     const header = read("header.js");
     expect(header).not.toMatch(
@@ -301,8 +306,13 @@ describe("the old settings entry points go to the Settings page (R21)", () => {
   });
   it("the rail's Settings item and the user menu's All settings", () => {
     expect(SHELL).toMatch(/href: "\/settings",/);
+    // The rail's Settings is the kit's (den-ui 0.7.0): Den gives it the
+    // Settings page's href, and the kit draws it in the rail's foot.
+    expect(SHELL).toMatch(/settings: \{\s*href: SETTINGS\.href,/);
+    expect(KIT).toMatch(/settingsHtml\(settings, lang\)/);
+    // ◐ ▾'s All settings opens the Settings page at Appearance.
     expect(read("appearance.js")).toContain(
-      'const settings = "/settings#appearance";',
+      '{ label: t("um.all"), href: "/settings#appearance" }',
     );
   });
   it("Den's rows live only in the registry (settings-registry.js)", () => {

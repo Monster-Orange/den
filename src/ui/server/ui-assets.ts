@@ -261,6 +261,9 @@ export function kitShellScript(
         `const { ${names.join(", ")} } = (function () {\n` +
         fs
           .readFileSync(file, "utf-8")
+          // Its comments stay in the kit: they name files (dialog.css) a
+          // page links itself, which this script never loads.
+          .replace(/^\s*\/\*[\s\S]*?\*\/\s*$/gm, "")
           .replace(/^import\s+[^;]+;\s*$/gm, "")
           .replace(/^export\s+(?=(async\s+)?function|const|let|class)/gm, "") +
         `\nreturn { ${names.join(", ")} };\n})();`,
