@@ -181,6 +181,18 @@ describe("the catalogs", () => {
     expect(unknown).toEqual([]);
   });
 
+  // Issue 277: the services and project pages' own lookups (t("…") on
+  // the services page, pT("…", en) on the project page) are in en too, so
+  // a word added to a page without its catalog entry fails here.
+  it.each([
+    ["services.html", /\bt\(\s*"([\w.]+)"/g],
+    ["local-dev.html", /\bpT\(\s*"([\w.]+)"/g],
+  ] as [string, RegExp][])("every key %s looks up is in en", (file, re) => {
+    const keys = new Set([...read(file).matchAll(re)].map((m) => m[1]));
+    expect(keys.size).toBeGreaterThan(0);
+    expect([...keys].filter((k) => !(k in EN))).toEqual([]);
+  });
+
   it.each([
     ["topbar.js", TOPBAR_EN],
     ["appearance.js", APPEARANCE_EN],
