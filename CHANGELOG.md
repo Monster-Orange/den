@@ -8,6 +8,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- `agents.claude_ai_connectors: true` now works: agents load the
+  account's claude.ai connectors. Before, a flag Den always passed kept
+  them out. Any other MCP server of the person's or the project's still
+  stays out.
 - Den's own update no longer waits silently. When it waits, the log and
   the audit say why, once each time the reason changes. When the Den
   agent is waiting on your Allow or your answer, the bell says Den's
