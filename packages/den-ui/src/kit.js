@@ -29,7 +29,9 @@
  *   DenUI.whatsNew.open(), .close(), .load(), .setEntries(list)
  *   DenUI.update.set({ version, message, reloadLabel, dismissLabel,
  *                cancelLabel, askFirst?, onDismiss? }), .hide()
- *   DenUI.report.open({ prefill }), .button({ inFoot })
+ *   DenUI.report.open({ prefill, opener }), .button({ inFoot })
+ *                               focus goes back to opener (else the
+ *                               control that opened it) on close
  *   DenUI.busy.run(action, run, opts)   the working pop-up (busy.js)
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
@@ -162,7 +164,7 @@ export function hydrate(root, opts = {}) {
       if (!b) return;
       e.preventDefault();
       const prefill = reportPrefillOf(b);
-      void report.open(prefill ? { prefill } : {});
+      void report.open(prefill ? { prefill, opener: b } : { opener: b });
     });
     // ⌘⇧F (Ctrl+Shift+F) opens Report from anywhere, over a dialog too.
     document.addEventListener(

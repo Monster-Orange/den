@@ -9,6 +9,8 @@ export interface DialogOptions {
   value?: string;
   /** askText: the field's own name (default: the title). */
   label?: string;
+  /** Focus goes back here on close (default: what opened it). */
+  opener?: Element | null;
 }
 export declare const DIALOG_WORDS: Record<string, Record<string, string>>;
 export declare function configureDialog(h?: {
@@ -36,3 +38,7 @@ export declare function answerOf(
 export declare function askConfirm(opts: DialogOptions): Promise<boolean>;
 export declare function askText(opts: DialogOptions): Promise<string | null>;
 export declare function tell(opts: DialogOptions): Promise<void>;
+/** What opened a pop-up: `hint`, the focused element, or the control just pressed. */
+export declare function openerOf(hint?: Element | null): HTMLElement | null;
+/** Focuses `el` again (no scroll) when it is still on the page and focusable. */
+export declare function focusBack(el: Element | null | undefined): boolean;

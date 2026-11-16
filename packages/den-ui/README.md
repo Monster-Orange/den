@@ -201,6 +201,21 @@ reason does not count. With no DIVERGE.md, every copy fails.
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.6.5
+
+- Focus goes back to what opened a pop-up when it closes, in Safari too.
+  Safari doesn't focus a button on a click, so the browser's own dialog
+  restore went to the page's body. Report, `askConfirm`, `askText`,
+  `tell` and What's new now remember their opener and focus it again on
+  every way out (Esc, Discard, Cancel, Close, after a send), without
+  scrolling, when it is still on the page.
+- The opener is `opts.opener` when given (`report.open({ opener })`,
+  `askConfirm({ opener })`), else the focused element, else the control
+  just pressed. A kit Report button is its own opener.
+- The shared helper is in `dialog.js` (`openerOf`, `focusBack`), a file
+  hosts already serve: no new kit file. The working pop-up already
+  focuses its own `button` again; it is unchanged.
+
 ## 0.6.4
 
 - shell.css: the top bar is its own layer from the start

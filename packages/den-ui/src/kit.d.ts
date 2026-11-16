@@ -83,6 +83,8 @@ export declare const update: {
 export declare const report: {
   open(opts?: {
     prefill?: { kind?: string; title?: string; description?: string };
+    /** Focus goes back here on close (default: what opened it). */
+    opener?: Element | null;
     draft?: string;
   }): Promise<unknown>;
   button(o?: {

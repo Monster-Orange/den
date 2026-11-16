@@ -38,6 +38,7 @@
  * Words: the kit's (kit.report.*, en/es/ja). Look: report.css.
  */
 import { esc as kitEsc, kitT } from "./strings.js";
+import { focusBack, openerOf } from "./dialog.js";
 
 const cfg = {
   lang: "en",
@@ -197,6 +198,9 @@ export async function openReport(opts = {}) {
     current.dlg.querySelector("h2")?.focus();
     return current;
   }
+  // What opened it, for focus to go back to when it closes (Safari doesn't
+  // focus a clicked button, so its own dialog restore finds the body).
+  const opener = openerOf(opts.opener);
   ensureCss();
   const dlg = document.createElement("dialog");
   dlg.className = "fb-dlg";
@@ -715,6 +719,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     if (current === self) current = null;
     if (dlg.open) dlg.close();
     dlg.remove();
+    focusBack(opener);
   }
 
   /** Esc: back from "keep it?", ask when text was typed, else close. */
