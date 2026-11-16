@@ -4,6 +4,20 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.58] - unreleased
+
+### Fixed
+
+- A restart that stops an agent and then can't resume it no longer leaves
+  it stopped with no way back. Den marks it interrupted, so Resume and
+  restore at start bring it back, and tells you in the bell and the audit
+  trail why it didn't come back (issue 124).
+- Restarting Den from the page (Reload in the update pill, Restart Den in
+  the menu or in Settings) now writes an audit row: who, when, and which
+  button (issue 227).
+- At phone width, stopped agents get Reorder with Up and Down too, like
+  running ones, when a project has two or more to order (issue 226).
+
 ## [0.4.56] - 2026-11-16
 
 ### Added

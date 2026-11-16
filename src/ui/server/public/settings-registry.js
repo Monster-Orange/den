@@ -971,7 +971,7 @@ function drawRestart(host) {
   host.innerHTML = `<button type="button" class="btn sm" id="set-restart-den">${escR(label)}</button>`;
   host
     .querySelector("#set-restart-den")
-    .addEventListener("click", () => void restartDen());
+    .addEventListener("click", () => void restartDen({ from: "settings" }));
 }
 
 export const DEN_SETTINGS = [

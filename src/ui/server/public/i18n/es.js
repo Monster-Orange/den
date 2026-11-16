@@ -1472,6 +1472,7 @@
       "Den no sabe qué proyecto de Hub le corresponde. Haz clic para elegir. No se guarda nada de él hasta entonces.",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
+    "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
@@ -1705,6 +1706,7 @@
     "ag.ord.downOne": "Bajar {id}",
     "ag.ord.reorder": "Reordenar",
     "ag.ord.reorderOne": "Reordenar los agentes de {ws}",
+    "ag.ord.reorderStopped": "Reordenar los agentes detenidos",
     "ag.ord.done": "Listo",
     "ag.ord.grip": "Arrastra para cambiar su orden en el proyecto",
     "ag.ord.gripOne": "Arrastra para mover {id}",

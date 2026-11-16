@@ -125,6 +125,9 @@ export function restartDen({
   before = null,
   // SRV-1a: false when the restart is already under way (an Allow ran it).
   post = true,
+  // Issue 227: the page action that asked, for the audit row
+  // ("update-pill", "menu", "settings").
+  from = undefined,
 } = {}) {
   if (running) return running;
   running = (async () => {
@@ -141,10 +144,12 @@ export function restartDen({
       (headers) => {
         if (!post) return Promise.resolve({});
         const api = window.denShell?.api;
-        if (api) return api("POST", "/api/web/restart", {}, { headers });
+        const body = from ? { from } : {};
+        if (api) return api("POST", "/api/web/restart", body, { headers });
         return fetch("/api/web/restart", {
           method: "POST",
-          headers,
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify(body),
           signal: AbortSignal.timeout(4000),
         }).then(
           (r) => r.json().catch(() => ({})),

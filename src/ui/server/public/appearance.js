@@ -421,7 +421,10 @@ export function userMenu() {
         : []),
       { hr: true },
       // D64: always here, not only when the server is stale.
-      { label: t("rd.menu"), onSelect: () => void restartDen() },
+      {
+        label: t("rd.menu"),
+        onSelect: () => void restartDen({ from: "menu" }),
+      },
       { label: t("um.all"), href: settings },
     ],
   };
