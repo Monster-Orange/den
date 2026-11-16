@@ -101,6 +101,7 @@ import {
   resolveDepAddress,
   parseAddress,
   readManifestAnyBranch,
+  workspacesOverridingAgentMode,
 } from "../../shared/environment-manager/workspaces.js";
 import {
   parseScope,
@@ -6030,6 +6031,8 @@ async function handleRequest(
         time_zone: timeZonePref(user.time_zone),
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // Issue 268: the projects that override it (Settings › Agents).
+        agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
         // SRV-P6: where it came from, and the update checks' last and next.
         ...updateCheckSettings(),
