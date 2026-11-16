@@ -42,14 +42,19 @@ afterEach(async () => {
   server = null;
 });
 
-/** Client ports still connected, as a lookup would see them. */
-const open = new Set<number>();
+/**
+ * Client ports that have closed. A lookup sees any port not closed yet, as
+ * lsof does: the socket exists from the kernel's accept, even before the
+ * client's own "connect" callback runs (on Linux the server's "connection"
+ * often comes first).
+ */
+const closed = new Set<number>();
 
 /** Answers, after `ms`, the pid it saw when asked (null: nobody there). */
 const lateLookup =
   (pid: number, ms = 30) =>
   (port: number): Promise<number | null> => {
-    const there = open.has(port) ? pid : null;
+    const there = closed.has(port) ? null : pid;
     return new Promise((r) => setTimeout(() => r(there), ms));
   };
 
@@ -96,13 +101,14 @@ async function serve(
 function agentCall(port: number, closeAfterSend = false): net.Socket {
   const c = net.connect(port, "127.0.0.1");
   c.on("connect", () => {
-    open.add(c.localPort!);
     c.write(
       `POST /api/agents/self/attention HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer ${AGENT}\r\nContent-Length: 0\r\n\r\n`,
     );
     if (closeAfterSend) c.end();
   });
-  c.on("close", () => open.delete(c.localPort!));
+  c.on("close", () => {
+    if (c.localPort) closed.add(c.localPort);
+  });
   c.on("error", () => undefined);
   return c;
 }
