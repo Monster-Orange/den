@@ -426,8 +426,9 @@ describe("the status drawer (R15)", () => {
       "billing billing http://billing/healthz — connect ECONNREFUSED · failed at " +
         (await p.evaluate(
           (ms) =>
+            // Issue 206: the kit's time (time.js), the page's own zone.
             new Intl.DateTimeFormat(undefined, {
-              hour: "2-digit",
+              hour: "numeric",
               minute: "2-digit",
             }).format(new Date(ms)),
           at.getTime(),

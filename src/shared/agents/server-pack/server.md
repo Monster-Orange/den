@@ -131,6 +131,8 @@ Only when Den's config turns them on (`mcp.actions`):
   restart services.
 - `workspace_sync`: sync a project's managed repos.
 - `run_tests`: run tests.
+- `verify_run`: run Verify's plan. Here it runs at once; on a shared
+  environment it waits for the person's Allow, always.
 - `agent_resume`, `agent_import`: resume an agent, or bring in a
   conversation.
 

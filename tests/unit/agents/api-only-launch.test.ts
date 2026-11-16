@@ -4,6 +4,7 @@
  * reads it: with Den's guardrails (the file tools seen too) or, for a
  * persona without them, a hook with the API-only check alone.
  */
+import { localDateTime } from "../../../src/shared/local-time.js";
 import { afterAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -262,7 +263,8 @@ describe("D47: agents doctor says what is API-only, where it's enforced, and tha
     );
     expect(text).not.toMatch(/grok/);
     expect(text).toMatch(
-      /denied +1 recently; the last at 2026-11-11T21:00:00Z: planner, docker exec vault-api-1 \(vault\)/,
+      // Issue 206: a person reads it in this computer's zone.
+      `denied        1 recently; the last at ${localDateTime("2026-11-11T21:00:00Z")}: planner, docker exec vault-api-1 (vault)`,
     );
   });
 });
