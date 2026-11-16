@@ -2841,6 +2841,9 @@ Read tools (always registered):
 | `stacks`             | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                              |
 | `ask_human`          | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                      |
 | `notifications_list` | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                              |
+| `gate_slot_status`   | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                |
+| `gate_slot_request`  | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                       |
+| `gate_slot_release`  | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                    |
 | `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
 | `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
 | `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
@@ -5076,6 +5079,51 @@ Den reads Claude Code's transcripts (`$CLAUDE_CONFIG_DIR/projects`, else
 `~/.claude/projects`). A plugin can add a reader for another runtime with
 the `usage` kind (server tier). A runtime with no reader shows "no usage
 source reads <runtime>".
+
+## Gate slots: heavy test runs taken in turn
+
+One machine often runs gates for several repos and installs at once: a
+browser suite here, two unit suites there. Run together they slow each
+other down and make timing tests fail. `<cli> gate` takes them in turn.
+
+```
+<cli> gate run --kind browser --estimate 6m -- npm run test:browser
+<cli> gate run --kind cpu --estimate 20m -- npm test
+<cli> gate status            # who holds a slot, who waits, until when
+<cli> gate end <id>          # a person ends a slot early (never an agent)
+<cli> gate settings --cpu-slots 3
+```
+
+- A `browser` run holds the machine alone. `cpu` runs share it, up to
+  `cpu_slots` (default 2), never beside a browser run. First come, first
+  served: a waiting browser run stops new cpu grants, so it can't starve.
+- Nothing is pre-empted. A later run only waits, and says each minute who
+  holds the slot and when it should end. A live holder keeps its slot
+  however long it runs.
+- `gate run` gives the slot back however the command ends: success,
+  failure, or a signal. On Ctrl-C, SIGTERM or SIGHUP it passes the signal
+  to the command and gives the slot back when the command has ended, so a
+  slot is never free while its run goes on. Its exit code is the
+  command's.
+- A slot whose processes are gone is taken back at once (on the next
+  read): the wrapper and the command it started both count, so a wrapper
+  killed with SIGKILL leaves the slot to its command until that ends.
+- Past its estimate plus `overrun_margin_minutes` (default 15) a run is
+  flagged once (in `gate status`, on the Agents page, to `gate run`'s
+  output, and in the slot log), never stopped.
+- A person ends a slot early on the Agents page (the gate chip) or with
+  `gate end`; the run is not stopped. An agent can't: the web route
+  refuses an agent's token, `gate end` refuses in an agent's terminal, and
+  the MCP tools give back only the agent's own slot.
+- The slots are the machine user's, shared by every install and repo, and
+  need no running Den: `DEN_GATE_DIR`, else `~/Library/Application
+Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`
+  (`~/.local/state`). Settings are in `settings.json` there (Settings ›
+  Server, or `gate settings`; a person's only). Every ask, wait, grant,
+  release, take-back, overdue flag and early end is in `events.jsonl`: a
+  grant carries the minutes waited, a wait the slots it waits behind, so
+  Coach can count time lost to waiting. Ending a slot from a page also
+  writes this install's audit, pointing to the slot log.
 
 ## Pinning and upgrading
 

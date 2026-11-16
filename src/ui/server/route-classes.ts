@@ -563,6 +563,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "H5: how many of the company's GitHub repos Den Hub's GitHub App can read, live from Hub, with Hub's github.com install or change link",
   ),
   R(
+    "/api/gate-slots",
+    "Issue 144: who holds this machine's heavy-test slots and who waits, with the machine's settings",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/end",
+    "Issue 144: a person ends a gate slot early (never an agent); the run is not stopped",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
