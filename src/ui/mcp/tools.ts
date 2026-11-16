@@ -1329,7 +1329,8 @@ async function askPerson(
   tool: string,
   action: string,
   args: Args,
-  note: unknown,
+  /** The tool's own args: its `note`, and `ask` (issue 160: ask anyway). */
+  own: { note?: unknown; ask?: unknown },
   ctx: ToolContext,
   /** SRV-1a: the answer when Den stops answering after the ask (it restarted). */
   lostAfterAsk?: string,
@@ -1337,12 +1338,14 @@ async function askPerson(
   const clean = Object.fromEntries(
     Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
   );
+  const note = own.note;
   let asked: { id?: unknown; ticket?: unknown };
   try {
     asked = (await ctx.api.get("/api/approvals", {}, "POST", {
       action,
       args: clean,
       ...(typeof note === "string" && note.trim() ? { note: note.trim() } : {}),
+      ...(own.ask === true ? { ask: true } : {}),
     })) as { id?: unknown; ticket?: unknown };
   } catch (e) {
     if (e instanceof DenHttpError && [400, 403, 409, 429].includes(e.status))
@@ -1425,6 +1428,14 @@ const noteArg = z
     'One line for the person on why (shown quoted as "Agent says"; Den writes the request itself)',
   );
 
+/** Issue 160: ask the person even when the approval policy would run it. */
+const askArg = z
+  .boolean()
+  .optional()
+  .describe(
+    "true: wait for the person's Allow even when the approval policy would run it at once. Give note: why",
+  );
+
 /** Onboarding writes are the unscoped server agent's. */
 function refuseScoped(tool: string, scope: McpScope | undefined): void {
   if (scope)
@@ -1442,7 +1453,7 @@ const UPDATE_NEXT =
   'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you. On the new version: commit the new pin (package.json, package-lock.json) in your folder, as server_agent.git says (a pull request, or a push). If Den says it rolled back, commit nothing and tell your person why.'; // words-ok: SRV-1's own line, for the agent
 
 const HELD =
-  " Nothing changes until the person allows it in Den's browser dialog: the request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
+  " Den's approval policy decides: a change that widens what an agent may do waits for the person's Allow in Den's browser dialog; others may run at once (the answer says done). Give ask: true and a note saying why to wait for the Allow anyway. A request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
 
 /** SRV-P2: a persona's fields, as the Personas page's form has them. */
 function personaShape(update: boolean) {
@@ -1487,6 +1498,7 @@ function personaShape(update: boolean) {
       .optional()
       .describe("Which of the project's repos (default: its first)"),
     note: noteArg,
+    ask: askArg,
   };
 }
 
@@ -1527,6 +1539,7 @@ const APPROVAL_TOOLS: DenTool[] = [
           "The project name (no quotes, slashes or control characters)",
         ),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       refuseScoped("workspace_create", ctx.scope);
@@ -1535,7 +1548,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "workspace_create",
         "workspace_create",
         { name },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1568,6 +1581,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .optional()
         .describe("An http(s) URL for the health check"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       refuseScoped("repo_add", ctx.scope);
@@ -1583,7 +1597,7 @@ const APPROVAL_TOOLS: DenTool[] = [
           down: str(a.down),
           health: str(a.health),
         },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1601,6 +1615,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .max(300)
         .describe("One line for the person and the audit trail: why restart"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       refuseScoped("den_restart_server", ctx.scope);
@@ -1614,7 +1629,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "den_restart_server",
         "den_restart",
         { reason },
-        a.note,
+        a,
         ctx,
         `Den stopped answering after the ask: if it was allowed, Den is restarting. ${RESTART_NEXT}`,
       );
@@ -1641,6 +1656,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .max(300)
         .describe("One line for the person and the audit trail: why update"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       refuseScoped("den_update", ctx.scope);
@@ -1649,7 +1665,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "den_update",
         "den_update",
         { version: str(a.version) ?? "latest", reason },
-        a.note,
+        a,
         ctx,
         `Den stopped answering after the ask: if it was allowed, Den is updating and restarting. ${UPDATE_NEXT}`,
       );
@@ -1690,6 +1706,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .optional()
         .describe("A folder inside the project, instead of a repo"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       // A project's agent asks for its own project (the default); Den
@@ -1714,7 +1731,7 @@ const APPROVAL_TOOLS: DenTool[] = [
           repo: str(a.repo),
           folder: str(a.folder),
         },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1732,7 +1749,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "persona_create",
         "persona_create",
         personaArgs(a),
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1751,7 +1768,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "persona_update",
         "persona_update",
         { id, ...personaArgs(a) },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1774,6 +1791,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .optional()
         .describe("The branch to check out (default: the repo's default)"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       const source = needArg(
@@ -1786,7 +1804,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "repo_clone",
         "repo_clone",
         { source, name: str(a.name), branch: str(a.branch) },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1807,6 +1825,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .enum(["ask", "edits", "auto", "all", "none"])
         .describe("The mode, or none to clear it"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       const project = ctx.scope
@@ -1826,7 +1845,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "project_mode",
         "project_mode",
         { project, mode: mode === "none" ? null : mode },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1850,6 +1869,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .optional()
         .describe("Its project (default: the one it is in)"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       const agent = needArg("agent_folder", a, "agent", "the agent's id");
@@ -1863,7 +1883,7 @@ const APPROVAL_TOOLS: DenTool[] = [
           folder: str(a.folder),
           project,
         },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1882,17 +1902,12 @@ const APPROVAL_TOOLS: DenTool[] = [
         .optional()
         .describe("Its project (default: the one it is in)"),
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       const agent = needArg("agent_mode", a, "agent", "the agent's id");
       const project = ctx.scope ? ctx.scope.workspace : str(a.project);
-      return askPerson(
-        "agent_mode",
-        "agent_mode",
-        { agent, project },
-        a.note,
-        ctx,
-      );
+      return askPerson("agent_mode", "agent_mode", { agent, project }, a, ctx);
     },
   },
   {
@@ -1906,6 +1921,7 @@ const APPROVAL_TOOLS: DenTool[] = [
       service: z.string().describe("The service: <repo> or <repo>/<service>"),
       workspace: workspaceArg,
       note: noteArg,
+      ask: askArg,
     },
     async run(a, ctx) {
       const service = needArg(
@@ -1918,7 +1934,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         "service_try",
         "service_try",
         { service, workspace: str(a.workspace) },
-        a.note,
+        a,
         ctx,
       );
     },
@@ -1938,7 +1954,7 @@ export function approvalsState(
   cfg: Pick<ResolvedMcpConfig, "approvals">,
 ): string {
   return cfg.approvals
-    ? `held writes on: ${APPROVAL_TOOL_NAMES.join(", ")} run only after the person's Allow in the browser (mcp.approvals: false turns them off)`
+    ? `held writes on: ${APPROVAL_TOOL_NAMES.join(", ")} follow the approval policy: one that widens what an agent may do runs only after the person's Allow in the browser; others may run at once (approvals: in user.yml; mcp.approvals: false turns them off)`
     : `held writes off (mcp.approvals: false): ${APPROVAL_TOOL_NAMES.join(", ")} are not registered`;
 }
 

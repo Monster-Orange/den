@@ -354,6 +354,12 @@ export interface UserConfig {
     role?: unknown;
   };
   /**
+   * Issue 160: the approval policy, the person's: `{ policy, writes }`,
+   * each auto | notify | ask, for agents' routine held writes (critical
+   * ones always ask). See shared/approval-policy.ts.
+   */
+  approvals?: unknown;
+  /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
    */

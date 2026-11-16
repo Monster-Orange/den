@@ -8,6 +8,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- You get an Allow only for real decisions (issue 160). A change that
+  widens what an agent may do still waits for you: a looser mode, a
+  persona, a repo added to a project, a Den update or restart. Everything else an agent asks for
+  now runs at once, and your updates say "<agent> did this without your
+  Allow". A stricter mode is one of those. Set it with `approvals:` in
+  your `user.yml`, or for one project in `workspaces.yml`: auto, notify
+  (the default) or ask. No setting lowers a critical change. An agent can
+  still ask you, and says why.
+
 - One set of exit codes for every test kind, in the CLI, on the Tests page
   and over MCP (issue 207): 0 passed, 1 failed, 3 nothing ran, 4
   cancelled. An error or a blocked check counts as failed. A run where

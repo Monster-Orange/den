@@ -1334,6 +1334,7 @@
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
+    "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.crashLoop":
