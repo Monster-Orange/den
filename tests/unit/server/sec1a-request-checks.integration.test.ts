@@ -194,7 +194,7 @@ describe("the Host allowlist (DNS rebinding)", () => {
         const r = await call("GET", p, { host: `${name}:${port}` });
         expect(r.status).toBe(200);
       }
-      const page = await call("GET", "/tests", {
+      const page = await call("GET", "/verify", {
         host: `${name}:${port}`,
         accept: "text/html",
       });
@@ -455,6 +455,8 @@ describe("web.secret", () => {
     const paths = [
       "/",
       "/tests",
+      "/verify",
+      "/test-runs",
       "/services",
       "/environments",
       "/release",

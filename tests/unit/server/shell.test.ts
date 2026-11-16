@@ -20,6 +20,8 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "logs.html": { page: "logs" },
   "settings.html": { page: "settings" },
   "index.html": { page: "tests" },
+  // Issue 209: the Verify page.
+  "verify.html": { page: "verify" },
   "edge.html": { page: "edge" },
   // The Agents tab (AG-4a-term).
   "agents.html": { page: "agents" },
@@ -166,7 +168,8 @@ describe("the shell's source", () => {
         "/settings",
         "/release",
         "/services",
-        "/tests",
+        "/test-runs",
+        "/verify",
         // ON-6: the server agent.
       ].sort(),
     );

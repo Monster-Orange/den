@@ -4,6 +4,25 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.56] - unreleased
+
+### Added
+
+- A new Checks page at `/verify` answers "Can we ship?" (issue 209). It
+  shows one answer for each environment, worst first. "Nothing ran" is
+  never shown as ready. A failing environment has a See why button: it
+  lists the first failures, the checks still waiting and what passed, and
+  each failure's Open report shows that check's output. Each run is now
+  kept, with who started it and who allowed it. New routes:
+  `/api/verify/overview`, `/api/verify/runs/:id` and
+  `/api/verify/runs/:id/report`.
+
+### Changed
+
+- `/tests` now redirects (301) to `/verify`. The old Tests page moved to
+  `/test-runs`, and the nav's Tests item opens it. Links or bookmarks to
+  `/tests` land on the new Checks page.
+
 ## [0.4.53] - 2026-11-15
 
 ### Added

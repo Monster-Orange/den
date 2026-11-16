@@ -1071,7 +1071,7 @@ describe("0.4.17: the Tests module picker", () => {
       }
     }, latest);
     const p = await ctx.newPage();
-    await p.goto(api("/tests"));
+    await p.goto(api("/test-runs"));
     await p.waitForSelector("#module-picker-btn");
     // Several modules, as a distribution with suites has: the list reaches
     // past the controls into the output pane below.

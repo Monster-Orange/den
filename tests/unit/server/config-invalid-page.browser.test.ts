@@ -204,7 +204,8 @@ describe("a page navigation with an invalid config", () => {
   it.each([
     "/",
     "/graph",
-    "/tests",
+    "/verify",
+    "/test-runs",
     "/services",
     "/environments",
     "/release",
@@ -256,7 +257,8 @@ describe("a page navigation with an invalid config", () => {
   it.each([
     "/",
     "/graph",
-    "/tests",
+    "/verify",
+    "/test-runs",
     "/services",
     "/environments",
     "/release",
