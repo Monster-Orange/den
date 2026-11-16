@@ -77,6 +77,14 @@ body.den-has-shell > #den-content {
   left: 0;
   right: 0;
   z-index: 20;
+  /* Its own layer from the start (0.6.4). The update pill's glass
+     (blur and saturate) makes Chromium draw the page's text grayscale
+     while it shows; drawn on its own layer, the bar is the same with the
+     pill shown or hidden. A fixed element inside the bar would be placed
+     against the bar, so the kit and products put none there (pop-ups go
+     on <body>); the bar never clips (no overflow), so a slot's absolute
+     menu still drops below it. */
+  will-change: transform;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   min-width: 0;

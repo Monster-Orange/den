@@ -14,6 +14,10 @@
  *    long page, the bar's top is 0 and the rail still starts under it.
  * 4. reportButtonHtml({ label, prefill }): a row's own "Report this"
  *    button, its words and name; a click opens Report filled from it.
+ * 5. (0.6.4) Showing the update pill leaves the pinned top bar's pixels as
+ *    they were: in Chromium the pill's glass re-drew the fixed bar's text
+ *    (the product's mark and name) a shade differently. The bar is its
+ *    own layer, and a slot's absolute menu still drops below it, unclipped.
  *
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -50,7 +54,15 @@ afterAll(async () => {
   await closeBrowserSuite({ browsers: Object.values(browsers) });
 }, 60_000);
 
-const STYLES = ["tokens", "fonts", "base", "shell", "report", "dialog"];
+const STYLES = [
+  "tokens",
+  "fonts",
+  "base",
+  "shell",
+  "report",
+  "dialog",
+  "update-pill",
+];
 
 /** A kit page: the shell, and a main holding `main`. */
 const PAGE = (main: string) => `<!doctype html>
@@ -74,7 +86,7 @@ DenUI.configure({
 });
 window.filed = [];
 DenUI.mount(document.getElementById("den-shell"), {
-  product: { name: "Acme", version: "1.0.0" },
+  product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
   groups: [{ id: "work", label: "Work" }],
   nav: [{ id: "home", label: "Home", href: "/", group: "work", icon: "home", current: true }],
 });
@@ -276,6 +288,60 @@ for (const engine of ["chromium", "webkit"]) {
       await expect(
         p.locator('dialog.fb-dlg textarea[data-f="description"]').inputValue(),
       ).resolves.toBe("It said no.");
+      await p.context().close();
+    });
+
+    for (const scheme of ["light", "dark"] as const)
+      it(`showing the update pill leaves the top bar's pixels as they were (${scheme})`, async () => {
+        const b = browsers[engine];
+        if (!b) return;
+        const p = await open(b, { width: 1280, height: 800 });
+        await p.emulateMedia({ colorScheme: scheme });
+        await p.evaluate(() => document.fonts.ready);
+        await p.waitForTimeout(150);
+        // The bar's left end: the mark and the product's name.
+        const clip = { x: 0, y: 0, width: 120, height: 40 };
+        const before = await p.screenshot({ clip });
+        await p.evaluate(() => {
+          (
+            window as unknown as { DenUI: { update: { set(o: object): void } } }
+          ).DenUI.update.set({});
+        });
+        await p.locator(".den-upd .upd-pill").waitFor();
+        await p.waitForTimeout(150);
+        const shown = await p.screenshot({ clip });
+        await p.evaluate(() => {
+          (document.querySelector(".den-upd") as HTMLElement).hidden = true;
+        });
+        await p.waitForTimeout(100);
+        const hidden = await p.screenshot({ clip });
+        expect(shown.equals(before)).toBe(true);
+        expect(hidden.equals(shown)).toBe(true);
+        await p.context().close();
+      });
+
+    it("a menu in the bar's start slot drops below the bar, unclipped", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, { width: 1280, height: 800 });
+      await p.evaluate(() => {
+        const top = document.querySelector(".den-top")!;
+        const slot = document.createElement("details");
+        slot.id = "sw";
+        slot.style.position = "relative";
+        slot.innerHTML =
+          '<summary>Switch</summary><ul id="sw-menu" style="position:absolute;top:100%;left:0;height:200px;width:180px;margin:0;background:red"></ul>';
+        top.insertBefore(slot, top.firstChild!.nextSibling);
+        (slot as HTMLDetailsElement).open = true;
+      });
+      const m = await p.evaluate(() => {
+        const r = document.getElementById("sw-menu")!.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + 20, r.bottom - 10);
+        return { bottom: r.bottom, hit: at?.id ?? "" };
+      });
+      expect(m.bottom).toBeGreaterThan(200);
+      // What is drawn there is the menu: not clipped by the bar.
+      expect(m.hit).toBe("sw-menu");
       await p.context().close();
     });
   });

@@ -201,6 +201,20 @@ reason does not count. With no DIVERGE.md, every copy fails.
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.6.4
+
+- shell.css: the top bar is its own layer from the start
+  (`will-change: transform`). The update pill's glass (`blur(3px)
+saturate(1.4)`, unchanged) made Chromium draw the page's text grayscale
+  while the pill showed, so the bar's mark and name changed pixels when
+  the pill appeared. Now the bar is the same with the pill shown or
+  hidden. Its text is drawn as on any layer of its own (grayscale), as a
+  sticky bar's always was.
+- Inside the bar, a `position: fixed` element is placed against the bar,
+  not the window: put pop-ups, palettes and toasts on `<body>`. A slot's
+  `position: absolute` menu still drops below the bar (the bar never
+  clips).
+
 ## 0.6.3
 
 - Report: ⌘↵ (Ctrl+Enter) is the form's primary button on Write and on
