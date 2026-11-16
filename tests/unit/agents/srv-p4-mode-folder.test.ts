@@ -3,7 +3,8 @@
  * in its own project.
  *
  * - project_mode: a project's mode (or none). The Allow shows the change
- *   and says running agents keep theirs until they start again.
+ *   and says running agents switch after their current turn, in the same
+ *   conversation (Den's mode check, since 0.4.46).
  * - agent_folder: an agent's folder (a repo of its project, or a folder in
  *   it). A running agent is stopped, moved and started fresh there. An
  *   agent may move itself (the Allow says so); Den's own agent's folder is
@@ -65,7 +66,28 @@ async function repoRig(): Promise<Rig> {
 }
 
 describe("SRV-P4: project_mode", () => {
-  it("shows the change and that running agents keep theirs", async () => {
+  it("every detail line has a message key the page translates (en, es, ja)", async () => {
+    const r = await repoRig();
+    r.wsPermission.north = "ask";
+    const c = checkProjectMode(resolveAgentsDeps(r.deps), {
+      project: "north",
+      mode: null,
+    });
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.detailKeys).toHaveLength(c.details.length);
+    const pub = path.resolve(__dirname, "../../../src/ui/server/public");
+    const cats = ["shell.js", "i18n/es.js", "i18n/ja.js"].map((f) =>
+      fs.readFileSync(path.join(pub, f), "utf-8"),
+    );
+    for (const k of c.detailKeys!) {
+      expect(k).not.toBeNull();
+      for (const cat of cats) expect(cat).toContain(`"${k!.key}":`);
+    }
+    expect(c.detailKeys!.map((k) => k!.key)).toContain("ap.pm.switch");
+  });
+
+  it("shows the change and that running agents switch after their turn", async () => {
     const r = await repoRig();
     r.wsPermission.north = "auto";
     const c = checkProjectMode(resolveAgentsDeps(r.deps), {
@@ -77,8 +99,9 @@ describe("SRV-P4: project_mode", () => {
     expect(c.summary).toBe("set project north's mode: auto → edits");
     expect(c.params).toEqual({ project: "north", from: "auto", to: "edits" });
     expect(c.details.join("\n")).toMatch(
-      /running agents keep theirs until they start again/,
+      /running agents switch after their current turn, in the same conversation/,
     );
+    expect(c.details.join("\n")).not.toMatch(/until they start again/);
     expect(c.args).toEqual({ project: "north", mode: "edits" });
   });
 

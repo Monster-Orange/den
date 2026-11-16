@@ -18,6 +18,7 @@ import {
 import { listRecords, readRecord } from "../../shared/agents/records.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
+  feedKinds,
   InboxWatcher,
   type InboxSettings,
 } from "../../shared/hub-inbox-watch.js";
@@ -39,6 +40,8 @@ let owner: DeliveryOwner | null = null;
 let ownerAsking = false;
 let ownerAskedAt = 0;
 let ownerWanted: () => void = () => undefined;
+/** #65: the inbox kinds Hub's feed carries (whoami features). */
+let feedCarries: ReadonlySet<string> = new Set();
 let lastOpts: Parameters<typeof startDeliveries>[0] | null = null;
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
@@ -191,6 +194,7 @@ export async function startDeliveries(o: {
         ...(w.login ? { ownerLogin: w.login } : {}),
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
+      feedCarries = feedKinds(w.features);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {
@@ -274,6 +278,7 @@ export async function startDeliveries(o: {
         .map((r) => r.id),
     loop: l,
     owner: () => owner,
+    feedCarries: () => feedCarries,
     settings: () => settings,
     stateFile: path.join(getStateDir(), "hub", "inbox-watch.json"),
     log: o.log,

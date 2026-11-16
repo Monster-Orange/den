@@ -612,3 +612,27 @@ describe("SRV-1a: den_restart_server", () => {
     expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
   });
 });
+
+describe("issue 199: agent_mode", () => {
+  it("asks to make an agent follow its project's mode; a project's agent's ask names its project", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, agent: "ana", mode: "all", restarts: true },
+    }));
+    const r = await callTool("agent_mode", { agent: "ana" }, ctx(api));
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "agent_mode",
+      args: { agent: "ana" },
+    });
+    const n = calls.length;
+    await callTool("agent_mode", { agent: "ana" }, ctx(api, true));
+    expect(
+      calls.slice(n).find((c) => c.path === "/api/approvals")?.body,
+    ).toMatchObject({ args: { agent: "ana", project: "north" } });
+    const none = await callTool("agent_mode", {}, ctx(api));
+    expect(none.isError).toBe(true);
+    expect(none.text).toMatch(/agent/);
+  });
+});

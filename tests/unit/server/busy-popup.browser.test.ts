@@ -123,7 +123,7 @@ const start = (p: Page) =>
 const dlg = (p: Page) => p.locator("dialog.bz-dlg");
 
 describe("BUSY-1: the working pop-up", () => {
-  it("a slow answer: opens at the kit's wait, no buttons, Esc does nothing, then Success closes by itself", async () => {
+  it("a slow answer: opens at the kit's wait, no buttons, Esc does nothing, then Success closes at once with a toast", async () => {
     if (skip()) return;
     // The page's clock is the test's (den#179): a loaded runner fires the
     // page's timers late, so any wall-clock bound is a flake.
@@ -155,8 +155,12 @@ describe("BUSY-1: the working pop-up", () => {
     await expect(dlg(p).getAttribute("aria-busy")).resolves.toBe("true");
     await p.keyboard.press("Escape");
     expect(await dlg(p).isVisible()).toBe(true);
-    await dlg(p).locator("text=Done: linked.").waitFor({ timeout: 5000 });
-    await dlg(p).waitFor({ state: "detached", timeout: 3000 });
+    // Success (Ward, UK-2): the pop-up closes at once and the toast says
+    // it, as for a fast answer; the success line never waits in it.
+    await p
+      .locator(".den-toast", { hasText: "Done: linked." })
+      .waitFor({ timeout: 5000 });
+    expect(await p.locator("dialog.bz-dlg[open]").count()).toBe(0);
     await expect(p.locator("#bz-btn").isDisabled()).resolves.toBe(false);
     expect(await p.evaluate(() => document.activeElement?.id)).toBe("bz-btn");
   }, 30_000);
@@ -206,7 +210,11 @@ describe("BUSY-1: the working pop-up", () => {
       await p.evaluate(() => document.activeElement?.getAttribute("data-bz")),
     ).toBe("retry");
     await dlg(p).locator('[data-bz="retry"]').click();
-    await dlg(p).locator('[data-bz="done"]').waitFor({ timeout: 5000 });
+    // Success closes the pop-up itself (never a Done); the toast says so.
+    await p
+      .locator("dialog.bz-dlg[open]")
+      .waitFor({ state: "detached", timeout: 5000 });
+    expect(await p.locator(".den-toast").count()).toBeGreaterThan(0);
     expect(st.ids).toHaveLength(2);
     expect(st.ids[0]).toMatch(/^[A-Za-z0-9-]{8,64}$/);
     expect(st.ids[1]).toMatch(/^[A-Za-z0-9-]{8,64}$/);
@@ -246,7 +254,11 @@ describe("BUSY-1: the working pop-up", () => {
     );
     await dlg(p).locator('[data-bz="check"]').click();
     await p.clock.runFor(1000);
-    await dlg(p).locator('[data-bz="done"]').waitFor({ timeout: 5000 });
+    // done: the pop-up closes itself and the toast says so.
+    await p
+      .locator("dialog.bz-dlg[open]")
+      .waitFor({ state: "detached", timeout: 5000 });
+    expect(await p.locator(".den-toast").count()).toBeGreaterThan(0);
     expect(asked).toHaveLength(1);
     expect(asked[0]).toContain(st.ids[0]);
     expect(st.ids).toHaveLength(1);

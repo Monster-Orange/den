@@ -155,6 +155,12 @@ export type ApprovalState =
   | "denied"
   | "expired";
 
+/** A Review line as a message key and its words, for the page's t(). */
+export interface DetailKeyRec {
+  key: string;
+  vars?: Readonly<Record<string, string>>;
+}
+
 export interface Approval {
   id: string;
   /** Who asked: `agent:<id>` (or the person's MCP server, `person:…`). */
@@ -171,8 +177,16 @@ export interface Approval {
   params?: Readonly<Record<string, string>>;
   /** Review: what it will do, line by line (Den's, from the args). */
   details?: readonly string[];
+  /** One per details line: its message key and words (null: the line as is). */
+  detailKeys?: readonly (DetailKeyRec | null)[];
   /** What the agent said about it: shown only quoted, as "Agent says". */
   note?: string;
+  /** Issue 199: the agents that keep a mode of their own (Den's, from the args). */
+  ownMode?: readonly { agent: string; mode: string }[];
+  /** Issue 199: choices the person may turn on as they Allow (off by default). */
+  choices?: readonly string[];
+  /** Issue 199: the ones the person turned on. */
+  chosen?: Readonly<Record<string, true>>;
   requestedAt: number;
   expiresAt: number;
   state: ApprovalState;
@@ -269,7 +283,10 @@ export class ApprovalQueue {
     summary: string;
     params?: Record<string, string>;
     details?: string[];
+    detailKeys?: (DetailKeyRec | null)[];
     note?: string;
+    ownMode?: { agent: string; mode: string }[];
+    choices?: string[];
     ticketHash?: string;
     /**
      * SRV-P6 (0.4.48): how long this one waits for the person (default
@@ -308,9 +325,51 @@ export class ApprovalQueue {
             ),
           }
         : {}),
+      ...(r.details && r.detailKeys?.length
+        ? {
+            detailKeys: Object.freeze(
+              r.detailKeys.slice(0, 80).map((k) =>
+                k && /^[a-z][a-zA-Z0-9_.]{0,63}$/.test(k.key)
+                  ? Object.freeze({
+                      key: k.key,
+                      ...(k.vars
+                        ? {
+                            vars: Object.freeze(
+                              Object.fromEntries(
+                                Object.entries(k.vars)
+                                  .slice(0, 8)
+                                  .map(([n, v]) => [
+                                    n.slice(0, 32),
+                                    String(v).slice(0, 2000),
+                                  ]),
+                              ),
+                            ),
+                          }
+                        : {}),
+                    })
+                  : null,
+              ),
+            ),
+          }
+        : {}),
       ...(r.agent ? { agent: r.agent.slice(0, 64) } : {}),
       ...(r.note?.trim()
         ? { note: r.note.replace(/\s+/g, " ").trim().slice(0, 300) }
+        : {}),
+      ...(r.ownMode?.length
+        ? {
+            ownMode: Object.freeze(
+              r.ownMode.slice(0, 200).map((o) =>
+                Object.freeze({
+                  agent: o.agent.slice(0, 64),
+                  mode: o.mode.slice(0, 16),
+                }),
+              ),
+            ),
+          }
+        : {}),
+      ...(r.choices?.length
+        ? { choices: Object.freeze(r.choices.slice(0, 8)) }
         : {}),
       ...(r.ticketHash ? { ticketHash: r.ticketHash } : {}),
       requestedAt: t,
@@ -389,6 +448,8 @@ export class ApprovalQueue {
     id: string,
     decision: Decision,
     by: string,
+    /** Issue 199: the choices the person turned on (offered ones only). */
+    chosen: Record<string, true> = {},
   ): Promise<DecideResult> {
     const inFlight = this.deciding.get(id);
     if (inFlight && inFlight.decision === decision)
@@ -403,7 +464,7 @@ export class ApprovalQueue {
       a0.endedBecause === undefined
     )
       return { ok: true, approval: { ...a0 }, repeat: true };
-    const done = this.decideOnce(id, decision, by);
+    const done = this.decideOnce(id, decision, by, chosen);
     this.deciding.set(id, { decision, done });
     try {
       return await done;
@@ -416,6 +477,7 @@ export class ApprovalQueue {
     id: string,
     decision: Decision,
     by: string,
+    chosen: Record<string, true>,
   ): Promise<DecideResult> {
     const a = this.items.get(id);
     if (!a)
@@ -455,12 +517,23 @@ export class ApprovalQueue {
       };
     }
     a.state = "running";
+    // Issue 199: only a choice the request offered reaches the run.
+    const on = Object.fromEntries(
+      Object.keys(chosen)
+        .filter((k) => a.choices?.includes(k))
+        .map((k) => [k, true as const]),
+    );
+    if (Object.keys(on).length) a.chosen = Object.freeze(on);
     try {
-      a.result = await this.deps.run(a.action, a.args, {
-        id: a.id,
-        ...(a.agent ? { agent: a.agent } : {}),
-        decidedBy: by,
-      });
+      a.result = await this.deps.run(
+        a.action,
+        { ...a.args, ...on },
+        {
+          id: a.id,
+          ...(a.agent ? { agent: a.agent } : {}),
+          decidedBy: by,
+        },
+      );
     } catch (e) {
       a.result = { ok: false, error: String((e as Error)?.message ?? e) };
     }

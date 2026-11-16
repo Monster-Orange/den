@@ -31,6 +31,11 @@ export interface Delivery {
   kind?: string;
   /** The artifact version a decision is on (decisions only). */
   version?: number;
+  /**
+   * #65: Hub's "edit" or "info". Only ever makes a comment information:
+   * whether it is an edit request is Den's own owner check (SEC-3).
+   */
+  intent?: "edit" | "info";
   agent: string;
   project: string;
   thread: { kind: string; id: string; url: string; artifact?: string };
@@ -118,6 +123,7 @@ export function deliveryRaw(d: Delivery): Record<string, unknown> {
     id: d.id,
     ...(d.kind ? { kind: d.kind } : {}),
     ...(d.version !== undefined ? { version: d.version } : {}),
+    ...(d.intent ? { intent: d.intent } : {}),
     agent: d.agent,
     project: d.project,
     thread: d.thread,
@@ -195,6 +201,7 @@ export function parseDelivery(v: unknown): Delivery | null {
     author,
     body: s(r.body, MAX_BODY),
     createdAt: line(s(r.created_at, 64)),
+    ...(r.intent === "edit" || r.intent === "info" ? { intent: r.intent } : {}),
   };
   const rw = readReplyWith(r.reply_with);
   if (rw) d.replyWith = rw;
@@ -249,7 +256,7 @@ const quote = (t: string) =>
 
 /** True when this delivery is an edit request from the agent's own person. */
 export function isEditRequest(d: Delivery, o: DeliveryOwner): boolean {
-  return isOwner(d.author, o);
+  return d.intent !== "info" && isOwner(d.author, o);
 }
 
 /**

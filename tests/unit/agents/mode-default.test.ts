@@ -287,6 +287,8 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     expect(other(record(r, "server") as never, 1)).toEqual({
       want: "auto",
       running: "auto",
+      // Issue 199: a mode of its own (its project has none to follow).
+      own: true,
     });
   }, 30_000);
 

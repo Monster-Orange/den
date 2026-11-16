@@ -11,6 +11,7 @@ import {
   ackBody,
   deliveryRaw,
   deliveryText,
+  isEditRequest,
   parseDelivery,
   SeenDeliveries,
   SseReader,
@@ -80,6 +81,28 @@ const REPLY_WITH = [
   { tool: "hub_reply", args: { delivery_id: ID }, when: "answer" },
 ];
 
+describe("Hub's intent (#65): it can only make a comment information", () => {
+  it('"info" from the agent\'s own person: information, never an edit request', () => {
+    const d = parseDelivery(raw({ intent: "info" }))!;
+    expect(isEditRequest(d, me)).toBe(false);
+    expect(deliveryText(d, me)).toContain("This is information");
+  });
+
+  it('"edit" from someone else: still information (Den\'s owner check decides)', () => {
+    const d = parseDelivery(
+      raw({ intent: "edit", author: { ...raw().author, id: "u_other" } }),
+    )!;
+    expect(isEditRequest(d, me)).toBe(false);
+  });
+
+  it('"edit" or no intent from the own person: an edit request', () => {
+    expect(isEditRequest(parseDelivery(raw({ intent: "edit" }))!, me)).toBe(
+      true,
+    );
+    expect(isEditRequest(parseDelivery(raw())!, me)).toBe(true);
+  });
+});
+
 describe("0.4.44: what to answer with comes from Hub (reply_with)", () => {
   it("an edit request names Hub's tools, with a hub_reply fallback; no dead tool name", () => {
     const t = deliveryText(parseDelivery(raw({ reply_with: REPLY_WITH }))!, me);
@@ -135,7 +158,11 @@ describe("0.4.44: what to answer with comes from Hub (reply_with)", () => {
       }),
     )!;
     expect(d.replyWith).toEqual([
-      { tool: "hub_artifact_update", args: { artifact: "pricing-page", addresses: [ID] }, when: "changed" },
+      {
+        tool: "hub_artifact_update",
+        args: { artifact: "pricing-page", addresses: [ID] },
+        when: "changed",
+      },
       { tool: "hub_reply", args: { delivery_id: ID }, when: "answer" },
       { tool: "hub_y", args: { a: "line break" }, when: "answer" },
     ]);

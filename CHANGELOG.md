@@ -20,22 +20,24 @@ config and manifest changes a distribution must make to move to it under
   one short note at its next prompt saying what changed. Once per
   change; never again after a restart; a new conversation gets none.
 
-## [0.4.51] - unreleased
+## [0.4.51] - 2026-11-15
 
 ### Added
 
-- Den says when it was updated. Once the server runs a newer build than
-  the open page, a see-through strip covers the top bar (60% of the
-  background colour, a light blur) and a wide pill sits centred on it:
-  "Den was updated to <version>", Learn more (that version's release
-  notes), Report, Later (hides it in this tab until the next version) and
-  Reload. Reload asks first when a field holds text you typed. In a
-  narrow window, when the message needs two lines, the pill becomes a
-  card with the buttons below it. The page checks on load, every 12
-  seconds, when you come back to the tab and after Den restarts (D61).
-  Each page now carries the build it was served from
-  (`<meta name="den-build">`). It is the same pill as Hub's update pill,
-  value for value; if it changes, it changes in both at once.
+- A project mode change says which agents keep their own mode (issue
+  199). The Allow lists each agent with a mode of its own ("pinned (own
+  mode: auto)") and offers one choice, "Also make these follow the
+  project", off by default. On, it clears their own mode in the same
+  Allow. After Allow, Den says which agents follow the project now and
+  which keep their own mode. On the Agents page, such an agent says "own
+  mode: auto (not following project: all)".
+- An agent, or Den's own agent, can ask to make another agent follow its
+  project's mode (the held write `agent_mode`). The person sees "This
+  lets <agent> act without asking you: auto → follow project (all)" and
+  Allows it themselves; Den restarts that agent after its turn, on the
+  same conversation. A person can do it directly too (POST
+  `/api/workspaces/<project>/agents/<id>/mode`); an agent's own write
+  there is refused.
 - Approvals, change requests and comments in Hub now reach the agent
   that wrote the doc, with nobody typing (issue 166). One watcher per
   install reads Hub's inbox for this install's agents and types each new
@@ -56,6 +58,30 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A running agent no longer loses Hub with "its session ended". Den
+  rewrites an agent's session record on every prompt, and a token check
+  that read it half-written took that for "ended" and revoked the token
+  for good. The record is now written whole, and a record that can't be
+  read refuses that one call instead of ending the token.
+
+- A stopped agent's Resume and ⋯, wrapped onto their own line in a narrow
+  list, start under the name instead of against the list's left edge.
+
+- The working pop-up no longer waits for Done after a success. It closes at
+  once and the usual toast says what happened, as for a quick action. It
+  stays open only on an error (the reason, Try again, Report, Close).
+
+- A project mode change's Allow details (project, now, then, how running
+  agents switch, which agents keep their own mode) are in the page's
+  language; they were English in Spanish and Japanese. The docs no longer
+  say running agents keep their mode until they start again.
+
+- Ready for Hub sending every comment on an agent's artifact as a delivery.
+  When Hub says its feed carries comments (and, separately, approvals and
+  requested changes), Den stops typing those from Hub's inbox, so nothing
+  reaches the agent twice. Hub's "info" on a delivery makes it information;
+  only Den's own check of the agent's person makes an edit request.
+
 - A Hub comment from your own person reaches the agent as an edit request
   even when Hub didn't answer "who am I" while Den started. Den used to treat
   every commenter as someone else until it restarted; now deliveries wait
@@ -72,6 +98,8 @@ config and manifest changes a distribution must make to move to it under
   Link). After a link there is one result line, "Linked 2 projects. 1
   couldn't be linked: north. Try again.", instead of a line per project.
   Same words in English, Spanish and Japanese.
+
+### Fixed
 
 - Report an issue sits in one place on every page and in every pop-up (issue 94). In the top bar it is right before the bell, with its word, at every width; it is no longer in the left rail. In a pop-up it is first in the footer. The place is set once, in the shared UI kit.
 

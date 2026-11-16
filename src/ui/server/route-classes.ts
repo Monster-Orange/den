@@ -462,6 +462,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/mode",
+    "issue 199 an agent's own mode, or null to follow its project's; a person's only (an agent asks with agent_mode)",
+  ),
+  M(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/clear-helpers",
     "D34 Clear done: hides an agent's finished helpers (a mark in its files; Claude Code's are never touched); a person's only",
   ),
@@ -759,6 +764,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/persona",
     "/api/workspaces/:ws/agents/:id/keep",
     "/api/workspaces/:ws/agents/:id/settings",
+    "/api/workspaces/:ws/agents/:id/mode",
     "/api/workspaces/:ws/agents/:id/handoff",
     "/api/workspaces/:ws/agents/:id/clear-helpers",
     "/api/workspaces/:ws/agents/:id/restart",

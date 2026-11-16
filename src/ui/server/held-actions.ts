@@ -33,6 +33,10 @@
  *                     writes its project's personas (a repo's
  *                     .den/personas file); this machine's own, only Den's
  *                     own agent or a person
+ *   agent_mode        issue 199: clear an agent's own mode, so it follows
+ *                     its project's (agent-ops.ts checkAgentMode,
+ *                     runAgentMode); a running one restarts after its turn
+ *                     on the same conversation. The person's Allow only
  *   repo_clone        SRV-P3: clone a repo into repos_root (repo-clone.ts),
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
@@ -113,6 +117,8 @@ export interface HeldActionDeps {
   projectMode?: HeldOp;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
+  /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
+  agentMode?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -432,6 +438,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't set a project's mode here",
   );
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
+  const agentMode = op(
+    d.agentMode,
+    "this Den can't change an agent's mode here",
+  );
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -502,5 +512,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     repo_clone: repoClone,
     project_mode: projectMode,
     agent_folder: agentFolder,
+    agent_mode: agentMode,
   };
 }

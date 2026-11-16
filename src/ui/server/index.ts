@@ -721,15 +721,6 @@ setHtmlFill((html) => {
     );
   // MD-2: every page says when the engine on disk is not the one running.
   const engine = engineCheck();
-  // D61: every page says the build it was served from (the engine on
-  // disk: its pages and scripts), so it can offer a reload once the
-  // server runs another.
-  if (engine.onDisk.buildId)
-    out = out.replace(
-      "</head>",
-      () =>
-        `<meta name="den-build" content="${escAttr(engine.onDisk.buildId ?? "")}"></head>`,
-    );
   if (engine.stale)
     out = out.replace(
       '<div id="den-shell"',
@@ -999,11 +990,13 @@ import {
 import {
   checkAgentCreate,
   checkAgentFolder,
+  checkAgentMode,
   checkPersonaCreate,
   checkPersonaUpdate,
   checkProjectMode,
   createAgent,
   runAgentFolder,
+  runAgentMode,
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
@@ -2418,6 +2411,16 @@ function approvalDeps(): ApprovalDeps {
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
       run: (a) => runAgentFolder(agentWebDeps(), a),
+    },
+    // Issue 199: an agent asks to make another follow its project's mode;
+    // Den's mode check restarts it after its turn, same conversation.
+    agentMode: {
+      check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
+      run: (a) =>
+        runAgentMode(agentWebDeps(), a, {
+          apply: () =>
+            import("./agent-routes.js").then((m) => m.applyModesNow()),
+        }),
     },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),

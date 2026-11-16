@@ -405,15 +405,6 @@
     "stale.aria": "古いサーバー: 再起動",
     "stale.label": "古いサーバー",
     "stale.restart": "再起動",
-    "upd.aria": "Den が {v} に更新されました",
-    "upd.msg": "Den が {v} に更新されました",
-    "upd.draft":
-      "このページに保存していない文字があります。再読み込みしますか?",
-    "upd.cancel": "キャンセル",
-    "upd.more": "詳細",
-    "upd.moreTip": "{v} のリリースノート",
-    "upd.reload": "再読み込み",
-    "upd.later": "後で",
     "rd.menu": "Den を再起動…",
     "rd.title": "Den を再起動しますか?",
     "wsd.title": "「{ws}」にはエージェントがあります ({n})",
@@ -1139,6 +1130,27 @@
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
+    "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
+    "ap.do.agent_mode.loosens":
+      "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
+    "ap.pm.warn":
+      "これにより {project} のエージェントはあなたに確認せずに動作します。",
+    "ap.pm.project": "プロジェクト: {project}",
+    "ap.pm.now": "現在: {mode}",
+    "ap.pm.then": "変更後: {mode}",
+    "ap.pm.thenNone":
+      "変更後: なし (エージェントはインストールのモード、なければペルソナのモードで起動します)",
+    "ap.pm.switch":
+      "新しいエージェントはこのモードで起動します。実行中のエージェントは今のターンの後、同じ会話のまま切り替わります。",
+    "ap.pm.own": "これらは独自のモードを保ち、プロジェクトに従いません: {list}",
+    "ap.pm.follow":
+      "さらに、これらをプロジェクトに従わせます: 独自のモードは消去されます。",
+    "ap.own.h":
+      "これらのエージェントは独自のモードを保ち、プロジェクトに従いません:",
+    "ap.own.item": "{agent} (独自のモード: {mode})",
+    "ap.own.follow": "これらもプロジェクトに従わせる",
+    "ap.res.following": "今プロジェクトに従うもの: {list}。",
+    "ap.res.own": "独自のモードを保つもの: {list}。",
     "ap.do.project_mode.loosens":
       "これにより {project} のエージェントはあなたに確認せずに動作します。プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_create":
@@ -1171,6 +1183,8 @@
     "pm.name.auto": "自動",
     "pm.name.all": "すべて",
     "ag.mode.tag": "モード: {m}",
+    "ag.mode.own": "独自のモード: {m}",
+    "ag.mode.ownNot": "独自のモード: {m} (プロジェクトに従っていません: {p})",
     "ag.mode.drift": "設定は {want}、実際は {running}",
     "ag.mode.apply": "再起動して反映",
     "ag.mode.applyName": "{id} を今すぐ再起動してモードを反映",

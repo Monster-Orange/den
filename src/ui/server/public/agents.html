@@ -292,6 +292,11 @@
         display: flex;
         align-items: center;
         flex-wrap: wrap;
+        /* A wrapped line (Resume and ⋯ in a narrow list) starts under the
+           name, like the row's other second lines (Ward: Resume had no
+           margin on the left); the row's own line pulls back to the edge.
+           38px: the row's 12px padding, the dot, and its 6px gap. */
+        padding-left: var(--agst1-in, 38px);
         /* 0.4.45: a narrow list (a pane beside it) drops the time, which
            is in the row's details; nothing overlaps. */
         container: agst1 / inline-size;
@@ -303,6 +308,7 @@
       }
       .agst1 > .agr {
         flex: 1 1 0;
+        margin-left: calc(-1 * var(--agst1-in, 38px));
         /* Never narrower than its name, chip and dot need: with no room,
            its buttons go under it (the row wraps). */
         min-width: min-content;
@@ -346,7 +352,8 @@
         flex-wrap: wrap;
         align-items: center;
         gap: 6px;
-        padding: 0 12px 8px 40px;
+        /* The row's inset already puts it under the name. */
+        padding: 0 12px 8px 0;
       }
       .agst1 .den-dot.hollow {
         background: transparent;

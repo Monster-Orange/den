@@ -51,13 +51,44 @@ export type HeldCheck =
       params: Record<string, string>;
       /** Review: what it will do, line by line. */
       details: string[];
+      /** One per details line: its message key and words, when it has one. */
+      detailKeys?: ({ key: string; vars?: Record<string, string> } | null)[];
       /**
        * Only the person's own Allow runs it: no auto-allow setting does
        * (a project_mode that loosens, Vision 11-14).
        */
       personOnly?: boolean;
+      /** Issue 199: the agents that keep a mode of their own. */
+      ownMode?: { agent: string; mode: string }[];
+      /**
+       * Issue 199: what the person may turn on as they Allow (off by
+       * default). Never taken from an ask's args.
+       */
+      choices?: string[];
     }
   | { ok: false; error: string };
+
+/**
+ * Issue 199: the choices a decide's body turns on (`choices: { follow:
+ * true }`): only ones the request offers, each true or false.
+ */
+export function chosenOf(
+  a: Pick<Approval, "choices">,
+  raw: unknown,
+): { ok: true; chosen: Record<string, true> } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, chosen: {} };
+  if (typeof raw !== "object" || Array.isArray(raw))
+    return { ok: false, error: "choices is an object: { <choice>: true }." };
+  const chosen: Record<string, true> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!a.choices?.includes(k))
+      return { ok: false, error: `This request offers no choice "${k}".` };
+    if (typeof v !== "boolean")
+      return { ok: false, error: `choices.${k} is true or false.` };
+    if (v) chosen[k] = true;
+  }
+  return { ok: true, chosen };
+}
 
 /**
  * SRV-P1: who asked, as their credential proves it: an agent's id and the
@@ -127,7 +158,11 @@ export function approvalView(a: Approval): Record<string, unknown> {
     summary: a.summary,
     ...(a.params ? { params: a.params } : {}),
     ...(a.details ? { details: a.details } : {}),
+    ...(a.detailKeys ? { detailKeys: a.detailKeys } : {}),
     ...(a.note ? { note: a.note } : {}),
+    ...(a.ownMode ? { ownMode: a.ownMode } : {}),
+    ...(a.choices ? { choices: a.choices } : {}),
+    ...(a.chosen ? { chosen: a.chosen } : {}),
     state: a.state,
     requestedAt: new Date(a.requestedAt).toISOString(),
     expiresAt: new Date(a.expiresAt).toISOString(),
@@ -256,6 +291,10 @@ export async function handleApprovalRoutes(
       refuse(res, 400, "invalid_args", checked.error);
       return true;
     }
+    // Issue 199: a choice is the person's, made as they Allow: an ask's
+    // args never carry one.
+    const stored = { ...checked.args };
+    for (const k of checked.choices ?? []) delete stored[k];
     // An asker with no agent token proves it is the asker with a ticket.
     const ticket = agent ? null : newApprovalTicket();
     let a: Approval;
@@ -265,10 +304,15 @@ export async function handleApprovalRoutes(
         actor: askerOf(req),
         ...(agent ? { agent: agent.actor.slice("agent:".length) } : {}),
         action,
-        args: checked.args,
+        args: stored,
         summary: checked.summary,
         params: checked.params,
         details: checked.details,
+        ...(checked.detailKeys?.length
+          ? { detailKeys: checked.detailKeys }
+          : {}),
+        ...(checked.ownMode?.length ? { ownMode: checked.ownMode } : {}),
+        ...(checked.choices?.length ? { choices: checked.choices } : {}),
         note: typeof body.note === "string" ? body.note : undefined,
       });
     } catch (e) {
@@ -413,10 +457,20 @@ export async function handleApprovalRoutes(
       refuse(res, 400, "bad_decision", 'decision is "allow" or "deny".');
       return true;
     }
+    // Issue 199: the choices the person turned on, offered ones only.
+    const found = deps.queue.get(dec[1]);
+    const pick = found
+      ? chosenOf(found, body?.choices)
+      : { ok: true as const, chosen: {} };
+    if (!pick.ok) {
+      refuse(res, 400, "bad_choice", pick.error);
+      return true;
+    }
     const r = await deps.queue.decide(
       dec[1],
       decision as Decision,
       who.session,
+      pick.chosen,
     );
     // A repeat (a double-click, a retry) replays the first answer: the
     // first one's audit line stands alone.

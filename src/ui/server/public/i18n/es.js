@@ -418,15 +418,6 @@
     "stale.aria": "Servidor desactualizado: reiniciar",
     "stale.label": "servidor desactualizado",
     "stale.restart": "Reiniciar",
-    "upd.aria": "Den se actualizó a {v}",
-    "upd.msg": "Den se actualizó a {v}",
-    "upd.draft":
-      "Tienes texto sin guardar en esta página. ¿Recargar de todos modos?",
-    "upd.cancel": "Cancelar",
-    "upd.more": "Más información",
-    "upd.moreTip": "Notas de la versión {v}",
-    "upd.reload": "Recargar",
-    "upd.later": "Más tarde",
     "rd.menu": "Reiniciar Den…",
     "rd.title": "¿Reiniciar Den?",
     "wsd.title": "“{ws}” tiene agentes ({n})",
@@ -1164,6 +1155,27 @@
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_folder": "Mover el agente {agent} a {where}",
+    "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
+    "ap.do.agent_mode.loosens":
+      "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
+    "ap.pm.warn":
+      "Esto permite que los agentes de {project} actúen sin preguntarte.",
+    "ap.pm.project": "Proyecto: {project}",
+    "ap.pm.now": "Ahora: {mode}",
+    "ap.pm.then": "Después: {mode}",
+    "ap.pm.thenNone":
+      "Después: ninguno (los agentes empiezan en el modo de la instalación, si no en el de su persona)",
+    "ap.pm.switch":
+      "Los agentes nuevos empiezan en él; los que están en marcha cambian tras su turno actual, en la misma conversación.",
+    "ap.pm.own":
+      "Estos conservan su propio modo y no seguirán el proyecto: {list}",
+    "ap.pm.follow": "Y hace que sigan el proyecto: se borra su propio modo.",
+    "ap.own.h":
+      "Estos agentes conservan su propio modo y no seguirán el proyecto:",
+    "ap.own.item": "{agent} (modo propio: {mode})",
+    "ap.own.follow": "Hacer también que estos sigan el proyecto",
+    "ap.res.following": "Siguen el proyecto ahora: {list}.",
+    "ap.res.own": "Conservan su propio modo: {list}.",
     "ap.do.project_mode.loosens":
       "Esto permite que los agentes de {project} actúen sin preguntarte. Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_create":
@@ -1196,6 +1208,8 @@
     "pm.name.auto": "Auto",
     "pm.name.all": "Todo",
     "ag.mode.tag": "modo: {m}",
+    "ag.mode.own": "modo propio: {m}",
+    "ag.mode.ownNot": "modo propio: {m} (no sigue el proyecto: {p})",
     "ag.mode.drift": "Fijado en {want}, funciona en {running}",
     "ag.mode.apply": "Reiniciar para aplicar",
     "ag.mode.applyName": "Reiniciar {id} ahora para que funcione en su modo",

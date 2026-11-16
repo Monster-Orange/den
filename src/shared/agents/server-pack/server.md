@@ -117,6 +117,11 @@ Held (each waits for the person's Allow):
 - `agent_folder`: move an agent to another repo or folder of its project.
 - `project_mode`: set a project's mode. A change that lets agents do more
   without asking runs only on the person's own Allow, never by itself.
+  Agents with a mode of their own keep it: the Allow names them, and the
+  person may make them follow too.
+- `agent_mode`: make an agent with a mode of its own follow its project's
+  again. Only the person's own Allow runs it; Den restarts the agent after
+  its turn, on the same conversation.
 - `persona_create`, `persona_update`: add or change a persona.
 - `den_restart_server`, `den_update`: restart or update Den.
 
