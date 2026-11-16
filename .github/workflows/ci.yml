@@ -84,6 +84,44 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       - run: npm test -- --shard=${{ matrix.shard }}/4
 
+  # Issue 95: the global nav inventory (packages/den-ui/inventory) on the
+  # one browser build its reference was taken on: Playwright's image, by
+  # version and digest (NAV_BROWSER_IMAGE in nav-inventory.js; a test keeps
+  # the two the same). Its run-server serves Chromium and WebKit; the test
+  # connects with exposeNetwork "<loopback>", so the browsers reach Den's
+  # server on this runner through the connection. Elsewhere (the shards,
+  # no DEN_PW_WS) the suite skips: a local browser lays text out a few px
+  # apart. --verbose: the red cases show by name in the log.
+  den-ui-nav:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NAV_IMAGE: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.13.0"
+          cache: npm
+      - run: npm ci
+      - name: Start the pinned Playwright server
+        run: |
+          docker run -d --name pw-nav --init -p 127.0.0.1:3921:3921 "$NAV_IMAGE" \
+            npx -y playwright@1.61.1 run-server --port 3921 --host 0.0.0.0
+          # Docker's port is open at once; the server is up when it says so.
+          for i in $(seq 1 150); do
+            docker logs pw-nav 2>&1 | grep -q "Listening on" && exit 0
+            sleep 2
+          done
+          docker logs pw-nav
+          exit 1
+      - name: Nav inventory (Chromium and WebKit, 1280 and 390)
+        env:
+          DEN_PW_WS: ws://localhost:3921/
+        run: npx jest --forceExit --verbose --maxWorkers=1 tests/unit/den-ui/nav-inventory.browser.test.ts
+      - if: failure()
+        run: docker logs pw-nav | tail -50
+
   # Den as an installed package: npm pack, scaffold a distribution from the
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.

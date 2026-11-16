@@ -1,10 +1,29 @@
 {
- "version": 1,
+ "version": 2,
  "viewport": {
   "w": 1280,
   "h": 900
  },
- "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15",
+ "env": {
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15",
+  "faces": {
+   "400 14px -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif": 444.219,
+   "400 14px monospace": 469,
+   "400 14px sans-serif": 444.469,
+   "400 14px serif": 444.469,
+   "400 14px ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, monospace": 557.656,
+   "500 14px -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif": 460.125,
+   "500 14px monospace": 469,
+   "500 14px sans-serif": 444.469,
+   "500 14px serif": 444.469,
+   "500 14px ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, monospace": 557.656
+  },
+  "image": "mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+  "theme": {
+   "id": "den",
+   "version": "2.0.1"
+  }
+ },
  "elements": [
   {
    "key": "header.den-top",
@@ -5086,6 +5105,10 @@
   }
  ],
  "tokens": {
+  "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif": [
+   "--display",
+   "--sans"
+  ],
   "rgb(109, 99, 88)": [
    "--faint"
   ],
@@ -5106,6 +5129,9 @@
   ],
   "rgb(92, 82, 71)": [
    "--muted"
+  ],
+  "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace": [
+   "--mono"
   ]
  }
 }

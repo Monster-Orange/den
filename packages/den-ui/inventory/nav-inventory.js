@@ -25,15 +25,16 @@
  * an id; `[data-nav="x"]` for a rail entry; else its parent's key, " > ",
  * its tag and first class, and [n] when siblings share that.
  *
- * Theme tokens: the snapshot also maps each colour it saw to the :root
- * custom properties (--tokens) that compute to that same colour. The
- * method: every custom property declared in a rule whose selector names
- * :root or html (inside @media and @layer too) is read from
- * getComputedStyle(<html>); a value that is a colour (CSS.supports) is
- * set on a probe element's `color` and read back, so it is in the same
- * form as any computed colour ("rgb(…)", "rgba(…)", "color(…)"). A colour
- * equal to that is said to come from the token. Two tokens of one value
- * both match; the comparer asks only that one listed token match on both
+ * Theme tokens: the snapshot also maps each colour and font-family it saw
+ * to the :root custom properties (--tokens) that compute to the same
+ * value. The method: every custom property declared in a rule whose
+ * selector names :root or html (inside @media and @layer too) is read from
+ * getComputedStyle(<html>); a value that is a colour (CSS.supports) is set
+ * on a probe element's `color`, one that is a font-family list on its
+ * `font-family`, and read back, so it is in the same form as any computed
+ * value ("rgb(…)", "color(…)", a quoted family list). A value equal to
+ * that is said to come from the token. Two tokens of one value both
+ * match; the comparer asks only that one listed token match on both
  * sides.
  */
 
@@ -80,16 +81,46 @@ export const STYLE_PROPS = [
 /** The styles that hold one colour (a theme token may stand for it). */
 export const COLOR_PROPS = STYLE_PROPS.filter((p) => /color$/.test(p));
 
+/**
+ * The styles a theme token may stand for: each colour, and font-family
+ * (from --sans, --mono or --display, say).
+ */
+export const TOKEN_PROPS = [...COLOR_PROPS, "font-family"];
+
 /** The snapshot's format; a reference with another one is refused. */
-export const NAV_INVENTORY_VERSION = 1;
+export const NAV_INVENTORY_VERSION = 2;
+
+/**
+ * The theme the reference was taken in: Den's "Den" theme, as Den draws
+ * its pages today. Every product runs the inventory in this theme, so a
+ * colour or font that differs is a real gap.
+ */
+export const NAV_THEME = { id: "den", version: "2.0.1" };
+
+/**
+ * The one browser build the nav is measured in: Playwright's image, by
+ * version and digest. The references were taken there; a host runs its
+ * check there too (its run-server, reached through DEN_PW_WS), so both
+ * products are measured alike. Text lays out a few px apart on any other
+ * build, so boxes from another one are never compared.
+ */
+export const NAV_BROWSER_IMAGE =
+  "mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48";
+
+/** The fixed line each face is measured with, for the fingerprint. */
+export const FINGERPRINT_TEXT =
+  "Search pages, services, actions… Report ⌘K ⌘⇧F v9.9.0 0123456789";
 
 /**
  * The global nav of the page, in DOM order. Runs in the page: nothing is
- * read from outside it.
+ * read from outside it. `opts.image`: where the browser runs (say
+ * NAV_BROWSER_IMAGE), kept in the snapshot's env for the messages.
+ * `opts.theme`: { id, version } of the theme the page draws in (the
+ * reference's is NAV_THEME); a snapshot on another theme never matches.
  */
-export async function collectNav(page) {
+export async function collectNav(page, opts = {}) {
   const snap = await page.evaluate(
-    ({ props, colorProps }) => {
+    ({ props, colorProps, line }) => {
       const round = (n) => Math.round(n * 100) / 100;
       const ROLES = {
         a: "link",
@@ -233,30 +264,102 @@ export async function collectNav(page) {
       const probe = document.createElement("span");
       probe.setAttribute("aria-hidden", "true");
       document.documentElement.appendChild(probe);
-      const byColor = {};
+      // A token's value, set on the probe and read back: the form an
+      // element's computed colour or font-family takes.
+      const byValue = {};
+      const note = (v, name) => (byValue[v] = byValue[v] || []).push(name);
       for (const name of [...names].sort()) {
         const v = rootCs.getPropertyValue(name).trim();
-        if (!v || !CSS.supports("color", v)) continue;
-        probe.style.color = "";
-        probe.style.color = v;
-        const c = getComputedStyle(probe).color;
-        (byColor[c] = byColor[c] || []).push(name);
+        if (!v) continue;
+        if (CSS.supports("color", v)) {
+          probe.style.color = "";
+          probe.style.color = v;
+          note(getComputedStyle(probe).color, name);
+        } else if (CSS.supports("font-family", v)) {
+          probe.style.fontFamily = "";
+          probe.style.fontFamily = v;
+          note(getComputedStyle(probe).fontFamily, name);
+        }
       }
       probe.remove();
       const seen = new Set();
       for (const e of out) for (const p of colorProps) seen.add(e.style[p]);
       const tokens = {};
-      for (const c of [...seen].sort()) if (byColor[c]) tokens[c] = byColor[c];
+      for (const c of [...seen].sort()) if (byValue[c]) tokens[c] = byValue[c];
+      // The fingerprint: the browser, and the width of one fixed line in
+      // each face (weight, size, family) the nav's text uses, laid out in
+      // the page as its text is. Boxes match only where it matches.
+      const faces = {};
+      const span = document.createElement("span");
+      span.setAttribute("aria-hidden", "true");
+      for (const [k, v] of Object.entries({
+        position: "absolute",
+        left: "-10000px",
+        top: "0",
+        "white-space": "pre",
+        "letter-spacing": "normal",
+        visibility: "hidden",
+      }))
+        span.style.setProperty(k, v);
+      span.textContent = line;
+      document.body.appendChild(span);
+      // Fixed faces, never the page's own (a page that changes a font
+      // must fail on that font, not on its fingerprint): the generic
+      // families as this machine draws them, and the page's font tokens.
+      const faceKeys = new Set();
+      for (const fam of [
+        "sans-serif",
+        "serif",
+        "monospace",
+        rootCs.getPropertyValue("--sans").trim(),
+        rootCs.getPropertyValue("--mono").trim(),
+      ])
+        if (fam)
+          for (const wt of ["400", "500"]) faceKeys.add(`${wt} 14px ${fam}`);
+      for (const f of [...faceKeys].sort()) {
+        const [weight, size, ...family] = f.split(" ");
+        span.style.setProperty("font-weight", weight);
+        span.style.setProperty("font-size", size);
+        span.style.setProperty("font-family", family.join(" "));
+        faces[f] = Math.round(span.getBoundingClientRect().width * 1000) / 1000;
+      }
+      span.remove();
       return {
         viewport: { w: innerWidth, h: innerHeight },
-        userAgent: navigator.userAgent,
+        env: { userAgent: navigator.userAgent, faces },
         elements: out,
         tokens,
       };
     },
-    { props: STYLE_PROPS, colorProps: COLOR_PROPS },
+    { props: STYLE_PROPS, colorProps: TOKEN_PROPS, line: FINGERPRINT_TEXT },
   );
+  if (opts.image) snap.env.image = opts.image;
+  if (opts.theme)
+    snap.env.theme = { id: opts.theme.id, version: opts.theme.version };
   return { version: NAV_INVENTORY_VERSION, ...snap };
+}
+
+/**
+ * A snapshot's fingerprint: its browser (user agent) and the widths of its
+ * faces' fixed line. Boxes compare only between equal fingerprints: on
+ * another browser build or font renderer text lays out a few px apart,
+ * and the comparer says so instead of comparing boxes that can't match.
+ */
+export function fingerprint(snap) {
+  const env = snap.env || {};
+  const faces = env.faces || {};
+  return JSON.stringify([
+    env.userAgent || "",
+    Object.keys(faces)
+      .sort()
+      .map((k) => [k, faces[k]]),
+  ]);
+}
+
+/** Where a snapshot was taken, in words: its image (if named) and browser. */
+function envWords(snap) {
+  const env = snap.env || {};
+  return `${env.image || "an unnamed browser"} (${env.userAgent || "?"})`;
 }
 
 /** Does host slot `s` cover element `e` (or one of its ancestors)? */
@@ -346,13 +449,20 @@ function lcs(a, b) {
 }
 
 /**
- * Every difference between `actual` and `reference`. Fails on: an element
+ * Every difference between `actual` and `reference`. Both must come from
+ * the same browser build (equal `fingerprint`): else the one difference is
+ * `env`, "reference taken on X, running on Y". Fails on: an element
  * missing, extra or out of order; a slot, role, tag, name or class list
  * that differs; a box edge moved more than `tolerance` px (default 2); a
  * computed style that differs. Not compared: anything inside `hostSlots`
  * (keys such as "#den-status", or one class such as ".den-scope": the
- * element and all under it, on both sides); a colour that differs where
- * both colours come from one token named in `themeTokens` ("--accent").
+ * element and all under it, on both sides); a colour or font-family that
+ * differs where both values come from one token named in `themeTokens`
+ * ("--accent", "--sans"). `themeTokens` is empty by default and is never
+ * for a parity run: both products run in NAV_THEME, where every colour
+ * and font must match. It is only for comparing two runs on purpose in
+ * different themes. Both snapshots must name the same theme (env.theme):
+ * else the one difference is `theme`.
  * A host slot may be wider or narrower than in the reference (or there on
  * one side only): the other elements in its nav slot may then move or
  * stretch sideways by exactly that change (or a sum of such changes, with
@@ -379,6 +489,32 @@ export function compareNav(actual, reference, opts = {}) {
         property: "version",
         reference: String(reference.version),
         actual: String(NAV_INVENTORY_VERSION),
+      },
+    ];
+  // Another browser build: no box comparison, one clear difference.
+  if (fingerprint(actual) !== fingerprint(reference))
+    return [
+      {
+        key: "(snapshot)",
+        slot: "",
+        property: "env",
+        reference: `reference taken on ${envWords(reference)}`,
+        actual: `running on ${envWords(actual)}`,
+      },
+    ];
+  // Another theme: its colours and fonts can't match.
+  const themeWords = (snap) => {
+    const t = (snap.env || {}).theme;
+    return t ? `${t.id} ${t.version}` : "no named theme";
+  };
+  if (themeWords(actual) !== themeWords(reference))
+    return [
+      {
+        key: "(snapshot)",
+        slot: "",
+        property: "theme",
+        reference: `reference taken in theme ${themeWords(reference)}`,
+        actual: `running in theme ${themeWords(actual)}`,
       },
     ];
   const want = kept(reference, hostSlots);
@@ -431,7 +567,7 @@ export function compareNav(actual, reference, opts = {}) {
       const rv = w.style[p];
       const av = g.style[p];
       if (rv === av) continue;
-      if (COLOR_PROPS.includes(p) && themeTokens.size) {
+      if (TOKEN_PROPS.includes(p) && themeTokens.size) {
         const rt = tokenOf(reference, rv);
         const at = tokenOf(actual, av);
         if (rt.some((t) => themeTokens.has(t) && at.includes(t))) continue;

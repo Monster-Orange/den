@@ -11,12 +11,23 @@
  * The comparer must not go blind: each red case below changes one thing on
  * the live page (the search field 3 px over, its corners, the bell gone,
  * two elements swapped, a font weight) and must fail on exactly that; a
- * change inside a host slot (Den's status chip) must pass; a theme token
- * changed fails unless it is listed.
+ * change inside a host slot (Den's status chip) must pass; a theme token's
+ * colour or a font-family changed fails: both products run in Den's "Den"
+ * theme (NAV_THEME), so no colour or font is exempt.
+ *
+ * One browser build: the reference was taken on Playwright's image
+ * NAV_BROWSER_IMAGE (its run-server, reached through DEN_PW_WS; CI's
+ * den-ui-nav job starts the same image). With no DEN_PW_WS the suite
+ * skips: a local browser lays text out a few px apart, and its boxes
+ * can't match. On another build the comparer fails with "reference taken
+ * on X, running on Y".
+ *
+ * Each red case compares the nav before and after its one change, both
+ * against the reference, and asserts exactly the differences the change
+ * added: nothing a machine's drift could add or hide.
  *
  * DEN_UI_NAV_CAPTURE=1 writes the reference instead of comparing (take it
- * again only on purpose: it is the look the nav must keep). DEN_PW_WS:
- * Den's own Playwright server (both browsers connect there).
+ * again only on purpose: it is the look the nav must keep).
  * DEN_SKIP_BROWSER_TESTS=1 skips when no browser can start.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -33,6 +44,8 @@ import {
   collectNav,
   compareNav,
   formatNavDiffs,
+  NAV_BROWSER_IMAGE,
+  NAV_THEME,
   type NavDiff,
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
@@ -44,6 +57,8 @@ import {
 } from "./nav-inventory-helpers.js";
 
 const CAPTURE = process.env.DEN_UI_NAV_CAPTURE === "1";
+/** Only the pinned image's run-server can match the reference. */
+const PINNED = !!process.env.DEN_PW_WS;
 const BROWSERS = ["chromium", "webkit"] as const;
 type BrowserName = (typeof BROWSERS)[number];
 const WIDTHS = [
@@ -55,14 +70,18 @@ let s: AgentsPageServer | null = null;
 const browsers: Partial<Record<BrowserName, Browser>> = {};
 
 beforeAll(async () => {
+  if (!PINNED) {
+    console.warn(
+      `nav inventory: skipped, no DEN_PW_WS (run it on ${NAV_BROWSER_IMAGE})`,
+    );
+    return;
+  }
   try {
     const pw = await import("playwright");
     for (const b of BROWSERS)
-      browsers[b] = process.env.DEN_PW_WS
-        ? await pw[b].connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await pw[b].launch();
+      browsers[b] = await pw[b].connect(process.env.DEN_PW_WS!, {
+        exposeNetwork: "<loopback>",
+      });
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -166,29 +185,119 @@ function readRef(b: BrowserName, w: number): NavSnapshot {
   ) as NavSnapshot;
 }
 
-/** The page's nav after `change` ran in the page, compared with the reference. */
+/** The nav, with the image and the theme the page really draws in. */
+async function snapOf(p: Page): Promise<NavSnapshot> {
+  const theme = await p.evaluate(() =>
+    fetch("/api/themes")
+      .then((r) => r.json())
+      .then((j: { active?: { id: string; version: string } }) => j.active),
+  );
+  return collectNav(p, { image: NAV_BROWSER_IMAGE, theme });
+}
+const id = (d: NavDiff) => `${d.key} ${d.property}`;
+
+/**
+ * The differences `change` adds: the page's nav before and after it, each
+ * compared with the reference; those already there before are dropped.
+ */
 async function diffAfter(
   b: BrowserName,
   w: number,
   h: number,
   change: (arg: string) => void,
-  opts: { hostSlots?: string[]; themeTokens?: string[]; arg?: string } = {},
+  opts: { hostSlots?: string[]; arg?: string } = {},
 ): Promise<NavDiff[]> {
   const { p, ctx } = await open(b, w, h);
   try {
+    // The default run: no theme token exempt.
+    const o = { hostSlots: opts.hostSlots ?? DEN_HOST_SLOTS };
+    const ref = readRef(b, w);
+    const before = new Set(compareNav(await snapOf(p), ref, o).map(id));
     await p.evaluate(change, opts.arg ?? "");
     await p.waitForTimeout(100);
-    return compareNav(await collectNav(p), readRef(b, w), {
-      hostSlots: opts.hostSlots ?? DEN_HOST_SLOTS,
-      themeTokens: opts.themeTokens,
-    });
+    return compareNav(await snapOf(p), ref, o).filter(
+      (d) => !before.has(id(d)),
+    );
   } finally {
     await ctx.unrouteAll({ behavior: "ignoreErrors" });
     await ctx.close();
   }
 }
 
+/** The differences as "key property", sorted. */
+const ids = (d: NavDiff[]) => d.map(id).sort();
+
 const SEARCH = "#den-search";
+
+/**
+ * What each red case must add, exactly (the same in both browsers): its
+ * own change and what it moves, nothing else.
+ */
+const EXPECT: Record<string, string[]> = {
+  move3: [
+    "#den-search > kbd box.left",
+    "#den-search > kbd box.right",
+    "#den-search > span.den-search-ic box.left",
+    "#den-search > span.den-search-ic box.right",
+    "#den-search > span.den-search-ph box.left",
+    "#den-search > span.den-search-ph box.right",
+    "#den-search box.left",
+    "#den-search box.right",
+  ],
+  bell: [
+    "#den-bell > svg element",
+    "#den-bell element",
+    "#den-search > kbd box.left",
+    "#den-search > kbd box.right",
+    "#den-search > span.den-search-ic box.left",
+    "#den-search > span.den-search-ic box.right",
+    "#den-search > span.den-search-ph box.right",
+    "#den-search box.right",
+    "header.den-top > div.den-chips > button.den-rb > kbd box.left",
+    "header.den-top > div.den-chips > button.den-rb > kbd box.right",
+    "header.den-top > div.den-chips > button.den-rb > span box.left",
+    "header.den-top > div.den-chips > button.den-rb > span box.right",
+    "header.den-top > div.den-chips > button.den-rb > svg box.left",
+    "header.den-top > div.den-chips > button.den-rb > svg box.right",
+    "header.den-top > div.den-chips > button.den-rb box.left",
+    "header.den-top > div.den-chips > button.den-rb box.right",
+    "header.den-top > div.den-chips box.left",
+  ],
+  swap: [
+    "#den-bell > svg box.left",
+    "#den-bell > svg box.right",
+    "#den-bell > svg order",
+    "#den-bell box.left",
+    "#den-bell box.right",
+    "#den-bell order",
+    "#version-pill > span.v-txt box.left",
+    "#version-pill > span.v-txt box.right",
+    "#version-pill box.left",
+    "#version-pill box.right",
+  ],
+  kbdIcon: [
+    "#den-search > kbd element",
+    "#den-search > span.den-search-ic element",
+    "#den-search > span.den-search-ph box.right",
+  ],
+  notSlot: [
+    "#den-search > kbd box.left",
+    "#den-search > kbd box.right",
+    "#den-search > span.den-search-ic box.left",
+    "#den-search > span.den-search-ic box.right",
+    "#den-search > span.den-search-ph box.right",
+    "#den-search box.right",
+    "#den-status > span.den-dot box.left",
+    "#den-status > span.den-dot box.right",
+    "#den-status > span.den-n box.left",
+    "#den-status > span.den-n name",
+    "#den-status box.left",
+    "#den-status name",
+    "header.den-top > div.den-chips box.left",
+  ],
+  weight: ["#den-search > span.den-search-ph style.font-weight"],
+  font: ["#den-search > span.den-search-ph style.font-family"],
+};
 
 for (const b of BROWSERS)
   describe(`nav inventory, ${b}`, () => {
@@ -197,7 +306,7 @@ for (const b of BROWSERS)
         if (skip(b)) return;
         const { p, ctx } = await open(b, w, h);
         try {
-          const snap = await collectNav(p);
+          const snap = await snapOf(p);
           if (CAPTURE) {
             fs.mkdirSync(path.dirname(referenceFile(b, w)), {
               recursive: true,
@@ -209,6 +318,10 @@ for (const b of BROWSERS)
             return;
           }
           const ref = readRef(b, w);
+          // Taken on the pinned image (the constant the README names).
+          expect(ref.env.image).toBe(NAV_BROWSER_IMAGE);
+          // …in Den's "Den" theme, as Den draws its pages today.
+          expect(ref.env.theme).toEqual(NAV_THEME);
           // The search field and its parts are in the reference, styled.
           // On a phone the field is its icon alone.
           const parts =
@@ -240,6 +353,7 @@ for (const b of BROWSERS)
 
     // ── red cases: each one change, each must fail on exactly it ─────────
     const [W, H] = WIDTHS[0];
+    const PH = `${SEARCH} > span.den-search-ph`;
 
     it("fails when the search field moves 3 px", async () => {
       if (skip(b)) return;
@@ -248,15 +362,7 @@ for (const b of BROWSERS)
           .querySelector<HTMLElement>("#den-search")!
           .style.setProperty("transform", "translateX(3px)");
       });
-      expect(d).toContainEqual(
-        expect.objectContaining({ key: SEARCH, property: "box.left" }),
-      );
-      expect(d).toContainEqual(
-        expect.objectContaining({
-          key: `${SEARCH} > kbd`,
-          property: "box.left",
-        }),
-      );
+      expect(ids(d)).toEqual(EXPECT.move3);
     }, 60_000);
 
     it("fails when the search field's corners change", async () => {
@@ -266,12 +372,14 @@ for (const b of BROWSERS)
           .querySelector<HTMLElement>("#den-search")!
           .style.setProperty("border-radius", "13px");
       });
-      expect(d.map((x) => `${x.key} ${x.property} → ${x.actual}`)).toEqual([
-        `${SEARCH} style.border-top-left-radius → 13px`,
-        `${SEARCH} style.border-top-right-radius → 13px`,
-        `${SEARCH} style.border-bottom-right-radius → 13px`,
-        `${SEARCH} style.border-bottom-left-radius → 13px`,
-      ]);
+      expect(d.map((x) => `${id(x)} → ${x.actual}`).sort()).toEqual(
+        [
+          "border-bottom-left-radius",
+          "border-bottom-right-radius",
+          "border-top-left-radius",
+          "border-top-right-radius",
+        ].map((r) => `${SEARCH} style.${r} → 13px`),
+      );
     }, 60_000);
 
     it("fails when the bell is gone", async () => {
@@ -279,34 +387,16 @@ for (const b of BROWSERS)
       const d = await diffAfter(b, W, H, () => {
         document.querySelector("#den-bell")!.remove();
       });
-      expect(d).toContainEqual(
-        expect.objectContaining({
-          key: "#den-bell",
-          property: "element",
-          reference: "present",
-          actual: "missing",
-        }),
-      );
+      expect(ids(d)).toEqual(EXPECT.bell);
     }, 60_000);
 
     it("fails when two elements swap", async () => {
       if (skip(b)) return;
       const d = await diffAfter(b, W, H, () => {
         const bell = document.querySelector("#den-bell")!;
-        const ver = document.querySelector("#version-pill")!;
-        ver.after(bell);
+        document.querySelector("#version-pill")!.after(bell);
       });
-      const moved = d.filter((x) => x.property === "order").map((x) => x.key);
-      // One of the two (and its own parts) is out of order; nothing else.
-      expect(moved.length).toBeGreaterThan(0);
-      expect(
-        moved.filter((k) => !/^#(den-bell|version-pill)\b/.test(k)),
-      ).toEqual([]);
-      expect(moved).toEqual(
-        expect.arrayContaining([
-          expect.stringMatching(/^#(den-bell|version-pill)$/),
-        ]),
-      );
+      expect(ids(d)).toEqual(EXPECT.swap);
     }, 60_000);
 
     it("fails when a font weight changes", async () => {
@@ -316,13 +406,7 @@ for (const b of BROWSERS)
           .querySelector<HTMLElement>("#den-search .den-search-ph")!
           .style.setProperty("font-weight", "700");
       });
-      expect(d).toContainEqual(
-        expect.objectContaining({
-          key: `${SEARCH} > span.den-search-ph`,
-          property: "style.font-weight",
-          actual: "700",
-        }),
-      );
+      expect(ids(d)).toEqual(EXPECT.weight);
     }, 60_000);
 
     it("fails when the search's ⌘K or icon is gone", async () => {
@@ -331,15 +415,7 @@ for (const b of BROWSERS)
         document.querySelector("#den-search kbd")!.remove();
         document.querySelector("#den-search .den-search-ic")!.remove();
       });
-      const missing = d
-        .filter((x) => x.property === "element")
-        .map((x) => x.key);
-      expect(missing).toEqual(
-        expect.arrayContaining([
-          `${SEARCH} > kbd`,
-          `${SEARCH} > span.den-search-ic`,
-        ]),
-      );
+      expect(ids(d)).toEqual(EXPECT.kbdIcon);
     }, 60_000);
 
     it("passes when a host slot's contents change (the status chip)", async () => {
@@ -365,40 +441,44 @@ for (const b of BROWSERS)
         },
         { hostSlots: DEN_HOST_SLOTS.filter((x) => x !== "#den-status") },
       );
-      expect(d).toContainEqual(
-        expect.objectContaining({
-          key: "#den-status > span.den-n",
-          property: "name",
-          actual: "3 of 4 up",
-        }),
-      );
+      expect(ids(d)).toEqual(EXPECT.notSlot);
     }, 60_000);
 
-    it("a theme token changed fails, unless it is listed", async () => {
+    it("fails when a theme token's colour changes (no exemptions)", async () => {
       if (skip(b)) return;
       const ref = readRef(b, W);
-      // A colour of the search field's that comes from a token.
-      const ph = ref.elements.find(
-        (x) => x.key === `${SEARCH} > span.den-search-ph`,
-      )!;
-      const token = (ref.tokens[ph.style.color] ?? [])[0];
+      // The token the placeholder's colour comes from.
+      const ph = ref.elements.find((x) => x.key === PH)!;
+      const token = (ref.tokens[ph.style.color] ?? [])[0]!;
       expect(token).toMatch(/^--/);
-      const change = (t: string) =>
-        document.documentElement.style.setProperty(t, "rgb(1, 2, 3)");
-      const red = await diffAfter(b, W, H, change, { arg: token });
-      expect(red).toContainEqual(
+      const d = await diffAfter(
+        b,
+        W,
+        H,
+        (t: string) =>
+          document.documentElement.style.setProperty(t, "rgb(1, 2, 3)"),
+        { arg: token },
+      );
+      expect(d).toContainEqual(
         expect.objectContaining({
-          key: `${SEARCH} > span.den-search-ph`,
+          key: PH,
           property: "style.color",
           actual: "rgb(1, 2, 3)",
         }),
       );
-      const green = await diffAfter(b, W, H, change, {
-        themeTokens: [token!],
-        arg: token,
-      });
+      // Only colours change: those drawn from that token, nothing else.
       expect(
-        green.filter((x) => x.key === `${SEARCH} > span.den-search-ph`),
+        d.filter((x) => !/^style\.(color|border-\w+-color)$/.test(x.property)),
       ).toEqual([]);
-    }, 90_000);
+    }, 60_000);
+
+    it("fails when a font-family changes (no exemptions)", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, () => {
+        document
+          .querySelector<HTMLElement>("#den-search .den-search-ph")!
+          .style.setProperty("font-family", "serif");
+      });
+      expect(ids(d)).toEqual(EXPECT.font);
+    }, 60_000);
   });
