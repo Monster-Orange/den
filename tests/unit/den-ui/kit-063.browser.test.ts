@@ -14,6 +14,9 @@
  *    long page, the bar's top is 0 and the rail still starts under it.
  * 4. reportButtonHtml({ label, prefill }): a row's own "Report this"
  *    button, its words and name; a click opens Report filled from it.
+ * 5. (0.6.4) Showing the update pill leaves the pinned top bar's pixels as
+ *    they were: in Chromium the pill's blur re-drew the fixed bar's text
+ *    (the product's mark and name) a shade differently.
  *
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -50,7 +53,15 @@ afterAll(async () => {
   await closeBrowserSuite({ browsers: Object.values(browsers) });
 }, 60_000);
 
-const STYLES = ["tokens", "fonts", "base", "shell", "report", "dialog"];
+const STYLES = [
+  "tokens",
+  "fonts",
+  "base",
+  "shell",
+  "report",
+  "dialog",
+  "update-pill",
+];
 
 /** A kit page: the shell, and a main holding `main`. */
 const PAGE = (main: string) => `<!doctype html>
@@ -74,7 +85,7 @@ DenUI.configure({
 });
 window.filed = [];
 DenUI.mount(document.getElementById("den-shell"), {
-  product: { name: "Acme", version: "1.0.0" },
+  product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
   groups: [{ id: "work", label: "Work" }],
   nav: [{ id: "home", label: "Home", href: "/", group: "work", icon: "home", current: true }],
 });
@@ -278,5 +289,34 @@ for (const engine of ["chromium", "webkit"]) {
       ).resolves.toBe("It said no.");
       await p.context().close();
     });
+
+    for (const scheme of ["light", "dark"] as const)
+      it(`showing the update pill leaves the top bar's pixels as they were (${scheme})`, async () => {
+        const b = browsers[engine];
+        if (!b) return;
+        const p = await open(b, { width: 1280, height: 800 });
+        await p.emulateMedia({ colorScheme: scheme });
+        await p.evaluate(() => document.fonts.ready);
+        await p.waitForTimeout(150);
+        // The bar's left end: the mark and the product's name.
+        const clip = { x: 0, y: 0, width: 120, height: 40 };
+        const before = await p.screenshot({ clip });
+        await p.evaluate(() => {
+          (
+            window as unknown as { DenUI: { update: { set(o: object): void } } }
+          ).DenUI.update.set({});
+        });
+        await p.locator(".den-upd .upd-pill").waitFor();
+        await p.waitForTimeout(150);
+        const shown = await p.screenshot({ clip });
+        await p.evaluate(() => {
+          (document.querySelector(".den-upd") as HTMLElement).hidden = true;
+        });
+        await p.waitForTimeout(100);
+        const hidden = await p.screenshot({ clip });
+        expect(shown.equals(before)).toBe(true);
+        expect(hidden.equals(shown)).toBe(true);
+        await p.context().close();
+      });
   });
 }

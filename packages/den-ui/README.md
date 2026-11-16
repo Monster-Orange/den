@@ -201,6 +201,15 @@ reason does not count. With no DIVERGE.md, every copy fails.
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.6.4
+
+- update-pill.css: the pill's glass is `backdrop-filter: blur(3px)`, no
+  longer `blur(3px) saturate(1.4)`. With a colour filter in it, Chromium
+  drew all of the page's text a shade differently (grayscale in place of
+  subpixel) while the pill showed, the top bar's mark and name included.
+  Now the page's pixels outside the pill are the same with the pill shown
+  or hidden. What shows through the pill is a little less saturated.
+
 ## 0.6.3
 
 - Report: ⌘↵ (Ctrl+Enter) is the form's primary button on Write and on

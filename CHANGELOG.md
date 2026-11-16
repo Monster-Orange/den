@@ -50,6 +50,9 @@ config and manifest changes a distribution must make to move to it under
   on a page that scrolls. In the Report form, ⌘↵ (Ctrl+Enter) moves to
   the next step, as in every other pop-up; it never sends the report. A
   row can have its own Report button that opens the form filled in.
+- The UI kit is now 0.6.4. The page's text no longer changes shade when
+  the update pill shows. What shows through the pill is a little less
+  saturated.
 - The light theme's remote colour is a shade darker. An agent's initial
   on its tinted disc now meets the 4.5:1 contrast bar.
 
