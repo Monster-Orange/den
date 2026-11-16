@@ -2405,6 +2405,21 @@
     "ag.hub.working.one": "Working on {n} Hub comment",
     "ag.hub.working": "Working on {n} Hub comments",
     "ag.hub.queued.one": "{n} Hub comment waits for it",
+    "ag.ctx.tag": "Compacting repeatedly",
+    "ag.ctx.looping":
+      "Compacting repeatedly: {n} automatic compactions in the last few minutes.",
+    "ag.ctx.causeFiles":
+      "Likely cause: its instruction files are {size}, more than {share}% of its context, and load again after every compaction. The largest is {path} ({big}).",
+    "ag.ctx.causeOther":
+      "Likely cause: its context fills again soon after each compaction (large tool output, or files read whole).",
+    "ag.ctx.held": "New deliveries to it wait until you clear this.",
+    "ag.ctx.clear": "Clear",
+    "ag.ctx.clearHeld": "Let deliveries go",
+    "ag.ctx.clearName": "Clear {id}'s compaction loop",
+    "ag.ctx.cleared": "{id}: cleared",
+    "ag.ins.tag": "Large instructions",
+    "ag.ins.tip":
+      "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
     "tx.asked": "Asked",
     "tx.result": "Result",

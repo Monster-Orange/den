@@ -1630,6 +1630,22 @@
     "ag.hub.working.one": "Trabajando en {n} comentario de Hub",
     "ag.hub.working": "Trabajando en {n} comentarios de Hub",
     "ag.hub.queued.one": "{n} comentario de Hub lo espera",
+    "ag.ctx.tag": "Se compacta una y otra vez",
+    "ag.ctx.looping":
+      "Se compacta una y otra vez: {n} compactaciones automáticas en los últimos minutos.",
+    "ag.ctx.causeFiles":
+      "Causa probable: sus archivos de instrucciones ocupan {size}, más del {share}% de su contexto, y se cargan de nuevo tras cada compactación. El más grande es {path} ({big}).",
+    "ag.ctx.causeOther":
+      "Causa probable: su contexto se vuelve a llenar poco después de cada compactación (salidas de herramientas grandes o archivos leídos enteros).",
+    "ag.ctx.held":
+      "Las nuevas entregas a este agente esperan hasta que lo despejes.",
+    "ag.ctx.clear": "Despejar",
+    "ag.ctx.clearHeld": "Reanudar entregas",
+    "ag.ctx.clearName": "Despejar la compactación repetida de {id}",
+    "ag.ctx.cleared": "{id}: despejado",
+    "ag.ins.tag": "Instrucciones grandes",
+    "ag.ins.tip":
+      "Sus archivos de instrucciones ocupan {size}: más del {share}% de su contexto. El más grande es {path} ({big}).",
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",

@@ -1579,6 +1579,21 @@
     "bell.min": "{n} 分",
     "bell.h": "{n} 時間",
     "ag.hub.working": "Hub のコメント {n} 件に対応中",
+    "ag.ctx.tag": "圧縮を繰り返しています",
+    "ag.ctx.looping":
+      "圧縮を繰り返しています: ここ数分で自動圧縮が {n} 回ありました。",
+    "ag.ctx.causeFiles":
+      "考えられる原因: 指示ファイルが {size} あり、コンテキストの {share}% を超えていて、圧縮のたびに読み込み直されます。最も大きいのは {path} ({big}) です。",
+    "ag.ctx.causeOther":
+      "考えられる原因: 圧縮のたびにコンテキストがすぐまたいっぱいになります (大きなツール出力や、ファイルをまるごと読んでいるなど)。",
+    "ag.ctx.held": "解除するまで、このエージェントへの新しい配信は待ちます。",
+    "ag.ctx.clear": "解除",
+    "ag.ctx.clearHeld": "配信を再開",
+    "ag.ctx.clearName": "{id} の圧縮の繰り返しを解除",
+    "ag.ctx.cleared": "{id}: 解除しました",
+    "ag.ins.tag": "指示ファイルが大きい",
+    "ag.ins.tip":
+      "指示ファイルが {size} あり、コンテキストの {share}% を超えています。最も大きいのは {path} ({big}) です。",
     "ag.hub.queued": "Hub のコメント {n} 件が待っています",
     "tx.asked": "依頼",
     "tx.result": "結果",
