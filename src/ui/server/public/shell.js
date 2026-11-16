@@ -664,6 +664,9 @@
     "pj.validate.go": "Validate",
     "pj.validate.paste": "…or paste {file} content here",
     "pj.checking": "checking…",
+    "pj.noRuntime": "no runtime",
+    "pj.noRuntimeTip":
+      "This repo runs nothing: nothing to start or health-check. Agents can work in it.",
     "pj.checkingTip": "waiting for the first health check",
     "pj.noUp": "{id} has no up command",
     "pj.start": "Start",
@@ -1735,6 +1738,21 @@
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.compaction_loop": "Compacting repeatedly: compactions",
+    "set.agents.compaction_loop.d":
+      "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+    "set.agents.compaction_minutes": "Compacting repeatedly: minutes",
+    "set.agents.compaction_minutes.d":
+      "The window the compactions above are counted in. __DEN_CLI__ config agent_context.compaction_loop_minutes=10",
+    "set.agents.compaction_pause": "Hold deliveries after a compaction loop",
+    "set.agents.compaction_pause.d":
+      "On: once the bell says an agent is compacting repeatedly, new deliveries to it (Hub comments, notes) wait until a person clears it on the Agents page. Off (the default): they go as usual. __DEN_CLI__ config agent_context.pause_after_loop=true",
+    "set.agents.instruction_share": "Instruction files: warn above",
+    "set.agents.instruction_share.d":
+      "When the instruction files an agent loads at start (CLAUDE.md, AGENTS.md and the like, up its folders) are more than this share of its model's context, its row and doctor warn, naming the largest. Sizes are estimated as bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+    "set.agents.context_tokens": "Context size when unknown",
+    "set.agents.context_tokens.d":
+      "The context size, in tokens, the share above is taken of when __DEN_TITLE__ doesn't know the model's own. __DEN_CLI__ config agent_context.context_tokens=200000",
     "set.agents.list_refresh_wait": "Agents list wait",
     "set.agents.list_refresh_wait.d":
       "How long the Agents page waits for its list. After this, it says the list may be out of date and tries again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
@@ -2361,6 +2379,8 @@
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.noHub.one": "{n} agent started without Hub",
+    "bell.m.compacting":
+      "{name} is compacting repeatedly: {n} times in {m} minutes",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
@@ -2388,6 +2408,21 @@
     "ag.hub.working.one": "Working on {n} Hub comment",
     "ag.hub.working": "Working on {n} Hub comments",
     "ag.hub.queued.one": "{n} Hub comment waits for it",
+    "ag.ctx.tag": "Compacting repeatedly",
+    "ag.ctx.looping":
+      "Compacting repeatedly: {n} automatic compactions in the last few minutes.",
+    "ag.ctx.causeFiles":
+      "Likely cause: its instruction files are {size}, more than {share}% of its context, and load again after every compaction. The largest is {path} ({big}).",
+    "ag.ctx.causeOther":
+      "Likely cause: its context fills again soon after each compaction (large tool output, or files read whole).",
+    "ag.ctx.held": "New deliveries to it wait until you clear this.",
+    "ag.ctx.clear": "Clear",
+    "ag.ctx.clearHeld": "Let deliveries go",
+    "ag.ctx.clearName": "Clear {id}'s compaction loop",
+    "ag.ctx.cleared": "{id}: cleared",
+    "ag.ins.tag": "Large instructions",
+    "ag.ins.tip":
+      "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
     "tx.asked": "Asked",
     "tx.result": "Result",
@@ -2800,6 +2835,11 @@
     "svc.notCloned.note": "not cloned yet — run Sync in Projects",
     "svc.sub.note": "managed by its system",
     "svc.noCmds": "no commands for this env",
+    "svc.noRuntime": "no runtime",
+    "svc.runsNothing.note":
+      "runs nothing: nothing to start or health-check; agents can work in it",
+    "svc.runsNothing.title":
+      "This repo runs nothing (config, docs, rulesets or shared CI). It has no services, so nothing starts and nothing is health-checked.",
     "svc.notCloned.title": "Not cloned yet",
     "svc.notCloned": "not cloned",
     "svc.layers.title": "Manifest layers applied",

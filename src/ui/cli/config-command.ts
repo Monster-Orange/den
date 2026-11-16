@@ -49,6 +49,21 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "agents_list",
     "refresh_timeout_seconds",
   ],
+  // Issue 278: when an agent counts as stuck compacting; instruction size.
+  "agent_context.compaction_loop_count": [
+    "agent_context",
+    "compaction_loop_count",
+  ],
+  "agent_context.compaction_loop_minutes": [
+    "agent_context",
+    "compaction_loop_minutes",
+  ],
+  "agent_context.instruction_share_percent": [
+    "agent_context",
+    "instruction_share_percent",
+  ],
+  "agent_context.context_tokens": ["agent_context", "context_tokens"],
+  "agent_context.pause_after_loop": ["agent_context", "pause_after_loop"],
 };
 
 /**

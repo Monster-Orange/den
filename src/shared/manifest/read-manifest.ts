@@ -161,7 +161,10 @@ export function parseManifestText(
     : parseYaml(raw);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
     return null; // scalar/array/empty manifest is not usable
-  return parsed as Record<string, unknown>;
+  const m = parsed as Record<string, unknown>;
+  // Issue 277: `services: []` is a repo that runs nothing, as `{}` is.
+  if (Array.isArray(m.services) && m.services.length === 0) m.services = {};
+  return m;
 }
 
 /**

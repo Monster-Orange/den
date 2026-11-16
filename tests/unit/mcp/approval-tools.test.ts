@@ -169,6 +169,23 @@ describe("a write asks, then waits for the person", () => {
     });
   });
 
+  it("issue 277: repo_add and manifest_draft take no_run for a repo that runs nothing", async () => {
+    const { api, calls } = fakeApi([{ state: "done", result: { ok: true } }]);
+    await callTool(
+      "repo_add",
+      { path: "~/code/rules", workspace: "web", no_run: true },
+      ctx(api),
+    );
+    expect(calls[0].body).toEqual({
+      action: "repo_add",
+      args: { path: "~/code/rules", workspace: "web", no_run: true },
+    });
+    const tool = toolsFor(cfg()).find((t) => t.name === "repo_add");
+    expect(tool?.description).toMatch(/no_run: true/);
+    const draft = toolsFor(cfg()).find((t) => t.name === "manifest_draft");
+    expect(draft?.description).toMatch(/no_run: true/);
+  });
+
   it("an allowed run that failed comes back as an error with what it said", async () => {
     const { api } = fakeApi([
       { state: "done", result: { ok: false, error: "port 3000 is taken" } },

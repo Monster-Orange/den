@@ -335,7 +335,13 @@ export function manifestDraft(
   p: string | undefined,
   rules: PathRules,
   validate: ManifestValidator,
-  opts: { name?: string; run?: string; down?: string; health?: string } = {},
+  opts: {
+    name?: string;
+    run?: string;
+    noRun?: boolean;
+    down?: string;
+    health?: string;
+  } = {},
 ): RepoAddResult {
   const check = checkOnboardPath(p, rules);
   if (!check.ok) return { ok: false, dryRun: true, error: check.error };

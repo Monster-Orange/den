@@ -7,7 +7,10 @@ import { describeContributor } from "../../src/ui/cli/applications-command.js";
 import {
   contributesTo,
   hasRuntime,
+  noRuntimeReason,
+  repoHasRuntime,
   repoKind,
+  runsNothing,
 } from "../../src/shared/repo-kind.js";
 import { v1ManifestSchema as ManifestSchema } from "../../src/shared/manifest/schema.js";
 import type { DerivedEdge } from "../../src/shared/environment-manager/derivation/types.js";
@@ -59,6 +62,38 @@ describe("repo kind", () => {
       ManifestSchema.safeParse({ name: "x", kind: "daemon", services: {} })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("issue 277: a repo that runs nothing has no runtime", () => {
+  it("no services and no compose stack: runs nothing; services: [] is the same", () => {
+    for (const m of [
+      "name: cfg\nservices: {}\n",
+      "name: cfg\nservices: []\n",
+      "name: cfg\n",
+    ]) {
+      const p = repoWith(m);
+      expect(repoHasRuntime(p)).toBe(false);
+      expect(noRuntimeReason(p)).toBe("runs nothing");
+    }
+  });
+
+  it("a service, a compose stack, or no manifest yet (Den can't tell) keeps its runtime", () => {
+    for (const p of [
+      repoWith("name: x\nservices: {x: {}}\n"),
+      repoWith("name: x\ncompose: {files: [compose.yaml]}\n"),
+      repoWith(),
+    ]) {
+      expect(repoHasRuntime(p)).toBe(true);
+      expect(noRuntimeReason(p)).toBeNull();
+    }
+    expect(runsNothing(null)).toBe(false);
+  });
+
+  it("a module or library says its kind, as before", () => {
+    const p = repoWith("name: feat\nkind: library\nservices: {}\n");
+    expect(repoHasRuntime(p)).toBe(false);
+    expect(noRuntimeReason(p)).toBe("library");
   });
 });
 

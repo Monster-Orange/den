@@ -694,8 +694,10 @@
               ? `<button class="cmd-btn logs-btn" data-repo="${s.repo}" data-service="${s.service}" data-type="logs">${t("svc.logs")}</button>`
               : "";
             const hasCaps = usableCmds.length > 0 || s.logs;
-            const emptyNote =
-              s.cloned === false
+            // Issue 277: a repo that runs nothing has no runtime of its own.
+            const emptyNote = s.runsNothing
+              ? t("svc.runsNothing.note")
+              : s.cloned === false
                 ? t("svc.notCloned.note")
                 : isSub
                   ? t("svc.sub.note")
@@ -707,6 +709,9 @@
               s.cloned === false
                 ? `<span class="badge" style="border-color:var(--warn);color:var(--warn)" title="${t("svc.notCloned.title")}">⬇ ${t("svc.notCloned")}</span>`
                 : "";
+            const noRuntimeBadge = s.runsNothing
+              ? `<span class="badge no-runtime" title="${esc(t("svc.runsNothing.title"))}">${esc(t("svc.noRuntime"))}</span>`
+              : "";
             const branchBadge = s.branch
               ? `<span class="badge branch">${s.branch}</span>`
               : "";
@@ -730,7 +735,7 @@
               </div>
               ${pinBtn(isSub ? addr : s.repo)}
             </div>
-            <div class="service-meta">${modeBadge}${branchBadge}${layersBadge}${unclonedBadge}</div>
+            <div class="service-meta">${modeBadge}${branchBadge}${layersBadge}${noRuntimeBadge}${unclonedBadge}</div>
             <div class="cmd-row">
               ${hasCaps ? cmdButtons + logsButton : `<span style="color:var(--muted);font-size:11px">${emptyNote}</span>`}
             </div>

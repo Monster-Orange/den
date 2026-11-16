@@ -705,6 +705,10 @@ function stoppedHtml(r, wsTag = false) {
     `</button>` +
     `<span class="agacts">${first}${more}</span>` +
     (callout ? `<div class="agcallout">${callout}</div>` : "") +
+    // Issue 278: deliveries still held after a loop: Clear.
+    (compactingHtml(r)
+      ? `<div class="agcallout">${compactingHtml(r)}</div>`
+      : "") +
     hubWorkHtml(r) +
     `</div>`
   );
@@ -753,6 +757,84 @@ export function hubWorkHtml(r, tr = t) {
   );
 }
 
+/** Issue 278: "840 KB" (whole KB; under 1 KB: bytes). */
+function sizeText(bytes) {
+  return bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`;
+}
+
+/**
+ * Issue 278: the agent's instruction files were over the share of its
+ * context at its last start: a tag, its tooltip naming the largest file.
+ */
+export function instructionsTag(r, tr = t) {
+  const i = r?.kind === "agent" ? r.instructions : null;
+  if (!i) return "";
+  const tip = tr("ag.ins.tip", {
+    size: sizeText(i.totalBytes),
+    share: i.sharePercent,
+    path: i.largest?.path ?? "",
+    big: sizeText(i.largest?.bytes ?? 0),
+  });
+  return `<span class="tagx warn" data-instructions title="${esc(tip)}">${esc(tr("ag.ins.tag"))}</span>`;
+}
+
+/** Issue 278: "Compacting repeatedly" (a loop now) as a tag. */
+export function compactingTag(r, tr = t) {
+  const c = r?.kind === "agent" ? r.compacting : null;
+  if (!c?.active) return "";
+  return `<span class="tagx warn" data-compacting title="${esc(tr("ag.ctx.looping", { n: c.count }))}">${esc(tr("ag.ctx.tag"))}</span>`;
+}
+
+/**
+ * Issue 278: under the row of an agent stuck compacting: what is
+ * happening, the likely cause (its instruction files, when its start's
+ * check warned), Stop (the same Stop as its pane's) and, when Den holds its
+ * deliveries, Clear. Nothing when there is neither a loop nor a hold.
+ */
+export function compactingHtml(r, tr = t) {
+  const c = r?.kind === "agent" ? r.compacting : null;
+  if (!c || !(c.active || c.paused)) return "";
+  const i = r.instructions;
+  const cause = i
+    ? tr("ag.ctx.causeFiles", {
+        size: sizeText(i.totalBytes),
+        share: i.sharePercent,
+        path: i.largest?.path ?? "",
+        big: sizeText(i.largest?.bytes ?? 0),
+      })
+    : tr("ag.ctx.causeOther");
+  const said = [
+    c.active ? tr("ag.ctx.looping", { n: c.count }) : "",
+    c.active ? cause : "",
+    c.paused ? tr("ag.ctx.held") : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const stop =
+    c.active && (r.state === "running" || r.state === "stopping")
+      ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(tr("ag.stopName", { id: r.agent }))}">${esc(tr("ag.stop"))}</button>`
+      : "";
+  const clear = `<button type="button" class="den-btn sm" data-act="ctx-clear" aria-label="${esc(tr("ag.ctx.clearName", { id: r.agent }))}">${esc(tr(c.paused ? "ag.ctx.clearHeld" : "ag.ctx.clear"))}</button>`;
+  return (
+    `<span class="agcant" data-compacting-msg>${esc(said)}</span>` +
+    stop +
+    clear
+  );
+}
+
+/** Issue 278: a person looked: the loop is over for now; held deliveries go. */
+async function clearCompacting(r, button) {
+  button.disabled = true;
+  try {
+    await api("POST", agentPath(r, "compacting-clear"));
+    window.denShell?.toast?.(t("ag.ctx.cleared", { id: r.agent }));
+  } catch (err) {
+    button.disabled = false;
+    window.denShell?.errorToast?.(err);
+  }
+  await refresh();
+}
+
 /** NT-3b: what the "waiting" badge says: why, when the server knows. */
 function waitingText(r) {
   const k = r.waitingWhy ? `ag.waiting.${r.waitingWhy}` : "";
@@ -796,9 +878,18 @@ function rowHtml(r) {
   const gateTag = gateText
     ? `<span class="tagx" data-gate-tag>${esc(gateText)}</span>`
     : "";
+  // Issue 278: compacting repeatedly; instruction files over the share.
+  const ctxTags = compactingTag(r) + instructionsTag(r);
   const tags =
-    rotTag || revokedTag || ovTags || wTag || mTag || modeTag || gateTag
-      ? `<span class="agtags">${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
+    rotTag ||
+    revokedTag ||
+    ovTags ||
+    wTag ||
+    mTag ||
+    modeTag ||
+    gateTag ||
+    ctxTags
+      ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -817,8 +908,11 @@ function rowHtml(r) {
   // D28: a running agent whose rotation is due: its callout, with buttons
   // (before, only a tag: nothing to press).
   // MODE-3: Restart to apply, under a row whose mode differs.
+  // Issue 278: compacting repeatedly: why, Stop, and Clear.
   const callout =
-    r.kind === "agent" ? rotCalloutHtml(r) + modeApplyHtml(r) : "";
+    r.kind === "agent"
+      ? rotCalloutHtml(r) + modeApplyHtml(r) + compactingHtml(r)
+      : "";
   // D32: the helpers it started in its own session, under it. #80: only
   // once its badge is opened (closed by default, the agent in front too).
   const hOpen = r.kind === "agent" && st.helpersOpen.has(helperKey(r));
@@ -2093,6 +2187,9 @@ function paintBar(p) {
       ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
       : "") +
     apiOnlyTag(r) +
+    // Issue 278: compacting repeatedly (Stop is on this bar); instructions.
+    compactingTag(r) +
+    instructionsTag(r) +
     mcpStaleTag(r, true) +
     modeTagHtml(r, true) +
     whereTag(r, true) +
@@ -5288,6 +5385,10 @@ export async function mountAgentsPage(root) {
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
       else if (which === "mode-apply") void applyMode(r, act);
+      // Issue 278: the row's Stop is its pane's Stop; Clear ends the hold.
+      else if (which === "stop")
+        void oneAtATime(r, "stop", () => stopAgentNow(r, act));
+      else if (which === "ctx-clear") void clearCompacting(r, act);
       else if (which === "resume" || which === "fresh")
         void restartRow(r, which, act);
       else if (which === "remove") void removeRow(r, act);
