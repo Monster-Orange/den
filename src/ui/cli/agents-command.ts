@@ -84,6 +84,7 @@ import { checkHandoff } from "../../shared/agents/handoff.js";
 import { handoffFile, reasonText } from "../../shared/agents/rotation.js";
 import { shownDepths, sortHelpers } from "../../shared/agents/helpers.js";
 import { isConfigError } from "../../shared/config-error.js";
+import { auditConfig } from "../../shared/config-audit.js";
 import {
   parseRotateValue,
   type OverrideScope,
@@ -643,6 +644,47 @@ export function mustBeAgent(
 }
 
 /**
+ * Issue 216: every restart, stop and resume from the CLI leaves one audit
+ * row (the web server's audit.jsonl, as the page's and MCP's do): who (the
+ * person running this), which agent, which project, and what came of it.
+ * `run` answers the exit code and the outcome's words; a throw is recorded
+ * as refused (or still busy) with why, then thrown on.
+ */
+async function audited(
+  d: AgentsResolved,
+  verb: "restart" | "stop" | "resume",
+  id: string,
+  ws: string | undefined,
+  run: () => Promise<{ code: number; outcome: string; reason?: string }>,
+  how = "",
+): Promise<number> {
+  const project = () => ws ?? readRecord(d.stateDir(), id)?.workspace ?? "?";
+  const row = (outcome: string, reason?: string) =>
+    auditConfig(
+      {
+        verb: "agents",
+        detail: `${verb} ${id} in ${project()}${how}: ${outcome}${isAgentTokenEnv(d.env) ? " · from an agent's terminal" : ""}`,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      d.stateDir(),
+    );
+  try {
+    const r = await run();
+    row(r.outcome, r.reason);
+    return r.code;
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    row(
+      e instanceof AgentError && e.code === "still_busy"
+        ? "still busy"
+        : "refused",
+      why,
+    );
+    throw e;
+  }
+}
+
+/**
  * D44: `agents restart <id> [-w <ws>] [--now]`: the same conversation,
  * launched again with what it gets now. A person's only.
  */
@@ -657,21 +699,39 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
   const [id] = p.positional;
   if (!id) throw new UsageError(`${where} needs <id>`);
   const now = p.flags["--now"] === true;
-  mustBeAgent(d, id, workspaceFlag(where, p));
-  if (!now) d.out(`waiting for agent ${id}'s turn to end…`);
-  const s = await restartAgent(
+  const ws = workspaceFlag(where, p);
+  return audited(
     d,
+    "restart",
     id,
-    workspaceFlag(where, p),
-    now ? "now" : "after-turn",
-    { askIfJob: true },
-  );
-  return report(
-    d,
-    s,
-    s.fresh
-      ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
-      : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+    ws,
+    async () => {
+      mustBeAgent(d, id, ws);
+      if (!now) d.out(`waiting for agent ${id}'s turn to end…`);
+      const s = await restartAgent(d, id, ws, now ? "now" : "after-turn", {
+        askIfJob: true,
+      });
+      if (s.already) {
+        d.out(`agent ${s.rec.id} was ${s.already.note}`);
+        return {
+          code: 0,
+          outcome: `already restarted by another request at ${s.already.at}`,
+        };
+      }
+      const code = report(
+        d,
+        s,
+        s.fresh
+          ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
+          : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+      );
+      return {
+        code,
+        outcome: s.early ? "exited at once" : "restarted",
+        ...(s.early ? { reason: "exited at once" } : {}),
+      };
+    },
+    now ? " (now)" : " (at its next idle)",
   );
 }
 
@@ -863,45 +923,59 @@ async function stop(args: string[], d: AgentsResolved): Promise<number> {
     "agents stop",
     args.filter((a) => a !== "--no-wait"),
   );
-  const {
-    rec,
-    session: s,
-    stillStopping,
-  } = await stopAgent(d, id, ws, {
-    wait,
-  });
-  if (stillStopping) {
-    d.err(
-      `${rec.id} is still stopping (sent TERM to ${s!.name}, pid ${s!.pid}; not ended after ${d.stopWaitMs / 1000} s)`,
+  return audited(d, "stop", id, ws, async () => {
+    const {
+      rec,
+      session: s,
+      stillStopping,
+    } = await stopAgent(d, id, ws, {
+      wait,
+    });
+    if (stillStopping) {
+      const why = `not ended after ${d.stopWaitMs / 1000} s`;
+      d.err(
+        `${rec.id} is still stopping (sent TERM to ${s!.name}, pid ${s!.pid}; ${why})`,
+      );
+      return { code: 1, outcome: "still stopping", reason: why };
+    }
+    d.out(
+      s
+        ? `stopped agent ${rec.id} (sent TERM to ${s.name}, pid ${s.pid}${wait && d.stopWaitMs > 0 ? "; it has ended" : ""})`
+        : `agent ${rec.id} was not running; marked stopped`,
     );
-    return 1;
-  }
-  d.out(
-    s
-      ? `stopped agent ${rec.id} (sent TERM to ${s.name}, pid ${s.pid}${wait && d.stopWaitMs > 0 ? "; it has ended" : ""})`
-      : `agent ${rec.id} was not running; marked stopped`,
-  );
-  return 0;
+    return { code: 0, outcome: s ? "stopped" : "stopped (was not running)" };
+  });
 }
 
 async function resume(args: string[], d: AgentsResolved): Promise<number> {
   if (args.includes("--all-interrupted")) return resumeAll(args, d);
   const { id, ws } = idAndWorkspace("agents resume", args);
-  // D28: a due agent under auto relaunches from its handoff instead.
-  const r = await resumeOrRelaunch(d, id, ws);
-  if (r.kind === "relaunched")
-    return report(
-      d,
-      r.s,
-      `relaunched agent ${r.s.rec.id} from its handoff (the last session ended after ${r.s.why}) as ${r.s.rec.sessionName} in ${r.s.rec.cwd}`,
-    );
-  const s = r.s;
-  if (s.fresh) d.out(`agent ${s.rec.id}: ${FRESH_NOTE}`);
-  return report(
-    d,
-    s,
-    `${s.fresh ? "started" : "resumed"} agent ${s.rec.id} as ${s.rec.sessionName} in ${s.rec.cwd}`,
-  );
+  return audited(d, "resume", id, ws, async () => {
+    // D28: a due agent under auto relaunches from its handoff instead.
+    const r = await resumeOrRelaunch(d, id, ws);
+    const early = r.s.early ? { reason: "exited at once" } : {};
+    if (r.kind === "relaunched")
+      return {
+        code: report(
+          d,
+          r.s,
+          `relaunched agent ${r.s.rec.id} from its handoff (the last session ended after ${r.s.why}) as ${r.s.rec.sessionName} in ${r.s.rec.cwd}`,
+        ),
+        outcome: "relaunched from its handoff",
+        ...early,
+      };
+    const s = r.s;
+    if (s.fresh) d.out(`agent ${s.rec.id}: ${FRESH_NOTE}`);
+    return {
+      code: report(
+        d,
+        s,
+        `${s.fresh ? "started" : "resumed"} agent ${s.rec.id} as ${s.rec.sessionName} in ${s.rec.cwd}`,
+      ),
+      outcome: s.fresh ? "started fresh, same id" : "resumed",
+      ...early,
+    };
+  });
 }
 
 /** `agents relaunch <id> [-w <ws>]` (den#4). */

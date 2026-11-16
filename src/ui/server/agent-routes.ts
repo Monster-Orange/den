@@ -353,6 +353,16 @@ function sessionTitleOf(
 }
 
 /** A started or resumed agent's answer: its record, or its early exit. */
+/**
+ * Issue 216: a restart's audit detail says when another request had
+ * already restarted it (then this one didn't).
+ */
+function restarted(what: string, s: { already?: { at: string } }): string {
+  return s.already
+    ? `${what}: already restarted by another request at ${s.already.at}`
+    : what;
+}
+
 function sendStarted(
   res: http.ServerResponse,
   s: Started & { fresh?: boolean },
@@ -1226,7 +1236,8 @@ export async function handleAgentRoutes(
           "after-turn",
           deps.personaWait ?? {},
         ).then(
-          (s) => audit(what, s.early ? "exited at once" : undefined),
+          (s) =>
+            audit(restarted(what, s), s.early ? "exited at once" : undefined),
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
@@ -1234,8 +1245,17 @@ export async function handleAgentRoutes(
         return true;
       }
       const s = await restartAgent(d, id!, ws, "now");
-      audit(what, s.early ? "exited at once" : undefined);
-      sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
+      audit(restarted(what, s), s.early ? "exited at once" : undefined);
+      sendStarted(
+        res,
+        s,
+        d,
+        s.already
+          ? { note: s.already.note, already: s.already.at }
+          : s.fresh
+            ? { note: FRESH_NOTE }
+            : {},
+      );
     } else if (verb === "move") {
       // D72: {to, when}: to another workspace, same conversation.
       const body = await jsonBody(req);
@@ -2231,7 +2251,7 @@ async function staleRoute(
         "after-turn",
         deps.personaWait ?? {},
       ).then(
-        (s) => audit(one, s.early ? "exited at once" : undefined),
+        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
         (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
       );
     }
