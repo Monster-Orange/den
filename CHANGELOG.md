@@ -26,7 +26,7 @@ config and manifest changes a distribution must make to move to it under
 - At phone width, stopped agents get Reorder with Up and Down too, like
   running ones, when a project has two or more to order (issue 226).
 
-## [0.4.58] - unreleased
+## [0.4.58] - 2026-11-16
 
 ### Fixed
 
