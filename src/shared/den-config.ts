@@ -497,6 +497,22 @@ export interface UserConfig {
     host_timeout_seconds?: unknown;
     refresh_timeout_seconds?: unknown;
   };
+  /**
+   * Issue 278: agents stuck compacting and instruction files that eat the
+   * context (context-watch.ts): compaction_loop_count (3) automatic
+   * compactions within compaction_loop_minutes (10) ring the bell;
+   * pause_after_loop (false) holds new deliveries until a person clears
+   * it; instruction files over instruction_share_percent (15) of the
+   * model's context (context_tokens, 200000, when Den doesn't know the
+   * model's) warn.
+   */
+  agent_context?: {
+    compaction_loop_count?: unknown;
+    compaction_loop_minutes?: unknown;
+    pause_after_loop?: unknown;
+    instruction_share_percent?: unknown;
+    context_tokens?: unknown;
+  };
   panes?: {
     reconnect_seconds?: unknown;
     reconnect_max_seconds?: unknown;
