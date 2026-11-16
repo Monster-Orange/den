@@ -32,6 +32,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Hub has its own section in Settings. Settings › Hub holds Hub's
+  address, the connection (with the company it's linked to), what agents
+  get, linking projects, GitHub access and Hub's notification switches.
+  You can set, change or clear Hub's address there: it's checked as you
+  type, and Save keeps it and restarts Den. A broken address can now be
+  fixed there too, without editing a file. Changing the address while
+  connected disconnects from the old Hub first, and Den never sends a
+  token to a Hub that didn't issue it.
 <<<<<<< HEAD
 - Den's own update no longer waits silently. When it waits, the log and
   the audit say why, once each time the reason changes. When the Den

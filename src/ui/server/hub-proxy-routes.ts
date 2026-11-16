@@ -216,7 +216,7 @@ export async function handleHubProxy(
       res,
       {
         error:
-          "Hub isn't connected here. The person connects it in Settings › Agents › Hub.",
+          "Hub isn't connected here. The person connects it in Settings › Hub.",
         code: "hub_not_connected",
       },
       503,

@@ -799,7 +799,7 @@
     "set.graph.panelWidth": "Panel de detalles",
     "set.workspace.hub": "Proyecto de Hub",
     "hubp.offline": "Esta instalación aún no está conectada a Hub.",
-    "hubp.connect": "Conéctala en Agentes › Hub",
+    "hubp.connect": "Conéctala en Ajustes › Hub",
     "hubp.suggested": "Sugeridos por Hub",
     "hubp.others": "Otros proyectos de Hub de tu empresa",
     "hubp.whyRepo": "tiene estos repos",
@@ -2163,6 +2163,22 @@
     "set.ui.rot.never": "nunca",
     "set.ui.rot.add": "Añadir excepción",
     "set.ui.hub.badConfig": "hub en user.yml no es válido",
+    "setc.hub": "Hub",
+    "setc.hub.d":
+      "Den Hub es donde viven los documentos, maquetas, comentarios y aprobaciones de tu empresa. Conecta esta instalación y cada agente podrá buscar y publicar allí, y recibirá los comentarios y decisiones sobre su trabajo. Consulta docs/hub.md en la documentación de Den.",
+    "set.ui.hub.addrNotUrl":
+      "Eso no es una dirección web. Empieza por https://",
+    "set.ui.hub.addrHttps":
+      "La dirección de Hub debe empezar por https:// (http:// solo para esta máquina).",
+    "set.ui.hub.save": "Guardar",
+    "set.ui.hub.clear": "Borrar",
+    "set.ui.hub.saveNote":
+      "Guardar la conserva en tu configuración y reinicia Den. Borrar desconecta; los agentes pierden las herramientas de Hub al reiniciarse.",
+    "set.ui.hub.empty":
+      "Aún no hay Hub. Escribe la dirección del Hub de tu empresa y pulsa Conectar. Guardar solo conserva la dirección.",
+    "set.ui.hub.saved":
+      "Guardado. Den se reinició con la nueva dirección de Hub.",
+    "set.ui.hub.cleared": "Borrado. Den se reinició sin Hub.",
     "set.ui.hub.address": "Dirección de Hub",
     "set.ui.hub.connect": "Conectar",
     "set.ui.hub.connectLinks":

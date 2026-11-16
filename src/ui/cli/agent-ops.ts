@@ -1403,7 +1403,7 @@ export async function agentTools(
       : !connected
         ? loaded
           ? "Hub was disconnected; its tools go when the person restarts you from Den."
-          : "This Den is not connected to Hub. A person connects it in Settings › Agents › Hub."
+          : "This Den is not connected to Hub. A person connects it in Settings › Hub."
         : restart
           ? "Hub is connected, but you started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
           : "Hub is connected and its tools (hub_*) are yours.";

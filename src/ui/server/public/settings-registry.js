@@ -84,6 +84,15 @@ export const DEN_SETTING_CATEGORIES = [
       "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
   },
   {
+    // #267: Hub has a section of its own: its address, the connection,
+    // what agents get from it, and its notifications.
+    id: "hub",
+    label: "Hub",
+    order: 55.5,
+    description:
+      "Den Hub is where your company's docs, mocks, comments and approvals live. Connect this install, and every agent can search and publish there, and gets the comments and decisions on its work. See docs/hub.md in Den's docs.",
+  },
+  {
     // Bell v6 (0.4.45): the person's bell.
     id: "notifications",
     label: "Notifications",
@@ -294,7 +303,8 @@ function bellRows() {
   return [
     ...BELL_ROWS.map(([k, label, description]) => ({
       id: `notifications.${k}`,
-      category: "notifications",
+      // #267: Hub's own kinds sit in Settings › Hub.
+      category: HUB_BELL_KINDS.has(k) ? "hub" : "notifications",
       label,
       description,
       keywords: ["notifications", "bell", "badge", "kinds", k],
@@ -985,6 +995,9 @@ function drawRestart(host) {
     .querySelector("#set-restart-den")
     .addEventListener("click", () => void restartDen({ from: "settings" }));
 }
+
+/** #267: the bell's kinds that come from Hub, shown in Settings › Hub. */
+const HUB_BELL_KINDS = new Set(["hub", "pick", "shared"]);
 
 export const DEN_SETTINGS = [
   {
@@ -1788,7 +1801,7 @@ export const DEN_SETTINGS = [
 
   {
     id: "agents.hub",
-    category: "agents",
+    category: "hub",
     label: "Hub",
     description:
       "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its company comes from this install's token, its Hub project from Project setup › Hub project.",
@@ -1806,14 +1819,14 @@ export const DEN_SETTINGS = [
     ],
     scope: "user",
     control: { type: "custom", render: renderHub },
-    keys: ["hub_allow_tools"],
+    keys: ["hub_allow_tools", "hub_url"],
     read: () => null,
     write: (v, ctx) => ctx.post({ hub_allow_tools: v }),
   },
 
   {
     id: "agents.hub_link_all",
-    category: "agents",
+    category: "hub",
     // Issue 167 (mock v6 B): the anchor stays; the row is Unclear matches.
     label: "Unclear matches",
     description:
@@ -2055,7 +2068,7 @@ export const DEN_SETTINGS = [
   {
     // H5: how much of the org Den Hub's GitHub App can read, live from Hub.
     id: "distribution.hub_github",
-    category: "distribution",
+    category: "hub",
     label: "Den Hub's GitHub access",
     description:
       "How many of your company's GitHub repos Den Hub can read, asked live from Hub. Den Hub reads a repo only through your company's GitHub App install; the button opens GitHub to install it or change its repos. When you come back, Den sends its projects to Hub again and the repos link by themselves.",
@@ -2478,7 +2491,7 @@ const HUB_FLASH = {
 };
 
 /**
- * HUB-1.5/1.7: Settings › Agents › Hub (b: GET /api/hub; flash: what the
+ * HUB-1.5/1.7: Settings › Hub (b: GET /api/hub; flash: what the
  * last Connect came to). Not connected: Hub's address and Connect.
  * Connected: the company (a link), role, who signed in, this install,
  * Disconnect. A token Hub refuses offers Reconnect; a role that no longer
@@ -2506,6 +2519,50 @@ function editionsHtml(e) {
   return lines.length ? `<div class="hub-eds">${lines.join("")}</div>` : "";
 }
 
+/**
+ * #267: what's wrong with an address for Hub, in the person's words, or
+ * null. The same rule as the server's hubUrlProblem: https, or http only
+ * to this machine. Empty is fine (it clears the address).
+ */
+export function hubAddressProblem(v) {
+  const url = String(v ?? "").trim();
+  if (!url) return null;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return L(
+      "set.ui.hub.addrNotUrl",
+      "That isn't a web address. It starts with https://",
+    );
+  }
+  const local =
+    ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ||
+    u.hostname.endsWith(".localhost");
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && local))
+    return L(
+      "set.ui.hub.addrHttps",
+      "Hub's address must start with https:// (http:// only for this machine).",
+    );
+  return null;
+}
+
+/** #267: Hub's address, with Save and Clear, in every state but the first. */
+function hubAddressHtml(b) {
+  return (
+    `<form class="hub-addr" data-hub-addr>` +
+    `<label for="hub-addr">${escR(L("set.ui.hub.address", "Hub's address"))}</label> ` +
+    `<input type="url" id="hub-addr" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
+    ` <button type="submit" class="btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
+    (b.url
+      ? ` <button type="button" class="btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
+      : "") +
+    `</form>` +
+    `<p class="set-note set-warn" data-hub-addr-problem role="status" hidden></p>` +
+    `<p class="set-note" data-hub-addr-note>${escR(L("set.ui.hub.saveNote", "Save keeps it in your settings and restarts Den. Clear disconnects; agents lose Hub's tools when they next restart."))}</p>`
+  );
+}
+
 export function hubHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
@@ -2521,7 +2578,10 @@ export function hubHtml(b, flash, t = (k) => k) {
       note(
         b.problem || L("set.ui.hub.badConfig", "hub in user.yml is not valid"),
         "data-hub-problem",
-      )
+      ) +
+      // #267: fix it here, no file to edit.
+      hubAddressHtml(b) +
+      `<div class="rt-err" role="alert" hidden></div>`
     );
   if (state === "no_token")
     return (
@@ -2530,7 +2590,16 @@ export function hubHtml(b, flash, t = (k) => k) {
       `<label for="hub-url">${escR(L("set.ui.hub.address", "Hub's address"))}</label> ` +
       `<input type="url" id="hub-url" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
       ` <button type="submit" class="btn sm primary" data-hub-action="connect">${escR(L("set.ui.hub.connect", "Connect"))}</button>` +
+      ` <button type="button" class="btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
+      (b.url
+        ? ` <button type="button" class="btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
+        : "") +
       `</form>` +
+      `<p class="set-note set-warn" data-hub-addr-problem role="status" hidden></p>` +
+      // #267: with no Hub yet, what it is.
+      (b.url
+        ? ""
+        : `<p class="set-note" data-hub-empty>${escR(L("set.ui.hub.empty", "No Hub yet. Type your company's Hub address, then Connect. Save only keeps the address."))}</p>`) +
       `<p class="set-note" data-hub-connect-does>${escR(L("set.ui.hub.connectLinks", "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you."))}</p>` +
       `<p class="set-note">${escR(L("set.ui.hub.connectNote", "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown."))}</p>` +
       // 0.4.45: the two editions, until this install is connected, where
@@ -2597,6 +2666,7 @@ export function hubHtml(b, flash, t = (k) => k) {
     )}</p>`;
   return (
     flashHtml +
+    hubAddressHtml(b) +
     `<dl class="hub-st" data-hub>` +
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
@@ -2616,6 +2686,90 @@ export function hubHtml(b, flash, t = (k) => k) {
     `<div class="rt-err" role="alert" hidden></div>` +
     tools
   );
+}
+
+/**
+ * #267: Hub's address. The check as you type; Save writes it to your
+ * settings and restarts Den, then the row says where it stands. Clear
+ * disconnects first (Hub revokes the key; unreachable, it's removed here
+ * anyway), clears it and restarts.
+ */
+function wireHubAddress(host, ctx, err, busy) {
+  const input =
+    host.querySelector("#hub-addr") || host.querySelector("#hub-url");
+  const problem = host.querySelector("[data-hub-addr-problem]");
+  const save = host.querySelector('[data-hub-action="save-url"]');
+  const clear = host.querySelector('[data-hub-action="clear-url"]');
+  if (!input || !save) return;
+  const check = () => {
+    const p = hubAddressProblem(input.value);
+    if (problem) {
+      problem.hidden = !p;
+      problem.textContent = p || "";
+    }
+    save.disabled = !!p || !input.value.trim();
+    return p;
+  };
+  input.addEventListener("input", check);
+  check();
+  const t = (k, v) => ctx.shell.t(k, v);
+  const apply = async (url, button) => {
+    busy(true);
+    err("");
+    try {
+      const r = await ctx.shell.busyAction(
+        "save",
+        (headers) =>
+          ctx.shell.api("POST", "/api/settings", { hub_url: url }, { headers }),
+        { button, onFail: (e) => err(e?.message || t("busy.saveF")) },
+      );
+      if (!r) return busy(false);
+      // Den reads Hub's address at start: restart it, and wait.
+      await restartDen({ confirm: false, from: "settings" });
+      await drawHub(host, ctx, null, {
+        ok: true,
+        message: url
+          ? L(
+              "set.ui.hub.saved",
+              "Saved. Den restarted with Hub's new address.",
+            )
+          : L("set.ui.hub.cleared", "Cleared. Den restarted without Hub."),
+      });
+    } catch (e) {
+      busy(false);
+      err(e?.message || t("busy.saveF"));
+    }
+  };
+  // Connected: the old Hub revokes its token first (unreachable: removed
+  // here anyway). The server drops a token whose address changed too.
+  const disconnectFirst = () =>
+    host.querySelector("[data-hub]")
+      ? ctx.shell
+          .api("POST", "/api/hub/disconnect", {})
+          .catch(() =>
+            ctx.shell.api("POST", "/api/hub/disconnect", { force: true }),
+          )
+          .catch(() => undefined)
+      : Promise.resolve();
+  const was = input.defaultValue.trim().replace(/\/+$/, "");
+  const submit = async (ev) => {
+    ev?.preventDefault?.();
+    if (check()) return;
+    const url = input.value.trim().replace(/\/+$/, "");
+    if (url !== was) {
+      busy(true);
+      await disconnectFirst();
+    }
+    void apply(url, save);
+  };
+  save.addEventListener("click", submit);
+  host.querySelector("[data-hub-addr]")?.addEventListener("submit", submit);
+  clear?.addEventListener("click", async () => {
+    busy(true);
+    err("");
+    await disconnectFirst();
+    await apply(null, clear);
+  });
 }
 
 /**
@@ -3747,6 +3901,7 @@ function wireHub(host, ctx) {
       ev.preventDefault();
       connect();
     });
+  wireHubAddress(host, ctx, err, busy);
   host
     .querySelectorAll('button[data-hub-action="connect"]')
     .forEach(

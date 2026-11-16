@@ -701,6 +701,18 @@
     "set.ui.rot.never": "never",
     "set.ui.rot.add": "Add override",
     "set.ui.hub.badConfig": "hub in user.yml is not valid",
+    "set.ui.hub.addrNotUrl":
+      "That isn't a web address. It starts with https://",
+    "set.ui.hub.addrHttps":
+      "Hub's address must start with https:// (http:// only for this machine).",
+    "set.ui.hub.save": "Save",
+    "set.ui.hub.clear": "Clear",
+    "set.ui.hub.saveNote":
+      "Save keeps it in your settings and restarts Den. Clear disconnects; agents lose Hub's tools when they next restart.",
+    "set.ui.hub.empty":
+      "No Hub yet. Type your company's Hub address, then Connect. Save only keeps the address.",
+    "set.ui.hub.saved": "Saved. Den restarted with Hub's new address.",
+    "set.ui.hub.cleared": "Cleared. Den restarted without Hub.",
     "set.ui.hub.address": "Hub's address",
     "set.ui.hub.connect": "Connect",
     "set.ui.hub.connectLinks":
@@ -900,6 +912,9 @@
     "set.agents.helpers_shown.o.3": "3",
     "set.agents.helpers_shown.o.5": "5",
     "set.agents.helpers_shown.o.10": "10",
+    "setc.hub": "Hub",
+    "setc.hub.d":
+      "Den Hub is where your company's docs, mocks, comments and approvals live. Connect this install, and every agent can search and publish there, and gets the comments and decisions on its work. See docs/hub.md in Den's docs.",
     "setc.notifications": "Notifications",
     "setc.notifications.d":
       "What shows in the bell and counts on its badge. These are your own choices. Off means no bell item and no badge. The activity trail still records it.",
@@ -1500,7 +1515,7 @@
     "set.graph.panelWidth": "Details panel",
     "set.workspace.hub": "Hub project",
     "hubp.offline": "This install isn't connected to Hub yet.",
-    "hubp.connect": "Connect in Agents › Hub",
+    "hubp.connect": "Connect in Settings › Hub",
     "hubp.suggested": "Suggested by Hub",
     "hubp.others": "Your company's other Hub projects",
     "hubp.whyRepo": "has these repos",

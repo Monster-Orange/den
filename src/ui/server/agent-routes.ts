@@ -2171,7 +2171,7 @@ async function hubConnectRoute(
         res,
         {
           ok: false,
-          error: "Connect from Settings › Agents › Hub in a browser",
+          error: "Connect from Settings › Hub in a browser",
         },
         400,
       );
