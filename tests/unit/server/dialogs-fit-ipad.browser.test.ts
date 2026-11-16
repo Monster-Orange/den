@@ -59,10 +59,12 @@ beforeAll(async () => {
   s = await startAgentsPageServer();
 }, 60_000);
 
+// Closing two remote browsers and the server: more than Jest's default 10 s
+// on a loaded runner, as the setup above has its own 60 s.
 afterAll(async () => {
   for (const b of Object.values(browsers)) await b.close();
   await s?.stop();
-});
+}, 60_000);
 
 /** iPad's default for a dialog, ahead of every page stylesheet. */
 const IPAD_DEFAULT = () => {
