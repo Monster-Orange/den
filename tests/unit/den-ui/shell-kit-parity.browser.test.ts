@@ -268,6 +268,13 @@ async function settle(p: Page): Promise<void> {
     )
     .catch(() => {});
   await p.evaluate(() => document.fonts.ready.then(() => true));
+  // The sign-in toast ("This device is signed in to …") stays 2.2 s after
+  // the page opens: gone before any shot, or a slow run catches it.
+  await p
+    .waitForFunction(() => !document.querySelector(".den-toast"), undefined, {
+      timeout: 10_000,
+    })
+    .catch(() => {});
   await p.waitForTimeout(400);
 }
 

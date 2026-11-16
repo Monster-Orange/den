@@ -55,7 +55,6 @@ import {
   setEntries,
 } from "./whatsnew.js";
 import { configureReport, openReport } from "./report.js";
-import { configureShots } from "./report-shot.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy } from "./busy.js";
 
@@ -80,7 +79,6 @@ export function configure(o = {}) {
     ...(o.whatsNew || {}),
   });
   const r = o.report || {};
-  if (r.library) configureShots({ library: r.library });
   configureReport({ lang, adapter: ad, ...r });
   if (ad.request) configureBusy({ request: ad.request });
 }

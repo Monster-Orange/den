@@ -25,8 +25,10 @@
  *               with the product's words), for the slow calls
  *     mine()    opens "My reports" (the link is hidden without it)
  *     page()    the page's name for the Page section (else its path)
- *     screenshot  false: no screenshot step (report-shot.js; its library
- *               is configureShots({ library }))
+ *     screenshot  false: no screenshot step (report-shot.js, loaded when
+ *               a report opens)
+ *     library   html-to-image's URL on the product's origin (the
+ *               screenshot's library)
  *   openReport({ prefill?, draft? })   opens it (one at a time: a second
  *               call focuses the first). prefill: { kind, title,
  *               description } (a per-item "Report this …" button)
@@ -42,6 +44,7 @@ const cfg = {
   mine: null,
   page: null,
   screenshot: true,
+  library: "",
 };
 const lang = () => (typeof cfg.lang === "function" ? cfg.lang() : cfg.lang);
 const t = (key, vars) => kitT(lang(), key, vars);
@@ -238,9 +241,16 @@ export async function openReport(opts = {}) {
   const [info, diag, shots] = await Promise.all([
     ad.info ? Promise.resolve(ad.info()).catch(() => ({})) : {},
     ad.diagnostics ? Promise.resolve(ad.diagnostics()).catch(() => ({})) : {},
+    // Loaded only when a report opens: a page without the screenshot
+    // module (or a failed load) still has Report, with no screenshot.
     cfg.screenshot === false
       ? null
-      : import("./report-shot.js").catch(() => null),
+      : import("./report-shot.js")
+          .then((m) => {
+            if (cfg.library) m.configureShots({ library: cfg.library });
+            return m;
+          })
+          .catch(() => null),
     ensureCss(),
   ]);
   st.info = info || {};
