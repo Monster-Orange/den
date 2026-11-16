@@ -15,8 +15,9 @@
  * 4. reportButtonHtml({ label, prefill }): a row's own "Report this"
  *    button, its words and name; a click opens Report filled from it.
  * 5. (0.6.4) Showing the update pill leaves the pinned top bar's pixels as
- *    they were: in Chromium the pill's blur re-drew the fixed bar's text
- *    (the product's mark and name) a shade differently.
+ *    they were: in Chromium the pill's glass re-drew the fixed bar's text
+ *    (the product's mark and name) a shade differently. The bar is its
+ *    own layer, and a slot's absolute menu still drops below it, unclipped.
  *
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -318,5 +319,30 @@ for (const engine of ["chromium", "webkit"]) {
         expect(hidden.equals(shown)).toBe(true);
         await p.context().close();
       });
+
+    it("a menu in the bar's start slot drops below the bar, unclipped", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, { width: 1280, height: 800 });
+      await p.evaluate(() => {
+        const top = document.querySelector(".den-top")!;
+        const slot = document.createElement("details");
+        slot.id = "sw";
+        slot.style.position = "relative";
+        slot.innerHTML =
+          '<summary>Switch</summary><ul id="sw-menu" style="position:absolute;top:100%;left:0;height:200px;width:180px;margin:0;background:red"></ul>';
+        top.insertBefore(slot, top.firstChild!.nextSibling);
+        (slot as HTMLDetailsElement).open = true;
+      });
+      const m = await p.evaluate(() => {
+        const r = document.getElementById("sw-menu")!.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + 20, r.bottom - 10);
+        return { bottom: r.bottom, hit: at?.id ?? "" };
+      });
+      expect(m.bottom).toBeGreaterThan(200);
+      // What is drawn there is the menu: not clipped by the bar.
+      expect(m.hit).toBe("sw-menu");
+      await p.context().close();
+    });
   });
 }

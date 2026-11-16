@@ -203,12 +203,17 @@ reason does not count. With no DIVERGE.md, every copy fails.
 
 ## 0.6.4
 
-- update-pill.css: the pill's glass is `backdrop-filter: blur(3px)`, no
-  longer `blur(3px) saturate(1.4)`. With a colour filter in it, Chromium
-  drew all of the page's text a shade differently (grayscale in place of
-  subpixel) while the pill showed, the top bar's mark and name included.
-  Now the page's pixels outside the pill are the same with the pill shown
-  or hidden. What shows through the pill is a little less saturated.
+- shell.css: the top bar is its own layer from the start
+  (`will-change: transform`). The update pill's glass (`blur(3px)
+saturate(1.4)`, unchanged) made Chromium draw the page's text grayscale
+  while the pill showed, so the bar's mark and name changed pixels when
+  the pill appeared. Now the bar is the same with the pill shown or
+  hidden. Its text is drawn as on any layer of its own (grayscale), as a
+  sticky bar's always was.
+- Inside the bar, a `position: fixed` element is placed against the bar,
+  not the window: put pop-ups, palettes and toasts on `<body>`. A slot's
+  `position: absolute` menu still drops below the bar (the bar never
+  clips).
 
 ## 0.6.3
 
