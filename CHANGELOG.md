@@ -54,6 +54,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- The working pop-up no longer waits for Done after a success. It closes at
+  once and the usual toast says what happened, as for a quick action. It
+  stays open only on an error (the reason, Try again, Report, Close).
+
 - A project mode change's Allow details (project, now, then, how running
   agents switch, which agents keep their own mode) are in the page's
   language; they were English in Spanish and Japanese. The docs no longer

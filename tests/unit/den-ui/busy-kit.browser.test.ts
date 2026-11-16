@@ -219,10 +219,11 @@ describe("UK-2 kit: the working pop-up", () => {
     );
     await p.keyboard.press("Escape");
     expect(await dlg(p).isVisible()).toBe(true);
-    await dlg(p).locator("h2", { hasText: "Saved" }).waitFor();
-    // Auto-close: it closes itself after 1.2 s.
+    // Success (Ward, UK-2): it closes at once and says so in the toast,
+    // as for a fast action; never a Done to click.
     expect(await out(p)).toEqual({ ok: { ok: true } });
     expect(await dlg(p).count()).toBe(0);
+    expect((await seen(p)).toasts).toEqual(["Saved"]);
     await p.context().close();
   });
 
@@ -243,9 +244,10 @@ describe("UK-2 kit: the working pop-up", () => {
     await dlg(p).locator('[data-bz="report"]').click();
     expect((await seen(p)).reports[0]!.requestId).toBe(probe.ids[0]);
     await dlg(p).locator('[data-bz="retry"]').click();
-    // "send" waits for Done.
-    await dlg(p).locator('[data-bz="done"]').click();
+    // Success after Try again: closes itself, the toast says so.
     expect(await out(p)).toEqual({ ok: { ok: true } });
+    expect(await dlg(p).count()).toBe(0);
+    expect((await seen(p)).toasts).toEqual(["Sent"]);
     expect(probe.ids).toHaveLength(2);
     expect(probe.ids[1]).not.toBe(probe.ids[0]);
     await p.context().close();
@@ -261,8 +263,8 @@ describe("UK-2 kit: the working pop-up", () => {
     await dlg(p).locator("h2", { hasText: "Could not send" }).waitFor();
     expect(await dlg(p).textContent()).toContain("Couldn't reach Probe.");
     await dlg(p).locator('[data-bz="retry"]').click();
-    await dlg(p).locator('[data-bz="done"]').click();
     await out(p);
+    expect(await dlg(p).count()).toBe(0);
     expect(probe.ids).toHaveLength(2);
     expect(probe.ids[1]).toBe(probe.ids[0]);
     await p.context().close();
@@ -291,7 +293,7 @@ describe("UK-2 kit: the working pop-up", () => {
     });
   }
 
-  it("Check again: done shows Success from the record", async () => {
+  it("Check again: done closes and says Success in the toast, from the record", async () => {
     if (skip()) return;
     const { p, probe } = await open([[120_000, 200]], {
       clock: true,
@@ -300,9 +302,9 @@ describe("UK-2 kit: the working pop-up", () => {
     await go(p, "send");
     await p.clock.runFor(61_000);
     await dlg(p).locator('[data-bz="check"]').click();
-    await dlg(p).locator("h2", { hasText: "Sent" }).waitFor();
-    await dlg(p).locator('[data-bz="done"]').click();
     expect(await out(p)).toEqual({ ok: { ok: "late" } });
+    expect(await dlg(p).count()).toBe(0);
+    expect((await seen(p)).toasts).toEqual(["Sent"]);
     expect(probe.ids).toHaveLength(1);
     await p.context().close();
   });
@@ -359,7 +361,7 @@ describe("UK-2 kit: the working pop-up", () => {
     await p.context().close();
   });
 
-  it("skipDone closes quietly; extra puts a node under the success line and waits for Done", async () => {
+  it("skipDone closes quietly; extra puts a node under the success line and waits for Close (never Done)", async () => {
     if (skip()) return;
     const a = await open([[400, 200]]);
     await go(a.p, "send", "{ skipDone: () => true }");
@@ -375,7 +377,8 @@ describe("UK-2 kit: the working pop-up", () => {
     await dlg(b.p).locator("#x").waitFor();
     await b.p.waitForTimeout(1500);
     expect(await dlg(b.p).isVisible()).toBe(true);
-    await dlg(b.p).locator('[data-bz="done"]').click();
+    expect(await dlg(b.p).locator('[data-bz="done"]').count()).toBe(0);
+    await dlg(b.p).locator('[data-bz="close"]').click();
     await out(b.p);
     await b.p.context().close();
   });

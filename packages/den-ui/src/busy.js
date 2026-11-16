@@ -26,7 +26,8 @@
  *
  *   registerActions({ name: {
  *     who: "Hub",                   whose answer it waits for (a name)
- *     autoClose: true,              success closes after SUCCESS_CLOSE_MS
+ *     autoClose: true,              (kept for older callers: every success
+ *                                   now closes at once, with the toast)
  *     inline: true,                 its place shows a quick failure itself
  *     mode: "reconnect",
  *     words: { en: { working, success, failure, ... }, es: {...}, ja: {...} },
@@ -44,7 +45,7 @@
  *     opts.inlineError    a network error before the pop-up opens goes back
  *                         to the caller.
  *     opts.skipDone(res)  true: no success line (closes quietly).
- *     opts.extra(res)     a node under the success line; waits for Done.
+ *     opts.extra(res)     a node under the success line; waits for Close.
  *     opts.before         reconnect: the product's answer from before (else
  *                         the kit asks reconnect.url first).
  *
@@ -344,7 +345,7 @@ export function busyAction(name, run, opts = {}) {
   function wire() {
     const on = (k, fn) =>
       d.querySelector(`[data-bz="${k}"]`)?.addEventListener("click", fn);
-    on("close", () => close(null));
+    on("close", () => close(state === "success" ? okData : null));
     on("done", () => close(okData));
     on("retry", () => attempt());
     on("check", () => (reconnect ? waitBack(Date.now()) : checkAgain()));
@@ -409,8 +410,8 @@ export function busyAction(name, run, opts = {}) {
           ? `<p>${esc(actionWord(a, "success_body", { ...vars, v: data.version }))}</p>`
           : "") +
         `<div class="bz-extra"></div>` +
-        `<div class="bz-ft">${btn("done", true)}</div>`,
-      '[data-bz="done"]',
+        `<div class="bz-ft">${btn(node ? "close" : "done", true)}</div>`,
+      node ? '[data-bz="close"]' : '[data-bz="done"]',
     );
     if (node) d.querySelector(".bz-extra")?.append(node);
     else d.querySelector(".bz-extra")?.remove();
@@ -470,8 +471,11 @@ export function busyAction(name, run, opts = {}) {
       if (opts.skipDone?.(data)) return close(data);
       if (reconnect) return waitBack(Date.now());
       const node = opts.extra?.(data) ?? null;
-      if (!d?.open && a.autoClose && !node) {
-        if (opts.toastFast !== false)
+      // UK-2 (Ward): success never waits for a click. The pop-up closes at
+      // once and the toast says it, as for a fast action. Only `extra`
+      // (something to read) keeps it open, with Close.
+      if (!node) {
+        if (d?.open || opts.toastFast !== false)
           hook.toast?.(
             opts.success ? opts.success(data) : actionWord(a, "success", vars),
           );
