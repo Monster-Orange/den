@@ -61,13 +61,9 @@ beforeAll(async () => {
   try {
     const pw = await import("playwright");
     browsers.chromium = await connect(pw.chromium);
-    // WebKit where it is: Den's runner (DEN_PW_WS) has it; CI installs
-    // Chromium only, so its WebKit case is skipped there (never fails).
-    try {
-      browsers.webkit = await connect(pw.webkit);
-    } catch (err) {
-      if (process.env.DEN_PW_WS) throw err;
-    }
+    // WebKit (Safari's engine) everywhere: CI installs it too (issue 220),
+    // so a missing WebKit fails here rather than skipping.
+    browsers.webkit = await connect(pw.webkit);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

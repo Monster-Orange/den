@@ -118,7 +118,7 @@ jobs:
           cache: npm
       - run: npm ci
       # the browser tests (the What's new dialog) need Chromium, as in ci.yml
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm test -- --shard=${{ matrix.shard }}/4
 
   # The tarball, built on the lowest supported Node (the safe direction),
