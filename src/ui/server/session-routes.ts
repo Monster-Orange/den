@@ -153,7 +153,13 @@ export interface SessionRouteDeps {
     rec: AgentRecord,
     pid?: number,
   ) =>
-    | { want: string; running?: string; own?: true; followed?: string }
+    | {
+        want: string;
+        source?: string;
+        running?: string;
+        own?: true;
+        followed?: string;
+      }
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
@@ -365,6 +371,8 @@ export interface ListedSession {
   permission?: string;
   /** MODE-3: the mode it should run in now (running agents). */
   mode?: string;
+  /** Issue 225: where `mode` comes from: own, project, install, persona, default. */
+  modeSource?: string;
   /** MODE-3: the mode its process runs in, when known. */
   modeRunning?: string;
   /** Issue 199: its mode is its own, not its project's. */
@@ -577,6 +585,8 @@ export function listedSessions(
         return m
           ? {
               mode: m.want,
+              // Issue 225: where it comes from (effective-mode.ts).
+              ...(m.source ? { modeSource: m.source } : {}),
               ...(m.running ? { modeRunning: m.running } : {}),
               ...(m.own ? { modeOwn: true } : {}),
               ...(m.followed ? { modeFollowed: m.followed } : {}),

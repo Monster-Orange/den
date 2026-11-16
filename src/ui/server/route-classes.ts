@@ -487,6 +487,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/agents/:id/mode",
     "issue 199 an agent's own mode, or null to follow its project's; a person's only (an agent asks with agent_mode)",
   ),
+  R(
+    "/api/workspaces/:ws/agent-modes",
+    "issue 225: a project's mode and each agent's actual mode with where it comes from",
+  ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agent-modes",
+    "issue 225: a project's mode, and its agents with their own setting follow it; a person's only (an agent asks with project_mode)",
+  ),
   M(
     ["POST"],
     "/api/embed/keys",
@@ -823,6 +832,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:PERSONA_PATH": ["/api/personas/:id"],
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
   "agent-routes.ts:DETAILS_PATH": ["/api/workspaces/:ws/agents/:id/details"],
+  "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],

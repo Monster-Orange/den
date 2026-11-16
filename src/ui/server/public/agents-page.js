@@ -119,6 +119,7 @@ import {
   openPersonaEditor,
   overrideTagsHtml,
   ownModeLabel,
+  modeLabel,
   permBlockHtml,
   personaDetail,
   personaDetailHtml,
@@ -1869,9 +1870,11 @@ export function modeTagHtml(r, withButton) {
   if (r?.kind !== "agent" || isStopped(r) || !r.mode) return "";
   const d = modeDriftOf(r);
   // Issue 199: a mode of its own says so, and the project's it doesn't follow.
+  // Issue 225: every mode says where it comes from.
   const own = ownModeLabel(r);
+  const src = r.modeSource ? ` data-mode-source="${esc(r.modeSource)}"` : "";
   if (!d)
-    return `<span class="tagx${r.mode === "all" || own ? " warn" : ""}" data-mode="${esc(r.mode)}"${own ? ' data-mode-own="1"' : ""}>${esc(own || t("ag.mode.tag", { m: modeName(r.mode) }))}</span>`;
+    return `<span class="tagx${r.mode === "all" || own ? " warn" : ""}" data-mode="${esc(r.mode)}"${src}${own ? ' data-mode-own="1"' : ""}>${esc(modeLabel(r))}</span>`;
   const tag = `<span class="tagx warn" data-mode-drift="${esc(d.want)}">${esc(t("ag.mode.drift", { want: modeName(d.want), running: modeName(d.running) }))}</span>`;
   return withButton
     ? `<span class="agmode">${tag}${modeApplyHtml(r)}</span>`

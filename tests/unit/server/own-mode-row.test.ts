@@ -1,7 +1,7 @@
 /**
  * Issue 199: the Agents page row of an agent with a mode of its own says
- * so, and which project mode it doesn't follow: "own mode: auto (not
- * following project: all)". An agent that follows says its mode as before.
+ * so, and which project mode it doesn't follow. Issue 225 words it as its
+ * source: "mode: Auto, from its own setting (project: All)". An agent that follows says its mode as before.
  * persona-ui.js's words, in English (shell.js's catalog).
  */
 import { beforeAll, describe, expect, it } from "@jest/globals";
@@ -24,12 +24,12 @@ describe("issue 199: an agent's own mode on its row", () => {
         modeOwn: true,
         modeFollowed: "all",
       }),
-    ).toBe("own mode: auto (not following project: all)");
+    ).toBe("mode: Auto, from its own setting (project: All)");
   });
 
   it("own mode, the project's the same or none: no 'not following'", () => {
     expect(ownModeLabel({ kind: "agent", mode: "auto", modeOwn: true })).toBe(
-      "own mode: auto",
+      "mode: Auto, from its own setting",
     );
     expect(
       ownModeLabel({
@@ -38,7 +38,7 @@ describe("issue 199: an agent's own mode on its row", () => {
         modeOwn: true,
         modeFollowed: "auto",
       }),
-    ).toBe("own mode: auto");
+    ).toBe("mode: Auto, from its own setting");
   });
 
   it("an agent that follows: nothing here", () => {

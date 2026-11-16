@@ -286,6 +286,8 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     const other = modeResolver(d, () => "claude --permission-mode default");
     expect(other(record(r, "server") as never, 1)).toEqual({
       want: "auto",
+      // Issue 225: where it comes from.
+      source: "own",
       running: "auto",
       // Issue 199: a mode of its own (its project has none to follow).
       own: true,

@@ -6,6 +6,32 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.54] - unreleased
 
+### Added
+
+- Every agent's mode now says where it comes from (issue 225). An agent
+  with its own setting kept its own mode when a person changed the
+  project's, and nothing said so. The Agents page row says, for example,
+  "mode: Auto, from the project", "from its own setting", "from its
+  persona" or "from the mode for every agent". When the agent's process
+  still runs in another mode, the row says "Set to Auto. Runs as Ask until
+  restarted."
+- Settings › Project › Agents' mode (issue 225). Set the project's mode
+  here and see each agent's actual mode and where it comes from. When
+  agents in the project have their own setting, Den offers "Also apply to
+  the N agents with their own setting". One press clears their own
+  setting, so they follow the project; running agents move after their
+  turn, in the same conversation. Each one gets a line in the activity
+  trail. Only a person can do this; an agent asks with `project_mode`, and
+  when some agents' own mode is stricter than the project's, that ask
+  always waits for the person's own Allow.
+
+### Fixed
+
+- What the page shows and what an agent runs in now come from one rule
+  (issue 225): its own setting, else its project's, else the mode for
+  every agent, else its persona's, else ask. Every start, resume, restart
+  and the mode check read it.
+
 ### Changed
 
 - A new version of Den now shows the shared update pill over the top bar,
