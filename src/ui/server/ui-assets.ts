@@ -14,7 +14,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { getEngineRoot } from "../../shared/paths.js";
-import { serveFile } from "./http-helpers.js";
+import { serveFile, stampServed } from "./http-helpers.js";
 
 /** The graph's modules in public/, each served at /<name>. */
 export const UI_MODULES: readonly string[] = [
@@ -189,7 +189,12 @@ export function serveUiAsset(
         ? "public, max-age=86400"
         : "no-cache",
     });
-    res.end(fs.readFileSync(kit));
+    // Issue 231: its own imports carry Den's version, as Den's scripts do.
+    res.end(
+      kit.endsWith(".woff2")
+        ? fs.readFileSync(kit)
+        : stampServed(kit, fs.readFileSync(kit, "utf-8")),
+    );
     return true;
   }
   if (!pathname.startsWith("/vendor/")) return false;

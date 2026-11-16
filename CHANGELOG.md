@@ -10,6 +10,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Pop-ups stay centred and sized to their content on an iPad, in every
   layout.
+- After an update, pages load the new styles and scripts, even in a tab
+  left open.
 - On an iPad, pop-ups no longer stretch from the top of the window to the
   bottom. Each one is as tall as what it holds, up to the window's height.
 - The UI kit, `den-ui` 0.5.1: every open modal dialog places itself and
