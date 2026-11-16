@@ -99,6 +99,26 @@ const withPieces = mount(document.body, {
   },
 });
 withPieces.bell?.setCount(2);
+// 0.7.0: ◐ ▾, Settings in the foot, the update-waiting pill.
+const full = mount(document.body, {
+  ...model,
+  settings: { href: "/settings", current: true },
+  slots: { account: DenUI.appearanceButtonHtml() },
+  hydrate: {
+    appearance: {
+      menu: () => ({
+        mode: "dark",
+        themes: [{ value: "", label: "Default", selected: true }],
+        languages: [{ id: "en", name: "English", current: true }],
+        items: [{ label: "All settings", href: "/settings" }],
+      }),
+      onPick: (kind: string, value: string | null) => void [kind, value],
+    },
+  },
+});
+full.appearance?.open();
+DenUI.version.waiting({ label: "stale", action: "Restart", onClick: () => {} });
+DenUI.version.waiting(null);
 withPieces.search?.activate();
 withPieces.scope?.close();
 const btn = document.createElement("button");

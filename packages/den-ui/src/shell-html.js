@@ -8,8 +8,8 @@
  * No inline style attributes, no inline handlers: the markup is clean
  * under `script-src 'self'; style-src 'self'`. Its look is shell.css.
  *
- *   shellHtml({ product, nav, groups, foot, account, lang, slots, collapsed,
- *               report })
+ *   shellHtml({ product, nav, groups, foot, settings, account, lang, slots,
+ *               collapsed, report })
  *     product  { name, title?, version?, href?, mark? }   the brand: `name` is the
  *              word beside the mark, `title` its tooltip (default name),
  *              `version` the chip's text ("v" + version; "v…" when unknown),
@@ -22,6 +22,8 @@
  *              entry is left out
  *     foot     entries under the rail's spacer (Settings, say), then the
  *              kit's collapse toggle
+ *     settings (0.7.0) the Settings entry, after foot: { href, label?,
+ *              current?, id? } (settingsHtml)
  *     account  (0.7.0) the account entry, last in the foot: { label,
  *              detail?, href? | action? } (accountHtml)
  *     lang     "en", "es" or "ja" (the kit's words; else en)
@@ -153,6 +155,7 @@ export function railHtml({
   nav = [],
   groups = [],
   foot = [],
+  settings,
   account,
   lang,
   collapsed,
@@ -167,6 +170,7 @@ export function railHtml({
   html += foot
     .map((n) => (typeof n === "string" ? n : navItemHtml(n)))
     .join("");
+  html += settingsHtml(settings, lang);
   html += accountHtml(account);
   html += collapseHtml(!!collapsed, lang);
   return html;
@@ -318,14 +322,14 @@ function crumbMenuHtml(c) {
             esc(l.href) +
             '"' +
             (l.current ? ' aria-current="true"' : "") +
-            ">" +
+            '><span class="den-mi-l">' +
             esc(l.label) +
-            "</a>",
+            "</span></a>",
         )
         .join("")
     : String(m);
   return (
-    '<div class="den-scope-menu" id="' +
+    '<div class="den-pop den-scope-menu" id="' +
     esc(crumbId(c)) +
     '-menu" role="menu" aria-label="' +
     esc(c.label) +
@@ -585,5 +589,168 @@ export function accountHtml(a) {
     icon(a.icon || "person") +
     words +
     (a.href != null ? "</a>" : "</button>")
+  );
+}
+
+/**
+ * The Settings entry, in the rail's foot after the host's entries.
+ *   settingsHtml({ href, label?, current?, id? }, lang)
+ * No href: nothing.
+ */
+export function settingsHtml(o, lang) {
+  if (!o || !o.href) return "";
+  return navItemHtml({
+    id: o.id || "settings",
+    href: o.href,
+    label: o.label ?? kitT(lang, "kit.settings"),
+    icon: "settings",
+    current: !!o.current,
+  });
+}
+
+/**
+ * The appearance button, ◐ ▾, last in the bar (the `account` slot): its
+ * menu (hydrateAppearance) holds the mode, the theme and the language.
+ *   appearanceButtonHtml({ id?, label?, title?, lang })
+ */
+export function appearanceButtonHtml({ id, label, title, lang } = {}) {
+  return (
+    '<button id="' +
+    esc(id || "appearance-btn") +
+    '" type="button" class="den-ib appearance-btn" title="' +
+    esc(title ?? kitT(lang, "kit.appearance.title")) +
+    '" aria-label="' +
+    esc(label ?? kitT(lang, "kit.appearance")) +
+    '" aria-haspopup="menu" aria-expanded="false"><span aria-hidden="true">◐ ▾</span></button>'
+  );
+}
+
+/** One row of a kit menu: a radio (checked set), a link or a button. */
+function menuRowHtml(r) {
+  const radio = r.checked != null;
+  const tag = r.href != null ? "a" : "button";
+  return (
+    "<" +
+    tag +
+    ' class="den-mi" tabindex="-1" role="' +
+    (radio ? "menuitemradio" : "menuitem") +
+    '"' +
+    (radio ? ' aria-checked="' + (r.checked ? "true" : "false") + '"' : "") +
+    (r.href != null ? ' href="' + esc(r.href) + '"' : ' type="button"') +
+    (r.kind ? ' data-kind="' + esc(r.kind) + '"' : "") +
+    (r.value != null ? ' data-value="' + esc(r.value) + '"' : "") +
+    '><span class="den-mi-l">' +
+    esc(r.label) +
+    "</span></" +
+    tag +
+    ">"
+  );
+}
+
+/**
+ * The appearance menu's content.
+ *   appearanceMenuHtml({ mode, modes?, themes?, notice?, languages?,
+ *                        items?, lang })
+ * mode: "system", "dark" or "light" (checked); modes: [{ value, label }]
+ * (default the kit's System, Dark, Light); themes: [{ value, label,
+ * selected? }]; notice: a line under the themes; languages: [{ id, name,
+ * current? }], each named in itself; items: [{ label, href? | id }] after
+ * a rule (Settings, say). A part with nothing in it draws nothing.
+ */
+export function appearanceMenuHtml({
+  mode,
+  modes,
+  themes,
+  notice,
+  languages,
+  items,
+  lang,
+} = {}) {
+  const head = (w) =>
+    '<div class="den-ml" aria-hidden="true">' + esc(w) + "</div>";
+  const hr = '<div class="den-hr" role="separator"></div>';
+  const ms = modes || [
+    { value: "system", label: kitT(lang, "kit.mode.system") },
+    { value: "dark", label: kitT(lang, "kit.mode.dark") },
+    { value: "light", label: kitT(lang, "kit.mode.light") },
+  ];
+  const parts = [];
+  parts.push(
+    head(kitT(lang, "kit.appearance")) +
+      ms
+        .map((m) =>
+          menuRowHtml({
+            label: m.label,
+            checked: m.value === mode,
+            kind: "mode",
+            value: m.value,
+          }),
+        )
+        .join(""),
+  );
+  if ((themes && themes.length) || notice)
+    parts.push(
+      head(kitT(lang, "kit.theme")) +
+        (themes || [])
+          .map((t) =>
+            menuRowHtml({
+              label: t.label,
+              checked: !!t.selected,
+              kind: "theme",
+              value: t.value ?? "",
+            }),
+          )
+          .join("") +
+        (notice
+          ? '<p class="den-mnote" role="status">' + esc(notice) + "</p>"
+          : ""),
+    );
+  if (languages && languages.length)
+    parts.push(
+      head(kitT(lang, "kit.language")) +
+        languages
+          .map((l) =>
+            menuRowHtml({
+              label: l.name,
+              checked: !!l.current,
+              kind: "language",
+              value: l.id,
+            }),
+          )
+          .join(""),
+    );
+  if (items && items.length)
+    parts.push(
+      items
+        .map((it) =>
+          menuRowHtml({
+            label: it.label,
+            href: it.href,
+            kind: "item",
+            value: it.id,
+          }),
+        )
+        .join(""),
+    );
+  return parts.join(hr);
+}
+
+/**
+ * The update-waiting pill beside the version chip: ⚠ and its words, a
+ * button (setWaiting in version.js shows and wires it).
+ *   waitingHtml({ label, action, title?, name?, id? })
+ * Reads "⚠ label · action"; below 720px only ⚠.
+ */
+export function waitingHtml({ label, action, title, name, id } = {}) {
+  return (
+    '<button id="' +
+    esc(id || "stale-pill") +
+    '" class="stale-pill"' +
+    (title != null ? ' title="' + esc(title) + '"' : "") +
+    (name != null ? ' aria-label="' + esc(name) + '"' : "") +
+    '><span aria-hidden="true">⚠</span><span class="stale-lbl"> ' +
+    esc(label ?? "") +
+    (action != null ? " · <b>" + esc(action) + "</b>" : "") +
+    "</span></button>"
   );
 }

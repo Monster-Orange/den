@@ -1,4 +1,9 @@
-import type { BellItem, BellPanelOptions } from "./shell-html.js";
+import type {
+  AppearanceMenu,
+  BellItem,
+  BellPanelOptions,
+  WaitingOptions,
+} from "./shell-html.js";
 
 export interface HydrateOptions {
   lang?: string | (() => string);
@@ -91,3 +96,24 @@ export declare function hydrateAccount(
   root: ParentNode & EventTarget,
   opts?: { onAction?: (e: Event) => void },
 ): void;
+export interface AppearanceHydrateOptions {
+  lang?: string | (() => string);
+  /** The menu's content, each time it opens. */
+  menu?: () => Omit<AppearanceMenu, "lang">;
+  /** A pick: "mode", "theme", "language" or "item", and its value. */
+  onPick?: (kind: string, value: string | null, row: HTMLElement) => void;
+}
+export interface AppearanceHandle {
+  open(): void;
+  close(refocus?: boolean): void;
+  isOpen(): boolean;
+}
+export declare function hydrateAppearance(
+  button: HTMLElement,
+  opts?: AppearanceHydrateOptions,
+): AppearanceHandle;
+/** The update-waiting pill after the version chip; null hides it. */
+export declare function setWaiting(
+  o: (WaitingOptions & { onClick?: (e: Event) => void }) | null,
+  root?: Document | Element,
+): HTMLElement | null;

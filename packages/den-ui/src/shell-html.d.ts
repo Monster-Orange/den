@@ -53,6 +53,8 @@ export interface RailModel {
   groups?: NavGroup[];
   /** Entries (or HTML) under the rail's spacer, before the collapse toggle. */
   foot?: (NavItem | string)[];
+  /** 0.7.0: the Settings entry, after foot. */
+  settings?: SettingsEntry | null;
   /** 0.7.0: the account entry, last in the foot. */
   account?: Account | null;
   lang?: string;
@@ -192,3 +194,47 @@ export declare function bellButtonHtml(o?: BellButtonOptions): string;
 export declare function bellPanelHtml(o?: BellPanelOptions): string;
 /** The rail's account entry; no label, "". */
 export declare function accountHtml(a: Account | null | undefined): string;
+export interface SettingsEntry {
+  href: string;
+  /** Default the kit's "Settings". */
+  label?: string;
+  current?: boolean;
+  /** Its data-nav (default "settings"). */
+  id?: string;
+}
+export declare function settingsHtml(
+  o: SettingsEntry | null | undefined,
+  lang?: string,
+): string;
+export declare function appearanceButtonHtml(o?: {
+  id?: string;
+  label?: string;
+  title?: string;
+  lang?: string;
+}): string;
+export interface AppearanceMenu {
+  /** "system", "dark" or "light": the checked mode. */
+  mode?: string;
+  /** Default the kit's System, Dark, Light. */
+  modes?: { value: string; label: string }[];
+  themes?: { value: string; label: string; selected?: boolean }[];
+  /** A line under the themes. */
+  notice?: string | null;
+  /** Each named in itself. */
+  languages?: { id: string; name: string; current?: boolean }[];
+  /** After a rule: links, or buttons onPick("item", id). */
+  items?: { label: string; href?: string; id?: string }[];
+  lang?: string;
+}
+export declare function appearanceMenuHtml(o?: AppearanceMenu): string;
+export interface WaitingOptions {
+  /** The words before the dot ("stale server"). */
+  label?: string;
+  /** The bold word after it ("Restart"). */
+  action?: string;
+  title?: string;
+  /** Its name. */
+  name?: string;
+  id?: string;
+}
+export declare function waitingHtml(o?: WaitingOptions): string;

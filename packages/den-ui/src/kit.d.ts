@@ -7,6 +7,10 @@ import type {
   configureBusy,
 } from "./busy.js";
 import type {
+  AppearanceHandle,
+  AppearanceHydrateOptions,
+  setWaiting,
+  hydrateAppearance,
   BellHandle,
   BellHydrateOptions,
   HydrateOptions,
@@ -35,6 +39,10 @@ import type {
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
+  settingsHtml,
+  appearanceButtonHtml,
+  appearanceMenuHtml,
+  waitingHtml,
   icon,
   esc,
 } from "./shell-html.js";
@@ -79,12 +87,15 @@ export interface KitHydrateOptions extends HydrateOptions {
   bell?: Omit<BellHydrateOptions, "lang"> | false;
   /** 0.7.0: the account entry as an action (false: not wired). */
   account?: { onAction?: (e: Event) => void } | false;
+  /** 0.7.0: ◐ ▾ and its menu (wired when given). */
+  appearance?: Omit<AppearanceHydrateOptions, "lang">;
 }
 /** The shell hydrate returns: the 0.7.0 pieces it found and wired. */
 export interface KitShell extends Shell {
   scope?: ScopeHandle;
   search?: SearchHandle;
   bell?: BellHandle;
+  appearance?: AppearanceHandle;
 }
 export declare function configure(o?: KitConfig): void;
 export declare function t(
@@ -102,6 +113,8 @@ export declare const version: {
   ): string | null;
   set(label: string): void;
   unread(on: boolean): void;
+  /** 0.7.0: the update-waiting pill after the chip; null hides it. */
+  waiting: typeof setWaiting;
 };
 export declare const whatsNew: {
   open(): void;
@@ -164,6 +177,12 @@ export interface DenUIKit {
   bellButtonHtml: typeof bellButtonHtml;
   bellPanelHtml: typeof bellPanelHtml;
   accountHtml: typeof accountHtml;
+  settingsHtml: typeof settingsHtml;
+  appearanceButtonHtml: typeof appearanceButtonHtml;
+  appearanceMenuHtml: typeof appearanceMenuHtml;
+  waitingHtml: typeof waitingHtml;
+  hydrateAppearance: typeof hydrateAppearance;
+  setWaiting: typeof setWaiting;
   hydrateScope: typeof hydrateScope;
   hydrateSearch: typeof hydrateSearch;
   hydrateBell: typeof hydrateBell;

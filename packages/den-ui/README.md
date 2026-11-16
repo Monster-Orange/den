@@ -169,7 +169,7 @@ repository root, one row per component, with a reason:
 
 (or a list: `- report: our reports go to …`). The components are `shell`,
 `version`, `whatsnew`, `update`, `report` and `working`, and since 0.7.0
-`scope`, `search`, `bell` and `account`. A row without a
+`scope`, `search`, `bell`, `appearance` and `account`. A row without a
 reason does not count. With no DIVERGE.md, every copy fails.
 
 ## The working pop-up and types (0.6.1)
@@ -208,8 +208,12 @@ No new file. One import changes, for hosts that serve a fixed list of kit files:
 
 `shell-client.js` now imports `dialog.js` (and `shell-html.js`): serve `dialog.js` wherever `shell-client.js` is served.
 
-Four pieces of the top bar and the rail that a host drew itself move
-into the kit, so every host draws them the same way. The host gives words,
+The whole global nav is the kit's. Pieces of the top bar and the rail
+that a host drew itself move into the kit, so every host draws them the
+same way, with the same CSS values. In order: ☰ · brand · scope crumbs ·
+search with ⌘K · the host's `end` slot (status chips) · Report · bell ·
+version chip with its pip and the update-waiting pill · ◐ ▾. The rail's
+foot: the host's entries · Settings · account · Collapse. The host gives words,
 values and callbacks. The kit draws the markup and owns focus and keys.
 Each piece is optional: one left out draws nothing.
 
@@ -245,17 +249,43 @@ time?, read? }`) or the empty state. `bellPanelHtml(...)` takes `actions`
   collapse toggle. It reads "label · detail". It is a link, or with
   `action: true` a button that calls `onAction`. `accountHtml(...)` draws
   it alone.
-- Wiring: `DenUI.hydrate(root, { scope, search, bell, account })` (or
+- **Appearance menu**: `appearanceButtonHtml({ label?, title? })`, for the
+  `account` slot (last in the bar): ◐ ▾ with `aria-haspopup="menu"`. Wire
+  it with `hydrate`'s `appearance: { menu, onPick }`. `menu()` gives, each
+  time it opens, `{ mode, modes?, themes, notice?, languages, items }`:
+  the mode (System, Dark, Light by default), the themes `{ value, label,
+selected }`, a line under them, the languages `{ id, name, current }`,
+  each named in itself, and entries after a rule (`{ label, href? | id }`).
+  A pick calls `onPick(kind, value)` with `"mode"`, `"theme"`,
+  `"language"` or `"item"`, and closes the menu. Click, Enter, Space, ↓ or
+  ↑ open it on the checked entry. ↑ ↓ Home End move. Esc or Tab closes it
+  and focus goes back to ◐ ▾, in Safari too. A press outside closes it.
+  The host saves and applies the pick. The kit owns no settings.
+- **Version pip and update-waiting pill**: the chip's pip (`#v-pip`) shows
+  unread notes (`DenUI.version.unread(on)`, as before).
+  `DenUI.version.waiting({ label, action, title?, name?, onClick })` shows
+  the update-waiting pill right after the chip ("⚠ label · action", a
+  pulsing warn pill; only ⚠ below 720px). `waiting(null)` hides it.
+  `waitingHtml(...)` draws it.
+- **Settings**: `settings: { href, label?, current? }` on `shellHtml` or
+  `railHtml` puts Settings in the rail's foot after the host's entries and
+  before the account entry. `settingsHtml(...)` draws it alone.
+- The kit's menus (◐ ▾, a crumb's own menu) wear `.den-pop`, `.den-mi`,
+  `.den-ml`, `.den-hr` and `.den-mnote`, styled in `shell.css`.
+- Wiring: `DenUI.hydrate(root, { scope, search, bell, account, appearance })` (or
   `mount`'s `model.hydrate`) wires each piece it finds. The shell it
-  returns has `.scope`, `.search` and `.bell`. For a host's own wiring,
-  use `hydrateScope`, `hydrateSearch`, `hydrateBell` and `hydrateAccount`
-  in `shell-client.js`.
-- The words: `kit.scope`, `kit.search.ph`, `kit.bell`, `kit.bell.n` and
-  `kit.bell.empty`, in en, es and ja. The look is in `shell.css`. At 860px
+  returns has `.scope`, `.search`, `.bell` and `.appearance`. For a host's own wiring,
+  use `hydrateScope`, `hydrateSearch`, `hydrateBell`, `hydrateAccount`,
+  `hydrateAppearance` and `setWaiting` in `shell-client.js`.
+- The words: `kit.scope`, `kit.search.ph`, `kit.bell`, `kit.bell.n`,
+  `kit.bell.empty`, `kit.settings`, `kit.appearance`,
+  `kit.appearance.title`, `kit.mode.system`, `kit.mode.dark`,
+  `kit.mode.light`, `kit.theme` and `kit.language`, in en, es and ja. The look is in `shell.css`. At 860px
   the crumbs' keys and any `optional` crumb give way. At 720px the crumbs
   hide and the search is only its icon.
-- `den-ui-parity` knows the four as components `scope`, `search`, `bell`
-  and `account`. A product's own copy of one fails the gate. A product's
+- `den-ui-parity` knows them as components `scope`, `search`, `bell`,
+  `appearance` and `account`, and the update-waiting pill as part of
+  `version`. A product's own copy of one fails the gate. A product's
   own rows inside the bell, or its own menu inside a crumb, are not copies.
 
 ## 0.6.5

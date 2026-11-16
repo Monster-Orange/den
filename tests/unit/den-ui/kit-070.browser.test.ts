@@ -12,6 +12,12 @@
  *    close; focus goes back to the bell, in WebKit too.
  * 4. The account entry in the rail's foot: a label, a detail, and a link
  *    or an action.
+ * 5. ◐ ▾, the appearance menu: the host gives the modes, themes and
+ *    languages and gets a callback; the kit owns the button, the menu,
+ *    its keys, Esc and focus back.
+ * 6. The version chip's pip (unread notes) and the update-waiting pill
+ *    beside it.
+ * 7. Settings in the rail's foot, before the account entry.
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * The page keeps a click from focusing a button, as Safari on macOS does.
@@ -75,7 +81,7 @@ document.addEventListener("mousedown", (e) => {
 }, true);
 import DenUI from "/kit/kit.js";
 const q = new URLSearchParams(location.search);
-window.log = { search: [], account: 0, events: 0, opened: 0, closed: 0 };
+window.log = { search: [], account: 0, events: 0, opened: 0, closed: 0, picks: [], waited: 0 };
 DenUI.configure({ lang: "en", product: { name: "Acme" } });
 const items = q.get("items") === "0" ? [] : [
   { id: "a", text: "Build finished", href: "#build", time: "2 min" },
@@ -98,7 +104,9 @@ if (!q.has("bare")) {
   model.slots = {
     start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml({ placeholder: "Find anything…" }),
     bell: DenUI.bellButtonHtml({ count: Number(q.get("count") ?? 2) }),
+    account: DenUI.appearanceButtonHtml(),
   };
+  model.settings = { href: "#settings" };
   model.account = q.has("act")
     ? { label: "Signed in", detail: "this device", action: true }
     : { label: "Signed in", detail: "this device", href: "#account" };
@@ -111,6 +119,21 @@ if (!q.has("bare")) {
       onClose: () => window.log.closed++,
     },
     account: { onAction: () => window.log.account++ },
+    appearance: {
+      menu: () => ({
+        mode: "system",
+        themes: [
+          { value: "", label: "Org default (Plain)", selected: true },
+          { value: "sea", label: "Sea" },
+        ],
+        languages: [
+          { id: "en", name: "English", current: true },
+          { id: "es", name: "Español" },
+        ],
+        items: [{ label: "All settings", href: "#all" }],
+      }),
+      onPick: (kind, value) => window.log.picks.push([kind, value]),
+    },
   };
 }
 document.addEventListener("den-ui:search", () => window.log.events++);
@@ -544,6 +567,202 @@ for (const engine of ["chromium", "webkit"]) {
       await q.locator(".den-acct").focus();
       await q.keyboard.press("Enter");
       expect((await log(q)).account).toBe(2);
+      await q.context().close();
+    });
+
+    it("◐ ▾: the button, its menu, a pick, Esc and focus back", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const btn = p.locator(".den-top .appearance-btn");
+      await expect(
+        btn.evaluate((e) => [
+          e.getAttribute("aria-label"),
+          e.getAttribute("title"),
+          e.getAttribute("aria-haspopup"),
+          e.textContent,
+          // Last in the bar.
+          e === document.querySelector(".den-chips")!.lastElementChild,
+        ]),
+      ).resolves.toEqual([
+        "Appearance",
+        "Appearance and theme",
+        "menu",
+        "◐ ▾",
+        true,
+      ]);
+      // A click opens it on the checked mode.
+      await btn.click();
+      const menu = p.locator("#appearance-btn-menu");
+      await menu.waitFor();
+      await expect(btn.getAttribute("aria-expanded")).resolves.toBe("true");
+      await expect(
+        p.evaluate(() => {
+          const m = document.querySelector("#appearance-btn-menu")!;
+          return {
+            heads: [...m.querySelectorAll(".den-ml")].map((h) => h.textContent),
+            rows: [...m.querySelectorAll(".den-mi")].map((r) => [
+              r.textContent,
+              r.getAttribute("role"),
+              r.getAttribute("aria-checked"),
+            ]),
+            focused: document.activeElement?.textContent,
+            below:
+              m.getBoundingClientRect().top >=
+              document.querySelector(".appearance-btn")!.getBoundingClientRect()
+                .bottom,
+          };
+        }),
+      ).resolves.toEqual({
+        heads: ["Appearance", "Theme", "Language"],
+        rows: [
+          ["System", "menuitemradio", "true"],
+          ["Dark", "menuitemradio", "false"],
+          ["Light", "menuitemradio", "false"],
+          ["Org default (Plain)", "menuitemradio", "true"],
+          ["Sea", "menuitemradio", "false"],
+          ["English", "menuitemradio", "true"],
+          ["Español", "menuitemradio", "false"],
+          ["All settings", "menuitem", null],
+        ],
+        focused: "System",
+        below: true,
+      });
+      // ↓ then Enter picks Dark: the host's callback, closed, focus back.
+      await p.keyboard.press("ArrowDown");
+      await p.keyboard.press("Enter");
+      await menu.waitFor({ state: "detached" });
+      expect((await log(p)).picks).toEqual([["mode", "dark"]]);
+      await expect(focused(p)).resolves.toBe("appearance-btn");
+      // Esc closes it, focus back on ◐ ▾ (a click never focused it).
+      await btn.click();
+      await menu.waitFor();
+      await p.keyboard.press("Escape");
+      await menu.waitFor({ state: "detached" });
+      await expect(focused(p)).resolves.toBe("appearance-btn");
+      await expect(btn.getAttribute("aria-expanded")).resolves.toBe("false");
+      // A click on a theme picks it.
+      await btn.click();
+      await p.locator('.den-pop .den-mi[data-value="sea"]').click();
+      await menu.waitFor({ state: "detached" });
+      // ↑ on the button opens it on its last entry; a press outside closes it.
+      await btn.focus();
+      await p.keyboard.press("ArrowUp");
+      await menu.waitFor();
+      await expect(focused(p)).resolves.toBe("#all");
+      await p.locator("#den-content").click({ position: { x: 600, y: 400 } });
+      await menu.waitFor({ state: "detached" });
+      expect((await log(p)).picks).toEqual([
+        ["mode", "dark"],
+        ["theme", "sea"],
+      ]);
+      await p.context().close();
+    });
+
+    it("the version chip's pip, and the update-waiting pill beside it", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const pip = () =>
+        p.evaluate(
+          () => getComputedStyle(document.getElementById("v-pip")!).display,
+        );
+      await expect(pip()).resolves.toBe("none");
+      await p.evaluate(() =>
+        (
+          window as unknown as {
+            DenUI: { version: { unread(on: boolean): void } };
+          }
+        ).DenUI.version.unread(true),
+      );
+      await expect(pip()).resolves.toBe("block");
+      await p.evaluate(() => {
+        const w = window as unknown as {
+          log: { waited: number };
+          DenUI: { version: { waiting(o: object | null): void } };
+        };
+        w.DenUI.version.waiting({
+          label: "stale server",
+          action: "Restart",
+          name: "Stale server: restart",
+          title: "Restart it",
+          onClick: () => w.log.waited++,
+        });
+      });
+      await expect(
+        p.evaluate(() => {
+          const s = document.getElementById("stale-pill")!;
+          return {
+            after:
+              document.getElementById("version-pill")!.nextElementSibling === s,
+            text: s.textContent,
+            name: s.getAttribute("aria-label"),
+            shown: getComputedStyle(s).display !== "none",
+          };
+        }),
+      ).resolves.toEqual({
+        after: true,
+        text: "⚠ stale server · Restart",
+        name: "Stale server: restart",
+        shown: true,
+      });
+      await p.locator("#stale-pill").click();
+      expect((await log(p)).waited).toBe(1);
+      await p.evaluate(() =>
+        (
+          window as unknown as {
+            DenUI: { version: { waiting(o: null): void } };
+          }
+        ).DenUI.version.waiting(null),
+      );
+      await expect(
+        p.evaluate(
+          () =>
+            getComputedStyle(document.getElementById("stale-pill")!).display,
+        ),
+      ).resolves.toBe("none");
+      await p.context().close();
+    });
+
+    it("Settings in the rail's foot, then the account entry, then Collapse", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      await expect(
+        p.evaluate(() => {
+          const rail = document.querySelector(".den-rail")!;
+          const grow = rail.querySelector(".den-rail-grow")!;
+          const foot: string[] = [];
+          for (let e = grow.nextElementSibling; e; e = e.nextElementSibling)
+            foot.push(
+              (e.getAttribute("data-nav") || e.getAttribute("data-act") || "") +
+                ":" +
+                e.textContent,
+            );
+          return {
+            foot,
+            href: rail
+              .querySelector('[data-nav="settings"]')
+              ?.getAttribute("href"),
+          };
+        }),
+      ).resolves.toEqual({
+        foot: [
+          "settings:Settings",
+          "account:Signed in · this device",
+          "collapse:Collapse",
+        ],
+        href: "#settings",
+      });
+      await p.context().close();
+      const q = await open(b, "?bare");
+      await expect(
+        q.evaluate(() =>
+          ['[data-nav="settings"]', ".appearance-btn", "#stale-pill"].map(
+            (s) => document.querySelectorAll(s).length,
+          ),
+        ),
+      ).resolves.toEqual([0, 0, 0]);
       await q.context().close();
     });
   });

@@ -121,8 +121,9 @@ const model = {
         { key: "ws", label: "Project", value: "Garden", menu: [{ label: "Garden", href: "#g", current: true }] },
       ] }) + DenUI.searchHtml({ placeholder: "Find…" }),
     bell: DenUI.bellButtonHtml({ count: 1 }),
-    account: '<span id="who">me</span>',
+    account: '<span id="who">me</span>' + DenUI.appearanceButtonHtml(),
   },
+  settings: { href: "#settings" },
   account: { label: "Signed in", detail: "this device", href: "#me" },
 };
 window.searched = 0;
@@ -132,6 +133,10 @@ window.shell = DenUI.mount(document.getElementById("shell"), {
     onCollapse: (on) => window.shell.setCollapsed(on),
     search: { onActivate: () => window.searched++ },
     bell: { items: [{ text: "Done", href: "#d", time: "now" }] },
+    appearance: {
+      menu: () => ({ mode: "system", themes: [{ value: "", label: "Default", selected: true }] }),
+      onPick: () => {},
+    },
   },
 });
 window.DenUI = DenUI;
@@ -302,7 +307,7 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
 
   // 0.7.0: the scope crumbs (a menu placed through the CSSOM), the
   // search, the bell's panel and the account entry.
-  it("runs the scope crumbs, the search, the bell and the account entry with no violation", async () => {
+  it("runs the scope crumbs, the search, the bell, the account entry, ◐ ▾ and the waiting pill with no violation", async () => {
     if (!browser) return;
     const { p, bad } = await open(1280);
     await click(p, "#den-scope-ws");
@@ -322,6 +327,20 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
     await expect(p.locator(".den-acct").getAttribute("href")).resolves.toBe(
       "#me",
     );
+    // ◐ ▾'s menu, placed through the CSSOM; the update-waiting pill.
+    await click(p, ".appearance-btn");
+    await p.locator("#appearance-btn-menu").waitFor();
+    await p.keyboard.press("ArrowDown");
+    await p.keyboard.press("Enter");
+    await p.locator("#appearance-btn-menu").waitFor({ state: "detached" });
+    await p.evaluate(() =>
+      (
+        window as unknown as {
+          DenUI: { version: { waiting(o: object | null): void } };
+        }
+      ).DenUI.version.waiting({ label: "stale", action: "Restart" }),
+    );
+    await p.locator("#stale-pill").waitFor();
     expect(await p.locator("style").count()).toBe(0);
     expect(bad).toEqual([]);
     await p.context().close();

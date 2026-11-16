@@ -100,9 +100,23 @@ export const COMPONENTS = {
   },
   version: {
     label: "version chip",
-    markup: [id("version-pill"), cls("v-pill"), cls("v-pip")],
-    css: ["v-pill", "v-pip", "v-txt", "version-pill"],
-    code: ["versionChipHtml"],
+    // 0.7.0: and the update-waiting pill beside it.
+    markup: [
+      id("version-pill"),
+      cls("v-pill"),
+      cls("v-pip"),
+      cls("stale-pill"),
+      id("stale-pill"),
+    ],
+    css: [
+      "v-pill",
+      "v-pip",
+      "v-txt",
+      "version-pill",
+      "stale-pill",
+      "stale-lbl",
+    ],
+    code: ["versionChipHtml", "waitingHtml", "setWaiting"],
     files: ["version.js", "version-label.js"],
   },
   whatsnew: {
@@ -176,6 +190,18 @@ export const COMPONENTS = {
       "den-bell-empty",
     ],
     code: ["bellButtonHtml", "bellPanelHtml", "hydrateBell"],
+    files: [],
+  },
+  appearance: {
+    label: "appearance menu (◐ ▾: mode, theme, language)",
+    markup: [cls("appearance-btn"), id("appearance-btn")],
+    css: ["appearance-btn"],
+    code: [
+      "appearanceButtonHtml",
+      "appearanceMenuHtml",
+      "hydrateAppearance",
+      "userMenu",
+    ],
     files: [],
   },
   account: {

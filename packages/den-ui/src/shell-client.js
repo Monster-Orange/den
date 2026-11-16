@@ -54,9 +54,25 @@
  *       → { el, open(), close(focus), isOpen(), paint(), setCount(n) }
  *   hydrateAccount(root, { onAction(event) })   the account entry as an
  *       action (no href): a click or Enter calls onAction.
+ *   hydrateAppearance(button, { menu(), onPick(kind, value, row), lang })
+ *       ◐ ▾ and its menu (a role="menu" on <body>, placed under the
+ *       button). menu() gives appearanceMenuHtml's options each time it
+ *       opens; a pick calls onPick ("mode", "theme", "language" or "item",
+ *       and its value) and closes it. Click, Enter, Space, ↓ or ↑ open it on
+ *       the checked entry (else the first); ↑ ↓ Home End move; Esc or Tab
+ *       closes it and focus goes back to ◐ ▾; a press outside closes it.
+ *       → { open(), close(refocus), isOpen() }
+ *   setWaiting(o | null, root?)   the update-waiting pill after the
+ *       version chip: { label, action, title?, name?, onClick } shows it
+ *       (waitingHtml), null hides it.
  */
 import { kitT } from "./strings.js";
-import { bellCount, bellPanelHtml } from "./shell-html.js";
+import {
+  appearanceMenuHtml,
+  bellCount,
+  bellPanelHtml,
+  waitingHtml,
+} from "./shell-html.js";
 import { focusBack } from "./dialog.js";
 
 const all = (root, sel) =>
@@ -470,4 +486,152 @@ export function hydrateAccount(root, opts = {}) {
     if (!a || !root.contains(a)) return;
     if (opts.onAction) opts.onAction(e);
   });
+}
+
+const TOP_MARGIN = 8;
+
+/** ◐ ▾ and its menu (see the top). */
+export function hydrateAppearance(btn, opts = {}) {
+  const lang = () =>
+    typeof opts.lang === "function" ? opts.lang() : opts.lang;
+  let pop = null;
+  const rows = () => (pop ? all(pop, ".den-mi") : []);
+  const isOpen = () => !!pop;
+  function close(refocus) {
+    if (!pop) return;
+    pop.remove();
+    pop = null;
+    btn.setAttribute("aria-expanded", "false");
+    btn.removeAttribute("aria-controls");
+    if (refocus) focusBack(btn);
+  }
+  // Under the button, kept in the window (as a host's own menus are).
+  function place() {
+    const r = btn.getBoundingClientRect();
+    const gap = 6;
+    const w = pop.offsetWidth;
+    let h = pop.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const below = vh - r.bottom - gap - TOP_MARGIN;
+    const above = r.top - gap - TOP_MARGIN;
+    const up = h > below && above > below;
+    const room = Math.max(80, up ? above : below);
+    if (h > room) {
+      pop.style.setProperty("max-height", room + "px");
+      h = room;
+    }
+    const top = up ? r.top - gap - h : r.bottom + gap;
+    const left = Math.max(TOP_MARGIN, Math.min(r.left, vw - w - TOP_MARGIN));
+    pop.style.setProperty("top", Math.max(TOP_MARGIN, top) + "px");
+    pop.style.setProperty("left", left + "px");
+  }
+  function open(at) {
+    if (pop) return;
+    const model = (opts.menu ? opts.menu() : null) || {};
+    pop = document.createElement("div");
+    pop.className = "den-pop den-um";
+    pop.tabIndex = -1;
+    pop.id = (btn.id || "appearance-btn") + "-menu";
+    pop.setAttribute("role", "menu");
+    pop.setAttribute(
+      "aria-label",
+      btn.getAttribute("aria-label") || kitT(lang(), "kit.appearance"),
+    );
+    pop.innerHTML = appearanceMenuHtml({ lang: lang(), ...model });
+    document.body.appendChild(pop);
+    btn.setAttribute("aria-expanded", "true");
+    btn.setAttribute("aria-controls", pop.id);
+    place();
+    pop.addEventListener("click", (e) => {
+      const row =
+        e.target && e.target.closest ? e.target.closest(".den-mi") : null;
+      if (!row) return;
+      const kind = row.dataset.kind;
+      const value = row.dataset.value;
+      if (row.tagName !== "A") e.preventDefault();
+      close(true);
+      if (opts.onPick) opts.onPick(kind, value == null ? null : value, row);
+    });
+    pop.addEventListener("keydown", (e) => {
+      const list = rows();
+      const i = list.indexOf(document.activeElement);
+      const next =
+        e.key === "ArrowDown"
+          ? (i + 1) % list.length
+          : e.key === "ArrowUp"
+            ? (i - 1 + list.length) % list.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? list.length - 1
+                : -1;
+      if (next >= 0 && list.length) {
+        e.preventDefault();
+        list[next].focus();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        close(true);
+      } else if (e.key === "Tab") close(true);
+      else if (e.key === " " && list[i] && list[i].tagName === "A") {
+        e.preventDefault();
+        list[i].click();
+      }
+    });
+    const list = rows();
+    const first =
+      at === "last"
+        ? list[list.length - 1]
+        : pop.querySelector('.den-mi[aria-checked="true"]') || list[0];
+    if (first) first.focus();
+    else pop.focus();
+  }
+  btn.addEventListener("click", () => (pop ? close(false) : open()));
+  btn.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    if (!pop) open(e.key === "ArrowUp" ? "last" : null);
+  });
+  document.addEventListener("mousedown", (e) => {
+    if (!pop) return;
+    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    close(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && pop && !e.defaultPrevented) {
+      e.preventDefault();
+      close(true);
+    }
+  });
+  window.addEventListener("resize", () => close(false));
+  return { open: () => open(), close: (r) => close(!!r), isOpen };
+}
+
+/** The update-waiting pill after the version chip (see the top). */
+export function setWaiting(o, root = document) {
+  const find = (id) =>
+    root.getElementById
+      ? root.getElementById(id)
+      : root.querySelector("#" + id);
+  const id = (o && o.id) || "stale-pill";
+  let pill = find(id);
+  if (!o) {
+    if (pill) pill.style.display = "none";
+    return null;
+  }
+  if (!pill) {
+    const chip = find("version-pill");
+    if (!chip || !chip.parentNode) return null;
+    const box = document.createElement("div");
+    box.innerHTML = waitingHtml(o);
+    pill = box.firstChild;
+    chip.parentNode.insertBefore(pill, chip.nextSibling);
+    pill.addEventListener("click", (e) => {
+      if (pill._onClick) pill._onClick(e);
+    });
+  }
+  pill._onClick = o.onClick || null;
+  pill.style.display = "";
+  return pill;
 }

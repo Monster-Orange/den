@@ -224,11 +224,20 @@ describe("den-ui-parity (bin)", () => {
         "const b = '<button class=\"den-search\"></button>';",
         'pop.className = "den-bell-pop";',
         "function identityEntry() { return null; }",
+        'btn.className = "den-ib appearance-btn";',
+        'pill.className = "stale-pill";',
       ].join("\n") + "\n",
     );
     const r = run(root);
     expect(r.status).toBe(1);
-    for (const c of ["scope", "search", "bell", "account"])
+    for (const c of [
+      "scope",
+      "search",
+      "bell",
+      "account",
+      "appearance",
+      "version",
+    ])
       expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
   });
 
@@ -254,7 +263,7 @@ describe("den-ui-parity (bin)", () => {
     const r = run(process.cwd());
     expect([r.status, r.stdout.trim().split("\n").pop()]).toEqual([
       0,
-      "den-ui-parity: ok, no copies of the kit's 10 components in src",
+      "den-ui-parity: ok, no copies of the kit's 11 components in src",
     ]);
   });
 });

@@ -29,6 +29,11 @@
  *   accountHtml (0.7.0)         the scope crumbs, the search with ⌘K
  *                               inside, the bell and its panel, and the
  *                               rail's account entry; hydrate wires them
+ *   DenUI.settingsHtml, appearanceButtonHtml, appearanceMenuHtml,
+ *   waitingHtml (0.7.0)         the rail's Settings, ◐ ▾ and its menu
+ *                               (hydrate's opts.appearance: { menu,
+ *                               onPick }), the update-waiting pill
+ *                               (DenUI.version.waiting(o | null))
  *   DenUI.version.set(label), .unread(on), .label(running, changelog)
  *   DenUI.whatsNew.open(), .close(), .load(), .setEntries(list)
  *   DenUI.update.set({ version, message, reloadLabel, dismissLabel,
@@ -43,6 +48,8 @@
 import { addStrings, kitT, setProduct } from "./strings.js";
 import {
   accountHtml,
+  appearanceButtonHtml,
+  appearanceMenuHtml,
   bellButtonHtml,
   bellPanelHtml,
   esc,
@@ -54,16 +61,20 @@ import {
   scopeCrumbHtml,
   scopeHtml,
   searchHtml,
+  settingsHtml,
   shellHtml,
   topBarHtml,
   versionChipHtml,
+  waitingHtml,
 } from "./shell-html.js";
 import {
   hydrateAccount,
+  hydrateAppearance,
   hydrateBell,
   hydrateScope,
   hydrateSearch,
   hydrateShell,
+  setWaiting,
   syncPinToggles,
 } from "./shell-client.js";
 import { setUnread, setVersion, versionLabel } from "./version.js";
@@ -115,6 +126,8 @@ export const version = {
   label: versionLabel,
   set: (label) => setVersion(label),
   unread: (on) => setUnread(on),
+  /** 0.7.0: the update-waiting pill after the chip; null hides it. */
+  waiting: (o) => setWaiting(o),
 };
 
 export const whatsNew = {
@@ -170,7 +183,8 @@ export const busy = {
  * Binds the drawn shell, the chip and Report (see the top), and the 0.7.0
  * pieces it finds: the scope crumbs (opts.scope), the search
  * (opts.search: { onActivate }), the bell (opts.bell: { items, title,
- * empty, onOpen, … }) and the account entry (opts.account: { onAction }).
+ * empty, onOpen, … }), the account entry (opts.account: { onAction }) and
+ * ◐ ▾ (opts.appearance: { menu, onPick }; .appearance on the shell).
  * The shell it returns has .scope, .search and .bell for those found.
  * false for any of them: not wired.
  */
@@ -185,6 +199,9 @@ export function hydrate(root, opts = {}) {
   if (bell && opts.bell !== false)
     shell.bell = hydrateBell(bell, { lang, ...(opts.bell || {}) });
   if (opts.account !== false) hydrateAccount(root, opts.account || {});
+  const um = root.querySelector(".appearance-btn");
+  if (um && opts.appearance)
+    shell.appearance = hydrateAppearance(um, { lang, ...opts.appearance });
   const chip = root.querySelector("#version-pill");
   if (chip && opts.versionChip !== false)
     chip.addEventListener("click", () => whatsNew.open());
@@ -246,6 +263,12 @@ const DenUI = {
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
+  settingsHtml,
+  appearanceButtonHtml,
+  appearanceMenuHtml,
+  waitingHtml,
+  hydrateAppearance,
+  setWaiting,
   hydrateScope,
   hydrateSearch,
   hydrateBell,
