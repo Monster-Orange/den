@@ -174,7 +174,8 @@ describe("R26a: a failed page request gets the shell frame", () => {
     expect(r.status).toBe(404);
     expect(r.headers["content-type"]).toMatch(/^text\/html/);
     expect(r.body).toContain('<div id="den-shell" data-page="error"');
-    expect(r.body).toContain('<script src="/shell.js"></script>');
+    // Issue 231: stamped with the running version.
+    expect(r.body).toMatch(/<script src="\/shell\.js\?v=[^"]+"><\/script>/);
     const d = errorData(r);
     expect(d).toMatchObject({ status: 404, path: "/nope", plugin: null });
     expect(d.requestId).toBe(r.headers["x-request-id"]);

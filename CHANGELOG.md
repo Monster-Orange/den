@@ -14,6 +14,8 @@ config and manifest changes a distribution must make to move to it under
   (`height: fit-content` in base.css, and in the kit's own dialog and
   working pop-up), so a browser that leaves a modal dialog's height auto
   no longer fills the window with it.
+- After an update, pages load the new styles and scripts, even in a tab
+  left open.
 
 ## [0.4.54] - 2026-11-15
 

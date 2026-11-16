@@ -117,7 +117,7 @@ describe("iPad: pop-ups fit their content", () => {
       await ctx.addInitScript(IPAD_DEFAULT);
       const p = await ctx.newPage();
       // No screenshot, so the Report dialog's content is short too.
-      await p.route("**/report-shot.js", (r) => r.fulfill({ status: 404 }));
+      await p.route("**/report-shot.js?v=*", (r) => r.fulfill({ status: 404 }));
       await p.goto(signInUrl(s!.stateDir, s!.base, "/agents"));
       await p.waitForFunction(() => "denShell" in window, undefined, {
         timeout: 20_000,
