@@ -42,6 +42,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A start or resume that fails no longer takes a running agent's Hub
+  access (issue 215). An agent's older token now ends only once its new
+  session has started.
+
 - A running agent no longer loses Hub with "its session ended". Den
   rewrites an agent's session record on every prompt, and a token check
   that read it half-written took that for "ended" and revoked the token
