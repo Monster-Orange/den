@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
   "type": "module",
@@ -13,11 +13,27 @@
     "./update-pill.css": "./src/update-pill.css",
     "./busy": "./src/busy.js",
     "./busy-words": "./src/busy-words.js",
-    "./dialog": "./src/dialog.js"
+    "./dialog": "./src/dialog.js",
+    "./strings": "./src/strings.js",
+    "./icons": "./src/icons.js",
+    "./shell-html": "./src/shell-html.js",
+    "./shell-client": "./src/shell-client.js",
+    "./version": "./src/version.js",
+    "./whatsnew": "./src/whatsnew.js",
+    "./report": "./src/report.js",
+    "./report-shot": "./src/report-shot.js",
+    "./kit": "./src/kit.js",
+    "./shell.css": "./src/shell.css",
+    "./whatsnew.css": "./src/whatsnew.css",
+    "./report.css": "./src/report.css"
   },
   "files": [
     "src/",
+    "bin/",
     "LICENSE",
     "README.md"
-  ]
+  ],
+  "bin": {
+    "den-ui-parity": "bin/den-ui-parity.mjs"
+  }
 }

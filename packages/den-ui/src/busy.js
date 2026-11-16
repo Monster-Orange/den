@@ -11,6 +11,9 @@
  *     words: { en: {...}, ... },    extra or replaced shared words
  *     idHeader: "X-Request-Id",     the header the request id rides in
  *     statusUrl: (id) => url,       Check again's GET (never resends)
+ *     request: (id) => Promise<state>  Check again through the product's
+ *                                   adapter instead ({ state, result?,
+ *                                   error? }); statusUrl is then unused
  *     report: (info) => void,       Report: { title, details, requestId }
  *     toast: (text) => void,        a fast success, said without a pop-up
  *     open: (url) => void,          a held answer's page (default: go)
@@ -526,8 +529,13 @@ export function busyAction(name, run, opts = {}) {
   async function checkAgain() {
     let st = null;
     try {
-      const r = await fetch(hook.statusUrl(id), { cache: "no-store" });
-      st = r.ok ? await r.json() : null;
+      // The product's adapter when it has one (DenUI's request(id)), else
+      // a GET of statusUrl(id).
+      if (hook.request) st = (await hook.request(id)) ?? null;
+      else {
+        const r = await fetch(hook.statusUrl(id), { cache: "no-store" });
+        st = r.ok ? await r.json() : null;
+      }
     } catch {
       st = null;
     }

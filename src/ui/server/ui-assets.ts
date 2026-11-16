@@ -23,8 +23,6 @@ export const UI_MODULES: readonly string[] = [
   "/panel.js",
   "/graph.css",
   "/appearance.js",
-  "/version-label.js",
-  "/changelog-view.js",
   "/health-fit.js",
   "/health-rollup.js",
   "/shell.js",
@@ -81,10 +79,12 @@ export const UI_MODULES: readonly string[] = [
   "/busy-den.js",
   // issue 133: Den's words and Report on the kit's dialogs (/kit/dialog.js).
   "/dialog-den.js",
-  // FB (den#81): Report an issue, the dialog.
-  "/report-dialog.js",
-  // FB (den#81): the screenshot and its mask.
-  "/report-shot.js",
+  // FB (den#81): Report an issue: the kit's form on Den's adapter, and
+  // My reports (issue 95: the form, its screenshot, What's new and the
+  // version chip are the kit's now, /kit/).
+  "/report-den.js",
+  // Issue 95: Den's adapter for the kit's client entry (/kit/kit.js).
+  "/den-kit.js",
   // FB (den#81): the Report button in every pop-up's footer.
   "/report-inject.js",
   "/ws-delete-agents.js",
@@ -141,6 +141,21 @@ export const KIT_FILES: readonly string[] = [
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
+  // Issue 95 (UI kit slice 1): the global shell (top bar, rail, pins,
+  // collapse, ☰ drawer), the version chip, What's new, the Report form
+  // and the kit's words, and the client entry (window.DenUI).
+  "strings.js",
+  "icons.js",
+  "shell-html.js",
+  "shell-client.js",
+  "shell.css",
+  "version.js",
+  "whatsnew.js",
+  "whatsnew.css",
+  "report.js",
+  "report.css",
+  "report-shot.js",
+  "kit.js",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",
@@ -161,6 +176,91 @@ export function kitAssetFile(
   return fs.existsSync(file) ? file : null;
 }
 
+/**
+ * Issue 95: the kit's shell for Den's classic shell.js. shell.js runs where
+ * it stands (a classic script: the frame is in the DOM before the page's
+ * own scripts look for it), so it can't import an ES module. Den serves the
+ * kit's own files, unchanged but for their import and export words, as one
+ * classic script that sets window.DenUIShell; shell.js draws the frame
+ * with it. One markup source: the kit's shell-html.js.
+ */
+export const KIT_SHELL_SCRIPT = "/den-ui-shell.js";
+const KIT_SHELL_PARTS = [
+  "strings.js",
+  "icons.js",
+  "shell-html.js",
+  "shell-client.js",
+];
+const KIT_SHELL_NAMES = [
+  "shellHtml",
+  "topBarHtml",
+  "railHtml",
+  "railGroupHtml",
+  "navItemHtml",
+  "versionChipHtml",
+  "reportButtonHtml",
+  "hydrateShell",
+  "syncPinToggles",
+  "icon",
+  "esc",
+  "kitT",
+  "addStrings",
+  "setProduct",
+];
+
+/** The classic script of the kit's shell (KIT_SHELL_SCRIPT), or null. */
+export function kitShellScript(
+  engineRoot: string = getEngineRoot(),
+): string | null {
+  const dir = path.join(engineRoot, "packages", "den-ui", "src");
+  const parts: string[] = [];
+  for (const f of KIT_SHELL_PARTS) {
+    const file = path.join(dir, f);
+    if (!fs.existsSync(file)) return null;
+    parts.push(
+      `// ── den-ui ${f} ──\n` +
+        fs
+          .readFileSync(file, "utf-8")
+          // Its own imports are the parts above it; re-exports go.
+          .replace(/^(import|export)\s*\{[^}]*\}\s*from\s*"[^"]+";\s*$/gm, "")
+          .replace(/^import\s+[^;]+;\s*$/gm, "")
+          .replace(/^export\s+(?=(async\s+)?function|const|let|class)/gm, ""),
+    );
+  }
+  return (
+    "(function () {\n" +
+    parts.join("\n") +
+    `\nwindow.DenUIShell = { ${KIT_SHELL_NAMES.join(", ")} };\n})();\n`
+  );
+}
+
+/** The kit's stylesheets every page with the shell links, in this order. */
+export const KIT_PAGE_CSS: readonly string[] = [
+  "/kit/shell.css",
+  "/kit/whatsnew.css",
+  "/kit/report.css",
+];
+
+/**
+ * A page with the shell (its `<script src="/shell.js">`): the kit's
+ * stylesheets at the end of its <head>, so they come after the page's own
+ * styles, as the shell's did, and the kit's shell script just before
+ * shell.js. A page without the shell comes back unchanged.
+ */
+export function kitPage(html: string): string {
+  const shell = '<script src="/shell.js"></script>';
+  if (!html.includes(shell)) return html;
+  const links = KIT_PAGE_CSS.map(
+    (href) => `<link rel="stylesheet" href="${href}" />`,
+  ).join("");
+  return html
+    .replace("</head>", () => `${links}</head>`)
+    .replace(
+      shell,
+      () => `<script src="${KIT_SHELL_SCRIPT}"></script>${shell}`,
+    );
+}
+
 /** Serves a UI module or vendored asset; false when `pathname` is neither. */
 export function serveUiAsset(
   res: http.ServerResponse,
@@ -169,6 +269,20 @@ export function serveUiAsset(
 ): boolean {
   if (UI_MODULES.includes(pathname)) {
     serveFile(res, path.join(publicDir, pathname.slice(1)));
+    return true;
+  }
+  if (pathname === KIT_SHELL_SCRIPT) {
+    const js = kitShellScript();
+    if (!js) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": "text/javascript; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(js);
     return true;
   }
   if (pathname.startsWith("/kit/")) {
