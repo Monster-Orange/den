@@ -16,6 +16,7 @@
  *                     (lifecycle-exec.ts), until it is ready or exits;
  *                     an inactive workspace is activated first, on the
  *                     same Allow, and the Review says so
+ *   hub_connect       #267: set, change or clear Hub's address
  *   den_restart       SRV-1a: restart this Den's web server, in place
  *                     (server-restart.ts); the agent that asked is told
  *                     when it is back
@@ -119,6 +120,8 @@ export interface HeldActionDeps {
   };
   /** SRV-P4: project_mode's check and save (agent-ops.ts). */
   projectMode?: HeldOp;
+  /** #267: hub_connect's check and write (hub-address.ts). */
+  hubAddress?: HeldOp;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
@@ -453,6 +456,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.projectMode,
     "this Den can't set a project's mode here",
   );
+  const hubConnect = op(d.hubAddress, "this Den can't set Hub's address here");
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
     d.agentMode,
@@ -528,6 +532,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     persona_update: personaUpdate,
     repo_clone: repoClone,
     project_mode: projectMode,
+    hub_connect: hubConnect,
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,

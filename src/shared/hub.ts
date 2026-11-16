@@ -322,6 +322,41 @@ export function patchHubAllowTools(
 }
 
 /**
+ * #267: apply Hub's address from Settings › Hub (or the Den agent's
+ * hub_connect) to user.yml's hub block, in place. A string is checked as
+ * hub.url is (https, or http only to this machine), trimmed, without its
+ * trailing slash; null or "" clears it. The same address keeps the token;
+ * a different one (or none) drops hub.token and hub.mcp_url, so a token is
+ * never sent to a Hub that didn't issue it.
+ */
+export function patchHubUrl(
+  user: Record<string, unknown>,
+  v: unknown,
+): { ok: true; url: string | null } | { ok: false; error: string } {
+  if (v !== null && typeof v !== "string")
+    return { ok: false, error: "Hub's address must be text, or empty" };
+  const url = (v ?? "").trim().replace(/\/+$/, "");
+  if (url) {
+    const bad = hubUrlProblem(url);
+    if (bad)
+      return { ok: false, error: bad.replace("hub.url", "Hub's address") };
+  }
+  const hub = { ...((user.hub as Record<string, unknown> | undefined) ?? {}) };
+  const was = typeof hub.url === "string" ? hub.url.replace(/\/+$/, "") : "";
+  // A token is for the Hub that issued it: never sent to another address.
+  // A new or cleared address drops it here; Connect gets a new one.
+  if (was !== url) {
+    delete hub.token;
+    delete hub.mcp_url;
+  }
+  if (url) hub.url = url;
+  else delete hub.url;
+  if (Object.keys(hub).length) user.hub = hub;
+  else delete user.hub;
+  return { ok: true, url: url || null };
+}
+
+/**
  * 0.4.47: the Hub token as this process last read it. Den reads it from
  * the store once and keeps it: a read per Hub call, times every agent,
  * ran the store's rate limit dry, and then every agent lost Hub and kept

@@ -1,5 +1,5 @@
 /**
- * 0.4.45: the two Hub editions Settings › Agents › Hub names under
+ * 0.4.45: the two Hub editions Settings › Hub names under
  * Connect, until the install is connected. The distribution says where
  * they are (den.yml `hub_editions`): Den's source names no host.
  *

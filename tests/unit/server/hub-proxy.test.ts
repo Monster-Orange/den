@@ -620,7 +620,7 @@ describe("D52: what passes through", () => {
     });
     expect(a.status).toBe(503);
     expect(((await a.json()) as { error: string }).error).toMatch(
-      /Settings › Agents › Hub/,
+      /Settings › Hub/,
     );
     const down = await den("http://127.0.0.1:1");
     const b = await fetch(`${down.base}/hub/api/inbox`, {

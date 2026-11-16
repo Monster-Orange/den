@@ -127,6 +127,8 @@ Held (each waits for the person's Allow):
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
 - `persona_create`, `persona_update`: add or change a persona.
+- `hub_connect`: set, change or clear Hub's address. After the Allow, Den
+  restarts; the person then clicks Connect in Settings › Hub.
 - `den_restart_server`, `den_update`: restart or update Den.
 
 Only when Den's config turns them on (`mcp.actions`):

@@ -861,7 +861,7 @@
     "set.graph.panelWidth": "詳細パネル",
     "set.workspace.hub": "Hub のプロジェクト",
     "hubp.offline": "このインストールはまだ Hub に接続されていません。",
-    "hubp.connect": "エージェント › Hub で接続",
+    "hubp.connect": "設定 › Hub で接続",
     "hubp.suggested": "Hub のおすすめ",
     "hubp.others": "あなたの会社のほかの Hub プロジェクト",
     "hubp.whyRepo": "同じリポジトリ",
@@ -878,6 +878,8 @@
     "hubp.connectBtn": "Hub に接続",
     "hubp.sideProject": "プロジェクト",
     "hubp.sideHub": "Hub プロジェクト",
+    "hubp.byId":
+      "Den は Hub プロジェクトを非表示の ID でリンクします。Hub でプロジェクト名や短い名前を変えても、リンクは切れません。",
     "hubp.linkedWhen":
       "このインストールが Hub に接続したときにリンクされました。",
     "hubp.does":
@@ -2201,6 +2203,22 @@
     "set.ui.rot.never": "しない",
     "set.ui.rot.add": "上書き設定を追加",
     "set.ui.hub.badConfig": "user.yml の hub が無効です",
+    "setc.hub": "Hub",
+    "setc.hub.d":
+      "Den Hub は、会社のドキュメント、モック、コメント、承認が集まる場所です。このインストールを接続すると、すべてのエージェントがそこで検索・公開でき、自分の作業へのコメントや決定を受け取ります。Den のドキュメントの docs/hub.md を参照してください。",
+    "set.ui.hub.addrNotUrl":
+      "Web アドレスではありません。https:// で始めてください",
+    "set.ui.hub.addrHttps":
+      "Hub のアドレスは https:// で始めてください(http:// はこのマシンのみ)。",
+    "set.ui.hub.save": "保存",
+    "set.ui.hub.clear": "クリア",
+    "set.ui.hub.saveNote":
+      "保存すると設定に記録し、Den を再起動します。クリアすると切断され、エージェントは次の再起動で Hub のツールを失います。",
+    "set.ui.hub.empty":
+      "まだ Hub がありません。会社の Hub のアドレスを入力して「接続」を押してください。「保存」はアドレスを記録するだけです。",
+    "set.ui.hub.saved":
+      "保存しました。Den は新しい Hub のアドレスで再起動しました。",
+    "set.ui.hub.cleared": "クリアしました。Den は Hub なしで再起動しました。",
     "set.ui.hub.address": "Hub のアドレス",
     "set.ui.hub.connect": "接続",
     "set.ui.hub.connectLinks":

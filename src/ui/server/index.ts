@@ -394,6 +394,7 @@ import {
   forgetHubToken,
   hubTokenProblem,
   patchHubAllowTools,
+  patchHubUrl,
   readHubConfig,
 } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
@@ -1005,6 +1006,7 @@ import {
 import { policyFor, readPolicySetting } from "../../shared/approval-policy.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
+import { checkHubAddress, runHubAddress } from "./hub-address.js";
 import {
   checkVerifyRun,
   handleVerifyRoutes,
@@ -2489,6 +2491,34 @@ function approvalDeps(): ApprovalDeps {
     agentCreate: {
       check: (a, who) => checkAgentCreate(agentWebDeps(), a, who),
       run: (a) => createAgent(agentWebDeps(), a),
+    },
+    // #267: Den's own agent asks to set, change or clear Hub's address.
+    hubAddress: {
+      check: (a, who) =>
+        checkHubAddress(
+          { readUser: () => readUserConfig() as Record<string, unknown> },
+          a,
+          who,
+        ),
+      run: (a) =>
+        runHubAddress(
+          {
+            readUser: () =>
+              structuredClone(readUserConfig()) as Record<string, unknown>,
+            writeUser: (u) => writeUserConfig(u as UserConfig),
+            disconnect: async (force) => {
+              const m = await import("./hub-connect.js");
+              return new m.HubConnect().disconnect(force);
+            },
+            // The restart den_restart_server runs (its note, audit, spawn).
+            restart: (reason) =>
+              actions.den_restart.run({ reason }) as Promise<{
+                ok: boolean;
+                error?: string;
+              }>,
+          },
+          a,
+        ),
     },
     // SRV-P4: an agent asks to set a project's mode, or move an agent.
     projectMode: {
@@ -5971,6 +6001,8 @@ async function handleRequest(
   //     206); null or "" clears it (the browser's)
   //   hub_allow_tools: true | false, hub.allow_tools (HUB-1.5: agents use
   //     Hub's tools without asking); null clears it (on)
+  //   hub_url: Hub's address, hub.url (#267, Settings › Hub); null or ""
+  //     clears it. The page restarts Den after.
   // It writes config/local/user.yml only. `distribution` is read-only: what
   // the org config (tracked) sets, for the Settings page's Distribution rows.
   // Every key POST accepts has a row in the Settings page's registry
@@ -6117,6 +6149,7 @@ async function handleRequest(
           bell_fold_days?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
+          hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
           local_dev?: unknown;
@@ -6199,12 +6232,18 @@ async function handleRequest(
           user.server_agent = sa;
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
-        // Agents › Hub); null clears it (the default, on).
+        // Hub); null clears it (the default, on).
         if (body.hub_allow_tools !== undefined) {
           const h = patchHubAllowTools(
             user as Record<string, unknown>,
             body.hub_allow_tools,
           );
+          if (!h.ok) return send400(res, h.error);
+        }
+        // #267: Hub's address (Settings › Hub); "" or null clears it. The
+        // page restarts Den after, so every agent and check reads it anew.
+        if (body.hub_url !== undefined) {
+          const h = patchHubUrl(user as Record<string, unknown>, body.hub_url);
           if (!h.ok) return send400(res, h.error);
         }
         // AG-4b: the Agents tab's layout, a view preference only.

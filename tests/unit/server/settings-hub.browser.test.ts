@@ -1,5 +1,5 @@
 /**
- * Settings › Agents › Hub (HUB-1.5, HUB-1.7 Connect to Hub).
+ * Settings › Hub (HUB-1.5, HUB-1.7 Connect to Hub).
  *
  * The row is always there. Not connected: Hub's address and Connect.
  * Connected: the company (a link), role, who signed in, this install, and
@@ -196,6 +196,96 @@ const hubText = (p: Page) =>
   p.$eval('[data-setting="agents.hub"]', (el) => el.textContent ?? "");
 const fits = (p: Page) =>
   p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+describe("#267: Settings › Hub, a section of its own, with Hub's address", () => {
+  it("Hub's rows sit in their own section, with the same ids", async () => {
+    if (skip()) return;
+    const p = await page(undefined);
+    for (const id of [
+      "agents.hub",
+      "agents.hub_link_all",
+      "distribution.hub_github",
+      "notifications.hub",
+      "notifications.pick",
+      "notifications.shared",
+    ])
+      expect(
+        await p.$eval(`[data-setting="${id}"]`, (el) =>
+          el.closest("section[data-cat]")?.getAttribute("data-cat"),
+        ),
+      ).toBe("hub");
+    expect(await p.textContent('a.set-ni[data-cat="hub"]')).toMatch(/Hub/);
+    expect(await p.textContent('section[data-cat="hub"]')).toMatch(
+      /docs\/hub\.md/,
+    );
+    await p.context().close();
+  });
+
+  it("a broken address can be fixed here: the check as you type, Save only when it's right", async () => {
+    if (skip()) return;
+    const p = await page({
+      configured: true,
+      state: "bad_config",
+      url: "http://hub.example.com",
+      problem:
+        "hub.url must be https (http only to this machine): http://hub.example.com",
+    });
+    await p.waitForSelector("#hub-addr");
+    await p.fill("#hub-addr", "http://hub.example.com");
+    expect(await p.isVisible("[data-hub-addr-problem]")).toBe(true);
+    expect(await p.textContent("[data-hub-addr-problem]")).toMatch(
+      /https:\/\//,
+    );
+    expect(await p.isDisabled('[data-hub-action="save-url"]')).toBe(true);
+    await p.fill("#hub-addr", "https://hub.example.com");
+    expect(await p.isVisible("[data-hub-addr-problem]")).toBe(false);
+    expect(await p.isDisabled('[data-hub-action="save-url"]')).toBe(false);
+    await p.context().close();
+  });
+
+  it("connected: the company shows; Save of a new address disconnects, writes it, and restarts Den", async () => {
+    if (skip()) return;
+    const p = await page({
+      configured: true,
+      connected: true,
+      state: "connected",
+      url: "https://hub.example.com",
+      team: "Example Co",
+    });
+    const calls: string[] = [];
+    await p.route("**/api/hub/disconnect", (r) => {
+      calls.push("disconnect");
+      return r.fulfill({
+        contentType: "application/json",
+        body: '{"ok":true,"message":"Disconnected."}',
+      });
+    });
+    await p.route("**/api/settings", (r) => {
+      if (r.request().method() !== "POST") return r.fallback();
+      calls.push(`settings ${r.request().postData()}`);
+      return r.fulfill({
+        contentType: "application/json",
+        body: '{"ok":true}',
+      });
+    });
+    await p.route("**/api/web/restart", (r) => {
+      calls.push("restart");
+      return r.abort();
+    });
+    expect(await hubText(p)).toMatch(/Example Co/);
+    expect(await p.inputValue("#hub-addr")).toBe("https://hub.example.com");
+    await p.fill("#hub-addr", "https://other.example.com/");
+    await p.click('[data-hub-action="save-url"]');
+    for (let i = 0; i < 100 && !calls.includes("restart"); i++)
+      await p.waitForTimeout(100);
+    expect(calls).toEqual([
+      "disconnect",
+      'settings {"hub_url":"https://other.example.com"}',
+      "restart",
+    ]);
+    await p.context().close();
+  });
+});
 
 describe("Settings › Hub (HUB-1.7)", () => {
   it("no hub.url: the row asks for Hub's address and Connect; Connect with none says so", async () => {

@@ -32,6 +32,18 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Hub has its own section in Settings. Settings › Hub holds Hub's
+  address, the connection (with the company it's linked to), what agents
+  get, linking projects, GitHub access and Hub's notification switches.
+  You can set, change or clear Hub's address there: it's checked as you
+  type, and Save keeps it and restarts Den. A broken address can now be
+  fixed there too, without editing a file. Changing the address while
+  connected disconnects from the old Hub first, and Den never sends a
+  token to a Hub that didn't issue it.
+- Den's own agent can set, change or clear Hub's address with a new held
+  write, hub_connect. It runs on your Allow, through the same check and
+  steps as Settings › Hub. A linked project now says that the link is by
+  Hub's hidden ID, so renaming the project in Hub doesn't break it.
 - `agents.claude_ai_connectors: true` now works: agents load the
   account's claude.ai connectors. Before, a flag Den always passed kept
   them out. Any other MCP server of the person's or the project's still

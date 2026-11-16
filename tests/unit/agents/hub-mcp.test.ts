@@ -344,9 +344,7 @@ describe("Settings › Hub and doctor", () => {
       },
       "Acme",
     );
-    expect(revoked.check?.detail).toMatch(
-      /Settings › Agents › Hub: Reconnect\)$/,
-    );
+    expect(revoked.check?.detail).toMatch(/Settings › Hub: Reconnect\)$/);
   });
 });
 

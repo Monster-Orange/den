@@ -545,12 +545,12 @@ export function hubLines(
   // HUB-1.7: what to do about it is in Settings (Connect, Reconnect).
   const fix =
     st.state === "no_token" || st.state === "rejected"
-      ? ` (Settings › Agents › Hub: ${st.state === "rejected" ? "Reconnect" : "Connect"})`
+      ? ` (Settings › Hub: ${st.state === "rejected" ? "Reconnect" : "Connect"})`
       : "";
   // #71: connected, on an older token Den can't replace itself.
   const legacy =
     st.connected && st.legacy
-      ? "; on an older Hub token kept where Den can't replace it (Settings › Agents › Hub: Reconnect)"
+      ? "; on an older Hub token kept where Den can't replace it (Settings › Hub: Reconnect)"
       : "";
   const detail = st.connected
     ? `${st.url}: connected${who ? ` (${who})` : ""}${legacy}`

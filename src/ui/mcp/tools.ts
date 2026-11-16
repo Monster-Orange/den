@@ -422,7 +422,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_connect, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1722,6 +1722,26 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  {
+    name: "hub_connect",
+    title: "Set Hub's address",
+    description:
+      "Set, change or clear Hub's address for this whole install (`url`, https; none clears it). Checked as Settings › Hub checks it. On the person's Allow, Den disconnects from the Hub it uses now (so that Hub revokes its key), saves the address and restarts. The key itself still needs the person's Connect in Settings › Hub, in a browser: tell them so after. Den's own agent only." +
+      HELD,
+    action: true,
+    shape: {
+      url: z
+        .string()
+        .describe("Hub's address (https://…), or none to clear it"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("hub_connect", ctx.scope);
+      const url = needArg("hub_connect", a, "url", "Hub's address, or none");
+      return askPerson("hub_connect", "hub_connect", { url }, a, ctx);
     },
   },
   {
