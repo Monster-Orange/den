@@ -26,7 +26,8 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 // org → its repos' service counts (31 services, 15 repos).
@@ -187,9 +188,11 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await stopServer(server);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server],
+    after: () => fs.rmSync(tmp, { recursive: true, force: true }),
+  });
 });
 
 async function page(url: string, w: number, h: number): Promise<Page> {

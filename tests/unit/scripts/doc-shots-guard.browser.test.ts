@@ -13,6 +13,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 interface Guard {
   guardShot: (
@@ -48,7 +49,9 @@ beforeAll(async () => {
   }
 }, 30_000);
 afterAll(async () => {
-  await browser?.close();
+  await closeBrowserSuite({
+    browsers: [browser],
+  });
 });
 
 // A fictional org; the context around it stands in for anything sensitive.

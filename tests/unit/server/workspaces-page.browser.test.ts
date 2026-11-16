@@ -27,7 +27,8 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -183,10 +184,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  okServer?.close();
-  await stopServer(server);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [okServer, server],
+    after: () => fs.rmSync(tmp, { recursive: true, force: true }),
+  });
 });
 
 /** Workspaces for a workspace, at a size; the table drawn. */

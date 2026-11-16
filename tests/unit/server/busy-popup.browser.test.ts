@@ -16,6 +16,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { pageImport } from "./helpers/page-import.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -33,8 +34,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 const skip = () => !browser;

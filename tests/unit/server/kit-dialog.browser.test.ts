@@ -20,6 +20,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -43,8 +44,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await s?.settings({ language: "en" });
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 /** The words each language must show (i18n/es.js, i18n/ja.js). */

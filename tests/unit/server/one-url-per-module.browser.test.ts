@@ -29,6 +29,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { SERVED_PAGES } from "./helpers/served-pages.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 /** Each page once: a `.html` twin serves the same file as its bare path. */
 const PAGES = SERVED_PAGES.filter(
@@ -88,9 +89,10 @@ beforeAll(async () => {
 // Two remote browsers and a seeded server to close: more than Jest's
 // default 10 s on a loaded runner, as the setup above has its own 90 s.
 afterAll(async () => {
-  for (const b of Object.values(browsers)) await b?.close();
-  host?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: Object.values(browsers),
+    servers: [host, s],
+  });
 }, 60_000);
 
 const skip = () => !s;

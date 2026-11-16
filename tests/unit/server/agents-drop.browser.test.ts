@@ -19,6 +19,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
@@ -28,6 +29,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -74,8 +76,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 /** Everything the page typed into the agent's PTY since `from`. */
@@ -350,8 +354,13 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
       menu.getByRole("menuitem", { name: "Download" }).click(),
     ]);
     expect(dl.suggestedFilename()).toBe("r.txt");
-    const got = await dl.path();
-    expect(fs.readFileSync(got!, "utf8")).toBe("the agent's report\n");
+    // A remote browser has no local path for it: save a copy here.
+    const got = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "den-drop-dl-")),
+      "r.txt",
+    );
+    await dl.saveAs(got);
+    expect(fs.readFileSync(got, "utf8")).toBe("the agent's report\n");
     // The page stays.
     expect(new URL(p.url()).pathname).toBe("/agents");
     expect(errors).toEqual([]);

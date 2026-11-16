@@ -22,8 +22,9 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { clearWebOwner, writeWebOwner } from "../../../src/shared/web-owner.js";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
@@ -95,10 +96,13 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await stopServer(server);
-  await gh?.close();
-  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server, gh],
+    after: () => {
+      if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    },
+  });
 });
 
 const skip = () => !browser;

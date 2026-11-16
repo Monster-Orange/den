@@ -12,7 +12,7 @@
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
  * restart-agent, fresh-start, report-preview, save-report-draft,
  * discard-draft, follow-project, keep-running, send-message, allow-web-app,
- * agent-order. Waits for
+ * agent-order, delete-project, remove-service. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -45,6 +45,25 @@ export const DEN_ACTIONS = {
       working: "busy.ordW",
       success: "busy.ordS",
       failure: "busy.ordF",
+    },
+  },
+  // Issue 133: the Projects and Services pages' confirm actions.
+  "delete-project": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.delProjW",
+      success: "busy.delProjS",
+      failure: "busy.delProjF",
+    },
+  },
+  "remove-service": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.rmSvcW",
+      success: "busy.rmSvcS",
+      failure: "busy.rmSvcF",
     },
   },
   link: {

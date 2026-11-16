@@ -5,6 +5,8 @@
  * (api("POST", …) and fetch(…, { method: "POST" }) without `{ headers }`),
  * against the count when BUSY-1 began. A new one fails here; moving one
  * onto the pop-up must lower its number, so the list only shrinks.
+ * Pages' own scripts (*.html) count too (issue 133: Delete project and
+ * Remove service on the Projects and Services pages).
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -22,9 +24,12 @@ const LEFT: Record<string, number> = {
   "error-page.js": 4,
   "graph.js": 1,
   "header.js": 2,
+  "local-dev.html": 18,
   "persona-ui.js": 5,
+  "release.html": 4,
   "restart-den.js": 1,
   "server-agent-page.js": 4,
+  "services.html": 2,
   "settings-registry.js": 15,
   "shell.js": 4,
   "svc-panel.js": 1,
@@ -72,7 +77,9 @@ describe("BUSY-1: writes go through the working pop-up", () => {
 
   it("no page script has more writes off the pop-up than its number", () => {
     const now: Record<string, number> = {};
-    for (const f of fs.readdirSync(PUBLIC).filter((x) => x.endsWith(".js"))) {
+    for (const f of fs
+      .readdirSync(PUBLIC)
+      .filter((x) => x.endsWith(".js") || x.endsWith(".html"))) {
       const n = writesOffThePopup(
         fs.readFileSync(path.join(PUBLIC, f), "utf-8"),
       );

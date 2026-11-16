@@ -17,7 +17,8 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import type { Browser } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -105,10 +106,13 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  if (evil) await new Promise<void>((r) => evil!.close(() => r()));
-  await stopServer(server);
-  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [evil, server],
+    after: () => {
+      if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    },
+  });
 });
 
 describe("a page on another origin (SEC-1a)", () => {

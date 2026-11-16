@@ -34,6 +34,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -95,9 +96,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  host?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [host, s],
+  });
 });
 
 const skip = () => !browser;
@@ -288,7 +290,9 @@ describe("0.4.46: the __DEN_TITLE__ agent's page reconnects on its own too", () 
     if (browser) f = await startAgentsPageServer({ fresh: true });
   }, 60_000);
   afterAll(async () => {
-    await f?.stop();
+    await closeBrowserSuite({
+      servers: [f],
+    });
   });
 
   it("the web server restarts: its terminal is live again with no click", async () => {

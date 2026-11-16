@@ -21,6 +21,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 // Three days ago at 05:30 UTC: the evening before in Los Angeles, the
 // afternoon of that day in Tokyo, so the date shown names the zone.
@@ -90,8 +91,10 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  for (const b of Object.values(browsers)) await b?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: Object.values(browsers),
+    servers: [s],
+  });
 });
 
 async function open(
