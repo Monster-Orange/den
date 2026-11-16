@@ -276,6 +276,19 @@ No new file. One import changes, for hosts that serve a fixed list of kit files:
 
 `shell-client.js` now imports `dialog.js` (and `shell-html.js`): serve `dialog.js` wherever `shell-client.js` is served.
 
+Default tokens are Den's theme. `tokens.css`'s defaults are now the values
+of Den's own theme (`themes/den/den-theme.json`): its type stacks (sans,
+mono, display, ja), its shape (radius 8px, radius-button 6px) and both
+modes' colours, shadow and bar. A host on the kit's defaults looks like
+Den. Light and dark switch as before. Themes are still token sets the host
+lists in `appearanceMenuHtml({ themes })`; the kit ships no theme files.
+Tokens the theme has no value for keep the kit's own: `--info`,
+`--violet`, `--upd-shadow`, `--density` and the rest.
+
+`tokens.css` owns `--den-pop-shadow`, the shadow of a pop-up or a picker
+dialog: `0 16px 40px rgb(0 0 0 / 0.25)` in light, `/ 0.6` in dark. A host
+that kept its own copy of that token can delete it.
+
 The whole global nav is the kit's. Pieces of the top bar and the rail
 that a host drew itself move into the kit, so every host draws them the
 same way, with the same CSS values. In order: ☰ · brand · scope crumbs ·
