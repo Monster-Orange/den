@@ -937,7 +937,7 @@ export function signingLines(
 export function configLines(
   title: string,
   errorOf: (
-    s: "agents" | "sessions",
+    s: "agents" | "sessions" | "web",
   ) => ConfigError | null = sectionConfigError,
   deprecated: () => string[] = () => deprecatedKeys(),
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
@@ -945,7 +945,7 @@ export function configLines(
   const checks: OnboardCheck[] = [];
   // Keys still accepted that no longer do anything: a note, not a problem.
   for (const l of deprecated()) lines.push(`  agents  ℹ  ${l}`);
-  for (const section of ["agents", "sessions"] as const) {
+  for (const section of ["agents", "sessions", "web"] as const) {
     const e = errorOf(section);
     const issues = e
       ? e.issues.length

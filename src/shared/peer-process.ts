@@ -16,8 +16,12 @@
  * server's port, only the row to it counts.
  */
 import * as fs from "fs";
-import { spawnSync } from "child_process";
-import { lookup, LookupTimeoutError } from "../ui/cli/proc-lookup.js";
+import { execFile, spawnSync } from "child_process";
+import {
+  lookup,
+  lookupTimeouts,
+  LookupTimeoutError,
+} from "../ui/cli/proc-lookup.js";
 
 /**
  * By path: a service's PATH (launchd's, a test server's) may not have
@@ -81,19 +85,30 @@ export function loopbackPeerPid(
 
 const validPort = (p: number) => Number.isInteger(p) && p > 0 && p <= 65535;
 
+const lsofArgs = (port: number) => [
+  "-nP",
+  "-w",
+  `-iTCP:${port}`,
+  "-sTCP:ESTABLISHED",
+  "-a",
+  "-Fpn",
+];
+
 function darwinPeer(
   port: number,
   to: number | undefined,
   o: ReturnType<typeof defaults>,
 ): number | null {
-  const out = o.run(DARWIN_LSOF, [
-    "-nP",
-    "-w",
-    `-iTCP:${port}`,
-    "-sTCP:ESTABLISHED",
-    "-a",
-    "-Fpn",
-  ]);
+  return lsofPeer(o.run(DARWIN_LSOF, lsofArgs(port)), port, to, o.self);
+}
+
+/** lsof -F's answer: the one pid whose client end is `port` (to `to`). */
+function lsofPeer(
+  out: string,
+  port: number,
+  to: number | undefined,
+  self: number,
+): number | null {
   // -F: "p<pid>" starts a process, "n<local>-><remote>" each of its files.
   const found = new Set<number>();
   let pid = 0;
@@ -104,7 +119,7 @@ function darwinPeer(
       if (
         isLoopbackEnd(local, port) &&
         (to === undefined || isLoopbackEnd(remote, to)) &&
-        pid !== o.self
+        pid !== self
       )
         found.add(pid);
     }
@@ -202,20 +217,9 @@ export function descendsFrom(
   const o = defaults(d);
   let parent: (p: number) => number | null;
   try {
-    if (o.platform === "linux") {
-      parent = (p) => {
-        const s = o.read(`/proc/${p}/stat`);
-        // pid (comm) state ppid …: comm may hold spaces and parens.
-        const rest = s.slice(s.lastIndexOf(")") + 2).split(" ");
-        const pp = Number(rest[1]);
-        return Number.isInteger(pp) ? pp : null;
-      };
-    } else if (o.platform === "darwin") {
-      const table = new Map<number, number>();
-      for (const line of o.run(DARWIN_PS, ["-axo", "pid=,ppid="]).split("\n")) {
-        const [a, b] = line.trim().split(/\s+/).map(Number);
-        if (a > 0 && Number.isInteger(b)) table.set(a, b);
-      }
+    if (o.platform === "linux") parent = procParent(o);
+    else if (o.platform === "darwin") {
+      const table = psTable(o.run(DARWIN_PS, ["-axo", "pid=,ppid="]));
       parent = (p) => table.get(p) ?? null;
     } else return false;
     let p: number | null = pid;
@@ -227,4 +231,128 @@ export function descendsFrom(
   } catch {
     return false;
   }
+}
+
+/** A pid's parent from /proc/<pid>/stat. */
+const procParent =
+  (o: { read: (p: string) => string }) =>
+  (p: number): number | null => {
+    const s = o.read(`/proc/${p}/stat`);
+    // pid (comm) state ppid …: comm may hold spaces and parens.
+    const rest = s.slice(s.lastIndexOf(")") + 2).split(" ");
+    const pp = Number(rest[1]);
+    return Number.isInteger(pp) ? pp : null;
+  };
+
+/** `ps -axo pid=,ppid=` as pid → parent. */
+function psTable(out: string): Map<number, number> {
+  const table = new Map<number, number>();
+  for (const line of out.split("\n")) {
+    const [a, b] = line.trim().split(/\s+/).map(Number);
+    if (a > 0 && Number.isInteger(b)) table.set(a, b);
+  }
+  return table;
+}
+
+/** `pid` and its parents, up to init (at most 64). */
+function lineOf(pid: number, parent: (p: number) => number | null): number[] {
+  const line = [pid];
+  let p: number | null = pid;
+  for (let i = 0; i < 64 && p !== null && p > 1; i++) {
+    try {
+      p = parent(p);
+    } catch {
+      p = null;
+    }
+    if (p !== null && p > 0) line.push(p);
+  }
+  return line;
+}
+
+const PS_ARGS = ["-axo", "pid=,ppid="];
+let PS: { at: number; out: Promise<string> } | null = null;
+
+/**
+ * One `ps` snapshot for every lookup asked at or before it started: a
+ * burst of connections (agents restarting together) shares it. The
+ * caller was connected when it was asked, so it is in the snapshot.
+ */
+function sharedPs(asked: number): Promise<string> {
+  if (PS && PS.at >= asked) return PS.out;
+  PS = { at: Date.now(), out: runAsync(DARWIN_PS, PS_ARGS) };
+  return PS.out;
+}
+
+export interface AsyncPeerDeps extends Omit<PeerDeps, "run"> {
+  /** Runs a lookup command without holding the event loop ("" for nothing). */
+  run?: (cmd: string, args: string[]) => Promise<string>;
+}
+
+/**
+ * Issue 242: a lookup that never holds the event loop. Each try has the
+ * lookup timeouts' limit; a lookup that ran and found nothing, failed or
+ * still timed out: "".
+ */
+export async function runAsync(
+  cmd: string,
+  args: string[],
+  timeouts: readonly number[] = lookupTimeouts(),
+): Promise<string> {
+  for (const timeout of timeouts) {
+    const r = await new Promise<{ out: string; timedOut: boolean }>((res) => {
+      execFile(cmd, args, { encoding: "utf8", timeout }, (err, stdout) => {
+        const e = err as (NodeJS.ErrnoException & { killed?: boolean }) | null;
+        res({
+          out: e ? "" : stdout,
+          timedOut: !!e && (e.killed === true || e.code === "ETIMEDOUT"),
+        });
+      });
+    });
+    if (!r.timedOut) return r.out;
+  }
+  return "";
+}
+
+/**
+ * Issue 242: loopbackPeerPid without holding the event loop, and with the
+ * caller's line of parents taken at the same moment: [pid, its parent, …].
+ * Run when the connection arrives, the caller is still there; its line
+ * then answers "inside this session?" however late the request is read.
+ * Null: no single caller found.
+ */
+export async function loopbackPeerLine(
+  port: number,
+  to: number | undefined,
+  d: AsyncPeerDeps = {},
+): Promise<number[] | null> {
+  if (!validPort(port)) return null;
+  if (to !== undefined && !validPort(to)) return null;
+  const platform = d.platform ?? process.platform;
+  const self = d.self ?? process.pid;
+  const asked = Date.now();
+  try {
+    if (platform === "darwin") {
+      const run = d.run ?? ((c: string, a: string[]) => runAsync(c, a));
+      const pid = lsofPeer(
+        await run(DARWIN_LSOF, lsofArgs(port)),
+        port,
+        to,
+        self,
+      );
+      if (pid === null) return null;
+      const table = psTable(
+        await (d.run ? run(DARWIN_PS, PS_ARGS) : sharedPs(asked)),
+      );
+      return lineOf(pid, (p) => table.get(p) ?? null);
+    }
+    if (platform === "linux") {
+      // /proc reads: quick, and done at once, while the caller is there.
+      const o = defaults({ ...d, run: () => "" });
+      const pid = linuxPeer(port, to, o);
+      return pid === null ? null : lineOf(pid, procParent(o));
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }

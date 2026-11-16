@@ -30,7 +30,25 @@ config and manifest changes a distribution must make to move to it under
 - Settings › Server: how many unit runs share the machine, and how long
   past its estimate a run is flagged.
 
-## [0.4.59] - unreleased
+### Fixed
+
+- Den's web server no longer closes an idle connection after 5 seconds,
+  the page's own poll interval. A client that reused a connection just
+  then could get a reset (a failed request, or a proxy error). The new
+  setting `web.keep_alive_seconds` (default 120) sets how long it waits.
+
+## [0.4.60] - 2026-11-16
+
+### Fixed
+
+- Agents' own calls to Den (attention, Hub inbox) are no longer refused as
+  from an unknown process when Den is busy, such as just after restarts.
+- Hub comments now reach agents that sit idle at their prompt. Before,
+  an idle agent was taken for one waiting on its person, and its comments
+  were held. A permission prompt, a question from the agent, or a held
+  Allow still holds them.
+
+## [0.4.59] - 2026-11-16
 
 ### Fixed
 

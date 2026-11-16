@@ -164,7 +164,8 @@ function startHubNotes(log: (line: string) => void): void {
 
 /**
  * Start (or restart) reading Hub's deliveries. `waiting`: the agents with
- * an approval waiting for their person (never typed into then).
+ * a held Allow, a permission prompt or an ask_human question waiting for
+ * their person (never typed into then); an idle one is not among them.
  */
 export async function startDeliveries(o: {
   heartbeatSeconds: number;

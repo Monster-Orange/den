@@ -16,6 +16,8 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import { applyKeepAlive } from "./keep-alive.js";
+import { typingHeld } from "./attention.js";
 import {
   crashLoopSettings,
   markCleanStop,
@@ -160,6 +162,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  TOKEN_PEER_WAIT_MS_DEFAULT,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
@@ -175,6 +178,8 @@ import {
   resolveReleaseTarget,
   writeUserReleaseConfig,
   type ReleaseConfig,
+  readWebKeepAliveSeconds,
+  WEB_KEEP_ALIVE_SECONDS_DEFAULT,
 } from "../../shared/den-config.js";
 import {
   CONFIG_ERROR_STATUS,
@@ -1002,7 +1007,14 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
-import { callerPid, tokenCaller } from "./token-binding.js";
+import {
+  agentPeerWait,
+  callerPid,
+  peerSettled,
+  refusalDetail,
+  tokenCaller,
+  watchPeer,
+} from "./token-binding.js";
 import {
   backMessage,
   recordPageRestart,
@@ -1517,17 +1529,32 @@ function readEdgeNetworks(): void {
  * #70: agents.token_binding (default on), read at most every 5 s. A bad
  * agents block: on (doctor names the key).
  */
-let BINDING = { at: 0, on: true };
-function tokenBindingOn(): boolean {
-  if (Date.now() - BINDING.at < 5_000) return BINDING.on;
+let BINDING = { at: 0, on: true, waitMs: TOKEN_PEER_WAIT_MS_DEFAULT };
+function readBinding(): typeof BINDING {
+  if (Date.now() - BINDING.at < 5_000) return BINDING;
   let on = true;
+  let waitMs = TOKEN_PEER_WAIT_MS_DEFAULT;
   try {
-    on = readAgentsConfig().tokenBinding !== false;
+    const a = readAgentsConfig();
+    on = a.tokenBinding !== false;
+    waitMs = a.tokenPeerWaitMs ?? TOKEN_PEER_WAIT_MS_DEFAULT;
   } catch {
     on = true;
   }
-  BINDING = { at: Date.now(), on };
-  return on;
+  BINDING = { at: Date.now(), on, waitMs };
+  return BINDING;
+}
+function tokenBindingOn(): boolean {
+  return readBinding().on;
+}
+/**
+ * Issue 242: an agent's call (its token, on loopback) waits, at most
+ * agents.token_peer_wait_ms (the ms returned), for the lookup its
+ * connection started, so a busy Den doesn't refuse it as from an unknown
+ * process. Anything else: null, and it goes on at once, as before.
+ */
+function agentPeerWaitMs(req: http.IncomingMessage): number | null {
+  return agentPeerWait(req, readBinding());
 }
 const GUARD: GuardContext = {
   port: PORT,
@@ -1550,7 +1577,14 @@ const GUARD: GuardContext = {
             null,
             {
               verb: "agent-token",
-              detail: `${rec.actor}'s token from ${from === "unknown" ? "a process Den couldn't place" : "outside its session"} (pid ${callerPid(req) ?? "?"}): ${req.method ?? "GET"} ${new URL(req.url ?? "/", "http://x").pathname}`,
+              detail: refusalDetail({
+                actor: rec.actor,
+                from,
+                caller: callerPid(req),
+                root,
+                method: req.method ?? "GET",
+                path: new URL(req.url ?? "/", "http://x").pathname,
+              }),
               outcome: "refused",
               reason: `token_${from}`,
             },
@@ -2553,6 +2587,17 @@ function waitingAgentIds(): Set<string> {
   for (const actor of approvals.queue.waitingActors())
     if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
   return out;
+}
+
+/**
+ * The agents a Hub delivery or tools note waits for: a held Allow, a
+ * permission prompt or an ask_human question. Not an idle one ("input").
+ */
+function typingHeldIds(): Set<string> {
+  return typingHeld(
+    attentionWaiting(),
+    approvals ? approvals.queue.waitingActors() : [],
+  );
 }
 
 /** NT-3b: why each one waits; a held Allow over what the hooks said. */
@@ -6555,7 +6600,12 @@ const server = http.createServer((req, res) => {
   // rejection — which CRASHES the whole server on modern Node (freezing every
   // health dot) and leaves the request hanging. Fail the one request instead.
   // Each request in its own lock scope (SEC-1c: an agent's stays shut).
-  inRequestLockScope(() => handleRequest(req, res)).catch((err: unknown) => {
+  const wait = agentPeerWaitMs(req);
+  inRequestLockScope(() =>
+    wait === null
+      ? handleRequest(req, res)
+      : peerSettled(req, wait).then(() => handleRequest(req, res)),
+  ).catch((err: unknown) => {
     // R26: the log has the stack under the request id; the browser gets the
     // id, never the stack. The route is its template: no query values.
     const requestId = requestIdOf(req);
@@ -6637,51 +6687,78 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// #257: idle connections outlive the page's poll (web.keep_alive_seconds).
+try {
+  applyKeepAlive(server, readWebKeepAliveSeconds());
+} catch (e) {
+  applyKeepAlive(server, WEB_KEEP_ALIVE_SECONDS_DEFAULT);
+  serverLog(
+    `  ⚠ ${(e as Error).message}; using ${WEB_KEEP_ALIVE_SECONDS_DEFAULT} s`,
+    "warn",
+  );
+}
+
 // WebSocket upgrades pass the same checks (SEC-1 §3: Origin on every
 // upgrade; CSRF as the `den.csrf.<token>` subprotocol). One route takes
 // one: a session's io (AG-4a-term, session-routes.ts); any other passing
 // upgrade answers 404.
+// Issue 242: find each loopback caller as it connects, not when its
+// request is read (a busy loop, or a caller that gave up, outran that).
+server.on("connection", (sock: net.Socket) => watchPeer(sock));
+
 server.on(
   "upgrade",
   (req: http.IncomingMessage, socket: net.Socket, head: Buffer) => {
     socket.on("error", () => undefined);
-    EDGE_PROVED(req);
-    const requestId = requestIdOf(req);
-    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-    const guard = checkRequest(req, GUARD, product().cli, product().title);
-    const refuse = (status: number, error: string, code: string) =>
-      refuseUpgrade(
-        socket,
-        status,
-        { ok: false, error, code, requestId },
-        http.STATUS_CODES[status] ?? "",
-      );
-    if (!guard.ok) {
-      serverLog(
-        `  ${logTimestamp()}  ${bold("WS  ")}  ${pathname}  →  ${logStatus(guard.status)}` +
-          dim(`  req ${requestId}`),
-        "request",
-      );
-      auditGuardRefusal(req, pathname, guard);
-      return refuse(guard.status, guard.error, guard.code);
-    }
-    setPrincipal(req, guard.principal);
-    if (!isSessionIoPath(pathname))
-      return refuse(404, "No WebSocket route here", "not_found");
-    if (guard.session) trackSessionSocket(guard.session.key, socket);
-    handleSessionUpgrade(req, socket, head, pathname, requestId).catch(
-      (err: unknown) => {
-        serverLog(
-          `  ✗ WS ${routeTemplate(pathname)} failed (req ${requestId}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-          "error",
-        );
-        socket.destroy();
-      },
-    );
+    const wait = agentPeerWaitMs(req);
+    if (wait === null) return handleUpgrade(req, socket, head);
+    void peerSettled(req, wait)
+      .catch(() => undefined)
+      .then(() => handleUpgrade(req, socket, head));
   },
 );
+
+function handleUpgrade(
+  req: http.IncomingMessage,
+  socket: net.Socket,
+  head: Buffer,
+): void {
+  EDGE_PROVED(req);
+  const requestId = requestIdOf(req);
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const guard = checkRequest(req, GUARD, product().cli, product().title);
+  const refuse = (status: number, error: string, code: string) =>
+    refuseUpgrade(
+      socket,
+      status,
+      { ok: false, error, code, requestId },
+      http.STATUS_CODES[status] ?? "",
+    );
+  if (!guard.ok) {
+    serverLog(
+      `  ${logTimestamp()}  ${bold("WS  ")}  ${pathname}  →  ${logStatus(guard.status)}` +
+        dim(`  req ${requestId}`),
+      "request",
+    );
+    auditGuardRefusal(req, pathname, guard);
+    return refuse(guard.status, guard.error, guard.code);
+  }
+  setPrincipal(req, guard.principal);
+  if (!isSessionIoPath(pathname))
+    return refuse(404, "No WebSocket route here", "not_found");
+  if (guard.session) trackSessionSocket(guard.session.key, socket);
+  handleSessionUpgrade(req, socket, head, pathname, requestId).catch(
+    (err: unknown) => {
+      serverLog(
+        `  ✗ WS ${routeTemplate(pathname)} failed (req ${requestId}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        "error",
+      );
+      socket.destroy();
+    },
+  );
+}
 
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
@@ -7096,7 +7173,7 @@ void CRASH_GATE.then(() =>
       void m.startDeliveries({
         heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
         pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-        waiting: waitingAgentIds,
+        waiting: typingHeldIds,
         log: (l) => serverLog(`  ${l}`, "warn"),
       });
     });
@@ -7104,7 +7181,7 @@ void CRASH_GATE.then(() =>
     // changed (hub.tools_check_seconds).
     void import("./hub-tools-service.js").then((m) =>
       m.startHubToolsWatch({
-        waiting: waitingAgentIds,
+        waiting: typingHeldIds,
         log: (l) => serverLog(`  ${l}`, "warn"),
       }),
     );
