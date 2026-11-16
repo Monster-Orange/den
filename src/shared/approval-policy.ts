@@ -84,6 +84,10 @@ export const HELD_WRITE_RISK: Readonly<
   },
   repo_clone: { risk: "routine", why: "clones a repo into a new folder" },
   service_try: { risk: "routine", why: "starts a service locally" },
+  verify_run: {
+    risk: "critical",
+    why: "runs checks against a shared environment (CRITICAL_HELD_ACTIONS)",
+  },
 };
 
 /**

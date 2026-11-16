@@ -1147,6 +1147,26 @@
     "ap.pm.own": "これらは独自のモードを保ち、プロジェクトに従いません: {list}",
     "ap.pm.follow":
       "さらに、これらをプロジェクトに従わせます: 独自のモードは消去されます。",
+    // Issue 208: a Verify run's Allow (verify-routes.ts).
+    "ap.do.verify_run": "プロジェクト {project} の {env} で確認を実行: {list}",
+    "ap.vr.scope.changed":
+      "範囲: 変更分(スモークと、前回の結果以降にファイルが変わったチェック)。",
+    "ap.vr.scope.all": "範囲: この環境のすべて。",
+    "ap.vr.scope.chosen": "範囲: 名前で選んだチェック。",
+    "ap.vr.mod.enforced": "{module}({kind}): 強制",
+    "ap.vr.mod.declared-read-only": "{module}({kind}): 読み取り専用と宣言",
+    "ap.vr.mod.reads-code-only": "{module}({kind}): コードのみ読む",
+    "ap.vr.mod.declared-by-service": "{module}({kind}): サービスが宣言",
+    "ap.vr.cant.environment":
+      "{module} はここでは実行できません: 実行先は {envs} だけです。",
+    "ap.vr.cant.production":
+      "{module} はまだ本番で実行できません: 本番での有効化は今後の Den で入ります。",
+    "ap.vr.cant.adapter-later":
+      "{module} はまだ実行できません: そのアダプター({adapter})は今後の Den で入ります。",
+    "ap.vr.cant.no-health-url":
+      "{module} はここでは実行できません: {env} のヘルスURLがありません。",
+    "ap.vr.once":
+      "この許可は今回の実行だけに有効です。許可するまで何も実行しません。",
     "ap.own.h":
       "これらのエージェントは独自のモードを保ち、プロジェクトに従いません:",
     "ap.own.item": "{agent} (独自のモード: {mode})",

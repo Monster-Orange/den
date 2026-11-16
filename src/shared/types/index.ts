@@ -557,6 +557,8 @@ export interface RawManifest {
   github?: GitHubManifestConfig;
   release?: ReleaseManifestConfig;
   tests?: Record<string, TestSuiteConfig>;
+  /** Issue 208: Verify's modules (shared/verify/config.ts checks it). */
+  verify?: unknown;
   /** The application (config/den.yml `applications:`) this repo belongs to. */
   application?: string;
   /**

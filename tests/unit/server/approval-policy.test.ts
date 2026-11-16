@@ -270,6 +270,15 @@ describe("issue 160: the approval policy", () => {
     expect(isCriticalWrite("something_new", false)).toBe(true);
   });
 
+  it("a Verify run on a shared environment is critical (issue 208): no setting lowers it", () => {
+    expect(isCriticalWrite("verify_run", false)).toBe(true);
+    expect(
+      policyFor("verify_run", {
+        install: { policy: "auto", writes: { verify_run: "auto" } },
+      }),
+    ).toEqual({ kind: "ask", from: "critical" });
+  });
+
   it("widening a project's reach is critical: repo_add gives its agents a repo they couldn't touch", () => {
     expect(isCriticalWrite("repo_add", false)).toBe(true);
     expect(policyFor("repo_add", { install: { policy: "auto" } })).toEqual({

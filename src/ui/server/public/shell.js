@@ -1935,6 +1935,27 @@
       "These keep their own mode and won't follow the project: {list}",
     "ap.pm.follow":
       "And makes them follow the project: their own mode is cleared.",
+    // Issue 208: a Verify run's Allow (verify-routes.ts).
+    "ap.do.verify_run": "Run checks on {env} in project {project}: {list}",
+    "ap.vr.scope.changed":
+      "Scope: what changed (smoke, plus checks whose files changed since their last result).",
+    "ap.vr.scope.all": "Scope: everything on this environment.",
+    "ap.vr.scope.chosen": "Scope: the checks chosen by name.",
+    "ap.vr.mod.enforced": "{module} ({kind}): enforced",
+    "ap.vr.mod.declared-read-only": "{module} ({kind}): declared read-only",
+    "ap.vr.mod.reads-code-only": "{module} ({kind}): reads code only",
+    "ap.vr.mod.declared-by-service":
+      "{module} ({kind}): declared by the service",
+    "ap.vr.cant.environment":
+      "{module} can't run here: it runs on {envs} only.",
+    "ap.vr.cant.production":
+      "{module} can't run on production yet: opting in to production comes in a later Den.",
+    "ap.vr.cant.adapter-later":
+      "{module} can't run yet: its adapter ({adapter}) comes in a later Den.",
+    "ap.vr.cant.no-health-url":
+      "{module} can't run here: no health URL for {env}.",
+    "ap.vr.once":
+      "This Allow covers this run only. Nothing runs until you Allow it.",
     "ap.own.h":
       "These agents keep their own mode and won't follow the project:",
     "ap.own.item": "{agent} (own mode: {mode})",
