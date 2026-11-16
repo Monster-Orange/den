@@ -189,6 +189,8 @@ const st = {
   fresh: new Set(),
   timer: null,
   xterm: null,
+  // Issue 128: failed loads of the terminal code so far.
+  xtermFails: 0,
   csrf: null,
   docWired: false,
   // AG-4b: the person's layout, the pane in front, and in Focus the panes
@@ -1409,10 +1411,14 @@ function retarget(p, row) {
 // ── the panes ───────────────────────────────────────────────────────────
 
 async function loadXterm() {
-  st.xterm ??= Promise.all([
-    import("/vendor/xterm.mjs"),
-    import("/vendor/addon-fit.mjs"),
-    import("/vendor/addon-web-links.mjs"),
+  // Issue 128: the browser keeps a module that failed to load as failed,
+  // so a try after a failure asks for it at a new address.
+  if (st.xterm) return st.xterm;
+  const again = st.xtermFails ? `?try=${st.xtermFails}` : "";
+  const loading = (st.xterm = Promise.all([
+    import(`/vendor/xterm.mjs${again}`),
+    import(`/vendor/addon-fit.mjs${again}`),
+    import(`/vendor/addon-web-links.mjs${again}`),
   ]).then(([x, f, w]) => {
     // 0.4.45: xterm's own words (its input's label, the screen reader's
     // overflow note) through the catalog, xterm's English when it has none.
@@ -1430,8 +1436,14 @@ async function loadXterm() {
       FitAddon: f.FitAddon,
       WebLinksAddon: w.WebLinksAddon,
     };
+  }));
+  // Issue 128: a failed load (Den restarted, the network blipped) is not
+  // kept, so the next pane tries again.
+  loading.catch(() => {
+    if (st.xterm === loading) st.xterm = null;
+    st.xtermFails += 1;
   });
-  return st.xterm;
+  return loading;
 }
 
 async function csrf(fresh) {
@@ -2657,8 +2669,9 @@ async function openPane(id, { front = true } = {}) {
   try {
     lib = await loadXterm();
   } catch (err) {
-    el.querySelector(".term").innerHTML =
-      `<p class="note">${esc(err?.message ?? String(err))}</p>`;
+    // Issue 128: the failed pane goes, so a click on the agent tries again.
+    if (!p.closed) closePane(id, { quiet: true });
+    window.denShell?.errorToast?.(err);
     return;
   }
   if (p.closed) return;

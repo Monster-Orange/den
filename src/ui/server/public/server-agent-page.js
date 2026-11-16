@@ -189,6 +189,8 @@ const st = {
   /** The next check for the trust prompt, and the one that hides a stale one. */
   lookTimer: 0,
   staleTimer: 0,
+  /** Issue 128: failed loads of the terminal code so far. */
+  xtermFails: 0,
 };
 
 /** Gate 0.4.44: the check interval when the server names none (ms). */
@@ -454,7 +456,8 @@ function closeTerminal() {
 }
 
 async function openTerminal(id) {
-  if (st.pane?.id === id) return;
+  // Issue 128: a pane whose terminal code failed to load tries again.
+  if (st.pane?.id === id && !st.pane.failed) return;
   closeTerminal();
   const el = document.createElement("div");
   el.className = "sa-term";
@@ -464,13 +467,18 @@ async function openTerminal(id) {
   const p = { id, el, term: null, fit: null, sock: null, closed: false };
   st.pane = p;
   let lib;
+  // Issue 128: the browser keeps a module that failed to load as failed,
+  // so a try after a failure asks for it at a new address.
+  const again = st.xtermFails ? `?try=${st.xtermFails}` : "";
   try {
     const [x, f] = await Promise.all([
-      import("/vendor/xterm.mjs"),
-      import("/vendor/addon-fit.mjs"),
+      import(`/vendor/xterm.mjs${again}`),
+      import(`/vendor/addon-fit.mjs${again}`),
     ]);
     lib = { Terminal: x.Terminal, FitAddon: f.FitAddon };
   } catch (err) {
+    st.xtermFails += 1;
+    p.failed = true;
     el.innerHTML = `<p class="note">${esc(err?.message ?? String(err))}</p>`;
     return;
   }
