@@ -972,8 +972,10 @@ import {
   createApprovalQueue,
   handleApprovalRoutes,
   isApprovalPath,
+  notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
+import { policyFor, readPolicySetting } from "../../shared/approval-policy.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import { callerPid, tokenCaller } from "./token-binding.js";
@@ -2207,6 +2209,8 @@ type ApprovalDeps = {
   actions: HeldActions;
   enabled: () => boolean;
   autoAllow: (action: string, agent: string) => string | null;
+  policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
+  notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -2460,8 +2464,24 @@ function approvalDeps(): ApprovalDeps {
       selfUpdateAuto()
         ? "server_agent.self_update: auto"
         : null,
+    // Issue 160: the approval policy, the person's (user.yml) and each
+    // project's (workspaces.yml), read per ask. A bad value throws: held.
+    policy: (action, project, widens) =>
+      policyFor(action, {
+        widens,
+        install: readPolicySetting(readUserConfig().approvals),
+        project: project ? projectPolicy(project) : undefined,
+      }),
+    notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
   };
   return approvals;
+}
+/** Issue 160: project `ws`'s own approval policy (workspaces.yml), checked. */
+function projectPolicy(ws: string) {
+  const all = readWorkspacesFile().workspaces ?? {};
+  return Object.hasOwn(all, ws)
+    ? readPolicySetting(all[ws].approvals, `workspaces.${ws}.approvals`)
+    : undefined;
 }
 /**
  * SRV-1a/1b: server_agent.self_update is auto. Read per ask; a config Den

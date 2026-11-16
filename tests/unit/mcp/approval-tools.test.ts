@@ -136,6 +136,21 @@ describe("a write asks, then waits for the person", () => {
     });
   });
 
+  it("issue 160: ask: true asks the person anyway, with the note's why", async () => {
+    const { api, calls } = fakeApi([{ state: "pending" }]);
+    await callTool(
+      "repo_clone",
+      { source: "acme/big", ask: true, note: "it is 4 GB" },
+      ctx(api),
+    );
+    expect(calls[0].body).toEqual({
+      action: "repo_clone",
+      args: { source: "acme/big" },
+      note: "it is 4 GB",
+      ask: true,
+    });
+  });
+
   it("repo_add sends only the args it knows", async () => {
     const { api, calls } = fakeApi([{ state: "done", result: { ok: true } }]);
     await callTool(

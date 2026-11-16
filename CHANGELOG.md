@@ -8,6 +8,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- You get an Allow only for real decisions (issue 160). A change that
+  widens what an agent may do still waits for you: a looser mode, a
+  persona, a repo added to a project, a Den update or restart. Everything else an agent asks for
+  now runs at once, and your updates say "<agent> did this without your
+  Allow". A stricter mode is one of those. Set it with `approvals:` in
+  your `user.yml`, or for one project in `workspaces.yml`: auto, notify
+  (the default) or ask. No setting lowers a critical change. An agent can
+  still ask you, and says why.
 - A project mode change says which agents keep their own mode (issue
   199). The Allow lists each agent with a mode of its own ("pinned (own
   mode: auto)") and offers one choice, "Also make these follow the

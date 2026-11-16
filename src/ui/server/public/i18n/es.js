@@ -1372,6 +1372,7 @@
       "Den no sabe qué proyecto de Hub le corresponde. Haz clic para elegir. No se guarda nada de él hasta entonces.",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
+    "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",

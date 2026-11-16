@@ -31,6 +31,11 @@ import {
   type AskedBy,
   type Decision,
 } from "./approvals.js";
+import {
+  isCriticalWrite,
+  type PolicyKind,
+} from "../../shared/approval-policy.js";
+import type { NotificationStore } from "../../shared/notifications.js";
 import { recordAction } from "./audit.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import {
@@ -55,7 +60,8 @@ export type HeldCheck =
       detailKeys?: ({ key: string; vars?: Record<string, string> } | null)[];
       /**
        * Only the person's own Allow runs it: no auto-allow setting does
-       * (a project_mode that loosens, Vision 11-14).
+       * (a project_mode that loosens, Vision 11-14). Issue 160: this ask
+       * widens what an agent may do, so it is critical.
        */
       personOnly?: boolean;
       /** Issue 199: the agents that keep a mode of their own. */
@@ -211,6 +217,18 @@ export async function handleApprovalRoutes(
      * only for an agent its token proves, never a claim.
      */
     autoAllow?: (action: string, agent: string) => string | null;
+    /**
+     * Issue 160: the approval policy's kind for an agent's routine write
+     * in `project` (shared/approval-policy.ts policyFor). Never asked for
+     * a critical one. A bad setting throws: the write is held.
+     */
+    policy?: (
+      action: string,
+      project: string | undefined,
+      widens: boolean,
+    ) => { kind: PolicyKind; from: string };
+    /** Issue 160: a write the policy ran under notify, for the person's updates. */
+    notify?: (a: Approval, project: string | undefined, from: string) => void;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -245,10 +263,29 @@ export async function handleApprovalRoutes(
       return true;
     }
     const extra = Object.keys(body).filter(
-      (k) => k !== "action" && k !== "args" && k !== "note",
+      (k) => k !== "action" && k !== "args" && k !== "note" && k !== "ask",
     );
     if (extra.length) {
       refuse(res, 400, "unknown_field", `Unknown field: ${extra.join(", ")}.`);
+      return true;
+    }
+    // Issue 160: an agent may ask for any write, whatever the policy says;
+    // it says why.
+    if (body.ask !== undefined && typeof body.ask !== "boolean") {
+      refuse(res, 400, "bad_body", "ask is true or false.");
+      return true;
+    }
+    const askAnyway = body.ask === true;
+    if (
+      askAnyway &&
+      !(typeof body.note === "string" && body.note.trim().length > 0)
+    ) {
+      refuse(
+        res,
+        400,
+        "ask_needs_note",
+        "Asking anyway needs a note: one line for the person on why.",
+      );
       return true;
     }
     const action = typeof body.action === "string" ? body.action : "";
@@ -324,15 +361,36 @@ export async function handleApprovalRoutes(
       { verb: "approval-ask", detail: `${action}: ${a.summary} [${a.id}]` },
       principalOf(req),
     );
-    let auto: string | null = null;
-    try {
-      auto =
-        a.agent && !checked.personOnly
-          ? (deps.autoAllow?.(action, a.agent) ?? null)
-          : null;
-    } catch {
-      auto = null; // a bad setting: held, as with ask
+    // Issue 160: an agent's routine write follows the approval policy;
+    // a critical one (it widens what an agent may do) never does.
+    // The project it changes, else the asker's (its token's).
+    const project =
+      typeof stored.project === "string" ? stored.project : agent?.workspace;
+    let ran: { kind: PolicyKind; from: string } | null = null;
+    if (
+      a.agent &&
+      !askAnyway &&
+      deps.policy &&
+      !isCriticalWrite(action, checked.personOnly === true)
+    ) {
+      try {
+        const p = deps.policy(action, project, checked.personOnly === true);
+        if (p.kind !== "ask") ran = p;
+      } catch {
+        ran = null; // a bad setting: held, as with ask
+      }
     }
+    let auto: string | null = null;
+    if (ran) auto = `approvals policy: ${ran.kind} (${ran.from})`;
+    else
+      try {
+        auto =
+          a.agent && !checked.personOnly && !askAnyway
+            ? (deps.autoAllow?.(action, a.agent) ?? null)
+            : null;
+      } catch {
+        auto = null; // a bad setting: held, as with ask
+      }
     if (auto) {
       const r = await deps.queue.decide(a.id, "allow", `auto:${auto}`);
       recordAction(
@@ -351,6 +409,14 @@ export async function handleApprovalRoutes(
         principalOf(req),
       );
       if (r.ok) a = r.approval;
+      // A run that failed answers the agent with its error; nothing to tell.
+      const failed = (a.result as { ok?: unknown } | undefined)?.ok === false;
+      if (r.ok && ran?.kind === "notify" && !failed)
+        try {
+          deps.notify?.(a, project, ran.from);
+        } catch {
+          /* the bell is best effort: the trail has it */
+        }
     }
     sendJson(
       res,
@@ -504,4 +570,24 @@ export async function handleApprovalRoutes(
   res.writeHead(405, { Allow: "GET, POST" });
   res.end();
   return true;
+}
+
+/**
+ * Issue 160: the person's updates say what an agent did under the approval
+ * policy's notify, one item per write (never folded into another).
+ */
+export function notePolicyRun(
+  store: Pick<NotificationStore, "add">,
+  a: Pick<Approval, "id" | "agent" | "summary">,
+  project: string | undefined,
+): void {
+  const name = a.agent ?? "An agent";
+  store.add({
+    kind: "service",
+    subject: `record:approval-${a.id}`,
+    scope: `workspace/${project ?? "den-server"}`,
+    text: `${name} did this without your Allow: ${a.summary}`,
+    msg: { key: "bell.m.policyRan", vars: { name, what: a.summary } },
+    link: "/agents",
+  });
 }
