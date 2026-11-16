@@ -256,7 +256,11 @@ import {
   writeActorTokenFile,
 } from "../../shared/actor-token.js";
 import { HostError, type HostClient } from "../../shared/sessions/client.js";
-import { withAgentLock } from "../../shared/agents/agent-lock.js";
+import {
+  AgentLockBusy,
+  LOCK_WAIT_MINUTES_DEFAULT,
+  withAgentLock,
+} from "../../shared/agents/agent-lock.js";
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
@@ -3212,7 +3216,7 @@ export async function startAgent(
     defaultId(d.stateDir(), persona.id, ws);
   checkId(where, id);
   // Review M1: the rest under this agent's lock (agent-lock.ts).
-  return withAgentLock(d.stateDir(), id, async () => {
+  return lockAgent(d, id, async () => {
     syncCatalog(d);
     const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
     const det = await availableOrRefuse(d, rt, ws);
@@ -4798,12 +4802,25 @@ export async function stopAgent(
   d: AgentsResolved,
   id: string,
   ws?: string,
-  opts: { wait?: boolean } = {},
+  opts: {
+    wait?: boolean;
+    /**
+     * Issue 218: stop only this session. Another one running instead (a
+     * restart from elsewhere replaced it) is left alone, its token too,
+     * and the stop throws the host's not-found.
+     */
+    only?: string;
+  } = {},
 ): Promise<Stopped> {
-  return withAgentLock(d.stateDir(), id, async () => {
+  return lockAgent(d, id, async () => {
     const rec = agentRecord(d, id, ws);
     return withClient(d, async (c) => {
       const s = sessionOf(await c.list(), rec);
+      if (opts.only && s && !s.exited && s.ref.id !== opts.only)
+        throw new HostError(
+          "not-found",
+          `agent ${rec.id} changed while this waited; nothing stopped`,
+        );
       // Its token stops working before the session is asked to end.
       revokeAgentTokens(d.stateDir(), rec.id);
       let live = Boolean(s && !s.exited);
@@ -4903,7 +4920,7 @@ export async function resumeAgent(
   id: string,
   ws?: string,
 ): Promise<Resumed> {
-  return withAgentLock(d.stateDir(), id, async () => {
+  return lockAgent(d, id, async () => {
     const rec = agentRecord(d, id, ws);
     syncCatalog(d);
     const rt = runtimeFor(rec.runtime);
@@ -5195,6 +5212,37 @@ function restartWaitOf(d: AgentsResolved): number {
   }
 }
 
+/** Issue 218: agents.lock_wait_minutes, in ms (its default if unreadable). */
+function lockWaitOf(d: AgentsResolved): number {
+  try {
+    return d.agentsConfig().lockWaitMs ?? LOCK_WAIT_MINUTES_DEFAULT * 60_000;
+  } catch {
+    return LOCK_WAIT_MINUTES_DEFAULT * 60_000;
+  }
+}
+
+/**
+ * Review M1, issue 218: one change to agent `id` at a time, in this
+ * process and across processes (the CLI beside the web server). Another
+ * process's change is waited for up to agents.lock_wait_minutes, then
+ * refused with nothing changed.
+ */
+async function lockAgent<T>(
+  d: AgentsResolved,
+  id: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await withAgentLock(d.stateDir(), id, fn, {
+      waitMs: lockWaitOf(d),
+    });
+  } catch (e) {
+    if (e instanceof AgentLockBusy)
+      throw new AgentError(e.message, { status: 409, code: "still_busy" });
+    throw e;
+  }
+}
+
 /** Why agent `rec` can't change persona (it can't resume), or null. */
 export function personaChangeRefusal(rec: AgentRecord): string | null {
   const rt = getRuntime(rec.runtime);
@@ -5337,7 +5385,7 @@ export async function restartAgent(
   }
   // Review M1: stop and resume as one change (not the wait above, so a
   // person can still stop it while it waits).
-  return withAgentLock(d.stateDir(), rec.id, async () => {
+  return lockAgent(d, rec.id, async () => {
     if (seen) {
       const cur = agentRecord(d, rec.id, rec.workspace);
       const now = await withClient(d, async (c) =>
@@ -5351,17 +5399,7 @@ export async function restartAgent(
         live.ref.id !== seen.ref.id &&
         Date.parse(live.startedAt) >= asked - 1_000
       )
-        return {
-          rec: cur,
-          info: live,
-          warnings: [],
-          early: null,
-          fresh: false,
-          already: {
-            at: live.startedAt,
-            note: alreadyRestartedNote(live.startedAt),
-          },
-        };
+        return alreadyRestarted(cur, live);
       // It ran when asked and runs no more: someone stopped it (or it
       // ended). A restart never undoes a stop.
       if (!live)
@@ -5370,13 +5408,49 @@ export async function restartAgent(
           [`Resume it: ${d.cli} agents resume ${rec.id}`],
         );
     }
-    const stopped = await stopAgent(d, rec.id, rec.workspace);
+    let stopped: Stopped;
+    try {
+      stopped = await stopAgent(
+        d,
+        rec.id,
+        rec.workspace,
+        seen ? { only: seen.ref.id } : {},
+      );
+    } catch (e) {
+      // Issue 218: the session it saw was gone when the stop reached it.
+      // A newer one, started after this request: restarted elsewhere.
+      if (!(seen && e instanceof HostError && e.code === "not-found")) throw e;
+      const cur = agentRecord(d, rec.id, rec.workspace);
+      const now = await withClient(d, async (c) =>
+        sessionOf(await c.list(), cur),
+      );
+      if (
+        !now ||
+        now.exited ||
+        now.ref.id === seen.ref.id ||
+        Date.parse(now.startedAt) < asked - 1_000
+      )
+        throw e;
+      return alreadyRestarted(cur, now);
+    }
     if (stopped.stillStopping)
       throw refused(
         `${where}: agent ${rec.id} is still stopping; try again in a moment`,
       );
     return resumeAgent(d, rec.id, rec.workspace);
   });
+}
+
+/** Issue 216: the result of a restart another request already made. */
+function alreadyRestarted(rec: AgentRecord, live: SessionInfo): Resumed {
+  return {
+    rec,
+    info: live,
+    warnings: [],
+    early: null,
+    fresh: false,
+    already: { at: live.startedAt, note: alreadyRestartedNote(live.startedAt) },
+  };
 }
 
 export interface Moved {
@@ -5459,7 +5533,7 @@ export async function moveAgent(
     }
   }
   // Review M1: stop, move and resume as one change (not the wait above).
-  return withAgentLock(d.stateDir(), rec.id, async () => {
+  return lockAgent(d, rec.id, async () => {
     const stopped = await stopAgent(d, rec.id, rec.workspace);
     if (stopped.stillStopping)
       throw refused(
@@ -5899,7 +5973,7 @@ export async function relaunchAgent(
   /** D28: Den relaunched it by itself (on_due auto). */
   o: { auto?: boolean } = {},
 ): Promise<Relaunched> {
-  return withAgentLock(d.stateDir(), id, async () => {
+  return lockAgent(d, id, async () => {
     const rec = agentRecord(d, id, ws);
     syncCatalog(d);
     const rt = runtimeFor(rec.runtime);
