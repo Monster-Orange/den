@@ -55,5 +55,7 @@ export declare function copyReport(text: string): Promise<void>;
 export declare function clientSections(win?: Window): Record<string, string>;
 export declare function openReport(opts?: {
   prefill?: { kind?: string; title?: string; description?: string };
+  /** Focus goes back here on close (default: what opened it). */
+  opener?: Element | null;
   draft?: string;
 }): Promise<unknown>;

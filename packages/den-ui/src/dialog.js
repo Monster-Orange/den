@@ -30,9 +30,75 @@
  * askConfirm and tell are role="alertdialog"; askText is role="dialog".
  * Each is named by its title (aria-labelledby) and described by its
  * message (aria-describedby). Focus moves in (Cancel for danger, the
- * field for askText, else OK) and goes back to what had it on close.
+ * field for askText, else OK) and goes back to what opened it on close
+ * (opts.opener, else the focused element or the control just pressed).
  * Enter in askText's field is OK.
  */
+
+// Focus goes back to what opened a pop-up (here, Report, What's new). The
+// browser's own dialog restore isn't enough: Safari doesn't focus a button
+// on a click, so the element "focused before" a dialog opened from a click
+// is the body. openerOf(hint) at open: the hint, else the focused element,
+// else the control just pressed. focusBack(el) at close: focus it again,
+// without scrolling, if it is still on the page and can take focus. Kept
+// here, not in a file of its own: hosts that serve a list of kit files
+// already serve this one.
+
+const FOCUSABLE =
+  'button, a[href], input, select, textarea, summary, [tabindex], [contenteditable=""], [contenteditable="true"]';
+
+/** A press counts as the opener for this long (ms). */
+const PRESS_MS = 1500;
+
+let pressed = null;
+let pressedAt = 0;
+
+function focusable(el) {
+  if (!el || el.nodeType !== 1 || !el.isConnected) return false;
+  if (typeof document !== "undefined" && el === document.body) return false;
+  if (el.disabled) return false;
+  return !!el.matches?.(FOCUSABLE);
+}
+
+const controlOf = (t) =>
+  t && t.nodeType === 1 && t.closest ? t.closest(FOCUSABLE) : null;
+
+// The control a pointer or key just pressed, seen before any page handler.
+if (typeof document !== "undefined" && document.addEventListener) {
+  const note = (e) => {
+    const c = controlOf(e.target);
+    if (!c) return;
+    pressed = c;
+    pressedAt = Date.now();
+  };
+  for (const type of ["pointerdown", "mousedown", "click", "keydown"])
+    document.addEventListener(type, note, true);
+}
+
+/** What opened the pop-up: `hint`, the focused element, or the press. */
+export function openerOf(hint) {
+  if (focusable(hint)) return hint;
+  const h = controlOf(hint);
+  if (focusable(h)) return h;
+  const at = typeof document !== "undefined" ? document.activeElement : null;
+  if (focusable(at)) return at;
+  const ev = typeof window !== "undefined" ? window.event : null;
+  const t = controlOf(ev?.target);
+  if (focusable(t)) return t;
+  if (focusable(pressed) && Date.now() - pressedAt < PRESS_MS) return pressed;
+  return null;
+}
+
+/** Focus `el` again (no scroll), when it is still there and focusable. */
+export function focusBack(el) {
+  if (!focusable(el)) return false;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    return false;
+  }
+  return document.activeElement === el;
+}
 
 export const DIALOG_WORDS = {
   en: { ok: "OK", cancel: "Cancel" },
@@ -145,7 +211,7 @@ function open(kind, opts = {}) {
   ensureCss();
   const n = ++seq;
   const ids = { h: `dk-h-${n}`, m: `dk-m-${n}` };
-  const opener = document.activeElement;
+  const opener = openerOf(opts.opener);
   const d = document.createElement("dialog");
   d.className = "dk-dlg";
   d.dataset.dkKind = kind;
@@ -168,12 +234,7 @@ function open(kind, opts = {}) {
       const answer = answerOf(kind, ok, field?.value);
       if (d.open) d.close();
       d.remove();
-      try {
-        if (opener && opener.isConnected && opener !== document.body)
-          opener.focus?.();
-      } catch {
-        /* nothing to go back to */
-      }
+      focusBack(opener);
       resolve(answer);
     };
     // Esc is Cancel (for tell, it closes). Handled on the dialog's own

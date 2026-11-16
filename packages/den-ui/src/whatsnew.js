@@ -22,6 +22,7 @@
  */
 import { esc, kitT } from "./strings.js";
 import { reportButtonHtml } from "./shell-html.js";
+import { focusBack, openerOf } from "./dialog.js";
 
 const cfg = {
   lang: "en",
@@ -379,10 +380,10 @@ export function openWhatsNew() {
   const overlay = document.getElementById("cl-overlay");
   if (!overlay) return;
   if (!overlay.classList.contains("open")) {
-    const at = document.activeElement;
+    const at = openerOf();
     // Nothing focused (a first-visit open): the version chip.
     returnFocus =
-      at && at !== document.body && !overlay.contains(at)
+      at && !overlay.contains(at)
         ? at
         : document.getElementById("version-pill");
   }
@@ -400,11 +401,9 @@ export function closeWhatsNew() {
   const wasOpen = !!overlay?.classList.contains("open");
   if (overlay) overlay.classList.remove("open");
   if (wasOpen) {
-    const back = returnFocus?.isConnected
-      ? returnFocus
-      : document.getElementById("version-pill");
+    const back = returnFocus;
     returnFocus = null;
-    back?.focus();
+    if (!focusBack(back)) focusBack(document.getElementById("version-pill"));
   }
   if (cfg.onClose) cfg.onClose(entries[0]?.version ?? null);
   const pip = document.getElementById("v-pip");
