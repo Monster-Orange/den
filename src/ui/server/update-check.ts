@@ -12,12 +12,21 @@
  *   - A version that rolled back isn't tried again (its failure is in the
  *     bell already); a newer one is. A failed update says why in the bell.
  *   - A Den run from a checkout is updated with git: skipped.
+ *   - #251: a pass that waits says why, once per reason (the log and the
+ *     audit). While the server agent waits on its person (a permission
+ *     prompt, a question, a held Allow), one bell item says the update
+ *     waits on them; after server_agent.update_wait_checks passes in a
+ *     row it needs them. It never goes past a pending Allow.
+ *   - #251: after a self-update, the new pin must be committed in the
+ *     distribution's folder (the server agent is asked to). Two passes in
+ *     a row with it uncommitted: the log, and one bell item.
  *
  * Every input is a function (tests fake each); the server wires them.
  */
 import semver from "semver";
 import type { UpdateState } from "./den-update.js";
 import type { UpdateTick } from "../../shared/update-check-state.js";
+import { UPDATE_WAIT_CHECKS_DEFAULT } from "../../shared/den-config.js";
 
 // The state file and doctor's line live in src/shared (the CLI reads them).
 export {
@@ -29,6 +38,31 @@ export {
   type CheckState,
   type UpdateTick,
 } from "../../shared/update-check-state.js";
+
+/**
+ * #251: why an auto update waits. permission / asked / approval: the
+ * server agent waits on its person; busy: mid-turn; updating: an update
+ * is under way.
+ */
+export type UpdateWait =
+  | "updating"
+  | "approval"
+  | "permission"
+  | "asked"
+  | "busy";
+
+/** The waits that are the person's to end. */
+export function waitsOnPerson(w: UpdateWait | null): boolean {
+  return w === "permission" || w === "asked" || w === "approval";
+}
+
+const WAIT_TEXT: Record<UpdateWait, string> = {
+  updating: "an update is under way",
+  approval: "an Allow is waiting for the person",
+  permission: "the Den agent is waiting on its person's Allow",
+  asked: "the Den agent asked its person a question",
+  busy: "the Den agent is in the middle of a turn",
+};
 
 export interface UpdateCheckDeps {
   /** The version running now, or null. */
@@ -47,6 +81,26 @@ export interface UpdateCheckDeps {
   last(): UpdateState | null;
   /** The server agent is idle, no Allow is open, no update under way. */
   idle(): Promise<boolean>;
+  /** #251: why an update would wait now, or null (idle). Over idle(). */
+  waitWhy?(): Promise<UpdateWait | null>;
+  /** #251: server_agent.update_wait_checks (default 2). */
+  waitChecks?(): number;
+  /** #251: a line for the server log and the audit trail. */
+  log?(line: string): void;
+  /**
+   * #251: the one bell item while the update waits on the person; with
+   * `needsYou`, it counts as needing them. done(): it goes.
+   */
+  waitNote?(version: string, why: UpdateWait, needsYou: boolean): void;
+  waitDone?(): void;
+  /**
+   * #251: whether the distribution's pin (its package.json) is committed
+   * in its folder: null when Den can't tell (no git).
+   */
+  pinState?(): Promise<"committed" | "uncommitted" | null>;
+  /** #251: the one bell item while the pin of `version` isn't committed. */
+  pinNote?(version: string, why: UpdateWait | null): void;
+  pinDone?(): void;
   /** Run the update now (auto). */
   update(
     version: string,
@@ -79,15 +133,63 @@ function newer(want: string | null, have: string): want is string {
 export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   /** The versions already asked about (once each). */
   const asked = new Set<string>();
+  /** #251: the last wait's reason and how many passes waited on the person. */
+  let lastWhy: string | null = null;
+  let personPasses = 0;
+  let noted = false;
+  const waitWhy = async (): Promise<UpdateWait | null> =>
+    d.waitWhy
+      ? d.waitWhy().catch(() => "busy" as const)
+      : (await d.idle().catch(() => false))
+        ? null
+        : "busy";
+  const notWaiting = () => {
+    lastWhy = null;
+    personPasses = 0;
+    if (noted) {
+      noted = false;
+      d.waitDone?.();
+    }
+  };
+  let pinUncommitted = 0;
+  let pinNoted: string | null = null;
+  /** #251: the running version's pin committed? Two passes: say so. */
+  const checkPin = async (have: string) => {
+    if (!d.pinState || d.pinned() !== have) return;
+    const st = await d.pinState().catch(() => null);
+    if (st !== "uncommitted") {
+      pinUncommitted = 0;
+      if (pinNoted) {
+        pinNoted = null;
+        d.pinDone?.();
+        if (st === "committed")
+          d.log?.(`update check: the pin of ${have} is committed`);
+      }
+      return;
+    }
+    pinUncommitted += 1;
+    if (pinUncommitted < 2 || pinNoted === have) return;
+    pinNoted = have;
+    const why = await waitWhy();
+    d.log?.(
+      `update check: Den ${have} runs, but its pin isn't committed in the distribution's folder` +
+        (waitsOnPerson(why) ? ` (${WAIT_TEXT[why!]})` : ""),
+    );
+    d.pinNote?.(have, why);
+  };
   return {
     async tick() {
       const have = d.running();
       if (!have) return { did: "current" };
+      await checkPin(have);
       const no = d.cantUpdate();
       if (no) return { did: "skipped", why: no };
       const lead = d.role() === "lead";
       const want = lead ? await d.latest().catch(() => null) : d.pinned();
-      if (!newer(want, have)) return { did: "current" };
+      if (!newer(want, have)) {
+        notWaiting();
+        return { did: "current" };
+      }
       const last = d.last();
       if (
         last &&
@@ -114,8 +216,35 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         }
         return { did: "asked", version: want };
       }
-      if (!(await d.idle().catch(() => false)))
-        return { did: "waiting", version: want };
+      const wait = await waitWhy();
+      if (wait) {
+        if (wait !== lastWhy) {
+          lastWhy = wait;
+          d.log?.(`update check: Den ${want} waits: ${WAIT_TEXT[wait]}`);
+        }
+        if (waitsOnPerson(wait)) {
+          personPasses += 1;
+          noted = true;
+          d.waitNote?.(
+            want,
+            wait,
+            personPasses >= (d.waitChecks?.() ?? UPDATE_WAIT_CHECKS_DEFAULT),
+          );
+        } else {
+          personPasses = 0;
+          if (noted) {
+            noted = false;
+            d.waitDone?.();
+          }
+        }
+        return {
+          did: "waiting",
+          version: want,
+          why: WAIT_TEXT[wait],
+          wait,
+        };
+      }
+      notWaiting();
       const r = await d.update(want, reason).catch((e: unknown) => ({
         ok: false,
         error: e instanceof Error ? e.message : String(e),

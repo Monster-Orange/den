@@ -702,6 +702,10 @@
     "set.ui.ucNext": "次回 {t}",
     "set.ui.ucDid.asked": "{v} が出ました。許可を待っています",
     "set.ui.ucDid.waiting": "{v} が出ました。落ち着いたときを待っています",
+    "set.ui.ucDid.waitAllow":
+      "{v} が出ました。待機中: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "set.ui.ucDid.waitAsked":
+      "{v} が出ました。待機中: __DEN_TITLE__ エージェントがあなたに質問しました",
     "set.ui.ucDid.updating": "{v} に更新中",
     "set.ui.ucDid.failed": "{v} に更新できませんでした",
     "set.ui.ucDid.skipped": "スキップ",
@@ -1447,6 +1451,14 @@
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} が出ました。都合のよいときに更新を許可してください (このインストールは {have})",
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
+    "bell.m.updateWaits":
+      "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.updateWaitsAsked":
+      "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
+    "bell.m.pinNotCommitted":
+      "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがディストリビューションのフォルダーにコミットされていません",
+    "bell.m.pinNotCommittedAllow":
+      "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",

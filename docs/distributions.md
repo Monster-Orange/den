@@ -3276,7 +3276,17 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   X" waits for the person (24 hours) and the bell says X is out, once per
   version. With `auto` Den runs `den_update` at a quiet moment: the
   server agent not mid-turn, no Allow open, no update under way; busy, it
-  tries on a later pass. A version that rolled back here is not tried
+  tries on a later pass. A pass that waits says why, in the log and the
+  audit, once each time the reason changes. While the server agent waits
+  on its person (a permission prompt, a question, a held Allow), the bell
+  has one item, "Den's update to X waits: the server agent is waiting on
+  your Allow", linked to that agent. After
+  `server_agent.update_wait_checks` passes in a row (default 2) it counts
+  as needing you. The update never goes past a pending Allow. After a
+  self-update, the new pin must be committed in the distribution's
+  folder (the server agent is asked to). Two passes in a row with it
+  uncommitted: a log line and one bell item, which says when the server
+  agent is waiting on your Allow. A version that rolled back here is not tried
   again; a newer one is. A failed update and a rollback each put a notice
   in the bell. A Den run from a checkout is skipped. Settings › Server ›
   New versions sets `self_update` (a person's only). Doctor's "New

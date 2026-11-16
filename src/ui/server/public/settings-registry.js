@@ -192,11 +192,23 @@ function updateCheckText(data) {
       l.did === "asked"
         ? L("set.ui.ucDid.asked", "{v} is out, waiting for your Allow", v)
         : l.did === "waiting"
-          ? L(
-              "set.ui.ucDid.waiting",
-              "{v} is out, waiting for a quiet moment",
-              v,
-            )
+          ? l.wait === "permission" || l.wait === "approval"
+            ? L(
+                "set.ui.ucDid.waitAllow",
+                "{v} is out, waiting: the __DEN_TITLE__ agent is waiting on your Allow",
+                v,
+              )
+            : l.wait === "asked"
+              ? L(
+                  "set.ui.ucDid.waitAsked",
+                  "{v} is out, waiting: the __DEN_TITLE__ agent asked you a question",
+                  v,
+                )
+              : L(
+                  "set.ui.ucDid.waiting",
+                  "{v} is out, waiting for a quiet moment",
+                  v,
+                )
           : l.did === "updating"
             ? L("set.ui.ucDid.updating", "updating to {v}", v)
             : l.did === "failed"

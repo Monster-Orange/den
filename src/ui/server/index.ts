@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import type { UpdateWait } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
 import {
@@ -7267,6 +7268,27 @@ function startUpdateCheck(): void {
   if (!every) return;
   let busy = false;
   let updating = false;
+  /** #251: why an auto update would wait now; null: a quiet moment. */
+  const updateWaitWhy = async (): Promise<UpdateWait | null> => {
+    if (updating) return "updating";
+    const u = await import("./den-update.js");
+    const last = u.readUpdateState(getStateDir());
+    if (
+      last &&
+      UPDATE_UNDER_WAY.has(last.state) &&
+      Date.now() - Date.parse(last.at) < 60 * 60_000
+    )
+      return "updating";
+    // The server agent's own wait first: it is what the person can end.
+    const w = attentionWaiting().get(SERVER_AGENT_ID);
+    if (w === "permission" || w === "asked") return w;
+    if (approvals?.queue.pending().length) return "approval";
+    const ops = await import("../cli/agent-ops.js");
+    const { webDeps } = await import("./agent-routes.js");
+    return (await ops.serverAgentInputState(webDeps())) === "busy"
+      ? "busy"
+      : null;
+  };
   const tick = async (): Promise<void> => {
     if (busy) return;
     busy = true;
@@ -7298,19 +7320,101 @@ function startUpdateCheck(): void {
         cantUpdate: () =>
           u.updateProblem(getDistRoot(), getEngineRoot(), ENGINE_PACKAGE),
         last: () => u.readUpdateState(getStateDir()),
-        idle: async () => {
-          if (updating) return false;
-          const last = u.readUpdateState(getStateDir());
-          if (
-            last &&
-            UPDATE_UNDER_WAY.has(last.state) &&
-            Date.now() - Date.parse(last.at) < 60 * 60_000
-          )
-            return false;
-          if (approvals?.queue.pending().length) return false;
-          const ops = await import("../cli/agent-ops.js");
-          const { webDeps } = await import("./agent-routes.js");
-          return (await ops.serverAgentInputState(webDeps())) !== "busy";
+        idle: async () => (await updateWaitWhy()) === null,
+        // #251: why it waits, so the log and the bell can say so.
+        waitWhy: updateWaitWhy,
+        waitChecks: () => {
+          try {
+            return readServerAgentConfig().updateWaitChecks;
+          } catch {
+            return 2;
+          }
+        },
+        log: (line) => {
+          serverLog(`  ${line}`, "lifecycle");
+          recordAction(null, { verb: "den-update-check", detail: line });
+        },
+        waitNote: (version, why, needs) => {
+          try {
+            const store = notificationDeps().store;
+            const subject = "record:den-update-wait";
+            // One item: the kind it isn't now goes.
+            store.withdraw(subject, needs ? "service" : "waiting");
+            const asked = why === "asked";
+            store.add({
+              kind: needs ? "waiting" : "service",
+              subject,
+              scope: "workspace/den-server",
+              text: asked
+                ? `${product().title}'s update to ${version} waits: the ${product().title} agent asked you a question`
+                : `${product().title}'s update to ${version} waits: the ${product().title} agent is waiting on your Allow`,
+              msg: {
+                key: asked ? "bell.m.updateWaitsAsked" : "bell.m.updateWaits",
+                vars: { v: version },
+              },
+              link: "/server-agent",
+            });
+          } catch {
+            /* the bell is best effort */
+          }
+        },
+        waitDone: () => {
+          try {
+            const store = notificationDeps().store;
+            store.withdraw("record:den-update-wait", "waiting");
+            store.withdraw("record:den-update-wait", "service");
+          } catch {
+            /* best effort */
+          }
+        },
+        pinState: () =>
+          new Promise((resolve) =>
+            execFile(
+              "git",
+              [
+                "-C",
+                getDistRoot(),
+                "status",
+                "--porcelain",
+                "--",
+                "package.json",
+                "package-lock.json",
+              ],
+              { timeout: 10_000 },
+              (err, out) =>
+                resolve(
+                  err ? null : String(out).trim() ? "uncommitted" : "committed",
+                ),
+            ),
+          ),
+        pinNote: (version, why) => {
+          try {
+            const allow = why === "permission" || why === "approval";
+            notificationDeps().store.add({
+              kind: "service",
+              subject: "record:den-pin",
+              scope: "workspace/den-server",
+              text: allow
+                ? `${product().title} ${version} runs here, but its new pin isn't committed: the ${product().title} agent is waiting on your Allow`
+                : `${product().title} ${version} runs here, but its new pin isn't committed in the distribution's folder`,
+              msg: {
+                key: allow
+                  ? "bell.m.pinNotCommittedAllow"
+                  : "bell.m.pinNotCommitted",
+                vars: { v: version },
+              },
+              link: "/server-agent",
+            });
+          } catch {
+            /* best effort */
+          }
+        },
+        pinDone: () => {
+          try {
+            notificationDeps().store.withdraw("record:den-pin", "service");
+          } catch {
+            /* best effort */
+          }
         },
         update: async (version, reason) => {
           const ap = approvalDeps();

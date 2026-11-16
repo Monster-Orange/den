@@ -1594,6 +1594,10 @@
     "set.ui.ucNext": "next {t}",
     "set.ui.ucDid.asked": "{v} is out, waiting for your Allow",
     "set.ui.ucDid.waiting": "{v} is out, waiting for a quiet moment",
+    "set.ui.ucDid.waitAllow":
+      "{v} is out, waiting: the __DEN_TITLE__ agent is waiting on your Allow",
+    "set.ui.ucDid.waitAsked":
+      "{v} is out, waiting: the __DEN_TITLE__ agent asked you a question",
     "set.ui.ucDid.updating": "updating to {v}",
     "set.ui.ucDid.failed": "couldn't update to {v}",
     "set.ui.ucDid.skipped": "skipped",
@@ -2249,6 +2253,14 @@
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} is out. Allow the update when it suits you (this install runs {have})",
     "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
+    "bell.m.updateWaits":
+      "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.updateWaitsAsked":
+      "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
+    "bell.m.pinNotCommitted":
+      "__DEN_TITLE__ {v} runs here, but its new pin isn't committed in the distribution's folder",
+    "bell.m.pinNotCommittedAllow":
+      "__DEN_TITLE__ {v} runs here, but its new pin isn't committed: the __DEN_TITLE__ agent is waiting on your Allow",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
@@ -2376,7 +2388,7 @@
     "ag.ws": "Project",
     "ag.pal": "Agents › {ws} / {name}",
     "ag.palStart": "Start agent…",
-    // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
+    // ON-6: the __DEN_TITLE__ agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ agent",
     "ag.server": "Server",
     "pal.askServer": "Ask the __DEN_TITLE__ agent",
@@ -3041,7 +3053,7 @@
     edge: '<path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/>',
     // D73: a terminal: a prompt and a cursor, no window.
     terminal: '<path d="M4 7l5 5-5 5M12 18h8"/>',
-    // ON-6: the server agent, a speech bubble with a spark.
+    // ON-6: the __DEN_TITLE__ agent, a speech bubble with a spark.
     assistant:
       '<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M12 8v4M10 10h4"/>',
     // Hub: a node joined to three (the company's shared place).
@@ -4012,7 +4024,7 @@
       href: "/agents?terminal=1",
       keywords: ["terminal", "shell", "console", "command line"],
     },
-    // 0.4.45: the server agent is off the rail: one door, the SERVER row
+    // 0.4.45: the __DEN_TITLE__ agent is off the rail: one door, the SERVER row
     // pinned at the top of Agents, and ⌘K "Ask the <name> agent".
     {
       id: "services",
