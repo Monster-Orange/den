@@ -85,16 +85,20 @@ describe("detectRunCommands", () => {
     expect(detectRunCommands(dir)).toEqual({
       decided: false,
       ask: expect.stringMatching(/2 ways/),
-      choices: ["docker compose -f docker-compose.yml up -d", "npm run dev"],
+      choices: [
+        "docker compose -f docker-compose.yml up -d",
+        "npm run dev",
+        "it runs nothing",
+      ],
     });
   });
 
-  it("nothing to go on: a question with no choices", () => {
+  it("nothing to go on: a question whose only choice is that it runs nothing (issue 277)", () => {
     put("Makefile", "build:\n\t@x\n"); // a Makefile without up decides nothing
     expect(detectRunCommands(dir)).toEqual({
       decided: false,
       ask: expect.stringMatching(/How do you usually start this repo/),
-      choices: [],
+      choices: ["it runs nothing"],
     });
   });
 

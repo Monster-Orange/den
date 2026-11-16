@@ -39,7 +39,10 @@ that setting yourself: it is the person's.
    makes the workspace active, so its services can start.
 4. For each repo, call manifest_draft, then repo_add. Den brings the repo in
    unchanged, with a side-car manifest. If Den can't tell how a repo starts,
-   ask the person one question.
+   ask the person one question, with Den's choices. "It runs nothing"
+   (config, docs, rulesets, shared CI) is a choice: add that repo with
+   repo_add's no-run option, never with a made-up start command. A repo may
+   be in more than one workspace.
 5. Call service_try on one service. If it fails, call onboard_status and status,
    and read the service's logs (logs_tail, logs_search). Fix what you can through Den's tools; otherwise tell the
    person the one command to run.

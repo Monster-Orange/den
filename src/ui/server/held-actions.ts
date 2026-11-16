@@ -245,6 +245,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         down: str(a.down),
         health: str(a.health),
       };
+      // Issue 277: a repo that runs nothing joins with no services.
+      const noRun = a.no_run === true;
       const draft = repoAdd(
         {
           spec: where.dir,
@@ -253,6 +255,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           dryRun: true,
           workspace,
           ...opts,
+          ...(noRun ? { noRun } : {}),
         },
         d.validate,
         where.dir,
@@ -276,9 +279,9 @@ export function heldActions(d: HeldActionDeps): HeldActions {
               .split("\n")
               .map((l) => `  ${l}`)
           : []),
-        ...(draft.services?.length
-          ? [`Services: ${draft.services.join(", ")}.`]
-          : []),
+        draft.services?.length
+          ? `Services: ${draft.services.join(", ")}.`
+          : "Services: none. It runs nothing: nothing starts or is checked; agents can work in it.",
       ];
       return {
         ok: true,
@@ -286,6 +289,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           path: where.dir,
           ...(workspace ? { workspace } : {}),
           ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v)),
+          ...(noRun ? { no_run: true } : {}),
         },
         summary: `add the repo at ${folder} to project "${ws}"${isNew ? " (new)" : ""}`,
         params: {
@@ -306,6 +310,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           workspace: str(a.workspace),
           name: str(a.name),
           run: str(a.run),
+          ...(a.no_run === true ? { noRun: true } : {}),
           down: str(a.down),
           health: str(a.health),
         },

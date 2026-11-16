@@ -2574,6 +2574,16 @@
             pT("pj.checkingTip", "waiting for the first health check"),
           );
         function repoHealth(r) {
+          // Issue 277: a repo that runs nothing has no health to check.
+          if (r.raw?.length && r.raw.every((x) => x.runsNothing))
+            return healthCell(
+              "unk",
+              pT("pj.noRuntime", "no runtime"),
+              pT(
+                "pj.noRuntimeTip",
+                "This repo runs nothing: nothing to start or health-check. Agents can work in it.",
+              ),
+            );
           if (!_lastHealthAt) return CHECKING();
           const { rollup } = r;
           const checked = rollup.checked;

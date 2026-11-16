@@ -42,7 +42,7 @@ import {
 } from "../../shared/stacks/compose-health.js";
 import { healthCheckFields, type HealthCheckType } from "./health-row.js";
 import { notCheckedReason } from "../../shared/health/not-checked.js";
-import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
+import { repoHasRuntime } from "../../shared/repo-kind.js";
 import * as http from "http";
 import { EventEmitter } from "events";
 import { checkIntent } from "../../shared/agents/permissions.js";
@@ -3579,7 +3579,7 @@ async function handleRequest(
     for (const ws of workspaces)
       for (const svc of listWorkspaceServices(ws.config, catalog, ws.name)) {
         // Modules and libraries have no runtime, so no health dot.
-        if (!hasRuntime(repoKind(svc.repoPath))) continue;
+        if (!repoHasRuntime(svc.repoPath)) continue;
         if (!byAddress.has(svc.address))
           byAddress.set(svc.address, { svc, ws });
         const o = owners.get(svc.address) ?? [];

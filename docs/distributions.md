@@ -106,8 +106,9 @@ Den never opens or focuses a browser, unless `DEN_ALLOW_OPEN=1` is set.
 ### repo add
 
 `<cli> repo add <path|git-url> [--sidecar] [-w <project>] [--name <repo>]
-[--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>]
-[--json]` adds a repo to a project without writing into the repo.
+[--run "<cmd>" | --no-run] [--down "<cmd>"] [--health <url>]
+[--branch <branch>] [--json]` adds a repo to a project without writing into
+the repo.
 
 - A path is the person's own checkout, added dev-managed at that path. A git
   URL is cloned where Den keeps its managed clones
@@ -127,7 +128,8 @@ Den never opens or focuses a browser, unless `DEN_ALLOW_OPEN=1` is set.
   (`docker compose -f <file> up -d` and `down`) or `package.json`'s `dev`,
   else `start`, script. One candidate decides. Two, or none, is a question:
   the answer has `ask` and `choices`, nothing is written, and a re-run names
-  the command with `--run "<cmd>"`. A Makefile `test` target or a
+  the command with `--run "<cmd>"`. The last choice is always
+  `it runs nothing`, which means `--no-run`. A Makefile `test` target or a
   `package.json` `test` script becomes the repo's `tests.unit`.
   `--health <url>` adds an HTTP health check. Without it, when the start
   script names a port (`--port`, `-p`, `PORT=`) or runs a dev server with a
@@ -135,6 +137,25 @@ Den never opens or focuses a browser, unless `DEN_ALLOW_OPEN=1` is set.
   Gatsby 8000, webpack-dev-server 8080), the side-car gets
   `http://localhost:<port>/` as its health URL, so the service has Visit ↗.
   No port: no health URL is guessed.
+- **A repo that runs nothing** (config, docs, rulesets, shared CI) is added
+  with `--no-run` (`no_run: true` on the MCP `repo_add` and
+  `manifest_draft`). Its side-car has an empty service list
+  (`services: {}`); a repo's own manifest may say `services: {}` or
+  `services: []`. It joins the project for agents and worktrees like any
+  repo. Nothing starts and nothing is health-checked: `up`, `down`,
+  `restart` and `logs` of it say it has no runtime of its own and exit 0
+  (`--json`: `ok: true` with `noRuntime`), `status` and the health row have
+  no row for it, the services and project pages show it with nothing to
+  start (`runs: "none"`, `runsNothing: true` in `/api/services`), and its
+  `tests:` still run on the Checks page. `--no-run` with `--run`, `--down` or `--health` is refused.
+- A repo added before with the old workaround, `--run "true"`, keeps its
+  side-car and its one service. `--no-run` never changes a manifest: on a
+  repo whose manifest already runs something it answers with the file to
+  edit (set `services: {}`).
+- A repo can be in more than one project: a shared repo, such as one
+  holding shared components, is added to each with `-w`. Each project has
+  its own entry, an agent in each project can work in it, and removing it
+  from one project leaves the others as they were.
 - The project is `-w <workspace>` (made and activated if it doesn't exist),
   else the focused one, else a new `default` project.
 - The same repo again answers `ok` with `existed: true`. A different repo
@@ -2851,7 +2872,7 @@ Read tools (always registered):
 | `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
 | `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
 | `repos_detect`       | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                     |
-| `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when it can start in several ways (call again with `run`)                                                                                              |
+| `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when Den can't tell how it starts (call again with `run`, or `no_run: true` for "it runs nothing")                                                     |
 
 **Health states.** A service with no verdict says why in `why`: no health
 check in the manifest for the env, remote with no check or `target.url`

@@ -6,6 +6,11 @@
  * focused workspace and fail: `Command "setup" not found for bank/bank …
  * Active workspace: north`. Every command here is an `echo`.
  *
+ * Issue 277: south also holds cfg, a repo that runs nothing
+ * (`services: {}`). Its card says "no runtime" with no command buttons, and
+ * the project page's health cell says "no runtime", never "checking…" or
+ * down.
+ *
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -48,7 +53,7 @@ beforeAll(async () => {
   });
   write(
     path.join(root, "config", "local", "service-catalog.yml"),
-    "shop:\n  gh: acme/shop\nbank:\n  gh: acme/bank\n",
+    "shop:\n  gh: acme/shop\nbank:\n  gh: acme/bank\ncfg:\n  gh: acme/cfg\n",
   );
   write(
     path.join(root, "config", "local", "workspaces.yml"),
@@ -66,11 +71,15 @@ beforeAll(async () => {
       "      bank:",
       "        mode: dev-managed",
       `        path: ${path.join(repos, "bank")}`,
+      "      cfg:",
+      "        mode: dev-managed",
+      `        path: ${path.join(repos, "cfg")}`,
       "",
     ].join("\n"),
   );
   write(path.join(repos, "shop", ".acme.yml"), manifest("shop"));
   write(path.join(repos, "bank", ".acme.yml"), manifest("bank"));
+  write(path.join(repos, "cfg", ".acme.yml"), "name: cfg\nservices: {}\n");
   const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
@@ -102,7 +111,11 @@ beforeAll(async () => {
     )[0]?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -175,6 +188,39 @@ describe("a service's command runs in its own workspace", () => {
     expect(out).not.toMatch(/not found/);
     expect(new URLSearchParams(execs[0]).get("workspace")).toBe("south");
     await p.context().close();
+  }, 60_000);
+
+  it("issue 277: a repo that runs nothing shows 'no runtime', with nothing to run, on the Services and project pages", async () => {
+    if (!browser) return;
+    const { p } = await open("/services");
+    const card = p
+      .locator(".service-card")
+      .filter({ has: p.locator('[data-svpanel-open="cfg"]') });
+    await card.waitFor();
+    await expect(card.locator(".badge.no-runtime").textContent()).resolves.toBe(
+      "no runtime",
+    );
+    expect(await card.locator(".cmd-row").textContent()).toMatch(
+      /runs nothing: nothing to start or health-check/,
+    );
+    expect(await card.locator(".cmd-btn").count()).toBe(0);
+    await p.context().close();
+
+    const pj = await open("/local-dev?ws=south");
+    const cell = '#repo-table tr.repo[data-repo="cfg"] .tbl-health';
+    await pj.p.waitForSelector(cell);
+    await pj.p.waitForFunction(
+      (sel) =>
+        /no runtime/.test(document.querySelector(sel)?.textContent ?? ""),
+      cell,
+      { timeout: 20_000 },
+    );
+    const text = await pj.p.textContent(cell);
+    expect(text).not.toMatch(/checking|down|healthy/);
+    expect(
+      await pj.p.locator(`${cell} .den-dot`).getAttribute("class"),
+    ).toContain("off");
+    await pj.p.context().close();
   }, 60_000);
 
   it("the tests page's services view: the same", async () => {

@@ -664,6 +664,9 @@
     "pj.validate.go": "Validate",
     "pj.validate.paste": "…or paste {file} content here",
     "pj.checking": "checking…",
+    "pj.noRuntime": "no runtime",
+    "pj.noRuntimeTip":
+      "This repo runs nothing: nothing to start or health-check. Agents can work in it.",
     "pj.checkingTip": "waiting for the first health check",
     "pj.noUp": "{id} has no up command",
     "pj.start": "Start",
@@ -2832,6 +2835,11 @@
     "svc.notCloned.note": "not cloned yet — run Sync in Projects",
     "svc.sub.note": "managed by its system",
     "svc.noCmds": "no commands for this env",
+    "svc.noRuntime": "no runtime",
+    "svc.runsNothing.note":
+      "runs nothing: nothing to start or health-check; agents can work in it",
+    "svc.runsNothing.title":
+      "This repo runs nothing (config, docs, rulesets or shared CI). It has no services, so nothing starts and nothing is health-checked.",
     "svc.notCloned.title": "Not cloned yet",
     "svc.notCloned": "not cloned",
     "svc.layers.title": "Manifest layers applied",

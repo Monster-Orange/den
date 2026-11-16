@@ -6,7 +6,7 @@
  * streaming output.
  */
 
-import { hasRuntime, repoKind } from "../repo-kind.js";
+import { repoHasRuntime } from "../repo-kind.js";
 import { effectiveLocalCommands } from "../stacks/manifest-commands.js";
 import { manifestStackName } from "../stacks/config.js";
 import { claimHealthyStack } from "../stacks/owners.js";
@@ -2891,7 +2891,7 @@ export async function listServices(
   const catalog = readCatalog();
   // Modules and libraries have no runtime: no card, no health, no commands.
   const services = listWorkspaceServices(ws.config, catalog, ws.name).filter(
-    (s) => hasRuntime(repoKind(s.repoPath)),
+    (s) => repoHasRuntime(s.repoPath),
   );
   const healthResults = await Promise.all(
     services.map((s) => checkServiceHealth(s)),

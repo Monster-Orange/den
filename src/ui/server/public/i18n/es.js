@@ -2172,6 +2172,9 @@
     "pj.validate.go": "Validar",
     "pj.validate.paste": "…o pega aquí el contenido de {file}",
     "pj.checking": "comprobando…",
+    "pj.noRuntime": "sin ejecución",
+    "pj.noRuntimeTip":
+      "Este repositorio no ejecuta nada: nada que iniciar ni comprobar. Los agentes pueden trabajar en él.",
     "pj.checkingTip": "esperando la primera comprobación de estado",
     "pj.noUp": "{id} no tiene comando up",
     "pj.start": "Iniciar",
@@ -2768,6 +2771,11 @@
     "svc.notCloned.note": "aún sin clonar — usa Sincronizar en Proyectos",
     "svc.sub.note": "lo gestiona su sistema",
     "svc.noCmds": "no hay comandos para este entorno",
+    "svc.noRuntime": "sin ejecución",
+    "svc.runsNothing.note":
+      "no ejecuta nada: nada que iniciar ni comprobar; los agentes pueden trabajar en él",
+    "svc.runsNothing.title":
+      "Este repositorio no ejecuta nada (configuración, documentación, reglas o CI compartida). No tiene servicios, así que nada se inicia ni se comprueba.",
     "svc.notCloned.title": "Aún sin clonar",
     "svc.notCloned": "sin clonar",
     "svc.layers.title": "Capas del manifiesto aplicadas",

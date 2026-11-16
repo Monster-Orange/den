@@ -1,6 +1,7 @@
 /**
  * `<cli> repo add <path|git-url> [--sidecar] [-w <ws>] [--name <n>]
- * [--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <b>] [--json]`
+ * [--run "<cmd>" | --no-run] [--down "<cmd>"] [--health <url>] [--branch <b>]
+ * [--json]`
  * (ON-2): add a repo to a workspace with no prompts, and without changing
  * the repo.
  *
@@ -15,7 +16,15 @@
  *   repo is never written. Its commands come from repo-detect.ts and it is
  *   validated by the manifest validator before it is written.
  * - Detection that cannot decide writes nothing and answers with a question
- *   and its choices; a re-run passes `--run "<cmd>"`.
+ *   and its choices; a re-run passes `--run "<cmd>"`, or `--no-run`.
+ * - Issue 277: `--no-run` (or the question's "it runs nothing", picked)
+ *   adds a repo that runs nothing (config, docs, rulesets, shared CI) with
+ *   an empty service list: nothing to start or health-check, and agents
+ *   and worktrees work in it as in any repo. A side-car that already runs
+ *   something (the old `--run "true"` workaround) is never changed by it:
+ *   the answer says which file to edit.
+ * - A repo may be in more than one project (a shared repo, such as one
+ *   holding shared components): each project has its own entry.
  * - Safe to re-run: the same repo in the same workspace answers ok with
  *   existed: true, and an existing side-car is never overwritten.
  * - The workspace: `-w <ws>` (created and activated when missing), else the
@@ -66,7 +75,10 @@ import { ensureManagedServiceClone } from "../../shared/environment-manager/work
 import { getGitHubCoords } from "../../shared/smoke/git-remote.js";
 import {
   detectRunCommands,
+  detectTestCommand,
   draftHealthUrl,
+  isNoRunChoice,
+  noServicesManifest,
   repoNameFrom,
   sidecarManifest,
   type DetectedCommands,
@@ -79,6 +91,8 @@ export interface RepoAddArgs {
   workspace?: string;
   name?: string;
   run?: string;
+  /** `--no-run`: the repo runs nothing; added with no services. */
+  noRun?: boolean;
   down?: string;
   health?: string;
   branch?: string;
@@ -101,7 +115,7 @@ export interface RepoAddResult {
     /** True when this run wrote the side-car. */
     written?: boolean;
     /** How the commands were found, when this run detected them. */
-    detected?: DetectedCommands["source"];
+    detected?: DetectedCommands["source"] | "--no-run";
   };
   services?: string[];
   next?: string[];
@@ -119,7 +133,7 @@ export interface RepoAddResult {
 
 const USAGE = () =>
   `${product().cli} repo add <path|git-url> [--sidecar] [-w <project>] [--name <repo>] ` +
-  `[--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>] [--dry-run] [--json]`;
+  `[--run "<cmd>" | --no-run] [--down "<cmd>"] [--health <url>] [--branch <branch>] [--dry-run] [--json]`;
 
 export const REPO_HELP = () =>
   [
@@ -131,7 +145,10 @@ export const REPO_HELP = () =>
     "  (never in the repo), detected from its Makefile (an `up` target), its",
     "  compose file or its package.json scripts (dev, start, test). When that",
     '  cannot decide, nothing is written and --json answers with "ask" and',
-    '  "choices": re-run with --run "<cmd>". --health <url> adds an HTTP health',
+    '  "choices": re-run with --run "<cmd>", or --no-run for a repo that runs',
+    "  nothing (config, docs, rulesets, shared CI): it joins the project with no",
+    "  services, so nothing starts or is health-checked, and agents work in it.",
+    "  A repo can be in more than one project. --health <url> adds an HTTP health",
     "  check. -w picks the project (default: the focused one, else a new",
     "  `default`). Safe to re-run: the same repo answers existed: true.",
     "  --dry-run (a local folder only): detect and validate the side-car and",
@@ -166,6 +183,7 @@ export function parseRepoAddArgs(argv: string[]): RepoAddArgs {
     if (a === "--sidecar") out.sidecar = true;
     else if (a === "--json") out.json = true;
     else if (a === "--dry-run" || a === "-n") out.dryRun = true;
+    else if (a === "--no-run") out.noRun = true;
     else if (VALUE_FLAGS.has(flag)) {
       const v = flag !== a ? a.slice(eq + 1) : argv[++i];
       if (v === undefined || v === "") throw new Error(`${flag} needs a value`);
@@ -287,6 +305,21 @@ export function repoAdd(
       fix: `${bin} repo add ${a.spec} --health http://localhost:<port>/ --json`,
     };
 
+  // Issue 277: the no-run choice, as picked, is --no-run.
+  const noRun = a.noRun === true || isNoRunChoice(a.run);
+  if (noRun && a.run !== undefined && !isNoRunChoice(a.run))
+    return {
+      ok: false,
+      error: `--no-run and --run "${a.run}" say different things: the repo runs nothing, or it starts with that command`,
+      fix: `${bin} repo add ${a.spec} --no-run --json`,
+    };
+  if (noRun && (a.health !== undefined || a.down !== undefined))
+    return {
+      ok: false,
+      error: `--no-run adds a repo with nothing to start, stop or check: drop ${a.health !== undefined ? "--health" : "--down"}`,
+      fix: `${bin} repo add ${a.spec} --no-run --json`,
+    };
+
   // D70: the workspace first, so a bad one writes nothing (no clone, no side-car).
   const wsTarget = workspaceTarget(a.workspace);
   if ("error" in wsTarget)
@@ -379,15 +412,19 @@ export function repoAdd(
     if (held) {
       manifestInfo = { source: "sidecar", file: held, written: false };
     } else {
-      const d = detectRunCommands(repoPath, { run: a.run, down: a.down });
-      if (!d.decided)
+      const d = noRun
+        ? null
+        : detectRunCommands(repoPath, { run: a.run, down: a.down });
+      if (d && !d.decided) {
+        const start = d.choices.find((c) => !isNoRunChoice(c));
         return {
           ok: false,
           error: `Den could not tell how ${repoPath} starts`,
           ask: d.ask,
           choices: d.choices,
-          fix: `${bin} repo add ${a.spec}${a.sidecar ? " --sidecar" : ""} --run "${d.choices[0] ?? "<command>"}" --json`,
+          fix: `${bin} repo add ${a.spec}${a.sidecar ? " --sidecar" : ""} ${start ? `--run "${start}"` : "--no-run"} --json`,
         };
+      }
       const mName = a.name ?? (url ? name : key);
       if (!NAME_RE.test(mName))
         return {
@@ -397,11 +434,13 @@ export function repoAdd(
         };
       // No --health: the dev server's own port, when its script names one,
       // so the drafted service has a health check and a Visit link.
-      const manifest = sidecarManifest(
-        mName,
-        d.commands,
-        a.health ?? draftHealthUrl(repoPath, d.commands),
-      );
+      const manifest = d
+        ? sidecarManifest(
+            mName,
+            d.commands,
+            a.health ?? draftHealthUrl(repoPath, d.commands),
+          )
+        : noServicesManifest(mName, detectTestCommand(repoPath));
       const v = validate(manifest);
       const dry = a.dryRun
         ? {
@@ -432,7 +471,7 @@ export function repoAdd(
         source: "sidecar",
         file,
         written: !a.dryRun,
-        detected: d.commands.source,
+        detected: d ? d.commands.source : "--no-run",
       };
     }
   }
@@ -445,6 +484,16 @@ export function repoAdd(
       ok: false,
       error: `Den cannot read the manifest at ${manifestInfo.file}`,
       fix: `${bin} validate ${repoPath}`,
+    };
+  // --no-run on a manifest that runs something (the old `--run "true"`
+  // workaround, or a repo's own): never changed silently; say where.
+  const runs = Object.keys(manifest.services ?? {});
+  if (noRun && runs.length > 0)
+    return {
+      ok: false,
+      error: `${manifestInfo.file} already runs ${runs.join(", ")}, and --no-run never changes a manifest`,
+      ask: "Should this repo run nothing? Then its manifest's services should be empty.",
+      fix: `edit ${manifestInfo.file}: set "services: {}", then ${bin} repo add ${a.spec} --json`,
     };
   if (!url)
     name =
@@ -463,7 +512,7 @@ export function repoAdd(
     // Nothing is written: not the side-car, not the workspace entry.
     const flags = [
       a.name !== undefined ? ` --name ${a.name}` : "",
-      a.run !== undefined ? ` --run "${a.run}"` : "",
+      noRun ? " --no-run" : a.run !== undefined ? ` --run "${a.run}"` : "",
       a.down !== undefined ? ` --down "${a.down}"` : "",
       a.health !== undefined ? ` --health ${a.health}` : "",
       a.workspace !== undefined ? ` -w ${JSON.stringify(a.workspace)}` : "",
@@ -476,7 +525,7 @@ export function repoAdd(
       mode,
       path: repoPath,
       manifest: manifestInfo,
-      services: Object.keys(manifest.services ?? {}),
+      services: runs,
       ...(drafted
         ? {
             draft: drafted.text,
@@ -499,9 +548,10 @@ export function repoAdd(
     (mode === "dev-managed"
       ? path.resolve(entries[k].path ?? "") === repoPath
       : (entries[k].branch ?? "main") === branch);
-  const services = Object.keys(manifest.services ?? {});
+  const services = runs;
+  // A repo that runs nothing has nothing to start: no `up` in next.
   const next = [
-    `${bin} up ${name} --json`,
+    ...(services.length > 0 ? [`${bin} up ${name} --json`] : []),
     `${bin} web up --no-open --json`,
     `${bin} doctor --json`,
   ];
@@ -571,6 +621,10 @@ function printHuman(r: RepoAddResult): void {
   if (r.manifest)
     console.log(
       `  manifest: ${r.manifest.source} ${r.manifest.file}${r.manifest.written ? ` (written, from ${r.manifest.detected})` : ""}`,
+    );
+  if (r.services?.length === 0)
+    console.log(
+      "  services: none (it runs nothing: nothing to start or check; agents work in it)",
     );
   console.log(`  Next: ${r.next?.[0] ?? ""}`);
 }
