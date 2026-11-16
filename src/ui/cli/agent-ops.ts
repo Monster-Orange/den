@@ -5386,20 +5386,22 @@ export async function restartAgent(
   // Review M1: stop and resume as one change (not the wait above, so a
   // person can still stop it while it waits).
   return lockAgent(d, rec.id, async () => {
+    const cur = agentRecord(d, rec.id, rec.workspace);
+    const now = await withClient(d, async (c) =>
+      sessionOf(await c.list(), cur),
+    );
+    const live = now && !now.exited ? now : undefined;
+    // Issue 216: a new session, started after this request: another
+    // request restarted it. Done; never a second restart. This holds
+    // when this request saw none at all, too: another restart had
+    // already stopped it then, and resumed it while this one waited.
+    if (
+      live &&
+      live.ref.id !== seen?.ref.id &&
+      Date.parse(live.startedAt) >= asked - 1_000
+    )
+      return alreadyRestarted(cur, live);
     if (seen) {
-      const cur = agentRecord(d, rec.id, rec.workspace);
-      const now = await withClient(d, async (c) =>
-        sessionOf(await c.list(), cur),
-      );
-      const live = now && !now.exited ? now : undefined;
-      // Issue 216: a new session, started after this request: another
-      // request restarted it. Done; never a second restart.
-      if (
-        live &&
-        live.ref.id !== seen.ref.id &&
-        Date.parse(live.startedAt) >= asked - 1_000
-      )
-        return alreadyRestarted(cur, live);
       // It ran when asked and runs no more: someone stopped it (or it
       // ended). A restart never undoes a stop.
       if (!live)
