@@ -219,4 +219,49 @@ describe("two restarts of one agent at once (issue 216)", () => {
     // The first session and the other request's restart: no third.
     expect(r.made).toHaveLength(2);
   });
+  it("issue 216: the second asks after the first stopped it, before it resumed: already restarted", async () => {
+    const r = await idleAgent();
+    const d = resolveAgentsDeps(r.deps);
+    // The first restart's stop has ended the session when the second asks,
+    // so the second sees no session running; the first then resumes it.
+    // The first's stop holds on a little after the kill, so the second
+    // asks (from outside the first's lock) while no session runs.
+    const connect = d.connect;
+    let killed = false;
+    d.connect = async () => {
+      const c = await connect();
+      const kill = c.kill.bind(c);
+      c.kill = async (id, sig) => {
+        await kill(id, sig);
+        if (!killed) {
+          killed = true;
+          await new Promise((res) => setTimeout(res, 150));
+        }
+      };
+      return c;
+    };
+    const firstP = restartAgent(d, "planner", "north", "after-turn", {
+      pollMs: 20,
+    });
+    while (!killed) await new Promise((res) => setTimeout(res, 5));
+    // Until the host lists no running session for it: the second sees none.
+    const probe = await connect();
+    for (;;) {
+      const all = await probe.list();
+      if (!all.some((x) => x.name.endsWith(":planner") && !x.exited)) break;
+      await new Promise((res) => setTimeout(res, 5));
+    }
+    probe.close();
+    const secondP = restartAgent(d, "planner", "north", "after-turn", {
+      pollMs: 20,
+    });
+    const [first, b] = await Promise.all([firstP, secondP]);
+    expect(first.already).toBeUndefined();
+    expect(b.already?.note).toMatch(
+      /restarted by another request at .+; same conversation/,
+    );
+    expect(b.info.ref.id).toBe(first.info.ref.id);
+    // The first session and one restart: never a second restart.
+    expect(r.made).toHaveLength(2);
+  });
 });

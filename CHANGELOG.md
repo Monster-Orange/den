@@ -63,6 +63,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A restart asked just after another one had stopped the agent no longer restarts it a second time (issue 216). It waits for the other one, then says "restarted by another request at <time>".
+
 - Two restarts of one agent from two places at once (the CLI and the web
   page, or two CLIs) no longer fail with "no session with id" (issue
   218). One change to an agent at a time now holds across processes: the
