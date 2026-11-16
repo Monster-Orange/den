@@ -63,6 +63,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Two restarts of one agent from two places at once (the CLI and the web
+  page, or two CLIs) no longer fail with "no session with id" (issue
+  218). One change to an agent at a time now holds across processes: the
+  second waits for the first, then says "restarted by another request".
+  The wait is a setting, `agents.lock_wait_minutes` (30 at first). A
+  lock left by a Den process that crashed is taken over.
+
 - Send in an agent's message box, and Allow in the "Allow a web app"
   window, now use the working pop-up (issue 103). A slow send says what is
   happening, and Try again sends the message once, never twice. If you

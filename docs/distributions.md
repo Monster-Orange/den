@@ -3544,6 +3544,19 @@ as…" line as Bring in.
     restart_wait_minutes: 120 # minutes, above 0
   ```
 
+  One change to an agent at a time, across processes too (issue 218): a
+  stop, resume or restart from the CLI waits while the web server
+  changes the same agent, and the other way round. Each change holds a
+  lock file in the agent's state folder (`agents/<id>.lock`, with its
+  process id); one left by a process that died is taken over. The wait
+  is at most `agents.lock_wait_minutes` (default 30); then the change is
+  refused (`still_busy`) and nothing changed.
+
+  ```yaml
+  agents:
+    lock_wait_minutes: 30 # minutes, above 0
+  ```
+
 - **A person's only.** An agent could widen its own permissions with it,
   so an agent's token is refused (403), the CLI refuses inside an agent's
   session, and there is no MCP tool.

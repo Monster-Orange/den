@@ -13,9 +13,11 @@ import * as fs from "fs";
 import * as path from "path";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
+import { HostError } from "../../../src/shared/sessions/client.js";
 import {
   resolveAgentsDeps,
   restartAgent,
+  resumeAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
@@ -185,5 +187,36 @@ describe("two restarts of one agent at once (issue 216)", () => {
     );
     expect(String((err as Error)?.message)).not.toMatch(/no session/);
     expect(r.made).toHaveLength(1);
+  });
+
+  it("issue 218: its stop finds the session gone and a newer one live: already restarted", async () => {
+    const r = await idleAgent();
+    const d = resolveAgentsDeps(r.deps);
+    // Another process restarts it just as this one stops it: the kill
+    // reaches a session that is gone, and a newer one runs.
+    const connect = d.connect;
+    let raced = false;
+    d.connect = async () => {
+      const c = await connect();
+      const kill = c.kill.bind(c);
+      c.kill = async (id, sig) => {
+        if (raced) return kill(id, sig);
+        raced = true;
+        await kill(id, sig);
+        await new Promise((res) => setTimeout(res, 60));
+        await resumeAgent(d, "planner", "north");
+        throw new HostError("not-found", `no session with id "${String(id)}"`);
+      };
+      return c;
+    };
+    const out = await restartAgent(d, "planner", "north", "after-turn", {
+      pollMs: 20,
+    });
+    expect(raced).toBe(true);
+    expect(out.already?.note).toMatch(
+      /restarted by another request at .+; same conversation/,
+    );
+    // The first session and the other request's restart: no third.
+    expect(r.made).toHaveLength(2);
   });
 });

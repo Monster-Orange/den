@@ -1548,6 +1548,8 @@ export const AGENTS_RESERVED_KEYS = [
   // D39: how far back the mid-turn check reads.
   "turn_read_max_mb",
   "restart_wait_minutes",
+  // Issue 218: how long a change waits for another process's on one agent.
+  "lock_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
   "exited_shell_minutes",
   // AG-DROP: files dropped onto an agent's terminal.
@@ -1613,6 +1615,12 @@ export interface ResolvedAgentsConfig {
    * restart is skipped and tried later; nothing is ever cut off.
    */
   restartWaitMs: number;
+  /**
+   * Issue 218: agents.lock_wait_minutes (default LOCK_WAIT_MINUTES_DEFAULT):
+   * how long a change to an agent waits while another process changes it.
+   * Unset: the default.
+   */
+  lockWaitMs?: number;
   /** agents.exited_shell_minutes; unset: DEFAULT_EXITED_SHELL_MINUTES. */
   exitedShellMinutes?: number;
   /** agents.uploads (AG-DROP) with its defaults. */
@@ -1840,6 +1848,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.restart_wait_minutes: minutes, above 0 (got ${JSON.stringify(rw)})`,
       );
     out.restartWaitMs = Math.round(rw * 60_000);
+  }
+  const lw = raw.lock_wait_minutes;
+  if (lw !== undefined && lw !== null) {
+    if (typeof lw !== "number" || !Number.isFinite(lw) || lw <= 0)
+      throw new Error(
+        `agents.lock_wait_minutes: minutes, above 0 (got ${JSON.stringify(lw)})`,
+      );
+    out.lockWaitMs = Math.round(lw * 60_000);
   }
   const exitedMin = raw.exited_shell_minutes;
   if (exitedMin !== undefined && exitedMin !== null) {
