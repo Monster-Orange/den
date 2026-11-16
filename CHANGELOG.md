@@ -8,6 +8,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- You get an Allow only for real decisions (issue 160). A change that
+  widens what an agent may do still waits for you: a looser mode, a
+  persona, a repo added to a project, a Den update or restart. Everything else an agent asks for
+  now runs at once, and your updates say "<agent> did this without your
+  Allow". A stricter mode is one of those. Set it with `approvals:` in
+  your `user.yml`, or for one project in `workspaces.yml`: auto, notify
+  (the default) or ask. No setting lowers a critical change. An agent can
+  still ask you, and says why.
+
 - Settings › Time zone (issue 206). Dates and times on Den's pages show
   in your browser's zone by default, or in the zone you pick. A change
   redraws the page's times at once, with no reload. Times are still

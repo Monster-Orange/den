@@ -262,7 +262,8 @@ describe("issue 199: agent_mode, an ask to make an agent follow its project", ()
     expect(c.details.join("\n")).toMatch(
       /Den restarts it after its turn, on the same conversation, in all/,
     );
-    // A tightening says it plainly; still the person's.
+    // A tightening says it plainly; issue 160: it narrows, so it follows
+    // the approval policy (no Allow under the defaults).
     r.wsPermission.north = "ask";
     const tight = checkAgentMode(resolveAgentsDeps(r.deps), {
       agent: "pinned",
@@ -270,7 +271,7 @@ describe("issue 199: agent_mode, an ask to make an agent follow its project", ()
     expect(tight.ok && tight.summary).toBe(
       "pinned: auto → follow project (ask)",
     );
-    expect(tight.ok && tight.personOnly).toBe(true);
+    expect(tight.ok && tight.personOnly).toBeFalsy();
   }, 30_000);
 
   it("refuses: no own mode, another project's agent, Den's own agent, a mode to set", async () => {

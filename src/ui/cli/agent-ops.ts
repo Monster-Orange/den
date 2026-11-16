@@ -4563,7 +4563,8 @@ export interface AgentModeArgs {
  * it follows its project's again (else the install's, else its
  * persona's). Only ever cleared: a mode of its own is a person's to set.
  * A project's agent asks for its own project's agents; Den's agent for
- * any. Always the person's own Allow: it changes what an agent may do.
+ * any. One that loosens is the person's own Allow (issue 160: it widens
+ * what the agent may do); one that narrows follows the approval policy.
  */
 export function checkAgentMode(
   d: AgentsResolved,
@@ -4620,7 +4621,7 @@ export function checkAgentMode(
     const running = !rec.stoppedAt;
     return {
       ok: true,
-      personOnly: true,
+      ...(loosens ? { personOnly: true } : {}),
       summary: loosens
         ? `This lets ${shown} act without asking you: ${change}`
         : `${shown}: ${change}`,

@@ -693,6 +693,12 @@ export interface WorkspaceConfig {
     permission?: unknown;
   };
   /**
+   * Issue 160: this project's approval policy, over the install's
+   * (user.yml `approvals:`): `{ policy, writes }`. See
+   * shared/approval-policy.ts.
+   */
+  approvals?: unknown;
+  /**
    * Service entries keyed by service address.
    * Single-service repos: "tasks-runner"
    * Mono-repo subsystems: "shop/api", "shop/web"

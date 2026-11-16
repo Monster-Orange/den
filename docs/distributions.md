@@ -267,6 +267,55 @@ with "If you didn't ask an agent to do this, Deny." under it.
   project-scoped MCP server refuses `workspace_create` and `repo_add`:
   they change Den beyond its project.
 
+### The approval policy (0.4.52, issue 160)
+
+The person gets an Allow only for a real decision. Den sorts each
+agent's held write into one of two groups.
+
+- **Critical: always the person's Allow.** A write that widens what an
+  agent may do. No setting lowers it. The list is data in one place,
+  `HELD_WRITE_RISK` in `src/shared/approval-policy.ts`:
+
+  | Held write                         | Critical when                                                          |
+  | ---------------------------------- | ---------------------------------------------------------------------- |
+  | `project_mode`, `agent_mode`       | the mode gets looser (toward auto or all, or clearing it widens)       |
+  | `persona_create`, `persona_update` | always: a persona carries a mode and commands it may run               |
+  | `den_update`, `den_restart`        | always (`server_agent.self_update: auto` still covers Den's own agent) |
+  | `repo_add`                         | always: the project's agents get a repo they couldn't reach            |
+  | any write not on the list          | always, until someone places it                                        |
+
+- **Routine: the policy.** Everything else, and a mode that gets
+  stricter. The policy is one of `auto` (runs at once; the activity
+  trail has it), `notify` (runs at once; the trail has it, and the
+  person's updates say "<agent> did this without your Allow: …") or
+  `ask` (waits for the Allow, as before). The default is `notify`.
+- **Where it is set.** The install's in the person's
+  `config/local/user.yml`; a project's in `config/local/workspaces.yml`
+  under the project, over the install's:
+
+  ```yaml
+  approvals:
+    policy: notify # auto | notify | ask, for every routine write
+    writes: # one write's own, over policy
+      repo_clone: ask
+  ```
+
+  A project's own `writes` entry wins, then its `policy`, then the
+  install's `writes` entry, then its `policy`, then `notify`. A value
+  that isn't auto, notify or ask holds the write for the person (never
+  runs it on a typo).
+
+- **An agent may still ask.** `ask: true` on any held write (with a
+  `note` saying why) waits for the Allow whatever the policy says.
+  `POST /api/approvals` takes `{ action, args, note?, ask? }`; `ask`
+  without a note is refused with `ask_needs_note`.
+- **What the agent sees.** A write the policy ran answers at once with
+  `state: done` and its result, as an Allow would. The trail's
+  `approval-decide` line says `auto-allow … (approvals policy: notify
+(default))`.
+- Only an agent's own ask (its token) follows the policy. An ask with no
+  agent token is always held.
+
 ### up, doctor and mcp connect
 
 - `down --json` and `web down --json` are the clean-up steps. Each is safe
@@ -3171,7 +3220,9 @@ runtime?, mode?, repo?, folder? }`, the held action `agent_create`).
   loosens it (ask → auto, or clearing it when the install's or a
   persona's mode is wider) says so first ("This lets agents in <project>
   act without asking you") and runs only on the person's own Allow: no
-  auto-allow setting runs it. Agents with a mode of their own keep it
+  auto-allow setting runs it. One that tightens it follows the
+  [approval policy](#the-approval-policy-0452-issue-160): under the
+  defaults it runs at once and the person's updates say so. Agents with a mode of their own keep it
   (0.4.51, issue 199): the Allow names each ("pinned (own mode: auto)")
   and offers "Also make these follow the project", off by default; on,
   it clears their own mode in the same Allow. The result names who
@@ -3180,7 +3231,8 @@ runtime?, mode?, repo?, folder? }`, the held action `agent_create`).
   `agent_mode { agent, project? }`, the held action `agent_mode`): it
   clears the agent's own mode. The Allow says what it lets the agent do
   ("This lets <agent> act without asking you: auto → follow project
-  (all)") and only the person's own Allow runs it. A running agent
+  (all)") and only the person's own Allow runs it. One that makes the
+  agent stricter follows the [approval policy](#the-approval-policy-0452-issue-160). A running agent
   restarts after its turn, on the same conversation, in that mode. A
   project's agent asks for its own project's agents; Den's own agent for
   any. A person does it directly with POST
