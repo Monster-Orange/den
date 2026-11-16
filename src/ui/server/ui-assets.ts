@@ -136,6 +136,9 @@ export const KIT_FILES: readonly string[] = [
   "dialog.js",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  // The shared update pill: a new version of Den, Reload.
+  "update-pill.js",
+  "update-pill.css",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",

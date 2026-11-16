@@ -1331,9 +1331,13 @@
     "net.down": "Den's server isn't responding — retrying",
     "net.next": "next try in {s}s",
     "net.now": "Retry now",
-    "engine.stale":
-      "Den was updated to {onDisk}. This server is still running {loaded}. Restart it: {cli} web restart (or your service restart).",
-    "engine.title": "Restart needed",
+    // The shared update pill (den-ui): a newer Den on disk (MD-2).
+    "upd.msg": "A new version of Den is available.",
+    "upd.reload": "Reload",
+    "upd.notNow": "Not now",
+    "upd.cancel": "Cancel",
+    "upd.ask": "You have unsaved text on this page. Reload anyway?",
+    "upd.region": "Update",
     // The error page (R26a, error-page.js).
     "err.404.title": "Page not found",
     "err.404.sub": "Nothing here at {path}",
@@ -6025,9 +6029,9 @@
   // { up }) fires on window and the status chip reads unknown.
   //
   // Banners sit at the top of the page's content (the prototype's
-  // .note-banner): the unreachable one, and the engine one (MD-2: the
-  // server fills data-engine-stale on #den-shell; header.js's server-info
-  // poll calls setEngine).
+  // .note-banner): the unreachable one. (A newer engine on disk, MD-2, is
+  // the update pill's: the server fills data-engine-stale on #den-shell;
+  // header.js's server-info poll calls setEngine.)
   function apiError(message, o) {
     var e = new Error(message);
     e.name = "DenApiError";
@@ -6312,24 +6316,111 @@
     if (ban && ban.action) ban.action.run();
   });
 
-  // MD-2: the engine on disk is not the one this server runs.
-  function setEngine(info) {
-    if (!info || !info.stale) {
-      hideBanner("engine");
-      return;
+  // MD-2: the engine on disk is not the one this server runs: a new
+  // version of Den is installed. The shared update pill (den-ui,
+  // /kit/update-pill.js) offers it over the top bar. Reload restarts Den's
+  // server in place (Restart Den, D64: the working pop-up waits for the
+  // new server), then reloads the page so it runs the new version. With
+  // unsaved text in a composer or form, Reload asks first. "Not now" holds
+  // for that version in this tab (sessionStorage), on every page.
+  var UPD_SS = "den.update.dismissed";
+  var upd = { pill: null, version: null, want: null, loading: null };
+  function updDismissed(v) {
+    try {
+      return sessionStorage.getItem(UPD_SS) === v;
+    } catch (e) {
+      return false;
     }
-    // The server's message is the English one (it names builds when the
-    // versions match); another language says it from its catalog.
-    showBanner("engine", {
-      title: t("engine.title"),
-      text:
-        (lang === "en" && info.message) ||
-        t("engine.stale", {
-          onDisk: info.onDisk || "?",
-          loaded: info.loaded || "?",
-          cli: "__DEN_CLI__",
-        }),
+  }
+  /** Typed text a reload would lose: a composer's or a form's. */
+  function unsavedText() {
+    var els = document.querySelectorAll(
+      "textarea:not(.xterm-helper-textarea), form input, [contenteditable='true']",
+    );
+    var skip = /^(hidden|checkbox|radio|button|submit|reset|file|range|color)$/;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.closest && el.closest(".den-upd")) continue;
+      if (el.isContentEditable && el.tagName !== "TEXTAREA") {
+        if ((el.textContent || "").trim()) return true;
+        continue;
+      }
+      if (el.tagName === "INPUT" && skip.test(el.type || "")) continue;
+      if (el.value !== el.defaultValue && String(el.value || "").trim() !== "")
+        return true;
+    }
+    return false;
+  }
+  function loadUpdatePill() {
+    if (upd.loading) return upd.loading;
+    var css = new Promise(function (resolve) {
+      if (document.getElementById("den-upd-css")) return resolve();
+      var l = document.createElement("link");
+      l.id = "den-upd-css";
+      l.rel = "stylesheet";
+      l.href = "/kit/update-pill.css";
+      l.onload = l.onerror = function () {
+        resolve();
+      };
+      document.head.appendChild(l);
     });
+    upd.loading = Promise.all([import("/kit/update-pill.js"), css]).then(
+      function (r) {
+        return r[0].showUpdate;
+      },
+    );
+    return upd.loading;
+  }
+  function hideUpdate() {
+    if (upd.pill) upd.pill.hide();
+    upd.pill = null;
+    upd.version = null;
+  }
+  function updReload() {
+    import("/restart-den.js")
+      .then(function (m) {
+        return m.restartDen({ confirm: false });
+      })
+      .then(function (info) {
+        if (info) location.reload();
+      });
+  }
+  function setEngine(info) {
+    var v = info && info.stale ? String(info.onDisk || "?") : null;
+    upd.want = v;
+    if (!v || updDismissed(v)) return hideUpdate();
+    if (upd.pill && upd.version === v) return;
+    loadUpdatePill().then(
+      function (showUpdate) {
+        if (upd.want !== v || updDismissed(v)) return;
+        if (upd.pill && upd.version === v) return;
+        hideUpdate();
+        upd.version = v;
+        upd.pill = showUpdate({
+          message: t("upd.msg"),
+          reloadLabel: t("upd.reload"),
+          dismissLabel: t("upd.notNow"),
+          cancelLabel: t("upd.cancel"),
+          region: t("upd.region"),
+          askFirst: function () {
+            return unsavedText() ? { message: t("upd.ask") } : null;
+          },
+          onReload: updReload,
+          onDismiss: function () {
+            upd.pill = null;
+            upd.version = null;
+            try {
+              sessionStorage.setItem(UPD_SS, v);
+            } catch (e) {
+              /* no storage: dismissed on this page only */
+            }
+          },
+        });
+      },
+      function () {
+        upd.loading = null;
+      },
+    );
   }
   if (host.dataset.engineStale) {
     try {
@@ -6337,7 +6428,7 @@
       eng.stale = true;
       setEngine(eng);
     } catch (e) {
-      /* a malformed attribute: no banner */
+      /* a malformed attribute: no pill */
     }
   }
 
@@ -7924,8 +8015,12 @@
     ".den-tx { border: 0; background: none; color: var(--faint); cursor: pointer; font: 16px/1 var(--sans); padding: 0 2px; }",
     ".den-tx:hover { color: var(--text); }",
     ".den-toast :focus-visible, .den-banners :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
-    // Banners (.note-banner): the unreachable server (R26d) and a newer
-    // engine on disk (MD-2), at the top of the content.
+    // The shared update pill over the top bar, centred on it: a 50px pill
+    // on the 48px bar (--den-top-h) sits at top -1px. Den's type.
+    "body.den-has-shell .den-upd { --upd-top: calc(env(safe-area-inset-top, 0px) + (var(--den-top-h) - 50px) / 2);",
+    "  font-family: var(--sans); }",
+    // Banners (.note-banner): the unreachable server (R26d) and others, at
+    // the top of the content.
     ".den-banners { flex: none; margin: 16px 24px 0; display: grid; gap: 8px; font: 14px/1.45 var(--sans); }",
     ".den-banners.den-banners-inset { margin: 0 0 16px; }",
     ".den-banners[hidden] { display: none; }",

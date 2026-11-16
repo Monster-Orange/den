@@ -529,9 +529,13 @@
     "net.down": "Den のサーバーが応答しません — 再試行しています",
     "net.next": "{s} 秒後に再試行",
     "net.now": "今すぐ再試行",
-    "engine.stale":
-      "Den は {onDisk} に更新されました。このサーバーはまだ {loaded} で動いています。再起動してください: {cli} web restart (またはサービスの再起動)。",
-    "engine.title": "再起動が必要です",
+    "upd.msg": "Den の新しいバージョンがあります。",
+    "upd.reload": "再読み込み",
+    "upd.notNow": "後で",
+    "upd.cancel": "キャンセル",
+    "upd.ask":
+      "このページに保存していないテキストがあります。それでも再読み込みしますか?",
+    "upd.region": "更新",
     "err.404.title": "ページが見つかりません",
     "err.404.sub": "{path} には何もありません",
     "err.404.lead": "このアドレスにはページがありません。",

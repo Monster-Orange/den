@@ -4,6 +4,18 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.54] - unreleased
+
+### Changed
+
+- A new version of Den now shows the shared update pill over the top bar,
+  the same pop-up the rest of the platform uses, in place of the dashed
+  "Restart needed" banner. Reload restarts Den in place and then reloads
+  the page. With unsaved text on the page, Reload asks first. "Not now"
+  hides it for that version until the tab closes. The pill and its styles
+  ship in the UI kit, served at /kit/update-pill.js and
+  /kit/update-pill.css. In English, Spanish and Japanese (issue 222).
+
 ## [0.4.53] - 2026-11-15
 
 ### Added

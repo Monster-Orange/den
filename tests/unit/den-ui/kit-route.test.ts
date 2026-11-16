@@ -80,6 +80,19 @@ describe("den-ui at /kit/", () => {
     expect(none.status).toBe(404);
   });
 
+  it("serves the shared update pill, its script and its stylesheet", () => {
+    const js = fakeRes();
+    serveUiAsset(js as never, "/kit/update-pill.js", PUBLIC);
+    expect(js.status).toBe(200);
+    expect(js.headers["Content-Type"]).toBe("text/javascript; charset=utf-8");
+    expect(js.body.toString()).toContain("export function showUpdate");
+    const css = fakeRes();
+    serveUiAsset(css as never, "/kit/update-pill.css", PUBLIC);
+    expect(css.status).toBe(200);
+    expect(css.headers["Content-Type"]).toBe("text/css; charset=utf-8");
+    expect(css.body.toString()).toContain(".den-upd .upd-pill");
+  });
+
   it("is a page file in the route list", () => {
     expect(ROUTES.some((r) => r.path === "/kit/*")).toBe(true);
   });
