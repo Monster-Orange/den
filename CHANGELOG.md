@@ -4,6 +4,15 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.57] - unreleased
+
+### Fixed
+
+- Agents that were told about new Hub tools before 0.4.56 now restart once
+  to load them.
+- Den's restart for new Hub tools waits for a slow stop instead of leaving
+  the agent stopped.
+
 ## [0.4.56] - 2026-11-16
 
 ### Added

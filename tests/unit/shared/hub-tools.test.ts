@@ -246,6 +246,7 @@ describe("issue 193: the note, per conversation", () => {
         conv: "claude c-1",
         hash: toolsHash(toolShape(NEW)),
         tools: toolShape(NEW),
+        at: expect.any(String),
       });
       expect(fs.statSync(r.file).mode & 0o777).toBe(0o600);
       // Hub doesn't change: nothing, however often it is checked.
@@ -359,7 +360,8 @@ describe("issue 193 reopened: a runtime that reads its tools once is restarted, 
   // them now" was false, and marking the list seen meant nothing retried.
   const A = [tool("hub_search", ["q"], ["q"])];
   const AS = [...A, tool("hub_artifact_status", ["id"], ["id"])];
-  const NEW_TOOL = "Hub's tools changed since this conversation started: new tool hub_artifact_status.";
+  const NEW_TOOL =
+    "Hub's tools changed since this conversation started: new tool hub_artifact_status.";
   const seenHash = (file: string) =>
     (
       JSON.parse(fs.readFileSync(file, "utf8")) as {
@@ -423,7 +425,8 @@ describe("issue 193 reopened: a runtime that reads its tools once is restarted, 
       const r = rig({
         list: () => list,
         restart: async () => {
-          if (how === "throws") throw new Error("Den can't tell when its turn ends");
+          if (how === "throws")
+            throw new Error("Den can't tell when its turn ends");
         },
       });
       try {
@@ -438,7 +441,9 @@ describe("issue 193 reopened: a runtime that reads its tools once is restarted, 
           await w.settled();
         }
         expect(r.restarts).toEqual(["ada"]);
-        expect(r.typed).toEqual([{ id: "ada", text: `${NEW_TOOL} ${RESTART}` }]);
+        expect(r.typed).toEqual([
+          { id: "ada", text: `${NEW_TOOL} ${RESTART}` },
+        ]);
         // Even after Den itself restarts.
         const again = r.make();
         await again.pump();
@@ -519,6 +524,150 @@ describe("issue 193 reopened: a runtime that reads its tools once is restarted, 
       release();
       await w.settled();
       expect(w.restarting()).toEqual([]);
+    } finally {
+      r.done();
+    }
+  });
+});
+
+describe("issue 193, 0.4.57: an install that upgraded from before 0.4.56", () => {
+  // Before 0.4.56 the seen entry moved to Hub's new list when the note was
+  // typed, not at launch. An agent told then, never relaunched, still runs
+  // the tool list of its launch: it must restart once, not count as loaded.
+  const A = [tool("hub_search", ["q"], ["q"])];
+  const AS = [...A, tool("hub_artifact_status", ["id"], ["id"])];
+  const LAUNCHED = "2026-11-10T09:00:00.000Z"; // before Hub added the tool
+  const told = {
+    conv: "den-claude c-1",
+    hash: toolsHash(toolShape(AS)),
+    tools: toolShape(AS),
+  };
+  const AGAIN = `Hub's tools changed since this conversation started. ${LOADED}`;
+
+  for (const file of [
+    {
+      name: "seen only (before 0.4.56)",
+      body: { v: 1, agents: { ada: told } },
+    },
+    {
+      name: "launch migrated from seen (0.4.56)",
+      body: {
+        v: 1,
+        agents: { ada: told },
+        launches: { ada: { at: LAUNCHED, hash: told.hash } },
+        tried: {},
+      },
+    },
+  ])
+    it(`${file.name}: one restart at idle on the same conversation, then the note once, then nothing`, async () => {
+      const r = rig({ list: () => AS });
+      try {
+        fs.mkdirSync(path.dirname(r.file), { recursive: true });
+        fs.writeFileSync(r.file, JSON.stringify(file.body));
+        r.agents.set("ada", { conv: "den-claude c-1", launchedAt: LAUNCHED });
+        r.states.set("ada", "idle");
+        const w = r.make();
+        await w.pump();
+        expect(r.restarts).toEqual(["ada"]);
+        expect(r.typed).toEqual([]);
+        await w.settled();
+        expect(r.agents.get("ada")!.conv).toBe("den-claude c-1");
+        await w.pump();
+        expect(r.typed).toEqual([{ id: "ada", text: AGAIN }]);
+        for (let i = 0; i < 3; i++) {
+          await w.check();
+          await w.pump();
+          await w.settled();
+        }
+        const again = r.make();
+        await again.pump();
+        await again.settled();
+        expect(r.restarts).toEqual(["ada"]);
+        expect(r.typed).toHaveLength(1);
+      } finally {
+        r.done();
+      }
+    });
+
+  it("a seen entry recorded after the launch isn't its tool set; one recorded at or before it is", async () => {
+    for (const [at, restarts] of [
+      ["2026-11-12T09:00:00.000Z", ["ada"]],
+      [LAUNCHED, []],
+      ["2026-11-09T09:00:00.000Z", []],
+    ] as const) {
+      const r = rig({ list: () => AS });
+      try {
+        fs.mkdirSync(path.dirname(r.file), { recursive: true });
+        fs.writeFileSync(
+          r.file,
+          JSON.stringify({ v: 2, agents: { ada: { ...told, at } } }),
+        );
+        r.agents.set("ada", { conv: "den-claude c-1", launchedAt: LAUNCHED });
+        r.states.set("ada", "idle");
+        const w = r.make();
+        await w.pump();
+        await w.settled();
+        expect(r.restarts).toEqual(restarts);
+      } finally {
+        r.done();
+      }
+    }
+  });
+
+  it("a note never records a launch's tools: with the setting off, the note leaves its launch's set, and seen carries its time", async () => {
+    let list: unknown[] = A;
+    const r = rig({ list: () => list, restartOn: () => false });
+    try {
+      r.agents.set("ada", { conv: "den-claude c-1", launchedAt: LAUNCHED });
+      r.states.set("ada", "idle");
+      const w = r.make();
+      await w.pump();
+      list = AS;
+      await w.check();
+      await w.pump();
+      expect(r.typed).toHaveLength(1);
+      const saved = JSON.parse(fs.readFileSync(r.file, "utf8")) as {
+        agents: Record<string, { at?: string }>;
+        launches: Record<string, { hash?: string }>;
+      };
+      expect(saved.launches.ada.hash).toBe(toolsHash(toolShape(A)));
+      expect(Date.parse(saved.agents.ada.at!)).toBeGreaterThan(
+        Date.parse(LAUNCHED),
+      );
+    } finally {
+      r.done();
+    }
+  });
+
+  it("a restart refused because the agent is still busy is tried again at its next idle", async () => {
+    let list: unknown[] = A;
+    let calls = 0;
+    const r = rig({
+      list: () => list,
+      restart: async (id) => {
+        if (++calls === 1)
+          throw Object.assign(new Error("still working; not restarted"), {
+            code: "still_busy",
+          });
+        const a = r.agents.get(id)!;
+        r.agents.set(id, { ...a, launchedAt: "relaunched" });
+      },
+    });
+    try {
+      r.agents.set("ada", { conv: "den-claude c-1", launchedAt: "t1" });
+      r.states.set("ada", "idle");
+      const w = r.make();
+      await w.pump();
+      list = AS;
+      await w.check();
+      await w.pump();
+      await w.settled();
+      await w.pump();
+      await w.settled();
+      expect(r.restarts).toEqual(["ada", "ada"]);
+      await w.pump();
+      expect(r.typed).toHaveLength(1);
+      expect(r.typed[0].text).toMatch(/has Hub's current tools now/);
     } finally {
       r.done();
     }
