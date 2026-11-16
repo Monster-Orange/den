@@ -3556,6 +3556,12 @@ as…" line as Bring in.
   restart anyway?", `job_running` with `job.minutes`); Restart anyway
   restarts it now, which ends the job.
 
+  The same bound covers a slow stop during a restart (0.4.57): when the
+  agent's session takes longer to end than stop's own few seconds, the
+  restart waits for it to end, then resumes the same conversation. If it
+  still hasn't ended by then, Den marks the agent interrupted (Resume
+  brings it back) and says so in the bell and the audit trail.
+
   ```yaml
   agents:
     restart_wait_minutes: 120 # minutes, above 0

@@ -131,6 +131,8 @@ import {
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
+import { NotificationStore } from "../../shared/notifications.js";
+import { auditConfig } from "../../shared/config-audit.js";
 import { envKey } from "../../shared/product.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
@@ -914,6 +916,8 @@ export function rowState(
       ? "stopping"
       : "running";
   if (rec?.stoppedAt) return "stopped";
+  // Issue 124: Den stopped it for a restart that didn't bring it back.
+  if (rec?.restartFailed) return "interrupted";
   if (rec?.endedAt)
     return rec.exitCode === undefined ? "exited" : `exited (${rec.exitCode})`;
   // A host sees every exit of its own sessions, with its code. A session
@@ -1067,7 +1071,7 @@ export function noteEnded(
     const s = byId.get(rec.session.id);
     // An exit with no code is a host that went down: interrupted, not ended.
     if (!s?.exited || s.exitCode === undefined) continue;
-    if (rec.endedAt || rec.stoppedAt) continue;
+    if (rec.endedAt || rec.stoppedAt || rec.restartFailed) continue;
     rec.endedAt = new Date().toISOString();
     rec.exitCode = s.exitCode;
     writeRecord(stateDir, rec);
@@ -2737,6 +2741,7 @@ async function startSession(
   delete rec.endedAt;
   delete rec.exitCode;
   delete rec.interruptedAt;
+  delete rec.restartFailed;
   writeRecord(d.stateDir(), rec);
   return { rec, info };
 }
@@ -5564,12 +5569,114 @@ export async function restartAgent(
         throw e;
       return alreadyRestarted(cur, now);
     }
-    if (stopped.stillStopping)
-      throw refused(
-        `${where}: agent ${rec.id} is still stopping; try again in a moment`,
+    // Issue 193 (0.4.57): its session takes longer to end than stop's own
+    // wait. Den stopped it, so Den waits for the stop to finish (at most
+    // agents.restart_wait_minutes), then resumes; never left stopped.
+    if (stopped.stillStopping && stopped.session) {
+      const mins = Math.round(restartWaitOf(d) / 60_000);
+      if (!(await sessionEnded(d, stopped.session.ref.id, restartWaitOf(d)))) {
+        const why = `still stopping after ${mins} min`;
+        notBackAfterRestart(d, rec.id, rec.workspace, why);
+        throw refused(`${where}: agent ${rec.id} is ${why}; not resumed`, [
+          `Resume it: ${d.cli} agents resume ${rec.id}`,
+        ]);
+      }
+    }
+    // Issue 124: a resume that fails never leaves it stopped by Den.
+    let out: Resumed;
+    try {
+      out = await resumeAgent(d, rec.id, rec.workspace);
+    } catch (e) {
+      if (stopped.session)
+        notBackAfterRestart(d, rec.id, rec.workspace, (e as Error).message);
+      else restoreStopped(d, rec.id, rec.workspace, cur.stoppedAt);
+      throw e;
+    }
+    if (out.early && stopped.session)
+      notBackAfterRestart(
+        d,
+        rec.id,
+        rec.workspace,
+        `exited at once${out.early.exitCode === undefined ? "" : ` (code ${out.early.exitCode})`}`,
       );
-    return resumeAgent(d, rec.id, rec.workspace);
+    return out;
   });
+}
+
+/** Issue 193: whether host session `ref` has ended, waiting up to `maxMs`. */
+async function sessionEnded(
+  d: AgentsResolved,
+  ref: string,
+  maxMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + maxMs;
+  return withClient(d, async (c) => {
+    for (;;) {
+      const s = (await c.list()).find((x) => x.ref.id === ref);
+      if (!s || s.exited) return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise((r) => setTimeout(r, EXIT_POLL_MS));
+    }
+  });
+}
+
+/**
+ * Issue 124: Den stopped agent `id` for a restart and it didn't come
+ * back. Marked interrupted, not stopped (Resume and restore-on-boot bring
+ * it back), and the person is told: an audit row, and a "needs you" item
+ * in the bell.
+ */
+function notBackAfterRestart(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+  why: string,
+): void {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec) return;
+  const { stoppedAt: _s, ...rest } = rec;
+  writeRecord(d.stateDir(), {
+    ...rest,
+    restartFailed: { at: new Date().toISOString(), why },
+  });
+  auditConfig(
+    {
+      verb: "agents",
+      detail: `restart ${id} in ${ws}: stopped, not back; marked interrupted`,
+      outcome: "refused",
+      reason: why,
+    },
+    d.stateDir(),
+  );
+  const name = rec.displayName || rec.persona || id;
+  try {
+    new NotificationStore(d.stateDir()).add({
+      kind: "waiting",
+      subject: `agent:${id}`,
+      scope: `workspace/${ws}`,
+      text: `${name} didn't come back after a restart: ${why}`,
+      msg: { key: "bell.m.restartFailed", vars: { name, why } },
+      link: `/agents?ws=${encodeURIComponent(ws)}`,
+    });
+  } catch {
+    /* best effort: the audit row and the row's state still say so */
+  }
+}
+
+/**
+ * Issue 124: a stopped agent's restart that failed: as it was before
+ * (its stop's time, or none).
+ */
+function restoreStopped(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+  was: string | undefined,
+): void {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec || rec.workspace !== ws) return;
+  const { stoppedAt: _s, ...rest } = rec;
+  writeRecord(d.stateDir(), was ? { ...rest, stoppedAt: was } : rest);
 }
 
 /** Issue 216: the result of a restart another request already made. */

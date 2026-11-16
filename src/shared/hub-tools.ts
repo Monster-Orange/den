@@ -20,6 +20,14 @@
  * back on the old launch, gets the note that says a restart is needed
  * instead. So does every agent of a project with hub.tools_restart off.
  *
+ * 0.4.57: only a launch records the list it read; a note never does. A
+ * seen entry carries the time it was recorded. A launch Den never saw
+ * (a state file from before 0.4.57) takes its seen list only when that was
+ * recorded at or before the launch; otherwise its list is unknown, so it
+ * restarts once at idle. A restart counts as tried for a list only once
+ * it has succeeded or definitely failed: one refused while the agent is
+ * still busy is tried again later.
+ *
  * Hub and the agents are injected (tests use fakes); no timers of its own.
  */
 import { createHash } from "node:crypto";
@@ -269,13 +277,33 @@ interface Seen {
   conv: string;
   hash: string;
   tools: ToolShape;
+  /** When it was recorded (0.4.57; absent: before, so unknown). */
+  at?: string;
 }
+
+/**
+ * A list hash no list has: a launch whose list Den can't know (and its
+ * seen entry then), so it counts as older than Hub's.
+ */
+const UNKNOWN = "unknown";
+
+/** The state file's version: 2 since 0.4.57 (seen entries carry `at`). */
+const STATE_V = 2;
+
+/** `at` is a time at or before `than` (both ISO; unparseable: no). */
+const atOrBefore = (at: string | undefined, than: string): boolean => {
+  const a = at ? Date.parse(at) : NaN;
+  const b = Date.parse(than);
+  return Number.isFinite(a) && Number.isFinite(b) && a <= b;
+};
 
 /** An agent's launch, and the hash of Hub's list it read (absent: unknown). */
 interface Launch {
   at: string;
   hash?: string;
 }
+
+const now = () => new Date().toISOString();
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -295,11 +323,15 @@ export class HubToolsWatch {
   constructor(private readonly d: HubToolsWatchDeps) {
     try {
       const raw = JSON.parse(fs.readFileSync(d.file, "utf8")) as {
+        v?: unknown;
         agents?: Record<string, Seen>;
         launches?: Record<string, Launch>;
         tried?: Record<string, string>;
       };
       if (isRecord(raw?.agents)) this.seen = raw.agents;
+      // 0.4.56's launches may hold a list a note recorded, and its tried a
+      // restart that never came back: neither is trusted (issue 193).
+      if (raw?.v !== STATE_V) return;
       if (isRecord(raw?.launches))
         for (const [id, l] of Object.entries(raw.launches))
           if (isRecord(l) && typeof l.at === "string")
@@ -361,10 +393,21 @@ export class HubToolsWatch {
       for (const a of launched) {
         const prev = this.launches.get(a.id);
         const s = this.seen[a.id];
-        // Never seen launch (a state file from before 0.4.56): it read
-        // what Den last knew it had, not what Hub has now.
-        const hash = !prev && s?.conv === a.conv ? s.hash : this.live?.hash;
-        this.launches.set(a.id, { at: a.launchedAt, ...(hash ? { hash } : {}) });
+        let hash = this.live?.hash;
+        // A launch Den never saw, on a conversation it knew (a state file
+        // from before 0.4.57): it read the seen list only when that was
+        // recorded at or before it. Else unknown: older than Hub's.
+        if (!prev && s?.conv === a.conv && !this.d.reloadsInPlace(a.id)) {
+          if (atOrBefore(s.at, a.launchedAt)) hash = s.hash;
+          else {
+            hash = UNKNOWN;
+            this.seen[a.id] = { ...s, hash: UNKNOWN };
+          }
+        }
+        this.launches.set(a.id, {
+          at: a.launchedAt,
+          ...(hash ? { hash } : {}),
+        });
       }
       dirty = true;
     }
@@ -385,7 +428,7 @@ export class HubToolsWatch {
     for (const a of agents) {
       const s = this.seen[a.id];
       if (!s || s.conv !== a.conv) {
-        this.seen[a.id] = { conv: a.conv!, ...live };
+        this.seen[a.id] = { conv: a.conv!, ...live, at: now() };
         dirty = true;
         continue;
       }
@@ -397,16 +440,17 @@ export class HubToolsWatch {
       const restartOn = this.d.restartOn?.(a.id) ?? true;
       if (!loaded && restartOn && this.tried[a.id] !== live.hash) {
         if ((await this.d.state(a.id).catch(() => "busy")) !== "idle") continue;
-        this.tried[a.id] = live.hash;
-        this.persist();
-        this.restartFor(a.id);
+        this.restartFor(a.id, live.hash);
         continue;
       }
-      const note = toolsChangeNote(
-        s.tools,
-        live.tools,
-        loaded ? "loaded" : "restart",
-      );
+      const end = loaded ? "loaded" : "restart";
+      // Told before 0.4.57 what changed, but its list was unknown: no
+      // list to compare, so the note says only how it ends.
+      const note =
+        toolsChangeNote(s.tools, live.tools, end) ??
+        (s.hash === UNKNOWN
+          ? `Hub's tools changed since this conversation started. ${NOTE_END[end]}`
+          : null);
       if (note) {
         if ((await this.d.state(a.id).catch(() => "busy")) !== "idle") continue;
         if (!(await this.d.type(a.id, note).catch(() => false))) continue;
@@ -414,23 +458,32 @@ export class HubToolsWatch {
           `agent ${a.id}: told Hub's tools changed${loaded ? "" : " (a restart loads them)"}`,
         );
       }
-      this.seen[a.id] = { conv: a.conv!, ...live };
+      // Seen, never launched: a note records no launch's list.
+      this.seen[a.id] = { conv: a.conv!, ...live, at: now() };
       dirty = true;
     }
     if (dirty) this.persist();
   }
 
-  /** Den restarts agent `id` (same conversation) to load Hub's list. */
-  private restartFor(id: string): void {
+  /**
+   * Den restarts agent `id` (same conversation) to load Hub's list `hash`.
+   * Tried for it once the restart succeeded or definitely failed; refused
+   * as still busy (its turn, or another change to it), tried again later.
+   */
+  private restartFor(id: string, hash: string): void {
     this.d.log?.(`agent ${id}: restarting to load Hub's tools`);
     const p = (async () => {
       try {
         await this.d.restart(id);
+        this.tried[id] = hash;
       } catch (e) {
+        const again = (e as { code?: unknown })?.code === "still_busy";
+        if (!again) this.tried[id] = hash;
         this.d.log?.(
-          `agent ${id}: not restarted for Hub's tools: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+          `agent ${id}: not restarted for Hub's tools${again ? " yet (tried again later)" : ""}: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
         );
       }
+      this.persist();
     })().finally(() => this.running.delete(id));
     this.running.set(id, p);
   }
@@ -442,7 +495,7 @@ export class HubToolsWatch {
       fs.writeFileSync(
         tmp,
         JSON.stringify({
-          v: 1,
+          v: STATE_V,
           agents: this.seen,
           launches: Object.fromEntries(this.launches),
           tried: this.tried,

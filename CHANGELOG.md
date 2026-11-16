@@ -4,11 +4,24 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.57] - unreleased
+## [0.4.58] - unreleased
 
 ### Fixed
 
 - Logs tools find a project's services whichever project is focused.
+
+## [0.4.57] - 2026-11-16
+
+After this update, each Claude Code agent restarts once, the next time it is
+idle, so it loads Hub's current tools. It keeps its conversation, and it is
+told why. This happens once.
+
+### Fixed
+
+- Agents that were told about new Hub tools before 0.4.56 now restart once
+  to load them.
+- Den's restart for new Hub tools waits for a slow stop instead of leaving
+  the agent stopped.
 
 ## [0.4.56] - 2026-11-16
 

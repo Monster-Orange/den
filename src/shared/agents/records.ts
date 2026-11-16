@@ -98,6 +98,12 @@ export interface AgentRecord {
    * (AG-14.3: "Interrupted"); cleared by a resume or a start.
    */
   interruptedAt?: string;
+  /**
+   * Issue 124: Den stopped it for a restart and the resume failed: when,
+   * and why. It shows as interrupted (not stopped), so Resume and
+   * restore-on-boot bring it back; cleared by a resume or a start.
+   */
+  restartFailed?: { at: string; why: string };
   /** What its run came to (den#6), filled in by `<cli> usage`. */
   outcome?: AgentOutcome;
   /** Its tokens, from the runtime's own transcript (den#6). */
