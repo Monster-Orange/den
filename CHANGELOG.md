@@ -42,6 +42,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A running agent no longer loses Hub with "its session ended". Den
+  rewrites an agent's session record on every prompt, and a token check
+  that read it half-written took that for "ended" and revoked the token
+  for good. The record is now written whole, and a record that can't be
+  read refuses that one call instead of ending the token.
+
 - A stopped agent's Resume and ⋯, wrapped onto their own line in a narrow
   list, start under the name instead of against the list's left edge.
 

@@ -252,17 +252,33 @@ export function sessionPid(stateDir: string, id: string): number | null {
 
 /** Whether the session host lists session `id` as running (its own record). */
 export function sessionRunning(stateDir: string, id: string): boolean {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return false;
+  return sessionState(stateDir, id) === "running";
+}
+
+/**
+ * The session's state from its record: "ended" only when it says it
+ * exited or is gone; "unknown" when it can't be read now (the host
+ * rewrites it on every prompt, and a read can catch it half-written).
+ */
+export function sessionState(
+  stateDir: string,
+  id: string,
+): "running" | "ended" | "unknown" {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return "ended";
+  let text: string;
   try {
-    const rec = JSON.parse(
-      fs.readFileSync(
-        path.join(sessionPaths(stateDir).dir, `${id}.json`),
-        "utf-8",
-      ),
-    ) as { exited?: unknown };
-    return rec.exited !== true;
+    text = fs.readFileSync(
+      path.join(sessionPaths(stateDir).dir, `${id}.json`),
+      "utf-8",
+    );
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT" ? "ended" : "unknown";
+  }
+  try {
+    const rec = JSON.parse(text) as { exited?: unknown };
+    return rec.exited === true ? "ended" : "running";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
@@ -278,7 +294,10 @@ export function checkActorToken(
 ): ActorTokenRecord | "revoked" | null {
   const rec = lookupActorToken(stateDir, token);
   if (!rec?.session.id) return null;
-  if (!sessionRunning(stateDir, rec.session.id)) {
+  const st = sessionState(stateDir, rec.session.id);
+  // Unreadable now: refuse this call, never end a running agent's token.
+  if (st === "unknown") return null;
+  if (st === "ended") {
     try {
       revokeActorToken(stateDir, actorTokenKey(token));
     } catch {
