@@ -187,6 +187,53 @@ describe("den-claude launch", () => {
     expect(rt.launch(input({ env: s.env })).argv).not.toContain("--name");
   });
 
+  it("den#265: with claude.ai connectors on, no --strict-mcp-config, and every other MCP server stays out", () => {
+    const s = shim();
+    const home = tmp();
+    const work = tmp();
+    // The person's own MCP servers: user scope, and local scope for this folder.
+    fs.writeFileSync(
+      path.join(home, ".claude.json"),
+      JSON.stringify({
+        mcpServers: { stray: { command: "x" }, acme: { command: "y" } },
+        projects: {
+          [work]: { mcpServers: { "local-one": { command: "z" } } },
+          "/elsewhere": { mcpServers: { "not-here": { command: "q" } } },
+        },
+      }),
+    );
+    // A project's own .mcp.json.
+    fs.writeFileSync(
+      path.join(work, ".mcp.json"),
+      JSON.stringify({ mcpServers: { "proj-one": { command: "p" } } }),
+    );
+    const env = { ...s.env, HOME: home };
+    const on = getRuntime("den-claude")!.launch(
+      input({ env, worktree: work, claudeAiConnectors: true }),
+    );
+    expect(on.argv).not.toContain("--strict-mcp-config");
+    const settingsFile = on.argv[on.argv.indexOf("--settings") + 1];
+    const st = JSON.parse(on.files![settingsFile]) as Record<string, unknown>;
+    expect("disableClaudeAiConnectors" in st).toBe(false);
+    // Den's own server keeps its name; the rest are denied by name.
+    expect(st.deniedMcpServers).toEqual([
+      { serverName: "local-one" },
+      { serverName: "stray" },
+    ]);
+    expect(st.enableAllProjectMcpServers).toBe(false);
+    expect(st.disabledMcpjsonServers).toEqual(["proj-one"]);
+    // Off: strict as before, and nothing else changes.
+    const off = getRuntime("den-claude")!.launch(
+      input({ env, worktree: work }),
+    );
+    expect(off.argv).toContain("--strict-mcp-config");
+    const offSt = JSON.parse(
+      off.files![off.argv[off.argv.indexOf("--settings") + 1]],
+    ) as Record<string, unknown>;
+    expect(offSt.disableClaudeAiConnectors).toBe(true);
+    expect("deniedMcpServers" in offSt).toBe(false);
+  });
+
   it("points Claude Code at Den's scoped MCP and passes the role prompt", () => {
     const s = shim();
     const inp = input({ env: s.env, model: "opus" });

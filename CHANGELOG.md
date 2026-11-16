@@ -51,6 +51,10 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- `agents.claude_ai_connectors: true` now works: agents load the
+  account's claude.ai connectors. Before, a flag Den always passed kept
+  them out. Any other MCP server of the person's or the project's still
+  stays out.
 - Den's own update no longer waits silently. When it waits, the log and
   the audit say why, once each time the reason changes. When the Den
   agent is waiting on your Allow or your answer, the bell says Den's
@@ -71,10 +75,41 @@ config and manifest changes a distribution must make to move to it under
   Den's own "Allow the update" do count. Only the newest update ask is
   kept, and it goes once Den runs that version. Opening an agent now
   takes its updates out of the list, so the Updates count drops.
+- A new Checks page at `/verify` answers "Can we ship?" (issue 209). It
+  shows one answer for each environment, worst first. "Nothing ran" is
+  never shown as ready. A failing environment has a See why button: it
+  lists the first failures, the checks still waiting and what passed, and
+  each failure's Open report shows that check's output. Each run is now
+  kept, with who started it and who allowed it. New routes:
+  `/api/verify/overview`, `/api/verify/runs/:id` and
+  `/api/verify/runs/:id/report`.
+
+### Changed
+
+- `/tests` now redirects (301) to `/verify`. The nav's new Checks item
+  (es "Comprobaciones", ja "チェック") opens `/verify`. The old Tests page
+  moved to `/test-runs`, and the nav's Tests item opens it. Links or
+  bookmarks to `/tests` land on the new Checks page.
+
+### Fixed
+
+- At phone width (below 480 px), every button in the top bar and the runs
+  bar is at least 32 px each way, so it is easy to tap (issue 209).
+
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new
   setting `web.keep_alive_seconds` (default 120) sets how long it waits.
+- The two settings for agents' mode now say which is which. Settings ›
+  Agents is the Den-wide default; Settings › Project setup is this
+  project's override of it. Each says which wins: an agent's own
+  setting, then the project, then the Den-wide default, then its
+  persona. The project row says "Following Den-wide: Auto mode" until
+  it is set, then "Set for this project: … (Den-wide is …)", with Use
+  Den-wide to clear it and a link to the Den-wide default. The Den-wide
+  row says how many projects override it, each linked. The Agents list
+  says "from the Den-wide default" too. A Settings link to a row now
+  opens at that row.
 
 ## [0.4.60] - 2026-11-16
 

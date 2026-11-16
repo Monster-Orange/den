@@ -264,7 +264,7 @@ describe("MD-2: the engine on disk is newer than the one running", () => {
     const message =
       `Den was updated to 9.9.9-test.1. This server is still running ${loaded}. ` +
       "Restart it: den web restart (or your service restart).";
-    for (const page of ["/settings", "/edge", "/tests"]) {
+    for (const page of ["/settings", "/edge", "/verify"]) {
       const r = await s!.req("GET", page, { headers: HTML });
       expect(r.status).toBe(200);
       const attr = r.body.match(/data-engine-stale="([^"]*)"/)?.[1] ?? "";

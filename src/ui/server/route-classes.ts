@@ -76,6 +76,9 @@ export const ROUTES: readonly RouteEntry[] = [
     "/server-agent",
     "/server-agent.html",
     "/tests",
+    "/verify",
+    "/verify.html",
+    "/test-runs",
     "/index.html",
     "/services",
     "/services.html",
@@ -392,6 +395,9 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
   M(["POST"], "/api/manifest/validate", "validates posted content (no write)"),
+  R("/api/verify/overview", "issue 209: Verify's answer on each environment"),
+  R("/api/verify/runs/:id", "issue 209: one Verify run's record"),
+  R("/api/verify/runs/:id/report", "issue 209: a module's kept output"),
   M(
     ["POST"],
     "/api/verify/plan",
@@ -869,6 +875,11 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
   "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
   "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],
+  // Issue 209: a Verify run's record, and a module's kept output.
+  "verify-routes.ts:RUN_PATH": [
+    "/api/verify/runs/:id",
+    "/api/verify/runs/:id/report",
+  ],
 };
 
 /** Whether `pathname` matches a table path. */

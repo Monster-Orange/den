@@ -1002,6 +1002,9 @@ Connect an install to your company's Hub and every agent Den launches
 gets Hub's tools: it can search Hub and publish docs and mocks there.
 Without it, nothing about agents changes.
 
+[docs/hub.md](hub.md) is the step-by-step guide: connecting, what agents get, projects,
+notifications and troubleshooting. This section is the technical detail.
+
 ### Connect to Hub (HUB-1.7)
 
 Settings › Agents › Hub: type Hub's address (or keep the one the
@@ -4120,6 +4123,15 @@ agents:
 | ----------------------------- | -------------------------------------------------------- | -------- |
 | `agents.subagents.model`      | `sonnet`, `haiku`, `opus`, a full model id, or `inherit` | `sonnet` |
 | `agents.claude_ai_connectors` | `true` or `false`                                        | `false`  |
+
+With `agents.claude_ai_connectors: true`, an agent loads Den's own MCP
+servers and the account's claude.ai connectors, nothing else. Den then
+starts Claude Code without `--strict-mcp-config` (which keeps the
+connectors out too) and keeps every other server out by name in the
+agent's settings: the person's user-scope and this folder's local-scope
+servers in `deniedMcpServers`, and the project's `.mcp.json` servers in
+`disabledMcpjsonServers`, with `enableAllProjectMcpServers: false`. Off,
+the agent starts with `--strict-mcp-config` as before.
 
 Both keys are the org's: set in a person's `config/local/user.yml` they
 do nothing, and `<cli> doctor` says so. A persona's `subagent_model` wins

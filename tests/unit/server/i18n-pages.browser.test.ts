@@ -306,7 +306,8 @@ describe("den#171: Edge, Tests, Release, Logs, Environments and Services in es a
   // den#171, each now through the catalog, must not show in either language.
   const PAGES = [
     "/edge",
-    "/tests",
+    "/verify",
+    "/test-runs",
     "/release",
     "/logs",
     "/environments",

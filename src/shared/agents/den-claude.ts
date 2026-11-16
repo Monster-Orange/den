@@ -459,6 +459,62 @@ export const BASH_READERS = [
   "cp",
 ] as const;
 
+/**
+ * den#265: the MCP servers Claude Code would load besides Den's own when
+ * --strict-mcp-config is off: the person's user-scope servers and this
+ * folder's local-scope ones (from Claude Code's config file, read only),
+ * and the project's .mcp.json servers (this folder and the ones above
+ * it). Den's own names are left out. Sorted; a file it can't read adds
+ * none.
+ */
+export function strayMcpServers(
+  input: Pick<LaunchInput, "env" | "worktree" | "mcp">,
+): { user: string[]; project: string[] } {
+  const own = new Set([input.mcp.name, input.mcp.hub?.name].filter(Boolean));
+  const names = (o: unknown): string[] =>
+    o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o) : [];
+  const readJson = (f: string): Record<string, unknown> | null => {
+    try {
+      const v = JSON.parse(fs.readFileSync(f, "utf-8")) as unknown;
+      return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  };
+  const dirs = new Set<string>([path.resolve(input.worktree)]);
+  try {
+    dirs.add(fs.realpathSync(input.worktree));
+  } catch {
+    /* as given */
+  }
+  const user = new Set<string>();
+  const home = input.env.HOME;
+  const cfgFile = input.env.CLAUDE_CONFIG_DIR
+    ? path.join(input.env.CLAUDE_CONFIG_DIR, ".claude.json")
+    : home
+      ? path.join(home, ".claude.json")
+      : null;
+  const cfg = cfgFile ? readJson(cfgFile) : null;
+  if (cfg) {
+    for (const n of names(cfg.mcpServers)) user.add(n);
+    const projects = cfg.projects as Record<string, unknown> | undefined;
+    for (const d of dirs)
+      for (const n of names(
+        (projects?.[d] as { mcpServers?: unknown } | undefined)?.mcpServers,
+      ))
+        user.add(n);
+  }
+  const project = new Set<string>();
+  for (const d of dirs)
+    for (let at = d; ; at = path.dirname(at)) {
+      for (const n of names(readJson(path.join(at, ".mcp.json"))?.mcpServers))
+        project.add(n);
+      if (path.dirname(at) === at) break;
+    }
+  const keep = (x: Set<string>) => [...x].filter((n) => !own.has(n)).sort();
+  return { user: keep(user), project: keep(project) };
+}
+
 /** The settings file den-claude passes with --settings. */
 export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
   return path.join(input.filesDir, "settings.json");
@@ -524,6 +580,9 @@ function common(input: LaunchInput): {
   const ask = den?.ask ?? [];
   // den#3: no claude.ai connectors unless the org lets them in.
   const noConnectors = input.claudeAiConnectors !== true;
+  // den#265: --strict-mcp-config keeps claude.ai connectors out too. With
+  // them on, strict goes, and every other MCP server is kept out by name.
+  const strays = noConnectors ? null : strayMcpServers(input);
   const settings =
     input.stateDir ||
     input.personConfigDir ||
@@ -536,7 +595,7 @@ function common(input: LaunchInput): {
     argv: [
       "--mcp-config",
       file,
-      "--strict-mcp-config",
+      ...(noConnectors ? ["--strict-mcp-config"] : []),
       ...(settings ? ["--settings", settings] : []),
       "--permission-mode",
       mode,
@@ -580,6 +639,15 @@ function common(input: LaunchInput): {
                   : {}),
                 ...(hooks ? { hooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
+                ...(strays
+                  ? {
+                      deniedMcpServers: strays.user.map((serverName) => ({
+                        serverName,
+                      })),
+                      enableAllProjectMcpServers: false,
+                      disabledMcpjsonServers: strays.project,
+                    }
+                  : {}),
               },
               null,
               2,

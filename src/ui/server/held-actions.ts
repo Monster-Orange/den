@@ -160,7 +160,7 @@ export interface HeldOp {
     args: Record<string, unknown>,
     who?: HeldAsker,
   ) => HeldOpCheck<object>;
-  run: (args: Record<string, unknown>) => Promise<unknown>;
+  run: (args: Record<string, unknown>, asked?: AskedBy) => Promise<unknown>;
 }
 
 /** The longest reason a restart may give (one line). */
@@ -447,7 +447,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const c = o.check(a, who);
       return c.ok ? { ...c, args: { ...c.args } } : c;
     },
-    run: (a) => o!.run(a),
+    run: (a, asked) => o!.run(a, asked),
   });
   const projectMode = op(
     d.projectMode,

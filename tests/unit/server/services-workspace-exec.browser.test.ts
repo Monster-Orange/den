@@ -179,7 +179,7 @@ describe("a service's command runs in its own workspace", () => {
 
   it("the tests page's services view: the same", async () => {
     if (!browser) return;
-    const { p, execs } = await open("/tests#services");
+    const { p, execs } = await open("/test-runs#services");
     const bank = '.cmd-btn[data-repo="bank"][data-cmd="setup"]';
     await p.waitForSelector(bank);
     await p.click(bank);
