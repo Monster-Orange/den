@@ -95,15 +95,7 @@ async function open(
     });
   const stub = o.stub ?? { onDisk: "9.9.0", restarts: 0 };
   await ctx.route("**/api/server-info", async (route) => {
-    // The page polls server-info; a poll in flight as the test closes its
-    // context has nothing left to fetch with. Only that is let go.
-    let res: Awaited<ReturnType<typeof route.fetch>>;
-    try {
-      res = await route.fetch();
-    } catch (err) {
-      if (/disposed|closed/i.test(String(err))) return;
-      throw err;
-    }
+    const res = await route.fetch();
     const j = (await res.json()) as Record<string, unknown>;
     if (stub.restarts > 0) {
       // A new server: a new pid and start time.
@@ -126,6 +118,17 @@ async function open(
     timeout: 20_000,
   });
   return { p, ctx, stub };
+}
+
+/**
+ * The page polls server-info, so a route handler can be mid-fetch as a
+ * test ends. Unroute first: errors from a handler still running are then
+ * dropped, as Playwright advises, instead of failing the test with
+ * "Response has been disposed".
+ */
+async function closeCtx(ctx: BrowserContext): Promise<void> {
+  await ctx.unrouteAll({ behavior: "ignoreErrors" });
+  await ctx.close();
 }
 
 const PILL = ".den-upd .upd-pill";
@@ -217,7 +220,7 @@ for (const name of ["chromium", "webkit"]) {
           false,
         );
       } finally {
-        await ctx.close();
+        await closeCtx(ctx);
       }
     }, 60_000);
 
@@ -277,7 +280,7 @@ for (const name of ["chromium", "webkit"]) {
         expect(box.blur).toBe("none");
         expect(box.pe).toBe("none");
       } finally {
-        await ctx.close();
+        await closeCtx(ctx);
       }
     }, 60_000);
 
@@ -312,7 +315,7 @@ for (const name of ["chromium", "webkit"]) {
           expect(fit.sw).toBeLessThanOrEqual(fit.cw);
           expect(fit.hit).toBe(true);
         } finally {
-          await ctx.close();
+          await closeCtx(ctx);
         }
       }, 60_000);
 
@@ -331,7 +334,7 @@ for (const name of ["chromium", "webkit"]) {
         // The old dashed banner is gone.
         expect(await p.$('[data-banner="engine"]')).toBeNull();
       } finally {
-        await ctx.close();
+        await closeCtx(ctx);
       }
     }, 60_000);
 
@@ -363,7 +366,7 @@ for (const name of ["chromium", "webkit"]) {
         expect(stub.restarts).toBe(0);
         expect(await p.inputValue("#probe-ta")).toBe("half a thought");
       } finally {
-        await ctx.close();
+        await closeCtx(ctx);
       }
     }, 60_000);
 
@@ -386,7 +389,7 @@ for (const name of ["chromium", "webkit"]) {
         await p.waitForTimeout(1500);
         expect(await p.$(PILL)).toBeNull();
       } finally {
-        await ctx.close();
+        await closeCtx(ctx);
       }
     }, 60_000);
 
@@ -407,7 +410,7 @@ for (const name of ["chromium", "webkit"]) {
         await p.reload();
         await pillShows(p);
       } finally {
-        await ctx.close();
+        await closeCtx(ctx);
       }
     }, 60_000);
 
@@ -456,7 +459,7 @@ for (const name of ["chromium", "webkit"]) {
             words.cancel,
           );
         } finally {
-          await ctx.close();
+          await closeCtx(ctx);
           await s!.settings({ language: "en" });
         }
       }, 60_000);

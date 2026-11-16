@@ -28,14 +28,30 @@
   }
 }
 
-/* An open dialog is as tall as its content. A modal dialog sits at
-   inset-block 0; desktop browsers give it height: fit-content, but iPad's
-   WebKit leaves height auto, and auto between 0 and 0 fills the window.
-   Each dialog's own max-height still caps it (it scrolls inside). Any
-   author rule beats the browser's own, so zero specificity is enough, and
-   a dialog with its own height (a full-height sheet) still wins. */
-:where(dialog[open]) {
-  height: fit-content;
+/* An open modal dialog is as tall as its content, and centred. The
+   browser's own box (inset-block 0, height fit-content) is not enough: on
+   an iPad a pop-up still ran the window's full height, even with height:
+   fit-content. So the box is placed by hand and owes nothing to the
+   browser's inset or height:
+   - fixed, top 50%, moved up by half its own height; bottom auto, so no
+     inset pair can stretch it;
+   - height auto, capped at the window less 32 px (vh first, for an older
+     iPad without dvh), and it scrolls inside.
+   Each dialog keeps its own width and its own smaller max-height. Zero
+   specificity, so a sheet's own rules win; a bottom sheet sets
+   transform: none (Report at phone width). A dialog placed by its anchor
+   (.den-pop, .den-toplayer: the admin-password prompt) is left alone. */
+:where(dialog:modal:not(.den-pop):not(.den-toplayer)) {
+  position: fixed;
+  inset-block: auto;
+  inset-inline: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0 auto;
+  height: auto;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
 }
 
 /* UK-3, one placement for Report (issue 94). Where it sits is the kit's,

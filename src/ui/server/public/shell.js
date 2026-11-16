@@ -3618,7 +3618,32 @@
   function topSupported(el) {
     return typeof el.showPopover === "function";
   }
+  // Without the top layer (no popover: an older iPad), a menu inside a
+  // modal dialog is fixed to the dialog, not the window: the dialog's
+  // transform (it is centred by translateY, issue 231) makes it the
+  // containing block. So after placing it, measure where it landed and
+  // take the difference off.
   function topPlace(el, anchor, opts) {
+    topPlaceAt(el, anchor, opts);
+    if (opts.sheet) return;
+    try {
+      if (el.matches(":popover-open")) return;
+    } catch (e) {
+      /* no popover: measure */
+    }
+    var want = {
+      top: parseFloat(el.style.getPropertyValue("top")),
+      left: parseFloat(el.style.getPropertyValue("left")),
+    };
+    if (isNaN(want.top) || isNaN(want.left)) return;
+    var got = el.getBoundingClientRect();
+    var dy = got.top - want.top;
+    var dx = got.left - want.left;
+    if (Math.abs(dy) < 0.5 && Math.abs(dx) < 0.5) return;
+    el.style.setProperty("top", want.top - dy + "px", "important");
+    el.style.setProperty("left", want.left - dx + "px", "important");
+  }
+  function topPlaceAt(el, anchor, opts) {
     var r = anchor.getBoundingClientRect();
     var gap = opts.gap != null ? opts.gap : 4;
     el.style.maxHeight = "";

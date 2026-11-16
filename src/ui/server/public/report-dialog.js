@@ -90,7 +90,7 @@ const CSS = `
 .fb-nodot{width:8px;flex:none}
 .fb-tools button{min-height:32px;padding:0 10px;border-radius:.2rem;border:1px solid var(--border-strong, var(--border));background:var(--surface, var(--bg));color:var(--text);font:13px var(--sans);cursor:pointer}
 @media (max-width:600px){
-  .fb-dlg{width:100%;max-width:100%;margin:0;inset:auto 0 0 0;border-radius:12px 12px 0 0;max-height:92vh}
+  .fb-dlg{width:100%;max-width:100%;margin:0;inset:auto 0 0 0;transform:none;border-radius:12px 12px 0 0;max-height:92vh}
   .fb-b{padding:14px}
   .fb-btns{flex-direction:column;position:sticky;bottom:-14px;background:var(--raised, var(--surface, var(--bg)));padding-bottom:14px}
   .fb-btns button,.fb-btns a{width:100%;justify-content:center}
