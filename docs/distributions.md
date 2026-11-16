@@ -5052,6 +5052,72 @@ Only the boolean `true` counts. With it, and a Sentry DSN in
 also sent, best effort. A DSN on its own never sends. `CI=true` and
 `DEV_METRICS_DISABLED=1` stop sending even when opted in.
 
+### Agents stuck compacting, and instruction files that eat the context
+
+An agent whose instruction files are a large share of its context fills
+again within a turn or two of each compaction, because Claude Code loads
+those files again after every one. It then compacts over and over. Den
+watches for both.
+
+**Compacting repeatedly.** Every few seconds the server reads each running
+agent's automatic compactions from its own session records: the
+`compact_boundary` records in Claude Code's transcript, with
+`compactMetadata.trigger` `auto` (a manual `/compact` never counts). Den
+follows the transcript from where it last stopped, and reads only its last
+`agents.turn_read_max_mb` on the first look. More than
+`agent_context.compaction_loop_count` (3) within
+`agent_context.compaction_loop_minutes` (10) is one episode:
+
+- the bell rings once, and the server log names the agent, its project
+  and the likely cause;
+- its row and its pane bar say **Compacting repeatedly**. Under the row:
+  how many compactions, the likely cause, **Stop** (the same Stop as its
+  pane's) and **Clear**.
+
+The episode ends once the count in the window drops back to the limit; a
+later loop is a new episode with a new bell. Clear ends it at once. Only
+compactions after a Clear count again.
+
+**Optional pause.** With `agent_context.pause_after_loop: true` (off by
+default), new deliveries to the agent (Hub comments, tool notes) wait from
+the bell until a person clears it on the Agents page (the button reads
+**Let deliveries go**). Den uses the same hold it uses for an agent waiting
+at a permission prompt. Clearing is a person's: an agent's token is
+refused `POST /api/workspaces/<ws>/agents/<id>/compacting-clear`.
+
+**Instruction size, at every start.** Each start and resume measures the
+instruction files Claude Code will load for the agent's folder, by size
+only (Den never reads them):
+
+- the user's own `CLAUDE.md` in Claude Code's config folder
+  (`$CLAUDE_CONFIG_DIR`, else `~/.claude`);
+- `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md` and `AGENTS.md` in
+  the agent's folder and each folder above it, up to the home folder (for
+  a folder outside home, up to its repo's root).
+
+Den estimates tokens as bytes / 4. Over
+`agent_context.instruction_share_percent` (15) of the model's context, the
+start warns, the agent's row gets a **Large instructions** tag, and
+`<cli> doctor` warns, each naming the largest file (its path relative to
+the agent's folder) and its size. A `[1m]` model's context is 1,000,000
+tokens; otherwise `agent_context.context_tokens` (200000).
+
+Not counted: files Claude Code loads only when the agent works in a folder
+below its own, what an `@` import pulls in, and an organization's managed
+policy file. Claude Code itself reads parent folders up to `/`; Den stops
+at home. `AGENTS.md` is counted as many folders keep their instructions
+there; check whether your Claude Code version loads it.
+
+```yaml
+# config/local/user.yml (Settings › Agents, or <cli> config agent_context.<key>=<value>)
+agent_context:
+  compaction_loop_count: 3
+  compaction_loop_minutes: 10
+  pause_after_loop: false
+  instruction_share_percent: 15
+  context_tokens: 200000
+```
+
 ## Agent usage: tokens and outcomes, read locally
 
 `<cli> usage agents [-w <ws>] [--json]` reads each agent's transcripts on

@@ -4,6 +4,27 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.62] - unreleased
+
+### Added
+
+- Den notices an agent stuck compacting. It counts each running agent's
+  automatic compactions from Claude Code's own records (the transcript's
+  `compact_boundary` lines). More than 3 in 10 minutes rings the bell
+  once per episode and logs a line naming the agent. Its row and pane bar
+  say "Compacting repeatedly", with the likely cause, Stop and Clear.
+- At every start, Den measures the instruction files Claude Code loads
+  for the agent's folder (`CLAUDE.md`, `CLAUDE.local.md`,
+  `.claude/CLAUDE.md`, `AGENTS.md` up the folders, and the user's own),
+  by size only. Over 15% of the model's context, the start, the agent's
+  row and `<cli> doctor` warn, naming the largest file and its size.
+- Optional: hold new deliveries to an agent after its compaction bell,
+  until a person clears it on the Agents page (off by default).
+- Settings › Agents (and `<cli> config`): `agent_context.compaction_loop_count`
+  (3), `compaction_loop_minutes` (10), `pause_after_loop` (off),
+  `instruction_share_percent` (15) and `context_tokens` (200000, when Den
+  doesn't know the model's). In English, Spanish and Japanese.
+
 ## [0.4.61] - unreleased
 
 ### Added
