@@ -8,6 +8,9 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Agents connected to Hub are now told that approval happens in Hub:
+  publish the doc or mock there, ask for review, and wait for the
+  decision Hub sends back. They no longer ask you to approve it in chat.
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new
