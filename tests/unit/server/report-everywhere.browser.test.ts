@@ -75,6 +75,10 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     n: 2,
     how: "the bell's panel: reportFoot() drawn with it (den#143); its inline ask is skipped",
   },
+  "gate-chip.js": {
+    n: 1,
+    how: "the gate queue (issue 144): a dialog on the body, given Report by the injector (gate-chip.browser.test.ts)",
+  },
   "graph.js": {
     n: 1,
     how: "the popped detail panel: reportFoot() drawn with it (panel.js, den#143)",

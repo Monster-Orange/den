@@ -6,6 +6,29 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.61] - unreleased
 
+### Added
+
+- One queue per machine for heavy test runs. Wrap a gate in
+  `<cli> gate run --kind browser --estimate 6m -- <command>`: it waits for
+  its turn, runs the command, and gives the turn back when the command
+  ends, passes, fails or is killed. A browser run has the machine alone;
+  unit runs share it, 2 at a time by default. Every repo and install on
+  the machine shares the same queue.
+- A run that waits says who holds the machine and until about when. No
+  run is ever stopped by another one.
+- A turn whose process has ended is freed at once. A run past its
+  estimate is flagged, and never stopped.
+- `<cli> gate status` and the Agents page show who holds the machine and
+  who waits; an agent's row says when it holds or waits. A person can end
+  a turn early from the Agents page or with `<cli> gate end`; an agent
+  can't.
+- Agents read the queue with the `gate_slot_status` tool, and hold a turn
+  across several commands with `gate_slot_request` and
+  `gate_slot_release`.
+- Every ask, wait, grant, release and early end is written to the
+  machine's slot log, so waiting time can be counted.
+- Settings › Server: how many unit runs share the machine, and how long
+  past its estimate a run is flagged.
 ### Changed
 
 - Den's frame now comes from its UI kit, den-ui 0.6.0: the top bar, the
@@ -23,6 +46,26 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Den's own update no longer waits silently. When it waits, the log and
+  the audit say why, once each time the reason changes. When the Den
+  agent is waiting on your Allow or your answer, the bell says Den's
+  update waits on it, and after `server_agent.update_wait_checks` checks
+  in a row (default 2) it counts as needing you. Den never updates past
+  a pending Allow. After a self-update, a new pin left uncommitted in the
+  distribution's folder is reported too.
+- Den's log now says where held Hub comments go: when an agent's
+  comments wait (busy, or waiting on its person), when a restart brings
+  held ones back, when they're typed in and how long the oldest waited,
+  and when Hub's Try again repeats one already held.
+- Agents connected to Hub are now told that approval happens in Hub:
+  publish the doc or mock there, ask for review, and wait for the
+  decision Hub sends back. They no longer ask you to approve it in chat.
+- The bell's count shows only what needs you. An agent sitting idle
+  after its turn no longer counts. A permission prompt, a question the
+  agent asked you (with ask_human, or by ending its turn on one), and
+  Den's own "Allow the update" do count. Only the newest update ask is
+  kept, and it goes once Den runs that version. Opening an agent now
+  takes its updates out of the list, so the Updates count drops.
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new

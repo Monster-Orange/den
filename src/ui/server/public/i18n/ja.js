@@ -702,6 +702,10 @@
     "set.ui.ucNext": "次回 {t}",
     "set.ui.ucDid.asked": "{v} が出ました。許可を待っています",
     "set.ui.ucDid.waiting": "{v} が出ました。落ち着いたときを待っています",
+    "set.ui.ucDid.waitAllow":
+      "{v} が出ました。待機中: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "set.ui.ucDid.waitAsked":
+      "{v} が出ました。待機中: __DEN_TITLE__ エージェントがあなたに質問しました",
     "set.ui.ucDid.updating": "{v} に更新中",
     "set.ui.ucDid.failed": "{v} に更新できませんでした",
     "set.ui.ucDid.skipped": "スキップ",
@@ -720,6 +724,12 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
+    "set.server.gate_cpu.d":
+      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
+    "set.server.gate_overrun.d":
+      "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1447,6 +1457,14 @@
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} が出ました。都合のよいときに更新を許可してください (このインストールは {have})",
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
+    "bell.m.updateWaits":
+      "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.updateWaitsAsked":
+      "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
+    "bell.m.pinNotCommitted":
+      "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがディストリビューションのフォルダーにコミットされていません",
+    "bell.m.pinNotCommittedAllow":
+      "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",
@@ -1672,6 +1690,26 @@
     "busy.delProjW": "{name} を削除しています…",
     "busy.delProjS": "{name} を削除しました。",
     "busy.delProjF": "{name} を削除できませんでした。",
+    // Issue 144: エージェント画面のテスト順番チップ。
+    "gate.chip": "順番: {kind} · {who} · {at} まで",
+    "gate.chipWaiting": " · {n} 件待ち",
+    "gate.kind.browser": "ブラウザーテスト",
+    "gate.kind.cpu": "単体テスト",
+    "gate.popH": "このマシンのテスト実行",
+    "gate.holds": "{kind} を実行中、{at} ごろまで",
+    "gate.waits": "{kind} の実行待ち、{at} ごろから",
+    "gate.over": "見込みを過ぎています",
+    "gate.none": "実行中や待機中のテストはありません。",
+    "gate.end": "早めに終える",
+    "gate.endT": "この順番を早めに終えますか?",
+    "gate.endQ":
+      "{label} の順番を終えますか?実行そのものは止まりません。次の実行が始まることがあります。",
+    "gate.endGo": "順番を終える",
+    "gate.rowHolds": "順番: {kind}",
+    "gate.rowWaits": "順番待ち: {kind}",
+    "busy.gateEndW": "{name} の順番を終えています…",
+    "busy.gateEndS": "{name} の順番を終えました。",
+    "busy.gateEndF": "{name} の順番を終えられませんでした。",
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",

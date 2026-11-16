@@ -78,6 +78,21 @@ async function page(
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
+  // What the page asked and got, for a failure to say (a CI-only stall).
+  const net: string[] = [];
+  const t0 = Date.now();
+  p.on("requestfailed", (r) =>
+    net.push(
+      `${Date.now() - t0}ms ✗ ${r.method()} ${new URL(r.url()).pathname} ${r.failure()?.errorText ?? ""}`,
+    ),
+  );
+  p.on("response", (r) => {
+    const u = new URL(r.url());
+    if (u.pathname.startsWith("/api/"))
+      net.push(
+        `${Date.now() - t0}ms ${r.status()} ${r.request().method()} ${u.pathname}`,
+      );
+  });
   const posts: unknown[] = [];
   if (answer)
     await p.route("**/api/hub/link-suggestions", (r) => {
@@ -103,7 +118,16 @@ async function page(
     );
     await p.reload();
   } else await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
-  await p.waitForSelector(`${ROW} [data-hubla]`);
+  try {
+    await p.waitForSelector(`${ROW} [data-hubla]`);
+  } catch (e) {
+    const row = await p
+      .$eval(ROW, (el) => el.outerHTML.slice(0, 600))
+      .catch(() => "(no row)");
+    throw new Error(
+      `${(e as Error).message}\nrow: ${row}\napi: ${net.join(" | ")}\npage errors: ${errors.join(" | ")}`,
+    );
+  }
   return { p, posts };
 }
 

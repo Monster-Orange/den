@@ -92,7 +92,7 @@ async function open(path: string, width = 1280): Promise<Page> {
 describe("NT-3: the bell", () => {
   it("an agent waits: the bell says 1; the panel groups it; Mark all read; Esc", async () => {
     if (skip()) return;
-    expect((await say({ event: "waiting", why: "input" })).status).toBe(200);
+    expect((await say({ event: "waiting", why: "permission" })).status).toBe(200);
     const p = await open("/services");
     await p.waitForFunction(
       () => document.querySelector(".den-bell-n")?.textContent === "1",
@@ -110,7 +110,7 @@ describe("NT-3: the bell", () => {
     await sec.waitFor();
     expect(await sec.locator(".den-bell-sc span").textContent()).toBe("north");
     const row = sec.locator('.den-bell-row[data-kind="waiting"] a');
-    expect(await row.textContent()).toMatch(/is waiting for you$/);
+    expect(await row.textContent()).toMatch(/needs your permission$/);
     expect(await row.getAttribute("href")).toBe(
       "/agents?project=north&agent=planner",
     );
@@ -128,7 +128,7 @@ describe("NT-3: the bell", () => {
 
   it("0.4.44: the panel is in the shell's font, even on a page whose body has none", async () => {
     if (skip()) return;
-    expect((await say({ event: "waiting", why: "input" })).status).toBe(200);
+    expect((await say({ event: "waiting", why: "permission" })).status).toBe(200);
     const p = await open("/services");
     // The panel hangs off body, outside the top bar: a body with no font
     // of its own gives it the browser's (a serif).
