@@ -20,7 +20,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContextOptions, Page } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -111,9 +112,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await stopServer(server);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server],
+    after: () => fs.rmSync(tmp, { recursive: true, force: true }),
+  });
 });
 
 const EDGE = 'path.dg-e[data-f="shop/api"][data-t="shop/worker"]';

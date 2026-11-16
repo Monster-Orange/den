@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -38,7 +39,9 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
+  await closeBrowserSuite({
+    browsers: [browser],
+  });
 });
 
 const skip = () => !browser;

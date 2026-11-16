@@ -24,6 +24,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: AgentsPageServer | null = null;
 const browsers: Record<string, Browser | null> = {
@@ -53,8 +54,10 @@ beforeAll(async () => {
 // CI runner (seen on one shard once WebKit ran there): the same allowance
 // as the start above.
 afterAll(async () => {
-  for (const b of Object.values(browsers)) await b?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: Object.values(browsers),
+    servers: [s],
+  });
 }, 90_000);
 
 interface Stub {

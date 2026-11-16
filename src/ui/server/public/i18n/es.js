@@ -1712,6 +1712,12 @@
     "busy.ordW": "Moviendo {id}…",
     "busy.ordS": "Hecho: {id} se movió.",
     "busy.ordF": "No se pudo mover {id}.",
+    "busy.delProjW": "Eliminando {name}…",
+    "busy.delProjS": "Se eliminó {name}.",
+    "busy.delProjF": "No se pudo eliminar {name}.",
+    "busy.rmSvcW": "Quitando {name}…",
+    "busy.rmSvcS": "Se quitó {name}.",
+    "busy.rmSvcF": "No se pudo quitar {name}.",
     "ag.orphan.one":
       "{names} no tiene proyecto: se eliminó. Asígnale uno con ⋯ › Mover a otro proyecto….",
     "ag.orphan.many":

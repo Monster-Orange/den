@@ -17,10 +17,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
 import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
 import { writeRecord } from "../../../src/shared/agents/records.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -73,9 +74,13 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  if (server) await stopServer(server);
-  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server],
+    after: () => {
+      if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    },
+  });
 });
 
 const skip = () => !browser;

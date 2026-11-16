@@ -18,6 +18,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 jest.setTimeout(30_000);
 
@@ -42,8 +43,11 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    contexts: ctxs,
+    browsers: [browser],
+    servers: [s],
+  });
 });
 
 const skip = () => !browser;
@@ -110,9 +114,6 @@ const fresh = (over: Partial<Fake> = {}): Fake => ({
 });
 
 const ctxs: BrowserContext[] = [];
-afterAll(async () => {
-  for (const c of ctxs) await c.close().catch(() => {});
-});
 
 async function page(fake: Fake, width = 1440): Promise<Page> {
   const ctx = await browser!.newContext({

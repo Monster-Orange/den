@@ -34,6 +34,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: AgentsPageServer | null = null;
 const browsers: Record<string, Browser> = {};
@@ -62,8 +63,10 @@ beforeAll(async () => {
 // Closing two remote browsers and the server: more than Jest's default 10 s
 // on a loaded runner, as the setup above has its own 60 s.
 afterAll(async () => {
-  for (const b of Object.values(browsers)) await b.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: Object.values(browsers),
+    servers: [s],
+  });
 }, 60_000);
 
 /** iPad's default for a dialog, ahead of every page stylesheet. */

@@ -93,6 +93,10 @@ async function fakeHub() {
   const tampered = new Map<string, Buffer>();
   /** A listing served in place of a version's files. */
   let listing: FakeFile[] | null = null;
+  /** How long each file PUT is held before its answer, and how many at once. */
+  let putDelayMs = 0;
+  let putsNow = 0;
+  let putsMost = 0;
 
   const add = (
     slug: string,
@@ -116,147 +120,183 @@ async function fakeHub() {
     });
   };
 
+  const handle = (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    body: Buffer,
+  ) => {
+    const u = new URL(req.url ?? "/", "http://hub").pathname;
+    seen.push(`${req.method} ${u}`);
+    headers.push(req.headers);
+    const json = (status: number, b: unknown) => {
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify(b));
+    };
+    if (req.headers.authorization !== `Bearer ${HUB_TOKEN}`)
+      return json(401, { error: "a valid Hub token is required" });
+    let m = /^\/api\/artifacts\/([^/]+)\/versions\/([^/]+)$/.exec(u);
+    if (req.method === "GET" && m) {
+      const a = artifacts.get(decodeURIComponent(m[1]));
+      if (!a) return json(404, { error: "no such artifact here" });
+      const n = m[2] === "latest" ? a.versions.length : Number(m[2]);
+      const v = a.versions[n - 1];
+      if (!v)
+        return json(404, { error: `no version ${m[2]} of this artifact` });
+      return json(200, {
+        slug: m[1],
+        kind: a.kind,
+        n: v.n,
+        entry: v.entry,
+        note: v.note,
+        files: listing ?? v.files,
+        limits,
+      });
+    }
+    m =
+      /^\/api\/artifacts\/([^/]+)\/versions\/([^/]+)\/files\/([0-9a-f]{64})$/.exec(
+        u,
+      );
+    if (req.method === "GET" && m) {
+      const a = artifacts.get(decodeURIComponent(m[1]));
+      const n = m[2] === "latest" ? (a?.versions.length ?? 0) : Number(m[2]);
+      const v = a?.versions[n - 1];
+      const files = listing ?? v?.files ?? [];
+      if (!v || !files.some((f) => f.sha256 === m![3]))
+        return json(404, { error: "that file isn't in this version" });
+      const data = tampered.get(m[3]) ?? blobs.get(m[3]);
+      if (!data) return json(404, { error: "that file isn't in the store" });
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "cache-control": "no-store",
+      });
+      return res.end(data);
+    }
+    m = /^\/api\/artifacts\/([^/]+)\/versions$/.exec(u);
+    if (req.method === "POST" && m) {
+      const slug = decodeURIComponent(m[1]);
+      const a = artifacts.get(slug);
+      if (!a) return json(404, { error: "no such artifact here" });
+      const ask = JSON.parse(body.toString("utf8")) as {
+        base: number;
+        note?: string;
+        entry?: string;
+        files: FakeFile[];
+      };
+      // Hub's rules per kind (its checkFiles): a doc is one Markdown
+      // file; an image one image file; a mock one page, or a bundle that
+      // opens on its .html entry.
+      const one = ask.files.length === 1 ? ask.files[0]!.path : "";
+      if (a.kind === "doc" && !/\.(md|markdown|txt)$/i.test(one))
+        return json(400, { error: "a doc is one Markdown file" });
+      if (a.kind === "image" && !/\.(png|jpe?g|webp|gif|avif)$/i.test(one))
+        return json(400, { error: "an image is one image file" });
+      if (
+        a.kind === "mock" &&
+        !/\.html?$/i.test(one) &&
+        !(
+          ask.entry &&
+          /\.html?$/i.test(ask.entry) &&
+          ask.files.some((f) => f.path === ask.entry)
+        )
+      )
+        return json(400, {
+          error: "entry: the bundle's .html page it opens on",
+        });
+      const latest = a.versions.length;
+      if (ask.base !== latest)
+        return json(409, {
+          error: `the artifact is at v${latest}, not v${ask.base}: pull it and try again`,
+          latest,
+        });
+      const id = `drf_${drafts.size + 1}`;
+      drafts.set(id, {
+        slug,
+        base: ask.base,
+        note: ask.note ?? null,
+        entry: ask.entry ?? null,
+        files: ask.files,
+        got: new Set(),
+      });
+      const missing = [...new Set(ask.files.map((f) => f.sha256))].filter(
+        (h) => !blobs.has(h),
+      );
+      return json(201, {
+        draft: id,
+        missing,
+        expires_at: "2026-11-16T00:00:00.000Z",
+      });
+    }
+    m =
+      /^\/api\/artifacts\/([^/]+)\/drafts\/([^/]+)\/files\/([0-9a-f]{64})$/.exec(
+        u,
+      );
+    if (req.method === "PUT" && m) {
+      const d = drafts.get(m[2]);
+      const f = d?.files.find((x) => x.sha256 === m![3]);
+      if (!d || !f)
+        return json(404, { error: "the draft doesn't list that file" });
+      if (body.length > limits.file_bytes)
+        return json(413, { error: "the file is over the limit" });
+      if (body.length !== f.size || sha(body) !== f.sha256)
+        return json(422, {
+          error: "the bytes don't match the listed sha256 and size",
+        });
+      blobs.set(f.sha256, body);
+      d.got.add(f.sha256);
+      res.writeHead(204);
+      return res.end();
+    }
+    m = /^\/api\/artifacts\/([^/]+)\/drafts\/([^/]+)\/commit$/.exec(u);
+    if (req.method === "POST" && m) {
+      const d = drafts.get(m[2]);
+      if (!d) return json(404, { error: "no such draft here" });
+      const a = artifacts.get(d.slug)!;
+      if (a.versions.length !== d.base)
+        return json(409, {
+          error: `the artifact moved to v${a.versions.length} since this draft (v${d.base}): pull it and try again`,
+          latest: a.versions.length,
+        });
+      const missing = d.files.filter((f) => !blobs.has(f.sha256));
+      if (missing.length)
+        return json(409, {
+          error: `${missing.length} files haven't been sent yet`,
+          latest: a.versions.length,
+        });
+      commits++;
+      const n = d.base + 1;
+      a.versions.push({
+        n,
+        entry: d.entry,
+        note: d.note,
+        files: d.files.map((f) => ({
+          ...f,
+          type: "application/octet-stream",
+        })),
+      });
+      drafts.delete(m[2]);
+      return json(201, {
+        n,
+        pointer: `hub:${d.slug}@v${n}`,
+        url: `${HUB_SITE}/acme/a/${d.slug}?v=${n}`,
+      });
+    }
+    json(404, { error: "no such route" });
+  };
   const s = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => {
       const body = Buffer.concat(chunks);
-      const u = new URL(req.url ?? "/", "http://hub").pathname;
-      seen.push(`${req.method} ${u}`);
-      headers.push(req.headers);
-      const json = (status: number, b: unknown) => {
-        res.writeHead(status, { "content-type": "application/json" });
-        res.end(JSON.stringify(b));
-      };
-      if (req.headers.authorization !== `Bearer ${HUB_TOKEN}`)
-        return json(401, { error: "a valid Hub token is required" });
-      let m = /^\/api\/artifacts\/([^/]+)\/versions\/([^/]+)$/.exec(u);
-      if (req.method === "GET" && m) {
-        const a = artifacts.get(decodeURIComponent(m[1]));
-        if (!a) return json(404, { error: "no such artifact here" });
-        const n = m[2] === "latest" ? a.versions.length : Number(m[2]);
-        const v = a.versions[n - 1];
-        if (!v)
-          return json(404, { error: `no version ${m[2]} of this artifact` });
-        return json(200, {
-          slug: m[1],
-          kind: a.kind,
-          n: v.n,
-          entry: v.entry,
-          note: v.note,
-          files: listing ?? v.files,
-          limits,
-        });
+      if (putDelayMs && req.method === "PUT") {
+        // A slow upload: count the file PUTs open at once, then answer.
+        putsMost = Math.max(putsMost, ++putsNow);
+        setTimeout(() => {
+          putsNow--;
+          handle(req, res, body);
+        }, putDelayMs);
+        return;
       }
-      m =
-        /^\/api\/artifacts\/([^/]+)\/versions\/([^/]+)\/files\/([0-9a-f]{64})$/.exec(
-          u,
-        );
-      if (req.method === "GET" && m) {
-        const a = artifacts.get(decodeURIComponent(m[1]));
-        const n = m[2] === "latest" ? (a?.versions.length ?? 0) : Number(m[2]);
-        const v = a?.versions[n - 1];
-        const files = listing ?? v?.files ?? [];
-        if (!v || !files.some((f) => f.sha256 === m![3]))
-          return json(404, { error: "that file isn't in this version" });
-        const data = tampered.get(m[3]) ?? blobs.get(m[3]);
-        if (!data) return json(404, { error: "that file isn't in the store" });
-        res.writeHead(200, {
-          "content-type": "application/octet-stream",
-          "cache-control": "no-store",
-        });
-        return res.end(data);
-      }
-      m = /^\/api\/artifacts\/([^/]+)\/versions$/.exec(u);
-      if (req.method === "POST" && m) {
-        const slug = decodeURIComponent(m[1]);
-        const a = artifacts.get(slug);
-        if (!a) return json(404, { error: "no such artifact here" });
-        const ask = JSON.parse(body.toString("utf8")) as {
-          base: number;
-          note?: string;
-          entry?: string;
-          files: FakeFile[];
-        };
-        const latest = a.versions.length;
-        if (ask.base !== latest)
-          return json(409, {
-            error: `the artifact is at v${latest}, not v${ask.base}: pull it and try again`,
-            latest,
-          });
-        const id = `drf_${drafts.size + 1}`;
-        drafts.set(id, {
-          slug,
-          base: ask.base,
-          note: ask.note ?? null,
-          entry: ask.entry ?? null,
-          files: ask.files,
-          got: new Set(),
-        });
-        const missing = [...new Set(ask.files.map((f) => f.sha256))].filter(
-          (h) => !blobs.has(h),
-        );
-        return json(201, {
-          draft: id,
-          missing,
-          expires_at: "2026-11-16T00:00:00.000Z",
-        });
-      }
-      m =
-        /^\/api\/artifacts\/([^/]+)\/drafts\/([^/]+)\/files\/([0-9a-f]{64})$/.exec(
-          u,
-        );
-      if (req.method === "PUT" && m) {
-        const d = drafts.get(m[2]);
-        const f = d?.files.find((x) => x.sha256 === m![3]);
-        if (!d || !f)
-          return json(404, { error: "the draft doesn't list that file" });
-        if (body.length > limits.file_bytes)
-          return json(413, { error: "the file is over the limit" });
-        if (body.length !== f.size || sha(body) !== f.sha256)
-          return json(422, {
-            error: "the bytes don't match the listed sha256 and size",
-          });
-        blobs.set(f.sha256, body);
-        d.got.add(f.sha256);
-        res.writeHead(204);
-        return res.end();
-      }
-      m = /^\/api\/artifacts\/([^/]+)\/drafts\/([^/]+)\/commit$/.exec(u);
-      if (req.method === "POST" && m) {
-        const d = drafts.get(m[2]);
-        if (!d) return json(404, { error: "no such draft here" });
-        const a = artifacts.get(d.slug)!;
-        if (a.versions.length !== d.base)
-          return json(409, {
-            error: `the artifact moved to v${a.versions.length} since this draft (v${d.base}): pull it and try again`,
-            latest: a.versions.length,
-          });
-        const missing = d.files.filter((f) => !blobs.has(f.sha256));
-        if (missing.length)
-          return json(409, {
-            error: `${missing.length} files haven't been sent yet`,
-            latest: a.versions.length,
-          });
-        commits++;
-        const n = d.base + 1;
-        a.versions.push({
-          n,
-          entry: d.entry,
-          note: d.note,
-          files: d.files.map((f) => ({
-            ...f,
-            type: "application/octet-stream",
-          })),
-        });
-        drafts.delete(m[2]);
-        return json(201, {
-          n,
-          pointer: `hub:${d.slug}@v${n}`,
-          url: `${HUB_SITE}/acme/a/${d.slug}?v=${n}`,
-        });
-      }
-      json(404, { error: "no such route" });
+      handle(req, res, body);
     });
   });
   servers.push(s);
@@ -272,6 +312,9 @@ async function fakeHub() {
     commits: () => commits,
     setLimits: (l: typeof limits) => (limits = l),
     setListing: (l: FakeFile[] | null) => (listing = l),
+    setPutDelay: (ms: number) => (putDelayMs = ms),
+    /** The most file PUTs Hub held open at once. */
+    putsAtOnce: () => putsMost,
     /** The bytes Hub keeps for `slug`'s latest version, by path. */
     stored(slug: string): Map<string, Buffer> {
       const a = artifacts.get(slug)!;
@@ -613,6 +656,215 @@ describe("den#49: hub pull, checked", () => {
     expect(fs.existsSync(path.join(root, "x"))).toBe(false);
     expect(fs.existsSync("/tmp/den49-x")).toBe(false);
     expect(fs.existsSync(into) ? fs.readdirSync(into) : []).toEqual([]);
+  });
+});
+
+describe("den#49: captions, kinds, and four at a time", () => {
+  /** A small PNG-looking file, different per `seed`. */
+  const png = (seed: number) =>
+    Buffer.from([
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+      ...Array.from({ length: 300 }, (_, i) => (i * seed) % 256),
+    ]);
+
+  it("captions: read from captions.json on put (never sent as a file), written back to captions.json on pull", async () => {
+    const hub = await fakeHub();
+    hub.add("brand-logo", "image", [{ path: "logo.png", data: png(3) }], null);
+    const base = await denProxy(hub.url);
+    const dir = tmp("den49-cap-");
+    const logo = png(7);
+    fs.writeFileSync(path.join(dir, "logo.png"), logo);
+    fs.writeFileSync(
+      path.join(dir, "captions.json"),
+      JSON.stringify({ "logo.png": "The logo, on a dark ground" }),
+    );
+    const c = cli(base);
+    expect(
+      await c.run(["put", dir, "hub:brand-logo", "--note", "darker"]),
+    ).toBe(0);
+    const v = hub.artifacts.get("brand-logo")!.versions;
+    expect(v).toHaveLength(2);
+    // One file, its caption with it; captions.json itself is not a file.
+    expect(v[1]!.files.map((f) => [f.path, f.caption])).toEqual([
+      ["logo.png", "The logo, on a dark ground"],
+    ]);
+    expect(hub.seen.filter((x) => x.startsWith("PUT "))).toEqual([
+      `PUT /api/artifacts/brand-logo/drafts/drf_1/files/${sha(logo)}`,
+    ]);
+    // Pull, through the CLI and through hub_pull: the file, and its
+    // caption in captions.json.
+    for (const how of ["cli", "mcp"]) {
+      const into = path.join(tmp("den49-cap-pull-"), "out");
+      if (how === "cli")
+        expect(await cli(base).run(["pull", "hub:brand-logo", into])).toBe(0);
+      else
+        expect(
+          (
+            await callTool(
+              "hub_pull",
+              { ref: "hub:brand-logo@v2", dir: into },
+              mcpCtx(base),
+            )
+          ).isError,
+        ).toBe(false);
+      expect(sha(fs.readFileSync(path.join(into, "logo.png")))).toBe(sha(logo));
+      expect(
+        JSON.parse(fs.readFileSync(path.join(into, "captions.json"), "utf8")),
+      ).toEqual({ "logo.png": "The logo, on a dark ground" });
+      expect(fs.readdirSync(into).sort()).toEqual([
+        "captions.json",
+        "logo.png",
+      ]);
+    }
+  });
+
+  it("captions: one for a file that isn't there is refused before Hub hears of the put", async () => {
+    const hub = await fakeHub();
+    hub.add("brand-logo", "image", [{ path: "logo.png", data: png(3) }], null);
+    const base = await denProxy(hub.url);
+    const dir = tmp("den49-cap-");
+    fs.writeFileSync(path.join(dir, "logo.png"), png(7));
+    fs.writeFileSync(
+      path.join(dir, "captions.json"),
+      JSON.stringify({ "logo.svg": "not here" }),
+    );
+    const c = cli(base);
+    expect(await c.run(["put", dir, "hub:brand-logo"])).toBe(1);
+    expect(c.err.join("\n")).toMatch(/captions\.json.*logo\.svg/);
+    expect(hub.seen).toEqual([]);
+  });
+
+  it("kinds: a mock, an image and a doc each put as one version and pull back byte-identical, with their kind", async () => {
+    const hub = await fakeHub();
+    const m = mockDir();
+    hub.add(
+      "systems-view",
+      "mock",
+      [{ path: "index.html", data: Buffer.from("<h1>old</h1>") }],
+      "index.html",
+    );
+    hub.add("brand-logo", "image", [{ path: "logo.png", data: png(3) }], null);
+    hub.add(
+      "release-notes",
+      "doc",
+      [{ path: "index.md", data: Buffer.from("# Notes\n") }],
+      null,
+    );
+    const base = await denProxy(hub.url);
+    const imgDir = tmp("den49-img-");
+    const img = png(11);
+    fs.writeFileSync(path.join(imgDir, "logo.png"), img);
+    const docFile = path.join(tmp("den49-doc-"), "index.md");
+    const doc = Buffer.from(
+      "# Notes\n\nCafé, 日本語, and a list:\n\n- one\n",
+      "utf8",
+    );
+    fs.writeFileSync(docFile, doc);
+    const cases = [
+      {
+        slug: "systems-view",
+        kind: "mock",
+        src: m.dir,
+        files: { "index.html": m.page, "logo.png": m.logo },
+      },
+      {
+        slug: "brand-logo",
+        kind: "image",
+        src: path.join(imgDir, "logo.png"),
+        files: { "logo.png": img },
+      },
+      {
+        slug: "release-notes",
+        kind: "doc",
+        src: docFile,
+        files: { "index.md": doc },
+      },
+    ];
+    for (const k of cases) {
+      const c = cli(base);
+      expect([
+        await c.run(["put", k.src, `hub:${k.slug}`, "--note", k.kind]),
+        c.err,
+      ]).toEqual([0, []]);
+      expect(c.all()).toContain(`hub:${k.slug}@v2`);
+      const into = path.join(tmp("den49-kind-"), "out");
+      const p = cli(base);
+      expect(await p.run(["pull", `hub:${k.slug}@v2`, into, "--json"])).toBe(0);
+      const r = JSON.parse(p.out.join("\n")) as { kind: string; n: number };
+      expect([r.kind, r.n]).toEqual([k.kind, 2]);
+      for (const [f, data] of Object.entries(k.files))
+        expect(sha(fs.readFileSync(path.join(into, f)))).toBe(sha(data));
+      expect(fs.readdirSync(into).sort()).toEqual(Object.keys(k.files).sort());
+    }
+    expect(hub.commits()).toBe(3);
+  });
+
+  it("kinds: a mock of several files with no page to open on is refused before any draft", async () => {
+    const hub = await fakeHub();
+    hub.add(
+      "systems-view",
+      "mock",
+      [{ path: "index.html", data: Buffer.from("<h1>old</h1>") }],
+      "index.html",
+    );
+    const base = await denProxy(hub.url);
+    const dir = tmp("den49-nopage-");
+    fs.writeFileSync(path.join(dir, "a.html"), "<h1>a</h1>");
+    fs.writeFileSync(path.join(dir, "b.html"), "<h1>b</h1>");
+    const c = cli(base);
+    expect(await c.run(["put", dir, "hub:systems-view"])).toBe(1);
+    expect(c.err.join("\n")).toMatch(/--entry/);
+    expect(hub.seen.filter((x) => !x.startsWith("GET "))).toEqual([]);
+    // With --entry, it goes.
+    expect(
+      await cli(base).run([
+        "put",
+        dir,
+        "hub:systems-view",
+        "--entry",
+        "b.html",
+      ]),
+    ).toBe(0);
+    expect(hub.artifacts.get("systems-view")!.versions[1]!.entry).toBe(
+      "b.html",
+    );
+  });
+
+  it("the missing files go up four at a time, never more, and every one arrives", async () => {
+    const hub = await fakeHub();
+    hub.add(
+      "systems-view",
+      "mock",
+      [{ path: "index.html", data: Buffer.from("<h1>old</h1>") }],
+      "index.html",
+    );
+    hub.setPutDelay(150);
+    const base = await denProxy(hub.url);
+    const dir = tmp("den49-many-");
+    fs.writeFileSync(path.join(dir, "index.html"), "<h1>many</h1>");
+    const sent: string[] = [];
+    for (let i = 0; i < 11; i++) {
+      const b = png(i + 20);
+      fs.writeFileSync(path.join(dir, `p${i}.png`), b);
+      sent.push(sha(b));
+    }
+    const c = cli(base);
+    expect([await c.run(["put", dir, "hub:systems-view"]), c.err]).toEqual([
+      0,
+      [],
+    ]);
+    const puts = hub.seen.filter((x) => x.startsWith("PUT "));
+    expect(puts).toHaveLength(12);
+    for (const h of sent) expect(puts.some((x) => x.endsWith(h))).toBe(true);
+    expect(hub.putsAtOnce()).toBe(4);
+    expect(hub.commits()).toBe(1);
   });
 });
 

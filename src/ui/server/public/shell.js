@@ -2474,6 +2474,13 @@
     "busy.ordW": "Moving {id}…",
     "busy.ordS": "Done: {id} moved.",
     "busy.ordF": "Couldn't move {id}.",
+    // Issue 133: Delete project and Remove service, on the working pop-up.
+    "busy.delProjW": "Deleting {name}…",
+    "busy.delProjS": "Deleted {name}.",
+    "busy.delProjF": "Couldn't delete {name}.",
+    "busy.rmSvcW": "Removing {name}…",
+    "busy.rmSvcS": "Removed {name}.",
+    "busy.rmSvcF": "Couldn't remove {name}.",
     "ag.orphan.one":
       "{names} has no project: its project was deleted. Give it one with ⋯ › Move to project….",
     "ag.orphan.many":

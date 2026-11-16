@@ -4,6 +4,19 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.59] - unreleased
+
+### Fixed
+
+- Delete project and Remove service, on the Projects and Services pages,
+  now show the working pop-up while Den answers. A failure says so there,
+  with Try again. (#133)
+- Browser tests close their browsers and test servers through one shared
+  step, and a check fails any test file that doesn't. A test server with
+  an open event stream now closes at once. (#233)
+- `hub put` and `hub pull` have tests for captions, for each kind (mock,
+  image, doc), and for sending files four at a time. (#49)
+
 ## [0.4.56] - 2026-11-16
 
 ### Added

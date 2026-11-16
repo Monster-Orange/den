@@ -36,6 +36,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -74,9 +75,10 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  for (const b of Object.values(browsers)) await b?.close();
-  host?.close();
-  await s?.stop();
+  await closeBrowserSuite({
+    browsers: Object.values(browsers),
+    servers: [host, s],
+  });
 });
 
 /** A running agent `id` in north, as `agents start` leaves one. */

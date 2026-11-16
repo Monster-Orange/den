@@ -27,6 +27,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -148,12 +149,10 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await s?.stop();
-  hub.server?.closeAllConnections();
-  await new Promise<void>((r) =>
-    hub.server ? hub.server.close(() => r()) : r(),
-  );
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [s, hub.server],
+  });
 });
 
 const skip = () => !browser;

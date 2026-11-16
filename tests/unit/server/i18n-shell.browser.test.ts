@@ -19,6 +19,7 @@ import * as path from "path";
 import * as vm from "vm";
 import type { Browser, Page } from "playwright";
 import { pageImport } from "./helpers/page-import.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -34,7 +35,9 @@ beforeAll(async () => {
   }
 }, 30_000);
 afterAll(async () => {
-  await browser?.close();
+  await closeBrowserSuite({
+    browsers: [browser],
+  });
 });
 
 /** shell.js's en, every text wrapped in ⟦…⟧ (its placeholders kept). */

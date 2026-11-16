@@ -1667,6 +1667,12 @@
     "busy.ordW": "{id} を移動しています…",
     "busy.ordS": "完了: {id} を移動しました。",
     "busy.ordF": "{id} を移動できませんでした。",
+    "busy.delProjW": "{name} を削除しています…",
+    "busy.delProjS": "{name} を削除しました。",
+    "busy.delProjF": "{name} を削除できませんでした。",
+    "busy.rmSvcW": "{name} を外しています…",
+    "busy.rmSvcS": "{name} を外しました。",
+    "busy.rmSvcF": "{name} を外せませんでした。",
     "ag.orphan.one":
       "{names} にはプロジェクトがありません (削除されました)。⋯ › 別のプロジェクトへ移動… で割り当ててください。",
     "ag.orphan.many":

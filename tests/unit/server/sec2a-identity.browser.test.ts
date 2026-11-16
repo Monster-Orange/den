@@ -16,9 +16,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { startDenServer } from "../../child-servers.js";
 import { signInUrl } from "./helpers/den-auth.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 /** The edge folder, with the invented proof in it (H1). */
 const edgeProofDir = (d: string) => (writeTestEdgeProof(d), d);
 
@@ -98,9 +99,13 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  if (server) await stopServer(server);
-  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server],
+    after: () => {
+      if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    },
+  });
 });
 
 const skip = () => !browser;
