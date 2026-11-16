@@ -2361,6 +2361,8 @@
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.noHub.one": "{n} agent started without Hub",
+    "bell.m.compacting":
+      "{name} is compacting repeatedly: {n} times in {m} minutes",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":

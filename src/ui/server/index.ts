@@ -21,6 +21,7 @@ import type { UpdateWait } from "./update-check.js";
 import { isUpdateAsk, staleUpdateAsk } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
+import { pausedAgents, startContextWatch } from "./context-watch-service.js";
 import {
   crashLoopSettings,
   markCleanStop,
@@ -2632,6 +2633,8 @@ function typingHeldIds(): Set<string> {
   return typingHeld(
     attentionWaiting(),
     approvals ? approvals.queue.waitingActors() : [],
+    // Issue 278: held after a compaction loop (agent_context.pause_after_loop).
+    pausedAgents(),
   );
 }
 
@@ -7175,6 +7178,8 @@ void CRASH_GATE.then(() =>
     } catch (e) {
       serverLog(`  ⚠ edge proof not synced: ${(e as Error).message}`, "warn");
     }
+    // Issue 278: agents stuck compacting ring the bell (agent_context.*).
+    startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
     // #57: agents whose record names a project by its pre-D70 key follow it.
     void import("../../shared/agents/heal-workspace.js").then(async (m) => {
       const { isServerScope } =
