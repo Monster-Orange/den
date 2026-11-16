@@ -54,6 +54,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A project mode change's Allow details (project, now, then, how running
+  agents switch, which agents keep their own mode) are in the page's
+  language; they were English in Spanish and Japanese. The docs no longer
+  say running agents keep their mode until they start again.
+
 - Ready for Hub sending every comment on an agent's artifact as a delivery.
   When Hub says its feed carries comments (and, separately, approvals and
   requested changes), Den stops typing those from Hub's inbox, so nothing

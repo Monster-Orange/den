@@ -66,6 +66,27 @@ async function repoRig(): Promise<Rig> {
 }
 
 describe("SRV-P4: project_mode", () => {
+  it("every detail line has a message key the page translates (en, es, ja)", async () => {
+    const r = await repoRig();
+    r.wsPermission.north = "ask";
+    const c = checkProjectMode(resolveAgentsDeps(r.deps), {
+      project: "north",
+      mode: null,
+    });
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.detailKeys).toHaveLength(c.details.length);
+    const pub = path.resolve(__dirname, "../../../src/ui/server/public");
+    const cats = ["shell.js", "i18n/es.js", "i18n/ja.js"].map((f) =>
+      fs.readFileSync(path.join(pub, f), "utf-8"),
+    );
+    for (const k of c.detailKeys!) {
+      expect(k).not.toBeNull();
+      for (const cat of cats) expect(cat).toContain(`"${k!.key}":`);
+    }
+    expect(c.detailKeys!.map((k) => k!.key)).toContain("ap.pm.switch");
+  });
+
   it("shows the change and that running agents switch after their turn", async () => {
     const r = await repoRig();
     r.wsPermission.north = "auto";

@@ -1167,6 +1167,18 @@
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
+    "ap.pm.warn":
+      "Esto permite que los agentes de {project} actúen sin preguntarte.",
+    "ap.pm.project": "Proyecto: {project}",
+    "ap.pm.now": "Ahora: {mode}",
+    "ap.pm.then": "Después: {mode}",
+    "ap.pm.thenNone":
+      "Después: ninguno (los agentes empiezan en el modo de la instalación, si no en el de su persona)",
+    "ap.pm.switch":
+      "Los agentes nuevos empiezan en él; los que están en marcha cambian tras su turno actual, en la misma conversación.",
+    "ap.pm.own":
+      "Estos conservan su propio modo y no seguirán el proyecto: {list}",
+    "ap.pm.follow": "Y hace que sigan el proyecto: se borra su propio modo.",
     "ap.own.h":
       "Estos agentes conservan su propio modo y no seguirán el proyecto:",
     "ap.own.item": "{agent} (modo propio: {mode})",

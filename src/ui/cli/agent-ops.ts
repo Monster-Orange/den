@@ -4202,6 +4202,12 @@ function folderTarget(
   return { dir, ...(repo ? { repo } : {}) };
 }
 
+/** A details line as a message key with its words (the page's t()). */
+export interface DetailKey {
+  key: string;
+  vars?: Record<string, string>;
+}
+
 /** SRV-P4: a held write's check (project_mode, agent_folder). */
 export type HeldOpCheck<A> =
   | {
@@ -4215,6 +4221,11 @@ export type HeldOpCheck<A> =
       /** The summary's parts, for the Allow dialog to word in its language. */
       params: Record<string, string>;
       details: string[];
+      /**
+       * One per details line: its message key and words, for the Allow
+       * dialog to show in the person's language (the line itself when null).
+       */
+      detailKeys?: (DetailKey | null)[];
       args: A;
       /**
        * Issue 199: the project's agents with a mode of their own, which
@@ -4315,6 +4326,53 @@ export function checkProjectMode(
     // person also makes them follow.
     const { ownMode } = projectAgentModes(d, ws);
     const follow = ownMode.length > 0 && raw.follow === true;
+    const ownList = ownMode
+      .map((o) => `${o.agent} (own mode: ${o.mode})`)
+      .join(", ");
+    // Each line in English, with its key for the Allow dialog's language.
+    const lines: [string, DetailKey][] = [
+      ...(loosens
+        ? [
+            [warn, { key: "ap.pm.warn", vars: { project: ws } }] as [
+              string,
+              DetailKey,
+            ],
+          ]
+        : []),
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [`Now: ${from}`, { key: "ap.pm.now", vars: { mode: from } }],
+      mode === null
+        ? [
+            "Then: none (agents start in the install's mode, else their persona's)",
+            { key: "ap.pm.thenNone" },
+          ]
+        : [`Then: ${to}`, { key: "ap.pm.then", vars: { mode: to } }],
+      [
+        "New agents start in it; running agents switch after their current turn, in the same conversation.",
+        { key: "ap.pm.switch" },
+      ],
+      ...(ownMode.length
+        ? [
+            [
+              `These keep their own mode and won't follow the project: ${ownList}`,
+              {
+                key: "ap.pm.own",
+                vars: {
+                  list: ownMode.map((o) => `${o.agent} (${o.mode})`).join(", "),
+                },
+              },
+            ] as [string, DetailKey],
+          ]
+        : []),
+      ...(follow
+        ? [
+            [
+              "And makes them follow the project: their own mode is cleared.",
+              { key: "ap.pm.follow" },
+            ] as [string, DetailKey],
+          ]
+        : []),
+    ];
     return {
       ok: true,
       ...(loosens ? { personOnly: true } : {}),
@@ -4323,21 +4381,8 @@ export function checkProjectMode(
         ? `${warn} ${line.charAt(0).toUpperCase()}${line.slice(1)}`
         : line,
       params: { project: ws, from, to, ...(loosens ? { loosens: "1" } : {}) },
-      details: [
-        ...(loosens ? [warn] : []),
-        `Project: ${ws}`,
-        `Now: ${from}`,
-        `Then: ${to}${mode === null ? " (agents start in the install's mode, else their persona's)" : ""}`,
-        "New agents start in it; running agents switch after their current turn, in the same conversation.",
-        ...(ownMode.length
-          ? [
-              `These keep their own mode and won't follow the project: ${ownMode.map((o) => `${o.agent} (own mode: ${o.mode})`).join(", ")}`,
-            ]
-          : []),
-        ...(follow
-          ? ["And makes them follow the project: their own mode is cleared."]
-          : []),
-      ],
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
       args: { project: ws, mode, ...(follow ? { follow: true as const } : {}) },
     };
   } catch (e) {

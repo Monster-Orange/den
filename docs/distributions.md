@@ -3150,7 +3150,8 @@ runtime?, mode?, repo?, folder? }`, the held action `agent_create`).
 - **It sets a project's mode** (0.4.48, `project_mode { project?, mode }`,
   the held action `project_mode`). `mode` is ask, edits, auto or all, or
   none to clear it. The Allow shows the change (from → to). New agents
-  start in it; running agents keep theirs until they start again. A
+  start in it; running agents switch after their current turn, in the
+  same conversation (Den's mode check, since 0.4.46). A
   project's agent sets its own project's mode only. A change that
   loosens it (ask → auto, or clearing it when the install's or a
   persona's mode is wider) says so first ("This lets agents in <project>

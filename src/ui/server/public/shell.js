@@ -1926,6 +1926,18 @@
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
+    "ap.pm.warn": "This lets agents in {project} act without asking you.",
+    "ap.pm.project": "Project: {project}",
+    "ap.pm.now": "Now: {mode}",
+    "ap.pm.then": "Then: {mode}",
+    "ap.pm.thenNone":
+      "Then: none (agents start in the install's mode, else their persona's)",
+    "ap.pm.switch":
+      "New agents start in it; running agents switch after their current turn, in the same conversation.",
+    "ap.pm.own":
+      "These keep their own mode and won't follow the project: {list}",
+    "ap.pm.follow":
+      "And makes them follow the project: their own mode is cleared.",
     "ap.own.h":
       "These agents keep their own mode and won't follow the project:",
     "ap.own.item": "{agent} (own mode: {mode})",
@@ -6663,7 +6675,14 @@
     var note = $("den-ap-note");
     note.hidden = !a.note;
     note.textContent = a.note ? t("ap.says") + " “" + a.note + "”" : "";
-    $("den-ap-det").textContent = (a.details || []).join("\n");
+    // A line with a key is shown in the page's language; else as sent.
+    var dk = a.detailKeys || [];
+    $("den-ap-det").textContent = (a.details || [])
+      .map(function (l, i) {
+        var k = dk[i];
+        return k && k.key ? t(k.key, k.vars || {}) : l;
+      })
+      .join("\n");
     // Issue 199: the agents that keep their own mode, and the choice.
     var own = a.ownMode || [];
     $("den-ap-own").hidden = !own.length;

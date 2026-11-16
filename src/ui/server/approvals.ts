@@ -155,6 +155,12 @@ export type ApprovalState =
   | "denied"
   | "expired";
 
+/** A Review line as a message key and its words, for the page's t(). */
+export interface DetailKeyRec {
+  key: string;
+  vars?: Readonly<Record<string, string>>;
+}
+
 export interface Approval {
   id: string;
   /** Who asked: `agent:<id>` (or the person's MCP server, `person:…`). */
@@ -171,6 +177,8 @@ export interface Approval {
   params?: Readonly<Record<string, string>>;
   /** Review: what it will do, line by line (Den's, from the args). */
   details?: readonly string[];
+  /** One per details line: its message key and words (null: the line as is). */
+  detailKeys?: readonly (DetailKeyRec | null)[];
   /** What the agent said about it: shown only quoted, as "Agent says". */
   note?: string;
   /** Issue 199: the agents that keep a mode of their own (Den's, from the args). */
@@ -275,6 +283,7 @@ export class ApprovalQueue {
     summary: string;
     params?: Record<string, string>;
     details?: string[];
+    detailKeys?: (DetailKeyRec | null)[];
     note?: string;
     ownMode?: { agent: string; mode: string }[];
     choices?: string[];
@@ -313,6 +322,33 @@ export class ApprovalQueue {
         ? {
             details: Object.freeze(
               r.details.slice(0, 80).map((l) => l.slice(0, 2000)),
+            ),
+          }
+        : {}),
+      ...(r.details && r.detailKeys?.length
+        ? {
+            detailKeys: Object.freeze(
+              r.detailKeys.slice(0, 80).map((k) =>
+                k && /^[a-z][a-zA-Z0-9_.]{0,63}$/.test(k.key)
+                  ? Object.freeze({
+                      key: k.key,
+                      ...(k.vars
+                        ? {
+                            vars: Object.freeze(
+                              Object.fromEntries(
+                                Object.entries(k.vars)
+                                  .slice(0, 8)
+                                  .map(([n, v]) => [
+                                    n.slice(0, 32),
+                                    String(v).slice(0, 2000),
+                                  ]),
+                              ),
+                            ),
+                          }
+                        : {}),
+                    })
+                  : null,
+              ),
             ),
           }
         : {}),

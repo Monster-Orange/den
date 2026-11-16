@@ -339,6 +339,33 @@ describe("the approval dialog (ON-3)", () => {
     await p.context().close();
   }, 90_000);
 
+  it("project_mode's Review lines in the person's language (es)", async () => {
+    if (skip()) return;
+    const userYml = path.join(tmp, "dist", "config", "local", "user.yml");
+    fs.mkdirSync(path.dirname(userYml), { recursive: true });
+    const before = fs.existsSync(userYml)
+      ? fs.readFileSync(userYml, "utf-8")
+      : null;
+    fs.writeFileSync(userYml, `${before ?? ""}\nlanguage: es\n`);
+    try {
+      const p = await page(true);
+      const id = await ask("project_mode", { project: "web", mode: "auto" });
+      await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+      const det = (await p.textContent("#den-ap-det")) ?? "";
+      expect(det).toContain("Proyecto: web");
+      expect(det).toContain(
+        "Los agentes nuevos empiezan en él; los que están en marcha cambian tras su turno actual, en la misma conversación.",
+      );
+      expect(det).not.toContain("running agents");
+      await p.click("#den-ap-deny");
+      await closed(p);
+      expect(await stateOf(id)).toBe("denied");
+      await p.context().close();
+    } finally {
+      fs.writeFileSync(userYml, before ?? "");
+    }
+  }, 90_000);
+
   it("raised no page errors", () => {
     expect(errors).toEqual([]);
   });

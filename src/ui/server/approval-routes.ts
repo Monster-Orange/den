@@ -51,6 +51,8 @@ export type HeldCheck =
       params: Record<string, string>;
       /** Review: what it will do, line by line. */
       details: string[];
+      /** One per details line: its message key and words, when it has one. */
+      detailKeys?: ({ key: string; vars?: Record<string, string> } | null)[];
       /**
        * Only the person's own Allow runs it: no auto-allow setting does
        * (a project_mode that loosens, Vision 11-14).
@@ -156,6 +158,7 @@ export function approvalView(a: Approval): Record<string, unknown> {
     summary: a.summary,
     ...(a.params ? { params: a.params } : {}),
     ...(a.details ? { details: a.details } : {}),
+    ...(a.detailKeys ? { detailKeys: a.detailKeys } : {}),
     ...(a.note ? { note: a.note } : {}),
     ...(a.ownMode ? { ownMode: a.ownMode } : {}),
     ...(a.choices ? { choices: a.choices } : {}),
@@ -305,6 +308,9 @@ export async function handleApprovalRoutes(
         summary: checked.summary,
         params: checked.params,
         details: checked.details,
+        ...(checked.detailKeys?.length
+          ? { detailKeys: checked.detailKeys }
+          : {}),
         ...(checked.ownMode?.length ? { ownMode: checked.ownMode } : {}),
         ...(checked.choices?.length ? { choices: checked.choices } : {}),
         note: typeof body.note === "string" ? body.note : undefined,
