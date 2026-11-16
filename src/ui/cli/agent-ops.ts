@@ -57,6 +57,11 @@ import {
 } from "../../shared/agents/running-mode.js";
 import { trustPromptIn } from "../../shared/agents/trust-prompt.js";
 import {
+  resolveMode,
+  type EffectiveMode,
+  type ModeSource,
+} from "../../shared/agents/effective-mode.js";
+import {
   hubProjectOf,
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
@@ -3107,14 +3112,15 @@ function startChoices(
       );
     if (permission !== intentOf(persona.permissionMode))
       overrides.push("permission");
-  } else if (wsPermission !== undefined && rt.permissions) {
-    // den#48: the project's mode, over the persona's. Not an override:
-    // nobody chose it for this agent, so it follows the project later.
-    permission = wsPermission;
   } else if (rt.permissions) {
-    // den#48: the persona's mode. Recorded to show it; every resume and
-    // restart reads the project's and the persona's again (permissionNow).
-    permission = intentOf(persona.permissionMode);
+    // den#48: the project's mode (else the install's), over the persona's.
+    // Not an override: nobody chose it for this agent, so it follows them
+    // later. Recorded to show it; every resume and restart reads them
+    // again (issue 225: resolveMode, the one rule).
+    permission = resolveMode({
+      project: wsPermission,
+      persona: persona.permissionMode,
+    }).mode;
   }
   let extras = persona.allowedCommands;
   if (req.allow !== undefined) {
@@ -4269,13 +4275,94 @@ export function projectAgentModes(
   const ownMode: OwnModeAgent[] = [];
   for (const rec of listRecords(d.stateDir())) {
     if (rec.workspace !== ws || !getRuntime(rec.runtime)?.permissions) continue;
-    if (rec.permission && rec.overrides?.includes("permission"))
-      ownMode.push({ agent: rec.id, mode: rec.permission });
+    const own = ownModeOf(rec);
+    if (own) ownMode.push({ agent: rec.id, mode: own });
     else following.push(rec.id);
   }
   following.sort();
   ownMode.sort((a, b) => a.agent.localeCompare(b.agent));
   return { following, ownMode };
+}
+
+/**
+ * Issue 225: every agent of project `ws` with a mode of its own follows
+ * the project again (its own setting is cleared). The agents cleared, with
+ * the mode each had. A running one moves at Den's next mode check.
+ */
+export function followProjectMode(
+  d: AgentsResolved,
+  ws: string,
+): OwnModeAgent[] {
+  const { ownMode } = projectAgentModes(d, ws);
+  for (const o of ownMode) setAgentPermission(d, o.agent, ws, null);
+  return ownMode;
+}
+
+/** Issue 225: one agent's mode on the project's settings. */
+export interface ProjectAgentMode {
+  agent: string;
+  name?: string;
+  /** The mode it runs in now (or at its next start), and from where. */
+  mode: PermissionIntent;
+  source: ModeSource;
+  /** Running in another mode until it restarts (its process's flag). */
+  running?: PermissionIntent;
+  stopped?: true;
+}
+
+/**
+ * Issue 225: project `ws`'s mode, the install's, and each of its agents'
+ * mode with where it comes from: what Settings › Project shows. The same
+ * resolver as every start (effectiveMode), and the running process's own
+ * flag (running-mode.ts) when it differs.
+ */
+export async function projectModeView(
+  d: AgentsResolved,
+  ws: string,
+  commandLineOf: CommandLineOf = psCommandLine,
+): Promise<{
+  project: string;
+  mode: PermissionIntent | null;
+  install: PermissionIntent | null;
+  agents: ProjectAgentMode[];
+  /** How many have a mode of their own. */
+  own: number;
+}> {
+  const mode = workspacePermissionOf(d, ws) ?? null;
+  const install = installPermissionOf(d) ?? null;
+  const c = await d.connectExisting();
+  let live: { ref: { id: string }; pid?: number; exited?: unknown }[] = [];
+  try {
+    live = c ? (await c.list()).filter((x) => !x.exited) : [];
+  } finally {
+    c?.close();
+  }
+  const resolve = modeResolver(d, commandLineOf);
+  const agents: ProjectAgentMode[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (rec.workspace !== ws) continue;
+    const session = live.find((x) => x.ref.id === rec.session.id);
+    const m = resolve(rec, session?.pid);
+    if (!m) continue;
+    agents.push({
+      agent: rec.id,
+      ...(rec.displayName ? { name: rec.displayName } : {}),
+      mode: m.want,
+      source: m.source,
+      ...(session && m.running && m.running !== m.want
+        ? { running: m.running }
+        : {}),
+      ...(session ? {} : { stopped: true as const }),
+    });
+  }
+  agents.sort((a, b) => a.agent.localeCompare(b.agent));
+  return {
+    project: ws,
+    mode,
+    install,
+    agents,
+    own: agents.filter((a) => a.source === "own").length,
+  };
 }
 
 /**
@@ -4330,6 +4417,12 @@ export function checkProjectMode(
     // person also makes them follow.
     const { ownMode } = projectAgentModes(d, ws);
     const follow = ownMode.length > 0 && raw.follow === true;
+    // Issue 225: the Allow offers to make them follow; for one whose own
+    // mode is stricter than the project's, that widens what it may do, so
+    // the ask is the person's own Allow (issue 160), never run unseen.
+    const rankAfter =
+      after === undefined ? INTENT_RANK.all + 1 : INTENT_RANK[after];
+    const widensOwn = ownMode.some((o) => rankAfter > INTENT_RANK[o.mode]);
     const ownList = ownMode
       .map((o) => `${o.agent} (own mode: ${o.mode})`)
       .join(", ");
@@ -4379,7 +4472,7 @@ export function checkProjectMode(
     ];
     return {
       ok: true,
-      ...(loosens ? { personOnly: true } : {}),
+      ...(loosens || widensOwn ? { personOnly: true } : {}),
       ...(ownMode.length ? { ownMode, choices: ["follow"] } : {}),
       summary: loosens
         ? `${warn} ${line.charAt(0).toUpperCase()}${line.slice(1)}`
@@ -4416,8 +4509,7 @@ export async function runProjectMode(
   if (!c.ok) return c;
   const ws = c.args.project;
   d.saveWorkspacePermission(ws, c.args.mode);
-  if (c.args.follow)
-    for (const o of c.ownMode ?? []) setAgentPermission(d, o.agent, ws, null);
+  if (c.args.follow) followProjectMode(d, ws);
   const now = projectAgentModes(d, ws);
   return {
     ok: true,
@@ -4609,16 +4701,12 @@ export function checkAgentMode(
     const rt = getRuntime(rec.runtime);
     if (!rt?.permissions)
       return no(`${rec.runtime} can't take a permission mode from Den yet`);
-    const own = rec.overrides?.includes("permission")
-      ? rec.permission
-      : undefined;
+    const own = ownModeOf(rec);
     if (!own)
       return no(`${id} has no own mode: it follows its project's already`);
     const p = personaLookup(d)(rec);
     const to =
-      followedPermissionOf(d, rec.workspace) ??
-      (p ? intentOf(p.permissionMode) : undefined) ??
-      DEFAULT_INTENT;
+      effectiveMode(d, rec, p, rt, { ignoreOwn: true })?.mode ?? DEFAULT_INTENT;
     const shown = rec.displayName ?? id;
     const loosens = INTENT_RANK[to] > INTENT_RANK[own];
     const change = `${own} → follow project (${to})`;
@@ -5779,11 +5867,41 @@ export function permissionNow(
   rt: Runtime,
 ): PermissionIntent | undefined {
   if (!rt.permissions) return rec.permission;
-  if (rec.permission && rec.overrides?.includes("permission"))
-    return rec.permission;
-  return (
-    followedPermissionOf(d, rec.workspace) ?? intentOf(persona.permissionMode)
-  );
+  return effectiveMode(d, rec, persona, rt)!.mode;
+}
+
+/** Issue 225: an agent's own mode (an override), if it has one. */
+export function ownModeOf(rec: AgentRecord): PermissionIntent | undefined {
+  return rec.permission && rec.overrides?.includes("permission")
+    ? rec.permission
+    : undefined;
+}
+
+/**
+ * Issue 225: the mode an agent runs in now and where it comes from: its
+ * own setting, its project's, the install's, its persona's, else Den's
+ * default (effective-mode.ts has the order). The one rule every start,
+ * resume, restart, mode check and page reads. `ignoreOwn`: the mode it
+ * would follow without its own setting. Undefined for a runtime that
+ * takes no mode from Den. A bad project or install mode throws, naming
+ * its key; one that isn't read (an own setting wins) never does.
+ */
+export function effectiveMode(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  persona: Persona | undefined,
+  rt: Runtime,
+  opts: { ignoreOwn?: boolean } = {},
+): EffectiveMode | undefined {
+  if (!rt.permissions) return undefined;
+  const own = opts.ignoreOwn ? undefined : ownModeOf(rec);
+  if (own) return resolveMode({ own });
+  const project = workspacePermissionOf(d, rec.workspace);
+  return resolveMode({
+    project,
+    install: project ? undefined : installPermissionOf(d),
+    persona: persona?.permissionMode,
+  });
 }
 
 /**
@@ -5853,6 +5971,8 @@ export async function modeDrift(
 /** MODE-3 (0.4.48): the mode an agent should run in, and the one it runs in. */
 export interface AgentMode {
   want: PermissionIntent;
+  /** Issue 225: where `want` comes from (effective-mode.ts). */
+  source: ModeSource;
   /** Its process's, when its command line says; else its record's. */
   running?: PermissionIntent;
   /** Issue 199: a mode of its own (an override), not its project's. */
@@ -5876,17 +5996,18 @@ export function modeResolver(
     const rt = getRuntime(rec.runtime);
     const p = find(rec);
     if (!rt?.permissions || !p) return undefined;
-    let want: PermissionIntent | undefined;
+    let eff: EffectiveMode | undefined;
     try {
-      want = permissionNow(d, rec, p, rt);
+      eff = effectiveMode(d, rec, p, rt);
     } catch {
       return undefined; // a bad mode: its next start says so
     }
-    if (!want) return undefined;
+    const want = eff?.mode;
+    if (!eff || !want) return undefined;
     const running =
       (pid ? runningIntent(pid, rec.resumeToken, commandLineOf) : undefined) ??
       rec.permission;
-    const own = !!rec.permission && !!rec.overrides?.includes("permission");
+    const own = eff.source === "own";
     let followed: PermissionIntent | undefined;
     if (own)
       try {
@@ -5896,6 +6017,7 @@ export function modeResolver(
       }
     return {
       want,
+      source: eff.source,
       ...(running ? { running } : {}),
       ...(own ? { own: true as const, ...(followed ? { followed } : {}) } : {}),
     };

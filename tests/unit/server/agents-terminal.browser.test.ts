@@ -996,6 +996,8 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
           if (x.agent === "coder") {
             x.mode = "edits";
             x.modeRunning = "edits";
+            // Issue 225: where its mode comes from.
+            (x as { modeSource?: string }).modeSource = "persona";
           }
         }
         await r.fulfill({ response: res, json: body });
@@ -1022,13 +1024,13 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       timeout: 15_000,
     });
     expect(await p.textContent(`${bar} [data-mode-drift]`)).toBe(
-      "Set to Auto, running Ask",
+      "Set to Auto. Runs as Ask until restarted.",
     );
     expect(await p.textContent(`${bar} [data-act="mode-apply"]`)).toBe(
       "Restart to apply",
     );
     expect(await p.textContent(`${row("planner")} [data-mode-drift]`)).toBe(
-      "Set to Auto, running Ask",
+      "Set to Auto. Runs as Ask until restarted.",
     );
     // Under the row too: one button, outside the row's own.
     expect(
@@ -1040,7 +1042,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     ).toBe(1);
     // The agent whose process runs in its mode: just its mode.
     expect(await p.textContent(`${row("coder")} [data-mode]`)).toBe(
-      "mode: Edits",
+      "mode: Edits, from its persona",
     );
     expect(
       await p

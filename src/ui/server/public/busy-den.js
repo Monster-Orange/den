@@ -11,7 +11,7 @@
  * Auto-close (a fast success says so in a toast, a slow one closes after
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
  * restart-agent, fresh-start, report-preview, save-report-draft,
- * discard-draft, keep-running, send-message, allow-web-app. Waits for
+ * discard-draft, follow-project, keep-running, send-message, allow-web-app. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -156,6 +156,17 @@ export const DEN_ACTIONS = {
     },
   },
   // Issue 163: Keep agents running after logout › Apply.
+  // Issue 225: Settings › Project › Agents' mode: agents with their own
+  // setting follow the project.
+  "follow-project": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "pmode.followW",
+      success: "pmode.followS",
+      failure: "pmode.followF",
+    },
+  },
   "keep-running": {
     who: "__DEN_TITLE__",
     autoClose: true,

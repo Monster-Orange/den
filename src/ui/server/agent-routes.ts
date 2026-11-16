@@ -107,6 +107,7 @@ import {
 } from "../../shared/den-config.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
   readWorkspacesFile,
   conversationFolders,
@@ -179,6 +180,8 @@ import {
   type Started,
   FRESH_NOTE,
   workspacePermissionOf,
+  followProjectMode,
+  projectModeView,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
@@ -234,6 +237,9 @@ export interface AgentRouteDeps {
 
 const AGENTS_PATH =
   /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|restart|link|move|file|say))?$/;
+
+/** Issue 225: a project's mode and each of its agents' (Settings › Project). */
+const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -526,6 +532,8 @@ export async function handleAgentRoutes(
     pathname === "/api/agents/resume-interrupted";
   if (pathname === "/api/agents/rotation")
     return rotationRoute(req, res, webDeps(deps.agents));
+  const mp = MODES_PATH.exec(pathname);
+  if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
   const hp = HELPERS_PATH.exec(pathname);
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   const dp = DETAILS_PATH.exec(pathname);
@@ -2275,6 +2283,112 @@ async function staleRoute(
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
+  }
+  return true;
+}
+
+/**
+ * Issue 225: GET /api/workspaces/:ws/agent-modes: the project's mode, the
+ * install's, and each agent's actual mode with where it comes from (and
+ * the mode its process runs in until restarted, when that differs).
+ * POST { mode?, follow? }: a person sets the project's mode (null: none)
+ * and, with follow, every agent with its own setting follows the project
+ * again; one audit row each. Running agents move after their turn, the
+ * same conversation (Den's mode check, applyModesNow). A person's only:
+ * an agent asks with the held write project_mode.
+ */
+async function modesRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD" && method !== "POST")
+    return methodNotAllowed(res, "GET, POST");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  if (method !== "POST") {
+    try {
+      sendJson(res, { ok: true, ...(await projectModeView(d, ws)) });
+    } catch (e) {
+      sendError(res, e, ws);
+    }
+    return true;
+  }
+  const actor = auditActorOf(req);
+  let what = `set project ${ws}'s agents' mode`;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError(
+        "only a person can set a project's mode (an agent asks with project_mode)",
+        { status: 403 },
+      );
+    guard(actor);
+    const body = await jsonBody(req);
+    for (const k of Object.keys(body))
+      if (k !== "mode" && k !== "follow")
+        throw new AgentError(`${k}: unknown field (takes mode and follow)`, {
+          usage: true,
+        });
+    if (body.follow !== undefined && body.follow !== true)
+      throw new AgentError("follow must be true when given", { usage: true });
+    if (body.mode === undefined && body.follow !== true)
+      throw new AgentError("give mode, follow, or both", { usage: true });
+    let mode: PermissionIntent | null | undefined;
+    if (body.mode !== undefined) {
+      if (body.mode !== null && typeof body.mode !== "string")
+        throw new AgentError("mode is ask, edits, auto or all, or null", {
+          usage: true,
+        });
+      try {
+        mode = body.mode === null ? null : checkIntent(body.mode, "mode");
+      } catch (e) {
+        throw new AgentError((e as Error).message, { usage: true });
+      }
+    }
+    if (mode !== undefined) {
+      let from: string;
+      try {
+        from = workspacePermissionOf(d, ws) ?? "none";
+      } catch {
+        from = "a bad value";
+      }
+      d.saveWorkspacePermission(ws, mode);
+      what = `set project ${ws}'s mode: ${from} → ${mode ?? "none"}`;
+      audit(what);
+    }
+    const followed = body.follow === true ? followProjectMode(d, ws) : [];
+    for (const o of followed)
+      audit(
+        `${o.agent} follows project ${ws}'s mode now (its own setting, ${o.mode}, cleared)`,
+      );
+    void applyModesNow();
+    sendJson(res, {
+      ok: true,
+      followed: followed.map((o) => o.agent),
+      ...(await projectModeView(d, ws)),
+    });
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
   }
   return true;
 }
