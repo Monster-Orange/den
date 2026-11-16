@@ -32,7 +32,8 @@ jest.mock("../../../src/shared/environment-manager/workspaces.js", () => ({
 }));
 
 import * as fs from "fs";
-import { spawnSync } from "child_process";
+import { EventEmitter } from "events";
+import { execFile, spawn, spawnSync } from "child_process";
 import {
   findConventionalContainer,
   runningDockerNames,
@@ -72,6 +73,17 @@ const mockLogPath = getServiceLogPath as jest.MockedFunction<
 >;
 const mockManifest = readManifest as jest.MockedFunction<typeof readManifest>;
 const mockSpawnSync = spawnSync as jest.MockedFunction<typeof spawnSync>;
+const mockExecFile = execFile as unknown as jest.Mock;
+const mockSpawn = spawn as unknown as jest.Mock;
+
+/** `spawn` answers with a child that closes with `code` on the next tick. */
+function spawnCloses(code: number): void {
+  mockSpawn.mockImplementation(() => {
+    const child = new EventEmitter();
+    setImmediate(() => child.emit("close", code));
+    return child;
+  });
+}
 const mockExists = fs.existsSync as jest.MockedFunction<typeof fs.existsSync>;
 
 beforeEach(() => {
@@ -113,34 +125,34 @@ describe("isSafeServiceName", () => {
 // ── resolveHistorySource ──────────────────────────────────────────────────────
 
 describe("resolveHistorySource", () => {
-  it("rejects unsafe repo or service names before any resolution", () => {
-    const a = resolveHistorySource("../../etc", "api", "local");
+  it("rejects unsafe repo or service names before any resolution", async () => {
+    const a = await resolveHistorySource("../../etc", "api", "local");
     expect(a).toEqual({
       kind: "unsupported",
       reason: "invalid repo/service name",
     });
-    const b = resolveHistorySource("shop", "../creds", "local");
+    const b = await resolveHistorySource("shop", "../creds", "local");
     expect(b.kind).toBe("unsupported");
     expect(mockResolve).not.toHaveBeenCalled();
     expect(mockLogPath).not.toHaveBeenCalled();
   });
 
-  it("returns unsupported for non-local envs (cloudwatch is a follow-up)", () => {
-    const r = resolveHistorySource("shop", "db", "dev");
+  it("returns unsupported for non-local envs (cloudwatch is a follow-up)", async () => {
+    const r = await resolveHistorySource("shop", "db", "dev");
     expect(r.kind).toBe("unsupported");
     expect((r as { reason: string }).reason).toMatch(/local only/);
   });
 
-  it("tier 1: conventional opctl container wins", () => {
+  it("tier 1: conventional opctl container wins", async () => {
     mockFind.mockReturnValue("opctl_shop-postgres_abc123");
-    const r = resolveHistorySource("shop", "db", "local");
+    const r = await resolveHistorySource("shop", "db", "local");
     expect(r).toEqual({
       kind: "docker",
       container: "opctl_shop-postgres_abc123",
     });
   });
 
-  it("a compose-stack service resolves to its stack's container", () => {
+  it("a compose-stack service resolves to its stack's container", async () => {
     mockResolve.mockReturnValue({
       repoName: "webapp",
       subsystem: "backend",
@@ -158,13 +170,13 @@ describe("resolveHistorySource", () => {
       "webapp-main-frontend-1",
       "webapp-main-backend-1",
     ]);
-    expect(resolveHistorySource("webapp", "backend", "local")).toEqual({
+    expect(await resolveHistorySource("webapp", "backend", "local")).toEqual({
       kind: "docker",
       container: "webapp-main-backend-1",
     });
   });
 
-  it("tier 2: falls back to the manifest log command's docker filter", () => {
+  it("tier 2: falls back to the manifest log command's docker filter", async () => {
     mockFind.mockReturnValue(null);
     mockManifest.mockReturnValue({
       name: "shop",
@@ -179,20 +191,26 @@ describe("resolveHistorySource", () => {
         },
       },
     } as never);
-    mockSpawnSync.mockReturnValue({
-      stdout: "shop-postgres\n",
-      status: 0,
-    } as never);
-    const r = resolveHistorySource("shop", "db", "local");
+    mockExecFile.mockImplementation((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (
+        e: Error | null,
+        out: string,
+      ) => void;
+      setImmediate(() => cb(null, "shop-postgres\n"));
+    });
+    const r = await resolveHistorySource("shop", "db", "local");
     expect(r).toEqual({ kind: "docker", container: "shop-postgres" });
-    expect(mockSpawnSync).toHaveBeenCalledWith(
+    // Async (issue 131): never the blocking spawnSync.
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+    expect(mockExecFile).toHaveBeenCalledWith(
       "docker",
       ["ps", "--filter", "name=shop-postgres", "--format", "{{.Names}}"],
       expect.anything(),
+      expect.any(Function),
     );
   });
 
-  it("tier 2 skipped when the manifest cmd has no docker filter or no container matches", () => {
+  it("tier 2 skipped when the manifest cmd has no docker filter or no container matches", async () => {
     mockFind.mockReturnValue(null);
     mockManifest.mockReturnValue({
       name: "shop",
@@ -201,29 +219,29 @@ describe("resolveHistorySource", () => {
       },
     } as never);
     mockExists.mockReturnValue(true);
-    const r = resolveHistorySource("shop", "db", "local");
+    const r = await resolveHistorySource("shop", "db", "local");
     expect(r).toEqual({
       kind: "file",
       path: "/home/.den/logs/shop/db.log",
     });
   });
 
-  it("tier 3: daemon log file for host-run services", () => {
+  it("tier 3: daemon log file for host-run services", async () => {
     mockFind.mockReturnValue(null);
     mockManifest.mockReturnValue(null);
     mockExists.mockReturnValue(true);
-    const r = resolveHistorySource("shop", "db", "local");
+    const r = await resolveHistorySource("shop", "db", "local");
     expect(r).toEqual({
       kind: "file",
       path: "/home/.den/logs/shop/db.log",
     });
   });
 
-  it("unsupported when nothing resolves", () => {
+  it("unsupported when nothing resolves", async () => {
     mockFind.mockReturnValue(null);
     mockManifest.mockReturnValue(null);
     mockExists.mockReturnValue(false);
-    const r = resolveHistorySource("shop", "db", "local");
+    const r = await resolveHistorySource("shop", "db", "local");
     expect(r.kind).toBe("unsupported");
     expect((r as { reason: string }).reason).toMatch(/no running container/);
   });
@@ -236,25 +254,30 @@ describe("ensureSnapshot", () => {
   const mockRename = fs.renameSync as jest.MockedFunction<typeof fs.renameSync>;
   const mockRm = fs.rmSync as jest.MockedFunction<typeof fs.rmSync>;
 
-  it("file sources are their own snapshot; unsupported yields null", () => {
-    expect(ensureSnapshot({ kind: "file", path: "/x/y.log" })).toBe("/x/y.log");
-    expect(ensureSnapshot({ kind: "unsupported", reason: "nope" })).toBeNull();
+  it("file sources are their own snapshot; unsupported yields null", async () => {
+    expect(await ensureSnapshot({ kind: "file", path: "/x/y.log" })).toBe(
+      "/x/y.log",
+    );
+    expect(
+      await ensureSnapshot({ kind: "unsupported", reason: "nope" }),
+    ).toBeNull();
   });
 
-  it("reuses an existing docker snapshot without spawning", () => {
+  it("reuses an existing docker snapshot without spawning", async () => {
     mockExists.mockReturnValue(true);
-    const p = ensureSnapshot({ kind: "docker", container: "opctl_x_1" });
+    const p = await ensureSnapshot({ kind: "docker", container: "opctl_x_1" });
     expect(p).toMatch(/opctl_x_1\.log$/);
-    expect(mockSpawnSync).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
   });
 
-  it("dumps docker logs to a temp file then renames it into place", () => {
+  it("dumps docker logs to a temp file then renames it into place", async () => {
     mockExists.mockReturnValue(false);
     mockOpen.mockReturnValue(7 as never);
-    mockSpawnSync.mockReturnValue({ status: 0 } as never);
-    const p = ensureSnapshot({ kind: "docker", container: "opctl_x_1" });
+    spawnCloses(0);
+    const p = await ensureSnapshot({ kind: "docker", container: "opctl_x_1" });
     expect(p).toMatch(/opctl_x_1\.log$/);
-    expect(mockSpawnSync).toHaveBeenCalledWith(
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalledWith(
       "docker",
       ["logs", "--timestamps", "opctl_x_1"],
       expect.objectContaining({ stdio: ["ignore", 7, 7] }),
@@ -262,12 +285,12 @@ describe("ensureSnapshot", () => {
     expect(mockRename).toHaveBeenCalled();
   });
 
-  it("returns null and removes the temp when docker logs fails", () => {
+  it("returns null and removes the temp when docker logs fails", async () => {
     mockExists.mockReturnValue(false);
     mockOpen.mockReturnValue(7 as never);
-    mockSpawnSync.mockReturnValue({ status: 1 } as never);
+    spawnCloses(1);
     expect(
-      ensureSnapshot({ kind: "docker", container: "opctl_x_1" }),
+      await ensureSnapshot({ kind: "docker", container: "opctl_x_1" }),
     ).toBeNull();
     expect(mockRm).toHaveBeenCalledWith(
       expect.stringMatching(/opctl_x_1\.log\.tmp$/),
