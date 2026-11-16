@@ -40,6 +40,10 @@ config and manifest changes a distribution must make to move to it under
   fixed there too, without editing a file. Changing the address while
   connected disconnects from the old Hub first, and Den never sends a
   token to a Hub that didn't issue it.
+- Den's own agent can set, change or clear Hub's address with a new held
+  write, hub_connect. It runs on your Allow, through the same check and
+  steps as Settings › Hub. A linked project now says that the link is by
+  Hub's hidden ID, so renaming the project in Hub doesn't break it.
 <<<<<<< HEAD
 - Den's own update no longer waits silently. When it waits, the log and
   the audit say why, once each time the reason changes. When the Den

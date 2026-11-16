@@ -800,6 +800,8 @@
     "hubp.connectBtn": "Hub に接続",
     "hubp.sideProject": "プロジェクト",
     "hubp.sideHub": "Hub プロジェクト",
+    "hubp.byId":
+      "Den は Hub プロジェクトを非表示の ID でリンクします。Hub でプロジェクト名や短い名前を変えても、リンクは切れません。",
     "hubp.linkedWhen":
       "このインストールが Hub に接続したときにリンクされました。",
     "hubp.does":

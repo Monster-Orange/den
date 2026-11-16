@@ -817,6 +817,8 @@
     "hubp.connectBtn": "Conectar con Hub",
     "hubp.sideProject": "Proyecto",
     "hubp.sideHub": "Proyecto en Hub",
+    "hubp.byId":
+      "Den vincula un proyecto de Hub por su ID oculto, así que cambiar en Hub el nombre del proyecto o su nombre corto no rompe el vínculo.",
     "hubp.linkedWhen": "Vinculado cuando esta instalación se conectó a Hub.",
     "hubp.does":
       "Los documentos, maquetas y comentarios que creen los agentes de {project} van a {hub} en Hub.",

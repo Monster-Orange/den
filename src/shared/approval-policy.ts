@@ -64,6 +64,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access",
   },
+  hub_connect: {
+    risk: "critical",
+    why: "points Den at another Hub, or none: where agents publish and read",
+  },
   den_update: {
     risk: "critical",
     why: "installs another Den version (a release)",

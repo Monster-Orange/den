@@ -1005,6 +1005,7 @@ import {
 import { policyFor, readPolicySetting } from "../../shared/approval-policy.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
+import { checkHubAddress, runHubAddress } from "./hub-address.js";
 import {
   checkVerifyRun,
   handleVerifyRoutes,
@@ -2489,6 +2490,34 @@ function approvalDeps(): ApprovalDeps {
     agentCreate: {
       check: (a, who) => checkAgentCreate(agentWebDeps(), a, who),
       run: (a) => createAgent(agentWebDeps(), a),
+    },
+    // #267: Den's own agent asks to set, change or clear Hub's address.
+    hubAddress: {
+      check: (a, who) =>
+        checkHubAddress(
+          { readUser: () => readUserConfig() as Record<string, unknown> },
+          a,
+          who,
+        ),
+      run: (a) =>
+        runHubAddress(
+          {
+            readUser: () =>
+              structuredClone(readUserConfig()) as Record<string, unknown>,
+            writeUser: (u) => writeUserConfig(u as UserConfig),
+            disconnect: async (force) => {
+              const m = await import("./hub-connect.js");
+              return new m.HubConnect().disconnect(force);
+            },
+            // The restart den_restart_server runs (its note, audit, spawn).
+            restart: (reason) =>
+              actions.den_restart.run({ reason }) as Promise<{
+                ok: boolean;
+                error?: string;
+              }>,
+          },
+          a,
+        ),
     },
     // SRV-P4: an agent asks to set a project's mode, or move an agent.
     projectMode: {

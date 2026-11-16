@@ -3424,6 +3424,7 @@ export function hubProjectHtml(b, t, name) {
       `<span aria-hidden="true">↔</span>` +
       `<div><small>${escR(t("hubp.sideHub"))}</small><b data-hubp-name>${name(linked)}</b></div></div>` +
       `<p class="set-note">${escR(t("hubp.linkedWhen"))}</p>` +
+      `<p class="set-note" data-hubp-byid>${escR(t("hubp.byId"))}</p>` +
       `<p class="set-note">${escR(t("hubp.does", { project: ws, hub: hubName }))}</p>` +
       `<details class="hubp-more" data-hubp-more><summary>${escR(t("hubp.more"))}</summary>` +
       `<p class="set-note">${escR(t("hubp.moreNote"))}</p>` +

@@ -1532,6 +1532,8 @@
     "hubp.connectBtn": "Connect to Hub",
     "hubp.sideProject": "Project",
     "hubp.sideHub": "Hub project",
+    "hubp.byId":
+      "Den links to a Hub project by its hidden ID, so renaming the project or its short name in Hub doesn't break the link.",
     "hubp.linkedWhen": "Linked when this install connected to Hub.",
     "hubp.does":
       "Docs, mocks and comments that {project}'s agents make go to {hub} in Hub.",
