@@ -171,6 +171,119 @@ repository root, one row per component, with a reason:
 `version`, `whatsnew`, `update`, `report` and `working`. A row without a
 reason does not count. With no DIVERGE.md, every copy fails.
 
+### Nav inventory
+
+`inventory/nav-inventory.js` (export `./inventory`, types beside it): one
+spec every product runs, so two products' top bars and rails never
+quietly differ. It lists the global nav element by element and compares
+it with the kit's reference: Den's nav as signed off, in
+`inventory/reference/den-<browser>-<width>.json` (export
+`./inventory/reference/*`), for `chromium` and `webkit` at `1280` and
+`390`.
+
+One browser build and one theme. The references were taken on
+Playwright's image `NAV_BROWSER_IMAGE`, its linux/amd64 build (the arm64
+build ships another Chromium; on an arm64 machine add
+`--platform linux/amd64`):
+
+    mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6
+
+in the theme `NAV_THEME`, Den's default theme "den" 2.0.1 (the kit's
+default tokens). A host must run the inventory on that image, in that
+theme, with the shipped references, so both products are measured in one
+browser build and one look. Start the image's run-server and connect both
+browsers to it through `DEN_PW_WS`:
+
+    docker run -d --init --platform linux/amd64 -p 127.0.0.1:3921:3921 \
+      mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6 \
+      npx -y playwright@1.61.1 run-server --port 3921 --host 0.0.0.0
+    DEN_PW_WS=ws://localhost:3921/
+
+    import { chromium } from "playwright";   // 1.61.1, as the image
+    import { collectNav, compareNav, formatNavDiffs, NAV_BROWSER_IMAGE,
+      NAV_THEME } from "@monster-orange/den-ui/inventory";
+    import { readFileSync } from "node:fs";
+    import { createRequire } from "node:module";
+
+    // exposeNetwork: the browser in the container reaches the host's own
+    // server on this machine's loopback through the connection.
+    const browser = await chromium.connect(process.env.DEN_PW_WS,
+      { exposeNetwork: "<loopback>" });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 },
+      colorScheme: "light" });
+    await page.goto("http://localhost:<port>/");   // the host's own page
+    const ref = JSON.parse(readFileSync(createRequire(import.meta.url)
+      .resolve("@monster-orange/den-ui/inventory/reference/den-chromium-1280.json"),
+      "utf-8"));
+    const diffs = compareNav(
+      await collectNav(page, { image: NAV_BROWSER_IMAGE, theme: NAV_THEME }),
+      ref,
+      { hostSlots: ["#my-status"] },   // what the host fills itself
+    );
+    expect(formatNavDiffs(diffs)).toBe("");   // one line per difference
+
+Pass `theme` as the theme the page really draws in (Den reads it from
+`/api/themes`). On another browser build (a different fingerprint: user
+agent and the measured width of one fixed line in each face the nav
+uses) the one difference is `env`, "reference taken on X, running on Y";
+in another theme it is `theme`. Boxes that can't match are never
+compared.
+
+- `collectNav(page, { image, theme })` returns `{ version, viewport,
+env, elements, tokens }`. `env`: `userAgent`, `faces` (the
+  fingerprint), `image`, `theme`. `elements`: `header.den-top`,
+  `nav.den-rail` and every element under them with a box, in DOM order
+  (hidden ones and an `<svg>`'s shapes left out). Each has `key`,
+  `parent`, `slot` (`top`, `rail`, or `foot`: after the rail's spacer),
+  `role`, `tag`, `name` (aria-label, aria-labelledby, alt, its text for a
+  control or a leaf, title), `classes`, `box` `{ x, y, w, h }` and
+  `style`: display, visibility, height, the four corner radii,
+  background-color, each side's border width, style and colour,
+  font-size, -weight, -family, -style, line-height, letter-spacing,
+  text-transform, padding, row-gap, column-gap, color, opacity,
+  box-shadow. A key is `#id`, `[data-nav="x"]`, or the parent's key `>`
+  tag.class (`[n]` among like siblings): `#den-search > kbd`.
+- `compareNav(actual, reference, { hostSlots, themeTokens, tolerance })`
+  returns `[{ key, slot, property, reference, actual }]`, empty when the
+  navs match. It fails on an element missing, extra or out of order
+  (`property` `element`, `order`); a role, tag, name or class list that
+  differs; a box edge moved more than `tolerance` px (default 2:
+  `box.left`, …); any computed style that differs (`style.font-weight`),
+  colours and fonts included.
+- `hostSlots`: keys (`#den-status`) or one class (`.den-scope`) whose
+  element and everything under it are the host's own: not compared, on
+  either side. A host slot wider or narrower than the reference (or on
+  one side only) may move or stretch its neighbours sideways by exactly
+  that much, never by anything else.
+- `themeTokens`: empty by default, and never set on a parity run: both
+  products run in `NAV_THEME`, so any colour or font that differs is a
+  real gap. It is only for a run that switches themes on purpose. What a
+  theme may change, and so what the list may name: the colour tokens
+  (`--bg`, `--surface`, `--raised`, `--sunken`, `--text`, `--muted`,
+  `--faint`, `--border`, `--border-strong`, `--accent`, and the rest of
+  tokens.css's colours) and the font tokens (`--sans`, `--mono`,
+  `--display`). A colour or font-family listed may differ when, on both
+  sides, it comes from that token. How a value's token is found: every
+  custom property declared on `:root` or `html` (in any sheet the page
+  can read, inside `@media` and `@layer` too) is read from `<html>`'s
+  computed style; a colour is set on a probe element's `color`, a family
+  list on its `font-family`, and read back, so it is in the form computed
+  values take. `snapshot.tokens` maps each colour and family seen to the
+  tokens that compute to it.
+- Fonts in Den's test: the system faces are pinned to the kit's own
+  Rubik and Space Mono, so text lays out alike from run to run. A host
+  pins them the same way (see `tests/unit/den-ui/nav-inventory-helpers.ts`).
+
+Den runs it in `tests/unit/den-ui/nav-inventory.browser.test.ts` (CI's
+`den-ui-nav` job starts the image) with red cases that must fail: the
+search field 3 px over, its corners, the bell gone, two elements
+swapped, a font weight, the search's ⌘K and icon gone, a theme token's
+colour, a font-family; a host slot's new contents must pass.
+`nav-inventory.test.ts` checks the comparer with no browser. To take the
+reference again, on purpose only: `DEN_UI_NAV_CAPTURE=1` with the
+browser test, on the image (Den's real server on the demo distribution,
+`/settings`).
+
 ## The working pop-up and types (0.6.1)
 
 - `src/busy.js`, `src/busy-words.js` and `src/busy.css` (exports `./busy`,
