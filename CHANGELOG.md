@@ -41,6 +41,11 @@ config and manifest changes a distribution must make to move to it under
   step in place of Try again, and show progress lines while it works.
   Its styles come from a stylesheet file, so a page with a strict
   Content Security Policy can use it. The kit also ships types.
+- The UI kit is now 0.6.2. Its ask-and-tell dialogs take their styles from
+  a stylesheet file, for strict Content Security Policy pages. A report
+  filed through the kit carries its masked screenshot. A failed action can
+  name its next step without a link. A product can show its own mark in
+  the top bar.
 - The light theme's remote colour is a shade darker. An agent's initial
   on its tinted disc now meets the 4.5:1 contrast bar.
 

@@ -38,7 +38,7 @@ import { formatTime, timeHtml } from "@kit/time.js";
 import { showUpdate } from "@kit/update-pill.js";
 
 const model: ShellModel = {
-  product: { name: "Acme", version: "1.0.0" },
+  product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
   nav: [{ id: "home", label: "Home", href: "/", group: "work", current: true }],
   groups: [{ id: "work", label: "Work" }],
   slots: { account: "<span></span>" },
@@ -51,7 +51,11 @@ configure({
     changelog: async () => [
       { version: "1.0.0", sections: { Added: [{ text: "x" }] } },
     ],
-    fileReport: async () => ({ number: 1, url: "https://example.test/1" }),
+    fileReport: async (payload) => {
+      // 0.6.2: the masked screenshot, a PNG data URL, or null.
+      const shot: string | null = payload.shot;
+      return shot === "" ? { error: "empty" } : { number: 1, url: "https://example.test/1" };
+    },
     request: async () => ({ state: "done" }),
     applyUpdate: async () => undefined,
   },

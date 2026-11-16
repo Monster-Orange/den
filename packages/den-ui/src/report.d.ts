@@ -13,7 +13,11 @@ export type Headers = Record<string, string>;
 export interface ReportAdapter {
   /** The simple way: "Filed as #N" with its link. */
   fileReport?: (
-    payload: ReportForm & { preview?: { title: string; body: string } | null },
+    payload: ReportForm & {
+      preview?: { title: string; body: string } | null;
+      /** The masked screenshot, a PNG data URL; null with "Don't include". */
+      shot: string | null;
+    },
   ) => Promise<{ number: number; url?: string } | { error: string }>;
   info?: () => Promise<{
     repos?: { repo: string }[];

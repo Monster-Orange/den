@@ -89,6 +89,8 @@ const PAGE = `<!doctype html>
 const APP = `
 import DenUI from "/kit/kit.js";
 import { registerActions } from "/kit/busy.js";
+import { askConfirm } from "/kit/dialog.js";
+window.askConfirm = askConfirm;
 registerActions({
   save: { who: "Acme", words: { en: { working: "Saving", success: "Saved", failure: "Could not save" } } },
 });
@@ -147,6 +149,13 @@ async function open(width: number): Promise<{ p: Page; bad: string[] }> {
     const headers = { "Content-Security-Policy": CSP };
     if (u.pathname === "/")
       return r.fulfill({ contentType: "text/html", headers, body: PAGE });
+    // A stand-in screenshot library: a 40×20 red canvas.
+    if (u.pathname === "/h2i.js")
+      return r.fulfill({
+        contentType: "text/javascript",
+        headers,
+        body: `window.htmlToImage = { toCanvas: async () => { const c = document.createElement("canvas"); c.width = 40; c.height = 20; const g = c.getContext("2d"); g.fillStyle = "#f00"; g.fillRect(0, 0, 40, 20); return c; } };`,
+      });
     if (u.pathname === "/app.js")
       return r.fulfill({ contentType: "text/javascript", headers, body: APP });
     const f = u.pathname.replace(/^\/kit\//, "");
@@ -276,6 +285,64 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
     expect(bad).toEqual([]);
     await p.context().close();
   }, 60_000);
+
+  it("runs the ask-and-tell dialog (dialog.js) with no violation", async () => {
+    if (!browser) return;
+    const { p, bad } = await open(1280);
+    await p.evaluate(() => {
+      const w = window as unknown as {
+        askConfirm: (o: object) => Promise<boolean>;
+        answer?: boolean;
+      };
+      void w.askConfirm({ title: "Sure?", message: "Really." }).then((a) => {
+        w.answer = a;
+      });
+    });
+    const ok = p.locator("dialog.dk-dlg .dk-primary");
+    await ok.waitFor();
+    // Styled by dialog.css, linked: no <style> on the page.
+    expect(
+      await ok.evaluate((b) => b.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(36);
+    expect(await p.locator("style").count()).toBe(0);
+    await ok.click();
+    await p.waitForFunction(
+      () => (window as unknown as { answer?: boolean }).answer === true,
+    );
+    expect(bad).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("fileReport gets the masked screenshot as a PNG data URL, or null with Don't include", async () => {
+    if (!browser) return;
+    for (const without of [false, true]) {
+      const { p, bad } = await open(1280);
+      await p.evaluate(() =>
+        (window as unknown as KitWin).DenUI.configure({
+          report: { screenshot: true, library: "/h2i.js" },
+        }),
+      );
+      await p.evaluate(() => (window as unknown as KitWin).DenUI.report.open());
+      await p.locator('input[data-f="title"]').fill("Flicker");
+      await p.locator("canvas[data-shot]").waitFor();
+      if (without) await p.locator('input[data-f="noshot"]').check();
+      for (const act of ["next", "review", "send"]) {
+        const b = p.locator(`dialog.fb-dlg [data-act="${act}"]`);
+        await b.waitFor();
+        await b.click();
+      }
+      await p.locator("dialog.fb-dlg", { hasText: "Filed as #42" }).waitFor();
+      const shot = await p.evaluate(
+        () =>
+          (window as unknown as { filed: { shot?: string | null }[] }).filed[0]
+            ?.shot,
+      );
+      if (without) expect(shot).toBeNull();
+      else expect(shot).toMatch(/^data:image\/png;base64,/);
+      expect(bad).toEqual([]);
+      await p.context().close();
+    }
+  }, 90_000);
 
   it("opens the ☰ drawer at phone width with no violation", async () => {
     if (!browser) return;

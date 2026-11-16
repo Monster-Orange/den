@@ -323,7 +323,8 @@ describe("iPad: pop-ups stay centred and fit their content", () => {
 describe("the vh cap comes before the dvh cap", () => {
   it.each([
     "packages/den-ui/src/base.css",
-    "packages/den-ui/src/dialog.js",
+    // den-ui 0.6.2: the dialogs' look is dialog.css (was in dialog.js).
+    "packages/den-ui/src/dialog.css",
     // den-ui 0.6.1: the working pop-up's look is busy.css (was in busy.js).
     "packages/den-ui/src/busy.css",
   ])("%s", (f) => {

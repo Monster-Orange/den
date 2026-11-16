@@ -61,7 +61,8 @@ export interface BusyOptions<T = unknown> {
 }
 export interface NextStep {
   label: string;
-  href: string;
+  /** None: the words in place of Try again, and Close is the primary. */
+  href?: string;
 }
 /** run's second argument: a progress line under the working title. */
 export type Progress = (text: string) => void;

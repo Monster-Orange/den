@@ -531,6 +531,30 @@ describe("UK-2 kit: the working pop-up", () => {
     await p.context().close();
   });
 
+  it("next with no href: its words in place of Try again, and Close is the primary", async () => {
+    if (skip()) return;
+    const { p } = await open([[400, 500]]);
+    await go(
+      p,
+      "send",
+      '{ next: { label: "Ask the person who set up this project." } }',
+    );
+    await dlg(p).locator("h2", { hasText: "Could not send" }).waitFor();
+    expect(await dlg(p).locator('[data-bz="retry"]').count()).toBe(0);
+    expect(await dlg(p).locator("a").count()).toBe(0);
+    expect(await dlg(p).locator(".bz-step").textContent()).toBe(
+      "Ask the person who set up this project.",
+    );
+    expect(await dlg(p).locator(".bz-next").textContent()).toBe(
+      "Trying again won't help. Do this first:",
+    );
+    const close = dlg(p).locator('[data-bz="close"]');
+    expect(await close.getAttribute("class")).toContain("bz-primary");
+    await close.click();
+    expect(await out(p)).toEqual({ ok: null });
+    await p.context().close();
+  });
+
   it("progress: run's progress(text) lines show in order while working, then success closes with the toast", async () => {
     if (skip()) return;
     const { p } = await open([[1500, 200]]);

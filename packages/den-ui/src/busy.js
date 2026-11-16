@@ -54,7 +54,9 @@
  *     opts.next           a failure trying again won't fix: { label, href },
  *                         or (err) => { label, href } | null. The Failure
  *                         pop-up then offers that link (the primary) in
- *                         place of Try again.
+ *                         place of Try again. With no href ({ label }: who
+ *                         to ask, say), it says the words instead and
+ *                         Close is the primary.
  *
  *   run(headers, progress)  progress(text) adds a line under the working
  *                       title (in order; the newest is the brightest),
@@ -310,10 +312,13 @@ export function busyAction(name, run, opts = {}) {
   const footer = (primary, withLog, next) =>
     `<div class="bz-ft">` +
     (hook.report ? btn("report") : "") +
-    btn("close") +
+    // A next step with no link: its words are in the body; Close leads.
+    btn("close", !!next && !next.href) +
     (withLog && hook.logUrl ? btn("log") : "") +
     (next
-      ? `<a class="bz-btn bz-primary" href="${esc(next.href)}">${esc(next.label)}</a>`
+      ? next.href
+        ? `<a class="bz-btn bz-primary" href="${esc(next.href)}">${esc(next.label)}</a>`
+        : ""
       : btn(primary, true)) +
     `</div>`;
 
@@ -327,7 +332,7 @@ export function busyAction(name, run, opts = {}) {
         n = null;
       }
     }
-    return n && n.href && n.label ? n : null;
+    return n && n.label ? n : null;
   }
 
   function paintWorking(secs, note) {
@@ -428,9 +433,16 @@ export function busyAction(name, run, opts = {}) {
         `<p>${esc(why)}</p>` +
         (said && said !== why ? `<p class="bz-said">${esc(said)}</p>` : "") +
         (next ? `<p class="bz-next">${esc(word("next"))}</p>` : "") +
+        (next && !next.href
+          ? `<p class="bz-step">${esc(next.label)}</p>`
+          : "") +
         `<details><summary>${esc(word("details"))}</summary><pre>${esc(detailsText(err, id, lastAt))}</pre></details>` +
         footer("retry", false, next),
-      next ? ".bz-ft a.bz-primary" : '[data-bz="retry"]',
+      next
+        ? next.href
+          ? ".bz-ft a.bz-primary"
+          : '[data-bz="close"]'
+        : '[data-bz="retry"]',
     );
     wire();
   }

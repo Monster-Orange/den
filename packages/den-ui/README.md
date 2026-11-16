@@ -142,14 +142,14 @@ back to English.
 
 ### Content Security Policy
 
-The shell, the version chip, What's new, the update pill, Report and the
-working pop-up work under `script-src 'self'; style-src 'self'`: no
+The shell, the version chip, What's new, the update pill, Report, the
+working pop-up and the dialogs work under `script-src 'self'; style-src 'self'`: no
 inline `style` attributes, no inline scripts, handlers or `<style>`, no
 `eval`. They set custom properties through the CSSOM
 (`style.setProperty`), which the policy allows. A browser test loads a
-kit page under that policy and fails on any violation. `dialog.js` (the
-ask-and-tell dialogs) still adds a `<style>` of its own; it is not part
-of that test yet.
+kit page under that policy and fails on any violation. Since 0.6.2 the
+ask-and-tell dialogs (dialog.js) work under it too, and the test covers
+them.
 
 ### The parity gate: `den-ui-parity`
 
@@ -200,6 +200,23 @@ reason does not count. With no DIVERGE.md, every copy fails.
 - Types: every `src/*.js` has a `.d.ts` beside it; the package's `types`
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
+
+## 0.6.2
+
+- `src/dialog.css` (export `./dialog.css`): the ask-and-tell dialogs'
+  look, linked, never injected. Link it in the page's `<head>`. Without
+  that, dialog.js links it from `configureDialog({ css })`, else from
+  beside another kit stylesheet on the page.
+- Report: `fileReport(payload)` gets `payload.shot`, the masked
+  screenshot as a PNG data URL, or `null` when "Don't include" is picked.
+- `busyAction`'s `next` takes `{ label }` with no `href`: the failure
+  says those words in place of Try again, and Close is the primary.
+- `shellHtml`'s `product.mark`: `{ text?, svg?, label }`, drawn in
+  `.den-mark`. `text` is escaped. `svg` is the product's own markup, with
+  the same trust as the icons. `label` names it (role="img"). With no
+  mark, the slot is empty as before.
+- `den-ui-parity` works through npx and `node_modules/.bin`: it compares
+  real paths to know it was run as a command.
 
 ## Themes
 

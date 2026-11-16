@@ -9,10 +9,12 @@
  * under `script-src 'self'; style-src 'self'`. Its look is shell.css.
  *
  *   shellHtml({ product, nav, groups, foot, lang, slots, collapsed, report })
- *     product  { name, title?, version?, href? }   the brand: `name` is the
+ *     product  { name, title?, version?, href?, mark? }   the brand: `name` is the
  *              word beside the mark, `title` its tooltip (default name),
  *              `version` the chip's text ("v" + version; "v…" when unknown),
- *              `href` where the brand goes (default "/")
+ *              `href` where the brand goes (default "/"), `mark`
+ *              { text?, svg?, label } the mark beside it (text escaped;
+ *              svg the product's own markup; label its name)
  *     nav      [{ id, label, href, group, icon?, tip?, current?, badge?,
  *              lead?, mono?, cls?, attrs?, pin?, after? }]   rail entries
  *     groups   [{ id, label, from? }]   in rail order; a group with no
@@ -192,6 +194,23 @@ export function reportButtonHtml({ inFoot, inTop, lang } = {}) {
   );
 }
 
+/**
+ * The brand's mark: none, the empty slot (a product may fill it itself);
+ * `text`, escaped; or `svg`, the product's own markup (the same trust as
+ * the icons). `label` names it.
+ */
+function markHtml(mark) {
+  if (!mark || (mark.text == null && mark.svg == null))
+    return '<span class="den-mark" id="den-mark" aria-hidden="true"></span>';
+  return (
+    '<span class="den-mark" id="den-mark" role="img" aria-label="' +
+    esc(mark.label ?? "") +
+    '">' +
+    (mark.svg != null ? String(mark.svg) : esc(mark.text)) +
+    "</span>"
+  );
+}
+
 /** The top bar (header.den-top). */
 export function topBarHtml({
   product = {},
@@ -210,7 +229,7 @@ export function topBarHtml({
     '" title="' +
     esc(product.title || name) +
     '">' +
-    '<span class="den-mark" id="den-mark" aria-hidden="true"></span>' +
+    markHtml(product.mark) +
     // The brand is a name, not a heading: the page's own h1 is its one.
     '<span class="den-title">' +
     esc(name) +

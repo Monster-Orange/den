@@ -24,7 +24,7 @@ import {
   reportButtonHtml,
   shellHtml,
 } from "../../../packages/den-ui/src/shell-html.js";
-import { KIT_FILES } from "../../../src/ui/server/ui-assets.js";
+import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
 
 const PKG = path.join(process.cwd(), "packages", "den-ui");
 const GATE = path.join(PKG, "bin", "den-ui-parity.mjs");
@@ -119,6 +119,29 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(html).toContain(ja["kit.report.word"]);
   });
 
+  it("draws a product mark: escaped text, or the product's svg, named by its label", () => {
+    const text = shellHtml({
+      ...model,
+      product: { name: "Acme", mark: { text: "<H>", label: "Acme home" } },
+    });
+    expect(text).toContain(
+      '<span class="den-mark" id="den-mark" role="img" aria-label="Acme home">&lt;H&gt;</span>',
+    );
+    const svg = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>';
+    expect(
+      shellHtml({
+        ...model,
+        product: { name: "Acme", mark: { svg, label: "Acme" } },
+      }),
+    ).toContain(
+      `<span class="den-mark" id="den-mark" role="img" aria-label="Acme">${svg}</span>`,
+    );
+    // No mark: as before (Den fills the empty slot itself).
+    expect(html).toContain(
+      '<span class="den-mark" id="den-mark" aria-hidden="true"></span>',
+    );
+  });
+
   it("leaves Report out when reports are off", () => {
     expect(shellHtml({ ...model, report: false })).not.toContain(
       "data-den-report",
@@ -172,6 +195,24 @@ describe("den-ui-parity (bin)", () => {
     expect(r.stdout).toContain("report diverges");
   });
 
+  it("checks through a symlink too (npx, node_modules/.bin)", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "frame.css"),
+      ".den-rb { color: red; }\n",
+    );
+    const bin = path.join(tmp(), "den-ui-parity");
+    fs.symlinkSync(GATE, bin);
+    const r = spawnSync(
+      process.execPath,
+      [bin, "--root", root, "--src", "src"],
+      { encoding: "utf-8" },
+    );
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/report: .*1 copy/);
+  });
+
   it("finds no copy in Den", () => {
     const r = run(process.cwd());
     expect([r.status, r.stdout.trim()]).toEqual([
@@ -189,6 +230,12 @@ describe("the package ships every kit file", () => {
     files: string[];
     bin: Record<string, string>;
   };
+  it("Den links the kit's stylesheets in every page with the shell", () => {
+    // No component injects a <style> (CSP): the page has its sheet first.
+    for (const f of ["shell.css", "busy.css", "dialog.css"])
+      expect(KIT_PAGE_CSS).toContain(`/kit/${f}`);
+  });
+
   it("Den serves each one at /kit/ (KIT_FILES)", () => {
     const src = fs
       .readdirSync(path.join(PKG, "src"))

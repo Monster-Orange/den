@@ -10,6 +10,8 @@ export interface Product {
   version?: string | null;
   /** Where the brand goes (default "/"). */
   href?: string;
+  /** The mark: text (escaped) or the product's own svg, named by label. */
+  mark?: { text?: string; svg?: string; label: string } | null;
 }
 export interface NavItem {
   id: string;

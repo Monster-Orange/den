@@ -140,6 +140,8 @@ export const KIT_FILES: readonly string[] = [
   // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).
   "busy.css",
   "dialog.js",
+  // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
+  "dialog.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.
@@ -246,6 +248,8 @@ export const KIT_PAGE_CSS: readonly string[] = [
   // den-ui 0.6.1: the working pop-up's look, on the page from the start
   // (busy.js links it itself on a page without it).
   "/kit/busy.css",
+  // den-ui 0.6.2: the ask-and-tell dialogs' look, likewise.
+  "/kit/dialog.css",
 ];
 
 /**

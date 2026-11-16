@@ -15,6 +15,8 @@ export declare function configureDialog(h?: {
   lang?: () => string;
   words?: Record<string, Record<string, string>>;
   report?: (() => string | null) | null;
+  /** Where dialog.css is, for a page that doesn't link it. */
+  css?: string | null;
 }): void;
 export declare function dialogWord(key: string): string;
 export declare function dialogHtml(

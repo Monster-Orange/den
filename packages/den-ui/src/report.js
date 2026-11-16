@@ -7,6 +7,8 @@
  *   configureReport({ lang, adapter, busy, mine, page, screenshot })
  *     adapter   the product's server calls, all optional:
  *       fileReport(payload) → Promise<{ number, url } | { error }>
+ *                 payload: the form, its preview, and `shot`: the masked
+ *                 screenshot as a PNG data URL, or null ("Don't include")
  *                 the simple way: on success the form says "Filed as #N"
  *                 with the link. With no way to send, the form offers
  *                 Copy report only.
@@ -678,7 +680,13 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
    * { error }. Filed: "Filed as #N" with its link.
    */
   async function fileIt() {
-    const payload = { ...form(), preview: st.preview };
+    // The masked screenshot as a PNG data URL; null with "Don't include"
+    // (or none taken).
+    const payload = {
+      ...form(),
+      preview: st.preview,
+      shot: shotOn() ? maskedShot().toDataURL("image/png") : null,
+    };
     let r = null;
     const call = () =>
       Promise.resolve(ad.fileReport(payload)).then((x) => {

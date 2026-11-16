@@ -346,8 +346,20 @@ function main() {
   return 1;
 }
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-)
-  process.exitCode = main();
+/**
+ * Run as a command: through npx or node_modules/.bin, argv[1] is a
+ * symlink to this file, so both sides are compared as real paths.
+ */
+function isMain() {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      fs.realpathSync(path.resolve(process.argv[1])) ===
+      fs.realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) process.exitCode = main();
