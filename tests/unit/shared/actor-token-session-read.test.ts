@@ -12,6 +12,7 @@ import {
   bindActorSession,
   checkActorToken,
   mintActorToken,
+  revokeActorToken,
 } from "../../../src/shared/actor-token.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 
@@ -63,5 +64,46 @@ describe("an agent token and its session record", () => {
     expect(checkActorToken(dir, b.token)).toBeNull();
     running("s-3", JSON.stringify({ id: "s-3" }));
     expect(checkActorToken(dir, b.token)).toBeNull();
+  });
+
+  it("issue 215: a start that fails never takes the running agent's token", () => {
+    const a = mintActorToken(dir, {
+      agentId: "scout",
+      workspace: "north",
+      sessionName: "den-scout",
+    });
+    bindActorSession(dir, a.key, "s-1");
+    running("s-1", JSON.stringify({ id: "s-1" }));
+    // A second start: minted, then its start fails and it is revoked.
+    const b = mintActorToken(dir, {
+      agentId: "scout",
+      workspace: "north",
+      sessionName: "den-scout",
+    });
+    revokeActorToken(dir, b.key);
+    expect(checkActorToken(dir, a.token)).toMatchObject({
+      actor: "agent:scout",
+    });
+  });
+
+  it("issue 215: once the new session is bound, the older token ends", () => {
+    const a = mintActorToken(dir, {
+      agentId: "scout",
+      workspace: "north",
+      sessionName: "den-scout",
+    });
+    bindActorSession(dir, a.key, "s-1");
+    running("s-1", JSON.stringify({ id: "s-1" }));
+    const b = mintActorToken(dir, {
+      agentId: "scout",
+      workspace: "north",
+      sessionName: "den-scout",
+    });
+    bindActorSession(dir, b.key, "s-2");
+    running("s-2", JSON.stringify({ id: "s-2" }));
+    expect(checkActorToken(dir, a.token)).toBeNull();
+    expect(checkActorToken(dir, b.token)).toMatchObject({
+      actor: "agent:scout",
+    });
   });
 });

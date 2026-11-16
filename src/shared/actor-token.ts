@@ -126,8 +126,9 @@ export function mintActorToken(
   const token = ACTOR_TOKEN_PREFIX + randomBytes(32).toString("base64url");
   const key = actorTokenKey(token);
   const data = load(stateDir);
-  for (const [k, r] of Object.entries(data.tokens))
-    if (r.actor === actor) delete data.tokens[k];
+  // #215: the agent's older tokens end when this one is bound to its
+  // started session (bindActorSession), never here: a start that fails
+  // must not take a running agent's token.
   data.tokens[key] = {
     actor,
     workspace: o.workspace,
@@ -149,6 +150,9 @@ export function bindActorSession(
   const rec = data.tokens[key];
   if (!rec) return;
   rec.session = { ...rec.session, id: sessionId };
+  // The new session is there: every older token of the agent ends now.
+  for (const [k, r] of Object.entries(data.tokens))
+    if (k !== key && r.actor === rec.actor) delete data.tokens[k];
   save(stateDir, data);
 }
 
