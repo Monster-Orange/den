@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
@@ -150,6 +151,9 @@ async function mount(o: Opts = {}): Promise<{
       method === "POST" ? JSON.parse(r.request().postData() ?? "null") : null;
     if (method === "POST") posts.push({ path: url.pathname, body });
     const json = (j: unknown, status = 200) => r.fulfill({ status, json: j });
+    // Issue 95: the kit's shell, as Den serves it.
+    const kitShell = kitAsset(url.pathname);
+    if (kitShell) return r.fulfill(kitShell);
     const file = /^\/([\w-]+\.js)$/.exec(url.pathname);
     if (file && fs.existsSync(path.join(PUBLIC, file[1])))
       return r.fulfill({
@@ -276,11 +280,12 @@ async function mount(o: Opts = {}): Promise<{
           : page;
     return r.fulfill({
       contentType: "text/html; charset=utf-8",
-      body:
+      body: kitPage(
         `<!doctype html><html><head><style>:root { --mono: monospace; --sans: sans-serif; --display: sans-serif; --accent: blue; --bad: red; --ok: green; --faint: gray; --border: #888; }</style></head><body>` +
-        `${o.before ?? ""}<div id="den-shell" data-page="${which}"></div><script src="/shell.js"></script>` +
-        `<main id="den-content"><button id="before">before</button>${o.after ?? ""}</main>` +
-        `<script type="module">window.__hdr = await import("/header.js"); window.__hdr.initHealth();</script></body></html>`,
+          `${o.before ?? ""}<div id="den-shell" data-page="${which}"></div><script src="/shell.js"></script>` +
+          `<main id="den-content"><button id="before">before</button>${o.after ?? ""}</main>` +
+          `<script type="module">window.__hdr = await import("/header.js"); window.__hdr.initHealth();</script></body></html>`,
+      ),
     });
   });
   await p.goto(`http://den.test/${page}`);

@@ -17,8 +17,12 @@ import DenUI from "/kit/kit.js";
 const sh = () => window.denShell;
 const LS_CHANGELOG_SEEN = "__DEN_CLI__-changelog-seen";
 
-/** A JSON call: { status, data } (the shell's fetch adds X-Den-CSRF). */
-async function api(method, url, body, headers = {}) {
+/**
+ * A JSON call: { status, data } (the shell's fetch adds X-Den-CSRF). The
+ * Report form's writes come with the working pop-up's headers (its
+ * request id): { headers }.
+ */
+async function api(method, url, body, { headers = {} } = {}) {
   const r = await fetch(url, {
     method,
     headers: { "content-type": "application/json", ...headers },
@@ -41,11 +45,14 @@ DenUI.configure({
     info: () => api("GET", "/api/report").then((r) => r.data || {}),
     diagnostics: () =>
       api("GET", "/api/report/diagnostics").then((r) => r.data || {}),
-    preview: (form, h) => api("POST", "/api/report/preview", form, h),
-    send: (form, h) => api("POST", "/api/report/send", form, h),
-    githubSend: (form, h) => api("POST", "/api/report/github-send", form, h),
+    preview: (form, headers) =>
+      api("POST", "/api/report/preview", form, { headers }),
+    send: (form, headers) => api("POST", "/api/report/send", form, { headers }),
+    githubSend: (form, headers) =>
+      api("POST", "/api/report/github-send", form, { headers }),
     githubPoll: (id) => api("GET", `/api/report/github-send/${id}`),
-    saveDraft: (form, h) => api("POST", "/api/report/drafts", form, h),
+    saveDraft: (form, headers) =>
+      api("POST", "/api/report/drafts", form, { headers }),
   },
   whatsNew: {
     // FB (den#81): Report, as in every pop-up ("" when reports are off).

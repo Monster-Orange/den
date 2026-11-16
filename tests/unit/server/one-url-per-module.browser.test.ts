@@ -190,7 +190,7 @@ describe("issue 231: one URL per module on every page", () => {
       // The lazy parts really loaded: the terminal, Report, the graph.
       const lazy = [
         "/vendor/xterm.mjs",
-        "/report-dialog.js",
+        "/kit/report.js",
         "/graph.js",
         "/vendor/elk.bundled.js",
       ];

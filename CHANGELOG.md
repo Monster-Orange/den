@@ -6,6 +6,15 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.61] - unreleased
 
+### Changed
+
+- Den's frame now comes from its UI kit, den-ui 0.6.0: the top bar, the
+  left rail with its pins, collapse and ☰ drawer, the version chip, What's
+  new and the Report form. Nothing looks or works differently. Another
+  product can draw the same frame with its own pages and words.
+- A new check, `npm run gate:den-ui`, fails when Den keeps its own copy of
+  a UI kit part. It runs in CI.
+
 ### Fixed
 
 - Den's web server no longer closes an idle connection after 5 seconds,

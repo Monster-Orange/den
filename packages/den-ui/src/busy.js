@@ -529,7 +529,7 @@ export function busyAction(name, run, opts = {}) {
   async function checkAgain() {
     let st = null;
     try {
-      // The product's adapter when it has one (DenUI's request(id)), else
+      // The product's adapter when it has one (its request(id)), else
       // a GET of statusUrl(id).
       if (hook.request) st = (await hook.request(id)) ?? null;
       else {

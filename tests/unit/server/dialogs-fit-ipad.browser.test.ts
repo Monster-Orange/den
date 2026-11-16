@@ -96,7 +96,7 @@ async function model(ctx: BrowserContext, noDvh: boolean): Promise<void> {
   await ctx.route("**/*", async (route: Route) => {
     const req = route.request();
     // No screenshot, so the Report dialog's content is short too.
-    if (req.url().includes("/report-shot.js"))
+    if (req.url().includes("/kit/report-shot.js"))
       return route.fulfill({ status: 404 });
     if (!["document", "stylesheet", "script"].includes(req.resourceType()))
       return route.continue();
@@ -123,7 +123,7 @@ async function agentsPage(ctx: BrowserContext): Promise<Page> {
     content: [
       'import { askConfirm } from "/dialog-den.js";',
       'import { busyAction } from "/busy-den.js";',
-      'import { openReport } from "/report-dialog.js";',
+      'import { openReport } from "/report-den.js";',
       "window.fitKit = { askConfirm, busyAction, openReport };",
     ].join("\n"),
   });
