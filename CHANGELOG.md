@@ -8,6 +8,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
+
 - A link to a Settings row (the bell's /settings#agents.keep_running, or
   the address typed in) stays on that row while content above it loads
   late, such as the persona list; before, the row ended up below the
