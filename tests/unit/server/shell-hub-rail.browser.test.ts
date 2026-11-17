@@ -116,12 +116,17 @@ describe("the rail's Hub link", () => {
       "https://hub.example.test/c/acme-co",
     );
     expect(await a.getAttribute("target")).toBeNull();
-    expect(await a.getAttribute("title")).toBe("Acme Co on Hub");
-    expect((await a.locator(".den-lbl").textContent())?.trim()).toBe("Hub");
+    // Issue 307: Den passes data (the company, kind "hub", the count);
+    // the kit words the tooltip and name and draws the HUB tag.
+    expect(await a.getAttribute("title")).toBe("Acme Co · Hub");
+    expect((await a.locator(".den-lbl").textContent())?.trim()).toBe("Acme Co");
+    expect(
+      await a
+        .locator('[data-nav-role="kind"]')
+        .evaluate((e) => (e as HTMLElement).innerText.trim()),
+    ).toBe("HUB");
     expect(await a.locator(".den-bdg").textContent()).toBe("3");
-    expect(await a.getAttribute("aria-label")).toBe(
-      "Hub, Acme Co on Hub, 3 waiting on you",
-    );
+    expect(await a.getAttribute("aria-label")).toBe("Acme Co · Hub, 3 waiting");
     // Above Settings, in the footer.
     const order = await p.$$eval(".den-rail .den-ni", (els) =>
       els.map((e) => e.getAttribute("data-nav")),
@@ -157,7 +162,8 @@ describe("the rail's Hub link", () => {
       expect(await a.getAttribute("href")).toBe("/settings#agents.hub");
       expect(await a.getAttribute("target")).toBeNull();
       expect(await a.getAttribute("class")).toContain("den-off");
-      expect(await a.getAttribute("title")).toContain(why);
+      // Issue 307: the kit's words; why is on Settings › Hub (and ⌘K).
+      expect([why, await a.getAttribute("title")]).toEqual([why, "Hub · Hub"]);
       expect(
         Number(await a.evaluate((e) => getComputedStyle(e).opacity)),
       ).toBeLessThan(1);
@@ -227,7 +233,13 @@ describe("the rail's Hub link", () => {
         "/settings#agents.hub",
       ]);
       expect(await a.getAttribute("class")).toContain("den-off");
-      expect(await a.getAttribute("title")).toContain(why);
+      // Issue 307: the kit's words; why is on Settings › Hub (and ⌘K).
+      expect([why, await a.getAttribute("title")]).toEqual([
+        why,
+        (answer as { team?: string }).team
+          ? `${(answer as { team?: string }).team} · Hub`
+          : "Hub · Hub",
+      ]);
       expect(errors).toEqual([]);
       await p.context().close();
     }
@@ -320,7 +332,7 @@ describe("the rail's Hub link", () => {
     expect(await first.locator(".den-pal-l").textContent()).toBe("Hub");
     expect(await first.getAttribute("data-off")).toBe("");
     expect(await first.locator(".den-sub").textContent()).toBe(
-      await link(p).getAttribute("title"),
+      "Den can't reach Hub right now. See Settings › Hub.",
     );
     await p.keyboard.press("Enter");
     await p.waitForURL(/\/settings#agents\.hub$/);
@@ -381,7 +393,7 @@ describe("the rail's Hub link", () => {
     await a.waitFor({ timeout: 10_000 });
     const box = await a.locator(".den-lbl").boundingBox();
     expect(box === null || box.width <= 1).toBe(true);
-    expect(await a.getAttribute("aria-label")).toContain("3 waiting on you");
+    expect(await a.getAttribute("aria-label")).toBe("Acme Co · Hub, 3 waiting");
     // From Settings, ↑ moves to Hub.
     await p.locator('.den-rail [data-nav="settings"]').focus();
     await p.keyboard.press("ArrowUp");
