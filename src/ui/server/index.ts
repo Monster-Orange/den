@@ -353,6 +353,8 @@ import {
   clearAgentToken,
   dropStaleEnvTokenRecord,
   saveAgentToken,
+  TOKEN_DOCS,
+  TOKEN_RUNTIME,
 } from "../../shared/agents/signin-token.js";
 import {
   accountsView,
@@ -3150,6 +3152,9 @@ async function agentSigninView(
       no_store: st.noStore === true,
       // The store's credential is a keychain: source (1Password).
       cred_keychain: st.credInKeychain === true,
+      // Issue 399: where the token comes from (the runtime catalog).
+      runtime: TOKEN_RUNTIME,
+      docs: TOKEN_DOCS ?? null,
     };
   } catch {
     view = null;
