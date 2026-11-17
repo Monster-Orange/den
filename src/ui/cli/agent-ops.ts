@@ -308,10 +308,13 @@ import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
   agentTokenRef,
-  agentTokenRefName,
   readAgentToken,
   tokenStatusLine,
 } from "../../shared/agents/signin-token.js";
+import {
+  accountRefName,
+  firstAccount,
+} from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
@@ -777,7 +780,10 @@ export async function agentSignInEnv(
 ): Promise<AgentSignIn> {
   if (!tokenEnv || agentSignInMode(env, stateDir) !== "token")
     return { env: {} };
-  const refName = agentTokenRefName(runtimeId);
+  // Issue 339: the first account in the person's order (account one, the
+  // token that exists today, unless they changed it). Slice 3 picks per agent.
+  const acct = firstAccount(stateDir, runtimeId);
+  const refName = accountRefName(runtimeId, acct.id);
   const s = store?.(refName);
   const r = await readAgentToken(
     s
@@ -789,12 +795,19 @@ export async function agentSignInEnv(
   const how =
     refName === AGENT_TOKEN_REF_NAME
       ? undefined
-      : {
-          make:
-            getRuntime(runtimeId)?.catalog?.signIn?.command ??
-            "its sign-in command",
-          set: `set secrets.refs.${refName} in your user.yml`,
-        };
+      : acct.id !== "1"
+        ? {
+            make:
+              getRuntime(runtimeId)?.catalog?.signIn?.command ??
+              "its sign-in command",
+            set: `${cli} agents accounts set-token ${acct.id}${runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`}`, // words-ok: a vendor's sign-in account (issue 339)
+          }
+        : {
+            make:
+              getRuntime(runtimeId)?.catalog?.signIn?.command ??
+              "its sign-in command",
+            set: `set secrets.refs.${refName} in your user.yml`,
+          };
   return {
     env: {},
     warning: `⚠ ${tokenStatusLine({ mode: "token", configured: r.reason !== "not set", stored: false, setAt: null, ageDays: null, old: false, warnDays: 0, store: "", ...(r.reason ? { reason: r.reason } : {}) }, cli, undefined, how).text}`,
