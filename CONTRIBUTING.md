@@ -104,6 +104,48 @@ The weekly rule: each entry is fixed or deleted within `max_age_days`
 `tests/unit/test-infra/quarantine.test.ts` fails on an older entry, or on
 one with no issue or no evidence.
 
+## Merging
+
+A pull request merges once its own run is green. When only main moved
+under it, it merges **without another run**, if:
+
+- it still merges cleanly into main, and
+- none of the files it changes were changed on main since the commit its
+  green run tested (no overlap with what landed).
+
+Otherwise main is merged into the branch and it runs again. Main's own
+full run (every test, every Node version, quarantine ignored) is the
+backstop: if main goes red after such a merge, fix it forward within 30
+minutes or revert that merge. A red main blocks other merges until then.
+
+## Live checks
+
+Each pull request that closes a clause of an issue also ships a live
+check, `gate/<issue>.mjs`, written next to its red-first test (reuse the
+end-to-end spec where it fits). A harness runs every file in `gate/`
+against a bed (a running Den, by its URL and its CLI) on each dev tag,
+with no one in the loop, and reports PASS or FAIL per clause.
+
+```js
+// gate/406.mjs
+export const issue = 406;
+export const clauses = ["two lines when the person has a name"];
+export async function setup(ctx) {} // prepare the bed; returns state
+export async function run(ctx, state) {} // act via ctx.url and ctx.cli(args)
+export function expect(result) {
+  return [{ clause: clauses[0], ok: true, detail: "" }]; // one per clause
+}
+```
+
+- `issue` matches the file name; `clauses` names each clause the check
+  proves, as the issue words it.
+- A check only reads, or makes what it needs under its own names and
+  removes them; it never changes the bed's settings for good.
+- Names stay neutral (the one rule above applies here too).
+
+`node scripts/gate-shape.mjs` checks every file has this shape, and
+`tests/unit/test-infra/gate-checks.test.ts` runs it in CI.
+
 ## Adding a strategy
 
 - **Secrets backend:** implement `SecretsProvider`
