@@ -18,6 +18,7 @@
  */
 
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import * as path from "path";
 import * as yaml from "yaml";
 import { getDistRoot } from "../paths.js";
@@ -208,14 +209,9 @@ function writeSecretValues(
     updated.push(`${key}: ${quoteIfNeeded(value)}`);
   }
 
-  fs.writeFileSync(secretsPath, updated.join("\n"), { mode: 0o600 });
-  // `mode` above only applies when the file is CREATED — an existing file keeps
-  // its old permissions, so tighten explicitly. This file holds live credentials.
-  try {
-    fs.chmodSync(secretsPath, 0o600);
-  } catch {
-    /* best-effort — a read-only FS shouldn't fail the seed */
-  }
+  // Whole (#380), and 0600 even over an older, looser file: it holds live
+  // credentials, and services read it while it is seeded.
+  writeFileAtomic(secretsPath, updated.join("\n"), { mode: 0o600 });
 }
 
 /**

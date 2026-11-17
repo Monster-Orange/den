@@ -15,6 +15,7 @@ import { spawnSync } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 import { parse as parseYaml } from "yaml";
 import { PROFILE_FILE } from "../profile.js";
 import { THEME_FILE, themeFiles } from "../theme/contract.js";
@@ -216,9 +217,7 @@ export function writeLock(
     Object.entries(plugins).sort(([a], [b]) => a.localeCompare(b)),
   );
   const file = path.join(distRoot, LOCK_FILE);
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify({ plugins: sorted }, null, 2)}\n`);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, `${JSON.stringify({ plugins: sorted }, null, 2)}\n`);
 }
 
 /**

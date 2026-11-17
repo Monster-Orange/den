@@ -526,6 +526,14 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/embed/keys",
     "issue 103: a short-lived key for an embedded pane, for a listed origin; a person's only",
   ),
+  R(
+    "/api/embed/app-keys",
+    "issue 334: the app keys a person made (agent, origin, name, last used); never a key; a person's only",
+  ),
+  R(
+    "/api/embed/p/:project/agents/:id/state",
+    "issue 334: one agent's state for a web app, its app key the proof (X-Den-Embed-Key)",
+  ),
   S(
     ["POST"],
     "/api/embed/say",
@@ -811,6 +819,19 @@ export const SIGNIN_FREE: readonly string[] = [
   // and its Send carries its own key (embed-keys.ts).
   "/embed/p/:project/agents/:id",
   "/api/embed/say",
+  // Issue 334: a web app's server reads its agent's state with its key.
+  "/api/embed/p/:project/agents/:id/state",
+];
+
+/**
+ * Issue 334: the only routes an embed key (X-Den-Embed-Key: a pane's or a
+ * server's) reaches. A request carrying one anywhere else is refused
+ * (request-guard.ts), whatever else it carries: the key never rides along
+ * to a route loopback would let through.
+ */
+export const EMBED_KEY_ROUTES: readonly string[] = [
+  "/api/embed/say",
+  "/api/embed/p/:project/agents/:id/state",
 ];
 
 /**
@@ -864,6 +885,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
   "agent-link-routes.ts:LINK_PATH": ["/p/:project/agents/:id"],
   "embed-routes.ts:EMBED_PATH": ["/embed/p/:project/agents/:id"],
+  "embed-routes.ts:STATE_PATH": ["/api/embed/p/:project/agents/:id/state"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
   "agent-routes.ts:AGENTS_PATH": [

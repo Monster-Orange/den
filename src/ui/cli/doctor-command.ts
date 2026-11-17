@@ -67,6 +67,7 @@ import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
+import { edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -178,6 +179,7 @@ const SELECTORS: Record<string, Selector> = {
     try {
       const cfg = readEdgeConfig();
       const d = tlsStrategyFor(cfg).detect(env);
+      const image = edgeImageCheck(cfg);
       return {
         kind: "tls",
         selected: cfg.tls.strategy,
@@ -185,8 +187,15 @@ const SELECTORS: Record<string, Selector> = {
         available: d.available,
         reason: d.reason,
         problem: !d.available,
-        warnings: [...edgeTlsWarnings(cfg), ...edgeAccessWarnings(cfg)],
-        notes: [edgeAccessHealthy(cfg)].filter((n): n is string => !!n),
+        warnings: [
+          ...edgeTlsWarnings(cfg),
+          ...edgeAccessWarnings(cfg),
+          ...(image.status === "warn" ? [image.detail] : []),
+        ],
+        notes: [
+          image.status === "ok" ? image.detail : null,
+          edgeAccessHealthy(cfg),
+        ].filter((n): n is string => !!n),
       };
     } catch (err) {
       return {

@@ -9,7 +9,7 @@
  * information (anyone else). No I/O here but the de-dup file.
  */
 import fs from "node:fs";
-import path from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export type Verified = "hub_session" | "hub_token";
 
@@ -60,6 +60,41 @@ export interface Delivery {
 
 /** Ids of items Den made from Hub's inbox: never acked to Hub. */
 export const LOCAL_PREFIX = "inbox:";
+
+/**
+ * Issue 334: a message a web app relayed for its person (embed-routes.ts,
+ * with its app key). Den's own, like an inbox item: never acked to Hub.
+ */
+export const EMBED_PREFIX = `${LOCAL_PREFIX}embed:`;
+
+/** Issue 334: a relayed message as the delivery loop holds it. */
+export function embedDelivery(m: {
+  id: string;
+  agent: string;
+  project: string;
+  origin: string;
+  text: string;
+  at: number;
+}): Delivery {
+  return {
+    id: `${EMBED_PREFIX}${m.id}`,
+    kind: "message",
+    agent: m.agent,
+    project: m.project,
+    thread: { kind: "embed", id: "", url: "" },
+    // The loop's held file reads an author back only in Hub's shape.
+    author: {
+      id: `embed:${m.origin}`,
+      login: "",
+      name: m.origin,
+      kind: "person",
+      verified: "hub_token",
+    },
+    body: "",
+    createdAt: new Date(m.at).toISOString(),
+    text: m.text,
+  };
+}
 
 export interface ReplyWith {
   tool: string;
@@ -495,14 +530,11 @@ export class SeenDeliveries {
 
   private save(): void {
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.tmp`;
-      fs.writeFileSync(
-        tmp,
+      writeFileAtomic(
+        this.file,
         JSON.stringify({ ids: this.ids, last: this.last, held: this.held }),
         { mode: 0o600 },
       );
-      fs.renameSync(tmp, this.file);
     } catch {
       /* best effort: the worst case is a repeat Den de-dups in memory */
     }

@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 import type { PerfRunReport } from "./report-types.js";
 import { getDistRoot } from "../paths.js";
 import { buildPerfRunReport, type K6Summary } from "./report-normalizer.js";
@@ -40,10 +41,9 @@ export function writeCurrentPerfRunReport(
   fs.mkdirSync(path.join(rootDir, PERF_CURRENT_REPORT_DIR), {
     recursive: true,
   });
-  fs.writeFileSync(
+  writeFileAtomic(
     path.join(rootDir, PERF_CURRENT_REPORT_FILE),
     JSON.stringify(report, null, 2),
-    "utf-8",
   );
 
   return report;
