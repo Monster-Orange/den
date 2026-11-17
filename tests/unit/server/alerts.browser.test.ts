@@ -16,6 +16,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { startPushStub, type PushStub } from "./helpers/push-stub.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -74,14 +75,19 @@ const asAgent = (p: string, body: unknown) =>
  */
 async function open(
   path: string,
-  o: { permission: string; front: boolean },
+  o: {
+    permission: string;
+    front: boolean;
+    /** S2: the device's subscription a stubbed PushManager hands out. */
+    sub?: PushStub["subscription"];
+  },
 ): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 860 },
     reducedMotion: "reduce",
   });
   await ctx.addInitScript(
-    ({ v, permission, front }) => {
+    ({ v, permission, front, sub }) => {
       try {
         for (const k of ["den-changelog-seen", "acme-changelog-seen"])
           localStorage.setItem(k, v);
@@ -113,8 +119,42 @@ async function open(
       }
       w.Notification = FakeNotification;
       Document.prototype.hasFocus = () => front;
+      if (sub) {
+        // S2: a service worker and PushManager that never reach a real
+        // push service: the subscription is the test's local stub.
+        let subscribed = false;
+        const subscription = {
+          endpoint: sub.endpoint,
+          toJSON: () => sub,
+          unsubscribe: async () => {
+            subscribed = false;
+            return true;
+          },
+        };
+        const pushManager = {
+          getSubscription: async () => (subscribed ? subscription : null),
+          subscribe: async (opt: { applicationServerKey: Uint8Array }) => {
+            w.__appKey = opt.applicationServerKey.length;
+            subscribed = true;
+            return subscription;
+          },
+        };
+        const reg = { pushManager };
+        w.PushManager = function PushManager() {};
+        Object.defineProperty(navigator, "serviceWorker", {
+          configurable: true,
+          value: {
+            register: async (url: string) => {
+              w.__swUrl = url;
+              return reg;
+            },
+            ready: Promise.resolve(reg),
+            getRegistration: async () => reg,
+          },
+        });
+      }
     },
-    { v: latest, ...o },
+    { v: latest, ...o, sub: o.sub ?? null },
   );
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
@@ -251,4 +291,108 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);
+
+  it("S2: Alerts on this device by push subscribes it; the next need reaches it by push, not as a tab's notification", async () => {
+    if (skip()) return;
+    const stub = await startPushStub();
+    try {
+      const p = await open("/settings#notifications", {
+        permission: "default",
+        front: false,
+        sub: stub.subscription,
+      });
+      await p.click('#set-nav a[data-cat="notifications"]');
+      const sw = p.locator("#set-phone-push");
+      await sw.waitFor();
+      expect(await sw.isChecked()).toBe(false);
+      await sw.click();
+      await p.waitForFunction(
+        () =>
+          (document.getElementById("set-phone-push") as HTMLInputElement | null)
+            ?.checked === true,
+        null,
+        { timeout: 15_000 },
+      );
+      expect(
+        await p.evaluate(() => {
+          const w = window as unknown as Record<string, unknown>;
+          return [w.__swUrl, w.__appKey, w.__asked];
+        }),
+      ).toEqual([
+        // The version stamp: a new Den brings its worker up to date.
+        expect.stringMatching(/^\/den-sw\.js(\?v=.+)?$/),
+        65,
+        1,
+      ]);
+      expect(await s!.settingsGet()).toMatchObject({ alerts: { phone: true } });
+      await firstRead(p);
+      expect(
+        (
+          await asAgent("/api/agents/self/attention", {
+            event: "waiting",
+            why: "permission",
+            hooked: true,
+          })
+        ).status,
+      ).toBe(200);
+      for (let i = 0; i < 100 && !stub.received.length; i++)
+        await p.waitForTimeout(100);
+      expect(stub.received).toHaveLength(1);
+      expect(stub.received[0].vapidOk).toBe(true);
+      expect(JSON.parse(stub.received[0].text!)).toMatchObject({
+        body: "planner needs your permission",
+        link: "/agents?project=north&agent=planner",
+      });
+      // The tab leaves it to the push: no second notification.
+      for (let i = 0; i < 2; i++)
+        await p.waitForResponse((x) => x.url().includes("/api/alerts?after="), {
+          timeout: 15_000,
+        });
+      expect(
+        await p.evaluate(
+          () => (window as unknown as { __shown: unknown[] }).__shown.length,
+        ),
+      ).toBe(0);
+      // Off on this device: it stops; the server forgets it.
+      await sw.click();
+      await p.waitForFunction(
+        () =>
+          (document.getElementById("set-phone-push") as HTMLInputElement | null)
+            ?.checked === false,
+      );
+      await asAgent("/api/agents/self/attention", {
+        event: "resumed",
+        from: "session",
+      });
+      await asAgent("/api/agents/self/attention", {
+        event: "waiting",
+        why: "permission",
+        hooked: true,
+      });
+      await p.waitForTimeout(1500);
+      expect(stub.received).toHaveLength(1);
+      await asAgent("/api/agents/self/attention", {
+        event: "resumed",
+        from: "session",
+      });
+      expect(errors).toEqual([]);
+      await p.context().close();
+    } finally {
+      await stub.close();
+    }
+  }, 120_000);
+
+  it("S2: the manifest and the service worker are served", async () => {
+    if (skip()) return;
+    const m = await fetch(`${s!.base}/manifest.webmanifest`, {
+      headers: denAuth(s!.stateDir),
+    });
+    expect(m.headers.get("content-type")).toContain("manifest+json");
+    expect(await m.json()).toMatchObject({ display: "standalone", scope: "/" });
+    const w = await fetch(`${s!.base}/den-sw.js`, {
+      headers: denAuth(s!.stateDir),
+    });
+    expect(w.status).toBe(200);
+    expect(await w.text()).toContain('addEventListener("push"');
+  });
 });

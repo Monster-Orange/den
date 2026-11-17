@@ -40,6 +40,7 @@ import { qrSvg } from "./qr.js";
 import { renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -395,6 +396,27 @@ function alertRows() {
         return ctx.post({ alerts: { desktop: v === true } });
       },
     },
+    {
+      // S2: push, to this device (a phone, or a computer with no tab open).
+      id: "notifications.phone",
+      category: "notifications",
+      label: "Alerts on this device by push",
+      description:
+        "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+      keywords: [
+        "notifications",
+        "alerts",
+        "phone",
+        "push",
+        "mobile",
+        "iphone",
+      ],
+      scope: "user",
+      control: { type: "custom", render: drawPush },
+      keys: ["alerts.phone"],
+      read: (ctx) => ctx.data.alerts?.phone !== false,
+      write: (v, ctx) => ctx.post({ alerts: { phone: v === true } }),
+    },
     ...[
       [
         "quiet_from",
@@ -437,6 +459,53 @@ function alertRows() {
       write: (v, ctx) => ctx.post({ alerts: { [k]: v || null } }),
     })),
   ];
+}
+
+/**
+ * Issue 172 S2: this device's push switch. On: the browser's permission,
+ * the service worker, the subscription (alerts.js pushOn), and
+ * alerts.phone on. Off: this device only stops; others keep theirs.
+ */
+function drawPush(host, ctx, io) {
+  const api = (m, p, b) => ctx.shell.api(m, p, b);
+  const draw = (on, note) => {
+    host.innerHTML =
+      `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
+      (note ? `<p class="set-warn" role="status">${escHtml(note)}</p>` : "");
+    host
+      .querySelector("input")
+      .addEventListener("change", (e) => void flip(e.target.checked));
+  };
+  const why = {
+    unsupported: () =>
+      L(
+        "set.notifications.phone.none",
+        "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+      ),
+    denied: () =>
+      L(
+        "set.notifications.desktop.denied",
+        "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+      ),
+    failed: () =>
+      L("set.notifications.phone.failed", "Couldn't turn on push here."),
+  };
+  const flip = async (on) => {
+    let got = "ok";
+    try {
+      if (on) got = await pushOn(api);
+      else await pushOff(api);
+    } catch {
+      got = "failed";
+    }
+    if (got === "ok" && on) await io.save(true);
+    const now = !!(await pushSubscription());
+    draw(now, got === "ok" ? "" : why[got]());
+  };
+  draw(false, pushSupported() ? "" : why.unsupported());
+  void pushSubscription().then((s) => {
+    if (s && ctx.data.alerts?.phone !== false) draw(true, "");
+  });
 }
 
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */

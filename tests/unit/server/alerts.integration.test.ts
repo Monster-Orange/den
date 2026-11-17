@@ -13,6 +13,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { startPushStub } from "./helpers/push-stub.js";
 
 let s: AgentsPageServer;
 let token = "";
@@ -113,5 +114,95 @@ describe("issue 172: alerts on the real server", () => {
 
     const byAgent = await call("GET", "/api/alerts", undefined, "agent");
     expect(byAgent.status).toBe(403);
+  }, 60_000);
+
+  it("S2: a subscribed device gets the alert by push, encrypted; unsubscribed, none", async () => {
+    const stub = await startPushStub();
+    try {
+      const key = await call("GET", "/api/alerts/push-key");
+      expect(key.status).toBe(200);
+      expect(Buffer.from(String(key.json.publicKey), "base64url")).toHaveLength(
+        65,
+      );
+      expect(
+        (await call("GET", "/api/alerts/push-key", undefined, "agent")).status,
+      ).toBe(403);
+      // An agent can't add a device; a bad one is refused.
+      expect(
+        (
+          await call(
+            "POST",
+            "/api/alerts/subscribe",
+            { subscription: stub.subscription },
+            "agent",
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call("POST", "/api/alerts/subscribe", {
+            subscription: { endpoint: "http://push.example/x" },
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await call("POST", "/api/alerts/subscribe", {
+            subscription: stub.subscription,
+          })
+        ).status,
+      ).toBe(200);
+      // A new wait (the last one answered first).
+      await call(
+        "POST",
+        "/api/agents/self/attention",
+        { event: "resumed", from: "session" },
+        "agent",
+      );
+      await call(
+        "POST",
+        "/api/agents/self/attention",
+        {
+          event: "waiting",
+          why: "asked",
+          text: "Which code, 424242?",
+          hooked: true,
+        },
+        "agent",
+      );
+      for (let i = 0; i < 100 && !stub.received.length; i++)
+        await new Promise((r) => setTimeout(r, 100));
+      expect(stub.received).toHaveLength(1);
+      const got = stub.received[0];
+      expect(got.vapidOk).toBe(true);
+      expect(JSON.parse(got.text!)).toMatchObject({
+        body: "planner asked you",
+        link: "/agents?project=north&agent=planner",
+      });
+      expect(got.text).not.toContain("424242");
+      expect(
+        (
+          await call("POST", "/api/alerts/unsubscribe", {
+            endpoint: stub.subscription.endpoint,
+          })
+        ).status,
+      ).toBe(200);
+      await call(
+        "POST",
+        "/api/agents/self/attention",
+        { event: "resumed", from: "session" },
+        "agent",
+      );
+      await call(
+        "POST",
+        "/api/agents/self/attention",
+        { event: "waiting", why: "permission", hooked: true },
+        "agent",
+      );
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(stub.received).toHaveLength(1);
+    } finally {
+      await stub.close();
+    }
   }, 60_000);
 });

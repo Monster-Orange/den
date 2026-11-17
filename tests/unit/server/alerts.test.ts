@@ -177,7 +177,11 @@ describe("issue 172: quiet hours and the setting", () => {
     expect(alertPrefs(u)).toMatchObject({ desktop: true, quiet: null });
     expect(patchAlerts(u, { desktop: "yes" }).ok).toBe(false);
     expect(patchAlerts(u, { quiet_to: "7pm" }).ok).toBe(false);
-    expect(patchAlerts(u, { push_timeout_seconds: 0 }).ok).toBe(false);
+    // The push limits are config keys, not page settings.
+    expect(patchAlerts(u, { push_timeout_seconds: 5 }).ok).toBe(false);
+    expect(
+      alertPrefs({ alerts: { push_timeout_seconds: 0, push_ttl_seconds: 60 } }),
+    ).toMatchObject({ pushTimeoutSeconds: 30, pushTtlSeconds: 60 });
     expect(patchAlerts(u, { nope: 1 }).ok).toBe(false);
   });
 });

@@ -4,18 +4,6 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.65] - unreleased
-
-### Added
-
-- When an agent needs you (a permission prompt, a question, or a write
-  held for your Allow), an open Den tab in the background shows a
-  desktop notification, in the bell's words: who, and what it waits on,
-  never the details. A click opens the agent. Settings › Notifications ›
-  Desktop alerts asks the browser once; quiet hours (a start and an end,
-  in your time zone) hold alerts back. The bell still has everything
-  (issue 172).
-
 ## [0.4.64] - unreleased
 
 ### Fixed

@@ -2591,6 +2591,12 @@
     "set.notifications.fold_days.o.7": "7 días",
     "set.notifications.fold_days.o.14": "14 días",
     "set.notifications.fold_days.o.30": "30 días",
+    "set.notifications.phone": "Avisos en este dispositivo por push",
+    "set.notifications.phone.d":
+      "Abre __DEN_TITLE__ en tu teléfono y activa esto allí: cuando un agente te necesite, el teléfono lo mostrará, aunque __DEN_TITLE__ esté cerrado. Aquí funciona con todas las pestañas cerradas. Cada dispositivo lo activa para sí.",
+    "set.notifications.phone.none":
+      "Este navegador no puede recibir push. En un iPhone, añade __DEN_TITLE__ a la pantalla de inicio (Compartir y luego Añadir a pantalla de inicio) y ábrelo desde allí.",
+    "set.notifications.phone.failed": "No se pudo activar el push aquí.",
     "set.notifications.quiet_from": "Inicio de las horas de silencio",
     "set.notifications.quiet_from.d":
       "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",

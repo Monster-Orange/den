@@ -56,7 +56,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // Issue 103: Settings › Embedding.
   embed: EMBED_DEFAULTS as unknown as Record<string, unknown>,
   // Issue 172: alerts outside the bell, and quiet hours.
-  alerts: { desktop: true, quiet_from: true, quiet_to: true },
+  alerts: { desktop: true, phone: true, quiet_from: true, quiet_to: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -163,6 +163,7 @@ describe("the settings inventory (R21)", () => {
         "embed.context_max_kb",
         // Issue 172: alerts outside the bell.
         "alerts.desktop",
+        "alerts.phone",
         "alerts.quiet_from",
         "alerts.quiet_to",
       ].sort(),

@@ -51,6 +51,18 @@ if (typeof window !== "undefined")
 if (typeof document !== "undefined") initBell();
 // Issue 172: an agent's need, also outside the bell (desktop).
 if (typeof document !== "undefined") initAlerts();
+// Issue 172 S2: the app manifest, so a phone can add this to its home
+// screen (an iPhone gets push only from there).
+if (
+  typeof document !== "undefined" &&
+  document.head &&
+  !document.querySelector('link[rel="manifest"]')
+) {
+  const l = document.createElement("link");
+  l.rel = "manifest";
+  l.href = "/manifest.webmanifest";
+  document.head.appendChild(l);
+}
 if (typeof document !== "undefined")
   initTopbar({
     refreshHealth: (env, opts) => refreshHealth(env, opts),

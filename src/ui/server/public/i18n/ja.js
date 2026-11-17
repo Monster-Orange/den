@@ -2529,6 +2529,13 @@
     "set.notifications.fold_days.o.7": "7日",
     "set.notifications.fold_days.o.14": "14日",
     "set.notifications.fold_days.o.30": "30日",
+    "set.notifications.phone": "このデバイスへのプッシュ通知",
+    "set.notifications.phone.d":
+      "スマートフォンで __DEN_TITLE__ を開き、そこでこれをオンにしてください。エージェントがあなたを必要とすると、__DEN_TITLE__ を閉じていてもスマートフォンに表示されます。このデバイスでは、タブをすべて閉じていても届きます。デバイスごとにオンにします。",
+    "set.notifications.phone.none":
+      "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
+    "set.notifications.phone.failed":
+      "ここではプッシュをオンにできませんでした。",
     "set.notifications.quiet_from": "通知を止める時間の開始",
     "set.notifications.quiet_from.d":
       "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",

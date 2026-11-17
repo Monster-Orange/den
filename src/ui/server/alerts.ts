@@ -17,7 +17,8 @@
  *     desktop: true          # an open tab shows them (default on)
  *     phone: true            # push to subscribed devices (default on)
  *     quiet: { from: "22:00", to: "07:00" }   # none by default
- *     push_timeout_seconds: 30                # how long a push may take
+ *     push_timeout_seconds: 30     # how long one push may take (1..3600)
+ *     push_ttl_seconds: 86400      # how long a push service keeps it
  */
 import type { UserConfig } from "../../shared/den-config.js";
 import type { UiLanguage } from "./ui-language.js";
@@ -79,6 +80,8 @@ export interface AlertPrefs {
   /** "HH:MM" each, or null (no quiet hours). */
   quiet: { from: string; to: string } | null;
   pushTimeoutSeconds: number;
+  /** How long a push service keeps an alert for a device that is off. */
+  pushTtlSeconds: number;
 }
 
 export const ALERT_DEFAULTS: AlertPrefs = {
@@ -86,6 +89,7 @@ export const ALERT_DEFAULTS: AlertPrefs = {
   phone: true,
   quiet: null,
   pushTimeoutSeconds: 30,
+  pushTtlSeconds: 86_400,
 };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -96,6 +100,7 @@ export function alertPrefs(user: unknown): AlertPrefs {
     {}) as Record<string, unknown>;
   const q = a.quiet as { from?: unknown; to?: unknown } | undefined;
   const t = a.push_timeout_seconds;
+  const ttl = a.push_ttl_seconds;
   return {
     desktop: typeof a.desktop === "boolean" ? a.desktop : true,
     phone: typeof a.phone === "boolean" ? a.phone : true,
@@ -112,6 +117,13 @@ export function alertPrefs(user: unknown): AlertPrefs {
       typeof t === "number" && Number.isFinite(t) && t >= 1 && t <= 3600
         ? t
         : ALERT_DEFAULTS.pushTimeoutSeconds,
+    pushTtlSeconds:
+      typeof ttl === "number" &&
+      Number.isInteger(ttl) &&
+      ttl >= 0 &&
+      ttl <= 2_419_200
+        ? ttl
+        : ALERT_DEFAULTS.pushTtlSeconds,
   };
 }
 
@@ -128,13 +140,13 @@ export function alertSettings(user: UserConfig): Record<string, unknown> {
     phone: p.phone,
     quiet_from: side(q.from),
     quiet_to: side(q.to),
-    push_timeout_seconds: p.pushTimeoutSeconds,
   };
 }
 
 /**
  * A POSTed `alerts`: {desktop?, phone?: boolean; quiet_from?, quiet_to?:
- * "HH:MM" or "" (none); push_timeout_seconds?: 1..3600}; null clears one.
+ * "HH:MM" or "" (none)}; null clears one. The push limits are config
+ * keys only (`<cli> config` or user.yml).
  */
 export function patchAlerts(
   user: UserConfig,
@@ -158,14 +170,6 @@ export function patchAlerts(
       else return { ok: false, error: `alerts.${k} must be HH:MM, or empty` };
       if (Object.keys(q).length) a.quiet = q;
       else delete a.quiet;
-    } else if (k === "push_timeout_seconds") {
-      if (x === null) delete a[k];
-      else if (typeof x === "number" && x >= 1 && x <= 3600) a[k] = x;
-      else
-        return {
-          ok: false,
-          error: "alerts.push_timeout_seconds must be from 1 to 3600",
-        };
     } else return { ok: false, error: `alerts has no ${k}` };
   }
   if (Object.keys(a).length) u.alerts = a;

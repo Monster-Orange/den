@@ -3606,6 +3606,25 @@ async function handleRequest(
   if (pathname === "/favicon.ico") {
     return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
   }
+  // Issue 172 S2: the app manifest, so a phone can add Den to its home
+  // screen (an iPhone gets push only from there).
+  if (pathname === "/manifest.webmanifest") {
+    res.writeHead(200, {
+      "Content-Type": "application/manifest+json",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        name: product().title,
+        short_name: product().title,
+        start_url: "/agents",
+        scope: "/",
+        display: "standalone",
+        icons: [{ src: "/favicon.ico", sizes: "48x48" }],
+      }),
+    );
+    return;
+  }
 
   // ── Playwright report ──────────────────────────────────────────────────────
   // A test run wrote it (an agent may have): sandboxed, never Den's origin.

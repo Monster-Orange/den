@@ -100,3 +100,70 @@ export function initAlerts(win = window) {
   const timer = win.setInterval(() => void tick(), POLL_MS);
   win.addEventListener("pagehide", () => win.clearInterval(timer));
 }
+
+// ── S2: push, for a phone or a closed tab ─────────────────────────────
+// The device subscribes with this install's public key (VAPID) through
+// its service worker (/den-sw.js); the server keeps the subscription and
+// pushes each alert, encrypted for the device (web-push.ts).
+
+/** Whether this browser can get push at all (an iPhone: from its home screen). */
+export function pushSupported(win = window) {
+  return (
+    !!win.navigator?.serviceWorker &&
+    typeof win.PushManager === "function" &&
+    typeof win.Notification === "function"
+  );
+}
+
+/** This browser's push subscription, or null. */
+export async function pushSubscription(win = window) {
+  try {
+    const reg = await win.navigator.serviceWorker?.getRegistration?.("/");
+    return (await reg?.pushManager?.getSubscription?.()) || null;
+  } catch {
+    return null;
+  }
+}
+
+const keyBytes = (b64u) => {
+  const s = atob(b64u.replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+};
+
+/**
+ * Subscribe this browser: the browser's permission, the service worker,
+ * the subscription, then the server keeps it. "ok", "denied" or
+ * "unsupported"; throws on a server refusal.
+ */
+export async function pushOn(api, win = window) {
+  if (!pushSupported(win)) return "unsupported";
+  if (win.Notification.permission !== "granted") {
+    const p = await win.Notification.requestPermission();
+    if (p !== "granted") return "denied";
+  }
+  const nav = win.navigator.serviceWorker;
+  await nav.register("/den-sw.js", { scope: "/" });
+  const reg = await nav.ready;
+  const { publicKey } = await api("GET", "/api/alerts/push-key");
+  const sub =
+    (await reg.pushManager.getSubscription()) ||
+    (await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: keyBytes(publicKey),
+    }));
+  await api("POST", "/api/alerts/subscribe", {
+    subscription: typeof sub.toJSON === "function" ? sub.toJSON() : sub,
+  });
+  return "ok";
+}
+
+/** Stop push to this browser (other devices keep theirs). */
+export async function pushOff(api, win = window) {
+  const sub = await pushSubscription(win);
+  if (!sub) return;
+  try {
+    await sub.unsubscribe?.();
+  } finally {
+    await api("POST", "/api/alerts/unsubscribe", { endpoint: sub.endpoint });
+  }
+}
