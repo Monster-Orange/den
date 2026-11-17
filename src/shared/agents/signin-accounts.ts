@@ -467,3 +467,113 @@ export function accountsView(
     };
   });
 }
+
+/**
+ * Issue 340 (slice 3): where the sign-in an agent starts on can come from,
+ * besides Den's own order. A source (slice 6) knows which of Den's sign-ins
+ * (by id) belongs to a folder, and which one is active now. Null: it has
+ * no answer. A source that throws has none either.
+ */
+export interface AccountSource {
+  forFolder(runtimeId: string, folder: string): string | null;
+  active(runtimeId: string): string | null;
+}
+
+/** Which step chose it. */
+export type PickFrom = "folder" | "active" | "order";
+
+export interface PickedAccount {
+  account: SignInAccount;
+  /** What people see (accountLabel): never an email. */
+  label: string;
+  token: string;
+  from: PickFrom;
+}
+
+/** A sign-in that was tried and passed over, and why (never a token). */
+export interface PickMiss {
+  id: string;
+  label: string;
+  /** "capped", or the store's reason ("not set", "not in the store"). */
+  reason: string;
+}
+
+export interface PickDeps {
+  stateDir: string;
+  runtimeId: string;
+  /** The agent's folder, for the source's mapping. */
+  folder?: string;
+  /** Read one sign-in's token by its ref name (readAgentToken's answer). */
+  read: (refName: string) => Promise<{ token: string | null; reason?: string }>;
+  /** Slice 6: the sign-in source, when one is set. */
+  source?: AccountSource | null;
+  /** Slice 4: a sign-in that hit its usage cap (default: none is). */
+  capped?: (runtimeId: string, accountId: string) => boolean;
+}
+
+/**
+ * Issue 340: the sign-in an agent starts on, with its token:
+ *   1. the one the source maps to the agent's folder, if Den has its token;
+ *   2. otherwise the one the source reports active;
+ *   3. otherwise the first in Den's own order.
+ * A capped one is skipped at every step (and not read). Each sign-in is
+ * read at most once. With none, `picked` is null and `misses` says why for
+ * every sign-in, in Den's order.
+ */
+export async function pickAccount(
+  d: PickDeps,
+): Promise<{ picked: PickedAccount | null; misses: PickMiss[] }> {
+  const list = listAccounts(d.stateDir, d.runtimeId);
+  const why = new Map<string, string>();
+  const ask = (fn: () => string | null): string | null => {
+    try {
+      const id = fn();
+      return typeof id === "string" ? id : null;
+    } catch {
+      return null;
+    }
+  };
+  const tryOne = async (
+    id: string | null,
+    from: PickFrom,
+  ): Promise<PickedAccount | null> => {
+    const a = id === null ? undefined : list.find((x) => x.id === id);
+    if (!a || why.has(a.id)) return null;
+    if (d.capped?.(d.runtimeId, a.id)) {
+      why.set(a.id, "capped");
+      return null;
+    }
+    const r = await d.read(accountRefName(d.runtimeId, a.id));
+    if (r.token)
+      return {
+        account: { ...a },
+        label: accountLabel(a),
+        token: r.token,
+        from,
+      };
+    why.set(a.id, r.reason ?? "not in the store");
+    return null;
+  };
+  const src = d.source;
+  let picked: PickedAccount | null = null;
+  if (src && d.folder !== undefined) {
+    const folder = d.folder;
+    picked = await tryOne(
+      ask(() => src.forFolder(d.runtimeId, folder)),
+      "folder",
+    );
+  }
+  if (!picked && src)
+    picked = await tryOne(
+      ask(() => src.active(d.runtimeId)),
+      "active",
+    );
+  for (const a of list) {
+    if (picked) break;
+    picked = await tryOne(a.id, "order");
+  }
+  const misses = list
+    .filter((a) => why.has(a.id))
+    .map((a) => ({ id: a.id, label: accountLabel(a), reason: why.get(a.id)! }));
+  return { picked, misses };
+}
