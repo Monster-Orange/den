@@ -142,6 +142,16 @@ describe("issue 291 item 1: up in a project just created", () => {
     expect(active()).not.toContain("fresh");
   }, 120_000);
 
+  // Found in a release gate: up -w <p> with nothing to start made the
+  // project active, then failed on the usage error.
+  it("up -w <new project> with nothing to start: the usage error, and the project stays inactive", () => {
+    const r = acme("up", "-w", "fresh");
+    expect(r.out).toMatch(/up -w fresh needs what to start/);
+    expect(r.out).not.toMatch(/Made project|Would make project|is not active/);
+    expect(r.code).toBe(2);
+    expect(active()).not.toContain("fresh");
+  }, 120_000);
+
   it("a dry run of up says it would make the project active, and changes nothing", () => {
     const r = acme("up", "-a", "-w", "fresh", "--dry-run");
     expect(r.out).not.toMatch(/is not active/);

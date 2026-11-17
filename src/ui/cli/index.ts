@@ -809,7 +809,7 @@ class DenCLI {
       try {
         const parsed = parseCliArgs(args);
         telCmd = telemetryCommandName(parsed.command);
-        this.applyGlobalFlags(parsed);
+        if (!this.applyGlobalFlags(parsed)) return;
         this.prepareServiceCommand(parsed.command);
         await this.handleCommand(
           parsed.command ? [parsed.command, ...parsed.args] : [],
@@ -836,7 +836,7 @@ class DenCLI {
   /**
    * Handle command line arguments
    */
-  private applyGlobalFlags(parsed: ParsedCliArgs): void {
+  private applyGlobalFlags(parsed: ParsedCliArgs): boolean {
     if (parsed.flags.workspace) {
       const ws = parsed.flags.workspace;
       const file = readWorkspacesFile();
@@ -851,7 +851,7 @@ class DenCLI {
           throw new Error(
             `Project "${ws}" is not active — run \`${product().cli} workspace activate ${ws}\` first`,
           );
-        this.activateForUp(ws, parsed.args);
+        if (!this.activateForUp(ws, parsed.args)) return false;
       }
       process.env.DEN_WORKSPACE_OVERRIDE = ws;
     }
@@ -863,6 +863,7 @@ class DenCLI {
     if (parsed.flags.skipSecrets) {
       process.env.DEN_SKIP_SECRETS = "1";
     }
+    return true;
   }
 
   /**
@@ -870,12 +871,28 @@ class DenCLI {
    * made with `workspace create`) makes it active, as `repo add -w` does for
    * a project it makes, and says so in one line. What runs is defined over
    * the active set, so up never runs outside it. A dry run (--dry-run, -n,
-   * --plan) changes nothing and says it would.
+   * --plan) changes nothing and says it would. Without what to start (no
+   * repo, no -a) it is the usual usage error, and nothing is made active
+   * (a release gate found the project left active by a failed up). False:
+   * stop here.
    */
-  private activateForUp(ws: string, args: string[]): void {
+  private activateForUp(ws: string, args: string[]): boolean {
     const end = args.indexOf("--");
     const own = end === -1 ? args : args.slice(0, end);
     const dry = ["--dry-run", "-n", "--plan"].some((f) => own.includes(f));
+    const target =
+      own.some((a) => !a.startsWith("-")) ||
+      own.includes("-a") ||
+      own.includes("--all");
+    if (!target) {
+      console.error(
+        chalk.red(
+          `\n  ${upNeedsTarget(product().cli, ws, own.includes("--plan"))}\n`,
+        ),
+      );
+      process.exitCode = 2;
+      return false;
+    }
     if (!dry) {
       activateWorkspace(ws);
       this.upActivated = ws;
@@ -885,6 +902,7 @@ class DenCLI {
         `\n  ${dry ? "Would make" : "Made"} project "${ws}" active to start it.\n`,
       ),
     );
+    return true;
   }
 
   private prepareServiceCommand(command: string | undefined): void {
