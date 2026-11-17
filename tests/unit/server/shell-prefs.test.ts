@@ -7,6 +7,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   MAX_NAV_IDS,
   MAX_PINS,
+  applyShellSave,
   mergeShellPrefs,
   shellPrefs,
   storedShell,
@@ -156,5 +157,83 @@ describe("mergeShellPrefs", () => {
         dockHeight: 300,
       }),
     ).toEqual({ dock: true, dockHeight: 300 });
+  });
+});
+
+describe("issue 394: applyShellSave keeps the newer save of each key", () => {
+  it("a save stamps its keys with changedAt; the stamps are stored, not served", () => {
+    const r = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
+    expect(r).toEqual({
+      ok: true,
+      value: { pins: ["a"], changedAt: { pins: 100 } },
+      ignored: [],
+    });
+    expect(shellPrefs(r.ok ? r.value : null).pins).toEqual(["a"]);
+    expect(shellPrefs(r.ok ? r.value : null)).not.toHaveProperty("changedAt");
+  });
+
+  it("an older save of a key doesn't overwrite a newer one; other keys still apply", () => {
+    const first = applyShellSave(undefined, { pins: [], changedAt: 200 });
+    const stored = first.ok ? first.value : undefined;
+    const late = applyShellSave(stored, {
+      pins: ["a"],
+      collapsed: true,
+      changedAt: 100,
+    });
+    expect(late).toEqual({
+      ok: true,
+      value: { collapsed: true, changedAt: { pins: 200, collapsed: 100 } },
+      ignored: ["pins"],
+    });
+  });
+
+  it("the same save twice (the fetch and the beacon) is stored once, the same", () => {
+    const a = applyShellSave(undefined, { pins: ["a"], changedAt: 300 });
+    const b = applyShellSave(a.ok ? a.value : undefined, {
+      pins: ["a"],
+      changedAt: 300,
+    });
+    expect(b.ok && b.value).toEqual(a.ok && a.value);
+  });
+
+  it("a newer save wins; a key cleared to its default keeps its stamp", () => {
+    const a = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
+    const b = applyShellSave(a.ok ? a.value : undefined, {
+      pins: [],
+      changedAt: 200,
+    });
+    expect(b.ok && b.value).toEqual({ changedAt: { pins: 200 } });
+    const c = applyShellSave(b.ok ? b.value : undefined, {
+      pins: ["a"],
+      changedAt: 150,
+    });
+    expect(c.ok && c.value).toEqual({ changedAt: { pins: 200 } });
+  });
+
+  it("a save with no changedAt (an older page) applies and clears that key's stamp", () => {
+    const a = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
+    const b = applyShellSave(a.ok ? a.value : undefined, { pins: ["b"] });
+    expect(b.ok && b.value).toEqual({ pins: ["b"] });
+  });
+
+  it("a bad changedAt or a bad field is refused", () => {
+    for (const changedAt of ["1", -1, Number.NaN, null, {}])
+      expect(applyShellSave(undefined, { pins: [], changedAt }).ok).toBe(false);
+    expect(applyShellSave(undefined, { pins: "x", changedAt: 1 }).ok).toBe(
+      false,
+    );
+    expect(applyShellSave(undefined, { nope: 1, changedAt: 1 }).ok).toBe(false);
+    expect(applyShellSave(undefined, "x").ok).toBe(false);
+  });
+
+  it("a hand-broken stamp block is ignored", () => {
+    const r = applyShellSave(
+      { pins: ["a"], changedAt: { pins: "soon", order: 5 } },
+      { pins: ["b"], changedAt: 1 },
+    );
+    expect(r.ok && r.value).toEqual({
+      pins: ["b"],
+      changedAt: { pins: 1, order: 5 },
+    });
   });
 });

@@ -434,7 +434,7 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
-import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
+import { applyShellSave, shellPrefs } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
   appearancePrefs,
@@ -933,6 +933,8 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/changelog",
   "/api/web/restart",
   "/api/settings",
+  // Issue 394: the rail's save, as /api/settings saves it.
+  "/api/settings/shell",
   // MODE-5: the address row fixes what the config holds.
   "/api/web-url",
   "/api/web-url/probe",
@@ -6524,6 +6526,34 @@ async function handleRequest(
     }
   }
 
+  // Issue 394: the rail's save (pins, collapse, order, the dock), also as
+  // the page's beacon as it goes. The guard lets it through with the
+  // install's own Origin and no CSRF token (SHELL_SAVE_BEACONS), so it
+  // takes { shell } only: nothing else can be changed this way. A key's
+  // save older than the stored one is ignored, answering ok.
+  if (pathname === "/api/settings/shell" && req.method === "POST") {
+    let body: unknown;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      return send400(res, "the body must be JSON: { shell: { ... } }");
+    }
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body) ||
+      Object.keys(body).join() !== "shell"
+    )
+      return send400(res, "only { shell: { ... } } is saved here");
+    const user = readUserConfig();
+    const sh = applyShellSave(user.shell, (body as { shell: unknown }).shell);
+    if (!sh.ok) return send400(res, sh.error);
+    if (sh.value) user.shell = sh.value;
+    else delete user.shell;
+    writeUserConfig(user);
+    return sendJson(res, { ok: true, ignored: sh.ignored });
+  }
+
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
@@ -6838,10 +6868,10 @@ async function handleRequest(
         // The rail's pins and collapse (R14): a view preference only.
         if (body.shell === null) delete user.shell;
         else if (body.shell !== undefined) {
-          const sh = mergeShellPrefs(shellPrefs(user.shell), body.shell);
+          // Issue 394: the newer save of each key is kept (changedAt).
+          const sh = applyShellSave(user.shell, body.shell);
           if (!sh.ok) return send400(res, sh.error);
-          const stored = storedShell(sh.value);
-          if (stored) user.shell = stored;
+          if (sh.value) user.shell = sh.value;
           else delete user.shell;
         }
         if (body.graph === null) delete user.graph;

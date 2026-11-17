@@ -6,6 +6,7 @@ import type {
   Progress,
   configureBusy,
 } from "./busy.js";
+import type { saveShell } from "./save-shell.js";
 import type {
   AccountHydrateOptions,
   AppearanceHandle,
@@ -208,6 +209,7 @@ export interface DenUIKit {
   update: typeof update;
   report: typeof report;
   busy: typeof busy;
+  saveShell: typeof saveShell;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

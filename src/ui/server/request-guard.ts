@@ -85,6 +85,7 @@ import {
   SIGNIN_CSRF_FREE,
   SIGNIN_ID_BEACONS,
   SIGNIN_ID_DELETES,
+  SHELL_SAVE_BEACONS,
   SIGNIN_FREE,
   SIGNIN_GETS,
   type RouteClass,
@@ -715,6 +716,13 @@ export function checkRequest(
     SIGNIN_ID_BEACONS.some((r) => pathMatches(r, pathname))
   )
     return ok(null);
+  // Issue 394: the rail's save, as the page's beacon (no header rides it).
+  // The allowed Origin above is the check; sign-in was checked at §4.
+  if (
+    method === "POST" &&
+    SHELL_SAVE_BEACONS.some((r) => pathMatches(r, pathname))
+  )
+    return ok(browser ?? { kind: "person-browser" });
   // A browser's WebSocket can't send a header: on an upgrade the token
   // rides as a subprotocol, `den.csrf.<token>` (AG-4a-term's io).
   const csrf =
@@ -774,6 +782,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Allow and Deny on a held write: never the asking agent's.
   "/api/approvals/:id/decide",
   "/api/settings",
+  // Issue 394: the rail's save (a person's view preference).
+  "/api/settings/shell",
   "/api/scope",
   "/api/web-url",
   // Issue 163: re-installs the launchd jobs (and may run sudo): a person's.

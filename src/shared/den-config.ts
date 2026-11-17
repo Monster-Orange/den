@@ -467,6 +467,8 @@ export interface UserConfig {
     hidden?: string[];
     order?: string[];
     projectOrder?: string[];
+    /** Issue 394: when each key was last saved (ms), newest wins. */
+    changedAt?: Record<string, number>;
   };
   /**
    * What the web UI and `<cli> status` show: `scope` is "all" (every active

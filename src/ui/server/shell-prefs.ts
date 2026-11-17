@@ -233,3 +233,79 @@ export function storedShell(p: ShellPrefs): Partial<ShellPrefs> | undefined {
   if (p.projectOrder?.length) out.projectOrder = p.projectOrder;
   return Object.keys(out).length ? out : undefined;
 }
+
+/**
+ * Issue 394: when each key was last saved, in ms (a save's changedAt). A
+ * save as the page goes may arrive late, or twice (the fetch and the
+ * beacon): a save of a key older than its stamp is ignored. Stored in the
+ * shell block as `changedAt`, never served (shellPrefs leaves it out).
+ */
+export type ShellStamps = Partial<Record<keyof ShellPrefs, number>>;
+
+const isStamp = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+function storedStamps(stored: unknown): ShellStamps {
+  const out: ShellStamps = {};
+  if (!isObject(stored) || !isObject(stored.changedAt)) return out;
+  for (const [k, v] of Object.entries(stored.changedAt))
+    if (k in SHELL_DEFAULTS && isStamp(v)) out[k as keyof ShellPrefs] = v;
+  return out;
+}
+
+/**
+ * A shell save over the stored block, the newer of each key kept. The
+ * patch is the POSTed shell block; its `changedAt` (ms, optional) is when
+ * the change was made. Keys the stored stamps say are newer are left as
+ * they are (`ignored`); the rest merge as mergeShellPrefs does and take
+ * the save's stamp. A save with no changedAt (a page from before) applies
+ * and clears the stamps of its keys. Any bad field fails the whole save.
+ */
+export function applyShellSave(
+  stored: unknown,
+  patch: unknown,
+):
+  | {
+      ok: true;
+      value: (Partial<ShellPrefs> & { changedAt?: ShellStamps }) | undefined;
+      ignored: string[];
+    }
+  | { ok: false; error: string } {
+  if (!isObject(patch)) return { ok: false, error: "shell must be an object" };
+  const { changedAt, ...fields } = patch;
+  if (changedAt !== undefined && !isStamp(changedAt))
+    return {
+      ok: false,
+      error: "shell.changedAt must be a time in ms (a number, 0 or more)",
+    };
+  const current = shellPrefs(stored);
+  // Every field is checked, the ignored ones too.
+  const all = mergeShellPrefs(current, fields);
+  if (!all.ok) return all;
+  const stamps = storedStamps(stored);
+  const kept: Record<string, unknown> = {};
+  const ignored: string[] = [];
+  for (const k of Object.keys(fields)) {
+    const key = k as keyof ShellPrefs;
+    const was = stamps[key];
+    if (changedAt === undefined) {
+      delete stamps[key];
+      kept[k] = fields[k];
+    } else if (was !== undefined && was > changedAt) ignored.push(k);
+    else {
+      stamps[key] = changedAt;
+      kept[k] = fields[k];
+    }
+  }
+  const merged = mergeShellPrefs(current, kept);
+  if (!merged.ok) return merged;
+  const out: Partial<ShellPrefs> & { changedAt?: ShellStamps } = {
+    ...(storedShell(merged.value) ?? {}),
+  };
+  if (Object.keys(stamps).length) out.changedAt = stamps;
+  return {
+    ok: true,
+    value: Object.keys(out).length ? out : undefined,
+    ignored,
+  };
+}

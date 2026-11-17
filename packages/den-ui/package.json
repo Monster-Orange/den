@@ -19,6 +19,7 @@
     "./update-pill.css": "./src/update-pill.css",
     "./busy": "./src/busy.js",
     "./busy-words": "./src/busy-words.js",
+    "./save-shell": "./src/save-shell.js",
     "./dialog": "./src/dialog.js",
     "./strings": "./src/strings.js",
     "./icons": "./src/icons.js",

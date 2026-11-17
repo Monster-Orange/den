@@ -42,6 +42,10 @@
  *                               focus goes back to opener (else the
  *                               control that opened it) on close
  *   DenUI.busy.run(action, run, opts)   the working pop-up (busy.js)
+ *   DenUI.saveShell(url, patch, { headers?, changedAt? })  (0.7.5) a rail
+ *                               change saved so leaving the page can't
+ *                               lose it: keepalive, then a beacon if the
+ *                               page hides first (save-shell.js)
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -92,6 +96,7 @@ import {
 import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy } from "./busy.js";
+import { saveShell } from "./save-shell.js";
 
 const state = {
   lang: "en",
@@ -294,6 +299,7 @@ const DenUI = {
   update,
   report,
   busy,
+  saveShell,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;
