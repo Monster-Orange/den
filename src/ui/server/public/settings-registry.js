@@ -783,8 +783,167 @@ function drawOrigins(host, ctx, api) {
     });
 }
 
+/**
+ * Issue 334: app keys, for a web app's own server: it relays its person's
+ * messages to one agent (typed after the agent's turn) and reads that
+ * agent's state. Make and Revoke are held writes: Den's Allow dialog asks
+ * the person, and the new key is shown here once, after the Allow.
+ */
+function drawAppKeys(host, ctx) {
+  // Under an invalid config the agents and the keys answer 422: ask nothing.
+  if (ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return;
+  }
+  const shell = ctx.shell;
+  const origins = Array.isArray(ctx.data?.embed?.origins)
+    ? ctx.data.embed.origins
+    : [];
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+  let asked = null;
+  const ask = (action, args, button) =>
+    shell
+      .busyAction(
+        "ask-allow",
+        (headers) =>
+          shell.api("POST", "/api/approvals", { action, args }, { headers }),
+        { button },
+      )
+      .then((b) => {
+        asked = b && b.id;
+        out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyAllow", "Allow it in the dialog."))}</span>`;
+        window.dispatchEvent(new CustomEvent("den:approvals-poll"));
+      });
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex-basis:100%">` +
+    `<select id="set-appkey-agent" aria-label="${escHtml(L("set.ui.appKeyAgent", "Agent"))}"></select>` +
+    `<select id="set-appkey-origin" aria-label="${escHtml(L("set.ui.appKeyOrigin", "Web app"))}">` +
+    origins
+      .map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`)
+      .join("") +
+    `</select>` +
+    `<input id="set-appkey-label" type="text" maxlength="80" aria-label="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}" placeholder="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}">` +
+    `<button type="button" class="btn sm" id="set-appkey-make">${escHtml(L("set.ui.appKeyMake", "Make key"))}</button>` +
+    `</div>` +
+    `<div id="set-appkey-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-appkey-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-appkey-out");
+  const list = host.querySelector("#set-appkey-list");
+  const make = host.querySelector("#set-appkey-make");
+  if (!origins.length) {
+    make.disabled = true;
+    out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyNoOrigin", "Add the web app to the list above first."))}</span>`;
+  }
+  shell
+    .api("GET", "/api/sessions")
+    .then((b) => {
+      const agents = ((b && b.sessions) || []).filter(
+        (r) => r.kind === "agent" && !r.server,
+      );
+      host.querySelector("#set-appkey-agent").innerHTML = agents
+        .map(
+          (r) =>
+            `<option value="${escHtml(r.workspace + "/" + r.agent)}">${escHtml(r.workspace + " / " + (r.displayName || r.agent))}</option>`,
+        )
+        .join("");
+      if (!agents.length) make.disabled = true;
+    })
+    .catch(() => {});
+  const draw = () =>
+    shell
+      .api("GET", "/api/embed/app-keys")
+      .then((b) => {
+        const keys = (b && b.keys) || [];
+        if (!keys.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.appKeyNone", "No app keys yet."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          keys
+            .map(
+              (k) =>
+                `<li data-key="${escHtml(k.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span>${escHtml(k.label || k.id)}: ${escHtml(k.project + " / " + k.agent)} · ${escHtml(k.origin)}</span>` +
+                `<span class="set-note">${escHtml(
+                  k.lastUsedAt
+                    ? L("set.ui.appKeyUsed", "last used {when}", {
+                        when: when(k.lastUsedAt),
+                      })
+                    : L("set.ui.appKeyUnused", "never used"),
+                )}</span>` +
+                (k.revokedAt
+                  ? `<span class="set-note">${escHtml(L("set.ui.appKeyRevoked", "revoked {when}", { when: when(k.revokedAt) }))}</span>`
+                  : `<button type="button" class="btn sm" data-revoke="${escHtml(k.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-revoke]"))
+          btn.addEventListener(
+            "click",
+            () =>
+              void ask(
+                "embed_key_revoke",
+                { id: btn.getAttribute("data-revoke") },
+                btn,
+              ).catch((e) => {
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+              }),
+          );
+      })
+      .catch(() => {});
+  make.addEventListener("click", () => {
+    const pick = host.querySelector("#set-appkey-agent").value.split("/");
+    void ask(
+      "embed_key_create",
+      {
+        project: pick[0],
+        agent: pick[1],
+        origin: host.querySelector("#set-appkey-origin").value,
+        label: host.querySelector("#set-appkey-label").value.trim(),
+      },
+      make,
+    ).catch((e) => {
+      out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+    });
+  });
+  // The shell's Allow says what ran; a new key is in it once (never again).
+  window.addEventListener("den:approval-done", (ev) => {
+    const d = ev.detail || {};
+    if (!asked || d.id !== asked || !host.isConnected) return;
+    asked = null;
+    const key = d.result && d.result.once && d.result.once.key;
+    if (key) {
+      out.innerHTML =
+        `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's server now. It is not shown again."))}</p>` +
+        `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:var(--mono)" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
+        `<button type="button" class="btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
+      const box = out.querySelector("#set-appkey-new");
+      box.value = key;
+      out.querySelector("#set-appkey-copy").addEventListener("click", () => {
+        box.select();
+        if (navigator.clipboard) void navigator.clipboard.writeText(box.value);
+      });
+    } else out.innerHTML = "";
+    draw();
+  });
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
+  {
+    id: "embed.app_keys",
+    category: "embed",
+    label: "App keys",
+    description:
+      "A key for a web app's own backend on this computer: it can pass on its person's messages to one agent, typed after the agent's turn, and read that agent's state. Nothing else. You allow each key, it is shown once, and you can revoke it here.",
+    keywords: ["embed", "key", "app key", "web app", "message", "revoke"],
+    scope: "user",
+    control: { type: "custom", render: drawAppKeys },
+    read: () => null,
+  },
   {
     id: "embed.origins",
     category: "embed",
@@ -823,6 +982,19 @@ const EMBED_ROWS = [
     control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
     read: (ctx) => ctx.data.embed?.key_minutes ?? 15,
     write: (v, ctx) => ctx.post({ embed: { key_minutes: v } }),
+  },
+  {
+    id: "embed.app_key_audit",
+    category: "embed",
+    label: "App key reads in one activity line",
+    description:
+      "An app key's state reads go into the activity trail as one line per this many seconds, with how many there were, so a web app that checks often doesn't flood it.",
+    keywords: ["embed", "app key", "audit", "activity", "window", "seconds"],
+    scope: "user",
+    keys: ["embed.app_key_audit_window_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.embed?.app_key_audit_window_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ embed: { app_key_audit_window_seconds: v } }),
   },
   {
     id: "embed.url_max",
@@ -1810,6 +1982,54 @@ export const DEN_SETTINGS = [
   },
 
   {
+    // Issue 160: this project's approval policy (workspaces.yml
+    // <project>.approvals), over the install's. A person's only.
+    id: "workspace.approvals_policy",
+    category: "workspace",
+    label: "Agents' writes here",
+    description:
+      "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
+    keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
+    scope: "workspace",
+    control: seg([
+      { value: "install", label: "As everywhere" },
+      { value: "auto", label: "Run, no note" },
+      { value: "notify", label: "Run and tell me" },
+      { value: "ask", label: "Ask me" },
+    ]),
+    read: (ctx) => ctx.wsSettings?.approvals_policy ?? "install",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({ approvals_policy: v === "install" ? null : v }),
+  },
+  {
+    id: "workspace.approvals_watch",
+    category: "workspace",
+    label: "Watched here",
+    description:
+      "An agent's write on any of these asks you first, whatever its kind. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    keywords: ["watch", "watched", "favorite", "approval", "allow", "ask"],
+    scope: "workspace",
+    control: { type: "text" },
+    read: (ctx) => (ctx.wsSettings?.approvals_watch ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.saveWorkspace({ approvals_watch: String(v ?? "").trim() || null }),
+  },
+  {
+    id: "workspace.approvals_critical",
+    category: "workspace",
+    label: "Critical here",
+    description:
+      "Kinds of agent write that always ask you in this project. Comma-separated, for example repo_clone, service_try.",
+    keywords: ["critical", "approval", "allow", "ask", "policy"],
+    scope: "workspace",
+    control: { type: "text" },
+    read: (ctx) => (ctx.wsSettings?.approvals_critical ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        approvals_critical: String(v ?? "").trim() || null,
+      }),
+  },
+  {
     // Issue 335: the project's extra HTTP MCP servers, names and
     // addresses only. An agent adds one with a held write; the person
     // Allows it.
@@ -1825,6 +2045,53 @@ export const DEN_SETTINGS = [
   },
 
   // ── Agents ─────────────────────────────────────────────────────────────
+  {
+    // Issue 160: the install's approval policy (user.yml approvals). A
+    // person's only: an agent asks with approval_policy.
+    id: "agents.approvals_policy",
+    category: "agents",
+    label: "Agent writes",
+    description:
+      "What an agent may do without your Allow. Run and tell me: it runs, and your updates say so. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks, as does one on something you watch or pinned.",
+    keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
+    scope: "user",
+    keys: ["approvals_policy"],
+    control: seg([
+      { value: "auto", label: "Run, no note" },
+      { value: "notify", label: "Run and tell me" },
+      { value: "ask", label: "Ask me" },
+    ]),
+    read: (ctx) => ctx.data.approvals_policy ?? "notify",
+    write: (v, ctx) => ctx.post({ approvals_policy: v }),
+  },
+  {
+    id: "agents.approvals_watch",
+    category: "agents",
+    label: "Watched",
+    description:
+      "An agent's write on any of these asks you first, whatever its kind; so does one on a repo or service you pinned. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    keywords: ["watch", "watched", "favorite", "pinned", "approval", "ask"],
+    scope: "user",
+    keys: ["approvals_watch"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.approvals_watch ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({ approvals_watch: String(v ?? "").trim() || null }),
+  },
+  {
+    id: "agents.approvals_critical",
+    category: "agents",
+    label: "Critical",
+    description:
+      "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    keywords: ["critical", "approval", "allow", "ask", "policy"],
+    scope: "user",
+    keys: ["approvals_critical"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.approvals_critical ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
+  },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the
@@ -2448,7 +2715,7 @@ export function runtimeRowHtml(r, scopeWs) {
   // A path set at the scope shown can be cleared from here.
   const mine = scopeWs ? r.source === "workspace" : r.source === "setting";
   return (
-    `<div class="rt" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
+    `<div class="rt" role="listitem" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
     `<div class="rt-n">${name}</div>` +
     `<div class="rt-s">${status}</div>` +
     `<div class="rt-w">${where}</div>` +
@@ -2728,7 +2995,7 @@ export function rotationHtml(b) {
       ]),
     ) +
     `</div>` +
-    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col" aria-label="${escR(L("set.ui.rot.thActions", "Actions"))}"></th></tr></thead><tbody>` +
+    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col"><span class="den-sr">${escR(L("set.ui.rot.thActions", "Actions"))}</span></th></tr></thead><tbody>` +
     (rows.length
       ? rows.join("")
       : `<tr><td colspan="5" class="set-note">${escR(L("set.ui.rot.none", "No overrides: every agent uses this install's values."))}</td></tr>`) +
@@ -3726,6 +3993,12 @@ export function hubUncoveredHtml(list, t) {
   );
 }
 
+/** Issue 271: the picker's Create option, and the longest name Hub takes. */
+export const HUBP_CREATE = "__create";
+const HUBP_NAME_MAX = 80;
+/** Issue 271: how often a waiting create is read again while it shows. */
+const HUBP_POLL_MS = 5000;
+
 /** Where a person picks a Hub project for an unclear one (issue 167). */
 export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
 
@@ -3737,6 +4010,13 @@ export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
  * command) sit behind More. Waiting for a pick (b.pick): a button to
  * Unclear matches. Not linked: a select (Hub's suggestion first, picked)
  * and Link. Not connected to Hub: Connect.
+ *
+ * Issue 271: not linked, the picker's first option is "Create a Hub
+ * project named <b.name>" (picked when Hub suggests nothing), with the
+ * name editable below it. A create asked of Hub and waiting (b.create, no
+ * outcome): "creating", with Hub's Allow in the row for an owner
+ * (b.owner), else who must allow it. Declined or ended: said, and Create
+ * is offered again.
  */
 export function hubProjectHtml(b, t, name) {
   const ws = String(b?.project ?? "");
@@ -3768,14 +4048,29 @@ export function hubProjectHtml(b, t, name) {
           .map((p) => `<option value="${escR(p.id)}">${name(p)}</option>`)
           .join("")}</optgroup>`
       : "");
+  const own = String(b?.name || ws).slice(0, HUBP_NAME_MAX);
+  // Issue 271: unlinked, Create comes first; picked when nothing is suggested.
+  const createOpt = (on) =>
+    `<option value="${HUBP_CREATE}"${on ? " selected" : ""}>${escR(t("hubp.createOpt", { name: own }))}</option>`;
+  const newName = (on) =>
+    `<div class="hubp-new" data-hubp-newrow${on ? "" : " hidden"}>` +
+    `<label for="hubp-new">${escR(t("hubp.newName"))}</label> ` +
+    `<input id="hubp-new" type="text" value="${escR(own)}" maxlength="${HUBP_NAME_MAX}" autocomplete="off"></div>`;
   const picker = (label, btn, primary) =>
-    opts
+    !linked
       ? `<form class="hubp-pick" data-hubp-form>` +
         `<label for="hubp-sel">${escR(label)}</label> ` +
-        `<select id="hubp-sel">${opts}</select> ` +
-        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+        `<select id="hubp-sel">${createOpt(!sugg.length)}${opts}</select> ` +
+        newName(!sugg.length) +
+        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(sugg.length ? btn : t("hubp.create"))}</button>` +
         `</form>`
-      : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
+      : opts
+        ? `<form class="hubp-pick" data-hubp-form>` +
+          `<label for="hubp-sel">${escR(label)}</label> ` +
+          `<select id="hubp-sel">${opts}</select> ` +
+          `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+          `</form>`
+        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
   const tail =
     hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
@@ -3801,6 +4096,38 @@ export function hubProjectHtml(b, t, name) {
       tail
     );
   }
+  const ask = b.create && typeof b.create === "object" ? b.create : null;
+  if (ask && !ask.outcome) {
+    const url =
+      typeof ask.url === "string" && /^https?:\/\//.test(ask.url)
+        ? ask.url
+        : "";
+    const who =
+      b.owner === true
+        ? `<p class="set-note">${escR(t("hubp.youAllow", { project: ws }))}</p>` +
+          (url
+            ? `<a class="btn sm primary" href="${escR(url)}" target="_blank" rel="noopener noreferrer" data-hubp-allow>${escR(t("hubp.allowBtn"))}</a>`
+            : "")
+        : `<p class="set-note">${escR(
+            b.company
+              ? t("hubp.ownerMust", { company: b.company, project: ws })
+              : t("hubp.ownerMustAny", { project: ws }),
+          )}</p>`;
+    return (
+      `<div data-hubp data-hubp-state="creating">` +
+      st("warn", t("hubp.asked", { name: ask.name, project: ws })) +
+      who +
+      tail
+    );
+  }
+  const ended =
+    ask?.outcome === "declined" || ask?.outcome === "superseded"
+      ? `<p class="set-note" data-hubp-ended>${escR(
+          t(ask.outcome === "declined" ? "hubp.declined" : "hubp.ended", {
+            name: ask.name,
+          }),
+        )}</p>`
+      : "";
   if (b.pick)
     return (
       `<div data-hubp data-hubp-state="pick">` +
@@ -3811,6 +4138,7 @@ export function hubProjectHtml(b, t, name) {
   return (
     `<div data-hubp data-hubp-state="unlinked">` +
     st("warn", t("hubp.notLinked", { project: ws })) +
+    ended +
     picker(t("hubp.linkProject", { project: ws }), t("hubp.link"), true) +
     `<p class="set-note">${escR(t("hubp.scope", { project: ws }))}</p>` +
     tail
@@ -3876,11 +4204,71 @@ function wireHubProject(host, ctx, url, t, b) {
         err(e?.message || t("hubp.failed"));
       });
   };
+  const sel = host.querySelector("#hubp-sel");
+  const nameIn = host.querySelector("#hubp-new");
+  const newRow = host.querySelector("[data-hubp-newrow]");
+  const go = host.querySelector('[data-hubp-form] [data-hubp-action="link"]');
+  const createOpt = sel?.querySelector(`option[value="${HUBP_CREATE}"]`);
+  // Issue 271: Create shows the name, and the button says Create.
+  const sync = () => {
+    const on = sel?.value === HUBP_CREATE;
+    if (newRow) newRow.hidden = !on;
+    if (go && createOpt) go.textContent = t(on ? "hubp.create" : "hubp.link");
+  };
+  sel?.addEventListener("change", () => {
+    err("");
+    sync();
+  });
+  nameIn?.addEventListener("input", () => {
+    if (createOpt)
+      createOpt.textContent = t("hubp.createOpt", {
+        name: nameIn.value.replace(/\s+/g, " ").trim() || b?.name || "",
+      });
+  });
   host.querySelector("[data-hubp-form]")?.addEventListener("submit", (ev) => {
     ev.preventDefault();
-    const v = host.querySelector("#hubp-sel")?.value;
+    const v = sel?.value;
+    if (v === HUBP_CREATE) {
+      const nm = String(nameIn?.value ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!nm) return err(t("hubp.nameEmpty"));
+      if (nm.length > HUBP_NAME_MAX) return err(t("hubp.nameLong"));
+      err("");
+      return ctx.shell
+        .busyAction(
+          "create-hub",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              url.replace(/\/hub-project$/, "/hub-create"),
+              { name: nm },
+              { headers },
+            ),
+          {
+            button: go,
+            vars: { name: nm },
+            onFail: (x) => err(x?.message || t("hubp.createF")),
+          },
+        )
+        .then((r) => {
+          if (r !== undefined && r !== null) return renderHubProject(host, ctx);
+        });
+    }
     if (v) put(v);
   });
+  // Issue 271: a create waiting in Hub: read again while it shows, so the
+  // row links on its own once an owner allows it.
+  if (host.querySelector('[data-hubp-state="creating"]')) {
+    clearTimeout(host._hubpPoll);
+    host._hubpPoll = setTimeout(() => {
+      if (
+        host.isConnected &&
+        host.querySelector('[data-hubp-state="creating"]')
+      )
+        renderHubProject(host, ctx);
+    }, HUBP_POLL_MS);
+  }
   host
     .querySelector('[data-hubp-action="unlink"]')
     ?.addEventListener("click", () =>

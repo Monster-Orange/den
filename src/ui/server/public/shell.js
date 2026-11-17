@@ -50,6 +50,9 @@
  *                 palette command (kind "setting", id "setting:<id>"):
  *                 Enter opens /settings?q=<label>#<category>.
  *   settings(), settingsCategories()  the registry, categories by order
+ *   pages()                          every page the rail leads to: NAV,
+ *                                    hidden and conditional ones too, then
+ *                                    Settings ({ id, href } each)
  *   setNavPrefs({ hidden?, order? }), setPins(ids), setCollapsed(bool)
  *                 Navigation (R21): the rail pages hidden, their order,
  *                 the pins; saved to /api/settings `shell`
@@ -725,6 +728,21 @@
     "set.ui.signOutAllDone": "Signed out everywhere",
     "set.ui.devicesSignedIn": "The devices can only be listed signed in.",
     "set.ui.asked": "asked {ago}",
+    "set.ui.appKeyAllow": "Allow it in the dialog.",
+    "set.ui.appKeyAgent": "Agent",
+    "set.ui.appKeyOrigin": "Web app",
+    "set.ui.appKeyLabel": "Name (optional)",
+    "set.ui.appKeyMake": "Make key",
+    "set.ui.appKeyNoOrigin": "Add the web app to the list above first.",
+    "set.ui.appKeyNone": "No app keys yet.",
+    "set.ui.appKeyUsed": "last used {when}",
+    "set.ui.appKeyUnused": "never used",
+    "set.ui.appKeyRevoked": "revoked {when}",
+    "set.ui.appKeyRevoke": "Revoke",
+    "set.ui.appKeyOnce":
+      "Copy this key into the web app's backend now. It is not shown again.",
+    "set.ui.appKeyNew": "New app key",
+    "set.ui.copy": "Copy",
     "set.ui.saveOrigins": "Save list",
     "set.ui.approve": "Approve",
     "set.ui.deny": "Deny",
@@ -1064,6 +1082,10 @@
       "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
     "set.embed.url_max.d":
       "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
+    "set.embed.app_keys.d":
+      "A key for a web app's own backend on this computer: it can pass on its person's messages to one agent, typed after the agent's turn, and read that agent's state. Nothing else. You allow each key, it is shown once, and you can revoke it here.",
+    "set.embed.app_key_audit.d":
+      "An app key's state reads go into the activity trail as one line per this many seconds, with how many there were, so a web app that checks often doesn't flood it.",
     "set.embed.origins.d":
       "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
     "set.embed.key_minutes.d":
@@ -1420,6 +1442,9 @@
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
       "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
+    "busy.askAllowW": "Asking…",
+    "busy.askAllowS": "Asked. Allow it in the dialog.",
+    "busy.askAllowF": "Couldn't ask.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
@@ -1665,6 +1690,27 @@
     "hubp.linkProject": "Link {project} to a Hub project",
     "hubp.scope":
       "Linking affects only the project {project}. Your other projects aren't changed.",
+    // Issue 271: Create a Hub project from the link picker.
+    "hubp.createOpt": "Create a Hub project named {name}",
+    "hubp.newName": "Name in Hub",
+    "hubp.create": "Create",
+    "hubp.nameEmpty": "Type a name for the Hub project.",
+    "hubp.nameLong": "A Hub project's name is up to 80 characters.",
+    "hubp.asked":
+      "Den asked Hub to create the Hub project {name} for {project}.",
+    "hubp.youAllow":
+      "You're an owner in Hub. Allow it there, and Den links {project} to it.",
+    "hubp.allowBtn": "Allow in Hub",
+    "hubp.ownerMust":
+      "An owner of {company} in Hub must allow it. Den links {project} on its own when they do.",
+    "hubp.ownerMustAny":
+      "An owner of your company in Hub must allow it. Den links {project} on its own when they do.",
+    "hubp.declined":
+      "An owner in Hub declined the Hub project {name}. Pick a Hub project, or ask again.",
+    "hubp.ended": "Hub's ask for {name} ended with no change. Ask again.",
+    "hubp.createW": "Asking Hub to create {name}…",
+    "hubp.createS": "Asked. An owner allows it in Hub.",
+    "hubp.createF": "Hub didn't take the ask. Nothing was created.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
     "hub.reconnect": "Reconnect",
@@ -1793,6 +1839,38 @@
     "addr.saved": "Saved: {url} answered.",
     "addr.notSaved": "Not saved. The old address stays.",
     "addr.empty": "Type an address first.",
+    "set.workspace.approvals_policy": "Agents' writes here",
+    "set.workspace.approvals_policy.d":
+      "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
+    "set.workspace.approvals_policy.o.install": "As everywhere",
+    "set.workspace.approvals_policy.o.auto": "Run, no note",
+    "set.workspace.approvals_policy.o.notify": "Run and tell me",
+    "set.workspace.approvals_policy.o.ask": "Ask me",
+    "set.workspace.approvals_watch": "Watched here",
+    "set.workspace.approvals_watch.d":
+      "An agent's write on any of these asks you first, whatever its kind. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    "set.workspace.approvals_critical": "Critical here",
+    "set.workspace.approvals_critical.d":
+      "Kinds of agent write that always ask you in this project. Comma-separated, for example repo_clone, service_try.",
+    "set.agents.approvals_policy": "Agent writes",
+    "set.agents.approvals_policy.d":
+      "What an agent may do without your Allow. Run and tell me: it runs, and your updates say so. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks, as does one on something you watch or pinned.",
+    "set.agents.approvals_policy.o.auto": "Run, no note",
+    "set.agents.approvals_policy.o.notify": "Run and tell me",
+    "set.agents.approvals_policy.o.ask": "Ask me",
+    "set.agents.approvals_watch": "Watched",
+    "set.agents.approvals_watch.d":
+      "An agent's write on any of these asks you first, whatever its kind; so does one on a repo or service you pinned. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    "set.agents.approvals_critical": "Critical",
+    "set.agents.approvals_critical.d":
+      "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    "ap.do.agent_import":
+      'Bring in conversation {session} as a {persona} agent of project "{project}"',
+    "ap.do.approval_policy":
+      "Change the approval policy for every project to {to}",
+    "ap.do.approval_policy.project":
+      "Change project {where}'s approval policy to {to}",
+    "ap.do.pr_close": "Close pull request {pr} on {repo}: {comment}",
     "set.agents.default_mode": "Agents' mode: Den-wide default",
     "set.agents.default_mode.d":
       "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",
@@ -1818,6 +1896,8 @@
     "acct.roleOwner": "Owner",
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
+    "set.embed.app_keys": "App keys",
+    "set.embed.app_key_audit": "App key reads in one activity line",
     "set.embed.origins": "Web apps that may embed agents",
     "set.embed.key_minutes": "Embedded pane's permission lasts",
     "set.embed.context_max_kb": "Largest shared page",
@@ -2147,11 +2227,31 @@
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
+    "ap.do.embed_key_create":
+      "Let {origin} message {agent} in {project} and read its state",
+    "ap.do.embed_key_revoke": "Revoke {origin}'s key for {agent} in {project}",
+    "ap.det.embed_key_create.reach":
+      "Makes a key for {origin}'s own backend. It reaches only {agent} in {project}: its state, and messages typed after its turn ends.",
+    "ap.det.embed_key_create.once":
+      "The key is shown once, here, after you allow. Den keeps only its hash.",
+    "ap.det.embed_key_create.revoke":
+      "You can revoke it any time in Settings › Embedding.",
+    "ap.det.embed_key_revoke.reach":
+      "{origin} can no longer message {agent} or read its state with this key.",
+    "ap.det.embed_key_revoke.held":
+      "Messages it sent that wait for the agent's turn are still typed.",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
     "ap.pm.warn": "This lets agents in {project} act without asking you.",
     "ap.pm.project": "Project: {project}",
+    // Issue 271: hub_project_create's Allow.
+    "ap.do.hub_project_create":
+      "Ask Hub to create the Hub project {name} for project {project}",
+    "ap.hc.project": "Project: {project}",
+    "ap.hc.name": "Name in Hub: {name}",
+    "ap.hc.owner":
+      "An owner in Hub allows it there; Den links the project to it once they do.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":
@@ -7062,6 +7162,14 @@
             });
             return;
           } else if (decision === "allow") toast(apDoneWords(a, res));
+          // Issue 334: the page that asked hears what ran (a new app key,
+          // in it once: the server forgets it after this answer).
+          if (decision === "allow" && res && res.ok !== false)
+            window.dispatchEvent(
+              new CustomEvent("den:approval-done", {
+                detail: { id: a.id, action: a.action, result: res },
+              }),
+            );
           apClose();
           apPoll();
         },
@@ -7134,6 +7242,11 @@
       });
     else hideBanner("approvals");
   }
+  // Issue 334: a page that just asked (Settings › Embedding) opens the
+  // dialog now, not at the next poll.
+  window.addEventListener("den:approvals-poll", function () {
+    apPoll();
+  });
   function apPoll() {
     if (document.hidden || ap.busy) return;
     apList(false).then(
@@ -7621,6 +7734,15 @@
     },
     nav: function () {
       return NAV.slice();
+    },
+    /**
+     * Every page the rail can lead to (issue 297): the NAV registry, hidden
+     * and conditional pages included, then Settings. { id, href } each.
+     */
+    pages: function () {
+      return NAV.map(function (n) {
+        return { id: n.id, href: n.href };
+      }).concat([{ id: SETTINGS.id, href: SETTINGS.href }]);
     },
     /** NAV in the rail's order (groups, then your order), hidden included. */
     orderedNav: orderedNav,

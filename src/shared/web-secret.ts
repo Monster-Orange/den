@@ -18,6 +18,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 import {
   actorTokenOf,
   isActorTokenShape,
@@ -72,7 +73,8 @@ export function ensureWebSecret(stateDir: string = getStateDir()): Buffer {
   try {
     // A malformed file (wrong length) is replaced; a missing one created.
     if (fs.existsSync(file)) fs.unlinkSync(file);
-    fs.writeFileSync(file, fresh, { mode: 0o600, flag: "wx" });
+    // Exclusive and whole (#380): a reader never sees an empty secret.
+    writeFileAtomic(file, fresh, { mode: 0o600, exclusive: true });
   } catch (e) {
     // Another process created it first: use theirs.
     const won = readWebSecret(stateDir);
@@ -93,9 +95,7 @@ export function ensureWebSecret(stateDir: string = getStateDir()): Buffer {
 export function rotateWebSecret(stateDir: string = getStateDir()): void {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const file = webSecretPath(stateDir);
-  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  fs.writeFileSync(tmp, randomBytes(SECRET_BYTES), { mode: 0o600, flag: "wx" });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, randomBytes(SECRET_BYTES), { mode: 0o600 });
   tighten(file);
 }
 

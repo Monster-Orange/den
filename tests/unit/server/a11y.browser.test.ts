@@ -3,7 +3,13 @@
  * demo distribution, with notes up (a stub health check on localhost) and
  * pinned.
  *
- * Five surfaces, each in light and dark, at 1440×900 and 390×844:
+ * Every page in the nav registry (denShell.pages(): the list the rail is
+ * drawn from, Settings included), its <main>, in light and dark, at
+ * 1440×900 and 390×844 (issue 297). The list is read from the running
+ * shell, never written here, so a page added later is checked too; a
+ * registry page without a clean run fails.
+ *
+ * Five surfaces too, each in light and dark, at the same two sizes:
  *
  * - the rail (at phone size, the drawer: ☰ opens it);
  * - an open pinned-service panel (a click on the rail's pinned row);
@@ -17,7 +23,9 @@
  * A scan must have found its target and passed some rules, so a scan of
  * nothing fails too.
  *
- * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
+ * Chromium by default; DEN_HELPERS_BROWSER=webkit (or firefox) picks
+ * another engine, and DEN_PW_WS connects to a Playwright server.
+ * DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as http from "http";
@@ -41,8 +49,16 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    const pw = await import("playwright");
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -75,7 +91,12 @@ const SIZES: Size[] = [
 ];
 const phone = (z: Size) => z.width < 640;
 
-async function page(url: string, scheme: Scheme, z: Size): Promise<Page> {
+async function page(
+  url: string,
+  scheme: Scheme,
+  z: Size,
+  init?: () => void,
+): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: z.width, height: z.height },
     reducedMotion: "reduce",
@@ -89,6 +110,7 @@ async function page(url: string, scheme: Scheme, z: Size): Promise<Page> {
       /* none */
     }
   }, latest);
+  if (init) await ctx.addInitScript(init);
   const p = await ctx.newPage();
   await p.emulateMedia({ colorScheme: scheme });
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
@@ -258,6 +280,152 @@ const SURFACES: {
     },
   },
 ];
+
+interface RegPage {
+  id: string;
+  href: string;
+}
+
+/**
+ * The nav registry as the running shell has it (denShell.pages()), after
+ * `init` (a script run before the page's own: a test's extra page).
+ */
+async function registryPages(init?: () => void): Promise<RegPage[]> {
+  const p = await page("/services", "light", SIZES[0], init);
+  try {
+    await p.waitForFunction(() => "denShell" in window);
+    await p.evaluate(
+      () =>
+        new Promise<void>((done) =>
+          (
+            window as unknown as {
+              denShellQueue: { push(f: () => void): void };
+            }
+          ).denShellQueue.push(() => setTimeout(done, 0)),
+        ),
+    );
+    return await p.evaluate(() =>
+      (
+        window as unknown as { denShell: { pages(): RegPage[] } }
+      ).denShell.pages(),
+    );
+  } finally {
+    await p.context().close();
+  }
+}
+
+/** A page's <main> once its shell is up and its first requests have settled. */
+async function scanPage(href: string, scheme: Scheme, z: Size): Promise<Scan> {
+  const p = await page(href, scheme, z);
+  try {
+    await p.waitForSelector("#den-content", { timeout: 20_000 });
+    await p.waitForFunction(() => "denShell" in window);
+    await p
+      .waitForLoadState("networkidle", { timeout: 5_000 })
+      .catch(() => undefined);
+    await p
+      .waitForFunction(
+        () => !document.querySelector('#den-content [aria-busy="true"]'),
+        undefined,
+        { timeout: 5_000 },
+      )
+      .catch(() => undefined);
+    return await scan(p, "#den-content");
+  } finally {
+    await p.context().close();
+  }
+}
+
+/** Every page in `pages`, scanned: the hrefs visited and each one's report. */
+async function scanAll(
+  pages: RegPage[],
+  scheme: Scheme,
+  z: Size,
+): Promise<{ visited: string[]; reports: string[] }> {
+  const visited: string[] = [];
+  const reports: string[] = [];
+  for (const pg of pages) {
+    const what = `${pg.href}, ${scheme}, ${z.name}`;
+    let r: Scan;
+    try {
+      r = await scanPage(pg.href, scheme, z);
+    } catch (err) {
+      reports.push(`${what}: did not load (${(err as Error).message})`);
+      continue;
+    }
+    if (!r.present || r.passes === 0) {
+      reports.push(`${what}: nothing scanned`);
+      continue;
+    }
+    visited.push(pg.href);
+    reports.push(report(what, r));
+  }
+  return { visited, reports };
+}
+
+const PROBE: RegPage = { id: "a11y-probe", href: "/services?a11y-probe=1" };
+
+describe("every page in the nav registry", () => {
+  let registry: RegPage[] = [];
+  const runs = new Map<string, string[]>();
+
+  beforeAll(async () => {
+    if (!browser || !s) return;
+    registry = await registryPages();
+  }, 60_000);
+
+  it("the registry has the rail's pages, Settings among them", () => {
+    if (!browser || !s) return;
+    const hrefs = registry.map((r) => r.href);
+    expect(hrefs).toEqual(expect.arrayContaining(["/services", "/settings"]));
+    expect(new Set(hrefs).size).toBe(hrefs.length);
+  });
+
+  for (const z of SIZES)
+    for (const scheme of ["light", "dark"] as Scheme[])
+      it(`axe finds no violation on any of them, ${scheme}, ${z.name} (${z.width}×${z.height})`, async () => {
+        if (!browser || !s) return;
+        const { visited, reports } = await scanAll(registry, scheme, z);
+        runs.set(`${scheme} ${z.name}`, visited);
+        expect(reports.filter((r) => !r.endsWith(": clean"))).toEqual([]);
+      }, 600_000);
+
+  it("every registry page had an a11y run, in every scheme and size", () => {
+    if (!browser || !s) return;
+    const want = registry.map((r) => r.href).sort();
+    for (const z of SIZES)
+      for (const scheme of ["light", "dark"] as Scheme[]) {
+        const key = `${scheme} ${z.name}`;
+        expect([key, (runs.get(key) ?? []).slice().sort()]).toEqual([
+          key,
+          want,
+        ]);
+      }
+  });
+
+  it("the list follows the registry: a page added to it is visited", async () => {
+    if (!browser || !s) return;
+    const withProbe = await registryPages(() => {
+      const w = window as unknown as {
+        denShellQueue?: unknown[] | { push(f: unknown): void };
+      };
+      w.denShellQueue = w.denShellQueue || [];
+      (w.denShellQueue as { push(f: unknown): void }).push(
+        (sh: { registerNav(n: unknown): void }) =>
+          sh.registerNav({
+            id: "a11y-probe",
+            label: "A11y probe",
+            group: "develop",
+            href: "/services?a11y-probe=1",
+          }),
+      );
+    });
+    expect(registry.map((r) => r.href)).not.toContain(PROBE.href);
+    expect(withProbe).toContainEqual(PROBE);
+    const { visited } = await scanAll(withProbe, "light", SIZES[0]);
+    expect(visited).toContain(PROBE.href);
+  }, 600_000);
+});
 
 describe("axe finds no violation", () => {
   for (const surface of SURFACES)

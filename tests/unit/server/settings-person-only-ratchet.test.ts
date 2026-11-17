@@ -45,6 +45,10 @@ const MUST_BE_PERSON = [
   "local_dev",
   // SRV-P6: auto lets Den update itself unasked.
   "server_agent_self_update",
+  // Issue 160: the approval policy itself (an agent asks: approval_policy).
+  "approvals_policy",
+  "approvals_watch",
+  "approvals_critical",
 ];
 
 describe("every settings field says who may change it", () => {

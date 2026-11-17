@@ -178,6 +178,8 @@ describe("the classes", () => {
         // Issue 103: the embedded pane (no data) and its Send (its own key).
         "/embed/p/:project/agents/:id",
         "/api/embed/say",
+        // Issue 334: a web app's server reads its agent's state (its key).
+        "/api/embed/p/:project/agents/:id/state",
       ].sort(),
     );
     // HUB-1.7: Hub's redirect back carries no session cookie; the state

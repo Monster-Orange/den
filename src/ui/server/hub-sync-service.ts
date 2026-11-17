@@ -49,12 +49,21 @@ export function projectSync(): ProjectSync {
   }));
 }
 
-/** Start it: one send now, then a cheap check on an interval. */
+/**
+ * Start it: one send now, then a cheap check on an interval. Issue 271:
+ * the same beat reads a new Hub project asked of Hub (only when one
+ * waits), so a project links on its own once an owner allows it.
+ */
 export function startProjectSync(checkSeconds: number): void {
   const s = projectSync();
   s.request();
   const ms = Math.max(5, checkSeconds) * 1000;
-  setInterval(() => s.check(), ms).unref();
+  setInterval(() => {
+    s.check();
+    void import("./hub-create-routes.js")
+      .then((m) => m.settleAllHubCreates())
+      .catch(() => undefined);
+  }, ms).unref();
 }
 
 /**

@@ -260,7 +260,9 @@ export async function mountSettings(deps) {
       ...patch,
     });
     if (!reply) return false;
-    ctx.wsSettings = { editor: reply.editor ?? null };
+    // Every field the reply returns (issue 160: the policy rows too).
+    const { ok: _ok, ...fields } = reply;
+    ctx.wsSettings = { ...(ctx.wsSettings || {}), ...fields };
     return true;
   }
   async function loadWorkspaceSettings() {
@@ -380,7 +382,7 @@ export async function mountSettings(deps) {
         : "";
     return (
       `<section id="cat-${esc(c.id)}" data-cat="${esc(c.id)}" aria-labelledby="h-${esc(c.id)}">` +
-      `<h3 id="h-${esc(c.id)}">${esc(c.label)}${tag(c.from)}</h3>` +
+      `<h2 id="h-${esc(c.id)}">${esc(c.label)}${tag(c.from)}</h2>` +
       (c.description ? `<p>${esc(c.description)}</p>` : "") +
       ws +
       none +

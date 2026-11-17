@@ -16,6 +16,7 @@ import {
   workspaceSlug,
 } from "../workspace-name.js";
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import { reservedWorkspaceError } from "../agents/server-agent.js";
 import * as path from "path";
 import * as yaml from "yaml";
@@ -1037,11 +1038,7 @@ export function generateVSCodeWorkspace(
   }
 
   const outPath = path.join(wsDir, `${workspaceName}.code-workspace`);
-  fs.writeFileSync(
-    outPath,
-    JSON.stringify({ folders }, null, 2) + "\n",
-    "utf-8",
-  );
+  writeFileAtomic(outPath, JSON.stringify({ folders }, null, 2) + "\n");
   return outPath;
 }
 
