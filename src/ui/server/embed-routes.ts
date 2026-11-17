@@ -20,7 +20,15 @@
  *        Den's CORS, and Den has none). 401 bad_key / key_expired; 403
  *        origin_not_listed when the host was taken off the list since.
  *
+ *   GET  /api/embed/p/<project>/agents/<id>/state  issue 334: the agent's
+ *        state for a web app's server, with its server key
+ *        (embed-server-keys.ts) in X-Den-Embed-Key: running or not, and
+ *        stopped, busy, idle or waiting (with what it waits on). The key's
+ *        own agent only: another is 403 key_scope. 401 bad_key /
+ *        key_revoked; 403 origin_not_listed.
+ *
  * Every key mint and every message is audited (its length, never its text).
+ * The embed key reaches nothing else (request-guard.ts, EMBED_KEY_ROUTES).
  */
 import type * as http from "http";
 import * as path from "path";
@@ -35,6 +43,7 @@ import { sayBody, typeMessage } from "./agent-say.js";
 import { composeMessage } from "./shared-page.js";
 import { recordAction } from "./audit.js";
 import { EMBED_KEY_HEADER, EmbedKeys } from "./embed-keys.js";
+import { ServerKeys, type ServerKeyView } from "./embed-server-keys.js";
 import {
   checkOrigin,
   originListed,
@@ -43,6 +52,7 @@ import {
 import { readBody, sendJson } from "./http-helpers.js";
 
 const EMBED_PATH = /^\/embed\/p\/([^/]+)\/agents\/([^/]+)\/?$/;
+const STATE_PATH = /^\/api\/embed\/p\/([^/]+)\/agents\/([^/]+)\/state$/;
 
 export interface EmbedDeps {
   settings(): EmbedSettings;
@@ -59,6 +69,32 @@ export interface EmbedDeps {
   agentCaller(req: http.IncomingMessage): boolean;
   actor(req: http.IncomingMessage): Actor;
   principal(req: http.IncomingMessage): string | undefined;
+  /** Issue 334: the server keys (made in Settings › Embedding). */
+  serverKeys(): ServerKeys;
+  /** Issue 334: whether the agent can take a message now (agent-ops). */
+  inputState(id: string): Promise<"missing" | "stopped" | "busy" | "idle">;
+  /** Issue 334: what the agent waits on for its person, or null. */
+  waitingOf(id: string): EmbedWaiting | null;
+}
+
+/** Issue 334: what an agent waits on (attention.ts, a held Allow, a pause). */
+export interface EmbedWaiting {
+  why: string;
+  what?: string;
+  since?: string;
+}
+
+export type EmbedAgentState = "stopped" | "busy" | "idle" | "waiting";
+
+/** Issue 334: what the state route says, from the input state and the wait. */
+export function embedStateView(
+  input: "missing" | "stopped" | "busy" | "idle",
+  waiting: EmbedWaiting | null,
+): { running: boolean; state: EmbedAgentState; waiting?: EmbedWaiting } {
+  if (input === "missing" || input === "stopped")
+    return { running: false, state: "stopped" };
+  if (waiting) return { running: true, state: "waiting", waiting };
+  return { running: true, state: input };
 }
 
 /** One store per server: keys live in memory only. */
@@ -167,7 +203,113 @@ export async function handleEmbedRoutes(
     if (method !== "POST") return fail(res, 405, "method", "POST only");
     return say(req, res, deps);
   }
+  const st = STATE_PATH.exec(pathname);
+  if (st) {
+    if (method !== "GET" && method !== "HEAD")
+      return fail(res, 405, "method", "GET only");
+    return agentState(req, res, deps, decode(st[1]), decode(st[2]));
+  }
   return false;
+}
+
+/**
+ * Issue 334: the server key in X-Den-Embed-Key, checked: still Den's, not
+ * revoked, its origin still listed, and the request's Origin (a server
+ * sends none) its own. Answers the refusal itself: null then.
+ */
+function serverKeyOf(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  deps: EmbedDeps,
+): ServerKeyView | null {
+  const raw = req.headers[EMBED_KEY_HEADER];
+  const c = deps.serverKeys().check(Array.isArray(raw) ? raw[0] : raw);
+  if (!c.ok) {
+    fail(
+      res,
+      401,
+      c.code,
+      c.code === "key_revoked"
+        ? "This app key was revoked in Settings › Embedding."
+        : "This request has no valid app key.",
+    );
+    return null;
+  }
+  const k = c.key;
+  const refuse = (code: string, error: string, reason: string) => {
+    recordAction(
+      null,
+      {
+        verb: "embed",
+        detail: `app key ${k.id} for ${k.agent}`,
+        targetWorkspace: k.project,
+        outcome: "refused",
+        reason,
+      },
+      `embed:${k.origin}`,
+    );
+    fail(res, 403, code, error);
+    return null;
+  };
+  if (!originListed(k.origin, deps.settings().origins))
+    return refuse(
+      "origin_not_listed",
+      `${k.origin} is no longer on Settings › Embedding's list.`,
+      "origin taken off the list",
+    );
+  const sent = req.headers.origin;
+  if (typeof sent === "string" && sent !== k.origin)
+    return refuse(
+      "origin_mismatch",
+      `This key is for ${k.origin}, not ${sent}.`,
+      "another origin",
+    );
+  return k;
+}
+
+async function agentState(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  deps: EmbedDeps,
+  project: string | null,
+  agent: string | null,
+): Promise<boolean> {
+  const k = serverKeyOf(req, res, deps);
+  if (!k) return true;
+  if (project !== k.project || agent !== k.agent) {
+    recordAction(
+      null,
+      {
+        verb: "embed",
+        detail: `app key ${k.id} for ${k.agent} read ${String(project)}/${String(agent)}`,
+        targetWorkspace: k.project,
+        outcome: "refused",
+        reason: "another agent",
+      },
+      `embed:${k.origin}`,
+    );
+    return fail(res, 403, "key_scope", "This key reaches only its own agent.");
+  }
+  const rec = agentOf(deps.stateDir(), k.project, k.agent);
+  if (!rec)
+    return fail(
+      res,
+      404,
+      "no_agent",
+      `Project ${k.project} has no agent ${k.agent}.`,
+    );
+  deps.serverKeys().touch(k.id);
+  const v = embedStateView(
+    await deps.inputState(rec.id),
+    deps.waitingOf(rec.id),
+  );
+  res.setHeader("Cache-Control", "no-store");
+  sendJson(res, {
+    ok: true,
+    agent: { id: rec.id, project: rec.workspace, name: nameOf(rec) },
+    ...v,
+  });
+  return true;
 }
 
 async function mintKey(

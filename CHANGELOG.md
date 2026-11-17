@@ -4,6 +4,17 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.65] - unreleased
+
+### Added
+
+- A web app on this computer can read one project agent's state from its
+  own server, with a server key: `GET /api/embed/p/<project>/agents/<id>/state`
+  answers running or not, and stopped, busy, idle or waiting (with what it
+  waits on). Only the key's hash is kept; a revoked key gets 401 at once.
+  An embed key reaches only its agent's embed routes: anywhere else it is
+  refused (issue 334).
+
 ## [0.4.64] - unreleased
 
 ### Fixed

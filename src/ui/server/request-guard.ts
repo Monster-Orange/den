@@ -77,6 +77,7 @@ import {
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
 import {
+  EMBED_KEY_ROUTES,
   isMutatingGet,
   pathMatches,
   routeClass,
@@ -210,7 +211,8 @@ export type GuardResult =
         | "origin_rejected"
         | "csrf"
         | "cross_site"
-        | "agent_forbidden";
+        | "agent_forbidden"
+        | "embed_key_scope";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
@@ -536,6 +538,19 @@ export function checkRequest(
         "This server answers only to its own host names (localhost, " +
         "127.0.0.1, [::1] with its port, or its edge hostname).",
     };
+  // Issue 334: an embed key reaches its own routes only, never another
+  // (loopback lets an anonymous request through: the key must not ride along).
+  if (header(req, "x-den-embed-key") !== undefined) {
+    const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (!EMBED_KEY_ROUTES.some((r) => pathMatches(r, p)))
+      return {
+        ok: false,
+        status: 403,
+        code: "embed_key_scope",
+        error:
+          "An embed key reaches only its agent's embed routes (say and state). Nothing ran.",
+      };
+  }
   const peerLoopback = ctx.peerIsLoopback ? ctx.peerIsLoopback(req) : true;
   // The edge: local when it attests this machine; a client it can't place
   // signs in unless web.edge_unattested is local; never local when this
