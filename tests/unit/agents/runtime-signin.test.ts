@@ -35,7 +35,9 @@ import {
   agentTokenRefName,
   agentsWithoutSignIn,
   DEFAULT_TOKEN_WARN_DAYS,
+  TOKEN_DOCS,
   TOKEN_MAKE_HINT,
+  TOKEN_RUNTIME,
 } from "../../../src/shared/agents/signin-token.js";
 import {
   clearVersionCache,
@@ -144,7 +146,11 @@ describe("sign-in is data on the catalog entry", () => {
       env: "CLAUDE_CODE_OAUTH_TOKEN",
       command: "claude setup-token",
       lastsDays: 365,
+      // Issue 399: the vendor's page on it, the URL checked beside it.
+      docs: "https://code.claude.com/docs/en/authentication",
     });
+    expect(TOKEN_DOCS).toBe(e.signIn!.docs);
+    expect(TOKEN_RUNTIME).toBe("Claude Code");
     expect(
       new RegExp(e.signIn!.limitPattern!, "i").test(
         "You've hit your limit · resets 3pm",
@@ -176,6 +182,7 @@ describe("sign-in is data on the catalog entry", () => {
           command: "mine-cli auth token",
           lastsDays: 90,
           limitPattern: "rate limit reached",
+          docs: "https://mine.example.com/docs/auth",
         }),
         at,
       ).signIn,
@@ -184,6 +191,7 @@ describe("sign-in is data on the catalog entry", () => {
       command: "mine-cli auth token",
       lastsDays: 90,
       limitPattern: "rate limit reached",
+      docs: "https://mine.example.com/docs/auth",
     });
     expect(
       validateCatalogEntry(mineEntry({ env: "MINE_TOKEN" }), at).signIn,
@@ -198,6 +206,10 @@ describe("sign-in is data on the catalog entry", () => {
       [{ env: "X_T", limitPattern: "(" }, /signIn\.limitPattern/],
       [{ env: "X_T", command: "a\nb" }, /signIn\.command/],
       [{ env: "X_T", other: 1 }, /signIn\.other: unknown key/],
+      // Issue 399: the vendor's https page, nothing else.
+      [{ env: "X_T", docs: "http://mine.example.com" }, /signIn\.docs/],
+      [{ env: "X_T", docs: "javascript:alert(1)" }, /signIn\.docs/],
+      [{ env: "X_T", docs: "not a url" }, /signIn\.docs/],
     ] as const)
       expect(() =>
         validateCatalogEntry(mineEntry(bad as Record<string, unknown>), at),
