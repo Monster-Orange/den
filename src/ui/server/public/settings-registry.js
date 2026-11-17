@@ -790,6 +790,11 @@ function drawOrigins(host, ctx, api) {
  * the person, and the new key is shown here once, after the Allow.
  */
 function drawAppKeys(host, ctx) {
+  // Under an invalid config the agents and the keys answer 422: ask nothing.
+  if (ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return;
+  }
   const shell = ctx.shell;
   const origins = Array.isArray(ctx.data?.embed?.origins)
     ? ctx.data.embed.origins
@@ -912,7 +917,7 @@ function drawAppKeys(host, ctx) {
     if (key) {
       out.innerHTML =
         `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's server now. It is not shown again."))}</p>` +
-        `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:monospace" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
+        `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:var(--mono)" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
         `<button type="button" class="btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
       const box = out.querySelector("#set-appkey-new");
       box.value = key;
