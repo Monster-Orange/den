@@ -90,4 +90,9 @@ describe("UK-2 kit: the Settled timings", () => {
     expect(val("NO_ANSWER_MS")).toBe(60000);
     expect(val("SUCCESS_CLOSE_MS")).toBe(1200);
   });
+  it("reconnect asks every 1 s backing off to 3 s, each given up after 3 s", () => {
+    expect(val("POLL_MS")).toBe(1000);
+    expect(val("POLL_MAX_MS")).toBe(3000);
+    expect(val("ASK_MS")).toBe(3000);
+  });
 });
