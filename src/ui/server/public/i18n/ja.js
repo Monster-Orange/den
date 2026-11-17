@@ -580,6 +580,16 @@
     "keep.tokenLabel": "サインイン用トークン",
     "keep.tokenSave": "保存",
     "keep.tokenFailed": "保存されませんでした: {error}",
+    "keep.tokenClear": "削除",
+    "keep.clearTitle": "サインイントークンを削除しますか?",
+    "keep.clearAsk":
+      "シークレットストアから削除されます。「ログアウト後もエージェントを動かす」のエージェントは、新しいトークンを設定するまでサインインできません。",
+    "keep.clearOk": "削除",
+    "keep.clearW": "サインイントークンを削除しています…",
+    "keep.clearS": "削除しました。",
+    "keep.clearF": "サインイントークンを削除できませんでした。",
+    "keep.noStore":
+      "このインストールにはシークレットストアがないため、サインイントークンを保存できません。先に secrets.provider を 1password か doppler に設定してください。",
     "keep.tokenSet":
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",

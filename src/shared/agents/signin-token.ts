@@ -60,6 +60,12 @@ export const HOST_JOB_FILE = "sessions-host-job.json";
 /** When the token was set (never the token): `<stateDir>/<this>`. */
 export const TOKEN_META_FILE = "agent-signin-token.json";
 
+/**
+ * Left by `agents token clear` when the ref stays (a ref the config names):
+ * the value is gone, so no token is set until the next set.
+ */
+export const TOKEN_CLEARED_FILE = "agent-signin-token-cleared.json";
+
 /** agents.signin_token_warn_days: how old a token is before doctor warns. */
 export const DEFAULT_TOKEN_WARN_DAYS = 330;
 
@@ -222,8 +228,9 @@ export async function saveAgentToken(
   const bad = tokenShapeError(token);
   if (bad) throw new Error(bad);
   const value = token.trim();
-  const provider = (d.provider ?? getSecretsProvider)();
   const st = (d.status ?? (() => secretsStatus()))();
+  if (st.backend === "none") throw new NoSecretsStoreError();
+  const provider = (d.provider ?? getSecretsProvider)();
   let ref = (d.ref ?? (() => agentTokenRef()))();
   let created: Partial<SecretRef> | null = null;
   if (!ref) {
@@ -272,7 +279,117 @@ export async function saveAgentToken(
     setAt: (d.now ?? (() => new Date()))().toISOString(),
     store: st.label,
   });
+  fs.rmSync(path.join(d.stateDir, TOKEN_CLEARED_FILE), { force: true });
   return { ref: created ? "created" : "configured", store: st.label };
+}
+
+export interface TokenClearDeps extends Omit<
+  TokenStoreDeps,
+  "saveRef" | "now"
+> {
+  /** The process env (the env backend's value lives there). */
+  env?: NodeJS.ProcessEnv;
+  /** user.yml's secrets.refs.agent_signin_token (default: read it). */
+  userRef?: () => Partial<SecretRef> | undefined;
+  /** Remove it from user.yml (default: writeUserConfig). */
+  dropRef?: () => void;
+}
+
+export type TokenClearResult =
+  | { cleared: false }
+  | {
+      cleared: true;
+      store: string;
+      /** item: Den's own 1Password item; deleted: the field or secret; process: env only. */
+      how: "item" | "deleted" | "process";
+      /** The ref Den wrote to user.yml is gone too. */
+      refDropped: boolean;
+    };
+
+/**
+ * `agents token clear`: removes the token the way set stored it. A ref Den
+ * made (its own 1Password item, or its Doppler key, written to user.yml)
+ * goes with it: the item or secret is deleted and the ref dropped. A ref the
+ * config names stays, its field or secret deleted. The env backend only
+ * ever had it in this process. Never reads or prints the value.
+ */
+export async function clearAgentToken(
+  d: TokenClearDeps,
+): Promise<TokenClearResult> {
+  const st = (d.status ?? (() => secretsStatus()))();
+  if (st.backend === "none") throw new NoSecretsStoreError();
+  const ref = (d.ref ?? (() => agentTokenRef()))();
+  const forget = () => {
+    fs.rmSync(path.join(d.stateDir, TOKEN_META_FILE), { force: true });
+  };
+  if (st.backend === "env") {
+    const env = d.env ?? process.env;
+    const key = ref?.key;
+    forget();
+    if (!key || env[key] === undefined) return { cleared: false };
+    delete env[key];
+    return {
+      cleared: true,
+      store: st.label,
+      how: "process",
+      refDropped: false,
+    };
+  }
+  if (!ref) {
+    forget();
+    return { cleared: false };
+  }
+  const provider = (d.provider ?? getSecretsProvider)();
+  if (!provider.delete)
+    throw new Error(`${st.label} can't remove a secret from here`);
+  const userRef = (
+    d.userRef ?? (() => readUserConfig().secrets?.refs?.[AGENT_TOKEN_REF_NAME])
+  )();
+  const fresh = newAgentTokenRef(st.backend);
+  const madeByDen =
+    !!userRef &&
+    !!fresh &&
+    Object.entries(fresh).every(
+      ([k, v]) => (userRef as Record<string, unknown>)[k] === v,
+    ) &&
+    Object.entries(fresh).every(
+      ([k, v]) => (ref as unknown as Record<string, unknown>)[k] === v,
+    );
+  try {
+    await provider.delete(ref, {
+      wholeItem: madeByDen && st.backend === "1password",
+    });
+  } catch (err) {
+    throw new Error(
+      String((err as Error)?.message ?? err).trim() ||
+        "the secrets store refused it",
+    );
+  }
+  forget();
+  if (madeByDen) {
+    (
+      d.dropRef ??
+      (() => {
+        const user = readUserConfig();
+        const refs = { ...(user.secrets?.refs ?? {}) };
+        delete refs[AGENT_TOKEN_REF_NAME];
+        writeUserConfig({ ...user, secrets: { ...user.secrets, refs } });
+      })
+    )();
+  } else {
+    fs.mkdirSync(d.stateDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(d.stateDir, TOKEN_CLEARED_FILE),
+      JSON.stringify({ clearedAt: new Date().toISOString() }) + "\n",
+      { mode: 0o600 },
+    );
+  }
+  return {
+    cleared: true,
+    store: st.label,
+    how: madeByDen && st.backend === "1password" ? "item" : "deleted",
+    refDropped: madeByDen,
+  };
 }
 
 /** The token from the store, or null with why (never the token). */
@@ -296,6 +413,26 @@ export async function readAgentToken(
   }
 }
 
+/** The code a person-facing answer carries when there is no store. */
+export const NO_SECRETS_STORE = "no_secrets_store";
+
+/** Plain words for it: a config gap, not a server error. */
+export const NO_STORE_MESSAGE =
+  "this install has no secrets store, so the sign-in token can't be kept: set secrets.provider to 1password or doppler";
+
+/** secrets.provider is none: nothing can keep the token. */
+export class NoSecretsStoreError extends Error {
+  readonly code = NO_SECRETS_STORE;
+  constructor() {
+    super(NO_STORE_MESSAGE);
+    this.name = "NoSecretsStoreError";
+  }
+}
+
+/** `agents token status` with no token, not under the always-on service. */
+export const NO_TOKEN_NOT_NEEDED =
+  "no sign-in token set; needed only under Keep agents running after logout";
+
 export interface TokenStatus {
   /** Agents started now sign in with the token (the always-on service). */
   mode: SignInMode;
@@ -314,6 +451,8 @@ export interface TokenStatus {
   stored?: boolean;
   /** Why it isn't stored, in plain words (never the token). */
   reason?: string;
+  /** No secrets store (secrets.provider none): nothing can keep it. */
+  noStore?: boolean;
   /**
    * The store's own credential (1Password's service-account token) is
    * referenced as `keychain:`, which the always-on service may not reach.
@@ -333,7 +472,7 @@ export async function agentTokenStatus(
   d: TokenStatusDeps,
 ): Promise<TokenStatus> {
   const out = agentTokenStatusNow(d);
-  const ref = (d.ref ?? (() => agentTokenRef()))();
+  const ref = out.configured ? (d.ref ?? (() => agentTokenRef()))() : null;
   if (d.probe && ref) {
     const r = await readAgentToken({ ref: () => ref, provider: d.provider });
     out.stored = !!r.token;
@@ -397,12 +536,14 @@ export function agentTokenStatusNow(d: TokenStatusDeps): TokenStatus {
     cred.trim().startsWith("keychain:");
   const out: TokenStatus = {
     mode: agentSignInMode(d.env, d.stateDir),
-    configured: !!ref,
+    configured:
+      !!ref && !fs.existsSync(path.join(d.stateDir, TOKEN_CLEARED_FILE)),
     setAt: meta?.setAt ?? null,
     ageDays,
     old: ageDays !== null && ageDays >= warnDays,
     warnDays,
     store,
+    noStore: backend === "none",
     credInKeychain,
   };
   return out;
@@ -429,6 +570,10 @@ function tokenLine(
   localDate: (iso: string) => string,
 ): { status: "ok" | "warn"; text: string } {
   const fix = `make one with ${TOKEN_MAKE_HINT}, then ${cli} agents token set`;
+  // Not under the always-on service: agents sign in from the desktop login,
+  // so no token is nothing to warn about.
+  if ((!st.configured || st.stored === false) && st.mode !== "token")
+    return { status: "ok", text: NO_TOKEN_NOT_NEEDED };
   if (!st.configured || st.stored === false)
     return {
       status: "warn",

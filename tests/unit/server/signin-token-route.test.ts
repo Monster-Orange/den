@@ -18,6 +18,7 @@ import {
 } from "../../../src/ui/server/keep-running-routes.js";
 import {
   agentTokenStatusNow,
+  clearAgentToken,
   saveAgentToken,
 } from "../../../src/shared/agents/signin-token.js";
 import { spawn } from "child_process";
@@ -218,5 +219,111 @@ describe("POST /api/agents/signin-token", () => {
     expect(r.text).toMatch(/doppler said no/);
     expect(r.text).not.toContain(TOKEN);
     await w.close();
+  });
+
+  it("no secrets store (provider none): 409 no_secrets_store in plain words, never a 500", async () => {
+    const w = await world({
+      save: (token) =>
+        saveAgentToken(token, {
+          provider: () => {
+            throw new Error("no provider is asked");
+          },
+          ref: () => null,
+          status: () => ({
+            backend: "none",
+            label: "none",
+            implicit: true,
+            detect: { available: true },
+          }),
+          stateDir: path.join(os.tmpdir(), "den-no-store-never-written"),
+        }),
+    });
+    const r = await w.post({ token: TOKEN });
+    expect(r.status).toBe(409);
+    const body = JSON.parse(r.text) as Record<string, unknown>;
+    expect(body.code).toBe("no_secrets_store");
+    expect(body.error).toMatch(/no secrets store/);
+    expect(r.text).not.toContain(TOKEN);
+    await w.close();
+  });
+});
+
+describe("DELETE /api/agents/signin-token", () => {
+  async function call(
+    over: Partial<SignInTokenDeps>,
+    headers: Record<string, string> = {},
+  ) {
+    const server = http.createServer((req, res) => {
+      const u = new URL(req.url ?? "/", "http://x");
+      if (
+        !handleSignInTokenRoute(req, res, u.pathname, {
+          isAgent: (r) => r.headers["x-test-agent"] === "1",
+          save: async () => ({ ref: "configured", store: "Doppler" }),
+          status: () => ({ configured: false, store: "Doppler" }),
+          readBody: async () => "",
+          sendJson: (r, body, status = 200) => {
+            r.writeHead(status, { "content-type": "application/json" });
+            r.end(JSON.stringify(body));
+          },
+          ...over,
+        })
+      ) {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as AddressInfo).port;
+    const r = await fetch(`http://127.0.0.1:${port}/api/agents/signin-token`, {
+      method: "DELETE",
+      headers,
+    });
+    const out = {
+      status: r.status,
+      body: (await r.json()) as Record<string, unknown>,
+    };
+    await new Promise<void>((r) => server.close(() => r()));
+    return out;
+  }
+
+  it("a person's request removes it and answers the row's state", async () => {
+    let ran = 0;
+    const r = await call({
+      clear: async () => (ran++, { cleared: true, store: "Doppler" }),
+    });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({
+      ok: true,
+      cleared: true,
+      signin: { configured: false },
+    });
+    expect(ran).toBe(1);
+  });
+
+  it("an agent's request is refused, and nothing is removed", async () => {
+    let ran = 0;
+    const r = await call(
+      { clear: async () => (ran++, { cleared: true }) },
+      { "x-test-agent": "1" },
+    );
+    expect(r.status).toBe(403);
+    expect(ran).toBe(0);
+  });
+
+  it("no secrets store: 409 no_secrets_store, never a 500", async () => {
+    const r = await call({
+      clear: () =>
+        clearAgentToken({
+          status: () => ({
+            backend: "none",
+            label: "none",
+            implicit: true,
+            detect: { available: true },
+          }),
+          stateDir: path.join(os.tmpdir(), "den-no-store-never-written"),
+        }),
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("no_secrets_store");
   });
 });

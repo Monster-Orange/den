@@ -966,6 +966,51 @@ function wireTokenField(host, ctx, line, t) {
   host.querySelector("[data-keep-copy]").addEventListener("click", () => {
     void navigator.clipboard?.writeText(SETUP_TOKEN_CMD);
   });
+  // No secrets store: nothing can keep the token, so the field says so
+  // before any paste and Save stays off (the server answers 409 besides).
+  const noStore = () => {
+    note.textContent = t("keep.noStore");
+    note.hidden = false;
+    input.disabled = true;
+    save.disabled = true;
+  };
+  if (ctx.data.agent_signin?.no_store) noStore();
+  // Issue 163: Clear removes it from the store, the way it was kept; the
+  // kit's confirm dialog first. A person's only (the server refuses an agent).
+  const clear = host.querySelector("[data-keep-token-clear]");
+  const showLine = (signin) => {
+    const l = keepTokenLine(signin, t);
+    line.dataset.keepToken = l.state;
+    line.textContent = l.text;
+    line.hidden = false;
+    clear.hidden = l.state === "missing";
+  };
+  clear.addEventListener("click", async () => {
+    note.hidden = true;
+    const { askConfirm } = await import("/dialog-den.js");
+    const ok = await askConfirm({
+      title: t("keep.clearTitle"),
+      message: t("keep.clearAsk"),
+      okLabel: t("keep.clearOk"),
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await ctx.shell.busyAction(
+        "clear-token",
+        (headers) =>
+          ctx.shell.api("DELETE", "/api/agents/signin-token", undefined, {
+            headers,
+          }),
+        { button: clear },
+      );
+      if (r?.ok) showLine(r.signin);
+    } catch (e) {
+      if (e?.code === "no_secrets_store") noStore();
+    } finally {
+      clear.disabled = false;
+    }
+  });
   save.addEventListener("click", async () => {
     const token = input.value;
     input.value = "";
@@ -988,10 +1033,10 @@ function wireTokenField(host, ctx, line, t) {
         { button: save },
       );
       if (r?.ok) {
-        const l = keepTokenLine(r.signin, t);
-        line.dataset.keepToken = l.state;
-        line.textContent = l.text;
-        line.hidden = false;
+        showLine(r.signin);
+      } else if (r?.code === "no_secrets_store") {
+        noStore();
+        return;
       } else {
         note.textContent = t("keep.tokenFailed", {
           error: r?.error || "",
@@ -999,13 +1044,16 @@ function wireTokenField(host, ctx, line, t) {
         note.hidden = false;
       }
     } catch (e) {
+      if (e?.code === "no_secrets_store") {
+        noStore();
+        return;
+      }
       note.textContent = t("keep.tokenFailed", {
         error: String(e?.message || ""),
       });
       note.hidden = false;
-    } finally {
-      save.disabled = false;
     }
+    save.disabled = false;
   });
 }
 
@@ -1030,7 +1078,7 @@ function renderKeepRunning(host, ctx) {
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
     `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
-    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button></label>` +
+    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
     `<p class="set-note" data-keep-token-note hidden></p>` +
     `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +

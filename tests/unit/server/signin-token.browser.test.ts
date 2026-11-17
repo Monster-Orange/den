@@ -44,6 +44,8 @@ beforeAll(async () => {
         'if [ "$1" = "--version" ]; then echo "v3.0.0"; exit 0; fi',
         'mkdir -p "$TMP/kept"',
         'if [ "$1" = secrets ] && [ "$2" = set ]; then cat > "$TMP/kept/$3"; exit 0; fi',
+        // `doppler secrets delete KEY --yes --silent`: the kept value goes.
+        'if [ "$1" = secrets ] && [ "$2" = delete ]; then echo "$3" >> "$TMP/deleted"; rm -f "$TMP/kept/$3"; exit 0; fi',
         "exit 1",
       ].join("\n"),
     },
@@ -150,6 +152,47 @@ describe("#299: Settings › Sign-in token", () => {
         () => (window as unknown as { __copied: string[] }).__copied,
       ),
     ).toEqual(["claude setup-token"]);
+    await p.context().close();
+  });
+
+  it("Clear asks first (the kit's dialog); Cancel keeps it, OK removes it from the store and the row says no token", async () => {
+    if (skip()) return;
+    const { p, bodies } = await settingsPage();
+    // Set one first, so there is something to clear.
+    await p.locator("[data-keep-token-input]").fill(TOKEN);
+    await p.locator("[data-keep-token-save]").click();
+    await p.waitForSelector('[data-keep-token="set"]');
+    await p.waitForTimeout(500);
+    const kept = path.join(s!.tmp, "kept");
+    expect(fs.readdirSync(kept)).toHaveLength(1);
+    const clear = p.locator("[data-keep-token-clear]");
+    expect(await clear.isVisible()).toBe(true);
+    // Cancel: nothing sent, nothing removed.
+    await clear.click();
+    await p.locator('dialog [data-dk="cancel"]').click();
+    await p.waitForTimeout(300);
+    expect(fs.readdirSync(kept)).toHaveLength(1);
+    // OK: removed from the store, the way set kept it.
+    await clear.click();
+    const removed = p.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/agents/signin-token") &&
+        r.request().method() === "DELETE",
+    );
+    await p.locator('dialog [data-dk="ok"]').click();
+    const res = await removed;
+    // The answer's words, if it isn't a 200 (never the token).
+    expect(
+      `${res.status()} ${res.status() === 200 ? "" : await res.text()}`,
+    ).toBe("200 ");
+    await p.waitForSelector('[data-keep-token="missing"]');
+    expect(fs.readdirSync(kept)).toEqual([]);
+    expect(fs.readFileSync(path.join(s!.tmp, "deleted"), "utf-8")).toMatch(
+      /_AGENT_SIGNIN_TOKEN/,
+    );
+    expect(await clear.isVisible()).toBe(false);
+    for (const b of bodies) expect(b).not.toContain(TOKEN);
+    expect(s!.log()).not.toContain(TOKEN);
     await p.context().close();
   });
 });

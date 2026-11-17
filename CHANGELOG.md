@@ -42,6 +42,16 @@ config and manifest changes a distribution must make to move to it under
 - A checklist for a real logout on a gate machine:
   `docs/always-on-gate.md`. Not run here. (#163)
 
+- `<cli> agents token clear` and a Clear button beside Save in Settings
+  remove the agents' sign-in token, the way set kept it: Den's own
+  1Password item is deleted, or its Doppler secret, and the ref leaves
+  user.yml; a ref the config names keeps its place, its field or secret
+  deleted; the env backend only had it in this process. A person's only
+  (an agent's request is refused); the command asks y/N unless `--yes`,
+  and Clear asks in the kit's dialog. With no secrets store it answers
+  the same `no_secrets_store` as set. The value is never read or
+  printed. In English, Spanish and Japanese. (#163)
+
 ### Changed
 
 - Den's top bar and rail come from the shared UI kit, den-ui 0.7.0: the
@@ -79,6 +89,19 @@ config and manifest changes a distribution must make to move to it under
   that sets its own PATH, and Den's sudo by absolute path is the stub
   too. A stub logs its name and arguments (never input) and exits 99;
   the test file that made the call fails, and so does the run. (#163)
+
+### Fixed
+
+- `agents token status` says what is true for the mode in effect. Not
+  under Keep agents running after logout, no token reads "no sign-in
+  token set; needed only under Keep agents running after logout" (exit
+  0); the warning that agents will not be able to sign in after logout
+  shows only under the always-on service. (#163)
+- Saving the sign-in token on an install with no secrets store
+  (`secrets.provider: none`) is no longer a server error: the answer is
+  409 with code `no_secrets_store` and plain words, and before any paste
+  the Settings field says there is no secrets store, with Save off. In
+  English, Spanish and Japanese. (#163)
 
 ### Migrations
 

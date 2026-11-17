@@ -217,6 +217,16 @@ export const DEN_ACTIONS = {
       failure: "keep.failed",
     },
   },
+  // Issue 163: Settings › Sign-in token › Clear.
+  "clear-token": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "keep.clearW",
+      success: "keep.clearS",
+      failure: "keep.clearF",
+    },
+  },
   // Issue 103: the composer's Send, under an agent's terminal.
   "send-message": {
     who: "Den",

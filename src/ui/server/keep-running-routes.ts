@@ -193,6 +193,9 @@ export function noteKeepRunningOffer(
  * #299 (inside #163): Settings › Keep agents running after logout ›
  * Sign-in token.
  *
+ *   DELETE /api/agents/signin-token         removes it the way it was kept
+ *                                           (a person's only; 409 with no
+ *                                           secrets store)
  *   POST /api/agents/signin-token {token}   a person's only (an agent's
  *        request is refused, as `agents token set` refuses in an agent's
  *        session). Writes the token to the install's configured secrets
@@ -209,6 +212,8 @@ export interface SignInTokenDeps {
   isAgent: (req: http.IncomingMessage) => boolean;
   /** saveAgentToken into the configured store. */
   save: (token: string) => Promise<{ ref: string; store: string }>;
+  /** clearAgentToken: removes it the way it was kept (DELETE). */
+  clear?: () => Promise<{ cleared: boolean; store?: string }>;
   /** The Settings row's agent_signin (never the token). */
   status: () => unknown;
   /** A line for the server's log (never the token). */
@@ -217,14 +222,61 @@ export interface SignInTokenDeps {
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
 }
 
+/** The 4xx code for a secrets config gap, or null for a real failure. */
+function configGapCode(e: unknown): string | null {
+  const code = (e as { code?: unknown })?.code;
+  if (code === "no_secrets_store") return "no_secrets_store";
+  if (code === "not-configured") return "secrets_not_configured";
+  return null;
+}
+
 export function handleSignInTokenRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
   d: SignInTokenDeps,
 ): boolean {
-  if (pathname !== "/api/agents/signin-token" || req.method !== "POST")
-    return false;
+  if (pathname !== "/api/agents/signin-token") return false;
+  if (req.method === "DELETE" && d.clear) {
+    const clear = d.clear;
+    void (async () => {
+      if (d.isAgent(req))
+        return d.sendJson(
+          res,
+          {
+            ok: false,
+            error: "only a person removes the agents' sign-in token",
+          },
+          403,
+        );
+      let r: { cleared: boolean; store?: string };
+      try {
+        r = await clear();
+      } catch (e) {
+        const error =
+          String((e as Error)?.message ?? e).trim() ||
+          "the secrets store refused it";
+        const gap = configGapCode(e);
+        return d.sendJson(
+          res,
+          gap ? { ok: false, code: gap, error } : { ok: false, error },
+          gap ? 409 : 500,
+        );
+      }
+      if (r.cleared)
+        d.log?.(`agents' sign-in token removed from ${r.store} (by a person)`);
+      return d.sendJson(res, {
+        ok: true,
+        cleared: r.cleared,
+        signin: d.status(),
+      });
+    })().catch(() => {
+      if (!res.headersSent)
+        d.sendJson(res, { ok: false, error: "not removed" }, 500);
+    });
+    return true;
+  }
+  if (req.method !== "POST") return false;
   void (async () => {
     if (d.isAgent(req))
       return d.sendJson(
@@ -252,15 +304,16 @@ export function handleSignInTokenRoute(
     try {
       saved = await d.save(value);
     } catch (e) {
+      const error =
+        withoutSecret(String((e as Error)?.message ?? e), value) ||
+        "the secrets store refused it";
+      // A config gap (no store, or one that keeps nothing) is the person's
+      // to fix, not a server error.
+      const gap = configGapCode(e);
       return d.sendJson(
         res,
-        {
-          ok: false,
-          error:
-            withoutSecret(String((e as Error)?.message ?? e), value) ||
-            "the secrets store refused it",
-        },
-        500,
+        gap ? { ok: false, code: gap, error } : { ok: false, error },
+        gap ? 409 : 500,
       );
     }
     d.log?.(`agents' sign-in token saved in ${saved.store} (by a person)`);
