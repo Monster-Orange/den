@@ -242,7 +242,11 @@ jobs:
   # (scripts/pr-nodes.js). A small subset runs here; a large one (all,
   # more than 150 files, or more than 30 browser specs) runs in pr-shards,
   # four ways. Issue 397: quarantined tests are left out of the blocking
-  # steps and run in a last step that can't block.
+  # steps and run in a last step that can't block. A failed test file runs
+  # once more (scripts/flake-retry.js); one that passes then is listed in
+  # the summary's "Flaky on retry" table, in the flaky-on-retry artifact,
+  # and with a warning when tests/quarantine.json doesn't have it. A push
+  # to main never retries: every failure blocks.
   pr:
     needs: [static]
     if: github.event_name == 'pull_request'
@@ -260,6 +264,11 @@ jobs:
     env:
       DEN_TEST_WORKERS: "2"
       DEN_TEST_QUARANTINE: exclude
+      # scripts/flake-retry.js: a failed test file runs once more; a pass on
+      # retry is listed as flaky (summary, artifact, a warning), never
+      # silent. Pull requests only: main never retries.
+      FLAKE_RETRY_SHA: ${{ github.event.pull_request.head.sha }}
+      FLAKE_RETRY_JOB: ${{ github.job }} (${{ matrix.node }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -320,17 +329,25 @@ jobs:
       - if: steps.select.outputs.shards == '[]'
         env:
           DEN_TEST_DOCKER: skip
-        run: mapfile -t files < affected.txt && npm test -- --passWithNoTests "${files[@]}"
+        run: mapfile -t files < affected.txt && node scripts/flake-retry.js -- --passWithNoTests "${files[@]}"
       - if: steps.select.outputs.shards == '[]'
         env:
           DEN_TEST_DOCKER: only
-        run: mapfile -t files < affected.txt && npm test -- --passWithNoTests "${files[@]}"
+        run: mapfile -t files < affected.txt && node scripts/flake-retry.js -- --passWithNoTests "${files[@]}"
       - name: Quarantined tests (never blocks)
         if: ${{ !cancelled() && steps.select.outputs.shards == '[]' }}
         continue-on-error: true
         env:
           DEN_TEST_QUARANTINE: only
         run: npx jest --forceExit --passWithNoTests
+      # Every file that passed only on its retry, for anyone to collect.
+      - name: Flaky on retry (artifact)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flaky-on-retry-pr-${{ matrix.node }}
+          path: flaky-on-retry.json
+          if-no-files-found: ignore
 
   # A large subset (all the tests, more than 150 files or 30 browser
   # specs), in four parts side by side on each Node. Each part picks the
@@ -344,6 +361,11 @@ jobs:
     env:
       DEN_TEST_WORKERS: "2"
       DEN_TEST_QUARANTINE: exclude
+      # scripts/flake-retry.js: a failed test file runs once more; a pass on
+      # retry is listed as flaky (summary, artifact, a warning), never
+      # silent. Pull requests only: main never retries.
+      FLAKE_RETRY_SHA: ${{ github.event.pull_request.head.sha }}
+      FLAKE_RETRY_JOB: ${{ github.job }} (${{ matrix.node }})
     strategy:
       fail-fast: false
       matrix:
@@ -368,13 +390,21 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       - env:
           DEN_TEST_DOCKER: skip
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
+        run: mapfile -t files < affected.txt && node scripts/flake-retry.js -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
       - env:
           DEN_TEST_DOCKER: only
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
+        run: mapfile -t files < affected.txt && node scripts/flake-retry.js -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
       - name: Quarantined tests (never blocks)
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           DEN_TEST_QUARANTINE: only
         run: npx jest --forceExit --shard=${{ matrix.shard }}/4 --passWithNoTests
+      # Every file that passed only on its retry, for anyone to collect.
+      - name: Flaky on retry (artifact)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flaky-on-retry-shards-${{ matrix.node }}-${{ matrix.shard }}
+          path: flaky-on-retry.json
+          if-no-files-found: ignore

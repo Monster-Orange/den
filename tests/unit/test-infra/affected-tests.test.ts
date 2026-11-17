@@ -599,7 +599,9 @@ describe("ci.yml (issue 398)", () => {
     // The checks come before the tests run (the subset is picked first:
     // seconds, and it says which Nodes the checks run on).
     expect(text.indexOf("npm run typecheck")).toBeLessThan(
-      text.indexOf("mapfile -t files < affected.txt && npm test"),
+      text.indexOf(
+        "mapfile -t files < affected.txt && node scripts/flake-retry.js",
+      ),
     );
     expect(text).toMatch(
       /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --summary "\$GITHUB_STEP_SUMMARY"/,
@@ -621,7 +623,7 @@ describe("ci.yml (issue 398)", () => {
         .filter(Boolean);
       expect([name, versions]).toEqual([name, ["${{ matrix.node }}"]]);
       expect(runs(ci.jobs[name])).toContain(
-        "mapfile -t files < affected.txt && npm test",
+        "mapfile -t files < affected.txt && node scripts/flake-retry.js --",
       );
     }
   });
