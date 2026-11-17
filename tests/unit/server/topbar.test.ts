@@ -319,10 +319,11 @@ describe("the pages", () => {
   it("the bar has the search field and the three chips, in the prototype's order", () => {
     const shell = read("shell.js");
     const at = (s: string) => shell.indexOf(s);
-    // Den's parts, in the kit's slots (issue 95): the search in `start`,
-    // the chips in `end`, ◐ ▾ in `account`.
+    // Den's parts, in the kit's slots (issue 95): the search in `start`
+    // (the kit's field, den-ui 0.7.0), the chips in `end`, ◐ ▾ in
+    // `account`.
     const order = [
-      'id="den-search"',
+      "DUI.searchHtml(",
       'id="den-status"',
       'id="den-runs"',
       'id="den-lock"',
@@ -346,7 +347,15 @@ describe("the pages", () => {
     ].map((x) => bar.indexOf(x));
     expect(kitOrder.every((i) => i > 0)).toBe(true);
     expect([...kitOrder].sort((a, b) => a - b)).toEqual(kitOrder);
-    expect(shell).toContain('<kbd aria-hidden="true">⌘K</kbd>');
+    // The search field is #den-search with ⌘K inside it: the kit draws
+    // it (searchHtml), with no id or shortcut of Den's own overriding it.
+    const search = kit.slice(kit.indexOf("export function searchHtml"));
+    expect(search).toContain('esc(id || "den-search")');
+    expect(search).toContain(`'<kbd aria-hidden="true">⌘K</kbd>'`);
+    expect(shell).toMatch(
+      // Den's own words for its placeholder and its name.
+      /DUI\.searchHtml\(\{ placeholder: t\("search\.ph"\), label: t\("search\.ph"\) \}\)/,
+    );
     // The dot row and the "+N" chip are gone from the bar.
     expect(shell).not.toContain('id="health"');
     expect(read("header.js")).not.toMatch(/health-more|_layoutHealthRow/);

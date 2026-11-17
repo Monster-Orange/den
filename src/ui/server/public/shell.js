@@ -3962,7 +3962,12 @@
     if (refocus && o.anchor.focus) o.anchor.focus();
   }
   function menuRows(pop) {
-    return Array.prototype.slice.call(pop.querySelectorAll(".den-mi"));
+    // An entry the kit's filter hid is not a stop.
+    return Array.prototype.slice
+      .call(pop.querySelectorAll(".den-mi"))
+      .filter(function (r) {
+        return !r.hidden;
+      });
   }
   function openMenu(anchor, menu) {
     var again = openPop && openPop.anchor === anchor;
@@ -4030,6 +4035,18 @@
       }
     });
     pop.innerHTML = html;
+    // A crumb's long menu (an org's or a project's list) gets the kit's
+    // type-to-filter field (den-ui 0.7.0): Esc clears it, then closes.
+    var filterField =
+      anchor.dataset && anchor.dataset.scope
+        ? DUI.attachMenuFilter(pop, {
+            label: menu.label,
+            lang: lang,
+            onClose: function (refocus) {
+              closeMenu(refocus);
+            },
+          })
+        : null;
     // Inside a modal, in it: anything outside a modal is inert.
     var host =
       (anchor.closest && anchor.closest("dialog[open]")) || document.body;
@@ -4074,7 +4091,8 @@
     });
     var rows = menuRows(pop);
     var first = pop.querySelector('.den-mi[aria-checked="true"]') || rows[0];
-    if (first) first.focus();
+    if (filterField) filterField.focus();
+    else if (first) first.focus();
     else pop.focus();
   }
   document.addEventListener("mousedown", function (e) {
@@ -4096,21 +4114,22 @@
       if (NAV[i].id === id) return NAV[i].href;
     return "/";
   }
-  /** A scope part: <button class="den-ib"><k>Key</k> value ▾</button>. */
-  function scopeButton(id, scope, key, value, hidden) {
-    return (
-      '<button type="button" id="' +
-      id +
-      '" class="den-ib den-scope-btn" data-scope="' +
-      scope +
-      '" aria-haspopup="menu" aria-expanded="false"' +
-      (hidden ? " hidden" : "") +
-      '><span class="den-k">' +
-      esc(key) +
-      '</span> <span class="den-v"><span class="den-vn">' +
-      esc(value) +
-      '</span> <span aria-hidden="true">▾</span></span></button>'
-    );
+  /**
+   * The org crumb, drawn by the kit (den-ui 0.7.0): a plain label while
+   * there is one org (C4), a ▾ button with Den's own menu for two or more.
+   */
+  function orgCrumb(word, value, menu, hidden) {
+    return {
+      id: "org-crumb",
+      key: "org",
+      label: word,
+      value: value,
+      menu: menu ? true : null,
+      hidden: !!hidden,
+      cls: "den-org",
+      optional: true,
+      valueCls: "den-org-name",
+    };
   }
 
   // ── Den's own groups and pages ─────────────────────────────────────────
@@ -4289,30 +4308,38 @@
   // neutral ("Checking…", "Runs"; the sudo chip hidden) and topbar.js
   // paints them: a cold load never shows a partial red.
   var slotStart =
-    // The prototype's scope breadcrumb (R4): / ORG <org> ▾ / WORKSPACE
-    // <ws> ▾ / ENV <env> ▾. Each part is an .ib button with a .pop menu.
-    // The org is a static label while there is one org (ORG-SPEC C4) and
-    // hidden until header.js knows it; the workspace part is hidden until
-    // header.js knows the workspaces. #env-sel stays as the env's value
-    // (pages read it and listen for its change): the Env menu drives it.
-    '<div class="den-scope" role="group" aria-label="' +
-    esc(t("scope")) +
-    '">' +
-    '<span class="den-sep" aria-hidden="true">/</span>' +
-    '<span id="org-crumb" class="den-ib den-org den-opt" hidden><span class="den-k">' +
-    esc(t("k.org")) +
-    '</span> <span class="den-org-name"></span></span>' +
-    '<span class="den-sep den-org-sep" aria-hidden="true" hidden>/</span>' +
-    scopeButton("ws-pill", "ws", t("k.ws"), "", true) +
-    '<span class="den-sep den-ws-sep" aria-hidden="true" hidden>/</span>' +
-    scopeButton("env-btn", "env", t("k.env"), "local", false) +
-    '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>' +
-    "</div>" +
-    '<button type="button" class="den-search" id="den-search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K" aria-label="' +
-    esc(t("search.ph")) +
-    '"><span class="den-search-ph">' +
-    esc(t("search.ph")) +
-    '</span><kbd aria-hidden="true">⌘K</kbd><span class="den-search-ic" aria-hidden="true">⌕</span></button>';
+    // The prototype's scope breadcrumb (R4): / COMPANY <org> / PROJECT
+    // <ws> ▾ / ENV <env> ▾, drawn by the kit (den-ui 0.7.0); each ▾ opens
+    // Den's own menu (openMenu). The org is a static label while there is
+    // one org (ORG-SPEC C4) and hidden until header.js knows it; the
+    // project part is hidden until header.js knows the projects. #env-sel
+    // stays as the env's value (pages read it and listen for its change):
+    // the Env menu drives it.
+    DUI.scopeHtml({
+      label: t("scope"),
+      crumbs: [
+        orgCrumb(t("k.org"), "", false, true),
+        {
+          id: "ws-pill",
+          key: "ws",
+          label: t("k.ws"),
+          value: "",
+          menu: true,
+          hidden: true,
+        },
+        {
+          id: "env-btn",
+          key: "env",
+          label: t("k.env"),
+          value: "local",
+          menu: true,
+        },
+      ],
+      after:
+        '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>',
+    }) +
+    // The ⌘K search field (R5), the kit's; ⌘K opens the palette (topbar.js).
+    DUI.searchHtml({ placeholder: t("search.ph"), label: t("search.ph") });
   var slotEnd =
     '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
     '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
@@ -4327,14 +4354,9 @@
     '<span class="den-lock-ic" aria-hidden="true">🔑</span><span class="den-lbl-l">' +
     esc(t("lock.waiting")) +
     "</span></button>";
-  // NT-3: the bell (bell.js paints its count and opens its panel).
-  var slotBell =
-    '<button type="button" class="den-ib den-bell" id="den-bell" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
-    esc(t("bell.title")) +
-    '" title="' +
-    esc(t("bell.title")) +
-    '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' +
-    '<span class="den-bell-n" hidden></span></button>';
+  // NT-3: the bell, the kit's (bell.js paints its count and fills its
+  // panel).
+  var slotBell = DUI.bellButtonHtml({ label: t("bell.title") });
   host.className = "den-shell";
   // The kit draws the frame: skip link, top bar (☰, brand, Den's slots,
   // Report · bell · version · ◐ ▾ in that order, UK-3), and the rail, its
@@ -4347,7 +4369,14 @@
       start: slotStart,
       end: slotEnd,
       bell: slotBell,
-      account: '<span class="den-user" id="den-user"></span>',
+      // ◐ ▾, the kit's (appearance.js gives its menu and takes the pick).
+      account:
+        '<span class="den-user" id="den-user">' +
+        DUI.appearanceButtonHtml({
+          label: t("um.label"),
+          title: t("um.title"),
+        }) +
+        "</span>",
     },
   });
   // The rail is drawn by renderRail from the registries (below).
@@ -4385,10 +4414,11 @@
     var m = scopeMenus[kind];
     return typeof m === "function" ? m() : m;
   }
-  host.addEventListener("click", function (e) {
-    var b = e.target.closest ? e.target.closest("[data-scope]") : null;
-    if (!b || b.tagName !== "BUTTON") return;
-    openMenu(b, scopeMenu(b.dataset.scope));
+  // The kit's crumbs (den-ui 0.7.0): a ▾ opens Den's own menu.
+  DUI.hydrateScope(host, {
+    onOpen: function (key, b) {
+      openMenu(b, scopeMenu(key));
+    },
   });
   host.addEventListener("keydown", function (e) {
     var b = e.target.closest ? e.target.closest("[data-scope]") : null;
@@ -4429,13 +4459,9 @@
     var el = document.getElementById("org-crumb");
     if (!el || !org || !org.title) return false;
     if (el.tagName === "BUTTON") {
-      var span = document.createElement("span");
-      span.id = "org-crumb";
-      span.className = "den-ib den-org den-opt";
-      span.innerHTML =
-        '<span class="den-k">' +
-        esc(t(orgWord)) +
-        '</span> <span class="den-org-name"></span>';
+      var tmp = document.createElement("span");
+      tmp.innerHTML = DUI.scopeCrumbHtml(orgCrumb(t(orgWord), "", false));
+      var span = tmp.firstChild;
       el.replaceWith(span);
       el = span;
     }
@@ -4480,10 +4506,8 @@
     if (!el) return false;
     if (el.tagName !== "BUTTON") {
       var tmp = document.createElement("span");
-      tmp.innerHTML = scopeButton("org-crumb", "org", t(orgWord), "", false);
+      tmp.innerHTML = DUI.scopeCrumbHtml(orgCrumb(t(orgWord), "", true));
       var btn = tmp.firstChild;
-      btn.className += " den-org den-opt";
-      btn.querySelector(".den-vn").className += " den-org-name";
       el.replaceWith(btn);
       el = btn;
     }
@@ -4715,19 +4739,17 @@
     var foot = [];
     var hub = hubEntry();
     if (hub) foot.push(hub);
-    foot.push({
-      id: SETTINGS.id,
-      href: SETTINGS.href,
-      label: t(SETTINGS.label),
-      icon: SETTINGS.icon,
-      current: page === SETTINGS.id,
-    });
-    var who = identityEntry();
-    if (who) foot.push(who);
     return {
       nav: entries,
       groups: groups,
       foot: foot,
+      // Settings, then the account entry: the kit's (den-ui 0.7.0).
+      settings: {
+        href: SETTINGS.href,
+        label: t(SETTINGS.label),
+        current: page === SETTINGS.id,
+      },
+      account: accountModel(),
       lang: lang,
       collapsed: state.collapsed,
     };
@@ -4825,8 +4847,8 @@
   /**
    * SEC-2a: the rail footer's identity chip: "Local" (this machine, no
    * sign-in), "Signed in · this device" (a one-time link or a code) or
-   * "@login" (GitHub). A rail item like Settings (the same .den-ni
-   * metrics), opening Settings › Access.
+   * "@login" (GitHub). The kit's account entry (den-ui 0.7.0), last in
+   * the rail's foot, opening Settings › Access.
    */
   function identityLabel(id) {
     if (!id) return "";
@@ -4835,15 +4857,15 @@
     if (id.kind === "github" || id.kind === "device") return t("ident.device");
     return "";
   }
-  function identityEntry() {
+  function accountModel() {
     var label = identityLabel(state.identity);
     if (!label) return null;
     return {
-      id: "identity",
+      navId: "identity",
       href: "/settings#access",
       label: label,
-      icon: "person",
-      attrs: { id: "den-ident", "data-ident": state.identity.kind },
+      id: "den-ident",
+      attrs: { "data-ident": state.identity.kind },
     };
   }
   /** What GET /api/session said about this browser: the chip, and a toast once after a sign-in. */
@@ -7608,19 +7630,8 @@
   var style = document.createElement("style");
   style.id = "den-shell-styles";
   style.textContent = [
-    // Scope (.scope, .sep, .k): / Org ▾ / Workspace ▾ / Env ▾ (R4)
-    // The search gives way first (dev.20): the scope keeps its parts whole
-    // (each name is capped below), so they never run into one another.
-    ".den-scope { display: flex; align-items: center; gap: 2px; min-width: 0; flex-shrink: 0; }",
-    ".den-sep { color: var(--faint); }",
-    ".den-scope [hidden] { display: none; }",
-    ".den-scope .den-ib { color: var(--text); font-size: 13px; }",
-    ".den-k { font: 11px var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }",
-    ".den-scope .den-ib[aria-expanded='true'] { background: var(--sunken); }",
-    // A long name ends in an ellipsis; the whole name is in the menu.
-    ".den-scope .den-ib { min-width: 0; }",
-    "#ws-pill .den-vn, #org-crumb .den-vn { display: inline-block; max-width: 200px; overflow: hidden;",
-    "  text-overflow: ellipsis; vertical-align: top; }",
+    // The scope crumbs, the ⌘K search, the bell and ◐ ▾ are the kit's
+    // (den-ui 0.7.0, shell.css): Den keeps only what it puts in them.
     // Menus (.pop, .ml, .mi, .hr: R18)
     ".den-pop { position: fixed; z-index: 45; background: var(--raised); border: 1px solid var(--border-strong);",
     "  border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 220px;",
@@ -7675,15 +7686,7 @@
     "  line-height: 1.45; text-decoration: none; }",
     ".ptabs [role='tab']:hover { color: var(--text); }",
     ".ptabs [role='tab'][aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }",
-    // Search (.search, kbd: R5). The prototype's sizes are content-box
-    // (the pages reset everything to border-box).
-    ".den-search { flex: 1 1 260px; max-width: 420px; margin: 0 auto; display: flex; align-items: center;",
-    "  gap: 8px; background: var(--sunken); border: 1px solid var(--border); border-radius: var(--radius-button);",
-    "  padding: 5px 10px; color: var(--faint); cursor: text; min-width: 0; font: inherit; box-sizing: content-box; }",
-    ".den-search-ph { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }",
-    ".den-search-ic { flex: none; }",
-    ".den-top kbd, .den-pal kbd { font: 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px;",
-    "  border-radius: 4px; padding: 0 5px; color: var(--muted); background: var(--surface); }",
+    // The key caps (⌘K, Report's ⌘⇧F) are the kit's (.den-kbd, den-ui 0.7.0).
     ".den-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);",
     "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer; font: inherit;",
     "  font-size: 13px; white-space: nowrap; flex-shrink: 0; color: var(--text); }",
@@ -7693,35 +7696,16 @@
     ".den-chip .den-dot, .den-drawer .den-dot, .den-pal .den-dot { margin: 0; }",
     ".den-chip[aria-expanded='true'] { border-color: var(--border-strong); }",
     ".den-chip[hidden] { display: none; }",
-    ".den-bell { position: relative; }",
-    ".den-bell-n { position: absolute; top: -4px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px;",
-    "  border-radius: 999px; background: var(--warn); color: var(--bg); font: 600 10px/16px var(--mono);",
-    "  text-align: center; }",
-    ".den-bell-n[hidden] { display: none; }",
-    ".den-bell-pop { position: fixed; top: 52px; right: 12px; width: min(420px, calc(100vw - 32px));",
-    "  max-height: min(70vh, 640px); overflow: auto; background: var(--surface); color: var(--text);",
-    "  border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 8px 28px color-mix(in srgb, var(--text) 25%, transparent);",
-    // On body, outside .den-top: its own font, or a page's default (a serif).
-    "  z-index: 60; padding: 8px 0; font: 13px/1.45 var(--sans); }",
-    ".den-bell-pop[hidden] { display: none; }",
-    ".den-bell-hd { display: flex; gap: 8px; align-items: center; padding: 4px 12px 8px;",
-    "  border-bottom: 1px solid var(--border); }",
-    ".den-bell-hd h2 { font-size: 13px; margin: 0; flex: 1; }",
-    ".den-bell-hd button, .den-bell-sc button { font: inherit; font-size: 12px; background: none; border: 0;",
+    // The bell's own rows (its button, badge, panel, heading, plain rows and
+    // empty state are the kit's, den-ui 0.7.0).
+    ".den-bell-sc button { font: inherit; font-size: 12px; background: none; border: 0;",
     "  color: var(--accent-text); cursor: pointer; padding: 2px 4px; }",
     // "Mark read" as "Mark all read": not the scope line's mono capitals.
     ".den-bell-sc button { font: 500 12px var(--sans); text-transform: none; letter-spacing: normal; }",
     ".den-bell-sc { display: flex; align-items: center; padding: 8px 12px 2px; color: var(--muted);",
     "  font: 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; }",
     ".den-bell-sc span { flex: 1; }",
-    ".den-bell-row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 12px; }",
-    ".den-bell-row:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }",
-    ".den-bell-row a { flex: 1; color: inherit; text-decoration: none; overflow-wrap: anywhere; }",
-    ".den-bell-row.read a { color: var(--muted); }",
-    ".den-bell-row time { color: var(--faint); font-size: 11px; white-space: nowrap; }",
-    ".den-bell-empty { padding: 16px 12px; color: var(--muted); }",
-    ".den-bell-empty p { margin: 0 0 6px; }",
-    ".den-bell-empty a, .den-tlink { color: var(--accent-text); }",
+    ".den-tlink { color: var(--accent-text); }",
     // Bell v6: a long question's two lines, ×N repeats, Older, the ⊘ ask.
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
     // Issue 167: the pick item's line under its title.
@@ -7740,9 +7724,9 @@
     "  background: var(--bg); }",
     ".den-bell-ask p { margin: 0 0 6px; }",
     ".den-bell-ask div { display: flex; gap: 8px; }",
-    // A phone: the full width, rows to touch, the small buttons 32px.
-    "@media (max-width: 480px) { .den-bell-pop { left: 0; right: 0; width: auto; top: 48px; border-radius: 0 0 10px 10px; }",
-    "  .den-bell-row { min-height: 44px; align-items: center; }",
+    // A phone: the small buttons 32px (the kit's shell.css makes the
+    // panel full width and its rows 44px).
+    "@media (max-width: 480px) {",
     "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 32px; min-width: 32px; } }",
     "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
@@ -7957,19 +7941,14 @@
     // counts): the scope's keys give way from 960px, not 860, so the bar
     // fits without the scope shrinking.
     "@media (max-width: 960px) { .den-scope .den-k { display: none; } }",
-    "@media (max-width: 860px) { .den-scope .den-k, .den-scope .den-sep, .den-scope .den-opt { display: none; }",
-    "  .den-chip .den-lbl-l { display: none; } }",
-    "@media (max-width: 720px) {",
-    "  .den-scope { display: none; }",
-    "  .den-search { flex: 0 0 auto; margin: 0 0 0 auto; }",
-    "  .den-search-ph, .den-search kbd { display: none; }",
-    "  .den-top .stale-lbl { display: none; }",
-    "}",
-    // A phone's tap targets: every top-bar button 32 px or more each way
-    // (issue 209, T9). The rest of this step (the title visually hidden)
-    // is the kit's shell.css.
+    // (The kit's shell.css hides the crumbs' keys at 860px, the crumbs and
+    // the search's words at 720px.)
+    "@media (max-width: 860px) { .den-chip .den-lbl-l { display: none; } }",
+    // A phone's tap targets (issue 209, T9): the dock's buttons 32 px or
+    // more each way. The top bar's, and the title visually hidden, are the
+    // kit's shell.css (den-ui 0.7.0).
     "@media (max-width: 479.98px) {",
-    "  .den-top button, .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
+    "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
     "}",
   ].join("\n");
   document.head.appendChild(style);

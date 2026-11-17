@@ -1,20 +1,23 @@
 /**
  * The header's appearance UI (public/appearance.js), on a small fake DOM:
  * the theme's mark (and that a live switch redraws it), the user menu's
- * model (R10, dev.20: Appearance, Theme with "Org default", a hidden
- * Language slot, All settings) opened through the shell's .pop menu, and
- * the same choices as ⌘K palette commands (R17).
+ * model (R10, dev.20: Appearance, Theme with "Org default", Language,
+ * Restart Den…, All settings), handed to the UI kit's ◐ ▾ (den-ui 0.7.0:
+ * the kit draws the button and the menu and gives Den the pick), and the
+ * same choices as ⌘K palette commands (R17).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  appearanceMenu,
+  appearancePick,
   initAppearance,
   markView,
   themeNotice,
   themeOptions,
-  userMenu,
 } from "../../../src/ui/server/public/appearance.js";
+import { markHtml } from "../../../packages/den-ui/src/shell-html.js";
 
 // ── A fake DOM: just what appearance.js touches ──────────────────────────────
 
@@ -71,6 +74,40 @@ class El {
   }
   setAttribute(k: string, v: string) {
     this.attrs[k] = String(v);
+    // The properties a few attributes reflect.
+    if (k === "class") this.className = String(v);
+    else if (k === "title" || k === "src" || k === "alt" || k === "id")
+      this[k] = String(v);
+    else if (k === "width" || k === "height") this[k] = Number(v);
+  }
+  get attributes(): { name: string; value: string }[] {
+    return Object.entries(this.attrs).map(([name, value]) => ({
+      name,
+      value,
+    }));
+  }
+  get childNodes(): El[] {
+    return [...this.children];
+  }
+  /** A <template>'s content: its parsed children. */
+  get content(): { firstElementChild: El | null } {
+    return { firstElementChild: this.children[0] ?? null };
+  }
+  /** Markup as the kit's markHtml writes it: elements and attributes. */
+  set innerHTML(html: string) {
+    this.replaceChildren();
+    const stack: El[] = [this];
+    for (const m of html.matchAll(/<(\/?)([a-z]+)([^>]*)>/g)) {
+      if (m[1]) {
+        stack.pop();
+        continue;
+      }
+      const el = new El(m[2]!);
+      for (const a of m[3]!.matchAll(/([a-z-]+)="([^"]*)"/g))
+        el.setAttribute(a[1]!, a[2]!);
+      stack[stack.length - 1]!.appendChild(el);
+      if (m[2] !== "img") stack.push(el);
+    }
   }
   getAttribute(k: string) {
     return this.attrs[k] ?? null;
@@ -229,12 +266,25 @@ interface Cmd {
   kind: string;
   run: () => unknown;
 }
-const opened: { anchor: El; menu: { label: string; items: MenuItem[] } }[] = [];
+/** What the kit's hydrateAppearance was handed (den-ui 0.7.0). */
+interface KitMenu {
+  mode: string;
+  modes: { value: string; label: string }[];
+  themes: { value: string; label: string; selected?: boolean }[];
+  notice: string | null;
+  languages: { id: string; name: string; current?: boolean }[];
+  items: { label: string; href?: string; id?: string }[];
+}
+const hooked: {
+  btn: El;
+  opts: {
+    menu: () => KitMenu;
+    onPick: (kind: string, value: string | null) => unknown;
+  };
+}[] = [];
 const cmds = new Map<string, Cmd>();
 const languagePicks: string[] = [];
 const denShell = {
-  openMenu: (anchor: El, menu: { label: string; items: MenuItem[] }) =>
-    opened.push({ anchor, menu }),
   registerCommand: (c: Cmd) => cmds.set(c.id, c),
   unregisterCommand: (id: string) => cmds.delete(id),
   commands: () => [...cmds.values()],
@@ -254,10 +304,18 @@ beforeAll(async () => {
   mark = header.appendChild(new El("span"));
   mark.id = "den-mark";
   header.appendChild(new El("nav"));
+  // ◐ ▾ as the kit draws it in the bar's account slot.
+  const um = header.appendChild(new El("button"));
+  um.id = "appearance-btn";
   g.document = doc;
   g.window = {
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     denShell,
+    DenUIShell: {
+      markHtml,
+      hydrateAppearance: (btn: El, opts: (typeof hooked)[number]["opts"]) =>
+        hooked.push({ btn, opts }),
+    },
   };
   g.fetch = fakeFetch;
   await initAppearance();
@@ -360,7 +418,53 @@ describe("themeOptions", () => {
   });
 });
 
-const items = () => userMenu().items as MenuItem[];
+/**
+ * The kit's menu as rows, in the kit's order (appearanceMenuHtml): each
+ * part under its heading, a rule between parts; a row's onSelect is the
+ * pick the kit would send.
+ */
+function asItems(m: KitMenu): MenuItem[] {
+  const pick = (kind: string, value: string | null) => () =>
+    appearancePick(kind, value);
+  const parts: MenuItem[][] = [
+    [
+      { heading: "Appearance" },
+      ...m.modes.map((x) => ({
+        label: x.label,
+        checked: x.value === m.mode,
+        onSelect: pick("mode", x.value),
+      })),
+    ],
+  ];
+  if (m.themes.length || m.notice)
+    parts.push([
+      { heading: "Theme" },
+      ...m.themes.map((x) => ({
+        label: x.label,
+        checked: !!x.selected,
+        onSelect: pick("theme", x.value),
+      })),
+      ...(m.notice ? [{ note: m.notice }] : []),
+    ]);
+  if (m.languages.length)
+    parts.push([
+      { heading: "Language" },
+      ...m.languages.map((x) => ({
+        label: x.name,
+        checked: !!x.current,
+        onSelect: pick("language", x.id),
+      })),
+    ]);
+  parts.push(
+    m.items.map((x) => ({
+      label: x.label,
+      href: x.href,
+      onSelect: pick("item", x.id ?? null),
+    })),
+  );
+  return parts.flatMap((p, i) => (i ? [{ hr: true }, ...p] : p));
+}
+const items = () => asItems(appearanceMenu() as KitMenu);
 const row = (label: string) => items().find((i) => i.label === label)!;
 const checked = (from: string) => {
   const all = items();
@@ -378,23 +482,17 @@ describe("the user menu (initAppearance, R10)", () => {
     expect(img()?.alt).toBe("");
   });
 
-  it("is ◐ ▾ at the bar's far right, a menu button opening the shell's .pop", async () => {
+  it("hands the kit's ◐ ▾ its menu once: Appearance, Theme, Language, Restart, All settings", async () => {
+    // The kit draws ◐ ▾ (den-ui 0.7.0); Den wires it once, and only it.
     const btn = header.children.at(-1)!;
-    expect(btn.id).toBe("appearance-btn");
-    expect(btn.textContent).toBe("◐ ▾");
-    // The glyphs are drawn, not read: the name is "Appearance".
-    expect(btn.children).toHaveLength(1);
-    expect(btn.children[0].getAttribute("aria-hidden")).toBe("true");
-    expect(btn.className).toBe("den-ib appearance-btn");
-    expect(btn.getAttribute("aria-label")).toBe("Appearance");
-    expect(btn.getAttribute("aria-haspopup")).toBe("menu");
-    expect(btn.getAttribute("aria-expanded")).toBe("false");
-    await btn.fire("click");
-    expect(opened.at(-1)?.anchor).toBe(btn);
-    const menu = opened.at(-1)!.menu;
-    expect(menu.label).toBe("Appearance");
+    expect(hooked).toHaveLength(1);
+    expect(hooked[0]!.btn).toBe(btn);
+    expect(btn.dataset.wired).toBe("1");
+    await initAppearance();
+    expect(hooked).toHaveLength(1);
+    const menu = asItems(hooked[0]!.opts.menu());
     expect(
-      menu.items.map((i) =>
+      menu.map((i) =>
         i.heading
           ? `# ${i.heading}`
           : i.hr

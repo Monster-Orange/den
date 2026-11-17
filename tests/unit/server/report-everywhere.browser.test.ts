@@ -72,8 +72,8 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     how: "agent details: reportFoot() drawn with them (den#143)",
   },
   "bell.js": {
-    n: 2,
-    how: "the bell's panel: reportFoot() drawn with it (den#143); its inline ask is skipped",
+    n: 1,
+    how: "its inline ask (skipped); the bell's panel is the kit's since den-ui 0.7.0 (hydrateBell), drawn with reportFoot() as its foot (den#143)",
   },
   "gate-chip.js": {
     n: 1,
