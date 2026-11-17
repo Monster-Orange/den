@@ -1,0 +1,208 @@
+/**
+ * Issue 415: GET /api/report says each destination's visibility on GitHub
+ * (report-visibility.ts), read with the person's `gh`, so the Report form
+ * says who can see a report.
+ *
+ * - private and internal repos say so; public says public;
+ * - an unknown answer, a failure, or no GitHub sign-in reads as public
+ *   (and with no sign-in nothing is looked up);
+ * - kept for feedback.visibility_cache_hours: a second open within it
+ *   makes no second call; after it, one more; kept on disk too;
+ * - a slow GitHub never holds the form past
+ *   feedback.visibility_timeout_seconds: public now, the real answer on
+ *   the next open, from the same one call.
+ *
+ * `gh` is a fake: never the real one, no network. Invented names only; a
+ * temp state directory per test.
+ */
+import { beforeEach, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as http from "http";
+import * as os from "os";
+import * as path from "path";
+import { Writable } from "stream";
+import {
+  handleReportRoutes,
+  type GhResult,
+  type ReportRouteDeps,
+} from "../../../src/ui/server/report-routes.js";
+import { feedbackSettings } from "../../../src/shared/report-store.js";
+import { visibilityOf } from "../../../src/ui/server/report-visibility.js";
+
+/** What GitHub says for each repo: its JSON, a failure, or a wait. */
+let answers: Record<string, GhResult | (() => Promise<GhResult>)> = {};
+let signedIn = true;
+let user: Record<string, unknown> = {};
+let state = "";
+let clock = 1_000_000;
+const lookups: string[] = [];
+
+const ok = (o: unknown): GhResult => ({
+  code: 0,
+  stdout: JSON.stringify(o),
+  stderr: "",
+});
+
+const gh = async (args: string[]): Promise<GhResult> => {
+  if (args[0] === "auth")
+    return { code: signedIn ? 0 : 1, stdout: "", stderr: "" };
+  const m = /^repos\/([^/]+\/[^/]+)$/.exec(args[1] ?? "");
+  if (args[0] === "api" && m) {
+    lookups.push(m[1]!);
+    const a = answers[m[1]!];
+    if (typeof a === "function") return a();
+    return a ?? { code: 1, stdout: "", stderr: "HTTP 404: Not Found" };
+  }
+  return { code: 1, stdout: "", stderr: "unknown" };
+};
+
+const deps = (): ReportRouteDeps => ({
+  settings: () =>
+    feedbackSettings(
+      { bugs: { url: "https://github.com/acme-eng/engine/issues" } },
+      { repo: "acme-eng/notes" },
+      user,
+    ),
+  stateDir: () => state,
+  gh,
+  names: () => ({ home: "/Users/pat", hosts: [], projects: [] }),
+  diagnostics: async () => ({}),
+  agentOf: () => null,
+  personOf: () => "person",
+  readBody: async () => "",
+  sendJson: (res, body, status = 200) => {
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  },
+  now: () => clock,
+});
+
+/** GET /api/report through the real handler, no socket. */
+async function info(): Promise<{
+  repos: { repo: string; visibility?: string; audience?: string }[];
+}> {
+  const req = Object.assign(new http.IncomingMessage(null as never), {
+    method: "GET",
+    url: "/api/report",
+    headers: {},
+  });
+  let body = "";
+  const done = new Promise<void>((r) => {
+    const sink = new Writable({
+      write(c, _e, cb) {
+        body += c;
+        cb();
+      },
+    });
+    const res = {
+      writeHead: () => res,
+      end: (b?: string) => {
+        if (b) sink.write(b);
+        r();
+      },
+    } as unknown as http.ServerResponse;
+    expect(handleReportRoutes(req, res, "/api/report", deps())).toBe(true);
+  });
+  await done;
+  return JSON.parse(body);
+}
+
+const visOf = (i: Awaited<ReturnType<typeof info>>) =>
+  Object.fromEntries(i.repos.map((r) => [r.repo, r.visibility]));
+
+beforeEach(() => {
+  answers = {};
+  signedIn = true;
+  user = {};
+  clock = 1_000_000;
+  lookups.length = 0;
+  state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-vis-"));
+});
+
+describe("GET /api/report: each destination's visibility (issue 415)", () => {
+  it("private and internal say so; public says public; no audience", async () => {
+    answers = {
+      "acme-eng/engine": ok({ private: false, visibility: "public" }),
+      "acme-eng/notes": ok({ private: true, visibility: "private" }),
+    };
+    const i = await info();
+    expect(visOf(i)).toEqual({
+      "acme-eng/engine": "public",
+      "acme-eng/notes": "private",
+    });
+    expect(i.repos.every((r) => !("audience" in r))).toBe(true);
+    answers["acme-eng/notes"] = ok({ private: true, visibility: "internal" });
+    clock += 25 * 3_600_000;
+    expect(visOf(await info())["acme-eng/notes"]).toBe("internal");
+  });
+
+  it("an unknown answer or a failure reads as public", async () => {
+    answers = {
+      "acme-eng/engine": ok({ name: "engine" }),
+      "acme-eng/notes": { code: 1, stdout: "", stderr: "HTTP 404" },
+    };
+    expect(visOf(await info())).toEqual({
+      "acme-eng/engine": "public",
+      "acme-eng/notes": "public",
+    });
+  });
+
+  it("no GitHub sign-in: public, and nothing is looked up", async () => {
+    signedIn = false;
+    answers = { "acme-eng/notes": ok({ private: true }) };
+    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    expect(lookups).toEqual([]);
+  });
+
+  it("a second open within the hours kept makes no second call; after them, one more", async () => {
+    user = { visibility_cache_hours: 2 };
+    answers = { "acme-eng/notes": ok({ private: true }) };
+    expect(visOf(await info())["acme-eng/notes"]).toBe("private");
+    expect(lookups.sort()).toEqual(["acme-eng/engine", "acme-eng/notes"]);
+    clock += 3_600_000;
+    expect(visOf(await info())["acme-eng/notes"]).toBe("private");
+    expect(lookups).toHaveLength(2);
+    // Kept on disk too, for the next start.
+    const kept = JSON.parse(
+      fs.readFileSync(path.join(state, "report-visibility.json"), "utf-8"),
+    );
+    expect(kept["acme-eng/notes"].v).toBe("private");
+    // A failure is kept as long, then tried again.
+    clock += 2 * 3_600_000;
+    answers = {};
+    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    expect(lookups).toHaveLength(4);
+    clock += 3_600_000;
+    await info();
+    expect(lookups).toHaveLength(4);
+  });
+
+  it("a slow GitHub: public within the wait, the answer on the next open, one call", async () => {
+    user = { visibility_timeout_seconds: 0.5 };
+    let release: (r: GhResult) => void = () => undefined;
+    answers = {
+      "acme-eng/engine": ok({ visibility: "public" }),
+      "acme-eng/notes": () => new Promise<GhResult>((r) => (release = r)),
+    };
+    const t0 = Date.now();
+    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    expect(Date.now() - t0).toBeLessThan(3000);
+    // Still running: a second open waits again, with no second call.
+    const second = info();
+    release(ok({ private: true }));
+    expect(visOf(await second)["acme-eng/notes"]).toBe("private");
+    expect(lookups.filter((r) => r === "acme-eng/notes")).toHaveLength(1);
+  });
+});
+
+describe("visibilityOf: GitHub's repo answer", () => {
+  it("reads visibility, else private, else unknown", () => {
+    expect(visibilityOf('{"visibility":"internal","private":true}')).toBe(
+      "internal",
+    );
+    expect(visibilityOf('{"private":true}')).toBe("private");
+    expect(visibilityOf('{"private":false}')).toBe("public");
+    expect(visibilityOf('{"visibility":"secret"}')).toBeNull();
+    expect(visibilityOf("not json")).toBeNull();
+  });
+});

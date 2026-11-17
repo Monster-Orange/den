@@ -362,6 +362,9 @@ describe("FB: Report an issue, the server's side", () => {
       repos: ["acme-eng/engine", "acme-dist/den"],
       captureSeconds: 15,
       myReportsMax: 20,
+      // Issue 415: how long a destination's visibility is kept, and waited for.
+      visibilityCacheHours: 24,
+      visibilityTimeoutSeconds: 3,
     });
   });
 });

@@ -1,0 +1,163 @@
+/**
+ * Issue 415: who can see a report. Each Report destination is public,
+ * private or internal on GitHub; the Report form says so (the kit's pill
+ * and the line above Send).
+ *
+ * Read through the GitHub access Report already files with, the person's
+ * `gh`: `gh api repos/<owner>/<name>` → `visibility` (else `private`). No
+ * new scope: reading a repo you can file in needs none.
+ *
+ * Kept per repo, in memory and in <state>/report-visibility.json, for
+ * feedback.visibility_cache_hours (24). An unknown answer, a failure or no
+ * access is kept as null (the form reads it as public, the safe wording)
+ * and tried again after as long. A lookup never holds GET /api/report past
+ * feedback.visibility_timeout_seconds (3): one still running keeps going
+ * and fills the cache for the next open. One lookup per repo at a time.
+ */
+import * as fs from "fs";
+import * as path from "path";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+import type { GhResult } from "./report-routes.js";
+
+export type RepoVisibility = "public" | "private" | "internal";
+
+interface Entry {
+  v: RepoVisibility | null;
+  at: number;
+}
+
+const FILE = "report-visibility.json";
+
+/** GitHub's answer for a repo → its visibility, or null when it doesn't say. */
+export function visibilityOf(stdout: string): RepoVisibility | null {
+  let j: unknown;
+  try {
+    j = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  if (!j || typeof j !== "object") return null;
+  const o = j as { visibility?: unknown; private?: unknown };
+  if (
+    o.visibility === "public" ||
+    o.visibility === "private" ||
+    o.visibility === "internal"
+  )
+    return o.visibility;
+  if (o.private === true) return "private";
+  if (o.private === false) return "public";
+  return null;
+}
+
+/** One state directory's cache: memory, backed by its file. */
+class Cache {
+  private mem = new Map<string, Entry>();
+  private running = new Map<string, Promise<Entry>>();
+  constructor(private dir: string) {
+    try {
+      const j = JSON.parse(
+        fs.readFileSync(path.join(dir, FILE), "utf-8"),
+      ) as Record<string, Entry>;
+      for (const [repo, e] of Object.entries(j ?? {}))
+        if (e && typeof e.at === "number")
+          this.mem.set(repo, {
+            v:
+              e.v === "public" || e.v === "private" || e.v === "internal"
+                ? e.v
+                : null,
+            at: e.at,
+          });
+    } catch {
+      // No file yet, or an unreadable one: every repo is looked up.
+    }
+  }
+
+  private save(): void {
+    try {
+      fs.mkdirSync(this.dir, { recursive: true });
+      writeFileAtomic(
+        path.join(this.dir, FILE),
+        JSON.stringify(Object.fromEntries(this.mem)),
+      );
+    } catch {
+      // Memory still has it; the file is only for the next start.
+    }
+  }
+
+  private lookup(
+    repo: string,
+    gh: (args: string[]) => Promise<GhResult>,
+    now: () => number,
+  ): Promise<Entry> {
+    const r = this.running.get(repo);
+    if (r) return r;
+    const p = (async () => {
+      let v: RepoVisibility | null = null;
+      try {
+        const res = await gh(["api", `repos/${repo}`]);
+        if (res.code === 0) v = visibilityOf(res.stdout);
+      } catch {
+        v = null;
+      }
+      const e = { v, at: now() };
+      this.mem.set(repo, e);
+      this.running.delete(repo);
+      this.save();
+      return e;
+    })();
+    this.running.set(repo, p);
+    return p;
+  }
+
+  async of(
+    repos: string[],
+    o: {
+      gh: (args: string[]) => Promise<GhResult>;
+      ttlMs: number;
+      timeoutMs: number;
+      now: () => number;
+    },
+  ): Promise<Record<string, RepoVisibility | null>> {
+    const out: Record<string, RepoVisibility | null> = {};
+    await Promise.all(
+      repos.map(async (repo) => {
+        const e = this.mem.get(repo);
+        if (e && o.now() - e.at < o.ttlMs) {
+          out[repo] = e.v;
+          return;
+        }
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const late = new Promise<null>((ok) => {
+          timer = setTimeout(() => ok(null), o.timeoutMs);
+          timer.unref?.();
+        });
+        const got = await Promise.race([this.lookup(repo, o.gh, o.now), late]);
+        clearTimeout(timer);
+        // Past the wait: what was kept before (even stale), else unknown.
+        out[repo] = got ? got.v : (e?.v ?? null);
+      }),
+    );
+    return out;
+  }
+}
+
+const CACHES = new Map<string, Cache>();
+
+/**
+ * Each repo's visibility (null: unknown), from the cache when it is
+ * younger than `ttlMs`, else looked up, waiting at most `timeoutMs`.
+ */
+export function repoVisibilities(
+  stateDir: string,
+  repos: string[],
+  o: {
+    gh: (args: string[]) => Promise<GhResult>;
+    ttlMs: number;
+    timeoutMs: number;
+    now?: () => number;
+  },
+): Promise<Record<string, RepoVisibility | null>> {
+  let c = CACHES.get(stateDir);
+  if (!c) CACHES.set(stateDir, (c = new Cache(stateDir)));
+  return c.of(repos, { ...o, now: o.now ?? Date.now });
+}

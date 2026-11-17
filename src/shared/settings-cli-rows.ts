@@ -22,12 +22,15 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
+ *   feedback: { visibility_cache_hours?, visibility_timeout_seconds? }
+ *                                     user.yml feedback.* (issue 415)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
+import { VISIBILITY_LIMITS } from "./report-store.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -68,6 +71,8 @@ export const PERSON_ONLY_SETTINGS = [
   "embed",
   // Issue 172: whether, and when, the person is alerted outside the bell.
   "alerts",
+  // Issue 415: how long Report keeps, and waits for, a repo's visibility.
+  "feedback",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -170,6 +175,14 @@ const AGENTS_LIST: Record<string, Limit> = {
     int: false,
   },
 };
+
+/** Issue 415: user.yml feedback's visibility lookup (report-store.ts). */
+const FEEDBACK: Record<string, Limit> = Object.fromEntries(
+  Object.entries(VISIBILITY_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: false },
+  ]),
+);
 
 /** Issue 278: user.yml agent_context's numbers (context-watch.ts). */
 const AGENT_CONTEXT: Record<string, Limit> = Object.fromEntries(
@@ -378,7 +391,8 @@ export function patchCliRows(
       AGENTS_LIST,
       body.agents_list,
       apply,
-    );
+    ) ??
+    patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

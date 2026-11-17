@@ -9,6 +9,10 @@
  *     hides every entry point.
  *   - `feedback.max_per_hour` (5): reports one person sends in an hour.
  *     The times are kept on disk, so a restart doesn't reset them.
+ *   - `feedback.visibility_cache_hours` (24) and
+ *     `feedback.visibility_timeout_seconds` (3): how long a destination's
+ *     visibility on GitHub is kept, and how long Report waits to learn it
+ *     (issue 415, report-visibility.ts).
  *   - Drafts: one JSON file each under <state>/reports/drafts. An agent's
  *     draft stays a draft until a person sends it.
  *
@@ -29,6 +33,28 @@ export interface FeedbackSettings {
   captureSeconds: number;
   /** How many of the person's reports My reports shows. */
   myReportsMax: number;
+  /** Issue 415: how long a destination's visibility is kept (hours). */
+  visibilityCacheHours: number;
+  /** Issue 415: how long Report waits to learn it (seconds). */
+  visibilityTimeoutSeconds: number;
+}
+
+/**
+ * Issue 415: the visibility lookup's limits (user.yml feedback.*), each
+ * with its range and default; Settings and `config` check the same.
+ */
+export const VISIBILITY_LIMITS = {
+  visibility_cache_hours: { min: 0, max: 720, default: 24 },
+  visibility_timeout_seconds: { min: 0.5, max: 60, default: 3 },
+} as const;
+
+function inRange(
+  v: unknown,
+  l: { min: number; max: number; default: number },
+): number {
+  return typeof v === "number" && Number.isFinite(v) && v >= l.min && v <= l.max
+    ? v
+    : l.default;
 }
 
 /** owner/repo from a GitHub URL (https://github.com/o/r/issues), else null. */
@@ -85,6 +111,14 @@ export function feedbackSettings(
       mine <= 100
         ? mine
         : 20,
+    visibilityCacheHours: inRange(
+      u.visibility_cache_hours ?? d.visibility_cache_hours,
+      VISIBILITY_LIMITS.visibility_cache_hours,
+    ),
+    visibilityTimeoutSeconds: inRange(
+      u.visibility_timeout_seconds ?? d.visibility_timeout_seconds,
+      VISIBILITY_LIMITS.visibility_timeout_seconds,
+    ),
   };
 }
 

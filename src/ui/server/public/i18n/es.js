@@ -881,6 +881,14 @@
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "Informe: visibilidad del repositorio guardada durante",
+    "set.server.report_visibility_cache.d":
+      "Cuánto guarda __DEN_TITLE__ si cada repositorio de Informe es público o privado. Pasado este tiempo, vuelve a preguntar a GitHub. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait":
+      "Informe: espera de la visibilidad del repositorio",
+    "set.server.report_visibility_wait.d":
+      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice público, y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     "set.agents.pane_reconnect": "Intentos de reconexión de la terminal",
     "set.agents.pane_reconnect.d":
       "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Tras estos intentos fallidos dentro del tiempo de abajo, se detiene y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
