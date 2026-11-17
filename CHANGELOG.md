@@ -4,32 +4,6 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.65] - unreleased
-
-### Added
-
-- An agent's write on something you watch asks you first, whatever its
-  kind (issue 160). So does one on a repo or service you pinned. Set
-  what you watch in Settings, for every project or for one.
-- Secrets, deletes of data and money always ask you, by name. The
-  approval says which, for example "critical: deletes".
-- A project can set its own critical list: those kinds of write always
-  ask there.
-- Settings has rows for the approval policy, for every project and for
-  one: what runs without asking, what you watch, what is critical. In
-  English, Spanish and Japanese. The defaults stay permissive.
-- Only you change the approval policy without an Allow. An agent asks
-  with `approval_policy`, and it always waits for you.
-- Agents can close a stale or superseded pull request after a Hub note
-  (`pr_close`), with a comment saying why. It runs at once unless you
-  watch or pinned the repo.
-
-### Changed
-
-- Bringing in a conversation as an agent (`agent_import`) now asks you
-  first. It is a held write, on with the other held writes. Listing the
-  conversations still needs `mcp.actions`.
-
 ## [0.4.64] - unreleased
 
 ### Fixed
