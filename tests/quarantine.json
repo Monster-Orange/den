@@ -3,36 +3,6 @@
   "max_age_days": 14,
   "entries": [
     {
-      "file": "tests/unit/server/services-nonblocking.integration.test.ts",
-      "test": "/api/services does not block the server server-info answers quickly while a slow services build is in flight",
-      "issue": 143,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44165602888,
-        "failed_job": 134330678912,
-        "job": "tests (24.13.0, 1)",
-        "sha": "ab1eeb2721e6c3a6db4f60ea885fa5b80cecc7fc",
-        "passed_run": 44165602888,
-        "passed_job": 134330678884,
-        "note": "no other run on this sha; the test passed in the same run's tests (22.13.0, 1) (job 134330678884), same sha, other Node"
-      }
-    },
-    {
-      "file": "tests/unit/server/services-nonblocking.integration.test.ts",
-      "test": "/api/services does not block the server concurrent services requests share one build",
-      "issue": 143,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44165602888,
-        "failed_job": 134330678912,
-        "job": "tests (24.13.0, 1)",
-        "sha": "ab1eeb2721e6c3a6db4f60ea885fa5b80cecc7fc",
-        "passed_run": 44165602888,
-        "passed_job": 134330678884,
-        "note": "no other run on this sha; the test passed in the same run's tests (22.13.0, 1) (job 134330678884), same sha, other Node"
-      }
-    },
-    {
       "file": "tests/unit/server/bell-v6.browser.test.ts",
       "test": "bell v6: a quieter bell ⊘ asks once; Esc cancels; yes stops showing the kind, with Undo and the settings link",
       "issue": 143,

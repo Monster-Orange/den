@@ -100,4 +100,21 @@ ${FAKE}`;
       /try 1 on port \d+: it exited \(exit code 1\)\nbad config/,
     );
   });
+
+  it("a server that never answers is reported as timed out, with how long it was given, not as exited (the stop is ours)", async () => {
+    const root = tmpRoot();
+    // Alive, printing, never listening: the start runs out of time and the
+    // helper stops it. That stop (SIGTERM, exit code 143 under a wrapper)
+    // once read as "it exited (exit code 143)", as if the server died.
+    await expect(
+      startDenServer(
+        process.execPath,
+        ["-e", 'console.log("still loading"); setInterval(() => {}, 1000)'],
+        { cwd: root, env: { ...process.env, DEN_ROOT: root } },
+        { timeoutMs: 1_500 },
+      ),
+    ).rejects.toThrow(
+      /try 1 on port \d+: timed out after 1500 ms\nstill loading/,
+    );
+  });
 });
