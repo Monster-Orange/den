@@ -1,7 +1,7 @@
 /**
  * Issue 339: in a browser, Settings › Agents › Keep agents running after
  * logout › the sign-in accounts. A person adds an account to Claude Code
- * (Sign-in B), sets its token in the same hidden field as today, and moves
+ * (Claude Code account B), sets its token in the same hidden field as today, and moves
  * it first. The token goes to its own item in the install's secrets store
  * (Doppler here, its CLI a shim that keeps what it gets on stdin in the
  * server's temp dir, per key), never account one's; the order stays after
@@ -87,7 +87,7 @@ describe("issue 339: Settings › sign-in accounts", () => {
     const b = vendor.locator('[data-acct="2"]');
     await b.waitFor();
     expect(await vendor.locator("[data-acct]").count()).toBe(2);
-    expect(await b.textContent()).toContain("Sign-in B");
+    expect(await b.textContent()).toContain("Claude Code account B");
     expect(await b.getAttribute("data-acct-state")).toBe("missing");
     // Today's single field steps aside: each account has its own.
     expect(await p.locator("[data-keep-token-input]").isVisible()).toBe(false);

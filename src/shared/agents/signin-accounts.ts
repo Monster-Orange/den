@@ -91,7 +91,7 @@ export function signInRuntime(runtimeId: string): {
   if (!rt) throw new AccountsError(`no runtime "${runtimeId}"`);
   if (!rt.signInTokenEnv)
     throw new AccountsError(
-      `${rt.catalog?.name ?? runtimeId} has no sign-in data (agents.runtime_catalog, signIn), so it has no sign-ins`,
+      `${rt.catalog?.name ?? runtimeId} has no sign-in data (agents.runtime_catalog, signIn), so Den keeps no ${rt.catalog?.name ?? runtimeId} accounts`,
     );
   return {
     id: runtimeId,
@@ -181,15 +181,26 @@ export function nameError(name: string): string | null {
   return null;
 }
 
-/** "Sign-in A" for "1", ... "Sign-in Z", then "Sign-in 27". */
+/** "A" for "1", ... "Z", then "27": "Claude Code account A". */
 export function defaultLetter(id: string): string {
   const n = Number(id);
   return n >= 1 && n <= 26 ? String.fromCharCode(64 + n) : id;
 }
 
-/** What people see: the name, or "Sign-in A". */
-export function accountLabel(a: Pick<SignInAccount, "id" | "name">): string {
-  return a.name ?? `Sign-in ${defaultLetter(a.id)}`;
+/** The vendor's name people see ("Claude Code"): the runtime's catalog name. */
+export function vendorName(runtimeId: string): string {
+  return getRuntime(runtimeId)?.catalog?.name ?? runtimeId;
+}
+
+/**
+ * What people see: the name, or "<vendor> account A". A vendor's own
+ * account is the vendor's word, never a person (words.js, 2026-11-17).
+ */
+export function accountLabel(
+  a: Pick<SignInAccount, "id" | "name">,
+  vendor: string,
+): string {
+  return a.name ?? `${vendor} account ${defaultLetter(a.id)}`;
 }
 
 /** The account's named ref under secrets.refs. */
@@ -237,6 +248,7 @@ export function findAccount(
   which: string,
 ): SignInAccount {
   const list = listAccounts(stateDir, runtimeId);
+  const vendor = vendorName(runtimeId);
   const w = which.trim();
   const hit =
     list.find((a) => a.id === w) ??
@@ -245,11 +257,11 @@ export function findAccount(
       (a) =>
         a.name === undefined &&
         (defaultLetter(a.id).toLowerCase() === w.toLowerCase() ||
-          accountLabel(a).toLowerCase() === w.toLowerCase()),
+          accountLabel(a, vendor).toLowerCase() === w.toLowerCase()),
     );
   if (!hit)
     throw new AccountsError(
-      `no sign-in "${w}" (${list.map((a) => `${a.id} ${accountLabel(a)}`).join(", ")})`,
+      `no ${vendor} account "${w}" (${list.map((a) => `${a.id} ${accountLabel(a, vendor)}`).join(", ")})`,
     );
   return hit;
 }
@@ -290,7 +302,7 @@ export function setAccountOrder(
     !ids.every((id) => have.includes(id))
   )
     throw new AccountsError(
-      `the order names every sign-in once: ${have.join(" ")}`,
+      `the order names every ${vendorName(runtimeId)} account once: ${have.join(" ")}`,
     );
   r.accounts = ids.map((id) => r.accounts.find((a) => a.id === id)!);
   writeFile(stateDir, f);
@@ -459,7 +471,7 @@ export function accountsView(
       id: a.id,
       name: a.name ?? null,
       letter: defaultLetter(a.id),
-      label: accountLabel(a),
+      label: accountLabel(a, vendorName(runtimeId)),
       configured: has && !cleared,
       setAt: (isLegacy ? meta?.setAt : a.setAt) ?? null,
       store: (isLegacy ? meta?.store : a.store) ?? null,
@@ -547,7 +559,7 @@ export async function pickAccount(
     if (r.token)
       return {
         account: { ...a },
-        label: accountLabel(a),
+        label: accountLabel(a, vendorName(d.runtimeId)),
         token: r.token,
         from,
       };
@@ -574,6 +586,10 @@ export async function pickAccount(
   }
   const misses = list
     .filter((a) => why.has(a.id))
-    .map((a) => ({ id: a.id, label: accountLabel(a), reason: why.get(a.id)! }));
+    .map((a) => ({
+      id: a.id,
+      label: accountLabel(a, vendorName(d.runtimeId)),
+      reason: why.get(a.id)!,
+    }));
   return { picked, misses };
 }

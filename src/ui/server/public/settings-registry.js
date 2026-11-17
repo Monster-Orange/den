@@ -979,9 +979,15 @@ export function accountLine(a, t) {
   return { state: "set", text: t("acct.set", { date: localDay(a.set_at) }) };
 }
 
-/** Issue 339: an account's name, or "Account A" in the reader's words. */
-export function accountName(a, t) {
-  return a.name || t("acct.default", { letter: a.letter || a.id });
+/**
+ * Issue 339: an account's name, or "<vendor> account A" in the reader's
+ * words (a vendor's own account, never a person: words.js, 2026-11-17).
+ */
+export function accountName(a, t, vendor) {
+  return (
+    a.name ||
+    t("acct.default", { vendor: vendor || "", letter: a.letter || a.id })
+  );
 }
 
 /**
@@ -998,7 +1004,7 @@ function renderAccountList(list, t) {
       const rows = accountRows(v)
         ? v.accounts
             .map((a, i) => {
-              const name = accountName(a, t);
+              const name = accountName(a, t, v.name);
               const l = accountLine(a, t);
               const last = i === v.accounts.length - 1;
               return (
@@ -1017,7 +1023,7 @@ function renderAccountList(list, t) {
         `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
         `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.name }))}</strong></p>` +
         rows +
-        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add"))}</button></div>` +
+        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.name }))}</button></div>` +
         `<p class="set-note" data-acct-note hidden></p>` +
         `</div>`
       );

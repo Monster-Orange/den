@@ -19,6 +19,7 @@ import type {
 } from "../../../src/shared/secrets/types.js";
 import {
   accountLabel,
+  vendorName,
   addAccount,
   type AccountSource,
 } from "../../../src/shared/agents/signin-accounts.js";
@@ -111,7 +112,7 @@ describe("a start picks its sign-in", () => {
     const rec = readRecord(r.stateDir, "a1")!;
     expect(rec.signIn).toEqual({
       id: "1",
-      label: accountLabel({ id: "1" }),
+      label: accountLabel({ id: "1" }, vendorName("den-claude")),
     });
     expect(JSON.stringify(rec)).not.toContain("fake-start");
     expect([...r.out, ...r.err].join("\n")).not.toContain("fake-start");
@@ -193,7 +194,9 @@ describe("the agent's audit line", () => {
     const line = recentActions().find(
       (e) => e.verb === "agents" && e.detail.startsWith("start web1 "),
     );
-    expect(line?.detail).toContain(`; on ${accountLabel({ id: "2" })}`);
+    expect(line?.detail).toContain(
+      `; on ${accountLabel({ id: "2" }, vendorName("den-claude"))}`,
+    );
     expect(JSON.stringify(recentActions())).not.toContain("fake-start");
   });
 });

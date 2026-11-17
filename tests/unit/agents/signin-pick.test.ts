@@ -16,6 +16,7 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import {
   accountLabel,
+  vendorName,
   addAccount,
   pickAccount,
   setAccountOrder,
@@ -44,8 +45,8 @@ function store(values: Record<string, string>) {
 }
 
 // The default labels, in whatever words the product uses for them.
-const A = accountLabel({ id: "1" });
-const B = accountLabel({ id: "2" });
+const A = accountLabel({ id: "1" }, vendorName("den-claude"));
+const B = accountLabel({ id: "2" }, vendorName("den-claude"));
 
 const ALL = {
   agent_signin_token: T1,
