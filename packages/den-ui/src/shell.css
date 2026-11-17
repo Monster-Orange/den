@@ -264,8 +264,10 @@ body.den-has-shell > #den-content {
 .den-rail > .den-rail-group:first-child > .den-gh {
   padding-top: 2px;
 }
-/* A group's "from" tag: never taller than the heading's own line (its
-   10px words on a 12px line, centred), so the heading stays 32px. */
+/* A group's "from" tag never makes its heading taller, on any font: its
+   box (a 12px line and its border, 14px) is centred on the heading's line
+   and its vertical margins cancel that box, so its row is the heading's
+   own words' line, with or without the tag. */
 .den-tagx {
   font: 10px/12px var(--mono);
   color: var(--faint);
@@ -275,6 +277,7 @@ body.den-has-shell > #den-content {
   text-transform: none;
   letter-spacing: 0;
   align-self: center;
+  margin-block: -7px;
 }
 .den-ni {
   display: flex;

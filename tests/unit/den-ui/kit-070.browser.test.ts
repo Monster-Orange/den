@@ -854,15 +854,33 @@ for (const engine of ["chromium", "webkit"]) {
           })),
         });
         document.body.appendChild(box);
-        return [...box.querySelectorAll(".den-gh")].map((h) => [
-          h.querySelector(".den-tagx") ? "tag" : "plain",
-          h.getBoundingClientRect().height,
-        ]);
+        const measure = () =>
+          [...box.querySelectorAll(".den-gh")].map((h) => [
+            h.querySelector(".den-tagx") ? "tag" : "plain",
+            h.getBoundingClientRect().height,
+          ]);
+        // The faces this machine has, then faces whose line is shorter
+        // than the tag's box (as on a machine with other fonts): a mono
+        // face with a small line, and a tiny one.
+        const runs = [measure()];
+        for (const css of [
+          ".den-gh { font-family: monospace; line-height: 11px; }",
+          ".den-gh { font-size: 7px; }",
+        ]) {
+          const st = document.createElement("style");
+          st.textContent = css;
+          document.head.appendChild(st);
+          runs.push(measure());
+          st.remove();
+        }
+        return runs;
       });
       // The tag never makes its heading taller: the heading is the plain
       // one's height (32px in Den's fonts), whatever the faces measure.
-      expect(hs.map((h) => h[0])).toEqual(["plain", "tag", "plain"]);
-      expect(hs[1]![1]).toBe(hs[2]![1]);
+      for (const run of hs) {
+        expect(run.map((h) => h[0])).toEqual(["plain", "tag", "plain"]);
+        expect(run[1]![1]).toBe(run[2]![1]);
+      }
       await p.context().close();
     });
 
