@@ -30,6 +30,7 @@ const q = require("../../quarantine.cjs") as {
   maxAgeDays(doc: Doc, env?: NodeJS.ProcessEnv): number;
   quarantineMode(env?: NodeJS.ProcessEnv): string;
   quarantineProblems(doc: Doc, today?: Date, env?: NodeJS.ProcessEnv): string[];
+  sameShaPair(ev: Record<string, unknown>): boolean;
 };
 
 type Entry = {
@@ -44,7 +45,13 @@ type Doc = { max_age_days?: number; entries: Entry[] };
 const ROOT = path.join(__dirname, "../../..");
 const FIXTURE = "tests/fixtures/quarantine/flaky.fixture.ts";
 const FLAKY = "quarantine fixture the flaky one";
-const ev = { failed_run: 1, passed_run: 2, sha: "abc" };
+const ev = {
+  failed_run: 1,
+  passed_run: 2,
+  sha: "abc1234",
+  job: "tests (22.13.0, 1)",
+  passed_job_name: "tests (22.13.0, 1)",
+};
 
 describe("which tests a quarantine entry names", () => {
   const e: Entry = {
@@ -221,7 +228,125 @@ describe("the list stays short-lived (the weekly rule)", () => {
         today,
         {},
       ),
-    ).toEqual([expect.stringMatching(/passed_run, or a note/)]);
+    ).toEqual([
+      expect.stringMatching(
+        /evidence needs one sha with the same job failing and passing/,
+      ),
+    ]);
+  });
+});
+
+describe("quarantine is for flakes only: the same job, on the same Node, failed and passed on one sha", () => {
+  // A fail on one Node with a pass on the other is what a Node-specific
+  // real bug looks like: it is not evidence of a flake.
+  const today = new Date("2026-11-20T12:00:00Z");
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const J22 = "tests (22.13.0, 4)";
+  const J24 = "tests (24.13.0, 4)";
+  const problems = (evidence: Record<string, unknown>): string[] =>
+    q.quarantineProblems(
+      {
+        entries: [
+          {
+            file: FIXTURE,
+            test: FLAKY,
+            issue: 397,
+            added: "2026-11-20",
+            evidence,
+          },
+        ],
+      },
+      today,
+      {},
+    );
+  const NO_PAIR =
+    /evidence needs one sha with the same job failing and passing/;
+
+  it("only a cross-Node pair (Node 22 failed, Node 24 passed, same run): fails (red first)", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        failed_job: 5,
+        job: J22,
+        passed_run: 10,
+        passed_job: 6,
+        passed_job_name: J24,
+        sha: SHA,
+      }),
+    ).toEqual([expect.stringMatching(NO_PAIR)]);
+  });
+
+  it("a cross-Node pair across two runs: fails", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        job: J22,
+        passed_run: 11,
+        passed_job_name: J24,
+        sha: SHA,
+      }),
+    ).toEqual([expect.stringMatching(NO_PAIR)]);
+  });
+
+  it("only a failing run, or a note in place of a pass: fails", () => {
+    expect(problems({ failed_run: 10, job: J22, sha: SHA })).toEqual([
+      expect.stringMatching(NO_PAIR),
+    ]);
+    expect(
+      problems({ failed_run: 10, job: J22, sha: SHA, note: "none passed" }),
+    ).toEqual([expect.stringMatching(NO_PAIR)]);
+  });
+
+  it("no sha, or no job names: fails", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        passed_run: 11,
+        job: J22,
+        passed_job_name: J22,
+      }),
+    ).toEqual([expect.stringMatching(NO_PAIR)]);
+    expect(problems({ failed_run: 10, passed_run: 11, sha: SHA })).toEqual([
+      expect.stringMatching(NO_PAIR),
+    ]);
+  });
+
+  it("the same run and attempt: fails, whatever the jobs", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        passed_run: 10,
+        job: J22,
+        passed_job_name: J22,
+        sha: SHA,
+      }),
+    ).toEqual([expect.stringMatching(NO_PAIR)]);
+  });
+
+  it("a re-run attempt of the same job that passed: kept", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        failed_attempt: 1,
+        passed_run: 10,
+        passed_attempt: 2,
+        job: J22,
+        passed_job_name: J22,
+        sha: SHA,
+      }),
+    ).toEqual([]);
+  });
+
+  it("the same job in a second run on that sha: kept", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        passed_run: 11,
+        job: J22,
+        passed_job_name: J22,
+        sha: SHA,
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -441,20 +566,21 @@ describe("scripts/flake-evidence.mjs (fake Actions API data, no network)", () =>
       sha: SHA,
       passed_run: 200,
       passed_job: 21,
+      passed_job_name: "tests (22.13.0, 4)",
     });
     expect(es[0].added).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // and it is evidence the list accepts
+    expect(q.sameShaPair(es[0].evidence)).toBe(true);
   });
 
-  it("no rerun: the same shard on the other Node, said so in a note; a test red there too has no evidence", () => {
+  it("no rerun: the other Node passing is named in a note, never as a pass; a test red there too has no evidence", () => {
     const [flaky, real] = evidence(false);
-    expect(flaky.evidence).toMatchObject({
-      failed_run: 100,
-      passed_run: 100,
-      passed_job: 12,
-    });
+    expect(flaky.evidence?.failed_run).toBe(100);
+    expect(flaky.evidence?.passed_run).toBeUndefined();
     expect(String(flaky.evidence?.note)).toMatch(
-      /no other run on this sha.*other Node/,
+      /only the other Node's tests \(24\.13\.0, 4\) \(job 12\) passed it.*not flake evidence/,
     );
+    expect(q.sameShaPair(flaky.evidence ?? {})).toBe(false);
     expect(real.evidence?.passed_run).toBeUndefined();
     expect(String(real.evidence?.note)).toMatch(/find a passing run/);
   });

@@ -7,9 +7,10 @@
  * For a red CI run: each failed job's failing tests (from its log), and a
  * run on the same head sha where that job passed (another run, or another
  * attempt of this one). It prints one ready-to-paste entry per failing
- * test. With no such run, the entry says so in evidence.note, and names a
- * sibling job of the same run (same shard, other Node) that passed, if one
- * did: weaker evidence, written down as such, never passed off as a rerun.
+ * test. With no such run, the entry has no passed_run and says so in
+ * evidence.note, naming a sibling job of the same run (same shard, other
+ * Node) that passed, if one did: that is not flake evidence (a
+ * Node-specific bug looks the same), so the entry can't be added.
  *
  * Read-only: GETs on the Actions API through `gh api`. It re-runs, cancels
  * and changes nothing. The tests call evidenceFor() with fake API data.
@@ -128,6 +129,7 @@ export async function evidenceFor(runId, api, issue = 397) {
         evidence.passed_run = found.x.run;
         if (found.x.attempt > 1) evidence.passed_attempt = found.x.attempt;
         evidence.passed_job = found.j.id;
+        evidence.passed_job_name = found.j.name;
       } else {
         // Weaker, and said so: the same shard on the other Node, this run.
         let sib = null;
@@ -147,9 +149,9 @@ export async function evidenceFor(runId, api, issue = 397) {
           }
         }
         if (sib) {
-          evidence.passed_run = run.id;
-          evidence.passed_job = sib.id;
-          evidence.note = `no other run on this sha; the test passed in the same run's ${sib.name} (job ${sib.id}), same sha, other Node`;
+          // Not evidence of a flake: a Node-specific real bug looks the
+          // same. Said so, and no passed_run (quarantine.cjs refuses it).
+          evidence.note = `no other run or attempt of ${job.name} on this sha; only the other Node's ${sib.name} (job ${sib.id}) passed it in this run, which is not flake evidence: re-run evidence needed`;
         } else {
           evidence.note = `no run on this sha passed it; find a passing run before adding this entry`;
         }

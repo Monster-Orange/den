@@ -2,8 +2,9 @@
  * Issue 397: the quarantine list (tests/quarantine.json) and how a test is
  * matched against it.
  *
- * A quarantined test is a flaky one with evidence: the same sha failed and
- * then passed. On a pull request CI leaves it out of the blocking run and
+ * A quarantined test is a flaky one with evidence: on one sha, the same job
+ * (same Node) failed it in one run or attempt and passed it in another
+ * (sameShaPair below). On a pull request CI leaves it out of the blocking run and
  * runs it in a separate step that does not block. On main and in the
  * release, nothing is left out.
  *
@@ -110,6 +111,29 @@ function ageDays(added, today = new Date()) {
 }
 
 /**
+ * Quarantine is for flakes only: the evidence names one sha and one job
+ * (by name, so one Node and one shard) that failed the test in one run or
+ * attempt and passed it in another: a re-run attempt of that job, or the
+ * same job in a second run on that sha. A fail on one Node with a pass on
+ * the other is what a Node-specific real bug looks like, so it is not
+ * evidence. A failure with no such pair is real until shown otherwise:
+ * fix it, don't quarantine it.
+ */
+function sameShaPair(ev) {
+  const id = (v) => Number.isInteger(v) && v > 0;
+  const attempt = (v) => (v === undefined ? 1 : v);
+  if (typeof ev.sha !== "string" || !/^[0-9a-f]{7,40}$/.test(ev.sha))
+    return false;
+  if (typeof ev.job !== "string" || !ev.job.trim()) return false;
+  if (ev.passed_job_name !== ev.job) return false;
+  if (!id(ev.failed_run) || !id(ev.passed_run)) return false;
+  const fa = attempt(ev.failed_attempt);
+  const pa = attempt(ev.passed_attempt);
+  if (!id(fa) || !id(pa)) return false;
+  return ev.failed_run !== ev.passed_run || fa !== pa;
+}
+
+/**
  * What is wrong with the list, one line each (empty: nothing). The weekly
  * rule: each entry is fixed (removed with the fix) or deleted before it is
  * older than the Setting's days. Every entry names its issue and its
@@ -131,12 +155,9 @@ function quarantineProblems(doc, today = new Date(), env = process.env) {
           `${at}: ${age} days old, over ${max}: fix it (and remove it with the fix) or delete it`,
         );
     }
-    const ev = e.evidence ?? {};
-    if (!ev.failed_run || !ev.sha)
-      out.push(`${at}: evidence needs failed_run and sha`);
-    if (!ev.passed_run && !ev.note)
+    if (!sameShaPair(e.evidence ?? {}))
       out.push(
-        `${at}: evidence needs passed_run, or a note saying why there is none`,
+        `${at}: evidence needs one sha with the same job failing and passing: job and passed_job_name equal (one Node), failed_run/failed_attempt and passed_run/passed_attempt a different run or a re-run attempt. The other Node passing is not a flake.`,
       );
     if (e.file && !fs.existsSync(path.join(ROOT, relPath(e.file))))
       out.push(`${at}: no such file`);
@@ -165,4 +186,5 @@ module.exports = {
   quarantineProblems,
   quarantinedFiles,
   relPath,
+  sameShaPair,
 };
