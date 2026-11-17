@@ -37,7 +37,7 @@ import {
   upgradeTimes,
 } from "/kit/time.js";
 import { qrSvg } from "./qr.js";
-import { renderPersonasSettings } from "./persona-ui.js";
+import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 
@@ -3179,13 +3179,16 @@ export function projectModeHtml(v, t) {
       const line = a.running
         ? t("pmode.runsAs", { ...vars, running: name(a.running) })
         : t("pmode.agent", vars);
+      // Issue 252: the whole row opens its mode (the choices and Follow
+      // project).
       return (
         `<li data-pmode-agent="${escR(a.agent)}" data-pmode-source="${escR(a.source)}"${a.running ? ` data-pmode-running="${escR(a.running)}"` : ""}>` +
+        `<button type="button" class="pmode-row" data-pmode-pick="${escR(a.agent)}" aria-haspopup="menu" aria-expanded="false" aria-label="${escR(`${line}. ${t("ag.mode.pick", { id: a.name || a.agent })}`)}">` +
         escR(line) +
         (a.stopped
           ? ` <span class="faint">${escR(t("pmode.stopped"))}</span>`
           : "") +
-        `</li>`
+        `</button></li>`
       );
     })
     .join("");
@@ -3248,6 +3251,28 @@ function renderProjectMode(host, ctx) {
               if (r !== undefined && r !== null)
                 return renderProjectMode(host, ctx);
             },
+          );
+        }),
+      );
+      host.querySelectorAll("[data-pmode-pick]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const a = (v?.agents ?? []).find(
+            (x) => x.agent === b.getAttribute("data-pmode-pick"),
+          );
+          if (!a) return;
+          openAgentModeMenu(
+            b,
+            {
+              workspace: ws,
+              agent: a.agent,
+              ...(a.name ? { name: a.name } : {}),
+              ...(a.source === "own" ? { own: a.mode } : {}),
+              ...((v?.mode ?? v?.install)
+                ? { project: v.mode ?? v.install }
+                : {}),
+              ...(a.stopped ? { stopped: true } : {}),
+            },
+            () => renderProjectMode(host, ctx),
           );
         }),
       );

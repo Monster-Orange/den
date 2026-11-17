@@ -434,6 +434,64 @@ export function modeLabel(r) {
     : t("ag.mode.tag", { m });
 }
 
+/** The four modes a person can choose, in the order every picker shows. */
+const AGENT_MODES = ["ask", "edits", "auto", "all"];
+
+/**
+ * Issue 252: one agent's mode, set in the page (its ⋯ and its Settings
+ * row). `a`: { workspace, agent, name?, own?, mode?, project?, stopped? },
+ * where `own` is its own setting (none: it follows) and `project` the mode
+ * Follow project gives it. Opens the choices under `anchor`; a pick goes
+ * through the working pop-up and says the result. Resolves with the
+ * route's answer, or undefined (nothing picked, the same one, a failure).
+ */
+export function openAgentModeMenu(anchor, a, onDone) {
+  const sh = window.denShell;
+  const id = a.name || a.agent;
+  const name = (m) => t(`pm.name.${m}`);
+  const pick = (mode) => {
+    if (mode === (a.own ?? null)) return;
+    const m = mode ?? a.project;
+    const key = mode
+      ? a.stopped
+        ? "ag.mode.setStopped"
+        : "ag.mode.setS"
+      : a.stopped
+        ? "ag.mode.followStopped"
+        : "ag.mode.followS";
+    const url = `/api/workspaces/${encodeURIComponent(a.workspace)}/agents/${encodeURIComponent(a.agent)}/mode`;
+    void sh
+      .busyAction(
+        "agent-mode",
+        (headers) => sh.api("POST", url, { mode }, { headers }),
+        {
+          button: anchor,
+          vars: { name: id },
+          success: () => t(key, { id, m: m ? name(m) : t("ag.mode.follow") }),
+        },
+      )
+      .then((r) => {
+        if (r !== undefined && r !== null) onDone?.(r);
+      });
+  };
+  sh.openMenu(anchor, {
+    label: t("ag.mode.menu", { id }),
+    items: [
+      ...AGENT_MODES.map((m) => ({
+        label: t(`pm.${m}`),
+        checked: a.own === m,
+        onSelect: () => pick(m),
+      })),
+      {
+        label: t("ag.mode.follow"),
+        checked: !a.own,
+        ...(a.project ? { tag: name(a.project) } : {}),
+        onSelect: () => pick(null),
+      },
+    ],
+  });
+}
+
 export function overrideTagsHtml(r) {
   const ov = r.overrides ?? [];
   const tags = [];

@@ -572,6 +572,9 @@
     "busy.restartW": "Reiniciando {name}…",
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
+    "busy.modeW": "Cambiando el modo de {name}…",
+    "busy.modeS": "Modo de {name} cambiado.",
+    "busy.modeF": "No se pudo cambiar el modo de {name}. Nada cambió.",
     "keep.label": "Mantener los agentes al cerrar sesión",
     "keep.warn":
       "Allí los agentes inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio.",
@@ -1455,6 +1458,18 @@
     "ag.mode.src.install": "el valor por defecto de todo Den",
     "ag.mode.src.persona": "su persona",
     "ag.mode.src.default": "el valor integrado de Den",
+    "ag.mode.item": "Modo: {m}",
+    "ag.mode.menu": "Modo de {id}",
+    "ag.mode.pick": "Cambiar el modo de {id}",
+    "ag.mode.follow": "Seguir el proyecto",
+    "ag.mode.setS":
+      "{id}: {m}, su propio ajuste. Den lo reinicia en su próxima pausa para aplicarlo.",
+    "ag.mode.setStopped":
+      "{id}: {m}, su propio ajuste. Lo aplica en su próximo inicio.",
+    "ag.mode.followS":
+      "{id} sigue el proyecto ahora: {m}. Den lo reinicia en su próxima pausa para aplicarlo.",
+    "ag.mode.followStopped":
+      "{id} sigue el proyecto ahora: {m}. Lo aplica en su próximo inicio.",
     "set.workspace.agents_mode":
       "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":

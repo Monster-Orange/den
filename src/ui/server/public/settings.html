@@ -447,6 +447,32 @@
         color: var(--muted);
         font-size: 12.5px;
       }
+      /* Issue 252: an agent's row in a project's Agents' mode opens its
+         mode on a click anywhere on it. */
+      .pmode-row {
+        display: block;
+        width: 100%;
+        min-height: 32px;
+        padding: 4px 6px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .pmode-row:hover {
+        background: var(--hover, rgba(127, 127, 127, 0.12));
+      }
+      .pmode-row:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      [data-pmode-list] {
+        list-style: none;
+        padding-left: 0;
+      }
       .set-warn {
         flex-basis: 100%;
         margin: 4px 0 0 !important;
