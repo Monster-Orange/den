@@ -1808,8 +1808,9 @@ function startSession(
 }
 
 /**
- * The install owner's GitHub identity, for the account entry of a browser
- * with no GitHub sign-in of its own: the linked owner (web-owner.json),
+ * The install owner's GitHub identity, for the account entry of a local
+ * browser on the Den machine only (never a browser signed in with a link
+ * or a code: it may be someone else's): the linked owner (web-owner.json),
  * else web.owner_github (recorded from gh at `web up`), with the display
  * name kept beside each. Files only: no gh call here. Null: none known.
  */
@@ -5557,7 +5558,6 @@ async function handleRequest(
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
       const github = rec?.via === "github" && !!rec.login;
-      const owner = github ? null : ownerIdentity();
       return sendJson(res, {
         csrf: g.session.csrf,
         actor: "person-browser",
@@ -5567,8 +5567,8 @@ async function handleRequest(
           via: rec?.via ?? "link",
           ...(github ? { login: rec.login } : {}),
           ...(github && rec.name ? { name: rec.name } : {}),
-          // No GitHub sign-in of its own: the install owner's identity.
-          ...(owner ? { owner } : {}),
+          // A link or a code (no GitHub sign-in of its own): no GitHub
+          // identity, never the owner's. It may be someone else's device.
         },
         ...(webSessions.takeWelcome(g.session.key)
           ? {

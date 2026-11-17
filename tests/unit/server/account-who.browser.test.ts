@@ -5,6 +5,8 @@
  *  - no GitHub identity known at all: the kit's "Local";
  *  - a browser on this machine: the install owner's GitHub identity, the
  *    name over @login, its role (Owner) in an account menu's header only;
+ *  - a browser signed in with a one-time link from another machine (no
+ *    GitHub sign-in of its own): "Local", never the owner's name;
  *  - signed in with GitHub: that sign-in's name over @login, or @login
  *    alone when GitHub has no name for it.
  * In none of them do device words ("Signed in", "this device") appear in
@@ -23,6 +25,7 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import { writeWebOwner } from "../../../src/shared/web-owner.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signInUrl } from "./helpers/den-auth.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 
@@ -245,6 +248,35 @@ describe("the account entry draws who is signed in", () => {
       );
     });
     expect(header).toEqual(["Odette Lead", "@octo-lead", "Owner"]);
+    await noDeviceWords(p);
+    await ctx.close();
+  }, 60_000);
+
+  it("signed in with a one-time link from another machine: the kit's Local, never the owner's name", async () => {
+    if (skip()) return;
+    // The owner is linked (the case above), with a name: a browser paired
+    // with a link has no GitHub sign-in of its own, so it isn't the owner.
+    const ctx = await browser!.newContext({
+      viewport: { width: 1280, height: 900 },
+      extraHTTPHeaders: AWAY,
+    });
+    const p = await ctx.newPage();
+    const r = await p.goto(signInUrl(stateDir, `http://${EDGE}:${port}`, "/"));
+    expect(r?.status()).toBe(200);
+    expect(await entry(p)).toMatchObject({
+      name: "Local",
+      login: null,
+      role: null,
+      kind: "device",
+    });
+    const e = await entry(p);
+    expect(e.text).not.toMatch(/Odette|octo-lead/);
+    expect(e.title).not.toMatch(/Odette|octo-lead/);
+    const id = await identity(p);
+    expect(id).toMatchObject({ kind: "device" });
+    expect(id).not.toHaveProperty("owner");
+    expect(id).not.toHaveProperty("login");
+    expect(id).not.toHaveProperty("name");
     await noDeviceWords(p);
     await ctx.close();
   }, 60_000);

@@ -4873,10 +4873,10 @@
   /**
    * SEC-2a: the rail foot's account entry (the kit's, den-ui 0.7.1), last
    * in the rail's foot, opening Settings › Access. Who is signed in, as
-   * data: this browser's GitHub sign-in ({ name, login }), else the
-   * install owner's GitHub identity (/api/session's identity.owner: a
-   * browser on this machine, or one signed in with a link or a code),
-   * with its role. The kit draws the name over @login (a role only in an
+   * data: this browser's GitHub sign-in ({ name, login }), else, on a
+   * local browser on this machine only, the install owner's GitHub
+   * identity (/api/session's identity.owner) with its role. A browser
+   * signed in with a link or a code is never shown as the owner. The kit draws the name over @login (a role only in an
    * account menu's header). With no GitHub identity at all, the kit's own
    * word for this computer. Never device words.
    */
@@ -4886,7 +4886,7 @@
     var gh =
       id.kind === "github" && id.login
         ? id
-        : id.owner && id.owner.login
+        : id.kind === "local" && id.owner && id.owner.login
           ? id.owner
           : null;
     var who = gh
