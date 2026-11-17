@@ -1104,10 +1104,6 @@
     "org.n": "{n} projects",
     "org.n.one": "{n} project",
     from: "from {d}",
-    "b.logs": "{n} open",
-    "b.logs.one": "{n} open",
-    "b.down": "{n} down",
-    "b.down.one": "{n} down",
     "act.pin": "Pin",
     "act.unpin": "Unpin",
     "act.visit": "Visit",
@@ -2510,12 +2506,7 @@
     "hp.st.done": "done",
     "hp.st.failed": "failed",
     "hp.st.stopped": "stopped",
-    "b.helpers": "{n} helpers running",
-    "b.helpers.one": "{n} helper running",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} on Hub",
-    "hub.railTipPlain": "Open Hub",
-    "hub.railUnread": "{n} waiting on you",
     "hub.railRejected":
       "Hub doesn't accept this install's token. Reconnect in Settings › Hub.",
     "hub.railForbidden":

@@ -163,7 +163,7 @@ describe("the rail's Hub link", () => {
       expect(await a.getAttribute("target")).toBeNull();
       expect(await a.getAttribute("class")).toContain("den-off");
       // Issue 307: the kit's words; why is on Settings › Hub (and ⌘K).
-      expect([why, await a.getAttribute("title")]).toEqual([why, "Hub · Hub"]);
+      expect([why, await a.getAttribute("title")]).toEqual([why, "Hub"]);
       expect(
         Number(await a.evaluate((e) => getComputedStyle(e).opacity)),
       ).toBeLessThan(1);
@@ -238,7 +238,7 @@ describe("the rail's Hub link", () => {
         why,
         (answer as { team?: string }).team
           ? `${(answer as { team?: string }).team} · Hub`
-          : "Hub · Hub",
+          : "Hub",
       ]);
       expect(errors).toEqual([]);
       await p.context().close();

@@ -309,10 +309,6 @@
     "org.n": "{n} proyectos",
     "org.n.one": "{n} proyecto",
     from: "de {d}",
-    "b.logs": "{n} abiertos",
-    "b.logs.one": "{n} abierto",
-    "b.down": "{n} caídos",
-    "b.down.one": "{n} caído",
     "act.pin": "Fijar",
     "act.unpin": "Quitar",
     "act.visit": "Visitar",
@@ -1735,12 +1731,7 @@
     "hp.st.done": "terminado",
     "hp.st.failed": "falló",
     "hp.st.stopped": "detenido",
-    "b.helpers": "{n} ayudantes en marcha",
-    "b.helpers.one": "{n} ayudante en marcha",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} en Hub",
-    "hub.railTipPlain": "Abrir Hub",
-    "hub.railUnread": "{n} esperan tu respuesta",
     "hub.railRejected":
       "Hub no acepta el token de esta instalación. Vuelve a conectar en Ajustes › Hub.",
     "hub.railForbidden":
