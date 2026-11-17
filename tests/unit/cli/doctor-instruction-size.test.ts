@@ -66,6 +66,31 @@ describe("issue 278 clause 2: doctor's instruction-size check", () => {
     });
   });
 
+  // Issue 291 item 3.
+  it("the user's own ~/.claude/CLAUDE.md is named from home, with CLAUDE_CONFIG_DIR set elsewhere", () => {
+    const { home, cwd, rec } = setup();
+    fs.rmSync(path.join(home, "work", "north", "CLAUDE.md"));
+    fs.mkdirSync(path.join(home, ".claude"));
+    fs.writeFileSync(
+      path.join(home, ".claude", "CLAUDE.md"),
+      "z".repeat(840 * 1024),
+    );
+    const cfg = fs.mkdtempSync(path.join(os.tmpdir(), "den-docins-cfg-"));
+    dirs.push(cfg);
+    const r = instructionSizeLines("Acme", {
+      records: () => [rec("scout")],
+      settings: () => ({ ...CONTEXT_WATCH_DEFAULTS }),
+      env: { HOME: home, CLAUDE_CONFIG_DIR: cfg },
+    });
+    expect(cwd.startsWith(home)).toBe(true);
+    const said = r.lines.join("\n");
+    expect(said).toContain(
+      `${path.join("~", ".claude", "CLAUDE.md")} (840 KB)`,
+    );
+    expect(said).not.toContain(`..${path.sep}`);
+    expect(r.checks[0]?.fix).toContain(path.join("~", ".claude", "CLAUDE.md"));
+  });
+
   it("within the share: ok, and no lines", () => {
     const { home, rec } = setup();
     const r = instructionSizeLines("Acme", {

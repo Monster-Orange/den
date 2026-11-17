@@ -302,6 +302,62 @@ describe("issue 278 clause 2: instruction files", () => {
     expect(c.largest?.path).toBe(path.join("~", ".claude", "CLAUDE.md"));
   });
 
+  // Issue 291 item 3: the user's file never shows as ../../../.claude/CLAUDE.md.
+  it("with CLAUDE_CONFIG_DIR set elsewhere, ~/.claude/CLAUDE.md reached from the folder is still named from home", () => {
+    const home = tmp();
+    const cfg = tmp();
+    fs.mkdirSync(path.join(home, ".claude"));
+    fs.writeFileSync(path.join(home, ".claude", "CLAUDE.md"), "u".repeat(4000));
+    const cwd = path.join(home, "work", "north", "app");
+    fs.mkdirSync(cwd, { recursive: true });
+    const env = { HOME: home, CLAUDE_CONFIG_DIR: cfg };
+    const c = instructionCheck(instructionFiles(cwd, env), cwd, {
+      sharePercent: 0.1,
+      contextTokens: 200_000,
+      home,
+    });
+    expect(c.largest?.path).toBe(path.join("~", ".claude", "CLAUDE.md"));
+    expect(instructionWarning(c)).not.toContain("..");
+  });
+
+  it("a config folder under home is named from home", () => {
+    const home = tmp();
+    const cfg = path.join(home, ".config", "claude-cfg");
+    fs.mkdirSync(cfg, { recursive: true });
+    fs.writeFileSync(path.join(cfg, "CLAUDE.md"), "u".repeat(4000));
+    const cwd = path.join(home, "work", "north");
+    fs.mkdirSync(cwd, { recursive: true });
+    const c = instructionCheck(
+      instructionFiles(cwd, { HOME: home, CLAUDE_CONFIG_DIR: cfg }),
+      cwd,
+      { sharePercent: 0.1, contextTokens: 200_000, home },
+    );
+    expect(c.largest?.path).toBe(
+      path.join("~", ".config", "claude-cfg", "CLAUDE.md"),
+    );
+  });
+
+  it("home spelled through a link: the user's file is counted once and named from home", () => {
+    const top = tmp();
+    const real = path.join(top, "real-home");
+    fs.mkdirSync(path.join(real, ".claude"), { recursive: true });
+    fs.writeFileSync(path.join(real, ".claude", "CLAUDE.md"), "u".repeat(4000));
+    const link = path.join(top, "home");
+    fs.symlinkSync(real, link);
+    // The agent's folder as the OS spells it (the real path); HOME by the link.
+    const cwd = path.join(real, "work", "north");
+    fs.mkdirSync(cwd, { recursive: true });
+    const files = instructionFiles(cwd, { HOME: link });
+    expect(files).toHaveLength(1);
+    const c = instructionCheck(files, cwd, {
+      sharePercent: 0.1,
+      contextTokens: 200_000,
+      home: link,
+    });
+    expect(c.totalBytes).toBe(4000);
+    expect(c.largest?.path).toBe(path.join("~", ".claude", "CLAUDE.md"));
+  });
+
   it("a folder outside home stops at its repo's root", () => {
     const home = tmp();
     const top = tmp();

@@ -139,27 +139,47 @@ export function instructionFiles(
   const home = path.resolve(env.HOME || os.homedir());
   const config = env.CLAUDE_CONFIG_DIR || path.join(home, ".claude");
   const out: InstructionFile[] = [];
+  // One file, however it is spelled (HOME through a link, the folder by its
+  // real path): counted once.
   const seen = new Set<string>();
-  const add = (p: string, user = false) => {
-    if (seen.has(p)) return;
-    seen.add(p);
+  // Claude Code's default user file, ~/.claude/CLAUDE.md, is the user's own
+  // even when CLAUDE_CONFIG_DIR points elsewhere and the walk up reaches it
+  // from home: it is named from home, never as ../../.claude/CLAUDE.md.
+  const userFiles = new Set(
+    [
+      path.join(config, "CLAUDE.md"),
+      path.join(home, ".claude", "CLAUDE.md"),
+    ].map(realOrSelf),
+  );
+  const add = (p: string) => {
+    const real = realOrSelf(p);
+    if (seen.has(real)) return;
+    seen.add(real);
     try {
       const st = fs.statSync(p);
       if (st.isFile())
-        out.push({ path: p, bytes: st.size, ...(user ? { user: true } : {}) });
+        out.push({
+          path: p,
+          bytes: st.size,
+          ...(userFiles.has(real) ? { user: true } : {}),
+        });
     } catch {
       /* not there */
     }
   };
-  add(path.join(config, "CLAUDE.md"), true);
-  const underHome = (d: string) => d === home || d.startsWith(home + path.sep);
+  add(path.join(config, "CLAUDE.md"));
+  // Home by either spelling: as HOME has it, and its real path.
+  const homes = [...new Set([home, realOrSelf(home)])];
+  const isHome = (d: string) => homes.includes(d);
+  const underHome = (d: string) =>
+    homes.some((h) => d === h || d.startsWith(h + path.sep));
   let dir = path.resolve(cwd);
   const inHome = underHome(dir);
   for (;;) {
     const parent = path.dirname(dir);
     if (parent === dir) break; // `/` itself: never read
     for (const f of FOLDER_FILES) add(path.join(dir, f));
-    if (dir === home) break;
+    if (isHome(dir)) break;
     if (!inHome && fs.existsSync(path.join(dir, ".git"))) break;
     dir = parent;
   }
@@ -181,12 +201,29 @@ export interface InstructionCheck {
   largest?: { path: string; bytes: number };
 }
 
-/** A file's path as the warning names it: relative to the folder, or ~/… for the user's own. */
+/** A path's real spelling (links resolved), or the path when it can't be. */
+function realOrSelf(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
+ * A file's path as the warning names it: relative to the folder, or, for
+ * the user's own, ~/… when it is under home (by either spelling of home),
+ * else its full path.
+ */
 function shownPath(f: InstructionFile, cwd: string, home: string): string {
   if (!f.user) return path.relative(cwd, f.path) || path.basename(f.path);
-  return f.path.startsWith(home + path.sep)
-    ? `~${path.sep}${path.relative(home, f.path)}`
-    : f.path;
+  const real = realOrSelf(f.path);
+  for (const [p, h] of [
+    [f.path, home],
+    [real, realOrSelf(home)],
+  ])
+    if (p.startsWith(h + path.sep)) return `~${path.sep}${path.relative(h, p)}`;
+  return f.path;
 }
 
 /** How the files measure against the context's share. */

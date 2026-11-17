@@ -37,6 +37,19 @@ config and manifest changes a distribution must make to move to it under
   than one project, with an agent from each working in it; removing it
   from one project leaves the others as they were.
 
+### Fixed
+
+- `up -w <project>` in a project that is not active, such as one just made
+  with `workspace create`, no longer stops with "is not active". It makes
+  the project active and says so in one line. A dry run says it would.
+- `status <repo>` shows that repo only. For a repo that runs nothing, it
+  prints the same one line in every project it is in, not the project's
+  whole table.
+- When the largest instruction file is the user's own `CLAUDE.md`, the
+  warning, the agent's row and `doctor` name it `~/.claude/CLAUDE.md` (or
+  the config folder with home shown as `~`), never `../../../.claude/CLAUDE.md`.
+  It is counted once when home is reached by a link.
+
 ## [0.4.61] - 2026-11-16
 
 ### Added
