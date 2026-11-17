@@ -36,6 +36,38 @@ jobs:
   # fails if it appears). release.yml stays GitHub-hosted: trusted publishing
   # needs a GitHub-hosted runner.
   #
+  # Fail fast: the static tests (tests/static-tests.json: no server, no
+  # browser, no Docker, no child process; scripts/static-tests.js has the
+  # rule) in one short job on Node 22, on pull requests and on push. Every
+  # job that runs tests waits for it, so a red version-sync or token check
+  # fails in about a minute instead of after the 10-13 minute shards. The
+  # checks and the install smoke don't wait: they run beside it, as before.
+  # Each file must run in under the list's max_seconds on this runner; the
+  # job summary has the slowest files and the job's wall time.
+  static:
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    env:
+      DEN_TEST_WORKERS: "4"
+    steps:
+      - run: echo "STATIC_T0=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.13.0"
+          cache: npm
+      - run: npm ci
+      - name: The static tests
+        run: |
+          node scripts/static-tests.mjs --check
+          mapfile -t files < <(node scripts/static-tests.mjs --list)
+          code=0
+          npx jest --forceExit --json --outputFile=static.json "${files[@]}" || code=$?
+          STATIC_WALL_SECONDS=$(( $(date +%s) - STATIC_T0 )) \
+            node scripts/static-tests.mjs --timing static.json --summary "$GITHUB_STEP_SUMMARY" || code=1
+          echo "static job: $(( $(date +%s) - STATIC_T0 )) s from start"
+          exit "$code"
+
   # The fast gates, once per Node at both ends of the supported range: the
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
@@ -85,6 +117,7 @@ jobs:
   # side (jest --shard): every test runs once per Node, as before; the suite
   # took 13–19 min (up to 30 with setup) in one job.
   tests:
+    needs: [static]
     if: github.event_name == 'push'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
@@ -131,8 +164,8 @@ jobs:
   # On a pull request it runs when the change's tests include it (it is in
   # the subset when den-ui or the shell changed: the pr job's "nav" output).
   den-ui-nav:
-    needs: [pr]
-    if: ${{ !cancelled() && (github.event_name == 'push' || needs.pr.outputs.nav == 'true') }}
+    needs: [static, pr]
+    if: ${{ !cancelled() && needs.static.result == 'success' && (github.event_name == 'push' || needs.pr.outputs.nav == 'true') }}
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
@@ -194,6 +227,7 @@ jobs:
   # tests are left out of the blocking steps and run in a last step that
   # can't block.
   pr:
+    needs: [static]
     if: github.event_name == 'pull_request'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 40
@@ -275,7 +309,7 @@ jobs:
   # same subset again (a diff and jest's file lists: seconds) and runs its
   # share of it.
   pr-shards:
-    needs: [pr]
+    needs: [static, pr]
     if: needs.pr.outputs.shards != '[]'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20

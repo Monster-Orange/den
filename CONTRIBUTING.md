@@ -73,6 +73,26 @@ docker stop pw
 The browser's `localhost` and `*.localhost` are this machine's
 (`exposeNetwork`), so the test runs as it would locally.
 
+### Static tests run first
+
+`tests/static-tests.json` lists the static tests: no server, no browser,
+no Docker, no child process (version-sync, the token and words checks,
+and the like). CI runs them first, in one short job on Node 22, on pull
+requests and on push; every job that runs tests waits for it, so one of
+them failing shows in about a minute, not after the shards. The checks
+and the install smoke run beside it.
+
+The list is picked by a rule (`scripts/static-tests.js`): the file and
+everything it imports from this repo reach no child-process, server,
+browser or Docker module, and each file runs in under `max_seconds` on
+CI (the job fails on a slower one, and its summary has the slowest files
+and its wall time). `tests/unit/test-infra/static-tests.test.ts` checks
+the rule. To see every file the rule allows:
+
+```bash
+node scripts/static-tests.mjs --candidates
+```
+
 ### Quarantined tests
 
 `tests/quarantine.json` lists flaky tests. On a pull request, CI leaves
