@@ -221,8 +221,9 @@ export function guardrailHooks(
 
 /**
  * NT-1: the attention hooks every agent gets (whatever its persona):
- * PermissionRequest and Notification → waiting, PostToolUse and
- * UserPromptSubmit → resumed, Stop → finished, posted to Den
+ * PermissionRequest and Notification → waiting, PostToolUse,
+ * UserPromptSubmit and SessionStart (issue 327) → resumed, Stop →
+ * finished, posted to Den
  * (attention-hook.ts). Merged beside Den's other hooks. PermissionRequest
  * prints nothing, so Claude Code still asks the person.
  */

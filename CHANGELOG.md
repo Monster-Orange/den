@@ -13,6 +13,24 @@ config and manifest changes a distribution must make to move to it under
   number (issue 307 follow-up).
 
 - A greyed Hub link in the rail says why again, such as "Acme Co · Hub, reconnect in Settings", in its tooltip and the name a screen reader reads. Den passes the reason as data and den-ui words it in English, Spanish and Japanese (issue 326).
+- A server agent's "waiting · permission" now says what it waits on and
+  since when: the tool its dialog asks for, or the notice, trimmed. The
+  bell row says it, and so do the update check's state, its log line and
+  its "update waits" bell item. A wait no longer outlives its dialog: a
+  new Claude session (a restart, a resume) and Claude Code's idle notice
+  clear it. The "update waits" item now goes once the update goes on,
+  even if the person had read it or it was posted before a restart
+  (#327).
+- After Den updates itself, it no longer tells its own agent to "check
+  with doctor", a tool that agent doesn't have. It says to call
+  release_status, which now has Den's last update of itself (from, to,
+  when, and why if it rolled back) and the new Den's doctor results from
+  that update (each failing or warning check). Den keeps those results
+  beside the update's state; the Den agent page reads them too (GET
+  /api/server-agent/update, read only). A test checks that every tool
+  named to that agent, in its charter, Den's lines and the MCP text, is one
+  it has (#176).
+- With `edge.access_log` on, an edge whose `edge.image` is Traefik v2 starts again. Den added OTLP tracing flags that only Traefik v3 knows, and v2 refused to start. Den now adds them only when the image tag says v3 or later; otherwise the access log runs without request ids, and `edge up` says so in one line. (#330)
 
 - The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
 
@@ -32,6 +50,16 @@ config and manifest changes a distribution must make to move to it under
   says so in the dialog: "That request has ended". An expired code says it
   expired. Both are in English, Spanish and Japanese. The server answers
   410 with code `ended` for a withdrawn code, for a minute (#320).
+- A code whose signed-out page has closed or gone elsewhere can no longer
+  be approved, in Safari too. Safari drops the request a closing page
+  sends to withdraw its code, so the code stayed open and `web approve`
+  answered "Approved". Now the server ends any code its page hasn't asked
+  about for 15 s (`DEN_PAIR_UNSEEN_MS` changes it): Allow and `web
+  approve` answer that the request has ended, and nothing is allowed. The
+  page also withdraws its code with a beacon as it goes, which Safari does
+  send (POST /api/signin/code/<id>/withdraw, an allowed Origin, as the
+  DELETE). A background tab whose code ended this way shows a fresh code
+  by itself, at once when you come back to it (#320).
 
 ## [0.4.63] - 2026-11-17
 

@@ -74,11 +74,17 @@ async function open(e: Engine): Promise<{ p: Page; landed: Promise<void> }> {
       /* none */
     }
   }, latest);
+  // Signed in first, in a tab of its own (signing in keeps the path, not
+  // the #).
+  const first = await ctx.newPage();
+  await first.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await first.waitForSelector(ROW);
+  // The link opens in a fresh tab of the same signed-in browser: a fresh
+  // load, as from a bell link. Not via about:blank in the same tab: under
+  // load, WebKit's process swap from about:blank failed the next goto with
+  // "WebKit encountered an internal error".
   const p = await ctx.newPage();
   p.on("pageerror", (x) => errors.push(`${e}: ${x.message}`));
-  // Signed in first (signing in keeps the path, not the #).
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
-  await p.waitForSelector(ROW);
   let done!: () => void;
   const landed = new Promise<void>((r) => (done = r));
   await p.route(/\/api\/personas(\?|$)/, async (route) => {
@@ -87,8 +93,7 @@ async function open(e: Engine): Promise<{ p: Page; landed: Promise<void> }> {
     // The list draws on the answer; give it a frame or two.
     setTimeout(done, 400);
   });
-  // A fresh load (from /settings, only the # would change).
-  await p.goto("about:blank");
+  await first.close();
   await p.goto(`${s!.base}/settings#agents.keep_running`);
   return { p, landed };
 }

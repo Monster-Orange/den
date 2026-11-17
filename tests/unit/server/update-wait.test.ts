@@ -114,7 +114,10 @@ describe("the pin after a self-update", () => {
     f.setPin("uncommitted");
     const c = updateCheck(f.d);
     await c.tick();
-    expect(f.notes).toEqual([]);
+    // Issue 327: the first pass that doesn't wait clears a waits item a
+    // process before a restart may have left.
+    expect(f.notes).toEqual(["wait done"]);
+    f.notes.length = 0;
     await c.tick();
     await c.tick();
     expect(f.logs).toEqual([
@@ -133,7 +136,7 @@ describe("the pin after a self-update", () => {
     const c = updateCheck(f.d);
     await c.tick();
     await c.tick();
-    expect(f.notes).toEqual([]);
+    expect(f.notes).toEqual(["wait done"]);
     expect(f.logs).toEqual([]);
   });
 });

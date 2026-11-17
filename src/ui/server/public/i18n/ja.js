@@ -1578,6 +1578,7 @@
     "bell.hub": "Hub · {project}",
     "bell.hubAll": "Hub",
     "bell.m.permission": "{name} があなたの許可を待っています",
+    "bell.m.permissionWhat": "{name} があなたの許可を待っています: {what}",
     "bell.m.input": "{name} があなたを待っています",
     "bell.m.asked": "{name} からの質問: {text}",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
@@ -1599,6 +1600,10 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
+    "bell.m.updateWaitsWhat":
+      "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
+    "bell.m.updateWaitsAskedWhat":
+      "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました: {what} ({since} から)",
     "bell.m.pinNotCommitted":
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがディストリビューションのフォルダーにコミットされていません",
     "bell.m.pinPushed":

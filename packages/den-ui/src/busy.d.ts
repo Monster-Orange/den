@@ -5,6 +5,7 @@ export declare const NO_ANSWER_MS: number;
 export declare const SUCCESS_CLOSE_MS: number;
 export declare const POLL_MS: number;
 export declare const POLL_MAX_MS: number;
+export declare const ASK_MS: number;
 
 export type Words = Record<string, Record<string, string>>;
 /** Check again's answer: how a request id ended. */

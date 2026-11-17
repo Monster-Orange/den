@@ -2395,6 +2395,7 @@
     "bell.hub": "Hub · {project}",
     "bell.hubAll": "Hub",
     "bell.m.permission": "{name} needs your permission",
+    "bell.m.permissionWhat": "{name} needs your permission: {what}",
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.pick": "{n} projects need your pick",
@@ -2421,6 +2422,10 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
+    "bell.m.updateWaitsWhat":
+      "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
+    "bell.m.updateWaitsAskedWhat":
+      "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question: {what} (since {since})",
     "bell.m.pinNotCommitted":
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed in the distribution's folder",
     "bell.m.pinPushed":

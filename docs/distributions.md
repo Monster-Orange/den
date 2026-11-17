@@ -2836,9 +2836,13 @@ agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 **It binds cooperating agents only.** The scope lives in the MCP server's
 process. The web server's HTTP API does not check it yet, so an agent that
 calls the API itself (curl, a browser) is not held to its project. Enforcing
-the scope in the HTTP server is WS-3a, planned for 0.4. `mcp connect` still
-registers the unscoped server; to hand one agent a scoped server, add it to
-that agent's config yourself, for example in a project's `.mcp.json`:
+the scope in the HTTP server is WS-3a, planned for 0.4. Agents Den starts
+already get a scoped server: Den writes their MCP config itself and starts
+them in strict MCP mode (`--strict-mcp-config`), so a project's `.mcp.json`
+is ignored for them; nothing you put there reaches them. `mcp connect`
+still registers the unscoped server. To hand an agent you run yourself
+(outside Den) a scoped server, add it to that agent's own config, for
+example in a project's `.mcp.json`:
 `"args": ["mcp", "--workspace", "north", "--actor", "agent:planner"]`.
 
 ### One call from a shell

@@ -67,6 +67,9 @@
  * Reconnect mode: the request may get no answer (the product stopped
  * first); that counts as going down, and the pop-up waits for it to come
  * back. busyAction then resolves with the new answer from reconnect.url.
+ * Each ask of reconnect.url gives up after ASK_MS: an ask in flight as the
+ * product goes down (or one a proxy holds) may never be answered, and the
+ * next ask must still come.
  *
  * The request contract (Settled in v2): Try again sends the same id only
  * when no answer came back; after the server answered with an error it
@@ -84,6 +87,7 @@ export const NO_ANSWER_MS = 60_000;
 export const SUCCESS_CLOSE_MS = 1200;
 export const POLL_MS = 1000;
 export const POLL_MAX_MS = 3000;
+export const ASK_MS = 3000;
 
 const hook = {
   lang: () =>
@@ -205,6 +209,20 @@ function newId() {
 }
 
 const later = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** One ask of the reconnect url: its JSON, or null (no answer in ASK_MS). */
+async function askOnce(url) {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), ASK_MS);
+  try {
+    const r = await fetch(url, { cache: "no-store", signal: stop.signal });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** The first message with words: the error's own, its answer's, nothing. */
 export function messageOf(err) {
@@ -625,13 +643,7 @@ export function busyAction(name, run, opts = {}) {
     while (!settled && Date.now() - startedAt < limit) {
       await later(gap);
       gap = Math.min(POLL_MAX_MS, gap + 500);
-      let now = null;
-      try {
-        const r = await fetch(rc.url, { cache: "no-store" });
-        now = r.ok ? await r.json() : null;
-      } catch {
-        now = null;
-      }
+      const now = await askOnce(rc.url);
       if (settled) return;
       if (now && rc.back(now, before)) {
         const v = rc.version?.(now) ?? "";
@@ -650,13 +662,10 @@ export function busyAction(name, run, opts = {}) {
   // Reconnect mode: how the product answered before it went away.
   let before = opts.before ?? null;
   if (reconnect && hook.reconnect && !before)
-    fetch(hook.reconnect.url, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
-      .then((b) => {
-        before = b;
-        attempt();
-      });
+    askOnce(hook.reconnect.url).then((b) => {
+      before = b;
+      attempt();
+    });
   else attempt();
   return result;
 }

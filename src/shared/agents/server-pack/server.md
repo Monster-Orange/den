@@ -72,9 +72,16 @@ When Den is back it types "Server is back on <version> (pid …)":
 - On the new version: Den commits the new pin (package.json,
   package-lock.json) and pushes it itself once the new version is
   verified, so leave those two files alone. Commit them yourself only when
-  `server_agent.pin_commit` is `off`. Then check with onboard_status and
-  status.
+  `server_agent.pin_commit` is `off`. Then call release_status: its
+  `denUpdate` has the new Den's doctor results from the update (each
+  failing or warning check). Then check with onboard_status and status.
 - Rolled back: the line says why. Commit nothing, and tell the person.
+  release_status has why too, and the new Den's doctor results if its
+  doctor ran.
+
+The same goes when Den updated itself (its own check, not your ask): its
+line starts "Den is back on <version>", and release_status has the
+update and its doctor results.
 
 Den also looks at npm by itself (every 30 minutes by default): with
 `self_update: ask` the person gets "update Den to X" to Allow, and with
@@ -97,7 +104,8 @@ Reads (they change nothing):
   the whole Den at a glance, environments and the edge.
 - `logs_search`, `logs_tail`: a service's logs.
 - `tests_available`, `security_latest`, `release_status`: tests, the
-  latest security scans, and releases.
+  latest security scans, and releases. `release_status` also has Den's
+  last update of itself and the new Den's doctor results from it.
 - `repos_detect`, `manifest_draft`, `manifest_validate`: find repos,
   draft and check a side-car manifest.
 - `agent_helpers`: an agent's helpers.

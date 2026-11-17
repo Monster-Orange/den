@@ -158,10 +158,18 @@ export async function handleNotificationRoutes(
             event: "waiting",
             why: why as WaitingWhy,
             text: str(b?.text),
+            // Issue 327: what the wait saw (a tool, a notice), and the
+            // idle notice that says no dialog is open.
+            what: str(b?.what, 80),
+            idle: b?.idle === true,
             hooked: b?.hooked === true,
           }
         : ev === "resumed"
-          ? { event: "resumed", from: b?.from === "prompt" ? "prompt" : "tool" }
+          ? {
+              event: "resumed",
+              from:
+                b?.from === "prompt" || b?.from === "session" ? b.from : "tool",
+            }
           : { event: "finished", text: str(b?.text) },
     );
     sendJson(res, { ok: true });
@@ -175,10 +183,16 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ok: true,
       unread: v.unread,
-      waiting: [...deps.attention.waitingNow()].map(([a, why]) => ({
-        agent: a,
-        why,
-      })),
+      // Issue 327: and what it waits on, since when.
+      waiting: [...deps.attention.waitingNow()].map(([a, why]) => {
+        const w = deps.attention.waitingDetail(a);
+        return {
+          agent: a,
+          why,
+          ...(w?.what ? { what: w.what } : {}),
+          ...(w ? { since: w.since } : {}),
+        };
+      }),
       groups: groupNotifications(v.recent),
       // ATTN-5 (den#142): updates, collapsed; never in the badge.
       updates: {

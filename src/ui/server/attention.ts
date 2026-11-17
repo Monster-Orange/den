@@ -15,11 +15,17 @@
  *   output moving again (check(), on a tick) after it settled: output in
  *   the first SETTLE_MS (the agent drawing its own call) only moves the
  *   mark. Its unread waiting notification is withdrawn with it.
+ * - Issue 327: a wait never outlives its dialog. A new Claude session
+ *   ("resumed" from "session": a restart, a resume, a clear) and Claude
+ *   Code's idle notice (no dialog is open) clear a permission wait too.
+ *   Each wait keeps what it saw (the tool, or the notice, trimmed) and
+ *   since when; the bell row and the update check say both.
  * Texts are kept in English and as a key with values (`msg`), for the
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
  */
 import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
+import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 
 export type WaitingWhy = "permission" | "input" | "asked";
 
@@ -68,9 +74,18 @@ export const SETTLE_MS = 4000;
  */
 export const RESUME_AFTER_MS = 1000;
 
+/** Issue 327: what an agent waits on, and since when (ISO). */
+export interface WaitingDetail {
+  why: WaitingWhy;
+  what: string;
+  since: string;
+}
+
 interface Waiting {
   why: WaitingWhy;
   text: string;
+  /** Issue 327: the tool it asks for, or the notice, trimmed. */
+  what: string;
   at: number;
   mark: string | null;
   workspace: string;
@@ -95,6 +110,14 @@ export class Attention {
     return new Map([...this.waiting].map(([a, w]) => [a, w.why]));
   }
 
+  /** Issue 327: what `agent` waits on and since when, or undefined. */
+  waitingDetail(agent: string): WaitingDetail | undefined {
+    const w = this.waiting.get(agent);
+    return w
+      ? { why: w.why, what: w.what, since: new Date(w.at).toISOString() }
+      : undefined;
+  }
+
   /** NT-2: a page shows these agents now (visible and focused). */
   lookingAt(agents: readonly string[]): void {
     const until = this.now() + (this.d.lookingMs ?? 10_000);
@@ -114,9 +137,16 @@ export class Attention {
     agent: string,
     workspace: string,
     ev:
-      | { event: "waiting"; why: WaitingWhy; text?: string; hooked?: boolean }
+      | {
+          event: "waiting";
+          why: WaitingWhy;
+          text?: string;
+          what?: string;
+          idle?: boolean;
+          hooked?: boolean;
+        }
       | { event: "finished"; text?: string }
-      | { event: "resumed"; from: "tool" | "prompt" },
+      | { event: "resumed"; from: "tool" | "prompt" | "session" },
   ): Promise<void> {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
@@ -124,7 +154,14 @@ export class Attention {
     const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
     if (ev.event === "resumed") {
       const w = this.waiting.get(agent);
-      if (!w || this.now() - w.at < RESUME_AFTER_MS) return;
+      if (!w) return;
+      // Issue 327: a new session has no dialog from before it; an ask
+      // stays (Den holds the question, not the session).
+      if (ev.from === "session") {
+        if (w.why !== "asked") this.clear(agent);
+        return;
+      }
+      if (this.now() - w.at < RESUME_AFTER_MS) return;
       // An ask is answered by a prompt (the person's reply), not by the
       // ask_human call itself finishing.
       if (w.why === "asked" && ev.from !== "prompt") return;
@@ -161,19 +198,39 @@ export class Attention {
         });
       return;
     }
+    const prev = this.waiting.get(agent);
+    // Issue 327: Claude Code's idle notice means no dialog is open: a
+    // permission wait from before it is over.
+    if (
+      ev.idle === true &&
+      prev?.why === "permission" &&
+      this.now() - prev.at >= RESUME_AFTER_MS
+    ) {
+      this.clear(agent);
+      return;
+    }
+    // A second call while waiting (Notification after PermissionRequest)
+    // keeps when it began and what it named first.
+    const what =
+      prev?.why === ev.why && prev.what
+        ? prev.what
+        : trimWhat(ev.what ?? ev.text ?? "");
     const text =
       ev.why === "permission"
-        ? `${name} needs your permission`
+        ? what
+          ? `${name} needs your permission: ${what}`
+          : `${name} needs your permission`
         : ev.why === "asked"
           ? `${name} asked: ${ev.text ?? ""}`
           : `${name} is waiting for you`;
     const msg: NoteMsg =
       ev.why === "permission"
-        ? { key: "bell.m.permission", vars: { name } }
+        ? what
+          ? { key: "bell.m.permissionWhat", vars: { name, what } }
+          : { key: "bell.m.permission", vars: { name } }
         : ev.why === "asked"
           ? { key: "bell.m.asked", vars: { name, text: ev.text ?? "" } }
           : { key: "bell.m.input", vars: { name } };
-    const prev = this.waiting.get(agent);
     // Claude Code's idle "waiting for your input" while an ask is open:
     // still the ask.
     if (prev?.why === "asked" && ev.why === "input") return;
@@ -186,8 +243,7 @@ export class Attention {
     this.waiting.set(agent, {
       why: ev.why,
       text,
-      // A second call while waiting (Notification after PermissionRequest)
-      // keeps when it began.
+      what,
       at: prev?.at ?? this.now(),
       mark: await this.d.outputMark(agent),
       workspace,

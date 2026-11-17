@@ -578,6 +578,8 @@ function wirePair(root, t, s) {
   // D67: this page's pending request (its poll id), withdrawn as the page
   // goes, so no signed-in browser asks to let a closed tab in.
   let mine = null;
+  // Issue 320: the current request's poll, to run at once.
+  let askNow = null;
   // Issue 320: a promise of the answer, for a page that waits for it.
   const withdraw = () => {
     const id = mine;
@@ -601,11 +603,31 @@ function wirePair(root, t, s) {
   const stop = () => {
     clearTimeout(poll);
     clearTimeout(tick);
+    askNow = null;
     gen++;
   };
+  // Issue 320: as the page goes, a beacon too. Safari drops a keepalive
+  // DELETE sent from pagehide, but sends a beacon. Either ends it; the
+  // server also ends a request its page stopped asking for.
+  const beacon = (id) => {
+    try {
+      navigator.sendBeacon?.(
+        `/api/signin/code/${encodeURIComponent(id)}/withdraw`,
+      );
+    } catch {
+      /* the server ends it anyway */
+    }
+  };
   window.addEventListener("pagehide", () => {
+    const id = mine;
     withdraw();
+    if (id) beacon(id);
     stop();
+  });
+  // Issue 320: back from the background (a slow-polled tab), ask at once:
+  // a request the server ended gets a fresh code now, not a minute later.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && askNow) askNow();
   });
   // Issue 320: signed in another way: no more polling, and the code goes first.
   leavePair = () => {
@@ -706,13 +728,18 @@ function wirePair(root, t, s) {
           tick = setTimeout(count, Math.min(1000, ms % 1000 || 1000));
         };
         count();
-        const ask = () =>
-          fetch(`/api/signin/code/${encodeURIComponent(b.id)}`, {
+        let asking = false;
+        const ask = () => {
+          if (asking) return;
+          asking = true;
+          clearTimeout(poll);
+          return fetch(`/api/signin/code/${encodeURIComponent(b.id)}`, {
             cache: "no-store",
             credentials: "same-origin",
           })
             .then((r) => r.json().catch(() => ({})))
             .then((p) => {
+              asking = false;
               if (now !== gen) return;
               if (p.state === "pending") {
                 poll = setTimeout(ask, 1500);
@@ -726,6 +753,13 @@ function wirePair(root, t, s) {
                 location.replace(landingAfterSignIn(location));
                 return;
               }
+              // Issue 320: gone (the server ended it: this page went
+              // unheard, as a background tab may) is no dead end: a fresh
+              // code, by itself.
+              if (p.state === "gone") {
+                mine = null;
+                return begin();
+              }
               ended(
                 p.state === "denied"
                   ? "err.signin.codeDenied"
@@ -733,8 +767,11 @@ function wirePair(root, t, s) {
               );
             })
             .catch(() => {
+              asking = false;
               if (now === gen) poll = setTimeout(ask, 3000);
             });
+        };
+        askNow = ask;
         poll = setTimeout(ask, 1500);
       })
       .catch(() => {
