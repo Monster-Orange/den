@@ -46,9 +46,9 @@ export function agentsSectionHtml(ws) {
               <a href="/agents?project=${encodeURIComponent(ws)}" id="agents-open-all">${esc(t("ws.openAgents"))}</a>
             </div>
             <p class="agents-err" id="agents-err" role="alert" hidden></p>
-            <div class="tablewrap">
+            <div class="tablewrap" tabindex="0" role="region" aria-labelledby="agents-cap">
               <table class="svc" id="agent-table">
-                <caption>${esc(t("ag.caption", { ws }))}</caption>
+                <caption id="agents-cap">${esc(t("ag.caption", { ws }))}</caption>
                 <thead><tr>
                   <th scope="col">${esc(t("ag.col.agent"))}</th>
                   <th scope="col">${esc(t("ag.col.runtime"))}</th>

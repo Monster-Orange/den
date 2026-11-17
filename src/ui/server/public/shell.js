@@ -50,6 +50,9 @@
  *                 palette command (kind "setting", id "setting:<id>"):
  *                 Enter opens /settings?q=<label>#<category>.
  *   settings(), settingsCategories()  the registry, categories by order
+ *   pages()                          every page the rail leads to: NAV,
+ *                                    hidden and conditional ones too, then
+ *                                    Settings ({ id, href } each)
  *   setNavPrefs({ hidden?, order? }), setPins(ids), setCollapsed(bool)
  *                 Navigation (R21): the rail pages hidden, their order,
  *                 the pins; saved to /api/settings `shell`
@@ -7605,6 +7608,15 @@
     },
     nav: function () {
       return NAV.slice();
+    },
+    /**
+     * Every page the rail can lead to (issue 297): the NAV registry, hidden
+     * and conditional pages included, then Settings. { id, href } each.
+     */
+    pages: function () {
+      return NAV.map(function (n) {
+        return { id: n.id, href: n.href };
+      }).concat([{ id: SETTINGS.id, href: SETTINGS.href }]);
     },
     /** NAV in the rail's order (groups, then your order), hidden included. */
     orderedNav: orderedNav,

@@ -2433,7 +2433,7 @@ export function runtimeRowHtml(r, scopeWs) {
   // A path set at the scope shown can be cleared from here.
   const mine = scopeWs ? r.source === "workspace" : r.source === "setting";
   return (
-    `<div class="rt" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
+    `<div class="rt" role="listitem" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
     `<div class="rt-n">${name}</div>` +
     `<div class="rt-s">${status}</div>` +
     `<div class="rt-w">${where}</div>` +
@@ -2713,7 +2713,7 @@ export function rotationHtml(b) {
       ]),
     ) +
     `</div>` +
-    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col" aria-label="${escR(L("set.ui.rot.thActions", "Actions"))}"></th></tr></thead><tbody>` +
+    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col"><span class="den-sr">${escR(L("set.ui.rot.thActions", "Actions"))}</span></th></tr></thead><tbody>` +
     (rows.length
       ? rows.join("")
       : `<tr><td colspan="5" class="set-note">${escR(L("set.ui.rot.none", "No overrides: every agent uses this install's values."))}</td></tr>`) +
