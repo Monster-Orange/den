@@ -955,6 +955,9 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/sudo-password/status",
   // The env picker on every page (falls back to local; a consumer's dev.40 finding).
   "/api/environments",
+  // Issue 395: the edge row on Settings reads its state. It reads only the
+  // edge's own config and docker, never org data (starting it stays gated).
+  "/api/edge",
 ]);
 
 /**
