@@ -426,7 +426,12 @@ import {
   frameHeaders,
   patchEmbed,
 } from "./embed-settings.js";
-import { handleEmbedRoutes } from "./embed-routes.js";
+import {
+  appKeyOps,
+  handleEmbedRoutes,
+  type EmbedWaiting,
+} from "./embed-routes.js";
+import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
@@ -1078,6 +1083,7 @@ import {
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
 import {
+  agentInputState,
   checkAgentCreate,
   checkAgentFolder,
   checkAgentMode,
@@ -2662,6 +2668,12 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 199: an agent asks to make another follow its project's mode;
     // Den's mode check restarts it after its turn, same conversation.
+    // Issue 334: Settings › Embedding's app keys, on the person's Allow.
+    appKeys: appKeyOps({
+      settings: () => embedSettings(readUserConfig()),
+      stateDir: () => getStateDir(),
+      serverKeys: () => ServerKeys.at(getStateDir()),
+    }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
       run: (a) =>
@@ -3022,6 +3034,21 @@ function waitingReasons(): Map<string, string> {
       if (actor.startsWith("agent:"))
         out.set(actor.slice("agent:".length), "approval");
   return out;
+}
+
+/**
+ * Issue 334: what `agent` waits on for its person (a held Allow, a
+ * permission prompt, an ask_human question, a pause after a compaction
+ * loop), or null. An idle agent ("input") waits on nobody.
+ */
+function embedWaitingOf(agent: string): EmbedWaiting | null {
+  const why = waitingReasons().get(agent);
+  if (why && why !== "input") {
+    const d = attentionDetail(agent);
+    return { why, ...(d ? { what: d.what, since: d.since } : {}) };
+  }
+  if (pausedAgents().has(agent)) return { why: "paused" };
+  return null;
 }
 
 /** A test module's name as a run takes it (SEC-1 §6b.2): never a path out. */
@@ -3550,6 +3577,11 @@ async function handleRequest(
       agentCaller: (q) => !!agentPrincipalOf(q),
       actor: (q) => auditActorOf(q),
       principal: (q) => principalOf(q),
+      serverKeys: () => ServerKeys.at(getStateDir()),
+      inputState: (id) => agentInputState(agentWebDeps(), id),
+      waitingOf: (id) => embedWaitingOf(id),
+      relay: async (dv) =>
+        (await import("./hub-delivery-service.js")).relayMessage(dv),
     })
   )
     return;

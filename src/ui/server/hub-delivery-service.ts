@@ -5,10 +5,15 @@
  * heartbeats, queued deliveries and finished turns. Started when Hub is
  * set; stopped and started again on connect and disconnect. Who "your
  * person" is comes from whoami (person.id, else login), read at start.
+ *
+ * Issue 334: the loop and its pump run with or without Hub: a web app's
+ * relayed message (relayMessage) is held and typed by the same loop, after
+ * the agent's turn, never mid-turn. Hub's own deliveries need Hub.
  */
 import path from "node:path";
 import {
   SeenDeliveries,
+  type Delivery,
   type DeliveryOwner,
 } from "../../shared/hub-delivery.js";
 import {
@@ -42,7 +47,13 @@ let ownerAskedAt = 0;
 let ownerWanted: () => void = () => undefined;
 /** #65: the inbox kinds Hub's feed carries (whoami features). */
 let feedCarries: ReadonlySet<string> = new Set();
-let lastOpts: Parameters<typeof startDeliveries>[0] | null = null;
+interface StartOpts {
+  heartbeatSeconds: number;
+  pollSeconds: number;
+  waiting: () => ReadonlySet<string>;
+  log: (line: string) => void;
+}
+let lastOpts: StartOpts | null = null;
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
 let inboxTimer: NodeJS.Timeout | null = null;
@@ -79,8 +90,9 @@ export function agentHubWork(agent: string): AgentHubWork | null {
 export function stopDeliveries(): void {
   ctl?.abort();
   ctl = null;
-  if (pumpTimer) clearInterval(pumpTimer);
-  pumpTimer = null;
+  // Issue 334: the pump goes on (relayed messages need no Hub); Hub's own
+  // deliveries wait until Hub says again who the person is.
+  owner = null;
   if (notesTimer) clearInterval(notesTimer);
   notesTimer = null;
   if (inboxTimer) clearInterval(inboxTimer);
@@ -163,54 +175,17 @@ function startHubNotes(log: (line: string) => void): void {
 }
 
 /**
- * Start (or restart) reading Hub's deliveries. `waiting`: the agents with
- * a held Allow, a permission prompt or an ask_human question waiting for
- * their person (never typed into then); an idle one is not among them.
+ * The loop and its pump, made once (issue 334: with or without Hub). Hub's
+ * calls look Hub up each time: no Hub, nothing is read or acked.
  */
-export async function startDeliveries(o: {
-  heartbeatSeconds: number;
-  pollSeconds: number;
-  waiting: () => ReadonlySet<string>;
-  log: (line: string) => void;
-}): Promise<void> {
-  lastOpts = o;
-  stopDeliveries();
-  const at = await hubAndToken().catch(() => null);
-  if (!at) return;
+async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
+  if (loop && pumpTimer) return loop;
   const hub = await import("../../shared/hub.js");
   const ops = await import("../cli/agent-ops.js");
   const { webDeps } = await import("./agent-routes.js");
-  // Ask Hub who this Den's person is; again when a delivery waits on it,
-  // at most once per poll interval (hub.delivery_poll_seconds).
-  const askOwner = async (): Promise<void> => {
-    if (ownerAsking) return;
-    ownerAsking = true;
-    ownerAskedAt = Date.now();
-    try {
-      const a = await hubAndToken();
-      if (!a) return;
-      const w = await hub.hubWhoami(a.url, a.token);
-      owner = {
-        ...(w.personId ? { ownerId: w.personId } : {}),
-        ...(w.login ? { ownerLogin: w.login } : {}),
-        ...(w.company?.name ? { company: w.company.name } : {}),
-      };
-      feedCarries = feedKinds(w.features);
-    } catch {
-      /* Hub unreachable now: deliveries wait until it answers */
-    } finally {
-      ownerAsking = false;
-    }
-  };
-  ownerWanted = () => {
-    if (Date.now() - ownerAskedAt >= o.pollSeconds * 1000) void askOwner();
-  };
-  // A new connection may be a different person: never keep the old one.
-  owner = null;
-  ownerAskedAt = 0;
-  await askOwner();
+  if (loop && pumpTimer) return loop;
   const d = webDeps();
-  loop ??= new DeliveryLoop({
+  loop = new DeliveryLoop({
     hub: {
       stream: (lastId, signal) =>
         (async function* () {
@@ -262,7 +237,6 @@ export async function startDeliveries(o: {
     },
   });
   const l = loop;
-  const c = (ctl = new AbortController());
   let pumping = false;
   pumpTimer = setInterval(() => {
     if (pumping) return;
@@ -270,6 +244,50 @@ export async function startDeliveries(o: {
     void l.pump().finally(() => (pumping = false));
   }, PUMP_MS);
   pumpTimer.unref();
+  return l;
+}
+
+/**
+ * Start (or restart) reading Hub's deliveries. `waiting`: the agents with
+ * a held Allow, a permission prompt or an ask_human question waiting for
+ * their person (never typed into then); an idle one is not among them.
+ */
+export async function startDeliveries(o: StartOpts): Promise<void> {
+  lastOpts = o;
+  stopDeliveries();
+  const l = await ensureLoop(o);
+  const at = await hubAndToken().catch(() => null);
+  if (!at) return;
+  const hub = await import("../../shared/hub.js");
+  // Ask Hub who this Den's person is; again when a delivery waits on it,
+  // at most once per poll interval (hub.delivery_poll_seconds).
+  const askOwner = async (): Promise<void> => {
+    if (ownerAsking) return;
+    ownerAsking = true;
+    ownerAskedAt = Date.now();
+    try {
+      const a = await hubAndToken();
+      if (!a) return;
+      const w = await hub.hubWhoami(a.url, a.token);
+      owner = {
+        ...(w.personId ? { ownerId: w.personId } : {}),
+        ...(w.login ? { ownerLogin: w.login } : {}),
+        ...(w.company?.name ? { company: w.company.name } : {}),
+      };
+      feedCarries = feedKinds(w.features);
+    } catch {
+      /* Hub unreachable now: deliveries wait until it answers */
+    } finally {
+      ownerAsking = false;
+    }
+  };
+  ownerWanted = () => {
+    if (Date.now() - ownerAskedAt >= o.pollSeconds * 1000) void askOwner();
+  };
+  // A new connection may be a different person: never keep the old one.
+  owner = null;
+  ownerAskedAt = 0;
+  await askOwner();
   startHubNotes(o.log);
   // Issue 166: Hub's inbox (approvals, requested changes, comments) into
   // the same loop, so they wake an idle agent or wait for its next turn.
@@ -299,6 +317,7 @@ export async function startDeliveries(o: {
       .catch(() => undefined);
   }, PUMP_MS);
   inboxTimer.unref();
+  const c = (ctl = new AbortController());
   void l
     .run(c.signal)
     .catch((e) =>
@@ -306,6 +325,22 @@ export async function startDeliveries(o: {
         `hub deliveries stopped: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
       ),
     );
+}
+
+/**
+ * Issue 334: hold a web app's relayed message for its agent: typed after
+ * the agent's turn, at its next start when it's stopped, never while it
+ * waits on its person. False before the server started the loop.
+ */
+export async function relayMessage(dv: Delivery): Promise<boolean> {
+  if (!lastOpts) return false;
+  const l = await ensureLoop(lastOpts);
+  return l.takeLocal(dv);
+}
+
+/** Issue 334: how many relayed messages wait for `agent`. */
+export function relayedWaiting(agent: string): number {
+  return loop?.work(agent)?.queued ?? 0;
 }
 
 /** Connect (or reconnect): start again with the options last given. */
