@@ -40,6 +40,7 @@ import { qrSvg } from "./qr.js";
 import { renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -328,6 +329,7 @@ function bellRows() {
       read: (ctx) => on(ctx, k),
       write: (v, ctx) => ctx.post({ bell_kinds: { [k]: v === true } }),
     })),
+    ...alertRows(),
     {
       id: "notifications.fold_days",
       category: "notifications",
@@ -344,6 +346,174 @@ function bellRows() {
       write: (v, ctx) => ctx.post({ bell_fold_days: Number(v) }),
     },
   ];
+}
+
+/**
+ * Issue 172: alerts outside the bell (alerts.js). Desktop alerts is on
+ * when the person has it on (user.yml alerts.desktop, default on) and
+ * this browser lets the page notify; turning it on asks the browser.
+ */
+const notifyApi = () =>
+  typeof window !== "undefined" && typeof window.Notification === "function"
+    ? window.Notification
+    : null;
+
+function alertRows() {
+  return [
+    {
+      id: "notifications.desktop",
+      category: "notifications",
+      label: "Desktop alerts",
+      description:
+        "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+      keywords: ["notifications", "alerts", "desktop", "browser", "push"],
+      scope: "user",
+      control: {
+        type: "toggle",
+        notice: () => {
+          const N = notifyApi();
+          if (!N)
+            return L(
+              "set.notifications.desktop.none",
+              "This browser can't show notifications.",
+            );
+          return N.permission === "denied"
+            ? L(
+                "set.notifications.desktop.denied",
+                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+              )
+            : "";
+        },
+      },
+      keys: ["alerts.desktop"],
+      read: (ctx) =>
+        ctx.data.alerts?.desktop !== false &&
+        notifyApi()?.permission === "granted",
+      write: async (v, ctx) => {
+        const N = notifyApi();
+        if (v === true && N && N.permission === "default")
+          await N.requestPermission();
+        return ctx.post({ alerts: { desktop: v === true } });
+      },
+    },
+    {
+      // S2: push, to this device (a phone, or a computer with no tab open).
+      id: "notifications.phone",
+      category: "notifications",
+      label: "Alerts on this device by push",
+      description:
+        "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+      keywords: [
+        "notifications",
+        "alerts",
+        "phone",
+        "push",
+        "mobile",
+        "iphone",
+      ],
+      scope: "user",
+      control: { type: "custom", render: drawPush },
+      keys: ["alerts.phone"],
+      read: (ctx) => ctx.data.alerts?.phone !== false,
+      write: (v, ctx) => ctx.post({ alerts: { phone: v === true } }),
+    },
+    ...[
+      [
+        "quiet_from",
+        "Quiet hours start",
+        "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+      ],
+      [
+        "quiet_to",
+        "Quiet hours end",
+        "Alerts outside the bell start again at this time.",
+      ],
+    ].map(([k, label, description]) => ({
+      id: `notifications.${k}`,
+      category: "notifications",
+      label,
+      description,
+      keywords: ["notifications", "alerts", "quiet", "hours", "night"],
+      scope: "user",
+      control: {
+        type: "select",
+        options: () => [
+          { value: "", label: L("set.notifications.quiet.off", "Off") },
+          ...Array.from({ length: 24 }, (_, h) => {
+            const t = `${String(h).padStart(2, "0")}:00`;
+            return { value: t, label: t };
+          }),
+        ],
+        notice: (ctx) => {
+          const a = ctx.data.alerts ?? {};
+          return k === "quiet_from" && !a.quiet_from !== !a.quiet_to
+            ? L(
+                "set.notifications.quiet.half",
+                "Quiet hours need a start and an end.",
+              )
+            : "";
+        },
+      },
+      keys: [`alerts.${k}`],
+      read: (ctx) => ctx.data.alerts?.[k] ?? "",
+      write: (v, ctx) => ctx.post({ alerts: { [k]: v || null } }),
+    })),
+  ];
+}
+
+/**
+ * Issue 172 S2: this device's push switch. On: the browser's permission,
+ * the service worker, the subscription (alerts.js pushOn), and
+ * alerts.phone on. Off: this device only stops; others keep theirs.
+ */
+function drawPush(host, ctx, io) {
+  const api = (m, p, b) => ctx.shell.api(m, p, b);
+  // BUSY-1: the subscription's write goes through the working pop-up,
+  // the switch held while it runs; data, or null when it didn't succeed.
+  const send = (path, body) => {
+    const run = (headers) => ctx.shell.api("POST", path, body, { headers });
+    if (!ctx.shell.busyAction) return run({}).catch(() => null);
+    const button = host.querySelector("input") || undefined;
+    return ctx.shell.busyAction("save", run, { button, toastFast: false });
+  };
+  const draw = (on, note) => {
+    host.innerHTML =
+      `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
+      (note ? `<p class="set-warn" role="status">${escHtml(note)}</p>` : "");
+    host
+      .querySelector("input")
+      .addEventListener("change", (e) => void flip(e.target.checked));
+  };
+  const why = {
+    unsupported: () =>
+      L(
+        "set.notifications.phone.none",
+        "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+      ),
+    denied: () =>
+      L(
+        "set.notifications.desktop.denied",
+        "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+      ),
+    failed: () =>
+      L("set.notifications.phone.failed", "Couldn't turn on push here."),
+  };
+  const flip = async (on) => {
+    let got = "ok";
+    try {
+      if (on) got = await pushOn(api, send);
+      else await pushOff(send);
+    } catch {
+      got = "failed";
+    }
+    if (got === "ok" && on) await io.save(true);
+    const now = !!(await pushSubscription());
+    draw(now, got === "ok" ? "" : why[got]());
+  };
+  draw(false, pushSupported() ? "" : why.unsupported());
+  void pushSubscription().then((s) => {
+    if (s && ctx.data.alerts?.phone !== false) draw(true, "");
+  });
 }
 
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */
@@ -1592,6 +1762,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
   },
   {
+    // den#143: how long `web up` waits for the server (user.yml
+    // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
+    id: "server.ready_probe",
+    category: "server",
+    label: "Readiness check, in seconds",
+    description:
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    keywords: [
+      "ready",
+      "probe",
+      "timeout",
+      "busy",
+      "web up",
+      "web.ready_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.probeSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ web_ready: { probe_seconds: v } }),
+  },
+  {
+    id: "server.start_wait",
+    category: "server",
+    label: "Start wait, in seconds",
+    description:
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    keywords: [
+      "start",
+      "ready",
+      "timeout",
+      "busy",
+      "web up",
+      "web.start_wait_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.start_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.startSeconds ?? 120,
+    write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",
@@ -2635,8 +2847,12 @@ export const DEN_SETTINGS = [
         : L("set.ui.portUnset", "Not set: the distribution's applies"),
   },
   {
-    // SEC-1b: whether this browser is signed in, and Sign out. Signing in
-    // is the CLI's (`web login` prints a one-time link): no form here.
+    // SEC-1b: whether this browser is signed in, and Sign out. Issue 393:
+    // signed out, a Sign in button opens Den's own sign-in page (GitHub,
+    // or a code another device approves). `again=1` shows that page even
+    // on loopback, where nothing asks (D67's approvals banner does the
+    // same); after it, back here. `web login` stays in the description,
+    // a bare equivalent.
     id: "cli.signin",
     category: "cli",
     label: "Browser sign-in",
@@ -2651,7 +2867,18 @@ export const DEN_SETTINGS = [
           host.innerHTML = signedIn
             ? `<output class="set-ro">${escR(L("set.ui.signedIn", "Signed in"))}</output> ` +
               `<button type="button" class="btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
-            : `<output class="set-ro">${L("set.ui.notSignedIn", "Not signed in: run {cmd}", { cmd: "<code>__DEN_CLI__ web login</code>" })}</output>`;
+            : `<output class="set-ro">${escR(L("set.ui.notSignedIn", "Not signed in"))}</output> ` +
+              `<button type="button" class="btn primary" id="set-signin">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
+          host
+            .querySelector("#set-signin")
+            ?.addEventListener("click", () =>
+              location.assign(
+                "/signin?again=1&next=" +
+                  encodeURIComponent(
+                    location.pathname + location.search + location.hash,
+                  ),
+              ),
+            );
           host.querySelector("#set-signout")?.addEventListener("click", () =>
             ctx.shell
               .api("POST", "/api/session/logout", {})
@@ -2659,6 +2886,11 @@ export const DEN_SETTINGS = [
               .catch(() => {}),
           );
         };
+        // Until /api/session answers, an unseen button holds the row at its
+        // drawn height: a row that grows later moves the sections below it,
+        // and a link to the last one (#distribution) would end short of the
+        // foot, with the category above it marked current.
+        host.innerHTML = `<button type="button" class="btn" style="visibility:hidden" aria-hidden="true" tabindex="-1">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
         fetch("/api/session", { cache: "no-store" })
           .then((r) => (r.ok ? r.json() : null))
           .then((b) => draw(b?.signedIn === true))

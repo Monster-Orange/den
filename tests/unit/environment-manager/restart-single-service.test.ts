@@ -14,7 +14,7 @@ import {
   it,
   jest,
 } from "@jest/globals";
-import { execFileSync, type ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -57,6 +57,7 @@ import {
   registerDaemon,
   runServiceCommand,
 } from "../../../src/shared/environment-manager/service-runner.js";
+import { psOut } from "../../ps.js";
 
 const mocked = <T extends (...args: never[]) => unknown>(f: T) =>
   f as unknown as jest.MockedFunction<T>;
@@ -85,9 +86,7 @@ const spawnedGroups = new Set<number>();
 const tails: ChildProcess[] = [];
 
 function psRows(): { pid: number; pgid: number; zombie: boolean }[] {
-  return execFileSync("ps", ["-A", "-o", "pid=,pgid=,stat="], {
-    encoding: "utf-8",
-  })
+  return psOut(["-A", "-o", "pid=,pgid=,stat="])
     .split("\n")
     .map((l) => l.trim().split(/\s+/))
     .filter((c) => c.length >= 3)
@@ -183,9 +182,7 @@ afterEach(() => {
     }
   }
   spawnedGroups.clear();
-  for (const line of execFileSync("ps", ["-A", "-o", "pid=,command="], {
-    encoding: "utf-8",
-  }).split("\n")) {
+  for (const line of psOut(["-A", "-o", "pid=,command="]).split("\n")) {
     const m = line.trim().match(/^(\d+)\s+(.*)$/);
     if (!m || !m[2].includes(MARK)) continue;
     try {

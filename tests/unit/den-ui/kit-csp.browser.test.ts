@@ -360,7 +360,14 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
     });
     const ok = p.locator("dialog.dk-dlg .dk-primary");
     await ok.waitFor();
-    // Styled by dialog.css, linked: no <style> on the page.
+    // Styled by dialog.css, linked: no <style> on the page. dialog.js
+    // links it as the dialog opens (den#143: a slow machine measured the
+    // button before it loaded, 21 px): measured once it has loaded.
+    await p.waitForFunction(() =>
+      [...document.styleSheets].some((x) =>
+        /\/dialog\.css$/.test(x.href ?? ""),
+      ),
+    );
     expect(
       await ok.evaluate((b) => b.getBoundingClientRect().height),
     ).toBeGreaterThanOrEqual(36);

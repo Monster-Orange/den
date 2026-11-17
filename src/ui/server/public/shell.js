@@ -768,7 +768,8 @@
     "set.ui.portUnset": "Not set: the distribution's applies",
     "set.ui.signedIn": "Signed in",
     "set.ui.signOut": "Sign out",
-    "set.ui.notSignedIn": "Not signed in: run {cmd}",
+    "set.ui.notSignedIn": "Not signed in",
+    "set.ui.signIn": "Sign in",
     "set.ui.savedIn": "Saved in {vault}",
     "set.ui.theVault": "the vault",
     "set.ui.savedMemory": "Held in memory until Den restarts",
@@ -1047,6 +1048,26 @@
     "set.notifications.fold_days.o.7": "7 days",
     "set.notifications.fold_days.o.14": "14 days",
     "set.notifications.fold_days.o.30": "30 days",
+    "set.notifications.phone": "Alerts on this device by push",
+    "set.notifications.phone.d":
+      "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+    "set.notifications.phone.none":
+      "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+    "set.notifications.phone.failed": "Couldn't turn on push here.",
+    "set.notifications.quiet_from": "Quiet hours start",
+    "set.notifications.quiet_from.d":
+      "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+    "set.notifications.quiet_to": "Quiet hours end",
+    "set.notifications.quiet_to.d":
+      "Alerts outside the bell start again at this time.",
+    "set.notifications.quiet.off": "Off",
+    "set.notifications.quiet.half": "Quiet hours need a start and an end.",
+    "set.notifications.desktop": "Desktop alerts",
+    "set.notifications.desktop.d":
+      "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+    "set.notifications.desktop.denied":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+    "set.notifications.desktop.none": "This browser can't show notifications.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
@@ -1800,6 +1821,12 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "Readiness check, in seconds",
+    "set.server.ready_probe.d":
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "Start wait, in seconds",
+    "set.server.start_wait.d":
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
