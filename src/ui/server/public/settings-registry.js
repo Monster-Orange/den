@@ -2543,7 +2543,7 @@ export function runtimeRowHtml(r, scopeWs) {
   // A path set at the scope shown can be cleared from here.
   const mine = scopeWs ? r.source === "workspace" : r.source === "setting";
   return (
-    `<div class="rt" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
+    `<div class="rt" role="listitem" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
     `<div class="rt-n">${name}</div>` +
     `<div class="rt-s">${status}</div>` +
     `<div class="rt-w">${where}</div>` +
@@ -2823,7 +2823,7 @@ export function rotationHtml(b) {
       ]),
     ) +
     `</div>` +
-    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col" aria-label="${escR(L("set.ui.rot.thActions", "Actions"))}"></th></tr></thead><tbody>` +
+    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col"><span class="den-sr">${escR(L("set.ui.rot.thActions", "Actions"))}</span></th></tr></thead><tbody>` +
     (rows.length
       ? rows.join("")
       : `<tr><td colspan="5" class="set-note">${escR(L("set.ui.rot.none", "No overrides: every agent uses this install's values."))}</td></tr>`) +
@@ -3821,6 +3821,12 @@ export function hubUncoveredHtml(list, t) {
   );
 }
 
+/** Issue 271: the picker's Create option, and the longest name Hub takes. */
+export const HUBP_CREATE = "__create";
+const HUBP_NAME_MAX = 80;
+/** Issue 271: how often a waiting create is read again while it shows. */
+const HUBP_POLL_MS = 5000;
+
 /** Where a person picks a Hub project for an unclear one (issue 167). */
 export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
 
@@ -3832,6 +3838,13 @@ export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
  * command) sit behind More. Waiting for a pick (b.pick): a button to
  * Unclear matches. Not linked: a select (Hub's suggestion first, picked)
  * and Link. Not connected to Hub: Connect.
+ *
+ * Issue 271: not linked, the picker's first option is "Create a Hub
+ * project named <b.name>" (picked when Hub suggests nothing), with the
+ * name editable below it. A create asked of Hub and waiting (b.create, no
+ * outcome): "creating", with Hub's Allow in the row for an owner
+ * (b.owner), else who must allow it. Declined or ended: said, and Create
+ * is offered again.
  */
 export function hubProjectHtml(b, t, name) {
   const ws = String(b?.project ?? "");
@@ -3863,14 +3876,29 @@ export function hubProjectHtml(b, t, name) {
           .map((p) => `<option value="${escR(p.id)}">${name(p)}</option>`)
           .join("")}</optgroup>`
       : "");
+  const own = String(b?.name || ws).slice(0, HUBP_NAME_MAX);
+  // Issue 271: unlinked, Create comes first; picked when nothing is suggested.
+  const createOpt = (on) =>
+    `<option value="${HUBP_CREATE}"${on ? " selected" : ""}>${escR(t("hubp.createOpt", { name: own }))}</option>`;
+  const newName = (on) =>
+    `<div class="hubp-new" data-hubp-newrow${on ? "" : " hidden"}>` +
+    `<label for="hubp-new">${escR(t("hubp.newName"))}</label> ` +
+    `<input id="hubp-new" type="text" value="${escR(own)}" maxlength="${HUBP_NAME_MAX}" autocomplete="off"></div>`;
   const picker = (label, btn, primary) =>
-    opts
+    !linked
       ? `<form class="hubp-pick" data-hubp-form>` +
         `<label for="hubp-sel">${escR(label)}</label> ` +
-        `<select id="hubp-sel">${opts}</select> ` +
-        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+        `<select id="hubp-sel">${createOpt(!sugg.length)}${opts}</select> ` +
+        newName(!sugg.length) +
+        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(sugg.length ? btn : t("hubp.create"))}</button>` +
         `</form>`
-      : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
+      : opts
+        ? `<form class="hubp-pick" data-hubp-form>` +
+          `<label for="hubp-sel">${escR(label)}</label> ` +
+          `<select id="hubp-sel">${opts}</select> ` +
+          `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+          `</form>`
+        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
   const tail =
     hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
@@ -3896,6 +3924,38 @@ export function hubProjectHtml(b, t, name) {
       tail
     );
   }
+  const ask = b.create && typeof b.create === "object" ? b.create : null;
+  if (ask && !ask.outcome) {
+    const url =
+      typeof ask.url === "string" && /^https?:\/\//.test(ask.url)
+        ? ask.url
+        : "";
+    const who =
+      b.owner === true
+        ? `<p class="set-note">${escR(t("hubp.youAllow", { project: ws }))}</p>` +
+          (url
+            ? `<a class="btn sm primary" href="${escR(url)}" target="_blank" rel="noopener noreferrer" data-hubp-allow>${escR(t("hubp.allowBtn"))}</a>`
+            : "")
+        : `<p class="set-note">${escR(
+            b.company
+              ? t("hubp.ownerMust", { company: b.company, project: ws })
+              : t("hubp.ownerMustAny", { project: ws }),
+          )}</p>`;
+    return (
+      `<div data-hubp data-hubp-state="creating">` +
+      st("warn", t("hubp.asked", { name: ask.name, project: ws })) +
+      who +
+      tail
+    );
+  }
+  const ended =
+    ask?.outcome === "declined" || ask?.outcome === "superseded"
+      ? `<p class="set-note" data-hubp-ended>${escR(
+          t(ask.outcome === "declined" ? "hubp.declined" : "hubp.ended", {
+            name: ask.name,
+          }),
+        )}</p>`
+      : "";
   if (b.pick)
     return (
       `<div data-hubp data-hubp-state="pick">` +
@@ -3906,6 +3966,7 @@ export function hubProjectHtml(b, t, name) {
   return (
     `<div data-hubp data-hubp-state="unlinked">` +
     st("warn", t("hubp.notLinked", { project: ws })) +
+    ended +
     picker(t("hubp.linkProject", { project: ws }), t("hubp.link"), true) +
     `<p class="set-note">${escR(t("hubp.scope", { project: ws }))}</p>` +
     tail
@@ -3971,11 +4032,71 @@ function wireHubProject(host, ctx, url, t, b) {
         err(e?.message || t("hubp.failed"));
       });
   };
+  const sel = host.querySelector("#hubp-sel");
+  const nameIn = host.querySelector("#hubp-new");
+  const newRow = host.querySelector("[data-hubp-newrow]");
+  const go = host.querySelector('[data-hubp-form] [data-hubp-action="link"]');
+  const createOpt = sel?.querySelector(`option[value="${HUBP_CREATE}"]`);
+  // Issue 271: Create shows the name, and the button says Create.
+  const sync = () => {
+    const on = sel?.value === HUBP_CREATE;
+    if (newRow) newRow.hidden = !on;
+    if (go && createOpt) go.textContent = t(on ? "hubp.create" : "hubp.link");
+  };
+  sel?.addEventListener("change", () => {
+    err("");
+    sync();
+  });
+  nameIn?.addEventListener("input", () => {
+    if (createOpt)
+      createOpt.textContent = t("hubp.createOpt", {
+        name: nameIn.value.replace(/\s+/g, " ").trim() || b?.name || "",
+      });
+  });
   host.querySelector("[data-hubp-form]")?.addEventListener("submit", (ev) => {
     ev.preventDefault();
-    const v = host.querySelector("#hubp-sel")?.value;
+    const v = sel?.value;
+    if (v === HUBP_CREATE) {
+      const nm = String(nameIn?.value ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!nm) return err(t("hubp.nameEmpty"));
+      if (nm.length > HUBP_NAME_MAX) return err(t("hubp.nameLong"));
+      err("");
+      return ctx.shell
+        .busyAction(
+          "create-hub",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              url.replace(/\/hub-project$/, "/hub-create"),
+              { name: nm },
+              { headers },
+            ),
+          {
+            button: go,
+            vars: { name: nm },
+            onFail: (x) => err(x?.message || t("hubp.createF")),
+          },
+        )
+        .then((r) => {
+          if (r !== undefined && r !== null) return renderHubProject(host, ctx);
+        });
+    }
     if (v) put(v);
   });
+  // Issue 271: a create waiting in Hub: read again while it shows, so the
+  // row links on its own once an owner allows it.
+  if (host.querySelector('[data-hubp-state="creating"]')) {
+    clearTimeout(host._hubpPoll);
+    host._hubpPoll = setTimeout(() => {
+      if (
+        host.isConnected &&
+        host.querySelector('[data-hubp-state="creating"]')
+      )
+        renderHubProject(host, ctx);
+    }, HUBP_POLL_MS);
+  }
   host
     .querySelector('[data-hubp-action="unlink"]')
     ?.addEventListener("click", () =>

@@ -1002,6 +1002,29 @@
     "hubp.linkProject": "Vincular {project} a un proyecto de Hub",
     "hubp.scope":
       "Vincular solo afecta al proyecto {project}. Tus otros proyectos no cambian.",
+    // Issue 271: Crear un proyecto de Hub desde el selector.
+    "hubp.createOpt": "Crear un proyecto de Hub llamado {name}",
+    "hubp.newName": "Nombre en Hub",
+    "hubp.create": "Crear",
+    "hubp.nameEmpty": "Escribe un nombre para el proyecto de Hub.",
+    "hubp.nameLong":
+      "El nombre de un proyecto de Hub tiene hasta 80 caracteres.",
+    "hubp.asked":
+      "Den pidió a Hub crear el proyecto de Hub {name} para {project}.",
+    "hubp.youAllow":
+      "Eres propietario en Hub. Permítelo allí y Den vincula {project} con él.",
+    "hubp.allowBtn": "Permitir en Hub",
+    "hubp.ownerMust":
+      "Un propietario de {company} en Hub debe permitirlo. Den vincula {project} por sí solo cuando lo haga.",
+    "hubp.ownerMustAny":
+      "Un propietario de tu empresa en Hub debe permitirlo. Den vincula {project} por sí solo cuando lo haga.",
+    "hubp.declined":
+      "Un propietario en Hub rechazó el proyecto de Hub {name}. Elige un proyecto de Hub o vuelve a pedirlo.",
+    "hubp.ended":
+      "La petición a Hub de {name} terminó sin cambios. Vuelve a pedirlo.",
+    "hubp.createW": "Pidiendo a Hub que cree {name}…",
+    "hubp.createS": "Pedido. Un propietario lo permite en Hub.",
+    "hubp.createF": "Hub no aceptó la petición. No se creó nada.",
     "hub.legacy":
       "Esta instalación usa un token antiguo de Hub, guardado donde Den no puede reemplazarlo. Vuelve a conectar para pasar a uno nuevo.",
     "hub.reconnect": "Volver a conectar",
@@ -1404,6 +1427,12 @@
     "ap.pm.warn":
       "Esto permite que los agentes de {project} actúen sin preguntarte.",
     "ap.pm.project": "Proyecto: {project}",
+    "ap.do.hub_project_create":
+      "Pedir a Hub que cree el proyecto de Hub {name} para el proyecto {project}",
+    "ap.hc.project": "Proyecto: {project}",
+    "ap.hc.name": "Nombre en Hub: {name}",
+    "ap.hc.owner":
+      "Un propietario en Hub lo permite allí; Den vincula el proyecto en cuanto lo haga.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":

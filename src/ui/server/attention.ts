@@ -20,15 +20,39 @@
  *   Code's idle notice (no dialog is open) clear a permission wait too.
  *   Each wait keeps what it saw (the tool, or the notice, trimmed) and
  *   since when; the bell row and the update check say both.
+ * - Issue 369: a waiting row kept across a restart has no wait in memory.
+ *   At start and on the checks after it (until each is decided), its
+ *   agent stopped, removed or exited, or no dialog on its screen: the row
+ *   goes; still showing it: the row stays and is a live wait again.
  * Texts are kept in English and as a key with values (`msg`), for the
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
  */
-import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
+import type {
+  NoteMsg,
+  Notification,
+  NotificationStore,
+} from "../../shared/notifications.js";
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 import { leadAskText } from "./lead-routing.js";
 
 export type WaitingWhy = "permission" | "input" | "asked";
+
+/**
+ * Issue 369: what a kept waiting row waits on, from its text's key (or,
+ * a row from before keys, its English): a permission dialog or an ask.
+ * Null: another waiting row (an agent not back after a restart).
+ */
+export function rowWhy(n: Notification): "permission" | "asked" | null {
+  const k = n.msg?.key;
+  if (k === "bell.m.permission" || k === "bell.m.permissionWhat")
+    return "permission";
+  if (k === "bell.m.asked") return "asked";
+  if (k) return null;
+  if (/ needs your permission(:|$)/.test(n.text)) return "permission";
+  if (/ asked: /.test(n.text)) return "asked";
+  return null;
+}
 
 /**
  * The agents Den won't type into (a Hub delivery, a tools note): a held
@@ -74,6 +98,13 @@ export interface AttentionDeps {
     agents: readonly string[],
   ) => Promise<ReadonlyMap<string, "stopped" | "exited">>;
   /**
+   * Issue 369: whether the agent's screen shows its permission dialog
+   * now: true, false (no dialog, or no session), or null when Den can't
+   * tell yet (the session host didn't answer). A runtime whose dialogs
+   * Den can't see answers true: its output going on clears it.
+   */
+  dialogOpen?: (agent: string) => Promise<boolean | null>;
+  /**
    * Issue 101: the lead of `agent`'s project for its question, or null
    * (lead-routing.ts pickLead).
    */
@@ -118,6 +149,8 @@ export class Attention {
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
+  /** Issue 369: rows from before this server still to decide. */
+  private orphansLeft = true;
 
   constructor(private readonly d: AttentionDeps) {
     this.now = d.now ?? Date.now;
@@ -400,6 +433,7 @@ export class Attention {
    * waiting. In its first SETTLE_MS, output only moves the mark.
    */
   async check(): Promise<void> {
+    await this.reconcile();
     await this.sweepEnded();
     for (const [agent, w] of [...this.waiting]) {
       if (w.byHook) continue;
@@ -411,6 +445,83 @@ export class Attention {
       }
       this.clear(agent);
     }
+  }
+
+  /**
+   * Issue 369: the unread waiting rows (a permission dialog, an ask) with
+   * no wait in memory: kept from before this server started. Each is
+   * withdrawn or adopted as a live wait; one Den can't decide yet stays
+   * for the next check. Other waiting rows (an agent that didn't come
+   * back after a restart) are left alone. Never throws.
+   */
+  async reconcile(): Promise<void> {
+    if (!this.orphansLeft) return;
+    let undecided = false;
+    try {
+      const rows = this.d.store
+        .list()
+        .filter(
+          (n) =>
+            !n.read &&
+            n.kind === "waiting" &&
+            n.source === "den" &&
+            n.subject.startsWith("agent:") &&
+            !this.waiting.has(n.subject.slice("agent:".length)),
+        )
+        .flatMap((n) => {
+          const why = rowWhy(n);
+          return why ? [{ n, why }] : [];
+        });
+      if (!rows.length) {
+        this.orphansLeft = false;
+        return;
+      }
+      const agents = [
+        ...new Set(rows.map((x) => x.n.subject.slice("agent:".length))),
+      ];
+      const ended = this.d.ended ? await this.d.ended(agents) : new Map();
+      for (const { n, why } of rows) {
+        const agent = n.subject.slice("agent:".length);
+        if (this.waiting.has(agent)) continue;
+        const how = ended.get(agent);
+        const drop = () => this.d.store.remove((x) => x.id === n.id);
+        // An ask ends with its agent stopped or removed; Den holds it
+        // across its session ending by itself (as sweepEnded).
+        if (how === "stopped" || (how === "exited" && why !== "asked")) {
+          drop();
+          continue;
+        }
+        if (why === "permission") {
+          const open = this.d.dialogOpen
+            ? await this.d.dialogOpen(agent).catch(() => null)
+            : true;
+          if (open === null) {
+            undecided = true;
+            continue;
+          }
+          if (!open) {
+            drop();
+            continue;
+          }
+        }
+        const at = Date.parse(n.at);
+        const what = n.msg?.vars.what;
+        this.waiting.set(agent, {
+          why,
+          text: n.text,
+          what: typeof what === "string" ? what : "",
+          at: Number.isFinite(at) ? at : this.now(),
+          mark: await this.d.outputMark(agent),
+          workspace: n.scope.startsWith("workspace/")
+            ? n.scope.slice("workspace/".length)
+            : n.scope,
+          byHook: !!this.d.hooked?.(agent),
+        });
+      }
+    } catch {
+      undecided = true;
+    }
+    this.orphansLeft = undecided;
   }
 
   /** The agent stopped or was removed: nothing waits on it. */

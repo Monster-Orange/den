@@ -978,6 +978,29 @@
     "hubp.linkProject": "{project} を Hub プロジェクトにリンク",
     "hubp.scope":
       "リンクされるのはプロジェクト「{project}」だけです。ほかのプロジェクトは変わりません。",
+    // Issue 271: リンクの選択肢から Hub プロジェクトを作成。
+    "hubp.createOpt": "Hub プロジェクト「{name}」を作成",
+    "hubp.newName": "Hub での名前",
+    "hubp.create": "作成",
+    "hubp.nameEmpty": "Hub プロジェクトの名前を入力してください。",
+    "hubp.nameLong": "Hub プロジェクトの名前は 80 文字までです。",
+    "hubp.asked":
+      "Den は {project} のために Hub プロジェクト「{name}」の作成を Hub に依頼しました。",
+    "hubp.youAllow":
+      "あなたは Hub のオーナーです。Hub で許可すると、Den が {project} をリンクします。",
+    "hubp.allowBtn": "Hub で許可",
+    "hubp.ownerMust":
+      "Hub で {company} のオーナーが許可する必要があります。許可されると Den が {project} を自動でリンクします。",
+    "hubp.ownerMustAny":
+      "Hub であなたの会社のオーナーが許可する必要があります。許可されると Den が {project} を自動でリンクします。",
+    "hubp.declined":
+      "Hub のオーナーが Hub プロジェクト「{name}」を却下しました。Hub プロジェクトを選ぶか、もう一度依頼してください。",
+    "hubp.ended":
+      "「{name}」の Hub への依頼は変更なしで終わりました。もう一度依頼してください。",
+    "hubp.createW": "Hub に「{name}」の作成を依頼しています…",
+    "hubp.createS": "依頼しました。Hub でオーナーが許可します。",
+    "hubp.createF":
+      "Hub は依頼を受け付けませんでした。何も作成されていません。",
     "hub.legacy":
       "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
     "hub.reconnect": "再接続",
@@ -1371,6 +1394,12 @@
     "ap.pm.warn":
       "これにより {project} のエージェントはあなたに確認せずに動作します。",
     "ap.pm.project": "プロジェクト: {project}",
+    "ap.do.hub_project_create":
+      "プロジェクト {project} のために Hub プロジェクト「{name}」の作成を Hub に依頼",
+    "ap.hc.project": "プロジェクト: {project}",
+    "ap.hc.name": "Hub での名前: {name}",
+    "ap.hc.owner":
+      "Hub のオーナーが Hub で許可します。許可されると Den がプロジェクトをリンクします。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
