@@ -247,7 +247,7 @@ function keepApproveKey(b) {
 }
 
 /**
- * #320: how long a page that just signed in waits for its own pairing
+ * Issue 320: how long a page that just signed in waits for its own pairing
  * code's withdrawal before it goes on anyway.
  */
 const LEAVE_WAIT_MS = 1500;
@@ -255,7 +255,7 @@ const LEAVE_WAIT_MS = 1500;
 let leavePair = () => Promise.resolve();
 
 /**
- * #320: signed in (GitHub, a link, another tab): withdraw this page's own
+ * Issue 320: signed in (GitHub, a link, another tab): withdraw this page's own
  * code and wait for the answer, within LEAVE_WAIT_MS, then go to `url`.
  * pagehide's keepalive DELETE alone can be dropped, or never run, and the
  * code would stay waiting: every signed-in browser would ask to let in a
@@ -578,7 +578,7 @@ function wirePair(root, t, s) {
   // D67: this page's pending request (its poll id), withdrawn as the page
   // goes, so no signed-in browser asks to let a closed tab in.
   let mine = null;
-  // #320: a promise of the answer, for a page that waits for it.
+  // Issue 320: a promise of the answer, for a page that waits for it.
   const withdraw = () => {
     const id = mine;
     mine = null;
@@ -607,7 +607,7 @@ function wirePair(root, t, s) {
     withdraw();
     stop();
   });
-  // #320: signed in another way: no more polling, and the code goes first.
+  // Issue 320: signed in another way: no more polling, and the code goes first.
   leavePair = () => {
     stop();
     return withdraw();

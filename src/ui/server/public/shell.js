@@ -7191,7 +7191,7 @@
           if (verb === "approve") toast(t("pair.allowed"));
         },
         function (e) {
-          // #320: a code that ended (its page withdrew it, or it expired
+          // Issue 320: a code that ended (its page withdrew it, or it expired
           // or was used): nothing happened, said plainly. Only Close stays.
           var code = e && e.code;
           var gone =
