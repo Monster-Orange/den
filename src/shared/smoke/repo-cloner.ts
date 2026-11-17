@@ -23,6 +23,7 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 import type { DeployedRef } from "./branch-resolver.js";
 import { getDistRoot } from "../paths.js";
 import { assertSafeCloneDestination } from "../environment-manager/clone-guard.js";
@@ -142,7 +143,7 @@ export function ensureRepoAtSha(
   }
 
   // Write stamp file
-  fs.writeFileSync(shaFile, ref.sha);
+  writeFileAtomic(shaFile, ref.sha);
 
   console.log(
     `  ✓ ${repoName}@${environment}: ready at ${ref.sha.slice(0, 8)}`,
