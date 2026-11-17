@@ -31,6 +31,8 @@ import {
   SERVER_SCOPE,
 } from "../../../src/shared/agents/server-agent.js";
 import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
+import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
+import { catalogSource } from "../server/helpers/en-catalog.js";
 
 afterEach(cleanupRigs);
 
@@ -76,10 +78,7 @@ describe("SRV-P4: project_mode", () => {
     expect(c.ok).toBe(true);
     if (!c.ok) return;
     expect(c.detailKeys).toHaveLength(c.details.length);
-    const pub = path.resolve(__dirname, "../../../src/ui/server/public");
-    const cats = ["shell.js", "i18n/es.js", "i18n/ja.js"].map((f) =>
-      fs.readFileSync(path.join(pub, f), "utf-8"),
-    );
+    const cats = UI_LANGUAGES.map((l) => catalogSource(l));
     for (const k of c.detailKeys!) {
       expect(k).not.toBeNull();
       for (const cat of cats) expect(cat).toContain(`"${k!.key}":`);

@@ -2,19 +2,29 @@
  * Issue 95: a test page with Den's shell on it needs the UI kit's shell
  * too, as Den's own server gives it: the kit's stylesheets in the head and
  * its shell script (/den-ui-shell.js) before shell.js (kitPage), and the
- * files behind them (kitAsset). A harness that serves shell.js on a bare
- * page wraps its HTML in kitPage and asks kitAsset first.
+ * files behind them (kitAsset). Issue 409: and Den's en catalog,
+ * /i18n/en.js, just before them (localizePage), as every page has it. A
+ * harness that serves shell.js on a bare page wraps its HTML in kitPage
+ * and asks kitAsset first.
  */
 import * as fs from "fs";
 import * as path from "path";
 import {
   KIT_FILES,
   KIT_SHELL_SCRIPT,
-  kitPage,
+  kitPage as serverKitPage,
   kitShellScript,
 } from "../../../../src/ui/server/ui-assets.js";
+import {
+  UI_LANGUAGES,
+  localizePage,
+} from "../../../../src/ui/server/ui-language.js";
+import { PUBLIC_DIR, catalogFile } from "./en-catalog.js";
 
-export { kitPage };
+/** A page with the shell, as the server fills it: en's catalog, the kit's. */
+export function kitPage(html: string): string {
+  return serverKitPage(localizePage(html, "en"));
+}
 
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
 
@@ -39,6 +49,13 @@ export function kitAsset(
     return {
       contentType: "text/javascript; charset=utf-8",
       body: (kitShellScript(process.cwd()) ?? "") + extraJs,
+    };
+  // Issue 409: Den's catalogs (/i18n/<lang>.js), as the server serves them.
+  const cat = /^\/(i18n\/[\w-]+\.js)(?:\?.*)?$/.exec(pathname);
+  if (cat && UI_LANGUAGES.some((l) => catalogFile(l) === cat[1]))
+    return {
+      contentType: "text/javascript; charset=utf-8",
+      body: fs.readFileSync(path.join(PUBLIC_DIR, cat[1]), "utf-8"),
     };
   const m = /^\/kit\/([\w./-]+)$/.exec(pathname);
   if (!m || !KIT_FILES.includes(m[1])) return null;

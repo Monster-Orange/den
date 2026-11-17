@@ -104,22 +104,20 @@
   "use strict";
   // ── i18n (R19, 0.3.0-dev.39) ───────────────────────────────────────────
   // Every word the shell shows is a key in MESSAGES, looked up with
-  // t(key, vars). en is here, the fallback for any key a catalog lacks;
-  // every other language is a classic script, /i18n/<lang>.js, that the
-  // server loads before this one for a page in that language (with
-  // <html lang>, ui-language.ts), adding its table to window.denMessages.
-  // A page, a plugin or a distribution adds its own keys with
+  // t(key, vars). Each language's catalog is a classic script,
+  // /i18n/<lang>.js, that the server loads before this one (ui-language.ts),
+  // adding its table to window.denMessages: en's on every page (issue 409:
+  // this file holds code only), the fallback for any key a catalog lacks,
+  // and the page's own language's after it (with <html lang>). en.js says
+  // how a string is written ({name} vars, key.one plural forms). A page, a
+  // plugin or a distribution adds its own keys with
   // denShell.addMessages(lang, table).
-  //
-  //   {name}       a var; a number is formatted by Intl.NumberFormat
-  //   key.one      the plural form t(key, { n }) uses where Intl.PluralRules
-  //                says "one" for n (any CLDR category works: key.few, …)
   //
   // Names (services, workspaces, repos, themes, languages), logs and
   // command output are never translated. tests/unit/server/i18n.test.ts
   // fails when a key is missing from any catalog.
   var MESSAGES = (window.denMessages = window.denMessages || {});
-  // en is public/i18n/en.js (issue 409), loaded just before this script.
+  // en.js not loaded: keys show as themselves, the page still draws.
   MESSAGES.en = MESSAGES.en || {};
   // The languages the UI has a catalog for, each named in itself (a name is
   // never translated). The server's list is ui-language.ts's UI_LANGUAGES.

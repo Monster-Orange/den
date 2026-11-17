@@ -176,6 +176,10 @@ describe("the Host allowlist (DNS rebinding)", () => {
       expect(r.type).toMatch(/text\/html/);
       expect(r.body).toContain('"status":421');
       expect(r.body).toContain("/shell.js");
+      // Issue 409: its words, en's catalog, just before the shell.
+      expect(r.body).toMatch(
+        /src="\/i18n\/en\.js[^"]*"><\/script>(<script[^>]*><\/script>)*<script src="\/shell\.js/,
+      );
     }
     expect(editorNow()).toBe(before);
   });
@@ -183,6 +187,10 @@ describe("the Host allowlist (DNS rebinding)", () => {
   it("the 421 page's own scripts still load (they hold no data)", async () => {
     const r = await call("GET", "/shell.js", { host: "evil.example" });
     expect(r.status).toBe(200);
+    // Issue 409: and its words (en's catalog).
+    const en = await call("GET", "/i18n/en.js", { host: "evil.example" });
+    expect(en.status).toBe(200);
+    expect(en.body).toContain('"n.workspaces": "Projects"');
     const api = await call("GET", "/api/server-info", { host: "evil.example" });
     expect(api.status).toBe(421);
   });

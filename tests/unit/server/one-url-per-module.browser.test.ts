@@ -127,6 +127,7 @@ async function loads(
   engine: (typeof ENGINES)[number],
   route: string,
   inject?: string,
+  words?: string[],
 ): Promise<Map<string, Set<string>>> {
   const ctx = await browsers[engine]!.newContext({
     viewport: { width: 1440, height: 900 },
@@ -154,6 +155,7 @@ async function loads(
     });
     await p.goto(signInUrl(s!.stateDir, s!.base, route + (QUERY[route] ?? "")));
     await p.waitForLoadState("networkidle").catch(() => {});
+    if (words) words.push(...(await enMisses(p)).map((w) => `${route} ${w}`));
     if (inject)
       await p.addScriptTag({ type: "module", content: inject }).catch(() => {});
     await openLazy(p, route);
@@ -161,6 +163,42 @@ async function loads(
     await ctx.close();
   }
   return seen;
+}
+
+/**
+ * Issue 409: the page's English, from i18n/en.js. A miss: en's catalog not
+ * loaded, or a key drawn as itself (t() found no word for it), a text that
+ * is a dotted key under one of en's prefixes ("set.x.y").
+ */
+async function enMisses(p: Page): Promise<string[]> {
+  return p.evaluate(() => {
+    const w = window as {
+      denMessages?: Record<string, Record<string, string>>;
+      denShell?: { t: (k: string) => string };
+    };
+    const en = w.denMessages?.en ?? {};
+    const keys = Object.keys(en);
+    if (keys.length < 1000) return [`en has ${keys.length} keys`];
+    if (w.denShell && w.denShell.t("n.workspaces") !== en["n.workspaces"])
+      return ["t() does not read en"];
+    const prefixes = new Set(keys.map((k) => k.split(".")[0]));
+    const out = new Set<string>();
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const t = (n.textContent ?? "").trim();
+      if (/^[a-z][\w-]*(\.[\w-]+)+$/.test(t) && prefixes.has(t.split(".")[0]))
+        out.add(t);
+    }
+    for (const el of document.querySelectorAll(
+      "[title],[aria-label],[placeholder]",
+    ))
+      for (const a of ["title", "aria-label", "placeholder"]) {
+        const t = (el.getAttribute(a) ?? "").trim();
+        if (/^[a-z][\w-]*(\.[\w-]+)+$/.test(t) && prefixes.has(t.split(".")[0]))
+          out.add(`${a}=${t}`);
+      }
+    return [...out];
+  });
 }
 
 function doubles(seen: Map<string, Set<string>>): string[] {
@@ -181,9 +219,10 @@ describe("issue 231: one URL per module on every page", () => {
     it(`${engine}: no page asks for a script or stylesheet by two URLs`, async () => {
       if (skip()) return;
       const bad: string[] = [];
+      const words: string[] = [];
       const all = new Set<string>();
       for (const route of PAGES) {
-        const seen = await loads(engine, route);
+        const seen = await loads(engine, route, undefined, words);
         for (const path of seen.keys()) all.add(path);
         for (const d of doubles(seen)) bad.push(`${route} ${d}`);
       }
@@ -197,6 +236,10 @@ describe("issue 231: one URL per module on every page", () => {
       expect(lazy.filter((m) => !all.has(m))).toEqual([]);
       expect(all.size).toBeGreaterThan(30);
       expect(bad).toEqual([]);
+      // Issue 409: every page's English is there (en.js loaded, no key
+      // drawn as itself).
+      expect(all.has("/i18n/en.js")).toBe(true);
+      expect(words).toEqual([]);
     }, 300_000);
 
   it("catches a module asked for bare as well as stamped", async () => {

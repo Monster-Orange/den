@@ -2,7 +2,7 @@
  * The UI's Japanese catalog (R19, 0.3.0-dev.39). A classic script the
  * server loads before shell.js for a page in Japanese (ui-language.ts); it
  * adds its table to window.denMessages, and shell.js's t() reads it. Every
- * key of shell.js's en is here (tests/unit/server/i18n.test.ts). Japanese
+ * key of en.js is here (tests/unit/server/i18n.test.ts). Japanese
  * has one plural form, so no key has a `.one` variant.
  */
 (function (m) {

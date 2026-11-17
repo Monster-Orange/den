@@ -180,7 +180,9 @@ export function proseIn(line) {
 
 /**
  * 0.4.48: the lines a `git diff -U0` only moved: removed and added again in
- * the same file, whitespace aside (a block re-indented under a new wrapper).
+ * the same file, whitespace aside (a block re-indented under a new wrapper),
+ * or removed from one file and added to another (issue 409: a block moved
+ * to a file of its own).
  * Keys are `<file>\0<trimmed line>`. Their strings were read when they were
  * written; the gate reads only what is new.
  */
@@ -211,6 +213,27 @@ export function movedLines(diff) {
     else if (raw.startsWith("+")) bump(added, `${to}\0${line}`);
   }
   const moved = new Set();
-  for (const [k, n] of added) if ((removed.get(k) ?? 0) >= n) moved.add(k);
+  for (const [k, n] of added) {
+    const r = removed.get(k) ?? 0;
+    if (r < n) continue;
+    moved.add(k);
+    removed.set(k, r - n);
+  }
+  // Issue 409: a line removed from one file and added to another (a block
+  // moved to its own file) is not new either, once each file's own
+  // re-indents are matched. A copy, which leaves the first file's line in
+  // place, is new.
+  const text = (k) => k.slice(k.indexOf("\0") + 1);
+  const left = new Map();
+  for (const [k, r] of removed)
+    if (r > 0) left.set(text(k), (left.get(text(k)) ?? 0) + r);
+  for (const [k, n] of added) {
+    if (moved.has(k)) continue;
+    const line = text(k);
+    const r = left.get(line) ?? 0;
+    if (r < n) continue;
+    moved.add(k);
+    left.set(line, r - n);
+  }
   return moved;
 }

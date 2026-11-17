@@ -18,6 +18,8 @@ import {
   pickLead,
   type LeadCandidate,
 } from "../../../src/ui/server/lead-routing";
+import { UI_LANGUAGES } from "../../../src/ui/server/ui-language";
+import { catalogSource } from "./helpers/en-catalog";
 
 let dir = "";
 const clock = 1_000_000;
@@ -192,10 +194,9 @@ describe("issue 101: an agent's question goes to its lead", () => {
 
 describe("issue 101: the words", () => {
   it("bell.m.toLead is in en, es and ja", () => {
-    const root = path.join(__dirname, "../../../src/ui/server/public");
-    for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"])
-      expect([f, fs.readFileSync(path.join(root, f), "utf8")]).toEqual([
-        f,
+    for (const lang of UI_LANGUAGES)
+      expect([lang, catalogSource(lang)]).toEqual([
+        lang,
         expect.stringMatching(
           /"bell\.m\.toLead": "[^"]*\{name\}[^"]*\{lead\}[^"]*\{text\}/,
         ),
