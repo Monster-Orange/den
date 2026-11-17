@@ -401,7 +401,9 @@ export interface Runtime {
    * Issue 163 (b): the env var its CLI signs in from with a long-lived
    * token (den-claude: CLAUDE_CODE_OAUTH_TOKEN, from `claude setup-token`).
    * Under the always-on service Den sets it from the install's secrets
-   * store, past the scrub; a caller's own value never passes.
+   * store, past the scrub; a caller's own value never passes. Issue 338:
+   * from its catalog entry's signIn.env; none, its agents can't sign in
+   * after logout.
    */
   signInTokenEnv?: string;
   /** den#3: it runs its subagents on LaunchInput.subagentModel. */

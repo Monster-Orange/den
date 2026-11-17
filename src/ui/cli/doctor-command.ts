@@ -441,11 +441,21 @@ export async function doctorJson(
   return { ok: !checks.some((c) => c.status === "fail"), checks };
 }
 
+type CatalogEntry = import("../../shared/agents/catalog.js").CatalogEntry;
+
 /** D18/D20: the real probes for doctor's "where it runs" rows. */
 export async function defaultWhereDeps(): Promise<WhereDeps> {
   const os = await import("os");
-  const { readDenConfig: cfg, readWebServiceConfig } =
-    await import("../../shared/den-config.js");
+  const {
+    readDenConfig: cfg,
+    readWebServiceConfig,
+    readAgentsConfig,
+    configuredRuntimeCatalog,
+  } = await import("../../shared/den-config.js");
+  const { BUILTIN_CATALOG } = await import("../../shared/agents/catalog.js");
+  const { listRecords } = await import("../../shared/agents/records.js");
+  const { agentsWithoutSignIn } =
+    await import("../../shared/agents/signin-token.js");
   const { readWebPort } = await import("../../shared/edge/config.js");
   const { getDistRoot } = await import("../../shared/paths.js");
   const { connectHost } = await import("../../shared/sessions/client.js");
@@ -533,6 +543,27 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         stateDir: getStateDir(),
         probe: true,
       });
+    },
+    // Issue 338: agents on a runtime with no sign-in data (built-in,
+    // the distribution's or user.yml's catalog entries).
+    noSignIn: () => {
+      let extra: CatalogEntry[] = [];
+      try {
+        const dist = readAgentsConfig(cfg()).runtimeCatalog;
+        extra = [
+          ...dist,
+          ...configuredRuntimeCatalog([
+            ...BUILTIN_CATALOG.map((e) => e.id),
+            ...dist.map((e) => e.id),
+          ]),
+        ];
+      } catch {
+        extra = []; // a bad entry is the catalog's own check to say
+      }
+      return agentsWithoutSignIn(listRecords(getStateDir()), [
+        ...BUILTIN_CATALOG,
+        ...extra,
+      ]);
     },
     // Issue 163 (a): unset over a login install is offered.
     keepSetting: () => agentsKeepRunningAfterLogout(),

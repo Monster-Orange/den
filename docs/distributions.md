@@ -5010,7 +5010,25 @@ agents:
       softNewline: esc-cr # what Shift+Enter sends: esc-cr (default), lf, none
       titleFromOsc: false # its terminal title (OSC 0/2) names the session
       # sessionName: official | unofficial  (built-in adapters only)
+      # Optional, how its agents sign in after logout (issue 338):
+      signIn:
+        env: AIDER_TOKEN # the variable its CLI signs in from
+        command: aider auth token # the one command that makes it (shown in Setup)
+        lastsDays: 90 # how long it lasts
+        limitPattern: "rate limit reached" # how it words a usage limit
 ```
+
+**Sign-in after logout (`signIn`).** Under Keep agents running after
+logout, an agent signs in with a long-lived credential its CLI reads from
+one environment variable. Claude Code's entry carries it
+(`CLAUDE_CODE_OAUTH_TOKEN`, made with `claude setup-token`, kept under
+`secrets.refs.agent_signin_token`). An added entry with `signIn` gets its
+own token, from `secrets.refs.agent_signin_token_<id>` (`-` as `_`), in
+its own agents' environment only. `env` can't be a variable Den sets
+itself (`PATH`, `HOME`, `DEN_*` and the rest of the allowlist). An entry
+with no `signIn` is allowed: its agents can't sign in after logout and
+will stop, and `doctor` says so. Codex CLI, Gemini CLI and Grok Build ship
+with none until their vendors' options are checked.
 
 **Where a runtime's CLI is found.** As your terminal would find it, not
 only on the web server's own PATH (a launchd service's PATH leaves out
