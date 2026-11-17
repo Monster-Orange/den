@@ -14,7 +14,8 @@
  *   loadWhatsNew()     asks changelog() and keeps the entries
  *   setEntries(list)   or gives them directly
  *   openWhatsNew()     opens it at the newest release; focus on its heading
- *   closeWhatsNew()    closes it; focus back where it was (else the chip)
+ *   closeWhatsNew()    closes it; focus back where it was (else the chip),
+ *                      unless the page put it in a control of its own meanwhile
  *   changelogView(entries, showAll)  what it shows (pure)
  *
  * It is an aria-modal dialog: Tab stays in it, Escape and a click on the
@@ -399,11 +400,21 @@ export function openWhatsNew() {
 export function closeWhatsNew() {
   const overlay = document.getElementById("cl-overlay");
   const wasOpen = !!overlay?.classList.contains("open");
+  // den#143: where the keyboard is now. The page may have given it to a
+  // field of its own while this was open (a deep link's composer, which
+  // came after What's new): that field keeps it.
+  const at = document.activeElement;
+  const elsewhere =
+    !!at &&
+    at !== document.body &&
+    at !== document.documentElement &&
+    !overlay?.contains(at);
   if (overlay) overlay.classList.remove("open");
   if (wasOpen) {
     const back = returnFocus;
     returnFocus = null;
-    if (!focusBack(back)) focusBack(document.getElementById("version-pill"));
+    if (!elsewhere && !focusBack(back))
+      focusBack(document.getElementById("version-pill"));
   }
   if (cfg.onClose) cfg.onClose(entries[0]?.version ?? null);
   const pip = document.getElementById("v-pip");
