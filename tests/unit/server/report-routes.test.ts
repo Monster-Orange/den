@@ -365,6 +365,7 @@ describe("FB: Report an issue, the server's side", () => {
       // Issue 415: how long a destination's visibility is kept, and waited for.
       visibilityCacheHours: 24,
       visibilityTimeoutSeconds: 3,
+      visibilityRetrySeconds: 60,
     });
   });
 });

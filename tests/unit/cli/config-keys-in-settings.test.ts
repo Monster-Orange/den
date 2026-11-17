@@ -107,15 +107,21 @@ describe("MODE-5: `config` sets the limits Settings names, with the page's check
       // Issue 415: a Report destination's visibility, kept and waited for.
       expect(cli("feedback.visibility_cache_hours=6").status).toBe(0);
       expect(cli("feedback.visibility_timeout_seconds=2").status).toBe(0);
+      expect(cli("feedback.visibility_retry_seconds=0").status).toBe(0);
       expect(user().feedback).toEqual({
         visibility_cache_hours: 6,
         visibility_timeout_seconds: 2,
+        visibility_retry_seconds: 0,
       });
+      const retry = cli("feedback.visibility_retry_seconds=4000");
+      expect(retry.status).not.toBe(0);
+      expect(retry.stderr + retry.stdout).toMatch(/from 0 to 3600/);
       const long = cli("feedback.visibility_cache_hours=1000");
       expect(long.status).not.toBe(0);
       expect(long.stderr + long.stdout).toMatch(/from 0 to 720/);
       expect(cli("rm feedback.visibility_cache_hours").status).toBe(0);
       expect(cli("rm feedback.visibility_timeout_seconds").status).toBe(0);
+      expect(cli("rm feedback.visibility_retry_seconds").status).toBe(0);
       expect(user().feedback).toBeUndefined();
     } finally {
       fs.rmSync(root, { recursive: true, force: true });

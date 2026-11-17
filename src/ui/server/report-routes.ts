@@ -415,6 +415,7 @@ export function handleReportRoutes(
             gh: (a) => d.gh(a),
             ttlMs: s.visibilityCacheHours * 3_600_000,
             timeoutMs: s.visibilityTimeoutSeconds * 1000,
+            retryMs: s.visibilityRetrySeconds * 1000,
             now,
           })
         : {};

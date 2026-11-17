@@ -889,6 +889,10 @@
       "Informe: espera de la visibilidad del repositorio",
     "set.server.report_visibility_wait.d":
       "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice público, y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry":
+      "Informe: reintento de la visibilidad del repositorio",
+    "set.server.report_visibility_retry.d":
+      "Si GitHub no responde si un repositorio es público o privado, cuánto tarda Informe en volver a preguntar. 0 pregunta cada vez que se abre. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Intentos de reconexión de la terminal",
     "set.agents.pane_reconnect.d":
       "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Tras estos intentos fallidos dentro del tiempo de abajo, se detiene y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",

@@ -6778,6 +6778,7 @@ async function handleRequest(
           return {
             visibility_cache_hours: f.visibilityCacheHours,
             visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+            visibility_retry_seconds: f.visibilityRetrySeconds,
           };
         })(),
         // Issue 103: Settings › Embedding (embed.*).

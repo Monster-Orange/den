@@ -22,7 +22,8 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
- *   feedback: { visibility_cache_hours?, visibility_timeout_seconds? }
+ *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
+ *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout

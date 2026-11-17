@@ -1773,6 +1773,19 @@ export const DEN_SETTINGS = [
       ctx.post({ feedback: { visibility_timeout_seconds: v } }),
   },
   {
+    id: "server.report_visibility_retry",
+    category: "server",
+    label: "Report: repository visibility retry",
+    description:
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
+    keywords: ["report", "feedback", "visibility", "retry", "failure"],
+    scope: "user",
+    keys: ["feedback.visibility_retry_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.feedback?.visibility_retry_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",

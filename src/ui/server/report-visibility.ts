@@ -10,8 +10,8 @@
  * A real answer is kept per repo, in memory and in
  * <state>/report-visibility.json, for feedback.visibility_cache_hours
  * (24). An unknown answer or a failure reads as public (the safe wording)
- * but is held only FAILED_HOLD_MS (a minute, so repeated opens don't storm
- * GitHub), then asked again: one blip never labels a private repo public
+ * but is held only feedback.visibility_retry_seconds (60, so repeated opens
+ * don't storm GitHub; 0: asked again on every open), then asked again: one blip never labels a private repo public
  * for the hours kept. A lookup never holds GET /api/report past
  * feedback.visibility_timeout_seconds (3): one still running keeps going
  * and fills the cache for the next open. One lookup per repo at a time.
@@ -29,9 +29,6 @@ interface Entry {
 }
 
 const FILE = "report-visibility.json";
-
-/** How long an unknown answer or a failure is held before asking again. */
-const FAILED_HOLD_MS = 60_000;
 
 /** GitHub's answer for a repo → its visibility, or null when it doesn't say. */
 export function visibilityOf(stdout: string): RepoVisibility | null {
@@ -120,6 +117,7 @@ class Cache {
       gh: (args: string[]) => Promise<GhResult>;
       ttlMs: number;
       timeoutMs: number;
+      retryMs: number;
       now: () => number;
     },
   ): Promise<Record<string, RepoVisibility | null>> {
@@ -127,7 +125,7 @@ class Cache {
     await Promise.all(
       repos.map(async (repo) => {
         const e = this.mem.get(repo);
-        const keep = e?.v ? o.ttlMs : Math.min(o.ttlMs, FAILED_HOLD_MS);
+        const keep = e?.v ? o.ttlMs : Math.min(o.ttlMs, o.retryMs);
         if (e && o.now() - e.at < keep) {
           out[repo] = e.v;
           return;
@@ -160,6 +158,8 @@ export function repoVisibilities(
     gh: (args: string[]) => Promise<GhResult>;
     ttlMs: number;
     timeoutMs: number;
+    /** How long an unknown answer or a failure is held. */
+    retryMs: number;
     now?: () => number;
   },
 ): Promise<Record<string, RepoVisibility | null>> {

@@ -8,7 +8,8 @@
  *   (and with no sign-in nothing is looked up);
  * - a real answer is kept for feedback.visibility_cache_hours: a second
  *   open within it makes no second call; after it, one more; kept on disk
- *   too. A failure is held a minute at most, then asked again;
+ *   too. A failure is held feedback.visibility_retry_seconds (60; 0: asked
+ *   again on every open), then asked again;
  * - a slow GitHub never holds the form past
  *   feedback.visibility_timeout_seconds: public now, the real answer on
  *   the next open, from the same one call.
@@ -196,6 +197,30 @@ describe("GET /api/report: each destination's visibility (issue 415)", () => {
     clock += 3_600_000;
     await info();
     expect(lookups).toHaveLength(3);
+  });
+
+  it("feedback.visibility_retry_seconds: 0 asks again on every open; 5 holds a failure 5 s", async () => {
+    user = { visibility_retry_seconds: 0 };
+    answers = {
+      "acme-eng/engine": ok({ visibility: "public" }),
+      "acme-eng/notes": { code: 1, stdout: "", stderr: "HTTP 502" },
+    };
+    await info();
+    await info();
+    expect(lookups.filter((r) => r === "acme-eng/notes")).toHaveLength(2);
+    user = { visibility_retry_seconds: 5 };
+    clock += 1000;
+    await info();
+    clock += 3000;
+    await info();
+    // 4 s after the last failure: still held.
+    expect(lookups.filter((r) => r === "acme-eng/notes")).toHaveLength(2);
+    clock += 3000;
+    await info();
+    // 7 s after it: asked again.
+    expect(lookups.filter((r) => r === "acme-eng/notes")).toHaveLength(3);
+    // The real answer is still kept for the hours.
+    expect(lookups.filter((r) => r === "acme-eng/engine")).toHaveLength(1);
   });
 
   it("no sign-in, then a sign-in: the next open looks it up", async () => {

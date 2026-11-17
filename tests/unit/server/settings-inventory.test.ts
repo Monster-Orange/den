@@ -68,7 +68,11 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     push_ttl_seconds: true,
   },
   // Issue 415: how long a Report destination's visibility is kept, waited for.
-  feedback: { visibility_cache_hours: true, visibility_timeout_seconds: true },
+  feedback: {
+    visibility_cache_hours: true,
+    visibility_timeout_seconds: true,
+    visibility_retry_seconds: true,
+  },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -193,6 +197,7 @@ describe("the settings inventory (R21)", () => {
         // Issue 415: a Report destination's visibility, kept and waited for.
         "feedback.visibility_cache_hours",
         "feedback.visibility_timeout_seconds",
+        "feedback.visibility_retry_seconds",
       ].sort(),
     );
   });

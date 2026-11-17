@@ -537,6 +537,8 @@ export interface UserConfig {
      */
     visibility_cache_hours?: unknown;
     visibility_timeout_seconds?: unknown;
+    /** How long a failed lookup is held before asking again (60 s, 0..3600). */
+    visibility_retry_seconds?: unknown;
   };
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;

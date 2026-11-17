@@ -77,6 +77,7 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "feedback",
     "visibility_timeout_seconds",
   ],
+  "feedback.visibility_retry_seconds": ["feedback", "visibility_retry_seconds"],
 };
 
 /**

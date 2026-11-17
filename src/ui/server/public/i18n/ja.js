@@ -867,6 +867,9 @@
     "set.server.report_visibility_wait": "報告：リポジトリの公開範囲の待ち時間",
     "set.server.report_visibility_wait.d":
       "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると公開として表示し、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "報告：リポジトリの公開範囲の再確認",
+    "set.server.report_visibility_retry.d":
+      "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
     "set.agents.pane_reconnect.d":
       "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",

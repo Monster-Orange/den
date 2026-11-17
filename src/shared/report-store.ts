@@ -11,8 +11,9 @@
  *     The times are kept on disk, so a restart doesn't reset them.
  *   - `feedback.visibility_cache_hours` (24) and
  *     `feedback.visibility_timeout_seconds` (3): how long a destination's
- *     visibility on GitHub is kept, and how long Report waits to learn it
- *     (issue 415, report-visibility.ts).
+ *     visibility on GitHub is kept, and how long Report waits to learn it;
+ *     `feedback.visibility_retry_seconds` (60): how long a failed lookup is
+ *     held before asking again (issue 415, report-visibility.ts).
  *   - Drafts: one JSON file each under <state>/reports/drafts. An agent's
  *     draft stays a draft until a person sends it.
  *
@@ -37,6 +38,8 @@ export interface FeedbackSettings {
   visibilityCacheHours: number;
   /** Issue 415: how long Report waits to learn it (seconds). */
   visibilityTimeoutSeconds: number;
+  /** Issue 415: how long a failed lookup is held before asking again (s). */
+  visibilityRetrySeconds: number;
 }
 
 /**
@@ -46,6 +49,7 @@ export interface FeedbackSettings {
 export const VISIBILITY_LIMITS = {
   visibility_cache_hours: { min: 0, max: 720, default: 24 },
   visibility_timeout_seconds: { min: 0.5, max: 60, default: 3 },
+  visibility_retry_seconds: { min: 0, max: 3600, default: 60 },
 } as const;
 
 function inRange(
@@ -118,6 +122,10 @@ export function feedbackSettings(
     visibilityTimeoutSeconds: inRange(
       u.visibility_timeout_seconds ?? d.visibility_timeout_seconds,
       VISIBILITY_LIMITS.visibility_timeout_seconds,
+    ),
+    visibilityRetrySeconds: inRange(
+      u.visibility_retry_seconds ?? d.visibility_retry_seconds,
+      VISIBILITY_LIMITS.visibility_retry_seconds,
     ),
   };
 }
