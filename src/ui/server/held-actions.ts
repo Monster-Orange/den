@@ -57,6 +57,9 @@
  *                     (user.yml) or a project's (workspaces.yml). Always
  *                     the person's own Allow: only a person in the page
  *                     changes it without one
+ *   pr_close          issue 160: close a stale or superseded pull request
+ *                     after a Hub note, with a comment saying why (gh
+ *                     pr close). Auto unless the repo is watched or pinned
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -161,6 +164,15 @@ export interface HeldActionDeps {
       setting: Record<string, unknown> | undefined,
     ) => void;
   };
+  /**
+   * Issue 160: pr_close's close (gh pr close <pr> --repo <repo> --comment
+   * <comment>, as the person running Den; tests pass a fake).
+   */
+  prClose?: (args: {
+    repo: string;
+    pr: number;
+    comment: string;
+  }) => Promise<unknown>;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
@@ -218,6 +230,8 @@ function shown(p: string, home: string): string {
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** A GitHub repo, owner/name. */
+const GH_REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 /** A runtime's conversation id (Claude Code: a uuid). */
 const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
@@ -703,6 +717,63 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const prClose: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.prClose)
+        return { ok: false, error: "this Den can't close pull requests here" };
+      const project = wsArg(a.project) ?? who?.project;
+      if (project !== undefined) {
+        if (!NAME_RE.test(project) || !d.workspaceExists(project))
+          return { ok: false, error: `there is no project "${project}"` };
+        if (
+          who?.project &&
+          !isServerScope(who.project) &&
+          project !== who.project
+        )
+          return {
+            ok: false,
+            error: `a project's agent closes pull requests for its own project (${who.project}), not ${project}`,
+          };
+      }
+      const repo = str(a.repo);
+      if (!repo || !GH_REPO_RE.test(repo))
+        return { ok: false, error: "repo: a GitHub repo, owner/name" };
+      const pr =
+        typeof a.pr === "number"
+          ? a.pr
+          : typeof a.pr === "string" && /^\d+$/.test(a.pr.trim())
+            ? Number(a.pr.trim())
+            : NaN;
+      if (!Number.isSafeInteger(pr) || pr < 1)
+        return { ok: false, error: "pr: the pull request number" };
+      const comment = str(a.comment);
+      if (!comment)
+        return {
+          ok: false,
+          error:
+            "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
+        };
+      return {
+        ok: true,
+        args: { ...(project ? { project } : {}), repo, pr, comment },
+        summary: `close pull request ${pr} on ${repo}: ${comment}`,
+        params: { repo, pr: String(pr), comment },
+        details: [
+          `Repo: ${repo}. Pull request: ${pr}.`,
+          `Den closes it with this comment: ${comment}`,
+          "Nothing is merged and no branch is deleted.",
+        ],
+      };
+    },
+    async run(a) {
+      return d.prClose!({
+        repo: String(a.repo),
+        pr: Number(a.pr),
+        comment: String(a.comment),
+      });
+    },
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
@@ -720,6 +791,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,
+    pr_close: prClose,
     den_pin_commit: pinCommit,
   };
 }

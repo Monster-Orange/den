@@ -2555,6 +2555,25 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
+    // Issue 160: an agent closes a stale or superseded pull request after
+    // a Hub note (auto unless the repo is watched or pinned).
+    prClose: async ({ repo, pr, comment }) => {
+      const r = await runGh([
+        "pr",
+        "close",
+        String(pr),
+        "--repo",
+        repo,
+        "--comment",
+        comment,
+      ]);
+      return r.code === 0
+        ? { ok: true, repo, pr }
+        : {
+            ok: false,
+            error: `gh pr close: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ")}`,
+          };
+    },
     // Issue 160: an agent asks to change the approval policy (always asks).
     approvalPolicy: {
       read: (project) => {

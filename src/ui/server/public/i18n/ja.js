@@ -912,6 +912,7 @@
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
     "ap.do.approval_policy.project":
       "プロジェクト {where} の承認ポリシーを {to} に変更",
+    "ap.do.pr_close": "{repo} のプルリクエスト {pr} を閉じる: {comment}",
     "set.agents.default_mode": "エージェントのモード: Den 全体の既定",
     "set.agents.default_mode.d":
       "__DEN_TITLE__ エージェントを含むすべてのエージェントが動くモードです。プロジェクトが上書きした場合を除きます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。変更は、動いているエージェントにもターンの終わりに自動で反映されます。",

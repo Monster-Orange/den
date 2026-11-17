@@ -297,18 +297,18 @@ agent's held write into one of two groups.
   agent may do. No setting lowers it. The list is data in one place,
   `HELD_WRITE_RISK` in `src/shared/approval-policy.ts`:
 
-  | Held write                         | Critical when                                                          |
-  | ---------------------------------- | ---------------------------------------------------------------------- |
-  | `project_mode`, `agent_mode`       | the mode gets looser (toward auto or all, or clearing it widens)       |
-  | `persona_create`, `persona_update` | always: a persona carries a mode and commands it may run               |
-  | `den_update`, `den_restart`        | always (`server_agent.self_update: auto` still covers Den's own agent) |
-  | `repo_add`                         | always: the project's agents get a repo they couldn't reach            |
-  | `verify_run`                       | always: it runs checks against a shared environment                    |
-  | `approval_policy`                  | always: only a person changes the policy without an Allow (0.4.61)     |
-  | any write that touches secrets, deletes data or spends money | always (0.4.61), whatever its placement      |
-  | any write not on the list          | always, until someone places it                                        |
+  | Held write                                                   | Critical when                                                          |
+  | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
+  | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
+  | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
+  | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
+  | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
+  | `verify_run`                                                 | always: it runs checks against a shared environment                    |
+  | `approval_policy`                                            | always: only a person changes the policy without an Allow (0.4.65)     |
+  | any write that touches secrets, deletes data or spends money | always (0.4.65), whatever its placement                                |
+  | any write not on the list                                    | always, until someone places it                                        |
 
-  From 0.4.61 secrets, deletes of data and money are critical by name,
+  From 0.4.65 secrets, deletes of data and money are critical by name,
   not only through the fallback: a write named for one (`secret_*`,
   `*_token*`, `*_delete`, `*_remove`, `*_purge`, `pay*`, `billing_*`, …)
   or whose check says it touches one (`areas`) always asks. The
@@ -328,10 +328,10 @@ agent's held write into one of two groups.
     policy: notify # auto | notify | ask, for every routine write
     writes: # one write's own, over policy
       repo_clone: ask
-    watch: # 0.4.61: a write on any of these asks
+    watch: # 0.4.65: a write on any of these asks
       - project:north
       - repo:api
-    critical: # 0.4.61: kinds of write that always ask here
+    critical: # 0.4.65: kinds of write that always ask here
       - service_try
   ```
 
@@ -340,7 +340,7 @@ agent's held write into one of two groups.
   kind, then `notify`. A value that isn't auto, notify or ask holds the
   write for the person (never runs it on a typo).
 
-- **Settings (0.4.61).** Settings › Agents has the install's rows
+- **Settings (0.4.65).** Settings › Agents has the install's rows
   (Agent writes, Watched, Critical); Settings › Project setup has the
   project's (Agents' writes here, Watched here, Critical here). They
   write the same keys. Defaults are permissive: `notify`, nothing
@@ -348,7 +348,7 @@ agent's held write into one of two groups.
   `POST /api/settings` (`approvals_policy`, `approvals_watch`,
   `approvals_critical`) and `POST /api/workspaces/settings` (the same
   keys, with `workspace`) refuse an agent's claim with 403.
-- **Watched and favorites ask (0.4.61).** A routine write asks when it is
+- **Watched and favorites ask (0.4.65).** A routine write asks when it is
   on something in a `watch` list (the project's or the install's) or on
   a repo or service the person pinned to the rail (`shell.pins`, their
   favorites). An item is `project:<name>`, `repo:<name>`,
@@ -356,25 +356,28 @@ agent's held write into one of two groups.
   (any of them). What a write is on: its project, and the repo,
   service, persona or agent its arguments name. The answer to the agent
   says why it waits (`askedBecause: "watched repo:api"`, `"favorited
-  service:api/web"`).
-- **A project's own critical list (0.4.61).** `critical` names kinds of
+service:api/web"`).
+- **A project's own critical list (0.4.65).** `critical` names kinds of
   write that always ask in that project (or, in `user.yml`, everywhere).
   No `writes` entry lowers them.
-- **The policy itself is a person's (0.4.61).** An agent asks to change it
+- **The policy itself is a person's (0.4.65).** An agent asks to change it
   with the held write `approval_policy` (`{ project?, approvals }`, the
   whole setting or `null`). It is critical: it always waits for the
   person's own Allow. A project's agent asks for its own project only;
   the install's policy is Den's own agent's or a person's.
-- **A write's own kind (0.4.61).** Some writes carry a kind of their own,
+- **A write's own kind (0.4.65).** Some writes carry a kind of their own,
   used when no setting names them:
 
-  | Kind of write  | Own kind | What it is                                                                                         |
-  | -------------- | -------- | -------------------------------------------------------------------------------------------------- |
-  | `agent_import` | ask      | bring in a conversation as an agent; only `writes.agent_import` lowers it                          |
+  | Kind of write  | Own kind | What it is                                                                                          |
+  | -------------- | -------- | --------------------------------------------------------------------------------------------------- |
+  | `agent_import` | ask      | bring in a conversation as an agent; only `writes.agent_import` lowers it                           |
   | `pr_close`     | auto     | close a stale or superseded PR after a Hub note; a stricter `policy` or a watched repo makes it ask |
 
-  `pr_close` is placed in the policy only: Den has no action that closes
-  a PR yet.
+  `pr_close` is a held write (`{ repo, pr, comment, project? }`): Den
+  runs `gh pr close <pr> --repo <owner/name> --comment <comment>` as the
+  person running Den. Nothing is merged and no branch is deleted. It is
+  watched by either name, `repo:<owner/name>` or the repo's own name
+  (`repo:api`), and a repo pinned to the rail counts too.
 
 - **An agent may still ask.** `ask: true` on any held write (with a
   `note` saying why) waits for the Allow whatever the policy says.
@@ -3013,7 +3016,7 @@ only agent route an agent's token reaches.
 `agent_import` (AG-17.1) brings in a conversation started outside Den as an
 agent: with no `session` it lists them, with `session` and `persona` it
 asks to bring one in (see [Bring in a conversation](#bring-in-a-conversation)).
-From 0.4.61 (issue 160) the bring-in is a held write: it waits for the
+From 0.4.65 (issue 160) the bring-in is a held write: it waits for the
 person's Allow by default (see
 [The approval policy](#the-approval-policy-0452-issue-160)), and the tool
 is registered with the held writes. The list is still off unless
@@ -3670,7 +3673,7 @@ import -w <ws>` lists them too.
 /api/workspaces/<ws>/conversations/<id>/import` `{ persona, runtime?, id?,
 model?, version?, outside? }`. The list: a person's, or an agent's opted
   in through `mcp.actions`. The import: a person's; an agent asks with the
-  held write `agent_import` (0.4.61).
+  held write `agent_import` (0.4.65).
 
 #### Change an agent's persona
 

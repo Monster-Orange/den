@@ -451,7 +451,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_connect, agent_folder, agent_mode, agent_import, approval_policy): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2223,6 +2223,57 @@ const APPROVAL_TOOLS: DenTool[] = [
           project: str(a.project),
           approvals: a.approvals as unknown,
         } as Args,
+        a,
+        ctx,
+      );
+    },
+  },
+  // Issue 160: closing a stale or superseded PR after a Hub note. Auto
+  // unless the person watches or pinned the repo.
+  {
+    name: "pr_close",
+    title: "Close a pull request",
+    description:
+      "Close a stale or superseded pull request after a Hub note says so: `repo` (owner/name), `pr` (its number) and `comment` (why, posted on the pull request; name what supersedes it). Nothing is merged and no branch is deleted. A project's agent closes for its own project." +
+      HELD,
+    action: true,
+    shape: {
+      repo: z.string().describe("The GitHub repo, owner/name"),
+      pr: z.number().int().positive().describe("The pull request number"),
+      comment: z
+        .string()
+        .describe(
+          "Posted on the pull request: why it closes (stale, or superseded by which)",
+        ),
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : str(a.project);
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `pr_close: you work in project "${ctx.scope.workspace}" and close pull requests for it only, not project "${project}"; nothing was asked.`,
+        );
+      const repo = needArg("pr_close", a, "repo", "owner/name");
+      const pr = typeof a.pr === "number" ? a.pr : Number(str(a.pr));
+      if (!Number.isSafeInteger(pr) || pr < 1)
+        throw new Refusal("pr_close: give pr (the pull request number).");
+      const comment = needArg(
+        "pr_close",
+        a,
+        "comment",
+        "why it closes, posted on the pull request",
+      );
+      return askPerson(
+        "pr_close",
+        "pr_close",
+        { project, repo, pr, comment } as Args,
         a,
         ctx,
       );

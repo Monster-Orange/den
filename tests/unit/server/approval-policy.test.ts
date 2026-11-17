@@ -17,7 +17,6 @@ import {
   HELD_WRITE_RISK,
   isCriticalWrite,
   pinsAsWatched,
-  POLICY_ONLY_KINDS,
   policyFor,
   readPolicySetting,
   writeTargets,
@@ -41,6 +40,7 @@ const store = new NotificationStore(stateDir);
 const modes: unknown[] = [];
 const clones: unknown[] = [];
 const personas: unknown[] = [];
+const prs: string[] = [];
 
 const ok = (summary: string, args: Record<string, unknown>) => ({
   ok: true as const,
@@ -74,6 +74,19 @@ const actions: HeldActions = {
     }),
     run: async (a) => {
       clones.push(a.source);
+      return { ok: true };
+    },
+  },
+  // Issue 160: closing a stale or superseded PR after a Hub note.
+  pr_close: {
+    check: (a) =>
+      ok(`close PR ${String(a.pr)} on ${String(a.repo)}`, {
+        repo: String(a.repo),
+        pr: Number(a.pr),
+        comment: String(a.comment),
+      }),
+    run: async (a) => {
+      prs.push(`${String(a.repo)}#${String(a.pr)}`);
       return { ok: true };
     },
   },
@@ -196,6 +209,7 @@ const reset = async () => {
   modes.length = 0;
   clones.length = 0;
   personas.length = 0;
+  prs.length = 0;
   notified.length = 0;
 };
 
@@ -334,14 +348,13 @@ describe("issue 160: the approval policy", () => {
     const names = Object.keys(
       heldActions({} as Parameters<typeof heldActions>[0]),
     );
-    // Issue 160: and the kinds placed before Den has their write.
-    expect(Object.keys(HELD_WRITE_RISK).sort()).toEqual(
-      [...names, ...POLICY_ONLY_KINDS].sort(),
-    );
+    // Issue 160: pr_close too: it is a held write now, not only a kind.
+    expect(names).toContain("pr_close");
+    expect(Object.keys(HELD_WRITE_RISK).sort()).toEqual([...names].sort());
   });
 });
 
-describe("issue 160 (0.4.61): watched, critical, person-only, first uses", () => {
+describe("issue 160 (0.4.65): watched, critical, person-only, first uses", () => {
   it("a write on something the person watches asks, even under auto", async () => {
     await reset();
     install = { policy: "auto", watch: ["repo:r"] };
@@ -380,9 +393,9 @@ describe("issue 160 (0.4.61): watched, critical, person-only, first uses", () =>
       "repo:api",
       "service:api/web",
     ]);
-    expect(writeTargets("service_try", { service: "api/web" }, "north")).toEqual(
-      ["project:north", "service:api/web", "repo:api"],
-    );
+    expect(
+      writeTargets("service_try", { service: "api/web" }, "north"),
+    ).toEqual(["project:north", "service:api/web", "repo:api"]);
   });
 
   it("secrets, deletes of data and money are critical by name, not by the unknown-write fallback", () => {
@@ -397,7 +410,10 @@ describe("issue 160 (0.4.61): watched, critical, person-only, first uses", () =>
     ])
       expect([
         w,
-        policyFor(w, { ...auto, install: { policy: "auto", writes: { [w]: "auto" } } }),
+        policyFor(w, {
+          ...auto,
+          install: { policy: "auto", writes: { [w]: "auto" } },
+        }),
       ]).toEqual([w, { kind: "ask", from: `critical: ${area}` }]);
     // A write nobody placed and that touches none of them: the fallback.
     expect(policyFor("something_new", auto)).toEqual({
@@ -466,6 +482,32 @@ describe("issue 160 (0.4.61): watched, critical, person-only, first uses", () =>
         install: { writes: { agent_import: "notify" } },
       }),
     ).toEqual({ kind: "notify", from: "approvals.writes.agent_import" });
+  });
+
+  it("pr_close runs at once under the defaults; on a watched or pinned repo it waits", async () => {
+    await reset();
+    const r = await ask({
+      action: "pr_close",
+      args: { repo: "acme/api", pr: 7, comment: "superseded" },
+    });
+    expect(r.body.state).toBe("done");
+    expect(prs).toEqual(["acme/api#7"]);
+    // Watched by its local name, or by owner/name; or pinned to the rail.
+    for (const set of [
+      () => (install = { watch: ["repo:api"] }),
+      () => (install = { watch: ["repo:acme/api"] }),
+      () => pins.push("api"),
+    ]) {
+      await reset();
+      set();
+      const w = await ask({
+        action: "pr_close",
+        args: { repo: "acme/api", pr: 8, comment: "stale" },
+      });
+      expect(w.body.state).toBe("pending");
+      expect(w.body.askedBecause).toMatch(/^(watched|favorited) repo:/);
+      expect(prs).toEqual([]);
+    }
   });
 
   it("pr_close (closing a stale or superseded PR after a Hub note): auto unless watched", () => {

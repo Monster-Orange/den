@@ -935,6 +935,7 @@
       "Cambiar la política de aprobación de todos los proyectos a {to}",
     "ap.do.approval_policy.project":
       "Cambiar la política de aprobación del proyecto {where} a {to}",
+    "ap.do.pr_close": "Cerrar la pull request {pr} de {repo}: {comment}",
     "set.agents.default_mode":
       "Modo de los agentes: valor por defecto de todo Den",
     "set.agents.default_mode.d":

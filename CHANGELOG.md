@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.64] - unreleased
+## [0.4.65] - unreleased
 
 ### Added
 
@@ -20,14 +20,17 @@ config and manifest changes a distribution must make to move to it under
   English, Spanish and Japanese. The defaults stay permissive.
 - Only you change the approval policy without an Allow. An agent asks
   with `approval_policy`, and it always waits for you.
-- `pr_close` is in the policy: closing a stale or superseded PR after a
-  Hub note runs unless you watch the repo. Den has no action for it yet.
+- Agents can close a stale or superseded pull request after a Hub note
+  (`pr_close`), with a comment saying why. It runs at once unless you
+  watch or pinned the repo.
 
 ### Changed
 
 - Bringing in a conversation as an agent (`agent_import`) now asks you
   first. It is a held write, on with the other held writes. Listing the
   conversations still needs `mcp.actions`.
+
+## [0.4.64] - unreleased
 
 ### Fixed
 

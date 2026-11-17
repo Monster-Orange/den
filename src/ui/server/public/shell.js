@@ -1824,6 +1824,7 @@
       "Change the approval policy for every project to {to}",
     "ap.do.approval_policy.project":
       "Change project {where}'s approval policy to {to}",
+    "ap.do.pr_close": "Close pull request {pr} on {repo}: {comment}",
     "set.agents.default_mode": "Agents' mode: Den-wide default",
     "set.agents.default_mode.d":
       "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",

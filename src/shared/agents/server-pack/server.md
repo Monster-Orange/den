@@ -146,6 +146,9 @@ Held (each waits for the person's Allow):
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It
   always waits for their Allow.
+- `pr_close`: close a stale or superseded pull request after a Hub note,
+  with a comment saying why. It runs at once unless the person watches or
+  pinned the repo.
 
 Only when Den's config turns them on (`mcp.actions`):
 

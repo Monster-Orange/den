@@ -26,7 +26,7 @@
  *     critical:             # kinds of write that always ask here
  *       - service_try
  *
- * Issue 160 (0.4.61): a write asks, whatever its kind, when
+ * Issue 160 (0.4.65): a write asks, whatever its kind, when
  *   - it is critical: it widens what an agent may do, or it touches
  *     secrets, deletes data or spends money (CRITICAL_AREAS);
  *   - the project's (or the install's) `critical` list names it;
@@ -169,13 +169,6 @@ export const HELD_WRITE_RISK: Readonly<
     why: "closes a stale or superseded PR after a Hub note: runs unless watched",
   },
 };
-
-/**
- * Issue 160: kinds the policy places before Den has a held write for them
- * (pr_close: closing a stale or superseded PR after a Hub note).
- */
-export const POLICY_ONLY_KINDS: readonly string[] = ["pr_close"];
-
 
 /**
  * Why held write `action` is critical ("critical", or "critical: <area>"),
@@ -331,7 +324,10 @@ export function writeTargets(
       ?.replace(/\.git$/, "");
   add("repo", base(s(args.path)));
   add("repo", base(s(args.source)));
-  add("repo", s(args.repo));
+  // A GitHub repo (owner/name, pr_close's) is watched by either name.
+  const repo = s(args.repo);
+  add("repo", repo);
+  if (repo?.includes("/")) add("repo", base(repo));
   if (action.startsWith("persona_")) add("persona", s(args.id));
   add("persona", s(args.persona));
   add("agent", s(args.agent));
@@ -431,7 +427,9 @@ export function patchApprovals(
   current: unknown,
   patch: { policy?: unknown; watch?: unknown; critical?: unknown },
   key = "approvals",
-): { ok: true; value: PolicySetting | undefined } | { ok: false; error: string } {
+):
+  | { ok: true; value: PolicySetting | undefined }
+  | { ok: false; error: string } {
   try {
     const cur: PolicySetting = { ...(readPolicySetting(current, key) ?? {}) };
     if (patch.policy !== undefined) {

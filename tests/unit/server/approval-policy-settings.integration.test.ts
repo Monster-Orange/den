@@ -1,5 +1,5 @@
 /**
- * Issue 160 (0.4.61): Settings rows for the approval policy, the install's
+ * Issue 160 (0.4.65): Settings rows for the approval policy, the install's
  * (POST /api/settings approvals_*: user.yml approvals) and a project's
  * (POST /api/workspaces/settings approvals_*: workspaces.yml
  * <project>.approvals). Permissive defaults: notify, nothing watched,
@@ -50,7 +50,10 @@ async function wsPost(
     },
     body: JSON.stringify(body),
   });
-  return { status: r.status, json: (await r.json()) as Record<string, unknown> };
+  return {
+    status: r.status,
+    json: (await r.json()) as Record<string, unknown>,
+  };
 }
 
 describe("issue 160: Settings › the approval policy", () => {
