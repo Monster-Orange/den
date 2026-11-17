@@ -33,7 +33,10 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
-import { searchSlot } from "../../../packages/den-ui/inventory/nav-inventory.js";
+import {
+  searchSlot,
+  versionSlotW,
+} from "../../../packages/den-ui/inventory/nav-inventory.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -122,8 +125,8 @@ if (!q.has("bare")) {
   // ?chips: a host's own chips in the end slot (issue 303).
   if (q.has("chips"))
     model.slots.end =
-      '<button type="button" class="den-chip" id="host-a"><span>12 of 12 services up</span></button>' +
-      '<button type="button" class="den-chip" id="host-b"><span>Runs</span></button>';
+      '<button type="button" class="den-chip" id="host-a"><span class="den-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor"></span><span>12 of 12 services up</span></button>' +
+      '<a class="den-chip" id="host-b" href="#runs"><span>Runs</span></a>';
   // ?longname: a long install name.
   if (q.has("longname")) model.product = { ...model.product, name: "A Very Long Install Name For This Place And Then Some" };
   // ?longver: a long version (a dev build's) widens the kit's own chip.
@@ -1307,12 +1310,35 @@ for (const engine of ["chromium", "webkit"]) {
         const first = top.querySelector(
           ".den-chips > *:not(.den-end), .den-end > *",
         );
+        // What shows: a chip clipped by its group counts from the group's
+        // left edge.
+        const group = top.querySelector(".den-end");
+        const gl = group ? group.getBoundingClientRect().left : -1e9;
         const chipX = [...top.querySelectorAll<HTMLElement>(".den-chips *")]
           .filter(
             (e) =>
               e.getClientRects().length && e.getBoundingClientRect().width > 0,
           )
-          .map((e) => e.getBoundingClientRect().x);
+          .map((e) =>
+            e.closest(".den-end")
+              ? Math.max(e.getBoundingClientRect().x, gl)
+              : e.getBoundingClientRect().x,
+          );
+        const crumbsLabelOnly = [
+          ...top.querySelectorAll<HTMLElement>(".den-scope .den-ib"),
+        ]
+          .filter((c) => c.getClientRects().length)
+          .filter((c) => {
+            const k = c.querySelector(":scope > .den-k");
+            const v = c.lastElementChild;
+            if (!k || !v || v === k) return false;
+            return (
+              k.getBoundingClientRect().width > 1 &&
+              // Its floor (about 4ch): a few letters and "…", not "…" alone.
+              v.getBoundingClientRect().width < 24
+            );
+          })
+          .map((c) => c.id);
         const title = top.querySelector<HTMLElement>(".den-title")!;
         return {
           search: r(".den-search"),
@@ -1333,6 +1359,7 @@ for (const engine of ["chromium", "webkit"]) {
             : null,
           titleCut: title.scrollWidth > title.clientWidth + 1,
           longCut,
+          crumbsLabelOnly,
         };
       });
 
@@ -1387,6 +1414,18 @@ for (const engine of ["chromium", "webkit"]) {
         }
     });
 
+    it("a crumb's value outlasts its label: at 1100, 960 and 800 no crumb shows its label with less than its value's floor", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1100, 960, 800])
+        for (const q of ["?long", "?long&chips&longver"]) {
+          const p = await open(b, q, w);
+          const m = await measure(p);
+          await p.context().close();
+          expect([w, q, m.crumbsLabelOnly]).toEqual([w, q, []]);
+        }
+    });
+
     // The lead's rule (issue 303): the search never moves. Its x is a
     // function of the viewport only (searchSlot), the same in any host at
     // every width; when the bar is short the right group gives way (the
@@ -1397,23 +1436,73 @@ for (const engine of ["chromium", "webkit"]) {
       for (const w of [1100, 960, 800]) {
         const slot = searchSlot(w);
         const got: Record<string, Awaited<ReturnType<typeof measure>>> = {};
-        for (const q of ["", "?chips", "?longver", "?long&chips&longver"]) {
+        for (const q of [
+          "",
+          "?chips",
+          "?longver",
+          "?long&chips&longver",
+          "?long",
+        ]) {
           const p = await open(b, q, w);
           got[q || "short"] = await measure(p);
           await p.context().close();
         }
         for (const [k, m] of Object.entries(got)) {
           expect([w, k, m.search]).toEqual([w, k, [slot.x, slot.w]]);
-          for (const it of ["report", "bell", "appearance"] as const)
-            expect([w, k, it, m[it]![1]]).toEqual([
-              w,
-              k,
-              it,
-              got.short![it]![1],
-            ]);
+          // Anchored from the right: the same x and width in any host,
+          // the version in its fixed slot.
+          for (const it of ["report", "bell", "version", "appearance"] as const)
+            expect([w, k, it, m[it]]).toEqual([w, k, it, got.short![it]]);
+          expect([w, k, m.version![1]]).toEqual([w, k, versionSlotW(w)]);
+          // A crumb's value outlasts its label.
+          expect([w, k, m.crumbsLabelOnly]).toEqual([w, k, []]);
           expect([w, k, m.overflow]).toEqual([w, k, false]);
           expect([w, k, m.gap >= 12]).toEqual([w, k, true]);
         }
+      }
+    });
+
+    it("a host chip that gives way keeps its dot and stays reachable: its words in its title and name", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1100, 960]) {
+        const p = await open(b, "?long&chips&longver", w);
+        const got = await p.evaluate(() =>
+          ["host-a", "host-b"].map((id) => {
+            const c = document.getElementById(id)!;
+            const dot = c.querySelector(".den-dot");
+            return {
+              id,
+              tag: c.tagName,
+              title: c.getAttribute("title"),
+              name: c.getAttribute("aria-label"),
+              shown: c.getBoundingClientRect().width > 0,
+              dot: dot ? dot.getBoundingClientRect().width : null,
+            };
+          }),
+        );
+        await p.context().close();
+        expect([w, got]).toEqual([
+          w,
+          [
+            {
+              id: "host-a",
+              tag: "BUTTON",
+              title: "12 of 12 services up",
+              name: "12 of 12 services up",
+              shown: true,
+              dot: 8,
+            },
+            {
+              id: "host-b",
+              tag: "A",
+              title: "Runs",
+              name: "Runs",
+              shown: true,
+              dot: null,
+            },
+          ],
+        ]);
       }
     });
 

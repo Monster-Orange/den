@@ -321,7 +321,11 @@ export function topBarHtml({
     "</div>" +
     search +
     '<div class="den-chips">' +
-    (slots.end ? '<div class="den-end">' + slots.end + "</div>" : "") +
+    // The host's chips' group, always drawn (empty without chips): the
+    // bar's structure is the same in any host.
+    '<div class="den-end">' +
+    (slots.end || "") +
+    "</div>" +
     (report === false ? "" : reportButtonHtml({ inTop: true, lang })) +
     (slots.bell || "") +
     versionChipHtml({ version: product.version, lang }) +
@@ -679,14 +683,15 @@ export function bellPanelHtml({
  */
 /**
  * Who is signed in, as the kit draws it (0.7.1): the name on the first
- * line, @login on the second (with " · role" after it); @login alone
- * when no name is known. From data: { name?, login?, role? }; with no
+ * line, @login on the second; @login alone when no name is known. The
+ * role is shown in the account menu's header only ({ menu: true }), on
+ * its own line. From data: { name?, login?, role? }; with no
  * identity, { local: true } draws the kit's word for this computer. The old
  * { label, detail } (or the menu's { name, detail }) still work for one
  * release, as they were given, marked data-nav-legacy for the nav
  * inventory. Returns { lines: [first, second?], shape, legacy, full }.
  */
-export function accountWho(a) {
+export function accountWho(a, { menu = false } = {}) {
   if (!a) return null;
   const legacy = a.label != null || a.detail != null;
   const name = a.name ?? a.label ?? "";
@@ -695,28 +700,29 @@ export function accountWho(a) {
       ? String(a.login)
       : "@" + a.login
     : (a.detail ?? "");
-  const role = a.role || "";
-  const second = [name ? login : "", name && role ? role : ""]
-    .filter(Boolean)
-    .join(" · ");
-  let first = name || [login, role].filter(Boolean).join(" · ");
+  // The role is shown in the account menu's header only, never in the
+  // rail's entry (it isn't part of the entry's shape).
+  const role = menu ? a.role || "" : "";
+  let first = name || login;
   // No identity known at all: the kit's own word for this computer.
   const local = !first && !!a.local;
   if (local) first = kitT(a.lang, "kit.account.local");
   if (!first) return null;
+  const second = name ? login : "";
   const shape = [
     name ? "name" : "",
     a.login || a.detail ? "login" : "",
-    role ? "role" : "",
     local ? "local" : "",
   ]
     .filter(Boolean)
     .join(",");
+  const lines = [first, second].filter(Boolean);
   return {
-    lines: second ? [first, second] : [first],
+    lines,
+    role,
     shape,
     legacy,
-    full: second ? first + " · " + second : first,
+    full: lines.join(" · "),
   };
 }
 
@@ -727,7 +733,8 @@ function whoLinesHtml(who) {
     "</span>" +
     (who.lines[1]
       ? '<span class="den-acct-l">' + esc(who.lines[1]) + "</span>"
-      : "")
+      : "") +
+    (who.role ? '<span class="den-acct-r">' + esc(who.role) + "</span>" : "")
   );
 }
 
@@ -927,6 +934,7 @@ export function accountMenuHtml({ name, login, role, detail, items } = {}) {
   // as the entry's label and detail.
   const w = accountWho(
     detail != null ? { label: name, detail } : { name, login, role },
+    { menu: true },
   );
   if (w)
     parts.push(

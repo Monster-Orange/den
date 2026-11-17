@@ -41,6 +41,10 @@ export interface NavElement {
   legacy?: boolean;
   /** The rail's account entry (data-den-account). */
   account?: boolean;
+  /** The account entry's drawn lines. */
+  lines?: number;
+  /** A crumb whose label shows while its value is hidden. */
+  labelOnly?: boolean;
   /** The kit's stamp on what it draws (data-nav-kit). */
   kit?: string;
 }
@@ -106,6 +110,15 @@ export declare function searchSlot(viewportW: number): { x: number; w: number };
 export declare const TOP_RIGHT_MIN: number;
 /** The search away from searchSlot (slot.x, slot.w), at any width. */
 export declare function searchSlotDiffs(
+  snap: NavSnapshot,
+  tolerance?: number,
+): NavDiff[];
+/** The account entry's shapes the kit draws → their line counts. */
+export declare const ACCOUNT_SHAPES: Record<string, number>;
+/** The version's fixed slot width for a viewport width (0 on a phone). */
+export declare function versionSlotW(viewportW: number): number;
+/** searchSlotDiffs plus Report, bell, version and ◐ anchored from the right. */
+export declare function topSlotDiffs(
   snap: NavSnapshot,
   tolerance?: number,
 ): NavDiff[];

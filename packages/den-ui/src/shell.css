@@ -72,7 +72,7 @@ body.den-has-shell > #den-content {
   /* The search never moves (issue 303): its x is a function of the
      viewport only, the same in any host. The left part is
      --den-top-left (444px), less what the search and the kit's right
-     group need (--den-top-right, 280px); the right group gives way
+     group need (--den-top-right, 380px); the right group gives way
      inside its column (the host's chips, then the version's text),
      never Report, the bell or ◐. searchSlot() in the inventory is the
      same sum. */
@@ -82,7 +82,7 @@ body.den-has-shell > #den-content {
       min(
         var(--den-top-left, 444px),
         calc(
-          100% - var(--den-top-search, 304px) - var(--den-top-right, 280px) -
+          100% - var(--den-top-search, 304px) - var(--den-top-right, 380px) -
             16px
         )
       )
@@ -242,12 +242,23 @@ body.den-has-shell > #den-content {
 .den-chips > * {
   flex: none;
 }
-/* The version gives way after the host's chips: its text ends in "…"
-   (the whole of it in the text's title), never below "v0…". */
+/* The version sits in a fixed slot (96px; 64px up to 1100px): its text
+   ends in "…" inside it (the whole version in the text's title), so
+   Report, the bell and ◐ sit at the same x in any host, anchored from
+   the right edge. */
 .den-chips > .v-pill,
 #den-shell .den-chips > .v-pill {
-  flex: 0 1 auto;
-  min-width: 44px;
+  flex: none;
+  width: var(--den-top-version, 96px);
+  min-width: 0;
+  justify-content: center;
+  box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+  .den-chips > .v-pill,
+  #den-shell .den-chips > .v-pill {
+    width: var(--den-top-version-md, 64px);
+  }
 }
 .den-chips > .v-pill .v-txt {
   min-width: 0;
@@ -279,7 +290,8 @@ body.den-has-shell > #den-content {
   flex: 1 1 0;
   min-width: 0;
   overflow-x: clip;
-  container-type: inline-size;
+  /* Its chips never widen the bar: the group's own width is the room. */
+  contain: inline-size;
 }
 /* A host chip gives way: its last part (its words, in a span) ends in
    "…". */
@@ -289,7 +301,9 @@ body.den-has-shell > #den-content {
   width: auto;
   flex: 0 1 auto;
   max-width: max-content;
-  min-width: 0;
+  /* A shrunk chip keeps its dot and "…" (its words in its title and
+     name, set by the kit's hydration). */
+  min-width: 2.6em;
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
@@ -306,16 +320,20 @@ body.den-has-shell > #den-content {
   }
 }
 /* On a touch screen nothing is clipped, so a chip's 44px tap reaches
-   past its group; chips with no room still hide (below). */
+   past its group. */
 @media (pointer: coarse) {
   .den-end {
     overflow-x: visible;
   }
 }
-/* (After the rules above: a host chip's display.) */
-@container (max-width: 40px) {
+/* A phone: nothing is clipped (touch or not, the bar looks the same);
+   the chips shrink to the room there is. */
+@media (max-width: 720px) {
+  .den-end {
+    overflow-x: visible;
+  }
   .den-top .den-end > * {
-    display: none;
+    min-width: 0;
   }
 }
 .den-user {
@@ -773,6 +791,21 @@ body.den-has-shell .den-upd {
 .den-scope .den-ib > * {
   flex: none;
 }
+/* The label gives way first (down to nothing), then the value ends in
+   "…": a crumb's value outlasts its label. Before the last crumb, a
+   value keeps about 4ch and its ▾. */
+.den-scope .den-ib > .den-k {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.den-scope .den-ib:not(.den-last) > .den-v {
+  min-width: calc(5ch + 0.28em);
+}
+.den-scope .den-ib:not(.den-last) > :last-child:not(.den-v):not(.den-k) {
+  min-width: 4ch;
+}
 /* The value gives way (its ▾ stays): a static crumb's value, or a menu
    crumb's value box and the name in it. */
 .den-scope .den-ib > :last-child {
@@ -984,12 +1017,14 @@ body.den-has-shell .den-upd {
   min-width: 0;
 }
 .den-acct-n,
-.den-acct-l {
+.den-acct-l,
+.den-acct-r {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.den-acct-l {
+.den-acct-l,
+.den-acct-r {
   font-size: 11px;
   color: var(--faint);
 }

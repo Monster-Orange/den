@@ -19,6 +19,7 @@ import {
   compareNav,
   navWarnings,
   searchSlot,
+  topSlotDiffs,
   NAV_BROWSER_IMAGE,
   NAV_THEME,
   type NavSnapshot,
@@ -220,21 +221,28 @@ describe("nav inventory: red cases on the reference", () => {
 
   // 0.7.1: kit-owned slots are compared by their content's shape too.
   const ACCT = "#den-ident";
-  const withShape = (shape: string) => {
+  const withShape = (shape: string, lines?: number) => {
     const r = copy(ref);
     at(r, ACCT).shape = shape;
+    at(r, ACCT).account = true;
+    if (lines != null) at(r, ACCT).lines = lines;
     return r;
   };
-  it("an account drawn with other fields (a name and @login against @login alone) fails on its shape", () => {
-    const r = withShape("login");
-    const s = withShape("name,login");
-    expect(ids(s, r)).toEqual([`${ACCT} shape`]);
-    expect(ids(withShape("login"), r)).toEqual([]);
+  it("the account entry's shape is the kit's: name over @login, or @login alone, never a role", () => {
+    const r = withShape("name,login", 2);
+    expect(ids(withShape("name,login", 2), r)).toEqual([]);
+    expect(ids(withShape("login", 1), r)).toEqual([]);
+    // "@login · role" drawn in the entry: another shape.
+    expect(ids(withShape("login,role", 1), r)).toEqual([`${ACCT} shape`]);
+    expect(ids(withShape("name,login,role", 2), r)).toEqual([`${ACCT} shape`]);
+    // A name alone (no login), or name and login on one line.
+    expect(ids(withShape("name", 1), r)).toEqual([`${ACCT} shape`]);
+    expect(ids(withShape("name,login", 1), r)).toEqual([`${ACCT} shape`]);
   });
 
   it("an account given the old label/detail fails: flagged as deprecated", () => {
-    const r = withShape("login");
-    const s = withShape("login");
+    const r = withShape("name,login", 2);
+    const s = withShape("name,login", 2);
     at(s, ACCT).legacy = true;
     expect(ids(s, r)).toEqual([`${ACCT} legacy`]);
   });
@@ -247,24 +255,70 @@ describe("nav inventory: red cases on the reference", () => {
 
   it("searchSlot: the search's x and width for a viewport, the same in any host", () => {
     expect(searchSlot(1280)).toEqual({ x: 464, w: 304 });
-    expect(searchSlot(1100)).toEqual({ x: 464, w: 304 });
-    expect(searchSlot(960)).toEqual({ x: 356, w: 304 });
-    expect(searchSlot(800)).toEqual({ x: 196, w: 304 });
+    expect(searchSlot(1100)).toEqual({ x: 396, w: 304 });
+    expect(searchSlot(960)).toEqual({ x: 256, w: 304 });
+    expect(searchSlot(800)).toEqual({ x: 96, w: 304 });
     expect(searchSlot(390)).toEqual({ x: 82, w: 54 });
     expect(searchSlot(600)).toEqual({ x: 220, w: 54 });
+  });
+
+  // The right group, anchored from the right edge in any host: ◐ at the
+  // bar's padding, then the version's fixed slot, the bell, Report, 4px
+  // apart. Widths that depend on the engine (Report's words, ◐'s glyph)
+  // are taken as drawn; their places follow.
+  const rightGroup = (vw: number, report: number) => {
+    const s = copy(ref);
+    s.viewport.w = vw;
+    const ap = at(s, "#appearance-btn");
+    ap.box.x = vw - 12 - ap.box.w;
+    const ver = at(s, "#version-pill");
+    ver.box.w = vw > 1100 ? 96 : 64;
+    ver.box.x = ap.box.x - 4 - ver.box.w;
+    const bell = at(s, "#den-bell");
+    bell.box.x = ver.box.x - 4 - bell.box.w;
+    const rb = s.elements.find((e) => e.classes.includes("den-rb-top"))!;
+    rb.box.x = report;
+    at(s, "#den-search").box.x = searchSlot(vw).x;
+    return { s, bellX: bell.box.x, rbW: rb.box.w };
+  };
+  it("topSlotDiffs: Report, bell, version and ◐ anchored from the right edge", () => {
+    const ok = rightGroup(1100, 0);
+    const good = ok.bellX - 4 - ok.rbW;
+    expect(topSlotDiffs(rightGroup(1100, good).s)).toEqual([]);
+    // Today's Den at 1100: Report at 788 (its version's words moved it).
+    expect(
+      topSlotDiffs(rightGroup(1100, 788).s).map(
+        (d) => `${d.key} ${d.property}`,
+      ),
+    ).toEqual([
+      `${rightGroup(1100, 0).s.elements.find((e) => e.classes.includes("den-rb-top"))!.key} slot.x`,
+    ]);
+    // A version in another width fails on its slot.
+    const v = rightGroup(1280, 0);
+    at(v.s, "#version-pill").box.w = 111;
+    expect(topSlotDiffs(v.s).map((d) => d.property)).toContain("slot.w");
+  });
+
+  it("a crumb whose label shows while its value is hidden fails", () => {
+    const s = copy(ref);
+    const c = s.elements.find(
+      (e) => e.host?.role === "crumb" && e.host.key === e.key,
+    )!;
+    c.labelOnly = true;
+    expect(ids(s, ref)).toContain(`${c.key} crumb.value`);
   });
 
   it("a search away from searchSlot fails at any width, with no reference box", () => {
     const s = copy(ref);
     const e = at(s, "#den-search");
     s.viewport.w = 1100;
-    e.box.x = 397.5;
+    // Where a host drew it before the slot (Den's 1280 place).
+    e.box.x = 464;
     expect(ids(s, s)).toContain("#den-search slot.x");
   });
 
   it("lists host HTML in the account and search slots (a warning, not a failure)", () => {
-    const s = withShape("login");
-    at(s, ACCT).account = true;
+    const s = withShape("name,login", 2);
     at(s, "#den-search").kit = "search";
     expect(navWarnings(s)).toEqual([]);
     delete at(s, ACCT).shape;

@@ -182,6 +182,7 @@ export interface Account {
   name?: string;
   /** The login, without "@" (the kit adds it). */
   login?: string;
+  /** Shown in the account menu's header only, never in the rail's entry. */
   role?: string;
   /** No identity known: the kit's word for this computer ("Local"). */
   local?: boolean;
@@ -220,8 +221,13 @@ export declare function bellPanelHtml(o?: BellPanelOptions): string;
 /** The rail's account entry; nobody known, "". */
 export declare function accountHtml(a: Account | null | undefined): string;
 /** Who is signed in, as the kit draws it: its lines and its shape. */
-export declare function accountWho(a: Account | null | undefined): {
-  lines: [string] | [string, string];
+export declare function accountWho(
+  a: Account | null | undefined,
+  o?: { menu?: boolean },
+): {
+  lines: string[];
+  /** The role: the menu's header only. */
+  role: string;
   shape: string;
   legacy: boolean;
   full: string;

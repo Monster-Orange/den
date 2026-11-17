@@ -116,6 +116,47 @@ export function hydrateShell(root, opts = {}) {
   const menu = root.querySelector(".den-menu-btn");
   let scrim = null;
 
+  // Issue 303: a host chip that gives way keeps its dot and "…"; its
+  // whole words are its title and name, so it stays readable and
+  // reachable. A name the host set itself is kept.
+  const end = root.querySelector(".den-top .den-end");
+  function nameHostChips() {
+    if (!end) return;
+    for (const c of end.children) {
+      const words = (c.textContent || "").replace(/\s+/g, " ").trim();
+      const set = c.getAttribute("data-den-named");
+      if (set != null) {
+        // The host changed what the kit set: its own words win.
+        if (
+          c.getAttribute("title") !== set ||
+          c.getAttribute("aria-label") !== set
+        ) {
+          c.removeAttribute("data-den-named");
+          // …and what is left of the kit's words goes.
+          if (c.getAttribute("title") === set) c.removeAttribute("title");
+          if (c.getAttribute("aria-label") === set)
+            c.removeAttribute("aria-label");
+          continue;
+        }
+      } else if (c.hasAttribute("aria-label") || c.hasAttribute("title"))
+        continue;
+      if (!words || set === words) continue;
+      // (Only on a change: a write queues a mutation, which runs this.)
+      c.setAttribute("data-den-named", words);
+      c.setAttribute("aria-label", words);
+      c.setAttribute("title", words);
+    }
+  }
+  nameHostChips();
+  if (end && typeof MutationObserver === "function")
+    new MutationObserver(nameHostChips).observe(end, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["title", "aria-label"],
+    });
+
   function rove() {
     if (!nav) return;
     const links = all(nav, ".den-ni");

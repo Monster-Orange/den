@@ -976,8 +976,6 @@
     "set.embed.key_minutes": "埋め込みパネルの許可の有効時間",
     "set.embed.context_max_kb": "共有するページの最大サイズ",
     "set.access.machine_name": "マシン名",
-    "ident.local": "ローカル",
-    "ident.device": "サインイン済み · このデバイス",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "set.access.pair": "デバイスをペアリング",
     "set.distribution.brand": "製品名",

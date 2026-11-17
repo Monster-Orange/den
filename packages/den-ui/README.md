@@ -355,26 +355,36 @@ browser test, on the image (Den's real server on the demo distribution,
 The top bar's search sits in the same place in every product (issue 303).
 
 - **The account is data.** `accountHtml` and `accountMenuHtml` take
-  `{ name?, login, role? }`, and the kit draws both alike: the name on
-  the first line, `@login` (and ` · role`) under it; `@login` alone when
-  no name is known. The kit adds the `@`. The old `{ label, detail }`
+  `{ name?, login, role? }`. The rail's entry is the name over `@login`,
+  or `@login` alone when no name is known; never the role. The account
+  menu's header is the same, then the role on its own line. The kit adds the `@`. The old `{ label, detail }`
   (and the menu's `{ name, detail }`) still work for this release, drawn
   as given, and the nav inventory fails a host that uses them
   (`legacy`). `accountWho(a)` gives the lines and the shape.
 - **The search never moves.** Its x is a function of the viewport only:
-  `searchSlot(width)` gives `{ x, w }` (464 / 304 at 1100 and up, 356 at
-  960, 82 / 54 on a phone), the same in any host. When the bar is short
-  the right group gives way inside its column: the host's chips first
-  (they end in "…", down to nothing), then the version's text ("v0.4…",
-  the whole version in its title). Report, the bell and ◐ never shrink,
-  and the kit sets their font and box so a host's rules can't size
-  them. Settings: `--den-top-right` (280px, what the right group keeps).
-  `searchSlotDiffs(snap)` checks a snapshot at any width (no reference
-  needed); `compareNav` runs it too.
+  `searchSlot(width)` gives `{ x, w }` (464 / 304 at 1280, 396 at 1100,
+  256 at 960, 82 / 54 on a phone), the same in any host. The left part is
+  the smaller of `--den-top-left` (444px) and what the search and the
+  right group's reserve (`--den-top-right`, 380px) leave.
+- **The right group is anchored from the right edge.** ◐ at the bar's
+  padding, then the version in a fixed slot (`--den-top-version` 96px;
+  `--den-top-version-md` 64px up to 1100px; its text ends in "…", the
+  whole version in its title), the bell and Report, 4px apart: the same
+  x in any host. Report, the bell and ◐ never shrink; the kit sets their
+  font and box. The host's chips (`div.den-end`, always drawn, empty
+  without chips) take the room left: a chip gives way down to its dot
+  and "…", and the kit puts its whole words in its title and name (a
+  name or title the host set itself is kept).
+- **Crumbs.** A crumb's label gives way first, then its value ends in
+  "…"; before the last crumb a value keeps about 4ch and its ▾.
+- **Checks.** `topSlotDiffs(snap)` checks the search's slot and the
+  right group's places at any width (no reference needed); `compareNav`
+  runs it too, and fails a crumb whose label shows while its value is
+  hidden.
 - **Shape, not only style.** The inventory compares what a kit slot
-  draws: the account's fields (`shape`: `name`, `login`, `role`), the
-  old fields (`legacy`), and the search's box (pinned: its width and
-  height). `navWarnings(snap)` lists host HTML where the kit's account
+  draws: the account entry's shape is one of the kit's (`name,login` on
+  two lines, `login` or `local` on one: `ACCOUNT_SHAPES`), the old fields
+  fail (`legacy`), and the search's box is pinned. `navWarnings(snap)` lists host HTML where the kit's account
   or search should be: a warning in 0.7.1, a failure in 0.7.2.
 
 - **Three parts.** The bar is a grid: the left part (`div.den-left`: ☰,

@@ -268,11 +268,35 @@ export async function collectNav(page, opts = {}) {
               : {}),
             // 0.7.1: a kit-owned slot's content shape (which fields it
             // draws), the old free-text path, and the kit's own stamp.
+            // A crumb showing its label with its value hidden (the
+            // value must outlast the label).
+            ...(el.getAttribute("data-nav-role") === "crumb" &&
+            (() => {
+              const k = el.querySelector(":scope > .den-k");
+              const v = el.lastElementChild;
+              if (!k || !v || v === k) return false;
+              const kw = k.getClientRects().length
+                ? k.getBoundingClientRect().width
+                : 0;
+              const vw = v.getClientRects().length
+                ? v.getBoundingClientRect().width
+                : 0;
+              return kw > 1 && vw < 8;
+            })()
+              ? { labelOnly: true }
+              : {}),
             ...(el.hasAttribute("data-nav-shape")
               ? { shape: el.getAttribute("data-nav-shape") }
               : {}),
             ...(el.hasAttribute("data-nav-legacy") ? { legacy: true } : {}),
-            ...(el.hasAttribute("data-den-account") ? { account: true } : {}),
+            ...(el.hasAttribute("data-den-account")
+              ? {
+                  account: true,
+                  lines: el.querySelectorAll(
+                    ".den-acct-n, .den-acct-l, .den-acct-r",
+                  ).length,
+                }
+              : {}),
             ...(el.hasAttribute("data-nav-kit")
               ? { kit: el.getAttribute("data-nav-kit") }
               : {}),
@@ -550,7 +574,7 @@ const COLUMN = ["rail", "foot"];
  * 481–720px: 200px; up to 480px: 62px. The bar's padding is 12px and
  * its column gap 8px. Mirrors shell.css's .den-top columns (defaults).
  */
-export const TOP_RIGHT_MIN = 280;
+export const TOP_RIGHT_MIN = 380;
 export function searchSlot(viewportW) {
   const pad = 12;
   const gap = 8;
@@ -591,6 +615,52 @@ export function searchSlotDiffs(snap, tolerance = 2) {
         reference: String(slot.w),
         actual: String(e.box.w),
       });
+  }
+  return out;
+}
+
+/** The account entry's shapes the kit draws, and their line counts. */
+export const ACCOUNT_SHAPES = { "name,login": 2, login: 1, local: 1 };
+
+/** The version's fixed slot for a viewport width (none on a phone). */
+export function versionSlotW(viewportW) {
+  return viewportW > 1100 ? 96 : viewportW > 720 ? 64 : 0;
+}
+
+/**
+ * The top bar's kit slots at any width: the search (searchSlot), and the
+ * right group anchored from the right edge: ◐ at the bar's padding, then
+ * the version's fixed slot, the bell and Report, 4px apart. Widths that
+ * depend on the engine (Report's words, ◐'s glyph) are taken as drawn;
+ * their places follow, the same in any host.
+ */
+export function topSlotDiffs(snap, tolerance = 2) {
+  const out = searchSlotDiffs(snap, tolerance);
+  const vw = snap.viewport.w;
+  if (vw <= 720) return out;
+  const near = (a, b) => Math.abs(a - b) <= tolerance;
+  const find = (pred) =>
+    snap.elements.find((e) => e.slot === "top" && e.box && pred(e));
+  const ap = find((e) => e.key === "#appearance-btn");
+  const ver = find((e) => e.key === "#version-pill");
+  const bell = find((e) => e.key === "#den-bell");
+  const rb = find((e) => e.classes.includes("den-rb-top"));
+  const push = (e, property, want, got) =>
+    out.push({
+      key: e.key,
+      slot: e.slot,
+      property,
+      reference: String(Math.round(want * 100) / 100),
+      actual: String(Math.round(got * 100) / 100),
+    });
+  let right = vw - 12;
+  for (const e of [ap, ver, bell, rb]) {
+    if (!e) continue;
+    if (e === ver && !near(e.box.w, versionSlotW(vw)))
+      push(e, "slot.w", versionSlotW(vw), e.box.w);
+    const wantX = right - e.box.w;
+    if (!near(e.box.x, wantX)) push(e, "slot.x", wantX, e.box.x);
+    right = e.box.x - 4;
   }
   return out;
 }
@@ -810,7 +880,19 @@ export function compareNav(actual, reference, opts = {}) {
     ),
   );
   // Issue 303: the search's slot, from the viewport alone.
-  diffs.push(...searchSlotDiffs(actual, tol));
+  diffs.push(...topSlotDiffs(actual, tol));
+  // A crumb's value outlasts its label: one whose label shows while its
+  // value is hidden fails, whatever the reference drew (crumbs are host
+  // content, so this is checked on every element drawn).
+  for (const g of actual.elements)
+    if (g.labelOnly)
+      diffs.push({
+        key: g.key,
+        slot: g.slot,
+        property: "crumb.value",
+        reference: "shown",
+        actual: "hidden while its label shows",
+      });
   for (const w of want) {
     const g = gotBy.get(w.key);
     if (!g) continue;
@@ -822,7 +904,21 @@ export function compareNav(actual, reference, opts = {}) {
         add(w, p, w[p], g[p]);
     // 0.7.1: what a kit-owned slot draws (its fields, its lines), and
     // the old free-text path, flagged.
-    if ((w.shape ?? "") !== (g.shape ?? "")) add(w, "shape", w.shape, g.shape);
+    // The account entry's shape is the kit's: name over @login (two
+    // lines), or @login alone, or the kit's local word; never a role
+    // or other fields. Checked on what is drawn, not against the
+    // reference's data.
+    if (g.account && g.shape != null) {
+      const want = ACCOUNT_SHAPES[g.shape];
+      if (want == null || (g.lines != null && g.lines !== want))
+        add(
+          w,
+          "shape",
+          "name,login | login | local",
+          `${g.shape} (${g.lines} lines)`,
+        );
+    } else if ((w.shape ?? "") !== (g.shape ?? ""))
+      add(w, "shape", w.shape, g.shape);
     if (g.legacy && !w.legacy)
       add(w, "legacy", "data", "label/detail (deprecated)");
     const wc = w.classes.join(" ");
@@ -870,6 +966,16 @@ export function compareNav(actual, reference, opts = {}) {
     if (Math.abs(g.box.h - w.box.h) > tol)
       add(w, "box.height", w.box.h, g.box.h);
     styles(w, g, []);
+  }
+  // Name over @login is taller than @login alone: an entry with another
+  // line count than the reference's (both the kit's shapes) moves nothing
+  // else's place; its own height and what it centres are its data.
+  const acct = actual.elements.find((e) => e.account);
+  const acctRef = acct && reference.elements.find((e) => e.key === acct.key);
+  if (acct && acctRef && (acct.lines ?? 0) !== (acctRef.lines ?? 0)) {
+    const own = (k) => k === acct.key || k.startsWith(acct.key + " >");
+    const tall = /^(box\.(height|top|bottom)|style\.height)$/;
+    return diffs.filter((d) => !(own(d.key) && tall.test(d.property)));
   }
   return diffs;
   function styles(w, g, skip) {

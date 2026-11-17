@@ -999,8 +999,6 @@
     "set.embed.key_minutes": "Duración del permiso del panel incrustado",
     "set.embed.context_max_kb": "Página compartida más grande",
     "set.access.machine_name": "Nombre de la máquina",
-    "ident.local": "Local",
-    "ident.device": "Sesión iniciada · este dispositivo",
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "set.access.pair": "Emparejar un dispositivo",

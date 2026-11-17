@@ -20,7 +20,15 @@ config and manifest changes a distribution must make to move to it under
   @login), the same in every product. The search never moves: its place
   depends on the window's width alone; when the bar is short, the status
   chips give way first, then the version's text, never Report, the bell
-  or the appearance button.
+  or the appearance button. Report, the bell, the version and the
+  appearance button sit at the same place in every product: the version
+  has a fixed slot, its whole text in its title. A status chip that gives
+  way keeps its dot and stays a button, its words in its title and name.
+  A crumb's label gives way before its value. The rail's account entry
+  shows the name over @login, never the role; the account menu's header
+  adds the role on its own line. Den's account entry no longer says
+  "Signed in · this device": with no GitHub identity known it shows
+  "Local".
 - After Den updates itself, it commits and pushes the distribution's new
   pin (package.json and package-lock.json) itself, on the lead install,
   once the new version is verified. It no longer waits on the server

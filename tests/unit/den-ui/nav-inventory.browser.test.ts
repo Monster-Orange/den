@@ -118,6 +118,20 @@ async function open(
   // with, the kit's own files.
   await pinNavFonts(ctx);
   await ctx.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
+  // The reference's account: a signed-in person with a name, a login and
+  // a role (invented). The kit draws the name over @login.
+  await ctx.route("**/api/session", async (route) => {
+    const res = await route.fetch();
+    const j = (await res.json()) as Record<string, unknown>;
+    j.identity = {
+      kind: "github",
+      via: "github",
+      login: "ada-fixture",
+      name: "Ada Fixture",
+      role: "Owner",
+    };
+    await route.fulfill({ response: res, json: j });
+  });
   await ctx.route("**/api/server-info", async (route) => {
     const res = await route.fetch();
     const j = (await res.json()) as Record<string, unknown>;
@@ -251,10 +265,13 @@ const EXPECT: Record<string, string[]> = {
     "#den-bell box.left",
     "#den-bell box.right",
     "#den-bell order",
+    "#den-bell slot.x",
     "#version-pill > span.v-txt box.left",
     "#version-pill > span.v-txt box.right",
     "#version-pill box.left",
     "#version-pill box.right",
+    "#version-pill slot.x",
+    "header.den-top > div.den-chips > button.den-rb slot.x",
   ],
   kbdIcon: [
     "#den-search > kbd element",
@@ -342,7 +359,7 @@ for (const b of BROWSERS)
           expect(formatNavDiffs(searchSlotDiffs(snap))).toBe("");
           // Den's numbers before the fix (397.5 at 1100) fail.
           const off = structuredClone(snap);
-          off.elements.find((e) => e.key === SEARCH)!.box.x = 397.5;
+          off.elements.find((e) => e.key === SEARCH)!.box.x = 464;
           expect(searchSlotDiffs(off).map((d) => d.property)).toEqual([
             "slot.x",
           ]);
@@ -548,15 +565,40 @@ for (const b of BROWSERS)
         .map((t, i) => `<span class="den-acct-${i ? "l" : "n"}">${t}</span>`)
         .join("");
     };
-    it("fails when a host's account entry has other fields (a name and @login)", async () => {
+    it("fails when a crumb's label shows while its value is hidden (COMPANY / with no value)", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, () => {
+        const v = document.querySelector<HTMLElement>(
+          "#org-crumb > :last-child",
+        );
+        if (v)
+          Object.assign(v.style, {
+            width: "0",
+            minWidth: "0",
+            overflow: "hidden",
+            padding: "0",
+          });
+      });
+      expect(ids(d)).toContain("#org-crumb crumb.value");
+    }, 60_000);
+
+    it("fails when a host's account entry draws its role (@login · role)", async () => {
       if (skip(b)) return;
       const d = await diffAfter(b, W, H, drawAccount, {
         arg: JSON.stringify({
-          shape: "name,login",
-          lines: ["A person", "@a-person"],
+          shape: "login,role",
+          lines: ["@a-person · Owner"],
         }),
       });
       expect(ids(d)).toContain("#den-ident shape");
+    }, 60_000);
+
+    it("passes a host's account entry with @login alone (one line)", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, drawAccount, {
+        arg: JSON.stringify({ shape: "login", lines: ["@a-person"] }),
+      });
+      expect(formatNavDiffs(d)).toBe("");
     }, 60_000);
 
     it("fails when a host still passes the old label/detail", async () => {
@@ -583,8 +625,8 @@ for (const b of BROWSERS)
     it("passes on host content at 390: the account entry's words", async () => {
       if (skip(b)) return;
       const d = await diffAfter(b, 390, 844, () => {
-        const who = document.querySelector("[data-den-account] .den-lbl");
-        if (who) who.textContent = "A person · Owner";
+        const who = document.querySelector("[data-den-account] .den-acct-n");
+        if (who) who.textContent = "A person with a much longer name";
       });
       expect(formatNavDiffs(d)).toBe("");
     }, 60_000);

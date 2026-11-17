@@ -333,10 +333,11 @@
           "type": "button",
           "class": "den-chip",
           "id": "den-runs",
-          "aria-expanded": "false",
-          "aria-controls": "den-dock",
+          "data-den-named": "Runs",
+          "aria-label": "Runs",
           "title": "Runs",
-          "aria-label": "Runs"
+          "aria-expanded": "false",
+          "aria-controls": "den-dock"
          },
          "kids": [
           {
@@ -365,7 +366,10 @@
           "id": "den-lock",
           "aria-haspopup": "dialog",
           "aria-expanded": "false",
-          "hidden": ""
+          "hidden": "",
+          "data-den-named": "🔑Admin password needed",
+          "aria-label": "🔑Admin password needed",
+          "title": "🔑Admin password needed"
          },
          "kids": [
           {
@@ -726,7 +730,7 @@
     "sel": ".den-rb-top",
     "count": 1,
     "rect": [
-     1004.53,
+     964.53,
      7.5,
      125,
      32
@@ -759,7 +763,7 @@
     "sel": "#den-bell",
     "count": 1,
     "rect": [
-     1133.53,
+     1093.53,
      10.5,
      34,
      26
@@ -792,9 +796,9 @@
     "sel": "#version-pill",
     "count": 1,
     "rect": [
-     1171.53,
+     1131.53,
      8.34,
-     56,
+     96,
      30.3
     ],
     "style": {
@@ -955,9 +959,9 @@
     "sel": "#version-pill",
     "count": 1,
     "rect": [
-     1171.53,
+     1131.53,
      8.34,
-     56,
+     96,
      30.3
     ],
     "style": {
@@ -988,7 +992,7 @@
     "sel": "#version-pill .v-txt",
     "count": 1,
     "rect": [
-     1180.53,
+     1160.53,
      13.34,
      38,
      20.3
@@ -2718,10 +2722,11 @@
           "type": "button",
           "class": "den-chip",
           "id": "den-runs",
-          "aria-expanded": "false",
-          "aria-controls": "den-dock",
+          "data-den-named": "Runs",
+          "aria-label": "Runs",
           "title": "Runs",
-          "aria-label": "Runs"
+          "aria-expanded": "false",
+          "aria-controls": "den-dock"
          },
          "kids": [
           {
@@ -2750,7 +2755,10 @@
           "id": "den-lock",
           "aria-haspopup": "dialog",
           "aria-expanded": "false",
-          "hidden": ""
+          "hidden": "",
+          "data-den-named": "🔑Admin password needed",
+          "aria-label": "🔑Admin password needed",
+          "title": "🔑Admin password needed"
          },
          "kids": [
           {

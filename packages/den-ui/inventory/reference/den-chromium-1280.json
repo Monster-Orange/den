@@ -784,7 +784,7 @@
    "box": {
     "x": 230.63,
     "y": 15.5,
-    "w": 53.63,
+    "w": 52.14,
     "h": 16
    },
    "style": {
@@ -841,9 +841,9 @@
     "den-v"
    ],
    "box": {
-    "x": 290.25,
+    "x": 288.77,
     "y": 14.08,
-    "w": 62.14,
+    "w": 63.63,
     "h": 18.84
    },
    "style": {
@@ -900,9 +900,9 @@
     "den-vn"
    ],
    "box": {
-    "x": 290.25,
+    "x": 288.77,
     "y": 14.08,
-    "w": 52.52,
+    "w": 54,
     "h": 18.84
    },
    "style": {
@@ -1649,7 +1649,7 @@
    "box": {
     "x": 784,
     "y": 10.08,
-    "w": 216.53,
+    "w": 176.53,
     "h": 26.84
    },
    "style": {
@@ -1702,9 +1702,9 @@
     "den-chip"
    ],
    "box": {
-    "x": 807.53,
+    "x": 784,
     "y": 10.08,
-    "w": 121,
+    "w": 109.75,
     "h": 26.84
    },
    "style": {
@@ -1758,7 +1758,7 @@
     "off"
    ],
    "box": {
-    "x": 818.53,
+    "x": 795,
     "y": 19.5,
     "w": 8,
     "h": 8
@@ -1813,9 +1813,9 @@
     "den-n"
    ],
    "box": {
-    "x": 832.53,
+    "x": 809,
     "y": 14.08,
-    "w": 85,
+    "w": 73.75,
     "h": 18.84
    },
    "style": {
@@ -1868,9 +1868,9 @@
     "den-chip"
    ],
    "box": {
-    "x": 932.53,
+    "x": 897.75,
     "y": 10.08,
-    "w": 68,
+    "w": 62.78,
     "h": 26.84
    },
    "style": {
@@ -1924,7 +1924,7 @@
     "off"
    ],
    "box": {
-    "x": 943.53,
+    "x": 908.75,
     "y": 19.5,
     "w": 8,
     "h": 8
@@ -1980,9 +1980,9 @@
     "den-lbl-l"
    ],
    "box": {
-    "x": 957.53,
+    "x": 922.75,
     "y": 14.08,
-    "w": 32,
+    "w": 26.78,
     "h": 18.84
    },
    "style": {
@@ -2036,7 +2036,7 @@
     "den-rb-top"
    ],
    "box": {
-    "x": 1004.53,
+    "x": 964.53,
     "y": 7.5,
     "w": 125,
     "h": 32
@@ -2089,7 +2089,7 @@
    "name": "",
    "classes": [],
    "box": {
-    "x": 1015.53,
+    "x": 975.53,
     "y": 15.5,
     "w": 16,
     "h": 16
@@ -2142,7 +2142,7 @@
    "name": "Report",
    "classes": [],
    "box": {
-    "x": 1037.53,
+    "x": 997.53,
     "y": 14.8,
     "w": 39,
     "h": 17.39
@@ -2195,7 +2195,7 @@
    "name": "⌘⇧F",
    "classes": [],
    "box": {
-    "x": 1082.53,
+    "x": 1042.53,
     "y": 14,
     "w": 36,
     "h": 19
@@ -2251,7 +2251,7 @@
     "den-bell"
    ],
    "box": {
-    "x": 1133.53,
+    "x": 1093.53,
     "y": 10.5,
     "w": 34,
     "h": 26
@@ -2304,7 +2304,7 @@
    "name": "",
    "classes": [],
    "box": {
-    "x": 1142.53,
+    "x": 1102.53,
     "y": 15.5,
     "w": 16,
     "h": 16
@@ -2360,9 +2360,9 @@
     "v-pill"
    ],
    "box": {
-    "x": 1171.53,
+    "x": 1131.53,
     "y": 8.34,
-    "w": 56,
+    "w": 96,
     "h": 30.3
    },
    "style": {
@@ -2415,7 +2415,7 @@
     "v-txt"
    ],
    "box": {
-    "x": 1180.53,
+    "x": 1160.53,
     "y": 13.34,
     "w": 38,
     "h": 20.3
@@ -4924,12 +4924,12 @@
     "x": 8,
     "y": 499.27,
     "w": 216,
-    "h": 293.84
+    "h": 277.91
    },
    "style": {
     "display": "block",
     "visibility": "visible",
-    "height": "293.844px",
+    "height": "277.906px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -4977,7 +4977,7 @@
    ],
    "box": {
     "x": 8,
-    "y": 793.11,
+    "y": 777.17,
     "w": 216,
     "h": 32.3
    },
@@ -5030,7 +5030,7 @@
    "classes": [],
    "box": {
     "x": 18,
-    "y": 800.25,
+    "y": 784.31,
     "w": 18,
     "h": 18
    },
@@ -5085,7 +5085,7 @@
    ],
    "box": {
     "x": 46,
-    "y": 799.11,
+    "y": 783.17,
     "w": 168,
     "h": 20.3
    },
@@ -5134,20 +5134,20 @@
    "slot": "foot",
    "role": "link",
    "tag": "a",
-   "name": "Signed in · this device",
+   "name": "Ada Fixture@ada-fixture",
    "classes": [
     "den-ni"
    ],
    "box": {
     "x": 8,
-    "y": 825.41,
+    "y": 809.47,
     "w": 216,
-    "h": 32.3
+    "h": 48.23
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32.2969px",
+    "height": "48.2344px",
     "border-top-left-radius": "6px",
     "border-top-right-radius": "6px",
     "border-bottom-right-radius": "6px",
@@ -5182,8 +5182,9 @@
     "opacity": "1",
     "box-shadow": "none"
    },
-   "shape": "name",
-   "account": true
+   "shape": "name,login",
+   "account": true,
+   "lines": 2
   },
   {
    "key": "#den-ident > svg",
@@ -5195,7 +5196,7 @@
    "classes": [],
    "box": {
     "x": 18,
-    "y": 832.55,
+    "y": 824.58,
     "w": 18,
     "h": 18
    },
@@ -5251,14 +5252,14 @@
    ],
    "box": {
     "x": 46,
-    "y": 831.41,
+    "y": 815.47,
     "w": 168,
-    "h": 20.3
+    "h": 36.23
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "20.2969px",
+    "height": "36.2344px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -5305,13 +5306,13 @@
    "slot": "foot",
    "role": "span",
    "tag": "span",
-   "name": "Signed in · this device",
+   "name": "Ada Fixture",
    "classes": [
     "den-acct-n"
    ],
    "box": {
     "x": 46,
-    "y": 831.41,
+    "y": 815.47,
     "w": 168,
     "h": 20.3
    },
@@ -5350,6 +5351,65 @@
     "row-gap": "normal",
     "column-gap": "normal",
     "color": "rgb(92, 82, 71)",
+    "opacity": "1",
+    "box-shadow": "none"
+   },
+   "host": {
+    "role": "account-name",
+    "key": "#den-ident > span.den-lbl"
+   }
+  },
+  {
+   "key": "#den-ident > span.den-lbl > span.den-acct-l",
+   "parent": "#den-ident > span.den-lbl",
+   "slot": "foot",
+   "role": "span",
+   "tag": "span",
+   "name": "@ada-fixture",
+   "classes": [
+    "den-acct-l"
+   ],
+   "box": {
+    "x": 46,
+    "y": 835.77,
+    "w": 168,
+    "h": 15.94
+   },
+   "style": {
+    "display": "block",
+    "visibility": "visible",
+    "height": "15.9375px",
+    "border-top-left-radius": "0px",
+    "border-top-right-radius": "0px",
+    "border-bottom-right-radius": "0px",
+    "border-bottom-left-radius": "0px",
+    "background-color": "rgba(0, 0, 0, 0)",
+    "border-top-width": "0px",
+    "border-top-style": "none",
+    "border-top-color": "rgb(109, 99, 88)",
+    "border-right-width": "0px",
+    "border-right-style": "none",
+    "border-right-color": "rgb(109, 99, 88)",
+    "border-bottom-width": "0px",
+    "border-bottom-style": "none",
+    "border-bottom-color": "rgb(109, 99, 88)",
+    "border-left-width": "0px",
+    "border-left-style": "none",
+    "border-left-color": "rgb(109, 99, 88)",
+    "font-size": "11px",
+    "font-weight": "400",
+    "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+    "font-style": "normal",
+    "line-height": "15.95px",
+    "letter-spacing": "normal",
+    "text-transform": "none",
+    "padding-top": "0px",
+    "padding-right": "0px",
+    "padding-bottom": "0px",
+    "padding-left": "0px",
+    "row-gap": "normal",
+    "column-gap": "normal",
+    "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
    },

@@ -1788,8 +1788,6 @@
     "set.cli.op_token": "1Password token source",
     "set.access.owner": "Owner",
     "set.access.devices": "Linked devices",
-    "ident.local": "Local",
-    "ident.device": "Signed in · this device",
     "ident.toast": "This device is signed in to {name} on {host}",
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
@@ -4846,24 +4844,27 @@
    * "@login" (GitHub). The kit's account entry (den-ui 0.7.0), last in
    * the rail's foot, opening Settings › Access.
    */
-  function identityLabel(id) {
-    if (!id) return "";
-    if (id.kind === "local") return t("ident.local");
-    if (id.kind === "github" && id.login) return "@" + id.login;
-    if (id.kind === "github" || id.kind === "device") return t("ident.device");
-    return "";
-  }
-  // Who is signed in, as data (den-ui 0.7.1): a GitHub login, or this
-  // device's word as the name. The kit draws it (the name, then @login).
+  // Who is signed in, as data (den-ui 0.7.1): the person's GitHub
+  // identity (this browser's sign-in, or on a local browser the install
+  // owner's): name, login and role. The kit draws the name over @login
+  // (the role in its menu only). With no GitHub identity at all, the
+  // kit's own word for this computer.
   function accountModel() {
     var id = state.identity;
-    if (!identityLabel(id)) return null;
-    var who =
+    if (!id) return null;
+    var gh =
       id.kind === "github" && id.login
-        ? { login: id.login }
-        : id.kind === "local"
-          ? { local: true, lang: lang }
-          : { name: identityLabel(id) };
+        ? id
+        : id.owner && id.owner.login
+          ? id.owner
+          : null;
+    var who = gh
+      ? {
+          login: gh.login,
+          name: gh.name || undefined,
+          role: gh.role || undefined,
+        }
+      : { local: true, lang: lang };
     return Object.assign(who, {
       navId: "identity",
       href: "/settings#access",

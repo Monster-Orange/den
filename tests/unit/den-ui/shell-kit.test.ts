@@ -150,7 +150,7 @@ describe("shellHtml (shell-html.js), in Node", () => {
   // 0.7.1: the account is data ({ name?, login, role? }); the kit owns
   // its format, the same in the rail's entry and the menu's header.
   const lines = (h: string) =>
-    [...h.matchAll(/<span class="den-acct-(n|l)">([^<]*)<\/span>/g)].map(
+    [...h.matchAll(/<span class="den-acct-(n|l|r)">([^<]*)<\/span>/g)].map(
       (m) => `${m[1]}:${m[2]}`,
     );
   it("the account entry: the name, then @login; @login alone with no name", () => {
@@ -165,14 +165,19 @@ describe("shellHtml (shell-html.js), in Node", () => {
     const login = accountHtml({ login: "ada", href: "/me" });
     expect(lines(login)).toEqual(["n:@ada"]);
     expect(login).toContain('data-nav-shape="login"');
+    // The role is never in the rail's entry: its shape is name, login.
     const role = accountHtml({
       name: "Ada",
       login: "ada",
       role: "Owner",
       href: "/me",
     });
-    expect(lines(role)).toEqual(["n:Ada", "l:@ada · Owner"]);
-    expect(role).toContain('data-nav-shape="name,login,role"');
+    expect(lines(role)).toEqual(["n:Ada", "l:@ada"]);
+    expect(role).toContain('data-nav-shape="name,login"');
+    expect(role).not.toContain("Owner");
+    expect(
+      lines(accountHtml({ login: "ada", role: "Owner", href: "/me" })),
+    ).toEqual(["n:@ada"]);
     // The words are host data: the nav inventory compares their shape.
     expect(both).toContain('data-nav-role="account-name"');
     expect(both).not.toContain("data-nav-legacy");
@@ -191,13 +196,17 @@ describe("shellHtml (shell-html.js), in Node", () => {
     ).toEqual(["n:@ada"]);
   });
 
-  it("the account menu's header is drawn the same way", () => {
+  it("the account menu's header: the name, @login, then the role on its own line", () => {
     const m = accountMenuHtml({
       name: "Ada Lovelace",
       login: "ada",
+      role: "Owner",
       items: [],
     });
-    expect(lines(m)).toEqual(["n:Ada Lovelace", "l:@ada"]);
+    expect(lines(m)).toEqual(["n:Ada Lovelace", "l:@ada", "r:Owner"]);
+    expect(
+      lines(accountMenuHtml({ login: "ada", role: "Owner", items: [] })),
+    ).toEqual(["n:@ada", "r:Owner"]);
     expect(lines(accountMenuHtml({ login: "ada", items: [] }))).toEqual([
       "n:@ada",
     ]);

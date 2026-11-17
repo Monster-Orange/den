@@ -1,8 +1,9 @@
 /**
  * SEC-2a "Seeing that you're signed in", in a real browser:
- *  - the rail footer's identity chip: "Local" on localhost; "Signed in ·
- *    this device" for a browser signed in with a one-time link (through the
- *    edge, from another machine); the GitHub login is sec2a-signin's. It
+ *  - the rail footer's identity chip: the kit's "Local" when Den knows no
+ *    GitHub identity (on localhost, or a browser signed in with a one-time
+ *    link through the edge, from another machine); never device words.
+ *    The GitHub login is sec2a-signin's. It
  *    opens Settings › Access, and has the rail's own item metrics;
  *  - a toast on the first page load after the sign-in, once;
  *  - Linked devices lists the one-time-link sign-in, marked This device.
@@ -177,7 +178,7 @@ describe("the identity chip", () => {
     await ctx.close();
   }, 60_000);
 
-  it("signed in with a one-time link from another machine: Signed in · this device; a toast the first time only; Linked devices marks This device", async () => {
+  it("signed in with a one-time link from another machine, no GitHub identity known: the kit's Local, never device words; a toast the first time only; Linked devices marks This device", async () => {
     if (skip()) return;
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
@@ -194,7 +195,7 @@ describe("the identity chip", () => {
       `This device is signed in to Den on ${SHORT}`,
     );
     expect(await chip(p)).toEqual({
-      text: "Signed in · this device",
+      text: "Local",
       kind: "device",
       href: "/settings#access",
     });
