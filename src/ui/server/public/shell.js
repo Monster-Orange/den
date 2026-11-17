@@ -252,10 +252,6 @@
     "fb.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
     "fb.revShot": "Screenshot after masking ({n} areas hidden)",
     "fb.revShot.one": "Screenshot after masking ({n} area hidden)",
-    "fb.sentShot":
-      "The screenshot is saved and copied: paste it into the issue.",
-    "fb.sentShotSaved":
-      "The screenshot is saved as a file: add it to the issue.",
     "fb.mine": "My reports",
     "fb.myS":
       "Shown live from GitHub. It works while you are signed in to GitHub.",

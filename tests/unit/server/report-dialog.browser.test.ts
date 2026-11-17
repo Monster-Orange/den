@@ -10,9 +10,6 @@
  * The demo distribution (helpers/agents-page-server.ts). Invented names.
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import type { Browser, Locator, Page, Route } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
@@ -714,7 +711,7 @@ describe("FB: the screenshot and its mask", () => {
     await p.context().close();
   });
 
-  it("drag to black out; Undo; Review shows the masked image; Sent saves and copies it", async () => {
+  it("drag to black out; Undo; Review shows the masked image; sending saves nothing here", async () => {
     if (skip()) return;
     const p = await page(fresh());
     const mark = await drawerWithMark(p);
@@ -757,46 +754,14 @@ describe("FB: the screenshot and its mask", () => {
         [0, 0, 0],
       ),
     ).toBe(true);
-    const download = p.waitForEvent("download");
+    // Issue 403: filing never saves it to this computer.
+    let downloads = 0;
+    p.on("download", () => downloads++);
     await dlg(p).locator('[data-act="send"]').click();
-    const saved = await download;
-    expect(saved.suggestedFilename()).toBe("report-screenshot.png");
-    // The file itself: the mask is in its pixels (drawn in, not laid over),
-    // and what is outside it is the page.
-    // saveAs: a remote browser (DEN_PW_WS) has no local path for it.
-    const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "den-fb-shot-")),
-      "shot.png",
-    );
-    await saved.saveAs(file);
-    const png = fs.readFileSync(file).toString("base64");
-    fs.rmSync(path.dirname(file), { recursive: true, force: true });
-    const inFile = (x: number, y: number) =>
-      p.evaluate(
-        ([b64, px, py]) =>
-          new Promise<number[]>((ok) => {
-            const img = new Image();
-            img.onload = () => {
-              const c = document.createElement("canvas");
-              c.width = img.naturalWidth;
-              c.height = img.naturalHeight;
-              const g = c.getContext("2d")!;
-              g.drawImage(img, 0, 0);
-              ok([
-                ...g
-                  .getImageData(px as number, py as number, 1, 1)
-                  .data.slice(0, 3),
-              ]);
-            };
-            img.src = `data:image/png;base64,${b64}`;
-          }),
-        [png, Math.round(x), Math.round(y)],
-      );
-    expect(near(await inFile(mark.x, mark.y), [0, 0, 0])).toBe(true);
-    expect(near(await inFile(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
-      true,
-    );
-    await dlg(p).locator("[data-saved]").waitFor();
+    await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
+    await p.waitForTimeout(300);
+    expect(downloads).toBe(0);
+    expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
     await p.context().close();
   });
 

@@ -237,7 +237,6 @@ export async function openReport(opts = {}) {
     masks: [],
     noShot: false,
     drag: null,
-    saved: null,
   };
   const self = { dlg, st, close };
   const sends = () => !!(ad.send || ad.fileReport);
@@ -489,10 +488,6 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         st.sent.filed
           ? `<p>${esc(t("kit.report.filed", { n: st.sent.number }))}${st.sent.url ? ` ${linkBtn(st.sent.url, `#${st.sent.number}`)}` : ""}</p>`
           : `<p>${esc(t(st.sent.added ? "kit.report.addedB" : "kit.report.sentB", { title: st.title }))}</p>`
-      }${
-        st.saved
-          ? `<p data-saved>${esc(t(st.saved.copied ? "kit.report.sentShot" : "kit.report.sentShotSaved"))}</p>`
-          : ""
       }
 <div class="fb-btns">${st.sent.url ? linkBtn(st.sent.url, t("kit.report.openIssue"), true) : ""}${btn("done", t("kit.report.done"), !st.sent.url)}</div>`;
     } else if (st.step === "limit") {
@@ -576,16 +571,14 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     go("later");
   }
 
-  /** Sent: then the masked screenshot is saved and copied to paste. */
+  /**
+   * Sent. Issue 403: the screenshot went with the report (the product
+   * keeps it); nothing is saved to this computer or copied.
+   */
   function sent(data) {
     st.sent = data || {};
     if (shots && st.draftId) void shots.dropShot(st.draftId);
     go("sent");
-    if (!shotOn()) return;
-    void shots.saveAndCopy(maskedShot()).then((r) => {
-      st.saved = r.saved || r.copied ? r : null;
-      if (current === self && st.step === "sent") render();
-    });
   }
 
   function onAnswer(r) {

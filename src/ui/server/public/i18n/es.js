@@ -142,10 +142,6 @@
     "fb.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
     "fb.revShot": "Captura tras ocultar ({n} zonas tapadas)",
     "fb.revShot.one": "Captura tras ocultar ({n} zona tapada)",
-    "fb.sentShot":
-      "La captura está guardada y copiada: pégala en la incidencia.",
-    "fb.sentShotSaved":
-      "La captura está guardada como archivo: añádela a la incidencia.",
     "fb.mine": "Mis informes",
     "fb.myS":
       "Se muestran en vivo desde GitHub. Funciona mientras tengas la sesión iniciada en GitHub.",

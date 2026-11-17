@@ -108,10 +108,6 @@ export const en = {
   "kit.report.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
   "kit.report.revShot": "Screenshot after masking ({n} areas hidden)",
   "kit.report.revShot.one": "Screenshot after masking ({n} area hidden)",
-  "kit.report.sentShot":
-    "The screenshot is saved and copied: paste it into the issue.",
-  "kit.report.sentShotSaved":
-    "The screenshot is saved as a file: add it to the issue.",
   "kit.report.mine": "My reports",
   "kit.report.next": "Next: Include",
   "kit.report.back": "Back",
@@ -284,10 +280,6 @@ export const es = {
   "kit.report.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
   "kit.report.revShot": "Captura tras ocultar ({n} zonas tapadas)",
   "kit.report.revShot.one": "Captura tras ocultar ({n} zona tapada)",
-  "kit.report.sentShot":
-    "La captura está guardada y copiada: pégala en la incidencia.",
-  "kit.report.sentShotSaved":
-    "La captura está guardada como archivo: añádela a la incidencia.",
   "kit.report.mine": "Mis informes",
   "kit.report.next": "Siguiente: Incluir",
   "kit.report.back": "Atrás",
@@ -459,10 +451,6 @@ export const ja = {
   "kit.report.rmMask": "削除",
   "kit.report.area": "左から {x}%、上から {y}%、{w}% × {h}%",
   "kit.report.revShot": "マスク後のスクリーンショット({n} か所を非表示)",
-  "kit.report.sentShot":
-    "スクリーンショットは保存してコピーしました。issue に貼り付けてください。",
-  "kit.report.sentShotSaved":
-    "スクリーンショットはファイルとして保存しました。issue に追加してください。",
   "kit.report.mine": "自分の報告",
   "kit.report.next": "次へ: 含める",
   "kit.report.back": "戻る",
