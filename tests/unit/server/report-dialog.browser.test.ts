@@ -9,7 +9,15 @@
  * Every /api/report call is answered by the test (never the real `gh`).
  * The demo distribution (helpers/agents-page-server.ts). Invented names.
  */
-import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -30,13 +38,19 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
+    // DEN_HELPERS_BROWSER=webkit|firefox runs it there (Safari too).
+    const pw = await import("playwright");
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
     // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
     browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
+      ? await pw[engine].connect(process.env.DEN_PW_WS, {
           exposeNetwork: "<loopback>",
         })
-      : await chromium.launch();
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -560,36 +574,40 @@ describe("FB: Report an issue, the dialog", () => {
     await p.context().close();
   });
 
-  it("in es and ja (1440 and 390)", async () => {
-    if (skip()) return;
-    for (const [lang, title, send] of [
-      ["es", "Informar de un problema", "Siguiente: Incluir"],
-      ["ja", "問題を報告", "次へ: 含める"],
-    ] as const) {
+  // One page per test (the suite's timeout is sized for a page load, then
+  // the dialog): four in one test ran out of time on a loaded runner, and
+  // its body ran on in Japanese under the next tests. The language goes
+  // back to en after each, a timed-out one too (afterEach still runs).
+  describe("in es and ja", () => {
+    afterEach(async () => {
+      if (!skip()) await s!.settings({ language: "en" });
+    });
+
+    it.each([
+      ["es", 1440, "Informar de un problema", "Siguiente: Incluir"],
+      ["es", 390, "Informar de un problema", "Siguiente: Incluir"],
+      ["ja", 1440, "問題を報告", "次へ: 含める"],
+      ["ja", 390, "問題を報告", "次へ: 含める"],
+    ] as const)("%s at %ipx", async (lang, w, title, send) => {
+      if (skip()) return;
       await s!.settings({ language: lang });
-      for (const w of [1440, 390]) {
-        const p = await page(fresh(), w);
-        await p.waitForFunction(
-          (l) => document.documentElement.lang === l,
-          lang,
-        );
-        await p.evaluate(() =>
-          (
-            window as unknown as { denShell: { report(): Promise<unknown> } }
-          ).denShell.report(),
-        );
-        await dlg(p).waitFor();
-        expect(await dlg(p).getAttribute("aria-label")).toBe(title);
-        expect(
-          (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
-        ).toBe(send);
-        expect(
-          await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
-        ).toBe(true);
-        await p.context().close();
-      }
-    }
-    await s!.settings({ language: "en" });
+      const p = await page(fresh(), w);
+      await p.waitForFunction((l) => document.documentElement.lang === l, lang);
+      await p.evaluate(() =>
+        (
+          window as unknown as { denShell: { report(): Promise<unknown> } }
+        ).denShell.report(),
+      );
+      await dlg(p).waitFor();
+      expect(await dlg(p).getAttribute("aria-label")).toBe(title);
+      expect(
+        (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
+      ).toBe(send);
+      expect(
+        await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
+      ).toBe(true);
+      await p.context().close();
+    });
   });
 
   it("What's new on a first visit carries its own Report; Report opens over it and keeps it; Esc closes What's new", async () => {
