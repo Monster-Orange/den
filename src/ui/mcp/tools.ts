@@ -451,7 +451,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_connect, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, hub_connect, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2023,6 +2023,52 @@ const APPROVAL_TOOLS: DenTool[] = [
         "project_mode",
         "project_mode",
         { project, mode: mode === "none" ? null : mode },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_mcp_add",
+    title: "Add an HTTP MCP server to a project",
+    description:
+      "Add an HTTP MCP server (`name`, `url`) for a project's agents. `bearer`, when it needs one, is the name of a secrets.refs entry the person has set: never a token itself. Den reads the bearer from the install's store at each call; it is never in an agent's files or env. The person's own Allow always decides. Agents get it at their next start or resume. A project's agent adds to its own project; Den's own agent to any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z
+        .string()
+        .describe("Its name: lower-case letters, digits, - and _"),
+      url: z
+        .string()
+        .describe(
+          "Its Streamable HTTP address: https, or http to this machine",
+        ),
+      bearer: z
+        .string()
+        .optional()
+        .describe("The name of a secrets.refs entry, never a value"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("project_mcp_add", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `project_mcp_add: you work in project "${ctx.scope.workspace}" and can add to it only, not project "${project}"; nothing was asked.`,
+        );
+      const name = needArg("project_mcp_add", a, "name", "its name");
+      const url = needArg("project_mcp_add", a, "url", "its address");
+      return askPerson(
+        "project_mcp_add",
+        "project_mcp_add",
+        { project, name, url, bearer: str(a.bearer) },
         a,
         ctx,
       );

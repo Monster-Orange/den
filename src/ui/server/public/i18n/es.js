@@ -1459,6 +1459,24 @@
       "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":
       "El modo en que funcionan los agentes de este proyecto, por encima del valor por defecto de todo Den. Cuál gana: el propio ajuste de un agente, luego el proyecto, luego el valor por defecto de todo Den, luego su persona. Cada agente dice abajo su modo y de dónde viene. Un cambio llega a los agentes en marcha después de su turno, solo.",
+    "set.workspace.mcp_servers":
+      "MCP adicionales de los agentes: este proyecto",
+    "set.workspace.mcp_servers.d":
+      "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Un agente añade uno con project_mcp_add, y tú lo permites.",
+    "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
+    "pmcp.row": "{name}: {url}",
+    "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
+    "ap.do.project_mcp_add":
+      "Añadir el MCP {name} ({url}) a los agentes del proyecto {project}",
+    "ap.mcp.warn":
+      "Esto da a los agentes de {project} herramientas nuevas y envía sus llamadas a {url}.",
+    "ap.mcp.server": "MCP: {name} en {url}",
+    "ap.mcp.bearer":
+      "Bearer: se lee de secrets.refs.{ref} en cada llamada; nunca se escribe en los archivos ni en el entorno del agente.",
+    "ap.mcp.noBearer":
+      "Sin bearer: sus llamadas no llevan cabecera Authorization.",
+    "ap.mcp.next":
+      "Los agentes de {project} lo reciben en su próximo inicio o reanudación.",
     "pmode.none": "Usar el de todo Den",
     "pmode.following": "Sigue el de todo Den: {m}",
     "pmode.setHere": "Fijado para este proyecto: {m} (el de todo Den es {dw})",

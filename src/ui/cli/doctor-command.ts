@@ -21,6 +21,7 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
@@ -681,6 +682,68 @@ export function hubProjectLines(
 }
 
 /**
+ * Issue 335: each project's extra MCP servers, by name and url only
+ * (never a bearer or its value). A bad entry, or a bearer whose
+ * secrets.refs entry isn't set, warns: agents start without that one.
+ */
+export function projectMcpLines(
+  projects: { ws: string; raw: unknown }[],
+  refSet: (name: string) => boolean,
+  taken: readonly string[] = [],
+): { lines: string[]; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const { ws, raw } of projects) {
+    const { servers, problems } = parseProjectMcpServers(raw, taken);
+    for (const sv of servers) {
+      const unset = sv.bearer && !refSet(sv.bearer);
+      const detail = unset
+        ? `${ws}: ${sv.name} ${sv.url}: secrets.refs.${sv.bearer} is not set, so its calls carry no bearer`
+        : `${ws}: ${sv.name} ${sv.url}`;
+      lines.push(`  mcp server  ${unset ? "⚠" : "✓"}  ${detail}`);
+      checks.push({
+        id: `mcp:server:${ws}:${sv.name}`,
+        status: unset ? "warn" : "ok",
+        detail,
+      });
+    }
+    problems.forEach((pr, i) => {
+      const detail = `${ws}: ${pr}`;
+      lines.push(`  mcp server  ⚠  ${detail}`);
+      checks.push({ id: `mcp:server:${ws}:bad:${i}`, status: "warn", detail });
+    });
+  }
+  return { lines, checks };
+}
+
+/** Issue 335: every project's agents.mcp_servers, as written. */
+async function projectsMcpRaw(): Promise<{ ws: string; raw: unknown }[]> {
+  const { readWorkspacesFile } =
+    await import("../../shared/environment-manager/workspaces.js");
+  try {
+    return Object.entries(readWorkspacesFile().workspaces ?? {})
+      .map(([ws, c]) => ({ ws, raw: c?.agents?.mcp_servers }))
+      .filter((p) => p.raw !== undefined && p.raw !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** Issue 335: doctor's lines and checks for the projects' MCP servers. */
+async function projectMcpDoctor(): Promise<{
+  lines: string[];
+  checks: OnboardCheck[];
+}> {
+  const { namedSecretRef } = await import("../../shared/secrets/index.js");
+  const { HUB_SERVER } = await import("../../shared/hub.js");
+  return projectMcpLines(
+    await projectsMcpRaw(),
+    (n) => namedSecretRef(n) !== null,
+    [product().cli, HUB_SERVER],
+  );
+}
+
+/**
  * H5: Den Hub's GitHub access per org, live from Hub: all repos is fine;
  * some or none warns, with GitHub's link to change or give it.
  */
@@ -1214,6 +1277,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         r.checks.push(...hubGithubLines(await githubCoverage()).checks);
       }
     }
+    r.checks.push(...(await projectMcpDoctor()).checks);
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
     if (cfg.problem) r.ok = false;
@@ -1273,6 +1337,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         console.log(l);
     }
   }
+  for (const l of (await projectMcpDoctor()).lines) console.log(l);
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);

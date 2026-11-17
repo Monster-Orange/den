@@ -56,6 +56,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "following a looser project mode widens the agent; a stricter one narrows",
   },
+  project_mcp_add: {
+    risk: "critical",
+    why: "gives a project's agents new tools, and sends a bearer to a new address",
+  },
   persona_create: {
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access",

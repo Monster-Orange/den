@@ -85,6 +85,12 @@ export interface AgentMcp {
      */
     inboxBase?: string;
   };
+  /**
+   * Issue 335: the project's own extra HTTP MCP servers (agents.mcp_servers),
+   * each with a headersHelper when it has a bearer: the bearer is read from
+   * the install's store at each connect, never in the file or the env.
+   */
+  extra?: { name: string; url: string; headersHelper?: string }[];
 }
 
 export interface LaunchInput {
@@ -485,7 +491,8 @@ export function whichBin(
 
 /**
  * A standard MCP config (`mcpServers`, the shape most MCP clients read):
- * Den's server, and Den Hub's when it is set (HUB-1.5).
+ * Den's server, Den Hub's when it is set (HUB-1.5), and the project's own
+ * HTTP servers (issue 335).
  */
 export function mcpConfigJson(mcp: AgentMcp): string {
   const [command, ...args] = mcp.command;
@@ -507,6 +514,20 @@ export function mcpConfigJson(mcp: AgentMcp): string {
                 },
               }
             : {}),
+          ...Object.fromEntries(
+            (mcp.extra ?? [])
+              .filter((x) => x.name !== mcp.name && x.name !== mcp.hub?.name)
+              .map((x) => [
+                x.name,
+                {
+                  type: "http",
+                  url: x.url,
+                  ...(x.headersHelper
+                    ? { headersHelper: x.headersHelper }
+                    : {}),
+                },
+              ]),
+          ),
         },
       },
       null,

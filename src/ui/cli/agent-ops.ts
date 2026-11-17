@@ -127,7 +127,16 @@ import {
   workspaceAgentPermission,
   setWorkspaceAgentPermission,
   workspacePermissionKey,
+  workspaceMcpServersRaw,
+  setWorkspaceMcpServers,
 } from "../../shared/environment-manager/workspaces.js";
+import { namedSecretRef } from "../../shared/secrets/index.js";
+import {
+  checkProjectMcpServer,
+  parseProjectMcpServers,
+  projectMcpHeadersHelper,
+  type ProjectMcpServer,
+} from "../../shared/agents/project-mcp.js";
 import {
   BUILTIN_CATALOG,
   type CatalogEntry,
@@ -406,6 +415,15 @@ export interface AgentsDeps extends SessionsDeps {
   processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
+  /**
+   * Issue 335: project `ws`'s `agents.mcp_servers` as written (default:
+   * workspaces.yml's; undefined: unset). Checked where it is used.
+   */
+  workspaceMcpServers?: (ws: string) => unknown;
+  /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
+  saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
+  /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
+  secretRefSet?: (name: string) => boolean;
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
   workspaceHubProject?: (ws: string) => HubProjectLink | null;
   /**
@@ -446,6 +464,9 @@ export interface AgentsResolved extends Resolved {
     inboxOnStop?: "nudge" | "off";
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  workspaceMcpServers: (ws: string) => unknown;
+  saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
+  secretRefSet: (name: string) => boolean;
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
   /**
@@ -738,6 +759,12 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    workspaceMcpServers:
+      d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
+    saveWorkspaceMcpServers:
+      d.saveWorkspaceMcpServers ??
+      ((ws, servers) => setWorkspaceMcpServers(ws, servers)),
+    secretRefSet: d.secretRefSet ?? ((name) => namedSecretRef(name) !== null),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
@@ -892,7 +919,43 @@ export function agentMcp(
     ],
     env: { ...distLocationEnv(d.env), ...server.env },
     scope: ws,
+    ...(() => {
+      // Issue 335: the project's own HTTP servers; a bearer is read at
+      // each connect by `<cli> mcp headers <name>`, never written here.
+      const extra = projectMcpServers(d, ws).map((s) => ({
+        name: s.name,
+        url: s.url,
+        ...(s.bearer
+          ? {
+              headersHelper: projectMcpHeadersHelper(
+                bin,
+                { ...distLocationEnv(d.env), ...server.env },
+                s.name,
+              ),
+            }
+          : {}),
+      }));
+      return extra.length ? { extra } : {};
+    })(),
   };
+}
+
+/**
+ * Issue 335: project `ws`'s extra MCP servers, checked (a bad entry is
+ * left out; doctor names it). Never Den's own server's name nor Hub's.
+ */
+export function projectMcpServers(
+  d: Pick<AgentsResolved, "workspaceMcpServers" | "cli">,
+  ws: string,
+): ProjectMcpServer[] {
+  if (isServerScope(ws)) return [];
+  let raw: unknown;
+  try {
+    raw = d.workspaceMcpServers(ws);
+  } catch {
+    return [];
+  }
+  return parseProjectMcpServers(raw, [d.cli, HUB_SERVER]).servers;
 }
 
 // ── rows ────────────────────────────────────────────────────────────────────
@@ -4712,6 +4775,126 @@ export async function runProjectMode(
     mode: c.args.mode,
     ...(now.following.length || now.ownMode.length ? now : {}),
   };
+}
+
+/**
+ * Issue 335: project `ws`'s extra MCP servers as Settings shows them:
+ * names and urls only, never a bearer or its ref.
+ */
+export function projectMcpView(
+  d: AgentsResolved,
+  ws: string,
+): { project: string; servers: { name: string; url: string }[] } {
+  return {
+    project: ws,
+    servers: projectMcpServers(d, ws).map((s) => ({
+      name: s.name,
+      url: s.url,
+    })),
+  };
+}
+
+export interface ProjectMcpAddArgs {
+  project: string;
+  server: ProjectMcpServer;
+}
+
+/**
+ * Issue 335: checks a project_mcp_add ask: one more HTTP MCP server for a
+ * project's agents, its bearer the name of a secrets.refs entry that is
+ * set. Always the person's own Allow: it gives agents new tools and sends
+ * a bearer somewhere new. A project's agent asks for its own project;
+ * Den's agent for any.
+ */
+export function checkProjectMcpAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<ProjectMcpAddArgs> {
+  const no = (error: string): HeldOpCheck<ProjectMcpAddArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const p = raw.project;
+    if (p !== undefined && p !== null && typeof p !== "string")
+      return no("project must be text");
+    const ws = typeof p === "string" ? p.trim() : "";
+    if (isServerScope(ws))
+      return no(`${ws} is Den's own agent's place, not a project`);
+    checkWorkspaceName("project_mcp_add", ws);
+    if (!d.workspaceExists(ws)) return no(`no project "${ws}"`);
+    if (who.project && !isServerScope(who.project) && who.project !== ws)
+      return no(
+        `${who.agent ?? "this agent"} works in project ${who.project}: it can add to that project only, not project ${ws}`,
+      );
+    const c = checkProjectMcpServer(
+      { name: raw.name, url: raw.url, bearer: raw.bearer },
+      [d.cli, HUB_SERVER],
+    );
+    if (!c.ok) return no(c.error);
+    const server = c.server;
+    if (projectMcpServers(d, ws).some((s) => s.name === server.name))
+      return no(`project ${ws} already has an MCP server "${server.name}"`);
+    if (server.bearer && !d.secretRefSet(server.bearer))
+      return no(
+        `secrets.refs.${server.bearer} is not set: a person adds it to the install's config first`,
+      );
+    const lines: [string, DetailKey][] = [
+      [
+        `This gives agents in ${ws} new tools, and sends their calls to ${server.url}.`,
+        { key: "ap.mcp.warn", vars: { project: ws, url: server.url } },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [
+        `MCP: ${server.name} at ${server.url}`,
+        { key: "ap.mcp.server", vars: { name: server.name, url: server.url } },
+      ],
+      server.bearer
+        ? [
+            `Bearer: read from secrets.refs.${server.bearer} at each call; never written to the agent's files or env.`,
+            { key: "ap.mcp.bearer", vars: { ref: server.bearer } },
+          ]
+        : [
+            "No bearer: its calls carry no Authorization header.",
+            { key: "ap.mcp.noBearer" },
+          ],
+      [
+        `Agents in ${ws} get it at their next start or resume.`,
+        { key: "ap.mcp.next", vars: { project: ws } },
+      ],
+    ];
+    return {
+      ok: true,
+      personOnly: true,
+      summary: `add MCP ${server.name} (${server.url}) to project ${ws}'s agents`,
+      params: { project: ws, name: server.name, url: server.url },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, server },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** Issue 335: on Allow, adds it (checked again); names and urls back. */
+export async function runProjectMcpAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; project: string; servers: { name: string; url: string }[] }
+  | { ok: false; error: string }
+> {
+  const flat =
+    raw.server && typeof raw.server === "object"
+      ? { project: raw.project, ...(raw.server as Record<string, unknown>) }
+      : raw;
+  const c = checkProjectMcpAdd(d, flat);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  d.saveWorkspaceMcpServers(ws, [...projectMcpServers(d, ws), c.args.server]);
+  return { ok: true, ...projectMcpView(d, ws) };
 }
 
 export interface AgentFolderArgs {
