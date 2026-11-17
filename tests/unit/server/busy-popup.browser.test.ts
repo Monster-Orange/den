@@ -171,8 +171,22 @@ describe("BUSY-1: the working pop-up", () => {
 
   it("a fast answer (100 ms): no pop-up ever", async () => {
     if (skip()) return;
-    const p = await page();
-    await stub(p, [[100, 200]]);
+    // den#143: on the page's clock, never the wall's. The answer comes at
+    // 100 ms of the page's time, however long a loaded runner takes to
+    // carry it (a 100 ms answer on the wall clock arrived after the kit's
+    // 300 ms wait in full runs, and the pop-up showed).
+    const p = await page(1280, true);
+    let answer: () => void = () => {};
+    const held = new Promise<void>((r) => (answer = r));
+    await p.route(`**${PROBE}`, async (r) => {
+      await held;
+      await r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, n: 1 }),
+      });
+    });
+    await p.evaluate(`${pageImport("/busy-den.js")}.then(() => true)`);
     await p.evaluate(() => {
       (window as unknown as { seen: boolean }).seen = false;
       new MutationObserver(() => {
@@ -180,15 +194,20 @@ describe("BUSY-1: the working pop-up", () => {
           (window as unknown as { seen: boolean }).seen = true;
       }).observe(document.body, { childList: true });
     });
+    await p.clock.pauseAt((await p.evaluate(() => Date.now())) + 1000);
     await start(p);
+    await p.clock.runFor(100);
+    const seen = () =>
+      p.evaluate(() => (window as unknown as { seen: boolean }).seen);
+    expect(await seen()).toBe(false);
+    answer();
     const data = await p.evaluate(
       () => (window as unknown as { bzDone: Promise<unknown> }).bzDone,
     );
     expect(data).toMatchObject({ ok: true });
-    await p.waitForTimeout(400);
-    expect(
-      await p.evaluate(() => (window as unknown as { seen: boolean }).seen),
-    ).toBe(false);
+    // Well past the kit's wait (300 ms): it was answered, so nothing shows.
+    await p.clock.runFor(1000);
+    expect(await seen()).toBe(false);
   }, 30_000);
 
   // UK-2 (UI-KIT-SPEC, request ids): an error answer was stored under its

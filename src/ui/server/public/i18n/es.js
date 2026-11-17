@@ -869,6 +869,12 @@
       "Consulta del nombre en GitHub al arrancar, en segundos",
     "set.server.owner_name_timeout.d":
       "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.ready_probe": "Comprobación de que está listo, en segundos",
+    "set.server.ready_probe.d":
+      "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "Espera al arrancar, en segundos",
+    "set.server.start_wait.d":
+      "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
       "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",

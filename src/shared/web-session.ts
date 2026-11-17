@@ -214,6 +214,19 @@ export interface WebAuthConfig {
    */
   ownerNameTimeoutSeconds: number;
   /**
+   * `web.ready_probe_seconds` (den#143; user.yml over the distribution's):
+   * how long one readiness probe of `web up` (and of every "is Den
+   * running here" check) waits for the server's answer. Default 10: a busy
+   * machine answers late, and a late answer is still a running server.
+   */
+  readyProbeSeconds: number;
+  /**
+   * `web.start_wait_seconds` (den#143): how long `web up` waits for a
+   * server it started to be ready. Default 120. A server that exits stops
+   * the wait at once.
+   */
+  startWaitSeconds: number;
+  /**
    * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
    */
@@ -417,6 +430,8 @@ export function readWebAuthConfig(
     throw new Error(
       `web.owner_name_timeout_seconds must be a number of seconds above 0, got ${JSON.stringify(nameWait)}`,
     );
+  const readyProbe = waitSeconds(user, team, "ready_probe_seconds");
+  const startWait = waitSeconds(user, team, "start_wait_seconds");
   const clientId =
     clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
   const machineName = parseMachineName(user.machine_name);
@@ -462,6 +477,8 @@ export function readWebAuthConfig(
     bridgeListen: bridge ?? "auto",
     bridgeProbeSeconds: probe ?? 10,
     ownerNameTimeoutSeconds: nameWait ?? 10,
+    readyProbeSeconds: readyProbe ?? WEB_READY_PROBE_SECONDS,
+    startWaitSeconds: startWait ?? WEB_START_WAIT_SECONDS,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
     ...(team.allow_plain_http_remote !== undefined
       ? { plainHttpInDistribution: configFile }
@@ -470,6 +487,36 @@ export function readWebAuthConfig(
       ? { edgeUnattestedInDistribution: configFile }
       : {}),
   };
+}
+
+/** den#143: `web.ready_probe_seconds`'s default. */
+export const WEB_READY_PROBE_SECONDS = 10;
+/** den#143: `web.start_wait_seconds`'s default. */
+export const WEB_START_WAIT_SECONDS = 120;
+/** den#143: the readiness waits' range, in seconds. */
+export const WEB_WAIT_RANGE = { min: 1, max: 3600 } as const;
+
+/**
+ * den#143: one of `web up`'s waits (user.yml over the distribution's), in
+ * seconds, or unset. A wrong value throws, naming the key.
+ */
+function waitSeconds(
+  user: Record<string, unknown>,
+  team: Record<string, unknown>,
+  key: "ready_probe_seconds" | "start_wait_seconds",
+): number | undefined {
+  const v = user[key] ?? team[key];
+  if (v === undefined || v === null) return undefined;
+  if (
+    typeof v !== "number" ||
+    !Number.isFinite(v) ||
+    v < WEB_WAIT_RANGE.min ||
+    v > WEB_WAIT_RANGE.max
+  )
+    throw new Error(
+      `web.${key} must be a number of seconds from ${WEB_WAIT_RANGE.min} to ${WEB_WAIT_RANGE.max}, got ${JSON.stringify(v)}`,
+    );
+  return v;
 }
 
 /** `web.github_client_id` in one file: a GitHub App client id, or unset. */

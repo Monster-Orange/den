@@ -6,12 +6,14 @@
  * resolution) asked `git config --get remote.origin.url` of every repo
  * without its own manifest, and available-repos asked `git remote get-url
  * origin` of every local checkout the catalog has no slug for. Here `git` is
- * a shim that makes those 400ms, so a synchronous pass over four repos
- * blocks the event loop for ~1.6s.
+ * a shim that makes those 1.5 s, so a synchronous pass over four repos
+ * blocks the event loop for ~6 s.
  *
- * The bound is 250ms (0.3.0-dev.39): one synchronous 400ms call cannot hide
- * under it, and a busy machine running the browser suites alongside took
- * 107ms against the old 100ms with nothing blocking.
+ * The bound is 750ms: one synchronous 1.5 s call cannot hide under it,
+ * with room for a busy machine. (den#143: the old 250ms bound against a
+ * 400ms shim was met at 297ms, nothing blocking, at load 75; a busy
+ * machine running the browser suites alongside took 107ms in
+ * 0.3.0-dev.39.)
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -25,7 +27,7 @@ import {
   type SlowGitServer,
 } from "./helpers/slow-git-server.js";
 
-const BOUND_MS = 250;
+const BOUND_MS = 750;
 const HELD = ["alpha", "beta", "gamma", "delta"];
 const LOCAL = ["north", "south", "east", "west"];
 let tmp = "";
@@ -79,7 +81,7 @@ beforeAll(async () => {
     tmp,
     root,
     slow: ["config --get remote.origin.url", "remote get-url origin"],
-    delayS: 0.4,
+    delayS: 1.5,
   });
 }, 40_000);
 
