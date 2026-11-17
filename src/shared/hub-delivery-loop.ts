@@ -64,6 +64,12 @@ export interface DeliveryLoopDeps {
   /** How often the list is read when Hub has no stream (404). */
   pollMs?: number;
   log?: (line: string) => void;
+  /**
+   * Issue 271: Hub pushed a held change's decision (kind "held"), once
+   * per delivery: Den reads its waiting asks again (a new Hub project
+   * links on its own).
+   */
+  held?: (dv: Delivery) => void;
   /** NT: the agent finished its Hub comments (done, not failed). */
   finished?: (
     agent: string,
@@ -285,6 +291,13 @@ export class DeliveryLoop {
       // A repeat: Hub didn't get the ack; say it again (never twice to the agent).
       if (st) await this.ack(dv.id, st);
       return;
+    }
+    if (dv.kind === "held") {
+      try {
+        this.d.held?.(dv);
+      } catch {
+        /* the hook's own trouble never stops a delivery */
+      }
     }
     const at = Date.parse(dv.createdAt);
     if (dv.thread.id && Number.isFinite(at))

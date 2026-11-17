@@ -245,6 +245,13 @@ export async function startDeliveries(o: {
     heartbeatMs: o.heartbeatSeconds * 1000,
     pollMs: o.pollSeconds * 1000,
     log: o.log,
+    // Issue 271: an owner decided a held change an agent asked for: read
+    // the waiting new-project asks again now (one links on its own).
+    held: () => {
+      void import("./hub-create-routes.js")
+        .then((m) => m.settleAllHubCreates())
+        .catch(() => undefined);
+    },
     // NT: the bell says it, from the agent's own record's project.
     finished: (agent, w) => {
       void import("./notification-service.js").then(({ notificationDeps }) => {
