@@ -2674,6 +2674,11 @@ export const DEN_SETTINGS = [
               .catch(() => {}),
           );
         };
+        // Until /api/session answers, an unseen button holds the row at its
+        // drawn height: a row that grows later moves the sections below it,
+        // and a link to the last one (#distribution) would end short of the
+        // foot, with the category above it marked current.
+        host.innerHTML = `<button type="button" class="btn" style="visibility:hidden" aria-hidden="true" tabindex="-1">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
         fetch("/api/session", { cache: "no-store" })
           .then((r) => (r.ok ? r.json() : null))
           .then((b) => draw(b?.signedIn === true))
