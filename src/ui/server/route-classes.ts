@@ -523,6 +523,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "issue 103: a short-lived key for an embedded pane, for a listed origin; a person's only",
   ),
   R(
+    "/api/embed/app-keys",
+    "issue 334: the app keys a person made (agent, origin, name, last used); never a key; a person's only",
+  ),
+  R(
     "/api/embed/p/:project/agents/:id/state",
     "issue 334: one agent's state for a web app, its app key the proof (X-Den-Embed-Key)",
   ),

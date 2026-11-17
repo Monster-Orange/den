@@ -425,7 +425,11 @@ import {
   frameHeaders,
   patchEmbed,
 } from "./embed-settings.js";
-import { handleEmbedRoutes, type EmbedWaiting } from "./embed-routes.js";
+import {
+  appKeyOps,
+  handleEmbedRoutes,
+  type EmbedWaiting,
+} from "./embed-routes.js";
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
@@ -2590,6 +2594,12 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 199: an agent asks to make another follow its project's mode;
     // Den's mode check restarts it after its turn, same conversation.
+    // Issue 334: Settings › Embedding's app keys, on the person's Allow.
+    appKeys: appKeyOps({
+      settings: () => embedSettings(readUserConfig()),
+      stateDir: () => getStateDir(),
+      serverKeys: () => ServerKeys.at(getStateDir()),
+    }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
       run: (a) =>

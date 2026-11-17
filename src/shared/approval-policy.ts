@@ -96,6 +96,14 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "runs checks against a shared environment (CRITICAL_HELD_ACTIONS)",
   },
+  embed_key_create: {
+    risk: "critical",
+    why: "lets a web app message an agent and read its state; a person's own ask",
+  },
+  embed_key_revoke: {
+    risk: "critical",
+    why: "a person's own ask, from Settings › Embedding",
+  },
 };
 
 /**

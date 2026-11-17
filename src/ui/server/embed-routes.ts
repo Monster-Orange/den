@@ -46,6 +46,7 @@ import {
 import { AgentError, type AgentsResolved } from "../cli/agent-ops.js";
 import { sayBody, typeMessage } from "./agent-say.js";
 import { composeMessage } from "./shared-page.js";
+import type { HeldOp } from "./held-actions.js";
 import { recordAction } from "./audit.js";
 import { EMBED_KEY_HEADER, EmbedKeys } from "./embed-keys.js";
 import {
@@ -219,6 +220,7 @@ export async function handleEmbedRoutes(
     if (method !== "POST") return fail(res, 405, "method", "POST only");
     return say(req, res, deps);
   }
+  if (handleAppKeyList(req, res, pathname, deps)) return true;
   const st = STATE_PATH.exec(pathname);
   if (st) {
     if (method !== "GET" && method !== "HEAD")
@@ -561,5 +563,174 @@ async function relaySay(
       err.message,
     );
   }
+  return true;
+}
+
+/** Issue 334: what the app-key held writes need. */
+export interface AppKeyDeps {
+  settings(): EmbedSettings;
+  stateDir(): string;
+  serverKeys(): ServerKeys;
+}
+
+const LABEL_MAX = 80;
+
+/** A label: one line of plain text, or none. */
+function labelOf(v: unknown): string | undefined | null {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v !== "string") return null;
+  // A one-line label: no control characters. Intentional.
+  // eslint-disable-next-line no-control-regex
+  const t = v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ").trim();
+  return t.length <= LABEL_MAX ? t || undefined : null;
+}
+
+/**
+ * Issue 334: Settings › Embedding's app keys, as held writes: made and
+ * revoked only on the person's own Allow (an agent never asks for one).
+ * The new key is in the run's result under `once`: the decide route hands
+ * it to the Allow's browser and then forgets it (approval-routes.ts).
+ */
+export function appKeyOps(d: AppKeyDeps): {
+  create: HeldOp;
+  revoke: HeldOp;
+} {
+  const noAgents = {
+    ok: false as const,
+    error:
+      "Only a person makes or revokes an app key, in Settings › Embedding.",
+  };
+  const create: HeldOp = {
+    check(a, who) {
+      if (who?.agent) return noAgents;
+      const o = checkOrigin(a.origin);
+      if (!o.ok) return { ok: false, error: o.error };
+      if (!originListed(o.origin, d.settings().origins))
+        return {
+          ok: false,
+          error: `${o.origin} is not on Settings › Embedding's list. Add it there first.`,
+        };
+      const rec = agentOf(d.stateDir(), a.project, a.agent);
+      if (!rec)
+        return {
+          ok: false,
+          error: `Project ${String(a.project)} has no agent ${String(a.agent)}.`,
+        };
+      const label = labelOf(a.label);
+      if (label === null)
+        return {
+          ok: false,
+          error: `A key's name is one line of at most ${LABEL_MAX} characters.`,
+        };
+      return {
+        ok: true,
+        personOnly: true,
+        args: {
+          project: rec.workspace,
+          agent: rec.id,
+          origin: o.origin,
+          ...(label ? { label } : {}),
+        },
+        summary: `let ${o.origin} message ${rec.id} in ${rec.workspace} and read its state`,
+        params: { agent: rec.id, project: rec.workspace, origin: o.origin },
+        details: [
+          `Makes a key for ${o.origin}'s own backend. It reaches only ${rec.id} in ${rec.workspace}: its state, and messages typed after its turn ends.`,
+          "The key is shown once, here, after you allow. Den keeps only its hash.",
+          "You can revoke it any time in Settings › Embedding.",
+        ],
+        detailKeys: [
+          {
+            key: "ap.det.embed_key_create.reach",
+            vars: { origin: o.origin, agent: rec.id, project: rec.workspace },
+          },
+          { key: "ap.det.embed_key_create.once" },
+          { key: "ap.det.embed_key_create.revoke" },
+        ],
+      };
+    },
+    run(a) {
+      const { key, view } = d.serverKeys().create({
+        project: String(a.project),
+        agent: String(a.agent),
+        origin: String(a.origin),
+        ...(typeof a.label === "string" ? { label: a.label } : {}),
+      });
+      recordAction(null, {
+        verb: "embed",
+        detail: `app key ${view.id} made for ${view.agent} in ${view.project} from ${view.origin}`,
+        targetWorkspace: view.project,
+      });
+      return Promise.resolve({ ok: true, ...view, once: { key } });
+    },
+  };
+  const revoke: HeldOp = {
+    check(a, who) {
+      if (who?.agent) return noAgents;
+      const k = d.serverKeys().get(a.id);
+      if (!k)
+        return { ok: false, error: `There is no app key ${String(a.id)}.` };
+      if (k.revokedAt)
+        return { ok: false, error: `App key ${k.id} was revoked already.` };
+      return {
+        ok: true,
+        personOnly: true,
+        args: { id: k.id },
+        summary: `revoke ${k.origin}'s key for ${k.agent} in ${k.project}`,
+        params: { agent: k.agent, project: k.project, origin: k.origin },
+        details: [
+          `${k.origin} can no longer message ${k.agent} or read its state with this key.`,
+          "Messages it sent that wait for the agent's turn are still typed.",
+        ],
+        detailKeys: [
+          {
+            key: "ap.det.embed_key_revoke.reach",
+            vars: { origin: k.origin, agent: k.agent },
+          },
+          { key: "ap.det.embed_key_revoke.held" },
+        ],
+      };
+    },
+    run(a) {
+      const v = d.serverKeys().revoke(a.id);
+      if (!v)
+        return Promise.resolve({
+          ok: false,
+          error: `There is no app key ${String(a.id)} to revoke.`,
+        });
+      recordAction(null, {
+        verb: "embed",
+        detail: `app key ${v.id} revoked for ${v.agent} in ${v.project} from ${v.origin}`,
+        targetWorkspace: v.project,
+      });
+      return Promise.resolve({ ok: true, ...v });
+    },
+  };
+  return { create, revoke };
+}
+
+/**
+ * Issue 334: GET /api/embed/app-keys, the person's list (Settings ›
+ * Embedding): each key's agent, origin, name, made, last used, revoked.
+ * Never a key or its hash. An agent's token is refused (AGENT_FORBIDDEN).
+ */
+export function handleAppKeyList(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: Pick<EmbedDeps, "serverKeys" | "agentCaller">,
+): boolean {
+  if (pathname !== "/api/embed/app-keys") return false;
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return fail(res, 405, "method", "GET only");
+  if (d.agentCaller(req))
+    return fail(
+      res,
+      403,
+      "agent_forbidden",
+      "Only a person sees the app keys.",
+    );
+  res.setHeader("Cache-Control", "no-store");
+  sendJson(res, { ok: true, keys: d.serverKeys().list() });
   return true;
 }

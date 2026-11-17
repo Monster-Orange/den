@@ -12,6 +12,7 @@
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
  * restart-agent, fresh-start, report-preview, save-report-draft,
  * discard-draft, follow-project, keep-running, send-message, allow-web-app,
+ * ask-allow,
  * agent-order, delete-project, remove-service, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
@@ -215,6 +216,17 @@ export const DEN_ACTIONS = {
       working: "keep.w",
       success: "keep.s",
       failure: "keep.failed",
+    },
+  },
+  // Issue 334: Settings › Embedding › App keys: Make key, Revoke (each
+  // waits for the person's Allow in Den's dialog).
+  "ask-allow": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.askAllowW",
+      success: "busy.askAllowS",
+      failure: "busy.askAllowF",
     },
   },
   // Issue 163: Settings › Sign-in token › Clear.

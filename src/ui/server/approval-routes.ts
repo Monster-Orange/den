@@ -178,6 +178,12 @@ export function approvalView(a: Approval): Record<string, unknown> {
   };
 }
 
+/** Issue 334: drop a run result's `once` part (shown to the Allow only). */
+export function forgetOnce(a: Pick<Approval, "result">): void {
+  const r = a.result as Record<string, unknown> | undefined;
+  if (r && typeof r === "object" && "once" in r) delete r.once;
+}
+
 async function jsonBody(
   req: http.IncomingMessage,
 ): Promise<Record<string, unknown> | null> {
@@ -556,8 +562,12 @@ export async function handleApprovalRoutes(
             },
         principalOf(req),
       );
-    if (r.ok) sendJson(res, { ok: true, ...approvalView(r.approval) });
-    else
+    if (r.ok) {
+      sendJson(res, { ok: true, ...approvalView(r.approval) });
+      // Issue 334: what a run shows once (a new app key) went to this
+      // Allow's browser only: never again, to anyone.
+      forgetOnce(r.approval);
+    } else
       refuse(
         res,
         r.code === "not_found" ? 404 : r.code === "expired" ? 410 : 409,

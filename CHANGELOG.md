@@ -19,6 +19,12 @@ config and manifest changes a distribution must make to move to it under
   inbox uses. It is typed after the agent's turn, at its next start when
   it's stopped, and held while it waits on its person; never mid-turn.
   The audit keeps its length, never its text (issue 334).
+- Settings › Embedding › App keys: pick an agent and a listed web app,
+  press Make key, and allow it in Den's dialog. The key is shown once,
+  then only its hash is kept. The list shows each key's agent, web app
+  and last use; Revoke asks the same way. An agent can't ask for a key.
+  In English, Spanish and Japanese. docs/embedding.md says how a web
+  app's backend relays its person's messages (issue 334).
 
 ## [0.4.64] - unreleased
 

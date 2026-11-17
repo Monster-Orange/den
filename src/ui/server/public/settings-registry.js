@@ -783,8 +783,162 @@ function drawOrigins(host, ctx, api) {
     });
 }
 
+/**
+ * Issue 334: app keys, for a web app's own server: it relays its person's
+ * messages to one agent (typed after the agent's turn) and reads that
+ * agent's state. Make and Revoke are held writes: Den's Allow dialog asks
+ * the person, and the new key is shown here once, after the Allow.
+ */
+function drawAppKeys(host, ctx) {
+  const shell = ctx.shell;
+  const origins = Array.isArray(ctx.data?.embed?.origins)
+    ? ctx.data.embed.origins
+    : [];
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+  let asked = null;
+  const ask = (action, args, button) =>
+    shell
+      .busyAction(
+        "ask-allow",
+        (headers) =>
+          shell.api("POST", "/api/approvals", { action, args }, { headers }),
+        { button },
+      )
+      .then((b) => {
+        asked = b && b.id;
+        out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyAllow", "Allow it in the dialog."))}</span>`;
+        window.dispatchEvent(new CustomEvent("den:approvals-poll"));
+      });
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex-basis:100%">` +
+    `<select id="set-appkey-agent" aria-label="${escHtml(L("set.ui.appKeyAgent", "Agent"))}"></select>` +
+    `<select id="set-appkey-origin" aria-label="${escHtml(L("set.ui.appKeyOrigin", "Web app"))}">` +
+    origins
+      .map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`)
+      .join("") +
+    `</select>` +
+    `<input id="set-appkey-label" type="text" maxlength="80" aria-label="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}" placeholder="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}">` +
+    `<button type="button" class="btn sm" id="set-appkey-make">${escHtml(L("set.ui.appKeyMake", "Make key"))}</button>` +
+    `</div>` +
+    `<div id="set-appkey-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-appkey-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-appkey-out");
+  const list = host.querySelector("#set-appkey-list");
+  const make = host.querySelector("#set-appkey-make");
+  if (!origins.length) {
+    make.disabled = true;
+    out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyNoOrigin", "Add the web app to the list above first."))}</span>`;
+  }
+  shell
+    .api("GET", "/api/sessions")
+    .then((b) => {
+      const agents = ((b && b.sessions) || []).filter(
+        (r) => r.kind === "agent" && !r.server,
+      );
+      host.querySelector("#set-appkey-agent").innerHTML = agents
+        .map(
+          (r) =>
+            `<option value="${escHtml(r.workspace + "/" + r.agent)}">${escHtml(r.workspace + " / " + (r.displayName || r.agent))}</option>`,
+        )
+        .join("");
+      if (!agents.length) make.disabled = true;
+    })
+    .catch(() => {});
+  const draw = () =>
+    shell
+      .api("GET", "/api/embed/app-keys")
+      .then((b) => {
+        const keys = (b && b.keys) || [];
+        if (!keys.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.appKeyNone", "No app keys yet."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          keys
+            .map(
+              (k) =>
+                `<li data-key="${escHtml(k.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span>${escHtml(k.label || k.id)}: ${escHtml(k.project + " / " + k.agent)} · ${escHtml(k.origin)}</span>` +
+                `<span class="set-note">${escHtml(
+                  k.lastUsedAt
+                    ? L("set.ui.appKeyUsed", "last used {when}", {
+                        when: when(k.lastUsedAt),
+                      })
+                    : L("set.ui.appKeyUnused", "never used"),
+                )}</span>` +
+                (k.revokedAt
+                  ? `<span class="set-note">${escHtml(L("set.ui.appKeyRevoked", "revoked {when}", { when: when(k.revokedAt) }))}</span>`
+                  : `<button type="button" class="btn sm" data-revoke="${escHtml(k.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-revoke]"))
+          btn.addEventListener(
+            "click",
+            () =>
+              void ask(
+                "embed_key_revoke",
+                { id: btn.getAttribute("data-revoke") },
+                btn,
+              ).catch((e) => {
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+              }),
+          );
+      })
+      .catch(() => {});
+  make.addEventListener("click", () => {
+    const pick = host.querySelector("#set-appkey-agent").value.split("/");
+    void ask(
+      "embed_key_create",
+      {
+        project: pick[0],
+        agent: pick[1],
+        origin: host.querySelector("#set-appkey-origin").value,
+        label: host.querySelector("#set-appkey-label").value.trim(),
+      },
+      make,
+    ).catch((e) => {
+      out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+    });
+  });
+  // The shell's Allow says what ran; a new key is in it once (never again).
+  window.addEventListener("den:approval-done", (ev) => {
+    const d = ev.detail || {};
+    if (!asked || d.id !== asked || !host.isConnected) return;
+    asked = null;
+    const key = d.result && d.result.once && d.result.once.key;
+    if (key) {
+      out.innerHTML =
+        `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's server now. It is not shown again."))}</p>` +
+        `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:monospace" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
+        `<button type="button" class="btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
+      const box = out.querySelector("#set-appkey-new");
+      box.value = key;
+      out.querySelector("#set-appkey-copy").addEventListener("click", () => {
+        box.select();
+        if (navigator.clipboard) void navigator.clipboard.writeText(box.value);
+      });
+    } else out.innerHTML = "";
+    draw();
+  });
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
+  {
+    id: "embed.app_keys",
+    category: "embed",
+    label: "App keys",
+    description:
+      "A key for a web app's own backend on this computer: it can pass on its person's messages to one agent, typed after the agent's turn, and read that agent's state. Nothing else. You allow each key, it is shown once, and you can revoke it here.",
+    keywords: ["embed", "key", "app key", "web app", "message", "revoke"],
+    scope: "user",
+    control: { type: "custom", render: drawAppKeys },
+    read: () => null,
+  },
   {
     id: "embed.origins",
     category: "embed",

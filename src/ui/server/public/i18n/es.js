@@ -618,6 +618,9 @@
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
     "keep.tokenOld":
       "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
+    "busy.askAllowW": "Preguntando…",
+    "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
+    "busy.askAllowF": "No se pudo preguntar.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -1022,6 +1025,7 @@
     "set.access.devices": "Dispositivos vinculados",
     "set.access.waiting": "Dispositivos en espera",
     "set.embed.url_max": "Contexto de enlace más largo",
+    "set.embed.app_keys": "Claves de aplicación",
     "set.embed.origins": "Aplicaciones web que pueden incrustar agentes",
     "set.embed.key_minutes": "Duración del permiso del panel incrustado",
     "set.embed.context_max_kb": "Página compartida más grande",
@@ -1366,6 +1370,20 @@
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_folder": "Mover el agente {agent} a {where}",
+    "ap.do.embed_key_create":
+      "Permitir que {origin} envíe mensajes a {agent} en {project} y lea su estado",
+    "ap.do.embed_key_revoke":
+      "Revocar la clave de {origin} para {agent} en {project}",
+    "ap.det.embed_key_create.reach":
+      "Crea una clave para el backend propio de {origin}. Solo llega a {agent} en {project}: su estado y los mensajes que se escriben cuando termina su turno.",
+    "ap.det.embed_key_create.once":
+      "La clave se muestra una vez, aquí, después de que lo permitas. Den guarda solo su hash.",
+    "ap.det.embed_key_create.revoke":
+      "Puedes revocarla cuando quieras en Ajustes › Incrustación.",
+    "ap.det.embed_key_revoke.reach":
+      "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
+    "ap.det.embed_key_revoke.held":
+      "Los mensajes que envió y que esperan el turno del agente se escriben igualmente.",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
@@ -2280,6 +2298,22 @@
     "set.ui.devicesSignedIn":
       "Los dispositivos solo se listan con la sesión iniciada.",
     "set.ui.asked": "lo pidió {ago}",
+    "set.ui.appKeyAllow": "Permítelo en el cuadro de diálogo.",
+    "set.ui.appKeyAgent": "Agente",
+    "set.ui.appKeyOrigin": "Aplicación web",
+    "set.ui.appKeyLabel": "Nombre (opcional)",
+    "set.ui.appKeyMake": "Crear clave",
+    "set.ui.appKeyNoOrigin":
+      "Primero añade la aplicación web a la lista de arriba.",
+    "set.ui.appKeyNone": "Aún no hay claves de aplicación.",
+    "set.ui.appKeyUsed": "último uso {when}",
+    "set.ui.appKeyUnused": "nunca usada",
+    "set.ui.appKeyRevoked": "revocada {when}",
+    "set.ui.appKeyRevoke": "Revocar",
+    "set.ui.appKeyOnce":
+      "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
+    "set.ui.appKeyNew": "Nueva clave de aplicación",
+    "set.ui.copy": "Copiar",
     "set.ui.saveOrigins": "Guardar lista",
     "set.ui.approve": "Aprobar",
     "set.ui.deny": "Denegar",
@@ -2626,6 +2660,8 @@
       "Ordenadores cuya página sin iniciar sesión muestra un código. Aprueba uno y su página inicia sesión sola; el código dura 10 minutos. __DEN_CLI__ web approve <code> hace lo mismo desde la línea de comandos.",
     "set.embed.url_max.d":
       "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
+    "set.embed.app_keys.d":
+      "Una clave para el backend propio de una aplicación web en esta computadora: puede pasar los mensajes de su persona a un agente, que se escriben cuando termina su turno, y leer el estado de ese agente. Nada más. Permites cada clave, se muestra una vez y puedes revocarla aquí.",
     "set.embed.origins.d":
       "La dirección de cada aplicación web, exacta, una por línea: https://app.example.com. Solo estas pueden mostrar un panel de agente dentro de sus páginas, y solo después de que lo permitas. Ningún otro sitio puede mostrar una página de este Den dentro de la suya.",
     "set.embed.key_minutes.d":

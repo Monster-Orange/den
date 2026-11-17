@@ -46,6 +46,10 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
+ *   embed_key_create  issue 334: an app key for a web app's own server,
+ *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
+ *                     person's own ask and Allow only; the key is shown
+ *                     once, to the Allow's browser
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -130,6 +134,8 @@ export interface HeldActionDeps {
   agentFolder?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
+  /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
+  appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
   verifyRun?: HeldOp;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
@@ -474,6 +480,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't change an agent's mode here",
   );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
+  const appKeyCreate = op(
+    d.appKeys?.create,
+    "this Den can't make app keys here",
+  );
+  const appKeyRevoke = op(
+    d.appKeys?.revoke,
+    "this Den can't revoke app keys here",
+  );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
 
   const repoClone: HeldAction = {
@@ -549,5 +563,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     agent_mode: agentMode,
     verify_run: verifyRun,
     den_pin_commit: pinCommit,
+    embed_key_create: appKeyCreate,
+    embed_key_revoke: appKeyRevoke,
   };
 }

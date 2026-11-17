@@ -816,6 +816,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/order",
   // Issue 103: letting a web app use an agent is a person's.
   "/api/embed/keys",
+  // Issue 334: the app keys a person made.
+  "/api/embed/app-keys",
   "/api/agents/clear-stopped",
   "/api/agents/restore",
   "/api/agents/rotation",
