@@ -645,10 +645,13 @@ describe("ci.yml (issue 398)", () => {
     }
   });
 
-  it("every job keeps the guarded runs-on", () => {
-    const guards = new Set(Object.values(ci.jobs).map((j) => j["runs-on"]));
-    expect(guards.size).toBe(1);
-    expect([...guards][0]).toMatch(/^\$\{\{ \(vars\.DEN_SELF_HOSTED == 'on'/);
+  // Only checks and dist-smoke may name DEN_SELF_HOSTED
+  // (ci-runner-guard.test.ts); the pull-request jobs stay GitHub-hosted.
+  it("the pr jobs run GitHub-hosted", () => {
+    expect([ci.jobs.pr["runs-on"], ci.jobs["pr-shards"]["runs-on"]]).toEqual([
+      "ubuntu-latest",
+      "ubuntu-latest",
+    ]);
   });
 });
 
