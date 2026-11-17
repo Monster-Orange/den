@@ -139,6 +139,9 @@ Held (each waits for the person's Allow):
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
+- `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
+  bearer is the name of a secrets.refs entry, never a value. Only the
+  person's own Allow runs it; agents get it at their next start or resume.
 - `persona_create`, `persona_update`: add or change a persona.
 - `hub_connect`: set, change or clear Hub's address. After the Allow, Den
   restarts; the person then clicks Connect in Settings › Hub.

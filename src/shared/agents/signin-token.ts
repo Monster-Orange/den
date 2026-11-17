@@ -47,9 +47,25 @@ import {
   type UserConfig,
 } from "../den-config.js";
 import { envKey, product } from "../product.js";
+import { builtinEntry, type CatalogEntry } from "./catalog.js";
 
-/** The named ref under `secrets.refs`. */
+/** Claude Code's sign-in data (catalog.ts, issue 338). */
+const CLAUDE_SIGN_IN = builtinEntry("den-claude")!.signIn!;
+
+/** The named ref under `secrets.refs` (Claude Code's token). */
 export const AGENT_TOKEN_REF_NAME = "agent_signin_token";
+
+/**
+ * Issue 338: the named ref a runtime's token is kept under. Claude Code's
+ * keeps its name; any other runtime with sign-in data has its own
+ * (`agent_signin_token_<id>`, "-" as "_"), so one vendor's token never
+ * reaches another's agents.
+ */
+export function agentTokenRefName(runtimeId: string): string {
+  return runtimeId === "den-claude"
+    ? AGENT_TOKEN_REF_NAME
+    : `${AGENT_TOKEN_REF_NAME}_${runtimeId.replace(/-/g, "_")}`;
+}
 
 /** Set in the always-on jobs' env (install.sh): agents sign in with the token. */
 export const SIGNIN_ENV = "DEN_AGENT_SIGNIN";
@@ -66,11 +82,14 @@ export const TOKEN_META_FILE = "agent-signin-token.json";
  */
 export const TOKEN_CLEARED_FILE = "agent-signin-token-cleared.json";
 
-/** agents.signin_token_warn_days: how old a token is before doctor warns. */
-export const DEFAULT_TOKEN_WARN_DAYS = 330;
+/**
+ * agents.signin_token_warn_days: how old a token is before doctor warns.
+ * Five weeks before Claude Code's token ends (its catalog lastsDays).
+ */
+export const DEFAULT_TOKEN_WARN_DAYS = (CLAUDE_SIGN_IN.lastsDays ?? 365) - 35;
 
-/** How the person makes the token (den-claude's CLI). */
-export const TOKEN_MAKE_HINT = "claude setup-token";
+/** How the person makes the token (den-claude's catalog sign-in data). */
+export const TOKEN_MAKE_HINT = CLAUDE_SIGN_IN.command ?? "claude setup-token";
 
 export type SignInMode = "token" | "desktop";
 
@@ -103,6 +122,8 @@ export function agentSignInMode(
 export function agentTokenRef(
   cfg: () => SecretsConfig = readSecretsConfig,
   team: () => SecretsConfig["refs"] = () => readDenConfig().secrets?.refs,
+  /** Issue 338: the runtime's ref name (agentTokenRefName). */
+  name: string = AGENT_TOKEN_REF_NAME,
 ): SecretRef | null {
   try {
     const c = cfg();
@@ -112,13 +133,13 @@ export function agentTokenRef(
     } catch {
       t = undefined;
     }
-    const fromTeam = t?.[AGENT_TOKEN_REF_NAME]
-      ? namedSecretRef(AGENT_TOKEN_REF_NAME, {
+    const fromTeam = t?.[name]
+      ? namedSecretRef(name, {
           ...c,
-          refs: { [AGENT_TOKEN_REF_NAME]: t[AGENT_TOKEN_REF_NAME] },
+          refs: { [name]: t[name] },
         })
       : null;
-    return fromTeam ?? namedSecretRef(AGENT_TOKEN_REF_NAME, c);
+    return fromTeam ?? namedSecretRef(name, c);
   } catch {
     return null;
   }
@@ -623,8 +644,13 @@ export function tokenStatusLine(
   st: TokenStatus,
   cli: string,
   localDate: (iso: string) => string = (iso) => iso.slice(0, 10),
+  /**
+   * Issue 338: how this runtime's token is made and kept, when it isn't
+   * Claude Code's (`claude setup-token`, then `<cli> agents token set`).
+   */
+  how?: { make: string; set: string },
 ): { status: "ok" | "warn"; text: string } {
-  const l = tokenLine(st, cli, localDate);
+  const l = tokenLine(st, cli, localDate, how);
   return st.credInKeychain
     ? { status: "warn", text: `${l.text}. Also, ${CRED_KEYCHAIN_WARNING}` }
     : l;
@@ -634,8 +660,9 @@ function tokenLine(
   st: TokenStatus,
   cli: string,
   localDate: (iso: string) => string,
+  how?: { make: string; set: string },
 ): { status: "ok" | "warn"; text: string } {
-  const fix = `make one with ${TOKEN_MAKE_HINT}, then ${cli} agents token set`;
+  const fix = `make one with ${how?.make ?? TOKEN_MAKE_HINT}, then ${how?.set ?? `${cli} agents token set`}`;
   // Not under the always-on service: agents sign in from the desktop login,
   // so no token is nothing to warn about.
   if ((!st.configured || st.stored === false) && st.mode !== "token")
@@ -665,4 +692,42 @@ function tokenLine(
       ? `agents sign in with the token set ${localDate(st.setAt)}${st.store ? ` (in ${st.store})` : ""}${st.processLocal ? ` (${PROCESS_LOCAL_NOTE})` : ""}`
       : `agents sign in with the token in ${st.store || "the secrets store"} (when it was set is not known)`,
   };
+}
+
+/** Issue 338: a runtime with no sign-in data, and its agents. */
+export interface NoSignIn {
+  /** The runtime's name for people ("Codex CLI"). */
+  name: string;
+  /** Its agents' ids. */
+  agents: string[];
+}
+
+/**
+ * Issue 338: the agents whose runtime's catalog entry has no sign-in data,
+ * by runtime, in catalog order. An id that is no catalog entry (generic,
+ * or an entry taken out of the config) is left out: nothing is guessed.
+ */
+export function agentsWithoutSignIn(
+  records: readonly { id: string; runtime?: string }[],
+  entries: readonly Pick<CatalogEntry, "id" | "name" | "signIn">[],
+): NoSignIn[] {
+  const out: NoSignIn[] = [];
+  for (const e of entries) {
+    if (e.signIn) continue;
+    const agents = records
+      .filter((r) => (r.runtime ?? "den-claude") === e.id)
+      .map((r) => r.id);
+    if (agents.length) out.push({ name: e.name, agents });
+  }
+  return out;
+}
+
+/** Doctor's words for them: plain, one sentence per runtime. */
+export function noSignInText(list: readonly NoSignIn[]): string {
+  return list
+    .map(
+      (x) =>
+        `${x.name} (agent${x.agents.length === 1 ? "" : "s"} ${x.agents.join(", ")}): this agent cannot sign in after logout; it will stop. Its runtime has no sign-in data (agents.runtime_catalog, signIn)`,
+    )
+    .join(". ");
 }

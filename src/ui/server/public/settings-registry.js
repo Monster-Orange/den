@@ -1857,6 +1857,20 @@ export const DEN_SETTINGS = [
         approvals_critical: String(v ?? "").trim() || null,
       }),
   },
+  {
+    // Issue 335: the project's extra HTTP MCP servers, names and
+    // addresses only. An agent adds one with a held write; the person
+    // Allows it.
+    id: "workspace.mcp_servers",
+    category: "workspace",
+    label: "Agents' extra MCP servers: this project",
+    description:
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. An agent adds one with project_mcp_add, and you Allow it.",
+    keywords: ["agents", "mcp", "mcp server", "tools", "bearer", "http"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectMcp },
+    read: () => null,
+  },
 
   // ── Agents ─────────────────────────────────────────────────────────────
   {
@@ -3357,6 +3371,43 @@ function renderProjectMode(host, ctx) {
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note" data-pmode-error>${escR(e?.message || t("pmode.failed"))}</p>`;
+    });
+}
+
+/**
+ * Issue 335: Settings › Project › Agents' extra MCP servers. `v` is GET
+ * /api/workspaces/:ws/mcp-servers: { servers: [{ name, url }] }.
+ */
+export function projectMcpHtml(v, t) {
+  const servers = Array.isArray(v?.servers) ? v.servers : [];
+  if (!servers.length)
+    return `<p class="set-note" data-pmcp-none>${escR(t("pmcp.none"))}</p>`;
+  return (
+    `<ul class="set-note" data-pmcp-list>` +
+    servers
+      .map(
+        (sv) =>
+          `<li data-pmcp="${escR(sv.name)}">${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</li>`,
+      )
+      .join("") +
+    `</ul>`
+  );
+}
+
+function renderProjectMcp(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell
+    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/mcp-servers`)
+    .then((v) => {
+      host.innerHTML = projectMcpHtml(v, t);
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note" data-pmcp-error>${escR(e?.message || t("pmcp.failed"))}</p>`;
     });
 }
 
