@@ -1395,6 +1395,12 @@
     "ap.pm.warn":
       "Esto permite que los agentes de {project} actúen sin preguntarte.",
     "ap.pm.project": "Proyecto: {project}",
+    "ap.do.hub_project_create":
+      "Pedir a Hub que cree el proyecto de Hub {name} para el proyecto {project}",
+    "ap.hc.project": "Proyecto: {project}",
+    "ap.hc.name": "Nombre en Hub: {name}",
+    "ap.hc.owner":
+      "Un propietario en Hub lo permite allí; Den vincula el proyecto en cuanto lo haga.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":

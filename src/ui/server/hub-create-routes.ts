@@ -19,6 +19,15 @@ import {
   askHubCreate,
   type HubCreateDeps,
 } from "../../shared/hub-project-create.js";
+import { HUB_PROJECT_NAME_MAX } from "../../shared/hub.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
+import type { DetailKey, HeldOpCheck } from "../cli/agent-ops.js";
+import type { AskedBy } from "./approvals.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import { hubCreateOf, hubProjectOf } from "../../shared/hub-project-link.js";
+import { workspaceDisplayName } from "../../shared/workspace-name.js";
+import { readRecord } from "../../shared/agents/records.js";
+import { getStateDir } from "../../shared/paths.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
@@ -143,4 +152,118 @@ export async function settleAllHubCreates(
     if ((await c.settleHubCreate(deps, ws)).state === "applied")
       linked.push(ws);
   return linked;
+}
+
+/** What the held write's check reads: the projects, their links and asks. */
+export type HubCreateLook = Pick<
+  HubCreateDeps,
+  "exists" | "linked" | "asked"
+> & {
+  /** The name project `ws` shows (the default name). */
+  name: (ws: string) => string;
+};
+
+/**
+ * Issue 271: hub_project_create's check, for the Allow: the project (a
+ * project's agent its own only; Den's own agent any), the name (default:
+ * the project's), refused before anyone is asked when the project is
+ * linked already (1:1) or has an ask waiting.
+ */
+export function checkHubCreateHeld(
+  s: HubCreateLook,
+  a: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<{ project: string; name: string }> {
+  const no = (error: string) => ({ ok: false as const, error });
+  const ws = typeof a.project === "string" ? a.project.trim() : "";
+  if (!ws) return no("project: the project to create a Hub project for");
+  if (isServerScope(ws))
+    return no(`${ws} is Den's own agent's place, not a project`);
+  if (!s.exists(ws)) return no(`no project "${ws}"`);
+  if (who.project && !isServerScope(who.project) && who.project !== ws)
+    return no(
+      `${who.agent ?? "this agent"} works in project ${who.project}: it can ask for that project only, not project ${ws}`,
+    );
+  const linked = s.linked(ws);
+  if (linked)
+    return no(
+      `project ${ws} is already linked to the Hub project ${linked.name}: one Hub project per project`,
+    );
+  const was = s.asked(ws);
+  if (was && !was.outcome)
+    return no(
+      `Hub has an ask for "${was.name}" for project ${ws} waiting for an owner; Den links it when they allow it`,
+    );
+  const name = (
+    typeof a.name === "string" && a.name.trim() ? a.name : s.name(ws)
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!name || name.length > HUB_PROJECT_NAME_MAX)
+    return no(`name: 1 to ${HUB_PROJECT_NAME_MAX} characters`);
+  const lines: [string, DetailKey][] = [
+    [`Project: ${ws}`, { key: "ap.hc.project", vars: { project: ws } }],
+    [`Name in Hub: ${name}`, { key: "ap.hc.name", vars: { name } }],
+    [
+      "An owner in Hub allows it there; Den links the project to it once they do.",
+      { key: "ap.hc.owner" },
+    ],
+  ];
+  return {
+    ok: true,
+    summary: `ask Hub to create the Hub project ${name} for project ${ws}`,
+    params: { project: ws, name },
+    details: lines.map(([l]) => l),
+    detailKeys: lines.map(([, k]) => k),
+    args: { project: ws, name },
+  };
+}
+
+/**
+ * Issue 271: hub_project_create's run, after the Allow (or the policy):
+ * the same ask Settings makes (askHubCreate), as the agent that asked, so
+ * Hub's push about the owner's decision reaches it.
+ */
+export async function runHubCreateHeld(
+  d: HubCreateDeps,
+  a: Record<string, unknown>,
+  asked: AskedBy | undefined,
+  agentName: (id: string) => string | undefined,
+): Promise<unknown> {
+  const ws = String(a.project ?? "");
+  const id = asked?.agent;
+  const r = await askHubCreate(d, {
+    ws,
+    name: String(a.name ?? ""),
+    by: "agent",
+    ...(id ? { agent: { id, name: agentName(id) ?? id } } : {}),
+    auditBy: `hub_project_create, asked Hub for a new project (${id ?? "agent"})`,
+  });
+  if (!r.ok) return { ok: false, error: r.error };
+  return {
+    ok: true,
+    project: ws,
+    ask: r.ask,
+    next: `Hub holds it for an owner. When they decide, Hub tells you, and Den links project ${ws} to the new Hub project by itself.`,
+  };
+}
+
+/** What the held write's check reads on this install; null: unreadable. */
+export function hubCreateLook(): HubCreateLook | null {
+  try {
+    const file = readWorkspacesFile();
+    return {
+      exists: (ws) => Boolean(file.workspaces[ws]),
+      linked: (ws) => hubProjectOf(ws, () => file),
+      asked: (ws) => hubCreateOf(ws, () => file),
+      name: (ws) => workspaceDisplayName(ws, file.workspaces[ws]),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** The name Hub shows for agent `id` (its session's), else none. */
+export function agentNameOf(id: string): string | undefined {
+  return readRecord(getStateDir(), id)?.sessionName || undefined;
 }

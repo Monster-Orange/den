@@ -1362,6 +1362,12 @@
     "ap.pm.warn":
       "これにより {project} のエージェントはあなたに確認せずに動作します。",
     "ap.pm.project": "プロジェクト: {project}",
+    "ap.do.hub_project_create":
+      "プロジェクト {project} のために Hub プロジェクト「{name}」の作成を Hub に依頼",
+    "ap.hc.project": "プロジェクト: {project}",
+    "ap.hc.name": "Hub での名前: {name}",
+    "ap.hc.owner":
+      "Hub のオーナーが Hub で許可します。許可されると Den がプロジェクトをリンクします。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":

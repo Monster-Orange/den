@@ -2173,6 +2173,13 @@
       "This lets {agent} act without asking you: {from} → follow project ({to})",
     "ap.pm.warn": "This lets agents in {project} act without asking you.",
     "ap.pm.project": "Project: {project}",
+    // Issue 271: hub_project_create's Allow.
+    "ap.do.hub_project_create":
+      "Ask Hub to create the Hub project {name} for project {project}",
+    "ap.hc.project": "Project: {project}",
+    "ap.hc.name": "Name in Hub: {name}",
+    "ap.hc.owner":
+      "An owner in Hub allows it there; Den links the project to it once they do.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":

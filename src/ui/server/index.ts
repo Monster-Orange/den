@@ -1027,6 +1027,13 @@ import {
 import { policyFor, readPolicySetting } from "../../shared/approval-policy.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
+import {
+  agentNameOf,
+  checkHubCreateHeld,
+  defaultHubCreateDeps,
+  hubCreateLook,
+  runHubCreateHeld,
+} from "./hub-create-routes.js";
 import { checkHubAddress, runHubAddress } from "./hub-address.js";
 import {
   checkVerifyRun,
@@ -2576,6 +2583,17 @@ function approvalDeps(): ApprovalDeps {
           },
           a,
         ),
+    },
+    // Issue 271: an agent asks Hub for a new project to link a project to.
+    hubCreate: {
+      check: (a, who) => {
+        const look = hubCreateLook();
+        return look
+          ? checkHubCreateHeld(look, a, who)
+          : { ok: false, error: "this Den can't read its projects here" };
+      },
+      run: async (a, asked) =>
+        runHubCreateHeld(await defaultHubCreateDeps(), a, asked, agentNameOf),
     },
     // SRV-P4: an agent asks to set a project's mode, or move an agent.
     projectMode: {
