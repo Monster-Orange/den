@@ -114,6 +114,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A person's first action on a page (Start fresh, Resume, Save and the like) sends its request at once. The working pop-up's code now loads while the page is idle, not after the click, so a slow machine no longer holds the request back (issue 274).
+
 - `agents token status` says what is true for the mode in effect. Not
   under Keep agents running after logout, no token reads "no sign-in
   token set; needed only under Keep agents running after logout" (exit

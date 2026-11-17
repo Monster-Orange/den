@@ -9,7 +9,7 @@
  * Invented names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import type { Browser, Page, Route } from "playwright";
+import type { Browser, BrowserContext, Page, Route } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
@@ -59,6 +59,12 @@ beforeAll(async () => {
     stoppedAt: STOPPED_AT,
   });
   s.seed({
+    id: "slow-one",
+    persona: "planner",
+    workspace: "north",
+    stoppedAt: STOPPED_AT,
+  });
+  s.seed({
     id: "srv-one",
     persona: "planner",
     workspace: "south",
@@ -75,11 +81,15 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-async function open(ws: string): Promise<Page> {
+async function open(
+  ws: string,
+  setup?: (ctx: BrowserContext) => Promise<void>,
+): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
+  await setup?.(ctx);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -125,7 +135,41 @@ async function hold(p: Page, verb: string) {
   return { seen, release };
 }
 
+/** Until `seen` has `n` requests (the click's request has left). */
+async function waitForSeen(p: Page, seen: Route[], n: number, ms = 15_000) {
+  const end = Date.now() + ms;
+  while (seen.length < n && Date.now() < end) await p.waitForTimeout(25);
+}
+
 describe("the double-click fix", () => {
+  // Issue 274: the working pop-up's code loads while the page is idle, so
+  // a first click's request leaves at once, not after that code's download.
+  it("the first click's request doesn't wait for the pop-up's code", async () => {
+    if (skip()) return;
+    const SLOW = 2_000;
+    const p = await open("north", (ctx) =>
+      // Its URL carries the version (?v=…).
+      ctx.route(
+        (u) => u.pathname === "/busy-den.js",
+        async (r) => {
+          await new Promise((ok) => setTimeout(ok, SLOW));
+          await r.continue();
+        },
+      ),
+    );
+    // The page has been open longer than the slow download.
+    await p.waitForTimeout(SLOW + 1_000);
+    const h = await hold(p, "fresh");
+    const t0 = Date.now();
+    await p.click(btn("slow-one", "fresh"));
+    await waitForSeen(p, h.seen, 1, SLOW + 1_000);
+    const took = Date.now() - t0;
+    expect(h.seen).toHaveLength(1);
+    expect(took).toBeLessThan(SLOW / 2);
+    h.release();
+    await p.context().close();
+  }, 60_000);
+
   for (const [agent, act] of [
     ["fresh-one", "fresh"],
     ["back-one", "resume"],
@@ -144,6 +188,9 @@ describe("the double-click fix", () => {
       expect(await p.textContent(btn(agent, act))).toBe("Working…");
       await p.click(btn(agent, act), { force: true }).catch(() => undefined);
       await p.dblclick(btn(agent, act), { force: true }).catch(() => undefined);
+      // Issue 274: the first request has left (however slow the machine),
+      // then the extra clicks have had time to send theirs: none did.
+      await waitForSeen(p, h.seen, 1);
       await p.waitForTimeout(300);
       expect(h.seen).toHaveLength(1);
       h.release();
