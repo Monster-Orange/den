@@ -32,7 +32,38 @@ describe("live checks: gate/<issue>.mjs", () => {
         "407.mjs: issue is 406, the file name says 407",
         "407.mjs: run is not a function",
         "408.mjs: clauses is empty (name each clause it proves)",
+        "409.mjs: teardown is not a function",
+        "409.mjs: matrix.browsers must list chromium or webkit",
+        "409.mjs: matrix.widths must be widths in px (200 or more)",
+        "409.mjs: timeoutMs is not a positive whole number",
         "notes.mjs: the name is not <issue number>.mjs",
+      ],
+    });
+  });
+
+  it("checks expect's rows: ok null only with a skip reason, every clause answered", () => {
+    const js = `
+      const { checkRows } = await import("./scripts/gate-shape.mjs");
+      const c = ["a", "b"];
+      console.log(JSON.stringify({
+        good: checkRows([{ clause: "a", ok: true }, { clause: "b", ok: null, skip: "needs-signed-in-cli", evidence: ["log"] }], c),
+        nullNoSkip: checkRows([{ clause: "a", ok: null }, { clause: "b", ok: false }], c),
+        skipWithOk: checkRows([{ clause: "a", ok: true, skip: "person" }, { clause: "b", ok: true }], c),
+        missing: checkRows([{ clause: "a", ok: true }], c),
+        stranger: checkRows([{ clause: "a", ok: true }, { clause: "b", ok: "yes" }, { clause: "z", ok: true }], c),
+      }));`;
+    const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+      cwd: ROOT,
+      encoding: "utf-8",
+    });
+    expect(JSON.parse(r.stdout)).toEqual({
+      good: [],
+      nullNoSkip: ['row 1: ok null needs skip "person" or "needs-<thing>"'],
+      skipWithOk: ["row 1: skip only goes with ok null"],
+      missing: ['clause "b" has no row'],
+      stranger: [
+        "row 2: ok is not true, false or null",
+        'row 3: clause "z" is not one of clauses',
       ],
     });
   });

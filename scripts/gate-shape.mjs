@@ -9,7 +9,16 @@
  *     setup(ctx)            prepares the bed, returns state
  *     run(ctx, state)       acts through ctx.url (HTTP or a browser page)
  *                           and ctx.cli(args); returns what it saw
- *     expect(result)        [{ clause, ok, detail? }], one per clause
+ *     expect(result)        [{ clause, ok, skip?, detail?, evidence? }],
+ *                           one per clause; ok null (not run) only with skip
+ *                           "person" or "needs-<thing>"
+ *   and may export
+ *     teardown(ctx, state)  always called, even when run throws
+ *     matrix                { browsers: chromium|webkit[], widths: px[] };
+ *                           run is called once per cell, expect gets
+ *                           [{ cell, result }]
+ *     timeoutMs             a cell's time limit (the harness's default
+ *                           otherwise); over it, the cell is ok false
  *
  * Prints a JSON array of problems (empty when all is well); exits 1 when
  * there are any. Loads each file, so a file that throws on import counts.
@@ -29,6 +38,54 @@ export function checkGateModule(file, mod) {
   for (const fn of ["setup", "run", "expect"])
     if (typeof mod[fn] !== "function")
       out.push(`${file}: ${fn} is not a function`);
+  if ("teardown" in mod && typeof mod.teardown !== "function")
+    out.push(`${file}: teardown is not a function`);
+  if ("matrix" in mod) {
+    const m = mod.matrix ?? {};
+    const browsers = Array.isArray(m.browsers) ? m.browsers : [];
+    const widths = Array.isArray(m.widths) ? m.widths : [];
+    if (!browsers.length || browsers.some((b) => !BROWSERS.includes(b)))
+      out.push(`${file}: matrix.browsers must list ${BROWSERS.join(" or ")}`);
+    if (!widths.length || widths.some((w) => !Number.isInteger(w) || w < 200))
+      out.push(`${file}: matrix.widths must be widths in px (200 or more)`);
+  }
+  if (
+    "timeoutMs" in mod &&
+    !(Number.isInteger(mod.timeoutMs) && mod.timeoutMs > 0)
+  )
+    out.push(`${file}: timeoutMs is not a positive whole number`);
+  return out;
+}
+
+const BROWSERS = ["chromium", "webkit"];
+const SKIP = /^(person|needs-[a-z0-9][a-z0-9-]*)$/;
+
+/** What expect() returned, checked as the harness records it. */
+export function checkRows(rows, clauses) {
+  if (!Array.isArray(rows)) return ["expect did not return a list"];
+  const out = [];
+  for (const [i, r] of rows.entries()) {
+    const at = `row ${i + 1}`;
+    if (!clauses.includes(r?.clause))
+      out.push(`${at}: clause "${r?.clause}" is not one of clauses`);
+    if (r?.ok === null) {
+      if (!SKIP.test(String(r.skip ?? "")))
+        out.push(`${at}: ok null needs skip "person" or "needs-<thing>"`);
+    } else if (typeof r?.ok !== "boolean")
+      out.push(`${at}: ok is not true, false or null`);
+    else if ("skip" in r) out.push(`${at}: skip only goes with ok null`);
+    if (
+      "evidence" in r &&
+      !(
+        Array.isArray(r.evidence) &&
+        r.evidence.every((e) => typeof e === "string")
+      )
+    )
+      out.push(`${at}: evidence is not a list of names`);
+  }
+  for (const c of clauses)
+    if (!rows.some((r) => r?.clause === c))
+      out.push(`clause "${c}" has no row`);
   return out;
 }
 
