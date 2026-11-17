@@ -21,7 +21,7 @@
  */
 import { actorTokenOf, verifyActorToken } from "../actor-token.js";
 import { shellQuote } from "../cli-command.js";
-import { redactValues } from "../redact.js";
+import { redactSecrets } from "../redact.js";
 
 export interface ProjectMcpServer {
   name: string;
@@ -49,7 +49,7 @@ export function projectMcpUrlProblem(url: string): string | null {
   if (u.protocol !== "https:" && !(u.protocol === "http:" && local))
     return `must be https (http only to this machine): ${url}`;
   if (u.username || u.password)
-    return "must not carry a user or password (use bearer)";
+    return "must not carry a name or password (use bearer)";
   return null;
 }
 
@@ -62,7 +62,7 @@ export function checkProjectMcpServer(
   taken: readonly string[] = [],
 ): { ok: true; server: ProjectMcpServer } | { ok: false; error: string } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
-    return { ok: false, error: "each server is { name, url, bearer? }" };
+    return { ok: false, error: "each entry is { name, url, bearer? }" };
   const r = raw as Record<string, unknown>;
   const name = typeof r.name === "string" ? r.name.trim() : "";
   if (!PROJECT_MCP_NAME_RE.test(name))
@@ -72,7 +72,7 @@ export function checkProjectMcpServer(
         "name: lower-case letters, digits, - and _, up to 40, starting with a letter or digit",
     };
   if (taken.includes(name))
-    return { ok: false, error: `name: "${name}" is Den's own server's` };
+    return { ok: false, error: `name: "${name}" is taken by Den's own MCP` };
   const url = typeof r.url === "string" ? r.url.trim().replace(/\/+$/, "") : "";
   const bad = projectMcpUrlProblem(url);
   if (bad) return { ok: false, error: `url ${bad}` };
@@ -162,11 +162,12 @@ export async function projectMcpHeaders(
   if (!server)
     return { ok: false, error: `project ${ws} has no MCP server "${name}"` };
   if (!server.bearer) return { ok: true, json: "{}" };
-  let value = "";
+  let value: string;
   try {
     value = (await d.secret(server.bearer)).trim();
   } catch (e) {
-    const why = redactValues(String((e as Error).message ?? e), [value]);
+    // A store's own words, secret-shaped values scrubbed (redact.ts).
+    const why = redactSecrets(String((e as Error)?.message ?? e));
     return {
       ok: false,
       error: `secrets.refs.${server.bearer} can't be read: ${why.slice(0, 200)}`,

@@ -150,6 +150,21 @@ describe("issue 335: a project's extra MCP server in its agents' --mcp-config", 
     expect(JSON.stringify(none)).not.toContain(BEARER);
   });
 
+  it("a store error never carries a secret-shaped value into the helper's stderr", async () => {
+    const r = await twoProjects();
+    const a = await projectMcpHeaders("tracker", {
+      env: r.made[0].opts.env as NodeJS.ProcessEnv,
+      stateDir: r.stateDir,
+      servers: (ws: string) => parseProjectMcpServers(CONFIG[ws]).servers,
+      secret: async () => {
+        throw new Error(`store said: Authorization: Bearer ${BEARER}`);
+      },
+    });
+    expect(a.ok).toBe(false);
+    expect(JSON.stringify(a)).not.toContain(BEARER);
+    expect(JSON.stringify(a)).toContain("secrets.refs.tracker_token");
+  });
+
   it("a server without a bearer has no headers helper; a bad entry and Den's own names are left out", async () => {
     const r = await rig({
       workspaceMcpServers: () => [
