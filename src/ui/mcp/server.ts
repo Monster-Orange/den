@@ -57,6 +57,42 @@ export interface DenMcpOptions {
   scope?: McpScope;
 }
 
+/**
+ * What the MCP server tells every client at the start: unscoped, the
+ * server agent's (ON-6), or a project's agent's. #176: every tool it names
+ * is one the caller has (agent-messages-name-real-tools.test.ts).
+ */
+export function mcpInstructions(
+  opts: Pick<DenMcpOptions, "cfg" | "cli" | "scope">,
+): string {
+  const p = product();
+  const toolScope = workspaceScope(opts.scope);
+  return (
+    `${p.title}: local services, projects, logs and tests for this org, ` +
+    `through the running ${p.title} web server (\`${opts.cli} web up\`). ` +
+    (opts.cfg.actions.length
+      ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
+      : "The org has enabled no actions (mcp.actions).") +
+    ` The ${approvalsState(opts.cfg)}.` +
+    (opts.scope && !toolScope
+      ? ` You are this ${p.title}'s own server agent (${opts.scope.actor}): the whole ${p.title}, ` +
+        "no project. Each write is held until the person allows it in the browser. " +
+        "den_restart_server restarts this Den; den_update updates it from npm and rolls back by itself if the new version doesn't come up. Den tells you when it is back. " +
+        "release_status shows Den's last update of itself, with the new Den's doctor results. " +
+        "onboard_status says what is set up: start there."
+      : opts.scope
+        ? ` Scoped to project "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
+          "a call naming another project is refused, and lists show this one only, " +
+          "each with a `scope` block saying how much is hidden. org_summary has " +
+          "every project and repo (names and status counts), the graph, the " +
+          "edge and the environments: start there for the whole picture. " +
+          "whoami says whether Hub's tools are yours: if Hub is connected but " +
+          "they are missing, ask the person to restart you from Den (it keeps " +
+          "this conversation); never ask them to make a token."
+        : ` org_summary has the whole ${p.title} at a glance: start there.`)
+  );
+}
+
 export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   const p = product();
   const session = opts.session ?? randomUUID();
@@ -69,28 +105,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   const server = new McpServer(
     { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
-      instructions:
-        `${p.title}: local services, projects, logs and tests for this org, ` +
-        `through the running ${p.title} web server (\`${opts.cli} web up\`). ` +
-        (opts.cfg.actions.length
-          ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
-          : "The org has enabled no actions (mcp.actions).") +
-        ` The ${approvalsState(opts.cfg)}.` +
-        (opts.scope && !toolScope
-          ? ` You are this ${p.title}'s own server agent (${opts.scope.actor}): the whole ${p.title}, ` +
-            "no project. Each write is held until the person allows it in the browser. " +
-            "den_restart_server restarts this Den; den_update updates it from npm and rolls back by itself if the new version doesn't come up. Den tells you when it is back. " +
-            "onboard_status says what is set up: start there."
-          : opts.scope
-            ? ` Scoped to project "${opts.scope.workspace}" as ${opts.scope.actor}: ` +
-              "a call naming another project is refused, and lists show this one only, " +
-              "each with a `scope` block saying how much is hidden. org_summary has " +
-              "every project and repo (names and status counts), the graph, the " +
-              "edge and the environments: start there for the whole picture. " +
-              "whoami says whether Hub's tools are yours: if Hub is connected but " +
-              "they are missing, ask the person to restart you from Den (it keeps " +
-              "this conversation); never ask them to make a token."
-            : " org_summary has the whole org at a glance: start there."),
+      instructions: mcpInstructions(opts),
     },
   );
 

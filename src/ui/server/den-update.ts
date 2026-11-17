@@ -12,7 +12,9 @@
  *      (update-watch.mjs) there: the running version judges the new one;
  *   3. `npm install --save-exact <pkg>@<to>` in the distribution root (a
  *      failure puts the pin back and installs the old one again);
- *   4. runs the new Den's `doctor --json`, and says what it found;
+ *   4. runs the new Den's `doctor --json`, says what it found, and keeps
+ *      its fail and warn lines beside the update's state (doctor.json), for
+ *      release_status (#176);
  *   5. starts that watch, leaves SRV-1a's restart note, and restarts.
  *
  * The watch waits `server_agent.update_wait_seconds` for the new version.
@@ -88,6 +90,62 @@ export interface UpdateState {
   at: string;
   why?: string;
   pid?: number;
+}
+
+/**
+ * #176: the new Den's doctor results (`doctor --json`'s fail and warn
+ * lines: check ids and details, never a value from the env), kept beside
+ * the state. The watch rewrites state.json with its verdict alone, so they
+ * live in a file of their own, for the same from and to.
+ */
+export const updateDoctorFile = (stateDir: string) =>
+  path.join(updateDir(stateDir), "doctor.json");
+
+export interface UpdateDoctor {
+  from: string;
+  to: string;
+  at: string;
+  lines: string[];
+}
+
+/** The last update, and its doctor results when doctor ran for it. */
+export type LastUpdate = UpdateState & {
+  doctor?: { at: string; lines: string[] };
+};
+
+function readUpdateDoctor(stateDir: string): UpdateDoctor | null {
+  try {
+    const v = JSON.parse(
+      fs.readFileSync(updateDoctorFile(stateDir), "utf8"),
+    ) as Partial<UpdateDoctor>;
+    return typeof v?.from === "string" &&
+      typeof v.to === "string" &&
+      typeof v.at === "string" &&
+      Array.isArray(v.lines)
+      ? {
+          from: v.from,
+          to: v.to,
+          at: v.at,
+          lines: v.lines.map((l) => String(l)),
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * #176: what release_status and the page show of Den's last update of
+ * itself: its state (from, to, when, why) and, when the new Den's doctor
+ * ran for that same update, what it found. Null: none.
+ */
+export function lastUpdate(stateDir: string): LastUpdate | null {
+  const s = readUpdateState(stateDir);
+  if (!s) return null;
+  const d = readUpdateDoctor(stateDir);
+  return d && d.from === s.from && d.to === s.to
+    ? { ...s, doctor: { at: d.at, lines: d.lines } }
+    : s;
 }
 
 export function readUpdateState(stateDir: string): UpdateState | null {
@@ -182,6 +240,8 @@ export async function updateDen(
   // The pin as it is now: the rollback puts these back.
   const dir = updateDir(d.stateDir);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // #176: the last update's doctor results are no longer this one's.
+  fs.rmSync(updateDoctorFile(d.stateDir), { force: true });
   const backups = PIN_FILES.map((f) => {
     const p = path.join(d.root, f);
     if (!fs.existsSync(p)) return { saved: null, path: p };
@@ -279,6 +339,16 @@ export async function updateDen(
       return await rollBack(
         `Den ${to}'s doctor didn't run (exit ${doc.code}): ${tail(doc.out)}`,
       );
+    try {
+      writeJson(updateDoctorFile(d.stateDir), {
+        from,
+        to,
+        at: new Date(now()).toISOString(),
+        lines,
+      } satisfies UpdateDoctor);
+    } catch {
+      /* best effort: the answer still carries them */
+    }
   } catch (e) {
     return await rollBack(
       `the update to ${to} stopped: ${(e as Error).message}`,

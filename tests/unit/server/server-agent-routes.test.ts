@@ -208,6 +208,42 @@ describe("/api/server-agent", () => {
     expect((await call("GET", "/api/server-agent")).json.update).toEqual(st);
   });
 
+  it("#176: GET /api/server-agent/update: the last update and the new Den's doctor results, read only", async () => {
+    const r = await rig();
+    const call = await serve(r, {}, []);
+    expect(
+      await call("GET", "/api/server-agent/update", undefined, true),
+    ).toEqual({ status: 200, json: { update: null } });
+    const dir = path.join(r.stateDir, "server-agent", "update");
+    fs.mkdirSync(dir, { recursive: true });
+    const st = {
+      state: "good",
+      from: "1.0.0",
+      to: "1.1.0",
+      at: "2026-11-17T12:03:00.000Z",
+    };
+    fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify(st));
+    const doctor = {
+      from: "1.0.0",
+      to: "1.1.0",
+      at: "2026-11-17T12:00:00.000Z",
+      lines: ["warn: hub: not connected"],
+    };
+    fs.writeFileSync(path.join(dir, "doctor.json"), JSON.stringify(doctor));
+    const want = {
+      ...st,
+      doctor: { at: doctor.at, lines: doctor.lines },
+    };
+    // The server agent's token reads it; so does the page.
+    expect(
+      (await call("GET", "/api/server-agent/update", undefined, true)).json,
+    ).toEqual({ update: want });
+    expect((await call("GET", "/api/server-agent")).json.update).toEqual(want);
+    expect((await call("POST", "/api/server-agent/update", {})).status).toBe(
+      405,
+    );
+  });
+
   it("says what it is, that this Den is fresh, its runtime, and that it hasn't started", async () => {
     const r = await rig();
     const call = await serve(r, {}, []);

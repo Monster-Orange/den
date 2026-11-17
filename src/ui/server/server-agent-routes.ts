@@ -35,7 +35,7 @@ import {
   type ServerAgentDeps,
 } from "../cli/server-agent-ops.js";
 import { webDeps } from "./agent-routes.js";
-import { readUpdateState } from "./den-update.js";
+import { lastUpdate } from "./den-update.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
   PROMPT_CHECK_SECONDS_DEFAULT,
@@ -110,6 +110,7 @@ export async function handleServerAgentRoutes(
 ): Promise<boolean> {
   if (
     pathname !== "/api/server-agent" &&
+    pathname !== "/api/server-agent/update" &&
     pathname !== "/api/server-agent/start" &&
     pathname !== "/api/server-agent/fresh" &&
     pathname !== "/api/server-agent/runtime" &&
@@ -123,6 +124,17 @@ export async function handleServerAgentRoutes(
     detect: () => serverAgentTrustPrompt(d),
     answer: () => answerServerAgentTrust(d),
   };
+  // #176: Den's last update of itself and the new Den's doctor results,
+  // read only: what release_status shows the server agent.
+  if (pathname === "/api/server-agent/update") {
+    if (method !== "GET" && method !== "HEAD") {
+      res.setHeader("Allow", "GET");
+      sendJson(res, { ok: false, error: "method not allowed" }, 405);
+      return true;
+    }
+    sendJson(res, { update: lastUpdate((deps.stateDir ?? getStateDir)()) });
+    return true;
+  }
   if (pathname === "/api/server-agent") {
     if (method !== "GET" && method !== "HEAD") {
       res.setHeader("Allow", "GET");
@@ -130,8 +142,9 @@ export async function handleServerAgentRoutes(
       return true;
     }
     try {
-      // SRV-1b: the last den_update, for the page (null: none).
-      const update = readUpdateState((deps.stateDir ?? getStateDir)());
+      // SRV-1b: the last den_update, for the page (null: none), with the
+      // new Den's doctor results when it ran (#176).
+      const update = lastUpdate((deps.stateDir ?? getStateDir)());
       const status = await serverAgentStatus(d, deps.server);
       // SRV-1b: its runtime asks to trust the folder (the page offers Trust).
       const p = await trust.detect().catch(() => null);
