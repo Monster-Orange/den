@@ -189,7 +189,7 @@ describe("issue 352: project_mcp_update", () => {
     expect(
       ref.ok && ref.detailKeys?.map((k) => k?.key).includes("ap.mcp.bearer"),
     ).toBe(true);
-    expect(ask({ no_bearer: true })).toMatchObject({
+    expect(ask({ bearer: null })).toMatchObject({
       ok: true,
       args: { server: { name: "tracker", url: URL_A } },
     });
@@ -201,10 +201,10 @@ describe("issue 352: project_mcp_update", () => {
     const leak = ask({ bearer: `Bearer ${VALUE} x` });
     expect(leak.ok).toBe(false);
     expect(JSON.stringify(leak)).not.toContain(VALUE);
-    expect(ask({ bearer: "tracker_token_2", no_bearer: true }).ok).toBe(false);
+    expect(ask({ bearer: 42 }).ok).toBe(false);
     expect(ask({})).toEqual({
       ok: false,
-      error: "nothing to change: give url, bearer or no_bearer",
+      error: "nothing to change: give url, or bearer (null for none)",
     });
     expect(ask({ url: URL_A })).toEqual({
       ok: false,

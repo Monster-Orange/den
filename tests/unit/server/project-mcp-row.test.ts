@@ -4,7 +4,7 @@
  * the decision, so the routes are a person's only (an agent asks with
  * project_mcp_update or project_mcp_remove, which wait for the Allow):
  *
- *   POST   /api/workspaces/:ws/mcp-servers/:name  { url?, bearer?, no_bearer? }
+ *   POST   /api/workspaces/:ws/mcp-servers/:name  { url?, bearer?: name | null }
  *   DELETE /api/workspaces/:ws/mcp-servers/:name
  *
  * A bearer is a secrets.refs name, never a value, and no answer holds
@@ -123,7 +123,7 @@ describe("issue 352: a person changes or removes one from Settings", () => {
       200,
     );
     expect(saved.north[0].bearer).toBe("tracker_token_2");
-    expect((await call(u, "POST", { no_bearer: true })).status).toBe(200);
+    expect((await call(u, "POST", { bearer: null })).status).toBe(200);
     expect(saved.north[0]).toEqual({ name: "tracker", url: URL_A });
     const leak = await call(u, "POST", { bearer: `Bearer ${VALUE}` });
     expect(leak.status).toBe(400);
@@ -132,6 +132,7 @@ describe("issue 352: a person changes or removes one from Settings", () => {
       "secrets.refs.other_ref is not set: a person adds it to the install's config first",
     );
     expect((await call(u, "POST", { token: "x" })).status).toBe(400);
+    expect((await call(u, "POST", { no_bearer: true })).status).toBe(400);
   });
 
   it("DELETE removes it; an unknown one is 404", async () => {

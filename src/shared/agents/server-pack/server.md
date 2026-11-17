@@ -143,8 +143,8 @@ Held (each waits for the person's Allow):
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.
 - `project_mcp_remove`, `project_mcp_update`: take one of those servers
-  away, or change its url or bearer (again a secrets.refs name; or
-  `no_bearer: true`). Only the person's own Allow runs either; agents get
+  away, or change its url or bearer (again a secrets.refs name; null for
+  none). Only the person's own Allow runs either; agents get
   the change at their next start or resume.
 - `persona_create`, `persona_update`: add or change a persona.
 - `hub_connect`: set, change or clear Hub's address. After the Allow, Den

@@ -2401,7 +2401,7 @@ async function mcpServersRoute(
 /**
  * Issue 352: Settings › Project › Agents' extra MCP servers, a row's
  * actions. POST /api/workspaces/:ws/mcp-servers/:name { url?, bearer?,
- * no_bearer? } changes its url or bearer reference (a secrets.refs name,
+ * bearer?: name | null } changes its url or bearer reference (a secrets.refs name,
  * never a value); DELETE removes it. Checked as the held writes are
  * (agent-ops.ts); names and urls back. A person's only: their click is
  * the decision. An agent asks with project_mcp_update or
@@ -2454,11 +2454,10 @@ async function mcpServerRoute(
     if (!remove) {
       const body = await jsonBody(req);
       for (const k of Object.keys(body))
-        if (k !== "url" && k !== "bearer" && k !== "no_bearer")
-          throw new AgentError(
-            `${k}: unknown field (takes url, bearer and no_bearer)`,
-            { usage: true },
-          );
+        if (k !== "url" && k !== "bearer")
+          throw new AgentError(`${k}: unknown field (takes url and bearer)`, {
+            usage: true,
+          });
       ask = { ...body, ...ask };
     }
     const c = remove

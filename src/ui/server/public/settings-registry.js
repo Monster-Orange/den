@@ -3473,7 +3473,7 @@ function renderProjectMcp(host, ctx) {
           const none = form.querySelector("[data-pmcp-nobearer]").checked;
           const body = {
             ...(url && url !== cur?.url ? { url } : {}),
-            ...(none ? { no_bearer: true } : bearer ? { bearer } : {}),
+            ...(none ? { bearer: null } : bearer ? { bearer } : {}),
           };
           if (!Object.keys(body).length) {
             form.hidden = true;

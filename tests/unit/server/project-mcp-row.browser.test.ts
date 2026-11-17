@@ -1,7 +1,7 @@
 /**
  * Issue 352: Settings › Project › Agents' extra MCP servers, the row's
  * actions in a browser. Change opens the row's form: a new address sends
- * { url } and the row shows it; No bearer sends { no_bearer: true }.
+ * { url } and the row shows it; No bearer sends { bearer: null }.
  * Remove asks first (the kit's dialog): Cancel sends nothing, Remove
  * sends DELETE and the row is gone. No bearer value is ever on the page.
  *
@@ -113,7 +113,7 @@ const rows = (p: Page) =>
   );
 
 describe("issue 352: Settings › Project › Agents' extra MCP servers › Change, Remove", () => {
-  it("Change: a new address is sent and shown; No bearer sends no_bearer", async () => {
+  it("Change: a new address is sent and shown; No bearer sends a null bearer", async () => {
     if (skip()) return;
     const { p, sent } = await page();
     expect(await rows(p)).toEqual([
@@ -149,7 +149,7 @@ describe("issue 352: Settings › Project › Agents' extra MCP servers › Chan
     expect(sent[1]).toEqual({
       method: "POST",
       name: "wiki",
-      body: { no_bearer: true },
+      body: { bearer: null },
     });
     expect(
       await p.evaluate(

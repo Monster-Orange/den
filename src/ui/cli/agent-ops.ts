@@ -4870,7 +4870,7 @@ function flatMcpArgs(raw: Record<string, unknown>): Record<string, unknown> {
     project: raw.project,
     name: s.name,
     url: s.url,
-    ...(s.bearer ? { bearer: s.bearer } : { no_bearer: true }),
+    bearer: s.bearer ? s.bearer : null,
   };
 }
 
@@ -5057,7 +5057,7 @@ export interface ProjectMcpUpdateArgs {
 /**
  * Issue 352: checks a project_mcp_update ask: a new url, a new bearer
  * reference (a secrets.refs name that is set, never a value), or no
- * bearer (`no_bearer: true`) for one of a project's extra MCP servers.
+ * bearer (`bearer: null`) for one of a project's extra MCP servers.
  * Always the person's own Allow: it sends the agents' calls, and maybe a
  * bearer, somewhere else.
  */
@@ -5078,15 +5078,12 @@ export function checkProjectMcpUpdate(
     const f = projectMcpServerOf(d, ws, a.name);
     if (!f.ok) return f;
     const cur = f.server;
-    const noBearer = a.no_bearer === true;
-    if (a.no_bearer !== undefined && typeof a.no_bearer !== "boolean")
-      return no("no_bearer must be true or false");
+    // `bearer: null` drops it; a name sets it; left out, it stays.
+    const noBearer = a.bearer === null;
     const hasUrl = a.url !== undefined && a.url !== null && a.url !== "";
-    const hasBearer =
-      a.bearer !== undefined && a.bearer !== null && a.bearer !== "";
-    if (noBearer && hasBearer) return no("give bearer or no_bearer, not both");
+    const hasBearer = a.bearer !== undefined && !noBearer && a.bearer !== "";
     if (!hasUrl && !hasBearer && !noBearer)
-      return no("nothing to change: give url, bearer or no_bearer");
+      return no("nothing to change: give url, or bearer (null for none)");
     const c = checkProjectMcpServer(
       {
         name: cur.name,

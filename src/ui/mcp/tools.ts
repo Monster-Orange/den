@@ -2129,7 +2129,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "project_mcp_update",
     title: "Change a project's HTTP MCP server",
     description:
-      "Change one of a project's extra HTTP MCP servers (`name`): a new `url`, a new `bearer` (the name of a secrets.refs entry the person has set: never a token itself), or `no_bearer: true` to send none. The person's own Allow always decides. Agents get the change at their next start or resume. A project's agent changes its own project's; Den's own agent any." +
+      "Change one of a project's extra HTTP MCP servers (`name`): a new `url`, a new `bearer` (the name of a secrets.refs entry the person has set: never a token itself), or `bearer: null` to send none. The person's own Allow always decides. Agents get the change at their next start or resume. A project's agent changes its own project's; Den's own agent any." +
       HELD,
     action: true,
     shape: {
@@ -2146,12 +2146,11 @@ const APPROVAL_TOOLS: DenTool[] = [
         ),
       bearer: z
         .string()
+        .nullable()
         .optional()
-        .describe("The name of a secrets.refs entry, never a value"),
-      no_bearer: z
-        .boolean()
-        .optional()
-        .describe("true: its calls carry no bearer"),
+        .describe(
+          "The name of a secrets.refs entry, never a value; null: none",
+        ),
       note: noteArg,
       ask: askArg,
     },
@@ -2165,8 +2164,7 @@ const APPROVAL_TOOLS: DenTool[] = [
           project,
           name,
           url: str(a.url),
-          bearer: str(a.bearer),
-          ...(a.no_bearer === true ? { no_bearer: true } : {}),
+          bearer: a.bearer === null ? null : str(a.bearer),
         },
         a,
         ctx,
