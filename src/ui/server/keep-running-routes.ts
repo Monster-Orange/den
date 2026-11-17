@@ -169,7 +169,9 @@ export function noteKeepRunningOffer(
   const file = path.join(stateDir, KEEP_OFFER_FILE);
   if (fs.existsSync(file)) return false;
   store.add({
-    kind: "service",
+    // Issue 163: an offer the person must act on: "needs you" (counted on
+    // the badge), not an update folded away.
+    kind: "decision",
     subject: "record:keep-running-offer",
     scope: "workspace/den-server",
     text: "Keep agents running after logout: Apply",

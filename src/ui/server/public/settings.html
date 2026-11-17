@@ -290,6 +290,16 @@
         /* Issue 268: a row's deep link lands below the sticky header too. */
         scroll-margin-top: var(--set-top, 0px);
       }
+      /* Issue 163: where a link arrived, marked for a moment. */
+      #set-body .set-arrived {
+        outline: 2px solid var(--accent);
+        outline-offset: 4px;
+        border-radius: var(--radius-button);
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+        transition:
+          background 0.4s,
+          outline-color 0.4s;
+      }
       .set-nav {
         position: sticky;
         top: var(--set-top, 0px);

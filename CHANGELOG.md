@@ -4,6 +4,19 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.64] - unreleased
+
+### Fixed
+
+- The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
+
+- A link to a Settings row (the bell's /settings#agents.keep_running, or
+  the address typed in) stays on that row while content above it loads
+  late, such as the persona list; before, the row ended up below the
+  fold. The page waits for the row if it isn't drawn yet, marks it for a
+  moment and moves focus to its label. Your first scroll, key, click or
+  touch lets go, and it lets go by itself after 10 s. (#163)
+
 ## [0.4.63] - 2026-11-17
 
 ### Added
