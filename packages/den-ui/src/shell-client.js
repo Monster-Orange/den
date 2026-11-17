@@ -229,7 +229,13 @@ export function hydrateShell(root, opts = {}) {
       else el.removeAttribute("inert");
     }
   }
+  // The drawer's slide is armed on the person's first open or close only
+  // (shell.css: body.den-rail-moved), so a load never slides it (issue 311).
+  function armSlide() {
+    document.body.classList.add("den-rail-moved");
+  }
   function openDrawer() {
+    armSlide();
     document.body.classList.add("den-rail-open");
     if (menu) menu.setAttribute("aria-expanded", "true");
     railBox.setAttribute("role", "dialog");
@@ -250,6 +256,7 @@ export function hydrateShell(root, opts = {}) {
   }
   function closeDrawer(refocus) {
     if (!drawerOpen()) return;
+    armSlide();
     document.body.classList.remove("den-rail-open");
     if (menu) menu.setAttribute("aria-expanded", "false");
     railBox.removeAttribute("role");
