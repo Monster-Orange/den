@@ -398,12 +398,13 @@ describe.each(ENGINES)(
       expect(await down.getAttribute("aria-disabled")).toBe("true");
       await up.click();
       await untilStopped(["eve", "dee"]);
-      for (
-        let i = 0;
-        i < 50 && !userYml().agents?.order?.north?.includes("eve");
-        i++
-      )
-        await p.waitForTimeout(100);
+      // Wait for this move's save. dee and eve may already be in the file
+      // from before, so wait for the new order, not for eve to appear.
+      const eveFirst = () => {
+        const o = userYml().agents?.order?.north ?? [];
+        return o.includes("eve") && o.indexOf("eve") < o.indexOf("dee");
+      };
+      for (let i = 0; i < 100 && !eveFirst(); i++) await p.waitForTimeout(100);
       const saved = userYml().agents?.order?.north ?? [];
       expect(saved.indexOf("eve")).toBeLessThan(saved.indexOf("dee"));
       // The running ones keep theirs.
