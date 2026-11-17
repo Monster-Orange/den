@@ -18,6 +18,11 @@ config and manifest changes a distribution must make to move to it under
   project from the agent's own token, so another project's agent can't
   read it. The bearer is never in the MCP file, the agent's env or a log
   (issue 335).
+- Settings › Project lists a project's extra MCP servers by name and
+  address, and doctor has a line for each (a bad entry, or a bearer whose
+  `secrets.refs` entry isn't set, warns). An agent adds one with the held
+  write `project_mcp_add`, which always waits for the person's own Allow
+  (issue 335).
 
 ## [0.4.64] - unreleased
 

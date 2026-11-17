@@ -1069,6 +1069,8 @@ import {
   checkPersonaCreate,
   checkPersonaUpdate,
   checkProjectMode,
+  checkProjectMcpAdd,
+  runProjectMcpAdd,
   createAgent,
   runAgentFolder,
   runAgentMode,
@@ -2581,6 +2583,11 @@ function approvalDeps(): ApprovalDeps {
     projectMode: {
       check: (a, who) => checkProjectMode(agentWebDeps(), a, who),
       run: (a) => runProjectMode(agentWebDeps(), a),
+    },
+    // Issue 335: an agent asks to add an HTTP MCP server to a project.
+    projectMcp: {
+      check: (a, who) => checkProjectMcpAdd(agentWebDeps(), a, who),
+      run: (a) => runProjectMcpAdd(agentWebDeps(), a),
     },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
