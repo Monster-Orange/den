@@ -114,6 +114,41 @@ async function endedAgents(
   return out;
 }
 
+/**
+ * Issue 369: whether agent `agent`'s screen ends with its runtime's
+ * permission dialog (the last 16 KB of its session). No record, no
+ * session, or exited: false. The session host not answering: null (look
+ * again). A runtime whose dialogs Den can't see: true (its output going
+ * on clears the wait).
+ */
+async function dialogOpen(agent: string): Promise<boolean | null> {
+  const rec = readRecord(getStateDir(), agent);
+  if (!rec) return false;
+  const [{ getRuntime }, { promptOnScreen }] = await Promise.all([
+    import("../../shared/agents/runtimes.js"),
+    import("../../shared/agents/trust-prompt.js"),
+  ]);
+  const p = getRuntime(rec.runtime)?.permissionPrompt;
+  if (!p) return true;
+  try {
+    const { webDeps } = await import("./agent-routes.js");
+    const c = await webDeps().connectExisting();
+    if (!c) return null;
+    try {
+      const s = (await c.list()).find((x) => x.ref.id === rec.session.id);
+      if (!s || s.exited) return false;
+      const out = (await c.scrollback(rec.session.id, 16 * 1024)).toString(
+        "utf-8",
+      );
+      return promptOnScreen(out, p);
+    } finally {
+      c.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
 /** The runtimes whose hooks say when they wait: their bells add nothing. */
 const HOOKED_RUNTIMES = new Set(["den-claude"]);
 
@@ -182,6 +217,7 @@ export function notificationDeps(): {
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
     endedAsking,
     ended: endedAgents,
+    dialogOpen,
   });
   if (!timer) {
     let busy = false;
@@ -241,6 +277,19 @@ export function agentGone(id: string): void {
     attention?.gone(id);
   } catch {
     /* the bell is best effort: the tick clears it */
+  }
+}
+
+/**
+ * Issue 369: at server start, the waiting rows kept from before it are
+ * decided against the agents now (the check every 2 s goes on with any
+ * Den can't decide yet). Never throws.
+ */
+export async function reconcileKeptWaits(): Promise<void> {
+  try {
+    await notificationDeps().attention.reconcile();
+  } catch {
+    /* the bell is best effort: the tick looks again */
   }
 }
 

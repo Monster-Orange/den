@@ -2006,6 +2006,11 @@ export function startAgentUpkeep(
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }
+    // Issue 369: bell waits kept from before the restart, against the
+    // agents now (their dialogs too).
+    await import("./notification-service.js")
+      .then((m) => m.reconcileKeptWaits())
+      .catch(() => undefined);
   };
   const prune = async () => {
     try {

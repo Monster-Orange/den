@@ -339,6 +339,12 @@ export interface Runtime {
    */
   trustPrompt?: import("./trust-prompt.js").TrustPrompt;
   /**
+   * Issue 369: the runtime's permission dialog, as its screen ends with
+   * it while it waits for an answer. A bell row kept across a restart
+   * stays only while this is on screen. None: Den can't see its dialogs.
+   */
+  permissionPrompt?: import("./trust-prompt.js").ScreenPrompt;
+  /**
    * The name the runtime gives the agent's conversation (AG-4b: Claude
    * Code's `/rename`), or null when it has none or can't say. Optional:
    * a runtime without it has Den's rename only. Must be quick and never
