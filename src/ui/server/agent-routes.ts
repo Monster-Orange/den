@@ -186,6 +186,10 @@ import {
   followProjectMode,
   projectModeView,
   projectMcpView,
+  checkProjectMcpRemove,
+  runProjectMcpRemove,
+  checkProjectMcpUpdate,
+  runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
@@ -246,6 +250,8 @@ const AGENTS_PATH =
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
+/** Issue 352: one of them, changed or removed by a person. */
+const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -542,6 +548,9 @@ export async function handleAgentRoutes(
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
   const mcpp = MCP_SERVERS_PATH.exec(pathname);
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
+  const mcp1 = MCP_SERVER_PATH.exec(pathname);
+  if (mcp1)
+    return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
   const hp = HELPERS_PATH.exec(pathname);
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   const dp = DETAILS_PATH.exec(pathname);
@@ -2393,6 +2402,92 @@ async function mcpServersRoute(
     return true;
   }
   sendJson(res, { ok: true, ...projectMcpView(d, ws) });
+  return true;
+}
+
+/**
+ * Issue 352: Settings › Project › Agents' extra MCP servers, a row's
+ * actions. POST /api/workspaces/:ws/mcp-servers/:name { url?, bearer?,
+ * bearer?: name | null } changes its url or bearer reference (a secrets.refs name,
+ * never a value); DELETE removes it. Checked as the held writes are
+ * (agent-ops.ts); names and urls back. A person's only: their click is
+ * the decision. An agent asks with project_mcp_update or
+ * project_mcp_remove, which wait for the person's Allow.
+ */
+async function mcpServerRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  rawName: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "POST" && method !== "DELETE")
+    return methodNotAllowed(res, "POST, DELETE");
+  const ws = safeDecode(rawWs);
+  const name = safeDecode(rawName);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  const remove = method === "DELETE";
+  const actor = auditActorOf(req);
+  let what = remove
+    ? `remove MCP ${name} from project ${ws}'s agents`
+    : `change MCP ${name} in project ${ws}'s agents`;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError(
+        remove
+          ? "only a person can remove a project's MCP server here (an agent asks with project_mcp_remove)"
+          : "only a person can change a project's MCP server here (an agent asks with project_mcp_update)",
+        { status: 403 },
+      );
+    let ask: Record<string, unknown> = { project: ws, name };
+    if (!remove) {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "url" && k !== "bearer")
+          throw new AgentError(`${k}: unknown field (takes url and bearer)`, {
+            usage: true,
+          });
+      ask = { ...body, ...ask };
+    }
+    const c = remove
+      ? checkProjectMcpRemove(d, ask)
+      : checkProjectMcpUpdate(d, ask);
+    if (!c.ok)
+      throw new AgentError(c.error, {
+        status: c.error.startsWith(`project ${ws} has no MCP server`)
+          ? 404
+          : 400,
+        usage: true,
+      });
+    what = c.summary;
+    const r = remove
+      ? await runProjectMcpRemove(d, { ...c.args })
+      : await runProjectMcpUpdate(d, { ...c.args });
+    if (!r.ok) throw new AgentError(r.error, { usage: true });
+    audit(what);
+    sendJson(res, r);
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
   return true;
 }
 
