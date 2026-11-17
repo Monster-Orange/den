@@ -145,6 +145,10 @@ Held (each waits for the person's Allow):
 - `persona_create`, `persona_update`: add or change a persona.
 - `hub_connect`: set, change or clear Hub's address. After the Allow, Den
   restarts; the person then clicks Connect in Settings › Hub.
+- `hub_project_create`: ask Hub for a new Hub project for a project that
+  isn't linked to one (named as the project, unless you give a name). An
+  owner in Hub allows it there; Den links the project by itself once they
+  do, and Hub tells you what they decided. Don't link it again yourself.
 - `den_restart_server`, `den_update`: restart or update Den.
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It

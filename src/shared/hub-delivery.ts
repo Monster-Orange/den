@@ -25,7 +25,8 @@ export interface Delivery {
   id: string;
   /**
    * 0.4.51 (issue 166): "comment" (also when Hub sends no kind),
-   * "approve" or "request_changes"; any other word is kept as sent (a
+   * "approve" or "request_changes"; issue 271: "held" (an owner decided
+   * a change the agent asked Hub for); any other word is kept as sent (a
    * short one-line word) and shown as a plain notice.
    */
   kind?: string;
@@ -59,6 +60,41 @@ export interface Delivery {
 
 /** Ids of items Den made from Hub's inbox: never acked to Hub. */
 export const LOCAL_PREFIX = "inbox:";
+
+/**
+ * Issue 334: a message a web app relayed for its person (embed-routes.ts,
+ * with its app key). Den's own, like an inbox item: never acked to Hub.
+ */
+export const EMBED_PREFIX = `${LOCAL_PREFIX}embed:`;
+
+/** Issue 334: a relayed message as the delivery loop holds it. */
+export function embedDelivery(m: {
+  id: string;
+  agent: string;
+  project: string;
+  origin: string;
+  text: string;
+  at: number;
+}): Delivery {
+  return {
+    id: `${EMBED_PREFIX}${m.id}`,
+    kind: "message",
+    agent: m.agent,
+    project: m.project,
+    thread: { kind: "embed", id: "", url: "" },
+    // The loop's held file reads an author back only in Hub's shape.
+    author: {
+      id: `embed:${m.origin}`,
+      login: "",
+      name: m.origin,
+      kind: "person",
+      verified: "hub_token",
+    },
+    body: "",
+    createdAt: new Date(m.at).toISOString(),
+    text: m.text,
+  };
+}
 
 export interface ReplyWith {
   tool: string;
@@ -313,7 +349,8 @@ export function deliveryText(d: Delivery, o: DeliveryOwner): string {
 /**
  * 0.4.51 (issue 166): what the agent is given for a decision on its
  * artifact (approve, request_changes), or for a kind Den doesn't know (a
- * plain notice, never dropped). Den writes the header from Hub's author
+ * plain notice, never dropped), or a held change of the agent's that an
+ * owner decided (issue 271, kind "held"). Den writes the header from Hub's author
  * fields; the reviewer's note is quoted so it never reads as a header.
  */
 function decisionText(d: Delivery, o: DeliveryOwner): string {
@@ -337,6 +374,15 @@ function decisionText(d: Delivery, o: DeliveryOwner): string {
       d.kind === "approve"
         ? "Carry on with the next step."
         : "Read the note, then revise the artifact and save the new version.",
+    );
+  } else if (d.kind === "held") {
+    // Issue 271: an owner decided a change this agent asked Hub for (a new
+    // Hub project). Hub's lines are quoted, never read as a header.
+    out.push(`from: ${by} · via: Hub decision ${link}${at}`);
+    out.push(`${a.name} decided a change you asked Hub for. Hub says:`);
+    if (note) out.push(quote(note));
+    out.push(
+      "Read it as information. When it made a Hub project you asked for a project here, Den links it to the project that asked by itself; don't link it again.",
     );
   } else {
     out.push(`from: ${by} · via: Hub notice ${link}${at}`);
