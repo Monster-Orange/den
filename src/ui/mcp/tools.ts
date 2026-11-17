@@ -1583,7 +1583,7 @@ const RESTART_NEXT =
 
 /** SRV-1b: what the agent does after den_update. */
 const UPDATE_NEXT =
-  'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you. On the new version: commit the new pin (package.json, package-lock.json) in your folder, as server_agent.git says (a pull request, or a push). If Den says it rolled back, commit nothing and tell your person why.'; // words-ok: SRV-1's own line, for the agent
+  'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you. On the new version Den commits and pushes the new pin (package.json, package-lock.json) itself; commit it yourself only when server_agent.pin_commit is off. If Den says it rolled back, commit nothing and tell your person why.'; // words-ok: SRV-1's own line, for the agent
 
 const HELD =
   " Den's approval policy decides: a change that widens what an agent may do waits for the person's Allow in Den's browser dialog; others may run at once (the answer says done). Give ask: true and a note saying why to wait for the Allow anyway. A request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";

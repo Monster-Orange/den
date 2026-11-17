@@ -87,6 +87,10 @@ export const HELD_WRITE_RISK: Readonly<
     why: "gives the project's agents a repo they couldn't reach: wider access",
   },
   repo_clone: { risk: "routine", why: "clones a repo into a new folder" },
+  den_pin_commit: {
+    risk: "routine",
+    why: "commits and pushes the distribution's new Den pin (package.json, package-lock.json), nothing else",
+  },
   service_try: { risk: "routine", why: "starts a service locally" },
   verify_run: {
     risk: "critical",

@@ -17,8 +17,8 @@
  *
  * The watch waits `server_agent.update_wait_seconds` for the new version.
  * If it isn't up, the pin goes back, the old version is installed and
- * started, and the agent is told why. The commit of the new pin is the
- * agent's own (its folder is the distribution's repo, server_agent.git).
+ * started, and the agent is told why. Once the watch says "good", the new
+ * Den commits and pushes the new pin itself (#176, pin-commit.ts).
  */
 import { execFile, spawn } from "child_process";
 import * as fs from "fs";

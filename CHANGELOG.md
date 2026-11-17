@@ -4,6 +4,33 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.63] - unreleased
+
+### Changed
+
+- Den's top bar and rail come from the shared UI kit, den-ui 0.7.0: the
+  account menu, the company and project crumbs with a filter, the Report
+  screenshot keeping what you scrolled to, and a brand that never shrinks
+  on a phone.
+- den-ui 0.7.1 (#303): the top bar's search sits in the same place in
+  every product, whatever the crumbs or chips say. Long names end in "…"
+  (the last crumb is kept whole), the search reads "Search…" in every
+  language the kit has, and on a touch screen every bar control takes a
+  44px tap.
+- After Den updates itself, it commits and pushes the distribution's new
+  pin (package.json and package-lock.json) itself, on the lead install,
+  once the new version is verified. It no longer waits on the server
+  agent, so a resumed, busy or stopped agent can't drop it. Only the two
+  pin files go in. The commit is signed with `agents.git.signing_key`
+  when set, and unsigned otherwise; never the person's GPG key, never a
+  prompt. A failed push keeps the commit, is tried again at the next
+  update check, and the bell says it once. A follower never commits.
+  New setting `server_agent.pin_commit`: `push` (default), `pr` (the pin
+  on its own branch and a pull request through `gh`) or `off`. The commit
+  follows the approval policy as the routine held write `den_pin_commit`:
+  it runs at once by default, and waits for the person's Allow when the
+  policy says ask (#176).
+
 ## [0.4.62] - 2026-11-16
 
 ### Added
