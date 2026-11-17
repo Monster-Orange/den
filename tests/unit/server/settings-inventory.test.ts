@@ -166,6 +166,8 @@ describe("the settings inventory (R21)", () => {
         "alerts.phone",
         "alerts.quiet_from",
         "alerts.quiet_to",
+        // Issue 334: an app key's reads, one audit line per window.
+        "embed.app_key_audit_window_seconds",
         // Issue 160: the install's approval policy.
         "approvals_policy",
         "approvals_watch",

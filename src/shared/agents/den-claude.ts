@@ -952,6 +952,13 @@ export const denClaude: Runtime = {
       /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*1\.\s*Yes/i,
     accept: "\r",
   },
+  // Issue 369: its permission dialogs ("Do you want to proceed?", "… make
+  // this edit to x?", "… create x?", "… allow Claude to fetch …?"), first
+  // choice Yes; the others name a command and a folder, so more may follow.
+  permissionPrompt: {
+    match: /Do you want to [^?\n]{0,300}\?[\s\S]{0,400}?1\.\s*Yes/i,
+    afterMax: 600,
+  },
   approvals: "terminal",
   envPassthrough: ["CLAUDE_CONFIG_DIR"],
   // Claude Code's session plumbing: the session id, its messaging socket and
