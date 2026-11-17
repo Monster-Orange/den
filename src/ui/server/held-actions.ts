@@ -610,7 +610,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         return { ok: false, error: `there is no project "${project}"` };
       const session = str(a.session);
       if (!session || !SESSION_RE.test(session))
-        return { ok: false, error: "session must be a conversation id" }; // words-ok: the session parameter, for the agent
+        return { ok: false, error: "`session` must be a conversation id" };
       const persona = str(a.persona);
       if (!persona || !NAME_RE.test(persona))
         return { ok: false, error: "name the persona to run it as" };

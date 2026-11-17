@@ -1184,7 +1184,7 @@ const agentImportTool: DenTool = {
   name: "agent_import",
   title: "Bring in a conversation",
   description:
-    "Bring in a conversation started outside Den (in the project's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without session: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent); the list needs mcp.actions to name agent_import. With session and persona: asks the person to bring that one in (a held write: it waits for their Allow unless the approval policy says otherwise) and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.", // words-ok: the tool's session parameter, for the agent
+    "Bring in a conversation started outside Den (in the project's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without `session`: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent); the list needs mcp.actions to name agent_import. With `session` and `persona`: asks the person to bring that one in (a held write: it waits for their Allow unless the approval policy says otherwise) and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.",
   action: true,
   shape: {
     session: z
