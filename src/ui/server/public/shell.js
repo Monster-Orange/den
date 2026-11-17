@@ -4795,7 +4795,8 @@
   /**
    * Where Hub is, for the rail and ⌘K (D51): null when no Hub is set up;
    * else `href` (Hub, opened in this tab) or, when it can't be opened,
-   * `why` (D49's reason; the item is greyed and goes to Settings › Hub).
+   * `why` (D49's reason, for ⌘K) and `off` (the rail's, as den-ui data);
+   * the item is greyed and goes to Settings › Hub.
    */
   function hubLink() {
     var h = state.hub;
@@ -4817,7 +4818,17 @@
         bad_config: "hub.railBadConfig",
       }[h.state] ||
       (h.state === "connected" ? "hub.railBadUrl" : "hub.railUnreachable");
-    return { href: "", why: t(key) };
+    // Issue 326: the rail's reason as data (den-ui's `off`): the kit
+    // words it. `why` is ⌘K's longer sentence.
+    var off =
+      {
+        rejected: "reconnect",
+        forbidden: "forbidden",
+        no_token: "connect",
+        unreachable: "unreachable",
+        bad_config: "config",
+      }[h.state] || (h.state === "connected" ? "config" : "unreachable");
+    return { href: "", why: t(key), off: off };
   }
   function hubEntry() {
     var h = state.hub;
@@ -4827,14 +4838,16 @@
     // Hub's name) and the kind is "hub": the kit words the tooltip and
     // the name ("Acme Co · Hub", a count "3 waiting" after it).
     var label = h.team || t("hub.rail");
+    // Off: greyed by the kit, which says why from `off` (issue 326).
     if (!link.href)
       return {
         id: "hub",
-        cls: "den-hub den-off",
+        cls: "den-hub",
         href: "/settings#agents.hub",
         label: label,
         icon: "hub",
         kind: "hub",
+        off: link.off,
         attrs: { "data-hub": h.state || "unknown" },
       };
     var n = typeof h.unread === "number" && h.unread > 0 ? h.unread : 0;

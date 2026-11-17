@@ -24,6 +24,17 @@ export type NavKindId = "project" | "den" | "service" | "hub";
  * own kind word (the host's, in its language). Never a machine's name.
  */
 export type NavKind = NavKindId | Uppercase<NavKindId> | { artifact: string };
+/**
+ * 0.7.4: why a rail entry is off (greyed; the kit's words say why):
+ * not connected yet, its sign-in no longer accepted, not allowed (an
+ * admin decides), can't be reached, or its settings have a problem.
+ */
+export type NavOff =
+  | "connect"
+  | "reconnect"
+  | "forbidden"
+  | "unreachable"
+  | "config";
 /** 0.7.3: what a rail badge counts (the kit's words for it). */
 export type BadgeWhat = "open" | "waiting" | "down" | "running";
 /** 0.7.3: a project's initial, in a disc in place of the icon. */
@@ -59,6 +70,12 @@ export interface NavItem {
    * "<label> · <Kind>" (a host's tip, title or aria-label is not used).
    */
   kind?: NavKind | null;
+  /**
+   * 0.7.4: the entry is off: greyed (.den-off), and its tooltip and name
+   * say why in the kit's words ("Acme Co · Hub, reconnect in Settings").
+   * Any other value is dropped.
+   */
+  off?: NavOff | null;
 }
 export interface NavGroup {
   id: string;
@@ -105,6 +122,10 @@ export declare const HOST_TEXT_ATTRS: readonly string[];
 export declare const BADGE_WHATS: readonly BadgeWhat[];
 /** 0.7.3: the fixed kinds. */
 export declare const NAV_KINDS: readonly NavKindId[];
+/** 0.7.4: the reasons an entry may be off. */
+export declare const NAV_OFFS: readonly NavOff[];
+/** 0.7.4: an entry's off reason, from its data (any case), or null. */
+export declare function navOff(off: unknown): NavOff | null;
 /** 0.7.3: a kind's id ("artifact" for an artifact's) and its word. */
 export declare function navKind(
   kind: NavKind | null | undefined,

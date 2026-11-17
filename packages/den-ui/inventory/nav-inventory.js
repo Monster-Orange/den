@@ -22,7 +22,8 @@
  * toggle). For each: its key (below), its parent's key, slot, role, tag,
  * accessible name, classes, box { x, y, w, h } and computed styles
  * (STYLE_PROPS), and a rail entry's kind tag (0.7.3: `kind`, compared on
- * every entry both sides draw).
+ * every entry both sides draw) and why it is off (0.7.4: `off`, compared
+ * the same way).
  *
  * The key names an element the same way on every run: `#id` when it has
  * an id; `[data-nav="x"]` for a rail entry; else its parent's key, " > ",
@@ -305,6 +306,11 @@ export async function collectNav(page, opts = {}) {
             // hub, artifact), compared across products.
             ...(el.hasAttribute("data-nav-kind")
               ? { kind: el.getAttribute("data-nav-kind") }
+              : {}),
+            // Issue 326: why an entry is off (greyed), compared across
+            // products.
+            ...(el.hasAttribute("data-nav-off")
+              ? { off: el.getAttribute("data-nav-off") }
               : {}),
             // 0.7.3: host text in an entry of the rail (the kit stamps it).
             ...(el.hasAttribute("data-nav-host-text")
@@ -904,6 +910,10 @@ export function compareNav(actual, reference, opts = {}) {
       const w = wantKind.get(g.key);
       if (w && (w.kind ?? "") !== (g.kind ?? ""))
         add(w, "kind", w.kind ?? "(none)", g.kind ?? "(none)");
+      // Issue 326: an entry off on one side is off, for the same reason,
+      // on the other.
+      if (w && (w.off ?? "") !== (g.off ?? ""))
+        add(w, "off", w.off ?? "(none)", g.off ?? "(none)");
     }
   }
   // A crumb's value outlasts its label: one whose label shows while its

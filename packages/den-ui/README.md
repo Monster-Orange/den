@@ -102,6 +102,17 @@ data and HTML slots; it keeps no copy of the kit's markup, CSS or code.
   `navWarnings` lists it and `compareNav` fails on it (`hostText`).
   `data-*` attrs stay allowed.
 
+- **Off entries (0.7.4).** An entry that can't be opened sets `off` to
+  why, as data: `"connect"` (not connected yet), `"reconnect"` (its
+  sign-in is no longer accepted), `"forbidden"` (not allowed; an admin
+  decides), `"unreachable"` (can't be reached right now) or `"config"`
+  (its settings have a problem). The kit greys the entry (`.den-off`)
+  and words why, in en, es and ja, after the name in the tooltip and
+  the accessible name: "Acme Co · Hub, reconnect in Settings"; an entry
+  without a kind reads "Docs, can't be reached right now". Any other
+  value is dropped (not greyed, no words). The nav inventory records
+  each entry's `off` and `compareNav` reports an `off` difference.
+
 - **Slots.** The top bar reads: ☰, the brand, `start` (a search, a scope
   menu), then the right group: `end` (status chips), Report, `bell`, the
   version chip, `account`. Report · bell · account keep their place

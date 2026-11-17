@@ -8,6 +8,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A greyed Hub link in the rail says why again, such as "Acme Co · Hub, reconnect in Settings", in its tooltip and the name a screen reader reads. Den passes the reason as data and den-ui words it in English, Spanish and Japanese (issue 326).
+
 - The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
 
 - A link to a Settings row (the bell's /settings#agents.keep_running, or
