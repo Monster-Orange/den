@@ -445,6 +445,10 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   `appearance` and `account`, and the update-waiting pill as part of
   `version`. A product's own copy of one fails the gate. A product's
   own rows inside the bell, or its own menu inside a crumb, are not copies.
+- Report's screenshot shows what the person sees (issue 295): the
+  window's scroll and every scrolled pane's, with sticky and fixed parts
+  where they are on screen. The image is still the window's size, so
+  masks line up as before.
 
 ## 0.6.6
 
