@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import {
+  alertFeed,
   attentionDetail,
   attentionWaiting,
   notificationDeps,
@@ -1052,6 +1053,7 @@ import {
   readPolicySetting,
   writeTargets,
 } from "../../shared/approval-policy.js";
+import { alertSettings, patchAlerts } from "./alerts.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
@@ -2386,6 +2388,7 @@ type ApprovalDeps = {
   autoAllow: (action: string, agent: string) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
+  held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -2762,6 +2765,9 @@ function approvalDeps(): ApprovalDeps {
       });
     },
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
+    // Issue 172: a write held for the person's Allow alerts them.
+    held: (agent, project) =>
+      void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
   };
   return approvals;
 }
@@ -3860,6 +3866,25 @@ async function handleRequest(
 
   if (pathname === "/favicon.ico") {
     return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
+  }
+  // Issue 172 S2: the app manifest, so a phone can add Den to its home
+  // screen (an iPhone gets push only from there).
+  if (pathname === "/manifest.webmanifest") {
+    res.writeHead(200, {
+      "Content-Type": "application/manifest+json",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        name: product().title,
+        short_name: product().title,
+        start_url: "/agents",
+        scope: "/",
+        display: "standalone",
+        icons: [{ src: "/favicon.ico", sizes: "48x48" }],
+      }),
+    );
+    return;
   }
 
   // ── Playwright report ──────────────────────────────────────────────────────
@@ -5204,12 +5229,17 @@ async function handleRequest(
         url.searchParams.get("workspace"),
       );
       if (source.kind === "unsupported")
-        return sendJson(res, { unsupported: true, reason: source.reason });
+        return sendJson(res, {
+          unsupported: true,
+          reason: source.reason,
+          ...(source.t ? { t: source.t } : {}),
+        });
       const snapshot = await ensureSnapshot(source);
       if (!snapshot)
         return sendJson(res, {
           unsupported: true,
           reason: "could not snapshot the container log",
+          t: { key: "lg.why.noSnapshot" },
         });
       return sendJson(res, readPageBefore(snapshot, cursor, limit));
     } catch (e) {
@@ -6650,6 +6680,8 @@ async function handleRequest(
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
+        // Issue 172: alerts outside the bell (alerts.ts).
+        alerts: alertSettings(user),
         editor_open: editorOpen(user),
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
@@ -6696,6 +6728,18 @@ async function handleRequest(
                 ? w.bridge_probe_seconds
                 : 10,
           };
+        })(),
+        // den#143: how long `web up` waits for the server.
+        web_ready: (() => {
+          try {
+            const c = readWebAuthConfig(getDistRoot(), product().configFile);
+            return {
+              probeSeconds: c.readyProbeSeconds,
+              startSeconds: c.startWaitSeconds,
+            };
+          } catch {
+            return null;
+          }
         })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
@@ -6775,6 +6819,7 @@ async function handleRequest(
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
+          alerts?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           hub_url?: unknown;
@@ -6786,6 +6831,7 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          web_ready?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
@@ -6818,6 +6864,7 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            web_ready: body.web_ready,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
           });
@@ -6914,6 +6961,11 @@ async function handleRequest(
         if (body.bell_fold_days !== undefined) {
           const f = patchBellFoldDays(user, body.bell_fold_days);
           if (!f.ok) return send400(res, f.error);
+        }
+        // Issue 172: alerts outside the bell, and quiet hours.
+        if (body.alerts !== undefined) {
+          const a = patchAlerts(user, body.alerts);
+          if (!a.ok) return send400(res, a.error);
         }
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
@@ -7053,6 +7105,7 @@ async function handleRequest(
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
+          alerts: alertSettings(user),
           editor_open: editorOpen(user),
           embed: embedSettings(user),
         });

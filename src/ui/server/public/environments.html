@@ -267,6 +267,7 @@
         } from "/header.js";
         import { viewNoteHtml, viewQuery, viewScope } from "/view-scope.js";
         import { formatTime } from "/kit/time.js";
+        import { healthCellWords, statusVars } from "/value-words.js";
         void Promise.all([
           initHealth(),
           initWorkspacePill(),
@@ -320,7 +321,7 @@
           // The status in words: its catalog key when the server sends one
           // (release-service.ts, issue 171), else its text.
           const st = row.status?.t?.key
-            ? t(row.status.t.key, row.status.t.vars)
+            ? t(row.status.t.key, statusVars(row.status.t.vars))
             : (row.status?.text ?? "");
           const src = SOURCE_KEYS[row.source]
             ? t(SOURCE_KEYS[row.source])
@@ -343,17 +344,9 @@
               : r.ok === false
                 ? "err"
                 : "";
-          // A check that ran out of time says how long it waited (0.4.17).
-          const why =
-            r.error === "timeout" && r.ms
-              ? t("env.timedOut", { s: Math.max(1, Math.round(r.ms / 1000)) })
-              : r.error;
-          const what = r.status
-            ? String(r.status)
-            : r.ok
-              ? t("env.up")
-              : why || t("env.down");
-          const title = [r.label, checked, why].filter(Boolean).join(" — ");
+          // The reason in the page's language (issue 171); a check that ran
+          // out of time says how long it waited (0.4.17).
+          const { what, title } = healthCellWords({ ...r, url: checked });
           const link =
             r.url && /^https?:/.test(r.url)
               ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(what)}</a>`

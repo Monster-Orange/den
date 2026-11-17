@@ -108,6 +108,8 @@ const NAMES = [
   "__DEN_TITLE__",
   // A terminal's own name (agent-ops: "shell", "shell-2").
   "shell",
+  // A unit (a check's time: "2 ms"), as the literal check's NAMES.
+  "ms",
 ];
 
 beforeAll(async () => {
@@ -129,7 +131,12 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
-  s = await startAgentsPageServer({ inactive: ["alpha", "zeta"] });
+  s = await startAgentsPageServer({
+    inactive: ["alpha", "zeta"],
+    // Issue 171: a service that is down, so Environments shows a reason.
+    // Port 9 (discard) has nothing listening here.
+    health: { notes: "http://127.0.0.1:9/health" },
+  });
   const yml = path.join(s.tmp, "dist", "config", "local", "workspaces.yml");
   fs.writeFileSync(
     yml,
@@ -365,6 +372,85 @@ describe("den#171: Edge, Tests, Release, Logs, Environments and Services in es a
           });
           for (const w of ENGLISH)
             if (shown.includes(w)) found.push(`${url}: ${w}`);
+          await p.close();
+        }
+      } finally {
+        await s!.settings({ language: "es" });
+      }
+      expect(found).toEqual([]);
+    },
+    120_000,
+  );
+});
+
+describe("issue 171: values the server sends, in es and ja", () => {
+  // Edge's container state and TLS strategy, and a down service's reason
+  // on Environments, read in the page's language (value-words.js). Edge's
+  // status is the server's JSON (the demo runs no edge); Environments runs
+  // its real health checks against a port with nothing on it.
+  const EDGE = {
+    configured: true,
+    org: "acme",
+    container: "acme-edge",
+    state: "running",
+    up: true,
+    ports: { http: 80 },
+    network: "acme-edge",
+    domains: ["acme.localhost"],
+    routes: [],
+    certNames: [],
+    certIssued: false,
+    caTrusted: null,
+    tls: { strategy: "none", from: "set" },
+    included: [],
+    stacks: [],
+  };
+  const ENGLISH = [
+    "running",
+    "none",
+    "fetch failed",
+    "ECONNREFUSED",
+    "connect",
+    "unreachable",
+  ];
+
+  it.each(["es", "ja"])(
+    "%s: Edge and Environments show no English value",
+    async (lang) => {
+      if (!browser) return;
+      await s!.settings({ language: lang });
+      const found: string[] = [];
+      try {
+        for (const url of ["/edge", "/environments"]) {
+          const p = await browser.newPage({
+            viewport: { width: 1440, height: 1000 },
+          });
+          await p.route(`${s!.base}/api/edge*`, (r) =>
+            r.fulfill({
+              contentType: "application/json",
+              body: JSON.stringify(EDGE),
+            }),
+          );
+          await p.goto(signInUrl(s!.stateDir, s!.base, url));
+          if (url === "/edge")
+            await p.waitForSelector("#edge-body:not([aria-busy])");
+          else {
+            await p.waitForSelector('tr[data-svc="notes/notes"] .dot.err', {
+              timeout: 30_000,
+            });
+          }
+          const shown = await p.evaluate(() => {
+            const main = document.querySelector("#den-content");
+            if (!main) return "";
+            const titles = Array.from(main.querySelectorAll("[title]")).map(
+              (el) => el.getAttribute("title") ?? "",
+            );
+            const sub = document.querySelector("#edge-sub")?.textContent ?? "";
+            return [(main as HTMLElement).innerText, sub, ...titles].join("\n");
+          });
+          for (const w of ENGLISH)
+            if (new RegExp(`(^|[^\\w-])${w}(?![\\w-])`).test(shown))
+              found.push(`${url}: ${w}`);
           await p.close();
         }
       } finally {

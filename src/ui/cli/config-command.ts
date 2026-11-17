@@ -43,6 +43,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // 0.4.48: Den on the Docker bridge for the edge (Linux).
   "web.bridge_listen": ["web_bridge", "listen"],
   "web.bridge_probe_seconds": ["web_bridge", "probe_seconds"],
+  // den#143: how long `web up` waits for the server.
+  "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
+  "web.start_wait_seconds": ["web_ready", "start_seconds"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   "agents_list.refresh_timeout_seconds": [
