@@ -9,8 +9,8 @@
  *   busyAction(name, run, opts)   the kit's, with Den's words and hooks
  *
  * Auto-close (a fast success says so in a toast, a slow one closes after
- * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
- * restart-agent, fresh-start, report-preview, save-report-draft,
+ * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, create-hub,
+ * start-agent, restart-agent, fresh-start, report-preview, save-report-draft,
  * discard-draft, follow-project, keep-running, send-message, allow-web-app,
  * agent-order, delete-project, remove-service, gate-end. Waits for
  * Done: sign-out-all, send-report.
@@ -111,6 +111,16 @@ export const DEN_ACTIONS = {
       working: "pname.askW",
       success: "pname.askS",
       failure: "pname.askF",
+    },
+  },
+  // Issue 271: Settings › Project › Hub project: Create a Hub project.
+  "create-hub": {
+    who: "Hub",
+    autoClose: true,
+    keys: {
+      working: "hubp.createW",
+      success: "hubp.createS",
+      failure: "hubp.createF",
     },
   },
   // Issue 167: Settings › Project setup › Name, Hub not reachable: Try again.
