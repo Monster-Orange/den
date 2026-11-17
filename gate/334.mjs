@@ -19,12 +19,12 @@ const OTHER = [
   "/api/approvals",
 ];
 
-// ctx.api answers with the reply's JSON (the bed's driver) or a Response (the contract's fetch).
 async function call(ctx, p, init) {
-  const r = await ctx.api(p, init);
-  if (typeof r?.json === "function")
-    return { status: r.status, body: await r.json().catch(() => ({})) };
-  return { status: r?.status ?? null, body: r ?? {} };
+  const r = await ctx.fetch(p, init);
+  return {
+    status: r.status,
+    body: r.body && typeof r.body === "object" ? r.body : {},
+  };
 }
 
 export async function setup() {
@@ -62,7 +62,7 @@ export async function run(ctx) {
   return {
     state: { status: state.status, code: state.body?.code ?? null },
     other,
-    plainOk: !plain.body?.code,
+    plainOk: plain.status === 200,
   };
 }
 
@@ -95,21 +95,17 @@ export function expect(r) {
     },
     {
       clause: clauses[4],
-      ok:
-        r.state.code === "bad_key" &&
-        (r.state.status === 401 || r.state.status === null),
-      detail: `state with a made-up key: ${r.state.status ?? ""} ${r.state.code}`,
+      ok: r.state.status === 401 && r.state.code === "bad_key",
+      detail: `state with a made-up key: ${r.state.status} ${r.state.code}`,
     },
     {
       clause: clauses[5],
       ok:
         r.other.every(
-          (o) =>
-            o.code === "embed_key_scope" &&
-            (o.status === 403 || o.status === null),
+          (o) => o.status === 403 && o.code === "embed_key_scope",
         ) && r.plainOk,
       detail:
-        r.other.map((o) => `${o.p} ${o.status ?? ""} ${o.code}`).join("; ") +
+        r.other.map((o) => `${o.p} ${o.status} ${o.code}`).join("; ") +
         `; /api/settings without the key ${r.plainOk ? "answers" : "refused"}`,
     },
   ];

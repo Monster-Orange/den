@@ -37,21 +37,13 @@ export async function setup(ctx) {
     critical: before?.approvals_critical,
   };
   // An agent's claim to change the install's policy: refused. It carries the value already there.
-  const claim = await ctx.api("/api/settings", {
+  const claim = await ctx.fetch("/api/settings", {
     method: "POST",
     headers: { "content-type": "application/json", ...AGENT_CLAIM },
     body: JSON.stringify({ approvals_policy: s.policy ?? null }),
   });
-  // ctx.api answers with the reply's JSON (the bed's driver) or a Response (the contract's fetch).
-  const body =
-    typeof claim?.json === "function"
-      ? await claim.json().catch(() => ({}))
-      : claim;
-  s.claimStatus = typeof claim?.json === "function" ? claim.status : null;
-  s.claimError = body?.error ?? null;
-  s.refused =
-    s.claimStatus === 403 ||
-    (body?.ok === false && /only a person/.test(String(body?.error)));
+  s.claimStatus = claim.status;
+  s.claimError = claim.body?.error ?? null;
   s.after = (await ctx.api("/api/settings"))?.approvals_policy;
   return s;
 }
@@ -158,8 +150,10 @@ export function expect(cells) {
     },
     {
       clause: clauses[4],
-      ok: r0.refused && JSON.stringify(r0.after) === JSON.stringify(r0.policy),
-      detail: `an agent's POST /api/settings approvals_policy: ${r0.claimStatus ?? ""} ${r0.claimError ?? ""}; policy ${JSON.stringify(r0.policy)} → ${JSON.stringify(r0.after)}`,
+      ok:
+        r0.claimStatus === 403 &&
+        JSON.stringify(r0.after) === JSON.stringify(r0.policy),
+      detail: `an agent's POST /api/settings approvals_policy: ${r0.claimStatus} ${r0.claimError ?? ""}; policy ${JSON.stringify(r0.policy)} → ${JSON.stringify(r0.after)}`,
     },
     {
       clause: clauses[5],
