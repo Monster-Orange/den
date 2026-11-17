@@ -1462,10 +1462,26 @@
     "set.workspace.mcp_servers":
       "MCP adicionales de los agentes: este proyecto",
     "set.workspace.mcp_servers.d":
-      "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Un agente añade uno con project_mcp_add, y tú lo permites.",
+      "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Cambia o quita uno aquí. Un agente lo pide con project_mcp_add, project_mcp_update o project_mcp_remove, y tú lo permites.",
     "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
+    "pmcp.edit": "Cambiar",
+    "pmcp.editL": "Cambiar {name}",
+    "pmcp.remove": "Quitar",
+    "pmcp.removeL": "Quitar {name}",
+    "pmcp.url": "Dirección",
+    "pmcp.bearer": "Bearer",
+    "pmcp.bearerKeep": "un nombre de secrets.refs; en blanco lo mantiene",
+    "pmcp.noBearer": "Sin bearer",
+    "pmcp.save": "Guardar",
+    "pmcp.cancel": "Cancelar",
+    "pmcp.rmT": "¿Quitar el MCP?",
+    "pmcp.rmAsk":
+      "¿Quitar {name} de los agentes del proyecto {project}? Pierden sus herramientas en su próximo inicio o reanudación.",
+    "pmcp.rmW": "Quitando el MCP…",
+    "pmcp.rmS": "Quitado.",
+    "pmcp.rmF": "No se pudo quitar el MCP.",
     "ap.do.project_mcp_add":
       "Añadir el MCP {name} ({url}) a los agentes del proyecto {project}",
     "ap.mcp.warn":

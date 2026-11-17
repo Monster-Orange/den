@@ -1817,7 +1817,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Agents' extra MCP servers: this project",
     description:
-      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. An agent adds one with project_mcp_add, and you Allow it.",
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
     keywords: ["agents", "mcp", "mcp server", "tools", "bearer", "http"],
     scope: "workspace",
     control: { type: "custom", render: renderProjectMcp },
@@ -3281,7 +3281,9 @@ function renderProjectMode(host, ctx) {
 
 /**
  * Issue 335: Settings › Project › Agents' extra MCP servers. `v` is GET
- * /api/workspaces/:ws/mcp-servers: { servers: [{ name, url }] }.
+ * /api/workspaces/:ws/mcp-servers: { servers: [{ name, url }] }. Issue
+ * 352: each row has Change (its url, or its bearer's secrets.refs name)
+ * and Remove; a bearer's name is never shown, and a value never asked.
  */
 export function projectMcpHtml(v, t) {
   const servers = Array.isArray(v?.servers) ? v.servers : [];
@@ -3290,12 +3292,24 @@ export function projectMcpHtml(v, t) {
   return (
     `<ul class="set-note" data-pmcp-list>` +
     servers
-      .map(
-        (sv) =>
-          `<li data-pmcp="${escR(sv.name)}">${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</li>`,
-      )
+      .map((sv) => {
+        const n = escR(sv.name);
+        return (
+          `<li data-pmcp="${n}"><span data-pmcp-text>${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</span> ` +
+          `<button type="button" class="btn sm" data-pmcp-edit="${n}" aria-label="${escR(t("pmcp.editL", { name: sv.name }))}">${escR(t("pmcp.edit"))}</button> ` +
+          `<button type="button" class="btn sm" data-pmcp-remove="${n}" aria-label="${escR(t("pmcp.removeL", { name: sv.name }))}">${escR(t("pmcp.remove"))}</button>` +
+          `<div data-pmcp-form="${n}" hidden><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">` +
+          `<label>${escR(t("pmcp.url"))} <input type="url" spellcheck="false" autocomplete="off" data-pmcp-url value="${escR(sv.url)}"></label>` +
+          `<label>${escR(t("pmcp.bearer"))} <input type="text" spellcheck="false" autocomplete="off" data-pmcp-bearer placeholder="${escR(t("pmcp.bearerKeep"))}"></label>` +
+          `<label><input type="checkbox" data-pmcp-nobearer> ${escR(t("pmcp.noBearer"))}</label>` +
+          `<button type="button" class="btn sm primary" data-pmcp-save>${escR(t("pmcp.save"))}</button>` +
+          `<button type="button" class="btn sm" data-pmcp-cancel>${escR(t("pmcp.cancel"))}</button>` +
+          `</div></div></li>`
+        );
+      })
       .join("") +
-    `</ul>`
+    `</ul>` +
+    `<div class="rt-err" role="alert" hidden></div>`
   );
 }
 
@@ -3306,10 +3320,87 @@ function renderProjectMcp(host, ctx) {
     return Promise.resolve();
   }
   const t = (k, v) => ctx.shell.t(k, v);
+  const base = `/api/workspaces/${encodeURIComponent(ws)}/mcp-servers`;
+  const fail = (e, fallback) => {
+    const err = host.querySelector(".rt-err");
+    if (!err) return;
+    err.hidden = false;
+    err.textContent = e?.message || fallback;
+  };
+  // Issue 352: a person's own click is the decision; the server checks
+  // it as the held writes are, and answers the list as it is now.
+  const send = (kind, method, name, body, button) =>
+    ctx.shell
+      .busyAction(
+        kind,
+        (headers) =>
+          ctx.shell.api(method, `${base}/${encodeURIComponent(name)}`, body, {
+            headers,
+          }),
+        {
+          button,
+          onFail: (e) =>
+            fail(e, t(kind === "save" ? "busy.saveF" : "pmcp.rmF")),
+        },
+      )
+      .then((r) => {
+        if (r !== undefined && r !== null) return renderProjectMcp(host, ctx);
+      });
   return ctx.shell
-    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/mcp-servers`)
+    .api("GET", base)
     .then((v) => {
       host.innerHTML = projectMcpHtml(v, t);
+      host.querySelectorAll("[data-pmcp-edit]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const name = b.getAttribute("data-pmcp-edit");
+          const form = host.querySelector(
+            `[data-pmcp-form="${CSS.escape(name)}"]`,
+          );
+          if (!form) return;
+          form.hidden = !form.hidden;
+          if (!form.hidden) form.querySelector("[data-pmcp-url]")?.focus();
+        }),
+      );
+      host.querySelectorAll("[data-pmcp-form]").forEach((form) => {
+        const name = form.getAttribute("data-pmcp-form");
+        const cur = (Array.isArray(v?.servers) ? v.servers : []).find(
+          (s) => s.name === name,
+        );
+        form
+          .querySelector("[data-pmcp-cancel]")
+          ?.addEventListener("click", () => {
+            form.hidden = true;
+          });
+        const save = form.querySelector("[data-pmcp-save]");
+        save?.addEventListener("click", () => {
+          const url = form.querySelector("[data-pmcp-url]").value.trim();
+          const bearer = form.querySelector("[data-pmcp-bearer]").value.trim();
+          const none = form.querySelector("[data-pmcp-nobearer]").checked;
+          const body = {
+            ...(url && url !== cur?.url ? { url } : {}),
+            ...(none ? { no_bearer: true } : bearer ? { bearer } : {}),
+          };
+          if (!Object.keys(body).length) {
+            form.hidden = true;
+            return;
+          }
+          return send("save", "POST", name, body, save);
+        });
+      });
+      host.querySelectorAll("[data-pmcp-remove]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const name = b.getAttribute("data-pmcp-remove");
+          const { askConfirm } = await import("/dialog-den.js");
+          const ok = await askConfirm({
+            title: t("pmcp.rmT"),
+            message: t("pmcp.rmAsk", { name, project: ws }),
+            okLabel: t("pmcp.remove"),
+            danger: true,
+          });
+          if (!ok) return;
+          return send("remove-mcp", "DELETE", name, undefined, b);
+        }),
+      );
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note" data-pmcp-error>${escR(e?.message || t("pmcp.failed"))}</p>`;

@@ -788,6 +788,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/mode",
   // Issue 225: a project's mode, and its agents follow it (project_mode asks).
   "/api/workspaces/:ws/agent-modes",
+  // Issue 352: change or remove a project's MCP server (project_mcp_* asks).
+  "/api/workspaces/:ws/mcp-servers/:name",
   // Issue 103: a composer's Send types into an agent's session.
   "/api/workspaces/:ws/agents/:id/say",
   // Issue 96: the order a person sees their agents in is the person's.

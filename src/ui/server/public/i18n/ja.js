@@ -1424,10 +1424,26 @@
       "このプロジェクトのエージェントが動くモードで、Den 全体の既定より優先されます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。下に各エージェントのモードとその出どころを示します。変更は実行中のエージェントにもターンの後で自動的に届きます。",
     "set.workspace.mcp_servers": "エージェントの追加 MCP: このプロジェクト",
     "set.workspace.mcp_servers.d":
-      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。エージェントが project_mcp_add で追加を求め、あなたが許可します。",
+      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。ここで変更や削除もできます。エージェントは project_mcp_add、project_mcp_update、project_mcp_remove で求め、あなたが許可します。",
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "このプロジェクトの MCP を読み込めませんでした。",
+    "pmcp.edit": "変更",
+    "pmcp.editL": "{name} を変更",
+    "pmcp.remove": "外す",
+    "pmcp.removeL": "{name} を外す",
+    "pmcp.url": "アドレス",
+    "pmcp.bearer": "bearer",
+    "pmcp.bearerKeep": "secrets.refs の名前 (空欄なら今のまま)",
+    "pmcp.noBearer": "bearer なし",
+    "pmcp.save": "保存",
+    "pmcp.cancel": "キャンセル",
+    "pmcp.rmT": "MCP を外しますか?",
+    "pmcp.rmAsk":
+      "{name} をプロジェクト {project} のエージェントから外しますか? 次の起動または再開時にそのツールを使えなくなります。",
+    "pmcp.rmW": "MCP を外しています…",
+    "pmcp.rmS": "外しました。",
+    "pmcp.rmF": "MCP を外せませんでした。",
     "ap.do.project_mcp_add":
       "MCP {name} ({url}) をプロジェクト {project} のエージェントに追加",
     "ap.mcp.warn":

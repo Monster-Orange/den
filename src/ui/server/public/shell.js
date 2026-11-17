@@ -2239,10 +2239,26 @@
       "The mode this project's agents run in, over the Den-wide default. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
     "set.workspace.mcp_servers": "Agents' extra MCP servers: this project",
     "set.workspace.mcp_servers.d":
-      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. An agent adds one with project_mcp_add, and you Allow it.",
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
     "pmcp.none": "No extra MCP servers for this project's agents.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "Couldn't read this project's MCP servers.",
+    "pmcp.edit": "Change",
+    "pmcp.editL": "Change {name}",
+    "pmcp.remove": "Remove",
+    "pmcp.removeL": "Remove {name}",
+    "pmcp.url": "Address",
+    "pmcp.bearer": "Bearer",
+    "pmcp.bearerKeep": "a secrets.refs name; blank keeps it",
+    "pmcp.noBearer": "No bearer",
+    "pmcp.save": "Save",
+    "pmcp.cancel": "Cancel",
+    "pmcp.rmT": "Remove the MCP server?",
+    "pmcp.rmAsk":
+      "Remove {name} from project {project}'s agents? They lose its tools at their next start or resume.",
+    "pmcp.rmW": "Removing the MCP server…",
+    "pmcp.rmS": "Removed.",
+    "pmcp.rmF": "Couldn't remove the MCP server.",
     "ap.do.project_mcp_add":
       "Add MCP server {name} ({url}) to project {project}'s agents",
     "ap.mcp.warn":

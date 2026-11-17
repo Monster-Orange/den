@@ -43,9 +43,13 @@ describe("issue 335: the project's extra MCP servers in Settings", () => {
       },
       t,
     );
-    expect(text(html)).toBe(
-      "tracker: https://mcp.tracker.example.test wiki: http://localhost:4999/mcp",
-    );
+    // Issue 352: each row also has Change and Remove (project-mcp-row).
+    expect(
+      [...html.matchAll(/data-pmcp-text>([^<]*)</g)].map((m) => text(m[1])),
+    ).toEqual([
+      "tracker: https://mcp.tracker.example.test",
+      "wiki: http://localhost:4999/mcp",
+    ]);
     expect(html).toContain('data-pmcp="tracker"');
   });
 
@@ -71,6 +75,20 @@ describe("issue 335: the project's extra MCP servers in Settings", () => {
     "ap.do.project_mcp_update",
     "ap.mcp.removeWarn",
     "ap.mcp.urlChange",
+    "pmcp.edit",
+    "pmcp.editL",
+    "pmcp.remove",
+    "pmcp.removeL",
+    "pmcp.url",
+    "pmcp.bearerKeep",
+    "pmcp.noBearer",
+    "pmcp.save",
+    "pmcp.cancel",
+    "pmcp.rmT",
+    "pmcp.rmAsk",
+    "pmcp.rmW",
+    "pmcp.rmS",
+    "pmcp.rmF",
   ];
   const catalog = (lang: string): Record<string, string> => {
     const window: Record<string, unknown> = {};
@@ -87,7 +105,7 @@ describe("issue 335: the project's extra MCP servers in Settings", () => {
   it.each(["es", "ja"])("%s has each, translated", (lang) => {
     const en = enCatalog();
     const table = catalog(lang);
-    for (const k of [...KEYS, "pmcp.row"])
+    for (const k of [...KEYS, "pmcp.row", "pmcp.bearer"])
       expect({ k, has: typeof table[k] }).toEqual({ k, has: "string" });
     for (const k of KEYS)
       expect({ k, same: table[k] === en[k] }).toEqual({ k, same: false });

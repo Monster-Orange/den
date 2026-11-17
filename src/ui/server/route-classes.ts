@@ -512,6 +512,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/mcp-servers",
     "issue 335: a project's extra MCP servers, names and urls only (an agent adds one with project_mcp_add)",
   ),
+  M(
+    ["POST", "DELETE"],
+    "/api/workspaces/:ws/mcp-servers/:name",
+    "issue 352: a person changes one's url or bearer reference, or removes it; a person's only (an agent asks with project_mcp_update or project_mcp_remove)",
+  ),
   R(
     "/api/workspaces/:ws/agent-modes",
     "issue 225: a project's mode and each agent's actual mode with where it comes from",
@@ -891,6 +896,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:DETAILS_PATH": ["/api/workspaces/:ws/agents/:id/details"],
   "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
+  "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],
