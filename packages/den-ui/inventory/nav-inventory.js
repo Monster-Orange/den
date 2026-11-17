@@ -41,8 +41,11 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import * as path from "node:path";
+// The kit's own src/fonts, found from the kit's files themselves: an ES
+// module reads it from import.meta.url, CommonJS from __dirname (the
+// package's "imports" picks the side).
+import { FONTS_DIR } from "#den-ui-fonts-dir";
 
 /** The computed styles kept for each element. */
 export const STYLE_PROPS = [
@@ -627,29 +630,13 @@ export const PIN_FONTS_CSS = [
 ].join("\n");
 
 /**
- * Where the kit's font files are: this package's src/fonts. Found beside
- * this file where the runtime says where that is (CommonJS, as a test
- * runner may load it), else as the installed package from the working
- * folder.
- */
-function kitFontsDir() {
-  if (typeof __dirname === "string") {
-    const here = path.join(__dirname, "..", "src", "fonts");
-    if (existsSync(here)) return here;
-  }
-  const req = createRequire(path.join(process.cwd(), "noop.js"));
-  const pkg = req.resolve("@monster-orange/den-ui/package.json");
-  return path.join(path.dirname(pkg), "src", "fonts");
-}
-
-/**
  * Pins a Playwright BrowserContext's fonts for the inventory (call it
  * before the context opens a page): every page gets the pin stylesheet
  * first in its <head>, and /__pin-fonts/* answers with the kit's own woff2
  * files. `opts.fontsDir`: where they are, if not this package's.
  */
 export async function pinNavFonts(context, opts = {}) {
-  const dir = opts.fontsDir || kitFontsDir();
+  const dir = opts.fontsDir || FONTS_DIR;
   await context.route("**/__pin-fonts/**", (route) => {
     const name = decodeURIComponent(
       new URL(route.request().url()).pathname.split("/").pop() || "",

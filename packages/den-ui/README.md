@@ -276,7 +276,11 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   lays out alike from run to run, as when the reference was taken. Call it
   on the Playwright `BrowserContext` before opening the page. It puts the
   pin stylesheet first on every page and serves `/__pin-fonts/*` from the
-  package's `src/fonts` (or `{ fontsDir }`). `NAV_BROWSER_IMAGE` and
+  package's `src/fonts` (or `{ fontsDir }`). It finds them from its own
+  files, never from the working folder: the package's `imports` entry
+  `#den-ui-fonts-dir` is `inventory/fonts-dir.mjs` for an ES module
+  (`import.meta.url`) and `inventory/fonts-dir.cjs` for CommonJS
+  (`__dirname`). Both ship in `inventory/`; a host serves neither. `NAV_BROWSER_IMAGE` and
   `NAV_THEME` are exported beside it.
 
 Den runs it in `tests/unit/den-ui/nav-inventory.browser.test.ts` (CI's

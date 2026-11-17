@@ -35,6 +35,13 @@
     },
     "./inventory/reference/*": "./inventory/reference/*"
   },
+  "imports": {
+    "#den-ui-fonts-dir": {
+      "import": "./inventory/fonts-dir.mjs",
+      "require": "./inventory/fonts-dir.cjs",
+      "default": "./inventory/fonts-dir.mjs"
+    }
+  },
   "files": [
     "src/",
     "inventory/",
