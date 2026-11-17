@@ -720,7 +720,14 @@
       </div>
 
       <div class="page-main">
-        <div class="table-pane">
+        <!-- It scrolls, so a keyboard can reach it (issue 297). -->
+        <div
+          class="table-pane"
+          tabindex="0"
+          role="region"
+          aria-label="Releases"
+          data-t-attr="aria-label:n.releases"
+        >
           <table id="rel-table">
             <thead>
               <tr id="rel-head"></tr>

@@ -4028,6 +4028,38 @@ function freeId(d: AgentsResolved, persona: string): string {
 }
 
 /**
+ * Issue 160: agent_import as a held write runs it (after the person's
+ * Allow, or the approval policy's): importAgent, answered like the CLI's
+ * --json ({ ok, … }), never thrown.
+ */
+export async function runAgentImport(
+  d: AgentsResolved,
+  a: { project: string; session: string; persona: string; runtime?: string },
+): Promise<
+  | { ok: true; id: string; project: string; persona: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const s = await importAgent(d, {
+      workspace: a.project,
+      session: a.session,
+      persona: a.persona,
+      ...(a.runtime ? { runtime: a.runtime } : {}),
+    });
+    if (s.early)
+      return { ok: false, error: `agent ${s.rec.id} exited at once` };
+    return {
+      ok: true,
+      id: s.rec.id,
+      project: a.project,
+      persona: s.rec.persona,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
  * Bring a conversation in (AG-17.1): the runtime's resume of it, under Den
  * (its token, hooks, guards, the folder it ran in, the audit trail), as a
  * new agent with the persona given. Afterwards it is an agent like any

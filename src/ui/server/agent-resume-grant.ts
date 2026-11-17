@@ -76,12 +76,22 @@ export function agentImportRefusal(
   return null;
 }
 
+/**
+ * Issue 160: an agent's token never brings a conversation in by itself:
+ * agent_import is a held write (POST /api/approvals) that asks the person
+ * by default. The list stays opted in through mcp.actions.
+ */
+export const AGENT_IMPORT_HELD =
+  "bringing a conversation in is a held write: ask with agent_import (POST /api/approvals); the person allows it";
+
 /** The import route's workspace, decoded; null when it isn't it. */
-export function agentImportTarget(pathname: string): { ws: string } | null {
+export function agentImportTarget(
+  pathname: string,
+): { ws: string; imports: boolean } | null {
   const m = AGENT_IMPORT_ROUTE.exec(pathname);
   if (!m) return null;
   try {
-    return { ws: decodeURIComponent(m[1]) };
+    return { ws: decodeURIComponent(m[1]), imports: m[2] !== undefined };
   } catch {
     return null;
   }
