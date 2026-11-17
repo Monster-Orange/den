@@ -114,6 +114,14 @@ const nav = [
   { id: "a-spec", label: "Spec", href: "#spec", group: "pinned", kind: { artifact: "Mock" } },
   { id: "home", label: "Home", href: "#home", group: "work", icon: "home", current: true,
     ...(host ? { attrs: { title: "Host home" } } : {}) },
+  ...(q.has("count")
+    ? [
+        { id: "hdocs", label: "Hub Docs", href: "#hd", group: "work", icon: "home", badge: { n: 4 } },
+        { id: "rdocs", label: "Repo Docs", href: "#rd", group: "work", icon: "home", badge: { n: 1234 } },
+        { id: "kco", label: "Acme Co", href: "#kc", group: "work", icon: "hub", kind: "hub", badge: { n: 4 } },
+        { id: "none", label: "Empty", href: "#e", group: "work", icon: "home", badge: { n: "" } },
+      ]
+    : []),
 ];
 const model = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -443,8 +451,8 @@ for (const engine of ["chromium", "webkit"]) {
       expect(got.project).toEqual(["North · Project", "North · Project"]);
       // The badge's words are the kit's, from what it counts.
       expect(got.den).toEqual(["North · Den", "North · Den, 3 waiting"]);
-      // A badge's own label (host text) is not used.
-      expect(got.api).toEqual(["api · Service", "api · Service"]);
+      // A badge's own label (host text) is not used; its count still reads.
+      expect(got.api).toEqual(["api · Service", "api · Service, 2"]);
       await p.context().close();
       for (const [lang, words] of [
         ["es", "North · Den, 3 en espera"],
@@ -681,6 +689,37 @@ for (const engine of ["chromium", "webkit"]) {
           actual: "(none)",
         },
       ]);
+    });
+
+    it("L15: a plain count (no what) reads its number: 'Hub Docs, 4'", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const [lang, big] of [
+        ["en", "1,234"],
+        ["es", "1234"],
+        ["ja", "1,234"],
+      ] as const) {
+        const p = await open(b, `?count&lang=${lang}`);
+        const got = await p.evaluate(() =>
+          ["hdocs", "rdocs", "kco", "none"].map((id) =>
+            document
+              .querySelector(`.den-rail [data-nav="${id}"]`)!
+              .getAttribute("aria-label"),
+          ),
+        );
+        const hub =
+          lang === "en" ? "Hub" : got[2]!.split(" · ")[1].split(",")[0];
+        expect({ lang, got }).toEqual({
+          lang,
+          got: [
+            "Hub Docs, 4",
+            `Repo Docs, ${big}`,
+            `Acme Co · ${hub}, 4`,
+            null,
+          ],
+        });
+        await p.context().close();
+      }
     });
   });
 }

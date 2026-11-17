@@ -128,11 +128,22 @@ export function navOff(off) {
   return NAV_OFFS.includes(id) ? id : null;
 }
 
-/** A badge's words, from its data: "3 waiting". No `what`: none. */
+/**
+ * A badge's words, from its data: "3 waiting". Without a `what` (a plain
+ * total) the kit reads the bare number, so "Hub Docs, 4" still says the
+ * count the visible badge (aria-hidden) shows. Nothing to count: none.
+ */
 function badgeWords(b, lang) {
-  if (!b || !BADGE_WHATS.includes(b.what)) return "";
-  const n = typeof b.n === "number" ? b.n : String(b.n ?? "");
-  return kitT(lang, "kit.badge." + b.what, { n });
+  if (!b || b.n == null || b.n === "") return "";
+  const n = typeof b.n === "number" ? b.n : String(b.n);
+  if (BADGE_WHATS.includes(b.what))
+    return kitT(lang, "kit.badge." + b.what, { n });
+  if (typeof n !== "number") return n;
+  try {
+    return new Intl.NumberFormat(lang || undefined).format(n);
+  } catch {
+    return String(n);
+  }
 }
 
 /** The icon, or (issue 307) a project's initial in a disc: { initial }. */
@@ -161,7 +172,8 @@ function leadIcon(ic) {
  * data, the kit owns the words.
  *
  * `badge.what` ("open", "waiting", "down", "running"): what the badge
- * counts; the kit words it ("North · Den, 3 waiting"). A label that is
+ * counts; the kit words it ("North · Den, 3 waiting"). Without one, the
+ * bare number reads ("Hub Docs, 4"). A label that is
  * its kind word reads once ("Hub", not "Hub · Hub"). A pin row gets
  * aria-keyshortcuts="Delete" from the kit.
  *
