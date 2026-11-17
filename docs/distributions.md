@@ -2543,6 +2543,12 @@ claude setup-token                 # once, by you: prints a long-lived token
 ./bin/acme agents token status     # whether it is there, and when it was set
 ```
 
+Or paste it in Settings › Agents › Keep agents running after logout ›
+Sign-in token and Save: the same store, by the same code, and it is never
+shown back. Under `always`, `doctor` and the Settings row also warn when
+the store's own credential (`secrets.onepassword.token`) is a `keychain:`
+source, which the daemon may not reach: use `file:` or `env:`.
+
 The token is kept in the install's secrets store (`secrets.provider`:
 1Password or Doppler), under `secrets.refs.agent_signin_token`. A
 distribution's ref wins; without one, `token set` creates the item and

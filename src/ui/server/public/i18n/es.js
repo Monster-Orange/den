@@ -597,6 +597,12 @@
       "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. Crea uno con claude setup-token y luego __DEN_CLI__ agents token set.",
     "keep.credKeychain":
       "La credencial del almacén está en el llavero de inicio, al que el servicio siempre activo puede no llegar; usa file: o env: (ver docs/always-on-gate.md).",
+    "keep.setup":
+      "El único paso en la terminal: ejecuta esto, inicia sesión en el navegador que abre y pega aquí su token.",
+    "keep.copy": "Copiar",
+    "keep.tokenLabel": "Token de inicio de sesión",
+    "keep.tokenSave": "Guardar",
+    "keep.tokenFailed": "No se guardó: {error}",
     "keep.tokenSet":
       "Los agentes inician sesión con el token guardado el {date}.",
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",

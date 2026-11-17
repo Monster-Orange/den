@@ -574,6 +574,12 @@
       "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。claude setup-token で作り、__DEN_CLI__ agents token set で保存してください。",
     "keep.credKeychain":
       "ストアの認証情報がログインキーチェーンにあり、常時稼働のサービスからは届かないことがあります。file: か env: を使ってください（docs/always-on-gate.md を参照）。",
+    "keep.setup":
+      "ターミナルでの作業はこれだけです: これを実行し、開いたブラウザーでサインインして、表示されたトークンをここに貼り付けてください。",
+    "keep.copy": "コピー",
+    "keep.tokenLabel": "サインイン用トークン",
+    "keep.tokenSave": "保存",
+    "keep.tokenFailed": "保存されませんでした: {error}",
     "keep.tokenSet":
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",

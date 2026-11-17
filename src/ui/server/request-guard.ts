@@ -748,6 +748,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/web-url",
   // Issue 163: re-installs the launchd jobs (and may run sudo): a person's.
   "/api/keep-running-after-logout",
+  // #299: the agents' sign-in token, into the secrets store: a person's.
+  "/api/agents/signin-token",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",

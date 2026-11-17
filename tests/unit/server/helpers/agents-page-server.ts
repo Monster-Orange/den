@@ -103,6 +103,11 @@ export async function startAgentsPageServer(
      * prints for --version; any other run is recorded and fails.
      */
     bins?: Record<string, string>;
+    /**
+     * #299: whole fake CLIs on PATH, name to the script's body (after the
+     * #! line); `$TMP` in it is this server's temp dir.
+     */
+    scripts?: Record<string, string>;
     /** More workspaces in workspaces.yml, not active (no services). */
     inactive?: string[];
     /** ON-6: a fresh Den: north and south hold no repo yet. */
@@ -249,6 +254,12 @@ export async function startAgentsPageServer(
       0o755,
     );
 
+  for (const [name, body] of Object.entries(opts.scripts ?? {}))
+    write(
+      path.join(bin, name),
+      `#!/bin/sh\n${body.split("$TMP").join(tmp)}\n`,
+      0o755,
+    );
   const home = path.join(tmp, "home");
   const stateDir = path.join(home, ".acme");
   fs.mkdirSync(stateDir, { recursive: true });

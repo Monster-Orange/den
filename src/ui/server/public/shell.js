@@ -1401,6 +1401,12 @@
       "No sign-in token is set: agents will not be able to sign in after logout. Make one with claude setup-token, then __DEN_CLI__ agents token set.",
     "keep.credKeychain":
       "The store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md).",
+    "keep.setup":
+      "The only terminal step: run this, sign in in the browser it opens, and paste its token here.",
+    "keep.copy": "Copy",
+    "keep.tokenLabel": "Sign-in token",
+    "keep.tokenSave": "Save",
+    "keep.tokenFailed": "Not saved: {error}",
     "keep.tokenSet": "Agents sign in with the token set {date}.",
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":

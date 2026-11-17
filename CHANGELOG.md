@@ -27,6 +27,18 @@ config and manifest changes a distribution must make to move to it under
   was set. The token doesn't carry its expiry, so after
   `agents.signin_token_warn_days` (user.yml, 330) they say to make a new
   one. In English, Spanish and Japanese. (#163)
+- Settings › Agents › Keep agents running after logout has a Sign-in
+  token field: paste the token and Save (the working pop-up). It goes to
+  the install's secrets store by the same code as `agents token set`
+  (POST /api/agents/signin-token, a person's only; an agent's request is
+  refused). It is never shown back: no answer, log or page carries it,
+  and the row then says when it was set. One line above it names the
+  only terminal step, `claude setup-token`, with a copy button. In
+  English, Spanish and Japanese. (#299, #163)
+- Under mode always, `doctor`'s agent sign-in row and the Settings row
+  warn when the store's own credential (the 1Password service-account
+  token) is referenced as `keychain:`: the always-on service may not
+  reach it; use `file:` or `env:`. (#163)
 - A checklist for a real logout on a gate machine:
   `docs/always-on-gate.md`. Not run here. (#163)
 

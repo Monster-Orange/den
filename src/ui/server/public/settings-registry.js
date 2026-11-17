@@ -950,6 +950,65 @@ export function keepTokenLine(s, t) {
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
 }
 
+/** #299: the only terminal step for the agents' sign-in token. */
+export const SETUP_TOKEN_CMD = "claude setup-token";
+
+/**
+ * #299: Settings' Sign-in token field. Save sends the pasted token once
+ * (the working pop-up), clears the field before the answer comes, and
+ * shows what the server says: set <date>, or why not. The token is never
+ * put back in the page.
+ */
+function wireTokenField(host, ctx, line, t) {
+  const input = host.querySelector("[data-keep-token-input]");
+  const save = host.querySelector("[data-keep-token-save]");
+  const note = host.querySelector("[data-keep-token-note]");
+  host.querySelector("[data-keep-copy]").addEventListener("click", () => {
+    void navigator.clipboard?.writeText(SETUP_TOKEN_CMD);
+  });
+  save.addEventListener("click", async () => {
+    const token = input.value;
+    input.value = "";
+    note.hidden = true;
+    if (!token.trim()) {
+      input.focus();
+      return;
+    }
+    save.disabled = true;
+    try {
+      const r = await ctx.shell.busyAction(
+        "save",
+        (headers) =>
+          ctx.shell.api(
+            "POST",
+            "/api/agents/signin-token",
+            { token },
+            { headers },
+          ),
+        { button: save },
+      );
+      if (r?.ok) {
+        const l = keepTokenLine(r.signin, t);
+        line.dataset.keepToken = l.state;
+        line.textContent = l.text;
+        line.hidden = false;
+      } else {
+        note.textContent = t("keep.tokenFailed", {
+          error: r?.error || "",
+        });
+        note.hidden = false;
+      }
+    } catch (e) {
+      note.textContent = t("keep.tokenFailed", {
+        error: String(e?.message || ""),
+      });
+      note.hidden = false;
+    } finally {
+      save.disabled = false;
+    }
+  });
+}
+
 /** Issue 163: the switch, Apply, and what it means under the daemon. */
 function renderKeepRunning(host, ctx) {
   const t = (k, v) => ctx.shell.t(k, v);
@@ -967,6 +1026,13 @@ function renderKeepRunning(host, ctx) {
     `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
     `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
+    // #299: the token is pasted here; the one terminal step is named, with
+    // a copy button. The field is never filled from the server.
+    `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
+    `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
+    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button></label>` +
+    `<p class="set-note" data-keep-token-note hidden></p>` +
+    `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
     `</div>`;
@@ -979,10 +1045,13 @@ function renderKeepRunning(host, ctx) {
     note.textContent = msg || "";
   };
   const token = host.querySelector("[data-keep-token]");
+  const signin = host.querySelector("[data-keep-signin]");
   box.addEventListener("change", () => {
     warn.hidden = !box.checked;
     token.hidden = !box.checked;
+    signin.hidden = !box.checked;
   });
+  wireTokenField(host, ctx, token, t);
   btn.addEventListener("click", async () => {
     const on = box.checked;
     btn.disabled = true;

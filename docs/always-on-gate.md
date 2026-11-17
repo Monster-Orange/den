@@ -22,8 +22,9 @@ Below, `acme` is the test distribution's CLI and `<label>` its
    `env:`, not `keychain:`. Doppler: a CLI token that isn't kept only in
    the login keychain.
 2. Make the agents' token once, in a terminal: `claude setup-token`. Then
-   `./bin/acme agents token set` and paste it at the prompt. It isn't
-   shown, and it never goes on the command line.
+   paste it in Settings › Agents › Keep agents running after logout ›
+   Sign-in token and Save, or `./bin/acme agents token set` and paste it
+   at the prompt. It isn't shown, and it never goes on the command line.
 3. `./bin/acme agents token status` prints `✓ agents sign in with the
 token set <date> (in <store>)`.
 
