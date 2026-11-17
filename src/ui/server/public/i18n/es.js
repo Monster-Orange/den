@@ -603,6 +603,8 @@
     "keep.tokenLabel": "Token de inicio de sesión",
     "keep.tokenSave": "Guardar",
     "keep.tokenFailed": "No se guardó: {error}",
+    "keep.noStore":
+      "Esta instalación no tiene almacén de secretos, así que el token de inicio de sesión no se puede guardar. Primero define secrets.provider como 1password o doppler.",
     "keep.tokenSet":
       "Los agentes inician sesión con el token guardado el {date}.",
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",

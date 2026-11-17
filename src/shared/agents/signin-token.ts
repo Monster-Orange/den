@@ -222,8 +222,9 @@ export async function saveAgentToken(
   const bad = tokenShapeError(token);
   if (bad) throw new Error(bad);
   const value = token.trim();
-  const provider = (d.provider ?? getSecretsProvider)();
   const st = (d.status ?? (() => secretsStatus()))();
+  if (st.backend === "none") throw new NoSecretsStoreError();
+  const provider = (d.provider ?? getSecretsProvider)();
   let ref = (d.ref ?? (() => agentTokenRef()))();
   let created: Partial<SecretRef> | null = null;
   if (!ref) {
@@ -296,6 +297,26 @@ export async function readAgentToken(
   }
 }
 
+/** The code a person-facing answer carries when there is no store. */
+export const NO_SECRETS_STORE = "no_secrets_store";
+
+/** Plain words for it: a config gap, not a server error. */
+export const NO_STORE_MESSAGE =
+  "this install has no secrets store, so the sign-in token can't be kept: set secrets.provider to 1password or doppler";
+
+/** secrets.provider is none: nothing can keep the token. */
+export class NoSecretsStoreError extends Error {
+  readonly code = NO_SECRETS_STORE;
+  constructor() {
+    super(NO_STORE_MESSAGE);
+    this.name = "NoSecretsStoreError";
+  }
+}
+
+/** `agents token status` with no token, not under the always-on service. */
+export const NO_TOKEN_NOT_NEEDED =
+  "no sign-in token set; needed only under Keep agents running after logout";
+
 export interface TokenStatus {
   /** Agents started now sign in with the token (the always-on service). */
   mode: SignInMode;
@@ -314,6 +335,8 @@ export interface TokenStatus {
   stored?: boolean;
   /** Why it isn't stored, in plain words (never the token). */
   reason?: string;
+  /** No secrets store (secrets.provider none): nothing can keep it. */
+  noStore?: boolean;
   /**
    * The store's own credential (1Password's service-account token) is
    * referenced as `keychain:`, which the always-on service may not reach.
@@ -403,6 +426,7 @@ export function agentTokenStatusNow(d: TokenStatusDeps): TokenStatus {
     old: ageDays !== null && ageDays >= warnDays,
     warnDays,
     store,
+    noStore: backend === "none",
     credInKeychain,
   };
   return out;
@@ -429,6 +453,10 @@ function tokenLine(
   localDate: (iso: string) => string,
 ): { status: "ok" | "warn"; text: string } {
   const fix = `make one with ${TOKEN_MAKE_HINT}, then ${cli} agents token set`;
+  // Not under the always-on service: agents sign in from the desktop login,
+  // so no token is nothing to warn about.
+  if ((!st.configured || st.stored === false) && st.mode !== "token")
+    return { status: "ok", text: NO_TOKEN_NOT_NEEDED };
   if (!st.configured || st.stored === false)
     return {
       status: "warn",

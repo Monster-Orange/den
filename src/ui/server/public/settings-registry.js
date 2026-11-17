@@ -966,6 +966,15 @@ function wireTokenField(host, ctx, line, t) {
   host.querySelector("[data-keep-copy]").addEventListener("click", () => {
     void navigator.clipboard?.writeText(SETUP_TOKEN_CMD);
   });
+  // No secrets store: nothing can keep the token, so the field says so
+  // before any paste and Save stays off (the server answers 409 besides).
+  const noStore = () => {
+    note.textContent = t("keep.noStore");
+    note.hidden = false;
+    input.disabled = true;
+    save.disabled = true;
+  };
+  if (ctx.data.agent_signin?.no_store) noStore();
   save.addEventListener("click", async () => {
     const token = input.value;
     input.value = "";
@@ -992,6 +1001,9 @@ function wireTokenField(host, ctx, line, t) {
         line.dataset.keepToken = l.state;
         line.textContent = l.text;
         line.hidden = false;
+      } else if (r?.code === "no_secrets_store") {
+        noStore();
+        return;
       } else {
         note.textContent = t("keep.tokenFailed", {
           error: r?.error || "",
@@ -999,13 +1011,16 @@ function wireTokenField(host, ctx, line, t) {
         note.hidden = false;
       }
     } catch (e) {
+      if (e?.code === "no_secrets_store") {
+        noStore();
+        return;
+      }
       note.textContent = t("keep.tokenFailed", {
         error: String(e?.message || ""),
       });
       note.hidden = false;
-    } finally {
-      save.disabled = false;
     }
+    save.disabled = false;
   });
 }
 

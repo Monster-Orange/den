@@ -1547,6 +1547,13 @@ export interface AgentsTokenDeps {
   tokenSave?: (
     token: string,
   ) => Promise<{ ref: "configured" | "created"; store: string }>;
+  /** The store, its ref and status for `token status` (tests). */
+  tokenDeps?: Partial<
+    Pick<
+      import("../../shared/agents/signin-token.js").TokenStatusDeps,
+      "ref" | "provider" | "status" | "credSource" | "warnDays" | "now"
+    >
+  >;
 }
 
 /**
@@ -1610,21 +1617,27 @@ async function tokenCmd(
     );
   const {
     agentTokenStatus,
+    NO_TOKEN_NOT_NEEDED,
     saveAgentToken,
     tokenShapeError,
     tokenStatusLine,
     TOKEN_MAKE_HINT,
   } = await import("../../shared/agents/signin-token.js");
   if (sub === "status") {
+    // The mode in effect (the web job's env, or the host job file): not
+    // under the always-on service, no token is no warning.
     const st = await agentTokenStatus({
-      env: { ...d.env, DEN_AGENT_SIGNIN: "token" },
+      env: d.env,
       stateDir: d.stateDir(),
       probe: true,
+      ...deps.tokenDeps,
     });
     const l = tokenStatusLine(st, d.cli);
-    (l.status === "ok" ? d.out : d.err)(
-      `${l.status === "ok" ? "✓" : "⚠"} ${l.text}`,
-    );
+    if (l.text === NO_TOKEN_NOT_NEEDED) d.out(l.text);
+    else
+      (l.status === "ok" ? d.out : d.err)(
+        `${l.status === "ok" ? "✓" : "⚠"} ${l.text}`,
+      );
     return l.status === "ok" ? 0 : 1;
   }
   if (isAgentTokenEnv(d.env)) {

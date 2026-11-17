@@ -2881,6 +2881,8 @@ function agentSigninView(): Record<string, unknown> | null {
       age_days: st.ageDays,
       old: st.old,
       store: st.store,
+      // No secrets store: the field says so and Save is off.
+      no_store: st.noStore === true,
       // The store's credential is a keychain: source (1Password).
       cred_keychain: st.credInKeychain === true,
     };

@@ -80,6 +80,19 @@ config and manifest changes a distribution must make to move to it under
   too. A stub logs its name and arguments (never input) and exits 99;
   the test file that made the call fails, and so does the run. (#163)
 
+### Fixed
+
+- `agents token status` says what is true for the mode in effect. Not
+  under Keep agents running after logout, no token reads "no sign-in
+  token set; needed only under Keep agents running after logout" (exit
+  0); the warning that agents will not be able to sign in after logout
+  shows only under the always-on service. (#163)
+- Saving the sign-in token on an install with no secrets store
+  (`secrets.provider: none`) is no longer a server error: the answer is
+  409 with code `no_secrets_store` and plain words, and before any paste
+  the Settings field says there is no secrets store, with Save off. In
+  English, Spanish and Japanese. (#163)
+
 ### Migrations
 
 - None required. To keep agents signing in after logout under mode

@@ -219,4 +219,30 @@ describe("POST /api/agents/signin-token", () => {
     expect(r.text).not.toContain(TOKEN);
     await w.close();
   });
+
+  it("no secrets store (provider none): 409 no_secrets_store in plain words, never a 500", async () => {
+    const w = await world({
+      save: (token) =>
+        saveAgentToken(token, {
+          provider: () => {
+            throw new Error("no provider is asked");
+          },
+          ref: () => null,
+          status: () => ({
+            backend: "none",
+            label: "none",
+            implicit: true,
+            detect: { available: true },
+          }),
+          stateDir: path.join(os.tmpdir(), "den-no-store-never-written"),
+        }),
+    });
+    const r = await w.post({ token: TOKEN });
+    expect(r.status).toBe(409);
+    const body = JSON.parse(r.text) as Record<string, unknown>;
+    expect(body.code).toBe("no_secrets_store");
+    expect(body.error).toMatch(/no secrets store/);
+    expect(r.text).not.toContain(TOKEN);
+    await w.close();
+  });
 });

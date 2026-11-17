@@ -580,6 +580,8 @@
     "keep.tokenLabel": "サインイン用トークン",
     "keep.tokenSave": "保存",
     "keep.tokenFailed": "保存されませんでした: {error}",
+    "keep.noStore":
+      "このインストールにはシークレットストアがないため、サインイントークンを保存できません。先に secrets.provider を 1password か doppler に設定してください。",
     "keep.tokenSet":
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",

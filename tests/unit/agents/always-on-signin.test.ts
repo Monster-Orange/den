@@ -418,3 +418,82 @@ describe("the store's credential in the login keychain", () => {
     expect(tokenStatusLine(s, "acme").status).toBe("ok");
   });
 });
+
+/**
+ * Issue 163 (gate, 0.4.63-dev.1): `agents token status` says what is true
+ * for the mode in effect. Not under the always-on service, no token is
+ * not a warning.
+ */
+describe("agents token status, per mode", () => {
+  const fakeStatus = () => ({
+    backend: "1password" as const,
+    label: "1Password",
+    implicit: false,
+    detect: { available: true },
+  });
+  const NOT_NEEDED =
+    "no sign-in token set; needed only under Keep agents running after logout";
+
+  it("no host job (not in mode always), no token: says so plainly, rc 0", async () => {
+    const r = await rig();
+    expect(
+      await cmdAgents(["token", "status"], {
+        ...r.deps,
+        tokenDeps: { ref: () => null, status: fakeStatus },
+      }),
+    ).toBe(0);
+    expect(r.out.join("\n")).toContain(NOT_NEEDED);
+    expect(r.err.join("\n")).not.toMatch(/will not be able to sign in/);
+  });
+
+  it("mode always, no token: the warning, rc 1", async () => {
+    const r = await rig();
+    fs.writeFileSync(
+      path.join(r.stateDir, "sessions-host-job.json"),
+      JSON.stringify({ label: "local.acme.sessions", mode: "always" }) + "\n",
+    );
+    expect(
+      await cmdAgents(["token", "status"], {
+        ...r.deps,
+        tokenDeps: { ref: () => null, status: fakeStatus },
+      }),
+    ).toBe(1);
+    expect(r.err.join("\n")).toMatch(
+      /Keep agents running after logout is on, but no sign-in token is configured/,
+    );
+  });
+
+  it("a token set, not in mode always: the ✓ line", async () => {
+    const r = await rig();
+    fs.writeFileSync(
+      path.join(r.stateDir, "agent-signin-token.json"),
+      JSON.stringify({ setAt: "2026-11-10T10:00:00Z", store: "1Password" }),
+    );
+    expect(
+      await cmdAgents(["token", "status"], {
+        ...r.deps,
+        tokenDeps: {
+          ref: () => REF,
+          provider: () => new MemStore(TOKEN),
+          status: fakeStatus,
+        },
+      }),
+    ).toBe(0);
+    expect(r.out.join("\n")).toMatch(/^✓ agents sign in with the token set /m);
+    expect([...r.out, ...r.err].join("\n")).not.toContain(TOKEN);
+  });
+
+  it("tokenStatusLine: desktop mode with no token is ok, not a warning", async () => {
+    const r = await rig();
+    const st = await agentTokenStatus({
+      env: {},
+      stateDir: r.stateDir,
+      ref: () => null,
+      status: fakeStatus,
+    });
+    expect(tokenStatusLine(st, "acme")).toEqual({
+      status: "ok",
+      text: NOT_NEEDED,
+    });
+  });
+});

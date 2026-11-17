@@ -217,6 +217,14 @@ export interface SignInTokenDeps {
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
 }
 
+/** The 4xx code for a secrets config gap, or null for a real failure. */
+function configGapCode(e: unknown): string | null {
+  const code = (e as { code?: unknown })?.code;
+  if (code === "no_secrets_store") return "no_secrets_store";
+  if (code === "not-configured") return "secrets_not_configured";
+  return null;
+}
+
 export function handleSignInTokenRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -252,15 +260,16 @@ export function handleSignInTokenRoute(
     try {
       saved = await d.save(value);
     } catch (e) {
+      const error =
+        withoutSecret(String((e as Error)?.message ?? e), value) ||
+        "the secrets store refused it";
+      // A config gap (no store, or one that keeps nothing) is the person's
+      // to fix, not a server error.
+      const gap = configGapCode(e);
       return d.sendJson(
         res,
-        {
-          ok: false,
-          error:
-            withoutSecret(String((e as Error)?.message ?? e), value) ||
-            "the secrets store refused it",
-        },
-        500,
+        gap ? { ok: false, code: gap, error } : { ok: false, error },
+        gap ? 409 : 500,
       );
     }
     d.log?.(`agents' sign-in token saved in ${saved.store} (by a person)`);

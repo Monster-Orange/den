@@ -1407,6 +1407,8 @@
     "keep.tokenLabel": "Sign-in token",
     "keep.tokenSave": "Save",
     "keep.tokenFailed": "Not saved: {error}",
+    "keep.noStore":
+      "There's no secrets store for this install, so the sign-in token can't be kept. Set secrets.provider to 1password or doppler first.",
     "keep.tokenSet": "Agents sign in with the token set {date}.",
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
