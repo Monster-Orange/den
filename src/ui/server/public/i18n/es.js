@@ -581,6 +581,9 @@
     "keep.s": "Aplicado. __DEN_TITLE__ se reinicia.",
     "keep.needs": "Necesita tu contraseña de administrador.",
     "keep.failed": "No se aplicó. Nada cambió.",
+    "busy.edgeW": "Iniciando el edge…",
+    "busy.edgeS": "Edge iniciado",
+    "busy.edgeF": "El edge no se inició.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -2448,7 +2451,14 @@
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
-      "Ningún nombre de host de edge apunta a este servidor, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y luego {cmd}.", // words-ok: the en string's own word, translated
+      "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
+    "set.ui.edgeStart": "Iniciar el edge",
+    "set.ui.edgeApply": "Aplicar",
+    "set.ui.edgeStarted": "Edge iniciado",
+    "set.ui.edgeCurrent": "Edge al día, no se reinició nada",
+    "set.ui.edgeRecreated":
+      "Edge recreado porque {why}; no se pudo alcanzar durante unos {s} s",
+    "set.ui.edgeWhy": "cambió su configuración",
     "set.ui.edgeHost": "Nombre de host de edge",
     "set.ui.pairScan":
       "Escanéalo con el otro dispositivo o abre allí el enlace. Funciona una vez, hasta que caduca (abajo), y deja ese navegador con la sesión iniciada para siempre.",
@@ -2767,6 +2777,12 @@
     "set.notifications.quiet.off": "No",
     "set.notifications.quiet.half":
       "Las horas de silencio necesitan un inicio y un fin.",
+    "set.notifications.push_timeout": "Espera del push",
+    "set.notifications.push_timeout.d":
+      "Cuánto espera __DEN_TITLE__ a que un servicio de push acepte un aviso para un dispositivo. Pasado este tiempo, ese aviso se deja; el siguiente lo intenta de nuevo. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push guardado durante",
+    "set.notifications.push_ttl.d":
+      "Cuánto guarda un servicio de push un aviso para un dispositivo apagado o sin conexión, en segundos. 86400 es un día; 0 lo descarta si el dispositivo no está encendido ahora. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
     "set.notifications.desktop": "Avisos en el escritorio",
     "set.notifications.desktop.d":
       "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",

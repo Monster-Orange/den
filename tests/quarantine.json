@@ -111,22 +111,6 @@
       }
     },
     {
-      "file": "tests/unit/den-ui/kit-csp.browser.test.ts",
-      "test": "a kit page under script-src 'self'; style-src 'self' runs the ask-and-tell dialog (dialog.js) with no violation",
-      "issue": 143,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44157666912,
-        "failed_job": 134302659041,
-        "job": "tests (24.13.0, 2)",
-        "sha": "7948aface686267457502c1567e4b60a0a5e3041",
-        "passed_run": 44157666912,
-        "passed_job": 134302659079,
-        "note": "no other run on this sha; the test passed in the same run's tests (22.13.0, 2) (job 134302659079), same sha, other Node"
-      },
-      "note": "Fixed in PR #376; remove this entry when that lands."
-    },
-    {
       "file": "tests/unit/server/agents-layout.browser.test.ts",
       "test": "the Agents tab's layouts (AG-4b) switches Focus (the default), Tabs and Tile from the header, with ⌃⇧1 / ⌃⇧2 / ⌃⇧3 and from ⌘K; the URL says it, and it is saved for the person",
       "issue": 143,

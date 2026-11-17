@@ -42,12 +42,16 @@ const CMD = String.raw`(?:\{cmd\}|__DEN_CLI__|<code>)`;
 const CHORE: Record<string, RegExp[]> = {
   en: [
     new RegExp(String.raw`\b(?:run|type|paste)\b[^.!?\n]{0,30}?${CMD}`, "i"),
+    // Issue 395: "…, then {cmd}" gives the command as the next step too
+    // (the slot or code markup; a bare __DEN_CLI__ line is another sweep).
+    new RegExp(String.raw`\bthen\s+(?:\{cmd\}|<code>)`, "i"),
   ],
   es: [
     new RegExp(
       String.raw`\b(?:ejecut[ae]r?|escrib[ae]|escribir|peg[ae]|pegue|pegar)\b[^.!?\n]{0,30}?${CMD}`,
       "i",
     ),
+    new RegExp(String.raw`\b(?:luego|despu[eé]s)\s+(?:\{cmd\}|<code>)`, "i"),
   ],
   ja: [
     new RegExp(String.raw`${CMD}[^。\n]{0,30}?(?:実行|入力|貼り付け)`),
@@ -55,15 +59,6 @@ const CHORE: Record<string, RegExp[]> = {
   ],
 };
 const chore = (lang: string, s: string) => CHORE[lang].some((r) => r.test(s));
-
-/**
- * Strings that still give a command, each because the page has no control
- * for it yet. Each must still be a chore in some language (a fixed one
- * leaves this list), and none may be added without its control's gap.
- * set.ui.noPairHost: `edge up` has no page control (cli-page-controls.test
- * lists it as a gap); its ja says "run {cmd}", its en and es "then {cmd}".
- */
-const NO_CONTROL_YET = new Set(["set.ui.noPairHost"]);
 
 const REGISTRY = read("settings-registry.js");
 const messages = catalogs("i18n/es.js", "i18n/ja.js", "shell.js");
@@ -90,6 +85,8 @@ describe("issue 393: Settings never gives a person a command to run", () => {
     expect(
       chore("ja", "サインインしていません: {cmd} を実行してください"),
     ).toBe(true);
+    expect(chore("en", "Add one to the edge block, then {cmd}.")).toBe(true);
+    expect(chore("es", "Añade uno y luego {cmd}.")).toBe(true);
     expect(chore("en", "How many lines. __DEN_CLI__ config x=1")).toBe(false);
     expect(chore("en", "Runs at start. __DEN_CLI__ config x=1")).toBe(false);
   });
@@ -106,18 +103,9 @@ describe("issue 393: Settings never gives a person a command to run", () => {
     (lang) => {
       const table = messages[lang];
       const bad = keys(lang)
-        .filter((k) => !NO_CONTROL_YET.has(k))
         .filter((k) => chore(lang, table[k]) || chore("en", table[k]))
         .map((k) => `${k}: ${table[k]}`);
       expect(bad).toEqual([]);
     },
   );
-
-  it("each string waiting for a control still is a chore (else drop it)", () => {
-    for (const k of NO_CONTROL_YET)
-      expect([
-        k,
-        ["en", "es", "ja"].some((l) => chore(l, messages[l]?.[k] ?? "")),
-      ]).toEqual([k, true]);
-  });
 });
