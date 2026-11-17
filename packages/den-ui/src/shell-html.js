@@ -138,7 +138,8 @@ function leadIcon(ic) {
  * data, the kit owns the words.
  *
  * `badge.what` ("open", "waiting", "down", "running"): what the badge
- * counts; the kit words it ("North · Den, 3 waiting"). A pin row gets
+ * counts; the kit words it ("North · Den, 3 waiting"). A label that is
+ * its kind word reads once ("Hub", not "Hub · Hub"). A pin row gets
  * aria-keyshortcuts="Delete" from the kit.
  *
  * Host text on any entry (HOST_TEXT_ATTRS in `attrs`, a badge's `label`)
@@ -166,7 +167,13 @@ export function navItemHtml(n, navRole, lang) {
   // entry with a kind; stamped for the nav inventory, which fails on it.
   const hostText = HOST_TEXT_ATTRS.filter((k) => more[k] != null);
   if (b && b.label != null) hostText.push("badge.label");
-  const named = kind ? n.label + " · " + kind.word : n.label;
+  // A label that is its kind word (any case) reads once: "Hub", never
+  // "Hub · Hub".
+  const same =
+    kind &&
+    String(n.label).trim().toLocaleLowerCase() ===
+      kind.word.trim().toLocaleLowerCase();
+  const named = kind && !same ? n.label + " · " + kind.word : n.label;
   const counted = badgeWords(b, lang);
   if (kind) {
     for (const k of HOST_TEXT_ATTRS) delete more[k];

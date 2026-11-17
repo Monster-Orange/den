@@ -22,6 +22,8 @@
  *       aria-description in attrs; a badge's label): navWarnings lists it
  *       and compareNav fails on it; data-* attrs stay allowed
  *   L9  a pin row's Delete shortcut is the kit's: no host attrs needed
+ *   L10 a label that is its kind word (any case, in the language) reads
+ *       once: "Hub", never "Hub · Hub"
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
@@ -108,7 +110,10 @@ const model = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
   groups: [{ id: "pinned", label: "Pinned" }, { id: "work", label: "Work" }],
   nav,
-  foot: [{ id: "hub", label: "Hub", href: "#hub", icon: "hub", kind: "hub" }],
+  foot: [
+    { id: "hub", label: "Hub", href: "#hub", icon: "hub", kind: "hub" },
+    { id: "srv", label: lang === "es" ? "SERVICIO" : "service", href: "#srv", icon: "services", kind: "service" },
+  ],
   slots: {
     start: DenUI.scopeHtml({ crumbs: [{ key: "ws", label: "Project", value: "North" }] }),
   },
@@ -504,6 +509,28 @@ for (const engine of ["chromium", "webkit"]) {
       );
       expect(got).toEqual(["Delete", "Delete", null]);
       await p.context().close();
+    });
+
+    it("L10: a label that is its kind word reads once, never '<word> · <word>'", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const [lang, srv] of [
+        ["en", "service"],
+        ["es", "SERVICIO"],
+      ] as const) {
+        const p = await open(b, `?lang=${lang}`);
+        const got = await p.evaluate(() =>
+          ["hub", "srv"].map((id) => {
+            const a = document.querySelector(`.den-rail [data-nav="${id}"]`)!;
+            return [a.getAttribute("title"), a.getAttribute("aria-label")];
+          }),
+        );
+        expect(got).toEqual([
+          ["Hub", "Hub"],
+          [srv, srv],
+        ]);
+        await p.context().close();
+      }
     });
   });
 }
