@@ -89,6 +89,8 @@ const select = (a: {
   allTests: string[];
   related: string[];
   map: Map;
+  importersOf?: Record<string, string[]>;
+  mentioned?: string[];
 }) => call<Selection>(AFFECTED, "selectTests", a);
 
 /** Every *.test.ts under tests/, as jest lists them (repo-relative). */
@@ -647,5 +649,113 @@ describe("ci.yml (issue 398)", () => {
     const guards = new Set(Object.values(ci.jobs).map((j) => j["runs-on"]));
     expect(guards.size).toBe(1);
     expect([...guards][0]).toMatch(/^\$\{\{ \(vars\.DEN_SELF_HOSTED == 'on'/);
+  });
+});
+
+describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
+  const EN = "src/ui/server/public/i18n/en.js";
+  const DIFF = [
+    "--- a/src/ui/server/public/i18n/en.js",
+    "+++ b/src/ui/server/public/i18n/en.js",
+    "@@ -10 +10 @@",
+    '-    "bell.title": "Needs your answer",',
+    '+    "bell.title": "Waiting for you",',
+    "+    'v.loading': 'Reading the latest results',",
+    '     "n.graph": "Graph",',
+  ].join("\n");
+
+  it("reads the changed keys and texts, and the English text of a key", () => {
+    expect(call(AFFECTED, "catalogChanges", DIFF)).toEqual({
+      keys: ["bell.title", "v.loading"],
+      texts: [
+        "Needs your answer",
+        "Waiting for you",
+        "Reading the latest results",
+      ],
+    });
+    expect(
+      call(
+        AFFECTED,
+        "englishTexts",
+        ["n.graph", "gone.key"],
+        '  m.en = {\n    "n.graph": "Graph",\n  };',
+      ),
+    ).toEqual(["Graph"]);
+  });
+
+  it("finds the specs that name a changed key or its text (short words don't count)", () => {
+    const specs = {
+      "tests/a.browser.test.ts": 'expect(await t("bell.title")).toBe(x)',
+      "tests/b.browser.test.ts": "getByText('Waiting for you')",
+      "tests/c.browser.test.ts": "getByText('Graph')",
+      "tests/d.browser.test.ts": "nothing to see",
+    };
+    expect(
+      call(
+        AFFECTED,
+        "specsMentioning",
+        specs,
+        ["bell.title"],
+        ["Waiting for you", "Graph"],
+      ),
+    ).toEqual(["tests/a.browser.test.ts", "tests/b.browser.test.ts"]);
+  });
+
+  it("a catalog change runs the helper's importers, the named specs and the fixed ones; not everything", () => {
+    const fixed = MAP.rules.find((r) => r.why === "the UI catalogs");
+    expect(fixed).toBeDefined();
+    const s = select({
+      changed: [EN],
+      allTests: TESTS.concat(["tests/x-imports-catalog.test.ts"]),
+      related: [],
+      map: MAP,
+      importersOf: {
+        "tests/unit/server/helpers/en-catalog.ts": [
+          "tests/x-imports-catalog.test.ts",
+        ],
+      },
+      mentioned: ["tests/unit/server/bell.browser.test.ts"],
+    });
+    expect(s.all).toBe(false);
+    const files = Object.keys(s.files);
+    for (const f of [
+      "tests/unit/scripts/words.test.ts",
+      "tests/unit/server/i18n-pages.browser.test.ts",
+      "tests/unit/server/i18n-shell.browser.test.ts",
+      "tests/unit/server/one-url-per-module.browser.test.ts",
+      "tests/unit/server/kit-dialog.browser.test.ts",
+      "tests/x-imports-catalog.test.ts",
+      "tests/unit/server/bell.browser.test.ts",
+    ])
+      expect([f, files.includes(f)]).toEqual([f, true]);
+    expect(s.files["tests/x-imports-catalog.test.ts"].join()).toMatch(
+      /imports en-catalog\.ts/,
+    );
+    expect(s.files["tests/unit/server/bell.browser.test.ts"].join()).toMatch(
+      /mentions a changed key/,
+    );
+    // A spec that neither checks every page's words, switches language,
+    // nor names the key stays out.
+    expect(files).not.toContain(
+      "tests/unit/server/settings-anchor.browser.test.ts",
+    );
+  });
+
+  it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
+    for (const f of [
+      "src/ui/server/public/shell.js",
+      "src/ui/server/ui-language.ts",
+      "src/ui/server/ui-assets.ts",
+      "tests/unit/server/helpers/en-catalog.ts",
+      "tests/unit/server/helpers/kit-shell.ts",
+    ]) {
+      const s = select({
+        changed: [f],
+        allTests: ["tests/x.test.ts"],
+        related: [],
+        map: MAP,
+      });
+      expect([f, s.all]).toEqual([f, true]);
+    }
   });
 });
