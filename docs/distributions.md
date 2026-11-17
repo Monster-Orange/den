@@ -3029,6 +3029,15 @@ agent and kind.
   token. Any agent can call the MCP tool `ask_human` with a question; its
   prompt says to, when it needs a decision. The agent is marked waiting
   in every list, and the item clears itself when its output moves again.
+- **A question goes to the project's lead** (issue 101). When the asking
+  agent's project has a running lead (an agent whose persona's role is
+  `lead` or `orchestrator`; the longest running one), Den types the
+  question to the lead instead of putting it under the person's "Needs
+  you". The bell lists it under Earlier as "<agent> asked the lead,
+  <lead>: …", with the agent's turn updates. The lead decides it, or asks
+  the person with `ask_human`. A permission prompt, a lead's own
+  question, a project with no lead, and a lead that is itself waiting on
+  its person or that Den can't type to: the person, as before.
 - **The terminal's bell.** An agent whose runtime has no such hook (not
   Claude Code) counts as waiting for input when its output rings: a bare
   BEL, OSC 9 (not OSC 9;4, a progress bar) or OSC 777;notify. A BEL that
@@ -5010,7 +5019,25 @@ agents:
       softNewline: esc-cr # what Shift+Enter sends: esc-cr (default), lf, none
       titleFromOsc: false # its terminal title (OSC 0/2) names the session
       # sessionName: official | unofficial  (built-in adapters only)
+      # Optional, how its agents sign in after logout (issue 338):
+      signIn:
+        env: AIDER_TOKEN # the variable its CLI signs in from
+        command: aider auth token # the one command that makes it (shown in Setup)
+        lastsDays: 90 # how long it lasts
+        limitPattern: "rate limit reached" # how it words a usage limit
 ```
+
+**Sign-in after logout (`signIn`).** Under Keep agents running after
+logout, an agent signs in with a long-lived credential its CLI reads from
+one environment variable. Claude Code's entry carries it
+(`CLAUDE_CODE_OAUTH_TOKEN`, made with `claude setup-token`, kept under
+`secrets.refs.agent_signin_token`). An added entry with `signIn` gets its
+own token, from `secrets.refs.agent_signin_token_<id>` (`-` as `_`), in
+its own agents' environment only. `env` can't be a variable Den sets
+itself (`PATH`, `HOME`, `DEN_*` and the rest of the allowlist). An entry
+with no `signIn` is allowed: its agents can't sign in after logout and
+will stop, and `doctor` says so. Codex CLI, Gemini CLI and Grok Build ship
+with none until their vendors' options are checked.
 
 **Where a runtime's CLI is found.** As your terminal would find it, not
 only on the web server's own PATH (a launchd service's PATH leaves out

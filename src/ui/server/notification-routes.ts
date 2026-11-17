@@ -167,7 +167,7 @@ export async function handleNotificationRoutes(
         return true;
       }
     }
-    await deps.attention.event(
+    const routed = await deps.attention.event(
       id,
       agent.workspace,
       ev === "waiting"
@@ -189,7 +189,11 @@ export async function handleNotificationRoutes(
             }
           : { event: "finished", text: str(b?.text) },
     );
-    sendJson(res, { ok: true });
+    // Issue 101: the question went to the project's lead (its name).
+    sendJson(res, {
+      ok: true,
+      ...(routed ? { lead: deps.attention.nameOf(routed.lead) } : {}),
+    });
     return true;
   }
 

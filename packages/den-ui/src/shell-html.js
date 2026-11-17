@@ -784,6 +784,10 @@ function bellRowHtml(it) {
  * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
  * under the heading; `after`: HTML after the rows; `foot`: the footer (a
  * Report button). Every HTML part is the host's own.
+ * Issue 101: `sections` { needs, earlier? } in place of rows: the kit
+ * heads them "Needs you" (first, always; its own line when `needs` is
+ * empty) and "Earlier" (when given), in its words; the host gives only
+ * each section's rows.
  */
 export function bellPanelHtml({
   title,
@@ -792,6 +796,7 @@ export function bellPanelHtml({
   lead,
   items,
   body,
+  sections,
   empty,
   after,
   foot,
@@ -799,8 +804,9 @@ export function bellPanelHtml({
 } = {}) {
   const list = Array.isArray(items) ? items : [];
   const e = empty || {};
-  const rows =
-    body != null && body !== ""
+  const rows = sections
+    ? bellSectionsHtml(sections, lang)
+    : body != null && body !== ""
       ? body
       : list.length
         ? list.map(bellRowHtml).join("")
@@ -821,6 +827,41 @@ export function bellPanelHtml({
     rows +
     (after || "") +
     (foot || "")
+  );
+}
+
+/** Issue 101: one titled section of the bell's panel. */
+function bellSectionHtml(id, word, rows) {
+  return (
+    '<section class="den-bell-sec" data-sec="' +
+    id +
+    '" aria-labelledby="den-bell-' +
+    id +
+    '"><h3 class="den-bell-sech" id="den-bell-' +
+    id +
+    '">' +
+    esc(word) +
+    "</h3>" +
+    rows +
+    "</section>"
+  );
+}
+
+/** Issue 101: Needs you, then Earlier (the host's rows in each). */
+function bellSectionsHtml(s, lang) {
+  const needs = s.needs || "";
+  return (
+    bellSectionHtml(
+      "needs",
+      kitT(lang, "kit.bell.needs"),
+      needs ||
+        '<p class="den-bell-none">' +
+          esc(kitT(lang, "kit.bell.needsNone")) +
+          "</p>",
+    ) +
+    (s.earlier
+      ? bellSectionHtml("earlier", kitT(lang, "kit.bell.earlier"), s.earlier)
+      : "")
   );
 }
 

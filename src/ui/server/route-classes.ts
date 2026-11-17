@@ -511,6 +511,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "issue 199 an agent's own mode, or null to follow its project's; a person's only (an agent asks with agent_mode)",
   ),
   R(
+    "/api/workspaces/:ws/mcp-servers",
+    "issue 335: a project's extra MCP servers, names and urls only (an agent adds one with project_mcp_add)",
+  ),
+  R(
     "/api/workspaces/:ws/agent-modes",
     "issue 225: a project's mode and each agent's actual mode with where it comes from",
   ),
@@ -906,6 +910,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
   "agent-routes.ts:DETAILS_PATH": ["/api/workspaces/:ws/agents/:id/details"],
   "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
+  "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],

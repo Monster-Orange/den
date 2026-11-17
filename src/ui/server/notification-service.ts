@@ -27,6 +27,7 @@ import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
 import { readWebUrl } from "../../shared/web-url.js";
 import { PushSubscriptions, pushAll, vapidKeys } from "./web-push.js";
+import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -244,6 +245,9 @@ export function notificationDeps(): {
     endedAsking,
     ended: endedAgents,
     alert: (n) => void alertFeed().needs(n),
+    // Issue 101: a question goes to the project's lead, when it has one.
+    leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
+    tellLead,
   });
   if (!timer) {
     let busy = false;
