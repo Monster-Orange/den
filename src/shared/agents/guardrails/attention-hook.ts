@@ -6,7 +6,13 @@
  *   input") → waiting, why "permission" or "input";
  *   PostToolUse (a tool ran: it was allowed) → resumed, from "tool";
  *   UserPromptSubmit (the person sent a prompt) → resumed, from "prompt";
- *   Stop (the turn ended) → finished.
+ *   Stop (the turn ended) → finished;
+ *   SessionStart (a new or resumed Claude session; not a compaction) →
+ *   resumed, from "session": a dialog from before it is gone (issue 327).
+ * Issue 327: a wait names what it saw (`what`): the tool a permission
+ * dialog asks for, or the notification's text, trimmed. Claude Code's
+ * idle notice ("idle_prompt") says no dialog is open: it carries
+ * `idle: true`, and Den clears a permission wait on it.
  * Each says `hooked: true`: Den clears the wait on these, not on the
  * agent's output (Claude Code redraws a prompt while it waits).
  * POST <den>/api/agents/self/attention with the agent's own Den token
@@ -21,9 +27,13 @@ export type AttentionEvent =
       event: "waiting";
       why: "permission" | "input";
       text: string;
+      /** Issue 327: the tool asked about, or the notice, ≤ WHAT_MAX chars. */
+      what: string;
+      /** Claude Code's idle notice: no dialog is open now. */
+      idle?: true;
       hooked: true;
     }
-  | { event: "resumed"; from: "tool" | "prompt"; hooked: true }
+  | { event: "resumed"; from: "tool" | "prompt" | "session"; hooked: true }
   | { event: "finished"; text: string; hooked: true };
 
 /** The hook events Den listens to (guardrails.ts registers these). */
@@ -33,7 +43,17 @@ export const ATTENTION_EVENTS = [
   "PostToolUse",
   "UserPromptSubmit",
   "Stop",
+  "SessionStart",
 ] as const;
+
+/** Issue 327: how much of a tool name or a notice a wait keeps. */
+export const WHAT_MAX = 80;
+
+/** One line of at most WHAT_MAX characters. */
+export function trimWhat(s: string): string {
+  const one = s.replace(/\s+/g, " ").trim();
+  return one.length > WHAT_MAX ? `${one.slice(0, WHAT_MAX - 1)}…` : one;
+}
 
 /** What Den is told for one hook input, or null for nothing. */
 export function attentionOf(input: unknown): AttentionEvent | null {
@@ -43,25 +63,34 @@ export function attentionOf(input: unknown): AttentionEvent | null {
     message?: unknown;
     stop_hook_active?: unknown;
     tool_name?: unknown;
+    notification_type?: unknown;
+    source?: unknown;
   };
   const msg = typeof i.message === "string" ? i.message.slice(0, 300) : "";
-  if (i.hook_event_name === "PermissionRequest")
+  if (i.hook_event_name === "PermissionRequest") {
+    const tool = typeof i.tool_name === "string" ? trimWhat(i.tool_name) : "";
     return {
       event: "waiting",
       why: "permission",
-      text:
-        typeof i.tool_name === "string"
-          ? `Claude needs your permission to use ${i.tool_name.slice(0, 80)}`
-          : "Claude needs your permission",
+      text: tool
+        ? `Claude needs your permission to use ${tool}`
+        : "Claude needs your permission",
+      what: tool,
       hooked: true,
     };
+  }
   if (i.hook_event_name === "Notification")
     return {
       event: "waiting",
       why: /permission/i.test(msg) ? "permission" : "input",
       text: msg,
+      what: trimWhat(msg),
+      ...(i.notification_type === "idle_prompt" ? { idle: true as const } : {}),
       hooked: true,
     };
+  // A compaction keeps the session (and any dialog); anything else is new.
+  if (i.hook_event_name === "SessionStart" && i.source !== "compact")
+    return { event: "resumed", from: "session", hooked: true };
   if (i.hook_event_name === "PostToolUse")
     return { event: "resumed", from: "tool", hooked: true };
   if (i.hook_event_name === "UserPromptSubmit")

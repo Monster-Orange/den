@@ -182,3 +182,11 @@ export function personTyped(sessionId: string): void {
 export function attentionWaiting(): Map<string, string> {
   return attention ? attention.waitingNow() : new Map();
 }
+
+/** Issue 327: what `agent` waits on and since when, or null. */
+export function attentionDetail(
+  agent: string,
+): { what: string; since: string } | null {
+  const w = attention?.waitingDetail(agent);
+  return w ? { what: w.what, since: w.since } : null;
+}

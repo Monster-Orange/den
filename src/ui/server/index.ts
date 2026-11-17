@@ -15,10 +15,18 @@ import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
-import { attentionWaiting, notificationDeps } from "./notification-service.js";
+import {
+  attentionDetail,
+  attentionWaiting,
+  notificationDeps,
+} from "./notification-service.js";
 import type { UpdateWait } from "./update-check.js";
 
-import { isUpdateAsk, staleUpdateAsk } from "./update-check.js";
+import {
+  isUpdateAsk,
+  staleUpdateAsk,
+  updateWaitNotes,
+} from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
 import { typingHeld } from "./attention.js";
 import { pausedAgents, startContextWatch } from "./context-watch-service.js";
@@ -7806,35 +7814,23 @@ function startUpdateCheck(): void {
           serverLog(`  ${line}`, "lifecycle");
           recordAction(null, { verb: "den-update-check", detail: line });
         },
-        waitNote: (version, why, needs) => {
+        // Issue 327: what the server agent waits on, since when.
+        waitWhat: () => attentionDetail(SERVER_AGENT_ID),
+        waitNote: (version, why, needs, at) => {
           try {
-            const store = notificationDeps().store;
-            const subject = "record:den-update-wait";
-            // One item: the kind it isn't now goes.
-            store.withdraw(subject, needs ? "service" : "waiting");
-            const asked = why === "asked";
-            store.add({
-              kind: needs ? "waiting" : "service",
-              subject,
-              scope: "workspace/den-server",
-              text: asked
-                ? `${product().title}'s update to ${version} waits: the ${product().title} agent asked you a question`
-                : `${product().title}'s update to ${version} waits: the ${product().title} agent is waiting on your Allow`,
-              msg: {
-                key: asked ? "bell.m.updateWaitsAsked" : "bell.m.updateWaits",
-                vars: { v: version },
-              },
-              link: "/server-agent",
-            });
+            updateWaitNotes(notificationDeps().store, product().title).note(
+              version,
+              why,
+              needs,
+              at,
+            );
           } catch {
             /* the bell is best effort */
           }
         },
         waitDone: () => {
           try {
-            const store = notificationDeps().store;
-            store.withdraw("record:den-update-wait", "waiting");
-            store.withdraw("record:den-update-wait", "service");
+            updateWaitNotes(notificationDeps().store, product().title).done();
           } catch {
             /* best effort */
           }

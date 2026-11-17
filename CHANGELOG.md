@@ -8,6 +8,14 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A server agent's "waiting · permission" now says what it waits on and
+  since when: the tool its dialog asks for, or the notice, trimmed. The
+  bell row says it, and so do the update check's state, its log line and
+  its "update waits" bell item. A wait no longer outlives its dialog: a
+  new Claude session (a restart, a resume) and Claude Code's idle notice
+  clear it. The "update waits" item now goes once the update goes on,
+  even if the person had read it or it was posted before a restart
+  (#327).
 - After Den updates itself, it no longer tells its own agent to "check
   with doctor", a tool that agent doesn't have. It says to call
   release_status, which now has Den's last update of itself (from, to,

@@ -33,6 +33,8 @@ describe("what the hook tells Den", () => {
       event: "waiting",
       why: "permission",
       text: "Claude needs your permission to use Bash",
+      // Issue 327: what the wait saw, trimmed.
+      what: "Claude needs your permission to use Bash",
       hooked: true,
     });
     expect(
@@ -62,6 +64,7 @@ describe("what the hook tells Den", () => {
       event: "waiting",
       why: "permission",
       text: "Claude needs your permission to use Bash",
+      what: "Bash",
       hooked: true,
     });
     expect(attentionOf({ hook_event_name: "PostToolUse" })).toEqual({
@@ -167,6 +170,8 @@ describe("at launch", () => {
       "Notification",
       "PermissionRequest",
       "PostToolUse",
+      // Issue 327: a new session clears a dialog from before it.
+      "SessionStart",
       "Stop",
       "UserPromptSubmit",
     ]);

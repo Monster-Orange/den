@@ -104,6 +104,8 @@ interface Probe {
   ids: string[];
   status: string[];
   infoPid: number;
+  /** How many /info asks to leave unanswered (a request that hangs). */
+  infoHang: number;
 }
 
 /** plan: each /probe answer in turn, [delay ms, status | "drop", body?]; a delay of 60 s or more never answers. */
@@ -122,7 +124,7 @@ async function open(
   });
   const p = await ctx.newPage();
   if (o.clock) await p.clock.install();
-  const probe: Probe = { ids: [], status: [], infoPid: 100 };
+  const probe: Probe = { ids: [], status: [], infoPid: 100, infoHang: 0 };
   await p.route(`${ORIGIN}/**`, async (r: Route) => {
     const u = new URL(r.request().url());
     if (u.pathname === "/")
@@ -145,11 +147,16 @@ async function open(
         contentType: "text/css",
         body: fs.readFileSync(path.join(SRC, "tokens.css"), "utf-8"),
       });
-    if (u.pathname === "/info")
+    if (u.pathname === "/info") {
+      if (probe.infoHang > 0) {
+        probe.infoHang -= 1;
+        return;
+      }
       return r.fulfill({
         contentType: "application/json",
         body: JSON.stringify({ pid: probe.infoPid, version: "9.9.9" }),
       });
+    }
     if (u.pathname.startsWith("/status/")) {
       probe.status.push(u.pathname.slice("/status/".length));
       return r.fulfill({
@@ -425,6 +432,34 @@ describe("UK-2 kit: the working pop-up", () => {
     probe.infoPid = 301;
     await dlg(p).locator("h2", { hasText: "Back" }).waitFor({ timeout: 5000 });
     expect(await out(p)).toEqual({ ok: { pid: 301, version: "9.9.9" } });
+    await p.context().close();
+  });
+
+  // A request in flight as the product goes down (or one a proxy holds) may
+  // never be answered. Each ask has its own time limit, so the next one
+  // still comes: one stuck ask must not stall the wait for good.
+  it("reconnect: an ask that is never answered gives way to the next one", async () => {
+    if (skip()) return;
+    const { p, probe } = await open([[0, 202]]);
+    probe.infoPid = 400;
+    probe.infoHang = 1;
+    await go(p, "restart", "{ before: { pid: 399 } }");
+    await dlg(p)
+      .locator("h2", { hasText: "Back" })
+      .waitFor({ timeout: 10_000 });
+    expect(await out(p)).toEqual({ ok: { pid: 400, version: "9.9.9" } });
+    await p.context().close();
+  });
+
+  it("reconnect: an unanswered ask for before still sends the request", async () => {
+    if (skip()) return;
+    const { p, probe } = await open([[0, 202]]);
+    probe.infoHang = 1;
+    await go(p, "restart");
+    const until = Date.now() + 10_000;
+    while (probe.ids.length === 0 && Date.now() < until)
+      await p.waitForTimeout(100);
+    expect(probe.ids.length).toBe(1);
     await p.context().close();
   });
 
