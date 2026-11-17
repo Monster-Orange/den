@@ -108,7 +108,7 @@ export const isTmpDir = (p: string): boolean =>
   TMP_ROOTS.some((t) => p === t || p.startsWith(`${t.replace(/\/$/, "")}/`));
 
 /** The executable file `name` resolves to on these folders, running nothing. */
-function resolveOn(name: string, dirs: string[]): string | null {
+export function resolveOn(name: string, dirs: string[]): string | null {
   for (const d of dirs) {
     const f = path.join(d, name);
     try {

@@ -41,6 +41,13 @@ const inSentinel = (f: string | null) => !!f && path.dirname(f) === sentinel();
  * A sentinel stub: in the sentinel folder, or a sibling of it holding only
  * the names a PATH needed guarded.
  */
+/**
+ * What a guarded name may resolve to where a test set the PATH: a stub or
+ * a test's fake (temp folders), or nothing at all (a name this platform
+ * lacks stays missing: launchctl and security on Linux). Never a real one.
+ */
+const inertOrMissing = (f: string | null) => !f || isTmp(path.dirname(f));
+
 const stub = (f: string | null) => {
   if (!f) return false;
   const d = path.dirname(f);
@@ -90,11 +97,28 @@ describe("every guarded name resolves to a fake or the sentinel's stub (nothing 
     (name) => {
       // A helper's own fakes first (a temp dir), then the system's.
       const env = serverEnv({ PATH: "/tmp/den-fakes-x:/usr/bin:/bin" });
-      expect(stub(resolve(name, env.PATH))).toBe(true);
+      expect(inertOrMissing(resolve(name, env.PATH))).toBe(true);
       // The helper's fakes stay ahead of the sentinel.
       expect(env.PATH!.split(path.delimiter)[0]).toBe("/tmp/den-fakes-x");
     },
   );
+
+  it("a started server's gh and sudo are inert fakes or missing; its system sudo is the fake", () => {
+    const env = serverEnv({
+      PATH: "/tmp/den-fakes-x:/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin",
+      DEN_SYSTEM_SUDO: path.join(sentinel(), "sudo"),
+    });
+    for (const name of ["gh", "sudo"])
+      expect(inertOrMissing(resolve(name, env.PATH))).toBe(true);
+    expect(env.DEN_SYSTEM_SUDO).toBe(
+      path.join(path.dirname(sentinel()), "server-fakes", "sudo"),
+    );
+    // A test's own sudo stays its own.
+    expect(
+      serverEnv({ PATH: "/bin", DEN_SYSTEM_SUDO: "/tmp/x/sudo" })
+        .DEN_SYSTEM_SUDO,
+    ).toBe("/tmp/x/sudo");
+  });
 
   it.each(["doppler", "mkcert", "claude"])(
     "%s, missing from a PATH a test set, stays missing (a test of not installed)",
@@ -116,7 +140,10 @@ describe("a spawn whose env sets its own PATH keeps the sentinel (nothing runs)"
   it.each(["security", "launchctl", "sudo"])(
     "%s, from a spawn with env PATH /usr/bin:/bin",
     (name) => {
-      expect(stub(which(name, { env: { PATH: "/usr/bin:/bin" } }))).toBe(true);
+      const f = which(name, { env: { PATH: "/usr/bin:/bin" } });
+      expect(inertOrMissing(f)).toBe(true);
+      // Present on this platform: the stub itself (no test fake here).
+      if (f) expect(stub(f)).toBe(true);
     },
   );
 
@@ -130,7 +157,9 @@ describe("a spawn whose env sets its own PATH keeps the sentinel (nothing runs)"
       ["-c", "command -v security"],
       { env: { PATH: "/usr/bin:/bin" } },
     );
-    expect(stub(stdout.trim())).toBe(true);
+    const f = stdout.trim();
+    expect(inertOrMissing(f)).toBe(true);
+    if (f) expect(stub(f)).toBe(true);
   });
 
   it("a test's own fake folder stays ahead of the sentinel", () => {
@@ -142,9 +171,9 @@ describe("a spawn whose env sets its own PATH keeps the sentinel (nothing runs)"
       expect(which("security", { env: { PATH: `${bin}:/usr/bin:/bin` } })).toBe(
         path.join(bin, "security"),
       );
-      expect(
-        stub(which("sudo", { env: { PATH: `${bin}:/usr/bin:/bin` } })),
-      ).toBe(true);
+      const sudo = which("sudo", { env: { PATH: `${bin}:/usr/bin:/bin` } });
+      expect(inertOrMissing(sudo)).toBe(true);
+      if (sudo) expect(stub(sudo)).toBe(true);
     } finally {
       fs.rmSync(bin, { recursive: true, force: true });
     }
@@ -165,16 +194,17 @@ describe("a spawn whose env sets its own PATH keeps the sentinel (nothing runs)"
   });
 
   it("a call from a spawn whose env leaves JEST_WORKER_ID out lands in this worker's log", () => {
-    // launchctl from /bin, shadowed by the stub: logged here, not as log 0.
-    // Never run unless the stub is what would run.
-    const f = which("launchctl", { env: { PATH: "/usr/bin:/bin" } });
-    expect(stub(f)).toBe(true);
-    if (!stub(f)) return;
-    const r = spawnSync("launchctl", ["managername"], {
-      env: { PATH: "/usr/bin:/bin" },
-    });
+    // A guarded program this platform has in /usr/bin:/bin (launchctl on
+    // macOS, sudo on a Linux runner), shadowed by the stub: logged here,
+    // not as log 0. Never run unless the stub is what would run.
+    const env = { PATH: "/usr/bin:/bin" };
+    const name = ["launchctl", "sudo", "security"].find((n) =>
+      stub(which(n, { env })),
+    );
+    if (!name) return; // none here: nothing real to shadow
+    const r = spawnSync(name, ["managername"], { env });
     expect(r.status).toBe(99);
-    expect(sentinelCalls()).toContain("launchctl managername");
+    expect(sentinelCalls()).toContain(`${name} managername`);
     clearSentinel();
   });
 });
