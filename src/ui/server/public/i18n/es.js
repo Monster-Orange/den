@@ -603,6 +603,14 @@
     "keep.tokenLabel": "Token de inicio de sesión",
     "keep.tokenSave": "Guardar",
     "keep.tokenFailed": "No se guardó: {error}",
+    "keep.tokenClear": "Quitar",
+    "keep.clearTitle": "¿Quitar el token de inicio de sesión?",
+    "keep.clearAsk":
+      "Se quita del almacén de secretos. Con «Mantener los agentes al cerrar sesión», los agentes no podrán iniciar sesión hasta que se defina uno nuevo.",
+    "keep.clearOk": "Quitar",
+    "keep.clearW": "Quitando el token de inicio de sesión…",
+    "keep.clearS": "Quitado.",
+    "keep.clearF": "No se pudo quitar el token de inicio de sesión.",
     "keep.noStore":
       "Esta instalación no tiene almacén de secretos, así que el token de inicio de sesión no se puede guardar. Primero define secrets.provider como 1password o doppler.",
     "keep.tokenSet":

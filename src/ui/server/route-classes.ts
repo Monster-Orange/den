@@ -428,9 +428,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   // #299: Keep agents running after logout › Sign-in token (a person's only).
   M(
-    ["POST"],
+    ["POST", "DELETE"],
     "/api/agents/signin-token",
-    "saves the agents' sign-in token in the install's secrets store",
+    "saves (or removes) the agents' sign-in token in the install's secrets store",
   ),
   // FB: the preview composes (no write); a send is a person's only.
   M(

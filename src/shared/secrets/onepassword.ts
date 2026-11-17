@@ -30,6 +30,8 @@ export interface OnePasswordOptions {
   /** Test seam: the env, platform and home the token source is read with. */
   tokenDeps?: OpTokenDeps;
   timeoutMs?: number;
+  /** The op CLI to run (default: `op` on PATH; tests: a fake by full path). */
+  bin?: string;
 }
 
 /** op's own words from a failed run (stderr), without its "[ERROR] date time" prefix. */
@@ -71,8 +73,11 @@ export class OnePasswordProvider implements SecretsProvider {
   private readonly tokenSource: OpTokenSource | undefined;
   private readonly tokenDeps: OpTokenDeps | undefined;
 
+  private readonly bin: string;
+
   constructor(opts: OnePasswordOptions = {}) {
     this.timeout = opts.timeoutMs ?? 60_000;
+    this.bin = opts.bin ?? "op";
     this.tokenSource = opts.tokenSource;
     this.tokenDeps = opts.tokenDeps;
     if (opts.account) process.env.OP_ACCOUNT ||= opts.account;
@@ -109,7 +114,7 @@ export class OnePasswordProvider implements SecretsProvider {
   private async run(args: string[], rawErrors = false): Promise<string> {
     const { token, ...opts } = await this.opOptions();
     try {
-      const { stdout } = await execFileAsync("op", args, opts);
+      const { stdout } = await execFileAsync(this.bin, args, opts);
       return String(stdout);
     } catch (err) {
       // `set` keeps op's own error: its caller strips the value it wrote.
@@ -168,7 +173,7 @@ export class OnePasswordProvider implements SecretsProvider {
   private async runWithInput(args: string[], input: string): Promise<string> {
     const { token: _t, ...opts } = await this.opOptions();
     return new Promise((resolve, reject) => {
-      const child = spawn("op", args, {
+      const child = spawn(this.bin, args, {
         env: opts.env,
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -207,6 +212,22 @@ export class OnePasswordProvider implements SecretsProvider {
    * Password item). The value only ever travels on op's stdin, as the
    * item's JSON (op item edit / op item create -), never in argv.
    */
+  /**
+   * Remove the field (`op item edit ITEM 'FIELD[delete]'`), or with
+   * `wholeItem` the item itself (`op item delete`): one Den made for it.
+   */
+  async delete(
+    ref: SecretRef,
+    opts: { wholeItem?: boolean } = {},
+  ): Promise<void> {
+    const vault = ref.vault ? ["--vault", ref.vault] : [];
+    await this.run(
+      opts.wholeItem
+        ? ["item", "delete", ref.item, ...vault]
+        : ["item", "edit", ref.item, ...vault, `${ref.field}[delete]`],
+    );
+  }
+
   async set(ref: SecretRef, value: string): Promise<void> {
     const vault = ref.vault ? ["--vault", ref.vault] : [];
     type Field = {

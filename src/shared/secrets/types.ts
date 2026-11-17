@@ -60,6 +60,12 @@ export interface SecretsProvider {
   ): Promise<{ value: string | null; reason?: string }>;
   /** Write (create or overwrite) a secret. Throws on failure. */
   set(ref: SecretRef, value: string): Promise<void>;
+  /**
+   * Remove a secret: the field (1Password) or the secret (Doppler); with
+   * `wholeItem`, 1Password's whole item (one Den made for it). Optional;
+   * throws on failure, never with a value.
+   */
+  delete?(ref: SecretRef, opts?: { wholeItem?: boolean }): Promise<void>;
   /** Check the backend is usable before `den up`/`restart`. */
   preflight(): Promise<PreflightResult>;
   /**

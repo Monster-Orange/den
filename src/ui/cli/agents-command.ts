@@ -290,12 +290,13 @@ export const AGENTS_HELP = {
     "    checks a hand-back to a person: URL, machine, branch, what changed, what",
     "    to click and decisions are all there, every ID is explained, and each",
     "    decision is a numbered yes/no question; exit 1 with what to fix",
-    "{cli} agents token set   ·   {cli} agents token status",
+    "{cli} agents token set   ·   {cli} agents token status   ·   {cli} agents token clear [--yes]",
     "    the long-lived sign-in token agents use under Keep agents running after",
     "    logout (make it once with claude setup-token): set reads it from stdin or",
     "    a prompt that doesn't show it, never the command line, and saves it in",
     "    the install's secrets store. status: whether it is there and when it was",
-    "    set. A person's only",
+    "    set. clear: removes it from the store, the way set kept it (asks first",
+    "    unless --yes). set and clear are a person's only",
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -1547,6 +1548,12 @@ export interface AgentsTokenDeps {
   tokenSave?: (
     token: string,
   ) => Promise<{ ref: "configured" | "created"; store: string }>;
+  /** Remove it from the store (default: clearAgentToken). */
+  tokenClear?: () => Promise<
+    import("../../shared/agents/signin-token.js").TokenClearResult
+  >;
+  /** `agents token clear`'s y/N (default: a terminal prompt; none off one). */
+  tokenConfirm?: (question: string) => Promise<boolean | null>;
   /** The store, its ref and status for `token status` (tests). */
   tokenDeps?: Partial<
     Pick<
@@ -1608,8 +1615,9 @@ async function tokenCmd(
 ): Promise<number> {
   const [sub, ...rest] = args;
   const where = `agents token ${sub ?? ""}`.trim();
-  if (sub !== "set" && sub !== "status")
-    throw new UsageError(`${where}: use agents token set | status`);
+  if (sub !== "set" && sub !== "status" && sub !== "clear")
+    throw new UsageError(`${where}: use agents token set | status | clear`);
+  if (sub === "clear") return tokenClearCmd(rest, d, deps);
   if (rest.length)
     // Never echo what was given: it may be the token itself.
     throw new UsageError(
@@ -1672,6 +1680,80 @@ async function tokenCmd(
       `Agents started under Keep agents running after logout use it from their next start.`,
   );
   return 0;
+}
+
+/** y/N on a terminal; null off one (nothing to ask). */
+async function askYesNo(question: string): Promise<boolean | null> {
+  if (!process.stdin.isTTY) return null;
+  const rl = (await import("readline")).createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+  try {
+    const a = await new Promise<string>((r) => rl.question(question, r));
+    return /^y(es)?$/i.test(a.trim());
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * `agents token clear [--yes]` (issue 163): removes the agents' sign-in
+ * token from the install's secrets store, the way set kept it. A person's
+ * only; asks y/N first unless --yes. Never reads or prints the value.
+ */
+async function tokenClearCmd(
+  args: string[],
+  d: AgentsResolved,
+  deps: AgentsTokenDeps,
+): Promise<number> {
+  const where = "agents token clear";
+  const yes = args.includes("--yes") || args.includes("-y");
+  const other = args.filter((a) => a !== "--yes" && a !== "-y");
+  if (other.length) throw new UsageError(`${where} takes only --yes`);
+  if (isAgentTokenEnv(d.env)) {
+    d.err(
+      `✗ ${where}: only a person clears the agents' sign-in token (this is an agent)`,
+    );
+    return 1;
+  }
+  if (!yes) {
+    const ok = await (deps.tokenConfirm ?? askYesNo)(
+      "Remove the agents' sign-in token from the secrets store? Agents under Keep agents running after logout can't sign in until a new one is set. [y/N] ",
+    );
+    if (ok === null) {
+      d.err(`✗ ${where}: not a terminal, so nothing to ask: add --yes`);
+      return 1;
+    }
+    if (!ok) {
+      d.out("Nothing removed.");
+      return 0;
+    }
+  }
+  const { clearAgentToken } =
+    await import("../../shared/agents/signin-token.js");
+  try {
+    const r = await (
+      deps.tokenClear ?? (() => clearAgentToken({ stateDir: d.stateDir() }))
+    )();
+    if (!r.cleared) {
+      d.out("no sign-in token set: nothing to remove");
+      return 0;
+    }
+    d.out(
+      r.how === "process"
+        ? `✓ removed the sign-in token from this process's environment (the env secrets backend keeps it only there)`
+        : `✓ removed the agents' sign-in token from ${r.store}` +
+            (r.how === "item" ? " (Den's own item, deleted)" : "") +
+            (r.refDropped
+              ? `; secrets.refs.agent_signin_token is gone from your user.yml`
+              : ""),
+    );
+    return 0;
+  } catch (e) {
+    d.err(`✗ ${where}: ${String((e as Error)?.message ?? e)}`);
+    return 1;
+  }
 }
 
 export interface AgentsDoctorDeps {

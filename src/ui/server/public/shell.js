@@ -1407,6 +1407,14 @@
     "keep.tokenLabel": "Sign-in token",
     "keep.tokenSave": "Save",
     "keep.tokenFailed": "Not saved: {error}",
+    "keep.tokenClear": "Clear",
+    "keep.clearTitle": "Remove the sign-in token?",
+    "keep.clearAsk":
+      "It's removed from the secrets store. Agents under Keep agents running after logout can't sign in until a new one is set.",
+    "keep.clearOk": "Remove",
+    "keep.clearW": "Removing the sign-in token…",
+    "keep.clearS": "Removed.",
+    "keep.clearF": "Couldn't remove the sign-in token.",
     "keep.noStore":
       "There's no secrets store for this install, so the sign-in token can't be kept. Set secrets.provider to 1password or doppler first.",
     "keep.tokenSet": "Agents sign in with the token set {date}.",

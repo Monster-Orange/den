@@ -337,6 +337,7 @@ import {
 } from "./keep-running-routes.js";
 import {
   agentTokenStatusNow,
+  clearAgentToken,
   saveAgentToken,
 } from "../../shared/agents/signin-token.js";
 import { serviceJobState } from "../cli/doctor-where.js";
@@ -3414,6 +3415,7 @@ async function handleRequest(
     handleSignInTokenRoute(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       save: (token) => saveAgentToken(token, { stateDir: getStateDir() }),
+      clear: () => clearAgentToken({ stateDir: getStateDir() }),
       status: agentSigninView,
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       readBody,

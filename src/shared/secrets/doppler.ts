@@ -20,14 +20,19 @@ export interface DopplerOptions {
   config?: string;
   keys?: Record<string, string>;
   timeoutMs?: number;
+  /** The doppler CLI to run (default: `doppler` on PATH; tests: a fake by full path). */
+  bin?: string;
 }
 
 export class DopplerProvider implements SecretsProvider {
   readonly name = "doppler" as const;
   private readonly timeout: number;
 
+  private readonly bin: string;
+
   constructor(private readonly opts: DopplerOptions = {}) {
     this.timeout = opts.timeoutMs ?? 30_000;
+    this.bin = opts.bin ?? "doppler";
   }
 
   /**
@@ -48,7 +53,7 @@ export class DopplerProvider implements SecretsProvider {
 
   async isReady(): Promise<boolean> {
     try {
-      await execFileAsync("doppler", ["me", "--json"], {
+      await execFileAsync(this.bin, ["me", "--json"], {
         timeout: this.timeout,
       });
       return true;
@@ -60,7 +65,7 @@ export class DopplerProvider implements SecretsProvider {
   async get(ref: SecretRef): Promise<string> {
     const key = this.keyFor(ref);
     const { stdout } = await execFileAsync(
-      "doppler",
+      this.bin,
       ["secrets", "get", key, "--plain", ...this.scopeArgs(ref)],
       { timeout: this.timeout },
     );
@@ -81,7 +86,7 @@ export class DopplerProvider implements SecretsProvider {
     const key = this.keyFor(ref);
     await new Promise<void>((resolve, reject) => {
       const child = spawn(
-        "doppler",
+        this.bin,
         ["secrets", "set", key, "--silent", ...this.scopeArgs(ref)],
         { stdio: ["pipe", "ignore", "pipe"] },
       );
@@ -99,6 +104,23 @@ export class DopplerProvider implements SecretsProvider {
     });
   }
 
+  /** `doppler secrets delete KEY --yes`: the secret is gone. */
+  async delete(ref: SecretRef): Promise<void> {
+    const key = this.keyFor(ref);
+    try {
+      await execFileAsync(
+        this.bin,
+        ["secrets", "delete", key, "--yes", "--silent", ...this.scopeArgs(ref)],
+        { timeout: this.timeout },
+      );
+    } catch (err) {
+      const e = err as { stderr?: unknown };
+      throw new Error(
+        `doppler secrets delete ${key} failed: ${String(e.stderr ?? "").trim()}`,
+      );
+    }
+  }
+
   async preflight(): Promise<PreflightResult> {
     if (!(await this.isReady())) {
       return {
@@ -110,7 +132,7 @@ export class DopplerProvider implements SecretsProvider {
     }
     try {
       await execFileAsync(
-        "doppler",
+        this.bin,
         ["secrets", "--only-names", "--json", ...this.scopeArgs()],
         { timeout: this.timeout },
       );
@@ -126,6 +148,6 @@ export class DopplerProvider implements SecretsProvider {
   }
 
   runPrefix(): string[] {
-    return ["doppler", "run", ...this.scopeArgs(), "--"];
+    return [this.bin, "run", ...this.scopeArgs(), "--"];
   }
 }

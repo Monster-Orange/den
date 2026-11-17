@@ -71,10 +71,11 @@ running (always)`.
 
 ## Fail-closed check (optional)
 
-16. Clear the token's value in the store (not the ref), then start a new
-    agent. The start warns: "agents will not be able to sign in after
-    logout". `doctor`'s agent sign-in row warns the same. Set it again
-    with `agents token set`.
+16. Clear the token: `./bin/acme agents token clear` (it asks y/N), or
+    Settings' Clear beside Save. Then start a new agent. The start warns: "agents will not be able to sign in after
+    logout". `doctor`'s agent sign-in row warns the same, and
+    `agents token status` warns under mode always. Set it again with
+    `agents token set`.
 
 ## Record
 
