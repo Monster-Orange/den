@@ -139,6 +139,40 @@ describe("D67: its page withdraws its code as it goes", () => {
       ),
     ).toMatchObject({ ok: false, status: 403, code: "csrf" });
   });
+
+  it("issue 320: the page's beacon (POST …/withdraw) is guarded exactly as the DELETE", () => {
+    const BEACON = `${POLL}/withdraw`;
+    const beacon = (h: Record<string, string>) =>
+      req("POST", BEACON, { "content-type": "text/plain;charset=UTF-8", ...h });
+    for (const c of [ctx(), signedIn()]) {
+      expect(
+        checkRequest(beacon({ origin: `https://${EDGE}` }), c),
+      ).toMatchObject({ ok: true });
+      expect(
+        checkRequest(beacon({ origin: "https://evil.example" }), c),
+      ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
+      expect(checkRequest(beacon({}), c)).toMatchObject({
+        ok: false,
+        status: 403,
+      });
+    }
+    expect(
+      checkRequest(
+        beacon({
+          origin: `https://${EDGE}`,
+          authorization: "Bearer den_at_agent",
+        }),
+        ctx(),
+      ).ok,
+    ).toBe(false);
+    // Only the withdraw: a POST to the poll itself still needs a CSRF token.
+    expect(
+      checkRequest(
+        req("POST", POLL, { origin: `https://${EDGE}` }),
+        signedIn(),
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "csrf" });
+  });
 });
 
 describe("approving (someone already in)", () => {

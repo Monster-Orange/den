@@ -376,7 +376,7 @@ import {
   handleGithubRoutes,
   isGithubRoute,
 } from "./github-routes.js";
-import { PairRequests } from "./pair-requests.js";
+import { PairRequests, pairUnseenMs } from "./pair-requests.js";
 import { LoginWaits } from "./login-waits.js";
 import { handlePairRoutes, isPairRoute } from "./pair-routes.js";
 import {
@@ -1681,7 +1681,7 @@ function noteExpiringToken(): void {
 }
 
 // ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
-const PAIRS = new PairRequests();
+const PAIRS = new PairRequests({ unseenMs: pairUnseenMs() });
 
 /**
  * What every printed command starts with (cli-command.ts): `<cli>` when the

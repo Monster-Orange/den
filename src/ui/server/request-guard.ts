@@ -81,6 +81,7 @@ import {
   pathMatches,
   routeClass,
   SIGNIN_CSRF_FREE,
+  SIGNIN_ID_BEACONS,
   SIGNIN_ID_DELETES,
   SIGNIN_FREE,
   SIGNIN_GETS,
@@ -683,6 +684,12 @@ export function checkRequest(
   if (
     method === "DELETE" &&
     SIGNIN_ID_DELETES.some((r) => pathMatches(r, pathname))
+  )
+    return ok(null);
+  // Issue 320: the same withdraw, as the page's beacon (a POST).
+  if (
+    method === "POST" &&
+    SIGNIN_ID_BEACONS.some((r) => pathMatches(r, pathname))
   )
     return ok(null);
   // A browser's WebSocket can't send a header: on an upgrade the token
