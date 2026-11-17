@@ -26,6 +26,16 @@ config and manifest changes a distribution must make to move to it under
   says so in the dialog: "That request has ended". An expired code says it
   expired. Both are in English, Spanish and Japanese. The server answers
   410 with code `ended` for a withdrawn code, for a minute (#320).
+- A code whose signed-out page has closed or gone elsewhere can no longer
+  be approved, in Safari too. Safari drops the request a closing page
+  sends to withdraw its code, so the code stayed open and `web approve`
+  answered "Approved". Now the server ends any code its page hasn't asked
+  about for 15 s (`DEN_PAIR_UNSEEN_MS` changes it): Allow and `web
+  approve` answer that the request has ended, and nothing is allowed. The
+  page also withdraws its code with a beacon as it goes, which Safari does
+  send (POST /api/signin/code/<id>/withdraw, an allowed Origin, as the
+  DELETE). A background tab whose code ended this way shows a fresh code
+  by itself, at once when you come back to it (#320).
 
 ## [0.4.63] - 2026-11-17
 

@@ -362,6 +362,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/signin/code/:id",
     "D67: the signed-out page is going; its pending code request ends",
   ),
+  M(
+    ["POST"],
+    "/api/signin/code/:id/withdraw",
+    "issue 320: the same, as the signed-out page's beacon sends it",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",
@@ -781,6 +786,8 @@ export const SIGNIN_FREE: readonly string[] = [
   // SEC-2a: approve this computer with a code, from the signed-out page.
   "/api/signin/code",
   "/api/signin/code/:id",
+  // Issue 320: the page's beacon withdraw (its poll id is the proof).
+  "/api/signin/code/:id/withdraw",
   // HUB-1.7: Hub's redirect back (no session cookie on it): the state
   // this server issued is the proof (hub-connect.ts).
   "/hub/callback",
@@ -828,6 +835,15 @@ export const SIGNIN_GETS: readonly string[] = [
  * goes, and by then it may have signed in another way.
  */
 export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
+
+/**
+ * Issue 320: the same withdraw, as a POST: `navigator.sendBeacon` sends
+ * only a POST, and Safari drops a keepalive DELETE as a page goes. Guarded
+ * as SIGNIN_ID_DELETES: an allowed Origin, no CSRF token, signed in or not.
+ */
+export const SIGNIN_ID_BEACONS: readonly string[] = [
+  "/api/signin/code/:id/withdraw",
+];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
@@ -884,6 +900,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
   "pair-routes.ts:POLL_PATH": ["/api/signin/code/:id"],
+  "pair-routes.ts:WITHDRAW_PATH": ["/api/signin/code/:id/withdraw"],
   "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
   "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
   "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],

@@ -98,7 +98,8 @@ describe("a request", () => {
 
   it("expires after 10 minutes: its page is told, approving it says expired, then it is forgotten", () => {
     const c = clock();
-    const pairs = new PairRequests({ now: c.now });
+    // Its page polls all along (issue 320: else it ends unseen first).
+    const pairs = new PairRequests({ now: c.now, unseenMs: Infinity });
     const r = pairs.create({ userAgent: UA });
     c.advance(PAIR_TTL_MS - 1);
     expect(pairs.get(r.id)?.state).toBe("pending");
@@ -151,7 +152,8 @@ describe("the cap and the rate limit", () => {
 
   it("past 10 attempts a minute, every attempt is refused (a right code too) until the minute passes", () => {
     const c = clock();
-    const pairs = new PairRequests({ now: c.now });
+    // Its page polls all along (issue 320: else it ends unseen first).
+    const pairs = new PairRequests({ now: c.now, unseenMs: Infinity });
     const r = pairs.create({ userAgent: UA });
     const wrong = r.code === "000-000" ? "000-001" : "000-000";
     for (let i = 0; i < 10; i++)
@@ -167,7 +169,7 @@ describe("the cap and the rate limit", () => {
 });
 
 describe("D67: only codes a page still waits on", () => {
-  it("a page that stops asking (its tab closed) drops off the waiting list; asking again brings it back", () => {
+  it("a page that stops asking (its tab closed) drops off the waiting list; issue 320: it has ended, so asking again gets nothing", () => {
     const c = clock();
     const pairs = new PairRequests({ now: c.now });
     const kept = pairs.create({ userAgent: UA });
@@ -176,9 +178,11 @@ describe("D67: only codes a page still waits on", () => {
     pairs.get(kept.id);
     c.advance(2000);
     expect(pairs.waiting().map((w) => w.code)).toEqual([kept.code]);
-    // It still approves by code (the CLI's `web approve`), and a poll shows it again.
-    expect(pairs.get(left.id)?.state).toBe("pending");
-    expect(pairs.waiting().map((w) => w.code)).toEqual([kept.code, left.code]);
+    // Issue 320: ended, not just hidden: `web approve` says so, and a late
+    // poll (a background tab) gets nothing, so its page makes a new code.
+    expect(pairs.approve(left.code)).toEqual({ ok: false, error: "ended" });
+    expect(pairs.get(left.id)).toBeNull();
+    expect(pairs.waiting().map((w) => w.code)).toEqual([kept.code]);
   });
 
   it("withdraw ends a pending request by its poll id at once; not one already approved", () => {
@@ -222,5 +226,52 @@ describe("D67: only codes a page still waits on", () => {
       ok: false,
       error: "ended",
     });
+  });
+});
+
+describe("issue 320: a request its page stopped asking for has ended", () => {
+  it("unseen past PAIR_UNSEEN_MS (a closed page whose withdraw never came): approve and deny say ended, nothing is allowed, and its page's next poll gets nothing", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now });
+    const r = pairs.create({ userAgent: UA });
+    c.advance(PAIR_UNSEEN_MS);
+    expect(pairs.approve(r.code)).toEqual({ ok: false, error: "ended" });
+    expect(pairs.deny(r.code)).toEqual({ ok: false, error: "ended" });
+    expect(pairs.waiting()).toEqual([]);
+    // A background tab that polls late: gone, so its page makes a new code.
+    expect(pairs.get(r.id)).toBeNull();
+    expect(pairs.claim(r.id)).toBeNull();
+    // Like a withdrawn one: it says ended for a minute, then is forgotten.
+    c.advance(60_000);
+    expect(pairs.approve(r.code)).toEqual({ ok: false, error: "unknown" });
+  });
+
+  it("waiting() and approve() draw the same line: one ms short of the bound it is listed and approves", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now });
+    const r = pairs.create({ userAgent: UA });
+    c.advance(PAIR_UNSEEN_MS - 1);
+    expect(pairs.waiting().map((w) => w.code)).toEqual([r.code]);
+    expect(pairs.approve(r.code)).toMatchObject({ ok: true });
+    expect(pairs.claim(r.id)?.state).toBe("approved");
+  });
+
+  it("a page that keeps polling keeps its request: approving it still works long after", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now });
+    const r = pairs.create({ userAgent: UA });
+    for (let t = 0; t < 5 * 60_000; t += 1500) {
+      c.advance(1500);
+      expect(pairs.get(r.id)?.state).toBe("pending");
+    }
+    expect(pairs.approve(r.code)).toMatchObject({ ok: true });
+  });
+
+  it("the bound is injectable (unseenMs)", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now, unseenMs: 2000 });
+    const r = pairs.create({ userAgent: UA });
+    c.advance(2000);
+    expect(pairs.approve(r.code)).toEqual({ ok: false, error: "ended" });
   });
 });

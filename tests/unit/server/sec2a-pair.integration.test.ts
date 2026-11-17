@@ -165,6 +165,11 @@ function env() {
     NO_COLOR: "1",
     PORT: String(port),
     DEN_BIND_HOST: "0.0.0.0",
+    // Issue 320: the server ends a code its page hasn't polled for 15 s.
+    // This suite asks for codes and approves them (spawning the CLI) with
+    // no page polling in between; a slow machine could take that long.
+    // The unseen bound has its own suite (pair-unseen.integration).
+    DEN_PAIR_UNSEEN_MS: "600000",
   };
 }
 function writeUser(extra = ""): void {

@@ -28,11 +28,22 @@ import { deviceName } from "../../shared/web-session.js";
 export const PAIR_TTL_MS = 10 * 60_000;
 /**
  * D67: a pending request whose page hasn't polled for this long isn't
- * waiting for anyone (its tab closed, or signed in another way): the
- * signed-in browsers' "Allow this computer?" leaves it out. The page polls
- * every 1.5 s; a background tab, at worst once a minute after five.
+ * waiting for anyone (its tab closed, or signed in another way). Issue
+ * 320: it has ended, as if its page withdrew it: Safari drops the
+ * keepalive DELETE a closing page sends, and a closed tab may send
+ * nothing, so the server can't wait to be told. The signed-in browsers'
+ * "Allow this computer?" never shows it, and approving its code says it
+ * ended. The page polls every 1.5 s; a background tab, at worst once a
+ * minute after five: its late poll gets "gone", and it makes a new code by
+ * itself. DEN_PAIR_UNSEEN_MS (ms, > 0) sets it (pairUnseenMs).
  */
 export const PAIR_UNSEEN_MS = 15_000;
+
+/** The unseen bound: DEN_PAIR_UNSEEN_MS (ms, > 0), else PAIR_UNSEEN_MS. */
+export function pairUnseenMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.DEN_PAIR_UNSEEN_MS);
+  return Number.isFinite(n) && n > 0 ? n : PAIR_UNSEEN_MS;
+}
 /** The most pending requests at once; a new one drops the oldest. */
 export const MAX_PENDING_PAIRS = 5;
 /**
@@ -194,6 +205,12 @@ export class PairRequests {
     this.sweep();
     const r = this.byId.get(id);
     if (!r || r.state !== "pending") return false;
+    this.end(r);
+    return true;
+  }
+
+  /** A pending request ends as withdrawn: kept a minute, at most so many. */
+  private end(r: PairRequest): void {
     const kept = [...this.byId.values()]
       .filter((x) => x.state === "withdrawn")
       .sort((x, y) => (x.forgetAt ?? 0) - (y.forgetAt ?? 0));
@@ -201,18 +218,17 @@ export class PairRequests {
       this.byId.delete(kept.shift()!.id);
     r.state = "withdrawn";
     r.forgetAt = this.now() + PAIR_ENDED_KEEP_MS;
-    return true;
   }
 
   /**
-   * The requests waiting for approval, oldest first: pending, and its page
-   * still asking (D67: none a closed tab left).
+   * The requests waiting for approval, oldest first: pending, so its page
+   * is still asking (D67, issue 320: sweep ended any a closed tab left,
+   * the same rule decide() goes by).
    */
   waiting(): PairView[] {
     this.sweep();
-    const now = this.now();
     return [...this.byId.values()]
-      .filter((r) => r.state === "pending" && now - r.seenAt < this.unseenMs)
+      .filter((r) => r.state === "pending")
       .sort((a, b) => a.createdAt - b.createdAt)
       .map(view);
   }
@@ -263,9 +279,19 @@ export class PairRequests {
     return { ok: true, request: view(r) };
   }
 
-  /** Expire requests past their time; forget ended ones. */
+  /**
+   * Expire requests past their time; end pending ones their page stopped
+   * asking for (issue 320: PAIR_UNSEEN_MS); forget ended ones.
+   */
   private sweep(): void {
     const now = this.now();
+    for (const r of this.byId.values())
+      if (
+        r.state === "pending" &&
+        now < r.expiresAt &&
+        now - r.seenAt >= this.unseenMs
+      )
+        this.end(r);
     for (const [id, r] of this.byId) {
       if (
         (r.state === "pending" || r.state === "approved") &&

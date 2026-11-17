@@ -9,6 +9,9 @@
  *                                  once (the request is consumed)
  *   DELETE /api/signin/code/<id>  D67: its page is going; a pending
  *                                  request ends (signed-out, Origin only)
+ *   POST /api/signin/code/<id>/withdraw  issue 320: the same, as the
+ *                                  page's sendBeacon sends it (Safari
+ *                                  drops a keepalive DELETE as a page goes)
  *   GET  /api/web/waiting          the requests waiting (shell-grade)
  *   POST /api/web/approve {code}   approve one (shell-grade: `<cli> web
  *                                  approve`, Settings › Access)
@@ -43,12 +46,14 @@ export interface PairRouteDeps {
 }
 
 const POLL_PATH = /^\/api\/signin\/code\/([A-Za-z0-9_-]{16,64})$/;
+const WITHDRAW_PATH = /^\/api\/signin\/code\/([A-Za-z0-9_-]{16,64})\/withdraw$/;
 
 /** Whether `pathname` is one of these routes' (index.ts dispatches them here). */
 export function isPairRoute(pathname: string): boolean {
   return (
     pathname === "/api/signin/code" ||
     POLL_PATH.test(pathname) ||
+    WITHDRAW_PATH.test(pathname) ||
     pathname === "/api/web/waiting" ||
     pathname === "/api/web/approve" ||
     pathname === "/api/web/deny"
@@ -122,6 +127,13 @@ export async function handlePairRoutes(
   const p = POLL_PATH.exec(pathname);
   if (p && method === "DELETE") {
     deps.sendJson(res, { ok: true, withdrawn: deps.pairs.withdraw(p[1]) });
+    return true;
+  }
+  // Issue 320: the page's beacon (its body, if any, means nothing).
+  const w = WITHDRAW_PATH.exec(pathname);
+  if (w && method === "POST") {
+    req.resume();
+    deps.sendJson(res, { ok: true, withdrawn: deps.pairs.withdraw(w[1]) });
     return true;
   }
   if (p && (method === "GET" || method === "HEAD")) {
