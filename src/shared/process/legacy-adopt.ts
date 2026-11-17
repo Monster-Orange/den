@@ -23,6 +23,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import type { RecordedProcessGroup } from "./process-group.js";
+import { PS_MAX_BUFFER } from "./ps-buffer.js";
 
 const C_ENV = { ...process.env, LC_ALL: "C", LANG: "C" };
 
@@ -33,6 +34,7 @@ function run(cmd: string, args: string[]): string | null {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 5000,
+      maxBuffer: PS_MAX_BUFFER,
     });
   } catch (e) {
     // lsof and ps exit 1 when nothing matches; what they printed still counts.
