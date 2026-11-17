@@ -2,7 +2,8 @@
  * The top bar's chips and overlays (0.3.0-dev.20): shell.js draws the bar,
  * this module drives it. header.js imports it on every page.
  *
- *   ⌘K search (R5)   #den-search, ⌘K or Ctrl+K: the command palette (R17)
+ *   ⌘K search (R5)   the kit's search field (den-ui 0.7.0): a click, ⌘K
+ *                     or Ctrl+K opens the command palette (R17)
  *   status (R6)       #den-status: "All N healthy" / "ok/N healthy · k down",
  *                     from the same rollup as the rail's Services badge; it
  *                     opens the status drawer (R15)
@@ -36,6 +37,7 @@
  * route, container, daemon or server process changes. Start and Restart
  * are the explicit actions, through the page's own runner.
  */
+import { hydrateSearch } from "/kit/shell-client.js";
 import { isMac } from "./term-input.js";
 import { formatTime } from "/kit/time.js";
 
@@ -1586,7 +1588,9 @@ export function initTopbar(opts = {}) {
   paintRuns();
   sh()?.runs?.onChange?.(paintRuns);
   paintLock();
-  $("den-search")?.addEventListener("click", openPalette);
+  // The kit's search (den-ui 0.7.0): a click and ⌘K / Ctrl+K open the
+  // palette.
+  hydrateSearch($("den-search"), { onActivate: () => openPalette() });
   $("den-status")?.addEventListener("click", () =>
     overlay?.kind === "drawer" ? closeOverlay(true) : openDrawer(),
   );
@@ -1604,10 +1608,7 @@ export function initTopbar(opts = {}) {
     });
   });
   document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      openPalette();
-    } else if (e.key === "Escape" && overlay && !e.defaultPrevented) {
+    if (e.key === "Escape" && overlay && !e.defaultPrevented) {
       e.preventDefault();
       closeOverlay(true);
     }

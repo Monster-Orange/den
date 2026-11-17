@@ -168,7 +168,8 @@ repository root, one row per component, with a reason:
     | report | our reports go to a ticket desk, not an issue tracker |
 
 (or a list: `- report: our reports go to …`). The components are `shell`,
-`version`, `whatsnew`, `update`, `report` and `working`. A row without a
+`version`, `whatsnew`, `update`, `report` and `working`, and since 0.7.0
+`scope`, `search`, `bell`, `appearance` and `account`. A row without a
 reason does not count. With no DIVERGE.md, every copy fails.
 
 ### Nav inventory
@@ -255,6 +256,20 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   either side. A host slot wider or narrower than the reference (or on
   one side only) may move or stretch its neighbours sideways by exactly
   that much, never by anything else.
+- Host content: the kit stamps `data-nav-role` on what each host fills
+  with its own words: each scope crumb (`crumb`) and the separator after
+  it (`crumb-sep`), the brand's title (`brand-title`), the search's
+  placeholder (`search-ph`), each rail group (`rail-group`), its heading
+  (`group`) and its pages (`page`), and the account entry's words
+  (`account-name`). The search's name is the host's too
+  (`data-nav-name="host"`: its name is not compared). Their count, keys, ids, text and
+  width are never compared, on either side. The first of each role is
+  compared with the other side's first, and what it holds by key, on
+  every computed style and on height. Their size may move what follows by
+  exactly its change: sideways in the bar (their contents' width, not a
+  filled box's), down in the rail (heights; the rail's spacer shrinks by
+  as much). The mark, the search field's box and all other chrome stay
+  strict. The references hold each element's `host`.
 - `themeTokens`: empty by default, and never set on a parity run: both
   products run in `NAV_THEME`, so any colour or font that differs is a
   real gap. It is only for a run that switches themes on purpose. What a
@@ -270,9 +285,25 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   list on its `font-family`, and read back, so it is in the form computed
   values take. `snapshot.tokens` maps each colour and family seen to the
   tokens that compute to it.
-- Fonts in Den's test: the system faces are pinned to the kit's own
-  Rubik and Space Mono, so text lays out alike from run to run. A host
-  pins them the same way (see `tests/unit/den-ui/nav-inventory-helpers.ts`).
+- Fonts: `await pinNavFonts(context)` (from `./inventory`) pins the
+  system faces a nav names to the kit's own Rubik and Space Mono, so text
+  lays out alike from run to run, as when the reference was taken. Call it
+  on the Playwright `BrowserContext` before opening the page. It puts the
+  pin stylesheet first on every page and serves `/__pin-fonts/*` from the
+  package's `src/fonts` (or `{ fontsDir }`). It finds them from its own
+  files, never from the working folder: the package's `imports` entry
+  `#den-ui-fonts-dir` is `inventory/fonts-dir.mjs` for an ES module
+  (`import.meta.url`) and `inventory/fonts-dir.cjs` for CommonJS
+  (`__dirname`). Both ship in `inventory/`; a host serves neither.
+- Font families in the fingerprint are one line each (`navFamily`: every
+  run of whitespace one space, trimmed), so a token written over several
+  lines names the same face as one written on one.
+- The user agent: under `@playwright/test`, the config's device
+  `userAgent` leaks into the contexts of a browser you connect to, and the
+  environment check then sees another user agent than the reference's.
+  Set `test.use({ userAgent: "" })`, or create the context with no
+  `userAgent`. `NAV_BROWSER_IMAGE` and
+  `NAV_THEME` are exported beside it.
 
 Den runs it in `tests/unit/den-ui/nav-inventory.browser.test.ts` (CI's
 `den-ui-nav` job starts the image) with red cases that must fail: the
@@ -313,6 +344,156 @@ browser test, on the image (Den's real server on the demo distribution,
 - Types: every `src/*.js` has a `.d.ts` beside it; the package's `types`
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
+
+## 0.7.0
+
+No new file. One import changes, for hosts that serve a fixed list of kit files:
+
+`shell-client.js` now imports `dialog.js` (and `shell-html.js`): serve `dialog.js` wherever `shell-client.js` is served.
+
+Default tokens are Den's theme. `tokens.css`'s defaults are now the values
+of Den's own theme (`themes/den/den-theme.json`): its type stacks (sans,
+mono, display, ja), its shape (radius 8px, radius-button 6px) and both
+modes' colours, shadow and bar. A host on the kit's defaults looks like
+Den. Light and dark switch as before. Themes are still token sets the host
+lists in `appearanceMenuHtml({ themes })`; the kit ships no theme files.
+Tokens the theme has no value for keep the kit's own: `--info`,
+`--violet`, `--upd-shadow`, `--density` and the rest.
+
+`tokens.css` owns `--den-pop-shadow`, the shadow of a pop-up or a picker
+dialog: `0 16px 40px rgb(0 0 0 / 0.25)` in light, `/ 0.6` in dark. A host
+that kept its own copy of that token can delete it.
+
+The whole global nav is the kit's. Pieces of the top bar and the rail
+that a host drew itself move into the kit, so every host draws them the
+same way, with the same CSS values. In order: ☰ · brand · scope crumbs ·
+search with ⌘K · the host's `end` slot (status chips) · Report · bell ·
+version chip with its pip and the update-waiting pill · ◐ ▾. The rail's
+foot: the host's entries · Settings · account · Collapse. The host gives words,
+values and callbacks. The kit draws the markup and owns focus and keys.
+Each piece is optional: one left out draws nothing.
+
+- **Scope crumbs**: `scopeHtml({ crumbs, label?, after? })`, for the
+  `start` slot. Each crumb is `{ key, label, value, menu?, id?, title?,
+hidden?, optional? }`. `label` is the small-caps word (COMPANY,
+  PROJECT, ENV). With a `menu`, the crumb is a ▾ button. Without one, it is
+  a plain label. `menu` is a list of links `[{ label, href, current? }]`
+  or HTML, and the kit draws and opens it below the ▾. Enter, Space, ↓ and
+  ↑ open it, and ↑ ↓ Home End move in it. Esc closes it and goes back to
+  the ▾. `menu: true` means the host opens its own menu: `onOpen(key,
+button)`. A crumb left out of the list draws nothing, and no separator
+  either (a host with no ENV, say). `scopeCrumbHtml(crumb)` draws one crumb.
+  A kit-drawn list of more than 6 links gets a filter field at its top
+  (`filter`: a number sets that threshold, `false` turns it off). The menu
+  opens on the field. Typing hides the links that don't hold the text, and
+  "No match" shows when none do. ↓ goes to the links, Enter takes the first
+  one shown, and Esc clears the text, then closes the menu.
+- **Search field**: `searchHtml({ placeholder, label?, id?, shortcut? })`,
+  for the `start` slot. It is the placeholder with ⌘K inside the field. A
+  click, Enter, ⌘K or Ctrl-K calls `onActivate(via)` (`"click"` or
+  `"key"`) and fires `den-ui:search` on the field. The kit owns no
+  palette.
+- **Bell**: `bellButtonHtml({ count, label? })`, for the `bell` slot. It is
+  a button with a count badge (99+ past 99, none at 0) and
+  `aria-haspopup="dialog"`. Its name says the count. The panel is a dialog
+  on `<body>`: a heading, then the host's `items` as rows (`{ text, href?,
+time?, read? }`) or the empty state. `bellPanelHtml(...)` takes `actions`
+  (buttons beside the heading), `lead`, `body` (the host's own rows),
+  `empty`, `after` and `foot`. A click on the bell toggles the panel.
+  Opening it focuses its first link or button. Esc closes it and focus goes
+  back to the bell, in Safari too (`focusBack` from `dialog.js`). A click
+  outside closes it. `onEscape(e)` returning true keeps it open (the
+  host's own question inside it, say). `shell.bell.setCount(n)` updates the
+  badge.
+- **Account entry**: `account: { label, detail?, href? | menu? | action? }`
+  on `shellHtml` or `railHtml` puts it last in the rail's foot, before the
+  collapse toggle. It reads "label · detail". It is a link, or with
+  `action: true` a button that calls `onAction`. `accountHtml(...)` draws
+  it alone.
+- **Account menu**: with `menu: true`, the entry is a button (id
+  `den-account`) that opens a menu: who is signed in, where, a rule, then
+  the entries. Wire it with `hydrate`'s `account: { menu, onPick?,
+onSubmit? }`. `menu()` gives `{ name, detail?, items }`. An item is a link
+  `{ label, href }`, a button `{ label, id }` (`onPick("item", id)`), or a
+  form post `{ label, action: { method?, url, csrf?, field? } }`. A form
+  post needs no script: Sign out posts to `url`, with `csrf` in a hidden
+  field (named `field`, `csrf` by default). `onSubmit(event, form)` runs
+  first, and `preventDefault` there stops the post. The kit owns open,
+  close, the keys, Esc and focus going back to the entry.
+  `accountMenuHtml(...)` draws the content alone.
+- **Appearance menu**: `appearanceButtonHtml({ label?, title? })`, for the
+  `account` slot (last in the bar): ◐ ▾ with `aria-haspopup="menu"`. Wire
+  it with `hydrate`'s `appearance: { menu, onPick }`. `menu()` gives, each
+  time it opens, `{ mode, modes?, themes, notice?, languages, items }`:
+  the mode (System, Dark, Light by default), the themes `{ value, label,
+selected }`, a line under them, the languages `{ id, name, current }`,
+  each named in itself, and entries after a rule (`{ label, href? | id }`).
+  A pick calls `onPick(kind, value)` with `"mode"`, `"theme"`,
+  `"language"` or `"item"`, and closes the menu. Click, Enter, Space, ↓ or
+  ↑ open it on the checked entry. ↑ ↓ Home End move. Esc or Tab closes it
+  and focus goes back to ◐ ▾, in Safari too. A press outside closes it.
+  The host saves and applies the pick. The kit owns no settings.
+- **Version pip and update-waiting pill**: the chip's pip (`#v-pip`) shows
+  unread notes (`DenUI.version.unread(on)`, as before).
+  `DenUI.version.waiting({ label, action, title?, name?, onClick })` shows
+  the update-waiting pill right after the chip ("⚠ label · action", a
+  pulsing warn pill; only ⚠ below 720px). `waiting(null)` hides it.
+  `waitingHtml(...)` draws it.
+- **Settings**: `settings: { href, label?, current? }` on `shellHtml` or
+  `railHtml` puts Settings in the rail's foot after the host's entries and
+  before the account entry. `settingsHtml(...)` draws it alone.
+- **Brand mark**: `product.mark: { src, label }` draws an image file the
+  way Den draws its theme's mark: `span.den-mark.den-mark-svg#den-mark`
+  titled `label`, holding `<img src alt="" width="18" height="18">`. The
+  kit ships the default theme's mark as `src/marks/den.svg`, beside
+  `src/fonts/`; a host serves it with the kit's other files and passes
+  `mark: { src: "<served path>/marks/den.svg", label }` (Den serves it at
+  `/kit/marks/den.svg`). An image runs no script. `markHtml(mark)` draws
+  it alone; Den's own theme mark is drawn by it. `{ text }` and `{ svg }`
+  work as before.
+- **Mark layout**: `.den-mark` (a centred flex box, its image a block)
+  and the text and raster forms are in `shell.css`. A host deletes its
+  own copy.
+- **A phone's tap targets**: below 480px every top-bar button is at least
+  32px each way (`shell.css`).
+- **The brand on a phone**: below 480px the brand (its mark alone) never
+  shrinks; the host's chips give way.
+- **Search name**: `searchHtml({ label })` names the field; by default
+  the kit's "Search" (en, es, ja), not the placeholder.
+- **Filtered menus**: a menu with the filter field is a pop-up holding the
+  field, then the `role="menu"` list (`.den-mlist`, id `<menu>-list`),
+  then "No match": a menu owns only its items. The field has
+  `aria-controls` on the list and its `aria-label` ("Filter <label>").
+  `attachMenuFilter(menu)` moves a host menu's rows, role and name into
+  that list; `menu` keeps its id and stays the pop-up. The keys and the
+  look are as before.
+- **Key caps**: `.den-kbd` is the one key-cap rule: the search's ⌘K,
+  Report's ⌘⇧F and any `<kbd class="den-kbd">` a host draws (its palette's
+  hints, say). A 1px border with a 2px bottom, 4px corners, `--surface`
+  behind, 5px each side. A host deletes its own copy.
+- **Group headings**: a heading with its "from" tag is as tall as one
+  without (32px in Den's fonts): the tag sits on a 12px line, centred.
+- The kit's menus (◐ ▾, a crumb's own menu) wear `.den-pop`, `.den-mi`,
+  `.den-ml`, `.den-hr` and `.den-mnote`, styled in `shell.css`.
+- Wiring: `DenUI.hydrate(root, { scope, search, bell, account, appearance })` (or
+  `mount`'s `model.hydrate`) wires each piece it finds. The shell it
+  returns has `.scope`, `.search`, `.bell` and `.appearance`. For a host's own wiring,
+  use `hydrateScope`, `hydrateSearch`, `hydrateBell`, `hydrateAccount`,
+  `hydrateAppearance` and `setWaiting` in `shell-client.js`.
+- The words: `kit.scope`, `kit.search.ph`, `kit.bell`, `kit.bell.n`,
+  `kit.bell.empty`, `kit.settings`, `kit.appearance`,
+  `kit.appearance.title`, `kit.mode.system`, `kit.mode.dark`,
+  `kit.mode.light`, `kit.theme` and `kit.language`, in en, es and ja. The look is in `shell.css`. At 860px
+  the crumbs' keys and any `optional` crumb give way. At 720px the crumbs
+  hide and the search is only its icon.
+- `den-ui-parity` knows them as components `scope`, `search`, `bell`,
+  `appearance` and `account`, and the update-waiting pill as part of
+  `version`. A product's own copy of one fails the gate. A product's
+  own rows inside the bell, or its own menu inside a crumb, are not copies.
+- Report's screenshot shows what the person sees (issue 295): the
+  window's scroll and every scrolled pane's, with sticky and fixed parts
+  where they are on screen. The image is still the window's size, so
+  masks line up as before.
 
 ## 0.6.6
 

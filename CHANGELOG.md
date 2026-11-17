@@ -86,6 +86,14 @@ config and manifest changes a distribution must make to move to it under
   past its estimate a run is flagged.
 ### Changed
 
+- Den draws its whole top bar and the rail's foot from the UI kit, den-ui
+  0.7.0: the scope crumbs, the search field with ⌘K, the bell and its
+  panel, ◐ ▾ and its menu, the update-waiting pill, Settings and the
+  account entry. Den fills only the kit's slots, and looks the same. A
+  crumb's menu of more than 6 orgs or projects opens on a filter field.
+  Screen readers now hear that filter beside the menu, not inside it. The
+  key caps (⌘K, ⌘⇧F), the theme's mark and its layout, and the phone tap
+  sizes come from the kit too.
 - Den's frame now comes from its UI kit, den-ui 0.6.0: the top bar, the
   left rail with its pins, collapse and ☰ drawer, the version chip, What's
   new and the Report form. Nothing looks or works differently. Another

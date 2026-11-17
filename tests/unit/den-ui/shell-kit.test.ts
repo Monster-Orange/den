@@ -21,7 +21,9 @@ import * as os from "os";
 import * as path from "path";
 import * as strings from "../../../packages/den-ui/src/strings.js";
 import {
+  accountHtml,
   reportButtonHtml,
+  searchHtml,
   shellHtml,
 } from "../../../packages/den-ui/src/shell-html.js";
 import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
@@ -110,13 +112,83 @@ describe("shellHtml (shell-html.js), in Node", () => {
   it("escapes the product's text and marks the current page and pins", () => {
     expect(html).toContain("Acme &lt;b&gt;");
     expect(html).toContain(">v1.2.3<");
-    expect(html).toMatch(/href="\/a" data-nav="a" aria-current="page"/);
+    // A group's entries are host content for the nav inventory.
     expect(html).toMatch(
-      /<div class="den-pin-row"><a class="den-ni" href="\/b"/,
+      /href="\/a" data-nav="a" data-nav-role="page" aria-current="page"/,
+    );
+    expect(html).toMatch(
+      /<div class="den-pin-row" data-nav-role="page"><a class="den-ni" href="\/b" data-nav="b" title/,
     );
     // The kit's words in the page's language.
     expect(html).toContain(ja["kit.pages"]);
     expect(html).toContain(ja["kit.report.word"]);
+  });
+
+  it("the search's name is a host option, with the kit's own words by default (en, es, ja)", () => {
+    const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
+    expect(label(searchHtml({}))).toBe("Search");
+    expect(label(searchHtml({ lang: "es" }))).toBe("Buscar");
+    expect(label(searchHtml({ lang: "ja" }))).toBe("検索");
+    // A placeholder alone does not name the field: the name is its own option.
+    expect(label(searchHtml({ placeholder: "Find anything…" }))).toBe("Search");
+    expect(label(searchHtml({ label: "Search pages" }))).toBe("Search pages");
+    // Its name is the host's words: the nav inventory doesn't compare it.
+    expect(searchHtml({})).toContain(' data-nav-name="host"');
+  });
+
+  it("the account entry's words are host content (data-nav-role account-name)", () => {
+    const h = accountHtml({
+      label: "Signed in",
+      detail: "this device",
+      href: "/me",
+    });
+    expect(h).toContain(
+      '<span class="den-lbl" data-nav-role="account-name">Signed in<span class="den-acct-d"> · this device</span></span>',
+    );
+  });
+
+  it("draws the default mark from its file: Den's markup exactly (the nav reference's #den-mark)", () => {
+    const ref = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          __dirname,
+          "../../../packages/den-ui/inventory/reference/den-chromium-1280.json",
+        ),
+        "utf-8",
+      ),
+    ) as {
+      elements: { key: string; role: string; tag: string; classes: string[] }[];
+    };
+    const want = ref.elements.find((e) => e.key === "#den-mark")!;
+    const img = ref.elements.find((e) => e.key === "#den-mark > img")!;
+    const html = shellHtml({
+      ...model,
+      product: {
+        name: "Acme",
+        mark: { src: "/kit/marks/den.svg", label: "Den" },
+      },
+    });
+    const m =
+      /<span class="([^"]*)" id="den-mark"([^>]*)>(<img [^>]*>)<\/span>/.exec(
+        html,
+      );
+    expect(m).not.toBeNull();
+    expect(m![1]!.split(" ")).toEqual(want.classes);
+    expect(want.tag).toBe("span");
+    // No role: the reference's mark is a plain span, named by its title.
+    expect(m![2]).toBe(' aria-hidden="true" title="Den"');
+    expect(img.tag).toBe("img");
+    expect(m![3]).toBe(
+      '<img src="/kit/marks/den.svg" alt="" width="18" height="18">',
+    );
+    // The file is the default theme's own mark, byte for byte.
+    expect(
+      fs.readFileSync(
+        path.join(__dirname, "../../../packages/den-ui/src/marks/den.svg"),
+      ),
+    ).toEqual(
+      fs.readFileSync(path.join(__dirname, "../../../themes/den/mark.svg")),
+    );
   });
 
   it("draws a product mark: escaped text, or the product's svg, named by its label", () => {
@@ -213,11 +285,59 @@ describe("den-ui-parity (bin)", () => {
     expect(r.stdout).toMatch(/report: .*1 copy/);
   });
 
+  // 0.7.0: the scope crumbs, the search, the bell and the account entry.
+  it("fails on a product's own scope crumbs, search, bell or account entry", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "bar.js"),
+      [
+        'const a = \'<div class="den-scope" role="group"></div>\';',
+        "const b = '<button class=\"den-search\"></button>';",
+        'pop.className = "den-bell-pop";',
+        "function identityEntry() { return null; }",
+        'btn.className = "den-ib appearance-btn";',
+        'pill.className = "stale-pill";',
+      ].join("\n") + "\n",
+    );
+    const r = run(root);
+    expect(r.status).toBe(1);
+    for (const c of [
+      "scope",
+      "search",
+      "bell",
+      "account",
+      "appearance",
+      "version",
+    ])
+      expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
+  });
+
+  it("a product's own words in the kit's options, or its rows in the bell, are not copies", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "bar.js"),
+      [
+        "const s = DUI.scopeHtml({ crumbs: [{ key: 'env', label: 'Env' }] });",
+        "const row = '<div class=\"den-bell-row\"><a>x</a></div>';",
+        "btn.querySelector('.den-bell-n');",
+      ].join("\n") + "\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "bar.css"),
+      ".den-bell-row a { color: red; }\n.den-scope .den-k { display: none; }\n",
+    );
+    expect(run(root).status).toBe(0);
+  });
+
   it("finds no copy in Den", () => {
     const r = run(process.cwd());
+    // No DIVERGE.md: Den keeps no copy of any of them.
+    expect(fs.existsSync(path.join(process.cwd(), "DIVERGE.md"))).toBe(false);
     expect([r.status, r.stdout.trim()]).toEqual([
       0,
-      "den-ui-parity: ok, no copies of the kit's 6 components in src",
+      "den-ui-parity: ok, no copies of the kit's 11 components in src",
     ]);
   });
 });
@@ -243,7 +363,7 @@ describe("the package ships every kit file", () => {
     for (const f of src) expect([f, KIT_FILES.includes(f)]).toEqual([f, true]);
   });
   it("packs src/ and bin/, with den-ui-parity as its bin", () => {
-    expect(pkg.version).toMatch(/^0\.6\.\d+$/);
+    expect(pkg.version).toMatch(/^0\.7\.\d+$/);
     expect(pkg.files).toEqual(expect.arrayContaining(["src/", "bin/"]));
     expect(pkg.bin["den-ui-parity"]).toBe("bin/den-ui-parity.mjs");
     expect(fs.existsSync(path.join(PKG, pkg.bin["den-ui-parity"]))).toBe(true);

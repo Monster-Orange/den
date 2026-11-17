@@ -23,6 +23,18 @@ export interface NavElement {
   box: NavBox;
   /** Computed styles, by property name (STYLE_PROPS). */
   style: Record<string, string>;
+  /**
+   * Host content: the nearest element (this one or an ancestor) with a
+   * data-nav-role, by role and key. Absent on the kit's own chrome.
+   */
+  host?: {
+    role: string;
+    key: string;
+    /** On the role's own element: its contents' width with padding and border. */
+    fit?: number;
+  };
+  /** Its accessible name is the host's words (data-nav-name="host"). */
+  hostName?: boolean;
 }
 export interface NavTheme {
   id: string;
@@ -81,9 +93,41 @@ export declare function collectNav(
 ): Promise<NavSnapshot>;
 /** The browser build's fingerprint: user agent and the faces' widths. */
 export declare function fingerprint(snap: NavSnapshot): string;
+/** A font family or face key as one line: whitespace runs one space, trimmed. */
+export declare function navFamily(s: string): string;
 export declare function compareNav(
   actual: NavSnapshot,
   reference: NavSnapshot,
   opts?: NavCompareOptions,
 ): NavDiff[];
 export declare function formatNavDiffs(diffs: NavDiff[]): string;
+/** The pin stylesheet: the system faces a nav names, as the kit's own files. */
+export declare const PIN_FONTS_CSS: string;
+/**
+ * What pinNavFonts needs of a Playwright BrowserContext. Its results are
+ * not used: Playwright's resolve to a Disposable (1.61), others to nothing.
+ */
+export interface NavFontContext {
+  route(
+    url: string,
+    handler: (route: {
+      request(): { url(): string };
+      fulfill(o: {
+        status?: number;
+        contentType?: string;
+        body?: string | Buffer;
+      }): Promise<unknown>;
+    }) => unknown,
+  ): Promise<unknown>;
+  addInitScript(script: () => void): Promise<unknown>;
+}
+/**
+ * Pins a context's fonts the way the reference was taken: the pin
+ * stylesheet first on every page, /__pin-fonts/* served from the kit's
+ * own font files (src/fonts, or opts.fontsDir). Call it before opening a
+ * page.
+ */
+export declare function pinNavFonts(
+  context: NavFontContext,
+  opts?: { fontsDir?: string },
+): Promise<void>;

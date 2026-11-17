@@ -12,7 +12,15 @@ import {
   reportPrefillOf,
   type ShellModel,
 } from "@kit/shell-html.js";
-import { hydrateShell } from "@kit/shell-client.js";
+import { hydrateShell, hydrateBell } from "@kit/shell-client.js";
+import {
+  scopeHtml,
+  searchHtml,
+  bellButtonHtml,
+  bellPanelHtml,
+  accountHtml,
+  type Crumb,
+} from "@kit/shell-html.js";
 import {
   kitT,
   addStrings,
@@ -68,6 +76,83 @@ const shell = mount(document.body, {
 });
 shell.setCollapsed(true);
 hydrateShell(document.body, { lang: () => "en" }).rove();
+// 0.7.0: the scope crumbs, the search, the bell and the account entry.
+const crumbs: Crumb[] = [
+  { key: "org", label: "Company", value: "North" },
+  { key: "ws", label: "Project", value: "Garden", menu: [{ label: "Garden", href: "#g", current: true }] },
+  { key: "env", label: "Env", value: "local", menu: true },
+];
+const bar: string =
+  scopeHtml({ crumbs, lang: "en" }) +
+  searchHtml({ placeholder: "Find…" }) +
+  bellButtonHtml({ count: 3 }) +
+  bellPanelHtml({ items: [{ text: "Done", href: "#d", time: "now" }] }) +
+  accountHtml({ label: "Signed in", detail: "this device", href: "/me" });
+void bar;
+const withPieces = mount(document.body, {
+  ...model,
+  account: { label: "Signed in", action: true },
+  hydrate: {
+    search: { onActivate: (via: string) => void via },
+    bell: { items: () => [{ text: "x" }], onEscape: () => false },
+    account: { onAction: () => {} },
+  },
+});
+withPieces.bell?.setCount(2);
+// 0.7.0: ◐ ▾, Settings in the foot, the update-waiting pill.
+const full = mount(document.body, {
+  ...model,
+  settings: { href: "/settings", current: true },
+  slots: { account: DenUI.appearanceButtonHtml() },
+  hydrate: {
+    appearance: {
+      menu: () => ({
+        mode: "dark",
+        themes: [{ value: "", label: "Default", selected: true }],
+        languages: [{ id: "en", name: "English", current: true }],
+        items: [{ label: "All settings", href: "/settings" }],
+      }),
+      onPick: (kind: string, value: string | null) => void [kind, value],
+    },
+  },
+});
+full.appearance?.open();
+// 0.7.0: the account entry's menu, and a crumb menu's filter.
+const signedIn = mount(document.body, {
+  ...model,
+  account: { label: "Signed in", detail: "this device", menu: true },
+  slots: {
+    start: scopeHtml({
+      crumbs: [{ key: "ws", label: "Project", menu: [{ label: "A", href: "#a" }], filter: 1 }],
+    }),
+  },
+  hydrate: {
+    account: {
+      menu: () => ({
+        name: "Signed in",
+        detail: "this device",
+        items: [
+          { label: "Sessions", href: "/settings#access" },
+          { label: "Sign out", action: { method: "post", url: "/out", csrf: "t" } },
+        ],
+      }),
+      onSubmit: (e: SubmitEvent) => e.preventDefault(),
+    },
+  },
+});
+signedIn.account?.open();
+const menuHtml: string = DenUI.accountMenuHtml({ name: "x", items: [{ label: "y", id: "z" }] });
+void menuHtml;
+DenUI.version.waiting({ label: "stale", action: "Restart", onClick: () => {} });
+DenUI.version.waiting(null);
+withPieces.search?.activate();
+withPieces.scope?.close();
+const btn = document.createElement("button");
+const b = hydrateBell(btn, { panel: () => ({ title: "Bell", body: "<p></p>" }) });
+b.open();
+b.close(false);
+const isOpen: boolean = b.isOpen();
+void isOpen;
 DenUI.version.set(versionLabel("1.0.0", [{ version: "1.0.0" }]) ?? "v…");
 DenUI.whatsNew.open();
 DenUI.update.set({ version: "1.1.0" }).hide();

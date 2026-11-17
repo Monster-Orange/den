@@ -8,7 +8,11 @@ import { afterAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as vm from "vm";
 import {
+  KIT_SHELL_EXPORTS,
+  kitShellScript,
+  stripBlockComments,
   UI_MODULES,
   KIT_FILES,
   VENDOR_ASSETS,
@@ -135,5 +139,31 @@ describe("UI_MODULES: what the served modules import", () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+});
+
+// Issue 95: /den-ui-shell.js is the kit's files made one classic script;
+// what it strips must never take code with it.
+describe("the kit's classic script (den-ui-shell.js)", () => {
+  it("parses, and defines every name it gives window.DenUIShell", () => {
+    const script = kitShellScript(process.cwd());
+    expect(typeof script).toBe("string");
+    expect(() => new vm.Script(script!)).not.toThrow();
+    const win: Record<string, unknown> = {};
+    vm.runInNewContext(script!, { window: win, document: undefined });
+    const kit = win.DenUIShell as Record<string, unknown>;
+    for (const n of KIT_SHELL_EXPORTS)
+      expect([n, typeof kit[n]]).toEqual([n, "function"]);
+  });
+  it("leaves out only comments on lines of their own, never code beside one", () => {
+    expect(stripBlockComments("/* a */ const x = 1; /* b */\n")).toContain(
+      "const x = 1;",
+    );
+    expect(
+      stripBlockComments("/* a\n * b */ const y = 2;\nconst z = 3; /* c */\n"),
+    ).toContain("const y = 2;");
+    expect(
+      stripBlockComments("/**\n * doc\n */\nfunction f() {}\n").trim(),
+    ).toBe("function f() {}");
   });
 });

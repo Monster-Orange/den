@@ -170,6 +170,9 @@ export const KIT_FILES: readonly string[] = [
   "fonts/rubik-latin-ext-500-normal.woff2",
   "fonts/space-mono-latin-400-normal.woff2",
   "fonts/space-mono-latin-ext-400-normal.woff2",
+  // den-ui 0.7.0: the default theme's mark, for a host's brand
+  // (markHtml({ src: "/kit/marks/den.svg", label })).
+  "marks/den.svg",
 ];
 
 /** The kit's file for a /kit/ path, or null. */
@@ -199,9 +202,18 @@ const KIT_SHELL_PARTS = [
   "shell-html.js",
   "shell-client.js",
 ];
+/**
+ * den-ui 0.7.0: shell-client.js imports focusBack from dialog.js. dialog.js
+ * has names of its own (esc, open) that would clash in one scope, so it
+ * goes first in a scope of its own, giving only what shell-client needs.
+ */
+const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
+  { file: "dialog.js", names: ["openerOf", "focusBack"] },
+];
 const KIT_SHELL_NAMES = [
   "shellHtml",
   "topBarHtml",
+  "markHtml",
   "railHtml",
   "railGroupHtml",
   "navItemHtml",
@@ -214,7 +226,59 @@ const KIT_SHELL_NAMES = [
   "kitT",
   "addStrings",
   "setProduct",
+  // den-ui 0.7.0: the scope crumbs, the search, the bell, the account
+  // entry, Settings, ◐ ▾ and the update-waiting pill.
+  "scopeHtml",
+  "scopeCrumbHtml",
+  "searchHtml",
+  "bellButtonHtml",
+  "bellPanelHtml",
+  "bellCount",
+  "accountHtml",
+  "accountMenuHtml",
+  "menuHasFilter",
+  "menuFilterParts",
+  "settingsHtml",
+  "appearanceButtonHtml",
+  "appearanceMenuHtml",
+  "waitingHtml",
+  "hydrateScope",
+  "hydrateSearch",
+  "hydrateBell",
+  "hydrateAccount",
+  "attachMenuFilter",
+  "hydrateAppearance",
+  "setWaiting",
 ];
+
+/**
+ * A module's block comments left out: only a comment on lines of its own
+ * (nothing before its opening, nothing after its close).
+ */
+export function stripBlockComments(src: string): string {
+  const lines = src.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    // A comment opening a line, closing on a line with nothing after it.
+    if (/^\s*\/\*/.test(lines[i]!)) {
+      let j = i;
+      let close = lines[j]!.indexOf("*/", lines[j]!.indexOf("/*") + 2);
+      while (close < 0 && j + 1 < lines.length) {
+        j++;
+        close = lines[j]!.indexOf("*/");
+      }
+      if (close >= 0 && lines[j]!.slice(close + 2).trim() === "") {
+        i = j;
+        continue;
+      }
+    }
+    out.push(lines[i]!);
+  }
+  return out.join("\n");
+}
+
+/** The kit's names /den-ui-shell.js gives window.DenUIShell. */
+export const KIT_SHELL_EXPORTS: readonly string[] = KIT_SHELL_NAMES;
 
 /** The classic script of the kit's shell (KIT_SHELL_SCRIPT), or null. */
 export function kitShellScript(
@@ -222,6 +286,20 @@ export function kitShellScript(
 ): string | null {
   const dir = path.join(engineRoot, "packages", "den-ui", "src");
   const parts: string[] = [];
+  for (const { file: f, names } of KIT_SHELL_SCOPED) {
+    const file = path.join(dir, f);
+    if (!fs.existsSync(file)) return null;
+    parts.push(
+      `// ── den-ui ${f} (its own scope) ──\n` +
+        `const { ${names.join(", ")} } = (function () {\n` +
+        // Its comments stay in the kit: they name files (dialog.css) a
+        // page links itself, which this script never loads.
+        stripBlockComments(fs.readFileSync(file, "utf-8"))
+          .replace(/^import\s+[^;]+;\s*$/gm, "")
+          .replace(/^export\s+(?=(async\s+)?function|const|let|class)/gm, "") +
+        `\nreturn { ${names.join(", ")} };\n})();`,
+    );
+  }
   for (const f of KIT_SHELL_PARTS) {
     const file = path.join(dir, f);
     if (!fs.existsSync(file)) return null;
@@ -306,19 +384,20 @@ export function serveUiAsset(
       return true;
     }
     // The bytes change only with Den itself.
+    const bytes = kit.endsWith(".woff2") || kit.endsWith(".svg");
     res.writeHead(200, {
       "Content-Type": kit.endsWith(".css")
         ? "text/css; charset=utf-8"
         : kit.endsWith(".js")
           ? "text/javascript; charset=utf-8"
-          : "font/woff2",
-      "Cache-Control": kit.endsWith(".woff2")
-        ? "public, max-age=86400"
-        : "no-cache",
+          : kit.endsWith(".svg")
+            ? "image/svg+xml"
+            : "font/woff2",
+      "Cache-Control": bytes ? "public, max-age=86400" : "no-cache",
     });
     // Issue 231: its own imports carry Den's version, as Den's scripts do.
     res.end(
-      kit.endsWith(".woff2")
+      bytes
         ? fs.readFileSync(kit)
         : stampServed(kit, fs.readFileSync(kit, "utf-8")),
     );

@@ -114,6 +114,47 @@ body.den-has-shell > #den-content {
   margin: 0;
   white-space: nowrap;
 }
+/* The mark's layout (0.7.0, from Den's own sheet): a centred box its
+   image fills, whatever the host's mark is. */
+.den-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.den-mark img {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+/* Scaled, never cropped: non-square art keeps its edges. */
+.den-mark-raster img {
+  object-fit: contain;
+}
+.den-mark-text {
+  font: 700 11px/1 var(--display);
+  letter-spacing: -0.02em;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+.den-mark-text[data-len="2"] {
+  font-size: 9px;
+}
+.den-mark-text[data-len="3"] {
+  font-size: 7px;
+}
+.den-mark-square {
+  border-radius: 2px;
+}
+.den-mark-rounded {
+  border-radius: 5px;
+}
+.den-mark-circle {
+  border-radius: 50%;
+}
 #den-shell .den-mark {
   width: 22px;
   height: 22px;
@@ -264,14 +305,20 @@ body.den-has-shell > #den-content {
 .den-rail > .den-rail-group:first-child > .den-gh {
   padding-top: 2px;
 }
+/* A group's "from" tag never makes its heading taller, on any font: its
+   box (a 12px line and its border, 14px) is centred on the heading's line
+   and its vertical margins cancel that box, so its row is the heading's
+   own words' line, with or without the tag. */
 .den-tagx {
-  font: 10px var(--mono);
+  font: 10px/12px var(--mono);
   color: var(--faint);
   border: 1px dashed var(--border-strong);
   border-radius: 4px;
   padding: 0 4px;
   text-transform: none;
   letter-spacing: 0;
+  align-self: center;
+  margin-block: -7px;
 }
 .den-ni {
   display: flex;
@@ -517,6 +564,12 @@ body.den-has-shell .den-upd {
     white-space: nowrap;
     border: 0;
   }
+  /* The brand is its mark alone here (the title is hidden): it never
+     shrinks below it; the host's chips give way instead. */
+  .den-brand {
+    flex-shrink: 0;
+    min-width: max-content;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .den-rail {
@@ -555,4 +608,403 @@ body.den-has-shell .den-upd {
   border: 1.5px solid var(--bg);
   display: none;
   pointer-events: none;
+}
+
+/* ── 0.7.0: the scope crumbs, the search, the bell, the account ───────── */
+
+/* The scope crumbs: / KEY value ▾ / … The search gives way first: the
+   crumbs keep their parts whole (each value is capped), so they never run
+   into one another. */
+.den-scope {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex-shrink: 0;
+  position: relative;
+}
+.den-sep {
+  color: var(--faint);
+}
+.den-scope [hidden] {
+  display: none;
+}
+.den-scope .den-ib {
+  color: var(--text);
+  font-size: 13px;
+  min-width: 0;
+}
+.den-k {
+  font: 11px var(--mono);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.den-scope .den-ib[aria-expanded="true"] {
+  background: var(--sunken);
+}
+/* A long value ends in an ellipsis; the whole value is in the menu. An
+   env's name is short: never capped. */
+.den-scope-btn:not([data-scope="env"]) .den-vn,
+.den-scope .den-opt .den-vn {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+/* The search field, ⌘K inside it. Its sizes are content-box (a page may
+   reset everything to border-box). */
+.den-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  padding: 5px 10px;
+  color: var(--faint);
+  cursor: text;
+  min-width: 0;
+  font: inherit;
+  box-sizing: content-box;
+}
+.den-search-ph {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.den-search-ic {
+  flex: none;
+}
+/* A key cap: the search's ⌘K, the top bar's Report ⌘⇧F, and any .den-kbd
+   a host draws. One rule, so they never drift apart. */
+.den-kbd,
+.den-search kbd,
+.den-top .den-rb kbd {
+  font: 11px var(--mono);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+/* The bell, its count, and its panel (on <body>, outside the bar). */
+.den-bell {
+  position: relative;
+}
+.den-bell-n {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: var(--bg);
+  font: 600 10px/16px var(--mono);
+  text-align: center;
+}
+.den-bell-n[hidden] {
+  display: none;
+}
+.den-bell-pop {
+  position: fixed;
+  top: 52px;
+  right: 12px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--text) 25%, transparent);
+  /* On <body>: its own font, not a page's default (a serif). */
+  z-index: 60;
+  padding: 8px 0;
+  font: 13px/1.45 var(--sans);
+}
+.den-bell-pop[hidden] {
+  display: none;
+}
+.den-bell-pop:focus {
+  outline: none;
+}
+.den-bell-hd {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.den-bell-hd h2 {
+  font-size: 13px;
+  margin: 0;
+  flex: 1;
+}
+.den-bell-hd button {
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  border: 0;
+  color: var(--accent-text);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.den-bell-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 12px;
+}
+.den-bell-row:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.den-bell-row a {
+  flex: 1;
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.den-bell-row.read a {
+  color: var(--muted);
+}
+.den-bell-row time {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.den-bell-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+}
+.den-bell-empty p {
+  margin: 0 0 6px;
+}
+.den-bell-empty a {
+  color: var(--accent-text);
+}
+
+/* A phone: the panel the window's width, its rows tall enough to touch. */
+@media (max-width: 480px) {
+  .den-bell-pop {
+    left: 0;
+    right: 0;
+    width: auto;
+    top: 48px;
+    border-radius: 0 0 10px 10px;
+  }
+  .den-bell-row {
+    min-height: 44px;
+    align-items: center;
+  }
+}
+
+/* The account entry: its detail after the label, quieter. */
+.den-acct-d {
+  color: var(--faint);
+}
+
+/* Narrow: the crumbs' keys and the optional crumb give way, then the
+   crumbs hide and the search is its icon. */
+@media (max-width: 860px) {
+  .den-scope .den-k,
+  .den-scope .den-sep,
+  .den-scope .den-opt {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .den-scope {
+    display: none;
+  }
+  .den-search {
+    flex: 0 0 auto;
+    margin: 0 0 0 auto;
+  }
+  .den-search-ph,
+  .den-search kbd {
+    display: none;
+  }
+}
+
+/* A phone's tap targets: every top-bar button 32px or more each way. */
+@media (max-width: 479.98px) {
+  .den-top button {
+    min-height: 32px;
+    min-width: 32px;
+  }
+}
+
+/* 0.7.0: the kit's menus (◐ ▾, a crumb's own menu): a host's menu look,
+   value for value. */
+.den-pop {
+  position: fixed;
+  z-index: 45;
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  min-width: 220px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  font: 14px/1.45 var(--sans);
+  color: var(--text);
+}
+.den-pop:focus {
+  outline: none;
+}
+.den-pop :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.den-pop .den-ml {
+  font: 11px var(--mono);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 6px 8px 2px;
+}
+.den-pop .den-mi {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.den-pop .den-mi:hover,
+.den-pop .den-mi:focus {
+  background: var(--sunken);
+}
+/* The ✓ is drawn, not read (aria-checked or aria-current says it). */
+.den-pop .den-mi[aria-checked="true"]::after,
+.den-pop .den-mi[aria-current="true"]::after {
+  content: "✓" / "";
+  margin-left: auto;
+  color: var(--accent-text);
+}
+.den-pop .den-mi-l {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.den-pop .den-mtag {
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+.den-pop .den-hr {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+.den-pop .den-mnote {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: 0;
+  padding: 4px 8px;
+  max-width: 260px;
+}
+/* A long menu's type-to-filter field, a host's menu field look; an entry
+   it filters out is hidden. */
+.den-pop input.den-mfilter {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-button);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13.3333px;
+  line-height: normal;
+}
+.den-pop .den-mi[hidden],
+.den-pop .den-mnote[hidden] {
+  display: none;
+}
+/* A form in a menu (the account menu's Sign out) is just its row. */
+.den-pop form.den-mform {
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+/* ◐ ▾'s menu, on <body> above everything, placed under the button. */
+.den-um {
+  margin: 0;
+  right: auto;
+  bottom: auto;
+  z-index: 1000;
+}
+/* A crumb's own menu drops below its ▾, inside the bar. */
+.den-scope-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: var(--den-menu-x, 0px);
+}
+
+/* 0.7.0: the update-waiting pill beside the version chip. */
+.stale-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  animation: stale-pulse 2s ease-in-out infinite;
+}
+.stale-pill:hover {
+  color: var(--bg);
+  background: var(--warn);
+}
+.stale-pill b {
+  font-weight: 700;
+}
+@keyframes stale-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (max-width: 720px) {
+  .den-top .stale-lbl {
+    display: none;
+  }
 }

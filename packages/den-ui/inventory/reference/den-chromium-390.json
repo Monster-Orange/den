@@ -149,7 +149,7 @@
    "box": {
     "x": 52,
     "y": 12.5,
-    "w": 18.27,
+    "w": 22,
     "h": 22
    },
    "style": {
@@ -353,6 +353,11 @@
     "color": "rgb(36, 30, 24)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "brand-title",
+    "key": "header.den-top > a.den-brand > span.den-title",
+    "fit": 1
    }
   },
   {
@@ -366,7 +371,7 @@
     "den-search"
    ],
    "box": {
-    "x": 78.27,
+    "x": 82,
     "y": 1.5,
     "w": 54,
     "h": 44
@@ -408,7 +413,8 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
-   }
+   },
+   "hostName": true
   },
   {
    "key": "#den-search > span.den-search-ic",
@@ -421,7 +427,7 @@
     "den-search-ic"
    ],
    "box": {
-    "x": 89.27,
+    "x": 93,
     "y": 13.34,
     "w": 8,
     "h": 20.3
@@ -476,9 +482,9 @@
     "den-chips"
    ],
    "box": {
-    "x": 140.27,
+    "x": 144,
     "y": 7.5,
-    "w": 237.73,
+    "w": 234,
     "h": 32
    },
    "style": {
@@ -531,9 +537,9 @@
     "den-chip"
    ],
    "box": {
-    "x": 140.27,
+    "x": 144,
     "y": 7.5,
-    "w": 78.73,
+    "w": 75,
     "h": 32
    },
    "style": {
@@ -587,7 +593,7 @@
     "off"
    ],
    "box": {
-    "x": 151.27,
+    "x": 155,
     "y": 19.5,
     "w": 8,
     "h": 8
@@ -642,9 +648,9 @@
     "den-n"
    ],
    "box": {
-    "x": 165.27,
+    "x": 169,
     "y": 14.08,
-    "w": 42.73,
+    "w": 39,
     "h": 18.84
    },
    "style": {
@@ -1174,6 +1180,11 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[1] > div.den-gh",
+    "fit": 74.39
    }
   },
   {
@@ -1227,6 +1238,10 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[1] > div.den-gh"
    }
   },
   {
@@ -1282,6 +1297,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"local-dev\"]",
+    "fit": 244
    }
   },
   {
@@ -1335,6 +1355,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"local-dev\"]"
    }
   },
   {
@@ -1390,6 +1414,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"local-dev\"]"
    }
   },
   {
@@ -1445,6 +1473,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"graph\"]",
+    "fit": 244
    }
   },
   {
@@ -1498,6 +1531,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"graph\"]"
    }
   },
   {
@@ -1553,6 +1590,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"graph\"]"
    }
   },
   {
@@ -1608,6 +1649,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"agents\"]",
+    "fit": 244
    }
   },
   {
@@ -1661,6 +1707,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"agents\"]"
    }
   },
   {
@@ -1716,6 +1766,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"agents\"]"
    }
   },
   {
@@ -1771,6 +1825,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"terminal\"]",
+    "fit": 244
    }
   },
   {
@@ -1824,6 +1883,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"terminal\"]"
    }
   },
   {
@@ -1879,6 +1942,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"terminal\"]"
    }
   },
   {
@@ -1934,6 +2001,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"services\"]",
+    "fit": 244
    }
   },
   {
@@ -1987,6 +2059,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"services\"]"
    }
   },
   {
@@ -2042,6 +2118,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"services\"]"
    }
   },
   {
@@ -2097,6 +2177,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"logs\"]",
+    "fit": 244
    }
   },
   {
@@ -2150,6 +2235,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"logs\"]"
    }
   },
   {
@@ -2205,6 +2294,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"logs\"]"
    }
   },
   {
@@ -2260,6 +2353,11 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[2] > div.den-gh",
+    "fit": 66.63
    }
   },
   {
@@ -2313,6 +2411,10 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[2] > div.den-gh"
    }
   },
   {
@@ -2368,6 +2470,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"verify\"]",
+    "fit": 244
    }
   },
   {
@@ -2421,6 +2528,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"verify\"]"
    }
   },
   {
@@ -2476,6 +2587,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"verify\"]"
    }
   },
   {
@@ -2531,6 +2646,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"tests\"]",
+    "fit": 244
    }
   },
   {
@@ -2584,6 +2704,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"tests\"]"
    }
   },
   {
@@ -2639,6 +2763,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"tests\"]"
    }
   },
   {
@@ -2694,6 +2822,11 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[3] > div.den-gh",
+    "fit": 51.09
    }
   },
   {
@@ -2747,6 +2880,10 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[3] > div.den-gh"
    }
   },
   {
@@ -2802,6 +2939,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"environments\"]",
+    "fit": 244
    }
   },
   {
@@ -2855,6 +2997,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"environments\"]"
    }
   },
   {
@@ -2910,6 +3056,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"environments\"]"
    }
   },
   {
@@ -2965,6 +3115,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"release\"]",
+    "fit": 244
    }
   },
   {
@@ -3018,6 +3173,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"release\"]"
    }
   },
   {
@@ -3073,6 +3232,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"release\"]"
    }
   },
   {
@@ -3128,6 +3291,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"edge\"]",
+    "fit": 244
    }
   },
   {
@@ -3181,6 +3349,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"edge\"]"
    }
   },
   {
@@ -3236,6 +3408,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"edge\"]"
    }
   },
   {
@@ -3617,6 +3793,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "account-name",
+    "key": "#den-ident > span.den-lbl",
+    "fit": 139
    }
   }
  ],

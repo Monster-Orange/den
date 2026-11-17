@@ -100,9 +100,23 @@ export const COMPONENTS = {
   },
   version: {
     label: "version chip",
-    markup: [id("version-pill"), cls("v-pill"), cls("v-pip")],
-    css: ["v-pill", "v-pip", "v-txt", "version-pill"],
-    code: ["versionChipHtml"],
+    // 0.7.0: and the update-waiting pill beside it.
+    markup: [
+      id("version-pill"),
+      cls("v-pill"),
+      cls("v-pip"),
+      cls("stale-pill"),
+      id("stale-pill"),
+    ],
+    css: [
+      "v-pill",
+      "v-pip",
+      "v-txt",
+      "version-pill",
+      "stale-pill",
+      "stale-lbl",
+    ],
+    code: ["versionChipHtml", "waitingHtml", "setWaiting"],
     files: ["version.js", "version-label.js"],
   },
   whatsnew: {
@@ -141,6 +155,67 @@ export const COMPONENTS = {
     css: ["bz-dlg"],
     code: ["configureBusy", "registerActions"],
     files: ["busy.js", "busy-words.js", "busy.css"],
+  },
+  // 0.7.0: pieces of the top bar and rail a product drew itself before.
+  // Its words and values go in the kit's options; its own HTML in a crumb's
+  // menu or the bell's rows (classes of its own) is not a copy.
+  scope: {
+    label: "scope crumbs (COMPANY / PROJECT / ENV, each with its ▾)",
+    markup: [
+      cls("den-scope"),
+      cls("den-scope-btn"),
+      cls("den-scope-menu"),
+      cls("den-mfilter"),
+      cls("den-mnone"),
+    ],
+    css: ["den-scope", "den-scope-btn", "den-scope-menu", "den-mfilter"],
+    code: ["scopeHtml", "scopeCrumbHtml", "scopeButton", "hydrateScope"],
+    files: [],
+  },
+  search: {
+    label: "search field with ⌘K inside",
+    markup: [cls("den-search"), cls("den-search-ph"), cls("den-search-ic")],
+    css: ["den-search", "den-search-ph", "den-search-ic", "den-kbd"],
+    code: ["searchHtml", "hydrateSearch"],
+    files: [],
+  },
+  bell: {
+    label: "bell (its button, count and panel)",
+    markup: [
+      cls("den-bell"),
+      cls("den-bell-n"),
+      cls("den-bell-pop"),
+      cls("den-bell-hd"),
+      cls("den-bell-empty"),
+    ],
+    css: [
+      "den-bell",
+      "den-bell-n",
+      "den-bell-pop",
+      "den-bell-hd",
+      "den-bell-empty",
+    ],
+    code: ["bellButtonHtml", "bellPanelHtml", "hydrateBell"],
+    files: [],
+  },
+  appearance: {
+    label: "appearance menu (◐ ▾: mode, theme, language)",
+    markup: [cls("appearance-btn"), id("appearance-btn")],
+    css: ["appearance-btn"],
+    code: [
+      "appearanceButtonHtml",
+      "appearanceMenuHtml",
+      "hydrateAppearance",
+      "userMenu",
+    ],
+    files: [],
+  },
+  account: {
+    label: "account entry in the rail's foot",
+    markup: [/\bdata-den-account\b/, cls("den-acct-d"), cls("den-mform")],
+    css: ["den-acct-d", "den-mform"],
+    code: ["accountHtml", "accountMenuHtml", "hydrateAccount", "identityEntry"],
+    files: [],
   },
 };
 

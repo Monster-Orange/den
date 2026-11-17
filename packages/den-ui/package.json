@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.6.6",
+  "version": "0.7.0",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
   "repository": {
@@ -39,6 +39,13 @@
       "default": "./inventory/nav-inventory.js"
     },
     "./inventory/reference/*": "./inventory/reference/*"
+  },
+  "imports": {
+    "#den-ui-fonts-dir": {
+      "import": "./inventory/fonts-dir.mjs",
+      "require": "./inventory/fonts-dir.cjs",
+      "default": "./inventory/fonts-dir.mjs"
+    }
   },
   "files": [
     "src/",
