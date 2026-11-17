@@ -696,6 +696,12 @@ export interface WorkspaceConfig {
     runtimes?: Record<string, { bin?: unknown } | null>;
     permission?: unknown;
     hub_tools_restart?: unknown;
+    /**
+     * Issue 335: extra HTTP MCP servers for this project's agents:
+     * `[{ name, url, bearer? }]`, bearer the name of a secrets.refs entry
+     * (shared/agents/project-mcp.ts).
+     */
+    mcp_servers?: unknown;
   };
   /**
    * Issue 160: this project's approval policy, over the install's

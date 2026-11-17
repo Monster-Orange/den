@@ -11,6 +11,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels the older run: only the
+# newest commit's result counts, and the old run held runner slots other
+# PRs were queued for. Pushes to main are never cancelled (each main
+# commit gets its full run).
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # The fast gates, once per Node at both ends of the supported range: the
   # lowest Node that package.json's engines allows, and the Node installs

@@ -50,6 +50,9 @@
  *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
  *                     person's own ask and Allow only; the key is shown
  *                     once, to the Allow's browser
+ *   project_mcp_add   issue 335: one more HTTP MCP server for a project's
+ *                     agents, its bearer a secrets.refs name (agent-ops.ts
+ *                     checkProjectMcpAdd); always the person's own Allow
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -132,6 +135,8 @@ export interface HeldActionDeps {
   hubAddress?: HeldOp;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
+  /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
+  projectMcp?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
   /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
@@ -473,6 +478,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.projectMode,
     "this Den can't set a project's mode here",
   );
+  const projectMcp = op(
+    d.projectMcp,
+    "this Den can't add a project's MCP servers here",
+  );
   const hubConnect = op(d.hubAddress, "this Den can't set Hub's address here");
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
@@ -558,6 +567,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     persona_update: personaUpdate,
     repo_clone: repoClone,
     project_mode: projectMode,
+    project_mcp_add: projectMcp,
     hub_connect: hubConnect,
     agent_folder: agentFolder,
     agent_mode: agentMode,

@@ -1157,6 +1157,42 @@ export function workspaceHubToolsRestart(
 }
 
 /**
+ * Issue 335: workspace `ws`'s `agents.mcp_servers` as written (checked
+ * where it is used); undefined when unset or the file can't be read.
+ */
+export function workspaceMcpServersRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws]?.agents?.mcp_servers ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Issue 335: set workspace `ws`'s `agents.mcp_servers` (the caller checks
+ * each one); an empty list clears it.
+ */
+export function setWorkspaceMcpServers(
+  ws: string,
+  servers: { name: string; url: string; bearer?: string }[],
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
+  const agents = { ...(cfg.agents ?? {}) };
+  if (servers.length) agents.mcp_servers = servers;
+  else delete agents.mcp_servers;
+  const next = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file);
+}
+
+/**
  * Set (an intent) or clear (null) workspace `ws`'s `agents.permission`.
  * The caller checks the intent first.
  */

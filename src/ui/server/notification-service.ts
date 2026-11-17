@@ -20,6 +20,7 @@ import {
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
+import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -182,6 +183,9 @@ export function notificationDeps(): {
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
     endedAsking,
     ended: endedAgents,
+    // Issue 101: a question goes to the project's lead, when it has one.
+    leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
+    tellLead,
   });
   if (!timer) {
     let busy = false;

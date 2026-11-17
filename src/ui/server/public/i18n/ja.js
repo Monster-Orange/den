@@ -1442,6 +1442,23 @@
       "エージェントのモード: このプロジェクト (Den 全体の既定を上書き)",
     "set.workspace.agents_mode.d":
       "このプロジェクトのエージェントが動くモードで、Den 全体の既定より優先されます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。下に各エージェントのモードとその出どころを示します。変更は実行中のエージェントにもターンの後で自動的に届きます。",
+    "set.workspace.mcp_servers": "エージェントの追加 MCP: このプロジェクト",
+    "set.workspace.mcp_servers.d":
+      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。エージェントが project_mcp_add で追加を求め、あなたが許可します。",
+    "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
+    "pmcp.row": "{name}: {url}",
+    "pmcp.failed": "このプロジェクトの MCP を読み込めませんでした。",
+    "ap.do.project_mcp_add":
+      "MCP {name} ({url}) をプロジェクト {project} のエージェントに追加",
+    "ap.mcp.warn":
+      "{project} のエージェントに新しいツールを与え、その呼び出しを {url} に送ります。",
+    "ap.mcp.server": "MCP: {name}({url})",
+    "ap.mcp.bearer":
+      "Bearer: 呼び出しのたびに secrets.refs.{ref} から読みます。エージェントのファイルや環境には書かれません。",
+    "ap.mcp.noBearer":
+      "bearer なし: 呼び出しに Authorization ヘッダーは付きません。",
+    "ap.mcp.next":
+      "{project} のエージェントは次の起動または再開時にこれを使えます。",
     "pmode.none": "Den 全体の既定を使う",
     "pmode.following": "Den 全体の既定に従っています: {m}",
     "pmode.setHere": "このプロジェクトで設定: {m} (Den 全体は {dw})",
@@ -1601,6 +1618,7 @@
     "bell.m.permissionWhat": "{name} があなたの許可を待っています: {what}",
     "bell.m.input": "{name} があなたを待っています",
     "bell.m.asked": "{name} からの質問: {text}",
+    "bell.m.toLead": "{name} からリード {lead} への質問: {text}",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
