@@ -159,6 +159,8 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        // Issue 334: an app key's reads, one audit line per window.
+        "embed.app_key_audit_window_seconds",
       ].sort(),
     );
   });

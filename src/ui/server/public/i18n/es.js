@@ -1026,6 +1026,8 @@
     "set.access.waiting": "Dispositivos en espera",
     "set.embed.url_max": "Contexto de enlace más largo",
     "set.embed.app_keys": "Claves de aplicación",
+    "set.embed.app_key_audit":
+      "Lecturas de clave de aplicación en una línea de actividad",
     "set.embed.origins": "Aplicaciones web que pueden incrustar agentes",
     "set.embed.key_minutes": "Duración del permiso del panel incrustado",
     "set.embed.context_max_kb": "Página compartida más grande",
@@ -2662,6 +2664,8 @@
       "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
     "set.embed.app_keys.d":
       "Una clave para el backend propio de una aplicación web en esta computadora: puede pasar los mensajes de su persona a un agente, que se escriben cuando termina su turno, y leer el estado de ese agente. Nada más. Permites cada clave, se muestra una vez y puedes revocarla aquí.",
+    "set.embed.app_key_audit.d":
+      "Las lecturas de estado de una clave de aplicación se anotan en el registro de actividad como una línea cada tantos segundos, con cuántas hubo, para que una aplicación web que consulta a menudo no lo llene.",
     "set.embed.origins.d":
       "La dirección de cada aplicación web, exacta, una por línea: https://app.example.com. Solo estas pueden mostrar un panel de agente dentro de sus páginas, y solo después de que lo permitas. Ningún otro sitio puede mostrar una página de este Den dentro de la suya.",
     "set.embed.key_minutes.d":

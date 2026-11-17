@@ -1081,6 +1081,8 @@
       "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
     "set.embed.app_keys.d":
       "A key for a web app's own backend on this computer: it can pass on its person's messages to one agent, typed after the agent's turn, and read that agent's state. Nothing else. You allow each key, it is shown once, and you can revoke it here.",
+    "set.embed.app_key_audit.d":
+      "An app key's state reads go into the activity trail as one line per this many seconds, with how many there were, so a web app that checks often doesn't flood it.",
     "set.embed.origins.d":
       "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
     "set.embed.key_minutes.d":
@@ -1839,6 +1841,7 @@
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
     "set.embed.app_keys": "App keys",
+    "set.embed.app_key_audit": "App key reads in one activity line",
     "set.embed.origins": "Web apps that may embed agents",
     "set.embed.key_minutes": "Embedded pane's permission lasts",
     "set.embed.context_max_kb": "Largest shared page",

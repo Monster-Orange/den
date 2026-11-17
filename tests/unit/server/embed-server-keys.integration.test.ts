@@ -107,7 +107,7 @@ describe("a web app's server key, on a real server", () => {
     );
     fs.writeFileSync(
       path.join(dist, "config", "local", "user.yml"),
-      `embed:\n  origins: ["${ORIGIN}"]\n`,
+      `embed:\n  origins: ["${ORIGIN}"]\n  app_key_audit_window_seconds: 2\n`,
     );
     stateDir = path.join(tmp, "home", ".den");
     agentRecord("scout", "north");
@@ -269,5 +269,31 @@ describe("a web app's server key, on a real server", () => {
       "utf-8",
     );
     expect(held).toContain("inbox:embed:");
+  }, 30_000);
+
+  it("state reads are audited: one line per window with its count, never the key; a refused read too", async () => {
+    const { key, view } = keys.create({
+      project: "north",
+      agent: "scout",
+      origin: ORIGIN,
+    });
+    const h = { "X-Den-Embed-Key": key };
+    for (let i = 0; i < 5; i++)
+      expect((await req("GET", stateOf("north", "scout"), h)).status).toBe(200);
+    expect((await req("GET", stateOf("north", "pilot"), h)).status).toBe(403);
+    const line = new RegExp(
+      `app key ${view.id} read /api/embed/p/north/agents/scout/state: 5 reads, ok, from `,
+    );
+    const refused = new RegExp(
+      `app key ${view.id} read /api/embed/p/north/agents/pilot/state: 1 read, refused, from `,
+    );
+    const deadline = Date.now() + 10_000;
+    while (!(line.test(printed) && refused.test(printed))) {
+      if (Date.now() > deadline) break;
+      await new Promise((res) => setTimeout(res, 200));
+    }
+    expect(printed).toMatch(line);
+    expect(printed).toMatch(refused);
+    expect(printed).not.toContain(key);
   }, 30_000);
 });

@@ -207,7 +207,12 @@ agent and read that agent's state. Nothing else.
   used. **Revoke** asks you the same way. A revoked key gets `401
 key_revoked` at once.
 - Making, using and revoking a key are written to the activity trail. A
-  message is recorded by its length, never its text.
+  message is recorded by its length, never its text. State reads are
+  recorded by the key's id, the route, when, and whether they were
+  refused. Reads are grouped into one line per key and route for each
+  **Settings › Embedding › App key reads in one activity line**
+  (`embed.app_key_audit_window_seconds`, 60 by default), with how many
+  there were. The key itself is never recorded.
 
 ### What the key reaches
 

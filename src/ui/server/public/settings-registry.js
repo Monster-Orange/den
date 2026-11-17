@@ -979,6 +979,19 @@ const EMBED_ROWS = [
     write: (v, ctx) => ctx.post({ embed: { key_minutes: v } }),
   },
   {
+    id: "embed.app_key_audit",
+    category: "embed",
+    label: "App key reads in one activity line",
+    description:
+      "An app key's state reads go into the activity trail as one line per this many seconds, with how many there were, so a web app that checks often doesn't flood it.",
+    keywords: ["embed", "app key", "audit", "activity", "window", "seconds"],
+    scope: "user",
+    keys: ["embed.app_key_audit_window_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.embed?.app_key_audit_window_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ embed: { app_key_audit_window_seconds: v } }),
+  },
+  {
     id: "embed.url_max",
     category: "embed",
     label: "Longest link context",

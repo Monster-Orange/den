@@ -25,6 +25,11 @@ config and manifest changes a distribution must make to move to it under
   and last use; Revoke asks the same way. An agent can't ask for a key.
   In English, Spanish and Japanese. docs/embedding.md says how a web
   app's backend relays its person's messages (issue 334).
+- An app key's state reads are in the activity trail: the key's id, the
+  route, when, and whether it was refused, as one line per key and route
+  per window with the count of reads, so a polling web app doesn't flood
+  it. The window is Settings › Embedding › App key reads in one activity
+  line (`embed.app_key_audit_window_seconds`, 60 by default) (issue 334).
 
 ## [0.4.64] - unreleased
 

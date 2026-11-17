@@ -58,10 +58,12 @@ import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
 import { randomBytes } from "crypto";
 import {
   checkOrigin,
+  embedSettings,
   originListed,
   type EmbedSettings,
 } from "./embed-settings.js";
 import { readBody, sendJson } from "./http-helpers.js";
+import { readUserConfig } from "../../shared/den-config.js";
 
 const EMBED_PATH = /^\/embed\/p\/([^/]+)\/agents\/([^/]+)\/?$/;
 const STATE_PATH = /^\/api\/embed\/p\/([^/]+)\/agents\/([^/]+)\/state$/;
@@ -92,7 +94,13 @@ export interface EmbedDeps {
    * the agent's turn). False when the loop isn't running yet.
    */
   relay(dv: Delivery): Promise<boolean>;
+  /** Issue 334: where an app key's reads are audited (a test's own). */
+  appKeyUses?: AppKeyUseAudit;
 }
+
+/** The request's path, never its query (nothing a host sent in it). */
+const routeOf = (req: http.IncomingMessage) =>
+  new URL(req.url ?? "/", "http://localhost").pathname.slice(0, 300);
 
 /** Issue 334: what an agent waits on (attention.ts, a held Allow, a pause). */
 export interface EmbedWaiting {
@@ -285,6 +293,133 @@ function serverKeyOf(
   return k;
 }
 
+/** Issue 334: how an app key's read ended. */
+export type AppKeyOutcome = "ok" | "refused";
+
+interface UseWindow {
+  key: Pick<ServerKeyView, "id" | "project" | "origin">;
+  route: string;
+  outcome: AppKeyOutcome;
+  reason?: string;
+  from: number;
+  count: number;
+}
+
+/**
+ * Issue 334: an app key's state reads, audited. A read is a use: the
+ * key's id, the route, when, and how it ended; never the key, never a
+ * body. A polling app would flood the trail, so reads coalesce: one line
+ * per key, route and outcome per window (Settings › Embedding,
+ * embed.app_key_audit_window_seconds), with how many there were. A
+ * window's line is written when it ends: at the next read after it, or
+ * by the sweep (every window, on a timer that never holds the process).
+ */
+export class AppKeyUseAudit {
+  private readonly open = new Map<string, UseWindow>();
+  private timer: NodeJS.Timeout | null = null;
+  private readonly now: () => number;
+
+  constructor(
+    private readonly d: {
+      windowMs: () => number;
+      write: (a: {
+        detail: string;
+        targetWorkspace: string;
+        origin: string;
+        outcome?: "refused";
+        reason?: string;
+      }) => void;
+      now?: () => number;
+      /** False in a test: it sweeps by hand. */
+      timers?: boolean;
+    },
+  ) {
+    this.now = d.now ?? Date.now;
+  }
+
+  private emit(w: UseWindow): void {
+    try {
+      this.d.write({
+        detail: `app key ${w.key.id} read ${w.route}: ${w.count} read${w.count === 1 ? "" : "s"}, ${w.outcome}, from ${new Date(w.from).toISOString()}`,
+        targetWorkspace: w.key.project,
+        origin: w.key.origin,
+        ...(w.outcome === "refused"
+          ? { outcome: "refused" as const, reason: w.reason ?? "refused" }
+          : {}),
+      });
+    } catch {
+      /* the trail's trouble never fails a read */
+    }
+  }
+
+  /** One read with `key` on `route`. */
+  note(
+    key: Pick<ServerKeyView, "id" | "project" | "origin">,
+    route: string,
+    outcome: AppKeyOutcome,
+    reason?: string,
+  ): void {
+    const t = this.now();
+    const id = `${key.id}\n${route}\n${outcome}`;
+    const w = this.open.get(id);
+    if (w && t - w.from < this.d.windowMs()) {
+      w.count++;
+      return;
+    }
+    if (w) this.emit(w);
+    this.open.set(id, {
+      key,
+      route,
+      outcome,
+      ...(reason ? { reason } : {}),
+      from: t,
+      count: 1,
+    });
+    this.arm();
+  }
+
+  /** Write every window that has ended. */
+  sweep(): void {
+    const t = this.now();
+    const ms = this.d.windowMs();
+    for (const [id, w] of this.open)
+      if (t - w.from >= ms) {
+        this.open.delete(id);
+        this.emit(w);
+      }
+    if (!this.open.size && this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  private arm(): void {
+    if (this.d.timers === false || this.timer) return;
+    this.timer = setInterval(
+      () => this.sweep(),
+      Math.min(Math.max(this.d.windowMs(), 1000), 60_000),
+    );
+    this.timer.unref?.();
+  }
+}
+
+/** One per server: the trail's lines for app-key reads. */
+const APP_KEY_USES = new AppKeyUseAudit({
+  windowMs: () =>
+    embedSettings(readUserConfig()).app_key_audit_window_seconds * 1000,
+  write: (a) =>
+    recordAction(
+      null,
+      {
+        verb: "embed",
+        detail: a.detail,
+        targetWorkspace: a.targetWorkspace,
+        ...(a.outcome ? { outcome: a.outcome, reason: a.reason } : {}),
+      },
+      `embed:${a.origin}`,
+    ),
+});
+
 async function agentState(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -294,18 +429,9 @@ async function agentState(
 ): Promise<boolean> {
   const k = serverKeyOf(req, res, deps);
   if (!k) return true;
+  const uses = deps.appKeyUses ?? APP_KEY_USES;
   if (project !== k.project || agent !== k.agent) {
-    recordAction(
-      null,
-      {
-        verb: "embed",
-        detail: `app key ${k.id} for ${k.agent} read ${String(project)}/${String(agent)}`,
-        targetWorkspace: k.project,
-        outcome: "refused",
-        reason: "another agent",
-      },
-      `embed:${k.origin}`,
-    );
+    uses.note(k, routeOf(req), "refused", "another agent");
     return fail(res, 403, "key_scope", "This key reaches only its own agent.");
   }
   const rec = agentOf(deps.stateDir(), k.project, k.agent);
@@ -317,6 +443,7 @@ async function agentState(
       `Project ${k.project} has no agent ${k.agent}.`,
     );
   deps.serverKeys().touch(k.id);
+  uses.note(k, routeOf(req), "ok");
   const v = embedStateView(
     await deps.inputState(rec.id),
     deps.waitingOf(rec.id),
