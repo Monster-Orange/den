@@ -63,6 +63,13 @@ describe("no secrets store: the sign-in token field says so", () => {
     expect(JSON.stringify(await s!.settingsGet())).toMatch(
       /"agent_signin":\{[^}]*"no_store":true/,
     );
+    // Not in mode always: the row's line points to secrets.provider first
+    // and says nothing about signing in after logout.
+    const row = p.locator("[data-keep-token]");
+    expect(await row.getAttribute("data-keep-token")).toBe("missing");
+    const said = (await row.textContent()) ?? "";
+    expect(said).toMatch(/secrets\.provider/);
+    expect(said).not.toMatch(/will not be able to sign in/);
     expect(posts).toEqual([]);
     await ctx.close();
   });

@@ -1742,7 +1742,9 @@ async function tokenClearCmd(
     }
     d.out(
       r.how === "process"
-        ? `✓ removed the sign-in token from this process's environment (the env secrets backend keeps it only there)`
+        ? r.inProcess
+          ? `✓ removed the sign-in token from this process's environment (the env secrets backend keeps it only there)`
+          : `✓ removed Den's record of the sign-in token; the env secrets backend kept the value only in Den's running process, until Den restarts`
         : `✓ removed the agents' sign-in token from ${r.store}` +
             (r.how === "item" ? " (Den's own item, deleted)" : "") +
             (r.refDropped

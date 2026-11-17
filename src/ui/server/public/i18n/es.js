@@ -611,6 +611,10 @@
     "keep.clearW": "Quitando el token de inicio de sesión…",
     "keep.clearS": "Quitado.",
     "keep.clearF": "No se pudo quitar el token de inicio de sesión.",
+    "keep.noTokenNotNeeded":
+      "No hay token de inicio de sesión; solo hace falta con «Mantener los agentes al cerrar sesión».",
+    "keep.processLocal":
+      "Solo en este proceso: se guarda hasta que Den se reinicie.",
     "keep.noStore":
       "Esta instalación no tiene almacén de secretos, así que el token de inicio de sesión no se puede guardar. Primero define secrets.provider como 1password o doppler.",
     "keep.tokenSet":

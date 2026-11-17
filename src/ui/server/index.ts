@@ -336,7 +336,7 @@ import {
   noteKeepRunningOffer,
 } from "./keep-running-routes.js";
 import {
-  agentTokenStatusNow,
+  agentTokenStatus,
   clearAgentToken,
   saveAgentToken,
 } from "../../shared/agents/signin-token.js";
@@ -2870,26 +2870,63 @@ const gates = () => (gateStore ??= new GateStore());
  * whether one is configured, when it was set, the store's credential in
  * the keychain. Never the token; nothing is read from the store.
  */
-function agentSigninView(): Record<string, unknown> | null {
+/**
+ * Issue 163 (dev.2 gate): the row follows what is STORED. 1Password and
+ * Doppler are asked whether the item or field holds a value (never shown);
+ * the env backend's truth is Den's record of the set. A store is asked at
+ * most once per agents.signin_token_check_seconds (user.yml, 300), and
+ * again at once after a Save or a Remove.
+ */
+let signinViewCache: {
+  at: number;
+  view: Record<string, unknown> | null;
+} | null = null;
+
+function signinCheckMs(): number {
   try {
-    const st = agentTokenStatusNow({
-      env: { DEN_AGENT_SIGNIN: "token" },
+    const v = Number(
+      (readUserConfig().agents as Record<string, unknown> | undefined)
+        ?.signin_token_check_seconds,
+    );
+    return (Number.isFinite(v) && v >= 0 ? v : 300) * 1000;
+  } catch {
+    return 300_000;
+  }
+}
+
+async function agentSigninView(
+  fresh = false,
+): Promise<Record<string, unknown> | null> {
+  const now = Date.now();
+  if (!fresh && signinViewCache && now - signinViewCache.at < signinCheckMs())
+    return signinViewCache.view;
+  let view: Record<string, unknown> | null;
+  try {
+    const st = await agentTokenStatus({
+      env: process.env,
       stateDir: getStateDir(),
+      probe: true,
     });
-    return {
-      configured: st.configured,
+    view = {
+      configured: st.configured && st.stored !== false,
       set_at: st.setAt,
       age_days: st.ageDays,
       old: st.old,
       store: st.store,
+      // The mode in effect: "token" under the always-on service.
+      mode: st.mode,
+      // The env backend: the value lives in the web server's process only.
+      process_local: st.processLocal === true,
       // No secrets store: the field says so and Save is off.
       no_store: st.noStore === true,
       // The store's credential is a keychain: source (1Password).
       cred_keychain: st.credInKeychain === true,
     };
   } catch {
-    return null;
+    view = null;
   }
+  signinViewCache = { at: now, view };
+  return view;
 }
 
 /**
@@ -3416,7 +3453,7 @@ async function handleRequest(
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       save: (token) => saveAgentToken(token, { stateDir: getStateDir() }),
       clear: () => clearAgentToken({ stateDir: getStateDir() }),
-      status: agentSigninView,
+      status: () => agentSigninView(true),
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
@@ -6368,7 +6405,7 @@ async function handleRequest(
         // Issue 163 (b): the agents' sign-in token under the always-on
         // service: never the token, only whether one is configured and
         // when it was set (nothing is read from the store on a page view).
-        agent_signin: agentSigninView(),
+        agent_signin: await agentSigninView(),
         // Issue 278: agents stuck compacting; instruction size (agent_context.*).
         agent_context: (() => {
           const c = contextWatchSettings(user.agent_context);

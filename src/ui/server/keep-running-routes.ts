@@ -215,7 +215,7 @@ export interface SignInTokenDeps {
   /** clearAgentToken: removes it the way it was kept (DELETE). */
   clear?: () => Promise<{ cleared: boolean; store?: string }>;
   /** The Settings row's agent_signin (never the token). */
-  status: () => unknown;
+  status: () => unknown | Promise<unknown>;
   /** A line for the server's log (never the token). */
   log?: (line: string) => void;
   readBody: (req: http.IncomingMessage) => Promise<string>;
@@ -268,7 +268,7 @@ export function handleSignInTokenRoute(
       return d.sendJson(res, {
         ok: true,
         cleared: r.cleared,
-        signin: d.status(),
+        signin: await d.status(),
       });
     })().catch(() => {
       if (!res.headersSent)
@@ -320,7 +320,7 @@ export function handleSignInTokenRoute(
     return d.sendJson(res, {
       ok: true,
       store: saved.store,
-      signin: d.status(),
+      signin: await d.status(),
     });
   })().catch(() => {
     if (!res.headersSent)

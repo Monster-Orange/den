@@ -103,6 +103,23 @@ config and manifest changes a distribution must make to move to it under
   the Settings field says there is no secrets store, with Save off. In
   English, Spanish and Japanese. (#163)
 
+- The sign-in token's status follows what is stored, not the config
+  ref: Settings, its API, `agents token status` and `doctor` ask
+  1Password or Doppler whether the item or field holds a value (never
+  shown); a ref with nothing behind it reads "no sign-in token set". The
+  page asks the store at most once per
+  `agents.signin_token_check_seconds` (user.yml, 300), and again at once
+  after a Save or a Remove. (#163)
+- The env secrets backend: Den's record of the set is the one truth for
+  the page and every CLI process, shown as "process-local: kept only
+  until Den restarts". `agents token clear` says what it
+  removed (the record, and the value when it was in that process). (#163)
+- On an install not under Keep agents running after logout, the Settings
+  row says what the CLI says: no token is needed only under that
+  setting, and with no secrets store, set `secrets.provider` first.
+  Nothing about signing in after logout. In English, Spanish and
+  Japanese. (#163)
+
 ### Migrations
 
 - None required. To keep agents signing in after logout under mode
