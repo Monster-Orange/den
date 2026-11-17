@@ -169,6 +169,24 @@ const LISTING: Record<string, Entry> = {
   "agents token": script(
     "the agents' sign-in token, pasted at a terminal prompt or piped in",
   ),
+  // Issue 339: each vendor's accounts, under Settings › Keep agents running
+  // after logout (one row per account). `agents accounts` lists them on the
+  // page; each subcommand has its control there, but remove.
+  "agents accounts": page("settings-registry.js", "data-acct-runtime"),
+  "agents accounts list": page("settings-registry.js", "data-acct-runtime"),
+  "agents accounts add": page("settings-registry.js", '"/api/agents/accounts"'),
+  "agents accounts set-token": page(
+    "settings-registry.js",
+    '"/api/agents/accounts/token"',
+  ),
+  "agents accounts order": page(
+    "settings-registry.js",
+    '"/api/agents/accounts/order"',
+  ),
+  "agents accounts remove": slot(
+    "0.4.67",
+    "remove a vendor's account and its token (the CLI only for now)",
+  ),
   "agents permission": slot(
     "0.4.46",
     "MODE-1: a project's and an agent's mode",

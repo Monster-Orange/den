@@ -596,6 +596,18 @@
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
     "keep.tokenOld":
       "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です: claude setup-token で新しく作り、__DEN_CLI__ agents token set で保存してください。",
+    "acct.title": "{vendor} アカウント",
+    "acct.default": "{vendor} アカウント {letter}",
+    "acct.add": "{vendor} アカウントを追加",
+    "acct.none": "トークンなし。",
+    "acct.set": "トークンは {date} に保存されました。",
+    "acct.setUnknown": "トークンは保存されています。",
+    "acct.first": "エージェントはこれでサインインします。",
+    "acct.tokenLabel": "{name} のサインイン用トークン",
+    "acct.tokenSave": "サインイン用トークンを保存",
+    "acct.up": "上へ",
+    "acct.down": "下へ",
+    "acct.failed": "保存できませんでした: {error}",
     "busy.askAllowW": "確認しています…",
     "busy.askAllowS": "確認しました。ダイアログで許可してください。",
     "busy.askAllowF": "確認できませんでした。",
@@ -1505,10 +1517,26 @@
       "このプロジェクトのエージェントが動くモードで、Den 全体の既定より優先されます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。下に各エージェントのモードとその出どころを示します。変更は実行中のエージェントにもターンの後で自動的に届きます。",
     "set.workspace.mcp_servers": "エージェントの追加 MCP: このプロジェクト",
     "set.workspace.mcp_servers.d":
-      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。エージェントが project_mcp_add で追加を求め、あなたが許可します。",
+      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。ここで変更や削除もできます。エージェントは project_mcp_add、project_mcp_update、project_mcp_remove で求め、あなたが許可します。",
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "このプロジェクトの MCP を読み込めませんでした。",
+    "pmcp.edit": "変更",
+    "pmcp.editL": "{name} を変更",
+    "pmcp.remove": "外す",
+    "pmcp.removeL": "{name} を外す",
+    "pmcp.url": "アドレス",
+    "pmcp.bearer": "bearer",
+    "pmcp.bearerKeep": "secrets.refs の名前 (空欄なら今のまま)",
+    "pmcp.noBearer": "bearer なし",
+    "pmcp.save": "保存",
+    "pmcp.cancel": "キャンセル",
+    "pmcp.rmT": "MCP を外しますか?",
+    "pmcp.rmAsk":
+      "{name} をプロジェクト {project} のエージェントから外しますか? 次の起動または再開時にそのツールを使えなくなります。",
+    "pmcp.rmW": "MCP を外しています…",
+    "pmcp.rmS": "外しました。",
+    "pmcp.rmF": "MCP を外せませんでした。",
     "ap.do.project_mcp_add":
       "MCP {name} ({url}) をプロジェクト {project} のエージェントに追加",
     "ap.mcp.warn":
@@ -1520,6 +1548,13 @@
       "bearer なし: 呼び出しに Authorization ヘッダーは付きません。",
     "ap.mcp.next":
       "{project} のエージェントは次の起動または再開時にこれを使えます。",
+    "ap.do.project_mcp_remove":
+      "MCP {name} ({url}) をプロジェクト {project} のエージェントから外す",
+    "ap.do.project_mcp_update":
+      "プロジェクト {project} のエージェントの MCP {name} を変更 (変更後 {url})",
+    "ap.mcp.removeWarn":
+      "{project} のエージェントは次の起動または再開時に {name} のツールを使えなくなります。",
+    "ap.mcp.urlChange": "MCP {name}: {from} から {to} へ",
     "pmode.none": "Den 全体の既定を使う",
     "pmode.following": "Den 全体の既定に従っています: {m}",
     "pmode.setHere": "このプロジェクトで設定: {m} (Den 全体は {dw})",
@@ -1916,6 +1951,9 @@
       "サブエージェント（Explore も）は {model} で動きます: agents.subagents.model。",
     "ag.subagents.from.default":
       "サブエージェント（Explore も）は {model} で動きます: Den の既定値。agents.subagents.model かペルソナの subagent_model で変えられます。",
+    "ag.signIn": "{label} で実行",
+    "ag.signIn.tip":
+      "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",

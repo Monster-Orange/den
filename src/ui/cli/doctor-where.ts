@@ -24,6 +24,7 @@ import {
   sessionWarning,
 } from "../../shared/launchd-session.js";
 import { localDate } from "../../shared/local-time.js";
+import type { SignInPick } from "../../shared/agents/signin-accounts.js";
 import {
   noSignInText,
   tokenStatusLine,
@@ -74,6 +75,12 @@ export interface WhereDeps {
    */
   noSignIn?: () => NoSignIn[];
   /**
+   * Issue 340: each vendor's pick (signInPicks). A vendor with more than
+   * one account gets a row from it (Claude Code's replaces the token row):
+   * the account agents start on, or why none can be.
+   */
+  signInPicks?: () => Promise<SignInPick[]>;
+  /**
    * Issue 163 (a): Settings › Keep agents running after logout (undefined:
    * unset). Unset over a login install: doctor offers it.
    */
@@ -96,6 +103,32 @@ export interface WhereRow {
   /** info: as chosen, worth knowing (login mode ends at logout). */
   status: "ok" | "info" | "warn";
   detail?: string;
+}
+
+/**
+ * Issue 340: a vendor's accounts in doctor's words: the one agents start
+ * on, or, with none, why each was passed over and how to set one. Labels
+ * only (never an email, never a token).
+ */
+function pickRow(p: SignInPick, cli: string): WhereRow {
+  const why = p.misses.map((m) => `${m.label}: ${m.reason}`).join("; ");
+  if (p.picked)
+    return {
+      what: "agent sign-in",
+      session: "token",
+      status: "ok",
+      detail: `agents start on ${p.picked.label}${why ? ` (passed over: ${why})` : ""}`,
+    };
+  const rt = p.runtime === "den-claude" ? "" : ` --runtime ${p.runtime}`;
+  return {
+    what: "agent sign-in",
+    session: "no token",
+    status: "warn",
+    detail:
+      `Keep agents running after logout is on, but no ${p.vendor} account has a token agents can use (${why}): ` +
+      `agents start as today, with no token, and will not be able to sign in after logout. ` +
+      `Set one with \`${cli} agents accounts set-token <id>${rt}\``,
+  };
 }
 
 function sessionRow(
@@ -258,8 +291,17 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
           ? { detail: ALWAYS_WHERE_WARNING }
           : {}),
     });
+  // Issue 340: a vendor with more than one account: what a start picks.
+  let picks: SignInPick[] = [];
+  if (svc?.mode === "always" && d.signInPicks)
+    picks = (await d.signInPicks().catch(() => [])).filter((p) => p.count > 1);
+  for (const p of picks) rows.push(pickRow(p, d.cli));
   // Issue 163 (b): under the daemon agents sign in with the token.
-  if (svc?.mode === "always" && d.signIn) {
+  if (
+    svc?.mode === "always" &&
+    d.signIn &&
+    !picks.some((p) => p.runtime === "den-claude")
+  ) {
     const st = await d.signIn().catch(() => null);
     if (st) {
       const l = tokenStatusLine(st, d.cli, (iso) => localDate(iso));

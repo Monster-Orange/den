@@ -48,13 +48,13 @@ import { getDistRoot } from "../paths.js";
 import { cachedRead } from "../read-cache.js";
 import { readManifestStacks } from "../stacks/config.js";
 import { getActiveWorkspaces } from "../environment-manager/workspaces.js";
-import { assertDomain } from "./render.js";
+import { assertDomain, DEFAULT_TRAEFIK_IMAGE } from "./render.js";
 import { tlsStrategyIds } from "./tls.js";
 import { readAccessLogConfig } from "./access-log.js";
 import type { EdgeConfig, EdgeTls } from "./types.js";
 
 import { product } from "../product.js";
-export const DEFAULT_TRAEFIK_IMAGE = "traefik:v3.7.17";
+export { DEFAULT_TRAEFIK_IMAGE };
 
 interface RawEdge {
   org?: string;

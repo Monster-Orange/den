@@ -1443,6 +1443,18 @@
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
       "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
+    "acct.title": "{vendor} accounts",
+    "acct.default": "{vendor} account {letter}",
+    "acct.add": "Add {vendor} account",
+    "acct.none": "No token.",
+    "acct.set": "Token set {date}.",
+    "acct.setUnknown": "Token set.",
+    "acct.first": "Agents sign in with this one.",
+    "acct.tokenLabel": "Sign-in token for {name}",
+    "acct.tokenSave": "Set sign-in token",
+    "acct.up": "Move up",
+    "acct.down": "Move down",
+    "acct.failed": "Not saved: {error}",
     "busy.askAllowW": "Asking…",
     "busy.askAllowS": "Asked. Allow it in the dialog.",
     "busy.askAllowF": "Couldn't ask.",
@@ -2340,10 +2352,26 @@
       "The mode this project's agents run in, over the Den-wide default. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
     "set.workspace.mcp_servers": "Agents' extra MCP servers: this project",
     "set.workspace.mcp_servers.d":
-      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. An agent adds one with project_mcp_add, and you Allow it.",
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
     "pmcp.none": "No extra MCP servers for this project's agents.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "Couldn't read this project's MCP servers.",
+    "pmcp.edit": "Change",
+    "pmcp.editL": "Change {name}",
+    "pmcp.remove": "Remove",
+    "pmcp.removeL": "Remove {name}",
+    "pmcp.url": "Address",
+    "pmcp.bearer": "Bearer",
+    "pmcp.bearerKeep": "a secrets.refs name; blank keeps it",
+    "pmcp.noBearer": "No bearer",
+    "pmcp.save": "Save",
+    "pmcp.cancel": "Cancel",
+    "pmcp.rmT": "Remove the MCP server?",
+    "pmcp.rmAsk":
+      "Remove {name} from project {project}'s agents? They lose its tools at their next start or resume.",
+    "pmcp.rmW": "Removing the MCP server…",
+    "pmcp.rmS": "Removed.",
+    "pmcp.rmF": "Couldn't remove the MCP server.",
     "ap.do.project_mcp_add":
       "Add MCP server {name} ({url}) to project {project}'s agents",
     "ap.mcp.warn":
@@ -2353,6 +2381,13 @@
       "Bearer: read from secrets.refs.{ref} at each call; never written to the agent's files or env.",
     "ap.mcp.noBearer": "No bearer: its calls carry no Authorization header.",
     "ap.mcp.next": "Agents in {project} get it at their next start or resume.",
+    "ap.do.project_mcp_remove":
+      "Remove MCP server {name} ({url}) from project {project}'s agents",
+    "ap.do.project_mcp_update":
+      "Change MCP server {name} for project {project}'s agents (now {url})",
+    "ap.mcp.removeWarn":
+      "Agents in {project} lose the tools of {name} at their next start or resume.",
+    "ap.mcp.urlChange": "MCP {name}: {from} → {to}",
     "pmode.none": "Use Den-wide",
     "pmode.following": "Following Den-wide: {m}",
     "pmode.setHere": "Set for this project: {m} (Den-wide is {dw})",
@@ -2760,6 +2795,9 @@
       "Its subagents (Explore too) run on {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Its subagents (Explore too) run on {model}: Den's default. agents.subagents.model or a persona's subagent_model changes it.",
+    "ag.signIn": "on {label}",
+    "ag.signIn.tip":
+      "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
