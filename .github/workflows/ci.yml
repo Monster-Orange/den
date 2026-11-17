@@ -20,26 +20,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Where each job runs. Issue 398: only the Node 22 legs of the fast gates
-  # (checks) and of the install smoke (dist-smoke) may use the self-hosted
-  # runners, two jobs a run; every other job is always GitHub-hosted. Those
-  # two use one runs-on guard: a self-hosted runner only when the
-  # DEN_SELF_HOSTED repo variable is 'on' and the code came from this repo
-  # (a push, or a pull request whose head branch lives here). A fork's pull request always runs GitHub-hosted, so
-  # code from outside never reaches the box. The variable is the off switch:
-  # unset or anything but 'on' puts every job back on GitHub-hosted runners.
-  # The self-hosted runners are ephemeral containers that take one job each
-  # and are thrown away after it. pull_request_target is never used (a test
-  # fails if it appears). release.yml stays GitHub-hosted: trusted publishing
-  # needs a GitHub-hosted runner. Repeat runs at night (repeat.yml) use their
-  # own variable, DEN_SELF_HOSTED_NIGHT. tests/unit/test-infra/
-  # ci-runner-guard.test.ts fails if any other job names DEN_SELF_HOSTED.
+  # Where each job runs: every job here is GitHub-hosted (issue 398). The
+  # self-hosted runners are for night runs only (repeat.yml, on its own
+  # DEN_SELF_HOSTED_NIGHT variable). pull_request_target is never used.
+  # tests/unit/test-infra/ci-runner-guard.test.ts fails if a workflow names
+  # the day switch variable or a ci.yml job leaves ubuntu-latest.
   #
   # The fast gates, once per Node at both ends of the supported range: the
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -169,7 +160,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false

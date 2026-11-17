@@ -1,15 +1,10 @@
 /**
- * CI runs on a self-hosted runner only when the DEN_SELF_HOSTED variable is
- * on and the code came from this repo (a push, or a pull request whose head
- * branch lives here). A fork's pull request always runs on a GitHub-hosted
- * runner, so code from outside never reaches the box. pull_request_target
- * (which runs a fork's PR with this repo's secrets) is never used.
- *
- * Issue 398: in the day only two ci.yml jobs may go to the box, the Node 22
- * legs of the fast checks and of the install smoke: two jobs a run, for its
- * two day runners. Every other job is always GitHub-hosted. The repeat
- * workflow (repeat.yml, run by hand) uses its own variable,
- * DEN_SELF_HOSTED_NIGHT, so night runs never depend on the day switch.
+ * The self-hosted runners are for night runs only (issue 398). Every ci.yml
+ * job runs GitHub-hosted, and no workflow names the day switch
+ * (DEN_SELF_HOSTED). The repeat workflow (repeat.yml, run by hand, which
+ * needs write access, so never from a fork) runs self-hosted only when
+ * DEN_SELF_HOSTED_NIGHT is on. pull_request_target (which runs a fork's PR
+ * with this repo's secrets) is never used.
  *
  * The runs-on expression is evaluated by a small parser written for exactly
  * its shape: string literals, context paths, fromJSON, ==, && and ||.
@@ -24,21 +19,11 @@ import * as yaml from "yaml";
 const ROOT = process.cwd();
 const WORKFLOWS = path.join(ROOT, ".github", "workflows");
 
-const GUARD =
-  "${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && " +
-  "(github.event_name == 'push' || " +
-  "github.event.pull_request.head.repo.full_name == github.repository)) && " +
-  "fromJSON('[\"self-hosted\",\"den-wsl\"]') || 'ubuntu-latest' }}";
-
-// The jobs that may use the box in the day (their Node 22 leg only).
-const BOX_JOBS = ["checks", "dist-smoke"];
-
 const NIGHT_GUARD =
   "${{ vars.DEN_SELF_HOSTED_NIGHT == 'on' && " +
   "fromJSON('[\"self-hosted\",\"den-wsl\"]') || 'ubuntu-latest' }}";
 
 const SELF_HOSTED = ["self-hosted", "den-wsl"];
-const REPO = "owner/den";
 
 interface Workflow {
   on?: unknown;
@@ -158,56 +143,29 @@ function evaluate(expr: string, ctx: Record<string, unknown>): Value {
   return v;
 }
 
-function prEvent(headRepo: string): Record<string, unknown> {
-  return {
-    event_name: "pull_request",
-    repository: REPO,
-    event: { pull_request: { head: { repo: { full_name: headRepo } } } },
-  };
-}
-
-const PUSH = { event_name: "push", repository: REPO, event: {} };
-
 // --- the tests -------------------------------------------------------------
 
 describe("CI's self-hosted runner guard", () => {
-  it("only the checks and the install smoke may use the box; every other ci.yml job is GitHub-hosted", () => {
+  it("every ci.yml job runs GitHub-hosted", () => {
     const jobs = workflow("ci.yml").jobs;
-    expect(Object.keys(jobs).length).toBeGreaterThan(2);
+    expect(Object.keys(jobs).length).toBeGreaterThan(0);
     for (const [name, job] of Object.entries(jobs)) {
       expect({ job: name, "runs-on": job["runs-on"] }).toEqual({
         job: name,
-        "runs-on": BOX_JOBS.includes(name) ? GUARD : "ubuntu-latest",
+        "runs-on": "ubuntu-latest",
       });
     }
   });
 
-  it("DEN_SELF_HOSTED appears in no other job, and in no other workflow", () => {
-    const jobs = workflow("ci.yml").jobs;
-    for (const [name, job] of Object.entries(jobs)) {
-      if (BOX_JOBS.includes(name)) continue;
-      expect({
-        job: name,
-        uses: /DEN_SELF_HOSTED/.test(JSON.stringify(job)),
-      }).toEqual({ job: name, uses: false });
-    }
-    for (const file of fs.readdirSync(WORKFLOWS)) {
-      if (file === "ci.yml" || !/\.ya?ml$/.test(file)) continue;
+  it("no workflow names the day switch DEN_SELF_HOSTED", () => {
+    const files = fs.readdirSync(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
       expect({ file, uses: /DEN_SELF_HOSTED\b/.test(text(file)) }).toEqual({
         file,
         uses: false,
       });
     }
-  });
-
-  it("only the Node 22 leg goes to the box", () => {
-    const push = (node: string) => ({
-      vars: { DEN_SELF_HOSTED: "on" },
-      matrix: { node },
-      github: PUSH,
-    });
-    expect(evaluate(GUARD, push("22.13.0"))).toEqual(SELF_HOSTED);
-    expect(evaluate(GUARD, push("24.13.0"))).toBe("ubuntu-latest");
   });
 
   it("release.yml never names a self-hosted variable", () => {
@@ -232,46 +190,6 @@ describe("CI's self-hosted runner guard", () => {
       "ubuntu-latest",
     );
     expect(evaluate(NIGHT_GUARD, { vars: {} })).toBe("ubuntu-latest");
-  });
-
-  it("a fork's pull request with the variable on runs GitHub-hosted", () => {
-    const ctx = {
-      vars: { DEN_SELF_HOSTED: "on" },
-      matrix: { node: "22.13.0" },
-      github: prEvent("fork/den"),
-    };
-    expect(evaluate(GUARD, ctx)).toBe("ubuntu-latest");
-  });
-
-  it("a fork's pull request with the variable off runs GitHub-hosted", () => {
-    const ctx = {
-      vars: { DEN_SELF_HOSTED: "off" },
-      github: prEvent("fork/den"),
-    };
-    expect(evaluate(GUARD, ctx)).toBe("ubuntu-latest");
-  });
-
-  it("a same-repo pull request with the variable on runs self-hosted", () => {
-    const ctx = {
-      vars: { DEN_SELF_HOSTED: "on" },
-      matrix: { node: "22.13.0" },
-      github: prEvent(REPO),
-    };
-    expect(evaluate(GUARD, ctx)).toEqual(SELF_HOSTED);
-  });
-
-  it("a push with the variable on runs self-hosted", () => {
-    const ctx = {
-      vars: { DEN_SELF_HOSTED: "on" },
-      matrix: { node: "22.13.0" },
-      github: PUSH,
-    };
-    expect(evaluate(GUARD, ctx)).toEqual(SELF_HOSTED);
-  });
-
-  it("a push with the variable unset runs GitHub-hosted", () => {
-    expect(evaluate(GUARD, { vars: {}, github: PUSH })).toBe("ubuntu-latest");
-    expect(evaluate(GUARD, { github: PUSH })).toBe("ubuntu-latest");
   });
 
   it("no workflow is triggered by pull_request_target", () => {
