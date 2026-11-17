@@ -185,6 +185,7 @@ import {
   workspacePermissionOf,
   followProjectMode,
   projectModeView,
+  projectMcpView,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
@@ -207,6 +208,7 @@ import {
   principalOf,
 } from "./request-guard.js";
 import {
+  AGENT_IMPORT_HELD,
   agentImportRefusal,
   agentResumeRefusal,
 } from "./agent-resume-grant.js";
@@ -243,6 +245,7 @@ const AGENTS_PATH =
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
+const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -537,6 +540,8 @@ export async function handleAgentRoutes(
     return rotationRoute(req, res, webDeps(deps.agents));
   const mp = MODES_PATH.exec(pathname);
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
+  const mcpp = MCP_SERVERS_PATH.exec(pathname);
+  if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
   const hp = HELPERS_PATH.exec(pathname);
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   const dp = DETAILS_PATH.exec(pathname);
@@ -1416,8 +1421,10 @@ const PERSONA_KEYS = ["persona", "model", "version", "when"];
 
 /**
  * Bring in (AG-17.1): GET lists the workspace's conversations, POST
- * …/<id>/import brings one in. A person's, or an agent's opted in through
- * mcp.actions' agent_import inside its scope. Every import is audited.
+ * …/<id>/import brings one in. The list: a person's, or an agent's opted
+ * in through mcp.actions' agent_import inside its scope. The import: a
+ * person's; an agent asks with the held write agent_import (issue 160).
+ * Every import is audited.
  */
 async function conversations(
   req: http.IncomingMessage,
@@ -1430,6 +1437,12 @@ async function conversations(
   const actor = auditActorOf(req);
   const agent = agentPrincipalOf(req);
   const allowed = () => {
+    // Issue 160: an agent never brings one in itself: it asks with the
+    // held write agent_import (the person's Allow, by default).
+    if (agent && session !== undefined)
+      throw new AgentError(`${agent.actor}: ${AGENT_IMPORT_HELD}`, {
+        status: 403,
+      });
     if (agent) {
       const why = agentImportRefusal(agent, ws, mcpActions());
       if (why) throw new AgentError(why, { status: 403 });
@@ -2348,6 +2361,33 @@ async function staleRoute(
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
   }
+  return true;
+}
+
+/**
+ * Issue 335: GET /api/workspaces/:ws/mcp-servers: the project's extra MCP
+ * servers, names and urls only (never a bearer or its ref). An agent adds
+ * one with the held write project_mcp_add.
+ */
+async function mcpServersRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  sendJson(res, { ok: true, ...projectMcpView(d, ws) });
   return true;
 }
 

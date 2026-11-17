@@ -476,7 +476,13 @@ export const BASH_READERS = [
 export function strayMcpServers(
   input: Pick<LaunchInput, "env" | "worktree" | "mcp">,
 ): { user: string[]; project: string[] } {
-  const own = new Set([input.mcp.name, input.mcp.hub?.name].filter(Boolean));
+  const own = new Set(
+    [
+      input.mcp.name,
+      input.mcp.hub?.name,
+      ...(input.mcp.extra ?? []).map((x) => x.name),
+    ].filter(Boolean),
+  );
   const names = (o: unknown): string[] =>
     o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o) : [];
   const readJson = (f: string): Record<string, unknown> | null => {
@@ -956,6 +962,7 @@ export const denClaude: Runtime = {
   subagentModel: true,
   launchEnv: ["CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE"],
   // Issue 163 (b): `claude setup-token`'s long-lived token, set by Den under
-  // the always-on service only (signin-token.ts).
-  signInTokenEnv: "CLAUDE_CODE_OAUTH_TOKEN",
+  // the always-on service only (signin-token.ts). Issue 338: from its
+  // catalog entry's sign-in data.
+  signInTokenEnv: DEN_CLAUDE_CATALOG.signIn?.env,
 };

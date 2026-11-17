@@ -25,7 +25,9 @@ import {
 } from "../../shared/launchd-session.js";
 import { localDate } from "../../shared/local-time.js";
 import {
+  noSignInText,
   tokenStatusLine,
+  type NoSignIn,
   type TokenStatus,
 } from "../../shared/agents/signin-token.js";
 
@@ -67,6 +69,11 @@ export interface WhereDeps {
    */
   signIn?: () => Promise<TokenStatus | null>;
   /**
+   * Issue 338: agents whose runtime has no sign-in data
+   * (agentsWithoutSignIn). Asked only under mode always.
+   */
+  noSignIn?: () => NoSignIn[];
+  /**
    * Issue 163 (a): Settings › Keep agents running after logout (undefined:
    * unset). Unset over a login install: doctor offers it.
    */
@@ -80,7 +87,11 @@ interface WhereRowBase {
 
 export interface WhereRow {
   /** Issue 163 adds the sign-in and keep-running rows. */
-  what: WhereRowBase["what"] | "agent sign-in" | "keep running";
+  what:
+    | WhereRowBase["what"]
+    | "agent sign-in"
+    | "runtime sign-in"
+    | "keep running";
   session: string;
   /** info: as chosen, worth knowing (login mode ends at logout). */
   status: "ok" | "info" | "warn";
@@ -259,6 +270,22 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
         detail: l.text,
       });
     }
+  }
+  // Issue 338: a runtime with no sign-in data can't sign in after logout.
+  if (svc?.mode === "always" && d.noSignIn) {
+    let list: NoSignIn[] = [];
+    try {
+      list = d.noSignIn();
+    } catch {
+      list = [];
+    }
+    if (list.length)
+      rows.push({
+        what: "runtime sign-in",
+        session: "none",
+        status: "warn",
+        detail: noSignInText(list),
+      });
   }
   // Issue 163 (a): an install from before it was on by default, the
   // Setting never set: switching needs sudo, so it is offered, not done.

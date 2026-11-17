@@ -116,7 +116,26 @@ import {
   selectSyncTargets,
 } from "../../shared/environment-manager/sync-targets.js";
 import { recordAction } from "./audit.js";
-import { auditActorOf, principalOf } from "./request-guard.js";
+import {
+  agentPrincipalOf,
+  auditActorOf,
+  principalOf,
+} from "./request-guard.js";
+import { approvalsView, patchApprovals } from "../../shared/approval-policy.js";
+
+/** Issue 160: a project's approval policy rows (null policy: the install's). */
+function projectApprovals(raw: unknown): {
+  approvals_policy: string | null;
+  approvals_watch: string[];
+  approvals_critical: string[];
+} {
+  const v = approvalsView(raw);
+  return {
+    approvals_policy: v.policy,
+    approvals_watch: v.watch,
+    approvals_critical: v.critical,
+  };
+}
 import {
   GIT_REMOTE_TIMEOUT_MS,
   DETACH_WINDOW_MS,
@@ -1088,28 +1107,53 @@ export async function handleWorkspaceRoutes(
   }
 
   // ── API: workspace settings ──────────────────────────────────────────────
-  // GET  /api/workspaces/settings?workspace=<name>  → { editor }
-  // POST /api/workspaces/settings  body: { workspace, editor }
+  // GET  /api/workspaces/settings?workspace=<name>  → { editor,
+  //        approvals_policy, approvals_watch, approvals_critical }
+  // POST /api/workspaces/settings  body: { workspace, editor?,
+  //        approvals_policy?, approvals_watch?, approvals_critical? }
+  // Issue 160: the approvals_* are the project's approval policy
+  // (workspaces.yml <project>.approvals), a person's only.
   if (pathname === "/api/workspaces/settings") {
     if (req.method === "GET") {
       const wsName =
         url.searchParams.get("workspace") ?? getActiveWorkspace()?.name;
-      if (!wsName) return sendJson(res, { editor: null });
+      if (!wsName)
+        return sendJson(res, { editor: null, ...projectApprovals(undefined) });
       const file = readWorkspacesFile();
       const ws = file.workspaces[wsName];
-      return sendJson(res, { editor: ws?.editor ?? null });
+      return sendJson(res, {
+        editor: ws?.editor ?? null,
+        ...projectApprovals(ws?.approvals),
+      });
     }
     if (req.method === "POST") {
       try {
         const body = JSON.parse(await readBody(req)) as {
           workspace?: string;
           editor?: string | null;
+          approvals_policy?: unknown;
+          approvals_watch?: unknown;
+          approvals_critical?: unknown;
         };
         const wsName = body.workspace ?? getActiveWorkspace()?.name;
         if (!wsName) return send400(res, "a project is required");
         const file = readWorkspacesFile();
         const ws = file.workspaces[wsName];
         if (!ws) return send400(res, `Project "${wsName}" not found`);
+        const policyKeys = (
+          ["approvals_policy", "approvals_watch", "approvals_critical"] as const
+        ).filter((k) => body[k] !== undefined);
+        // Issue 160: the approval policy is a person's: an agent (or a
+        // command-line token) asks with approval_policy instead.
+        if (policyKeys.length && (agentPrincipalOf(req) || auditActorOf(req)))
+          return sendJson(
+            res,
+            {
+              ok: false,
+              error: `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
+            },
+            403,
+          );
         if (body.editor === null || body.editor === "") {
           delete ws.editor;
         } else if (body.editor !== undefined) {
@@ -1117,8 +1161,26 @@ export async function handleWorkspaceRoutes(
             return send400(res, `Unknown editor "${body.editor}"`);
           ws.editor = body.editor;
         }
+        if (policyKeys.length) {
+          const a = patchApprovals(
+            ws.approvals,
+            {
+              policy: body.approvals_policy,
+              watch: body.approvals_watch,
+              critical: body.approvals_critical,
+            },
+            `workspaces.${wsName}.approvals`,
+          );
+          if (!a.ok) return send400(res, a.error);
+          if (a.value) ws.approvals = a.value;
+          else delete ws.approvals;
+        }
         writeWorkspacesFile(file);
-        return sendJson(res, { ok: true, editor: ws.editor ?? null });
+        return sendJson(res, {
+          ok: true,
+          editor: ws.editor ?? null,
+          ...projectApprovals(ws.approvals),
+        });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);
       }

@@ -904,6 +904,38 @@
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
     "addr.empty": "Escribe primero una dirección.",
+    "set.workspace.approvals_policy": "Escrituras de los agentes aquí",
+    "set.workspace.approvals_policy.d":
+      "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
+    "set.workspace.approvals_policy.o.install": "Como en todas partes",
+    "set.workspace.approvals_policy.o.auto": "Ejecutar sin aviso",
+    "set.workspace.approvals_policy.o.notify": "Ejecutar y avisarme",
+    "set.workspace.approvals_policy.o.ask": "Preguntarme",
+    "set.workspace.approvals_watch": "Vigilado aquí",
+    "set.workspace.approvals_watch.d":
+      "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
+    "set.workspace.approvals_critical": "Crítico aquí",
+    "set.workspace.approvals_critical.d":
+      "Tipos de escritura de agentes que siempre te preguntan en este proyecto. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.agents.approvals_policy": "Escrituras de agentes",
+    "set.agents.approvals_policy.d":
+      "Lo que un agente puede hacer sin tu Permitir. Ejecutar y avisarme: se ejecuta y tus novedades lo dicen. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta, igual que una sobre algo que vigilas o fijaste.",
+    "set.agents.approvals_policy.o.auto": "Ejecutar sin aviso",
+    "set.agents.approvals_policy.o.notify": "Ejecutar y avisarme",
+    "set.agents.approvals_policy.o.ask": "Preguntarme",
+    "set.agents.approvals_watch": "Vigilado",
+    "set.agents.approvals_watch.d":
+      "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea; también una sobre un repo o servicio que fijaste. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
+    "set.agents.approvals_critical": "Crítico",
+    "set.agents.approvals_critical.d":
+      "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "ap.do.agent_import":
+      'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
+    "ap.do.approval_policy":
+      "Cambiar la política de aprobación de todos los proyectos a {to}",
+    "ap.do.approval_policy.project":
+      "Cambiar la política de aprobación del proyecto {where} a {to}",
+    "ap.do.pr_close": "Cerrar la pull request {pr} de {repo}: {comment}",
     "set.agents.default_mode":
       "Modo de los agentes: valor por defecto de todo Den",
     "set.agents.default_mode.d":
@@ -1488,6 +1520,24 @@
       "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":
       "El modo en que funcionan los agentes de este proyecto, por encima del valor por defecto de todo Den. Cuál gana: el propio ajuste de un agente, luego el proyecto, luego el valor por defecto de todo Den, luego su persona. Cada agente dice abajo su modo y de dónde viene. Un cambio llega a los agentes en marcha después de su turno, solo.",
+    "set.workspace.mcp_servers":
+      "MCP adicionales de los agentes: este proyecto",
+    "set.workspace.mcp_servers.d":
+      "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Un agente añade uno con project_mcp_add, y tú lo permites.",
+    "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
+    "pmcp.row": "{name}: {url}",
+    "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
+    "ap.do.project_mcp_add":
+      "Añadir el MCP {name} ({url}) a los agentes del proyecto {project}",
+    "ap.mcp.warn":
+      "Esto da a los agentes de {project} herramientas nuevas y envía sus llamadas a {url}.",
+    "ap.mcp.server": "MCP: {name} en {url}",
+    "ap.mcp.bearer":
+      "Bearer: se lee de secrets.refs.{ref} en cada llamada; nunca se escribe en los archivos ni en el entorno del agente.",
+    "ap.mcp.noBearer":
+      "Sin bearer: sus llamadas no llevan cabecera Authorization.",
+    "ap.mcp.next":
+      "Los agentes de {project} lo reciben en su próximo inicio o reanudación.",
     "pmode.none": "Usar el de todo Den",
     "pmode.following": "Sigue el de todo Den: {m}",
     "pmode.setHere": "Fijado para este proyecto: {m} (el de todo Den es {dw})",
@@ -1651,6 +1701,7 @@
     "bell.m.permissionWhat": "{name} necesita tu permiso: {what}",
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
+    "bell.m.toLead": "{name} preguntó al líder, {lead}: {text}",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",

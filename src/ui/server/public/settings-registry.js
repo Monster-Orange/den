@@ -1809,7 +1809,117 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
 
+  {
+    // Issue 160: this project's approval policy (workspaces.yml
+    // <project>.approvals), over the install's. A person's only.
+    id: "workspace.approvals_policy",
+    category: "workspace",
+    label: "Agents' writes here",
+    description:
+      "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
+    keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
+    scope: "workspace",
+    control: seg([
+      { value: "install", label: "As everywhere" },
+      { value: "auto", label: "Run, no note" },
+      { value: "notify", label: "Run and tell me" },
+      { value: "ask", label: "Ask me" },
+    ]),
+    read: (ctx) => ctx.wsSettings?.approvals_policy ?? "install",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({ approvals_policy: v === "install" ? null : v }),
+  },
+  {
+    id: "workspace.approvals_watch",
+    category: "workspace",
+    label: "Watched here",
+    description:
+      "An agent's write on any of these asks you first, whatever its kind. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    keywords: ["watch", "watched", "favorite", "approval", "allow", "ask"],
+    scope: "workspace",
+    control: { type: "text" },
+    read: (ctx) => (ctx.wsSettings?.approvals_watch ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.saveWorkspace({ approvals_watch: String(v ?? "").trim() || null }),
+  },
+  {
+    id: "workspace.approvals_critical",
+    category: "workspace",
+    label: "Critical here",
+    description:
+      "Kinds of agent write that always ask you in this project. Comma-separated, for example repo_clone, service_try.",
+    keywords: ["critical", "approval", "allow", "ask", "policy"],
+    scope: "workspace",
+    control: { type: "text" },
+    read: (ctx) => (ctx.wsSettings?.approvals_critical ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        approvals_critical: String(v ?? "").trim() || null,
+      }),
+  },
+  {
+    // Issue 335: the project's extra HTTP MCP servers, names and
+    // addresses only. An agent adds one with a held write; the person
+    // Allows it.
+    id: "workspace.mcp_servers",
+    category: "workspace",
+    label: "Agents' extra MCP servers: this project",
+    description:
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. An agent adds one with project_mcp_add, and you Allow it.",
+    keywords: ["agents", "mcp", "mcp server", "tools", "bearer", "http"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectMcp },
+    read: () => null,
+  },
+
   // ── Agents ─────────────────────────────────────────────────────────────
+  {
+    // Issue 160: the install's approval policy (user.yml approvals). A
+    // person's only: an agent asks with approval_policy.
+    id: "agents.approvals_policy",
+    category: "agents",
+    label: "Agent writes",
+    description:
+      "What an agent may do without your Allow. Run and tell me: it runs, and your updates say so. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks, as does one on something you watch or pinned.",
+    keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
+    scope: "user",
+    keys: ["approvals_policy"],
+    control: seg([
+      { value: "auto", label: "Run, no note" },
+      { value: "notify", label: "Run and tell me" },
+      { value: "ask", label: "Ask me" },
+    ]),
+    read: (ctx) => ctx.data.approvals_policy ?? "notify",
+    write: (v, ctx) => ctx.post({ approvals_policy: v }),
+  },
+  {
+    id: "agents.approvals_watch",
+    category: "agents",
+    label: "Watched",
+    description:
+      "An agent's write on any of these asks you first, whatever its kind; so does one on a repo or service you pinned. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    keywords: ["watch", "watched", "favorite", "pinned", "approval", "ask"],
+    scope: "user",
+    keys: ["approvals_watch"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.approvals_watch ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({ approvals_watch: String(v ?? "").trim() || null }),
+  },
+  {
+    id: "agents.approvals_critical",
+    category: "agents",
+    label: "Critical",
+    description:
+      "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    keywords: ["critical", "approval", "allow", "ask", "policy"],
+    scope: "user",
+    keys: ["approvals_critical"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.approvals_critical ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
+  },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the
@@ -3261,6 +3371,43 @@ function renderProjectMode(host, ctx) {
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note" data-pmode-error>${escR(e?.message || t("pmode.failed"))}</p>`;
+    });
+}
+
+/**
+ * Issue 335: Settings › Project › Agents' extra MCP servers. `v` is GET
+ * /api/workspaces/:ws/mcp-servers: { servers: [{ name, url }] }.
+ */
+export function projectMcpHtml(v, t) {
+  const servers = Array.isArray(v?.servers) ? v.servers : [];
+  if (!servers.length)
+    return `<p class="set-note" data-pmcp-none>${escR(t("pmcp.none"))}</p>`;
+  return (
+    `<ul class="set-note" data-pmcp-list>` +
+    servers
+      .map(
+        (sv) =>
+          `<li data-pmcp="${escR(sv.name)}">${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</li>`,
+      )
+      .join("") +
+    `</ul>`
+  );
+}
+
+function renderProjectMcp(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell
+    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/mcp-servers`)
+    .then((v) => {
+      host.innerHTML = projectMcpHtml(v, t);
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note" data-pmcp-error>${escR(e?.message || t("pmcp.failed"))}</p>`;
     });
 }
 
