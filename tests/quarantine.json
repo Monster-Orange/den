@@ -6,6 +6,7 @@
       "file": "tests/unit/server/services-nonblocking.integration.test.ts",
       "test": "/api/services does not block the server server-info answers quickly while a slow services build is in flight",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44165602888,
@@ -21,6 +22,7 @@
       "file": "tests/unit/server/services-nonblocking.integration.test.ts",
       "test": "/api/services does not block the server concurrent services requests share one build",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44165602888,
@@ -36,6 +38,7 @@
       "file": "tests/unit/server/bell-v6.browser.test.ts",
       "test": "bell v6: a quieter bell ⊘ asks once; Esc cancels; yes stops showing the kind, with Undo and the settings link",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44165163073,
@@ -51,6 +54,7 @@
       "file": "tests/unit/server/report-dialog.browser.test.ts",
       "test": "FB: Report an issue, the dialog in es and ja (1440 and 390)",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44162941120,
@@ -67,6 +71,7 @@
       "file": "tests/unit/server/report-dialog.browser.test.ts",
       "test": "FB: Report an issue, the dialog What's new on a first visit carries its own Report; Report opens over it and keeps it; Esc closes What's new",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44162941120,
@@ -83,6 +88,7 @@
       "file": "tests/unit/server/report-dialog.browser.test.ts",
       "test": "FB: the screenshot and its mask a report opened over a drawer includes the drawer in the shot, and the drawer stays open",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44162941120,
@@ -99,6 +105,7 @@
       "file": "tests/unit/server/agents-ag14.browser.test.ts",
       "test": "stopped agents on the Agents page (AG-14, D37) D45: a stopped agent's details, from its row #143: they open where they stay: shown once their details are in, never growing or moving after",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44161015653,
@@ -114,6 +121,7 @@
       "file": "tests/unit/den-ui/kit-csp.browser.test.ts",
       "test": "a kit page under script-src 'self'; style-src 'self' runs the ask-and-tell dialog (dialog.js) with no violation",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44157666912,
@@ -130,6 +138,7 @@
       "file": "tests/unit/server/agents-layout.browser.test.ts",
       "test": "the Agents tab's layouts (AG-4b) switches Focus (the default), Tabs and Tile from the header, with ⌃⇧1 / ⌃⇧2 / ⌃⇧3 and from ⌘K; the URL says it, and it is saved for the person",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44165236269,
@@ -146,6 +155,7 @@
       "file": "tests/unit/server/agents-layout.browser.test.ts",
       "test": "the Agents tab's layouts (AG-4b) Focus: a click replaces the pane, Shift-click adds one alongside. Tabs: a strip of named tabs (name, then persona · workspace) with a waiting dot",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44165236269,
@@ -162,6 +172,7 @@
       "file": "tests/unit/server/agents-layout.browser.test.ts",
       "test": "the Agents tab's layouts (AG-4b) at 390px, focus shows as Tabs: one pane under the strip, it fits, no sideways scroll",
       "issue": 143,
+      "owner": "den-builder",
       "added": "2026-11-17",
       "evidence": {
         "failed_run": 44165236269,
@@ -173,6 +184,124 @@
         "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 4) (job 134329395719), same sha, other Node"
       },
       "note": "Failed twice in the same job; passed 17 of 17 locally on both Nodes."
+    },
+    {
+      "file": "tests/unit/server/shell-rail.browser.test.ts",
+      "test": "the rail pins and unpins: prefs only, with the toast",
+      "issue": 397,
+      "owner": "den-builder",
+      "added": "2026-11-17",
+      "evidence": {
+        "failed_run": 43817814684,
+        "failed_job": 133133766979,
+        "job": "tests (24.13.0, 1)",
+        "sha": "eb37388b3ac786bea6eb36b5a0b1a8cb44526cc9",
+        "passed_run": 43817808846,
+        "passed_job": 133133749144,
+        "note": "also failed in run 44167278968 (tests (24.13.0, 1), sha 60fd235) and passed on the same sha in run 44167278968 (job 134341712787)"
+      },
+      "note": "From the test-cycle audit (CI flakes): failed, then passed on the same sha; the #398 replay does not count this failure as real."
+    },
+    {
+      "file": "tests/unit/server/config-invalid-page.browser.test.ts",
+      "test": "a page navigation with an invalid config in ja",
+      "issue": 397,
+      "owner": "den-builder",
+      "added": "2026-11-17",
+      "evidence": {
+        "failed_run": 43987089405,
+        "failed_job": 133717924225,
+        "job": "tests (22.13.0, 2)",
+        "sha": "ec09a529e2d9675187c5e58d19e52a6ce89ba6d6",
+        "passed_run": 43987089405,
+        "passed_attempt": 2,
+        "passed_job": 133727139584
+      },
+      "note": "From the test-cycle audit (CI flakes): failed, then passed on the same sha; the #398 replay does not count this failure as real."
+    },
+    {
+      "file": "tests/unit/server/config-invalid-page.browser.test.ts",
+      "test": "a page navigation with an invalid config in es",
+      "issue": 397,
+      "owner": "den-builder",
+      "added": "2026-11-17",
+      "evidence": {
+        "failed_run": 44013195355,
+        "failed_job": 133804820368,
+        "job": "tests (22.13.0, 2)",
+        "sha": "8c5d4b2152d907582c92ce65d45c735c1c57362a",
+        "passed_run": 44013195355,
+        "passed_job": 133804820390,
+        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 2) (job 133804820390), same sha, other Node"
+      },
+      "note": "From the test-cycle audit (CI flakes): failed, then passed on the same sha; the #398 replay does not count this failure as real."
+    },
+    {
+      "file": "tests/unit/server/config-invalid-page.browser.test.ts",
+      "test": "a page navigation with an invalid config /release throws nothing",
+      "issue": 397,
+      "owner": "den-builder",
+      "added": "2026-11-17",
+      "evidence": {
+        "failed_run": 43763782557,
+        "failed_job": 132964216671,
+        "job": "tests (22.13.0, 2)",
+        "sha": "3eaf6e204b213ac3ceabc9981537f4f0c2c7807c",
+        "passed_run": 43765371187,
+        "passed_job": 132969153368
+      },
+      "note": "From the test-cycle audit (CI flakes): failed, then passed on the same sha; the #398 replay does not count this failure as real."
+    },
+    {
+      "file": "tests/unit/server/agents-layout.browser.test.ts",
+      "test": "the Agents tab's layouts (AG-4b) issue 170: at 390x844 the runs dock never covers the To line and tags never cut the project's name",
+      "issue": 397,
+      "owner": "den-builder",
+      "added": "2026-11-17",
+      "evidence": {
+        "failed_run": 43772145965,
+        "failed_job": 132990215265,
+        "job": "tests (22.13.0, 4)",
+        "sha": "12d96d2e13d69b7559c65ba186309170439e03a5",
+        "passed_run": 43772152871,
+        "passed_job": 132990229260,
+        "note": "also failed in run 43984787635 (tests (22.13.0, 4), sha 60e001d) and passed on the same sha in run 43984787635 (job 133718023730)"
+      },
+      "note": "From the test-cycle audit (CI flakes): failed, then passed on the same sha; the #398 replay does not count this failure as real."
+    },
+    {
+      "file": "tests/unit/server/config-invalid-page.browser.test.ts",
+      "test": "a page navigation with an invalid config /settings asks no /api route that answers 422",
+      "issue": 397,
+      "owner": "den-builder",
+      "added": "2026-11-17",
+      "evidence": {
+        "failed_run": 44014890613,
+        "failed_job": 133810327292,
+        "job": "tests (22.13.0, 2)",
+        "sha": "e03dc07bf66935f3df0d2afd7ba7bbf9cfcc571d",
+        "passed_run": 44014890613,
+        "passed_job": 133810327403,
+        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 2) (job 133810327403), same sha, other Node"
+      },
+      "note": "From the test-cycle audit (CI flakes): failed, then passed on the same sha; the #398 replay does not count this failure as real."
+    },
+    {
+      "file": "tests/unit/server/config-invalid-page.browser.test.ts",
+      "test": "a page navigation with an invalid config /logs asks no /api route that answers 422",
+      "issue": 397,
+      "owner": "den-builder",
+      "added": "2026-11-17",
+      "evidence": {
+        "failed_run": 44002211712,
+        "failed_job": 133768799766,
+        "job": "tests (22.13.0, 2)",
+        "sha": "46f8bbd2068f50122d358b5bc67effec39c55db3",
+        "passed_run": 44002211712,
+        "passed_job": 133768799834,
+        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 2) (job 133768799834), same sha, other Node"
+      },
+      "note": "From the test-cycle audit (CI flakes): failed, then passed on the same sha; the #398 replay does not count this failure as real."
     }
   ]
 }

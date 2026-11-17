@@ -2,7 +2,7 @@
 /**
  * Issue 397: the evidence a quarantine entry needs (tests/quarantine.json).
  *
- *   node scripts/flake-evidence.mjs <run-id> [--repo owner/name]
+ *   node scripts/flake-evidence.mjs <run-id> [--repo owner/name] [--issue N] [--owner who] [--attempt N]
  *
  * For a red CI run: each failed job's failing tests (from its log), and a
  * run on the same head sha where that job passed (another run, or another
@@ -57,7 +57,13 @@ const day = (iso) => (iso ?? "").slice(0, 10);
  * The entries for one red run. `api(path)` answers a GET on
  * repos/<repo>/<path>: parsed JSON, or a log's text.
  */
-export async function evidenceFor(runId, api, issue = 397) {
+export async function evidenceFor(
+  runId,
+  api,
+  issue = 397,
+  owner = "den-builder",
+  attempt = undefined,
+) {
   const run = await api(`actions/runs/${runId}`);
   const sha = run.head_sha;
   const jobsOf = async (id, attempt) =>
@@ -78,12 +84,13 @@ export async function evidenceFor(runId, api, issue = 397) {
     for (let a = 1; a <= (r.run_attempt ?? 1); a++)
       attempts.push({ run: r.id, attempt: a, jobs: await jobsOf(r.id, a) });
 
-  const mine = attempts.find(
-    (x) => x.run === run.id && x.attempt === (run.run_attempt ?? 1),
-  ) ?? {
+  // The red attempt: --attempt N (a run re-run green has its red attempt
+  // before the last), else the run's last.
+  const want = attempt ?? run.run_attempt ?? 1;
+  const mine = attempts.find((x) => x.run === run.id && x.attempt === want) ?? {
     run: run.id,
-    attempt: run.run_attempt ?? 1,
-    jobs: await jobsOf(run.id),
+    attempt: want,
+    jobs: await jobsOf(run.id, attempt),
   };
   const logs = new Map();
   const logOf = async (id) => {
@@ -110,6 +117,7 @@ export async function evidenceFor(runId, api, issue = 397) {
     for (const t of failingTests(await logOf(job.id))) {
       const evidence = {
         failed_run: run.id,
+        ...(mine.attempt > 1 ? { failed_attempt: mine.attempt } : {}),
         failed_job: job.id,
         job: job.name,
         sha,
@@ -158,6 +166,7 @@ export async function evidenceFor(runId, api, issue = 397) {
         file: t.file,
         test: t.test,
         issue,
+        owner,
         added: day(new Date().toISOString()),
         evidence,
       });
@@ -187,16 +196,28 @@ function ghApi(repo) {
 }
 
 async function main(argv) {
-  const runId = argv.find((a) => /^\d+$/.test(a));
+  const runId = argv.find(
+    (a, i) => /^\d+$/.test(a) && !/^--(issue|attempt)$/.test(argv[i - 1] ?? ""),
+  );
   const r = argv.indexOf("--repo");
   if (!runId) {
     console.error(
-      "usage: node scripts/flake-evidence.mjs <run-id> [--repo owner/name]",
+      "usage: node scripts/flake-evidence.mjs <run-id> [--repo owner/name] [--issue N] [--owner who] [--attempt N]",
     );
     return 2;
   }
   const repo = r >= 0 ? argv[r + 1] : repoFromGit();
-  const entries = await evidenceFor(runId, ghApi(repo));
+  const i = argv.indexOf("--issue");
+  const o = argv.indexOf("--owner");
+  const entries = await evidenceFor(
+    runId,
+    ghApi(repo),
+    i >= 0 ? Number(argv[i + 1]) : undefined,
+    o >= 0 ? argv[o + 1] : undefined,
+    argv.includes("--attempt")
+      ? Number(argv[argv.indexOf("--attempt") + 1])
+      : undefined,
+  );
   if (!entries.length) {
     console.error(`run ${runId}: no failed job with a failing test`);
     return 1;

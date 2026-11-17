@@ -36,6 +36,7 @@ type Entry = {
   file: string;
   test: string;
   issue?: number;
+  owner?: string;
   added?: string;
   evidence?: Record<string, unknown>;
 };
@@ -170,11 +171,12 @@ describe("the list stays short-lived (the weekly rule)", () => {
     file: FIXTURE,
     test: FLAKY,
     issue: 397,
+    owner: "den-builder",
     added: "2026-11-20",
     evidence: ev,
     ...e,
   });
-  it("every entry in tests/quarantine.json has its issue, its evidence, and is at most the Setting's days old", () => {
+  it("every entry in tests/quarantine.json has its issue, its owner, its evidence, and is at most the Setting's days old", () => {
     const doc = q.loadQuarantine({});
     expect(q.maxAgeDays(doc, {})).toBe(14);
     expect(q.quarantineProblems(doc, new Date(), {})).toEqual([]);
@@ -206,6 +208,18 @@ describe("the list stays short-lived (the weekly rule)", () => {
         DEN_QUARANTINE_MAX_AGE_DAYS: "5",
       }),
     ).toEqual([expect.stringMatching(/over 5/)]);
+  });
+  it("an entry with no owner fails", () => {
+    expect(
+      q.quarantineProblems(
+        { entries: [entry({ owner: undefined })] },
+        today,
+        {},
+      ),
+    ).toEqual([expect.stringMatching(/no owner/)]);
+    expect(
+      q.quarantineProblems({ entries: [entry({ owner: " " })] }, today, {}),
+    ).toEqual([expect.stringMatching(/no owner/)]);
   });
   it("an entry with no issue, or no evidence, fails", () => {
     expect(
@@ -435,9 +449,14 @@ describe("scripts/flake-evidence.mjs (fake Actions API data, no network)", () =>
 
   it("a rerun on the same sha where the job passed: a ready entry", () => {
     const es = evidence(true);
-    expect(es.map((e) => [e.file, e.test, e.issue])).toEqual([
-      ["tests/unit/server/x.browser.test.ts", "group the flaky one", 397],
-      ["tests/unit/z.test.ts", "z real red", 397],
+    expect(es.map((e) => [e.file, e.test, e.issue, e.owner])).toEqual([
+      [
+        "tests/unit/server/x.browser.test.ts",
+        "group the flaky one",
+        397,
+        "den-builder",
+      ],
+      ["tests/unit/z.test.ts", "z real red", 397, "den-builder"],
     ]);
     expect(es[0].evidence).toEqual({
       failed_run: 100,

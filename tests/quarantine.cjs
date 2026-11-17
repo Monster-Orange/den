@@ -112,8 +112,8 @@ function ageDays(added, today = new Date()) {
 /**
  * What is wrong with the list, one line each (empty: nothing). The weekly
  * rule: each entry is fixed (removed with the fix) or deleted before it is
- * older than the Setting's days. Every entry names its issue and its
- * evidence.
+ * older than the Setting's days. Every entry names its issue, its owner
+ * (who fixes or deletes it) and its evidence.
  */
 function quarantineProblems(doc, today = new Date(), env = process.env) {
   const max = maxAgeDays(doc, env);
@@ -122,6 +122,8 @@ function quarantineProblems(doc, today = new Date(), env = process.env) {
     const at = `entry ${i} (${e.file ?? "?"} › ${e.test ?? "?"})`;
     if (!e.file || !e.test) out.push(`${at}: needs file and test`);
     if (!Number.isInteger(e.issue) || e.issue <= 0) out.push(`${at}: no issue`);
+    if (typeof e.owner !== "string" || !e.owner.trim())
+      out.push(`${at}: no owner (who fixes it or deletes it)`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(e.added ?? "")) {
       out.push(`${at}: added is not YYYY-MM-DD`);
     } else {

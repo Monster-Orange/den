@@ -115,7 +115,9 @@ If no other run on that sha passed, it says so in `evidence.note`; it
 never makes one up. Paste the entries for the flaky tests, not the ones
 that are really broken. Each entry has `file`, `test` (the full name
 jest prints, or the test's own title, exactly; `/regex/` matches the full
-name), `issue`, `added` (YYYY-MM-DD) and `evidence`.
+name), `issue`, `owner` (who fixes or deletes it; `den-builder` by
+default), `added` (YYYY-MM-DD) and `evidence`. `--attempt N` reads an
+earlier attempt of a run that was re-run green.
 
 To remove an entry, delete it in the PR that fixes the test.
 
@@ -123,6 +125,16 @@ The weekly rule: each entry is fixed or deleted within `max_age_days`
 (14 by default; `DEN_QUARANTINE_MAX_AGE_DAYS` overrides it).
 `tests/unit/test-infra/quarantine.test.ts` fails on an older entry, or on
 one with no issue or no evidence.
+
+### Flaky on retry
+
+On a pull request, a test file that fails runs once more, alone, in a
+fresh jest (`scripts/flake-retry.js`). If it passes then, the step
+passes, but never silently: the job summary has a "Flaky on retry"
+table, the `flaky-on-retry-*` artifact has each file with the tests that
+failed first, the sha, run and job, and a warning names every such file
+that `tests/quarantine.json` doesn't list. A file red twice blocks. A
+push to `main`, the nightly run and a release never retry.
 
 ### The tests a pull request runs
 
