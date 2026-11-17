@@ -1,7 +1,7 @@
 /**
  * Issue 339 (slice 2 of the always-on accounts design, issue 163): for
  * each vendor (a runtime with sign-in data), a list of accounts, each with
- * a name ("Sign-in A" unless named), its own sign-in token in its own item
+ * a name ("Claude Code account A" unless named), its own sign-in token in its own item
  * of the install's secrets store, and an order the person can change.
  *
  *   - The single token that exists today is account one: an install with
@@ -112,7 +112,7 @@ describe("an install with one token upgrades with no change", () => {
     const r = await alwaysOn(store);
     const list = listAccounts(r.stateDir, "den-claude");
     expect(list.map((a) => a.id)).toEqual(["1"]);
-    expect(accountLabel(list[0]!)).toBe("Sign-in A");
+    expect(accountLabel(list[0]!, "Claude Code")).toBe("Claude Code account A");
     expect(accountRefName("den-claude", "1")).toBe("agent_signin_token");
     expect(firstAccountRefName(r.stateDir, "den-claude")).toBe(
       "agent_signin_token",
@@ -129,7 +129,7 @@ describe("a second account", () => {
     const store = new MemStore();
     const b = addAccount(r.stateDir, "den-claude");
     expect(b.id).toBe("2");
-    expect(accountLabel(b)).toBe("Sign-in B");
+    expect(accountLabel(b, "Claude Code")).toBe("Claude Code account B");
     const saved: Record<string, unknown> = {};
     const res = await saveAccountToken(TOKEN_B, {
       runtimeId: "den-claude",
@@ -161,9 +161,9 @@ describe("a second account", () => {
 
   it("a name is kept, and an email is refused as a name", async () => {
     const r = await rig();
-    expect(accountLabel(addAccount(r.stateDir, "den-claude", "Work"))).toBe(
-      "Work",
-    );
+    expect(
+      accountLabel(addAccount(r.stateDir, "den-claude", "Work"), "Claude Code"),
+    ).toBe("Work");
     expect(() =>
       addAccount(r.stateDir, "den-claude", "someone@example.com"),
     ).toThrow(/email/);
@@ -204,11 +204,11 @@ describe("the order", () => {
     const r = await rig();
     addAccount(r.stateDir, "den-claude");
     expect(() => setAccountOrder(r.stateDir, "den-claude", ["2"])).toThrow(
-      /every sign-in/,
+      /every Claude Code account/,
     );
     expect(() =>
       setAccountOrder(r.stateDir, "den-claude", ["2", "2", "1"]),
-    ).toThrow(/every sign-in/);
+    ).toThrow(/every Claude Code account/);
     expect(listAccounts(r.stateDir, "den-claude").map((a) => a.id)).toEqual([
       "1",
       "2",

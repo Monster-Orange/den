@@ -14,6 +14,12 @@
  * list`, `<cli> sessions attach`), paths, config keys, env names and
  * identifiers. "MCP server" is the protocol's own name. The gate
  * (scripts/words-gate.mjs) runs this over the strings a patch adds.
+ *
+ * 2026-11-17 (issue 339): a vendor's own account (a Claude account, a
+ * Codex account) is the vendor's word, as "MCP server" is the protocol's,
+ * and never a person. "account" (es "cuenta de", ja "アカウント") may
+ * follow a vendor's name (VENDOR_NAMES) or a {placeholder} (a template's
+ * ${…} too) and nothing else: a bare account is still never shown.
  */
 
 /** The "never shown" words, by language (the catalog's own words). */
@@ -55,6 +61,38 @@ export const NEVER_SHOWN = {
     ["ボット", /ボット/],
     ["セッション", /セッション/],
   ],
+};
+
+/**
+ * The vendors and runtimes whose own accounts may be named (the runtime
+ * catalog's built-in vendor and name fields, src/shared/agents/catalog.ts,
+ * and their short names). words.test.ts checks it covers the catalog.
+ */
+export const VENDOR_NAMES = [
+  "Anthropic",
+  "Claude Code",
+  "Claude",
+  "OpenAI",
+  "Codex CLI",
+  "Codex",
+  "Google",
+  "Gemini CLI",
+  "Gemini",
+  "xAI",
+  "Grok Build",
+  "Grok",
+];
+
+const VENDOR = `(?:\\$?\\{[^{}]*\\}|\\b(?:${[...VENDOR_NAMES]
+  .sort((a, b) => b.length - a.length)
+  .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  .join("|")}))`;
+
+/** A vendor's own account, by language: never a person (2026-11-17). */
+const VENDOR_ACCOUNT = {
+  en: new RegExp(`${VENDOR}\\s+[Aa]ccounts?\\b`, "g"),
+  es: new RegExp(`\\bcuentas?\\s+de\\s+${VENDOR}`, "gi"),
+  ja: new RegExp(`${VENDOR}\\s*アカウント`, "g"),
 };
 
 const COMMANDS =
@@ -111,7 +149,10 @@ export const SIGN_IN_ES =
 
 /** The "never shown" words in `text`, by name (none: []). */
 export function neverShownIn(text, lang = languageOf(text)) {
-  let t = withoutCode(text);
+  // A vendor's own account first, while its name or {placeholder} is there.
+  let t = text;
+  for (const re of Object.values(VENDOR_ACCOUNT)) t = t.replace(re, " ");
+  t = withoutCode(t);
   if (lang === "es") t = t.replace(SIGN_IN_ES, " ");
   return NEVER_SHOWN[lang].filter(([, re]) => re.test(t)).map(([w]) => w);
 }
@@ -126,8 +167,11 @@ export function proseIn(line) {
   const out = [];
   const lit = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g;
   for (const m of code.matchAll(lit)) {
-    const s = (m[1] ?? m[2] ?? m[3] ?? "").replace(/\$\{[^{}]*\}/g, " ");
-    if (/[A-Za-zÀ-ɏ]+\s+[A-Za-zÀ-ɏ]+/.test(s) || /[぀-ヿ一-鿿]{2}/.test(s))
+    // ${…} reads as a {placeholder}: a vendor's account may follow one.
+    const s = (m[1] ?? m[2] ?? m[3] ?? "").replace(/\$\{[^{}]*\}/g, "{}");
+    // Two words in a row, a ${…} between them counting as a space.
+    const w = s.replace(/\{\}/g, " ");
+    if (/[A-Za-zÀ-ɏ]+\s+[A-Za-zÀ-ɏ]+/.test(w) || /[぀-ヿ一-鿿]{2}/.test(w))
       out.push(s);
   }
   return out;

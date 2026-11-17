@@ -442,16 +442,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "saves (or removes) the agents' sign-in token in the install's secrets store",
   ),
   // Issue 339: the agents' sign-in accounts (a person's only).
-  M(["POST"], "/api/agents/accounts", "adds a sign-in for a vendor's agents"),
+  M(["POST"], "/api/agents/accounts", "adds a {vendor} account for agents"),
   M(
     ["POST"],
     "/api/agents/accounts/token",
-    "saves a sign-in's token in the install's secrets store",
+    "saves a {vendor} account's token in the install's secrets store",
   ),
   M(
     ["POST"],
     "/api/agents/accounts/order",
-    "changes the order agents use sign-ins in",
+    "changes the order agents use {vendor} accounts in",
   ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
