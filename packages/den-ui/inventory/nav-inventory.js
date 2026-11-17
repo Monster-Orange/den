@@ -306,6 +306,10 @@ export async function collectNav(page, opts = {}) {
             ...(el.hasAttribute("data-nav-kind")
               ? { kind: el.getAttribute("data-nav-kind") }
               : {}),
+            // 0.7.3: host text in an entry of the rail (the kit stamps it).
+            ...(el.hasAttribute("data-nav-host-text")
+              ? { hostText: el.getAttribute("data-nav-host-text") }
+              : {}),
           });
         }
         if (el.tagName.toLowerCase() === "svg") return mySlot;
@@ -684,6 +688,10 @@ export function navWarnings(snap) {
       out.push(
         `account: ${e.key} is not the kit's (host HTML; draw it with accountHtml)`,
       );
+    if (e.hostText)
+      out.push(
+        `rail entry: ${e.key} has the host's ${e.hostText} (pass data: the kit owns its words)`,
+      );
     if (
       e.slot === "top" &&
       e.classes.includes("den-search") &&
@@ -901,6 +909,18 @@ export function compareNav(actual, reference, opts = {}) {
   // A crumb's value outlasts its label: one whose label shows while its
   // value is hidden fails, whatever the reference drew (crumbs are host
   // content, so this is checked on every element drawn).
+  // 0.7.3: hosts pass data; the kit owns a rail entry's words. Host text
+  // on an entry (a title, aria-label, aria-labelledby, aria-description,
+  // a badge's label) fails, whatever the reference drew.
+  for (const g of actual.elements)
+    if (g.hostText)
+      diffs.push({
+        key: g.key,
+        slot: g.slot,
+        property: "hostText",
+        reference: "none",
+        actual: g.hostText,
+      });
   for (const g of actual.elements)
     if (g.labelOnly)
       diffs.push({

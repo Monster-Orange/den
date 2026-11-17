@@ -87,12 +87,15 @@ data and HTML slots; it keeps no copy of the kit's markup, CSS or code.
   `kind` on its nav item: `"project"`, `"den"`, `"service"`, `"hub"`, or
   `{ artifact: "Mock" }` (an artifact pin's own word, in the host's
   language). The kit draws a small uppercase tag at the row's end in the
-  scope labels' look, and the tooltip and name read "North · Project"
-  (a host's own `tip` and `aria-label` win). Any other kind is dropped:
-  the tag never names a machine. A project pin may set
-  `icon: { initial: "North" }` for its initial in a disc. The nav
-  inventory records each entry's kind and `compareNav` reports a `kind`
-  difference.
+  scope labels' look, and the tooltip and name are always the kit's:
+  "North · Project" (a badge's `label` follows after a comma). Hosts pass
+  data, never display text: a `tip`, `title` or `aria-label` on such an
+  entry is not used. Any other kind is dropped: the tag never names a
+  machine. A project pin may set `icon: { initial: "North" }` for its
+  initial in a disc. The nav inventory records each entry's kind and
+  `compareNav` reports a `kind` difference. A `title` or `aria-label` a
+  host puts in any rail entry's `attrs` is stamped `data-nav-host-text`:
+  `navWarnings` lists it and `compareNav` fails on it (`hostText`).
 
 - **Slots.** The top bar reads: ☰, the brand, `start` (a search, a scope
   menu), then the right group: `end` (status chips), Report, `bell`, the

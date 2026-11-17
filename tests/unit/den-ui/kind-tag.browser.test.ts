@@ -15,6 +15,13 @@
  *   L5  the project's initial disc in place of the icon
  *   L6  the nav inventory reports the kind; compareNav fails when two
  *       products' tags differ
+ *   L7  the kit owns the words: a host's tip, title or aria-label on an
+ *       entry with a kind is not used ("<label> · <Kind>"); a badge says
+ *       what it counts as data (`what`), in the kit's words
+ *   L8  host text on any rail entry (title, aria-label, aria-labelledby,
+ *       aria-description in attrs; a badge's label): navWarnings lists it
+ *       and compareNav fails on it; data-* attrs stay allowed
+ *   L9  a pin row's Delete shortcut is the kit's: no host attrs needed
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
@@ -28,6 +35,7 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import {
   collectNav,
   compareNav,
+  navWarnings,
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
 
@@ -73,20 +81,28 @@ ${STYLES.map((s) => `<link rel="stylesheet" href="/kit/${s}.css">`).join("\n")}
 /**
  * The app: `?lang=es|ja` the kit's language; `?other` a second product
  * whose North pin says DEN, not PROJECT; `?red` a second product whose
- * tag is drawn in another colour.
+ * tag is drawn in another colour; `?host` a host that passes its own
+ * tooltip and name text (which the kit must not use, and the inventory
+ * must flag).
  */
 const APP = `
 import DenUI from "/kit/kit.js";
 const q = new URLSearchParams(location.search);
 const lang = q.get("lang") || "en";
 DenUI.configure({ lang, product: { name: "Acme" } });
+const host = q.has("host");
 const nav = [
   { id: "p-north", label: "North", href: "#north", group: "pinned",
-    kind: q.has("other") ? "den" : "project", icon: { initial: "north" }, pin: "north" },
-  { id: "d-north", label: "North", href: "#den-north", group: "pinned", kind: "den", icon: "home" },
-  { id: "s-api", label: "api", href: "#api", group: "pinned", kind: "service", mono: true, pin: "api" },
+    kind: q.has("other") ? "den" : "project", icon: { initial: "north" }, pin: "north",
+    ...(host ? { tip: "North on acme", attrs: { title: "Mine", "aria-label": "Mine",
+      "aria-labelledby": "den-content", "aria-description": "Mine too", "data-x": "ok" } } : {}) },
+  { id: "d-north", label: "North", href: "#den-north", group: "pinned", kind: "den", icon: "home",
+    ...(host ? { badge: { n: 3, what: "waiting" } } : {}) },
+  { id: "s-api", label: "api", href: "#api", group: "pinned", kind: "service", mono: true, pin: "api",
+    ...(host ? { badge: { n: 2, label: "2 things" } } : {}) },
   { id: "a-spec", label: "Spec", href: "#spec", group: "pinned", kind: { artifact: "Mock" } },
-  { id: "home", label: "Home", href: "#home", group: "work", icon: "home", current: true },
+  { id: "home", label: "Home", href: "#home", group: "work", icon: "home", current: true,
+    ...(host ? { attrs: { title: "Host home" } } : {}) },
 ];
 const model = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -389,6 +405,105 @@ for (const engine of ["chromium", "webkit"]) {
             /\[data-nav="p-north"\]/.test(d.key),
         ),
       ).toBe(true);
+    });
+
+    it("L7: the kit owns the words: a host's tip, title or aria-label on a kind entry is not used", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, "?host");
+      const got = await p.evaluate(() => {
+        const one = (id: string) => {
+          const a = document.querySelector(`.den-rail [data-nav="${id}"]`)!;
+          return [a.getAttribute("title"), a.getAttribute("aria-label")];
+        };
+        return {
+          project: one("p-north"),
+          den: one("d-north"),
+          api: one("s-api"),
+        };
+      });
+      expect(got.project).toEqual(["North · Project", "North · Project"]);
+      // The badge's words are the kit's, from what it counts.
+      expect(got.den).toEqual(["North · Den", "North · Den, 3 waiting"]);
+      // A badge's own label (host text) is not used.
+      expect(got.api).toEqual(["api · Service", "api · Service"]);
+      await p.context().close();
+      for (const [lang, words] of [
+        ["es", "North · Den, 3 en espera"],
+        ["ja", "North · Den, 3 件待機中"],
+      ] as const) {
+        const q = await open(b, `?host&lang=${lang}`);
+        expect(
+          await q.evaluate(() =>
+            document
+              .querySelector('.den-rail [data-nav="d-north"]')!
+              .getAttribute("aria-label"),
+          ),
+        ).toBe(words);
+        await q.context().close();
+      }
+    });
+
+    it("L8: a host's title or aria-label in an entry of the rail: listed, and compareNav fails", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const snap = async (q: string): Promise<NavSnapshot> => {
+        const p = await open(b, q);
+        const s = await collectNav(p);
+        await p.context().close();
+        return s;
+      };
+      const clean = await snap("");
+      expect(navWarnings(clean)).toEqual([]);
+      const host = await snap("?host");
+      const warned = navWarnings(host);
+      expect(warned.some((w) => w.includes('[data-nav="home"]'))).toBe(true);
+      expect(warned.some((w) => w.includes('[data-nav="p-north"]'))).toBe(true);
+      const diffs = compareNav(host, clean).filter(
+        (d) => d.property === "hostText",
+      );
+      expect(diffs).toEqual(
+        expect.arrayContaining([
+          {
+            key: '[data-nav="home"]',
+            slot: "rail",
+            property: "hostText",
+            reference: "none",
+            actual: "title",
+          },
+          {
+            key: '[data-nav="p-north"]',
+            slot: "rail",
+            property: "hostText",
+            reference: "none",
+            actual: "title,aria-label,aria-labelledby,aria-description",
+          },
+          {
+            key: '[data-nav="s-api"]',
+            slot: "rail",
+            property: "hostText",
+            reference: "none",
+            actual: "badge.label",
+          },
+        ]),
+      );
+      // A data-* attribute is data: kept, and not flagged.
+      expect(diffs.some((d) => d.key === '[data-nav="d-north"]')).toBe(false);
+    });
+
+    it("L9: a pin row's Delete shortcut is the kit's, with no host attrs", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const got = await p.evaluate(() =>
+        ["p-north", "s-api", "d-north"].map((id) =>
+          document
+            .querySelector(`.den-rail [data-nav="${id}"]`)!
+            .getAttribute("aria-keyshortcuts"),
+        ),
+      );
+      expect(got).toEqual(["Delete", "Delete", null]);
+      await p.context().close();
     });
   });
 }

@@ -35,13 +35,15 @@
  *     collapsed  the rail drawn collapsed (the toggle says Expand)
  *     report   false: no Report button (reports off)
  *
- *   An entry: `badge` { n, bad?, label? } (label is read with the name);
+ *   An entry: `badge` { n, bad?, what? } (what it counts: "open",
+ *   "waiting", "down", "running", read with the name in the kit's words);
  *   `lead` HTML in place of the icon (a status dot); `attrs` more
  *   attributes { name: value } (escaped); `cls` more classes; `pin` the
  *   pinned id (the row is a pin row: Delete unpins it); `after` HTML after
  *   the link inside the pin row (a Visit link); `kind` (0.7.3) "project",
  *   "den", "service", "hub" or { artifact: word }: a small uppercase tag at
- *   the row's end, read with the name ("North · Project"); `icon`
+ *   the row's end; its tooltip and name are the kit's ("North · Project");
+ *   `icon`
  *   { initial } a project's initial in a disc in place of the icon.
  *
  * 0.7.0, for the slots: scopeHtml (the scope crumbs), searchHtml (the
@@ -89,6 +91,27 @@ export function navKind(kind, lang) {
   return null;
 }
 
+/**
+ * Attributes that carry a host's words, not data: never in an entry of the rail
+ * (issue 307). data-* attributes are data and stay allowed.
+ */
+export const HOST_TEXT_ATTRS = [
+  "title",
+  "aria-label",
+  "aria-labelledby",
+  "aria-description",
+];
+
+/** What a badge counts (issue 307): the kit words it. */
+export const BADGE_WHATS = ["open", "waiting", "down", "running"];
+
+/** A badge's words, from its data: "3 waiting". No `what`: none. */
+function badgeWords(b, lang) {
+  if (!b || !BADGE_WHATS.includes(b.what)) return "";
+  const n = typeof b.n === "number" ? b.n : String(b.n ?? "");
+  return kitT(lang, "kit.badge." + b.what, { n });
+}
+
 /** The icon, or (issue 307) a project's initial in a disc: { initial }. */
 function leadIcon(ic) {
   if (ic && typeof ic === "object") {
@@ -109,8 +132,17 @@ function leadIcon(ic) {
  *
  * `kind` (issue 307): a small uppercase tag at the row's end, in the scope
  * labels' look (.den-k), for pins and links into another product. The
- * tooltip and the name read "<label> · <Kind>", so a collapsed rail still
- * says it; a host's own tip and aria-label win.
+ * tooltip and the name are always the kit's: "<label> · <Kind>" (and a
+ * badge's label after a comma), so a collapsed rail still says it. A
+ * host's tip, title or aria-label on such an entry is not used: hosts pass
+ * data, the kit owns the words.
+ *
+ * `badge.what` ("open", "waiting", "down", "running"): what the badge
+ * counts; the kit words it ("North · Den, 3 waiting"). A pin row gets
+ * aria-keyshortcuts="Delete" from the kit.
+ *
+ * Host text on any entry (HOST_TEXT_ATTRS in `attrs`, a badge's `label`)
+ * is stamped data-nav-host-text, and the nav inventory fails on it.
  */
 export function navItemHtml(n, navRole, lang) {
   const role =
@@ -130,12 +162,22 @@ export function navItemHtml(n, navRole, lang) {
       "</span>"
     : "";
   const more = { ...(n.attrs || {}) };
+  // Host text: words a host put on the entry itself. Never used on an
+  // entry with a kind; stamped for the nav inventory, which fails on it.
+  const hostText = HOST_TEXT_ATTRS.filter((k) => more[k] != null);
+  if (b && b.label != null) hostText.push("badge.label");
   const named = kind ? n.label + " · " + kind.word : n.label;
-  if (more["aria-label"] == null) {
-    if (b && b.label) more["aria-label"] = named + ", " + b.label;
-    else if (kind) more["aria-label"] = named;
-  }
-  if (kind) more["data-nav-kind"] = kind.id;
+  const counted = badgeWords(b, lang);
+  if (kind) {
+    for (const k of HOST_TEXT_ATTRS) delete more[k];
+    more["aria-label"] = counted ? named + ", " + counted : named;
+    more["data-nav-kind"] = kind.id;
+  } else if (more["aria-label"] == null && (counted || (b && b.label)))
+    // Without a kind, as before: a badge's label still reads (flagged).
+    more["aria-label"] = named + ", " + (counted || b.label);
+  // A pin row's Delete (unpin) is the kit's own feature: its shortcut too.
+  if (n.pin != null) more["aria-keyshortcuts"] = "Delete";
+  if (hostText.length) more["data-nav-host-text"] = hostText.join(",");
   const link =
     '<a class="den-ni' +
     (n.cls ? " " + esc(n.cls) : "") +
@@ -148,7 +190,7 @@ export function navItemHtml(n, navRole, lang) {
     (n.current ? ' aria-current="page"' : "") +
     attrs(more) +
     ' title="' +
-    esc(n.tip || named) +
+    esc(kind ? named : n.tip || n.label) +
     '">' +
     (n.lead || leadIcon(n.icon)) +
     '<span class="den-lbl' +

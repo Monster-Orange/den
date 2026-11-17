@@ -24,6 +24,8 @@ export type NavKindId = "project" | "den" | "service" | "hub";
  * own kind word (the host's, in its language). Never a machine's name.
  */
 export type NavKind = NavKindId | Uppercase<NavKindId> | { artifact: string };
+/** 0.7.3: what a rail badge counts (the kit's words for it). */
+export type BadgeWhat = "open" | "waiting" | "down" | "running";
 /** 0.7.3: a project's initial, in a disc in place of the icon. */
 export interface NavInitial {
   initial: string;
@@ -37,7 +39,11 @@ export interface NavItem {
   icon?: string | NavInitial;
   tip?: string;
   current?: boolean;
-  badge?: { n: number | string; bad?: boolean; label?: string } | null;
+  /**
+   * A count. `what` (0.7.3): what it counts; the kit words it with the
+   * name ("North · Den, 3 waiting"). Hosts pass data, never the words.
+   */
+  badge?: { n: number | string; bad?: boolean; what?: BadgeWhat } | null;
   /** HTML in place of the icon (a status dot). */
   lead?: string;
   mono?: boolean;
@@ -49,8 +55,8 @@ export interface NavItem {
   after?: string;
   /**
    * 0.7.3: a small uppercase tag at the row's end (pins and links into
-   * another product); the tooltip and name read "<label> · <Kind>"
-   * (a host's own tip and aria-label win).
+   * another product); the tooltip and name are always the kit's,
+   * "<label> · <Kind>" (a host's tip, title or aria-label is not used).
    */
   kind?: NavKind | null;
 }
@@ -93,6 +99,10 @@ export declare function navItemHtml(
   navRole?: string,
   lang?: string,
 ): string;
+/** 0.7.3: attributes that carry a host's words (flagged in an entry of the rail). */
+export declare const HOST_TEXT_ATTRS: readonly string[];
+/** 0.7.3: what a badge may count. */
+export declare const BADGE_WHATS: readonly BadgeWhat[];
 /** 0.7.3: the fixed kinds. */
 export declare const NAV_KINDS: readonly NavKindId[];
 /** 0.7.3: a kind's id ("artifact" for an artifact's) and its word. */
