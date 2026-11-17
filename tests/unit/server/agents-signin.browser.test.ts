@@ -88,12 +88,12 @@ describe("the vendor account an agent runs on, in its pane bar (issue 340)", () 
     if (!browser) return;
     const { s, id } = await withAgent({
       id: "2",
-      label: "Claude Code account B",
+      label: "Claude account B",
     });
     const { p, errors } = await open(s, id);
     const tag = p.locator(`.pane[data-id="${id}"] .bar2 [data-signin]`);
     await tag.waitFor({ timeout: 10_000 });
-    expect((await tag.textContent())?.trim()).toBe("on Claude Code account B");
+    expect((await tag.textContent())?.trim()).toBe("on Claude account B");
     expect(await tag.getAttribute("title")).toContain("after logout");
     expect(await tag.getAttribute("title")).not.toContain("@");
     expect(errors).toEqual([]);

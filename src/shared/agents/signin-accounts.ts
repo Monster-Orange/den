@@ -28,6 +28,7 @@ import * as path from "path";
 import type { SecretRef, SecretsProviderName } from "../secrets/index.js";
 import { envKey, product } from "../product.js";
 import { getRuntime } from "./runtimes.js";
+import { accountNameOf } from "./catalog.js";
 import {
   AGENT_TOKEN_REF_NAME,
   agentTokenRef,
@@ -85,17 +86,20 @@ export class AccountsError extends Error {
 export function signInRuntime(runtimeId: string): {
   id: string;
   name: string;
+  account: string;
   env: string;
 } {
   const rt = getRuntime(runtimeId);
   if (!rt) throw new AccountsError(`no runtime "${runtimeId}"`);
   if (!rt.signInTokenEnv)
     throw new AccountsError(
-      `${rt.catalog?.name ?? runtimeId} has no sign-in data (agents.runtime_catalog, signIn), so Den keeps no ${rt.catalog?.name ?? runtimeId} accounts`,
+      `${rt.catalog?.name ?? runtimeId} has no sign-in data (agents.runtime_catalog, signIn), so Den keeps no ${vendorName(runtimeId)} accounts`,
     );
   return {
     id: runtimeId,
     name: rt.catalog?.name ?? runtimeId,
+    /** Whose account it is ("Claude"): vendorName. */
+    account: vendorName(runtimeId),
     env: rt.signInTokenEnv,
   };
 }
@@ -181,15 +185,20 @@ export function nameError(name: string): string | null {
   return null;
 }
 
-/** "A" for "1", ... "Z", then "27": "Claude Code account A". */
+/** "A" for "1", ... "Z", then "27": "Claude account A". */
 export function defaultLetter(id: string): string {
   const n = Number(id);
   return n >= 1 && n <= 26 ? String.fromCharCode(64 + n) : id;
 }
 
-/** The vendor's name people see ("Claude Code"): the runtime's catalog name. */
+/**
+ * Whose account it is, in the vendor's words ("Claude"): the catalog's
+ * accountName, else the runtime's name (issue 339). An account is the
+ * vendor's, not the CLI's.
+ */
 export function vendorName(runtimeId: string): string {
-  return getRuntime(runtimeId)?.catalog?.name ?? runtimeId;
+  const c = getRuntime(runtimeId)?.catalog;
+  return c ? accountNameOf(c) : runtimeId;
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Issue 339 (slice 2 of the always-on accounts design, issue 163): for
  * each vendor (a runtime with sign-in data), a list of accounts, each with
- * a name ("Claude Code account A" unless named), its own sign-in token in its own item
+ * a name ("Claude account A" unless named), its own sign-in token in its own item
  * of the install's secrets store, and an order the person can change.
  *
  *   - The single token that exists today is account one: an install with
@@ -23,7 +23,13 @@ import type {
   SecretsProvider,
 } from "../../../src/shared/secrets/types.js";
 import {
+  BUILTIN_CATALOG,
+  validateCatalogEntry,
+} from "../../../src/shared/agents/catalog.js";
+import { syncConfiguredRuntimes } from "../../../src/shared/agents/runtimes.js";
+import {
   ACCOUNTS_FILE,
+  accountsView,
   accountLabel,
   accountRefName,
   addAccount,
@@ -112,7 +118,7 @@ describe("an install with one token upgrades with no change", () => {
     const r = await alwaysOn(store);
     const list = listAccounts(r.stateDir, "den-claude");
     expect(list.map((a) => a.id)).toEqual(["1"]);
-    expect(accountLabel(list[0]!, "Claude Code")).toBe("Claude Code account A");
+    expect(accountLabel(list[0]!, "Claude")).toBe("Claude account A");
     expect(accountRefName("den-claude", "1")).toBe("agent_signin_token");
     expect(firstAccountRefName(r.stateDir, "den-claude")).toBe(
       "agent_signin_token",
@@ -129,7 +135,7 @@ describe("a second account", () => {
     const store = new MemStore();
     const b = addAccount(r.stateDir, "den-claude");
     expect(b.id).toBe("2");
-    expect(accountLabel(b, "Claude Code")).toBe("Claude Code account B");
+    expect(accountLabel(b, "Claude")).toBe("Claude account B");
     const saved: Record<string, unknown> = {};
     const res = await saveAccountToken(TOKEN_B, {
       runtimeId: "den-claude",
@@ -162,7 +168,7 @@ describe("a second account", () => {
   it("a name is kept, and an email is refused as a name", async () => {
     const r = await rig();
     expect(
-      accountLabel(addAccount(r.stateDir, "den-claude", "Work"), "Claude Code"),
+      accountLabel(addAccount(r.stateDir, "den-claude", "Work"), "Claude"),
     ).toBe("Work");
     expect(() =>
       addAccount(r.stateDir, "den-claude", "someone@example.com"),
@@ -204,14 +210,65 @@ describe("the order", () => {
     const r = await rig();
     addAccount(r.stateDir, "den-claude");
     expect(() => setAccountOrder(r.stateDir, "den-claude", ["2"])).toThrow(
-      /every Claude Code account/,
+      /every Claude account/,
     );
     expect(() =>
       setAccountOrder(r.stateDir, "den-claude", ["2", "2", "1"]),
-    ).toThrow(/every Claude Code account/);
+    ).toThrow(/every Claude account/);
     expect(listAccounts(r.stateDir, "den-claude").map((a) => a.id)).toEqual([
       "1",
       "2",
     ]);
+  });
+});
+
+describe("an account is named for the vendor, not the CLI", () => {
+  afterEach(() => syncConfiguredRuntimes([]));
+
+  it('Claude Code\'s rows read "Claude account A"', async () => {
+    const r = await rig();
+    addAccount(r.stateDir, "den-claude");
+    expect(
+      accountsView(r.stateDir, "den-claude", () => null).map((a) => a.label),
+    ).toEqual(["Claude account A", "Claude account B"]);
+  });
+
+  it("each built-in runtime with or without sign-in says whose account it is", () => {
+    expect(
+      Object.fromEntries(BUILTIN_CATALOG.map((e) => [e.id, e.accountName])),
+    ).toEqual({
+      "den-claude": "Claude",
+      codex: "ChatGPT",
+      gemini: "Google",
+      grok: "xAI",
+    });
+  });
+
+  it("a config-added runtime with no accountName falls back to its name", async () => {
+    const r = await rig();
+    const at = "agents.runtime_catalog[0]";
+    const entry = {
+      id: "mine-cli",
+      vendor: "Someone",
+      name: "Mine CLI",
+      bins: ["mine-cli"],
+      version: { args: ["--version"], identity: { output: "mine-cli" } },
+      dirs: [],
+      launch: { argv: ["{bin}"] },
+      signIn: { env: "MINE_TOKEN" },
+    };
+    syncConfiguredRuntimes([validateCatalogEntry(entry, at)]);
+    expect(accountsView(r.stateDir, "mine-cli", () => null)[0]!.label).toBe(
+      "Mine CLI account A",
+    );
+    syncConfiguredRuntimes([
+      validateCatalogEntry({ ...entry, accountName: "Mine" }, at),
+    ]);
+    expect(accountsView(r.stateDir, "mine-cli", () => null)[0]!.label).toBe(
+      "Mine account A",
+    );
+    expect(() =>
+      validateCatalogEntry({ ...entry, accountName: "a@b.example" }, at),
+    ).toThrow(/accountName/);
   });
 });

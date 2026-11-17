@@ -1004,7 +1004,7 @@ function renderAccountList(list, t) {
       const rows = accountRows(v)
         ? v.accounts
             .map((a, i) => {
-              const name = accountName(a, t, v.name);
+              const name = accountName(a, t, v.account || v.name);
               const l = accountLine(a, t);
               const last = i === v.accounts.length - 1;
               return (
@@ -1021,9 +1021,9 @@ function renderAccountList(list, t) {
         : "";
       return (
         `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
-        `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.name }))}</strong></p>` +
+        `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.account || v.name }))}</strong></p>` +
         rows +
-        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.name }))}</button></div>` +
+        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.account || v.name }))}</button></div>` +
         `<p class="set-note" data-acct-note hidden></p>` +
         `</div>`
       );

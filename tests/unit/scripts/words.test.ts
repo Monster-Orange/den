@@ -101,7 +101,7 @@ describe("the words gate's rules", () => {
     expect(neverShownIn(bare!)).toEqual(["account"]);
   });
 
-  it("the vendor names cover every built-in runtime's vendor and name", async () => {
+  it("the vendor names cover every built-in runtime's vendor, name and accountName", async () => {
     const { VENDOR_NAMES } = await import("../../../scripts/words.js");
     const { BUILTIN_CATALOG } =
       await import("../../../src/shared/agents/catalog.js");
@@ -110,7 +110,9 @@ describe("the words gate's rules", () => {
         e.id,
         VENDOR_NAMES.includes(e.vendor),
         VENDOR_NAMES.includes(e.name),
-      ]).toEqual([e.id, true, true]);
+        // Issue 339: what the vendor calls the account (every built-in has one).
+        VENDOR_NAMES.includes(e.accountName),
+      ]).toEqual([e.id, true, true, true]);
   });
 
   it("tells the language by its script and words", () => {

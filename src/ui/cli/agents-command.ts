@@ -298,10 +298,10 @@ export const AGENTS_HELP = {
     "    set. clear: removes it from the store, the way set kept it (asks first",
     "    unless --yes). set and clear are a person's only",
     "{cli} `agents accounts` list | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
-    "    Claude Code accounts for agents (Claude Code account A, B, ... unless named); each token",
+    "    Claude accounts for agents (Claude account A, B, ... unless named); each token",
     "    its own item in the install's secrets store; set-token reads it like",
     "    token set. Agents sign in with the first in the order. The token that",
-    "    exists today is Claude Code account A. Changes are a person's only",
+    "    exists today is Claude account A. Changes are a person's only",
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -1853,12 +1853,12 @@ async function accountsCmd(
     const { runtimeId, rest } = runtimeArg(more);
     const rt = A.signInRuntime(runtimeId);
     const label = (a: { id: string; name?: string }) =>
-      A.accountLabel(a, rt.name);
+      A.accountLabel(a, rt.account);
     // set-token: a second word may be the token itself, so it's checked
     // before anything echoes an argument.
     if (sub === "set-token" && rest.length !== 1)
       throw new UsageError(
-        `${where} takes one ${rt.name} account (its number or name): the token is read from stdin or a prompt, never on the command line (it would stay in your shell history and the process list)`,
+        `${where} takes one ${rt.account} account (its number or name): the token is read from stdin or a prompt, never on the command line (it would stay in your shell history and the process list)`,
       );
     const flag = runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`;
     if (sub === "list") {
@@ -1878,7 +1878,7 @@ async function accountsCmd(
     }
     if (isAgentTokenEnv(d.env)) {
       d.err(
-        `✗ ${where}: only a person changes ${rt.name} accounts for agents (this is an agent)`,
+        `✗ ${where}: only a person changes ${rt.account} accounts for agents (this is an agent)`,
       );
       return 1;
     }
@@ -1892,19 +1892,19 @@ async function accountsCmd(
       if (left.length) throw new UsageError(`${where} takes only --name`);
       const a = A.addAccount(stateDir, runtimeId, name);
       d.out(
-        `✓ added ${rt.name} account ${a.id}${a.name ? ` (${a.name})` : ""}. Set its token: \`${d.cli} agents accounts set-token ${a.id}${flag}\``,
+        `✓ added ${rt.account} account ${a.id}${a.name ? ` (${a.name})` : ""}. Set its token: \`${d.cli} agents accounts set-token ${a.id}${flag}\``,
       );
       return 0;
     }
     if (sub === "order") {
       if (!rest.length)
         throw new UsageError(
-          `${where} takes every ${rt.name} account, in order`,
+          `${where} takes every ${rt.account} account, in order`,
         );
       const ids = rest.map((w) => A.findAccount(stateDir, runtimeId, w).id);
       const list = A.setAccountOrder(stateDir, runtimeId, ids);
       d.out(
-        `✓ ${rt.name}: ${list.map(label).join(", ")}. Agents sign in with ${label(list[0]!)} from their next start.`,
+        `✓ ${rt.account} accounts, in order: ${list.map(label).join(", ")}. Agents sign in with ${label(list[0]!)} from their next start.`,
       );
       return 0;
     }
@@ -1913,7 +1913,7 @@ async function accountsCmd(
       const which = rest.filter((a) => a !== "--yes" && a !== "-y");
       if (which.length !== 1)
         throw new UsageError(
-          `${where} takes one ${rt.name} account, and --yes`,
+          `${where} takes one ${rt.account} account, and --yes`,
         );
       const acct = A.findAccount(stateDir, runtimeId, which[0]!);
       if (!yes) {
