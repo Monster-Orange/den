@@ -92,7 +92,9 @@ async function open(path: string, width = 1280): Promise<Page> {
 describe("NT-3: the bell", () => {
   it("an agent waits: the bell says 1; the panel groups it; Mark all read; Esc", async () => {
     if (skip()) return;
-    expect((await say({ event: "waiting", why: "permission" })).status).toBe(200);
+    expect((await say({ event: "waiting", why: "permission" })).status).toBe(
+      200,
+    );
     const p = await open("/services");
     await p.waitForFunction(
       () => document.querySelector(".den-bell-n")?.textContent === "1",
@@ -128,7 +130,9 @@ describe("NT-3: the bell", () => {
 
   it("0.4.44: the panel is in the shell's font, even on a page whose body has none", async () => {
     if (skip()) return;
-    expect((await say({ event: "waiting", why: "permission" })).status).toBe(200);
+    expect((await say({ event: "waiting", why: "permission" })).status).toBe(
+      200,
+    );
     const p = await open("/services");
     // The panel hangs off body, outside the top bar: a body with no font
     // of its own gives it the browser's (a serif).
@@ -141,7 +145,9 @@ describe("NT-3: the bell", () => {
       { timeout: 15_000 },
     );
     await p.click("#den-bell");
-    await p.locator('#den-bell-pop [data-bell="scope"]').waitFor();
+    // Issue 101: the row is under the kit's "Needs you" heading, with no
+    // Mark read of its own.
+    await p.locator('#den-bell-pop [data-sec="needs"] .den-bell-row').waitFor();
     const f = await p.evaluate(() => {
       const ff = (sel: string) => {
         const el = document.querySelector(sel);
@@ -168,18 +174,20 @@ describe("NT-3: the bell", () => {
         title: pick("#den-bell-h"),
         row: pick(".den-bell-row a"),
         all: pick('#den-bell-pop [data-bell="all"]'),
-        scope: pick('#den-bell-pop [data-bell="scope"]'),
+        sec: pick("#den-bell-pop .den-bell-sech"),
+        scope: pick("#den-bell-pop .den-bell-sc"),
+        markRead: document.querySelectorAll(
+          '#den-bell-pop [data-sec="needs"] [data-bell="scope"]',
+        ).length,
       };
     });
     expect(f.sans).toBeTruthy();
-    for (const k of ["title", "row", "all", "scope"] as const)
+    for (const k of ["title", "row", "all", "sec"] as const)
       expect([k, f[k]?.family]).toEqual([k, f.sans]);
-    // "Mark read" reads like "Mark all read".
-    expect(f.scope).toMatchObject({
-      transform: "none",
-      spacing: "normal",
-      size: "12px",
-    });
+    // The project line keeps its mono capitals; no Mark read in Needs you.
+    expect(f.scope?.transform).toBe("uppercase");
+    expect(f.markRead).toBe(0);
+    expect(f.sec?.size).toBe("12px");
     expect(f.all?.size).toBe("12px");
     // Leave nothing unread for the tests after this one.
     await p.click('#den-bell-pop [data-bell="all"]');

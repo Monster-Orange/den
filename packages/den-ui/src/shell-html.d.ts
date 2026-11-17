@@ -231,6 +231,11 @@ export interface BellPanelOptions {
   items?: BellItem[];
   /** The host's own HTML in place of rows. */
   body?: string | null;
+  /**
+   * Issue 101: the rows of the panel's two sections, in place of rows:
+   * the kit heads them "Needs you" (always first) and "Earlier".
+   */
+  sections?: { needs: string; earlier?: string };
   /** The empty state: its words, and HTML under them. */
   empty?: { text?: string; more?: string };
   after?: string;

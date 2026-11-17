@@ -26,6 +26,7 @@
  */
 import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
+import { leadAskText } from "./lead-routing.js";
 
 export type WaitingWhy = "permission" | "input" | "asked";
 
@@ -72,6 +73,13 @@ export interface AttentionDeps {
   ended?: (
     agents: readonly string[],
   ) => Promise<ReadonlyMap<string, "stopped" | "exited">>;
+  /**
+   * Issue 101: the lead of `agent`'s project for its question, or null
+   * (lead-routing.ts pickLead).
+   */
+  leadOf?: (agent: string, workspace: string) => Promise<string | null>;
+  /** Issue 101: type `text` to agent `lead`; false when Den couldn't. */
+  tellLead?: (lead: string, text: string) => Promise<boolean>;
 }
 
 /** Output in this long after the event is the agent drawing it, not going on. */
@@ -99,6 +107,8 @@ interface Waiting {
   workspace: string;
   /** Cleared by the runtime's hooks, not by its output. */
   byHook: boolean;
+  /** Issue 101: the lead its question went to, instead of its person. */
+  lead?: string;
 }
 
 export class Attention {
@@ -111,6 +121,11 @@ export class Attention {
 
   constructor(private readonly d: AttentionDeps) {
     this.now = d.now ?? Date.now;
+  }
+
+  /** An agent's display name (issue 101: the lead a question went to). */
+  nameOf(agent: string): string {
+    return this.d.nameOf(agent);
   }
 
   /** The agents waiting now, and why (the sessions list, the bell). */
@@ -155,7 +170,7 @@ export class Attention {
         }
       | { event: "finished"; text?: string }
       | { event: "resumed"; from: "tool" | "prompt" | "session" },
-  ): Promise<void> {
+  ): Promise<{ lead: string } | void> {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
@@ -184,15 +199,13 @@ export class Attention {
       const q = this.d.endedAsking
         ? await this.d.endedAsking(agent).catch(() => null)
         : null;
-      if (q) {
-        await this.event(agent, workspace, {
+      if (q)
+        return this.event(agent, workspace, {
           event: "waiting",
           why: "asked",
           text: q,
           hooked: true,
         });
-        return;
-      }
       if (!this.onScreen(agent))
         this.d.store.add({
           kind: "finished",
@@ -248,6 +261,15 @@ export class Attention {
     // turn's end already said so (finished, in Updates; a question there
     // is "asked"): the idle notice adds nothing.
     if (ev.why === "input" && hooked) return;
+    // Issue 101: a question goes to the project's lead, when it has one
+    // Den can type to; the same question again isn't told twice.
+    const q = ev.text ?? "";
+    const lead =
+      ev.why !== "asked"
+        ? undefined
+        : prev?.why === "asked" && prev.lead && prev.text === text
+          ? prev.lead
+          : await this.toLead(agent, workspace, name, q);
     this.waiting.set(agent, {
       why: ev.why,
       text,
@@ -256,7 +278,23 @@ export class Attention {
       mark: await this.d.outputMark(agent),
       workspace,
       byHook: hooked,
+      ...(lead ? { lead } : {}),
     });
+    if (lead) {
+      if (prev?.lead !== lead || prev.text !== text)
+        this.d.store.add({
+          kind: "finished",
+          subject,
+          scope,
+          text: `${name} asked the lead, ${this.d.nameOf(lead)}: ${q}`,
+          msg: {
+            key: "bell.m.toLead",
+            vars: { name, lead: this.d.nameOf(lead), text: q },
+          },
+          link,
+        });
+      return { lead };
+    }
     // #142: without hooks, a bell is all there is: an update, not a need.
     if (!this.onScreen(agent))
       this.d.store.add({
@@ -267,6 +305,28 @@ export class Attention {
         msg,
         link,
       });
+  }
+
+  /**
+   * Issue 101: tell the lead of `agent`'s project its question; the lead,
+   * or undefined when there is none, the asker leads, or the lead can't
+   * take it now (it waits on its own person, or Den couldn't type).
+   */
+  private async toLead(
+    agent: string,
+    workspace: string,
+    name: string,
+    question: string,
+  ): Promise<string | undefined> {
+    if (!this.d.leadOf || !this.d.tellLead) return undefined;
+    const lead = await this.d.leadOf(agent, workspace).catch(() => null);
+    if (!lead || lead === agent) return undefined;
+    const busy = this.waiting.get(lead);
+    if (busy && busy.why !== "input") return undefined;
+    const told = await this.d
+      .tellLead(lead, leadAskText(name, agent, question))
+      .catch(() => false);
+    return told ? lead : undefined;
   }
 
   /** Its person typed into its terminal: answered, whatever it waited on. */
