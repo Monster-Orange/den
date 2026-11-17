@@ -559,6 +559,9 @@
     "keep.s": "適用しました。__DEN_TITLE__ が再起動します。",
     "keep.needs": "管理者パスワードが必要です。",
     "keep.failed": "適用されませんでした。何も変わっていません。",
+    "busy.edgeW": "エッジを起動しています…",
+    "busy.edgeS": "エッジを起動しました",
+    "busy.edgeF": "エッジを起動できませんでした。",
     "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
     "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
     "keep.saved":
@@ -2388,7 +2391,14 @@
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
     "set.ui.noPairHost":
-      "このサーバーに向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、{cmd} を実行してください。", // words-ok: the en string's own word, translated
+      "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
+    "set.ui.edgeStart": "エッジを起動",
+    "set.ui.edgeApply": "適用",
+    "set.ui.edgeStarted": "エッジを起動しました",
+    "set.ui.edgeCurrent": "エッジは最新です。何も再起動していません",
+    "set.ui.edgeRecreated":
+      "{why} のためエッジを作り直しました。約 {s} 秒間つながりませんでした",
+    "set.ui.edgeWhy": "設定が変わった",
     "set.ui.edgeHost": "エッジのホスト名",
     "set.ui.pairScan":
       "別のデバイスでスキャンするか、そちらでリンクを開いてください。期限 (下記) まで一度だけ使え、そのブラウザはずっとサインインしたままになります。",

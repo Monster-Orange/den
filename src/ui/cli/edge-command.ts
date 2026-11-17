@@ -15,7 +15,6 @@ import {
   caDir,
   caTrusted,
   edgeDown,
-  edgeUp,
   trustCa,
   untrustCa,
 } from "../../shared/edge/runtime.js";
@@ -31,7 +30,7 @@ import {
   withHttpsServing,
 } from "../../shared/edge/status.js";
 import { tlsYaml } from "../../shared/edge/tls.js";
-import { rejoinRunningStacks } from "../../shared/stacks/status.js";
+import { runEdgeUp } from "../../shared/edge/up.js";
 
 /** An included router's URLs (the hosts its rule names), else its name. */
 function includedUrl(r: IncludedRouter): string {
@@ -54,7 +53,11 @@ export async function cmdEdge(args: string[]): Promise<void> {
       // --rotate-proof (H1): a new edge proof; the old one stops working
       // at once. Den's web app picks the new one up with no restart.
       const rotateProof = args.includes("--rotate-proof");
-      const { certs } = await edgeUp(cfg, {
+      // The same function Settings' Start the edge runs (issue 395); it
+      // prints what it did (#385), and running stacks rejoin the edge's
+      // networks so their routes stay up.
+      const { certs } = await runEdgeUp({
+        cfg,
         takeOver: args.includes("--take-over"),
         rotateProof,
       });
@@ -78,8 +81,6 @@ export async function cmdEdge(args: string[]): Promise<void> {
         );
       for (const name of ["edge", ...Object.keys(cfg.routes)])
         console.log(`  ${routeUrl(name, cfg)}`);
-      // Running stacks' routes stay up: the edge rejoins their networks.
-      rejoinRunningStacks();
       return;
     }
     case "down":

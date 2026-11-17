@@ -581,6 +581,9 @@
     "keep.s": "Aplicado. __DEN_TITLE__ se reinicia.",
     "keep.needs": "Necesita tu contraseña de administrador.",
     "keep.failed": "No se aplicó. Nada cambió.",
+    "busy.edgeW": "Iniciando el edge…",
+    "busy.edgeS": "Edge iniciado",
+    "busy.edgeF": "El edge no se inició.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -2448,7 +2451,14 @@
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
-      "Ningún nombre de host de edge apunta a este servidor, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y luego {cmd}.", // words-ok: the en string's own word, translated
+      "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
+    "set.ui.edgeStart": "Iniciar el edge",
+    "set.ui.edgeApply": "Aplicar",
+    "set.ui.edgeStarted": "Edge iniciado",
+    "set.ui.edgeCurrent": "Edge al día, no se reinició nada",
+    "set.ui.edgeRecreated":
+      "Edge recreado porque {why}; no se pudo alcanzar durante unos {s} s",
+    "set.ui.edgeWhy": "cambió su configuración",
     "set.ui.edgeHost": "Nombre de host de edge",
     "set.ui.pairScan":
       "Escanéalo con el otro dispositivo o abre allí el enlace. Funciona una vez, hasta que caduca (abajo), y deja ese navegador con la sesión iniciada para siempre.",
