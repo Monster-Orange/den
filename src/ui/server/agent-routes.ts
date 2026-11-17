@@ -185,6 +185,7 @@ import {
   workspacePermissionOf,
   followProjectMode,
   projectModeView,
+  projectMcpView,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
@@ -243,6 +244,7 @@ const AGENTS_PATH =
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
+const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -537,6 +539,8 @@ export async function handleAgentRoutes(
     return rotationRoute(req, res, webDeps(deps.agents));
   const mp = MODES_PATH.exec(pathname);
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
+  const mcpp = MCP_SERVERS_PATH.exec(pathname);
+  if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
   const hp = HELPERS_PATH.exec(pathname);
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   const dp = DETAILS_PATH.exec(pathname);
@@ -2341,6 +2345,33 @@ async function staleRoute(
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
   }
+  return true;
+}
+
+/**
+ * Issue 335: GET /api/workspaces/:ws/mcp-servers: the project's extra MCP
+ * servers, names and urls only (never a bearer or its ref). An agent adds
+ * one with the held write project_mcp_add.
+ */
+async function mcpServersRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  sendJson(res, { ok: true, ...projectMcpView(d, ws) });
   return true;
 }
 

@@ -427,6 +427,10 @@ export function mcpStartupLine(o: {
 /** Run `<cli> mcp` until stdin closes (or one `--call` / `--list`). */
 export async function runMcp(rawArgv: string[]): Promise<void> {
   const cli = product().cli;
+  if (rawArgv[0] === "headers") {
+    process.exitCode = await runMcpHeaders(rawArgv.slice(1));
+    return;
+  }
   if (rawArgv.includes("-h") || rawArgv.includes("--help")) {
     process.stderr.write(`${MCP_USAGE(cli)}\n`);
     return;
@@ -535,4 +539,42 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
       verified: isAgentTokenEnv(process.env),
     }),
   );
+}
+
+/**
+ * Issue 335: `<cli> mcp headers <name>`, the headersHelper of a project's
+ * extra MCP server: prints `{"Authorization":"Bearer …"}` for the calling
+ * agent's own project (its token says which), read from the install's
+ * secrets store now. Stdout is Claude Code's; errors go to stderr, never
+ * with the bearer.
+ */
+export async function runMcpHeaders(argv: string[]): Promise<number> {
+  const cli = product().cli;
+  const name = argv[0];
+  if (!name || argv.length !== 1) {
+    process.stderr.write(`Usage: ${cli} mcp headers <server name>\n`);
+    return 2;
+  }
+  const { projectMcpHeaders, parseProjectMcpServers } =
+    await import("../../shared/agents/project-mcp.js");
+  const { workspaceMcpServersRaw } =
+    await import("../../shared/environment-manager/workspaces.js");
+  const { getSecretsProvider, namedSecretRef } =
+    await import("../../shared/secrets/index.js");
+  const r = await projectMcpHeaders(name, {
+    env: process.env,
+    stateDir: getStateDir(),
+    servers: (ws) => parseProjectMcpServers(workspaceMcpServersRaw(ws)).servers,
+    secret: async (ref) => {
+      const sref = namedSecretRef(ref);
+      if (!sref) throw new Error(`secrets.refs.${ref} is not set`);
+      return getSecretsProvider().get(sref);
+    },
+  });
+  if (!r.ok) {
+    process.stderr.write(`${cli} mcp headers: ${r.error}\n`);
+    return 1;
+  }
+  process.stdout.write(`${r.json}\n`);
+  return 0;
 }
