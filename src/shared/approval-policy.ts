@@ -146,6 +146,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "restarts Den for every project; server_agent.self_update decides for Den's own agent",
   },
+  hub_project_create: {
+    risk: "routine",
+    why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
+  },
   agent_create: {
     risk: "routine",
     why: "starts an agent in the project's mode or a stricter one",
@@ -165,6 +169,14 @@ export const HELD_WRITE_RISK: Readonly<
   verify_run: {
     risk: "critical",
     why: "runs checks against a shared environment (CRITICAL_HELD_ACTIONS)",
+  },
+  embed_key_create: {
+    risk: "critical",
+    why: "lets a web app message an agent and read its state; a person's own ask",
+  },
+  embed_key_revoke: {
+    risk: "critical",
+    why: "a person's own ask, from Settings › Embedding",
   },
   approval_policy: {
     risk: "critical",

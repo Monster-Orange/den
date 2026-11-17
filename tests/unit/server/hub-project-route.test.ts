@@ -37,6 +37,10 @@ async function serve(over: Partial<HubProjectRouteDeps> = {}) {
     }),
     read: (ws) => store.get(ws) ?? null,
     write: (ws, l) => void store.set(ws, l),
+    // Issue 271: no Hub here; its own tests (hub-create-route) cover them.
+    name: (ws) => ws,
+    whoami: async () => null,
+    create: async () => null,
     ...over,
   };
   const s = http.createServer((req, res) => {
@@ -74,6 +78,10 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
       uncovered: [],
       projects: [BACK, SITE],
       pick: false,
+      name: "back-office",
+      owner: null,
+      company: null,
+      create: null,
     });
     expect(store.size).toBe(0);
   });

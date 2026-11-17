@@ -576,6 +576,13 @@ export async function handleAgentRoutes(
     if (hit)
       return m.hubRenameRoute(req, res, hit[1], await m.defaultHubRenameDeps());
   }
+  // Issue 271: ask Hub for a new project to link to (held for an owner).
+  if (pathname.endsWith("/hub-create")) {
+    const m = await import("./hub-create-routes.js");
+    const hit = m.HUB_CREATE_ROUTE.exec(pathname);
+    if (hit)
+      return m.hubCreateRoute(req, res, hit[1], await m.defaultHubCreateDeps());
+  }
   // #68: link every project to Hub's suggestion in one confirm.
   if (pathname === "/api/hub/link-suggestions") {
     const [la, audit, guard] = await Promise.all([

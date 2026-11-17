@@ -10,6 +10,9 @@
  *   key_minutes     how long an embedded pane's key lasts (15)
  *   context_max_kb  the largest page a host may share with an agent
  *                   ({ type: "den:context", … }, as JSON), in KB (256)
+ *   app_key_audit_window_seconds  issue 334: an app key's reads are
+ *                   audited one line per key, route and outcome per this
+ *                   many seconds, with their count (60)
  *
  * Every other page refuses to be framed by anyone but Den itself
  * (frameHeaders: `frame-ancestors 'self'`, X-Frame-Options SAMEORIGIN):
@@ -27,15 +30,21 @@ export const EMBED_DEFAULTS = {
   origins: [] as string[],
   key_minutes: 15,
   context_max_kb: 256,
+  app_key_audit_window_seconds: 60,
 };
 
-type NumKey = "url_max_chars" | "key_minutes" | "context_max_kb";
+type NumKey =
+  | "url_max_chars"
+  | "key_minutes"
+  | "context_max_kb"
+  | "app_key_audit_window_seconds";
 
 /** The bounds each number may take. */
 const LIMITS: Record<NumKey, [number, number]> = {
   url_max_chars: [64, 1_000_000],
   key_minutes: [1, 1440],
   context_max_kb: [1, 10_240],
+  app_key_audit_window_seconds: [1, 86_400],
 };
 
 /** The most origins the list holds. */
@@ -46,6 +55,7 @@ export interface EmbedSettings {
   origins: string[];
   key_minutes: number;
   context_max_kb: number;
+  app_key_audit_window_seconds: number;
 }
 
 /**
@@ -133,6 +143,10 @@ export function embedSettings(user: UserConfig): EmbedSettings {
     origins: originsOf(e.origins),
     key_minutes: num(e.key_minutes, "key_minutes"),
     context_max_kb: num(e.context_max_kb, "context_max_kb"),
+    app_key_audit_window_seconds: num(
+      e.app_key_audit_window_seconds,
+      "app_key_audit_window_seconds",
+    ),
   };
 }
 
