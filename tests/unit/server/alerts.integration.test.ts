@@ -205,4 +205,75 @@ describe("issue 172: alerts on the real server", () => {
       await stub.close();
     }
   }, 60_000);
+
+  it("issue 367: Settings' push limits reach the push; an agent can't set them", async () => {
+    const stub = await startPushStub();
+    try {
+      expect(
+        (
+          await call(
+            "POST",
+            "/api/settings",
+            { alerts: { push_ttl_seconds: 60 } },
+            "agent",
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call("POST", "/api/settings", {
+            alerts: { push_ttl_seconds: 60, push_timeout_seconds: 20 },
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await call("POST", "/api/settings", {
+            alerts: { push_ttl_seconds: -1 },
+          })
+        ).status,
+      ).toBe(400);
+      expect((await call("GET", "/api/settings")).json.alerts).toMatchObject({
+        push_ttl_seconds: 60,
+        push_timeout_seconds: 20,
+      });
+      expect(
+        (
+          await call("POST", "/api/alerts/subscribe", {
+            subscription: stub.subscription,
+          })
+        ).status,
+      ).toBe(200);
+      await call(
+        "POST",
+        "/api/agents/self/attention",
+        { event: "resumed", from: "session" },
+        "agent",
+      );
+      await call(
+        "POST",
+        "/api/agents/self/attention",
+        { event: "waiting", why: "permission", hooked: true },
+        "agent",
+      );
+      for (let i = 0; i < 100 && !stub.received.length; i++)
+        await new Promise((r) => setTimeout(r, 100));
+      expect(stub.received).toHaveLength(1);
+      expect(stub.received[0].headers.ttl).toBe("60");
+    } finally {
+      await call("POST", "/api/alerts/unsubscribe", {
+        endpoint: stub.subscription.endpoint,
+      });
+      await call("POST", "/api/settings", {
+        alerts: { push_ttl_seconds: null, push_timeout_seconds: null },
+      });
+      await call(
+        "POST",
+        "/api/agents/self/attention",
+        { event: "resumed", from: "session" },
+        "agent",
+      );
+      await stub.close();
+    }
+  }, 60_000);
 });

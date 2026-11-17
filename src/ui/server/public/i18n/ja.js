@@ -2703,6 +2703,12 @@
       "この時刻から、ベル以外の通知が再び出ます。",
     "set.notifications.quiet.off": "オフ",
     "set.notifications.quiet.half": "開始と終了の両方を選んでください。",
+    "set.notifications.push_timeout": "プッシュの待ち時間",
+    "set.notifications.push_timeout.d":
+      "__DEN_TITLE__ がプッシュサービスに 1 件の通知を受け取ってもらうまで待つ時間です。これを過ぎるとその通知は見送り、次の通知で再び試します。__DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "プッシュの保持時間",
+    "set.notifications.push_ttl.d":
+      "電源が切れているかオフラインの端末向けに、プッシュサービスが通知を保持する時間 (秒) です。86400 で 1 日です。0 にすると、端末がいまオンでなければ破棄されます。__DEN_CLI__ config alerts.push_ttl_seconds=86400",
     "set.notifications.desktop": "デスクトップ通知",
     "set.notifications.desktop.d":
       "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
