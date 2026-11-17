@@ -4322,7 +4322,7 @@
         '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>',
     }) +
     // The ⌘K search field (R5), the kit's; ⌘K opens the palette (topbar.js).
-    DUI.searchHtml({ placeholder: t("search.ph") });
+    DUI.searchHtml({ placeholder: t("search.ph"), label: t("search.ph") });
   var slotEnd =
     '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
     '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
@@ -7927,11 +7927,11 @@
     // (The kit's shell.css hides the crumbs' keys at 860px, the crumbs and
     // the search's words at 720px.)
     "@media (max-width: 860px) { .den-chip .den-lbl-l { display: none; } }",
-    // A phone's tap targets: every top-bar button 32 px or more each way
-    // (issue 209, T9). The rest of this step (the title visually hidden)
-    // is the kit's shell.css.
+    // A phone's tap targets (issue 209, T9): the dock's buttons 32 px or
+    // more each way. The top bar's, and the title visually hidden, are the
+    // kit's shell.css (den-ui 0.7.0).
     "@media (max-width: 479.98px) {",
-    "  .den-top button, .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
+    "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
     "}",
   ].join("\n");
   document.head.appendChild(style);

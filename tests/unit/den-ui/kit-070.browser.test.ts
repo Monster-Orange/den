@@ -340,7 +340,8 @@ for (const engine of ["chromium", "webkit"]) {
         kbd: "⌘K",
         kbdInside: true,
         shortcuts: "Meta+K Control+K",
-        name: "Find anything…",
+        // No label given: the kit's own "Search", not the placeholder.
+        name: "Search",
       });
       expect(got.bell).toEqual({
         popup: "dialog",
@@ -773,6 +774,62 @@ for (const engine of ["chromium", "webkit"]) {
             getComputedStyle(document.getElementById("stale-pill")!).display,
         ),
       ).resolves.toBe("none");
+      await p.context().close();
+    });
+
+    it("the mark's layout is the kit's: a flex box, its image a 22px block", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const r = await p.evaluate(() => {
+        const D = (
+          window as unknown as {
+            DenUI: { markHtml: (m: { src: string; label: string }) => string };
+          }
+        ).DenUI;
+        document.getElementById("den-mark")!.outerHTML = D.markHtml({
+          src: "/kit/marks/den.svg",
+          label: "Den",
+        });
+        const m = document.getElementById("den-mark")!;
+        const img = m.querySelector("img")!;
+        const box = img.getBoundingClientRect();
+        return [
+          getComputedStyle(m).display,
+          getComputedStyle(m).alignItems,
+          getComputedStyle(img).display,
+          Math.round(box.width),
+          Math.round(box.height),
+        ];
+      });
+      expect(r).toEqual(["flex", "center", "block", 22, 22]);
+      await p.context().close();
+    });
+
+    it("a phone's top bar: ☰, search, bell and ◐ ▾ are 32px tap targets, on one line", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      await p.setViewportSize({ width: 390, height: 844 });
+      const r = await p.evaluate(() =>
+        ["#den-menu-btn", ".den-search", "#den-bell", "#appearance-btn"].map(
+          (sel) => {
+            const el = document.querySelector(sel)!;
+            const c = getComputedStyle(el);
+            const box = el.getBoundingClientRect();
+            return [
+              sel,
+              parseFloat(c.minHeight) >= 32 && box.height >= 32,
+              parseFloat(c.minWidth) >= 32 && box.width >= 32,
+              Math.round(box.top + box.height / 2),
+            ];
+          },
+        ),
+      );
+      for (const [sel, tall, wide] of r)
+        expect([sel, tall, wide]).toEqual([sel, true, true]);
+      // All on the bar's middle line.
+      expect(new Set(r.map((x) => x[3])).size).toBe(1);
       await p.context().close();
     });
 

@@ -480,6 +480,18 @@ for (const b of BROWSERS)
         },
       ],
     ];
+    it("passes on host content at 390: the search's name, the account entry's words", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, 390, 844, () => {
+        document
+          .querySelector("#den-search")!
+          .setAttribute("aria-label", "Search…");
+        const who = document.querySelector("[data-den-account] .den-lbl");
+        if (who) who.textContent = "A person · Owner";
+      });
+      expect(formatNavDiffs(d)).toBe("");
+    }, 60_000);
+
     for (const [what, change] of HOST_PASSES)
       it(`passes on host content: ${what}`, async () => {
         if (skip(b)) return;

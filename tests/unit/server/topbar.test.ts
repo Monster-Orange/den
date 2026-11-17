@@ -353,7 +353,8 @@ describe("the pages", () => {
     expect(search).toContain('esc(id || "den-search")');
     expect(search).toContain(`'<kbd aria-hidden="true">⌘K</kbd>'`);
     expect(shell).toMatch(
-      /DUI\.searchHtml\(\{ placeholder: t\("search\.ph"\) \}\)/,
+      // Den's own words for its placeholder and its name.
+      /DUI\.searchHtml\(\{ placeholder: t\("search\.ph"\), label: t\("search\.ph"\) \}\)/,
     );
     // The dot row and the "+N" chip are gone from the bar.
     expect(shell).not.toContain('id="health"');

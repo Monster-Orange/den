@@ -114,6 +114,47 @@ body.den-has-shell > #den-content {
   margin: 0;
   white-space: nowrap;
 }
+/* The mark's layout (0.7.0, from Den's own sheet): a centred box its
+   image fills, whatever the host's mark is. */
+.den-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.den-mark img {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+/* Scaled, never cropped: non-square art keeps its edges. */
+.den-mark-raster img {
+  object-fit: contain;
+}
+.den-mark-text {
+  font: 700 11px/1 var(--display);
+  letter-spacing: -0.02em;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+.den-mark-text[data-len="2"] {
+  font-size: 9px;
+}
+.den-mark-text[data-len="3"] {
+  font-size: 7px;
+}
+.den-mark-square {
+  border-radius: 2px;
+}
+.den-mark-rounded {
+  border-radius: 5px;
+}
+.den-mark-circle {
+  border-radius: 50%;
+}
 #den-shell .den-mark {
   width: 22px;
   height: 22px;
@@ -787,6 +828,14 @@ body.den-has-shell .den-upd {
   .den-search-ph,
   .den-search kbd {
     display: none;
+  }
+}
+
+/* A phone's tap targets: every top-bar button 32px or more each way. */
+@media (max-width: 479.98px) {
+  .den-top button {
+    min-height: 32px;
+    min-width: 32px;
   }
 }
 

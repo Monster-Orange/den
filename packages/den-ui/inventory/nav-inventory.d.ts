@@ -33,6 +33,8 @@ export interface NavElement {
     /** On the role's own element: its contents' width with padding and border. */
     fit?: number;
   };
+  /** Its accessible name is the host's words (data-nav-name="host"). */
+  hostName?: boolean;
 }
 export interface NavTheme {
   id: string;

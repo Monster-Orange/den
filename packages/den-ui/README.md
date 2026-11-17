@@ -260,7 +260,9 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   with its own words: each scope crumb (`crumb`) and the separator after
   it (`crumb-sep`), the brand's title (`brand-title`), the search's
   placeholder (`search-ph`), each rail group (`rail-group`), its heading
-  (`group`) and its pages (`page`). Their count, keys, ids, text and
+  (`group`) and its pages (`page`), and the account entry's words
+  (`account-name`). The search's name is the host's too
+  (`data-nav-name="host"`: its name is not compared). Their count, keys, ids, text and
   width are never compared, on either side. The first of each role is
   compared with the other side's first, and what it holds by key, on
   every computed style and on height. Their size may move what follows by
@@ -449,6 +451,13 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   `/kit/marks/den.svg`). An image runs no script. `markHtml(mark)` draws
   it alone; Den's own theme mark is drawn by it. `{ text }` and `{ svg }`
   work as before.
+- **Mark layout**: `.den-mark` (a centred flex box, its image a block)
+  and the text and raster forms are in `shell.css`. A host deletes its
+  own copy.
+- **A phone's tap targets**: below 480px every top-bar button is at least
+  32px each way (`shell.css`).
+- **Search name**: `searchHtml({ label })` names the field; by default
+  the kit's "Search" (en, es, ja), not the placeholder.
 - **Filtered menus**: a menu with the filter field is a pop-up holding the
   field, then the `role="menu"` list (`.den-mlist`, id `<menu>-list`),
   then "No match": a menu owns only its items. The field has

@@ -262,6 +262,10 @@ export async function collectNav(page, opts = {}) {
             },
             style,
             ...(host ? { host } : {}),
+            // Its name is the host's words (the search's label, say).
+            ...(el.getAttribute("data-nav-name") === "host"
+              ? { hostName: true }
+              : {}),
           });
         }
         if (el.tagName.toLowerCase() === "svg") return mySlot;
@@ -693,7 +697,10 @@ export function compareNav(actual, reference, opts = {}) {
     const g = gotBy.get(w.key);
     if (!g) continue;
     for (const p of ["slot", "role", "tag", "name"])
-      if (w[p] !== g[p] && !(p === "name" && holdsHost.has(w.key)))
+      if (
+        w[p] !== g[p] &&
+        !(p === "name" && (holdsHost.has(w.key) || w.hostName || g.hostName))
+      )
         add(w, p, w[p], g[p]);
     const wc = w.classes.join(" ");
     const gc = g.classes.join(" ");

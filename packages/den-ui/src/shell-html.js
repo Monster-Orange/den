@@ -518,7 +518,9 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
  * The search field: the placeholder, then ⌘K inside it, as a button (the
  * host's palette or page opens on it: hydrateSearch).
  *   searchHtml({ placeholder?, label?, id?, shortcut?, lang })
- * `label`: its name (default the placeholder); `shortcut: false`: no ⌘K.
+ * `label`: its name (default the kit's "Search", in the page's language;
+ * the host's own words are host content for the nav inventory);
+ * `shortcut: false`: no ⌘K.
  */
 export function searchHtml({ placeholder, label, id, shortcut, lang } = {}) {
   const ph = placeholder ?? kitT(lang, "kit.search.ph");
@@ -526,10 +528,10 @@ export function searchHtml({ placeholder, label, id, shortcut, lang } = {}) {
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
-    '" aria-haspopup="dialog"' +
+    '" aria-haspopup="dialog" data-nav-name="host"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
-    esc(label ?? ph) +
+    esc(label ?? kitT(lang, "kit.search.label")) +
     '"><span class="den-search-ph" data-nav-role="search-ph">' +
     esc(ph) +
     "</span>" +
@@ -657,8 +659,9 @@ export function accountHtml(a) {
   const full = a.detail ? a.label + " · " + a.detail : a.label;
   const more = { ...(a.attrs || {}) };
   if (a.id) more.id = a.id;
+  // Who is signed in: the host's words (host content for the nav inventory).
   const words =
-    '<span class="den-lbl">' +
+    '<span class="den-lbl" data-nav-role="account-name">' +
     esc(a.label) +
     (a.detail
       ? '<span class="den-acct-d"> · ' + esc(a.detail) + "</span>"

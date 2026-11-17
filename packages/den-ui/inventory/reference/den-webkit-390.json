@@ -413,7 +413,8 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
-   }
+   },
+   "hostName": true
   },
   {
    "key": "#den-search > span.den-search-ic",
@@ -3792,6 +3793,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "account-name",
+    "key": "#den-ident > span.den-lbl",
+    "fit": 142.48
    }
   }
  ],

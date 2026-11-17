@@ -339,31 +339,6 @@ async function save(patch) {
   if (!r.ok) throw new Error(await r.text());
 }
 
-function injectStyles() {
-  if (document.getElementById("appearance-styles")) return;
-  const s = document.createElement("style");
-  s.id = "appearance-styles";
-  s.textContent = `
-    .den-mark {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 18px; height: 18px; flex-shrink: 0; overflow: hidden;
-    }
-    .den-mark img { display: block; width: 18px; height: 18px; }
-    /* Scaled, never cropped: non-square art keeps its edges. */
-    .den-mark-raster img { object-fit: contain; }
-    .den-mark-text {
-      font: 700 11px/1 var(--display); letter-spacing: -0.02em;
-      background: var(--accent-fill); color: var(--on-accent);
-    }
-    .den-mark-text[data-len="2"] { font-size: 9px; }
-    .den-mark-text[data-len="3"] { font-size: 7px; }
-    .den-mark-square { border-radius: 2px; }
-    .den-mark-rounded { border-radius: 5px; }
-    .den-mark-circle { border-radius: 50%; }
-  `;
-  document.head.appendChild(s);
-}
-
 /** Switch the mode: drawn at once, then saved (reverted if the save fails). */
 export async function setMode(mode) {
   const prev = st.mode;
@@ -519,7 +494,7 @@ export async function initAppearance() {
   } catch {
     return; // no control without the server; the page keeps its first paint
   }
-  injectStyles();
+  // The mark's look is the kit's shell.css (den-ui 0.7.0).
   applyMode();
   registerCommands();
   const btn = document.getElementById("appearance-btn");

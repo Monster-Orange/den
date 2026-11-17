@@ -21,7 +21,9 @@ import * as os from "os";
 import * as path from "path";
 import * as strings from "../../../packages/den-ui/src/strings.js";
 import {
+  accountHtml,
   reportButtonHtml,
+  searchHtml,
   shellHtml,
 } from "../../../packages/den-ui/src/shell-html.js";
 import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
@@ -120,6 +122,29 @@ describe("shellHtml (shell-html.js), in Node", () => {
     // The kit's words in the page's language.
     expect(html).toContain(ja["kit.pages"]);
     expect(html).toContain(ja["kit.report.word"]);
+  });
+
+  it("the search's name is a host option, with the kit's own words by default (en, es, ja)", () => {
+    const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
+    expect(label(searchHtml({}))).toBe("Search");
+    expect(label(searchHtml({ lang: "es" }))).toBe("Buscar");
+    expect(label(searchHtml({ lang: "ja" }))).toBe("検索");
+    // A placeholder alone does not name the field: the name is its own option.
+    expect(label(searchHtml({ placeholder: "Find anything…" }))).toBe("Search");
+    expect(label(searchHtml({ label: "Search pages" }))).toBe("Search pages");
+    // Its name is the host's words: the nav inventory doesn't compare it.
+    expect(searchHtml({})).toContain(' data-nav-name="host"');
+  });
+
+  it("the account entry's words are host content (data-nav-role account-name)", () => {
+    const h = accountHtml({
+      label: "Signed in",
+      detail: "this device",
+      href: "/me",
+    });
+    expect(h).toContain(
+      '<span class="den-lbl" data-nav-role="account-name">Signed in<span class="den-acct-d"> · this device</span></span>',
+    );
   });
 
   it("draws the default mark from its file: Den's markup exactly (the nav reference's #den-mark)", () => {
