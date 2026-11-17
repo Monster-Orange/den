@@ -1581,6 +1581,7 @@
     "bell.m.permissionWhat": "{name} があなたの許可を待っています: {what}",
     "bell.m.input": "{name} があなたを待っています",
     "bell.m.asked": "{name} からの質問: {text}",
+    "bell.m.toLead": "{name} からリード {lead} への質問: {text}",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
