@@ -4728,6 +4728,8 @@
           lead: healthDot(p),
           mono: true,
           pin: p,
+          // Issue 307: the kit's SERVICE tag at the row's end.
+          kind: "service",
           after: pinVisit(p),
           attrs: {
             "data-pin": p,
@@ -4847,6 +4849,7 @@
         href: "/settings#agents.hub",
         label: label,
         icon: "hub",
+        kind: "hub",
         tip: why,
         attrs: {
           "data-hub": h.state || "unknown",
@@ -4865,6 +4868,8 @@
       href: link.href,
       label: label,
       icon: "hub",
+      // Issue 307: a link into Hub carries the kit's HUB tag.
+      kind: "hub",
       tip: tip,
       badge: n ? { n: n > 99 ? "99+" : n } : null,
       attrs: {

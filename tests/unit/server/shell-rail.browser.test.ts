@@ -747,15 +747,23 @@ describe("pins (a consumer's dev.17 run)", () => {
     await p.context().close();
   });
 
-  it("a pinned row is named by its id; Visit ↗ is its own control (0.4.18: no ×)", async () => {
+  it("a pinned row is named by its id and its kind; Visit ↗ is its own control (0.4.18: no ×)", async () => {
     if (!browser) return;
     const { p } = await mount("services", {
       shell: { pins: ["shop-web"], collapsed: false },
     });
     await p.waitForSelector('[data-pin="shop-web"]');
+    // Issue 307: the kit's SERVICE tag at the row's end, read with the name.
     expect(
-      await p.getByRole("link", { name: "shop-web", exact: true }).count(),
+      await p
+        .getByRole("link", { name: "shop-web · Service", exact: true })
+        .count(),
     ).toBe(1);
+    expect(
+      await p.$eval('[data-pin="shop-web"] [data-nav-role="kind"]', (e) =>
+        (e as HTMLElement).innerText.trim(),
+      ),
+    ).toBe("SERVICE");
     expect(
       await p.getAttribute('[data-pin="shop-web"]', "aria-keyshortcuts"),
     ).toBe("Delete");
