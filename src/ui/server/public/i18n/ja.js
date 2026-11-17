@@ -596,6 +596,18 @@
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
     "keep.tokenOld":
       "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です: claude setup-token で新しく作り、__DEN_CLI__ agents token set で保存してください。",
+    "acct.title": "{vendor}: サインイン用アカウント", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.default": "アカウント {letter}", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.add": "アカウントを追加", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.none": "トークンなし。",
+    "acct.set": "トークンは {date} に保存されました。",
+    "acct.setUnknown": "トークンは保存されています。",
+    "acct.first": "エージェントはこのアカウントでサインインします。", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.tokenLabel": "{name} のサインイン用トークン",
+    "acct.tokenSave": "サインイン用トークンを保存",
+    "acct.up": "上へ",
+    "acct.down": "下へ",
+    "acct.failed": "保存できませんでした: {error}",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",

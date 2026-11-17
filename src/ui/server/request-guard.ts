@@ -757,6 +757,10 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/keep-running-after-logout",
   // #299: the agents' sign-in token, into the secrets store: a person's.
   "/api/agents/signin-token",
+  // Issue 339: the agents' sign-in accounts: a person's.
+  "/api/agents/accounts",
+  "/api/agents/accounts/token",
+  "/api/agents/accounts/order",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",

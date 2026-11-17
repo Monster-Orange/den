@@ -618,6 +618,18 @@
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
     "keep.tokenOld":
       "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
+    "acct.title": "{vendor}: cuentas de inicio de sesión", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.default": "Cuenta {letter}", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.add": "Añadir cuenta", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.none": "Sin token.",
+    "acct.set": "Token guardado el {date}.",
+    "acct.setUnknown": "Token guardado.",
+    "acct.first": "Los agentes inician sesión con esta.",
+    "acct.tokenLabel": "Token de inicio de sesión de {name}",
+    "acct.tokenSave": "Guardar token de inicio de sesión",
+    "acct.up": "Subir",
+    "acct.down": "Bajar",
+    "acct.failed": "No se guardó: {error}",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
