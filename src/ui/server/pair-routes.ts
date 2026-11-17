@@ -81,6 +81,12 @@ const ERRORS: Record<string, { status: number; error: string }> = {
     error:
       "That code expired. On the other computer, click Get a new code and approve the new one.",
   },
+  // #320: its page withdrew it (closed, or signed in another way).
+  ended: {
+    status: 410,
+    error:
+      "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
+  },
   rate_limited: {
     status: 429,
     error: "Too many approve attempts. Wait a minute and try again.",

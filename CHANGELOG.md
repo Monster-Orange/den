@@ -17,6 +17,16 @@ config and manifest changes a distribution must make to move to it under
   moment and moves focus to its label. Your first scroll, key, click or
   touch lets go, and it lets go by itself after 10 s. (#163)
 
+- A signed-out page that signs in another way (with GitHub, a link, or in
+  another tab) now withdraws its own approve-with-a-code request, and waits
+  up to 1.5 s for the answer, before it goes on. It no longer relies on the
+  page's unload alone, so other signed-in browsers stop asking "Allow this
+  computer?" for a computer that is already in (#320).
+- Allow (or Deny) on a code whose page has withdrawn it does nothing and
+  says so in the dialog: "That request has ended". An expired code says it
+  expired. Both are in English, Spanish and Japanese. The server answers
+  410 with code `ended` for a withdrawn code, for a minute (#320).
+
 ## [0.4.63] - 2026-11-17
 
 ### Added
