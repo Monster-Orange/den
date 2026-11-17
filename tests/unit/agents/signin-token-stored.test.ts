@@ -14,6 +14,8 @@ import type { SecretRef } from "../../../src/shared/secrets/types.js";
 import {
   agentTokenStatus,
   clearAgentToken,
+  dropStaleEnvTokenRecord,
+  saveAgentToken,
   tokenStatusLine,
 } from "../../../src/shared/agents/signin-token.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
@@ -116,5 +118,96 @@ describe("no store, not in mode always: the per-mode words", () => {
     expect(l.text).toMatch(/^no sign-in token set/);
     expect(l.text).toMatch(/secrets\.provider/);
     expect(l.text).not.toMatch(/will not be able to sign in/);
+  });
+});
+
+describe("env: the CLI can't set it, and a restart drops the record", () => {
+  const TOKEN = "fake-oat-token-cli-0123456789abcdef";
+  const recordAt = (d: string) => path.join(d, "agent-signin-token.json");
+
+  it("agents token set refuses with provider env: rc 1, no record, never saved", async () => {
+    const r = await rig();
+    let saves = 0;
+    const rc = await cmdAgents(["token", "set"], {
+      ...r.deps,
+      tokenInput: async () => TOKEN,
+      tokenSave: async () => {
+        saves++;
+        meta(r.stateDir);
+        return { ref: "configured", store: "environment" };
+      },
+      tokenDeps: { ref: () => REF, status: st("env"), provider: noRead },
+    });
+    expect(rc).toBe(1);
+    expect(saves).toBe(0);
+    expect(r.err.join("\n")).toContain(
+      "with secrets.provider env the token lives only in Den's running process; set it in Settings, or use 1password or doppler",
+    );
+    expect(r.err.join("\n") + r.out.join("\n")).not.toContain(TOKEN);
+    expect(fs.existsSync(recordAt(r.stateDir))).toBe(false);
+  });
+
+  it("saveAgentToken with env: refused outside Den's process, allowed inside it", async () => {
+    const r = await rig();
+    const kept: Record<string, string> = {};
+    const provider = () =>
+      ({
+        name: "env",
+        set: async (ref: SecretRef, v: string) => {
+          kept[ref.key!] = v;
+        },
+      }) as never;
+    await expect(
+      saveAgentToken(TOKEN, {
+        provider,
+        ref: () => REF,
+        status: st("env") as never,
+        stateDir: r.stateDir,
+      }),
+    ).rejects.toThrow(/lives only in Den's running process/);
+    expect(fs.existsSync(recordAt(r.stateDir))).toBe(false);
+    expect(kept).toEqual({});
+    await saveAgentToken(TOKEN, {
+      provider,
+      ref: () => REF,
+      status: st("env") as never,
+      stateDir: r.stateDir,
+      inDen: true,
+    });
+    expect(fs.existsSync(recordAt(r.stateDir))).toBe(true);
+  });
+
+  it("at Den's start: a record whose value isn't in the process is dropped; one whose value is, kept", async () => {
+    const r = await rig();
+    meta(r.stateDir);
+    expect(
+      dropStaleEnvTokenRecord({
+        stateDir: r.stateDir,
+        env: { ACME_AGENT_SIGNIN_TOKEN: TOKEN },
+        ref: () => REF,
+        status: st("env") as never,
+      }),
+    ).toBe(false);
+    expect(fs.existsSync(recordAt(r.stateDir))).toBe(true);
+    expect(
+      dropStaleEnvTokenRecord({
+        stateDir: r.stateDir,
+        env: {},
+        ref: () => REF,
+        status: st("env") as never,
+      }),
+    ).toBe(true);
+    expect(fs.existsSync(recordAt(r.stateDir))).toBe(false);
+    // Another backend's record is never touched.
+    meta(r.stateDir);
+    expect(
+      dropStaleEnvTokenRecord({
+        stateDir: r.stateDir,
+        env: {},
+        ref: () => REF,
+        status: st("doppler") as never,
+      }),
+    ).toBe(false);
+    expect(fs.existsSync(recordAt(r.stateDir))).toBe(true);
   });
 });

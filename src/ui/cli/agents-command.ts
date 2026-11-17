@@ -1625,6 +1625,7 @@ async function tokenCmd(
     );
   const {
     agentTokenStatus,
+    ENV_SET_OUTSIDE_DEN,
     NO_TOKEN_NOT_NEEDED,
     saveAgentToken,
     tokenShapeError,
@@ -1652,6 +1653,17 @@ async function tokenCmd(
     d.err(
       `✗ ${where}: only a person sets the agents' sign-in token (this is an agent)`,
     );
+    return 1;
+  }
+  // With env the value would live only in this CLI process: refuse before
+  // reading it (Settings saves it inside Den's own process).
+  const { secretsStatus } = await import("../../shared/secrets/index.js");
+  const backend = (
+    deps.tokenDeps?.status ??
+    (() => secretsStatus(undefined, d.env, { detect: false }))
+  )().backend;
+  if (backend === "env") {
+    d.err(`✗ ${where}: ${ENV_SET_OUTSIDE_DEN}`);
     return 1;
   }
   const input = await (deps.tokenInput ?? (() => readTokenInput()))();

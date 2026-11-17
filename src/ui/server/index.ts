@@ -338,6 +338,7 @@ import {
 import {
   agentTokenStatus,
   clearAgentToken,
+  dropStaleEnvTokenRecord,
   saveAgentToken,
 } from "../../shared/agents/signin-token.js";
 import { serviceJobState } from "../cli/doctor-where.js";
@@ -3451,7 +3452,8 @@ async function handleRequest(
   if (
     handleSignInTokenRoute(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
-      save: (token) => saveAgentToken(token, { stateDir: getStateDir() }),
+      save: (token) =>
+        saveAgentToken(token, { stateDir: getStateDir(), inDen: true }),
       clear: () => clearAgentToken({ stateDir: getStateDir() }),
       status: () => agentSigninView(true),
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
@@ -7315,6 +7317,17 @@ function sweepEdgeAccess(): void {
 }
 sweepEdgeAccess();
 setInterval(sweepEdgeAccess, EDGE_ACCESS_SWEEP_MS).unref();
+
+// Issue 163: with the env secrets backend, a sign-in token Settings saved
+// lived in the process that just ended; Den's record of it is stale now.
+try {
+  if (dropStaleEnvTokenRecord({ stateDir: getStateDir() }))
+    serverLog(
+      "Sign-in token: the env secrets backend's value ended with Den's last run; dropped its record",
+    );
+} catch (e) {
+  serverLog(`Sign-in token record check failed: ${(e as Error).message}`);
+}
 
 // Cap service logs. Long-lived daemons never respawn (a localstack tail reached
 // 8.6 GB), so the spawn-time check alone is not enough — sweep on startup and

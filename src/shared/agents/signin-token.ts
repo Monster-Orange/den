@@ -213,6 +213,49 @@ export interface TokenStoreDeps {
   saveRef?: (ref: Partial<SecretRef>) => void;
   stateDir: string;
   now?: () => Date;
+  /**
+   * The save runs inside Den's own running process (Settings). The env
+   * backend keeps the value only in the process that sets it, so anywhere
+   * else (the CLI) it is refused.
+   */
+  inDen?: boolean;
+}
+
+/** `agents token set` (or any save outside Den's process) with env. */
+export const ENV_SET_OUTSIDE_DEN =
+  "with secrets.provider env the token lives only in Den's running process; set it in Settings, or use 1password or doppler";
+
+export class EnvOutsideDenError extends Error {
+  readonly code = "env_outside_den";
+  constructor() {
+    super(ENV_SET_OUTSIDE_DEN);
+    this.name = "EnvOutsideDenError";
+  }
+}
+
+/**
+ * At Den's start, with the env backend: the value Settings kept lived in
+ * the process that just ended, so Den's record of it is stale unless the
+ * value is in this process's environment (set by whoever started Den).
+ * Removes the stale record; true when it did. Never reads the value.
+ */
+export function dropStaleEnvTokenRecord(d: {
+  stateDir: string;
+  env?: NodeJS.ProcessEnv;
+  ref?: () => SecretRef | null;
+  status?: () => ReturnType<typeof secretsStatus>;
+}): boolean {
+  const env = d.env ?? process.env;
+  const st = (
+    d.status ?? (() => secretsStatus(undefined, env, { detect: false }))
+  )();
+  if (st.backend !== "env") return false;
+  const file = path.join(d.stateDir, TOKEN_META_FILE);
+  if (!fs.existsSync(file)) return false;
+  const key = (d.ref ?? (() => agentTokenRef()))()?.key;
+  if (key && env[key] !== undefined && env[key] !== "") return false;
+  fs.rmSync(file, { force: true });
+  return true;
 }
 
 /**
@@ -251,6 +294,7 @@ export async function saveAgentToken(
       );
     created = fresh;
   }
+  if (st.backend === "env" && !d.inDen) throw new EnvOutsideDenError();
   try {
     await provider.set(ref, value);
   } catch (err) {

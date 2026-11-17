@@ -12,6 +12,8 @@
  * Invented values; the token is never in an answer.
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import * as fs from "fs";
+import * as path from "path";
 import { denAuth } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
@@ -92,5 +94,18 @@ describe("env: Den's record is the one truth, marked process-local", () => {
     const del = await call(env!, "DELETE");
     expect(del.body).toMatchObject({ ok: true, cleared: true });
     expect(await signin(env!)).toMatchObject({ configured: false });
+  });
+});
+
+describe("env: a restart drops Den's stale record", () => {
+  it("saved, then Den restarts: the value is gone, so status reads no token", async () => {
+    expect((await call(env!, "POST")).status).toBe(200);
+    expect(await signin(env!)).toMatchObject({ configured: true });
+    await env!.webDown();
+    await env!.webUp();
+    expect(await signin(env!)).toMatchObject({ configured: false });
+    expect(
+      fs.existsSync(path.join(env!.stateDir, "agent-signin-token.json")),
+    ).toBe(false);
   });
 });

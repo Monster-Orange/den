@@ -114,6 +114,10 @@ config and manifest changes a distribution must make to move to it under
   the page and every CLI process, shown as "process-local: kept only
   until Den restarts". `agents token clear` says what it
   removed (the record, and the value when it was in that process). (#163)
+- With the env secrets backend, `agents token set` refuses (the value
+  would live only in that CLI process): set it in Settings, or use
+  1password or doppler. Den drops its record of an env token when it
+  starts, since the value ended with the last run. (#163)
 - On an install not under Keep agents running after logout, the Settings
   row says what the CLI says: no token is needed only under that
   setting, and with no secrets store, set `secrets.provider` first.
