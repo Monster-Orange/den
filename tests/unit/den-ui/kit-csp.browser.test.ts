@@ -119,7 +119,7 @@ const model = {
       DenUI.scopeHtml({ crumbs: [
         { key: "org", label: "Company", value: "North" },
         { key: "ws", label: "Project", value: "Garden", menu: [{ label: "Garden", href: "#g", current: true }] },
-      ] }) + DenUI.searchHtml({ placeholder: "Find…" }),
+      ] }) + DenUI.searchHtml(),
     bell: DenUI.bellButtonHtml({ count: 1 }),
     account: '<span id="who">me</span>' + DenUI.appearanceButtonHtml(),
   },

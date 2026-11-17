@@ -151,6 +151,70 @@ describe("nav inventory: red cases on the reference", () => {
     ]);
   });
 
+  // issue 303: the search and the kit's right-side items (Report, the bell,
+  // the version chip, ◐) sit where the reference has them, whatever the
+  // host's words: no host-content shift excuses moving them.
+  const PINNED =
+    /^(#den-search|header\.den-top > div\.den-chips > button\.den-rb|#den-bell|#version-pill|#appearance-btn)( >|$)/;
+  const widen = (s: NavSnapshot, key: string, by: number) => {
+    const e = at(s, key);
+    e.box.w += by;
+    if (e.host?.fit != null) e.host.fit += by;
+  };
+  const shift = (s: NavSnapshot, test: (k: string) => boolean, by: number) => {
+    for (const e of s.elements) if (test(e.key)) e.box.x += by;
+  };
+
+  it("a longer crumb that moves the search fails on the search", () => {
+    const s = copy(ref);
+    widen(s, "#env-btn", 40);
+    shift(s, (k) => /^#den-search( >|$)/.test(k), 40);
+    const got = ids(s, ref);
+    expect(got).toContain("#den-search box.left");
+    expect(got).toContain("#den-search box.right");
+  });
+
+  it("a longer brand title that moves the search fails on the search", () => {
+    const s = copy(ref);
+    widen(
+      s,
+      "header.den-top > div.den-left > a.den-brand > span.den-title",
+      30,
+    );
+    shift(
+      s,
+      (k) =>
+        /^(#den-search|header\.den-top > div\.den-left > div\.den-scope|#org-crumb|#ws-pill|#env-btn)( >|$)/.test(
+          k,
+        ),
+      30,
+    );
+    expect(ids(s, ref)).toContain("#den-search box.left");
+  });
+
+  it("a wider host chip that moves Report, the bell, the version or ◐ fails on them", () => {
+    const s = copy(ref);
+    widen(s, "#den-status", 20);
+    shift(s, (k) => PINNED.test(k) && !k.startsWith("#den-search"), 20);
+    shift(s, (k) => k.startsWith("#den-runs"), 20);
+    const got = ids(s, ref);
+    for (const k of [
+      "header.den-top > div.den-chips > button.den-rb",
+      "#den-bell",
+      "#version-pill",
+      "#appearance-btn",
+    ])
+      expect(got).toContain(`${k} box.left`);
+  });
+
+  it("a longer crumb that moves nothing kit-pinned passes", () => {
+    const s = copy(ref);
+    widen(s, "#env-btn", 40);
+    expect(ids(s, ref).filter((x) => PINNED.test(x.split(" ")[0]!))).toEqual(
+      [],
+    );
+  });
+
   it("a host slot's contents are the host's own", () => {
     const s = copy(ref);
     const n = s.elements.find((e) => e.key.startsWith("#den-status >"))!;

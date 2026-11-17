@@ -527,6 +527,20 @@ function lcs(a, b) {
 const COLUMN = ["rail", "foot"];
 
 /**
+ * issue 303: the top bar's search and the kit's right-side items (Report,
+ * the bell, the version chip, ◐ ▾) sit at the reference's x and width,
+ * whatever the host's words: a host's crumbs, title or chips never excuse
+ * moving them.
+ */
+export const PINNED_CLASSES = [
+  "den-search",
+  "den-rb-top",
+  "den-bell",
+  "v-pill",
+  "appearance-btn",
+];
+
+/**
  * Host content's size, by role: for each role, the sum of its roots'
  * widths (in a row) or heights (in the rail's column), each with its
  * parent's gap. `row`: { slot: { role: n } }; `column`: { role: n }.
@@ -654,6 +668,20 @@ export function compareNav(actual, reference, opts = {}) {
     return out;
   };
   const holdsHost = new Set([...holders(reference), ...holders(actual)]);
+  // issue 303: the kit's pinned elements, and all they hold, by the
+  // reference's tree.
+  const pinnedKeys = new Set();
+  {
+    const isRoot = (e) =>
+      e.slot === "top" && e.classes.some((c) => PINNED_CLASSES.includes(c));
+    const byKey = new Map(reference.elements.map((e) => [e.key, e]));
+    for (const e of reference.elements)
+      for (let x = e; x; x = x.parent && byKey.get(x.parent))
+        if (isRoot(x)) {
+          pinnedKeys.add(e.key);
+          break;
+        }
+  }
   const wantBy = new Map(want.map((e) => [e.key, e]));
   const gotBy = new Map(got.map((e) => [e.key, e]));
   for (const e of want)
@@ -713,7 +741,9 @@ export function compareNav(actual, reference, opts = {}) {
     });
     const we = edges(w);
     const ge = edges(g);
-    const moves = shifts[w.slot] || [0];
+    // The search and the kit's right-side items are pinned (issue 303):
+    // nothing the host draws may move them.
+    const moves = pinnedKeys.has(w.key) ? [0] : shifts[w.slot] || [0];
     for (const edge of ["left", "top", "right", "bottom"]) {
       const d = ge[edge] - we[edge];
       const ok =

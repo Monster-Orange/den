@@ -211,7 +211,9 @@ const SEARCH = "#den-search";
 
 /**
  * What each red case must add, exactly (the same in both browsers): its
- * own change and what it moves, nothing else.
+ * own change and what it moves, nothing else. Issue 303: the search and
+ * the chips row sit in fixed slots, so a gone bell or a wider chip moves
+ * neither.
  */
 const EXPECT: Record<string, string[]> = {
   move3: [
@@ -219,17 +221,14 @@ const EXPECT: Record<string, string[]> = {
     "#den-search > kbd box.right",
     "#den-search > span.den-search-ic box.left",
     "#den-search > span.den-search-ic box.right",
+    "#den-search > span.den-search-ph box.left",
+    "#den-search > span.den-search-ph box.right",
     "#den-search box.left",
     "#den-search box.right",
   ],
   bell: [
     "#den-bell > svg element",
     "#den-bell element",
-    "#den-search > kbd box.left",
-    "#den-search > kbd box.right",
-    "#den-search > span.den-search-ic box.left",
-    "#den-search > span.den-search-ic box.right",
-    "#den-search box.right",
     "header.den-top > div.den-chips > button.den-rb > kbd box.left",
     "header.den-top > div.den-chips > button.den-rb > kbd box.right",
     "header.den-top > div.den-chips > button.den-rb > span box.left",
@@ -238,7 +237,6 @@ const EXPECT: Record<string, string[]> = {
     "header.den-top > div.den-chips > button.den-rb > svg box.right",
     "header.den-top > div.den-chips > button.den-rb box.left",
     "header.den-top > div.den-chips > button.den-rb box.right",
-    "header.den-top > div.den-chips box.left",
   ],
   swap: [
     "#den-bell > svg box.left",
@@ -255,20 +253,15 @@ const EXPECT: Record<string, string[]> = {
   kbdIcon: [
     "#den-search > kbd element",
     "#den-search > span.den-search-ic element",
+    "#den-search > span.den-search-ph box.right",
   ],
   notSlot: [
-    "#den-search > kbd box.left",
-    "#den-search > kbd box.right",
-    "#den-search > span.den-search-ic box.left",
-    "#den-search > span.den-search-ic box.right",
-    "#den-search box.right",
     "#den-status > span.den-dot box.left",
     "#den-status > span.den-dot box.right",
     "#den-status > span.den-n box.left",
     "#den-status > span.den-n name",
     "#den-status box.left",
     "#den-status name",
-    "header.den-top > div.den-chips box.left",
   ],
   weight: ["#den-search > span.den-search-ph style.font-weight"],
   font: ["#den-search > span.den-search-ph style.font-family"],
@@ -384,6 +377,22 @@ for (const b of BROWSERS)
       expect(ids(d)).toEqual(EXPECT.weight);
     }, 60_000);
 
+    it("fails when a host words the search its own way (placeholder, name)", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, () => {
+        const s = document.querySelector<HTMLElement>("#den-search")!;
+        s.querySelector(".den-search-ph")!.textContent = "Find anything…";
+        s.setAttribute("aria-label", "Find anything");
+      });
+      // The kit's words: one search in every product.
+      expect(
+        d.filter((x) => x.property === "name").map((x) => [x.key, x.actual]),
+      ).toEqual([
+        [SEARCH, "Find anything"],
+        [PH, "Find anything…"],
+      ]);
+    }, 60_000);
+
     it("fails when the search's ⌘K or icon is gone", async () => {
       if (skip(b)) return;
       const d = await diffAfter(b, W, H, () => {
@@ -394,9 +403,8 @@ for (const b of BROWSERS)
     }, 60_000);
 
     // ── host content (data-nav-role): the host's words and how many ──────
-    // Crumbs, rail pages, group headings, the brand's title and the
-    // search's placeholder are the host's: their count, text and width
-    // pass. The first of each role is still styled like the reference's.
+    // Crumbs, rail pages, group headings and the brand's title are the
+    // host's: their count, text and width pass. The first of each role is still styled like the reference's.
 
     it("fails when a host restyles its first crumb (padding, colour)", async () => {
       if (skip(b)) return;
@@ -468,9 +476,25 @@ for (const b of BROWSERS)
         },
       ],
       [
-        "the search's placeholder text",
+        // Issue 303: a long name gives way in the left part; the search
+        // and the kit's right-side items stay where they are.
+        "a 54-character project name",
         () => {
-          document.querySelector(".den-search-ph")!.textContent = "Search…";
+          const v = document.querySelector("#ws-pill .den-vn")!;
+          v.textContent =
+            "The Quarterly Planning Project With A Very Long Name 12";
+        },
+      ],
+      [
+        "a 54-character company and project name",
+        () => {
+          const o = document.querySelector(
+            '[data-nav-role="crumb"] .den-org-name, [data-nav-role="crumb"] .den-vn',
+          )!;
+          o.textContent =
+            "The North Country Cooperative of Gardeners and Growers";
+          document.querySelector("#ws-pill .den-vn")!.textContent =
+            "The Quarterly Planning Project With A Very Long Name 12";
         },
       ],
       [
@@ -480,16 +504,25 @@ for (const b of BROWSERS)
         },
       ],
     ];
-    it("passes on host content at 390: the search's name, the account entry's words", async () => {
+    it("passes on host content at 390: the account entry's words", async () => {
       if (skip(b)) return;
       const d = await diffAfter(b, 390, 844, () => {
-        document
-          .querySelector("#den-search")!
-          .setAttribute("aria-label", "Search…");
         const who = document.querySelector("[data-den-account] .den-lbl");
         if (who) who.textContent = "A person · Owner";
       });
       expect(formatNavDiffs(d)).toBe("");
+    }, 60_000);
+
+    it("fails at 390 when a host names the search its own way", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, 390, 844, () => {
+        document
+          .querySelector("#den-search")!
+          .setAttribute("aria-label", "Find anything");
+      });
+      expect(formatNavDiffs(d)).toBe(
+        "top #den-search name: Search → Find anything",
+      );
     }, 60_000);
 
     for (const [what, change] of HOST_PASSES)

@@ -87,6 +87,12 @@ export declare const NAV_BROWSER_IMAGE: string;
 export declare const FINGERPRINT_TEXT: string;
 /** The theme the reference was taken in ("den" 2.0.1): every parity run uses it. */
 export declare const NAV_THEME: NavTheme;
+/**
+ * issue 303: classes of the top bar's pinned elements (the search, Report,
+ * the bell, the version chip, ◐ ▾): compared at the reference's x and
+ * width, with no host-content allowance.
+ */
+export declare const PINNED_CLASSES: readonly string[];
 export declare function collectNav(
   page: NavPage,
   opts?: { image?: string; theme?: NavTheme },

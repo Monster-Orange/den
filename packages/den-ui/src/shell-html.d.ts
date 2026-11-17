@@ -137,10 +137,8 @@ export interface ScopeOptions {
   /** The host's HTML at the group's end. */
   after?: string;
 }
+/** The search's placeholder and name are the kit's words ("Search…"). */
 export interface SearchOptions {
-  placeholder?: string;
-  /** Its name (default the placeholder). */
-  label?: string;
   id?: string;
   /** false: no ⌘K inside, and no aria-keyshortcuts. */
   shortcut?: boolean;

@@ -251,23 +251,38 @@ for (const name of BROWSERS)
         // The kit's order, top level and the right group.
         const tops = live.filter((x) => x.split("/").length === 3);
         expect(tops.map((x) => x.replace(/^\/header[^/]*\//, ""))).toEqual([
+          "div.den-left",
+          "button#den-search.den-search",
+          "div.den-chips",
+        ]);
+        // The left part (issue 303): ☰, the brand, the crumbs.
+        const left = live
+          .filter((x) => /\/div\.den-left\/[^/]+$/.test(x))
+          .map((x) => x.split("/").pop());
+        expect(left).toEqual([
           "button#den-menu-btn.den-ib.den-menu-btn",
           "a.den-brand",
           "div.den-scope",
-          "button#den-search.den-search",
-          "div.den-chips",
         ]);
         const chips = live
           .filter((x) => /\/div\.den-chips\/[^/]+$/.test(x))
           .map((x) => x.split("/").pop());
         expect(chips).toEqual([
-          "button#den-status.den-chip",
-          "button#den-runs.den-chip",
-          "button#den-lock.den-chip",
+          "div.den-end",
           "button.den-rb.den-rb-top",
           "button#den-bell.den-bell.den-ib",
           "button#version-pill.den-ib.v-pill",
           "span#den-user.den-user",
+        ]);
+        // The host's chips, in the kit's group for them.
+        expect(
+          live
+            .filter((x) => /\/div\.den-end\/[^/]+$/.test(x))
+            .map((x) => x.split("/").pop()),
+        ).toEqual([
+          "button#den-status.den-chip",
+          "button#den-runs.den-chip",
+          "button#den-lock.den-chip",
         ]);
       } finally {
         await p.context().close();

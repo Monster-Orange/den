@@ -277,7 +277,15 @@ export function markHtml(mark) {
   );
 }
 
-/** The top bar (header.den-top). */
+/** Where the kit's search starts in a `start` slot (searchHtml's markup). */
+const SEARCH_AT = '<button type="button" class="den-search"';
+
+/**
+ * The top bar (header.den-top), in three parts (issue 303): the left part
+ * (☰, the brand, and what `start` holds before the search: the crumbs),
+ * the search in a fixed slot, and the chips (the host's `end`, then
+ * Report, the bell, the version and ◐ ▾, pinned to the right edge).
+ */
 export function topBarHtml({
   product = {},
   lang,
@@ -285,8 +293,13 @@ export function topBarHtml({
   report = true,
 } = {}) {
   const name = product.name ?? "";
+  const start = slots.start || "";
+  const at = start.indexOf(SEARCH_AT);
+  const before = at < 0 ? start : start.slice(0, at);
+  const search = at < 0 ? "" : start.slice(at);
   return (
     '<header class="den-top">' +
+    '<div class="den-left">' +
     '<button class="den-ib den-menu-btn" id="den-menu-btn" aria-label="' +
     esc(kitT(lang, "kit.menu")) +
     '" aria-expanded="false" aria-controls="den-rail">☰</button>' +
@@ -300,9 +313,11 @@ export function topBarHtml({
     '<span class="den-title" data-nav-role="brand-title">' +
     esc(name) +
     "</span></a>" +
-    (slots.start || "") +
+    before +
+    "</div>" +
+    search +
     '<div class="den-chips">' +
-    (slots.end || "") +
+    (slots.end ? '<div class="den-end">' + slots.end + "</div>" : "") +
     (report === false ? "" : reportButtonHtml({ inTop: true, lang })) +
     (slots.bell || "") +
     versionChipHtml({ version: product.version, lang }) +
@@ -502,7 +517,12 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
     '"><span class="den-sep" aria-hidden="true">/</span>';
   // Each separator after a crumb comes and goes with it: host content.
   list.forEach((c, i) => {
-    html += scopeCrumbHtml(c, lang);
+    // The last crumb is kept whole when the crumbs give way (issue 303).
+    const last = i === list.length - 1;
+    html += scopeCrumbHtml(
+      last ? { ...c, cls: (c.cls ? c.cls + " " : "") + "den-last" } : c,
+      lang,
+    );
     if (i < list.length - 1)
       html +=
         '<span class="den-sep den-' +
@@ -515,25 +535,24 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
 }
 
 /**
- * The search field: the placeholder, then ⌘K inside it, as a button (the
- * host's palette or page opens on it: hydrateSearch).
- *   searchHtml({ placeholder?, label?, id?, shortcut?, lang })
- * `label`: its name (default the kit's "Search", in the page's language;
- * the host's own words are host content for the nav inventory);
+ * The search field: the kit's placeholder ("Search…"), then ⌘K inside it,
+ * as a button (the host's palette or page opens on it: hydrateSearch).
+ *   searchHtml({ id?, shortcut?, lang })
+ * Its placeholder and its name ("Search") are the kit's words, in the
+ * page's language: one search in every product, so a host can't set them.
  * `shortcut: false`: no ⌘K.
  */
-export function searchHtml({ placeholder, label, id, shortcut, lang } = {}) {
-  const ph = placeholder ?? kitT(lang, "kit.search.ph");
+export function searchHtml({ id, shortcut, lang } = {}) {
   const keys = shortcut !== false;
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
-    '" aria-haspopup="dialog" data-nav-name="host"' +
+    '" aria-haspopup="dialog"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
-    esc(label ?? kitT(lang, "kit.search.label")) +
-    '"><span class="den-search-ph" data-nav-role="search-ph">' +
-    esc(ph) +
+    esc(kitT(lang, "kit.search.label")) +
+    '"><span class="den-search-ph">' +
+    esc(kitT(lang, "kit.search.ph")) +
     "</span>" +
     (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +
     '<span class="den-search-ic" aria-hidden="true">⌕</span></button>'

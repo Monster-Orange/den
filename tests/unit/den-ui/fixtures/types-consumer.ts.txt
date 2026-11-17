@@ -84,7 +84,7 @@ const crumbs: Crumb[] = [
 ];
 const bar: string =
   scopeHtml({ crumbs, lang: "en" }) +
-  searchHtml({ placeholder: "Find…" }) +
+  searchHtml({ shortcut: true }) +
   bellButtonHtml({ count: 3 }) +
   bellPanelHtml({ items: [{ text: "Done", href: "#d", time: "now" }] }) +
   accountHtml({ label: "Signed in", detail: "this device", href: "/me" });

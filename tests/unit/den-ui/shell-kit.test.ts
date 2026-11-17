@@ -124,16 +124,26 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(html).toContain(ja["kit.report.word"]);
   });
 
-  it("the search's name is a host option, with the kit's own words by default (en, es, ja)", () => {
+  it("the search's placeholder and name are the kit's words, in en, es and ja; a host can't change them", () => {
     const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
-    expect(label(searchHtml({}))).toBe("Search");
-    expect(label(searchHtml({ lang: "es" }))).toBe("Buscar");
-    expect(label(searchHtml({ lang: "ja" }))).toBe("検索");
-    // A placeholder alone does not name the field: the name is its own option.
-    expect(label(searchHtml({ placeholder: "Find anything…" }))).toBe("Search");
-    expect(label(searchHtml({ label: "Search pages" }))).toBe("Search pages");
-    // Its name is the host's words: the nav inventory doesn't compare it.
-    expect(searchHtml({})).toContain(' data-nav-name="host"');
+    const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+    for (const [lang, word, name] of [
+      ["en", "Search…", "Search"],
+      ["es", "Buscar…", "Buscar"],
+      ["ja", "検索…", "検索"],
+    ] as const) {
+      // A host's own words are ignored: one search in every product.
+      const h = searchHtml({
+        lang,
+        placeholder: "Find anything…",
+        label: "Search pages",
+      } as Parameters<typeof searchHtml>[0]);
+      expect(ph(h)).toBe(word);
+      expect(label(h)).toBe(name);
+    }
+    // They are the kit's words: the nav inventory compares them.
+    expect(searchHtml({})).not.toContain("data-nav-name");
+    expect(searchHtml({})).not.toContain("data-nav-role");
   });
 
   it("the account entry's words are host content (data-nav-role account-name)", () => {

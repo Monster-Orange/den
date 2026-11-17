@@ -258,11 +258,11 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   that much, never by anything else.
 - Host content: the kit stamps `data-nav-role` on what each host fills
   with its own words: each scope crumb (`crumb`) and the separator after
-  it (`crumb-sep`), the brand's title (`brand-title`), the search's
-  placeholder (`search-ph`), each rail group (`rail-group`), its heading
-  (`group`) and its pages (`page`), and the account entry's words
-  (`account-name`). The search's name is the host's too
-  (`data-nav-name="host"`: its name is not compared). Their count, keys, ids, text and
+  it (`crumb-sep`), the brand's title (`brand-title`), each rail group
+  (`rail-group`), its heading (`group`) and its pages (`page`), and the
+  account entry's words (`account-name`). An element with
+  `data-nav-name="host"` holds a name that is the host's (not compared).
+  The search's placeholder and name are the kit's, and compared. Their count, keys, ids, text and
   width are never compared, on either side. The first of each role is
   compared with the other side's first, and what it holds by key, on
   every computed style and on height. Their size may move what follows by
@@ -345,6 +345,40 @@ browser test, on the image (Den's real server on the demo distribution,
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.7.1
+
+The top bar's search sits in the same place in every product (issue 303).
+
+- **Three parts.** The bar is a grid: the left part (`div.den-left`: ☰,
+  the brand, and what `start` holds before the search, the crumbs), the
+  search, then the chips (the host's `end` in `div.den-end`, then Report,
+  the bell, the version and ◐ ▾, pinned to the right edge). The kit finds
+  its search in `start` and puts it in its slot; a host's markup is
+  unchanged.
+- **Settings** (custom properties on `.den-top`, with their defaults):
+  `--den-top-left` (444px), `--den-top-search` (304px),
+  `--den-top-right-min` (280px), and under 720px `--den-top-left-md`
+  (200px) and, under 480px, `--den-top-left-sm` (62px: ☰ and the mark).
+  At 1280px the search is at x 464, 304 wide; on a phone at x 82.
+- **Giving way.** Long words never move the search. The crumbs give way
+  first: each crumb gets an equal share until it is whole, so a short one
+  keeps its words and a long one ends in "…"; the last crumb is kept
+  whole. Then the install name ends in "…". Under about 1100px the
+  host's chips give way (their words end in "…"; the kit's buttons keep
+  their size). When even the kit's buttons would not fit, the left part
+  gives way and the search moves left, the same in every product.
+- **A gap after ⌕**: 8px between the search and the chips, and 8px more
+  before the first chip.
+- **The search's words** are the kit's ("Search…", named "Search"; es,
+  ja): `searchHtml()` takes no placeholder or label.
+- **Touch** (`pointer: coarse`): every control in the bar takes a 44×44px
+  tap (an `::after` hit area, centred; the look is the same), and the
+  key hints (⌘K, ⌘⇧F, any `.den-kbd`) hide.
+- **Nav inventory**: the search, Report, the bell, the version chip and ◐
+  ▾ (`PINNED_CLASSES`) are compared at the reference's x and width: no
+  host-content shift excuses moving them. Den's references, and the
+  parity fixture and PNGs, were re-taken for this layout.
+
 ## 0.7.0
 
 No new file. One import changes, for hosts that serve a fixed list of kit files:
@@ -388,8 +422,8 @@ button)`. A crumb left out of the list draws nothing, and no separator
   opens on the field. Typing hides the links that don't hold the text, and
   "No match" shows when none do. ↓ goes to the links, Enter takes the first
   one shown, and Esc clears the text, then closes the menu.
-- **Search field**: `searchHtml({ placeholder, label?, id?, shortcut? })`,
-  for the `start` slot. It is the placeholder with ⌘K inside the field. A
+- **Search field**: `searchHtml({ id?, shortcut? })`, for the `start`
+  slot. It is the kit's placeholder ("Search…") with ⌘K inside the field. A
   click, Enter, ⌘K or Ctrl-K calls `onActivate(via)` (`"click"` or
   `"key"`) and fires `den-ui:search` on the field. The kit owns no
   palette.
@@ -458,8 +492,9 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   32px each way (`shell.css`).
 - **The brand on a phone**: below 480px the brand (its mark alone) never
   shrinks; the host's chips give way.
-- **Search name**: `searchHtml({ label })` names the field; by default
-  the kit's "Search" (en, es, ja), not the placeholder.
+- **Search words**: the placeholder ("Search…") and the field's name
+  ("Search") are the kit's, in en, es and ja. A host can't set them: one
+  search in every product.
 - **Filtered menus**: a menu with the filter field is a pop-up holding the
   field, then the `role="menu"` list (`.den-mlist`, id `<menu>-list`),
   then "No match": a menu owns only its items. The field has

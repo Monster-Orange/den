@@ -42,7 +42,7 @@
     "h": 48
    },
    "style": {
-    "display": "flex",
+    "display": "grid",
     "visibility": "visible",
     "height": "48px",
     "border-top-left-radius": "0px",
@@ -73,6 +73,61 @@
     "padding-right": "12px",
     "padding-bottom": "0px",
     "padding-left": "12px",
+    "row-gap": "normal",
+    "column-gap": "8px",
+    "color": "rgb(36, 30, 24)",
+    "opacity": "1",
+    "box-shadow": "none"
+   }
+  },
+  {
+   "key": "header.den-top > div.den-left",
+   "parent": "header.den-top",
+   "slot": "top",
+   "role": "div",
+   "tag": "div",
+   "name": "",
+   "classes": [
+    "den-left"
+   ],
+   "box": {
+    "x": 12,
+    "y": 9.08,
+    "w": 444,
+    "h": 28.84
+   },
+   "style": {
+    "display": "flex",
+    "visibility": "visible",
+    "height": "28.8438px",
+    "border-top-left-radius": "0px",
+    "border-top-right-radius": "0px",
+    "border-bottom-right-radius": "0px",
+    "border-bottom-left-radius": "0px",
+    "background-color": "rgba(0, 0, 0, 0)",
+    "border-top-width": "0px",
+    "border-top-style": "none",
+    "border-top-color": "rgb(36, 30, 24)",
+    "border-right-width": "0px",
+    "border-right-style": "none",
+    "border-right-color": "rgb(36, 30, 24)",
+    "border-bottom-width": "0px",
+    "border-bottom-style": "none",
+    "border-bottom-color": "rgb(36, 30, 24)",
+    "border-left-width": "0px",
+    "border-left-style": "none",
+    "border-left-color": "rgb(36, 30, 24)",
+    "font-size": "14px",
+    "font-weight": "400",
+    "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+    "font-style": "normal",
+    "line-height": "20.3px",
+    "letter-spacing": "normal",
+    "text-transform": "none",
+    "padding-top": "0px",
+    "padding-right": "0px",
+    "padding-bottom": "0px",
+    "padding-left": "0px",
     "row-gap": "8px",
     "column-gap": "8px",
     "color": "rgb(36, 30, 24)",
@@ -81,8 +136,8 @@
    }
   },
   {
-   "key": "header.den-top > a.den-brand",
-   "parent": "header.den-top",
+   "key": "header.den-top > div.den-left > a.den-brand",
+   "parent": "header.den-top > div.den-left",
    "slot": "top",
    "role": "link",
    "tag": "a",
@@ -137,7 +192,7 @@
   },
   {
    "key": "#den-mark",
-   "parent": "header.den-top > a.den-brand",
+   "parent": "header.den-top > div.den-left > a.den-brand",
    "slot": "top",
    "role": "span",
    "tag": "span",
@@ -245,8 +300,8 @@
    }
   },
   {
-   "key": "header.den-top > a.den-brand > span.den-title",
-   "parent": "header.den-top > a.den-brand",
+   "key": "header.den-top > div.den-left > a.den-brand > span.den-title",
+   "parent": "header.den-top > div.den-left > a.den-brand",
    "slot": "top",
    "role": "span",
    "tag": "span",
@@ -300,13 +355,13 @@
    },
    "host": {
     "role": "brand-title",
-    "key": "header.den-top > a.den-brand > span.den-title",
+    "key": "header.den-top > div.den-left > a.den-brand > span.den-title",
     "fit": 41
    }
   },
   {
-   "key": "header.den-top > div.den-scope",
-   "parent": "header.den-top",
+   "key": "header.den-top > div.den-left > div.den-scope",
+   "parent": "header.den-top > div.den-left",
    "slot": "top",
    "role": "group",
    "tag": "div",
@@ -317,11 +372,11 @@
    "box": {
     "x": 91,
     "y": 9.08,
-    "w": 365.23,
+    "w": 365,
     "h": 28.84
    },
    "style": {
-    "display": "flex",
+    "display": "grid",
     "visibility": "visible",
     "height": "28.8438px",
     "border-top-left-radius": "0px",
@@ -352,7 +407,7 @@
     "padding-right": "0px",
     "padding-bottom": "0px",
     "padding-left": "0px",
-    "row-gap": "2px",
+    "row-gap": "normal",
     "column-gap": "2px",
     "color": "rgb(36, 30, 24)",
     "opacity": "1",
@@ -360,8 +415,8 @@
    }
   },
   {
-   "key": "header.den-top > div.den-scope > span.den-sep[1]",
-   "parent": "header.den-top > div.den-scope",
+   "key": "header.den-top > div.den-left > div.den-scope > span.den-sep[1]",
+   "parent": "header.den-top > div.den-left > div.den-scope",
    "slot": "top",
    "role": "span",
    "tag": "span",
@@ -416,7 +471,7 @@
   },
   {
    "key": "#org-crumb",
-   "parent": "header.den-top > div.den-scope",
+   "parent": "header.den-top > div.den-left > div.den-scope",
    "slot": "top",
    "role": "span",
    "tag": "span",
@@ -595,8 +650,8 @@
    }
   },
   {
-   "key": "header.den-top > div.den-scope > span.den-sep[2]",
-   "parent": "header.den-top > div.den-scope",
+   "key": "header.den-top > div.den-left > div.den-scope > span.den-sep[2]",
+   "parent": "header.den-top > div.den-left > div.den-scope",
    "slot": "top",
    "role": "span",
    "tag": "span",
@@ -651,13 +706,13 @@
    },
    "host": {
     "role": "crumb-sep",
-    "key": "header.den-top > div.den-scope > span.den-sep[2]",
+    "key": "header.den-top > div.den-left > div.den-scope > span.den-sep[2]",
     "fit": 7
    }
   },
   {
    "key": "#ws-pill",
-   "parent": "header.den-top > div.den-scope",
+   "parent": "header.den-top > div.den-left > div.den-scope",
    "slot": "top",
    "role": "button",
    "tag": "button",
@@ -669,7 +724,7 @@
    "box": {
     "x": 221.63,
     "y": 9.08,
-    "w": 140.63,
+    "w": 139.77,
     "h": 28.84
    },
    "style": {
@@ -713,7 +768,7 @@
    "host": {
     "role": "crumb",
     "key": "#ws-pill",
-    "fit": 140.63
+    "fit": 139.77
    }
   },
   {
@@ -788,11 +843,11 @@
    "box": {
     "x": 290.25,
     "y": 14.08,
-    "w": 63,
+    "w": 62.14,
     "h": 18.84
    },
    "style": {
-    "display": "block",
+    "display": "flex",
     "visibility": "visible",
     "height": "18.8438px",
     "border-top-left-radius": "0px",
@@ -824,7 +879,7 @@
     "padding-bottom": "0px",
     "padding-left": "0px",
     "row-gap": "normal",
-    "column-gap": "normal",
+    "column-gap": "3.64px",
     "color": "rgb(36, 30, 24)",
     "opacity": "1",
     "box-shadow": "none"
@@ -847,11 +902,11 @@
    "box": {
     "x": 290.25,
     "y": 14.08,
-    "w": 54,
+    "w": 52.52,
     "h": 18.84
    },
    "style": {
-    "display": "inline-block",
+    "display": "block",
     "visibility": "visible",
     "height": "18.8438px",
     "border-top-left-radius": "0px",
@@ -902,15 +957,15 @@
    "name": "▾",
    "classes": [],
    "box": {
-    "x": 347.25,
-    "y": 15.08,
+    "x": 346.39,
+    "y": 14.08,
     "w": 6,
-    "h": 15
+    "h": 18.84
    },
    "style": {
-    "display": "inline",
+    "display": "block",
     "visibility": "visible",
-    "height": "auto",
+    "height": "18.8438px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -951,8 +1006,8 @@
    }
   },
   {
-   "key": "header.den-top > div.den-scope > span.den-sep[3]",
-   "parent": "header.den-top > div.den-scope",
+   "key": "header.den-top > div.den-left > div.den-scope > span.den-sep[3]",
+   "parent": "header.den-top > div.den-left > div.den-scope",
    "slot": "top",
    "role": "span",
    "tag": "span",
@@ -962,7 +1017,7 @@
     "den-ws-sep"
    ],
    "box": {
-    "x": 364.25,
+    "x": 363.39,
     "y": 13.34,
     "w": 7,
     "h": 20.3
@@ -1007,25 +1062,26 @@
    },
    "host": {
     "role": "crumb-sep",
-    "key": "header.den-top > div.den-scope > span.den-sep[3]",
+    "key": "header.den-top > div.den-left > div.den-scope > span.den-sep[3]",
     "fit": 7
    }
   },
   {
    "key": "#env-btn",
-   "parent": "header.den-top > div.den-scope",
+   "parent": "header.den-top > div.den-left > div.den-scope",
    "slot": "top",
    "role": "button",
    "tag": "button",
    "name": "Env local ▾",
    "classes": [
     "den-ib",
-    "den-scope-btn"
+    "den-scope-btn",
+    "den-last"
    ],
    "box": {
-    "x": 373.25,
+    "x": 372.39,
     "y": 9.08,
-    "w": 82.98,
+    "w": 83.61,
     "h": 28.84
    },
    "style": {
@@ -1069,7 +1125,7 @@
    "host": {
     "role": "crumb",
     "key": "#env-btn",
-    "fit": 82.98
+    "fit": 83.61
    }
   },
   {
@@ -1083,7 +1139,7 @@
     "den-k"
    ],
    "box": {
-    "x": 382.25,
+    "x": 381.39,
     "y": 15.5,
     "w": 22.98,
     "h": 16
@@ -1142,13 +1198,13 @@
     "den-v"
    ],
    "box": {
-    "x": 411.23,
+    "x": 410.38,
     "y": 14.08,
-    "w": 36,
+    "w": 36.63,
     "h": 18.84
    },
    "style": {
-    "display": "block",
+    "display": "flex",
     "visibility": "visible",
     "height": "18.8438px",
     "border-top-left-radius": "0px",
@@ -1180,7 +1236,7 @@
     "padding-bottom": "0px",
     "padding-left": "0px",
     "row-gap": "normal",
-    "column-gap": "normal",
+    "column-gap": "3.64px",
     "color": "rgb(36, 30, 24)",
     "opacity": "1",
     "box-shadow": "none"
@@ -1201,15 +1257,15 @@
     "den-vn"
    ],
    "box": {
-    "x": 411.23,
-    "y": 15.08,
+    "x": 410.38,
+    "y": 14.08,
     "w": 27,
-    "h": 15
+    "h": 18.84
    },
    "style": {
-    "display": "inline",
+    "display": "block",
     "visibility": "visible",
-    "height": "auto",
+    "height": "18.8438px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -1258,15 +1314,15 @@
    "name": "▾",
    "classes": [],
    "box": {
-    "x": 441.23,
-    "y": 15.08,
+    "x": 441,
+    "y": 14.08,
     "w": 6,
-    "h": 15
+    "h": 18.84
    },
    "style": {
-    "display": "inline",
+    "display": "block",
     "visibility": "visible",
-    "height": "auto",
+    "height": "18.8438px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -1312,14 +1368,14 @@
    "slot": "top",
    "role": "button",
    "tag": "button",
-   "name": "Search pages, services, actions…",
+   "name": "Search",
    "classes": [
     "den-search"
    ],
    "box": {
-    "x": 464.23,
+    "x": 464,
     "y": 7.34,
-    "w": 335.3,
+    "w": 304,
     "h": 32.3
    },
    "style": {
@@ -1359,8 +1415,7 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
-   },
-   "hostName": true
+   }
   },
   {
    "key": "#den-search > span.den-search-ph",
@@ -1368,14 +1423,14 @@
    "slot": "top",
    "role": "span",
    "tag": "span",
-   "name": "Search pages, services, actions…",
+   "name": "Search…",
    "classes": [
     "den-search-ph"
    ],
    "box": {
-    "x": 475.23,
+    "x": 475,
     "y": 13.34,
-    "w": 259.3,
+    "w": 228,
     "h": 20.3
    },
    "style": {
@@ -1415,11 +1470,6 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
-   },
-   "host": {
-    "role": "search-ph",
-    "key": "#den-search > span.den-search-ph",
-    "fit": 211
    }
   },
   {
@@ -1431,7 +1481,7 @@
    "name": "⌘K",
    "classes": [],
    "box": {
-    "x": 742.53,
+    "x": 711,
     "y": 13.98,
     "w": 30,
     "h": 19
@@ -1486,7 +1536,7 @@
     "den-search-ic"
    ],
    "box": {
-    "x": 780.53,
+    "x": 749,
     "y": 13.34,
     "w": 8,
     "h": 20.3
@@ -1541,9 +1591,9 @@
     "den-chips"
    ],
    "box": {
-    "x": 807.53,
+    "x": 776,
     "y": 7.5,
-    "w": 460.47,
+    "w": 492,
     "h": 32
    },
    "style": {
@@ -1577,7 +1627,7 @@
     "padding-top": "0px",
     "padding-right": "0px",
     "padding-bottom": "0px",
-    "padding-left": "0px",
+    "padding-left": "8px",
     "row-gap": "4px",
     "column-gap": "4px",
     "color": "rgb(36, 30, 24)",

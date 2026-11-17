@@ -8,94 +8,58 @@
    },
    "kids": [
     {
-     "tag": "button",
-     "attrs": {
-      "class": "den-ib den-menu-btn",
-      "id": "den-menu-btn",
-      "aria-label": "Menu",
-      "aria-expanded": "false",
-      "aria-controls": "den-rail"
-     },
-     "kids": [],
-     "text": "☰"
-    },
-    {
-     "tag": "a",
-     "attrs": {
-      "class": "den-brand",
-      "href": "/",
-      "title": "Acme"
-     },
-     "kids": [
-      {
-       "tag": "span",
-       "attrs": {
-        "class": "den-mark den-mark-svg",
-        "id": "den-mark",
-        "aria-hidden": "true",
-        "data-mark": "{\"kind\":\"svg\",\"src\":\"/theme/den/mark.svg\"}",
-        "title": "Den"
-       },
-       "kids": [
-        {
-         "tag": "img",
-         "attrs": {
-          "src": "/theme/den/mark.svg",
-          "alt": "",
-          "width": "18",
-          "height": "18"
-         },
-         "kids": []
-        }
-       ]
-      },
-      {
-       "tag": "span",
-       "attrs": {
-        "class": "den-title"
-       },
-       "kids": [],
-       "text": "acme"
-      }
-     ]
-    },
-    {
      "tag": "div",
      "attrs": {
-      "class": "den-scope",
-      "role": "group",
-      "aria-label": "Scope"
+      "class": "den-left"
      },
      "kids": [
       {
-       "tag": "span",
+       "tag": "button",
        "attrs": {
-        "class": "den-sep",
-        "aria-hidden": "true"
+        "class": "den-ib den-menu-btn",
+        "id": "den-menu-btn",
+        "aria-label": "Menu",
+        "aria-expanded": "false",
+        "aria-controls": "den-rail"
        },
        "kids": [],
-       "text": "/"
+       "text": "☰"
       },
       {
-       "tag": "span",
+       "tag": "a",
        "attrs": {
-        "id": "org-crumb",
-        "class": "den-ib den-org den-opt",
-        "title": "Org: acme (acme)"
+        "class": "den-brand",
+        "href": "/",
+        "title": "Acme"
        },
        "kids": [
         {
          "tag": "span",
          "attrs": {
-          "class": "den-k"
+          "class": "den-mark den-mark-svg",
+          "id": "den-mark",
+          "aria-hidden": "true",
+          "data-mark": "{\"kind\":\"svg\",\"src\":\"/theme/den/mark.svg\"}",
+          "title": "Den"
          },
-         "kids": [],
-         "text": "Company"
+         "kids": [
+          {
+           "tag": "img",
+           "attrs": {
+            "src": "/theme/den/mark.svg",
+            "alt": "",
+            "width": "18",
+            "height": "18"
+           },
+           "kids": []
+          }
+         ]
         },
         {
          "tag": "span",
          "attrs": {
-          "class": "den-org-name"
+          "class": "den-title",
+          "data-nav-role": "brand-title"
          },
          "kids": [],
          "text": "acme"
@@ -103,130 +67,180 @@
        ]
       },
       {
-       "tag": "span",
+       "tag": "div",
        "attrs": {
-        "class": "den-sep den-org-sep",
-        "aria-hidden": "true"
-       },
-       "kids": [],
-       "text": "/"
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "id": "ws-pill",
-        "class": "den-ib den-scope-btn",
-        "data-scope": "ws",
-        "aria-haspopup": "menu",
-        "aria-expanded": "false",
-        "title": "View: what every page shows (north, south). It starts, stops and routes nothing. CLI default: north."
+        "class": "den-scope",
+        "role": "group",
+        "aria-label": "Scope"
        },
        "kids": [
         {
          "tag": "span",
          "attrs": {
-          "class": "den-k"
+          "class": "den-sep",
+          "aria-hidden": "true"
          },
          "kids": [],
-         "text": "Project"
+         "text": "/"
         },
         {
          "tag": "span",
          "attrs": {
-          "class": "den-v"
+          "id": "org-crumb",
+          "class": "den-ib den-org den-opt",
+          "data-nav-role": "crumb",
+          "title": "Org: acme (acme)"
          },
          "kids": [
           {
            "tag": "span",
            "attrs": {
-            "class": "den-vn"
+            "class": "den-k"
            },
            "kids": [],
-           "text": "All active"
+           "text": "Company"
           },
           {
            "tag": "span",
            "attrs": {
-            "aria-hidden": "true"
+            "class": "den-org-name"
            },
            "kids": [],
-           "text": "▾"
+           "text": "acme"
           }
          ]
-        }
-       ]
-      },
-      {
-       "tag": "span",
-       "attrs": {
-        "class": "den-sep den-ws-sep",
-        "aria-hidden": "true"
-       },
-       "kids": [],
-       "text": "/"
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "id": "env-btn",
-        "class": "den-ib den-scope-btn",
-        "data-scope": "env",
-        "aria-haspopup": "menu",
-        "aria-expanded": "false"
-       },
-       "kids": [
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-k"
-         },
-         "kids": [],
-         "text": "Env"
         },
         {
          "tag": "span",
          "attrs": {
-          "class": "den-v"
+          "class": "den-sep den-org-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "ws-pill",
+          "class": "den-ib den-scope-btn",
+          "data-scope": "ws",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+          "title": "View: what every page shows (north, south). It starts, stops and routes nothing. CLI default: north."
          },
          "kids": [
           {
            "tag": "span",
            "attrs": {
-            "class": "den-vn"
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Project"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "All active"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep den-ws-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "env-btn",
+          "class": "den-ib den-scope-btn den-last",
+          "data-scope": "env",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Env"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "local"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "select",
+         "attrs": {
+          "id": "env-sel",
+          "hidden": "",
+          "aria-hidden": "true",
+          "tabindex": "-1"
+         },
+         "kids": [
+          {
+           "tag": "option",
+           "attrs": {
+            "value": "local"
            },
            "kids": [],
            "text": "local"
-          },
-          {
-           "tag": "span",
-           "attrs": {
-            "aria-hidden": "true"
-           },
-           "kids": [],
-           "text": "▾"
           }
          ]
-        }
-       ]
-      },
-      {
-       "tag": "select",
-       "attrs": {
-        "id": "env-sel",
-        "hidden": "",
-        "aria-hidden": "true",
-        "tabindex": "-1"
-       },
-       "kids": [
-        {
-         "tag": "option",
-         "attrs": {
-          "value": "local"
-         },
-         "kids": [],
-         "text": "local"
         }
        ]
       }
@@ -240,7 +254,7 @@
       "id": "den-search",
       "aria-haspopup": "dialog",
       "aria-keyshortcuts": "Meta+K Control+K",
-      "aria-label": "Search pages, services, actions…"
+      "aria-label": "Search"
      },
      "kids": [
       {
@@ -249,7 +263,7 @@
         "class": "den-search-ph"
        },
        "kids": [],
-       "text": "Search pages, services, actions…"
+       "text": "Search…"
       },
       {
        "tag": "kbd",
@@ -277,92 +291,100 @@
      },
      "kids": [
       {
-       "tag": "button",
+       "tag": "div",
        "attrs": {
-        "type": "button",
-        "class": "den-chip",
-        "id": "den-status",
-        "aria-haspopup": "dialog",
-        "aria-expanded": "false",
-        "aria-busy": "false",
-        "title": "0 checked · 2 not checked"
+        "class": "den-end"
        },
        "kids": [
         {
-         "tag": "span",
+         "tag": "button",
          "attrs": {
-          "class": "den-dot off",
-          "aria-hidden": "true"
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-status",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "aria-busy": "false",
+          "title": "0 checked · 2 not checked"
          },
-         "kids": []
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n"
+           },
+           "kids": [],
+           "text": "2 not checked"
+          }
+         ]
         },
         {
-         "tag": "span",
+         "tag": "button",
          "attrs": {
-          "class": "den-n"
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-runs",
+          "aria-expanded": "false",
+          "aria-controls": "den-dock",
+          "title": "Runs",
+          "aria-label": "Runs"
          },
-         "kids": [],
-         "text": "2 not checked"
-        }
-       ]
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "class": "den-chip",
-        "id": "den-runs",
-        "aria-expanded": "false",
-        "aria-controls": "den-dock",
-        "title": "Runs",
-        "aria-label": "Runs"
-       },
-       "kids": [
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-dot off",
-          "aria-hidden": "true"
-         },
-         "kids": []
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n den-lbl-l"
+           },
+           "kids": [],
+           "text": "Runs"
+          }
+         ]
         },
         {
-         "tag": "span",
+         "tag": "button",
          "attrs": {
-          "class": "den-n den-lbl-l"
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-lock",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "hidden": ""
          },
-         "kids": [],
-         "text": "Runs"
-        }
-       ]
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "class": "den-chip",
-        "id": "den-lock",
-        "aria-haspopup": "dialog",
-        "aria-expanded": "false",
-        "hidden": ""
-       },
-       "kids": [
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-lock-ic",
-          "aria-hidden": "true"
-         },
-         "kids": [],
-         "text": "🔑"
-        },
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-lbl-l"
-         },
-         "kids": [],
-         "text": "Admin password needed"
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lock-ic",
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "🔑"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lbl-l"
+           },
+           "kids": [],
+           "text": "Admin password needed"
+          }
+         ]
         }
        ]
       },
@@ -475,7 +497,6 @@
        "attrs": {
         "class": "den-ib v-pill",
         "id": "version-pill",
-        "onclick": "openChangelog()",
         "title": "View changelog"
        },
        "kids": [
@@ -544,8 +565,8 @@
      48
     ],
     "style": {
-     "display": "flex",
-     "position": "relative",
+     "display": "grid",
+     "position": "fixed",
      "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
      "font-size": "14px",
      "font-weight": "400",
@@ -560,8 +581,8 @@
      "padding-bottom": "0px",
      "padding-left": "12px",
      "margin-top": "0px",
-     "margin-left": "-233px",
-     "gap": "8px",
+     "margin-left": "0px",
+     "gap": "normal 8px",
      "z-index": "20",
      "opacity": "1",
      "box-shadow": "none"
@@ -670,9 +691,9 @@
     "sel": ".den-chips",
     "count": 1,
     "rect": [
-     807.53,
+     776,
      7.5,
-     460.47,
+     492,
      32
     ],
     "style": {
@@ -690,7 +711,7 @@
      "padding-top": "0px",
      "padding-right": "0px",
      "padding-bottom": "0px",
-     "padding-left": "0px",
+     "padding-left": "8px",
      "margin-top": "0px",
      "margin-left": "0px",
      "gap": "4px",
@@ -905,7 +926,6 @@
    "attrs": {
     "class": "den-ib v-pill",
     "id": "version-pill",
-    "onclick": "openChangelog()",
     "title": "View changelog"
    },
    "kids": [
@@ -2370,94 +2390,58 @@
    },
    "kids": [
     {
-     "tag": "button",
-     "attrs": {
-      "class": "den-ib den-menu-btn",
-      "id": "den-menu-btn",
-      "aria-label": "Menu",
-      "aria-expanded": "false",
-      "aria-controls": "den-rail"
-     },
-     "kids": [],
-     "text": "☰"
-    },
-    {
-     "tag": "a",
-     "attrs": {
-      "class": "den-brand",
-      "href": "/",
-      "title": "Acme"
-     },
-     "kids": [
-      {
-       "tag": "span",
-       "attrs": {
-        "class": "den-mark den-mark-svg",
-        "id": "den-mark",
-        "aria-hidden": "true",
-        "data-mark": "{\"kind\":\"svg\",\"src\":\"/theme/den/mark.svg\"}",
-        "title": "Den"
-       },
-       "kids": [
-        {
-         "tag": "img",
-         "attrs": {
-          "src": "/theme/den/mark.svg",
-          "alt": "",
-          "width": "18",
-          "height": "18"
-         },
-         "kids": []
-        }
-       ]
-      },
-      {
-       "tag": "span",
-       "attrs": {
-        "class": "den-title"
-       },
-       "kids": [],
-       "text": "acme"
-      }
-     ]
-    },
-    {
      "tag": "div",
      "attrs": {
-      "class": "den-scope",
-      "role": "group",
-      "aria-label": "Scope"
+      "class": "den-left"
      },
      "kids": [
       {
-       "tag": "span",
+       "tag": "button",
        "attrs": {
-        "class": "den-sep",
-        "aria-hidden": "true"
+        "class": "den-ib den-menu-btn",
+        "id": "den-menu-btn",
+        "aria-label": "Menu",
+        "aria-expanded": "false",
+        "aria-controls": "den-rail"
        },
        "kids": [],
-       "text": "/"
+       "text": "☰"
       },
       {
-       "tag": "span",
+       "tag": "a",
        "attrs": {
-        "id": "org-crumb",
-        "class": "den-ib den-org den-opt",
-        "title": "Org: acme (acme)"
+        "class": "den-brand",
+        "href": "/",
+        "title": "Acme"
        },
        "kids": [
         {
          "tag": "span",
          "attrs": {
-          "class": "den-k"
+          "class": "den-mark den-mark-svg",
+          "id": "den-mark",
+          "aria-hidden": "true",
+          "data-mark": "{\"kind\":\"svg\",\"src\":\"/theme/den/mark.svg\"}",
+          "title": "Den"
          },
-         "kids": [],
-         "text": "Company"
+         "kids": [
+          {
+           "tag": "img",
+           "attrs": {
+            "src": "/theme/den/mark.svg",
+            "alt": "",
+            "width": "18",
+            "height": "18"
+           },
+           "kids": []
+          }
+         ]
         },
         {
          "tag": "span",
          "attrs": {
-          "class": "den-org-name"
+          "class": "den-title",
+          "data-nav-role": "brand-title"
          },
          "kids": [],
          "text": "acme"
@@ -2465,130 +2449,180 @@
        ]
       },
       {
-       "tag": "span",
+       "tag": "div",
        "attrs": {
-        "class": "den-sep den-org-sep",
-        "aria-hidden": "true"
-       },
-       "kids": [],
-       "text": "/"
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "id": "ws-pill",
-        "class": "den-ib den-scope-btn",
-        "data-scope": "ws",
-        "aria-haspopup": "menu",
-        "aria-expanded": "false",
-        "title": "View: what every page shows (north, south). It starts, stops and routes nothing. CLI default: north."
+        "class": "den-scope",
+        "role": "group",
+        "aria-label": "Scope"
        },
        "kids": [
         {
          "tag": "span",
          "attrs": {
-          "class": "den-k"
+          "class": "den-sep",
+          "aria-hidden": "true"
          },
          "kids": [],
-         "text": "Project"
+         "text": "/"
         },
         {
          "tag": "span",
          "attrs": {
-          "class": "den-v"
+          "id": "org-crumb",
+          "class": "den-ib den-org den-opt",
+          "data-nav-role": "crumb",
+          "title": "Org: acme (acme)"
          },
          "kids": [
           {
            "tag": "span",
            "attrs": {
-            "class": "den-vn"
+            "class": "den-k"
            },
            "kids": [],
-           "text": "All active"
+           "text": "Company"
           },
           {
            "tag": "span",
            "attrs": {
-            "aria-hidden": "true"
+            "class": "den-org-name"
            },
            "kids": [],
-           "text": "▾"
+           "text": "acme"
           }
          ]
-        }
-       ]
-      },
-      {
-       "tag": "span",
-       "attrs": {
-        "class": "den-sep den-ws-sep",
-        "aria-hidden": "true"
-       },
-       "kids": [],
-       "text": "/"
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "id": "env-btn",
-        "class": "den-ib den-scope-btn",
-        "data-scope": "env",
-        "aria-haspopup": "menu",
-        "aria-expanded": "false"
-       },
-       "kids": [
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-k"
-         },
-         "kids": [],
-         "text": "Env"
         },
         {
          "tag": "span",
          "attrs": {
-          "class": "den-v"
+          "class": "den-sep den-org-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "ws-pill",
+          "class": "den-ib den-scope-btn",
+          "data-scope": "ws",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+          "title": "View: what every page shows (north, south). It starts, stops and routes nothing. CLI default: north."
          },
          "kids": [
           {
            "tag": "span",
            "attrs": {
-            "class": "den-vn"
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Project"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "All active"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep den-ws-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "env-btn",
+          "class": "den-ib den-scope-btn den-last",
+          "data-scope": "env",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Env"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "local"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "select",
+         "attrs": {
+          "id": "env-sel",
+          "hidden": "",
+          "aria-hidden": "true",
+          "tabindex": "-1"
+         },
+         "kids": [
+          {
+           "tag": "option",
+           "attrs": {
+            "value": "local"
            },
            "kids": [],
            "text": "local"
-          },
-          {
-           "tag": "span",
-           "attrs": {
-            "aria-hidden": "true"
-           },
-           "kids": [],
-           "text": "▾"
           }
          ]
-        }
-       ]
-      },
-      {
-       "tag": "select",
-       "attrs": {
-        "id": "env-sel",
-        "hidden": "",
-        "aria-hidden": "true",
-        "tabindex": "-1"
-       },
-       "kids": [
-        {
-         "tag": "option",
-         "attrs": {
-          "value": "local"
-         },
-         "kids": [],
-         "text": "local"
         }
        ]
       }
@@ -2602,7 +2636,7 @@
       "id": "den-search",
       "aria-haspopup": "dialog",
       "aria-keyshortcuts": "Meta+K Control+K",
-      "aria-label": "Search pages, services, actions…"
+      "aria-label": "Search"
      },
      "kids": [
       {
@@ -2611,7 +2645,7 @@
         "class": "den-search-ph"
        },
        "kids": [],
-       "text": "Search pages, services, actions…"
+       "text": "Search…"
       },
       {
        "tag": "kbd",
@@ -2639,92 +2673,100 @@
      },
      "kids": [
       {
-       "tag": "button",
+       "tag": "div",
        "attrs": {
-        "type": "button",
-        "class": "den-chip",
-        "id": "den-status",
-        "aria-haspopup": "dialog",
-        "aria-expanded": "false",
-        "aria-busy": "false",
-        "title": "0 checked · 2 not checked"
+        "class": "den-end"
        },
        "kids": [
         {
-         "tag": "span",
+         "tag": "button",
          "attrs": {
-          "class": "den-dot off",
-          "aria-hidden": "true"
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-status",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "aria-busy": "false",
+          "title": "0 checked · 2 not checked"
          },
-         "kids": []
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n"
+           },
+           "kids": [],
+           "text": "2 not checked"
+          }
+         ]
         },
         {
-         "tag": "span",
+         "tag": "button",
          "attrs": {
-          "class": "den-n"
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-runs",
+          "aria-expanded": "false",
+          "aria-controls": "den-dock",
+          "title": "Runs",
+          "aria-label": "Runs"
          },
-         "kids": [],
-         "text": "2 not checked"
-        }
-       ]
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "class": "den-chip",
-        "id": "den-runs",
-        "aria-expanded": "false",
-        "aria-controls": "den-dock",
-        "title": "Runs",
-        "aria-label": "Runs"
-       },
-       "kids": [
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-dot off",
-          "aria-hidden": "true"
-         },
-         "kids": []
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n den-lbl-l"
+           },
+           "kids": [],
+           "text": "Runs"
+          }
+         ]
         },
         {
-         "tag": "span",
+         "tag": "button",
          "attrs": {
-          "class": "den-n den-lbl-l"
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-lock",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "hidden": ""
          },
-         "kids": [],
-         "text": "Runs"
-        }
-       ]
-      },
-      {
-       "tag": "button",
-       "attrs": {
-        "type": "button",
-        "class": "den-chip",
-        "id": "den-lock",
-        "aria-haspopup": "dialog",
-        "aria-expanded": "false",
-        "hidden": ""
-       },
-       "kids": [
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-lock-ic",
-          "aria-hidden": "true"
-         },
-         "kids": [],
-         "text": "🔑"
-        },
-        {
-         "tag": "span",
-         "attrs": {
-          "class": "den-lbl-l"
-         },
-         "kids": [],
-         "text": "Admin password needed"
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lock-ic",
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "🔑"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lbl-l"
+           },
+           "kids": [],
+           "text": "Admin password needed"
+          }
+         ]
         }
        ]
       },
@@ -2837,7 +2879,6 @@
        "attrs": {
         "class": "den-ib v-pill",
         "id": "version-pill",
-        "onclick": "openChangelog()",
         "title": "View changelog"
        },
        "kids": [
@@ -2906,8 +2947,8 @@
      48
     ],
     "style": {
-     "display": "flex",
-     "position": "relative",
+     "display": "grid",
+     "position": "fixed",
      "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
      "font-size": "14px",
      "font-weight": "400",
@@ -2923,7 +2964,7 @@
      "padding-left": "12px",
      "margin-top": "0px",
      "margin-left": "0px",
-     "gap": "8px",
+     "gap": "normal 8px",
      "z-index": "20",
      "opacity": "1",
      "box-shadow": "none"
@@ -3065,7 +3106,7 @@
     "sel": ".den-rb-top",
     "count": 1,
     "rect": [
-     223,
+     221,
      7.5,
      83,
      32
@@ -3098,9 +3139,9 @@
     "sel": "#den-bell",
     "count": 1,
     "rect": [
-     310,
+     308,
      7.5,
-     32,
+     34,
      32
     ],
     "style": {
@@ -3267,7 +3308,6 @@
    "attrs": {
     "class": "den-ib v-pill",
     "id": "version-pill",
-    "onclick": "openChangelog()",
     "title": "View changelog"
    },
    "kids": [

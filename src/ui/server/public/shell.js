@@ -4322,7 +4322,7 @@
         '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>',
     }) +
     // The ⌘K search field (R5), the kit's; ⌘K opens the palette (topbar.js).
-    DUI.searchHtml({ placeholder: t("search.ph"), label: t("search.ph") });
+    DUI.searchHtml({ lang: lang });
   var slotEnd =
     '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
     '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
@@ -7725,7 +7725,10 @@
     "@media (max-width: 480px) { #den-runs { display: none; } }",
     // …and the status chip's words shorten (…) rather than push the page
     // sideways, whatever they say.
-    "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } #den-status .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }",
+    // The kit's chips give way under 1100px (issue 303): Den's chip words
+    // end in … when they do.
+    ".den-top .den-chip .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
     // D27: Visit is a link styled as a button.

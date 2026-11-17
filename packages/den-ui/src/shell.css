@@ -61,9 +61,26 @@ body.den-has-shell > #den-content {
   top: 8px;
 }
 .den-top {
-  display: flex;
+  /* issue 303: three parts. The left part (☰, the brand, the crumbs) and
+     the search have set widths, so the search sits at the same x and
+     width in every product whatever the host's words; the chips take the
+     rest, pinned to the right edge. The left part gives way only when the
+     kit's own buttons would not fit (--den-top-right-min). Settings:
+     --den-top-left (444px), --den-top-search (304px),
+     --den-top-right-min (280px). */
+  display: grid;
+  grid-template-columns:
+    minmax(
+      0,
+      min(
+        var(--den-top-left, 444px),
+        100% - var(--den-top-search, 304px) - var(--den-top-right-min, 280px) -
+          16px
+      )
+    )
+    var(--den-top-search, 304px) minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
   height: var(--den-top-h);
   box-sizing: border-box;
   padding: 0 12px;
@@ -100,19 +117,31 @@ body.den-has-shell > #den-content {
   background: var(--bar, none);
   pointer-events: none;
 }
+.den-left {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* The crumbs give way first: they shrink before the brand does. */
 .den-brand {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--text);
   text-decoration: none;
-  flex-shrink: 0;
+  flex: 0 0.001 auto;
+  min-width: 0;
   white-space: nowrap;
 }
 .den-title {
   font: 600 15px var(--display);
   margin: 0;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* The mark's layout (0.7.0, from Den's own sheet): a centred box its
    image fills, whatever the host's mark is. */
@@ -190,10 +219,41 @@ body.den-has-shell > #den-content {
   display: none;
 }
 .den-chips {
+  grid-column: 3;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
-  flex-shrink: 0;
+  min-width: 0;
+  /* A clear gap after the search's ⌕. */
+  padding-left: 8px;
+}
+/* The kit's own buttons keep their size; the host's chips give way. */
+.den-chips > * {
+  flex: none;
+}
+.den-end {
+  display: contents;
+}
+/* A host chip gives way: its last part (its words, in a span) ends in
+   "…". */
+.den-end > * {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.den-end > * > :last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media not (pointer: coarse) {
+  .den-end > * {
+    overflow: hidden;
+  }
 }
 .den-user {
   display: contents;
@@ -615,12 +675,21 @@ body.den-has-shell .den-upd {
 /* The scope crumbs: / KEY value ▾ / … The search gives way first: the
    crumbs keep their parts whole (each value is capped), so they never run
    into one another. */
+/* The crumbs (issue 303): each crumb a column of minmax(auto, max-content)
+   whose least width is 0 (min-width: 0), so the room there is goes to
+   every crumb alike until each is whole: a short crumb keeps its words, a
+   long one ends in an ellipsis, and the last crumb is kept whole. They
+   give way before the brand. */
 .den-scope {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(auto, max-content);
   align-items: center;
-  gap: 2px;
-  min-width: 0;
-  flex-shrink: 0;
+  column-gap: 2px;
+  /* Never narrower than what its crumbs can give: past that, the brand
+     gives way. */
+  min-width: min-content;
+  flex: 0 999 auto;
   position: relative;
 }
 .den-sep {
@@ -633,6 +702,38 @@ body.den-has-shell .den-upd {
   color: var(--text);
   font-size: 13px;
   min-width: 0;
+}
+/* The last crumb's least width is its whole self: it never gives way. */
+.den-scope .den-ib.den-last {
+  min-width: auto;
+}
+.den-scope .den-ib > * {
+  flex: none;
+}
+/* The value gives way (its ▾ stays): a static crumb's value, or a menu
+   crumb's value box and the name in it. */
+.den-scope .den-ib > :last-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.den-scope .den-v {
+  display: inline-flex;
+  align-items: baseline;
+  /* The space between the value and its ▾. */
+  column-gap: 0.28em;
+}
+.den-scope .den-v > .den-vn {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.den-scope .den-v > :not(.den-vn) {
+  flex: none;
 }
 .den-k {
   font: 11px var(--mono);
@@ -656,9 +757,8 @@ body.den-has-shell .den-upd {
 /* The search field, ⌘K inside it. Its sizes are content-box (a page may
    reset everything to border-box). */
 .den-search {
-  flex: 1 1 260px;
-  max-width: 420px;
-  margin: 0 auto;
+  grid-column: 2;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -824,12 +924,23 @@ body.den-has-shell .den-upd {
   }
 }
 @media (max-width: 720px) {
+  /* The search is its icon, in a slot after the brand: the same x in
+     every product (--den-top-left-md, 200px; on a phone
+     --den-top-left-sm, 62px: ☰ and the mark). */
+  .den-top {
+    grid-template-columns: minmax(0, var(--den-top-left-md, 200px)) auto minmax(
+        0,
+        1fr
+      );
+  }
+  .den-chips {
+    padding-left: 0;
+  }
   .den-scope {
     display: none;
   }
   .den-search {
-    flex: 0 0 auto;
-    margin: 0 0 0 auto;
+    margin: 0;
   }
   .den-search-ph,
   .den-search kbd {
@@ -839,6 +950,9 @@ body.den-has-shell .den-upd {
 
 /* A phone's tap targets: every top-bar button 32px or more each way. */
 @media (max-width: 479.98px) {
+  .den-top {
+    grid-template-columns: var(--den-top-left-sm, 62px) auto minmax(0, 1fr);
+  }
   .den-top button {
     min-height: 32px;
     min-width: 32px;
@@ -1005,6 +1119,32 @@ body.den-has-shell .den-upd {
 }
 @media (max-width: 720px) {
   .den-top .stale-lbl {
+    display: none;
+  }
+}
+
+/* Touch (issue 303): every control in the top bar takes a 44×44px tap,
+   through a hit area centred on it (the look is the same), and the key
+   hints, which a touch screen has no keys for, hide. */
+@media (pointer: coarse) {
+  .den-top button,
+  .den-top a[href] {
+    position: relative;
+  }
+  .den-top button::after,
+  .den-top a[href]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .den-top kbd,
+  .den-top .den-kbd {
     display: none;
   }
 }

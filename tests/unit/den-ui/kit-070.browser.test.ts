@@ -5,8 +5,9 @@
  * 1. The scope crumbs: small-caps keys (COMPANY / PROJECT / ENV), each
  *    with its value, and a ▾ trigger when it has a menu. Any crumb may be
  *    left out.
- * 2. The search field with ⌘K inside it. The host gives the placeholder
- *    and what activating it does; the kit owns no palette.
+ * 2. The search field with ⌘K inside it. The kit owns its words
+ *    ("Search…"); the host gives what activating it does; the kit owns no
+ *    palette.
  * 3. The bell: the button, its count badge, and the panel's shell (title,
  *    rows or the empty state). The kit owns the markup, focus, Esc and
  *    close; focus goes back to the bell, in WebKit too.
@@ -103,18 +104,27 @@ if (!q.has("bare")) {
         { label: "Garden", href: "#garden", current: true },
         { label: "Orchard", href: "#orchard" },
       ];
+  // ?long: a host's long names (issue 303): 54+ characters each.
+  const long = q.has("long");
   const crumbs = [
-    { key: "org", label: "Company", value: "North Co" },
-    { key: "ws", label: "Project", value: "Garden", menu: projects,
+    { key: "org", label: "Company", value: long ? "The North Country Cooperative of Gardeners and Growers" : "North Co" },
+    { key: "ws", label: "Project", value: long ? "The Quarterly Planning Project With A Very Long Name Too" : "Garden", menu: projects,
       ...(q.has("filter") ? { filter: Number(q.get("filter")) } : {}),
       ...(q.has("nofilter") ? { filter: false } : {}) },
   ];
   if (!q.has("noenv")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
   model.slots = {
-    start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml({ placeholder: "Find anything…" }),
+    start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml(),
     bell: DenUI.bellButtonHtml({ count: Number(q.get("count") ?? 2) }),
     account: DenUI.appearanceButtonHtml(),
   };
+  // ?chips: a host's own chips in the end slot (issue 303).
+  if (q.has("chips"))
+    model.slots.end =
+      '<button type="button" class="den-chip" id="host-a"><span>12 of 12 services up</span></button>' +
+      '<button type="button" class="den-chip" id="host-b"><span>Runs</span></button>';
+  // ?longname: a long install name.
+  if (q.has("longname")) model.product = { ...model.product, name: "A Very Long Install Name For This Place And Then Some" };
   model.settings = { href: "#settings" };
   model.account = q.has("act")
     ? { label: "Signed in", detail: "this device", action: true }
@@ -190,9 +200,15 @@ window.ready = true;
 /** What reached /out (a sign-out form's post): "METHOD body". */
 const posts: string[] = [];
 
-async function open(b: Browser, query = ""): Promise<Page> {
+async function open(
+  b: Browser,
+  query = "",
+  width = 1280,
+  touch = false,
+): Promise<Page> {
   const ctx = await b.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width, height: 800 },
+    ...(touch ? { hasTouch: true, isMobile: true } : {}),
     reducedMotion: "reduce",
   });
   const p = await ctx.newPage();
@@ -272,7 +288,13 @@ for (const engine of ["chromium", "webkit"]) {
           ".den-rail [data-den-account]",
         ) as HTMLAnchorElement | null;
         // The search sits after the scope, both after the brand.
-        const order = [...top.children].map((e) => e.className.split(" ")[0]);
+        // In reading order: the left part's pieces, then the search, then
+        // the chips (issue 303: ☰, the brand and the crumbs sit in .den-left).
+        const order = [
+          ...top.querySelectorAll(
+            ":scope > .den-left > *, :scope > :not(.den-left)",
+          ),
+        ].map((e) => e.className.split(" ")[0]);
         return {
           group: scope?.getAttribute("role"),
           groupLabel: scope?.getAttribute("aria-label"),
@@ -336,11 +358,11 @@ for (const engine of ["chromium", "webkit"]) {
       expect(got.keyCase).toBe("uppercase");
       expect(got.search).toEqual({
         tag: "button",
-        ph: "Find anything…",
+        ph: "Search…",
         kbd: "⌘K",
         kbdInside: true,
         shortcuts: "Meta+K Control+K",
-        // No label given: the kit's own "Search", not the placeholder.
+        // The kit's own words: a host can't set them.
         name: "Search",
       });
       expect(got.bell).toEqual({
@@ -1255,6 +1277,192 @@ for (const engine of ["chromium", "webkit"]) {
         ),
       ).resolves.toEqual([["closed"], ["host", "Gamma"]]);
       await p.context().close();
+    });
+  });
+
+  // issue 303: the search sits in a fixed slot, the same in every product,
+  // whatever the host's words or chips; Report, the bell, the version and
+  // ◐ stay pinned to the right edge; the crumbs give way first (the last
+  // one kept), then the install name; nothing overflows the bar.
+  describe(`issue 303 the search's fixed slot (${engine})`, () => {
+    const measure = (p: Page) =>
+      p.evaluate(() => {
+        const r = (sel: string) => {
+          const e = document.querySelector(sel);
+          if (!e) return null;
+          const b = e.getBoundingClientRect();
+          return [Math.round(b.x * 10) / 10, Math.round(b.width * 10) / 10];
+        };
+        const top = document.querySelector<HTMLElement>(".den-top")!;
+        const crumbs = [
+          ...top.querySelectorAll<HTMLElement>(".den-scope .den-vn"),
+        ].filter((e) => e.getClientRects().length);
+        const last = crumbs[crumbs.length - 1];
+        const longCut = crumbs.some((e) => e.scrollWidth > e.clientWidth + 1);
+        const ic = top.querySelector(".den-search-ic")!.getBoundingClientRect();
+        const first = top.querySelector(
+          ".den-chips > *:not(.den-end), .den-end > *",
+        );
+        const chipX = [...top.querySelectorAll<HTMLElement>(".den-chips *")]
+          .filter(
+            (e) =>
+              e.getClientRects().length && e.getBoundingClientRect().width > 0,
+          )
+          .map((e) => e.getBoundingClientRect().x);
+        const title = top.querySelector<HTMLElement>(".den-title")!;
+        return {
+          search: r(".den-search"),
+          report: r(".den-rb-top"),
+          bell: r("#den-bell"),
+          version: r("#version-pill"),
+          appearance: r("#appearance-btn"),
+          overflow: top.scrollWidth > top.clientWidth + 1,
+          // The gap from ⌕ to the first chip after it.
+          gap: Math.round(Math.min(...chipX) - ic.right),
+          firstChip: !!first,
+          lastCrumb: last
+            ? {
+                shown: last.getBoundingClientRect().width > 0,
+                cut: last.scrollWidth > last.clientWidth + 1,
+                ellipsis: getComputedStyle(last).textOverflow,
+              }
+            : null,
+          titleCut: title.scrollWidth > title.clientWidth + 1,
+          longCut,
+        };
+      });
+
+    it("at 1280 the search is at 464, 304 wide, with short or long names and with or without host chips", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const got: Record<string, Awaited<ReturnType<typeof measure>>> = {};
+      for (const q of [
+        "",
+        "?long",
+        "?chips",
+        "?long&chips",
+        "?long&longname",
+      ]) {
+        const p = await open(b, q, 1280);
+        got[q || "short"] = await measure(p);
+        await p.context().close();
+      }
+      for (const [k, m] of Object.entries(got)) {
+        expect([k, m.search]).toEqual([k, [464, 304]]);
+        // Pinned right: where the short names put them.
+        for (const it of ["report", "bell", "version", "appearance"] as const)
+          expect([k, it, m[it]]).toEqual([k, it, got.short![it]]);
+        expect([k, m.overflow]).toEqual([k, false]);
+        // A visible gap between ⌕ and the first chip.
+        expect(m.gap).toBeGreaterThanOrEqual(12);
+      }
+      // Long names: the last crumb is kept whole; a long one before it
+      // ends in an ellipsis.
+      for (const k of ["?long", "?long&chips"])
+        expect([k, got[k]!.lastCrumb]).toEqual([
+          k,
+          { shown: true, cut: false, ellipsis: "ellipsis" },
+        ]);
+      expect([got["?long"]!.longCut, got.short!.longCut]).toEqual([
+        true,
+        false,
+      ]);
+    });
+
+    it("at 390 the search sits at the same x, short or long names, with or without host chips", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const got: Record<string, Awaited<ReturnType<typeof measure>>> = {};
+      for (const q of ["", "?long", "?chips", "?long&chips"]) {
+        const p = await open(b, q, 390);
+        got[q || "short"] = await measure(p);
+        await p.context().close();
+      }
+      const at = got.short!.search;
+      expect(at![0]).toBe(82);
+      for (const q of ["?long", "?chips", "?long&chips"]) {
+        expect([q, got[q]!.search]).toEqual([q, at]);
+        expect([q, got[q]!.overflow]).toEqual([q, false]);
+        expect(got[q]!.gap).toBeGreaterThanOrEqual(8);
+      }
+    });
+  });
+
+  // Issue 303: on a touch screen every top-bar control takes a 44px tap
+  // (an ::after hit area: the look is the same) and the key hints hide.
+  describe(`issue 303 touch targets (${engine})`, () => {
+    it("at 390 on touch: every bar control's hit box is 44×44, no key hint shows, and the bar looks the same", async () => {
+      const b = browsers[engine];
+      if (!b || engine !== "webkit") return;
+      const t = await open(b, "?chips", 390, true);
+      const touchOn = await t.evaluate(
+        () => matchMedia("(pointer: coarse)").matches,
+      );
+      expect(touchOn).toBe(true);
+      const got = await t.evaluate(() => {
+        const top = document.querySelector<HTMLElement>(".den-top")!;
+        const controls = [
+          ...top.querySelectorAll<HTMLElement>("button, a[href]"),
+        ].filter(
+          (e) =>
+            e.getClientRects().length && e.getBoundingClientRect().width > 0,
+        );
+        const box44 = (e: HTMLElement) => {
+          const r = e.getBoundingClientRect();
+          const cx = r.x + r.width / 2;
+          const cy = r.y + r.height / 2;
+          const hx = Math.max(44, r.width) / 2 - 1;
+          const hy = Math.max(44, r.height) / 2 - 1;
+          return { cx, cy, hx, hy };
+        };
+        const inBox = (e: HTMLElement, x: number, y: number) => {
+          const { cx, cy, hx, hy } = box44(e);
+          return Math.abs(x - cx) <= hx + 1 && Math.abs(y - cy) <= hy + 1;
+        };
+        const misses: string[] = [];
+        for (const c of controls) {
+          const { cx, cy, hx, hy } = box44(c);
+          for (const [x, y] of [
+            [cx, cy - hy],
+            [cx, cy + hy],
+            [cx - hx, cy],
+            [cx + hx, cy],
+          ]) {
+            const hit = document.elementFromPoint(x, y) as HTMLElement | null;
+            const owner =
+              hit?.closest<HTMLElement>(".den-top button, .den-top a[href]") ??
+              null;
+            if (owner === c) continue;
+            // Where two neighbours' 44px boxes overlap, either may take it.
+            if (owner && controls.includes(owner) && inBox(owner, x, y))
+              continue;
+            misses.push(
+              `${c.id || c.className} at ${Math.round(x)},${Math.round(y)} hit ${owner?.id || owner?.className || hit?.tagName}`,
+            );
+          }
+        }
+        const kbd = [
+          ...top.querySelectorAll<HTMLElement>("kbd, .den-kbd"),
+        ].filter(
+          (e) =>
+            e.getClientRects().length && e.getBoundingClientRect().width > 0,
+        ).length;
+        return { n: controls.length, misses, kbd };
+      });
+      expect(got.n).toBeGreaterThanOrEqual(5);
+      expect(got.misses).toEqual([]);
+      expect(got.kbd).toBe(0);
+      const touchShot = await t.locator(".den-top").screenshot();
+      await t.context().close();
+      // The same bar without touch, its key hints hidden: the same pixels.
+      const m = await open(b, "?chips", 390, false);
+      await m.addStyleTag({
+        content:
+          ".den-top kbd, .den-top .den-kbd { display: none !important; }",
+      });
+      const mouseShot = await m.locator(".den-top").screenshot();
+      await m.context().close();
+      expect(touchShot.equals(mouseShot)).toBe(true);
     });
   });
 }
