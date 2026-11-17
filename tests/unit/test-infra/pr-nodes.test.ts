@@ -150,6 +150,30 @@ describe("main: every push, and a nightly run, on both Nodes", () => {
   });
 });
 
+describe("every push to main gets its own full run (the release guard needs it)", () => {
+  // GitHub keeps one pending run per concurrency group and cancels the
+  // one before it, even with cancel-in-progress off: 11 of main's last 30
+  // push runs ended cancelled, and the release guard would never release
+  // from those commits. A push's group is its sha.
+  const c = (
+    yaml.parse(
+      fs.readFileSync(
+        path.join(ROOT, ".github", "workflows", "ci.yml"),
+        "utf-8",
+      ),
+    ) as { concurrency: { group: string; "cancel-in-progress": string } }
+  ).concurrency;
+
+  it("a push's concurrency group is its own sha; a pull request's is its ref", () => {
+    expect(c.group).toBe(
+      "ci-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}",
+    );
+    expect(c["cancel-in-progress"]).toBe(
+      "${{ github.event_name == 'pull_request' }}",
+    );
+  });
+});
+
 describe("release.yml: only from a commit whose push run passed on both Nodes", () => {
   const SHA = "a".repeat(40);
   const run = (over: Record<string, unknown> = {}) => ({

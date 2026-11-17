@@ -27,9 +27,12 @@ permissions:
 # A newer push to the same pull request cancels the older run: only the
 # newest commit's result counts, and the old run held runner slots other
 # PRs were queued for. Pushes to main are never cancelled (each main
-# commit gets its full run).
+# commit gets its full run): their group is the commit's sha. With one
+# group for main, GitHub kept one pending run and cancelled the one
+# before it (11 of 30 push runs), and release.yml releases only from a
+# commit whose push run passed.
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
