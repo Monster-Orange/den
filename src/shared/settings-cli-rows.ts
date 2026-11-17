@@ -62,6 +62,10 @@ export const PERSON_ONLY_SETTINGS = [
   "embed",
   // Issue 172: whether, and when, the person is alerted outside the bell.
   "alerts",
+  // Issue 160: the approval policy itself: an agent asks (approval_policy).
+  "approvals_policy",
+  "approvals_watch",
+  "approvals_critical",
 ] as const;
 
 /**

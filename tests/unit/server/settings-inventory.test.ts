@@ -166,6 +166,10 @@ describe("the settings inventory (R21)", () => {
         "alerts.phone",
         "alerts.quiet_from",
         "alerts.quiet_to",
+        // Issue 160: the install's approval policy.
+        "approvals_policy",
+        "approvals_watch",
+        "approvals_critical",
       ].sort(),
     );
   });
