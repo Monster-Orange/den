@@ -247,7 +247,11 @@ const sectionIds = (p: Page) =>
 describe("the Settings page writes only what you change (R21)", () => {
   it("loading, searching, categories, hash, query, reload and back/forward write nothing", async () => {
     if (!browser) return;
-    await new Promise((r) => setTimeout(r, 500)); // start-up writes settle
+    // No wait for start-up writes (den#143): the server writes nothing
+    // after it answers server-info (0 files changed in 8 s, Den's own
+    // state included), and changedSince leaves Den's state aside. The
+    // 500 ms sleep here predates that filter. A late start-up write to a
+    // config file would show as a change, never be hidden.
     const before = snapshot();
     const { p, posts } = await open();
 
