@@ -161,6 +161,13 @@ paste where the team tracks issues. A product with more (a preview, a
 sign-in flow, drafts) gives `info`, `diagnostics`, `preview`, `send`,
 `githubSend`, `githubPoll` and `saveDraft`; see the top of `report.js`.
 
+Each of `info()`'s `repos` may say its `visibility` (`"public"`,
+`"private"` or `"internal"`) and an `audience` (who can see it, as words).
+A public repo, or one that doesn't say, gets the "Public repository" pill
+and the "visible to everyone" warning above Send. A private or internal
+one gets its own pill, the audience, and a quiet line instead of the
+warning. Both follow the repo chosen in Review.
+
 ### Strings
 
 `src/strings.js` (export `./strings`) exports `en`, `es` and `ja`: every
