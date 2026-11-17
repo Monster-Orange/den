@@ -25,7 +25,11 @@ import {
   type GuardResult,
   type Principal,
 } from "../../../src/ui/server/request-guard.js";
-import { heldActions } from "../../../src/ui/server/held-actions.js";
+import {
+  CRITICAL_HELD_ACTIONS,
+  heldActions,
+} from "../../../src/ui/server/held-actions.js";
+import { policyFor } from "../../../src/shared/approval-policy.js";
 import {
   appKeyOps,
   handleAppKeyList,
@@ -233,6 +237,16 @@ describe("app keys, made and revoked on the person's Allow", () => {
       ok: false,
       code: "key_revoked",
     });
+  });
+
+  it("making and revoking a key are critical: no policy runs one without the person", () => {
+    for (const action of ["embed_key_create", "embed_key_revoke"]) {
+      expect(CRITICAL_HELD_ACTIONS.has(action)).toBe(true);
+      const loose = { policy: "auto", writes: { [action]: "auto" } } as const;
+      expect(policyFor(action, { install: loose, project: loose }).kind).toBe(
+        "ask",
+      );
+    }
   });
 
   it("an agent can't list the keys", async () => {

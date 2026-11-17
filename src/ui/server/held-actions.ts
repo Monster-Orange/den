@@ -209,10 +209,14 @@ export interface HeldActionDeps {
  * Issue 208: held writes that always ask the person. No setting and no
  * approval policy lets one run without their own Allow: a Verify run on
  * a shared environment sends requests to an environment others use.
- * Each one's check also says personOnly, for today's auto-allow.
+ * Each one's check also says personOnly, for today's auto-allow. Issue
+ * 334: an app key hands a web app access to an agent, so making and
+ * revoking one are the person's own too.
  */
 export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "verify_run",
+  "embed_key_create",
+  "embed_key_revoke",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
