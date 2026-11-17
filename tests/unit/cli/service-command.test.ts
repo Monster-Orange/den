@@ -155,7 +155,8 @@ describe("cmdService", () => {
             // D18: the mode, and Den's node copy for the session host.
             ...(sub === "install" || sub === "print"
               ? {
-                  DEN_SERVICE_MODE: "login",
+                  // Issue 163: a new install is always (0.4.63).
+                  DEN_SERVICE_MODE: "always",
                   DEN_SERVICE_HOST_EXE: `${STATE}/bin/den-sessions-host`,
                 }
               : {}),
@@ -176,7 +177,7 @@ describe("cmdService", () => {
       DEN_ROOT: DIST,
       DEN_SERVICE_LABEL: "local.acme-dev.web",
       DEN_SERVICE_LOGS: "/home/someone/Library/Logs/acme-dev",
-      DEN_SERVICE_MODE: "login",
+      DEN_SERVICE_MODE: "always",
       DEN_SERVICE_HOST_EXE: `${STATE}/bin/den-sessions-host`,
     });
   });
@@ -307,7 +308,8 @@ describe("service install --plan", () => {
     expect(out).toMatch(/read-only: nothing is written or loaded/);
     expect(out).toMatch(/label: +com\.acme\.den/);
     expect(out).toMatch(
-      /plist: +\/home\/someone\/Library\/LaunchAgents\/com\.acme\.den\.plist/,
+      // Issue 163: a new install is always (LaunchDaemons).
+      /plist: +\/Library\/LaunchDaemons\/com\.acme\.den\.plist/,
     );
     expect(out).toMatch(/logs: +\/var\/log\/acme\/web\.log/);
     expect(out).toMatch(/root: +\/src\/acme-dev/);
@@ -433,7 +435,7 @@ describe("D18: install modes", () => {
     ).toBe(0);
     const out = h.lines.join("\n");
     expect(out).toContain(
-      "mode:    always (LaunchDaemons running as you: agents keep running after logout; opt-in; one sudo; keychain under the daemon not yet shown)",
+      "mode:    always (LaunchDaemons running as you: agents keep running after logout; one sudo; agents sign in there with a long-lived token from your secrets store (agents token set))",
     );
     expect(out).toContain(
       "plist:   /Library/LaunchDaemons/local.acme-dev.web.plist",
@@ -443,27 +445,25 @@ describe("D18: install modes", () => {
     );
   });
 
-  it("installing always says the keychain under the daemon is not yet shown; login says nothing", async () => {
+  it("installing always says agents sign in with the token, and that doctor says whether it is set; login says nothing", async () => {
     const h = harness();
     await cmdService(["install", "--mode", "always"], h.deps);
     expect(h.lines.join("\n")).toContain(
-      "--mode always is opt-in; keychain under the daemon not yet shown: under the daemon an agent may not reach its sign-in (the login keychain)",
+      "note: --mode always: agents sign in there with a long-lived token from your secrets store (agents token set). Without one, agents will not be able to sign in after logout: den doctor says whether it is set",
     );
     const h2 = harness();
-    await cmdService(["install"], h2.deps);
-    expect(h2.lines.join("\n")).not.toContain("keychain");
+    await cmdService(["install", "--mode", "login"], h2.deps);
+    expect(h2.lines.join("\n")).not.toContain("token");
   });
 
   it.each([[[]], [["help"]], [["--help"]]])(
-    "service %j prints its help: login is the default, always says the keychain under the daemon is not yet shown",
+    "service %j prints its help: always is the default for a new install, and says agents sign in with the token",
     async (args) => {
       const h = harness();
       expect(await cmdService(args as string[], h.deps)).toBe(0);
       const out = h.lines.join("\n");
-      expect(out).toMatch(/--mode login\s+\(default\)/);
-      expect(out).toMatch(
-        /--mode always .*keychain under the daemon not yet shown/,
-      );
+      expect(out).toMatch(/--mode always\s+\(default for a new install\)/);
+      expect(out).toMatch(/long-lived token from your secrets store/);
       expect(out).not.toContain("not yet proven");
       expect(h.calls).toEqual([]);
     },
@@ -560,7 +560,7 @@ describe("D26: running means the job's own process", () => {
 /**
  * Issue 163: which mode `service install` uses. An explicit --mode, then
  * the Setting (agents.keep_running_after_logout, when set), then the mode
- * already installed, then login.
+ * already installed, then always (a new install, 0.4.63).
  */
 describe("keep running after logout: the mode install uses", () => {
   const always: ServiceJob = {
@@ -597,9 +597,10 @@ describe("keep running after logout: the mode install uses", () => {
     expect(await modeOf(false, always)).toBe("login");
   });
 
-  it("the Setting unset: the installed mode, else login", async () => {
+  it("the Setting unset: the installed mode (never switched: it needs sudo), else always", async () => {
     expect(await modeOf(undefined, always)).toBe("always");
-    expect(await modeOf(undefined, null)).toBe("login");
+    expect(await modeOf(undefined, login)).toBe("login");
+    expect(await modeOf(undefined, null)).toBe("always");
   });
 
   it("--mode wins over the Setting", async () => {

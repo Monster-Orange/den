@@ -23,7 +23,9 @@
  * itself asks sudo once before it changes anything, so a refusal there
  * leaves the old mode too.
  */
+import * as fs from "fs";
 import type * as http from "http";
+import * as path from "path";
 import type { ServiceMode } from "../cli/doctor-where.js";
 
 export interface KeepRunningDeps {
@@ -134,6 +136,142 @@ export function handleKeepRunningRoutes(
   })().catch((e) => {
     if (!res.headersSent)
       d.sendJson(res, { ok: false, error: (e as Error).message }, 500);
+  });
+  return true;
+}
+
+/** Issue 163 (a): the offer is made once per install: this file says it was. */
+export const KEEP_OFFER_FILE = "keep-running-offer.json";
+
+/**
+ * Issue 163 (a): an install from before Keep agents running after logout
+ * was on by default (a login service, the Setting never set) is not
+ * switched silently, since that needs sudo. Its web server offers it once:
+ * one bell note, "Keep agents running after logout: Apply", that opens the
+ * Setting. True when it was added now.
+ */
+export function noteKeepRunningOffer(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  stateDir: string,
+  d: {
+    installed: () => ServiceMode | null;
+    keep: () => boolean | undefined;
+  },
+): boolean {
+  if (d.installed() !== "login") return false;
+  let keep: boolean | undefined;
+  try {
+    keep = d.keep();
+  } catch {
+    return false;
+  }
+  if (keep !== undefined) return false;
+  const file = path.join(stateDir, KEEP_OFFER_FILE);
+  if (fs.existsSync(file)) return false;
+  store.add({
+    kind: "service",
+    subject: "record:keep-running-offer",
+    scope: "workspace/den-server",
+    text: "Keep agents running after logout: Apply",
+    msg: { key: "bell.m.keepOffer", vars: {} },
+    link: "/settings#agents.keep_running",
+  });
+  try {
+    fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ offeredAt: new Date().toISOString() }) + "\n",
+      { mode: 0o600 },
+    );
+  } catch {
+    /* offered again next start: better than never */
+  }
+  return true;
+}
+
+/**
+ * #299 (inside #163): Settings › Keep agents running after logout ›
+ * Sign-in token.
+ *
+ *   POST /api/agents/signin-token {token}   a person's only (an agent's
+ *        request is refused, as `agents token set` refuses in an agent's
+ *        session). Writes the token to the install's configured secrets
+ *        store by the same code as `agents token set` (saveAgentToken).
+ *
+ * The token is never in an answer, a log line or an error: the answer is
+ * where it went and the row's state (set <date> or missing).
+ *
+ * Answers:
+ *   { ok: true, store, signin }   saved
+ *   { ok: false, error }          400 not a token, 403 an agent, 500 the store
+ */
+export interface SignInTokenDeps {
+  isAgent: (req: http.IncomingMessage) => boolean;
+  /** saveAgentToken into the configured store. */
+  save: (token: string) => Promise<{ ref: string; store: string }>;
+  /** The Settings row's agent_signin (never the token). */
+  status: () => unknown;
+  /** A line for the server's log (never the token). */
+  log?: (line: string) => void;
+  readBody: (req: http.IncomingMessage) => Promise<string>;
+  sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
+}
+
+export function handleSignInTokenRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: SignInTokenDeps,
+): boolean {
+  if (pathname !== "/api/agents/signin-token" || req.method !== "POST")
+    return false;
+  void (async () => {
+    if (d.isAgent(req))
+      return d.sendJson(
+        res,
+        {
+          ok: false,
+          error: "only a person sets the agents' sign-in token",
+        },
+        403,
+      );
+    let token: unknown;
+    try {
+      token = (JSON.parse(await d.readBody(req)) as { token?: unknown })?.token;
+    } catch {
+      return d.sendJson(res, { ok: false, error: "not JSON" }, 400);
+    }
+    if (typeof token !== "string")
+      return d.sendJson(res, { ok: false, error: "token is a string" }, 400);
+    const { tokenShapeError, withoutSecret } =
+      await import("../../shared/agents/signin-token.js");
+    const bad = tokenShapeError(token);
+    if (bad) return d.sendJson(res, { ok: false, error: bad }, 400);
+    const value = token.trim();
+    let saved: { store: string };
+    try {
+      saved = await d.save(value);
+    } catch (e) {
+      return d.sendJson(
+        res,
+        {
+          ok: false,
+          error:
+            withoutSecret(String((e as Error)?.message ?? e), value) ||
+            "the secrets store refused it",
+        },
+        500,
+      );
+    }
+    d.log?.(`agents' sign-in token saved in ${saved.store} (by a person)`);
+    return d.sendJson(res, {
+      ok: true,
+      store: saved.store,
+      signin: d.status(),
+    });
+  })().catch(() => {
+    if (!res.headersSent)
+      d.sendJson(res, { ok: false, error: "not saved" }, 500);
   });
   return true;
 }

@@ -6,6 +6,42 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.63] - unreleased
 
+### Added
+
+- Agents under Keep agents running after logout sign in with the CLI's
+  long-lived token, not the login keychain. Make it once with
+  `claude setup-token`, then `<cli> agents token set`: it reads stdin or
+  a prompt that doesn't show it (never the command line), is a person's
+  only, and saves the token in the install's secrets store (1Password or
+  Doppler) under `secrets.refs.agent_signin_token`. A distribution's ref
+  wins; without one it creates the item and writes the ref to user.yml.
+  The env backend is refused. Den reads it at each agent start under the
+  always-on service and passes it in that agent's environment only
+  (`CLAUDE_CODE_OAUTH_TOKEN`): never argv, a log, a record or the plist,
+  whose env carries only `DEN_AGENT_SIGNIN=token`. A caller's own value
+  never reaches an agent. `<cli> agents token status` says whether it is
+  there and when it was set. (#163)
+- `doctor`'s new agent sign-in row, the Settings row and every start
+  under the always-on service say when no token is configured: "agents
+  will not be able to sign in after logout". With one, they say when it
+  was set. The token doesn't carry its expiry, so after
+  `agents.signin_token_warn_days` (user.yml, 330) they say to make a new
+  one. In English, Spanish and Japanese. (#163)
+- Settings › Agents › Keep agents running after logout has a Sign-in
+  token field: paste the token and Save (the working pop-up). It goes to
+  the install's secrets store by the same code as `agents token set`
+  (POST /api/agents/signin-token, a person's only; an agent's request is
+  refused). It is never shown back: no answer, log or page carries it,
+  and the row then says when it was set. One line above it names the
+  only terminal step, `claude setup-token`, with a copy button. In
+  English, Spanish and Japanese. (#299, #163)
+- Under mode always, `doctor`'s agent sign-in row and the Settings row
+  warn when the store's own credential (the 1Password service-account
+  token) is referenced as `keychain:`: the always-on service may not
+  reach it; use `file:` or `env:`. (#163)
+- A checklist for a real logout on a gate machine:
+  `docs/always-on-gate.md`. Not run here. (#163)
+
 ### Changed
 
 - Den's top bar and rail come from the shared UI kit, den-ui 0.7.0: the
@@ -25,6 +61,32 @@ config and manifest changes a distribution must make to move to it under
   follows the approval policy as the routine held write `den_pin_commit`:
   it runs at once by default, and waits for the person's Allow when the
   policy says ask (#176).
+- Keep agents running after logout is on by default for a new install:
+  `<cli> service install` with no job yet and the Setting unset installs
+  mode always (one sudo). An explicit off is kept. An existing install
+  with the Setting unset keeps its mode, since switching needs sudo; its
+  web server offers it once in the bell ("Keep agents running after
+  logout: Apply", opening the Setting), Settings shows the offer, and
+  `doctor` names it. (#163)
+- `doctor`'s service line under mode always is no longer a warning: the
+  agent sign-in row says whether agents can sign in. Help, `--plan`,
+  install and the agent page's tip say agents sign in there with the
+  token, instead of "keychain under the daemon not yet shown". (#163)
+
+- Tests never run this machine's claude, op, doppler, security,
+  launchctl, sudo, mkcert or gh. Jest's global setup puts stubs for them
+  on PATH behind the tests' own fakes; every spawn keeps them, even one
+  that sets its own PATH, and Den's sudo by absolute path is the stub
+  too. A stub logs its name and arguments (never input) and exits 99;
+  the test file that made the call fails, and so does the run. (#163)
+
+### Migrations
+
+- None required. To keep agents signing in after logout under mode
+  always, run `claude setup-token` once and `<cli> agents token set`.
+  A distribution that keeps the token in its own vault sets
+  `secrets.refs.agent_signin_token` in its config. Real logout not shown
+  in tests: the gate checklist covers it.
 
 ## [0.4.62] - 2026-11-16
 

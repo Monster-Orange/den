@@ -74,3 +74,54 @@ describe("Apply: the page", () => {
     expect(await applyKeepRunning(true, w.deps)).toEqual({ state: "failed" });
   });
 });
+
+// @ts-expect-error plain browser module
+import { keepTokenLine } from "../../../src/ui/server/public/settings-registry.js";
+
+/** Issue 163 (b): the row's sign-in token line (never the token). */
+describe("Keep agents running after logout: the sign-in token line", () => {
+  const t = (k: string, v?: Record<string, unknown>) =>
+    `${k}${v ? ` ${JSON.stringify(v)}` : ""}`;
+
+  it("none configured: agents will not be able to sign in after logout", () => {
+    expect(keepTokenLine({ configured: false }, t)).toEqual({
+      state: "missing",
+      text: "keep.noToken",
+    });
+    expect(keepTokenLine(null, t).state).toBe("missing");
+  });
+
+  it("old: says how many days, to make a new one", () => {
+    expect(
+      keepTokenLine({ configured: true, old: true, age_days: 340 }, t),
+    ).toEqual({ state: "old", text: 'keep.tokenOld {"n":340}' });
+  });
+
+  it("set: says when; unknown when: names the store", () => {
+    const set = keepTokenLine(
+      { configured: true, old: false, set_at: "2026-11-16T10:00:00Z" },
+      t,
+    );
+    expect(set.state).toBe("set");
+    expect(set.text).toMatch(/^keep\.tokenSet \{"date":".*2026.*"\}$/);
+    expect(
+      keepTokenLine({ configured: true, set_at: null, store: "Doppler" }, t),
+    ).toEqual({ state: "set", text: 'keep.tokenStore {"store":"Doppler"}' });
+  });
+});
+
+describe("Keep agents running after logout: the store's credential line", () => {
+  const t = (k: string) => k;
+  it("cred_keychain: the row warns", () => {
+    expect(
+      keepTokenLine(
+        {
+          configured: true,
+          set_at: "2026-11-16T10:00:00Z",
+          cred_keychain: true,
+        },
+        t,
+      ),
+    ).toEqual({ state: "cred", text: "keep.credKeychain" });
+  });
+});

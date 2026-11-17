@@ -155,6 +155,11 @@ beforeAll(async () => {
     }),
   );
 
+  // A fake sudo that needs a password (sudo -n fails): never this
+  // machine's (the real-CLI sentinel, tests/sentinel.ts).
+  const fakeSudo = path.join(tmp, "bin", "sudo");
+  fs.mkdirSync(path.dirname(fakeSudo), { recursive: true });
+  fs.writeFileSync(fakeSudo, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   const started = await startDenServer(
     process.execPath,
     [
@@ -170,6 +175,7 @@ beforeAll(async () => {
         DEN_HOME: path.join(tmp, "home", ".den"),
         HOME: path.join(tmp, "home"),
         DEN_NO_OPEN: "1",
+        DEN_SYSTEM_SUDO: fakeSudo,
       },
     },
     { timeoutMs: 40_000 },

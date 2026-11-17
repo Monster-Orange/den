@@ -330,7 +330,15 @@ import {
   setWebUrl,
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
-import { handleKeepRunningRoutes } from "./keep-running-routes.js";
+import {
+  handleKeepRunningRoutes,
+  handleSignInTokenRoute,
+  noteKeepRunningOffer,
+} from "./keep-running-routes.js";
+import {
+  agentTokenStatusNow,
+  saveAgentToken,
+} from "../../shared/agents/signin-token.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -2857,6 +2865,31 @@ let gateStore: GateStore | undefined;
 const gates = () => (gateStore ??= new GateStore());
 
 /**
+ * Issue 163 (b): the Settings row's view of the agents' sign-in token:
+ * whether one is configured, when it was set, the store's credential in
+ * the keychain. Never the token; nothing is read from the store.
+ */
+function agentSigninView(): Record<string, unknown> | null {
+  try {
+    const st = agentTokenStatusNow({
+      env: { DEN_AGENT_SIGNIN: "token" },
+      stateDir: getStateDir(),
+    });
+    return {
+      configured: st.configured,
+      set_at: st.setAt,
+      age_days: st.ageDays,
+      old: st.old,
+      store: st.store,
+      // The store's credential is a keychain: source (1Password).
+      cred_keychain: st.credInKeychain === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Issue 163: the mode of this install's launchd web job (login, always),
  * or null when Den isn't installed as a service (or off macOS).
  */
@@ -3369,6 +3402,18 @@ async function handleRequest(
       set: (url) => setWebUrl(url),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // #299: Settings › Keep agents running after logout › Sign-in token.
+  if (
+    handleSignInTokenRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      save: (token) => saveAgentToken(token, { stateDir: getStateDir() }),
+      status: agentSigninView,
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -6299,14 +6344,27 @@ async function handleRequest(
         })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
-        // Issue 163: Keep agents running after logout (off when unset).
-        keep_running_after_logout: (() => {
+        // Issue 163: Keep agents running after logout. Unset: on for a new
+        // install (no service yet), off over an existing login install,
+        // which the page then offers to turn on (keep_running_unset).
+        ...(() => {
+          let keep: boolean | undefined;
           try {
-            return agentsKeepRunningAfterLogout(() => user) === true;
+            keep = agentsKeepRunningAfterLogout(() => user);
           } catch {
-            return false;
+            keep = false;
           }
+          const mode = installedServiceMode();
+          return {
+            keep_running_after_logout:
+              keep ?? (mode === null || mode === "always"),
+            keep_running_unset: keep === undefined && mode === "login",
+          };
         })(),
+        // Issue 163 (b): the agents' sign-in token under the always-on
+        // service: never the token, only whether one is configured and
+        // when it was set (nothing is read from the store on a page view).
+        agent_signin: agentSigninView(),
         // Issue 278: agents stuck compacting; instruction size (agent_context.*).
         agent_context: (() => {
           const c = contextWatchSettings(user.agent_context);
@@ -7392,6 +7450,16 @@ void CRASH_GATE.then(() =>
     }
     // Issue 278: agents stuck compacting ring the bell (agent_context.*).
     startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
+    // Issue 163 (a): an install from before it was on by default is
+    // offered Keep agents running after logout once (it needs sudo).
+    try {
+      noteKeepRunningOffer(notificationDeps().store, getStateDir(), {
+        installed: installedServiceMode,
+        keep: () => agentsKeepRunningAfterLogout(),
+      });
+    } catch {
+      /* the bell is best effort; doctor and Settings offer it too */
+    }
     // #57: agents whose record names a project by its pre-D70 key follow it.
     void import("../../shared/agents/heal-workspace.js").then(async (m) => {
       const { isServerScope } =

@@ -33,7 +33,7 @@ describe("whereRows", () => {
     expect(rows.map((r) => [r.what, r.session, r.status])).toEqual([
       ["server", "Background", "ok"],
       ["session host", "Background", "ok"],
-      ["service", "always (system)", "warn"],
+      ["service", "always (system)", "ok"],
     ]);
   });
 
@@ -261,13 +261,13 @@ describe("whereRows", () => {
     );
   });
 
-  it("an always service: the where-line warns the keychain under the daemon is not yet shown", async () => {
+  it("an always service: the where-line says agents sign in with the token (the sign-in row warns, not this one)", async () => {
     const rows = await whereRows(base());
     expect(rows.find((r) => r.what === "service")).toMatchObject({
       session: "always (system)",
-      status: "warn",
+      status: "ok",
       detail:
-        "agents keep running after logout; under the daemon an agent may not reach its sign-in (the login keychain): not yet shown",
+        "agents keep running after logout; they sign in with the long-lived token, not the login keychain (see agent sign-in)",
     });
     const login = await whereRows(
       base({
@@ -288,7 +288,7 @@ describe("whereRows", () => {
       session: "not installed",
       status: "ok",
       detail:
-        "acme service install (login, the default; --mode always is opt-in; keychain under the daemon not yet shown)",
+        "acme service install (always, the default for a new install: agents keep running after logout, one sudo; agents sign in there with a long-lived token from your secrets store (agents token set); --mode login stops them at logout)",
     });
   });
 

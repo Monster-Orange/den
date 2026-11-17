@@ -68,7 +68,8 @@ describe("sessionWarning", () => {
     const w = sessionWarning("Aqua", "acme", "host");
     expect(w).toMatch(/stops? when you log out/);
     expect(w).toContain("acme service install --mode always");
-    expect(w).toContain("keychain under the daemon not yet shown");
+    // Issue 163 (b): under the daemon agents sign in with the token.
+    expect(w).toContain("long-lived token from your secrets store");
     expect(w).not.toContain("not yet proven");
   });
 
@@ -89,7 +90,8 @@ describe("webUpWarning", () => {
     const w = webUpWarning("Background", "acme");
     expect(w).toMatch(/outside the desktop login \(Background, e\.g\. ssh\)/);
     expect(w).toContain("acme service install --mode always");
-    expect(w).toContain("keychain under the daemon not yet shown");
+    // Issue 163 (b): under the daemon agents sign in with the token.
+    expect(w).toContain("long-lived token from your secrets store");
     expect(w).not.toContain("not yet proven");
   });
   it("says nothing in the desktop session or off macOS", () => {

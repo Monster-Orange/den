@@ -578,7 +578,7 @@
     "busy.restartF": "No se pudo reiniciar {name}.",
     "keep.label": "Mantener los agentes al cerrar sesión",
     "keep.warn":
-      "Con el daemon, un agente puede no llegar a su inicio de sesión (el llavero de inicio): aún no se ha mostrado.",
+      "Allí los agentes inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio.",
     "keep.apply": "Aplicar",
     "keep.pending": "Guardado, aún sin aplicar: pulsa Aplicar.",
     "keep.w": "Aplicando…",
@@ -591,6 +591,23 @@
     "keep.noService":
       "Guardado. Se aplica cuando __DEN_TITLE__ funciona como servicio: __DEN_CLI__ service install",
     "keep.refused": "Sin contraseña de administrador: nada cambió.",
+    "keep.offer":
+      "Aún sin configurar, así que los agentes se detienen al cerrar sesión. Actívalo y pulsa Aplicar (pide tu contraseña de administrador una vez).",
+    "keep.noToken":
+      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. Crea uno con claude setup-token y luego __DEN_CLI__ agents token set.",
+    "keep.credKeychain":
+      "La credencial del almacén está en el llavero de inicio, al que el servicio siempre activo puede no llegar; usa file: o env: (ver docs/always-on-gate.md).",
+    "keep.setup":
+      "El único paso en la terminal: ejecuta esto, inicia sesión en el navegador que abre y pega aquí su token.",
+    "keep.copy": "Copiar",
+    "keep.tokenLabel": "Token de inicio de sesión",
+    "keep.tokenSave": "Guardar",
+    "keep.tokenFailed": "No se guardó: {error}",
+    "keep.tokenSet":
+      "Los agentes inician sesión con el token guardado el {date}.",
+    "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
+    "keep.tokenOld":
+      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -1602,6 +1619,7 @@
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
+    "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
@@ -1921,7 +1939,7 @@
     "ag.mv.done": "{id} se movió a {ws}.",
     "ag.where.logout": "Se detiene al cerrar sesión",
     "ag.where.logoutTip":
-      "Se ejecuta en el escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: Ajustes › Mantener los agentes al cerrar sesión, o {cli} service install --mode always (opcional; el llavero con el daemon aún no se ha mostrado)",
+      "Se ejecuta en el escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: Ajustes › Mantener los agentes al cerrar sesión, o {cli} service install --mode always (los agentes inician sesión allí con un token de larga duración: {cli} agents token set)",
     "ag.where.bg": "Sin GUI",
     "ag.where.bgTip":
       "Sigue ejecutándose tras cerrar sesión, fuera de la sesión de escritorio: sin el llavero de inicio de sesión ni apps con GUI. 1Password usa el token de la cuenta de servicio, los navegadores van sin interfaz y las carpetas protegidas necesitan Acceso total al disco ({cli} doctor).",
@@ -2574,7 +2592,7 @@
     "set.cli.local_dev.d":
       "Desactivado oculta Proyectos y las API de proyectos para ti. __DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "Activado: __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Así, un agente puede no llegar a su inicio de sesión (el llavero de inicio): aún no se ha mostrado. Desactivado (por defecto): los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
+      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: créalo una vez con claude setup-token y luego __DEN_CLI__ agents token set. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "Si up y restart abren pestañas de terminal de forma predeterminada. __DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
