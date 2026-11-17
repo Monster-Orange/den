@@ -865,6 +865,10 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout":
+      "Consulta del nombre en GitHub al arrancar, en segundos",
+    "set.server.owner_name_timeout.d":
+      "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
       "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",

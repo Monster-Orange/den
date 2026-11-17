@@ -43,6 +43,11 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // 0.4.48: Den on the Docker bridge for the edge (Linux).
   "web.bridge_listen": ["web_bridge", "listen"],
   "web.bridge_probe_seconds": ["web_bridge", "probe_seconds"],
+  // Issue 406: the start's wait for the owner's GitHub name.
+  "web.owner_name_timeout_seconds": [
+    "web_github",
+    "owner_name_timeout_seconds",
+  ],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   "agents_list.refresh_timeout_seconds": [

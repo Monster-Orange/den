@@ -183,7 +183,7 @@ export interface PublicNameDeps {
   /** Whether `api` is a test's fake GitHub on loopback. */
   fake?: boolean;
   fetch?: typeof fetch;
-  /** How long GitHub may take to answer (default 5 s). */
+  /** How long GitHub may take to answer (web.owner_name_timeout_seconds; default 10 s). */
   timeoutMs?: number;
   readOwner?: () => WebOwner | null;
   /** Keep the linked owner's display name. */
@@ -215,7 +215,7 @@ export async function ownerNameFromGithub(
           accept: "application/vnd.github+json",
           "x-github-api-version": "2022-11-28",
         },
-        signal: AbortSignal.timeout(deps.timeoutMs ?? 5_000),
+        signal: AbortSignal.timeout(deps.timeoutMs ?? 10_000),
       },
     );
     if (!r.ok) return null;

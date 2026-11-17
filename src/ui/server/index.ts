@@ -6705,6 +6705,16 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // Issue 406: the start's wait for the owner's GitHub name.
+        web_github: (() => {
+          const w = (user.web ?? {}) as Record<string, unknown>;
+          return {
+            ownerNameTimeoutSeconds:
+              typeof w.owner_name_timeout_seconds === "number"
+                ? w.owner_name_timeout_seconds
+                : 10,
+          };
+        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6794,6 +6804,7 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          web_github?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
@@ -6826,6 +6837,7 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            web_github: body.web_github,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
           });
@@ -7829,11 +7841,14 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
-    void ownerNameFromGithub({ api: GITHUB.api, fake: GITHUB.fake }).then(
-      (n) => {
-        if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
-      },
-    );
+    // web.owner_name_timeout_seconds: how long it waits.
+    void ownerNameFromGithub({
+      api: GITHUB.api,
+      fake: GITHUB.fake,
+      timeoutMs: WEB_AUTH.ownerNameTimeoutSeconds * 1000,
+    }).then((n) => {
+      if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
+    });
     // 0.4.48: on Linux, the Docker bridge too, for the edge.
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),

@@ -14,6 +14,9 @@
  *   web_bridge: { listen?: auto | off, probe_seconds? }
  *                                     user.yml web.bridge_listen,
  *                                     web.bridge_probe_seconds (0.4.48)
+ *   web_github: { owner_name_timeout_seconds? }
+ *                                     user.yml web.owner_name_timeout_seconds
+ *                                     (issue 406)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
@@ -35,6 +38,8 @@ export const PERSON_ONLY_SETTINGS = [
   "crash_loop",
   // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
   "web_bridge",
+  // Issue 406: how long the start waits for the owner's GitHub name.
+  "web_github",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -132,6 +137,16 @@ const CRASH: Record<string, Limit> = {
 
 const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
+};
+
+/** Issue 406: the start's wait for the owner's public GitHub profile. */
+const WEB_GITHUB: Record<string, Limit> = {
+  owner_name_timeout_seconds: {
+    key: "owner_name_timeout_seconds",
+    min: 1,
+    max: 600,
+    int: false,
+  },
 };
 
 const AGENTS_LIST: Record<string, Limit> = {
@@ -339,6 +354,7 @@ export function patchCliRows(
       apply,
     ) ??
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
+    patchBlock(user, "web_github", "web", WEB_GITHUB, body.web_github, apply) ??
     patchBlock(
       user,
       "panes_reconnect",

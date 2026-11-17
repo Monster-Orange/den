@@ -209,6 +209,11 @@ export interface WebAuthConfig {
   /** `web.bridge_probe_seconds`: how long the bridge probe waits (default 10). */
   bridgeProbeSeconds: number;
   /**
+   * `web.owner_name_timeout_seconds` (issue 406): how long the start waits
+   * for the owner's public GitHub profile (default 10).
+   */
+  ownerNameTimeoutSeconds: number;
+  /**
    * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
    */
@@ -401,6 +406,17 @@ export function readWebAuthConfig(
     throw new Error(
       `web.bridge_probe_seconds must be a number of seconds above 0, got ${JSON.stringify(probe)}`,
     );
+  const nameWait =
+    user.owner_name_timeout_seconds ?? team.owner_name_timeout_seconds;
+  if (
+    nameWait !== undefined &&
+    (typeof nameWait !== "number" ||
+      !Number.isFinite(nameWait) ||
+      nameWait <= 0)
+  )
+    throw new Error(
+      `web.owner_name_timeout_seconds must be a number of seconds above 0, got ${JSON.stringify(nameWait)}`,
+    );
   const clientId =
     clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
   const machineName = parseMachineName(user.machine_name);
@@ -445,6 +461,7 @@ export function readWebAuthConfig(
     edgeUnattested: unattested ?? "signin",
     bridgeListen: bridge ?? "auto",
     bridgeProbeSeconds: probe ?? 10,
+    ownerNameTimeoutSeconds: nameWait ?? 10,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
     ...(team.allow_plain_http_remote !== undefined
       ? { plainHttpInDistribution: configFile }

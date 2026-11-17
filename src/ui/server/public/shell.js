@@ -1800,6 +1800,9 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout": "GitHub name check at start, in seconds",
+    "set.server.owner_name_timeout.d":
+      "How long __DEN_TITLE__ waits at its start for the owner's name from their public GitHub profile, when it doesn't have the name yet. It never delays the start. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",

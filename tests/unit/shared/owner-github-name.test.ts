@@ -22,6 +22,12 @@ import {
   writeWebOwner,
 } from "../../../src/shared/web-owner.js";
 import type { UserConfig } from "../../../src/shared/den-config.js";
+import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import {
+  PERSON_ONLY_SETTINGS,
+  patchCliRows,
+} from "../../../src/shared/settings-cli-rows.js";
+import { configKeyNames } from "../../../src/ui/cli/config-command.js";
 
 let tmp = "";
 beforeAll(() => {
@@ -263,5 +269,70 @@ describe("issue 406: an owner linked before names were kept, from GitHub's publi
       }),
     ).toBeNull();
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("issue 406: web.owner_name_timeout_seconds, a Settings row", () => {
+  const root = (user: string) => {
+    const r = fs.mkdtempSync(path.join(tmp, "root-"));
+    fs.mkdirSync(path.join(r, "config", "local"), { recursive: true });
+    fs.writeFileSync(path.join(r, "config", "den.yml"), "");
+    fs.writeFileSync(path.join(r, "config", "local", "user.yml"), user);
+    return r;
+  };
+
+  it("10 s by default; user.yml's value; a wrong value names the key", () => {
+    expect(readWebAuthConfig(root(""))).toMatchObject({
+      ownerNameTimeoutSeconds: 10,
+    });
+    expect(
+      readWebAuthConfig(root("web:\n  owner_name_timeout_seconds: 30\n")),
+    ).toMatchObject({ ownerNameTimeoutSeconds: 30 });
+    expect(() =>
+      readWebAuthConfig(root("web:\n  owner_name_timeout_seconds: 0\n")),
+    ).toThrow(
+      "web.owner_name_timeout_seconds must be a number of seconds above 0",
+    );
+  });
+
+  it("Settings writes user.yml web.owner_name_timeout_seconds; null clears; a person's only", () => {
+    const user: Record<string, unknown> = { web: { machine_name: "box" } };
+    expect(
+      patchCliRows(user, { web_github: { owner_name_timeout_seconds: 30 } }),
+    ).toEqual({ ok: true });
+    expect(user.web).toEqual({
+      machine_name: "box",
+      owner_name_timeout_seconds: 30,
+    });
+    expect(
+      patchCliRows(user, { web_github: { owner_name_timeout_seconds: 0 } }),
+    ).toMatchObject({ ok: false });
+    expect(
+      patchCliRows(user, { web_github: { owner_name_timeout_seconds: null } }),
+    ).toEqual({ ok: true });
+    expect(user.web).toEqual({ machine_name: "box" });
+    expect(PERSON_ONLY_SETTINGS).toContain("web_github");
+    expect(configKeyNames()).toContain("web.owner_name_timeout_seconds");
+  });
+
+  it("the start's GitHub call gives up after that long", async () => {
+    const dir = path.join(tmp, "state-timeout");
+    writeWebOwner({ id: 4242, login: "octo-lead" }, dir);
+    // GitHub never answers: only the timeout ends the call.
+    const f = ((_u: string, init?: RequestInit) =>
+      new Promise((_ok, no) =>
+        init?.signal?.addEventListener("abort", () => no(new Error("aborted"))),
+      )) as unknown as typeof fetch;
+    const t0 = Date.now();
+    expect(
+      await ownerNameFromGithub({
+        api: "http://localhost:9",
+        fake: true,
+        fetch: f,
+        timeoutMs: 200,
+        readOwner: () => readWebOwner(dir),
+      }),
+    ).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(5_000);
   });
 });

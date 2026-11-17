@@ -845,6 +845,9 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
+    "set.server.owner_name_timeout.d":
+      "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
       "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",

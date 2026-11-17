@@ -41,6 +41,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
   // 0.4.48: Den on the Docker bridge for the edge.
   web_bridge: { listen: true, probe_seconds: true },
+  // Issue 406: how long the start waits for the owner's GitHub name.
+  web_github: { owner_name_timeout_seconds: true },
   // Issue 144: the machine's gate slots.
   gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
   // den#156: the Agents list's waits.
@@ -143,6 +145,8 @@ describe("the settings inventory (R21)", () => {
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         "web_bridge.listen",
         "web_bridge.probe_seconds",
+        // Issue 406: the owner's GitHub name at start, its wait.
+        "web_github.owner_name_timeout_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
         // den#156: the Agents list's waits.
