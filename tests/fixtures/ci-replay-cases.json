@@ -4,6 +4,7 @@
     "file": "tests/unit/server/bring-in.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       ".husky/commit-msg",
@@ -108,6 +109,7 @@
     "file": "tests/unit/server/time-zone.browser.test.ts",
     "verdict": "real?",
     "why": "no re-run and no finished next commit",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -209,6 +211,7 @@
     "file": "tests/unit/agents/srv-p5-charter.test.ts",
     "verdict": "real?",
     "why": "no re-run and no finished next commit",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -310,6 +313,7 @@
     "file": "tests/unit/agents/api-only-launch.test.ts",
     "verdict": "real?",
     "why": "no re-run and no finished next commit",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -411,6 +415,7 @@
     "file": "tests/unit/server/i18n-shell.browser.test.ts",
     "verdict": "real?",
     "why": "no re-run and no finished next commit",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -512,6 +517,7 @@
     "file": "tests/unit/server/ui-color-tokens.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43790317609#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -642,6 +648,7 @@
     "file": "tests/unit/server/project-wording.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43790317609#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -772,6 +779,7 @@
     "file": "tests/unit/server/shell.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43790317609#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -902,6 +910,7 @@
     "file": "tests/unit/server/busy-writes-ratchet.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43790317609#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -1032,6 +1041,7 @@
     "file": "tests/unit/scripts/words.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43790317609#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -1162,6 +1172,7 @@
     "file": "tests/unit/server/project-wording.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/embedding.md",
@@ -1267,6 +1278,7 @@
     "file": "tests/unit/server/shell.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/embedding.md",
@@ -1372,6 +1384,7 @@
     "file": "tests/unit/server/busy-writes-ratchet.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/embedding.md",
@@ -1477,6 +1490,7 @@
     "file": "tests/unit/server/update-pill.browser.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43799913862#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1502,6 +1516,7 @@
     "file": "tests/unit/server/update-pill.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       ".github/workflows/release.yml",
@@ -1530,6 +1545,7 @@
     "file": "tests/unit/server/agents-ag14.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       ".github/workflows/release.yml",
@@ -1584,6 +1600,7 @@
     "file": "tests/unit/server/update-pill.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       ".github/workflows/release.yml",
       "packages/den-ui/package.json",
@@ -1596,6 +1613,7 @@
     "file": "tests/unit/server/graph-health-cards.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1627,6 +1645,7 @@
     "file": "tests/unit/agents/stop-wait.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1658,6 +1677,7 @@
     "file": "tests/unit/server/busy-popup.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1691,6 +1711,7 @@
     "file": "tests/unit/server/one-url-per-module.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1733,6 +1754,7 @@
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1775,6 +1797,7 @@
     "file": "tests/unit/shared/hub.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -1803,6 +1826,7 @@
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -1831,6 +1855,7 @@
     "file": "tests/unit/server/whats-new-dialog.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1855,6 +1880,7 @@
     "file": "tests/unit/server/token-binding-connect.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2001,6 +2027,7 @@
     "file": "tests/unit/server/settings-hub-link-all.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2024,6 +2051,7 @@
     "file": "tests/unit/server/update-pill.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2046,6 +2074,7 @@
     "file": "tests/unit/server/bell.browser.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43910836451#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2066,6 +2095,7 @@
     "file": "tests/unit/server/bell.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2087,6 +2117,7 @@
     "file": "tests/unit/server/agent-write-routes.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2129,6 +2160,7 @@
     "file": "tests/unit/server/run-outcome.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/verify/overview.ts",
@@ -2171,6 +2203,7 @@
     "file": "tests/unit/server/settings-page.integration.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43925194719#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/hub-editions.ts",
@@ -2200,6 +2233,7 @@
     "file": "tests/unit/server/ui-color-tokens.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43925194719#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/hub-editions.ts",
@@ -2229,6 +2263,7 @@
     "file": "tests/unit/server/settings-page.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43925194719#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/hub-editions.ts",
@@ -2258,6 +2293,7 @@
     "file": "tests/unit/server/settings-person-only-ratchet.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43925194719#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/hub-editions.ts",
@@ -2287,6 +2323,7 @@
     "file": "tests/unit/server/busy-writes-ratchet.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43925194719#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/hub-editions.ts",
@@ -2316,6 +2353,7 @@
     "file": "tests/unit/server/settings-page.integration.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/agents/server-pack/server.md",
@@ -2352,6 +2390,7 @@
     "file": "tests/unit/server/settings-page.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/agents/server-pack/server.md",
@@ -2388,6 +2427,7 @@
     "file": "tests/unit/server/settings-person-only-ratchet.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/shared/agents/server-pack/server.md",
@@ -2424,6 +2464,7 @@
     "file": "tests/unit/cli/cli-page-controls.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       "CHANGELOG.md",
@@ -2502,6 +2543,7 @@
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       "CHANGELOG.md",
@@ -2580,6 +2622,7 @@
     "file": "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43936162946#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       "CHANGELOG.md",
@@ -2658,6 +2701,7 @@
     "file": "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       "CHANGELOG.md",
@@ -2739,6 +2783,7 @@
     "file": "tests/unit/create.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43955188510#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": ["package-lock.json", "package.json"],
     "related": false
   },
@@ -2747,6 +2792,7 @@
     "file": "tests/unit/version-sync.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43964501640#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2782,6 +2828,7 @@
     "file": "tests/unit/den-ui/nav-inventory.browser.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43974986427#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "packages/den-ui/README.md",
       "packages/den-ui/inventory/nav-inventory.d.ts",
@@ -2802,6 +2849,7 @@
     "file": "tests/unit/den-ui/nav-inventory.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       ".github/workflows/ci.yml",
       "packages/den-ui/README.md",
@@ -2824,6 +2872,7 @@
     "file": "tests/unit/server/topbar.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -2868,6 +2917,7 @@
     "file": "tests/unit/den-ui/nav-inventory.browser.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43978118940#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -2912,6 +2962,7 @@
     "file": "tests/unit/server/shell.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -2956,6 +3007,7 @@
     "file": "tests/unit/server/asset-stamp.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3000,6 +3052,7 @@
     "file": "tests/unit/den-ui/nav-inventory.browser.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (43979305364#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3046,6 +3099,7 @@
     "file": "tests/unit/den-ui/nav-inventory.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3093,6 +3147,7 @@
     "file": "tests/unit/den-ui/kit-070.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3151,6 +3206,7 @@
     "file": "tests/unit/server/report-everywhere.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3203,6 +3259,7 @@
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3255,6 +3312,7 @@
     "file": "tests/unit/server/light-contrast.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3307,6 +3365,7 @@
     "file": "tests/unit/server/approval-dialog.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3359,6 +3418,7 @@
     "file": "tests/unit/server/config-invalid-page.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3411,6 +3471,7 @@
     "file": "tests/unit/server/d67-remote-approve.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3463,6 +3524,7 @@
     "file": "tests/unit/test-infra/real-cli-sentinel.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (44012806477#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3515,6 +3577,7 @@
     "file": "tests/unit/server/sec2a-pair.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3567,6 +3630,7 @@
     "file": "tests/unit/server/agent-start-ready.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3619,6 +3683,7 @@
     "file": "tests/unit/server/one-url-per-module.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3671,6 +3736,7 @@
     "file": "tests/unit/server/sec2a-signin.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3723,6 +3789,7 @@
     "file": "tests/unit/server/sec1a-cross-origin.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3775,6 +3842,7 @@
     "file": "tests/unit/server/sec2a-identity.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3827,6 +3895,7 @@
     "file": "tests/unit/server/srv1a-restart.integration.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3879,6 +3948,7 @@
     "file": "tests/unit/test-infra/real-cli-sentinel.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3932,6 +4002,7 @@
     "file": "tests/unit/server/no-secrets-store.integration.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (44051360073#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3983,6 +4054,7 @@
     "file": "tests/unit/scripts/words.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (44051360073#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -4034,6 +4106,7 @@
     "file": "tests/unit/server/no-secrets-store.integration.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -4085,6 +4158,7 @@
     "file": "tests/unit/server/agents-double-click.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       "examples/distribution/package.json",
       "package-lock.json",
@@ -4097,6 +4171,7 @@
     "file": "tests/unit/version-sync.test.ts",
     "verdict": "real",
     "why": "failed again on the next commit (44085385562#1)",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/ui/server/public/settings-page.js",
@@ -4110,6 +4185,7 @@
     "file": "tests/unit/server/shell-hub-rail.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "packages/den-ui/README.md",
       "packages/den-ui/inventory/nav-inventory.d.ts",
@@ -4131,6 +4207,7 @@
     "file": "tests/unit/server/settings-anchor.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "CHANGELOG.md",
       "src/ui/server/index.ts",
@@ -4153,6 +4230,7 @@
     "file": "tests/unit/server/shell-hub-rail.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "packages/den-ui/README.md",
       "packages/den-ui/inventory/nav-inventory.d.ts",
@@ -4172,10 +4250,59 @@
     "related": false
   },
   {
+    "run": "44153120861#1 w7/alerts-172 211ed38",
+    "file": "tests/unit/den-ui/kit-csp.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["24.13.0"],
+    "changed": [
+      "src/shared/settings-cli-rows.ts",
+      "src/ui/server/alert-feed.ts",
+      "src/ui/server/alerts.ts",
+      "src/ui/server/approval-routes.ts",
+      "src/ui/server/attention.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/notification-routes.ts",
+      "src/ui/server/notification-service.ts",
+      "src/ui/server/public/alerts.js",
+      "src/ui/server/public/den-sw.js",
+      "src/ui/server/public/header.js",
+      "src/ui/server/public/i18n/es.js",
+      "src/ui/server/public/i18n/ja.js",
+      "src/ui/server/public/settings-page.js",
+      "src/ui/server/public/settings-registry.js",
+      "src/ui/server/public/shell.js",
+      "src/ui/server/request-guard.ts",
+      "src/ui/server/route-classes.ts",
+      "src/ui/server/ui-assets.ts",
+      "src/ui/server/web-push.ts",
+      "tests/unit/server/alerts.browser.test.ts",
+      "tests/unit/server/alerts.integration.test.ts",
+      "tests/unit/server/alerts.test.ts",
+      "tests/unit/server/helpers/push-stub.ts",
+      "tests/unit/server/settings-inventory.test.ts",
+      "tests/unit/server/web-push.test.ts"
+    ],
+    "related": false
+  },
+  {
+    "run": "44156589281#1 w7/release-tag-skip 44f5f84",
+    "file": "tests/unit/server/agent-order.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0"],
+    "changed": [
+      ".github/workflows/release.yml",
+      "tests/unit/test-infra/release-check.test.ts"
+    ],
+    "related": false
+  },
+  {
     "run": "44157666912#1 w7/load-143 7948afa",
     "file": "tests/unit/den-ui/kit-csp.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["24.13.0"],
     "changed": [
       "src/shared/settings-cli-rows.ts",
       "src/shared/web-session.ts",
@@ -4200,6 +4327,7 @@
     "file": "tests/unit/cli/cli-page-controls.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "scripts/words.js",
       "src/shared/agents/catalog.ts",
@@ -4228,6 +4356,7 @@
     "file": "tests/unit/cli/cli-page-controls.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "scripts/words.js",
       "src/shared/agents/catalog.ts",
@@ -4266,6 +4395,7 @@
     "file": "tests/unit/mcp/agent-messages-name-real-tools.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "src/shared/agents/server-pack/server.md",
       "src/shared/approval-policy.ts",
@@ -4295,6 +4425,7 @@
     "file": "tests/unit/agents/srv-p5-charter.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0", "24.13.0"],
     "changed": [
       "src/shared/agents/server-pack/server.md",
       "src/shared/approval-policy.ts",
@@ -4324,6 +4455,7 @@
     "file": "tests/unit/server/bell-v6.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       "src/ui/server/index.ts",
       "src/ui/server/log-history.ts",
@@ -4352,6 +4484,7 @@
     "file": "tests/unit/server/agents-layout.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed the test, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       "packages/den-ui/src/whatsnew.js",
       "src/shared/process/jobs.ts",
@@ -4386,12 +4519,66 @@
       "tests/unit/shared/web-session.test.ts"
     ],
     "related": true
+  },
+  {
+    "run": "44168158232#1 w7/signin-button-393 ba09801",
+    "file": "tests/unit/server/bell-v6.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0"],
+    "changed": [
+      "src/ui/server/public/i18n/es.js",
+      "src/ui/server/public/i18n/ja.js",
+      "src/ui/server/public/settings-registry.js",
+      "src/ui/server/public/shell.js",
+      "tests/unit/cli/cli-page-controls.test.ts",
+      "tests/unit/server/settings-no-command-chores.test.ts",
+      "tests/unit/server/settings-signin.browser.test.ts"
+    ],
+    "related": false
+  },
+  {
+    "run": "44168696647#1 w7/alerts-172 ca04534",
+    "file": "tests/unit/server/report-dialog.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["24.13.0"],
+    "changed": [
+      "src/shared/settings-cli-rows.ts",
+      "src/ui/server/alert-feed.ts",
+      "src/ui/server/alerts.ts",
+      "src/ui/server/approval-routes.ts",
+      "src/ui/server/attention.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/notification-routes.ts",
+      "src/ui/server/notification-service.ts",
+      "src/ui/server/public/alerts.js",
+      "src/ui/server/public/den-sw.js",
+      "src/ui/server/public/header.js",
+      "src/ui/server/public/i18n/es.js",
+      "src/ui/server/public/i18n/ja.js",
+      "src/ui/server/public/settings-page.js",
+      "src/ui/server/public/settings-registry.js",
+      "src/ui/server/public/shell.js",
+      "src/ui/server/request-guard.ts",
+      "src/ui/server/route-classes.ts",
+      "src/ui/server/ui-assets.ts",
+      "src/ui/server/web-push.ts",
+      "tests/unit/server/alerts.browser.test.ts",
+      "tests/unit/server/alerts.integration.test.ts",
+      "tests/unit/server/alerts.test.ts",
+      "tests/unit/server/helpers/push-stub.ts",
+      "tests/unit/server/settings-inventory.test.ts",
+      "tests/unit/server/web-push.test.ts"
+    ],
+    "related": false
   },
   {
     "run": "44169558803#1 w7/load-143 e881cda",
     "file": "tests/unit/server/bell-v6.browser.test.ts",
     "verdict": "real",
     "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
       "packages/den-ui/src/whatsnew.js",
       "src/shared/process/jobs.ts",
@@ -4428,30 +4615,14 @@
     "related": true
   },
   {
-    "run": "44171963546#1 main 4895cb9",
-    "file": "tests/unit/server/agent-order.browser.test.ts",
-    "verdict": "real?",
-    "why": "no re-run and no finished next commit",
+    "run": "44170510008#1 w7/release-tag-skip 1b40276",
+    "file": "tests/unit/server/report-dialog.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed code the test imports, and passed it",
+    "nodes": ["22.13.0"],
     "changed": [
-      "src/ui/server/index.ts",
-      "src/ui/server/log-history.ts",
-      "src/ui/server/public/edge-page.js",
-      "src/ui/server/public/environments.html",
-      "src/ui/server/public/i18n/es.js",
-      "src/ui/server/public/i18n/ja.js",
-      "src/ui/server/public/logs.html",
-      "src/ui/server/public/panel.js",
-      "src/ui/server/public/perf-report.js",
-      "src/ui/server/public/release.html",
-      "src/ui/server/public/shell.js",
-      "src/ui/server/public/svc-panel.js",
-      "src/ui/server/public/topbar.js",
-      "src/ui/server/public/value-words.js",
-      "src/ui/server/ui-assets.ts",
-      "tests/unit/server/helpers/en-catalog.ts",
-      "tests/unit/server/i18n-171-values.test.ts",
-      "tests/unit/server/i18n-pages.browser.test.ts",
-      "tests/unit/server/log-history-resolve.test.ts"
+      ".github/workflows/release.yml",
+      "tests/unit/test-infra/release-check.test.ts"
     ],
     "related": false
   }

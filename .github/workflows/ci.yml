@@ -3,8 +3,8 @@
 # patterns live in the DEN_ORG_NAMES secret, never in the repo).
 #
 # Issue 398: a push to main runs everything on both Nodes (checks, tests,
-# den-ui-nav, dist-smoke). A pull request runs Node 24 only: the pr job
-# (the same checks and dist-smoke, then the tests the change affects:
+# den-ui-nav, dist-smoke). A pull request runs on both Nodes too: the pr
+# job (the same checks and dist-smoke, then the tests the change affects:
 # scripts/affected-tests.mjs), and pr-shards when that subset is large.
 name: ci
 
@@ -183,8 +183,9 @@ jobs:
       - run: npm ci
       - run: bash scripts/dist-smoke.sh
 
-  # Issue 398: a pull request, on Node 24 (the Node installs run). The same
-  # checks and install smoke as above, then the tests the change affects
+  # Issue 398: a pull request, on both Nodes (some failures show on one
+  # only: the replay found real ones on Node 22 alone). The same checks and
+  # install smoke as above, then the tests the change affects
   # (scripts/affected-tests.mjs: jest's related tests, the browser specs
   # tests/affected-map.json maps to a changed page, a smoke set; or all of
   # them when a shared file changed), listed with the reason for each in
@@ -196,6 +197,12 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.13.0", "24.13.0"] # as checks: the supported range's ends
+    # Both Nodes pick the same subset (a diff and file lists), so either
+    # one's outputs will do.
     outputs:
       shards: ${{ steps.select.outputs.shards }}
       nav: ${{ steps.select.outputs.nav }}
@@ -209,7 +216,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "24.13.0"
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -264,7 +271,7 @@ jobs:
         run: npx jest --forceExit --passWithNoTests
 
   # A large subset (all the tests, more than 150 files or 30 browser
-  # specs), in four parts side by side, Node 24 only. Each part picks the
+  # specs), in four parts side by side on each Node. Each part picks the
   # same subset again (a diff and jest's file lists: seconds) and runs its
   # share of it.
   pr-shards:
@@ -278,6 +285,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        node: ["22.13.0", "24.13.0"]
         shard: ${{ fromJSON(needs.pr.outputs.shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -285,7 +293,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "24.13.0"
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - name: Pick the tests this change affects

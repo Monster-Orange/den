@@ -35,6 +35,7 @@ interface Map {
 }
 interface Case {
   file: string;
+  nodes?: string[];
   changed: string[];
   related: boolean;
   verdict: string;
@@ -299,10 +300,27 @@ describe("the replay's real failures stay caught", () => {
     for (const c of cases) expect(c.verdict).not.toBe("flake");
   });
 
-  it("the map catches every one", () => {
-    const rows = call<Case[]>(REPLAY, "recheck", cases, MAP);
+  it("the map catches every one, on the Node it failed on (ci.yml's pr matrix)", () => {
+    const nodes = call<string[]>(
+      REPLAY,
+      "prNodesOf",
+      fs.readFileSync(
+        path.join(ROOT, ".github", "workflows", "ci.yml"),
+        "utf-8",
+      ),
+    );
+    expect(nodes).toEqual(["22.13.0", "24.13.0"]);
+    for (const c of cases) expect(c.nodes?.length).toBeGreaterThan(0);
+    const rows = call<Case[]>(REPLAY, "recheck", cases, MAP, nodes);
     const missed = rows.filter((r) => !r.caught).map((r) => r.file);
     expect(missed).toEqual([]);
+  });
+
+  it("a pull request on Node 24 alone misses the Node-22-only failures", () => {
+    const rows = call<Case[]>(REPLAY, "recheck", cases, MAP, ["24.13.0"]);
+    const missed = rows.filter((r) => !r.caught);
+    expect(missed.length).toBeGreaterThan(0);
+    for (const r of missed) expect(r.nodes).toEqual(["22.13.0"]);
   });
 
   it("a narrowed map misses some, and the replay exits 1 on it", () => {
@@ -561,7 +579,7 @@ describe("ci.yml (issue 398)", () => {
     expect(ci.jobs["den-ui-nav"].if).toContain("github.event_name == 'push'");
   });
 
-  it("a pull request: one Node, the checks, then the subset with its reasons in the summary", () => {
+  it("a pull request: both Nodes, the checks, then the subset with its reasons in the summary", () => {
     const pr = ci.jobs.pr;
     expect(pr.if).toBe("github.event_name == 'pull_request'");
     expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
@@ -584,7 +602,13 @@ describe("ci.yml (issue 398)", () => {
       /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --summary "\$GITHUB_STEP_SUMMARY"/,
     );
     for (const name of ["pr", "pr-shards"]) {
-      const nodes = ci.jobs[name].steps
+      // The same Nodes as main's matrix: the replay found real failures
+      // that showed on Node 22 alone.
+      expect([name, ci.jobs[name].strategy?.matrix?.node]).toEqual([
+        name,
+        ci.jobs.tests.strategy?.matrix?.node,
+      ]);
+      const versions = ci.jobs[name].steps
         .map(
           (s) =>
             (s as { with?: { "node-version"?: string } }).with?.[
@@ -592,7 +616,7 @@ describe("ci.yml (issue 398)", () => {
             ],
         )
         .filter(Boolean);
-      expect([name, nodes]).toEqual([name, ["24.13.0"]]);
+      expect([name, versions]).toEqual([name, ["${{ matrix.node }}"]]);
       expect(runs(ci.jobs[name])).toContain(
         "mapfile -t files < affected.txt && npm test",
       );

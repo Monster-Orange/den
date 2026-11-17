@@ -211,7 +211,7 @@ export const isReal = (r) => r.verdict === "real" || r.verdict === "real?";
  * (Only the failing file's own selection matters, so it is the only test
  * file the check needs.)
  */
-export function recheck(cases, map) {
+export function recheck(cases, map, prNodes = null) {
   return cases.map((c) => {
     const sel = selectTests({
       changed: c.changed,
@@ -219,7 +219,16 @@ export function recheck(cases, map) {
       related: c.related ? [c.file] : [],
       map,
     });
-    const caught = sel.all || sel.files.has(c.file);
+    const selected = sel.all || sel.files.has(c.file);
+    // Per Node: caught only if a pull request runs it on a Node it failed
+    // on (prNodes: the pr job's matrix; null skips the check). A failure
+    // seen only on Node 22 needs a Node 22 run.
+    const failedOn = c.nodes ?? [];
+    const missingNodes =
+      prNodes && failedOn.length && !failedOn.some((n) => prNodes.includes(n))
+        ? failedOn
+        : [];
+    const caught = selected && missingNodes.length === 0;
     // The same without the everything list: what the map itself catches.
     const narrow = selectTests({
       changed: c.changed,
@@ -231,13 +240,32 @@ export function recheck(cases, map) {
       ...c,
       caught,
       caughtByMap: narrow.files.has(c.file),
-      caughtWhy: sel.all
-        ? `ALL (${sel.allBecause.join(", ")})`
-        : caught
-          ? sel.files.get(c.file).join("; ")
-          : "not in the subset",
+      caughtWhy: missingNodes.length
+        ? `selected, but a pull request never runs Node ${missingNodes.join(", ")}`
+        : sel.all
+          ? `ALL (${sel.allBecause.join(", ")})`
+          : caught
+            ? sel.files.get(c.file).join("; ")
+            : "not in the subset",
     };
   });
+}
+
+/** The Nodes a failing file failed on, from its job names. den-ui-nav runs on 24. */
+export function nodesOf(jobs) {
+  const out = new Set();
+  for (const j of jobs ?? []) {
+    const m = /\((\d+\.\d+\.\d+)/.exec(j);
+    out.add(m ? m[1] : "24.13.0");
+  }
+  return [...out].sort();
+}
+
+/** The Nodes ci.yml's pull-request job runs (its node matrix). */
+export async function prNodesOf(ciText) {
+  const { parse } = await import("yaml");
+  const doc = parse(ciText);
+  return doc.jobs?.pr?.strategy?.matrix?.node ?? [];
 }
 
 /** The real failures the subset misses. */
@@ -254,19 +282,20 @@ export function renderReplay(rows, meta) {
     `Window: ${meta.since} to ${meta.until}: ${meta.runs} ci.yml runs read; ${meta.red} red attempts in scope (red on main, or red on a pull-request head that reached main); ${rows.length} failing test files in them.`,
     "",
     `- Real failures: **${real.length}** (${count("real")} confirmed, ${count("real?")} unconfirmed and counted as real).`,
-    `- Caught by the pull-request subset: **${real.filter((r) => r.caught).length}** of ${real.length}; by the map, related tests and smoke alone (no "everything" trigger): ${real.filter((r) => r.caughtByMap).length}.`,
+    `- Caught by the pull-request subset, per Node (the test is selected, and a pull request runs it on a Node it failed on: ${(meta.prNodes ?? []).join(" and ")}): **${real.filter((r) => r.caught).length}** of ${real.length}. ${real.filter((r) => r.nodes?.length === 1 && r.nodes[0].startsWith("22")).length} of them failed only on Node 22, ${real.filter((r) => r.nodes?.length === 1 && r.nodes[0].startsWith("24")).length} only on Node 24.`,
+    `- Selected by the map, related tests and smoke alone (no "everything" trigger): ${real.filter((r) => r.caughtByMap).length}.`,
     `- Flakes: **${count("flake") + count("flake?")}** (${count("flake")} with the same head passing, ${count("flake?")} that went away on the next commit with no fix).`,
     `- Inherited: ${count("inherited")} (main was already red on that test; main's full run is what catches those).`,
     "",
-    "Rule, in order: **flake** when the same head (sha or tree) passed the file in another run or attempt; **inherited** when main's run at the change's base had already failed that file; **flake?** when the change was Markdown only (and the test reads none); **real** when it failed again on that head, or on the next commit, or the next commit changed the test or code it imports and passed it (a fix followed); **flake?** when the next commit failed it and then passed it on a re-run, or passed it with no such change, or when an unconfirmed failure failed the same way as a flake in another change; otherwise **real?** (no re-run, no finished next commit), counted as real.",
+    "Rule, in order: **flake** when the same head (sha or tree) passed the file in another run or attempt; **inherited** when main's run at the change's base had already failed that file; **flake?** when the change was Markdown only (and the test reads none; a judgment call); **real** when it failed again on that head, or on the next commit, or the next commit changed the test or code it imports and passed it (a fix followed); **flake?** when the next commit failed it and then passed it on a re-run, or passed it with no such change, or (a judgment call, the known-flake rule) when an unconfirmed failure, or one whose only sign of a fix is a next commit touching code it imports, failed the same way as a flake in another change; otherwise **real?** (no re-run, no finished next commit), counted as real.",
     "",
-    "| Run | Failing test | Verdict | Changed files | Subset includes it | Map alone | Why |",
-    "| --- | --- | --- | --- | --- | --- | --- |",
+    "| Run | Failing test | Verdict | Failed on Node | Changed files | Subset runs it (per Node) | Map alone | Why |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
   for (const r of rows) {
     const real = isReal(r);
     lines.push(
-      `| ${r.run} | \`${r.file}\` | ${r.verdict} | ${r.changedCount ?? ""} | ${real ? (r.caught ? "yes" : "**NO**") : "n/a"} | ${real ? (r.caughtByMap ? "yes" : "no") : ""} | ${r.why}${real && r.caughtWhy ? `; subset: ${r.caughtWhy}` : ""} |`,
+      `| ${r.run} | \`${r.file}\` | ${r.verdict} | ${(r.nodes ?? nodesOf(r.jobs)).join(", ")} | ${r.changedCount ?? ""} | ${real ? (r.caught ? "yes" : "**NO**") : "n/a"} | ${real ? (r.caughtByMap ? "yes" : "no") : ""} | ${r.why}${real && r.caughtWhy ? `; subset: ${r.caughtWhy}` : ""} |`,
     );
   }
   if (meta.other?.length) {
@@ -291,6 +320,7 @@ function args(argv) {
     out: "",
     cases: "",
     recheck: "",
+    nodes: "",
   };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i].replace(/^--/, "");
@@ -539,13 +569,23 @@ function report(rows) {
   return 0;
 }
 
+/** --nodes 22.13.0,24.13.0, or the pr job's matrix in ci.yml. */
+async function readPrNodes(flag) {
+  if (flag) return flag.split(",");
+  return prNodesOf(
+    fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf-8"),
+  );
+}
+
 async function main() {
   const o = args(process.argv.slice(2));
+  const prNodes = await readPrNodes(o.nodes);
   if (o.recheck) {
     // Offline: the saved real failures against a map (no gh, no git).
     const rows = recheck(
       JSON.parse(fs.readFileSync(o.recheck, "utf-8")),
       loadMap(o.map),
+      prNodes,
     );
     console.log(
       `ci-replay: ${rows.length} real failures, ${rows.filter((r) => r.caught).length} caught with ${path.relative(process.cwd(), o.map)}`,
@@ -764,7 +804,11 @@ async function main() {
   const final = knownFlakes(rows).map((r) => {
     if (!isReal(r)) return r;
     const t = jestFor(r.head, r.changed);
-    return recheck([{ ...r, related: t.related.includes(r.file) }], map)[0];
+    return recheck(
+      [{ ...r, nodes: nodesOf(r.jobs), related: t.related.includes(r.file) }],
+      map,
+      prNodes,
+    )[0];
   });
   rows.length = 0;
   rows.push(...final);
@@ -774,6 +818,7 @@ async function main() {
     runs: runs.length,
     red: scope.length,
     other,
+    prNodes,
   });
   if (o.out) fs.writeFileSync(o.out, md);
   fs.writeFileSync(
@@ -784,11 +829,12 @@ async function main() {
   if (o.cases) {
     const cases = rows
       .filter(isReal)
-      .map(({ run, file, verdict, why, changed, related }) => ({
+      .map(({ run, file, verdict, why, nodes, changed, related }) => ({
         run,
         file,
         verdict,
         why,
+        nodes,
         changed,
         related,
       }));
