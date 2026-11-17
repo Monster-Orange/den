@@ -65,14 +65,15 @@ export const NEVER_SHOWN = {
 
 /**
  * The vendors and runtimes whose own accounts may be named (the runtime
- * catalog's built-in vendor and name fields, src/shared/agents/catalog.ts,
- * and their short names). words.test.ts checks it covers the catalog.
+ * catalog's built-in vendor, name and accountName fields,
+ * src/shared/agents/catalog.ts, and their short names). words.test.ts checks it covers the catalog.
  */
 export const VENDOR_NAMES = [
   "Anthropic",
   "Claude Code",
   "Claude",
   "OpenAI",
+  "ChatGPT",
   "Codex CLI",
   "Codex",
   "Google",

@@ -357,6 +357,7 @@ import {
   setAccountOrder,
 } from "../../shared/agents/signin-accounts.js";
 import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
+import { accountNameOf } from "../../shared/agents/catalog.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -2997,11 +2998,13 @@ async function agentSigninView(
 function agentAccountsView(): {
   runtime: string;
   name: string;
+  account: string;
   accounts: Record<string, unknown>[];
 }[] {
   const out: {
     runtime: string;
     name: string;
+    account: string;
     accounts: Record<string, unknown>[];
   }[] = [];
   for (const id of runtimeIds()) {
@@ -3011,6 +3014,8 @@ function agentAccountsView(): {
       out.push({
         runtime: id,
         name: rt.catalog?.name ?? id,
+        // Whose account it is, in the vendor's words ("Claude").
+        account: rt.catalog ? accountNameOf(rt.catalog) : id,
         accounts: accountsView(getStateDir(), id).map((a) => ({
           id: a.id,
           name: a.name,
