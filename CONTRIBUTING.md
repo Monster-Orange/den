@@ -157,6 +157,9 @@ node scripts/affected-tests.mjs origin/main HEAD
 - **mapped**: from `tests/affected-map.json`: the browser specs of a changed
   page (a spec opens pages by URL, so imports never reach it), and tests
   that read files by path (docs, the changelog, `examples/`, `public/`);
+  a change to a UI catalog (`public/i18n/*.js`) also runs the tests that
+  import the English-catalog helper, and the specs that name a changed key
+  or its English text;
 - **smoke**: a few fast, broad tests, every time;
 - **everything**: a change to a shared file (the shell, the kit, the request
   guard, `package.json`, jest or test setup, CI) runs them all.

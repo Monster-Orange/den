@@ -83,6 +83,10 @@ export function validateMap(map) {
   for (const [i, r] of (map.rules ?? []).entries()) {
     if (!r.when?.length || !r.run?.length || !r.why)
       problems.push(`rules[${i}]: needs when, run and why`);
+    if (r.importers && !Array.isArray(r.importers))
+      problems.push(`rules[${i}]: importers is a list of files`);
+    if (r.mentions !== undefined && typeof r.mentions !== "boolean")
+      problems.push(`rules[${i}]: mentions is true or false`);
   }
   if (problems.length) throw new Error(`affected map: ${problems.join("; ")}`);
   return map;
@@ -98,9 +102,20 @@ export function loadMap(file = DEFAULT_MAP) {
  *   allTests  every jest test file (repo-relative)
  *   related   the test files jest --findRelatedTests gave for the change
  *   map       the affected map
+ *   importersOf  for a rule's `importers` files: the tests that import
+ *             each (jest's import graph), { file: [tests] }
+ *   mentioned the browser specs that mention a changed catalog key or its
+ *             English text, for a rule with `mentions: true`
  * Returns { all, allBecause, files: Map<test file, reasons[]> }.
  */
-export function selectTests({ changed, allTests, related, map }) {
+export function selectTests({
+  changed,
+  allTests,
+  related,
+  map,
+  importersOf = {},
+  mentioned = [],
+}) {
   const everything = (map.everything ?? []).map((e) =>
     typeof e === "string" ? { glob: e } : e,
   );
@@ -126,15 +141,65 @@ export function selectTests({ changed, allTests, related, map }) {
     const trigger = changed.filter(when);
     if (!trigger.length) continue;
     const run = matcher(rule.run);
-    for (const t of allTests)
-      if (run(t))
-        add(
-          t,
-          `mapped: ${trigger[0]}${trigger.length > 1 ? ` +${trigger.length - 1}` : ""} (${rule.why})`,
-        );
+    const why = `mapped: ${trigger[0]}${trigger.length > 1 ? ` +${trigger.length - 1}` : ""} (${rule.why})`;
+    for (const t of allTests) if (run(t)) add(t, why);
+    for (const imp of rule.importers ?? [])
+      for (const t of importersOf[imp] ?? [])
+        if (tests.has(t)) add(t, `${why}: imports ${path.basename(imp)}`);
+    if (rule.mentions)
+      for (const t of mentioned)
+        if (tests.has(t)) add(t, `${why}: mentions a changed key or its text`);
   }
   for (const s of map.smoke) if (tests.has(s)) add(s, "smoke");
   return { all: false, allBecause, files };
+}
+
+/**
+ * The catalog entries a diff of public/i18n/*.js adds or removes:
+ * `"key": "text",` lines (either quote), as { keys, texts }.
+ */
+export function catalogChanges(diff) {
+  const keys = new Set();
+  const texts = new Set();
+  for (const line of diff.split("\n")) {
+    if (!/^[+-]/.test(line) || /^(\+\+\+|---)/.test(line)) continue;
+    const m = /^[+-]\s*(["'])([^"']+)\1\s*:\s*(["'`])((?:\\.|(?!\3).)*)\3/.exec(
+      line,
+    );
+    if (!m) continue;
+    keys.add(m[2]);
+    texts.add(m[4]);
+  }
+  return { keys: [...keys], texts: [...texts] };
+}
+
+/** The English text of each key, read from the English catalog's source. */
+export function englishTexts(keys, enSource) {
+  const out = [];
+  for (const k of keys) {
+    const esc = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const m = new RegExp(
+      `(["'])${esc}\\1\\s*:\\s*(["'\`])((?:\\\\.|(?!\\2).)*)\\2`,
+    ).exec(enSource ?? "");
+    if (m) out.push(m[3]);
+  }
+  return out;
+}
+
+/**
+ * The specs whose source names one of the keys, or one of the English
+ * texts. Short needles match too much: a key needs a dot or 6 characters,
+ * a text 6 characters.
+ */
+export function specsMentioning(specSources, keys, texts) {
+  const needles = [
+    ...keys.filter((k) => k.includes(".") || k.length >= 6),
+    ...texts.filter((t) => t.length >= 6),
+  ];
+  return Object.entries(specSources)
+    .filter(([, src]) => needles.some((n) => src.includes(n)))
+    .map(([f]) => f)
+    .sort();
 }
 
 /** The Markdown job summary. */
@@ -162,6 +227,24 @@ export function summaryMarkdown(sel, changedCount) {
 
 const SOURCE_ROOTS = ["tests", "src", "packages", "scripts", "bin"];
 
+/**
+ * A child process's output, or a plain Error with its message and stderr
+ * (a child-process error refers to itself, which nothing can serialize).
+ */
+function run(cmd, args, opts) {
+  try {
+    return execFileSync(cmd, args, {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+      ...opts,
+    });
+  } catch (e) {
+    throw new Error(
+      `${cmd} ${args[0] ?? ""} failed: ${e.message}\n${e.stderr ?? ""}`,
+    );
+  }
+}
+
 /** jest's file lists, at the repo root. */
 export function jestLists(changed, cwd = ROOT) {
   const jest = path.join(cwd, "node_modules", ".bin", "jest");
@@ -170,9 +253,7 @@ export function jestLists(changed, cwd = ROOT) {
       .split("\n")
       .filter(Boolean)
       .map((f) => path.relative(cwd, f));
-  const allTests = rel(
-    execFileSync(jest, ["--listTests"], { cwd, encoding: "utf-8" }),
-  );
+  const allTests = rel(run(jest, ["--listTests"], { cwd }));
   const tests = new Set(allTests);
   // jest's roots are tests/ only; the import graph needs the sources too.
   const roots = SOURCE_ROOTS.filter((r) =>
@@ -186,14 +267,33 @@ export function jestLists(changed, cwd = ROOT) {
   );
   const related = srcs.length
     ? rel(
-        execFileSync(
+        run(
           jest,
           ["--roots", ...roots, "--findRelatedTests", ...srcs, "--listTests"],
-          { cwd, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+          { cwd },
         ),
       )
     : [];
   return { allTests, related };
+}
+
+const CATALOG = /^src\/ui\/server\/public\/i18n\/[^/]+\.js$/;
+
+/** The tests that import `file`, directly or not (jest's import graph). */
+function jestImporters(file, cwd = ROOT) {
+  if (!fs.existsSync(path.join(cwd, file))) return [];
+  const jest = path.join(cwd, "node_modules", ".bin", "jest");
+  const roots = SOURCE_ROOTS.filter((r) =>
+    fs.existsSync(path.join(cwd, r)),
+  ).map((r) => `<rootDir>/${r}`);
+  return run(
+    jest,
+    ["--roots", ...roots, "--findRelatedTests", file, "--listTests"],
+    { cwd },
+  )
+    .split("\n")
+    .filter(Boolean)
+    .map((f) => path.relative(cwd, f));
 }
 
 async function main(argv) {
@@ -211,10 +311,10 @@ async function main(argv) {
     );
     return 2;
   }
-  const changed = execFileSync(
+  const changed = run(
     "git",
     ["diff", "--name-only", "--no-renames", `${base}...${head}`],
-    { cwd: ROOT, encoding: "utf-8" },
+    { cwd: ROOT },
   )
     .split("\n")
     .filter(Boolean);
@@ -224,7 +324,49 @@ async function main(argv) {
   const { buildRules } = await import("./affected-map.mjs");
   map.rules = [...map.rules, ...buildRules()];
   const { allTests, related } = jestLists(changed);
-  const sel = selectTests({ changed, allTests, related, map });
+  // Rules that run a helper's importers, or the specs naming a changed key.
+  const fired = map.rules.filter((r) => changed.some(matcher(r.when)));
+  const importersOf = {};
+  for (const imp of new Set(fired.flatMap((r) => r.importers ?? [])))
+    importersOf[imp] = jestImporters(imp);
+  let mentioned = [];
+  const catalogs = changed.filter((f) => CATALOG.test(f));
+  if (fired.some((r) => r.mentions) && catalogs.length) {
+    const { keys, texts } = catalogChanges(
+      run(
+        "git",
+        ["diff", "-U0", "--no-renames", `${base}...${head}`, "--", ...catalogs],
+        { cwd: ROOT },
+      ),
+    );
+    const en = path.join(
+      ROOT,
+      "src",
+      "ui",
+      "server",
+      "public",
+      "i18n",
+      "en.js",
+    );
+    const enSource = fs.existsSync(en) ? fs.readFileSync(en, "utf-8") : "";
+    const specs = Object.fromEntries(
+      allTests
+        .filter((t) => t.endsWith(".browser.test.ts"))
+        .map((t) => [t, fs.readFileSync(path.join(ROOT, t), "utf-8")]),
+    );
+    mentioned = specsMentioning(specs, keys, [
+      ...texts,
+      ...englishTexts(keys, enSource),
+    ]);
+  }
+  const sel = selectTests({
+    changed,
+    allTests,
+    related,
+    map,
+    importersOf,
+    mentioned,
+  });
   if (sel.all)
     console.log(
       `ALL  (${sel.files.size} files) because: ${sel.allBecause.join(", ")}`,

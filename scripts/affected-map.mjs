@@ -163,6 +163,24 @@ export function buildRules() {
       why: "the es and ja catalogs: the specs that switch language",
     },
     {
+      // The catalogs themselves (en.js once the English one moves out of
+      // shell.js): the tests that import the en-catalog helper (found by
+      // jest's import graph when the selector runs), the words ratchet,
+      // the specs that check every page's words, and (mentions) the specs
+      // that name a changed key or its English text.
+      when: [`${PUB}/i18n/*.js`],
+      run: [
+        "tests/unit/scripts/words.test.ts",
+        "tests/unit/server/i18n-pages.browser.test.ts",
+        "tests/unit/server/i18n-shell.browser.test.ts",
+        "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/kit-dialog.browser.test.ts",
+      ],
+      importers: ["tests/unit/server/helpers/en-catalog.ts"],
+      mentions: true,
+      why: "the UI catalogs",
+    },
+    {
       when: [`${PUB}/**`],
       run: others.filter(
         (t) =>
