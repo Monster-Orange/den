@@ -17,6 +17,7 @@
  */
 import { linkOpen } from "/term-input.js";
 import { timeHtml } from "/kit/time.js";
+import { healthReason } from "./value-words.js";
 import {
   commandTier,
   connections,
@@ -428,7 +429,7 @@ export const SECTIONS = [
       kv([
         [
           K("status", "Status"),
-          `<span class="dg-pill ${status(s)}">${esc(statusWord(s))}</span> ${s.health.ms != null ? `<span class="dg-muted">${fmtMs(s.health.ms)}</span>` : ""}${s.health.error ? ` <span class="dg-muted">${esc(s.health.error)}</span>` : ""}`,
+          `<span class="dg-pill ${status(s)}">${esc(statusWord(s))}</span> ${s.health.ms != null ? `<span class="dg-muted">${fmtMs(s.health.ms)}</span>` : ""}${s.health.error ? ` <span class="dg-muted">${esc(healthReason(s.health.error, s.health.ms) ?? s.health.error)}</span>` : ""}`,
         ],
         [K("check", "Check"), checkText(s)],
         (s.open || s.target?.url) && [
