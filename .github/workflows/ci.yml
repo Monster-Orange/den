@@ -84,8 +84,15 @@ jobs:
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
     # jest's cores-minus-one the shared runner starved and the heaviest
     # files ran 2-8 times slower, past their budgets (issues 195-198).
+    #
+    # Issue 397: on a pull request the quarantined tests (tests/quarantine.json,
+    # flaky with evidence) are left out of the two blocking steps
+    # (DEN_TEST_QUARANTINE=exclude) and run in the last step, which can't
+    # block; each step's summary lists them. On a push to main it is off:
+    # every test blocks, as in release.yml.
     env:
       DEN_TEST_WORKERS: "2"
+      DEN_TEST_QUARANTINE: ${{ github.event_name == 'pull_request' && 'exclude' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -109,6 +116,12 @@ jobs:
       - run: npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only
+      - name: Quarantined tests (pull requests only; never blocks)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        env:
+          DEN_TEST_QUARANTINE: only
+        run: npx jest --forceExit --shard=${{ matrix.shard }}/4 --passWithNoTests
 
   # Issue 95: the global nav inventory (packages/den-ui/inventory) on the
   # one browser build its reference was taken on: Playwright's image, by
