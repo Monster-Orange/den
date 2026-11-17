@@ -4,33 +4,6 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.65] - unreleased
-
-### Added
-
-- A web app on this computer can read one project agent's state from its
-  own server, with a server key: `GET /api/embed/p/<project>/agents/<id>/state`
-  answers running or not, and stopped, busy, idle or waiting (with what it
-  waits on). Only the key's hash is kept; a revoked key gets 401 at once.
-  An embed key reaches only its agent's embed routes: anywhere else it is
-  refused (issue 334).
-- A web app's server can relay its person's message to that agent with
-  the same key: `POST /api/embed/say` holds it in the delivery loop Hub's
-  inbox uses. It is typed after the agent's turn, at its next start when
-  it's stopped, and held while it waits on its person; never mid-turn.
-  The audit keeps its length, never its text (issue 334).
-- Settings › Embedding › App keys: pick an agent and a listed web app,
-  press Make key, and allow it in Den's dialog. The key is shown once,
-  then only its hash is kept. The list shows each key's agent, web app
-  and last use; Revoke asks the same way. An agent can't ask for a key.
-  In English, Spanish and Japanese. docs/embedding.md says how a web
-  app's backend relays its person's messages (issue 334).
-- An app key's state reads are in the activity trail: the key's id, the
-  route, when, and whether it was refused, as one line per key and route
-  per window with the count of reads, so a polling web app doesn't flood
-  it. The window is Settings › Embedding › App key reads in one activity
-  line (`embed.app_key_audit_window_seconds`, 60 by default) (issue 334).
-
 ## [0.4.64] - unreleased
 
 ### Fixed
