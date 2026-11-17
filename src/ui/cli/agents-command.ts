@@ -180,7 +180,7 @@ import { localDateTime } from "../../shared/local-time.js";
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check|token> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check|token|accounts> ...",
   lines: [
     "Agents: a persona and a project, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -297,6 +297,11 @@ export const AGENTS_HELP = {
     "    the install's secrets store. status: whether it is there and when it was",
     "    set. clear: removes it from the store, the way set kept it (asks first",
     "    unless --yes). set and clear are a person's only",
+    "{cli} agents accounts list | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]", // words-ok: a vendor's sign-in accounts (issue 339)
+    "    a vendor's sign-in accounts (Account A, B, ... unless named), each token", // words-ok: a vendor's sign-in accounts (issue 339)
+    "    its own item in the install's secrets store; set-token reads it like", // words-ok: a vendor's sign-in accounts (issue 339)
+    "    token set. Agents sign in with the first in the order. The token that", // words-ok: a vendor's sign-in accounts (issue 339)
+    "    exists today is Account A. Changes are a person's only", // words-ok: a vendor's sign-in accounts (issue 339)
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -1554,6 +1559,11 @@ export interface AgentsTokenDeps {
   >;
   /** `agents token clear`'s y/N (default: a terminal prompt; none off one). */
   tokenConfirm?: (question: string) => Promise<boolean | null>;
+  /**
+   * Issue 339: `agents accounts`' store (tests): the provider, its status,
+   * each named ref, and where a new ref goes (default: the install's).
+   */
+  accountDeps?: AccountsCliDeps;
   /** The store, its ref and status for `token status` (tests). */
   tokenDeps?: Partial<
     Pick<
@@ -1767,6 +1777,220 @@ async function tokenClearCmd(
   } catch (e) {
     d.err(`✗ ${where}: ${String((e as Error)?.message ?? e)}`);
     return 1;
+  }
+}
+
+/** Issue 339: the store `agents accounts` writes to (tests inject one). */
+export interface AccountsCliDeps {
+  provider?: () => import("../../shared/secrets/types.js").SecretsProvider;
+  status?: () => ReturnType<
+    typeof import("../../shared/secrets/index.js").secretsStatus
+  >;
+  /** The named ref (default: secrets.refs.<name>, the distribution's first). */
+  ref?: (
+    name: string,
+  ) => import("../../shared/secrets/types.js").SecretRef | null;
+  /** Write a new ref to user.yml (default: writeUserConfig). */
+  saveRefAs?: (
+    name: string,
+    ref: Partial<import("../../shared/secrets/types.js").SecretRef>,
+  ) => void;
+  /** user.yml's ref under the name (default: read it). */
+  userRef?: (
+    name: string,
+  ) => Partial<import("../../shared/secrets/types.js").SecretRef> | undefined;
+  /** Remove the name from user.yml (default: writeUserConfig). */
+  dropRef?: (name: string) => void;
+}
+
+/** `--runtime <id>` out of args (default den-claude), and the rest. */
+function runtimeArg(args: string[]): { runtimeId: string; rest: string[] } {
+  const rest: string[] = [];
+  let runtimeId = "den-claude";
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--runtime") {
+      const v = args[++i];
+      if (!v) throw new UsageError("--runtime takes a runtime id");
+      runtimeId = v;
+    } else if (a.startsWith("--runtime=")) runtimeId = a.slice(10);
+    else rest.push(a);
+  }
+  return { runtimeId, rest };
+}
+
+/**
+ * `agents accounts <list|add|set-token|order|remove>` (issue 339): a
+ * vendor's sign-in accounts. Tokens come from stdin or a hidden prompt,
+ * never argv, and nothing printed or kept in a file carries one. Changes
+ * are a person's only. `--runtime <id>` names the vendor (default Claude
+ * Code).
+ */
+async function accountsCmd(
+  args: string[],
+  d: AgentsResolved,
+  deps: AgentsTokenDeps,
+): Promise<number> {
+  const A = await import("../../shared/agents/signin-accounts.js");
+  const T = await import("../../shared/agents/signin-token.js");
+  const [sub, ...more] = args;
+  const subs = ["list", "add", "set-token", "order", "remove"];
+  // Never echo an unknown word: it may be a token pasted in the wrong place.
+  const where = `agents accounts${sub && subs.includes(sub) ? ` ${sub}` : ""}`; // words-ok: a vendor's sign-in account (issue 339)
+  if (!sub || !subs.includes(sub))
+    throw new UsageError(
+      `${where}: use agents accounts ${subs.join(" | ")} [--runtime <id>]`, // words-ok: a vendor's sign-in account (issue 339)
+    );
+  const ad = deps.accountDeps ?? {};
+  const stateDir = d.stateDir();
+  const refOf = (name: string) =>
+    ad.ref ? ad.ref(name) : T.agentTokenRef(undefined, undefined, name);
+  try {
+    // set-token: a second word may be the token itself, so it's checked
+    // before anything echoes an argument.
+    if (sub === "set-token") {
+      const { rest } = runtimeArg(more);
+      if (rest.length !== 1)
+        throw new UsageError(
+          `${where} takes one account (its number or name): the token is read from stdin or a prompt, never on the command line (it would stay in your shell history and the process list)`, // words-ok: a vendor's sign-in account (issue 339)
+        );
+    }
+    const { runtimeId, rest } = runtimeArg(more);
+    const rt = A.signInRuntime(runtimeId);
+    const flag = runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`;
+    if (sub === "list") {
+      if (rest.length) throw new UsageError(`${where} takes only --runtime`);
+      d.out(`${rt.name} (${runtimeId}):`);
+      for (const v of A.accountsView(stateDir, runtimeId, refOf)) {
+        const st = v.configured
+          ? v.setAt
+            ? `token set ${v.setAt.slice(0, 10)}${v.store ? ` (in ${v.store})` : ""}`
+            : "token set (when is not known)"
+          : "no token";
+        d.out(
+          `  ${v.id}  ${v.label}  ${st}${v.first ? "  ← agents sign in with this one" : ""}`,
+        );
+      }
+      return 0;
+    }
+    if (isAgentTokenEnv(d.env)) {
+      d.err(
+        `✗ ${where}: only a person changes the agents' sign-in accounts (this is an agent)`, // words-ok: a vendor's sign-in accounts (issue 339)
+      );
+      return 1;
+    }
+    if (sub === "add") {
+      let name: string | undefined;
+      const left: string[] = [];
+      for (let i = 0; i < rest.length; i++) {
+        if (rest[i] === "--name") name = rest[++i] ?? "";
+        else left.push(rest[i]!);
+      }
+      if (left.length) throw new UsageError(`${where} takes only --name`);
+      const a = A.addAccount(stateDir, runtimeId, name);
+      d.out(
+        `✓ added account ${a.id} (${A.accountLabel(a)}) to ${rt.name}. Set its token: ${d.cli} agents accounts set-token ${a.id}${flag}`, // words-ok: a vendor's sign-in account (issue 339)
+      );
+      return 0;
+    }
+    if (sub === "order") {
+      if (!rest.length)
+        throw new UsageError(`${where} takes every account, in order`); // words-ok: a vendor's sign-in account (issue 339)
+      const ids = rest.map((w) => A.findAccount(stateDir, runtimeId, w).id);
+      const list = A.setAccountOrder(stateDir, runtimeId, ids);
+      d.out(
+        `✓ ${rt.name}: ${list.map((a) => A.accountLabel(a)).join(", ")}. Agents sign in with ${A.accountLabel(list[0]!)} from their next start.`,
+      );
+      return 0;
+    }
+    if (sub === "remove") {
+      const yes = rest.includes("--yes") || rest.includes("-y");
+      const which = rest.filter((a) => a !== "--yes" && a !== "-y");
+      if (which.length !== 1)
+        throw new UsageError(`${where} takes one account, and --yes`); // words-ok: a vendor's sign-in account (issue 339)
+      const acct = A.findAccount(stateDir, runtimeId, which[0]!);
+      if (!yes) {
+        const ok = await (deps.tokenConfirm ?? askYesNo)(
+          `Remove ${A.accountLabel(acct)} and its sign-in token from the secrets store? [y/N] `,
+        );
+        if (ok === null) {
+          d.err(`✗ ${where}: not a terminal, so nothing to ask: add --yes`);
+          return 1;
+        }
+        if (!ok) {
+          d.out("Nothing removed.");
+          return 0;
+        }
+      }
+      const name = A.accountRefName(runtimeId, acct.id);
+      const r = await A.removeAccount({
+        runtimeId,
+        accountId: acct.id,
+        stateDir,
+        env: d.env,
+        ref: () => refOf(name),
+        ...(ad.provider ? { provider: ad.provider } : {}),
+        ...(ad.status ? { status: ad.status } : {}),
+        ...(ad.userRef ? { userRef: () => ad.userRef!(name) } : {}),
+        ...(ad.dropRef ? { dropRef: () => ad.dropRef!(name) } : {}),
+      });
+      d.out(
+        `✓ removed ${A.accountLabel(r.removed)} from ${rt.name}` +
+          (r.cleared.cleared
+            ? `; its token is gone from ${r.cleared.store}`
+            : ""),
+      );
+      return 0;
+    }
+    // set-token
+    const acct = A.findAccount(stateDir, runtimeId, rest[0]!);
+    const backend = (
+      ad.status ??
+      (await import("../../shared/secrets/index.js")).secretsStatus.bind(
+        null,
+        undefined,
+        d.env,
+        { detect: false },
+      )
+    )().backend;
+    if (backend === "env") {
+      d.err(`✗ ${where}: ${T.ENV_SET_OUTSIDE_DEN}`);
+      return 1;
+    }
+    const input = await (deps.tokenInput ?? (() => readTokenInput()))();
+    const value = input.trim();
+    const bad = T.tokenShapeError(input);
+    if (bad) {
+      d.err(
+        `✗ ${where}: ${bad}. Make one with ${rt.id === "den-claude" ? T.TOKEN_MAKE_HINT : "its sign-in command"}, then pipe it in: ${d.cli} agents accounts set-token ${acct.id}${flag} < file, or paste it at the prompt`, // words-ok: a vendor's sign-in account (issue 339)
+      );
+      return 1;
+    }
+    const name = A.accountRefName(runtimeId, acct.id);
+    let res: { ref: "configured" | "created"; store: string };
+    try {
+      res = await A.saveAccountToken(value, {
+        runtimeId,
+        accountId: acct.id,
+        stateDir,
+        ...(ad.ref ? { ref: () => ad.ref!(name) } : {}),
+        ...(ad.provider ? { provider: ad.provider } : {}),
+        ...(ad.status ? { status: ad.status } : {}),
+        ...(ad.saveRefAs ? { saveRefAs: ad.saveRefAs } : {}),
+      });
+    } catch (e) {
+      d.err(
+        `✗ ${where}: ${T.withoutSecret(String((e as Error)?.message ?? e), value) || "the secrets store refused it"}`,
+      );
+      return 1;
+    }
+    d.out(
+      `✓ ${A.accountLabel(acct)}'s sign-in token is saved in ${res.store}${res.ref === "created" ? ` (a new item; secrets.refs.${name} is in your user.yml)` : ""}.`,
+    );
+    return 0;
+  } catch (e) {
+    if (e instanceof A.AccountsError) throw new UsageError(e.message);
+    throw e;
   }
 }
 
@@ -2212,6 +2436,8 @@ export async function cmdAgents(
           return await handbackCheck(rest, d, deps, "handoff");
         case "token":
           return await tokenCmd(rest, d, deps);
+        case "accounts":
+          return await accountsCmd(rest, d, deps);
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }
