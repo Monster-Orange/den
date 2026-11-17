@@ -133,9 +133,11 @@ const keyBytes = (b64u) => {
 /**
  * Subscribe this browser: the browser's permission, the service worker,
  * the subscription, then the server keeps it. "ok", "denied" or
- * "unsupported"; throws on a server refusal.
+ * "unsupported"; throws on a server refusal. `api` reads; `send(path,
+ * body)` writes, through the page's working pop-up (BUSY-1), and
+ * resolves with the answer's data or null when it didn't succeed.
  */
-export async function pushOn(api, win = window) {
+export async function pushOn(api, send, win = window) {
   if (!pushSupported(win)) return "unsupported";
   if (win.Notification.permission !== "granted") {
     const p = await win.Notification.requestPermission();
@@ -151,19 +153,20 @@ export async function pushOn(api, win = window) {
       userVisibleOnly: true,
       applicationServerKey: keyBytes(publicKey),
     }));
-  await api("POST", "/api/alerts/subscribe", {
+  const kept = await send("/api/alerts/subscribe", {
     subscription: typeof sub.toJSON === "function" ? sub.toJSON() : sub,
   });
+  if (!kept) throw new Error("subscribe refused");
   return "ok";
 }
 
-/** Stop push to this browser (other devices keep theirs). */
-export async function pushOff(api, win = window) {
+/** Stop push to this browser (other devices keep theirs); `send` as pushOn's. */
+export async function pushOff(send, win = window) {
   const sub = await pushSubscription(win);
   if (!sub) return;
   try {
     await sub.unsubscribe?.();
   } finally {
-    await api("POST", "/api/alerts/unsubscribe", { endpoint: sub.endpoint });
+    await send("/api/alerts/unsubscribe", { endpoint: sub.endpoint });
   }
 }

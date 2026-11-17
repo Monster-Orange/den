@@ -468,6 +468,14 @@ function alertRows() {
  */
 function drawPush(host, ctx, io) {
   const api = (m, p, b) => ctx.shell.api(m, p, b);
+  // BUSY-1: the subscription's write goes through the working pop-up,
+  // the switch held while it runs; data, or null when it didn't succeed.
+  const send = (path, body) => {
+    const run = (headers) => ctx.shell.api("POST", path, body, { headers });
+    if (!ctx.shell.busyAction) return run({}).catch(() => null);
+    const button = host.querySelector("input") || undefined;
+    return ctx.shell.busyAction("save", run, { button, toastFast: false });
+  };
   const draw = (on, note) => {
     host.innerHTML =
       `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
@@ -493,8 +501,8 @@ function drawPush(host, ctx, io) {
   const flip = async (on) => {
     let got = "ok";
     try {
-      if (on) got = await pushOn(api);
-      else await pushOff(api);
+      if (on) got = await pushOn(api, send);
+      else await pushOff(send);
     } catch {
       got = "failed";
     }

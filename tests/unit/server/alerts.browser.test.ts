@@ -306,13 +306,29 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       await sw.waitFor();
       expect(await sw.isChecked()).toBe(false);
       await sw.click();
+      // The click checks the box at once; done is the server keeping this
+      // device (the switch drawn again, enabled, from its subscription).
       await p.waitForFunction(
-        () =>
-          (document.getElementById("set-phone-push") as HTMLInputElement | null)
-            ?.checked === true,
+        () => {
+          const w = window as unknown as Record<string, unknown>;
+          const el = document.getElementById(
+            "set-phone-push",
+          ) as HTMLInputElement | null;
+          return (
+            w.__appKey !== undefined && el?.checked === true && !el.disabled
+          );
+        },
         null,
         { timeout: 15_000 },
       );
+      for (
+        let i = 0;
+        i < 100 &&
+        ((await s!.settingsGet()).alerts as { phone?: boolean } | undefined)
+          ?.phone !== true;
+        i++
+      )
+        await p.waitForTimeout(100);
       expect(
         await p.evaluate(() => {
           const w = window as unknown as Record<string, unknown>;
@@ -354,7 +370,11 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
         ),
       ).toBe(0);
       // Off on this device: it stops; the server forgets it.
+      const forgot = p.waitForResponse((x) =>
+        x.url().endsWith("/api/alerts/unsubscribe"),
+      );
       await sw.click();
+      expect((await forgot).status()).toBe(200);
       await p.waitForFunction(
         () =>
           (document.getElementById("set-phone-push") as HTMLInputElement | null)
