@@ -57,6 +57,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 103: Settings › Embedding.
   embed: EMBED_DEFAULTS as unknown as Record<string, unknown>,
+  // Issue 172: alerts outside the bell, and quiet hours.
+  alerts: { desktop: true, phone: true, quiet_from: true, quiet_to: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -164,6 +166,11 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        // Issue 172: alerts outside the bell.
+        "alerts.desktop",
+        "alerts.phone",
+        "alerts.quiet_from",
+        "alerts.quiet_to",
         // Issue 334: an app key's reads, one audit line per window.
         "embed.app_key_audit_window_seconds",
         // Issue 160: the install's approval policy.

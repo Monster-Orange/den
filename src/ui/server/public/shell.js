@@ -1048,6 +1048,26 @@
     "set.notifications.fold_days.o.7": "7 days",
     "set.notifications.fold_days.o.14": "14 days",
     "set.notifications.fold_days.o.30": "30 days",
+    "set.notifications.phone": "Alerts on this device by push",
+    "set.notifications.phone.d":
+      "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+    "set.notifications.phone.none":
+      "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+    "set.notifications.phone.failed": "Couldn't turn on push here.",
+    "set.notifications.quiet_from": "Quiet hours start",
+    "set.notifications.quiet_from.d":
+      "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+    "set.notifications.quiet_to": "Quiet hours end",
+    "set.notifications.quiet_to.d":
+      "Alerts outside the bell start again at this time.",
+    "set.notifications.quiet.off": "Off",
+    "set.notifications.quiet.half": "Quiet hours need a start and an end.",
+    "set.notifications.desktop": "Desktop alerts",
+    "set.notifications.desktop.d":
+      "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+    "set.notifications.desktop.denied":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+    "set.notifications.desktop.none": "This browser can't show notifications.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
