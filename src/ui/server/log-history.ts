@@ -36,7 +36,17 @@ const HISTORY_DIR = path.join(getStateDir(), "history");
 export type HistorySource =
   | { kind: "docker"; container: string }
   | { kind: "file"; path: string }
-  | { kind: "unsupported"; reason: string };
+  | { kind: "unsupported"; reason: string; t?: ReasonWords };
+
+/**
+ * A reason as a catalog key and its vars (issue 171): the Logs page shows
+ * the catalog's words in its language; `reason`/`error` stay English for
+ * the CLI and agents.
+ */
+export interface ReasonWords {
+  key: string;
+  vars?: Record<string, string>;
+}
 
 /**
  * Repo/service names as they appear in catalogs and manifests: must start
@@ -95,13 +105,18 @@ export async function resolveHistorySource(
   // (getServiceLogPath mkdirs + reads `<repo>/<service>.log`) and docker
   // invocations. Reject anything that isn't a plain catalog-style name.
   if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName)) {
-    return { kind: "unsupported", reason: "invalid repo/service name" };
+    return {
+      kind: "unsupported",
+      reason: "invalid repo/service name",
+      t: { key: "lg.why.badName" },
+    };
   }
 
   if (env !== "local") {
     return {
       kind: "unsupported",
       reason: `history for env "${env}" is not supported yet (local only)`,
+      t: { key: "lg.why.notLocal", vars: { env } },
     };
   }
 
@@ -110,7 +125,12 @@ export async function resolveHistorySource(
     [`${repoName}/${svcName}`, repoName],
     workspace,
   );
-  if (found.error) return { kind: "unsupported", reason: found.error };
+  if (found.error)
+    return {
+      kind: "unsupported",
+      reason: found.error,
+      t: { key: "lg.why.noProject", vars: { name: `${repoName}/${svcName}` } },
+    };
   const repoPath = found.resolved?.repoPath;
 
   // 1. The service's container: its compose stack's, else opctl's
@@ -140,6 +160,7 @@ export async function resolveHistorySource(
   return {
     kind: "unsupported",
     reason: `no running container or daemon log found for ${repoName}/${svcName}`,
+    t: { key: "lg.why.noSource", vars: { name: `${repoName}/${svcName}` } },
   };
 }
 
@@ -364,6 +385,8 @@ export interface SystemSearchResult {
   matches: SearchMatch[];
   truncated: boolean;
   error?: string;
+  /** The error as catalog words, when Den knows it (issue 171). */
+  t?: ReasonWords;
   /** True when the system was excluded because it is not running. */
   skipped?: boolean;
 }
@@ -441,6 +464,7 @@ export async function searchSystemHistory(
       matches: [],
       truncated: false,
       error: source.reason,
+      ...(source.t ? { t: source.t } : {}),
     };
   }
 
@@ -471,6 +495,7 @@ export async function searchSystemHistory(
       matches: [],
       truncated: false,
       error: "could not snapshot container log",
+      t: { key: "lg.why.noSnapshot" },
     };
   }
 
