@@ -1,6 +1,11 @@
 # Den's gates on every push and pull request: types, lint, unit tests, the
 # packaged-install smoke (dist-smoke), and the org-name gate (no org's names, hosts or accounts in this public repo; the
 # patterns live in the DEN_ORG_NAMES secret, never in the repo).
+#
+# Issue 398: a push to main runs everything on both Nodes (checks, tests,
+# den-ui-nav, dist-smoke). A pull request runs Node 24 only: the pr job
+# (the same checks and dist-smoke, then the tests the change affects:
+# scripts/affected-tests.mjs), and pr-shards when that subset is large.
 name: ci
 
 on:
@@ -35,6 +40,7 @@ jobs:
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
+    if: github.event_name == 'push'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
@@ -79,20 +85,16 @@ jobs:
   # side (jest --shard): every test runs once per Node, as before; the suite
   # took 13–19 min (up to 30 with setup) in one job.
   tests:
+    if: github.event_name == 'push'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
     # jest's cores-minus-one the shared runner starved and the heaviest
     # files ran 2-8 times slower, past their budgets (issues 195-198).
-    #
-    # Issue 397: on a pull request the quarantined tests (tests/quarantine.json,
-    # flaky with evidence) are left out of the two blocking steps
-    # (DEN_TEST_QUARANTINE=exclude) and run in the last step, which can't
-    # block; each step's summary lists them. On a push to main it is off:
-    # every test blocks, as in release.yml.
+    # Issue 397: quarantined tests block here as everywhere on main (a pull
+    # request runs them apart, in pr or pr-shards).
     env:
       DEN_TEST_WORKERS: "2"
-      DEN_TEST_QUARANTINE: ${{ github.event_name == 'pull_request' && 'exclude' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -116,12 +118,6 @@ jobs:
       - run: npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only
-      - name: Quarantined tests (pull requests only; never blocks)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
-        continue-on-error: true
-        env:
-          DEN_TEST_QUARANTINE: only
-        run: npx jest --forceExit --shard=${{ matrix.shard }}/4 --passWithNoTests
 
   # Issue 95: the global nav inventory (packages/den-ui/inventory) on the
   # one browser build its reference was taken on: Playwright's image, by
@@ -131,7 +127,12 @@ jobs:
   # server on this runner through the connection. Elsewhere (the shards,
   # no DEN_PW_WS) the suite skips: a local browser lays text out a few px
   # apart. --verbose: the red cases show by name in the log.
+  #
+  # On a pull request it runs when the change's tests include it (it is in
+  # the subset when den-ui or the shell changed: the pr job's "nav" output).
   den-ui-nav:
+    needs: [pr]
+    if: ${{ !cancelled() && (github.event_name == 'push' || needs.pr.outputs.nav == 'true') }}
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
@@ -165,6 +166,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
+    if: github.event_name == 'push'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
@@ -180,3 +182,129 @@ jobs:
       # npm pack runs the prepare script (husky): it needs the dev dependencies.
       - run: npm ci
       - run: bash scripts/dist-smoke.sh
+
+  # Issue 398: a pull request, on Node 24 (the Node installs run). The same
+  # checks and install smoke as above, then the tests the change affects
+  # (scripts/affected-tests.mjs: jest's related tests, the browser specs
+  # tests/affected-map.json maps to a changed page, a smoke set; or all of
+  # them when a shared file changed), listed with the reason for each in
+  # the job summary. A small subset runs here; a large one (all, more than
+  # 150 files, or more than 30 browser specs) runs in pr-shards, four ways. Issue 397: quarantined
+  # tests are left out of the blocking steps and run in a last step that
+  # can't block.
+  pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    timeout-minutes: 40
+    outputs:
+      shards: ${{ steps.select.outputs.shards }}
+      nav: ${{ steps.select.outputs.nav }}
+    env:
+      DEN_TEST_WORKERS: "2"
+      DEN_TEST_QUARANTINE: exclude
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The words gate and the subset diff against the base commit.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.13.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: node scripts/words-gate.mjs
+      - run: npm run lint
+      - run: npm run -s gate:den-ui
+      - name: Org-name gate
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+        run: node scripts/org-name-gate.mjs
+      - name: Org-name gate, commit messages
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
+      - run: bash scripts/dist-smoke.sh
+      - name: Pick the tests this change affects
+        id: select
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
+          # Large: everything, more than 150 files, or more than 30 browser
+          # specs (they take most of the time: ~30 s each against ~2 s).
+          n=$(grep -c . affected.txt)
+          b=$(grep -c '\.browser\.test\.ts$' affected.txt || true)
+          if [ "$(head -1 affected.txt)" = ALL ] || [ "$n" -gt 150 ] || [ "$b" -gt 30 ]; then
+            echo 'shards=[1,2,3,4]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'shards=[]' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -qxE 'ALL|tests/unit/den-ui/nav-inventory\.browser\.test\.ts' affected.txt; then
+            echo 'nav=true' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.select.outputs.shards == '[]'
+        run: npx playwright install --with-deps chromium webkit
+      # Issue 296: the files that start Docker containers run after the rest.
+      - if: steps.select.outputs.shards == '[]'
+        env:
+          DEN_TEST_DOCKER: skip
+        run: mapfile -t files < affected.txt && npm test -- --passWithNoTests "${files[@]}"
+      - if: steps.select.outputs.shards == '[]'
+        env:
+          DEN_TEST_DOCKER: only
+        run: mapfile -t files < affected.txt && npm test -- --passWithNoTests "${files[@]}"
+      - name: Quarantined tests (never blocks)
+        if: ${{ !cancelled() && steps.select.outputs.shards == '[]' }}
+        continue-on-error: true
+        env:
+          DEN_TEST_QUARANTINE: only
+        run: npx jest --forceExit --passWithNoTests
+
+  # A large subset (all the tests, more than 150 files or 30 browser
+  # specs), in four parts side by side, Node 24 only. Each part picks the
+  # same subset again (a diff and jest's file lists: seconds) and runs its
+  # share of it.
+  pr-shards:
+    needs: [pr]
+    if: needs.pr.outputs.shards != '[]'
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    env:
+      DEN_TEST_WORKERS: "2"
+      DEN_TEST_QUARANTINE: exclude
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.pr.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.13.0"
+          cache: npm
+      - run: npm ci
+      - name: Pick the tests this change affects
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
+          # ALL: no file list, jest runs every test.
+          if [ "$(head -1 affected.txt)" = ALL ]; then : > affected.txt; fi
+      - run: npx playwright install --with-deps chromium webkit
+      - env:
+          DEN_TEST_DOCKER: skip
+        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
+      - env:
+          DEN_TEST_DOCKER: only
+        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
+      - name: Quarantined tests (never blocks)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          DEN_TEST_QUARANTINE: only
+        run: npx jest --forceExit --shard=${{ matrix.shard }}/4 --passWithNoTests

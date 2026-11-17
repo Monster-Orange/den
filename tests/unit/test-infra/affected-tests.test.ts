@@ -14,6 +14,7 @@ import { execFileSync, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as yaml from "yaml";
 
 const ROOT = path.join(__dirname, "../../..");
 const AFFECTED = path.join(ROOT, "scripts", "affected-tests.mjs");
@@ -204,13 +205,15 @@ describe("the map (tests/affected-map.json)", () => {
     expect(dead).toEqual([]);
   });
 
-  it("its rules are what scripts/affected-map.mjs writes from the code today", () => {
-    // A new page or spec changes them: rerun the script.
-    const r = spawnSync(process.execPath, [MAP_GEN, "--check"], {
-      cwd: ROOT,
-      encoding: "utf-8",
-    });
-    expect([r.status, r.stderr]).toEqual([0, ""]);
+  it("every browser spec is in a rule (a page it opens, or the script it guards)", () => {
+    // affected-tests.mjs adds these rules, rebuilt from the code, to the
+    // file's own: a new spec is mapped before anyone rewrites the file.
+    const rules = call<Map["rules"]>(MAP_GEN, "buildRules");
+    const mapped = new Set(rules.flatMap((r) => r.run));
+    const orphans = TESTS.filter(
+      (t) => t.endsWith(".browser.test.ts") && !mapped.has(t),
+    );
+    expect(orphans).toEqual([]);
   });
 
   it("a spec's pages: by URL, the root is local-dev, every page via SERVED_PAGES", () => {
@@ -461,6 +464,14 @@ describe("the replay's parsing and verdicts", () => {
 
   it("real?: no evidence either way counts as real", () => {
     expect(verdict({ others: [] })).toBe("real?");
+    // The next commit touched the test but never finished: no fix shown.
+    expect(
+      verdict({
+        others: [],
+        next: [at("r2#1", "h2", { testsFinished: false })],
+        nextChanged: ["t.test.ts"],
+      }),
+    ).toBe("real?");
     // An unfinished run (cancelled tests) is no evidence of a pass.
     expect(
       verdict({ others: [at("r1#2", "h1", { testsFinished: false })] }),
@@ -489,5 +500,108 @@ describe("the replay's parsing and verdicts", () => {
       },
     ]);
     expect(rows.map((r) => r.verdict)).toEqual(["flake?", "flake", "real?"]);
+    // A fix seen only in imported code gives way to a confirmed flake twin.
+    const weak = call<{ verdict: string }[]>(REPLAY, "knownFlakes", [
+      {
+        run: "r1#1 main abc",
+        file: "t.test.ts",
+        tests: ["a › b"],
+        verdict: "real",
+        why: "the next commit changed code the test imports, and passed it",
+      },
+      {
+        run: "r2#1 x def",
+        file: "t.test.ts",
+        tests: ["a › b"],
+        verdict: "flake",
+        why: "same head passed in r2#2",
+      },
+      {
+        run: "r3#1 y 123",
+        file: "t.test.ts",
+        tests: ["a › b"],
+        verdict: "real",
+        why: "failed again on the same head (r3#2)",
+      },
+    ]);
+    expect(weak.map((r) => r.verdict)).toEqual(["flake?", "flake", "real"]);
+  });
+});
+
+describe("ci.yml (issue 398)", () => {
+  type Step = {
+    run?: string;
+    if?: string;
+    env?: Record<string, string>;
+    id?: string;
+  };
+  type Job = {
+    if?: string;
+    needs?: string[];
+    "runs-on"?: string;
+    strategy?: { matrix?: { node?: string[]; shard?: unknown } };
+    steps: Step[];
+  };
+  const ci = yaml.parse(
+    fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf-8"),
+  ) as { jobs: Record<string, Job> };
+  const runs = (j: Job) => j.steps.map((s) => s.run ?? "").join("\n");
+
+  it("a push to main runs the full matrix; none of it runs on a pull request", () => {
+    for (const name of ["checks", "tests", "dist-smoke"]) {
+      expect([name, ci.jobs[name].if]).toEqual([
+        name,
+        "github.event_name == 'push'",
+      ]);
+      expect(ci.jobs[name].strategy?.matrix?.node).toEqual([
+        "22.13.0",
+        "24.13.0",
+      ]);
+    }
+    expect(ci.jobs["den-ui-nav"].if).toContain("github.event_name == 'push'");
+  });
+
+  it("a pull request: one Node, the checks, then the subset with its reasons in the summary", () => {
+    const pr = ci.jobs.pr;
+    expect(pr.if).toBe("github.event_name == 'pull_request'");
+    expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
+    const text = runs(pr);
+    for (const gate of [
+      "npm run typecheck",
+      "scripts/words-gate.mjs",
+      "npm run lint",
+      "gate:den-ui",
+      "scripts/org-name-gate.mjs",
+      "scripts/org-name-commits.mjs",
+      "scripts/dist-smoke.sh",
+    ])
+      expect([gate, text.includes(gate)]).toEqual([gate, true]);
+    // The checks come before the tests.
+    expect(text.indexOf("npm run typecheck")).toBeLessThan(
+      text.indexOf("affected-tests.mjs"),
+    );
+    expect(text).toMatch(
+      /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --summary "\$GITHUB_STEP_SUMMARY"/,
+    );
+    for (const name of ["pr", "pr-shards"]) {
+      const nodes = ci.jobs[name].steps
+        .map(
+          (s) =>
+            (s as { with?: { "node-version"?: string } }).with?.[
+              "node-version"
+            ],
+        )
+        .filter(Boolean);
+      expect([name, nodes]).toEqual([name, ["24.13.0"]]);
+      expect(runs(ci.jobs[name])).toContain(
+        "mapfile -t files < affected.txt && npm test",
+      );
+    }
+  });
+
+  it("every job keeps the guarded runs-on", () => {
+    const guards = new Set(Object.values(ci.jobs).map((j) => j["runs-on"]));
+    expect(guards.size).toBe(1);
+    expect([...guards][0]).toMatch(/^\$\{\{ \(vars\.DEN_SELF_HOSTED == 'on'/);
   });
 });

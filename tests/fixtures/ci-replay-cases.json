@@ -3,7 +3,7 @@
     "run": "43771125900#1 w4/0451 07e1765",
     "file": "tests/unit/server/bring-in.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       ".github/workflows/ci.yml",
       ".husky/commit-msg",
@@ -1161,7 +1161,7 @@
     "run": "43790317609#1 w5/0453 9fed2cb",
     "file": "tests/unit/server/project-wording.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/embedding.md",
@@ -1266,7 +1266,7 @@
     "run": "43790317609#1 w5/0453 9fed2cb",
     "file": "tests/unit/server/shell.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/embedding.md",
@@ -1371,7 +1371,7 @@
     "run": "43790317609#1 w5/0453 9fed2cb",
     "file": "tests/unit/server/busy-writes-ratchet.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/embedding.md",
@@ -1501,7 +1501,7 @@
     "run": "43799913862#1 w5/0454 690dfc5",
     "file": "tests/unit/server/update-pill.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       ".github/workflows/ci.yml",
       ".github/workflows/release.yml",
@@ -1529,7 +1529,7 @@
     "run": "43803053371#1 w5/0454 3de0f42",
     "file": "tests/unit/server/agents-ag14.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       ".github/workflows/ci.yml",
       ".github/workflows/release.yml",
@@ -1583,7 +1583,7 @@
     "run": "43810114577#1 w5/denui-exports debc66a",
     "file": "tests/unit/server/update-pill.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       ".github/workflows/release.yml",
       "packages/den-ui/package.json",
@@ -1595,7 +1595,7 @@
     "run": "43822881373#1 w5/dlg-v2 1d8f464",
     "file": "tests/unit/server/graph-health-cards.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1626,7 +1626,7 @@
     "run": "43822881373#1 w5/dlg-v2 1d8f464",
     "file": "tests/unit/agents/stop-wait.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1657,7 +1657,7 @@
     "run": "43825173570#1 w5/dlg-v2 9674848",
     "file": "tests/unit/server/busy-popup.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1690,7 +1690,7 @@
     "run": "43827236105#1 w5/dlg-v2 78a3574",
     "file": "tests/unit/server/one-url-per-module.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1732,7 +1732,7 @@
     "run": "43829505897#1 w5/dlg-v2 535e1b7",
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1774,7 +1774,7 @@
     "run": "43851346833#1 w5/193b b91a8fd",
     "file": "tests/unit/shared/hub.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -1802,7 +1802,7 @@
     "run": "43851346833#1 w5/193b b91a8fd",
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -1830,7 +1830,7 @@
     "run": "43859585369#1 w5/235 43ba77f",
     "file": "tests/unit/server/whats-new-dialog.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "examples/distribution/package.json",
@@ -1854,7 +1854,7 @@
     "run": "43887197845#1 w5/242 812069d",
     "file": "tests/unit/server/token-binding-connect.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2000,7 +2000,7 @@
     "run": "43890766968#1 w5/242 43c4612",
     "file": "tests/unit/server/settings-hub-link-all.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2023,7 +2023,7 @@
     "run": "43900297351#1 w5/251 2e28b38",
     "file": "tests/unit/server/update-pill.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2065,7 +2065,7 @@
     "run": "43910836451#1 w5/142 3b7dd85",
     "file": "tests/unit/server/bell.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2086,7 +2086,7 @@
     "run": "43911342479#1 w5/144 eb3e646",
     "file": "tests/unit/server/agent-write-routes.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/distributions.md",
@@ -2128,7 +2128,7 @@
     "run": "43914101524#1 w5/209 1e8c29e",
     "file": "tests/unit/server/run-outcome.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "src/shared/verify/overview.ts",
@@ -2315,7 +2315,7 @@
     "run": "43925194719#1 w5/267 343b348",
     "file": "tests/unit/server/settings-page.integration.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "src/shared/agents/server-pack/server.md",
@@ -2351,7 +2351,7 @@
     "run": "43925194719#1 w5/267 343b348",
     "file": "tests/unit/server/settings-page.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "src/shared/agents/server-pack/server.md",
@@ -2387,7 +2387,7 @@
     "run": "43925194719#1 w5/267 343b348",
     "file": "tests/unit/server/settings-person-only-ratchet.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "src/shared/agents/server-pack/server.md",
@@ -2423,7 +2423,7 @@
     "run": "43928461125#1 w5/95 c2df6f0",
     "file": "tests/unit/cli/cli-page-controls.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       ".github/workflows/ci.yml",
       "CHANGELOG.md",
@@ -2501,7 +2501,7 @@
     "run": "43928461125#1 w5/95 c2df6f0",
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       ".github/workflows/ci.yml",
       "CHANGELOG.md",
@@ -2657,7 +2657,7 @@
     "run": "43936162946#1 w5/95 7c572fb",
     "file": "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       ".github/workflows/ci.yml",
       "CHANGELOG.md",
@@ -2801,7 +2801,7 @@
     "run": "43974986427#1 w5/navinv 7054e18",
     "file": "tests/unit/den-ui/nav-inventory.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       ".github/workflows/ci.yml",
       "packages/den-ui/README.md",
@@ -2823,7 +2823,7 @@
     "run": "43975301749#1 w5/ui070 1f63cd4",
     "file": "tests/unit/server/topbar.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -2911,7 +2911,7 @@
     "run": "43975301749#1 w5/ui070 1f63cd4",
     "file": "tests/unit/server/shell.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -2955,7 +2955,7 @@
     "run": "43975301749#1 w5/ui070 1f63cd4",
     "file": "tests/unit/server/asset-stamp.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3045,7 +3045,7 @@
     "run": "43979305364#1 w5/ui070 1d6b7f7",
     "file": "tests/unit/den-ui/nav-inventory.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3092,7 +3092,7 @@
     "run": "43991772694#1 w5/ui070 94e9577",
     "file": "tests/unit/den-ui/kit-070.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -3150,7 +3150,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/report-everywhere.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3202,7 +3202,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3254,7 +3254,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/light-contrast.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3306,7 +3306,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/approval-dialog.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3358,7 +3358,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/config-invalid-page.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3410,7 +3410,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/d67-remote-approve.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3514,7 +3514,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/sec2a-pair.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3566,7 +3566,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/agent-start-ready.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3618,7 +3618,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/one-url-per-module.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3670,7 +3670,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/sec2a-signin.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3722,7 +3722,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/sec1a-cross-origin.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3774,7 +3774,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/sec2a-identity.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3826,7 +3826,7 @@
     "run": "44008864943#1 w5/163 01cbf5c",
     "file": "tests/unit/server/srv1a-restart.integration.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -3878,7 +3878,7 @@
     "run": "44012806477#1 w5/163 188bbf4",
     "file": "tests/unit/test-infra/real-cli-sentinel.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "docs/always-on-gate.md",
@@ -4033,7 +4033,7 @@
     "run": "44051360073#1 w5/ui071 04084b6",
     "file": "tests/unit/server/no-secrets-store.integration.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "packages/den-ui/README.md",
@@ -4084,7 +4084,7 @@
     "run": "44059776522#1 main 8181ee4",
     "file": "tests/unit/server/agents-double-click.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "examples/distribution/package.json",
       "package-lock.json",
@@ -4109,7 +4109,7 @@
     "run": "44108182227#1 w7/kit-073 03ccc2f",
     "file": "tests/unit/server/shell-hub-rail.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "packages/den-ui/README.md",
       "packages/den-ui/inventory/nav-inventory.d.ts",
@@ -4130,7 +4130,7 @@
     "run": "44108267838#1 w7/pair-unseen afe9160",
     "file": "tests/unit/server/settings-anchor.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "CHANGELOG.md",
       "src/ui/server/index.ts",
@@ -4152,7 +4152,7 @@
     "run": "44109320487#1 w7/kit-073 a28e84d",
     "file": "tests/unit/server/shell-hub-rail.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "packages/den-ui/README.md",
       "packages/den-ui/inventory/nav-inventory.d.ts",
@@ -4172,10 +4172,34 @@
     "related": false
   },
   {
+    "run": "44157666912#1 w7/load-143 7948afa",
+    "file": "tests/unit/den-ui/kit-csp.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed the test, and passed it",
+    "changed": [
+      "src/shared/settings-cli-rows.ts",
+      "src/shared/web-session.ts",
+      "src/ui/cli/config-command.ts",
+      "src/ui/cli/server-identity.ts",
+      "src/ui/cli/web-command.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/public/i18n/es.js",
+      "src/ui/server/public/i18n/ja.js",
+      "src/ui/server/public/settings-registry.js",
+      "src/ui/server/public/shell.js",
+      "tests/unit/cli/web-ready-slow.test.ts",
+      "tests/unit/server/busy-popup.browser.test.ts",
+      "tests/unit/server/settings-inventory.test.ts",
+      "tests/unit/server/settings-page.integration.test.ts",
+      "tests/unit/shared/web-session.test.ts"
+    ],
+    "related": false
+  },
+  {
     "run": "44158642760#1 w7/accounts-339 efe31f0",
     "file": "tests/unit/cli/cli-page-controls.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "scripts/words.js",
       "src/shared/agents/catalog.ts",
@@ -4203,7 +4227,7 @@
     "run": "44159484168#1 w7/pick-340 80bc141",
     "file": "tests/unit/cli/cli-page-controls.test.ts",
     "verdict": "real",
-    "why": "the next commit changed the test",
+    "why": "the next commit changed the test, and passed it",
     "changed": [
       "scripts/words.js",
       "src/shared/agents/catalog.ts",
@@ -4241,7 +4265,7 @@
     "run": "44161294927#1 w7/mcp-edit-352 ee3c3b1",
     "file": "tests/unit/mcp/agent-messages-name-real-tools.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "src/shared/agents/server-pack/server.md",
       "src/shared/approval-policy.ts",
@@ -4270,7 +4294,7 @@
     "run": "44161294927#1 w7/mcp-edit-352 ee3c3b1",
     "file": "tests/unit/agents/srv-p5-charter.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
     "changed": [
       "src/shared/agents/server-pack/server.md",
       "src/shared/approval-policy.ts",
@@ -4299,7 +4323,115 @@
     "run": "44165163073#1 w7/i18n-171 9503f7f",
     "file": "tests/unit/server/bell-v6.browser.test.ts",
     "verdict": "real",
-    "why": "the next commit changed code the test imports",
+    "why": "the next commit changed code the test imports, and passed it",
+    "changed": [
+      "src/ui/server/index.ts",
+      "src/ui/server/log-history.ts",
+      "src/ui/server/public/edge-page.js",
+      "src/ui/server/public/environments.html",
+      "src/ui/server/public/i18n/es.js",
+      "src/ui/server/public/i18n/ja.js",
+      "src/ui/server/public/logs.html",
+      "src/ui/server/public/panel.js",
+      "src/ui/server/public/perf-report.js",
+      "src/ui/server/public/release.html",
+      "src/ui/server/public/shell.js",
+      "src/ui/server/public/svc-panel.js",
+      "src/ui/server/public/topbar.js",
+      "src/ui/server/public/value-words.js",
+      "src/ui/server/ui-assets.ts",
+      "tests/unit/server/helpers/en-catalog.ts",
+      "tests/unit/server/i18n-171-values.test.ts",
+      "tests/unit/server/i18n-pages.browser.test.ts",
+      "tests/unit/server/log-history-resolve.test.ts"
+    ],
+    "related": false
+  },
+  {
+    "run": "44165236269#1 w7/load-143 653f596",
+    "file": "tests/unit/server/agents-layout.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed the test, and passed it",
+    "changed": [
+      "packages/den-ui/src/whatsnew.js",
+      "src/shared/process/jobs.ts",
+      "src/shared/process/legacy-adopt.ts",
+      "src/shared/process/ps-buffer.ts",
+      "src/shared/settings-cli-rows.ts",
+      "src/shared/web-session.ts",
+      "src/ui/cli/config-command.ts",
+      "src/ui/cli/server-identity.ts",
+      "src/ui/cli/web-command.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/public/i18n/es.js",
+      "src/ui/server/public/i18n/ja.js",
+      "src/ui/server/public/settings-registry.js",
+      "src/ui/server/public/shell.js",
+      "tests/child-reaper.mjs",
+      "tests/ps.ts",
+      "tests/unit/cli/legacy-records.integration.test.ts",
+      "tests/unit/cli/web-ready-slow.test.ts",
+      "tests/unit/den-ui/kit-csp.browser.test.ts",
+      "tests/unit/environment-manager/down-legacy-records.test.ts",
+      "tests/unit/environment-manager/down-process-group.test.ts",
+      "tests/unit/environment-manager/down-repo-records.test.ts",
+      "tests/unit/environment-manager/restart-single-service.test.ts",
+      "tests/unit/server/agent-deep-link.browser.test.ts",
+      "tests/unit/server/agents-compacting.browser.test.ts",
+      "tests/unit/server/busy-popup.browser.test.ts",
+      "tests/unit/server/health-repos-nonblocking.integration.test.ts",
+      "tests/unit/server/settings-inventory.test.ts",
+      "tests/unit/server/settings-page.integration.test.ts",
+      "tests/unit/shared/legacy-adopt-ps-buffer.test.ts",
+      "tests/unit/shared/web-session.test.ts"
+    ],
+    "related": true
+  },
+  {
+    "run": "44169558803#1 w7/load-143 e881cda",
+    "file": "tests/unit/server/bell-v6.browser.test.ts",
+    "verdict": "real",
+    "why": "the next commit changed code the test imports, and passed it",
+    "changed": [
+      "packages/den-ui/src/whatsnew.js",
+      "src/shared/process/jobs.ts",
+      "src/shared/process/legacy-adopt.ts",
+      "src/shared/process/ps-buffer.ts",
+      "src/shared/settings-cli-rows.ts",
+      "src/shared/web-session.ts",
+      "src/ui/cli/config-command.ts",
+      "src/ui/cli/server-identity.ts",
+      "src/ui/cli/web-command.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/public/i18n/es.js",
+      "src/ui/server/public/i18n/ja.js",
+      "src/ui/server/public/settings-registry.js",
+      "src/ui/server/public/shell.js",
+      "tests/child-reaper.mjs",
+      "tests/ps.ts",
+      "tests/unit/cli/legacy-records.integration.test.ts",
+      "tests/unit/cli/web-ready-slow.test.ts",
+      "tests/unit/den-ui/kit-csp.browser.test.ts",
+      "tests/unit/environment-manager/down-legacy-records.test.ts",
+      "tests/unit/environment-manager/down-process-group.test.ts",
+      "tests/unit/environment-manager/down-repo-records.test.ts",
+      "tests/unit/environment-manager/restart-single-service.test.ts",
+      "tests/unit/server/agent-deep-link.browser.test.ts",
+      "tests/unit/server/agents-compacting.browser.test.ts",
+      "tests/unit/server/busy-popup.browser.test.ts",
+      "tests/unit/server/health-repos-nonblocking.integration.test.ts",
+      "tests/unit/server/settings-inventory.test.ts",
+      "tests/unit/server/settings-page.integration.test.ts",
+      "tests/unit/shared/legacy-adopt-ps-buffer.test.ts",
+      "tests/unit/shared/web-session.test.ts"
+    ],
+    "related": true
+  },
+  {
+    "run": "44171963546#1 main 4895cb9",
+    "file": "tests/unit/server/agent-order.browser.test.ts",
+    "verdict": "real?",
+    "why": "no re-run and no finished next commit",
     "changed": [
       "src/ui/server/index.ts",
       "src/ui/server/log-history.ts",

@@ -18,7 +18,8 @@
  *        [--summary <file>] [--map <file>]
  *
  * The change is `git diff --name-only <base>...<head>` (what the pull
- * request changes). Prints one line per test file with its reasons, or ALL
+ * request changes). The map's page rules are also rebuilt from the code
+ * (scripts/affected-map.mjs) and added, so a stale map never runs less. Prints one line per test file with its reasons, or ALL
  * with the files that caused it. --out writes the bare list (or the word
  * ALL) for jest; --summary appends a Markdown table (the job summary).
  */
@@ -195,7 +196,7 @@ export function jestLists(changed, cwd = ROOT) {
   return { allTests, related };
 }
 
-function main(argv) {
+async function main(argv) {
   const pos = [];
   const opt = { out: "", summary: "", map: DEFAULT_MAP };
   for (let i = 0; i < argv.length; i++) {
@@ -218,6 +219,10 @@ function main(argv) {
     .split("\n")
     .filter(Boolean);
   const map = loadMap(opt.map);
+  // The page rules written from today's code join the file's: a spec or
+  // page added since the file was last written still runs (never fewer).
+  const { buildRules } = await import("./affected-map.mjs");
+  map.rules = [...map.rules, ...buildRules()];
   const { allTests, related } = jestLists(changed);
   const sel = selectTests({ changed, allTests, related, map });
   if (sel.all)
@@ -240,5 +245,7 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  process.exitCode = main(process.argv.slice(2));
+  main(process.argv.slice(2)).then((code) => {
+    process.exitCode = code;
+  });
 }

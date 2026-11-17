@@ -239,17 +239,22 @@ describe("in CI", () => {
       jobs: Record<string, { env?: Record<string, string>; steps: Step[] }>;
     };
   it("only a pull request turns it on, and the quarantined step can't block", () => {
-    const t = wf("ci.yml").jobs.tests;
-    expect(t.env?.DEN_TEST_QUARANTINE).toBe(
-      "${{ github.event_name == 'pull_request' && 'exclude' || '' }}",
+    // Issue 398: pull requests run in the pr job (a small subset) or
+    // pr-shards (a large one); main's tests job never sets it.
+    const jobs = wf("ci.yml").jobs;
+    expect(jobs.tests.env?.DEN_TEST_QUARANTINE).toBeUndefined();
+    for (const name of ["pr", "pr-shards"]) {
+      const j = jobs[name];
+      expect([name, j.env?.DEN_TEST_QUARANTINE]).toEqual([name, "exclude"]);
+      const qs = j.steps.filter((s) => s.env?.DEN_TEST_QUARANTINE === "only");
+      expect(qs).toHaveLength(1);
+      expect(qs[0]["continue-on-error"]).toBe(true);
+      expect(qs[0].if).toMatch(/^\$\{\{ !cancelled\(\)/);
+    }
+    const shardStep = jobs["pr-shards"].steps.find(
+      (s) => s.env?.DEN_TEST_QUARANTINE === "only",
     );
-    const qs = t.steps.filter((s) => s.env?.DEN_TEST_QUARANTINE === "only");
-    expect(qs).toHaveLength(1);
-    expect(qs[0]["continue-on-error"]).toBe(true);
-    expect(qs[0].if).toBe(
-      "${{ !cancelled() && github.event_name == 'pull_request' }}",
-    );
-    expect(qs[0].run).toContain("--shard=${{ matrix.shard }}/4");
+    expect(shardStep?.run).toContain("--shard=${{ matrix.shard }}/4");
   });
   it("the release never sets it", () => {
     expect(

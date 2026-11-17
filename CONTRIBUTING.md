@@ -104,6 +104,32 @@ The weekly rule: each entry is fixed or deleted within `max_age_days`
 `tests/unit/test-infra/quarantine.test.ts` fails on an older entry, or on
 one with no issue or no evidence.
 
+### The tests a pull request runs
+
+A push to `main` and a release run every test on both Nodes. A pull
+request runs Node 24 only: the same checks, then the tests the change
+affects. To see the list and the reason for each:
+
+```bash
+node scripts/affected-tests.mjs origin/main HEAD
+```
+
+- **related**: the tests that import a changed file (`jest --findRelatedTests`);
+- **mapped**: from `tests/affected-map.json`: the browser specs of a changed
+  page (a spec opens pages by URL, so imports never reach it), and tests
+  that read files by path (docs, the changelog, `examples/`, `public/`);
+- **smoke**: a few fast, broad tests, every time;
+- **everything**: a change to a shared file (the shell, the kit, the request
+  guard, `package.json`, jest or test setup, CI) runs them all.
+
+`node scripts/affected-map.mjs` rewrites the map's page rules from the code
+(CI also adds them fresh, so a new spec is never left out).
+`scripts/ci-replay.mjs` replays the last 30 days of red CI runs and fails if
+the subset would have missed a real failure;
+`tests/fixtures/ci-replay-cases.json` keeps those failures, and
+`tests/unit/test-infra/affected-tests.test.ts` fails if the map stops
+catching one.
+
 ## Adding a strategy
 
 - **Secrets backend:** implement `SecretsProvider`

@@ -152,12 +152,17 @@ export function classify({
       verdict: "real",
       why: `failed again on the next commit (${nextFail.key})`,
     };
-  if ((nextChanged ?? []).includes(file))
-    return { verdict: "real", why: "the next commit changed the test" };
-  if ((nextRelated ?? []).includes(file))
+  // A fix followed: the next commit changed the test or code it imports,
+  // and passed it. (A next commit that never finished shows no fix.)
+  if (nextPassed && (nextChanged ?? []).includes(file))
     return {
       verdict: "real",
-      why: "the next commit changed code the test imports",
+      why: "the next commit changed the test, and passed it",
+    };
+  if (nextPassed && (nextRelated ?? []).includes(file))
+    return {
+      verdict: "real",
+      why: "the next commit changed code the test imports, and passed it",
     };
   if (nextPassed)
     return {
@@ -168,17 +173,22 @@ export function classify({
 }
 
 /**
- * An unconfirmed failure (real?) whose test failed the same way in another
- * change, where it was a flake: a known flaky test, not this change.
+ * A known flaky test, not this change: an unconfirmed failure (real?) whose
+ * test failed the same way as a flake in another change; or one whose only
+ * sign of a fix is a next commit touching code it imports (a broad merge
+ * does that), when the same test is a confirmed flake (same head passed)
+ * elsewhere.
  */
 export function knownFlakes(rows) {
   return rows.map((r) => {
-    if (r.verdict !== "real?") return r;
+    const weak =
+      r.verdict === "real" && r.why.startsWith("the next commit changed code");
+    if (r.verdict !== "real?" && !weak) return r;
     const twin = rows.find(
       (o) =>
         o !== r &&
         o.file === r.file &&
-        (o.verdict === "flake" || o.verdict === "flake?") &&
+        (o.verdict === "flake" || (!weak && o.verdict === "flake?")) &&
         o.tests.some((t) => r.tests.includes(t)),
     );
     return twin
@@ -248,7 +258,7 @@ export function renderReplay(rows, meta) {
     `- Flakes: **${count("flake") + count("flake?")}** (${count("flake")} with the same head passing, ${count("flake?")} that went away on the next commit with no fix).`,
     `- Inherited: ${count("inherited")} (main was already red on that test; main's full run is what catches those).`,
     "",
-    "Rule, in order: **flake** when the same head (sha or tree) passed the file in another run or attempt; **inherited** when main's run at the change's base had already failed that file; **real** when it failed again on that head, or on the next commit, or the next commit changed the test or code it imports (a fix followed); **flake?** when the next commit passed it with no such change; otherwise **real?** (no re-run, no finished next commit), counted as real.",
+    "Rule, in order: **flake** when the same head (sha or tree) passed the file in another run or attempt; **inherited** when main's run at the change's base had already failed that file; **flake?** when the change was Markdown only (and the test reads none); **real** when it failed again on that head, or on the next commit, or the next commit changed the test or code it imports and passed it (a fix followed); **flake?** when the next commit failed it and then passed it on a re-run, or passed it with no such change, or when an unconfirmed failure failed the same way as a flake in another change; otherwise **real?** (no re-run, no finished next commit), counted as real.",
     "",
     "| Run | Failing test | Verdict | Changed files | Subset includes it | Map alone | Why |",
     "| --- | --- | --- | --- | --- | --- | --- |",

@@ -61,6 +61,7 @@
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
+        "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -378,6 +379,7 @@
         "tests/unit/server/my-reports.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pair-unseen.browser.test.ts",
+        "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
@@ -399,6 +401,7 @@
         "tests/unit/server/settings-project-name.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
+        "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
@@ -446,6 +449,7 @@
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
+        "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -515,6 +519,7 @@
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
+        "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -601,6 +606,7 @@
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
+        "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -670,6 +676,7 @@
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
+        "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -701,6 +708,7 @@
         "tests/unit/server/pair-unseen.browser.test.ts",
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
+        "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-dialog.browser.test.ts",
@@ -726,6 +734,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
+        "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
@@ -846,6 +855,7 @@
         "src/ui/server/public/svc-panel.js",
         "src/ui/server/public/term-input.js",
         "src/ui/server/public/topbar.js",
+        "src/ui/server/public/value-words.js",
         "src/ui/server/public/workspace-picker.js"
       ],
       "run": [
@@ -881,6 +891,7 @@
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
+        "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -924,6 +935,7 @@
         "tests/unit/server/pair-unseen.browser.test.ts",
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
+        "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
@@ -953,6 +965,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
+        "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
@@ -1041,6 +1054,7 @@
         "tests/unit/agents/file-deny.test.ts",
         "tests/unit/agents/guardrails-pretooluse.test.ts",
         "tests/unit/agents/personas.test.ts",
+        "tests/unit/agents/project-mcp-edit.test.ts",
         "tests/unit/agents/runtimes.test.ts",
         "tests/unit/cli/dry-run-readonly.integration.test.ts",
         "tests/unit/cli/edge-rejoin.integration.test.ts",
@@ -1105,6 +1119,11 @@
       "why": "tests that run scripts/docs-links.js"
     },
     {
+      "when": ["scripts/flake-evidence.mjs"],
+      "run": ["tests/unit/test-infra/quarantine.test.ts"],
+      "why": "tests that run scripts/flake-evidence.mjs"
+    },
+    {
       "when": ["scripts/org-name-commits.mjs"],
       "run": ["tests/unit/scripts/org-name-commits.test.ts"],
       "why": "tests that run scripts/org-name-commits.mjs"
@@ -1135,7 +1154,9 @@
       "run": [
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
-        "tests/unit/scripts/words.test.ts"
+        "tests/unit/scripts/words.test.ts",
+        "tests/unit/server/i18n-171-values.test.ts",
+        "tests/unit/server/i18n-pages.browser.test.ts"
       ],
       "why": "tests that run scripts/words.js"
     }
