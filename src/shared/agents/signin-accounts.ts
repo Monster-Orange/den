@@ -593,3 +593,36 @@ export async function pickAccount(
     }));
   return { picked, misses };
 }
+
+/** Issue 340: one vendor's pick, for doctor (never a token). */
+export interface SignInPick {
+  runtime: string;
+  vendor: string;
+  /** How many accounts the vendor has. */
+  count: number;
+  /** The account a start would run on now; null: none has a token. */
+  picked: { id: string; label: string } | null;
+  misses: PickMiss[];
+}
+
+/**
+ * Issue 340: for doctor, each vendor's pick (the runtimes with sign-in data
+ * among `runtimeIds`), read as a start with no folder would.
+ */
+export async function signInPicks(
+  d: Omit<PickDeps, "runtimeId" | "folder"> & { runtimeIds: string[] },
+): Promise<SignInPick[]> {
+  const out: SignInPick[] = [];
+  for (const runtime of d.runtimeIds) {
+    if (!getRuntime(runtime)?.signInTokenEnv) continue;
+    const { picked, misses } = await pickAccount({ ...d, runtimeId: runtime });
+    out.push({
+      runtime,
+      vendor: vendorName(runtime),
+      count: listAccounts(d.stateDir, runtime).length,
+      picked: picked ? { id: picked.account.id, label: picked.label } : null,
+      misses,
+    });
+  }
+  return out;
+}
