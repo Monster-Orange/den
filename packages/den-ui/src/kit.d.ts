@@ -42,6 +42,7 @@ import type {
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
+  accountWho,
   accountMenuHtml,
   settingsHtml,
   appearanceButtonHtml,
@@ -184,6 +185,7 @@ export interface DenUIKit {
   bellButtonHtml: typeof bellButtonHtml;
   bellPanelHtml: typeof bellPanelHtml;
   accountHtml: typeof accountHtml;
+  accountWho: typeof accountWho;
   accountMenuHtml: typeof accountMenuHtml;
   settingsHtml: typeof settingsHtml;
   appearanceButtonHtml: typeof appearanceButtonHtml;

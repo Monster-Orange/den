@@ -196,7 +196,11 @@ export function versionChipHtml({ version, lang } = {}) {
   return (
     '<button class="den-ib v-pill" id="version-pill" title="' +
     esc(kitT(lang, "kit.version.title")) +
-    '"><span class="v-txt">' +
+    '"><span class="v-txt"' +
+    (version
+      ? ' title="v' + esc(String(version).replace(/^v/, "")) + '"'
+      : "") +
+    ">" +
     esc(version ? "v" + String(version).replace(/^v/, "") : "v…") +
     '</span><span class="v-pip" id="v-pip"></span></button>'
   );
@@ -277,7 +281,15 @@ export function markHtml(mark) {
   );
 }
 
-/** The top bar (header.den-top). */
+/** Where the kit's search starts in a `start` slot (searchHtml's markup). */
+const SEARCH_AT = '<button type="button" class="den-search"';
+
+/**
+ * The top bar (header.den-top), in three parts (issue 303): the left part
+ * (☰, the brand, and what `start` holds before the search: the crumbs),
+ * the search in a fixed slot, and the chips (the host's `end`, then
+ * Report, the bell, the version and ◐ ▾, pinned to the right edge).
+ */
 export function topBarHtml({
   product = {},
   lang,
@@ -285,8 +297,13 @@ export function topBarHtml({
   report = true,
 } = {}) {
   const name = product.name ?? "";
+  const start = slots.start || "";
+  const at = start.indexOf(SEARCH_AT);
+  const before = at < 0 ? start : start.slice(0, at);
+  const search = at < 0 ? "" : start.slice(at);
   return (
     '<header class="den-top">' +
+    '<div class="den-left">' +
     '<button class="den-ib den-menu-btn" id="den-menu-btn" aria-label="' +
     esc(kitT(lang, "kit.menu")) +
     '" aria-expanded="false" aria-controls="den-rail">☰</button>' +
@@ -300,9 +317,15 @@ export function topBarHtml({
     '<span class="den-title" data-nav-role="brand-title">' +
     esc(name) +
     "</span></a>" +
-    (slots.start || "") +
+    before +
+    "</div>" +
+    search +
     '<div class="den-chips">' +
+    // The host's chips' group, always drawn (empty without chips): the
+    // bar's structure is the same in any host.
+    '<div class="den-end">' +
     (slots.end || "") +
+    "</div>" +
     (report === false ? "" : reportButtonHtml({ inTop: true, lang })) +
     (slots.bell || "") +
     versionChipHtml({ version: product.version, lang }) +
@@ -502,7 +525,12 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
     '"><span class="den-sep" aria-hidden="true">/</span>';
   // Each separator after a crumb comes and goes with it: host content.
   list.forEach((c, i) => {
-    html += scopeCrumbHtml(c, lang);
+    // The last crumb is kept whole when the crumbs give way (issue 303).
+    const last = i === list.length - 1;
+    html += scopeCrumbHtml(
+      last ? { ...c, cls: (c.cls ? c.cls + " " : "") + "den-last" } : c,
+      lang,
+    );
     if (i < list.length - 1)
       html +=
         '<span class="den-sep den-' +
@@ -515,25 +543,24 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
 }
 
 /**
- * The search field: the placeholder, then ⌘K inside it, as a button (the
- * host's palette or page opens on it: hydrateSearch).
- *   searchHtml({ placeholder?, label?, id?, shortcut?, lang })
- * `label`: its name (default the kit's "Search", in the page's language;
- * the host's own words are host content for the nav inventory);
+ * The search field: the kit's placeholder ("Search…"), then ⌘K inside it,
+ * as a button (the host's palette or page opens on it: hydrateSearch).
+ *   searchHtml({ id?, shortcut?, lang })
+ * Its placeholder and its name ("Search") are the kit's words, in the
+ * page's language: one search in every product, so a host can't set them.
  * `shortcut: false`: no ⌘K.
  */
-export function searchHtml({ placeholder, label, id, shortcut, lang } = {}) {
-  const ph = placeholder ?? kitT(lang, "kit.search.ph");
+export function searchHtml({ id, shortcut, lang } = {}) {
   const keys = shortcut !== false;
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
-    '" aria-haspopup="dialog" data-nav-name="host"' +
+    '" aria-haspopup="dialog" data-nav-kit="search"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
-    esc(label ?? kitT(lang, "kit.search.label")) +
-    '"><span class="den-search-ph" data-nav-role="search-ph">' +
-    esc(ph) +
+    esc(kitT(lang, "kit.search.label")) +
+    '"><span class="den-search-ph">' +
+    esc(kitT(lang, "kit.search.ph")) +
     "</span>" +
     (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +
     '<span class="den-search-ic" aria-hidden="true">⌕</span></button>'
@@ -654,18 +681,76 @@ export function bellPanelHtml({
  * name and tooltip read "label · detail". It is a rail entry (.den-ni)
  * marked data-den-account. No label: nothing.
  */
+/**
+ * Who is signed in, as the kit draws it (0.7.1): the name on the first
+ * line, @login on the second; @login alone when no name is known. The
+ * role is shown in the account menu's header only ({ menu: true }), on
+ * its own line. From data: { name?, login?, role? }; with no
+ * identity, { local: true } draws the kit's word for this computer. The old
+ * { label, detail } (or the menu's { name, detail }) still work for one
+ * release, as they were given, marked data-nav-legacy for the nav
+ * inventory. Returns { lines: [first, second?], shape, legacy, full }.
+ */
+export function accountWho(a, { menu = false } = {}) {
+  if (!a) return null;
+  const legacy = a.label != null || a.detail != null;
+  const name = a.name ?? a.label ?? "";
+  const login = a.login
+    ? String(a.login).startsWith("@")
+      ? String(a.login)
+      : "@" + a.login
+    : (a.detail ?? "");
+  // The role is shown in the account menu's header only, never in the
+  // rail's entry (it isn't part of the entry's shape).
+  const role = menu ? a.role || "" : "";
+  let first = name || login;
+  // No identity known at all: the kit's own word for this computer.
+  const local = !first && !!a.local;
+  if (local) first = kitT(a.lang, "kit.account.local");
+  if (!first) return null;
+  const second = name ? login : "";
+  const shape = [
+    name ? "name" : "",
+    a.login || a.detail ? "login" : "",
+    local ? "local" : "",
+  ]
+    .filter(Boolean)
+    .join(",");
+  const lines = [first, second].filter(Boolean);
+  return {
+    lines,
+    role,
+    shape,
+    legacy,
+    full: lines.join(" · "),
+  };
+}
+
+function whoLinesHtml(who) {
+  return (
+    '<span class="den-acct-n">' +
+    esc(who.lines[0]) +
+    "</span>" +
+    (who.lines[1]
+      ? '<span class="den-acct-l">' + esc(who.lines[1]) + "</span>"
+      : "") +
+    (who.role ? '<span class="den-acct-r">' + esc(who.role) + "</span>" : "")
+  );
+}
+
 export function accountHtml(a) {
-  if (!a || !a.label) return "";
-  const full = a.detail ? a.label + " · " + a.detail : a.label;
+  const who = accountWho(a);
+  if (!who) return "";
+  const full = who.full;
   const more = { ...(a.attrs || {}) };
   if (a.id) more.id = a.id;
-  // Who is signed in: the host's words (host content for the nav inventory).
+  more["data-nav-shape"] = who.shape;
+  if (who.legacy) more["data-nav-legacy"] = "account";
+  // Who is signed in: the host's data (host content for the nav
+  // inventory, which compares its shape: which fields, how many lines).
   const words =
-    '<span class="den-lbl" data-nav-role="account-name">' +
-    esc(a.label) +
-    (a.detail
-      ? '<span class="den-acct-d"> · ' + esc(a.detail) + "</span>"
-      : "") +
+    '<span class="den-lbl den-acct" data-nav-role="account-name">' +
+    whoLinesHtml(who) +
     "</span>";
   if (a.href == null && a.menu && !a.id) more.id = "den-account";
   const open =
@@ -834,20 +919,33 @@ export function appearanceMenuHtml({
 }
 
 /**
- * The account entry's menu: who is signed in (name), where (detail), a
- * rule, then the entries.
- *   accountMenuHtml({ name, detail?, items, lang })
+ * The account entry's menu: who is signed in (accountWho: the name, then
+ * @login), a rule, then the entries.
+ *   accountMenuHtml({ name?, login?, role?, items, lang })
+ * ({ name, detail } is the old path, for one release.)
  * items: [{ label, href }] links, [{ label, id }] buttons (onPick "item"),
  * or [{ label, action: { method?, url, csrf?, field? } }]: a form that
  * posts to url on its own, with no script (csrf, if any, in a hidden
  * field named `field`, "csrf" by default).
  */
-export function accountMenuHtml({ name, detail, items } = {}) {
+export function accountMenuHtml({ name, login, role, detail, items } = {}) {
   const parts = [];
-  const who =
-    (name ? '<div class="den-ml">' + esc(name) + "</div>" : "") +
-    (detail ? '<p class="den-mnote">' + esc(detail) + "</p>" : "");
-  if (who) parts.push(who);
+  // The menu's { name, detail } were free text: the old path maps them
+  // as the entry's label and detail.
+  const w = accountWho(
+    detail != null ? { label: name, detail } : { name, login, role },
+    { menu: true },
+  );
+  if (w)
+    parts.push(
+      '<div class="den-ml den-acct" data-nav-shape="' +
+        esc(w.shape) +
+        '"' +
+        (w.legacy ? ' data-nav-legacy="account"' : "") +
+        ">" +
+        whoLinesHtml(w) +
+        "</div>",
+    );
   const rows = (items || [])
     .map((it) => {
       if (!it || !it.label) return "";

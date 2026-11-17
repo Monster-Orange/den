@@ -22,6 +22,7 @@ import * as path from "path";
 import * as strings from "../../../packages/den-ui/src/strings.js";
 import {
   accountHtml,
+  accountMenuHtml,
   reportButtonHtml,
   searchHtml,
   shellHtml,
@@ -124,27 +125,107 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(html).toContain(ja["kit.report.word"]);
   });
 
-  it("the search's name is a host option, with the kit's own words by default (en, es, ja)", () => {
+  it("the search's placeholder and name are the kit's words, in en, es and ja; a host can't change them", () => {
     const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
-    expect(label(searchHtml({}))).toBe("Search");
-    expect(label(searchHtml({ lang: "es" }))).toBe("Buscar");
-    expect(label(searchHtml({ lang: "ja" }))).toBe("検索");
-    // A placeholder alone does not name the field: the name is its own option.
-    expect(label(searchHtml({ placeholder: "Find anything…" }))).toBe("Search");
-    expect(label(searchHtml({ label: "Search pages" }))).toBe("Search pages");
-    // Its name is the host's words: the nav inventory doesn't compare it.
-    expect(searchHtml({})).toContain(' data-nav-name="host"');
+    const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+    for (const [lang, word, name] of [
+      ["en", "Search…", "Search"],
+      ["es", "Buscar…", "Buscar"],
+      ["ja", "検索…", "検索"],
+    ] as const) {
+      // A host's own words are ignored: one search in every product.
+      const h = searchHtml({
+        lang,
+        placeholder: "Find anything…",
+        label: "Search pages",
+      } as Parameters<typeof searchHtml>[0]);
+      expect(ph(h)).toBe(word);
+      expect(label(h)).toBe(name);
+    }
+    // They are the kit's words: the nav inventory compares them.
+    expect(searchHtml({})).not.toContain("data-nav-name");
+    expect(searchHtml({})).not.toContain("data-nav-role");
   });
 
-  it("the account entry's words are host content (data-nav-role account-name)", () => {
+  // 0.7.1: the account is data ({ name?, login, role? }); the kit owns
+  // its format, the same in the rail's entry and the menu's header.
+  const lines = (h: string) =>
+    [...h.matchAll(/<span class="den-acct-(n|l|r)">([^<]*)<\/span>/g)].map(
+      (m) => `${m[1]}:${m[2]}`,
+    );
+  it("the account entry: the name, then @login; @login alone with no name", () => {
+    const both = accountHtml({
+      name: "Ada Lovelace",
+      login: "ada",
+      href: "/me",
+    });
+    expect(lines(both)).toEqual(["n:Ada Lovelace", "l:@ada"]);
+    expect(both).toContain('data-nav-shape="name,login"');
+    expect(both).toContain('title="Ada Lovelace · @ada"');
+    const login = accountHtml({ login: "ada", href: "/me" });
+    expect(lines(login)).toEqual(["n:@ada"]);
+    expect(login).toContain('data-nav-shape="login"');
+    // The role is never in the rail's entry: its shape is name, login.
+    const role = accountHtml({
+      name: "Ada",
+      login: "ada",
+      role: "Owner",
+      href: "/me",
+    });
+    expect(lines(role)).toEqual(["n:Ada", "l:@ada"]);
+    expect(role).toContain('data-nav-shape="name,login"');
+    expect(role).not.toContain("Owner");
+    expect(
+      lines(accountHtml({ login: "ada", role: "Owner", href: "/me" })),
+    ).toEqual(["n:@ada"]);
+    // The words are host data: the nav inventory compares their shape.
+    expect(both).toContain('data-nav-role="account-name"');
+    expect(both).not.toContain("data-nav-legacy");
+  });
+
+  it("no identity known: the kit's own word for this computer (local)", () => {
+    const h = accountHtml({ local: true, href: "/me" });
+    expect(lines(h)).toEqual(["n:Local"]);
+    expect(h).toContain('data-nav-shape="local"');
+    expect(
+      lines(accountHtml({ local: true, lang: "ja", href: "/me" })),
+    ).toEqual(["n:ローカル"]);
+    // Data wins over the local word.
+    expect(
+      lines(accountHtml({ local: true, login: "ada", href: "/me" })),
+    ).toEqual(["n:@ada"]);
+  });
+
+  it("the account menu's header: the name, @login, then the role on its own line", () => {
+    const m = accountMenuHtml({
+      name: "Ada Lovelace",
+      login: "ada",
+      role: "Owner",
+      items: [],
+    });
+    expect(lines(m)).toEqual(["n:Ada Lovelace", "l:@ada", "r:Owner"]);
+    expect(
+      lines(accountMenuHtml({ login: "ada", role: "Owner", items: [] })),
+    ).toEqual(["n:@ada", "r:Owner"]);
+    expect(lines(accountMenuHtml({ login: "ada", items: [] }))).toEqual([
+      "n:@ada",
+    ]);
+  });
+
+  it("label and detail still work for one release, marked for the nav inventory", () => {
     const h = accountHtml({
       label: "Signed in",
       detail: "this device",
       href: "/me",
-    });
-    expect(h).toContain(
-      '<span class="den-lbl" data-nav-role="account-name">Signed in<span class="den-acct-d"> · this device</span></span>',
-    );
+    } as Parameters<typeof accountHtml>[0]);
+    // The old words, as they were given (no @ added).
+    expect(lines(h)).toEqual(["n:Signed in", "l:this device"]);
+    expect(h).toContain('data-nav-legacy="account"');
+    const m = accountMenuHtml({
+      detail: "this device",
+      items: [],
+    } as Parameters<typeof accountMenuHtml>[0]);
+    expect(m).toContain('data-nav-legacy="account"');
   });
 
   it("draws the default mark from its file: Den's markup exactly (the nav reference's #den-mark)", () => {

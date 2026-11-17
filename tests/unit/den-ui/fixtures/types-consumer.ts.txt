@@ -19,6 +19,7 @@ import {
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
+  accountWho,
   type Crumb,
 } from "@kit/shell-html.js";
 import {
@@ -84,14 +85,17 @@ const crumbs: Crumb[] = [
 ];
 const bar: string =
   scopeHtml({ crumbs, lang: "en" }) +
-  searchHtml({ placeholder: "Find…" }) +
+  searchHtml({ shortcut: true }) +
   bellButtonHtml({ count: 3 }) +
   bellPanelHtml({ items: [{ text: "Done", href: "#d", time: "now" }] }) +
+  accountHtml({ name: "Ada Lovelace", login: "ada", role: "Owner", href: "/me" });
+  // The old free-text fields still type for one release (deprecated).
   accountHtml({ label: "Signed in", detail: "this device", href: "/me" });
+  accountWho({ login: "ada" });
 void bar;
 const withPieces = mount(document.body, {
   ...model,
-  account: { label: "Signed in", action: true },
+  account: { login: "ada", action: true },
   hydrate: {
     search: { onActivate: (via: string) => void via },
     bell: { items: () => [{ text: "x" }], onEscape: () => false },
@@ -120,7 +124,7 @@ full.appearance?.open();
 // 0.7.0: the account entry's menu, and a crumb menu's filter.
 const signedIn = mount(document.body, {
   ...model,
-  account: { label: "Signed in", detail: "this device", menu: true },
+  account: { name: "Ada Lovelace", login: "ada", menu: true },
   slots: {
     start: scopeHtml({
       crumbs: [{ key: "ws", label: "Project", menu: [{ label: "A", href: "#a" }], filter: 1 }],
@@ -129,8 +133,8 @@ const signedIn = mount(document.body, {
   hydrate: {
     account: {
       menu: () => ({
-        name: "Signed in",
-        detail: "this device",
+        name: "Ada Lovelace",
+        login: "ada",
         items: [
           { label: "Sessions", href: "/settings#access" },
           { label: "Sign out", action: { method: "post", url: "/out", csrf: "t" } },

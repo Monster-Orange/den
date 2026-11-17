@@ -5,8 +5,9 @@
  * 1. The scope crumbs: small-caps keys (COMPANY / PROJECT / ENV), each
  *    with its value, and a ▾ trigger when it has a menu. Any crumb may be
  *    left out.
- * 2. The search field with ⌘K inside it. The host gives the placeholder
- *    and what activating it does; the kit owns no palette.
+ * 2. The search field with ⌘K inside it. The kit owns its words
+ *    ("Search…"); the host gives what activating it does; the kit owns no
+ *    palette.
  * 3. The bell: the button, its count badge, and the panel's shell (title,
  *    rows or the empty state). The kit owns the markup, focus, Esc and
  *    close; focus goes back to the bell, in WebKit too.
@@ -32,6 +33,10 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import {
+  searchSlot,
+  versionSlotW,
+} from "../../../packages/den-ui/inventory/nav-inventory.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -103,24 +108,35 @@ if (!q.has("bare")) {
         { label: "Garden", href: "#garden", current: true },
         { label: "Orchard", href: "#orchard" },
       ];
+  // ?long: a host's long names (issue 303): 54+ characters each.
+  const long = q.has("long");
   const crumbs = [
-    { key: "org", label: "Company", value: "North Co" },
-    { key: "ws", label: "Project", value: "Garden", menu: projects,
+    { key: "org", label: "Company", value: long ? "The North Country Cooperative of Gardeners and Growers" : "North Co" },
+    { key: "ws", label: "Project", value: long ? "The Quarterly Planning Project With A Very Long Name Too" : "Garden", menu: projects,
       ...(q.has("filter") ? { filter: Number(q.get("filter")) } : {}),
       ...(q.has("nofilter") ? { filter: false } : {}) },
   ];
   if (!q.has("noenv")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
   model.slots = {
-    start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml({ placeholder: "Find anything…" }),
+    start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml(),
     bell: DenUI.bellButtonHtml({ count: Number(q.get("count") ?? 2) }),
     account: DenUI.appearanceButtonHtml(),
   };
+  // ?chips: a host's own chips in the end slot (issue 303).
+  if (q.has("chips"))
+    model.slots.end =
+      '<button type="button" class="den-chip" id="host-a"><span class="den-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor"></span><span>12 of 12 services up</span></button>' +
+      '<a class="den-chip" id="host-b" href="#runs"><span>Runs</span></a>';
+  // ?longname: a long install name.
+  if (q.has("longname")) model.product = { ...model.product, name: "A Very Long Install Name For This Place And Then Some" };
+  // ?longver: a long version (a dev build's) widens the kit's own chip.
+  if (q.has("longver")) model.product = { ...model.product, version: "0.4.63-dev.12" };
   model.settings = { href: "#settings" };
   model.account = q.has("act")
-    ? { label: "Signed in", detail: "this device", action: true }
+    ? { name: "Ada Lovelace", login: "ada", action: true }
     : q.has("acctmenu")
-      ? { label: "Signed in", detail: "this device", menu: true }
-      : { label: "Signed in", detail: "this device", href: "#account" };
+      ? { name: "Ada Lovelace", login: "ada", menu: true }
+      : { name: "Ada Lovelace", login: "ada", href: "#account" };
   model.hydrate = {
     search: { onActivate: (via) => window.log.search.push(via) },
     bell: {
@@ -132,8 +148,8 @@ if (!q.has("bare")) {
     account: {
       onAction: () => window.log.account++,
       menu: () => ({
-        name: "Signed in",
-        detail: "this device",
+        name: "Ada Lovelace",
+        login: "ada",
         items: [
           { label: "Sessions", href: "#sessions" },
           { label: "Sign out", action: { method: "post", url: "/out", csrf: "tok-1" } },
@@ -190,9 +206,15 @@ window.ready = true;
 /** What reached /out (a sign-out form's post): "METHOD body". */
 const posts: string[] = [];
 
-async function open(b: Browser, query = ""): Promise<Page> {
+async function open(
+  b: Browser,
+  query = "",
+  width = 1280,
+  touch = false,
+): Promise<Page> {
   const ctx = await b.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width, height: 800 },
+    ...(touch ? { hasTouch: true, isMobile: true } : {}),
     reducedMotion: "reduce",
   });
   const p = await ctx.newPage();
@@ -272,7 +294,13 @@ for (const engine of ["chromium", "webkit"]) {
           ".den-rail [data-den-account]",
         ) as HTMLAnchorElement | null;
         // The search sits after the scope, both after the brand.
-        const order = [...top.children].map((e) => e.className.split(" ")[0]);
+        // In reading order: the left part's pieces, then the search, then
+        // the chips (issue 303: ☰, the brand and the crumbs sit in .den-left).
+        const order = [
+          ...top.querySelectorAll(
+            ":scope > .den-left > *, :scope > :not(.den-left)",
+          ),
+        ].map((e) => e.className.split(" ")[0]);
         return {
           group: scope?.getAttribute("role"),
           groupLabel: scope?.getAttribute("aria-label"),
@@ -336,11 +364,11 @@ for (const engine of ["chromium", "webkit"]) {
       expect(got.keyCase).toBe("uppercase");
       expect(got.search).toEqual({
         tag: "button",
-        ph: "Find anything…",
+        ph: "Search…",
         kbd: "⌘K",
         kbdInside: true,
         shortcuts: "Meta+K Control+K",
-        // No label given: the kit's own "Search", not the placeholder.
+        // The kit's own words: a host can't set them.
         name: "Search",
       });
       expect(got.bell).toEqual({
@@ -352,7 +380,8 @@ for (const engine of ["chromium", "webkit"]) {
       });
       expect(got.acct).toEqual({
         href: "#account",
-        text: "Signed in · this device",
+        // The kit's two lines: the name, then @login.
+        text: "Ada Lovelace@ada",
         inFoot: true,
       });
       expect(got.order.indexOf("den-scope")).toBeGreaterThan(
@@ -610,7 +639,7 @@ for (const engine of ["chromium", "webkit"]) {
       await expect(p.evaluate(() => location.hash)).resolves.toBe("#account");
       await expect(
         p.locator("[data-den-account]").getAttribute("title"),
-      ).resolves.toBe("Signed in · this device");
+      ).resolves.toBe("Ada Lovelace · @ada");
       await p.context().close();
       const q = await open(b, "?act");
       await expect(
@@ -1001,7 +1030,7 @@ for (const engine of ["chromium", "webkit"]) {
       ).resolves.toEqual({
         foot: [
           "settings:Settings",
-          "account:Signed in · this device",
+          "account:Ada Lovelace@ada",
           "collapse:Collapse",
         ],
         href: "#settings",
@@ -1040,8 +1069,8 @@ for (const engine of ["chromium", "webkit"]) {
           ),
         ),
       ).resolves.toEqual([
-        "den-ml: Signed in",
-        "den-mnote: this device",
+        // Drawn as the rail's entry is: the name, then @login.
+        "den-ml den-acct: Ada Lovelace@ada",
         "den-hr: ",
         "den-mi: Sessions",
         "form post /out: csrf | Sign out",
@@ -1255,6 +1284,371 @@ for (const engine of ["chromium", "webkit"]) {
         ),
       ).resolves.toEqual([["closed"], ["host", "Gamma"]]);
       await p.context().close();
+    });
+  });
+
+  // issue 303: the search sits in a fixed slot, the same in every product,
+  // whatever the host's words or chips; Report, the bell, the version and
+  // ◐ stay pinned to the right edge; the crumbs give way first (the last
+  // one kept), then the install name; nothing overflows the bar.
+  describe(`issue 303 the search's fixed slot (${engine})`, () => {
+    const measure = (p: Page) =>
+      p.evaluate(() => {
+        const r = (sel: string) => {
+          const e = document.querySelector(sel);
+          if (!e) return null;
+          const b = e.getBoundingClientRect();
+          return [Math.round(b.x * 10) / 10, Math.round(b.width * 10) / 10];
+        };
+        const top = document.querySelector<HTMLElement>(".den-top")!;
+        const crumbs = [
+          ...top.querySelectorAll<HTMLElement>(".den-scope .den-vn"),
+        ].filter((e) => e.getClientRects().length);
+        const last = crumbs[crumbs.length - 1];
+        const longCut = crumbs.some((e) => e.scrollWidth > e.clientWidth + 1);
+        const ic = top.querySelector(".den-search-ic")!.getBoundingClientRect();
+        const first = top.querySelector(
+          ".den-chips > *:not(.den-end), .den-end > *",
+        );
+        // What shows: a chip clipped by its group counts from the group's
+        // left edge.
+        const group = top.querySelector(".den-end");
+        const gl = group ? group.getBoundingClientRect().left : -1e9;
+        const chipX = [...top.querySelectorAll<HTMLElement>(".den-chips *")]
+          .filter(
+            (e) =>
+              e.getClientRects().length && e.getBoundingClientRect().width > 0,
+          )
+          .map((e) =>
+            e.closest(".den-end")
+              ? Math.max(e.getBoundingClientRect().x, gl)
+              : e.getBoundingClientRect().x,
+          );
+        const crumbsLabelOnly = [
+          ...top.querySelectorAll<HTMLElement>(".den-scope .den-ib"),
+        ]
+          .filter((c) => c.getClientRects().length)
+          .filter((c) => {
+            const k = c.querySelector(":scope > .den-k");
+            const v = c.lastElementChild;
+            if (!k || !v || v === k) return false;
+            return (
+              k.getBoundingClientRect().width > 1 &&
+              // Its floor (about 4ch): a few letters and "…", not "…" alone.
+              v.getBoundingClientRect().width < 24
+            );
+          })
+          .map((c) => c.id);
+        const title = top.querySelector<HTMLElement>(".den-title")!;
+        return {
+          search: r(".den-search"),
+          report: r(".den-rb-top"),
+          bell: r("#den-bell"),
+          version: r("#version-pill"),
+          appearance: r("#appearance-btn"),
+          overflow: top.scrollWidth > top.clientWidth + 1,
+          // The gap from ⌕ to the first chip after it.
+          gap: Math.round(Math.min(...chipX) - ic.right),
+          firstChip: !!first,
+          lastCrumb: last
+            ? {
+                shown: last.getBoundingClientRect().width > 0,
+                cut: last.scrollWidth > last.clientWidth + 1,
+                ellipsis: getComputedStyle(last).textOverflow,
+              }
+            : null,
+          titleCut: title.scrollWidth > title.clientWidth + 1,
+          longCut,
+          crumbsLabelOnly,
+        };
+      });
+
+    it("at 1280 the search is at 464, 304 wide, with short or long names and with or without host chips", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const got: Record<string, Awaited<ReturnType<typeof measure>>> = {};
+      for (const q of [
+        "",
+        "?long",
+        "?chips",
+        "?long&chips",
+        "?long&longname",
+      ]) {
+        const p = await open(b, q, 1280);
+        got[q || "short"] = await measure(p);
+        await p.context().close();
+      }
+      for (const [k, m] of Object.entries(got)) {
+        expect([k, m.search]).toEqual([k, [464, 304]]);
+        // Pinned right: where the short names put them.
+        for (const it of ["report", "bell", "version", "appearance"] as const)
+          expect([k, it, m[it]]).toEqual([k, it, got.short![it]]);
+        expect([k, m.overflow]).toEqual([k, false]);
+        // A visible gap between ⌕ and the first chip.
+        expect(m.gap).toBeGreaterThanOrEqual(12);
+      }
+      // Long names: the last crumb is kept whole; a long one before it
+      // ends in an ellipsis.
+      for (const k of ["?long", "?long&chips"])
+        expect([k, got[k]!.lastCrumb]).toEqual([
+          k,
+          { shown: true, cut: false, ellipsis: "ellipsis" },
+        ]);
+      expect([got["?long"]!.longCut, got.short!.longCut]).toEqual([
+        true,
+        false,
+      ]);
+    });
+
+    it("narrower than the left part, the search and the kit's buttons need: the chips never run under the search", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1280, 1100, 960, 800])
+        for (const q of ["?chips", "?long&chips&longver", "?longver"]) {
+          const p = await open(b, q, w);
+          const m = await measure(p);
+          await p.context().close();
+          // ⌕ to the first chip: a clear gap, never an overlap.
+          expect([w, q, m.gap >= 12]).toEqual([w, q, true]);
+          expect([w, q, m.overflow]).toEqual([w, q, false]);
+        }
+    });
+
+    it("a crumb's value outlasts its label: at 1100, 960 and 800 no crumb shows its label with less than its value's floor", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1100, 960, 800])
+        for (const q of ["?long", "?long&chips&longver"]) {
+          const p = await open(b, q, w);
+          const m = await measure(p);
+          await p.context().close();
+          expect([w, q, m.crumbsLabelOnly]).toEqual([w, q, []]);
+        }
+    });
+
+    // The lead's rule (issue 303): the search never moves. Its x is a
+    // function of the viewport only (searchSlot), the same in any host at
+    // every width; when the bar is short the right group gives way (the
+    // host's chips, then the version's text), never Report, bell or ◐.
+    it("at 1100, 960 and 800 the search sits at searchSlot's x in any host; Report, bell and ◐ keep their size", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1100, 960, 800]) {
+        const slot = searchSlot(w);
+        const got: Record<string, Awaited<ReturnType<typeof measure>>> = {};
+        for (const q of [
+          "",
+          "?chips",
+          "?longver",
+          "?long&chips&longver",
+          "?long",
+        ]) {
+          const p = await open(b, q, w);
+          got[q || "short"] = await measure(p);
+          await p.context().close();
+        }
+        for (const [k, m] of Object.entries(got)) {
+          expect([w, k, m.search]).toEqual([w, k, [slot.x, slot.w]]);
+          // Anchored from the right: the same x and width in any host,
+          // the version in its fixed slot.
+          for (const it of ["report", "bell", "version", "appearance"] as const)
+            expect([w, k, it, m[it]]).toEqual([w, k, it, got.short![it]]);
+          expect([w, k, m.version![1]]).toEqual([w, k, versionSlotW(w)]);
+          // A crumb's value outlasts its label.
+          expect([w, k, m.crumbsLabelOnly]).toEqual([w, k, []]);
+          expect([w, k, m.overflow]).toEqual([w, k, false]);
+          expect([w, k, m.gap >= 12]).toEqual([w, k, true]);
+        }
+      }
+    });
+
+    it("a host chip that gives way keeps its dot and stays reachable: its words in its title and name", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1100, 960]) {
+        const p = await open(b, "?long&chips&longver", w);
+        const got = await p.evaluate(() =>
+          ["host-a", "host-b"].map((id) => {
+            const c = document.getElementById(id)!;
+            const dot = c.querySelector(".den-dot");
+            return {
+              id,
+              tag: c.tagName,
+              title: c.getAttribute("title"),
+              name: c.getAttribute("aria-label"),
+              shown: c.getBoundingClientRect().width > 0,
+              dot: dot ? dot.getBoundingClientRect().width : null,
+            };
+          }),
+        );
+        await p.context().close();
+        expect([w, got]).toEqual([
+          w,
+          [
+            {
+              id: "host-a",
+              tag: "BUTTON",
+              title: "12 of 12 services up",
+              name: "12 of 12 services up",
+              shown: true,
+              dot: 8,
+            },
+            {
+              id: "host-b",
+              tag: "A",
+              title: "Runs",
+              name: "Runs",
+              shown: true,
+              dot: null,
+            },
+          ],
+        ]);
+      }
+    });
+
+    it("at 390 the search sits at the same x, short or long names, with or without host chips", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const got: Record<string, Awaited<ReturnType<typeof measure>>> = {};
+      for (const q of ["", "?long", "?chips", "?long&chips"]) {
+        const p = await open(b, q, 390);
+        got[q || "short"] = await measure(p);
+        await p.context().close();
+      }
+      const at = got.short!.search;
+      expect(at![0]).toBe(82);
+      for (const q of ["?long", "?chips", "?long&chips"]) {
+        expect([q, got[q]!.search]).toEqual([q, at]);
+        expect([q, got[q]!.overflow]).toEqual([q, false]);
+        expect(got[q]!.gap).toBeGreaterThanOrEqual(8);
+      }
+    });
+  });
+
+  // Issue 303: on a touch screen every top-bar control takes a 44px tap
+  // (an ::after hit area: the look is the same) and the key hints hide.
+  describe(`issue 303 touch targets (${engine})`, () => {
+    // The kit's two touch rules for any host element: .den-hit (a 44px
+    // tap on touch, nothing without) and .den-kbd (hidden on touch).
+    const hostTouch = (p: Page) =>
+      p.evaluate(() => {
+        const main = document.getElementById("den-content")!;
+        main.insertAdjacentHTML(
+          "beforeend",
+          '<p style="padding:40px"><button type="button" class="den-hit" id="hh" style="font-size:12px;padding:2px 4px">x</button> <kbd class="den-kbd" id="hk">⌘J</kbd></p>',
+        );
+        const b = document.getElementById("hh")!;
+        const r = b.getBoundingClientRect();
+        const cx = r.x + r.width / 2;
+        const cy = r.y + r.height / 2;
+        const edges = [
+          [cx, cy - 21],
+          [cx, cy + 21],
+          [cx - 21, cy],
+          [cx + 21, cy],
+        ].map(
+          ([x, y]) => document.elementFromPoint(x!, y!)?.closest("#hh") != null,
+        );
+        const k = document.getElementById("hk")!;
+        return {
+          small: r.width < 44 && r.height < 44,
+          box: [Math.round(r.width), Math.round(r.height)],
+          edges,
+          kbd: k.getClientRects().length > 0,
+        };
+      });
+
+    it("a host's .den-hit takes a 44px tap on touch and none without; a host's .den-kbd hides on touch", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const t = await open(b, "", 390, engine === "webkit");
+      const onTouch = await hostTouch(t);
+      await t.context().close();
+      const m = await open(b, "", 390, false);
+      const noTouch = await hostTouch(m);
+      await m.context().close();
+      expect(noTouch.small).toBe(true);
+      expect(noTouch.edges).toEqual([false, false, false, false]);
+      expect(noTouch.kbd).toBe(true);
+      if (engine !== "webkit") return;
+      // Same look: the button's own box is unchanged.
+      expect(onTouch.box).toEqual(noTouch.box);
+      expect(onTouch.edges).toEqual([true, true, true, true]);
+      expect(onTouch.kbd).toBe(false);
+    });
+
+    it("at 390 on touch: every bar control's hit box is 44×44, no key hint shows, and the bar looks the same", async () => {
+      const b = browsers[engine];
+      if (!b || engine !== "webkit") return;
+      const t = await open(b, "?chips", 390, true);
+      const touchOn = await t.evaluate(
+        () => matchMedia("(pointer: coarse)").matches,
+      );
+      expect(touchOn).toBe(true);
+      const got = await t.evaluate(() => {
+        const top = document.querySelector<HTMLElement>(".den-top")!;
+        const controls = [
+          ...top.querySelectorAll<HTMLElement>("button, a[href]"),
+        ].filter(
+          (e) =>
+            e.getClientRects().length && e.getBoundingClientRect().width > 0,
+        );
+        const box44 = (e: HTMLElement) => {
+          const r = e.getBoundingClientRect();
+          const cx = r.x + r.width / 2;
+          const cy = r.y + r.height / 2;
+          const hx = Math.max(44, r.width) / 2 - 1;
+          const hy = Math.max(44, r.height) / 2 - 1;
+          return { cx, cy, hx, hy };
+        };
+        const inBox = (e: HTMLElement, x: number, y: number) => {
+          const { cx, cy, hx, hy } = box44(e);
+          return Math.abs(x - cx) <= hx + 1 && Math.abs(y - cy) <= hy + 1;
+        };
+        const misses: string[] = [];
+        for (const c of controls) {
+          const { cx, cy, hx, hy } = box44(c);
+          for (const [x, y] of [
+            [cx, cy - hy],
+            [cx, cy + hy],
+            [cx - hx, cy],
+            [cx + hx, cy],
+          ]) {
+            const hit = document.elementFromPoint(x, y) as HTMLElement | null;
+            const owner =
+              hit?.closest<HTMLElement>(".den-top button, .den-top a[href]") ??
+              null;
+            if (owner === c) continue;
+            // Where two neighbours' 44px boxes overlap, either may take it.
+            if (owner && controls.includes(owner) && inBox(owner, x, y))
+              continue;
+            misses.push(
+              `${c.id || c.className} at ${Math.round(x)},${Math.round(y)} hit ${owner?.id || owner?.className || hit?.tagName}`,
+            );
+          }
+        }
+        const kbd = [
+          ...top.querySelectorAll<HTMLElement>("kbd, .den-kbd"),
+        ].filter(
+          (e) =>
+            e.getClientRects().length && e.getBoundingClientRect().width > 0,
+        ).length;
+        return { n: controls.length, misses, kbd };
+      });
+      expect(got.n).toBeGreaterThanOrEqual(5);
+      expect(got.misses).toEqual([]);
+      expect(got.kbd).toBe(0);
+      const touchShot = await t.locator(".den-top").screenshot();
+      await t.context().close();
+      // The same bar without touch, its key hints hidden: the same pixels.
+      const m = await open(b, "?chips", 390, false);
+      await m.addStyleTag({
+        content:
+          ".den-top kbd, .den-top .den-kbd { display: none !important; }",
+      });
+      const mouseShot = await m.locator(".den-top").screenshot();
+      await m.context().close();
+      expect(touchShot.equals(mouseShot)).toBe(true);
     });
   });
 }

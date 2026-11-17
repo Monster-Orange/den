@@ -35,6 +35,18 @@ export interface NavElement {
   };
   /** Its accessible name is the host's words (data-nav-name="host"). */
   hostName?: boolean;
+  /** 0.7.1: a kit-owned slot's content shape (data-nav-shape: its fields). */
+  shape?: string;
+  /** 0.7.1: drawn from the old free-text fields (data-nav-legacy). */
+  legacy?: boolean;
+  /** The rail's account entry (data-den-account). */
+  account?: boolean;
+  /** The account entry's drawn lines. */
+  lines?: number;
+  /** A crumb whose label shows while its value is hidden. */
+  labelOnly?: boolean;
+  /** The kit's stamp on what it draws (data-nav-kit). */
+  kit?: string;
 }
 export interface NavTheme {
   id: string;
@@ -87,6 +99,31 @@ export declare const NAV_BROWSER_IMAGE: string;
 export declare const FINGERPRINT_TEXT: string;
 /** The theme the reference was taken in ("den" 2.0.1): every parity run uses it. */
 export declare const NAV_THEME: NavTheme;
+/**
+ * issue 303: classes of the top bar's pinned elements (the search, Report,
+ * the bell, the version chip, ◐ ▾): compared at the reference's x and
+ * width, with no host-content allowance.
+ */
+export declare const PINNED_CLASSES: readonly string[];
+/** The search's x and width for a viewport width, the same in any host. */
+export declare function searchSlot(viewportW: number): { x: number; w: number };
+export declare const TOP_RIGHT_MIN: number;
+/** The search away from searchSlot (slot.x, slot.w), at any width. */
+export declare function searchSlotDiffs(
+  snap: NavSnapshot,
+  tolerance?: number,
+): NavDiff[];
+/** The account entry's shapes the kit draws → their line counts. */
+export declare const ACCOUNT_SHAPES: Record<string, number>;
+/** The version's fixed slot width for a viewport width (0 on a phone). */
+export declare function versionSlotW(viewportW: number): number;
+/** searchSlotDiffs plus Report, bell, version and ◐ anchored from the right. */
+export declare function topSlotDiffs(
+  snap: NavSnapshot,
+  tolerance?: number,
+): NavDiff[];
+/** 0.7.1: host HTML in the kit's account and search slots (warnings). */
+export declare function navWarnings(snap: NavSnapshot): string[];
 export declare function collectNav(
   page: NavPage,
   opts?: { image?: string; theme?: NavTheme },

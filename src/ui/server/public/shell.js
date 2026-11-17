@@ -1817,9 +1817,9 @@
     "set.cli.op_token": "1Password token source",
     "set.access.owner": "Owner",
     "set.access.devices": "Linked devices",
-    "ident.local": "Local",
-    "ident.device": "Signed in · this device",
     "ident.toast": "This device is signed in to {name} on {host}",
+    // The install owner's role, beside their GitHub identity (the account entry's data).
+    "acct.roleOwner": "Owner",
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
     "set.embed.origins": "Web apps that may embed agents",
@@ -4365,7 +4365,7 @@
         '<select id="env-sel" hidden aria-hidden="true" tabindex="-1"><option value="local">local</option></select>',
     }) +
     // The ⌘K search field (R5), the kit's; ⌘K opens the palette (topbar.js).
-    DUI.searchHtml({ placeholder: t("search.ph"), label: t("search.ph") });
+    DUI.searchHtml({ lang: lang });
   var slotEnd =
     '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
     '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
@@ -4871,28 +4871,38 @@
   }
 
   /**
-   * SEC-2a: the rail footer's identity chip: "Local" (this machine, no
-   * sign-in), "Signed in · this device" (a one-time link or a code) or
-   * "@login" (GitHub). The kit's account entry (den-ui 0.7.0), last in
-   * the rail's foot, opening Settings › Access.
+   * SEC-2a: the rail foot's account entry (the kit's, den-ui 0.7.1), last
+   * in the rail's foot, opening Settings › Access. Who is signed in, as
+   * data: this browser's GitHub sign-in ({ name, login }), else, on a
+   * local browser on this machine only, the install owner's GitHub
+   * identity (/api/session's identity.owner) with its role. A browser
+   * signed in with a link or a code is never shown as the owner. The kit draws the name over @login (a role only in an
+   * account menu's header). With no GitHub identity at all, the kit's own
+   * word for this computer. Never device words.
    */
-  function identityLabel(id) {
-    if (!id) return "";
-    if (id.kind === "local") return t("ident.local");
-    if (id.kind === "github" && id.login) return "@" + id.login;
-    if (id.kind === "github" || id.kind === "device") return t("ident.device");
-    return "";
-  }
   function accountModel() {
-    var label = identityLabel(state.identity);
-    if (!label) return null;
-    return {
+    var id = state.identity;
+    if (!id) return null;
+    var gh =
+      id.kind === "github" && id.login
+        ? id
+        : id.kind === "local" && id.owner && id.owner.login
+          ? id.owner
+          : null;
+    var who = gh
+      ? {
+          login: gh.login,
+          name: gh.name || undefined,
+          role:
+            gh.role === "owner" ? t("acct.roleOwner") : gh.role || undefined,
+        }
+      : { local: true, lang: lang };
+    return Object.assign(who, {
       navId: "identity",
       href: "/settings#access",
-      label: label,
       id: "den-ident",
-      attrs: { "data-ident": state.identity.kind },
-    };
+      attrs: { "data-ident": id.kind },
+    });
   }
   /** What GET /api/session said about this browser: the chip, and a toast once after a sign-in. */
   function applyIdentity(b) {
@@ -7768,7 +7778,10 @@
     "@media (max-width: 480px) { #den-runs { display: none; } }",
     // …and the status chip's words shorten (…) rather than push the page
     // sideways, whatever they say.
-    "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } #den-status .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }",
+    // The kit's chips give way under 1100px (issue 303): Den's chip words
+    // end in … when they do.
+    ".den-top .den-chip .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } }",
     ".den-btn.sm { padding: 2px 9px; font-size: 12.5px; }",
     ".den-btn:disabled { opacity: .6; cursor: default; }",
     // D27: Visit is a link styled as a button.

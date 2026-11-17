@@ -119,12 +119,12 @@ const model = {
       DenUI.scopeHtml({ crumbs: [
         { key: "org", label: "Company", value: "North" },
         { key: "ws", label: "Project", value: "Garden", menu: [{ label: "Garden", href: "#g", current: true }] },
-      ] }) + DenUI.searchHtml({ placeholder: "Find…" }),
+      ] }) + DenUI.searchHtml(),
     bell: DenUI.bellButtonHtml({ count: 1 }),
     account: '<span id="who">me</span>' + DenUI.appearanceButtonHtml(),
   },
   settings: { href: "#settings" },
-  account: { label: "Signed in", detail: "this device", href: "#me" },
+  account: { name: "Ada Lovelace", login: "ada", href: "#me" },
 };
 window.searched = 0;
 window.shell = DenUI.mount(document.getElementById("shell"), {

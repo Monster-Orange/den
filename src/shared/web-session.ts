@@ -24,6 +24,7 @@ import * as path from "path";
 import * as yaml from "yaml";
 import { parseMachineName, parseSshUser } from "./cli-command.js";
 import { getStateDir } from "./paths.js";
+import { githubDisplayName } from "./web-owner.js";
 
 /** D16: how long a sign-in link lasts unless `web.login_link_ttl` says. */
 export const LOGIN_CODE_TTL_MS = 5 * 60_000;
@@ -226,6 +227,12 @@ export interface WebAuthConfig {
    */
   ownerGithub?: string;
   /**
+   * `web.owner_github_name` (user.yml only): that person's GitHub display
+   * name, kept with the login from the same `gh api user` (the account
+   * entry on a browser on this machine). Unset: none known.
+   */
+  ownerGithubName?: string;
+  /**
    * `web.allowed_github_org` (D17; the distribution config, or user.yml):
    * with no owner linked, a member of this GitHub org who proves they are
    * at this machine ("This is my computer") becomes the owner.
@@ -406,6 +413,7 @@ export function readWebAuthConfig(
     "web.owner_github",
     "config/local/user.yml",
   );
+  const ownerGithubName = githubDisplayName(user.owner_github_name);
   const userOrg = parseGithubName(
     user.allowed_github_org,
     "web.allowed_github_org",
@@ -422,6 +430,7 @@ export function readWebAuthConfig(
     parseLoginLinkTtl(team.login_link_ttl, configFile);
   return {
     ...(ownerGithub ? { ownerGithub } : {}),
+    ...(ownerGithub && ownerGithubName ? { ownerGithubName } : {}),
     ...(allowedGithubOrg
       ? {
           allowedGithubOrg,
@@ -511,8 +520,10 @@ export interface SessionRecord {
   via?: "github" | "link" | "code" | "claim";
   /** SEC-2a: the client's address when Den could attest it. */
   client?: string;
-  /** SEC-2a: a GitHub sign-in's login (the chip's "@login"). */
+  /** SEC-2a: a GitHub sign-in's login (the account entry's "@login"). */
   login?: string;
+  /** A GitHub sign-in's display name, from the same `/user` (the account entry's first line). */
+  name?: string;
   /** SEC-2a: not yet greeted ("This device is signed in…", once). */
   welcome?: true;
   /**
@@ -652,6 +663,7 @@ export class WebSessionStore {
     via?: "github" | "link" | "code" | "claim";
     client?: string;
     login?: string;
+    name?: string;
   }): {
     id: string;
     session: SessionView;
@@ -674,6 +686,9 @@ export class WebSessionStore {
       ...(meta.via ? { via: meta.via } : {}),
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
       ...(meta.login ? { login: String(meta.login).slice(0, 64) } : {}),
+      ...(meta.login && githubDisplayName(meta.name)
+        ? { name: githubDisplayName(meta.name) }
+        : {}),
       welcome: true,
       approveKeyHash: approveKeyHash(approveKey),
     };

@@ -1789,6 +1789,7 @@ function startSession(
   req: http.IncomingMessage,
   via: "github" | "link" | "code" | "claim",
   login?: string,
+  name?: string,
 ): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
@@ -1798,11 +1799,46 @@ function startSession(
     via,
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
+    ...(login && name ? { name } : {}),
   });
   return {
     cookie: sessionSetCookie(id, requestIsHttps(req, named)),
     approveKey,
   };
+}
+
+/**
+ * The install owner's GitHub identity, for the account entry of a local
+ * browser on the Den machine only (never a browser signed in with a link
+ * or a code: it may be someone else's): the linked owner (web-owner.json),
+ * else web.owner_github (recorded from gh at `web up`), with the display
+ * name kept beside each. Files only: no gh call here. Null: none known.
+ */
+function ownerIdentity(): {
+  login: string;
+  name?: string;
+  role: "owner";
+} | null {
+  const linked = readWebOwner(getStateDir());
+  if (linked)
+    return {
+      login: linked.login,
+      ...(linked.name ? { name: linked.name } : {}),
+      role: "owner",
+    };
+  const w = webAuthNow();
+  if (!w.ownerGithub) return null;
+  return {
+    login: w.ownerGithub,
+    ...(w.ownerGithubName ? { name: w.ownerGithubName } : {}),
+    role: "owner",
+  };
+}
+
+/** A local browser's identity (GET /api/session): local, with the owner's when known. */
+function localIdentity(): { kind: "local"; owner?: object } {
+  const owner = ownerIdentity();
+  return { kind: "local", ...(owner ? { owner } : {}) };
 }
 
 /** The edge hostnames that route here, and their URLs (Pair a device). */
@@ -5521,7 +5557,7 @@ async function handleRequest(
     // after a sign-in, that it just signed in (the shell's toast).
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
-      const github = rec?.via === "github";
+      const github = rec?.via === "github" && !!rec.login;
       return sendJson(res, {
         csrf: g.session.csrf,
         actor: "person-browser",
@@ -5529,7 +5565,10 @@ async function handleRequest(
         identity: {
           kind: github ? "github" : "device",
           via: rec?.via ?? "link",
-          ...(github && rec?.login ? { login: rec.login } : {}),
+          ...(github ? { login: rec.login } : {}),
+          ...(github && rec.name ? { name: rec.name } : {}),
+          // A link or a code (no GitHub sign-in of its own): no GitHub
+          // identity, never the owner's. It may be someone else's device.
         },
         ...(webSessions.takeWelcome(g.session.key)
           ? {
@@ -5544,7 +5583,9 @@ async function handleRequest(
       csrf: g?.beyond ? null : GUARD.csrfToken,
       actor: null,
       signedIn: false,
-      ...(g && !g.beyond ? { identity: { kind: "local" } } : {}),
+      // A browser on this machine: the install owner's GitHub identity
+      // (the account entry), when Den knows it.
+      ...(g && !g.beyond ? { identity: localIdentity() } : {}),
       // SEC-2a-UX: the signed-out page watches this, so Sign in with
       // GitHub appears once an owner is linked, with no reload. The
       // owner's login is what that page shows anyway.

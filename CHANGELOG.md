@@ -58,6 +58,28 @@ config and manifest changes a distribution must make to move to it under
   account menu, the company and project crumbs with a filter, the Report
   screenshot keeping what you scrolled to, and a brand that never shrinks
   on a phone.
+- den-ui 0.7.1 (#303): the top bar's search sits in the same place in
+  every product, whatever the crumbs or chips say. Long names end in "…"
+  (the last crumb is kept whole), the search reads "Search…" in every
+  language the kit has, and on a touch screen every bar control takes a
+  44px tap. Who is signed in is drawn by the kit from data (a name, then
+  @login), the same in every product. The search never moves: its place
+  depends on the window's width alone; when the bar is short, the status
+  chips give way first, then the version's text, never Report, the bell
+  or the appearance button. Report, the bell, the version and the
+  appearance button sit at the same place in every product: the version
+  has a fixed slot, its whole text in its title. A status chip that gives
+  way keeps its dot and stays a button, its words in its title and name.
+  A crumb's label gives way before its value. The rail's account entry
+  shows the name over @login, never the role; the account menu's header
+  adds the role on its own line. Den's account entry no longer says
+  "Signed in · this device". Signed in with GitHub, it shows your GitHub
+  name over @login (@login alone when GitHub has no name for you). A
+  browser on the Den computer (not one paired with a link or a code)
+  shows the owner's GitHub name and @login, read from what `web up`
+  keeps with the owner's login (the same `gh api user` call; none per
+  page). With no GitHub identity known it
+  shows "Local".
 - After Den updates itself, it commits and pushes the distribution's new
   pin (package.json and package-lock.json) itself, on the lead install,
   once the new version is verified. It no longer waits on the server

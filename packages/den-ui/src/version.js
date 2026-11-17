@@ -20,7 +20,11 @@ export function setVersion(label, root = document) {
     ? root.getElementById("version-pill")
     : root.querySelector("#version-pill");
   const txt = el?.querySelector(".v-txt");
-  if (txt && label) txt.textContent = label;
+  if (txt && label) {
+    txt.textContent = label;
+    // The whole version, when the bar is short and the text ends in "…".
+    txt.title = label;
+  }
 }
 
 export function setUnread(on, root = document) {

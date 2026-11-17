@@ -352,10 +352,9 @@ describe("the pages", () => {
     const search = kit.slice(kit.indexOf("export function searchHtml"));
     expect(search).toContain('esc(id || "den-search")');
     expect(search).toContain(`'<kbd aria-hidden="true">⌘K</kbd>'`);
-    expect(shell).toMatch(
-      // Den's own words for its placeholder and its name.
-      /DUI\.searchHtml\(\{ placeholder: t\("search\.ph"\), label: t\("search\.ph"\) \}\)/,
-    );
+    // The kit's words for its placeholder and its name, in Den's language:
+    // Den passes none of its own.
+    expect(shell).toContain("DUI.searchHtml({ lang: lang })");
     // The dot row and the "+N" chip are gone from the bar.
     expect(shell).not.toContain('id="health"');
     expect(read("header.js")).not.toMatch(/health-more|_layoutHealthRow/);

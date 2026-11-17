@@ -237,6 +237,11 @@ const ALLOWED_ATTRS = new Set([
   "data-nav-role",
   // …and its mark that the search's name is the host's words.
   "data-nav-name",
+  // 0.7.1: its marks for a kit slot's shape, the old account fields and
+  // what the kit drew.
+  "data-nav-shape",
+  "data-nav-legacy",
+  "data-nav-kit",
 ]);
 
 interface Node {

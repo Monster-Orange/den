@@ -201,8 +201,8 @@ browsers to it through `DEN_PW_WS`:
     DEN_PW_WS=ws://localhost:3921/
 
     import { chromium } from "playwright";   // 1.61.1, as the image
-    import { collectNav, compareNav, formatNavDiffs, NAV_BROWSER_IMAGE,
-      NAV_THEME } from "@monster-orange/den-ui/inventory";
+    import { collectNav, compareNav, formatNavDiffs, navWarnings,
+      NAV_BROWSER_IMAGE, NAV_THEME } from "@monster-orange/den-ui/inventory";
     import { readFileSync } from "node:fs";
     import { createRequire } from "node:module";
 
@@ -216,12 +216,17 @@ browsers to it through `DEN_PW_WS`:
     const ref = JSON.parse(readFileSync(createRequire(import.meta.url)
       .resolve("@monster-orange/den-ui/inventory/reference/den-chromium-1280.json"),
       "utf-8"));
+    const snap = await collectNav(page, { image: NAV_BROWSER_IMAGE,
+      theme: NAV_THEME });
     const diffs = compareNav(
-      await collectNav(page, { image: NAV_BROWSER_IMAGE, theme: NAV_THEME }),
+      snap,
       ref,
       { hostSlots: ["#my-status"] },   // what the host fills itself
     );
     expect(formatNavDiffs(diffs)).toBe("");   // one line per difference
+    // 0.7.1: host HTML where the kit's account or search should be.
+    // Listed, not failed, until 0.7.2 gives every slot a data path.
+    for (const w of navWarnings(snap)) console.warn(w);
 
 Pass `theme` as the theme the page really draws in (Den reads it from
 `/api/themes`). On another browser build (a different fingerprint: user
@@ -258,11 +263,11 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   that much, never by anything else.
 - Host content: the kit stamps `data-nav-role` on what each host fills
   with its own words: each scope crumb (`crumb`) and the separator after
-  it (`crumb-sep`), the brand's title (`brand-title`), the search's
-  placeholder (`search-ph`), each rail group (`rail-group`), its heading
-  (`group`) and its pages (`page`), and the account entry's words
-  (`account-name`). The search's name is the host's too
-  (`data-nav-name="host"`: its name is not compared). Their count, keys, ids, text and
+  it (`crumb-sep`), the brand's title (`brand-title`), each rail group
+  (`rail-group`), its heading (`group`) and its pages (`page`), and the
+  account entry's words (`account-name`). An element with
+  `data-nav-name="host"` holds a name that is the host's (not compared).
+  The search's placeholder and name are the kit's, and compared. Their count, keys, ids, text and
   width are never compared, on either side. The first of each role is
   compared with the other side's first, and what it holds by key, on
   every computed style and on height. Their size may move what follows by
@@ -345,6 +350,83 @@ browser test, on the image (Den's real server on the demo distribution,
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.7.1
+
+The top bar's search sits in the same place in every product (issue 303).
+
+- **The account is data.** `accountHtml` and `accountMenuHtml` take
+  `{ name?, login, role? }`. The rail's entry is the name over `@login`,
+  or `@login` alone when no name is known; never the role. The account
+  menu's header is the same, then the role on its own line. The kit adds the `@`. The old `{ label, detail }`
+  (and the menu's `{ name, detail }`) still work for this release, drawn
+  as given, and the nav inventory fails a host that uses them
+  (`legacy`). `accountWho(a)` gives the lines and the shape.
+- **The search never moves.** Its x is a function of the viewport only:
+  `searchSlot(width)` gives `{ x, w }` (464 / 304 at 1280, 396 at 1100,
+  256 at 960, 82 / 54 on a phone), the same in any host. The left part is
+  the smaller of `--den-top-left` (444px) and what the search and the
+  right group's reserve (`--den-top-right`, 380px) leave.
+- **The right group is anchored from the right edge.** ◐ at the bar's
+  padding, then the version in a fixed slot (`--den-top-version` 96px;
+  `--den-top-version-md` 64px up to 1100px; its text ends in "…", the
+  whole version in its title), the bell and Report, 4px apart: the same
+  x in any host. Report, the bell and ◐ never shrink; the kit sets their
+  font and box. The host's chips (`div.den-end`, always drawn, empty
+  without chips) take the room left: a chip gives way down to its dot
+  and "…", and the kit puts its whole words in its title and name (a
+  name or title the host set itself is kept).
+- **Crumbs.** A crumb's label gives way first, then its value ends in
+  "…"; before the last crumb a value keeps about 4ch and its ▾.
+- **Checks.** `topSlotDiffs(snap)` checks the search's slot and the
+  right group's places at any width (no reference needed); `compareNav`
+  runs it too, and fails a crumb whose label shows while its value is
+  hidden.
+- **Shape, not only style.** The inventory compares what a kit slot
+  draws: the account entry's shape is one of the kit's (`name,login` on
+  two lines, `login` or `local` on one: `ACCOUNT_SHAPES`), the old fields
+  fail (`legacy`), and the search's box is pinned. `navWarnings(snap)` lists host HTML where the kit's account
+  or search should be: a warning in 0.7.1, a failure in 0.7.2.
+
+- **Three parts.** The bar is a grid: the left part (`div.den-left`: ☰,
+  the brand, and what `start` holds before the search, the crumbs), the
+  search, then the chips (the host's `end` in `div.den-end`, then Report,
+  the bell, the version and ◐ ▾, pinned to the right edge). The kit finds
+  its search in `start` and puts it in its slot; a host's markup is
+  unchanged.
+- **Settings** (custom properties on `.den-top`, with their defaults):
+  `--den-top-left` (444px), `--den-top-search` (304px), and under 720px
+  `--den-top-left-md`
+  (200px) and, under 480px, `--den-top-left-sm` (62px: ☰ and the mark).
+  At 1280px the search is at x 464, 304 wide; on a phone at x 82.
+- **Giving way.** Long words never move the search. The crumbs give way
+  first: each crumb gets an equal share until it is whole, so a short one
+  keeps its words and a long one ends in "…"; the last crumb is kept
+  whole. Then the install name ends in "…". Under about 1100px the
+  host's chips give way (their words end in "…"; the kit's buttons keep
+  their size). The chips' column is never narrower than the kit's own
+  buttons, so the chips never run under the search: when the bar is too
+  narrow for all three parts, the left part gives way and the search
+  moves left. A host chip is width 0 growing to its own width
+  (`max-width: max-content`): put its words in its last child, a span,
+  which ends in "…".
+- **A gap after ⌕**: 8px between the search and the chips, and 8px more
+  before the first chip.
+- **The search's words** are the kit's ("Search…", named "Search"; es,
+  ja): `searchHtml()` takes no placeholder or label.
+- **Touch** (`pointer: coarse`): every control in the bar takes a 44×44px
+  tap (an `::after` hit area, centred; the look is the same), and the
+  key hints (⌘K, ⌘⇧F, any `.den-kbd`) hide.
+- **`.den-hit`**: the same 44×44px tap for a host's own buttons and tabs.
+  On a touch screen it is `position: relative` plus a transparent,
+  centred `::after` at least 44×44px; without touch it does nothing. Its
+  look and layout never change. It sits beside `.den-kbd`, the one
+  key-cap rule, which hides on a touch screen wherever it is (a palette,
+  a button). `den-ui-parity` knows both: a host keeps no copy.
+- **Nav inventory**: the search, Report, the bell, the version chip and ◐
+  ▾ (`PINNED_CLASSES`) are compared at the reference's x and width: no
+  host-content shift excuses moving them. Den's references, and the
+  parity fixture and PNGs, were re-taken for this layout.
+
 ## 0.7.0
 
 No new file. One import changes, for hosts that serve a fixed list of kit files:
@@ -388,8 +470,8 @@ button)`. A crumb left out of the list draws nothing, and no separator
   opens on the field. Typing hides the links that don't hold the text, and
   "No match" shows when none do. ↓ goes to the links, Enter takes the first
   one shown, and Esc clears the text, then closes the menu.
-- **Search field**: `searchHtml({ placeholder, label?, id?, shortcut? })`,
-  for the `start` slot. It is the placeholder with ⌘K inside the field. A
+- **Search field**: `searchHtml({ id?, shortcut? })`, for the `start`
+  slot. It is the kit's placeholder ("Search…") with ⌘K inside the field. A
   click, Enter, ⌘K or Ctrl-K calls `onActivate(via)` (`"click"` or
   `"key"`) and fires `den-ui:search` on the field. The kit owns no
   palette.
@@ -458,8 +540,9 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   32px each way (`shell.css`).
 - **The brand on a phone**: below 480px the brand (its mark alone) never
   shrinks; the host's chips give way.
-- **Search name**: `searchHtml({ label })` names the field; by default
-  the kit's "Search" (en, es, ja), not the placeholder.
+- **Search words**: the placeholder ("Search…") and the field's name
+  ("Search") are the kit's, in en, es and ja. A host can't set them: one
+  search in every product.
 - **Filtered menus**: a menu with the filter field is a pop-up holding the
   field, then the `role="menu"` list (`.den-mlist`, id `<menu>-list`),
   then "No match": a menu owns only its items. The field has

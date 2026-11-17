@@ -6,37 +6,79 @@
  * any machine (a devbox they reach from a laptop), and nobody else can
  * claim the instance from another machine (github-routes.ts decideFlow).
  *
- * Only the login is kept: never a token. `gh api user` runs with a short
- * timeout; gh missing or signed out records nothing.
+ * Only the login and the display name are kept (web.owner_github_name, or
+ * the linked owner's web-owner.json): never a token. `gh api user` runs
+ * once, at `web up`, with a short timeout, and only while the name isn't
+ * known yet; gh missing or signed out records nothing.
  */
 import { execFileSync } from "child_process";
 import { readUserConfig, writeUserConfig } from "./den-config.js";
 import { parseGithubName } from "./web-session.js";
-import { readWebOwner } from "./web-owner.js";
+import {
+  githubDisplayName,
+  readWebOwner,
+  setWebOwnerName,
+  type WebOwner,
+} from "./web-owner.js";
+
+/** Who `gh` is signed in as here: the login, and the display name if set. */
+export interface GhUser {
+  login: string;
+  name?: string;
+}
 
 export interface OwnerGithubDeps {
-  /** The login `gh` is signed in as here, or null. */
+  /** Who `gh` is signed in as here, or null (one `gh api user`). */
+  ghUser?: () => GhUser | null;
+  /** The login `gh` is signed in as here, or null (older callers). */
   ghLogin?: () => string | null;
   /** Whether an owner is linked already. */
   ownerLinked?: () => boolean;
+  /** The linked owner (its display name, if kept). */
+  readOwner?: () => WebOwner | null;
+  /** Keep the linked owner's display name. */
+  setOwnerName?: (login: string, name: string) => void;
   read?: typeof readUserConfig;
   write?: typeof writeUserConfig;
 }
 
-/** `gh api user`'s login, or null (gh missing, signed out, slow, odd output). */
-export function ghLogin(env: NodeJS.ProcessEnv = process.env): string | null {
+/**
+ * `gh api user`'s login and display name, in one call, or null (gh
+ * missing, signed out, slow, odd output). `bin` is gh's path (a test's
+ * fake); by default the `gh` on PATH.
+ */
+export function ghUser(
+  env: NodeJS.ProcessEnv = process.env,
+  bin = "gh",
+): GhUser | null {
   try {
-    const out = execFileSync("gh", ["api", "user", "--jq", ".login"], {
-      env,
-      timeout: 8_000,
-      stdio: ["ignore", "pipe", "ignore"],
-      encoding: "utf-8",
-    }).trim();
-    return parseGithubName(out, "gh api user", "gh") ?? null;
+    const out = execFileSync(
+      bin,
+      ["api", "user", "--jq", '[.login, (.name // "")] | @tsv'],
+      {
+        env,
+        timeout: 8_000,
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf-8",
+      },
+    );
+    const [first = "", ...rest] = out.replace(/\n+$/, "").split("\t");
+    const login = parseGithubName(first.trim(), "web.owner_github", "gh");
+    if (!login) return null;
+    const name = githubDisplayName(rest.join(" "));
+    return { login, ...(name ? { name } : {}) };
   } catch {
     return null;
   }
 }
+
+/** `gh api user`'s login, or null (gh missing, signed out, slow, odd output). */
+export function ghLogin(env: NodeJS.ProcessEnv = process.env): string | null {
+  return ghUser(env)?.login ?? null;
+}
+
+/** The two logins are the same account's (GitHub logins ignore case). */
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export type OwnerGithubResult =
   | { state: "linked" }
@@ -52,9 +94,32 @@ export type OwnerGithubResult =
 export function recordOwnerGithub(
   deps: OwnerGithubDeps = {},
 ): OwnerGithubResult {
+  const gh = (): GhUser | null => {
+    if (deps.ghUser) return deps.ghUser();
+    if (deps.ghLogin) {
+      const login = deps.ghLogin();
+      return login ? { login } : null;
+    }
+    return ghUser();
+  };
   try {
-    if ((deps.ownerLinked ?? (() => readWebOwner() !== null))())
+    if ((deps.ownerLinked ?? (() => readWebOwner() !== null))()) {
+      // An owner linked before display names were kept: gh's, once, when
+      // gh is signed in as that same owner.
+      // (A caller that says only whether one is linked: nothing to read.)
+      const owner = (
+        deps.readOwner ?? (deps.ownerLinked ? () => null : () => readWebOwner())
+      )();
+      if (owner && !owner.name) {
+        const u = gh();
+        if (u?.name && same(u.login, owner.login))
+          (deps.setOwnerName ?? ((l, n) => void setWebOwnerName(l, n)))(
+            u.login,
+            u.name,
+          );
+      }
       return { state: "linked" };
+    }
     const read = deps.read ?? readUserConfig;
     const cfg = read();
     const web = { ...((cfg as { web?: Record<string, unknown> }).web ?? {}) };
@@ -68,12 +133,25 @@ export function recordOwnerGithub(
     } catch {
       return { state: "none" }; // a value someone typed: leave it alone
     }
-    if (set) return { state: "set", login: set };
-    const login = (deps.ghLogin ?? ghLogin)();
-    if (!login) return { state: "none" };
-    web.owner_github = login;
+    if (set) {
+      // The name kept with it (web.owner_github_name), once, from gh
+      // signed in as that same login.
+      if (!githubDisplayName(web.owner_github_name)) {
+        const u = gh();
+        if (u?.name && same(u.login, set)) {
+          web.owner_github_name = u.name;
+          (deps.write ?? writeUserConfig)({ ...cfg, web } as typeof cfg);
+        }
+      }
+      return { state: "set", login: set };
+    }
+    const u = gh();
+    if (!u) return { state: "none" };
+    web.owner_github = u.login;
+    if (u.name) web.owner_github_name = u.name;
+    else delete web.owner_github_name;
     (deps.write ?? writeUserConfig)({ ...cfg, web } as typeof cfg);
-    return { state: "recorded", login };
+    return { state: "recorded", login: u.login };
   } catch {
     return { state: "none" };
   }

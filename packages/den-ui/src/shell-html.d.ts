@@ -137,10 +137,8 @@ export interface ScopeOptions {
   /** The host's HTML at the group's end. */
   after?: string;
 }
+/** The search's placeholder and name are the kit's words ("Search…"). */
 export interface SearchOptions {
-  placeholder?: string;
-  /** Its name (default the placeholder). */
-  label?: string;
   id?: string;
   /** false: no ⌘K inside, and no aria-keyshortcuts. */
   shortcut?: boolean;
@@ -180,7 +178,18 @@ export interface BellPanelOptions {
   lang?: string;
 }
 export interface Account {
-  label: string;
+  /** 0.7.1: who is signed in, as data. The kit draws the name, then @login. */
+  name?: string;
+  /** The login, without "@" (the kit adds it). */
+  login?: string;
+  /** Shown in the account menu's header only, never in the rail's entry. */
+  role?: string;
+  /** No identity known: the kit's word for this computer ("Local"). */
+  local?: boolean;
+  lang?: string;
+  /** @deprecated 0.7.1: use name (flagged by the nav inventory). */
+  label?: string;
+  /** @deprecated 0.7.1: use login (flagged by the nav inventory). */
   detail?: string;
   /**
    * A link; else `menu: true`, a button opening the account menu
@@ -209,8 +218,20 @@ export declare function searchHtml(o?: SearchOptions): string;
 export declare function bellCount(n: number | null | undefined): string;
 export declare function bellButtonHtml(o?: BellButtonOptions): string;
 export declare function bellPanelHtml(o?: BellPanelOptions): string;
-/** The rail's account entry; no label, "". */
+/** The rail's account entry; nobody known, "". */
 export declare function accountHtml(a: Account | null | undefined): string;
+/** Who is signed in, as the kit draws it: its lines and its shape. */
+export declare function accountWho(
+  a: Account | null | undefined,
+  o?: { menu?: boolean },
+): {
+  lines: string[];
+  /** The role: the menu's header only. */
+  role: string;
+  shape: string;
+  legacy: boolean;
+  full: string;
+} | null;
 /** An account menu entry: a link, a button (onPick "item"), or a form post. */
 export type AccountMenuItem =
   | { label: string; href: string }
@@ -226,9 +247,11 @@ export type AccountMenuItem =
       };
     };
 export interface AccountMenu {
-  /** Who is signed in. */
+  /** Who is signed in, as data (0.7.1), drawn as the entry is. */
   name?: string;
-  /** Where ("Signed in · this device"). */
+  login?: string;
+  role?: string;
+  /** @deprecated 0.7.1: use login (flagged by the nav inventory). */
   detail?: string;
   items?: AccountMenuItem[];
   lang?: string;
