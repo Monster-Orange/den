@@ -1,0 +1,394 @@
+/**
+ * den-ui 0.7.3 (issue 307): a rail entry's kind tag. A pin or a link into
+ * another product sets `kind` (project, den, service, hub, or an artifact
+ * pin's own word) and the kit draws a small uppercase tag at the row's
+ * end, in the scope labels' look (.den-k: the same token, no new colour).
+ * Collapsed, its tooltip and accessible name read "<label> · <Kind>". A
+ * project pin may show its initial in a disc in place of the icon. The nav
+ * inventory records each entry's kind, so compareNav names a tag that
+ * differs between two products.
+ *
+ *   L1  kind "project": the uppercase tag at the row's end, the kit token
+ *   L2  no kind: no tag, the tooltip is the label alone
+ *   L3  collapsed: tooltip and accessible name "<label> · Project"
+ *   L4  es and ja words
+ *   L5  the project's initial disc in place of the icon
+ *   L6  the nav inventory reports the kind; compareNav fails when two
+ *       products' tags differ
+ *
+ * On a bare page built from the kit's own files, in Chromium and WebKit.
+ * DEN_PW_WS: Den's own Playwright server instead of a local browser.
+ * DEN_SKIP_BROWSER_TESTS=1 skips it.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as path from "path";
+import type { Browser, Page, Route } from "playwright";
+import { closeBrowserSuite } from "../../browser-teardown.js";
+import {
+  collectNav,
+  compareNav,
+  type NavSnapshot,
+} from "../../../packages/den-ui/inventory/nav-inventory.js";
+
+const SRC = path.join(__dirname, "../../../packages/den-ui/src");
+const ORIGIN = "http://kit.test";
+const browsers: Record<string, Browser> = {};
+
+beforeAll(async () => {
+  try {
+    const pw = await import("playwright");
+    for (const [name, kind] of [
+      ["chromium", pw.chromium],
+      ["webkit", pw.webkit],
+    ] as const)
+      browsers[name] = process.env.DEN_PW_WS
+        ? await kind.connect(process.env.DEN_PW_WS, {
+            exposeNetwork: "<loopback>",
+          })
+        : await kind.launch();
+  } catch (err) {
+    if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
+    throw err;
+  }
+}, 90_000);
+
+afterAll(async () => {
+  await closeBrowserSuite({ browsers: Object.values(browsers) });
+}, 60_000);
+
+const STYLES = ["tokens", "fonts", "base", "shell"];
+
+const PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+${STYLES.map((s) => `<link rel="stylesheet" href="/kit/${s}.css">`).join("\n")}
+<style>body { margin: 0; }</style>
+</head>
+<body class="den-has-shell"><div class="den-shell" id="den-shell"></div>
+<main id="den-content"><p>Content</p></main>
+<script type="module" src="/app.js"></script>
+</body></html>`;
+
+/**
+ * The app: `?lang=es|ja` the kit's language; `?other` a second product
+ * whose North pin says DEN, not PROJECT; `?red` a second product whose
+ * tag is drawn in another colour.
+ */
+const APP = `
+import DenUI from "/kit/kit.js";
+const q = new URLSearchParams(location.search);
+const lang = q.get("lang") || "en";
+DenUI.configure({ lang, product: { name: "Acme" } });
+const nav = [
+  { id: "p-north", label: "North", href: "#north", group: "pinned",
+    kind: q.has("other") ? "den" : "project", icon: { initial: "north" }, pin: "north" },
+  { id: "d-north", label: "North", href: "#den-north", group: "pinned", kind: "den", icon: "home" },
+  { id: "s-api", label: "api", href: "#api", group: "pinned", kind: "service", mono: true, pin: "api" },
+  { id: "a-spec", label: "Spec", href: "#spec", group: "pinned", kind: { artifact: "Mock" } },
+  { id: "home", label: "Home", href: "#home", group: "work", icon: "home", current: true },
+];
+const model = {
+  product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
+  groups: [{ id: "pinned", label: "Pinned" }, { id: "work", label: "Work" }],
+  nav,
+  foot: [{ id: "hub", label: "Hub", href: "#hub", icon: "hub", kind: "hub" }],
+  slots: {
+    start: DenUI.scopeHtml({ crumbs: [{ key: "ws", label: "Project", value: "North" }] }),
+  },
+};
+if (q.has("red")) {
+  const s = document.createElement("style");
+  s.textContent = ".den-rail [data-nav-role=kind] { color: rgb(255, 0, 0) !important; }";
+  document.head.appendChild(s);
+}
+window.shell = DenUI.mount(document.getElementById("den-shell"), model);
+window.ready = true;
+`;
+
+async function open(b: Browser, query = "", width = 1280): Promise<Page> {
+  const ctx = await b.newContext({
+    viewport: { width, height: 800 },
+    reducedMotion: "reduce",
+  });
+  const p = await ctx.newPage();
+  await p.route(`${ORIGIN}/**`, async (r: Route) => {
+    const u = new URL(r.request().url());
+    if (u.pathname === "/")
+      return r.fulfill({ contentType: "text/html", body: PAGE });
+    if (u.pathname === "/app.js")
+      return r.fulfill({ contentType: "text/javascript", body: APP });
+    const f = u.pathname.replace(/^\/kit\//, "");
+    const file = path.join(SRC, f);
+    if (u.pathname.startsWith("/kit/") && fs.existsSync(file))
+      return r.fulfill({
+        contentType: f.endsWith(".css")
+          ? "text/css"
+          : f.endsWith(".woff2")
+            ? "font/woff2"
+            : "text/javascript",
+        body: fs.readFileSync(file),
+      });
+    return r.fulfill({ status: 404, body: "" });
+  });
+  await p.goto(`${ORIGIN}/${query}`);
+  await p.waitForFunction(
+    () => (window as { ready?: boolean }).ready === true,
+    undefined,
+    { timeout: 10_000 },
+  );
+  return p;
+}
+
+/** One entry's tag: its words as drawn, its look, and where it sits. */
+const tagOf = (p: Page, id: string) =>
+  p.evaluate((id) => {
+    const a = document.querySelector(`.den-rail [data-nav="${id}"]`)!;
+    const tag = a.querySelector("[data-nav-role=kind]") as HTMLElement | null;
+    if (!tag) return null;
+    const label = a.querySelector(".den-lbl")!;
+    const scopeKey = document.querySelector(".den-scope .den-k")!;
+    const probe = document.createElement("span");
+    probe.style.color = "var(--faint)";
+    document.body.appendChild(probe);
+    const faint = getComputedStyle(probe).color;
+    probe.remove();
+    const cs = getComputedStyle(tag);
+    const ks = getComputedStyle(scopeKey);
+    const ar = a.getBoundingClientRect();
+    const tr = tag.getBoundingClientRect();
+    const lr = label.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(a).paddingRight) || 0;
+    return {
+      text: tag.innerText,
+      last: a.lastElementChild === tag,
+      afterLabel: tr.left >= lr.right - 0.5,
+      atEnd: Math.abs(ar.right - pad - tr.right) <= 1,
+      look: {
+        color: cs.color,
+        font: cs.fontSize + " " + cs.fontFamily,
+        transform: cs.textTransform,
+      },
+      scopeLook: {
+        color: ks.color,
+        font: ks.fontSize + " " + ks.fontFamily,
+        transform: ks.textTransform,
+      },
+      faint,
+      hidden: tag.getAttribute("aria-hidden"),
+    };
+  }, id);
+
+for (const engine of ["chromium", "webkit"]) {
+  describe(`den-ui 0.7.3 rail kind tag (${engine})`, () => {
+    it("L1: kind project draws an uppercase tag at the row's end, in the kit's token", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const t = await tagOf(p, "p-north");
+      expect(t).not.toBeNull();
+      expect(t!.text).toBe("PROJECT");
+      expect(t!.last).toBe(true);
+      expect(t!.afterLabel).toBe(true);
+      expect(t!.atEnd).toBe(true);
+      // The scope labels' look, in the --faint token.
+      expect(t!.look).toEqual(t!.scopeLook);
+      expect(t!.look.color).toBe(t!.faint);
+      expect(t!.look.transform).toBe("uppercase");
+      // The tag is not read on its own: the entry's name says the kind.
+      expect(t!.hidden).toBe("true");
+      // Every fixed kind, and an artifact's own word, uppercase.
+      expect((await tagOf(p, "d-north"))!.text).toBe("DEN");
+      expect((await tagOf(p, "s-api"))!.text).toBe("SERVICE");
+      expect((await tagOf(p, "a-spec"))!.text).toBe("MOCK");
+      expect((await tagOf(p, "hub"))!.text).toBe("HUB");
+      await p.context().close();
+    });
+
+    it("L2: an entry without kind has no tag and its own tooltip", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const got = await p.evaluate(() => {
+        const a = document.querySelector('.den-rail [data-nav="home"]')!;
+        return {
+          tag: !!a.querySelector("[data-nav-role=kind]"),
+          kind: a.getAttribute("data-nav-kind"),
+          title: a.getAttribute("title"),
+          label: a.getAttribute("aria-label"),
+          svg: !!a.querySelector("svg"),
+        };
+      });
+      expect(got).toEqual({
+        tag: false,
+        kind: null,
+        title: "Home",
+        label: null,
+        svg: true,
+      });
+      await p.context().close();
+    });
+
+    it("L3: collapsed, the tooltip and accessible name read '<label> · Project'", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      await p.evaluate(() =>
+        (
+          window as unknown as { shell: { setCollapsed(on: boolean): void } }
+        ).shell.setCollapsed(true),
+      );
+      const got = await p.evaluate(() => {
+        const one = (id: string) => {
+          const a = document.querySelector(
+            `.den-rail [data-nav="${id}"]`,
+          ) as HTMLElement;
+          const tag = a.querySelector("[data-nav-role=kind]") as HTMLElement;
+          return {
+            title: a.getAttribute("title"),
+            tagShown: !!tag && tag.getBoundingClientRect().width > 1,
+          };
+        };
+        return { project: one("p-north"), den: one("d-north") };
+      });
+      expect(got.project).toEqual({
+        title: "North · Project",
+        tagShown: false,
+      });
+      expect(got.den).toEqual({ title: "North · Den", tagShown: false });
+      // The accessible names, as a screen reader gets them.
+      expect(
+        await p
+          .getByRole("link", { name: "North · Project", exact: true })
+          .count(),
+      ).toBe(1);
+      expect(
+        await p.getByRole("link", { name: "North · Den", exact: true }).count(),
+      ).toBe(1);
+      await p.context().close();
+    });
+
+    it("L4: the kind words in es and ja", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const [lang, word, service] of [
+        ["es", "Proyecto", "Servicio"],
+        ["ja", "プロジェクト", "サービス"],
+      ] as const) {
+        const p = await open(b, `?lang=${lang}`);
+        const t = await tagOf(p, "p-north");
+        expect(t!.text).toBe(word.toUpperCase());
+        expect((await tagOf(p, "s-api"))!.text).toBe(service.toUpperCase());
+        const title = await p.evaluate(() =>
+          document
+            .querySelector('.den-rail [data-nav="p-north"]')!
+            .getAttribute("title"),
+        );
+        expect(title).toBe(`North · ${word}`);
+        expect(
+          await p
+            .getByRole("link", { name: `North · ${word}`, exact: true })
+            .count(),
+        ).toBe(1);
+        await p.context().close();
+      }
+    });
+
+    it("L5: a project pin's initial disc stands in for the icon", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const got = await p.evaluate(() => {
+        const a = document.querySelector('.den-rail [data-nav="p-north"]')!;
+        const disc = a.querySelector(".den-ini") as HTMLElement | null;
+        const svg = a.querySelector("svg");
+        const home = document.querySelector('.den-rail [data-nav="d-north"]')!;
+        const homeSvg = home.querySelector("svg")!.getBoundingClientRect();
+        if (!disc) return { disc: false, svg: !!svg };
+        const r = disc.getBoundingClientRect();
+        const cs = getComputedStyle(disc);
+        return {
+          disc: true,
+          svg: !!svg,
+          first: a.firstElementChild === disc,
+          text: disc.textContent,
+          hidden: disc.getAttribute("aria-hidden"),
+          w: Math.round(r.width),
+          h: Math.round(r.height),
+          iconW: Math.round(homeSvg.width),
+          round: cs.borderTopLeftRadius === "50%",
+        };
+      });
+      expect(got).toEqual({
+        disc: true,
+        svg: false,
+        first: true,
+        // One letter, uppercase, from what the host gave.
+        text: "N",
+        hidden: "true",
+        w: got.iconW,
+        h: got.iconW,
+        iconW: 18,
+        round: true,
+      });
+      await p.context().close();
+    });
+
+    it("L6: the nav inventory reports the kind; compareNav fails when the tags differ", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const snap = async (q: string): Promise<NavSnapshot> => {
+        const p = await open(b, q);
+        const s = await collectNav(p);
+        await p.context().close();
+        return s;
+      };
+      const a = await snap("");
+      const row = a.elements.find((e) => e.key === '[data-nav="p-north"]');
+      expect(row?.kind).toBe("project");
+      expect(
+        a.elements.find((e) => e.key === '[data-nav="d-north"]')?.kind,
+      ).toBe("den");
+      expect(
+        a.elements.find((e) => e.key === '[data-nav="a-spec"]')?.kind,
+      ).toBe("artifact");
+      expect(
+        a.elements.find((e) => e.key === '[data-nav="home"]')?.kind,
+      ).toBeUndefined();
+      // The tag itself is listed, as the kit's "kind" role.
+      expect(a.elements.some((e) => e.host?.role === "kind")).toBe(true);
+
+      // The same product twice: no kind difference.
+      const same = compareNav(await snap(""), a);
+      expect(same.filter((d) => /kind/.test(d.property))).toEqual([]);
+      expect(same).toEqual([]);
+
+      // Another product calls North a Den: the kind differs.
+      const other = compareNav(await snap("?other"), a);
+      expect(
+        other.filter(
+          (d) => d.property === "kind" && d.key === '[data-nav="p-north"]',
+        ),
+      ).toEqual([
+        {
+          key: '[data-nav="p-north"]',
+          slot: "rail",
+          property: "kind",
+          reference: "project",
+          actual: "den",
+        },
+      ]);
+
+      // Another product draws its tag in another colour: that fails too.
+      const red = compareNav(await snap("?red"), a);
+      expect(
+        red.some(
+          (d) =>
+            d.property === "style.color" &&
+            d.actual === "rgb(255, 0, 0)" &&
+            /\[data-nav="p-north"\]/.test(d.key),
+        ),
+      ).toBe(true);
+    });
+  });
+}

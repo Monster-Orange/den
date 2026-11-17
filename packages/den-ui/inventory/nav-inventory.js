@@ -21,7 +21,8 @@
  * entries after its spacer, .den-rail-grow: Settings, the collapse
  * toggle). For each: its key (below), its parent's key, slot, role, tag,
  * accessible name, classes, box { x, y, w, h } and computed styles
- * (STYLE_PROPS).
+ * (STYLE_PROPS), and a rail entry's kind tag (0.7.3: `kind`, compared on
+ * every entry both sides draw).
  *
  * The key names an element the same way on every run: `#id` when it has
  * an id; `[data-nav="x"]` for a rail entry; else its parent's key, " > ",
@@ -299,6 +300,11 @@ export async function collectNav(page, opts = {}) {
               : {}),
             ...(el.hasAttribute("data-nav-kit")
               ? { kit: el.getAttribute("data-nav-kit") }
+              : {}),
+            // Issue 307: a rail entry's kind tag (project, den, service,
+            // hub, artifact), compared across products.
+            ...(el.hasAttribute("data-nav-kind")
+              ? { kind: el.getAttribute("data-nav-kind") }
               : {}),
           });
         }
@@ -881,6 +887,17 @@ export function compareNav(actual, reference, opts = {}) {
   );
   // Issue 303: the search's slot, from the viewport alone.
   diffs.push(...topSlotDiffs(actual, tol));
+  // Issue 307: an entry both sides draw (host content too: its key is its
+  // data-nav id) has the same kind tag, or none on both. The tag's look is
+  // the "kind" role's, compared below with the first of each role.
+  {
+    const wantKind = new Map(allWant.map((e) => [e.key, e]));
+    for (const g of allGot) {
+      const w = wantKind.get(g.key);
+      if (w && (w.kind ?? "") !== (g.kind ?? ""))
+        add(w, "kind", w.kind ?? "(none)", g.kind ?? "(none)");
+    }
+  }
   // A crumb's value outlasts its label: one whose label shows while its
   // value is hidden fails, whatever the reference drew (crumbs are host
   // content, so this is checked on every element drawn).

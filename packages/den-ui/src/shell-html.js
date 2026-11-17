@@ -17,7 +17,8 @@
  *              { text?, svg?, label } the mark beside it (text escaped;
  *              svg the product's own markup; label its name)
  *     nav      [{ id, label, href, group, icon?, tip?, current?, badge?,
- *              lead?, mono?, cls?, attrs?, pin?, after? }]   rail entries
+ *              lead?, mono?, cls?, attrs?, pin?, after?, kind? }]   rail
+ *              entries
  *     groups   [{ id, label, from? }]   in rail order; a group with no
  *              entry is left out
  *     foot     entries under the rail's spacer (Settings, say), then the
@@ -38,7 +39,10 @@
  *   `lead` HTML in place of the icon (a status dot); `attrs` more
  *   attributes { name: value } (escaped); `cls` more classes; `pin` the
  *   pinned id (the row is a pin row: Delete unpins it); `after` HTML after
- *   the link inside the pin row (a Visit link).
+ *   the link inside the pin row (a Visit link); `kind` (0.7.3) "project",
+ *   "den", "service", "hub" or { artifact: word }: a small uppercase tag at
+ *   the row's end, read with the name ("North · Project"); `icon`
+ *   { initial } a project's initial in a disc in place of the icon.
  *
  * 0.7.0, for the slots: scopeHtml (the scope crumbs), searchHtml (the
  * search field with ⌘K inside), bellButtonHtml and bellPanelHtml (the
@@ -61,14 +65,58 @@ function attrs(o) {
   return s;
 }
 
+/** The fixed kinds a rail entry may name (issue 307). */
+export const NAV_KINDS = ["project", "den", "service", "hub"];
+
+/**
+ * A rail entry's kind (issue 307), from its data: one of NAV_KINDS (any
+ * case), or { artifact: "<word>" }, an artifact pin's own kind word (the
+ * host's, already in its language). Anything else is no kind: the tag
+ * never names a machine. → { id, word } or null.
+ */
+export function navKind(kind, lang) {
+  if (kind == null) return null;
+  if (typeof kind === "string") {
+    const id = kind.trim().toLowerCase();
+    return NAV_KINDS.includes(id)
+      ? { id, word: kitT(lang, "kit.kind." + id) }
+      : null;
+  }
+  if (typeof kind === "object" && kind.artifact != null) {
+    const word = String(kind.artifact).trim();
+    return word ? { id: "artifact", word } : null;
+  }
+  return null;
+}
+
+/** The icon, or (issue 307) a project's initial in a disc: { initial }. */
+function leadIcon(ic) {
+  if (ic && typeof ic === "object") {
+    const ch = Array.from(String(ic.initial ?? "").trim())[0] || "";
+    return (
+      '<span class="den-ini" aria-hidden="true">' +
+      esc(ch.toLocaleUpperCase()) +
+      "</span>"
+    );
+  }
+  return icon(ic);
+}
+
 /**
  * One rail entry (a link, .den-ni). `navRole`: the data-nav-role the nav
  * inventory reads ("page" for a rail group's entries: host content).
+ * `lang`: the kit's words (the kind tag's).
+ *
+ * `kind` (issue 307): a small uppercase tag at the row's end, in the scope
+ * labels' look (.den-k), for pins and links into another product. The
+ * tooltip and the name read "<label> · <Kind>", so a collapsed rail still
+ * says it; a host's own tip and aria-label win.
  */
-export function navItemHtml(n, navRole) {
+export function navItemHtml(n, navRole, lang) {
   const role =
     typeof navRole === "string" ? ' data-nav-role="' + esc(navRole) + '"' : "";
   const b = n.badge || null;
+  const kind = navKind(n.kind, lang);
   const extra = b
     ? '<span class="den-bdg' +
       (b.bad ? " bad" : "") +
@@ -76,9 +124,18 @@ export function navItemHtml(n, navRole) {
       esc(b.n) +
       "</span>"
     : "";
+  const tag = kind
+    ? '<span class="den-k den-ni-kind" data-nav-role="kind" aria-hidden="true">' +
+      esc(kind.word) +
+      "</span>"
+    : "";
   const more = { ...(n.attrs || {}) };
-  if (b && b.label && more["aria-label"] == null)
-    more["aria-label"] = n.label + ", " + b.label;
+  const named = kind ? n.label + " · " + kind.word : n.label;
+  if (more["aria-label"] == null) {
+    if (b && b.label) more["aria-label"] = named + ", " + b.label;
+    else if (kind) more["aria-label"] = named;
+  }
+  if (kind) more["data-nav-kind"] = kind.id;
   const link =
     '<a class="den-ni' +
     (n.cls ? " " + esc(n.cls) : "") +
@@ -91,15 +148,16 @@ export function navItemHtml(n, navRole) {
     (n.current ? ' aria-current="page"' : "") +
     attrs(more) +
     ' title="' +
-    esc(n.tip || n.label) +
+    esc(n.tip || named) +
     '">' +
-    (n.lead || icon(n.icon)) +
+    (n.lead || leadIcon(n.icon)) +
     '<span class="den-lbl' +
     (n.mono ? " den-mono" : "") +
     '">' +
     esc(n.label) +
     "</span>" +
     extra +
+    tag +
     "</a>";
   return n.pin != null
     ? '<div class="den-pin-row"' +
@@ -177,13 +235,13 @@ export function railHtml({
     if (!items.length) continue;
     html += railGroupHtml(
       g,
-      items.map((n) => navItemHtml(n, "page")).join(""),
+      items.map((n) => navItemHtml(n, "page", lang)).join(""),
       lang,
     );
   }
   html += '<div class="den-rail-grow"></div>';
   html += foot
-    .map((n) => (typeof n === "string" ? n : navItemHtml(n)))
+    .map((n) => (typeof n === "string" ? n : navItemHtml(n, undefined, lang)))
     .join("");
   html += settingsHtml(settings, lang);
   html += accountHtml(account);

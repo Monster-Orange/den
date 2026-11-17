@@ -17,12 +17,24 @@ export interface Product {
    */
   mark?: Mark | null;
 }
+/** 0.7.3: the fixed kinds a rail entry's tag may name. */
+export type NavKindId = "project" | "den" | "service" | "hub";
+/**
+ * 0.7.3: a rail entry's kind: a fixed one (any case), or an artifact pin's
+ * own kind word (the host's, in its language). Never a machine's name.
+ */
+export type NavKind = NavKindId | Uppercase<NavKindId> | { artifact: string };
+/** 0.7.3: a project's initial, in a disc in place of the icon. */
+export interface NavInitial {
+  initial: string;
+}
 export interface NavItem {
   id: string;
   label: string;
   href: string;
   group?: string;
-  icon?: string;
+  /** An icon's name (icons.js), or (0.7.3) a project's initial disc. */
+  icon?: string | NavInitial;
   tip?: string;
   current?: boolean;
   badge?: { n: number | string; bad?: boolean; label?: string } | null;
@@ -35,6 +47,12 @@ export interface NavItem {
   pin?: string | null;
   /** HTML after the link inside the pin row. */
   after?: string;
+  /**
+   * 0.7.3: a small uppercase tag at the row's end (pins and links into
+   * another product); the tooltip and name read "<label> · <Kind>"
+   * (a host's own tip and aria-label win).
+   */
+  kind?: NavKind | null;
 }
 export interface NavGroup {
   id: string;
@@ -70,7 +88,18 @@ export interface ShellModel extends RailModel {
   /** false: no Report button (reports off). */
   report?: boolean;
 }
-export declare function navItemHtml(n: NavItem, navRole?: string): string;
+export declare function navItemHtml(
+  n: NavItem,
+  navRole?: string,
+  lang?: string,
+): string;
+/** 0.7.3: the fixed kinds. */
+export declare const NAV_KINDS: readonly NavKindId[];
+/** 0.7.3: a kind's id ("artifact" for an artifact's) and its word. */
+export declare function navKind(
+  kind: NavKind | null | undefined,
+  lang?: string,
+): { id: NavKindId | "artifact"; word: string } | null;
 export declare function railGroupHtml(
   g: NavGroup,
   body: string,

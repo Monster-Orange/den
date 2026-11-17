@@ -47,6 +47,8 @@ export interface NavElement {
   labelOnly?: boolean;
   /** The kit's stamp on what it draws (data-nav-kit). */
   kit?: string;
+  /** 0.7.3: a rail entry's kind tag (data-nav-kind): project, den, service, hub, artifact. */
+  kind?: string;
 }
 export interface NavTheme {
   id: string;
@@ -84,7 +86,7 @@ export interface NavCompareOptions {
 export interface NavDiff {
   key: string;
   slot: NavSlot | "";
-  /** "env" (another browser build), "theme" (another theme), "element", "order", "slot", "role", "tag", "name", "classes", "box.<edge>", "style.<prop>", "version". */
+  /** "env" (another browser build), "theme" (another theme), "element", "order", "slot", "role", "tag", "name", "classes", "kind", "box.<edge>", "style.<prop>", "version". */
   property: string;
   reference: string | number;
   actual: string | number;

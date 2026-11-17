@@ -537,6 +537,25 @@ body.den-has-shell > #den-content {
   background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--bad);
 }
+/* Issue 307: a pin's or a cross-app link's kind (PROJECT, DEN, SERVICE,
+   HUB, an artifact's word), at the row's end. Its look is the scope
+   labels' (.den-k); this only places it. */
+.den-ni-kind {
+  flex: none;
+  white-space: nowrap;
+}
+/* A project pin's initial, in a disc the icon's size, in place of it. */
+.den-ini {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: var(--sunken);
+  color: var(--text);
+  font: 500 11px/1 var(--sans);
+}
 .den-rail-grow {
   flex: 1;
 }
@@ -611,7 +630,8 @@ body.den-has-shell > #den-content {
   color: var(--muted);
   border-color: transparent;
 }
-body.den-rail-collapsed .den-rail .den-pvisit {
+body.den-rail-collapsed .den-rail .den-pvisit,
+body.den-rail-collapsed .den-rail .den-ni-kind {
   display: none;
 }
 @media (max-width: 720px) {
@@ -621,6 +641,9 @@ body.den-rail-collapsed .den-rail .den-pvisit {
   }
   body.den-rail-collapsed .den-rail .den-pvisit {
     display: grid;
+  }
+  body.den-rail-collapsed .den-rail .den-ni-kind {
+    display: inline;
   }
 }
 body.den-rail-collapsed .den-rail .den-lbl,
