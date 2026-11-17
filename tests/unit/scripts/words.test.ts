@@ -4,7 +4,8 @@
  * words; code a person may see (flags, `code`, command names, paths, keys)
  * and the protocol's name ("MCP server") stay.
  */
-import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -192,13 +193,22 @@ describe("lines only moved or re-indented (0.4.48)", () => {
 
 describe("the words-ok ratchet", () => {
   it(`src/ has at most ${WORDS_OK_MAX} words-ok markers`, () => {
-    const out = execFileSync("git", ["grep", "-c", "words-ok:", "--", "src"], {
-      encoding: "utf-8",
-    });
-    const total = out
-      .split("\n")
-      .filter(Boolean)
-      .reduce((n, l) => n + Number(l.slice(l.lastIndexOf(":") + 1)), 0);
+    // Read from disk (no git child): this is a static test
+    // (tests/static-tests.json), run before the shards.
+    const src = path.join(process.cwd(), "src");
+    const total = fs
+      .readdirSync(src, { recursive: true })
+      .map((f) => path.join(src, String(f)))
+      .filter((f) => fs.statSync(f).isFile())
+      .reduce(
+        (n, f) =>
+          n +
+          fs
+            .readFileSync(f, "utf-8")
+            .split("\n")
+            .filter((l) => l.includes("words-ok:")).length,
+        0,
+      );
     expect(total).toBeLessThanOrEqual(WORDS_OK_MAX);
   });
 });
