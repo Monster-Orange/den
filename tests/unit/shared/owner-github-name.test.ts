@@ -9,11 +9,16 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { ghUser, recordOwnerGithub } from "../../../src/shared/owner-github.js";
+import {
+  ghUser,
+  ownerNameFromGithub,
+  recordOwnerGithub,
+} from "../../../src/shared/owner-github.js";
 import {
   githubDisplayName,
   readWebOwner,
   setWebOwnerName,
+  syncWebOwnerName,
   writeWebOwner,
 } from "../../../src/shared/web-owner.js";
 import type { UserConfig } from "../../../src/shared/den-config.js";
@@ -153,5 +158,110 @@ describe("the owner file keeps a display name", () => {
     expect(githubDisplayName(null)).toBeUndefined();
     expect(setWebOwnerName("someone-else", "Sam Else", dir)).toBeNull();
     expect(readWebOwner(dir)?.name).toBe("Odette Lead");
+  });
+});
+
+describe("issue 406: a GitHub sign-in keeps the owner's name as GitHub has it", () => {
+  it("sets it, replaces it, forgets it when GitHub has none; another account changes nothing", () => {
+    const dir = path.join(tmp, "state-sync");
+    writeWebOwner({ id: 4242, login: "octo-lead" }, dir);
+    expect(syncWebOwnerName(4242, "Odette Lead", dir)?.name).toBe(
+      "Odette Lead",
+    );
+    expect(syncWebOwnerName(99, "Sam Else", dir)).toBeNull();
+    expect(readWebOwner(dir)?.name).toBe("Odette Lead");
+    expect(syncWebOwnerName(4242, "Odette L.", dir)?.name).toBe("Odette L.");
+    const gone = syncWebOwnerName(4242, undefined, dir);
+    expect(gone).not.toHaveProperty("name");
+    expect(readWebOwner(dir)).toMatchObject({
+      owner: "github:4242",
+      login: "octo-lead",
+    });
+    expect(readWebOwner(dir)).not.toHaveProperty("name");
+  });
+});
+
+describe("issue 406: an owner linked before names were kept, from GitHub's public profile", () => {
+  /** A fake fetch: GitHub's answer for /users/<login>, and the calls. */
+  function fakeFetch(status: number, body: unknown) {
+    const calls: { url: string; auth: boolean }[] = [];
+    const f = (async (url: string, init?: RequestInit) => {
+      const h = (init?.headers ?? {}) as Record<string, string>;
+      calls.push({ url, auth: "authorization" in h });
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+    return { f, calls };
+  }
+  const API = "http://localhost:9";
+
+  it("reads it once, without a token, and keeps it", async () => {
+    const dir = path.join(tmp, "state-public");
+    writeWebOwner({ id: 4242, login: "octo-lead" }, dir);
+    const { f, calls } = fakeFetch(200, {
+      id: 4242,
+      login: "octo-lead",
+      name: "Odette Lead",
+    });
+    const deps = {
+      api: API,
+      fake: true,
+      fetch: f,
+      readOwner: () => readWebOwner(dir),
+      setOwnerName: (l: string, n: string) => void setWebOwnerName(l, n, dir),
+    };
+    expect(await ownerNameFromGithub(deps)).toBe("Odette Lead");
+    expect(readWebOwner(dir)?.name).toBe("Odette Lead");
+    expect(calls).toEqual([{ url: `${API}/users/octo-lead`, auth: false }]);
+    // Known now: GitHub isn't asked again.
+    expect(await ownerNameFromGithub(deps)).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("no name on GitHub, another account's answer, an error, or no owner: nothing kept", async () => {
+    const dir = path.join(tmp, "state-public-none");
+    writeWebOwner({ id: 4242, login: "octo-lead" }, dir);
+    const base = {
+      api: API,
+      fake: true,
+      readOwner: () => readWebOwner(dir),
+      setOwnerName: (l: string, n: string) => void setWebOwnerName(l, n, dir),
+    };
+    for (const [status, body] of [
+      [200, { id: 4242, login: "octo-lead", name: null }],
+      [200, { id: 77, login: "octo-lead", name: "Someone Else" }],
+      [404, { message: "Not Found" }],
+    ] as const)
+      expect(
+        await ownerNameFromGithub({
+          ...base,
+          fetch: fakeFetch(status, body).f,
+        }),
+      ).toBeNull();
+    const boom = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    expect(await ownerNameFromGithub({ ...base, fetch: boom })).toBeNull();
+    expect(readWebOwner(dir)).not.toHaveProperty("name");
+    const { f, calls } = fakeFetch(200, {});
+    expect(
+      await ownerNameFromGithub({ ...base, readOwner: () => null, fetch: f }),
+    ).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("in a test run, never github.com: only a fake GitHub is asked", async () => {
+    const dir = path.join(tmp, "state-public-real");
+    writeWebOwner({ id: 4242, login: "octo-lead" }, dir);
+    const { f, calls } = fakeFetch(200, { id: 4242, name: "Odette Lead" });
+    expect(
+      await ownerNameFromGithub({
+        api: "https://api.github.com",
+        fake: false,
+        fetch: f,
+        readOwner: () => readWebOwner(dir),
+        env: { JEST_WORKER_ID: "1" },
+      }),
+    ).toBeNull();
+    expect(calls).toHaveLength(0);
   });
 });

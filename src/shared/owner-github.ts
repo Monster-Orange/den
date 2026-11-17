@@ -176,3 +176,62 @@ export function ghNotSignedInHint(cli = "den"): string {
     "Then you can connect your GitHub account from any browser."
   );
 }
+
+export interface PublicNameDeps {
+  /** GitHub's REST API base, no trailing slash (github-app.ts githubEndpoints). */
+  api: string;
+  /** Whether `api` is a test's fake GitHub on loopback. */
+  fake?: boolean;
+  fetch?: typeof fetch;
+  /** How long GitHub may take to answer (default 5 s). */
+  timeoutMs?: number;
+  readOwner?: () => WebOwner | null;
+  /** Keep the linked owner's display name. */
+  setOwnerName?: (login: string, name: string) => void;
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * Issue 406: an owner linked before display names were kept gets one, once,
+ * from GitHub's public profile (`GET <api>/users/<login>`: no token, no
+ * scope), at the server's start. Only while the owner has no name; only
+ * when GitHub's answer is the same account (its id). In a test or CI run,
+ * only a test's fake GitHub is ever asked. The name kept, or null. Never throws.
+ */
+export async function ownerNameFromGithub(
+  deps: PublicNameDeps,
+): Promise<string | null> {
+  try {
+    const env = deps.env ?? process.env;
+    // A test or CI run asks a fake GitHub only, never github.com.
+    if ((env.JEST_WORKER_ID || env.CI || env.DEN_TEST_SENTINEL) && !deps.fake)
+      return null;
+    const owner = (deps.readOwner ?? (() => readWebOwner()))();
+    if (!owner || owner.name) return null;
+    const r = await (deps.fetch ?? fetch)(
+      `${deps.api}/users/${encodeURIComponent(owner.login)}`,
+      {
+        headers: {
+          accept: "application/vnd.github+json",
+          "x-github-api-version": "2022-11-28",
+        },
+        signal: AbortSignal.timeout(deps.timeoutMs ?? 5_000),
+      },
+    );
+    if (!r.ok) return null;
+    const j = (await r.json()) as {
+      id?: unknown;
+      login?: unknown;
+      name?: unknown;
+    };
+    const name = githubDisplayName(j.name);
+    if (!name || owner.owner !== `github:${String(j.id)}`) return null;
+    (deps.setOwnerName ?? ((l, n) => void setWebOwnerName(l, n)))(
+      owner.login,
+      name,
+    );
+    return name;
+  } catch {
+    return null;
+  }
+}
