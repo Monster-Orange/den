@@ -236,7 +236,14 @@ describe("in CI", () => {
     yaml.parse(
       fs.readFileSync(path.join(ROOT, ".github", "workflows", f), "utf-8"),
     ) as {
-      jobs: Record<string, { env?: Record<string, string>; steps: Step[] }>;
+      jobs: Record<
+        string,
+        {
+          env?: Record<string, string>;
+          steps: Step[];
+          strategy?: { matrix: { shard: number[] } };
+        }
+      >;
     };
   it("only a pull request turns it on, and the quarantined step can't block", () => {
     const t = wf("ci.yml").jobs.tests;
@@ -249,7 +256,9 @@ describe("in CI", () => {
     expect(qs[0].if).toBe(
       "${{ !cancelled() && github.event_name == 'pull_request' }}",
     );
-    expect(qs[0].run).toContain("--shard=${{ matrix.shard }}/4");
+    expect(qs[0].run).toContain(
+      `--shard=\${{ matrix.shard }}/${t.strategy!.matrix.shard.length}`,
+    );
   });
   it("the release never sets it", () => {
     expect(
