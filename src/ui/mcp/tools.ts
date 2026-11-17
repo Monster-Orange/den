@@ -252,6 +252,26 @@ const read = (
   run: DenTool["run"],
 ): DenTool => ({ name, title, description, action: false, shape, run });
 
+/**
+ * #176: Den's last update of itself and the new Den's doctor results (GET
+ * /api/server-agent/update), or why there is none. A web server older than
+ * the route says so; release_status still answers its runs.
+ */
+async function denUpdateOf(api: DenApi): Promise<unknown> {
+  try {
+    const body = (await api.get("/api/server-agent/update")) as {
+      update?: unknown;
+    } | null;
+    return body?.update ?? null;
+  } catch (e) {
+    if (e instanceof DenHttpError && e.status === 404)
+      return {
+        unknown: `the running Den is older than ${ROUTE_SINCE["/api/server-agent/update"]}: its last update shows after a restart onto a newer one`,
+      };
+    throw e;
+  }
+}
+
 const READ_TOOLS: DenTool[] = [
   read(
     "agent_helpers",
@@ -713,18 +733,21 @@ const READ_TOOLS: DenTool[] = [
   read(
     "release_status",
     "Release status",
-    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool.",
+    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, and the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran.",
     {
       env: z
         .string()
         .optional()
         .describe("Release environment for the verify table"),
     },
-    async (a, { api }) => ({
+    async (a, { api, scope }) => ({
       runs: await api.get("/api/release/runs"),
       ...(str(a.env)
         ? { status: await api.get("/api/release/status", { env: str(a.env) }) }
         : {}),
+      // #176: Den's own update and its doctor results, for the whole Den's
+      // callers (the server agent); a project's agent has no part in it.
+      ...(scope ? {} : { denUpdate: await denUpdateOf(api) }),
     }),
   ),
   read(
@@ -1797,7 +1820,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "den_update",
     title: "Update Den",
     description:
-      'Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, checks the new version with doctor, and restarts; if the new version isn\'t up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types "Server is back on <version> (pid …)" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person.' + // words-ok: SRV-1's own line
+      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (release_status shows what it found), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person." + // words-ok: SRV-1's own line
       HELD,
     action: true,
     shape: {
@@ -2272,6 +2295,7 @@ export const ROUTE_SINCE: Readonly<Record<string, string>> = {
   "/api/security/plan": "0.2.0",
   "/api/verify/plan": "0.4.51",
   "/api/verify/run": "0.4.51",
+  "/api/server-agent/update": "0.4.64",
 };
 
 /** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */

@@ -128,6 +128,8 @@ const READ_ROUTES = new Set([
   "/api/security/plan",
   "/api/release/status",
   "/api/release/runs",
+  // #176 (release_status): Den's last update and its doctor results.
+  "/api/server-agent/update",
   "/api/manifest/validate",
   "/api/stacks",
   "/api/edge",

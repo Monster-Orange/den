@@ -16,6 +16,16 @@ config and manifest changes a distribution must make to move to it under
   clear it. The "update waits" item now goes once the update goes on,
   even if the person had read it or it was posted before a restart
   (#327).
+- After Den updates itself, it no longer tells its own agent to "check
+  with doctor", a tool that agent doesn't have. It says to call
+  release_status, which now has Den's last update of itself (from, to,
+  when, and why if it rolled back) and the new Den's doctor results from
+  that update (each failing or warning check). Den keeps those results
+  beside the update's state; the Den agent page reads them too (GET
+  /api/server-agent/update, read only). A test checks that every tool
+  named to that agent, in its charter, Den's lines and the MCP text, is one
+  it has (#176).
+- With `edge.access_log` on, an edge whose `edge.image` is Traefik v2 starts again. Den added OTLP tracing flags that only Traefik v3 knows, and v2 refused to start. Den now adds them only when the image tag says v3 or later; otherwise the access log runs without request ids, and `edge up` says so in one line. (#330)
 
 - The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
 
