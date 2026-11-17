@@ -170,6 +170,9 @@ export const KIT_FILES: readonly string[] = [
   "fonts/rubik-latin-ext-500-normal.woff2",
   "fonts/space-mono-latin-400-normal.woff2",
   "fonts/space-mono-latin-ext-400-normal.woff2",
+  // den-ui 0.7.0: the default theme's mark, for a host's brand
+  // (markHtml({ src: "/kit/marks/den.svg", label })).
+  "marks/den.svg",
 ];
 
 /** The kit's file for a /kit/ path, or null. */
@@ -210,6 +213,7 @@ const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
 const KIT_SHELL_NAMES = [
   "shellHtml",
   "topBarHtml",
+  "markHtml",
   "railHtml",
   "railGroupHtml",
   "navItemHtml",
@@ -380,19 +384,20 @@ export function serveUiAsset(
       return true;
     }
     // The bytes change only with Den itself.
+    const bytes = kit.endsWith(".woff2") || kit.endsWith(".svg");
     res.writeHead(200, {
       "Content-Type": kit.endsWith(".css")
         ? "text/css; charset=utf-8"
         : kit.endsWith(".js")
           ? "text/javascript; charset=utf-8"
-          : "font/woff2",
-      "Cache-Control": kit.endsWith(".woff2")
-        ? "public, max-age=86400"
-        : "no-cache",
+          : kit.endsWith(".svg")
+            ? "image/svg+xml"
+            : "font/woff2",
+      "Cache-Control": bytes ? "public, max-age=86400" : "no-cache",
     });
     // Issue 231: its own imports carry Den's version, as Den's scripts do.
     res.end(
-      kit.endsWith(".woff2")
+      bytes
         ? fs.readFileSync(kit)
         : stampServed(kit, fs.readFileSync(kit, "utf-8")),
     );

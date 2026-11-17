@@ -61,8 +61,13 @@ function attrs(o) {
   return s;
 }
 
-/** One rail entry (a link, .den-ni). */
-export function navItemHtml(n) {
+/**
+ * One rail entry (a link, .den-ni). `navRole`: the data-nav-role the nav
+ * inventory reads ("page" for a rail group's entries: host content).
+ */
+export function navItemHtml(n, navRole) {
+  const role =
+    typeof navRole === "string" ? ' data-nav-role="' + esc(navRole) + '"' : "";
   const b = n.badge || null;
   const extra = b
     ? '<span class="den-bdg' +
@@ -82,6 +87,7 @@ export function navItemHtml(n) {
     '" data-nav="' +
     esc(n.id) +
     '"' +
+    (n.pin != null ? "" : role) +
     (n.current ? ' aria-current="page"' : "") +
     attrs(more) +
     ' title="' +
@@ -96,7 +102,12 @@ export function navItemHtml(n) {
     extra +
     "</a>";
   return n.pin != null
-    ? '<div class="den-pin-row">' + link + (n.after || "") + "</div>"
+    ? '<div class="den-pin-row"' +
+        role +
+        ">" +
+        link +
+        (n.after || "") +
+        "</div>"
     : link;
 }
 
@@ -105,11 +116,11 @@ export function railGroupHtml(g, body, lang) {
   const id = esc(g.id);
   const from = g.from;
   return (
-    '<div class="den-rail-group" role="group" aria-labelledby="den-gh-' +
+    '<div class="den-rail-group" data-nav-role="rail-group" role="group" aria-labelledby="den-gh-' +
     id +
     '"' +
     (from ? ' aria-describedby="den-gd-' + id + '"' : "") +
-    '><div class="den-gh"><span id="den-gh-' +
+    '><div class="den-gh" data-nav-role="group"><span id="den-gh-' +
     id +
     '">' +
     esc(g.label) +
@@ -164,7 +175,11 @@ export function railHtml({
   for (const g of groups) {
     const items = nav.filter((n) => n.group === g.id);
     if (!items.length) continue;
-    html += railGroupHtml(g, items.map(navItemHtml).join(""), lang);
+    html += railGroupHtml(
+      g,
+      items.map((n) => navItemHtml(n, "page")).join(""),
+      lang,
+    );
   }
   html += '<div class="den-rail-grow"></div>';
   html += foot
@@ -233,7 +248,24 @@ export function reportPrefillOf(el) {
  * `text`, escaped; or `svg`, the product's own markup (the same trust as
  * the icons). `label` names it.
  */
-function markHtml(mark) {
+/**
+ * The brand's mark (#den-mark).
+ *   { src, label }: an image file (the default: the kit's marks/den.svg),
+ *     drawn as Den's theme draws its own: span.den-mark.den-mark-svg,
+ *     titled by label, holding an 18px <img alt="">. An image runs no
+ *     script, so no markup of the host's is trusted.
+ *   { text, label }: escaped text. { svg, label }: the host's own markup.
+ *   none: the empty slot.
+ */
+export function markHtml(mark) {
+  if (mark && mark.src != null)
+    return (
+      '<span class="den-mark den-mark-svg" id="den-mark" aria-hidden="true" title="' +
+      esc(mark.label ?? "") +
+      '"><img src="' +
+      esc(mark.src) +
+      '" alt="" width="18" height="18"></span>'
+    );
   if (!mark || (mark.text == null && mark.svg == null))
     return '<span class="den-mark" id="den-mark" aria-hidden="true"></span>';
   return (
@@ -265,7 +297,7 @@ export function topBarHtml({
     '">' +
     markHtml(product.mark) +
     // The brand is a name, not a heading: the page's own h1 is its one.
-    '<span class="den-title">' +
+    '<span class="den-title" data-nav-role="brand-title">' +
     esc(name) +
     "</span></a>" +
     (slots.start || "") +
@@ -328,7 +360,9 @@ export function menuFilterParts(menuId, label, lang) {
   return [
     '<input type="search" class="den-mfilter" id="' +
       esc(menuId) +
-      '-filter" aria-label="' +
+      '-filter" aria-controls="' +
+      esc(menuId) +
+      '-list" aria-label="' +
       esc(kitT(lang, "kit.menu.filter", { label: label ?? "" })) +
       '" placeholder="' +
       esc(kitT(lang, "kit.menu.filter.ph")) +
@@ -363,15 +397,31 @@ function crumbMenuHtml(c, lang) {
         )
         .join("")
     : String(m);
+  // With a filter, the pop-up holds the field, then the role="menu" list
+  // (a menu owns only its items), then "No match".
+  if (filter[0])
+    return (
+      '<div class="den-pop den-scope-menu" id="' +
+      esc(menuId) +
+      '" hidden>' +
+      filter[0] +
+      '<div class="den-mlist" role="menu" id="' +
+      esc(menuId) +
+      '-list" aria-label="' +
+      esc(c.label) +
+      '">' +
+      body +
+      "</div>" +
+      filter[1] +
+      "</div>"
+    );
   return (
     '<div class="den-pop den-scope-menu" id="' +
     esc(menuId) +
     '" role="menu" aria-label="' +
     esc(c.label) +
     '" hidden>' +
-    filter[0] +
     body +
-    filter[1] +
     "</div>"
   );
 }
@@ -401,7 +451,7 @@ export function scopeCrumbHtml(c, lang) {
       esc(id) +
       '" class="den-ib' +
       more +
-      '"' +
+      '" data-nav-role="crumb"' +
       hidden +
       title +
       ">" +
@@ -420,7 +470,7 @@ export function scopeCrumbHtml(c, lang) {
     more +
     '" data-scope="' +
     esc(c.key || "") +
-    '" aria-haspopup="menu" aria-expanded="false"' +
+    '" data-nav-role="crumb" aria-haspopup="menu" aria-expanded="false"' +
     (own ? ' aria-controls="' + esc(id) + '-menu"' : "") +
     hidden +
     title +
@@ -450,13 +500,14 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
     '<div class="den-scope" role="group" aria-label="' +
     esc(label ?? kitT(lang, "kit.scope")) +
     '"><span class="den-sep" aria-hidden="true">/</span>';
+  // Each separator after a crumb comes and goes with it: host content.
   list.forEach((c, i) => {
     html += scopeCrumbHtml(c, lang);
     if (i < list.length - 1)
       html +=
         '<span class="den-sep den-' +
         esc(c.key || "x") +
-        '-sep" aria-hidden="true"' +
+        '-sep" data-nav-role="crumb-sep" aria-hidden="true"' +
         (c.hidden ? " hidden" : "") +
         ">/</span>";
   });
@@ -479,7 +530,7 @@ export function searchHtml({ placeholder, label, id, shortcut, lang } = {}) {
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
     esc(label ?? ph) +
-    '"><span class="den-search-ph">' +
+    '"><span class="den-search-ph" data-nav-role="search-ph">' +
     esc(ph) +
     "</span>" +
     (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +

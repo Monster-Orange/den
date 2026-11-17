@@ -65,6 +65,7 @@ import {
   settingsHtml,
   shellHtml,
   topBarHtml,
+  markHtml,
   versionChipHtml,
   waitingHtml,
 } from "./shell-html.js";
@@ -257,6 +258,7 @@ const DenUI = {
   mount,
   shellHtml,
   topBarHtml,
+  markHtml,
   railHtml,
   navItemHtml,
   versionChipHtml,

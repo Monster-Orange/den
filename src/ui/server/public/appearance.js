@@ -194,17 +194,29 @@ function renderMark() {
   if (host.dataset.mark === key) return;
   host.dataset.mark = key;
   host.title = st.active.name || "";
-  if (v.kind === "svg" || v.kind === "raster") {
+  // An svg mark is the kit's markup (den-ui 0.7.0 markHtml({ src, label })):
+  // one source for every product.
+  if (v.kind === "svg") {
+    const html = window.DenUIShell?.markHtml?.({
+      src: v.src,
+      label: st.active.name || "",
+    });
+    if (!html) return;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    const el = tpl.content.firstElementChild;
+    if (!el) return;
+    for (const a of [...el.attributes])
+      if (a.name !== "id") host.setAttribute(a.name, a.value);
+    host.replaceChildren(...el.childNodes);
+  } else if (v.kind === "raster") {
     const img = document.createElement("img");
     img.src = v.src;
     img.alt = "";
     img.width = 18;
     img.height = 18;
     // A raster is a rectangle: the mark's shape clips it.
-    host.className =
-      v.kind === "svg"
-        ? "den-mark den-mark-svg"
-        : `den-mark den-mark-raster den-mark-${v.shape}`;
+    host.className = `den-mark den-mark-raster den-mark-${v.shape}`;
     host.replaceChildren(img);
   } else {
     host.className = `den-mark den-mark-text den-mark-${v.shape}`;

@@ -17,6 +17,7 @@ import {
   themeNotice,
   themeOptions,
 } from "../../../src/ui/server/public/appearance.js";
+import { markHtml } from "../../../packages/den-ui/src/shell-html.js";
 
 // ── A fake DOM: just what appearance.js touches ──────────────────────────────
 
@@ -73,6 +74,40 @@ class El {
   }
   setAttribute(k: string, v: string) {
     this.attrs[k] = String(v);
+    // The properties a few attributes reflect.
+    if (k === "class") this.className = String(v);
+    else if (k === "title" || k === "src" || k === "alt" || k === "id")
+      this[k] = String(v);
+    else if (k === "width" || k === "height") this[k] = Number(v);
+  }
+  get attributes(): { name: string; value: string }[] {
+    return Object.entries(this.attrs).map(([name, value]) => ({
+      name,
+      value,
+    }));
+  }
+  get childNodes(): El[] {
+    return [...this.children];
+  }
+  /** A <template>'s content: its parsed children. */
+  get content(): { firstElementChild: El | null } {
+    return { firstElementChild: this.children[0] ?? null };
+  }
+  /** Markup as the kit's markHtml writes it: elements and attributes. */
+  set innerHTML(html: string) {
+    this.replaceChildren();
+    const stack: El[] = [this];
+    for (const m of html.matchAll(/<(\/?)([a-z]+)([^>]*)>/g)) {
+      if (m[1]) {
+        stack.pop();
+        continue;
+      }
+      const el = new El(m[2]!);
+      for (const a of m[3]!.matchAll(/([a-z-]+)="([^"]*)"/g))
+        el.setAttribute(a[1]!, a[2]!);
+      stack[stack.length - 1]!.appendChild(el);
+      if (m[2] !== "img") stack.push(el);
+    }
   }
   getAttribute(k: string) {
     return this.attrs[k] ?? null;
@@ -277,6 +312,7 @@ beforeAll(async () => {
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     denShell,
     DenUIShell: {
+      markHtml,
       hydrateAppearance: (btn: El, opts: (typeof hooked)[number]["opts"]) =>
         hooked.push({ btn, opts }),
     },

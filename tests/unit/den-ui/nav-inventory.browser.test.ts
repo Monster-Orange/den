@@ -219,8 +219,6 @@ const EXPECT: Record<string, string[]> = {
     "#den-search > kbd box.right",
     "#den-search > span.den-search-ic box.left",
     "#den-search > span.den-search-ic box.right",
-    "#den-search > span.den-search-ph box.left",
-    "#den-search > span.den-search-ph box.right",
     "#den-search box.left",
     "#den-search box.right",
   ],
@@ -231,7 +229,6 @@ const EXPECT: Record<string, string[]> = {
     "#den-search > kbd box.right",
     "#den-search > span.den-search-ic box.left",
     "#den-search > span.den-search-ic box.right",
-    "#den-search > span.den-search-ph box.right",
     "#den-search box.right",
     "header.den-top > div.den-chips > button.den-rb > kbd box.left",
     "header.den-top > div.den-chips > button.den-rb > kbd box.right",
@@ -258,14 +255,12 @@ const EXPECT: Record<string, string[]> = {
   kbdIcon: [
     "#den-search > kbd element",
     "#den-search > span.den-search-ic element",
-    "#den-search > span.den-search-ph box.right",
   ],
   notSlot: [
     "#den-search > kbd box.left",
     "#den-search > kbd box.right",
     "#den-search > span.den-search-ic box.left",
     "#den-search > span.den-search-ic box.right",
-    "#den-search > span.den-search-ph box.right",
     "#den-search box.right",
     "#den-status > span.den-dot box.left",
     "#den-status > span.den-dot box.right",
@@ -397,6 +392,100 @@ for (const b of BROWSERS)
       });
       expect(ids(d)).toEqual(EXPECT.kbdIcon);
     }, 60_000);
+
+    // ── host content (data-nav-role): the host's words and how many ──────
+    // Crumbs, rail pages, group headings, the brand's title and the
+    // search's placeholder are the host's: their count, text and width
+    // pass. The first of each role is still styled like the reference's.
+
+    it("fails when a host restyles its first crumb (padding, colour)", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, () => {
+        const c = document.querySelector<HTMLElement>(
+          '[data-nav-role="crumb"]',
+        )!;
+        const pad = parseFloat(getComputedStyle(c).paddingLeft);
+        c.style.setProperty("padding-left", `${pad + 2}px`);
+        c.style.setProperty("color", "rgb(1, 2, 3)");
+      });
+      const props = new Set(d.map((x) => x.property));
+      expect(props).toContain("style.padding-left");
+      expect(props).toContain("style.color");
+      // Only styles, and only on the crumb: what it moves is allowed.
+      expect(d.filter((x) => !x.property.startsWith("style."))).toEqual([]);
+    }, 60_000);
+
+    it("fails when a host restyles its first rail page (padding, colour)", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, () => {
+        const pg = document.querySelector<HTMLElement>(
+          '.den-rail [data-nav-role="page"]',
+        )!;
+        const pad = parseFloat(getComputedStyle(pg).paddingTop);
+        pg.style.setProperty("padding-top", `${pad + 2}px`);
+        pg.style.setProperty("color", "rgb(1, 2, 3)");
+      });
+      const props = new Set(d.map((x) => x.property));
+      expect(props).toContain("style.padding-top");
+      expect(props).toContain("style.color");
+      // 2px taller: its height style says so (the box is in tolerance).
+      expect(props).toContain("style.height");
+      expect(
+        d.filter((x) => !/^(style\.|box\.height$)/.test(x.property)),
+      ).toEqual([]);
+    }, 60_000);
+
+    const HOST_PASSES: [string, () => void][] = [
+      [
+        "an extra rail page",
+        () => {
+          const pages = document.querySelectorAll(
+            '.den-rail [data-nav-role="page"]',
+          );
+          const last = pages[pages.length - 1]!;
+          const more = last.cloneNode(true) as HTMLElement;
+          more.setAttribute("data-nav", "another-page");
+          more.querySelector(".den-lbl")!.textContent = "Another page";
+          last.after(more);
+        },
+      ],
+      [
+        "a missing rail page",
+        () => {
+          const pages = document.querySelectorAll(
+            '.den-rail [data-nav-role="page"]',
+          );
+          pages[pages.length - 1]!.remove();
+        },
+      ],
+      [
+        "a crumb's text",
+        () => {
+          const v = document.querySelector(
+            '[data-nav-role="crumb"] .den-vn, [data-nav-role="crumb"] .den-org-name',
+          )!;
+          v.textContent = "A much longer company name";
+        },
+      ],
+      [
+        "the search's placeholder text",
+        () => {
+          document.querySelector(".den-search-ph")!.textContent = "Search…";
+        },
+      ],
+      [
+        "the brand's title",
+        () => {
+          document.querySelector(".den-title")!.textContent = "Another app";
+        },
+      ],
+    ];
+    for (const [what, change] of HOST_PASSES)
+      it(`passes on host content: ${what}`, async () => {
+        if (skip(b)) return;
+        const d = await diffAfter(b, W, H, change);
+        expect(formatNavDiffs(d)).toBe("");
+      }, 60_000);
 
     it("passes when a host slot's contents change (the status chip)", async () => {
       if (skip(b)) return;

@@ -103,7 +103,8 @@ describe("nav inventory: red cases on the reference", () => {
       if (e.key === "#den-search" || e.key.startsWith("#den-search >"))
         e.box.x += 3;
     const keys = s.elements
-      .filter((e) => e.key.startsWith("#den-search"))
+      // The placeholder is host content: where it sits is not compared.
+      .filter((e) => e.key.startsWith("#den-search") && !e.host)
       .flatMap((e) => [`${e.key} box.left`, `${e.key} box.right`]);
     expect(ids(s, ref)).toEqual(keys.sort());
   });

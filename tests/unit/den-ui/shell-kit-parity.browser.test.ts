@@ -232,6 +232,9 @@ const ALLOWED_ATTRS = new Set([
   // CSP (issue 95 b): the version chip opened What's new with an inline
   // onclick="openChangelog()"; the kit binds a listener instead.
   "onclick",
+  // den-ui 0.7.0: the nav inventory's mark for host content (crumbs, the
+  // brand's title, the search's placeholder). It changes no look.
+  "data-nav-role",
 ]);
 
 interface Node {

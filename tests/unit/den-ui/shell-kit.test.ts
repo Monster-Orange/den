@@ -110,13 +110,60 @@ describe("shellHtml (shell-html.js), in Node", () => {
   it("escapes the product's text and marks the current page and pins", () => {
     expect(html).toContain("Acme &lt;b&gt;");
     expect(html).toContain(">v1.2.3<");
-    expect(html).toMatch(/href="\/a" data-nav="a" aria-current="page"/);
+    // A group's entries are host content for the nav inventory.
     expect(html).toMatch(
-      /<div class="den-pin-row"><a class="den-ni" href="\/b"/,
+      /href="\/a" data-nav="a" data-nav-role="page" aria-current="page"/,
+    );
+    expect(html).toMatch(
+      /<div class="den-pin-row" data-nav-role="page"><a class="den-ni" href="\/b" data-nav="b" title/,
     );
     // The kit's words in the page's language.
     expect(html).toContain(ja["kit.pages"]);
     expect(html).toContain(ja["kit.report.word"]);
+  });
+
+  it("draws the default mark from its file: Den's markup exactly (the nav reference's #den-mark)", () => {
+    const ref = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          __dirname,
+          "../../../packages/den-ui/inventory/reference/den-chromium-1280.json",
+        ),
+        "utf-8",
+      ),
+    ) as {
+      elements: { key: string; role: string; tag: string; classes: string[] }[];
+    };
+    const want = ref.elements.find((e) => e.key === "#den-mark")!;
+    const img = ref.elements.find((e) => e.key === "#den-mark > img")!;
+    const html = shellHtml({
+      ...model,
+      product: {
+        name: "Acme",
+        mark: { src: "/kit/marks/den.svg", label: "Den" },
+      },
+    });
+    const m =
+      /<span class="([^"]*)" id="den-mark"([^>]*)>(<img [^>]*>)<\/span>/.exec(
+        html,
+      );
+    expect(m).not.toBeNull();
+    expect(m![1]!.split(" ")).toEqual(want.classes);
+    expect(want.tag).toBe("span");
+    // No role: the reference's mark is a plain span, named by its title.
+    expect(m![2]).toBe(' aria-hidden="true" title="Den"');
+    expect(img.tag).toBe("img");
+    expect(m![3]).toBe(
+      '<img src="/kit/marks/den.svg" alt="" width="18" height="18">',
+    );
+    // The file is the default theme's own mark, byte for byte.
+    expect(
+      fs.readFileSync(
+        path.join(__dirname, "../../../packages/den-ui/src/marks/den.svg"),
+      ),
+    ).toEqual(
+      fs.readFileSync(path.join(__dirname, "../../../themes/den/mark.svg")),
+    );
   });
 
   it("draws a product mark: escaped text, or the product's svg, named by its label", () => {

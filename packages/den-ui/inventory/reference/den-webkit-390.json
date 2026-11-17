@@ -353,6 +353,11 @@
     "color": "rgb(36, 30, 24)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "brand-title",
+    "key": "header.den-top > a.den-brand > span.den-title",
+    "fit": 1
    }
   },
   {
@@ -1174,6 +1179,11 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[1] > div.den-gh",
+    "fit": 72.52
    }
   },
   {
@@ -1227,6 +1237,10 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[1] > div.den-gh"
    }
   },
   {
@@ -1282,6 +1296,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"local-dev\"]",
+    "fit": 244
    }
   },
   {
@@ -1335,6 +1354,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"local-dev\"]"
    }
   },
   {
@@ -1390,6 +1413,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"local-dev\"]"
    }
   },
   {
@@ -1445,6 +1472,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"graph\"]",
+    "fit": 244
    }
   },
   {
@@ -1498,6 +1530,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"graph\"]"
    }
   },
   {
@@ -1553,6 +1589,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"graph\"]"
    }
   },
   {
@@ -1608,6 +1648,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"agents\"]",
+    "fit": 244
    }
   },
   {
@@ -1661,6 +1706,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"agents\"]"
    }
   },
   {
@@ -1716,6 +1765,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"agents\"]"
    }
   },
   {
@@ -1771,6 +1824,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"terminal\"]",
+    "fit": 244
    }
   },
   {
@@ -1824,6 +1882,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"terminal\"]"
    }
   },
   {
@@ -1879,6 +1941,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"terminal\"]"
    }
   },
   {
@@ -1934,6 +2000,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"services\"]",
+    "fit": 244
    }
   },
   {
@@ -1987,6 +2058,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"services\"]"
    }
   },
   {
@@ -2042,6 +2117,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"services\"]"
    }
   },
   {
@@ -2097,6 +2176,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"logs\"]",
+    "fit": 244
    }
   },
   {
@@ -2150,6 +2234,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"logs\"]"
    }
   },
   {
@@ -2205,6 +2293,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"logs\"]"
    }
   },
   {
@@ -2260,6 +2352,11 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[2] > div.den-gh",
+    "fit": 65.02
    }
   },
   {
@@ -2313,6 +2410,10 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[2] > div.den-gh"
    }
   },
   {
@@ -2368,6 +2469,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"verify\"]",
+    "fit": 244
    }
   },
   {
@@ -2421,6 +2527,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"verify\"]"
    }
   },
   {
@@ -2476,6 +2586,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"verify\"]"
    }
   },
   {
@@ -2531,6 +2645,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"tests\"]",
+    "fit": 244
    }
   },
   {
@@ -2584,6 +2703,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"tests\"]"
    }
   },
   {
@@ -2639,6 +2762,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"tests\"]"
    }
   },
   {
@@ -2694,6 +2821,11 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[3] > div.den-gh",
+    "fit": 50.02
    }
   },
   {
@@ -2747,6 +2879,10 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "group",
+    "key": "#den-rail > div.den-rail-group[3] > div.den-gh"
    }
   },
   {
@@ -2802,6 +2938,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"environments\"]",
+    "fit": 244
    }
   },
   {
@@ -2855,6 +2996,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"environments\"]"
    }
   },
   {
@@ -2910,6 +3055,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"environments\"]"
    }
   },
   {
@@ -2965,6 +3114,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"release\"]",
+    "fit": 244
    }
   },
   {
@@ -3018,6 +3172,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"release\"]"
    }
   },
   {
@@ -3073,6 +3231,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"release\"]"
    }
   },
   {
@@ -3128,6 +3290,11 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"edge\"]",
+    "fit": 244
    }
   },
   {
@@ -3181,6 +3348,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"edge\"]"
    }
   },
   {
@@ -3236,6 +3407,10 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
+   },
+   "host": {
+    "role": "page",
+    "key": "[data-nav=\"edge\"]"
    }
   },
   {

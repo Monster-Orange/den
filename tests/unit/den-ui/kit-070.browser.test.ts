@@ -1056,6 +1056,53 @@ for (const engine of ["chromium", "webkit"]) {
       await expect(count("?many&nofilter")).resolves.toBe(0);
     });
 
+    it("a filtered menu passes axe: the field sits beside the role=menu list, never in it (kit and host menus)", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, "?many");
+      await p.addScriptTag({ path: require.resolve("axe-core/axe.min.js") });
+      const axeOn = (sel: string) =>
+        p.evaluate(async (s) => {
+          const axe = (
+            window as unknown as {
+              axe: {
+                run: (
+                  el: Element,
+                  o: unknown,
+                ) => Promise<{ violations: { id: string }[] }>;
+              };
+            }
+          ).axe;
+          const r = await axe.run(document.querySelector(s)!, {
+            runOnly: {
+              type: "tag",
+              values: ["wcag2a", "wcag2aa", "best-practice"],
+            },
+          });
+          return r.violations.map((v) => v.id);
+        }, sel);
+      // A crumb's 8 entries, open.
+      await p.locator("#den-scope-ws").click();
+      await expect(
+        p.locator("#den-scope-ws-menu input.den-mfilter").count(),
+      ).resolves.toBe(1);
+      await expect(axeOn("#den-scope-ws-menu")).resolves.toEqual([]);
+      // The field names the list it filters.
+      const list = await p
+        .locator("#den-scope-ws-menu input.den-mfilter")
+        .getAttribute("aria-controls");
+      await expect(p.locator(`#${list}`).getAttribute("role")).resolves.toBe(
+        "menu",
+      );
+      await p.keyboard.press("Escape");
+      // A host's own menu through attachMenuFilter.
+      await p.evaluate(() =>
+        (window as unknown as { hostMenu: () => void }).hostMenu(),
+      );
+      await expect(axeOn("#host-menu")).resolves.toEqual([]);
+      await p.context().close();
+    });
+
     it("a host's own menu gets the same filter (attachMenuFilter)", async () => {
       const b = browsers[engine];
       if (!b) return;

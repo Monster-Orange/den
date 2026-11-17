@@ -10,8 +10,12 @@ export interface Product {
   version?: string | null;
   /** Where the brand goes (default "/"). */
   href?: string;
-  /** The mark: text (escaped) or the product's own svg, named by label. */
-  mark?: { text?: string; svg?: string; label: string } | null;
+  /**
+   * The mark: `src`, an image file drawn as Den draws its theme's mark
+   * (the default is the kit's `marks/den.svg`); else text (escaped) or the
+   * product's own svg markup, named by label.
+   */
+  mark?: Mark | null;
 }
 export interface NavItem {
   id: string;
@@ -66,7 +70,7 @@ export interface ShellModel extends RailModel {
   /** false: no Report button (reports off). */
   report?: boolean;
 }
-export declare function navItemHtml(n: NavItem): string;
+export declare function navItemHtml(n: NavItem, navRole?: string): string;
 export declare function railGroupHtml(
   g: NavGroup,
   body: string,
@@ -234,7 +238,10 @@ export declare function menuHasFilter(
   filter: boolean | number | undefined,
   n: number,
 ): boolean;
-/** A menu's filter field and its "No match" line: [field, none]. */
+/**
+ * A menu's filter field (aria-controls `<menuId>-list`, the role="menu"
+ * list) and its "No match" line: [field, none].
+ */
 export declare function menuFilterParts(
   menuId: string,
   label?: string,
@@ -286,3 +293,13 @@ export interface WaitingOptions {
   id?: string;
 }
 export declare function waitingHtml(o?: WaitingOptions): string;
+
+/** The brand's mark: an image file, text, or the host's own svg markup. */
+export interface Mark {
+  src?: string;
+  text?: string;
+  svg?: string;
+  label: string;
+}
+/** The brand's mark (#den-mark); see Mark. */
+export declare function markHtml(mark?: Mark | null): string;

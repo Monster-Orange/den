@@ -107,7 +107,10 @@ export interface AccountHydrateOptions {
 /**
  * A type-to-filter field for a host's own menu (.den-mi entries), when it
  * has more entries than `filter` allows (past 6 by default): the field
- * (focus it once the menu shows), else null.
+ * (focus it once the menu shows), else null. The menu's rows (and its
+ * role and name) move into a `.den-mlist` role="menu" list, id
+ * `<menu id>-list`; `menu` keeps its id and becomes the pop-up holding the
+ * field, the list and "No match" (a menu owns only its items).
  */
 export declare function attachMenuFilter(
   menu: HTMLElement,

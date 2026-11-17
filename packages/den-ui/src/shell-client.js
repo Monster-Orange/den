@@ -361,7 +361,22 @@ function filterKey(e, menu, field, close) {
 export function attachMenuFilter(menu, o = {}) {
   if (!menu || !menuHasFilter(o.filter, all(menu, ".den-mi").length))
     return null;
-  const parts = menuFilterParts(menu.id || "den-menu", o.label, o.lang);
+  if (!menu.id) menu.id = "den-menu";
+  const parts = menuFilterParts(menu.id, o.label, o.lang);
+  // A menu owns only its items: its rows move into a role="menu" list
+  // (with its name), and the pop-up holds the field, the list, "No match".
+  const list = document.createElement("div");
+  list.className = "den-mlist";
+  list.id = menu.id + "-list";
+  list.setAttribute("role", menu.getAttribute("role") || "menu");
+  for (const a of ["aria-label", "aria-labelledby"])
+    if (menu.hasAttribute(a)) {
+      list.setAttribute(a, menu.getAttribute(a));
+      menu.removeAttribute(a);
+    }
+  menu.removeAttribute("role");
+  while (menu.firstChild) list.appendChild(menu.firstChild);
+  menu.appendChild(list);
   menu.insertAdjacentHTML("afterbegin", parts[0]);
   menu.insertAdjacentHTML("beforeend", parts[1]);
   const field = menu.querySelector("input.den-mfilter");

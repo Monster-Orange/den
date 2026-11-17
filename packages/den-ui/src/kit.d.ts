@@ -30,6 +30,7 @@ import type {
   ShellModel,
   shellHtml,
   topBarHtml,
+  markHtml,
   railHtml,
   navItemHtml,
   versionChipHtml,
@@ -171,6 +172,7 @@ export interface DenUIKit {
   mount: typeof mount;
   shellHtml: typeof shellHtml;
   topBarHtml: typeof topBarHtml;
+  markHtml: typeof markHtml;
   railHtml: typeof railHtml;
   navItemHtml: typeof navItemHtml;
   versionChipHtml: typeof versionChipHtml;

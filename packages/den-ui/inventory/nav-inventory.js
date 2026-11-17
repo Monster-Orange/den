@@ -208,7 +208,9 @@ export async function collectNav(page, opts = {}) {
       // `pathKey`: the DOM parent's key (an element with no box of its own,
       // display: contents, still names its children); `boxParent`: the
       // nearest ancestor with a box, the one the snapshot lists.
-      const walk = (el, pathKey, boxParent, slot) => {
+      // `host`: the nearest element (this one or an ancestor) with a
+      // data-nav-role: host content ({ role, key }), else null.
+      const walk = (el, pathKey, boxParent, slot, hostIn) => {
         if (el.hidden) return slot;
         const cs = getComputedStyle(el);
         if (cs.display === "none") return slot;
@@ -217,7 +219,29 @@ export async function collectNav(page, opts = {}) {
         const n = (used.get(key) || 0) + 1;
         used.set(key, n);
         if (n > 1) key += `{${n}}`;
+        const navRole = el.getAttribute("data-nav-role");
+        const host = navRole
+          ? { role: navRole, key }
+          : hostIn
+            ? { role: hostIn.role, key: hostIn.key }
+            : null;
         const boxed = el.getClientRects().length > 0;
+        // A host root's own width: its contents' plus its padding and
+        // border (a field that fills the bar is wider than its words).
+        if (navRole && boxed) {
+          const rg = document.createRange();
+          rg.selectNodeContents(el);
+          const px = (p) => parseFloat(cs.getPropertyValue(p)) || 0;
+          const edge =
+            px("padding-left") +
+            px("padding-right") +
+            px("border-left-width") +
+            px("border-right-width");
+          const w = el.getBoundingClientRect().width;
+          host.fit = round(
+            Math.min(w, rg.getBoundingClientRect().width + edge),
+          );
+        }
         if (boxed) {
           const r = el.getBoundingClientRect();
           const style = {};
@@ -237,20 +261,21 @@ export async function collectNav(page, opts = {}) {
               h: round(r.height),
             },
             style,
+            ...(host ? { host } : {}),
           });
         }
         if (el.tagName.toLowerCase() === "svg") return mySlot;
         let kidSlot = mySlot;
         for (const k of Array.from(el.children)) {
           // Everything after the rail's spacer is the rail's foot.
-          kidSlot = walk(k, key, boxed ? key : boxParent, kidSlot);
+          kidSlot = walk(k, key, boxed ? key : boxParent, kidSlot, host);
         }
         return kidSlot === "foot" ? "foot" : mySlot;
       };
       const top = document.querySelector("header.den-top");
       const rail = document.querySelector("nav.den-rail, .den-rail");
-      if (top) walk(top, null, null, "top");
-      if (rail) walk(rail, null, null, "rail");
+      if (top) walk(top, null, null, "top", null);
+      if (rail) walk(rail, null, null, "rail", null);
 
       // The theme tokens: each colour seen → the --tokens that make it.
       const names = new Set();
@@ -410,7 +435,7 @@ function kept(snap, hostSlots) {
  * moves or stretches its neighbours by just that much: each host slot's
  * change in width, per nav slot, and every sum of them.
  */
-function slotShifts(actual, reference, hostSlots) {
+function slotShifts(actual, reference, hostSlots, extra = {}) {
   const roots = (snap) => {
     const byKey = new Map(snap.elements.map((e) => [e.key, e]));
     const out = new Map();
@@ -440,6 +465,8 @@ function slotShifts(actual, reference, hostSlots) {
     const d = x && y ? x.w - y.w : x ? x.w + x.gap : -(y.w + y.gap);
     if (d) (deltas[slot] = deltas[slot] || []).push(d);
   }
+  for (const [slot, ds] of Object.entries(extra))
+    for (const d of ds) if (d) (deltas[slot] = deltas[slot] || []).push(d);
   const sums = {};
   for (const [slot, ds] of Object.entries(deltas)) {
     let set = [0];
@@ -492,6 +519,67 @@ function lcs(a, b) {
  * stretch sideways by exactly that change (or a sum of such changes, with
  * the flex gap of a slot there on one side only), never by anything else.
  */
+/** The rail's column: its slots stack top to bottom. */
+const COLUMN = ["rail", "foot"];
+
+/**
+ * Host content's size, by role: for each role, the sum of its roots'
+ * widths (in a row) or heights (in the rail's column), each with its
+ * parent's gap. `row`: { slot: { role: n } }; `column`: { role: n }.
+ */
+function hostExtent(snap) {
+  const byKey = new Map(snap.elements.map((e) => [e.key, e]));
+  const row = {};
+  const column = {};
+  for (const e of snap.elements) {
+    if (!e.host || e.host.key !== e.key) continue;
+    const parent = e.parent && byKey.get(e.parent);
+    const r = e.host.role;
+    if (COLUMN.includes(e.slot)) {
+      const gap = parseFloat(parent ? parent.style["row-gap"] : "") || 0;
+      column[r] = (column[r] || 0) + e.box.h + gap;
+    } else {
+      const gap = parseFloat(parent ? parent.style["column-gap"] : "") || 0;
+      row[e.slot] = row[e.slot] || {};
+      const w = e.host.fit == null ? e.box.w : e.host.fit;
+      row[e.slot][r] = (row[e.slot][r] || 0) + w + gap;
+    }
+  }
+  return { row, column };
+}
+
+/** Every subset's sum of up to 8 deltas, with either sign. */
+function subsetSums(ds) {
+  let set = [0];
+  for (const d of ds.filter(Boolean).slice(0, 8))
+    set = [...set, ...set.map((v) => v + d)];
+  return set.flatMap((v) => [v, -v]);
+}
+
+/**
+ * Host content (an element with a data-nav-role, and what it holds): the
+ * first of each role on each side, and what it holds by its key's tail,
+ * as [role, tail, element] for each.
+ */
+function firstOfRoles(els) {
+  const roots = new Map();
+  for (const e of els)
+    if (e.host && !roots.has(e.host.role)) roots.set(e.host.role, e.host.key);
+  const out = new Map();
+  for (const e of els) {
+    if (!e.host || roots.get(e.host.role) !== e.host.key) continue;
+    const root = e.host.key;
+    const tail =
+      e.key === root
+        ? ""
+        : e.key.startsWith(root)
+          ? e.key.slice(root.length)
+          : null;
+    if (tail != null) out.set(`${e.host.role}|${tail}`, e);
+  }
+  return out;
+}
+
 export function compareNav(actual, reference, opts = {}) {
   const hostSlots = opts.hostSlots || [];
   const themeTokens = new Set(opts.themeTokens || []);
@@ -541,8 +629,27 @@ export function compareNav(actual, reference, opts = {}) {
         actual: `running in theme ${themeWords(actual)}`,
       },
     ];
-  const want = kept(reference, hostSlots);
-  const got = kept(actual, hostSlots);
+  const allWant = kept(reference, hostSlots);
+  const allGot = kept(actual, hostSlots);
+  // Host content is never keyed: its count, keys, ids and text are the
+  // host's. The kit's chrome around it is.
+  const want = allWant.filter((e) => !e.host);
+  const got = allGot.filter((e) => !e.host);
+  // A kit element that holds host content: its name is the host's words.
+  const holders = (snap) => {
+    const byKey = new Map(snap.elements.map((e) => [e.key, e]));
+    const out = new Set();
+    for (const e of snap.elements)
+      if (e.host)
+        for (
+          let x = e.parent && byKey.get(e.parent);
+          x;
+          x = x.parent && byKey.get(x.parent)
+        )
+          out.add(x.key);
+    return out;
+  };
+  const holdsHost = new Set([...holders(reference), ...holders(actual)]);
   const wantBy = new Map(want.map((e) => [e.key, e]));
   const gotBy = new Map(got.map((e) => [e.key, e]));
   for (const e of want)
@@ -561,12 +668,33 @@ export function compareNav(actual, reference, opts = {}) {
         `#${b.indexOf(k) + 1} of ${b.length}`,
       );
   const tokenOf = (snap, c) => (snap.tokens && snap.tokens[c]) || [];
-  const shifts = slotShifts(actual, reference, hostSlots);
+  // Host content's size moves what follows it: in a row by its width's
+  // change, in the rail's column by its height's.
+  const ea = hostExtent(actual);
+  const er = hostExtent(reference);
+  const rowDeltas = {};
+  for (const slot of new Set([
+    ...Object.keys(ea.row),
+    ...Object.keys(er.row),
+  ])) {
+    const a = ea.row[slot] || {};
+    const r = er.row[slot] || {};
+    rowDeltas[slot] = [...new Set([...Object.keys(a), ...Object.keys(r)])].map(
+      (k) => (a[k] || 0) - (r[k] || 0),
+    );
+  }
+  const shifts = slotShifts(actual, reference, hostSlots, rowDeltas);
+  const drops = subsetSums(
+    [...new Set([...Object.keys(ea.column), ...Object.keys(er.column)])].map(
+      (k) => (ea.column[k] || 0) - (er.column[k] || 0),
+    ),
+  );
   for (const w of want) {
     const g = gotBy.get(w.key);
     if (!g) continue;
     for (const p of ["slot", "role", "tag", "name"])
-      if (w[p] !== g[p]) add(w, p, w[p], g[p]);
+      if (w[p] !== g[p] && !(p === "name" && holdsHost.has(w.key)))
+        add(w, p, w[p], g[p]);
     const wc = w.classes.join(" ");
     const gc = g.classes.join(" ");
     if (wc !== gc) add(w, "classes", wc, gc);
@@ -584,10 +712,37 @@ export function compareNav(actual, reference, opts = {}) {
       const ok =
         edge === "left" || edge === "right"
           ? moves.some((m) => Math.abs(d - m) <= tol)
-          : Math.abs(d) <= tol;
+          : COLUMN.includes(w.slot)
+            ? drops.some((m) => Math.abs(d - m) <= tol)
+            : Math.abs(d) <= tol;
       if (!ok) add(w, `box.${edge}`, we[edge], ge[edge]);
     }
+    // The rail's spacer takes up what the rail's pages don't.
+    const grows =
+      w.classes.includes("den-rail-grow") &&
+      drops.some(
+        (m) =>
+          Math.abs(
+            parseFloat(g.style.height) - parseFloat(w.style.height) - m,
+          ) <= tol,
+      );
+    styles(w, g, grows ? ["height"] : []);
+  }
+  // The first of each role on each side, and what it holds, compared on
+  // every style and on height: never on text, width or where it sits.
+  const fw = firstOfRoles(allWant);
+  const fg = firstOfRoles(allGot);
+  for (const [k, w] of fw) {
+    const g = fg.get(k);
+    if (!g) continue;
+    if (Math.abs(g.box.h - w.box.h) > tol)
+      add(w, "box.height", w.box.h, g.box.h);
+    styles(w, g, []);
+  }
+  return diffs;
+  function styles(w, g, skip) {
     for (const p of STYLE_PROPS) {
+      if (skip.includes(p)) continue;
       const rv = w.style[p];
       const av = g.style[p];
       if (rv === av) continue;
@@ -599,7 +754,6 @@ export function compareNav(actual, reference, opts = {}) {
       add(w, `style.${p}`, rv, av);
     }
   }
-  return diffs;
 }
 
 /** The differences, one per line: "top #den-search style.font-weight: 500 → 700". */

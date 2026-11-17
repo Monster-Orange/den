@@ -197,6 +197,50 @@ for (const name of BROWSERS)
       }
     }, 60_000);
 
+    it("the mark Den's theme draws is the kit's markHtml({ src, label }), attribute for attribute", async () => {
+      const b = browsers[name];
+      if (!b || !s) return;
+      const p = await open(b);
+      try {
+        const r = await p.evaluate(() => {
+          const w = window as unknown as {
+            DenUIShell: {
+              markHtml?: (m: { src: string; label: string }) => string;
+            };
+          };
+          const live = document.getElementById("den-mark")!;
+          const img = live.querySelector("img");
+          const attrs = (el: Element | null) =>
+            el
+              ? Object.fromEntries(
+                  [...el.attributes]
+                    .filter((a) => a.name !== "data-mark")
+                    .map((a) => [a.name, a.value]),
+                )
+              : null;
+          const tpl = document.createElement("template");
+          tpl.innerHTML =
+            w.DenUIShell.markHtml?.({
+              src: img?.getAttribute("src") ?? "",
+              label: live.title,
+            }) ?? "";
+          const kit = tpl.content.firstElementChild;
+          return {
+            live: [attrs(live), attrs(img), live.children.length],
+            kit: [
+              attrs(kit),
+              attrs(kit?.querySelector("img") ?? null),
+              kit?.children.length,
+            ],
+          };
+        });
+        expect(r.live[0]).toMatchObject({ class: "den-mark den-mark-svg" });
+        expect(r.kit).toEqual(r.live);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
     it("every element in the bar is the kit's, in the kit's order", async () => {
       const b = browsers[name];
       if (!b || !s) return;

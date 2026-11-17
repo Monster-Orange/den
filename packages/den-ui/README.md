@@ -256,6 +256,18 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   either side. A host slot wider or narrower than the reference (or on
   one side only) may move or stretch its neighbours sideways by exactly
   that much, never by anything else.
+- Host content: the kit stamps `data-nav-role` on what each host fills
+  with its own words: each scope crumb (`crumb`) and the separator after
+  it (`crumb-sep`), the brand's title (`brand-title`), the search's
+  placeholder (`search-ph`), each rail group (`rail-group`), its heading
+  (`group`) and its pages (`page`). Their count, keys, ids, text and
+  width are never compared, on either side. The first of each role is
+  compared with the other side's first, and what it holds by key, on
+  every computed style and on height. Their size may move what follows by
+  exactly its change: sideways in the bar (their contents' width, not a
+  filled box's), down in the rail (heights; the rail's spacer shrinks by
+  as much). The mark, the search field's box and all other chrome stay
+  strict. The references hold each element's `host`.
 - `themeTokens`: empty by default, and never set on a parity run: both
   products run in `NAV_THEME`, so any colour or font that differs is a
   real gap. It is only for a run that switches themes on purpose. What a
@@ -428,6 +440,22 @@ selected }`, a line under them, the languages `{ id, name, current }`,
 - **Settings**: `settings: { href, label?, current? }` on `shellHtml` or
   `railHtml` puts Settings in the rail's foot after the host's entries and
   before the account entry. `settingsHtml(...)` draws it alone.
+- **Brand mark**: `product.mark: { src, label }` draws an image file the
+  way Den draws its theme's mark: `span.den-mark.den-mark-svg#den-mark`
+  titled `label`, holding `<img src alt="" width="18" height="18">`. The
+  kit ships the default theme's mark as `src/marks/den.svg`, beside
+  `src/fonts/`; a host serves it with the kit's other files and passes
+  `mark: { src: "<served path>/marks/den.svg", label }` (Den serves it at
+  `/kit/marks/den.svg`). An image runs no script. `markHtml(mark)` draws
+  it alone; Den's own theme mark is drawn by it. `{ text }` and `{ svg }`
+  work as before.
+- **Filtered menus**: a menu with the filter field is a pop-up holding the
+  field, then the `role="menu"` list (`.den-mlist`, id `<menu>-list`),
+  then "No match": a menu owns only its items. The field has
+  `aria-controls` on the list and its `aria-label` ("Filter <label>").
+  `attachMenuFilter(menu)` moves a host menu's rows, role and name into
+  that list; `menu` keeps its id and stays the pop-up. The keys and the
+  look are as before.
 - **Key caps**: `.den-kbd` is the one key-cap rule: the search's ⌘K,
   Report's ⌘⇧F and any `<kbd class="den-kbd">` a host draws (its palette's
   hints, say). A 1px border with a 2px bottom, 4px corners, `--surface`

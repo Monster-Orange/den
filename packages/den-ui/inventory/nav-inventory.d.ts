@@ -23,6 +23,16 @@ export interface NavElement {
   box: NavBox;
   /** Computed styles, by property name (STYLE_PROPS). */
   style: Record<string, string>;
+  /**
+   * Host content: the nearest element (this one or an ancestor) with a
+   * data-nav-role, by role and key. Absent on the kit's own chrome.
+   */
+  host?: {
+    role: string;
+    key: string;
+    /** On the role's own element: its contents' width with padding and border. */
+    fit?: number;
+  };
 }
 export interface NavTheme {
   id: string;
