@@ -4,6 +4,17 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.65] - unreleased
+
+### Added
+
+- Settings › Project › Hub project can create the Hub project to link to.
+  The link picker's first option is "Create a Hub project named <this
+  project's name>", and the name can be changed. Den asks Hub with its
+  project plan path, which an owner decides in Hub. Den proposes the
+  short name from the name and picks another when Hub says one is taken,
+  before anyone is asked (issue 271).
+
 ## [0.4.64] - unreleased
 
 ### Fixed
