@@ -652,9 +652,15 @@ body.den-has-shell .den-upd {
   }
   .den-rail {
     transform: translateX(-105%);
-    transition: transform 0.18s;
     box-shadow: var(--shadow);
     z-index: 42;
+  }
+  /* The drawer slides only once the person has opened or closed it
+     (shell-client adds den-rail-moved then). Before that, a load or a
+     window narrowing past 720 puts the rail straight where it belongs;
+     a transition here slid it across the page (issue 311). */
+  body.den-rail-moved .den-rail {
+    transition: transform 0.18s;
   }
   body.den-rail-open .den-rail {
     transform: none;
@@ -713,7 +719,8 @@ body.den-has-shell .den-upd {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .den-rail {
+  .den-rail,
+  body.den-rail-moved .den-rail {
     transition: none;
   }
 }
