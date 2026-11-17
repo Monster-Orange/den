@@ -53,7 +53,7 @@ function store(start: Record<string, unknown> = {}) {
 
 describe("ghUser: one gh api user call, the login and the name", () => {
   it("asks gh once for both, and reads them", () => {
-    const bin = fakeGh("gh-named", "octo-lead\\nOdette Lead\\n");
+    const bin = fakeGh("gh-named", "octo-lead\\tOdette Lead\\n");
     expect(ghUser({ PATH: "/usr/bin:/bin" }, bin)).toEqual({
       login: "octo-lead",
       name: "Odette Lead",
@@ -64,7 +64,7 @@ describe("ghUser: one gh api user call, the login and the name", () => {
   });
 
   it("no name on GitHub: the login alone", () => {
-    const bin = fakeGh("gh-plain", "octo-lead\\n\\n");
+    const bin = fakeGh("gh-plain", "octo-lead\\t\\n");
     expect(ghUser({ PATH: "/usr/bin:/bin" }, bin)).toEqual({
       login: "octo-lead",
     });

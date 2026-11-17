@@ -54,7 +54,7 @@ export function ghUser(
   try {
     const out = execFileSync(
       bin,
-      ["api", "user", "--jq", '.login + "\\n" + (.name // "")'],
+      ["api", "user", "--jq", '[.login, (.name // "")] | @tsv'],
       {
         env,
         timeout: 8_000,
@@ -62,8 +62,8 @@ export function ghUser(
         encoding: "utf-8",
       },
     );
-    const [first = "", ...rest] = out.split("\n");
-    const login = parseGithubName(first.trim(), "gh api user", "gh"); // words-ok: the gh command, named as typed
+    const [first = "", ...rest] = out.replace(/\n+$/, "").split("\t");
+    const login = parseGithubName(first.trim(), "web.owner_github", "gh");
     if (!login) return null;
     const name = githubDisplayName(rest.join(" "));
     return { login, ...(name ? { name } : {}) };
