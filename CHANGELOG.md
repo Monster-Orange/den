@@ -4,6 +4,16 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.65] - unreleased
+
+### Added
+
+- The bell opens on "Needs you": an agent waiting on you, a pick or a
+  mention, with no Mark read (a row stays while the agent waits). Below
+  it, "Earlier" holds Updates and Older, as before. den-ui draws both
+  headings in English, Spanish and Japanese; Den passes only the rows
+  (`bellPanelHtml({ sections })`, issue 101).
+
 ## [0.4.64] - unreleased
 
 ### Fixed
