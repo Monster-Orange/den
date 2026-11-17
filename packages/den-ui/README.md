@@ -350,6 +350,25 @@ browser test, on the image (Den's real server on the demo distribution,
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## 0.7.4
+
+The person's own block on Settings › Access, the same in every product
+(issue 310).
+
+- **`accountPanelHtml({ name?, login?, role?, how, signOut?, lang? })`**
+  (`@monster-orange/den-ui/account-panel`, or `DenUI.accountPanelHtml`)
+  draws, in order: a heading (the name, else `@login`, else the kit's
+  "Local"); `@login` and the role ("@login · Owner"; `@login` left out
+  when it is the heading); how this browser is signed in (`how`:
+  `github`, `local` or `paired`); then Sign out, a form that posts to
+  `signOut.url` with `signOut.csrf` in a hidden field, with no script.
+  No `signOut`, no Sign out: a local browser has nothing to end.
+- **The host passes data, never words.** `role` is a key (`owner`,
+  `admin`, `member`, `guest`) the kit words in en, es and ja
+  (`roleWord(role, lang)`); any other value is shown as given. Every
+  value is escaped. Its look is `.den-acctp` in `shell.css`, theme tokens
+  only.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

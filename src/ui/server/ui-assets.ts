@@ -173,6 +173,8 @@ export const KIT_FILES: readonly string[] = [
   // den-ui 0.7.0: the default theme's mark, for a host's brand
   // (markHtml({ src: "/kit/marks/den.svg", label })).
   "marks/den.svg",
+  // den-ui 0.7.4 (issue 310): the person's own block on Settings › Access.
+  "account-panel.js",
 ];
 
 /** The kit's file for a /kit/ path, or null. */

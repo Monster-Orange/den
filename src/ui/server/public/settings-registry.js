@@ -37,6 +37,7 @@ import {
   upgradeTimes,
 } from "/kit/time.js";
 import { qrSvg } from "./qr.js";
+import { accountPanelHtml } from "/kit/account-panel.js";
 import { renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
@@ -839,7 +840,86 @@ const EMBED_ROWS = [
   },
 ];
 
+/**
+ * Issue 310: the person's own block, first on Settings › Access, drawn by
+ * the kit (den-ui 0.7.4, accountPanelHtml) from /api/session's identity.
+ * Den passes data only; the kit words it. Signed in with GitHub: that
+ * sign-in's name and login. A browser on this machine: the install
+ * owner's identity with its role, and no Sign out (nothing to end). A
+ * browser paired with a link or a code: never the owner (it may be
+ * someone else's device), so the kit's Local. Sign out posts to
+ * /api/session/logout through the shell, which adds this page's CSRF
+ * header, then the page reloads to the signed-out page.
+ */
+export function accountPanelData(b) {
+  const id = b && b.identity;
+  if (!id) return null;
+  const signOut =
+    b.signedIn === true && typeof b.csrf === "string"
+      ? { url: "/api/session/logout", csrf: b.csrf }
+      : undefined;
+  if (b.signedIn === true && id.kind === "github" && id.login)
+    return {
+      ...(id.name ? { name: id.name } : {}),
+      login: id.login,
+      how: "github",
+      signOut,
+    };
+  if (b.signedIn === true) return { how: "paired", signOut };
+  if (id.kind === "local") {
+    const o = id.owner && id.owner.login ? id.owner : null;
+    return o
+      ? {
+          ...(o.name ? { name: o.name } : {}),
+          login: o.login,
+          ...(o.role ? { role: o.role } : {}),
+          how: "local",
+        }
+      : { how: "local" };
+  }
+  return null;
+}
+
+function drawYou(host, ctx) {
+  const lang = () =>
+    ctx.shell?.lang?.() ||
+    (typeof document !== "undefined" && document.documentElement.lang) ||
+    "en";
+  fetch("/api/session", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((b) => {
+      const data = accountPanelData(b);
+      host.innerHTML = data ? accountPanelHtml({ ...data, lang: lang() }) : "";
+      const form = host.querySelector("form.den-acctp-out");
+      form?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const btn = form.querySelector("button");
+        if (btn) btn.disabled = true;
+        ctx.shell
+          .api("POST", "/api/session/logout", {})
+          .then(() => location.reload())
+          .catch(() => {
+            if (btn) btn.disabled = false;
+          });
+      });
+    })
+    .catch(() => {
+      host.innerHTML = "";
+    });
+}
+
 const ACCESS_ROWS = [
+  {
+    id: "access.you",
+    category: "access",
+    label: "You",
+    description:
+      "Who this browser is signed in as, and how. Sign out ends this browser's sign-in; a browser on this machine needs none.",
+    keywords: ["you", "me", "signed in", "sign out", "github", "identity"],
+    scope: "user",
+    control: { type: "custom", render: drawYou },
+    read: () => null,
+  },
   {
     id: "access.owner",
     category: "access",

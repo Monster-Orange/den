@@ -53,6 +53,7 @@ import type {
 } from "./shell-html.js";
 import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
+import type { accountPanelHtml } from "./account-panel.js";
 
 /** Every call to the product goes through it; the kit names no URL. */
 export interface Adapter extends ReportAdapter {
@@ -187,6 +188,8 @@ export interface DenUIKit {
   accountHtml: typeof accountHtml;
   accountWho: typeof accountWho;
   accountMenuHtml: typeof accountMenuHtml;
+  /** 0.7.4: the person's own block on Settings › Access. */
+  accountPanelHtml: typeof accountPanelHtml;
   settingsHtml: typeof settingsHtml;
   appearanceButtonHtml: typeof appearanceButtonHtml;
   appearanceMenuHtml: typeof appearanceMenuHtml;

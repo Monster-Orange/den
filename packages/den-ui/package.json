@@ -34,6 +34,7 @@
     "./report.css": "./src/report.css",
     "./busy.css": "./src/busy.css",
     "./dialog.css": "./src/dialog.css",
+    "./account-panel": "./src/account-panel.js",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
       "default": "./inventory/nav-inventory.js"

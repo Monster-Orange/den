@@ -6,6 +6,16 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.64] - unreleased
 
+### Added
+
+- Settings › Access starts with you: your name (or @login), @login and
+  your role, how this browser is signed in (with GitHub, on this
+  computer, or with a one-time link or code), and Sign out when there is
+  something to end. A browser paired with a link or a code never shows the
+  owner. The UI kit draws it from data (den-ui 0.7.4, `accountPanelHtml`),
+  so every product shows the same block, in English, Spanish and Japanese
+  (#310).
+
 ### Fixed
 
 - The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).

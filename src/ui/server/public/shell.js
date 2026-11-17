@@ -1056,6 +1056,8 @@
       "Used only when a command Den runs needs sudo, and asked for only then. It is no sign-in: nothing else needs it.",
     "set.cli.op_token.d":
       "Where this machine's 1Password service-account token comes from, for a Den running as a service. Set secrets.onepassword.token in config/local/user.yml: keychain:<service>, file:<path> or env:<VAR>. The token itself is never shown.", // words-ok: the Settings row's text, moved word for word
+    "set.access.you.d":
+      "Who this browser is signed in as, and how. Sign out ends this browser's sign-in; a browser on this machine needs none.",
     "set.access.owner.d":
       "The GitHub account this Den belongs to. Linking stores only its id (the token is thrown away), and from then on that account can sign in from any device. __DEN_CLI__ web owner link does the same from the command line.", // words-ok: the Settings row's text, moved word for word
     "set.access.devices.d":
@@ -1815,6 +1817,7 @@
     "set.cli.signin": "Browser sign-in",
     "set.cli.sudo": "Admin password",
     "set.cli.op_token": "1Password token source",
+    "set.access.you": "You",
     "set.access.owner": "Owner",
     "set.access.devices": "Linked devices",
     "ident.toast": "This device is signed in to {name} on {host}",

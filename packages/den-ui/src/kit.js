@@ -42,6 +42,8 @@
  *                               focus goes back to opener (else the
  *                               control that opened it) on close
  *   DenUI.busy.run(action, run, opts)   the working pop-up (busy.js)
+ *   DenUI.accountPanelHtml(o)   (0.7.4) the person's own block on
+ *                               Settings › Access (account-panel.js)
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -92,6 +94,7 @@ import {
 import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy } from "./busy.js";
+import { accountPanelHtml } from "./account-panel.js";
 
 const state = {
   lang: "en",
@@ -273,6 +276,7 @@ const DenUI = {
   accountHtml,
   accountWho,
   accountMenuHtml,
+  accountPanelHtml,
   settingsHtml,
   appearanceButtonHtml,
   appearanceMenuHtml,

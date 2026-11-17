@@ -998,6 +998,7 @@
     "set.cli.signin": "ブラウザのサインイン",
     "set.cli.sudo": "管理者パスワード",
     "set.cli.op_token": "1Password トークンの取得元",
+    "set.access.you": "あなた",
     "set.access.owner": "オーナー",
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",
@@ -2557,6 +2558,8 @@
       "Den が実行するコマンドに sudo が必要なときだけ使い、そのときだけ尋ねます。サインインではないので、ほかには必要ありません。",
     "set.cli.op_token.d":
       "サービスとして動く Den のために、このマシンの 1Password サービスアカウントのトークンをどこから取得するかです。config/local/user.yml で secrets.onepassword.token を keychain:<service>、file:<path>、env:<VAR> のいずれかに設定します。トークン自体は表示されません。", // words-ok: the en string's own word, translated
+    "set.access.you.d":
+      "このブラウザーが誰としてどうサインインしているか。サインアウトでこのブラウザーのサインインを終えます。このマシン上のブラウザーには不要です。",
     "set.access.owner.d":
       "この Den が属する GitHub アカウントです。リンクすると ID だけが保存され (トークンは破棄されます)、以後そのアカウントはどのデバイスからでもサインインできます。__DEN_CLI__ web owner link でもコマンドラインから同じことができます。", // words-ok: the en string's own word, translated
     "set.access.devices.d":

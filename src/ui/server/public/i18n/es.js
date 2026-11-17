@@ -1022,6 +1022,7 @@
     "set.cli.signin": "Inicio de sesión del navegador",
     "set.cli.sudo": "Contraseña de administrador",
     "set.cli.op_token": "Origen del token de 1Password",
+    "set.access.you": "Tú",
     "set.access.owner": "Propietario",
     "set.access.devices": "Dispositivos vinculados",
     "set.access.waiting": "Dispositivos en espera",
@@ -2622,6 +2623,8 @@
       "Solo se usa cuando un comando que ejecuta Den necesita sudo, y solo se pide entonces. No es un inicio de sesión: nada más lo necesita.",
     "set.cli.op_token.d":
       "De dónde viene el token de la cuenta de servicio de 1Password de esta máquina, para un Den que se ejecuta como servicio. Define secrets.onepassword.token en config/local/user.yml: keychain:<service>, file:<path> o env:<VAR>. El token nunca se muestra.", // words-ok: the en string's own word, translated
+    "set.access.you.d":
+      "Con quién ha entrado este navegador, y cómo. Salir cierra la entrada de este navegador; un navegador en esta máquina no la necesita.",
     "set.access.owner.d":
       "La cuenta de GitHub a la que pertenece este Den. Vincularla solo guarda su id (el token se descarta), y desde entonces esa cuenta puede iniciar sesión desde cualquier dispositivo. __DEN_CLI__ web owner link hace lo mismo desde la línea de comandos.", // words-ok: the en string's own word, translated
     "set.access.devices.d":
