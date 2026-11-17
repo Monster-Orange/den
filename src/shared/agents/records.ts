@@ -141,6 +141,12 @@ export interface AgentRecord {
   /** The permission intent it was started with (AG-13), when one was set. */
   permission?: PermissionIntent;
   /**
+   * Issue 252: the mode its running session was started in, when a mode
+   * set for it since (`permission`, its own setting) hasn't reached it
+   * yet. Cleared at its next launch.
+   */
+  startedIn?: PermissionIntent;
+  /**
    * The extra allowed commands it was started with (AG-13.4: plain
    * prefixes; its role's preset comes on top), when set for it.
    */

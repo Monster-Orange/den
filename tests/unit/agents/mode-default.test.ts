@@ -168,6 +168,12 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     await endedTurn(r, "pinned");
     const d = resolveAgentsDeps(r.deps);
     const mc = modeCheck(d, { pollMs: 20 });
+    // Issue 252: the mode chosen for pinned while it ran reaches it at its
+    // next idle; then nothing differs.
+    expect(await mc.tick()).toEqual(["pinned"]);
+    await mc.pending();
+    expect(modeOf(r.made.at(-1)!.args)).toBe("acceptEdits");
+    await endedTurn(r, "pinned");
     expect(await mc.tick()).toEqual([]);
     const token = record(r, "server").resumeToken;
     // The person sets the install's mode once.

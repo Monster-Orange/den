@@ -273,7 +273,9 @@ export const AGENTS_HELP = {
     "    user.yml (never, 1d, 7d) forgets stopped ones on its own",
     "{cli} agents permission <id> [ask|edits|auto|all|--clear]",
     "    one agent's mode: given, it stays through every restart; cleared, it",
-    "    follows its project's mode, else its persona's. A person's only",
+    "    follows its project's mode, else its persona's. A running agent",
+    "    restarts at its next idle, on the same conversation, to take it.",
+    "    A person's only",
     "{cli} agents permission -w <ws> [ask|edits|auto|all|--clear]",
     "    the permission mode the project's agents start with when the start",
     "    names none (over their persona's); none given: shows it. auto: Claude",
@@ -1307,7 +1309,8 @@ function isIntent(s: string): boolean {
 /**
  * `agents permission <id> [<mode>|--clear]` (den#48, Vision 11-13): the
  * mode one agent runs with. Given, it stays through every restart; cleared,
- * the agent follows its project's mode, else its persona's.
+ * the agent follows its project's mode, else its persona's. Issue 252: a
+ * running agent takes either at its next idle (Den's mode check).
  */
 function agentPermission(
   where: string,
@@ -1344,11 +1347,19 @@ function agentPermission(
     } catch (e) {
       throw new UsageError((e as Error).message);
     }
-  setAgentPermission(d, id, rec.workspace, intent);
+  const next = setAgentPermission(d, id, rec.workspace, intent);
+  // Issue 252: a running agent takes it at its next idle: the web
+  // server's mode check restarts it on the same conversation.
+  const when = next.stoppedAt
+    ? "It takes it at its next start or resume."
+    : "Den restarts it at its next idle, on the same conversation, to take it.";
+  const proj = intent ? undefined : workspacePermissionOf(d, rec.workspace);
   d.out(
     intent
-      ? `${id}: ${intent} from its next start, resume or restart, whatever its project or persona says`
-      : `${id}: follows its project's mode, else its persona's, from its next start, resume or restart`,
+      ? `${id}: ${intent}, its own setting. ${when}`
+      : proj
+        ? `${id}: follows its project's mode, ${proj}. ${when}`
+        : `${id}: follows the Den-wide default, else its persona's mode. ${when}`,
   );
   return 0;
 }
