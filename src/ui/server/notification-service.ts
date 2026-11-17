@@ -26,6 +26,7 @@ import { uiLanguage } from "./ui-language.js";
 import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
 import { readWebUrl } from "../../shared/web-url.js";
+import { pushContact } from "../../shared/push-contact.js";
 import { PushSubscriptions, pushAll, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
 
@@ -185,11 +186,11 @@ function nameOf(id: string): string {
  */
 /**
  * Issue 172 S2: who the push services may contact about this install's
- * pushes (VAPID's subject): its https address, else a local mailto.
+ * pushes (VAPID's subject): its https address, else the mailto fallback
+ * (issue 367: shared/push-contact.ts; doctor warns about the fallback).
  */
 function pushSubject(): string {
-  const url = readWebUrl()?.url;
-  return url?.startsWith("https://") ? url : "mailto:alerts@localhost";
+  return pushContact(readWebUrl()?.url).subject;
 }
 
 let pushSubs: PushSubscriptions | null = null;
