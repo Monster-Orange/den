@@ -7,7 +7,7 @@ import {
   type UserConfig,
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
-import { patchAlerts } from "../server/alerts.js";
+import { patchAlerts } from "../../shared/alerts.js";
 
 import { product } from "../../shared/product.js";
 type ConfigKey = keyof UserConfig;
