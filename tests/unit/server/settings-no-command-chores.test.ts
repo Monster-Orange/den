@@ -115,6 +115,21 @@ const keys = (lang: string) =>
     (k) => k.startsWith("set.") || LOOKED_UP.has(k),
   );
 
+/**
+ * The one Settings line that still names a command for the person to run,
+ * kept on purpose: making an agent sign-in token is the vendor's own
+ * browser sign-in (the catalog's signIn.command), which Den can't run for
+ * the person yet. Its command sits in the row's markup, next to a Copy
+ * button, so the rules above never see it; it is named here instead.
+ * Issue 405 (a "Make sign-in token" button) removes it, and then the
+ * test below fails until this entry goes too.
+ */
+const VENDOR_STEP = {
+  key: "keep.setup",
+  reason: "the vendor's own sign-in command; no Den action can run it yet",
+  issue: 405,
+};
+
 describe("issue 393: Settings never gives a person a command to run", () => {
   it("the catalogs loaded, with Settings' keys in each", () => {
     for (const lang of ["en", "es", "ja"])
@@ -203,4 +218,14 @@ describe("issue 393: Settings never gives a person a command to run", () => {
       expect(bad).toEqual([]);
     },
   );
+
+  it("names its single exception, which is still on the page", () => {
+    // Issue 405 removes the step; delete VENDOR_STEP with it.
+    expect(VENDOR_STEP.issue).toBe(405);
+    expect(REGISTRY).toMatch(
+      new RegExp(`t\\("${esc(VENDOR_STEP.key)}"\\)\\)\\} <code>`),
+    );
+    for (const lang of ["en", "es", "ja"])
+      expect(messages[lang][VENDOR_STEP.key]).toBeTruthy();
+  });
 });
