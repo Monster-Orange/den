@@ -919,6 +919,158 @@ export async function applyKeepRunning(on, { post, askSudo, waitBack }) {
   return { state: "applied", mode: r.mode };
 }
 
+/**
+ * Issue 163 (b): what the Settings row says about the agents' sign-in
+ * token under the always-on service: none set (agents will not be able to
+ * sign in after logout), the store's credential in the login keychain,
+ * old, or when it was set. Never the token: the
+ * server sends whether one is configured and when it was set.
+ */
+export function keepTokenLine(s, t) {
+  // Issue 163 (dev.2 gate): per mode, as the CLI says it. No store comes
+  // first; not under the always-on service, nothing about logout.
+  if (!s || !s.configured)
+    return {
+      state: "missing",
+      text: s?.no_store
+        ? t("keep.noStore")
+        : s && s.mode !== "token"
+          ? t("keep.noTokenNotNeeded")
+          : t("keep.noToken"),
+    };
+  // The store's own credential in the login keychain: the daemon may not
+  // reach it, so the token can't be read either.
+  if (s.cred_keychain) return { state: "cred", text: t("keep.credKeychain") };
+  if (s.old)
+    return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
+  if (s.set_at) {
+    let date = String(s.set_at).slice(0, 10);
+    try {
+      const tz =
+        document.documentElement.getAttribute("data-den-tz") || undefined;
+      date = new Date(s.set_at).toLocaleDateString(
+        document.documentElement.lang || undefined,
+        { year: "numeric", month: "short", day: "numeric", timeZone: tz },
+      );
+    } catch {
+      /* the ISO date stays */
+    }
+    const set = t("keep.tokenSet", { date });
+    return {
+      state: "set",
+      text: s.process_local ? `${set} ${t("keep.processLocal")}` : set,
+    };
+  }
+  return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
+}
+
+/** Issue 299: the only terminal step for the agents' sign-in token. */
+export const SETUP_TOKEN_CMD = "claude setup-token";
+
+/**
+ * Issue 299: Settings' Sign-in token field. Save sends the pasted token once
+ * (the working pop-up), clears the field before the answer comes, and
+ * shows what the server says: set <date>, or why not. The token is never
+ * put back in the page.
+ */
+function wireTokenField(host, ctx, line, t) {
+  const input = host.querySelector("[data-keep-token-input]");
+  const save = host.querySelector("[data-keep-token-save]");
+  const note = host.querySelector("[data-keep-token-note]");
+  host.querySelector("[data-keep-copy]").addEventListener("click", () => {
+    void navigator.clipboard?.writeText(SETUP_TOKEN_CMD);
+  });
+  // No secrets store: nothing can keep the token, so the field says so
+  // before any paste and Save stays off (the server answers 409 besides).
+  const noStore = () => {
+    note.textContent = t("keep.noStore");
+    note.hidden = false;
+    input.disabled = true;
+    save.disabled = true;
+  };
+  if (ctx.data.agent_signin?.no_store) noStore();
+  // Issue 163: Clear removes it from the store, the way it was kept; the
+  // kit's confirm dialog first. A person's only (the server refuses an agent).
+  const clear = host.querySelector("[data-keep-token-clear]");
+  const showLine = (signin) => {
+    const l = keepTokenLine(signin, t);
+    line.dataset.keepToken = l.state;
+    line.textContent = l.text;
+    line.hidden = false;
+    clear.hidden = l.state === "missing";
+  };
+  clear.addEventListener("click", async () => {
+    note.hidden = true;
+    const { askConfirm } = await import("/dialog-den.js");
+    const ok = await askConfirm({
+      title: t("keep.clearTitle"),
+      message: t("keep.clearAsk"),
+      okLabel: t("keep.clearOk"),
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await ctx.shell.busyAction(
+        "clear-token",
+        (headers) =>
+          ctx.shell.api("DELETE", "/api/agents/signin-token", undefined, {
+            headers,
+          }),
+        { button: clear },
+      );
+      if (r?.ok) showLine(r.signin);
+    } catch (e) {
+      if (e?.code === "no_secrets_store") noStore();
+    } finally {
+      clear.disabled = false;
+    }
+  });
+  save.addEventListener("click", async () => {
+    const token = input.value;
+    input.value = "";
+    note.hidden = true;
+    if (!token.trim()) {
+      input.focus();
+      return;
+    }
+    save.disabled = true;
+    try {
+      const r = await ctx.shell.busyAction(
+        "save",
+        (headers) =>
+          ctx.shell.api(
+            "POST",
+            "/api/agents/signin-token",
+            { token },
+            { headers },
+          ),
+        { button: save },
+      );
+      if (r?.ok) {
+        showLine(r.signin);
+      } else if (r?.code === "no_secrets_store") {
+        noStore();
+        return;
+      } else {
+        note.textContent = t("keep.tokenFailed", {
+          error: r?.error || "",
+        });
+        note.hidden = false;
+      }
+    } catch (e) {
+      if (e?.code === "no_secrets_store") {
+        noStore();
+        return;
+      }
+      note.textContent = t("keep.tokenFailed", {
+        error: String(e?.message || ""),
+      });
+      note.hidden = false;
+    }
+    save.disabled = false;
+  });
+}
+
 /** Issue 163: the switch, Apply, and what it means under the daemon. */
 function renderKeepRunning(host, ctx) {
   const t = (k, v) => ctx.shell.t(k, v);
@@ -926,10 +1078,23 @@ function renderKeepRunning(host, ctx) {
   const mode = ctx.data.service_mode;
   // Set one way, running the other: Apply hasn't run (or didn't take).
   const pending = mode && (mode === "always") !== on0;
+  // Issue 163 (a): an existing login install, the Setting never set.
+  const offer = ctx.data.keep_running_unset === true;
+  // Issue 163 (b): the agents' sign-in token, when it is on.
+  const signLine = keepTokenLine(ctx.data.agent_signin, t);
   host.innerHTML =
     `<div data-keep style="display:grid;gap:8px">` +
     `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
+    `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
+    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
+    // Issue 299: the token is pasted here; the one terminal step is named, with
+    // a copy button. The field is never filled from the server.
+    `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
+    `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
+    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
+    `<p class="set-note" data-keep-token-note hidden></p>` +
+    `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
     `</div>`;
@@ -941,9 +1106,14 @@ function renderKeepRunning(host, ctx) {
     note.hidden = !msg;
     note.textContent = msg || "";
   };
+  const token = host.querySelector("[data-keep-token]");
+  const signin = host.querySelector("[data-keep-signin]");
   box.addEventListener("change", () => {
     warn.hidden = !box.checked;
+    token.hidden = !box.checked;
+    signin.hidden = !box.checked;
   });
+  wireTokenField(host, ctx, token, t);
   btn.addEventListener("click", async () => {
     const on = box.checked;
     btn.disabled = true;
@@ -1956,13 +2126,14 @@ export const DEN_SETTINGS = [
   },
 
   {
-    // Issue 163: opt-in, off by default. Apply re-installs Den's launchd
-    // jobs: on, as LaunchDaemons (mode always) that outlive a logout.
+    // Issue 163: on by default for a new install (0.4.63); an existing one
+    // is offered it. Apply re-installs Den's launchd jobs: on, as
+    // LaunchDaemons (mode always) that outlive a logout.
     id: "agents.keep_running",
     category: "agents",
     label: "Keep agents running after logout",
     description:
-      "On: __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. Under it an agent may not reach its sign-in (the login keychain): not yet shown. Off (the default): agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     keywords: [
       "logout",
       "log out",

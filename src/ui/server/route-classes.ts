@@ -426,6 +426,12 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/keep-running-after-logout",
     "re-installs Den's launchd jobs in the chosen mode",
   ),
+  // #299: Keep agents running after logout › Sign-in token (a person's only).
+  M(
+    ["POST", "DELETE"],
+    "/api/agents/signin-token",
+    "saves (or removes) the agents' sign-in token in the install's secrets store",
+  ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
     ["POST"],

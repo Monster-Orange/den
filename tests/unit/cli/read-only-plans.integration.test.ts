@@ -144,9 +144,8 @@ describe("service install --plan", () => {
     expect(code).toBe(0);
     expect(out).toMatch(/read-only: nothing is written or loaded/);
     expect(out).toMatch(/label: +local\.acme\.web/);
-    expect(out).toContain(
-      path.join(home, "Library", "LaunchAgents", "local.acme.web.plist"),
-    );
+    // Issue 163: a new install is always (LaunchDaemons) by default.
+    expect(out).toContain("/Library/LaunchDaemons/local.acme.web.plist");
     expect(out).toMatch(new RegExp(`port ${freePort}: free`));
     expect(out).toMatch(
       /<key>Label<\/key>\s*<string>local\.acme\.web<\/string>/,

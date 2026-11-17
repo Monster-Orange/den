@@ -99,6 +99,13 @@ async function page(s: AgentsPageServer, url: string): Promise<Page> {
 const text = (p: Page, sel: string) =>
   p.$eval(sel, (e) => (e.textContent ?? "").replace(/\s+/g, " ").trim());
 
+/**
+ * The line without the test harness's own folders on the server's PATH
+ * (the real-CLI sentinel and its fakes, tests/sentinel.ts, child-servers.ts).
+ */
+const withoutHarness = (s: string) =>
+  s.replace(/, [^,]*\/den-test-global-\d+\/[^,]*/g, "");
+
 describe("AG-0.2: the runtime's readiness, before Start", () => {
   it("unavailable: Start is disabled and the line says why and how to fix it (the Agents dialog)", async () => {
     if (skip()) return;
@@ -121,7 +128,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
     expect(await p.isDisabled("#ag-go")).toBe(true);
     expect(await p.getAttribute("#ag-r-ready", "data-tone")).toBe("warn");
     const user = path.join(missing!.tmp, "dist", "config", "local", "user.yml");
-    expect(await text(p, "#ag-r-ready")).toBe(
+    expect(withoutHarness(await text(p, "#ag-r-ready"))).toBe(
       "Claude Code not found. Searched: " +
         `${path.join(missing!.tmp, "bin")}, /usr/bin, /bin. ` +
         `Install it, or set agents.runtimes.den-claude.bin to its path in ${user}, or run acme agents doctor.`,

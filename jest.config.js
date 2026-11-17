@@ -1,7 +1,20 @@
+import { dockerSuiteRegex } from "./tests/docker-suites.mjs";
+
 // den#143: on a busy machine fewer workers means fewer load flakes. A
 // setting, never a number here: DEN_TEST_WORKERS (8, or 50%); unset or
 // blank, jest's own default. CI's test shards set 2; `npm run preflight` asks for 8.
 const workers = (process.env.DEN_TEST_WORKERS ?? "").trim();
+
+// Issue 296: DEN_TEST_DOCKER=skip leaves out the files that start Docker
+// containers, =only runs just them (tests/docker-suites.mjs says why).
+// Unset or blank, every file.
+const docker = (process.env.DEN_TEST_DOCKER ?? "").trim();
+if (docker && docker !== "skip" && docker !== "only")
+  throw new Error(`DEN_TEST_DOCKER is skip or only (got "${docker}")`);
+const ignored = {
+  skip: [dockerSuiteRegex()],
+  only: [`^(?!.*${dockerSuiteRegex()})`],
+}[docker];
 
 export default {
   ...(workers
@@ -11,6 +24,9 @@ export default {
   testEnvironment: "node",
   roots: ["<rootDir>/tests"],
   testMatch: ["**/*.test.ts"],
+  ...(ignored
+    ? { testPathIgnorePatterns: ["/node_modules/", ...ignored] }
+    : {}),
   extensionsToTreatAsEsm: [".ts"],
   moduleNameMapper: {
     // Stub ESM-only packages so UI modules can be unit-tested under Jest/CJS

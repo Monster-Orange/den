@@ -146,6 +146,11 @@ beforeAll(async () => {
       },
     }),
   );
+  // A fake sudo that needs a password (sudo -n fails): never this
+  // machine's (the real-CLI sentinel, tests/sentinel.ts).
+  const fakeSudo = path.join(tmp, "bin", "sudo");
+  fs.mkdirSync(path.dirname(fakeSudo), { recursive: true });
+  fs.writeFileSync(fakeSudo, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   server = spawnServer(
     process.execPath,
     [
@@ -162,6 +167,7 @@ beforeAll(async () => {
         HOME: path.join(tmp, "home"),
         PORT: String(PORT),
         DEN_NO_OPEN: "1",
+        DEN_SYSTEM_SUDO: fakeSudo,
       },
       stdio: ["ignore", "ignore", "ignore"],
     },

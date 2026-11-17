@@ -18,6 +18,9 @@
  *      Except `ownLaunch`: exact names the runtime declares its launch env
  *      sets (Runtime.launchEnv; den#3's subagent model), and only the
  *      launch env's value of them.
+ *   7b. `signIn`: issue 163's sign-in token, from the install's secrets
+ *      store, under the always-on service only (the runtime's
+ *      signInTokenEnv), past the scrub.
  *   8. and always (SEC-1 §5): a person's credential, DEN_PERSON_TOKEN or
  *      any value that is a person token or names web.secret
  *      (actor-token.ts isPersonCredentialEnv), whatever put it there.
@@ -79,6 +82,11 @@ export interface SessionEnvInput {
   scrub?: readonly string[];
   /** Names `launch` may set past the scrub (Runtime.launchEnv). */
   ownLaunch?: readonly string[];
+  /**
+   * Issue 163 (b): the runtime's sign-in token from the install's secrets
+   * store (Runtime.signInTokenEnv), set last, past the scrub.
+   */
+  signIn?: Record<string, string>;
 }
 
 /** A session's environment, built as the header says. */
@@ -99,5 +107,7 @@ export function buildSessionEnv(i: SessionEnvInput): Record<string, string> {
     const v = i.launch?.[k];
     if (v !== undefined && !isPersonCredentialEnv(k, v)) env[k] = v;
   }
+  for (const [k, v] of Object.entries(i.signIn ?? {}))
+    if (v && !isPersonCredentialEnv(k, v)) env[k] = v;
   return env;
 }

@@ -397,6 +397,13 @@ export interface Runtime {
    * anywhere else (the caller, a passthrough) they are still removed.
    */
   launchEnv?: readonly string[];
+  /**
+   * Issue 163 (b): the env var its CLI signs in from with a long-lived
+   * token (den-claude: CLAUDE_CODE_OAUTH_TOKEN, from `claude setup-token`).
+   * Under the always-on service Den sets it from the install's secrets
+   * store, past the scrub; a caller's own value never passes.
+   */
+  signInTokenEnv?: string;
   /** den#3: it runs its subagents on LaunchInput.subagentModel. */
   subagentModel?: boolean;
   /**

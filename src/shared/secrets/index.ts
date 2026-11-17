@@ -301,6 +301,13 @@ class DetectedProvider implements SecretsProvider {
     if (why) throw new Error(`${this.name} secrets backend ${why}`);
     return this.inner.set(ref, value);
   }
+  async delete(ref: SecretRef, opts?: { wholeItem?: boolean }): Promise<void> {
+    const why = this.unavailable();
+    if (why) throw new Error(`${this.name} secrets backend ${why}`);
+    if (!this.inner.delete)
+      throw new Error(`${this.name} can't remove a secret from here`);
+    return this.inner.delete(ref, opts);
+  }
   async preflight(): Promise<PreflightResult> {
     // Nothing chose a backend, so nothing requires one to be ready.
     if (this.implicit) return { ok: true };

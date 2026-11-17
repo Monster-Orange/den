@@ -13,9 +13,12 @@
 #           start at login and stop at logout, with every agent.
 #   always  LaunchDaemons that run as you (UserName): they start at boot and
 #           keep running across logout, so agents do too. One sudo writes
-#           and loads them. No login keychain, no GUI there: agents use the
+#           and loads them. No login keychain, no GUI there: agents sign in
+#           with the long-lived token from the secrets store
+#           (DEN_AGENT_SIGNIN=token; `<cli> agents token set`), and use the
 #           1Password service-account token, headless browsers, and Full
-#           Disk Access for protected folders.
+#           Disk Access for protected folders. `<cli> service install`
+#           picks it for a new install (issue 163).
 #
 # The session host job runs DEN_SERVICE_HOST_EXE, a copy of node Den owns
 # (<stateDir>/bin/<cli>-sessions-host): Full Disk Access is granted to that
@@ -200,6 +203,10 @@ data = {
 if mode == "always":
     # A LaunchDaemon runs as root unless told otherwise: run as the person.
     data["UserName"] = user
+    # Issue 163 (b): agents started under it sign in with the long-lived
+    # token from the install's secrets store, read at each start, never
+    # the desktop keychain. Only this marker is written: never a token.
+    data["EnvironmentVariables"]["DEN_AGENT_SIGNIN"] = "token"
 if out == "-":
     sys.stdout.buffer.write(plistlib.dumps(data))
 else:

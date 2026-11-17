@@ -119,7 +119,14 @@ jobs:
       - run: npm ci
       # the browser tests (the What's new dialog) need Chromium, as in ci.yml
       - run: npx playwright install --with-deps chromium webkit
+      # Issue 296: the files that start Docker containers run after the
+      # rest, never beside the browser tests (tests/docker-suites.mjs).
       - run: npm test -- --shard=${{ matrix.shard }}/4
+        env:
+          DEN_TEST_DOCKER: skip
+      - run: npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests
+        env:
+          DEN_TEST_DOCKER: only
 
   # The tarball, built on the lowest supported Node (the safe direction),
   # once the gates have passed on both.
@@ -253,7 +260,8 @@ jobs:
   # exists on npm (its first publish is by hand, from the den-ui/v<version> GitHub release's tarball) and a trusted
   # publisher for this file is set on it. Until then, and for a version already on npm or a prerelease, it skips.
   den-ui:
-    needs: [checks]
+    # Issue 296: the kit ships only once both test halves pass, as Den does.
+    needs: [checks, tests]
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45
     permissions:

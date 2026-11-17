@@ -3,7 +3,9 @@
  * Runs before each test suite
  */
 
-import { afterAll } from "@jest/globals";
+import { afterAll, expect } from "@jest/globals";
+import childProcess from "child_process";
+import { guardSpawns, sentinelCalls, sentinelMark } from "./sentinel";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -99,10 +101,40 @@ if (!(process.env.PATH ?? "").split(path.delimiter).includes(stubs)) {
     fs.writeFileSync(path.join(stubs, bin), "#!/bin/sh\nexit 127\n", {
       mode: 0o755,
     });
+  // Fakes go ahead of the real-CLI sentinel (issue 163, sentinel.ts).
   process.env.PATH = [stubs, process.env.PATH ?? "/usr/bin:/bin"].join(
     path.delimiter,
   );
 }
+
+// Issue 163: the real-CLI sentinel (sentinel.ts). A test file whose worker
+// ran this machine's claude, op, doppler, security, launchctl, sudo, mkcert
+// or gh (the stub logged it, exit 99) fails, naming the calls; the file is
+// recorded for global teardown, which fails the run.
+// Every spawn keeps it, even one whose env sets its own PATH.
+guardSpawns(childProcess);
+const sentinelBefore = sentinelMark();
+afterAll(() => {
+  const calls = sentinelCalls(sentinelBefore);
+  if (!calls.length) return;
+  const file = expect.getState().testPath ?? "an unnamed test file";
+  const dir = process.env.DEN_TEST_SENTINEL;
+  if (dir)
+    try {
+      fs.appendFileSync(
+        path.join(path.dirname(dir), "sentinel-files.log"),
+        `${path.relative(process.cwd(), file)}: ${calls.join(" | ")}\n`,
+      );
+    } catch {
+      /* teardown still sees the calls */
+    }
+  throw new Error(
+    [
+      "This test file ran a program a test never runs (the real-CLI sentinel, tests/sentinel.ts): use a fake by full path, or a fake folder ahead of the sentinel:",
+      ...calls.map((c) => `  ${c}`),
+    ].join("\n"),
+  );
+});
 
 // Set test environment
 process.env.NODE_ENV = "test";

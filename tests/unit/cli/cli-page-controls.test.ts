@@ -163,6 +163,11 @@ const LISTING: Record<string, Entry> = {
   "agents rm": page("agents-page.js", 'agentPath(r, "remove"'),
   "agents handback-check": script("a linter for agents' hand-backs"),
   "agents handoff-check": script("a linter for agents' hand-offs"),
+  // Issue 163 (b): `claude setup-token` prints it in a terminal; it is
+  // pasted at a prompt there or piped in, never through a page.
+  "agents token": script(
+    "the agents' sign-in token, pasted at a terminal prompt or piped in",
+  ),
   "agents permission": slot(
     "0.4.46",
     "MODE-1: a project's and an agent's mode",

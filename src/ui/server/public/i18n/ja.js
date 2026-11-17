@@ -553,7 +553,7 @@
     "busy.restartF": "{name} を再起動できませんでした。",
     "keep.label": "ログアウト後もエージェントを動かす",
     "keep.warn":
-      "デーモンでは、エージェントがサインイン情報（ログインキーチェーン）に届かないことがあります（まだ確認されていません）。",
+      "そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。",
     "keep.apply": "適用",
     "keep.pending":
       "保存済みですが、まだ適用されていません。「適用」を押してください。",
@@ -568,6 +568,36 @@
     "keep.noService":
       "保存しました。__DEN_TITLE__ がサービスとして動くと適用されます: __DEN_CLI__ service install",
     "keep.refused": "管理者パスワードがないため、何も変わっていません。",
+    "keep.offer":
+      "まだ設定されていないため、ログアウトでエージェントは止まります。オンにして「適用」を押してください（管理者パスワードを一度だけ求めます）。",
+    "keep.noToken":
+      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。claude setup-token で作り、__DEN_CLI__ agents token set で保存してください。",
+    "keep.credKeychain":
+      "ストアの認証情報がログインキーチェーンにあり、常時稼働のサービスからは届かないことがあります。file: か env: を使ってください（docs/always-on-gate.md を参照）。",
+    "keep.setup":
+      "ターミナルでの作業はこれだけです: これを実行し、開いたブラウザーでサインインして、表示されたトークンをここに貼り付けてください。",
+    "keep.copy": "コピー",
+    "keep.tokenLabel": "サインイン用トークン",
+    "keep.tokenSave": "保存",
+    "keep.tokenFailed": "保存されませんでした: {error}",
+    "keep.tokenClear": "削除",
+    "keep.clearTitle": "サインイントークンを削除しますか?",
+    "keep.clearAsk":
+      "シークレットストアから削除されます。「ログアウト後もエージェントを動かす」のエージェントは、新しいトークンを設定するまでサインインできません。",
+    "keep.clearOk": "削除",
+    "keep.clearW": "サインイントークンを削除しています…",
+    "keep.clearS": "削除しました。",
+    "keep.clearF": "サインイントークンを削除できませんでした。",
+    "keep.noTokenNotNeeded":
+      "サインイン用トークンはありません。「ログアウト後もエージェントを動かす」のときだけ必要です。",
+    "keep.processLocal": "このプロセスのみ: Den が再起動するまで保持されます。",
+    "keep.noStore":
+      "このインストールにはシークレットストアがないため、サインイントークンを保存できません。先に secrets.provider を 1password か doppler に設定してください。",
+    "keep.tokenSet":
+      "エージェントは {date} に保存したトークンでサインインします。",
+    "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
+    "keep.tokenOld":
+      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です: claude setup-token で新しく作り、__DEN_CLI__ agents token set で保存してください。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -1555,6 +1585,7 @@
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
+    "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
@@ -1861,7 +1892,7 @@
     "ag.mv.done": "{id} を {ws} へ移動しました。",
     "ag.where.logout": "ログアウトで停止",
     "ag.where.logoutTip":
-      "デスクトップのログインで動いているため、ログアウトすると終了します。エージェントを動かし続けるには: 設定 › ログアウト後もエージェントを動かす、または {cli} service install --mode always (任意。デーモンでのキーチェーンはまだ確認されていません)",
+      "デスクトップのログインで動いているため、ログアウトすると終了します。エージェントを動かし続けるには: 設定 › ログアウト後もエージェントを動かす、または {cli} service install --mode always (そこではエージェントは長期トークンでサインインします: {cli} agents token set)",
     "ag.where.bg": "GUI なし",
     "ag.where.bgTip":
       "デスクトップセッションの外で、ログアウト後も動き続けます。ログインキーチェーンと GUI アプリは使えません。1Password はサービスアカウントのトークン、ブラウザはヘッドレス、保護されたフォルダにはフルディスクアクセスが必要です ({cli} doctor)。",
@@ -2508,7 +2539,7 @@
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "オン: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。この場合、エージェントがサインイン情報（ログインキーチェーン）に届かないことがあります（まだ確認されていません）。オフ（既定）: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
+      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。claude setup-token で一度作り、__DEN_CLI__ agents token set で保存してください。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":

@@ -955,4 +955,7 @@ export const denClaude: Runtime = {
   // den#3: its own launch env's subagent model (subagentEnv), past the scrub.
   subagentModel: true,
   launchEnv: ["CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE"],
+  // Issue 163 (b): `claude setup-token`'s long-lived token, set by Den under
+  // the always-on service only (signin-token.ts).
+  signInTokenEnv: "CLAUDE_CODE_OAUTH_TOKEN",
 };

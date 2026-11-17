@@ -303,6 +303,12 @@ import {
   type SessionsDeps,
 } from "./sessions-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
+import {
+  agentSignInMode,
+  readAgentToken,
+  tokenStatusLine,
+} from "../../shared/agents/signin-token.js";
 
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
@@ -383,6 +389,12 @@ export interface AgentsDeps extends SessionsDeps {
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
+  /**
+   * Issue 163 (b): the secrets store and ref the agents' sign-in token is
+   * read from under the always-on service (default: the install's
+   * configured backend and secrets.refs.agent_signin_token).
+   */
+  signInStore?: () => { provider: SecretsProvider; ref: SecretRef | null };
   /** 0.4.48: this machine's processes (default: ps), for jobs an agent left running. */
   processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
@@ -435,6 +447,14 @@ export interface AgentsResolved extends Resolved {
    */
   hubProblem: () => string | null;
   processes: () => ProcessRow[];
+  /** Issue 163 (b): the env a start signs in with, and what to say. */
+  agentSignIn: (tokenEnv: string | undefined) => Promise<AgentSignIn>;
+}
+
+/** Issue 163 (b): a start's sign-in env, and a warning when it has none. */
+export interface AgentSignIn {
+  env: Record<string, string>;
+  warning?: string;
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -711,7 +731,41 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
     processes: d.processes ?? readProcesses,
+    agentSignIn: (tokenEnv) =>
+      agentSignInEnv(
+        tokenEnv,
+        base.env,
+        base.stateDir(),
+        base.cli,
+        d.signInStore,
+      ),
   });
+}
+
+/**
+ * Issue 163 (b): under the always-on service (agentSignInMode), the
+ * runtime's sign-in token from the install's secrets store, as env only.
+ * Desktop sign-in: nothing read, nothing set. A token that can't be read
+ * is a warning (the start goes on): never the token, in any text.
+ */
+export async function agentSignInEnv(
+  tokenEnv: string | undefined,
+  env: NodeJS.ProcessEnv,
+  stateDir: string,
+  cli: string,
+  store?: () => { provider: SecretsProvider; ref: SecretRef | null },
+): Promise<AgentSignIn> {
+  if (!tokenEnv || agentSignInMode(env, stateDir) !== "token")
+    return { env: {} };
+  const s = store?.();
+  const r = await readAgentToken(
+    s ? { provider: () => s.provider, ref: () => s.ref } : {},
+  );
+  if (r.token) return { env: { [tokenEnv]: r.token } };
+  return {
+    env: {},
+    warning: `⚠ ${tokenStatusLine({ mode: "token", configured: r.reason !== "not set", stored: false, setAt: null, ageDays: null, old: false, warnDays: 0, store: "", ...(r.reason ? { reason: r.reason } : {}) }, cli).text}`,
+  };
 }
 
 /** HUB-1.5: hub.* and the token from this install's store; null without. */
@@ -2653,6 +2707,8 @@ interface Launch {
   passthrough?: readonly string[];
   /** den#3: Runtime.launchEnv, names its launch env sets past the scrub. */
   launchEnv?: readonly string[];
+  /** Issue 163 (b): Runtime.signInTokenEnv. */
+  tokenEnv?: string;
   /** agents.<id>.grants, recorded with its actor token. */
   grants: readonly string[];
   /** Added to the session's PATH: a configured CLI's own directory. */
@@ -2697,8 +2753,10 @@ async function startSession(
   launch: Launch,
   old: SessionInfo | undefined,
   extra: Partial<AgentRecord>,
-): Promise<{ rec: AgentRecord; info: SessionInfo }> {
+): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
   if (old?.exited) await c.forget(old.ref.id);
+  // Issue 163 (b): read before the token is minted (nothing to revoke).
+  const signIn = await d.agentSignIn(launch.tokenEnv);
   const tty = d.stdout.isTTY;
   const minted = mintActorToken(d.stateDir(), {
     agentId: launch.rec.id,
@@ -2730,6 +2788,7 @@ async function startSession(
             launch.binDir ? [launch.binDir] : [],
             // agents.git.signing_key: its commits signed with that key.
             agentGitEnv(d.agentsConfig().git),
+            signIn.env,
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
@@ -2757,7 +2816,11 @@ async function startSession(
   delete rec.interruptedAt;
   delete rec.restartFailed;
   writeRecord(d.stateDir(), rec);
-  return { rec, info };
+  return {
+    rec,
+    info,
+    ...(signIn.warning ? { signInWarning: signIn.warning } : {}),
+  };
 }
 
 /**
@@ -3403,7 +3466,7 @@ export async function startAgent(
         model: ch.model,
         version: ch.version,
       });
-      const { rec, info } = await startSession(
+      const { rec, info, signInWarning } = await startSession(
         d,
         c,
         {
@@ -3457,6 +3520,7 @@ export async function startAgent(
           env: out.env,
           passthrough: rt.envPassthrough,
           launchEnv: rt.launchEnv,
+          tokenEnv: rt.signInTokenEnv,
           grants: cfg.agents[id]?.grants ?? [],
           ...binDirOf(det),
         },
@@ -3478,7 +3542,12 @@ export async function startAgent(
       return {
         rec,
         info,
-        warnings: [...(out.warnings ?? []), ...unexpressed, ...sized],
+        warnings: [
+          ...(out.warnings ?? []),
+          ...unexpressed,
+          ...sized,
+          ...(signInWarning ? [signInWarning] : []),
+        ],
         early,
       };
     });
@@ -5217,7 +5286,11 @@ export async function resumeAgent(
       const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
       const run = async (asFresh: boolean, prior: SessionInfo | undefined) => {
         const out = launchAs(asFresh);
-        const { rec: next, info } = await startSession(
+        const {
+          rec: next,
+          info,
+          signInWarning,
+        } = await startSession(
           d,
           c,
           {
@@ -5233,6 +5306,7 @@ export async function resumeAgent(
             env: out.env,
             passthrough: rt.envPassthrough,
             launchEnv: rt.launchEnv,
+            tokenEnv: rt.signInTokenEnv,
             grants,
             ...binDirOf(det),
           },
@@ -5240,7 +5314,7 @@ export async function resumeAgent(
           asFresh ? {} : { resumedAt: new Date().toISOString() },
         );
         const early = await exitedAtOnce(d, c, info);
-        return { out, next, info, early };
+        return { out, next, info, early, signInWarning };
       };
       let fresh = !known && Boolean(token);
       let r = await run(fresh, old);
@@ -5275,7 +5349,10 @@ export async function resumeAgent(
       return {
         rec: r.next,
         info: r.info,
-        warnings: r.out.warnings ?? [],
+        warnings: [
+          ...(r.out.warnings ?? []),
+          ...(r.signInWarning ? [r.signInWarning] : []),
+        ],
         early: r.early,
         fresh,
       };

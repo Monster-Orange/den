@@ -330,7 +330,17 @@ import {
   setWebUrl,
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
-import { handleKeepRunningRoutes } from "./keep-running-routes.js";
+import {
+  handleKeepRunningRoutes,
+  handleSignInTokenRoute,
+  noteKeepRunningOffer,
+} from "./keep-running-routes.js";
+import {
+  agentTokenStatus,
+  clearAgentToken,
+  dropStaleEnvTokenRecord,
+  saveAgentToken,
+} from "../../shared/agents/signin-token.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -2857,6 +2867,70 @@ let gateStore: GateStore | undefined;
 const gates = () => (gateStore ??= new GateStore());
 
 /**
+ * Issue 163 (b): the Settings row's view of the agents' sign-in token:
+ * whether one is configured, when it was set, the store's credential in
+ * the keychain. Never the token; nothing is read from the store.
+ */
+/**
+ * Issue 163 (dev.2 gate): the row follows what is STORED. 1Password and
+ * Doppler are asked whether the item or field holds a value (never shown);
+ * the env backend's truth is Den's record of the set. A store is asked at
+ * most once per agents.signin_token_check_seconds (user.yml, 300), and
+ * again at once after a Save or a Remove.
+ */
+let signinViewCache: {
+  at: number;
+  view: Record<string, unknown> | null;
+} | null = null;
+
+function signinCheckMs(): number {
+  try {
+    const v = Number(
+      (readUserConfig().agents as Record<string, unknown> | undefined)
+        ?.signin_token_check_seconds,
+    );
+    return (Number.isFinite(v) && v >= 0 ? v : 300) * 1000;
+  } catch {
+    return 300_000;
+  }
+}
+
+async function agentSigninView(
+  fresh = false,
+): Promise<Record<string, unknown> | null> {
+  const now = Date.now();
+  if (!fresh && signinViewCache && now - signinViewCache.at < signinCheckMs())
+    return signinViewCache.view;
+  let view: Record<string, unknown> | null;
+  try {
+    const st = await agentTokenStatus({
+      env: process.env,
+      stateDir: getStateDir(),
+      probe: true,
+    });
+    view = {
+      configured: st.configured && st.stored !== false,
+      set_at: st.setAt,
+      age_days: st.ageDays,
+      old: st.old,
+      store: st.store,
+      // The mode in effect: "token" under the always-on service.
+      mode: st.mode,
+      // The env backend: the value lives in the web server's process only.
+      process_local: st.processLocal === true,
+      // No secrets store: the field says so and Save is off.
+      no_store: st.noStore === true,
+      // The store's credential is a keychain: source (1Password).
+      cred_keychain: st.credInKeychain === true,
+    };
+  } catch {
+    view = null;
+  }
+  signinViewCache = { at: now, view };
+  return view;
+}
+
+/**
  * Issue 163: the mode of this install's launchd web job (login, always),
  * or null when Den isn't installed as a service (or off macOS).
  */
@@ -3369,6 +3443,20 @@ async function handleRequest(
       set: (url) => setWebUrl(url),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // #299: Settings › Keep agents running after logout › Sign-in token.
+  if (
+    handleSignInTokenRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      save: (token) =>
+        saveAgentToken(token, { stateDir: getStateDir(), inDen: true }),
+      clear: () => clearAgentToken({ stateDir: getStateDir() }),
+      status: () => agentSigninView(true),
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -6299,14 +6387,27 @@ async function handleRequest(
         })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
-        // Issue 163: Keep agents running after logout (off when unset).
-        keep_running_after_logout: (() => {
+        // Issue 163: Keep agents running after logout. Unset: on for a new
+        // install (no service yet), off over an existing login install,
+        // which the page then offers to turn on (keep_running_unset).
+        ...(() => {
+          let keep: boolean | undefined;
           try {
-            return agentsKeepRunningAfterLogout(() => user) === true;
+            keep = agentsKeepRunningAfterLogout(() => user);
           } catch {
-            return false;
+            keep = false;
           }
+          const mode = installedServiceMode();
+          return {
+            keep_running_after_logout:
+              keep ?? (mode === null || mode === "always"),
+            keep_running_unset: keep === undefined && mode === "login",
+          };
         })(),
+        // Issue 163 (b): the agents' sign-in token under the always-on
+        // service: never the token, only whether one is configured and
+        // when it was set (nothing is read from the store on a page view).
+        agent_signin: await agentSigninView(),
         // Issue 278: agents stuck compacting; instruction size (agent_context.*).
         agent_context: (() => {
           const c = contextWatchSettings(user.agent_context);
@@ -7217,6 +7318,17 @@ function sweepEdgeAccess(): void {
 sweepEdgeAccess();
 setInterval(sweepEdgeAccess, EDGE_ACCESS_SWEEP_MS).unref();
 
+// Issue 163: with the env secrets backend, a sign-in token Settings saved
+// lived in the process that just ended; Den's record of it is stale now.
+try {
+  if (dropStaleEnvTokenRecord({ stateDir: getStateDir() }))
+    serverLog(
+      "Sign-in token: the env secrets backend's value ended with Den's last run; dropped its record",
+    );
+} catch (e) {
+  serverLog(`Sign-in token record check failed: ${(e as Error).message}`);
+}
+
 // Cap service logs. Long-lived daemons never respawn (a localstack tail reached
 // 8.6 GB), so the spawn-time check alone is not enough — sweep on startup and
 // periodically. unref'd so it never holds the process open.
@@ -7392,6 +7504,16 @@ void CRASH_GATE.then(() =>
     }
     // Issue 278: agents stuck compacting ring the bell (agent_context.*).
     startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
+    // Issue 163 (a): an install from before it was on by default is
+    // offered Keep agents running after logout once (it needs sudo).
+    try {
+      noteKeepRunningOffer(notificationDeps().store, getStateDir(), {
+        installed: installedServiceMode,
+        keep: () => agentsKeepRunningAfterLogout(),
+      });
+    } catch {
+      /* the bell is best effort; doctor and Settings offer it too */
+    }
     // #57: agents whose record names a project by its pre-D70 key follow it.
     void import("../../shared/agents/heal-workspace.js").then(async (m) => {
       const { isServerScope } =

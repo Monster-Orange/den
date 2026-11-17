@@ -103,6 +103,11 @@ export async function startAgentsPageServer(
      * prints for --version; any other run is recorded and fails.
      */
     bins?: Record<string, string>;
+    /**
+     * #299: whole fake CLIs on PATH, name to the script's body (after the
+     * #! line); `$TMP` in it is this server's temp dir.
+     */
+    scripts?: Record<string, string>;
     /** More workspaces in workspaces.yml, not active (no services). */
     inactive?: string[];
     /** ON-6: a fresh Den: north and south hold no repo yet. */
@@ -206,6 +211,15 @@ export async function startAgentsPageServer(
   const bin = path.join(tmp, "bin");
   const ran = path.join(tmp, "claude-ran");
   write(path.join(bin, "docker"), "#!/bin/sh\nexit 1\n", 0o755);
+  // The server asks launchd which login it runs in (D20, launchctl
+  // managername): a desktop login here, never this machine's launchctl
+  // (/bin, the real-CLI sentinel, tests/sentinel.ts). Anything else fails.
+  // A test's own `scripts.launchctl` replaces it.
+  write(
+    path.join(bin, "launchctl"),
+    '#!/bin/sh\nif [ "$1" = managername ]; then echo Aqua; exit 0; fi\nexit 1\n',
+    0o755,
+  );
   write(
     path.join(bin, "sudo"),
     opts.sudoPassword === undefined
@@ -249,6 +263,12 @@ export async function startAgentsPageServer(
       0o755,
     );
 
+  for (const [name, body] of Object.entries(opts.scripts ?? {}))
+    write(
+      path.join(bin, name),
+      `#!/bin/sh\n${body.split("$TMP").join(tmp)}\n`,
+      0o755,
+    );
   const home = path.join(tmp, "home");
   const stateDir = path.join(home, ".acme");
   fs.mkdirSync(stateDir, { recursive: true });
