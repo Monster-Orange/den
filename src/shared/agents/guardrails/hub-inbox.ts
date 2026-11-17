@@ -11,6 +11,7 @@
  * lets the agent stop (fails open).
  */
 import * as fs from "fs";
+import { writeFileAtomic } from "../../atomic-write.js";
 import * as path from "path";
 import { actorTokenOf } from "../../actor-token.js";
 
@@ -60,7 +61,7 @@ function lastNudged(files: string): number {
 function saveNudged(files: string, yours: number): void {
   try {
     fs.mkdirSync(files, { recursive: true });
-    fs.writeFileSync(stateFile(files), `${JSON.stringify({ yours })}\n`, {
+    writeFileAtomic(stateFile(files), `${JSON.stringify({ yours })}\n`, {
       mode: 0o600,
     });
   } catch {

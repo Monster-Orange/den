@@ -27,6 +27,7 @@
  * gets it too: the agent runs in the daemon's host either way.
  */
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import * as path from "path";
 import {
   getSecretsProvider,
@@ -206,7 +207,7 @@ export function readTokenMeta(stateDir: string): TokenMeta | null {
 
 function writeTokenMeta(stateDir: string, meta: TokenMeta): void {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(
+  writeFileAtomic(
     path.join(stateDir, TOKEN_META_FILE),
     JSON.stringify(meta) + "\n",
     { mode: 0o600 },
@@ -450,7 +451,7 @@ export async function clearAgentToken(
     )();
   } else {
     fs.mkdirSync(d.stateDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(
+    writeFileAtomic(
       path.join(d.stateDir, TOKEN_CLEARED_FILE),
       JSON.stringify({ clearedAt: new Date().toISOString() }) + "\n",
       { mode: 0o600 },

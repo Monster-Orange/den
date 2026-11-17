@@ -23,6 +23,7 @@
  *  - `status(cfg)`: the names on the cert and whether its CA is trusted.
  */
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import * as path from "path";
 import {
   getStrategy,
@@ -173,7 +174,7 @@ const mkcert: TlsStrategy = {
         env: mkcertEnv(cfg),
       });
       fs.mkdirSync(path.dirname(stamp), { recursive: true });
-      fs.writeFileSync(stamp, want, "utf-8");
+      writeFileAtomic(stamp, want);
       return { kind: "cert", certFile, keyFile, issued: true, names };
     },
     /** Install the CA into the system + browser trust stores (prompts). */

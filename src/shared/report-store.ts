@@ -18,6 +18,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { randomBytes } from "crypto";
 import { parse as parseYaml } from "yaml";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export interface FeedbackSettings {
   enabled: boolean;
@@ -116,7 +117,7 @@ export function sentLog(stateDir: string) {
         all[k] = all[k].filter((t) => now - t < HOUR);
       all[who] = [...(all[who] ?? []), now];
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(file, JSON.stringify(all), { mode: 0o600 });
+      writeFileAtomic(file, JSON.stringify(all), { mode: 0o600 });
     },
   };
 }
@@ -173,7 +174,7 @@ export function draftStore(stateDir: string) {
       const id = d.id ?? randomBytes(8).toString("hex");
       const rec: ReportDraft = { ...d, id, savedAt: new Date().toISOString() };
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-      fs.writeFileSync(fileOf(id), JSON.stringify(rec), { mode: 0o600 });
+      writeFileAtomic(fileOf(id), JSON.stringify(rec), { mode: 0o600 });
       return rec;
     },
     remove(id: string): boolean {

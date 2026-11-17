@@ -6,6 +6,7 @@ import { prepareAccessRaw } from "./access-sweep.js";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 import { must, sh } from "./exec.js";
 import { readWebPort } from "./config.js";
 import { ensureEdgeProof, readEdgeProof, rotateEdgeProof } from "./proof.js";
@@ -33,9 +34,9 @@ import type { EdgeConfig } from "./types.js";
 
 export { assertCaUsable, caDir, caTrusted, sharedCa };
 
+/** Traefik watches these files: each is replaced whole (#380). */
 function write(file: string, content: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, content, "utf-8");
+  writeFileAtomic(file, content);
 }
 
 /**
@@ -43,11 +44,7 @@ function write(file: string, content: string): void {
  * whole (a rename), so Traefik's watch never reads half of it.
  */
 function writeSecret(file: string, content: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, { encoding: "utf-8", mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, content, { mode: 0o600 });
 }
 
 /**
@@ -172,7 +169,7 @@ export function syncIncluded(cfg: EdgeConfig): string[] {
   for (const f of readLedger(cfg.stateDir))
     if (!files.includes(f) && !isOwnedElsewhere(f) && !f.includes("/"))
       fs.rmSync(path.join(dyn, f), { force: true });
-  fs.writeFileSync(
+  writeFileAtomic(
     path.join(cfg.stateDir, INCLUDED_LEDGER),
     JSON.stringify(files, null, 2) + "\n",
   );

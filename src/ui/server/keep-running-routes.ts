@@ -26,6 +26,7 @@
 import * as fs from "fs";
 import type * as http from "http";
 import * as path from "path";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 import type { ServiceMode } from "../cli/doctor-where.js";
 
 export interface KeepRunningDeps {
@@ -180,7 +181,7 @@ export function noteKeepRunningOffer(
   });
   try {
     fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(
+    writeFileAtomic(
       file,
       JSON.stringify({ offeredAt: new Date().toISOString() }) + "\n",
       { mode: 0o600 },
