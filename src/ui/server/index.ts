@@ -3447,6 +3447,8 @@ async function handleRequest(
       serverKeys: () => ServerKeys.at(getStateDir()),
       inputState: (id) => agentInputState(agentWebDeps(), id),
       waitingOf: (id) => embedWaitingOf(id),
+      relay: async (dv) =>
+        (await import("./hub-delivery-service.js")).relayMessage(dv),
     })
   )
     return;

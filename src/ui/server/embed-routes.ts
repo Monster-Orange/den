@@ -20,6 +20,11 @@
  *        Den's CORS, and Den has none). 401 bad_key / key_expired; 403
  *        origin_not_listed when the host was taken off the list since.
  *
+ *        Issue 334: with an app key (embed-server-keys.ts) instead, from
+ *        the web app's own server: the message is held by the delivery
+ *        loop Hub's inbox uses and typed after the agent's turn, at its
+ *        next start when it's stopped, never while it waits on its
+ *        person, never mid-turn. 202 { queued: true }.
  *   GET  /api/embed/p/<project>/agents/<id>/state  issue 334: the agent's
  *        state for a web app's server, with its server key
  *        (embed-server-keys.ts) in X-Den-Embed-Key: running or not, and
@@ -43,7 +48,13 @@ import { sayBody, typeMessage } from "./agent-say.js";
 import { composeMessage } from "./shared-page.js";
 import { recordAction } from "./audit.js";
 import { EMBED_KEY_HEADER, EmbedKeys } from "./embed-keys.js";
-import { ServerKeys, type ServerKeyView } from "./embed-server-keys.js";
+import {
+  SERVER_KEY_PREFIX,
+  ServerKeys,
+  type ServerKeyView,
+} from "./embed-server-keys.js";
+import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
+import { randomBytes } from "crypto";
 import {
   checkOrigin,
   originListed,
@@ -75,6 +86,11 @@ export interface EmbedDeps {
   inputState(id: string): Promise<"missing" | "stopped" | "busy" | "idle">;
   /** Issue 334: what the agent waits on for its person, or null. */
   waitingOf(id: string): EmbedWaiting | null;
+  /**
+   * Issue 334: hold a relayed message in the delivery loop (typed after
+   * the agent's turn). False when the loop isn't running yet.
+   */
+  relay(dv: Delivery): Promise<boolean>;
 }
 
 /** Issue 334: what an agent waits on (attention.ts, a held Allow, a pause). */
@@ -401,7 +417,10 @@ async function say(
   deps: EmbedDeps,
 ): Promise<boolean> {
   const raw = req.headers[EMBED_KEY_HEADER];
-  const c = EMBED_KEYS.check(Array.isArray(raw) ? raw[0] : raw);
+  const sent = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof sent === "string" && sent.startsWith(SERVER_KEY_PREFIX))
+    return relaySay(req, res, deps);
+  const c = EMBED_KEYS.check(sent);
   if (!c.ok)
     return fail(
       res,
@@ -456,6 +475,84 @@ async function say(
   } catch (e) {
     const err = e as AgentError;
     audit(`message to ${rec.id}`, err.message);
+    return fail(
+      res,
+      err instanceof AgentError ? err.status : 500,
+      (err instanceof AgentError && err.code) ||
+        (err.usage ? "usage" : "failed"),
+      err.message,
+    );
+  }
+  return true;
+}
+
+/**
+ * Issue 334: a web app's server relays its person's message (they pressed
+ * Send in the app's own page). Held by the delivery loop, never typed
+ * mid-turn. Audited with its length, never its text.
+ */
+async function relaySay(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  deps: EmbedDeps,
+): Promise<boolean> {
+  const k = serverKeyOf(req, res, deps);
+  if (!k) return true;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      null,
+      {
+        verb: "embed",
+        detail,
+        targetWorkspace: k.project,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      `embed:${k.origin}`,
+    );
+  const rec = agentOf(deps.stateDir(), k.project, k.agent);
+  if (!rec)
+    return fail(
+      res,
+      404,
+      "no_agent",
+      `Project ${k.project} has no agent ${k.agent}.`,
+    );
+  try {
+    const s = deps.settings();
+    const { text, pages } = await sayBody(req, {
+      urlMax: s.url_max_chars,
+      maxBytes: s.context_max_kb * 1024,
+    });
+    const message = composeMessage(text, pages, k.origin);
+    const id = randomBytes(9).toString("base64url");
+    const held = await deps.relay(
+      embedDelivery({
+        id,
+        agent: rec.id,
+        project: rec.workspace,
+        origin: k.origin,
+        text: message,
+        at: Date.now(),
+      }),
+    );
+    if (!held) {
+      audit(`message to ${rec.id} with app key ${k.id}`, "not ready");
+      return fail(
+        res,
+        503,
+        "not_ready",
+        "Den is still starting. Send it again in a moment.",
+      );
+    }
+    deps.serverKeys().touch(k.id);
+    audit(
+      `message to ${rec.id} in ${rec.workspace} with app key ${k.id} (${message.length} characters, ${pages.length} shared page${pages.length === 1 ? "" : "s"}): held until its turn ends`,
+    );
+    res.setHeader("Cache-Control", "no-store");
+    sendJson(res, { ok: true, queued: true, id }, 202);
+  } catch (e) {
+    const err = e as AgentError;
+    audit(`message to ${rec.id} with app key ${k.id}`, err.message);
     return fail(
       res,
       err instanceof AgentError ? err.status : 500,

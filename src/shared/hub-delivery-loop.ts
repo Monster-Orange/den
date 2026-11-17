@@ -8,6 +8,8 @@
  * - mid-turn: kept until the turn ends;
  * - waiting for its person: typed into its session (the same path as a
  *   keystroke from the pane), then ack `delivered` and `working`.
+ * Issue 334: a web app's relayed message (EMBED_PREFIX) takes the same
+ * path, never acked: typed only when the agent is idle, never mid-turn.
  * While the turn that took it runs: `working` again every heartbeat. When
  * the turn ends: `done`. When the agent stops first: `failed`.
  *
@@ -18,6 +20,7 @@ import {
   ackBody,
   deliveryRaw,
   deliveryText,
+  EMBED_PREFIX,
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
@@ -392,12 +395,15 @@ export class DeliveryLoop {
       if (s === "idle" && (act.sawBusy || now - act.typedAt >= NO_START_MS)) {
         this.active.delete(agent);
         for (const id of act.ids) await this.ack(id, "done");
+        // Issue 334: a relayed message is no Hub comment for the bell.
+        const hubIds = act.ids.filter((id) => !id.startsWith(EMBED_PREFIX));
         try {
-          this.d.finished?.(agent, {
-            count: act.ids.length,
-            ...(act.artifact ? { artifact: act.artifact } : {}),
-            ...(act.url ? { url: act.url } : {}),
-          });
+          if (hubIds.length)
+            this.d.finished?.(agent, {
+              count: hubIds.length,
+              ...(act.artifact ? { artifact: act.artifact } : {}),
+              ...(act.url ? { url: act.url } : {}),
+            });
         } catch {
           // The bell's trouble never stops delivery.
         }
@@ -431,16 +437,22 @@ export class DeliveryLoop {
       }
       return;
     }
+    // Den's own items (an inbox item, issue 334's relayed message) carry
+    // their text: only Hub's need to know who the person is.
     const o = this.d.owner();
-    if (!o) {
+    if (!o && q.some((dv) => dv.text === undefined)) {
       this.d.ownerWanted?.();
       return;
     }
-    const texts = q.map((dv) => dv.text ?? deliveryText(dv, o));
+    const texts = q.map((dv) => dv.text ?? deliveryText(dv, o!));
+    const relayed = q.some((dv) => dv.id.startsWith(EMBED_PREFIX));
     const text =
       q.length === 1
         ? texts[0]
-        : [`${q.length} Hub comments:`, ...texts].join("\n\n---\n\n");
+        : [
+            `${q.length} ${relayed ? "messages" : "Hub comments"}:`,
+            ...texts,
+          ].join("\n\n---\n\n");
     // Claim them before the paste: the queue keeps only what comes after.
     this.queue.delete(agent);
     this.typing.add(agent);

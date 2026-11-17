@@ -14,6 +14,11 @@ config and manifest changes a distribution must make to move to it under
   waits on). Only the key's hash is kept; a revoked key gets 401 at once.
   An embed key reaches only its agent's embed routes: anywhere else it is
   refused (issue 334).
+- A web app's server can relay its person's message to that agent with
+  the same key: `POST /api/embed/say` holds it in the delivery loop Hub's
+  inbox uses. It is typed after the agent's turn, at its next start when
+  it's stopped, and held while it waits on its person; never mid-turn.
+  The audit keeps its length, never its text (issue 334).
 
 ## [0.4.64] - unreleased
 

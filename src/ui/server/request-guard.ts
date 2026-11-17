@@ -673,6 +673,13 @@ export function checkRequest(
   const origin = header(req, "origin");
   if (origin === undefined) {
     if (principal) return ok(principal);
+    // Issue 334: a web app's own server sends no Origin; its app key is the
+    // proof (the route checks it; a browser always sends an Origin here).
+    if (
+      pathname === "/api/embed/say" &&
+      (header(req, "x-den-embed-key") ?? "").startsWith("den_sk_")
+    )
+      return ok(null);
     return {
       ok: false,
       status: 403,

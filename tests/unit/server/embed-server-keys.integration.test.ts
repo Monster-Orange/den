@@ -29,6 +29,8 @@ let tmp = "";
 let stateDir = "";
 let server: ChildProcess | null = null;
 let keys: ServerKeys;
+/** What the server printed (its audit lines among them). */
+let printed = "";
 
 function req(
   method: string,
@@ -123,6 +125,8 @@ describe("a web app's server key, on a real server", () => {
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    server.stdout?.on("data", (c: Buffer) => (printed += c.toString()));
+    server.stderr?.on("data", (c: Buffer) => (printed += c.toString()));
     const start = Date.now();
     while (Date.now() - start < 30_000) {
       try {
@@ -233,5 +237,37 @@ describe("a web app's server key, on a real server", () => {
       Origin: "https://other.example.test",
     });
     expect(m.status).toBe(403);
+  }, 30_000);
+
+  it("say with the key: held for the agent (202), audited with its length, never its text", async () => {
+    const { key } = keys.create({
+      project: "north",
+      agent: "scout",
+      origin: ORIGIN,
+    });
+    const secret = "the quarterly numbers are 4711";
+    const r = await req(
+      "POST",
+      "/api/embed/say",
+      { "X-Den-Embed-Key": key },
+      JSON.stringify({ text: secret }),
+    );
+    expect([r.status, r.body.ok, r.body.queued]).toEqual([202, true, true]);
+    const deadline = Date.now() + 5000;
+    while (!/message to scout in north with app key/.test(printed)) {
+      if (Date.now() > deadline) break;
+      await new Promise((res) => setTimeout(res, 100));
+    }
+    expect(printed).toMatch(
+      /message to scout in north with app key [0-9a-f]{16} \(\d+ characters/,
+    );
+    expect(printed).not.toContain(secret);
+    expect(printed).not.toContain(key);
+    // Held in the delivery loop's file, not typed (the agent is stopped).
+    const held = fs.readFileSync(
+      path.join(stateDir, "hub", "deliveries-seen.json"),
+      "utf-8",
+    );
+    expect(held).toContain("inbox:embed:");
   }, 30_000);
 });
