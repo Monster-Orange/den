@@ -17,7 +17,7 @@
  *              { text?, svg?, label } the mark beside it (text escaped;
  *              svg the product's own markup; label its name)
  *     nav      [{ id, label, href, group, icon?, tip?, current?, badge?,
- *              lead?, mono?, cls?, attrs?, pin?, after?, kind? }]   rail
+ *              lead?, mono?, cls?, attrs?, pin?, after?, kind?, off? }]   rail
  *              entries
  *     groups   [{ id, label, from? }]   in rail order; a group with no
  *              entry is left out
@@ -43,7 +43,9 @@
  *   the link inside the pin row (a Visit link); `kind` (0.7.3) "project",
  *   "den", "service", "hub" or { artifact: word }: a small uppercase tag at
  *   the row's end; its tooltip and name are the kit's ("North · Project");
- *   `icon`
+ *   `off` (0.7.4) "connect", "reconnect", "forbidden", "unreachable" or
+ *   "config": the entry is greyed and the kit says why ("Acme Co · Hub,
+ *   reconnect in Settings"); `icon`
  *   { initial } a project's initial in a disc in place of the icon.
  *
  * 0.7.0, for the slots: scopeHtml (the scope crumbs), searchHtml (the
@@ -105,11 +107,43 @@ export const HOST_TEXT_ATTRS = [
 /** What a badge counts (issue 307): the kit words it. */
 export const BADGE_WHATS = ["open", "waiting", "down", "running"];
 
-/** A badge's words, from its data: "3 waiting". No `what`: none. */
+/**
+ * Why a rail entry is off (issue 326): the kit greys it (.den-off) and
+ * words why. "connect" (not connected yet), "reconnect" (its sign-in is
+ * no longer accepted), "forbidden" (not allowed; an admin decides),
+ * "unreachable" (can't be reached right now), "config" (its settings have
+ * a problem). Anything else is dropped.
+ */
+export const NAV_OFFS = [
+  "connect",
+  "reconnect",
+  "forbidden",
+  "unreachable",
+  "config",
+];
+
+/** An entry's off reason, from its data, or null. */
+export function navOff(off) {
+  const id = typeof off === "string" ? off.trim().toLowerCase() : "";
+  return NAV_OFFS.includes(id) ? id : null;
+}
+
+/**
+ * A badge's words, from its data: "3 waiting". Without a `what` (a plain
+ * total) the kit reads the bare number, so "Hub Docs, 4" still says the
+ * count the visible badge (aria-hidden) shows. Nothing to count: none.
+ */
 function badgeWords(b, lang) {
-  if (!b || !BADGE_WHATS.includes(b.what)) return "";
-  const n = typeof b.n === "number" ? b.n : String(b.n ?? "");
-  return kitT(lang, "kit.badge." + b.what, { n });
+  if (!b || b.n == null || b.n === "") return "";
+  const n = typeof b.n === "number" ? b.n : String(b.n);
+  if (BADGE_WHATS.includes(b.what))
+    return kitT(lang, "kit.badge." + b.what, { n });
+  if (typeof n !== "number") return n;
+  try {
+    return new Intl.NumberFormat(lang || undefined).format(n);
+  } catch {
+    return String(n);
+  }
 }
 
 /** The icon, or (issue 307) a project's initial in a disc: { initial }. */
@@ -138,9 +172,15 @@ function leadIcon(ic) {
  * data, the kit owns the words.
  *
  * `badge.what` ("open", "waiting", "down", "running"): what the badge
- * counts; the kit words it ("North · Den, 3 waiting"). A label that is
+ * counts; the kit words it ("North · Den, 3 waiting"). Without one, the
+ * bare number reads ("Hub Docs, 4"). A label that is
  * its kind word reads once ("Hub", not "Hub · Hub"). A pin row gets
  * aria-keyshortcuts="Delete" from the kit.
+ *
+ * `off` (issue 326, NAV_OFFS): the entry is greyed (.den-off) and its
+ * tooltip and name say why in the kit's words ("Acme Co · Hub, reconnect
+ * in Settings"); an entry without a kind reads "<label>, <why>". An `off`
+ * the kit doesn't know is dropped.
  *
  * Host text on any entry (HOST_TEXT_ATTRS in `attrs`, a badge's `label`)
  * is stamped data-nav-host-text, and the nav inventory fails on it.
@@ -150,6 +190,7 @@ export function navItemHtml(n, navRole, lang) {
     typeof navRole === "string" ? ' data-nav-role="' + esc(navRole) + '"' : "";
   const b = n.badge || null;
   const kind = navKind(n.kind, lang);
+  const off = navOff(n.off);
   const extra = b
     ? '<span class="den-bdg' +
       (b.bad ? " bad" : "") +
@@ -175,10 +216,14 @@ export function navItemHtml(n, navRole, lang) {
       kind.word.trim().toLocaleLowerCase();
   const named = kind && !same ? n.label + " · " + kind.word : n.label;
   const counted = badgeWords(b, lang);
-  if (kind) {
+  // Issue 326: why it is off, in the kit's words, after the name.
+  const why = off ? kitT(lang, "kit.off." + off) : "";
+  const tip = why ? named + ", " + why : named;
+  if (kind || off) {
     for (const k of HOST_TEXT_ATTRS) delete more[k];
-    more["aria-label"] = counted ? named + ", " + counted : named;
-    more["data-nav-kind"] = kind.id;
+    more["aria-label"] = [named, counted, why].filter(Boolean).join(", ");
+    if (kind) more["data-nav-kind"] = kind.id;
+    if (off) more["data-nav-off"] = off;
   } else if (more["aria-label"] == null && (counted || (b && b.label)))
     // Without a kind, as before: a badge's label still reads (flagged).
     more["aria-label"] = named + ", " + (counted || b.label);
@@ -188,6 +233,7 @@ export function navItemHtml(n, navRole, lang) {
   const link =
     '<a class="den-ni' +
     (n.cls ? " " + esc(n.cls) : "") +
+    (off ? " den-off" : "") +
     '" href="' +
     esc(n.href) +
     '" data-nav="' +
@@ -197,7 +243,7 @@ export function navItemHtml(n, navRole, lang) {
     (n.current ? ' aria-current="page"' : "") +
     attrs(more) +
     ' title="' +
-    esc(kind ? named : n.tip || n.label) +
+    esc(kind || off ? tip : n.tip || n.label) +
     '">' +
     (n.lead || leadIcon(n.icon)) +
     '<span class="den-lbl' +

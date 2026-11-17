@@ -24,6 +24,15 @@
  *   L9  a pin row's Delete shortcut is the kit's: no host attrs needed
  *   L10 a label that is its kind word (any case, in the language) reads
  *       once: "Hub", never "Hub · Hub"
+ *   L11 (0.7.4, issue 326) `off`: the kit greys the entry (.den-off) and
+ *       says why in its own words, in the tooltip and accessible name:
+ *       "Acme Co · Hub, reconnect in Settings"; no `off`, not greyed
+ *   L12 the off words in es and ja
+ *   L13 an `off` the kit doesn't know is dropped (not greyed, no words); a
+ *       host's own reason text is never needed; an entry without a kind
+ *       reads "<label>, <why>"
+ *   L14 the nav inventory records `off`; compareNav reports an `off`
+ *       difference between two products
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
@@ -85,7 +94,7 @@ ${STYLES.map((s) => `<link rel="stylesheet" href="/kit/${s}.css">`).join("\n")}
  * whose North pin says DEN, not PROJECT; `?red` a second product whose
  * tag is drawn in another colour; `?host` a host that passes its own
  * tooltip and name text (which the kit must not use, and the inventory
- * must flag).
+ * must flag); `?off=<why>` the company's Hub link is off for that reason.
  */
 const APP = `
 import DenUI from "/kit/kit.js";
@@ -105,6 +114,14 @@ const nav = [
   { id: "a-spec", label: "Spec", href: "#spec", group: "pinned", kind: { artifact: "Mock" } },
   { id: "home", label: "Home", href: "#home", group: "work", icon: "home", current: true,
     ...(host ? { attrs: { title: "Host home" } } : {}) },
+  ...(q.has("count")
+    ? [
+        { id: "hdocs", label: "Hub Docs", href: "#hd", group: "work", icon: "home", badge: { n: 4 } },
+        { id: "rdocs", label: "Repo Docs", href: "#rd", group: "work", icon: "home", badge: { n: 1234 } },
+        { id: "kco", label: "Acme Co", href: "#kc", group: "work", icon: "hub", kind: "hub", badge: { n: 4 } },
+        { id: "none", label: "Empty", href: "#e", group: "work", icon: "home", badge: { n: "" } },
+      ]
+    : []),
 ];
 const model = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -113,6 +130,10 @@ const model = {
   foot: [
     { id: "hub", label: "Hub", href: "#hub", icon: "hub", kind: "hub" },
     { id: "srv", label: lang === "es" ? "SERVICIO" : "service", href: "#srv", icon: "services", kind: "service" },
+    { id: "co", label: "Acme Co", href: "#co", icon: "hub", kind: "hub",
+      ...(q.get("off") ? { off: q.get("off") } : {}) },
+    { id: "plain", label: "Docs", href: "#docs", icon: "home",
+      ...(q.get("off") ? { off: q.get("off") } : {}) },
   ],
   slots: {
     start: DenUI.scopeHtml({ crumbs: [{ key: "ws", label: "Project", value: "North" }] }),
@@ -430,8 +451,8 @@ for (const engine of ["chromium", "webkit"]) {
       expect(got.project).toEqual(["North · Project", "North · Project"]);
       // The badge's words are the kit's, from what it counts.
       expect(got.den).toEqual(["North · Den", "North · Den, 3 waiting"]);
-      // A badge's own label (host text) is not used.
-      expect(got.api).toEqual(["api · Service", "api · Service"]);
+      // A badge's own label (host text) is not used; its count still reads.
+      expect(got.api).toEqual(["api · Service", "api · Service, 2"]);
       await p.context().close();
       for (const [lang, words] of [
         ["es", "North · Den, 3 en espera"],
@@ -529,6 +550,174 @@ for (const engine of ["chromium", "webkit"]) {
           ["Hub", "Hub"],
           [srv, srv],
         ]);
+        await p.context().close();
+      }
+    });
+    it("L11: off greys the entry and the kit says why: 'Acme Co · Hub, reconnect in Settings'", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const one = (p: Page) =>
+        p.evaluate(() => {
+          const a = document.querySelector('.den-rail [data-nav="co"]')!;
+          return {
+            title: a.getAttribute("title"),
+            name: a.getAttribute("aria-label"),
+            off: a.classList.contains("den-off"),
+            opacity: Number(getComputedStyle(a).opacity),
+          };
+        });
+      const p0 = await open(b);
+      expect(await one(p0)).toEqual({
+        title: "Acme Co · Hub",
+        name: "Acme Co · Hub",
+        off: false,
+        opacity: 1,
+      });
+      await p0.context().close();
+      for (const [off, why] of [
+        ["connect", "connect in Settings"],
+        ["reconnect", "reconnect in Settings"],
+        ["forbidden", "ask an admin for access"],
+        ["unreachable", "can't be reached right now"],
+        ["config", "check Settings"],
+      ] as const) {
+        const p = await open(b, `?off=${off}`);
+        const got = await one(p);
+        expect([off, got.title, got.name, got.off]).toEqual([
+          off,
+          `Acme Co · Hub, ${why}`,
+          `Acme Co · Hub, ${why}`,
+          true,
+        ]);
+        expect(got.opacity).toBeLessThan(1);
+        expect(
+          await p
+            .getByRole("link", { name: `Acme Co · Hub, ${why}`, exact: true })
+            .count(),
+        ).toBe(1);
+        await p.context().close();
+      }
+    });
+
+    it("L12: the off words in es and ja", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const [lang, words] of [
+        ["es", "Acme Co · Hub, vuelve a conectarlo en Ajustes"],
+        ["ja", "Acme Co · Hub, 設定で再接続してください"],
+      ] as const) {
+        const p = await open(b, `?off=reconnect&lang=${lang}`);
+        expect(
+          await p.evaluate(() => {
+            const a = document.querySelector('.den-rail [data-nav="co"]')!;
+            return [a.getAttribute("title"), a.getAttribute("aria-label")];
+          }),
+        ).toEqual([words, words]);
+        await p.context().close();
+      }
+    });
+
+    it("L13: an off the kit doesn't know is dropped; an entry without a kind reads '<label>, <why>'", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, "?off=Hub%20is%20down");
+      expect(
+        await p.evaluate(() => {
+          const a = document.querySelector('.den-rail [data-nav="co"]')!;
+          return [
+            a.getAttribute("title"),
+            a.getAttribute("aria-label"),
+            a.classList.contains("den-off"),
+            a.hasAttribute("data-nav-off"),
+          ];
+        }),
+      ).toEqual(["Acme Co · Hub", "Acme Co · Hub", false, false]);
+      await p.context().close();
+      const q = await open(b, "?off=unreachable");
+      expect(
+        await q.evaluate(() => {
+          const a = document.querySelector('.den-rail [data-nav="plain"]')!;
+          return [
+            a.getAttribute("title"),
+            a.getAttribute("aria-label"),
+            a.classList.contains("den-off"),
+          ];
+        }),
+      ).toEqual([
+        "Docs, can't be reached right now",
+        "Docs, can't be reached right now",
+        true,
+      ]);
+      await q.context().close();
+    });
+
+    it("L14: the nav inventory records off; compareNav reports an off difference", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const snap = async (q: string): Promise<NavSnapshot> => {
+        const p = await open(b, q);
+        const s = await collectNav(p);
+        await p.context().close();
+        return s;
+      };
+      const on = await snap("");
+      const re = await snap("?off=reconnect");
+      const co = (s: NavSnapshot) =>
+        s.elements.find((e) => e.key === '[data-nav="co"]');
+      expect(co(on)?.off).toBeUndefined();
+      expect(co(re)?.off).toBe("reconnect");
+      expect(compareNav(await snap("?off=reconnect"), re)).toEqual([]);
+      const offDiffs = (a: NavSnapshot, r: NavSnapshot) =>
+        compareNav(a, r).filter(
+          (d) => d.property === "off" && d.key === '[data-nav="co"]',
+        );
+      expect(offDiffs(await snap("?off=unreachable"), re)).toEqual([
+        {
+          key: '[data-nav="co"]',
+          slot: "foot",
+          property: "off",
+          reference: "reconnect",
+          actual: "unreachable",
+        },
+      ]);
+      expect(offDiffs(on, re)).toEqual([
+        {
+          key: '[data-nav="co"]',
+          slot: "foot",
+          property: "off",
+          reference: "reconnect",
+          actual: "(none)",
+        },
+      ]);
+    });
+
+    it("L15: a plain count (no what) reads its number: 'Hub Docs, 4'", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const [lang, big] of [
+        ["en", "1,234"],
+        ["es", "1234"],
+        ["ja", "1,234"],
+      ] as const) {
+        const p = await open(b, `?count&lang=${lang}`);
+        const got = await p.evaluate(() =>
+          ["hdocs", "rdocs", "kco", "none"].map((id) =>
+            document
+              .querySelector(`.den-rail [data-nav="${id}"]`)!
+              .getAttribute("aria-label"),
+          ),
+        );
+        const hub =
+          lang === "en" ? "Hub" : got[2]!.split(" · ")[1].split(",")[0];
+        expect({ lang, got }).toEqual({
+          lang,
+          got: [
+            "Hub Docs, 4",
+            `Repo Docs, ${big}`,
+            `Acme Co · ${hub}, 4`,
+            null,
+          ],
+        });
         await p.context().close();
       }
     });

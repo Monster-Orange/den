@@ -7,7 +7,7 @@
  *     Hub, the company in its tooltip, and a count of what waits on the
  *     person (whoami's unread); none at 0;
  *   - a token Hub rejects, or a role it forbids: greyed, to Settings › Hub,
- *     saying why;
+ *     saying why (issue 326: Den passes `off`, the kit words it);
  *   - not configured, no token, Hub unreachable, or a company URL that is
  *     neither https nor this machine: no link;
  *   - collapsed: icon only, its name and count still read out; ↑/↓ reach it;
@@ -16,7 +16,8 @@
  * GET /api/hub?rail=1 is answered from the test (the shell's look; it never
  * takes Connect's one-time result: agent-routes' test checks that).
  * The demo distribution (helpers/agents-page-server.ts). Needs Playwright's
- * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names only.
+ * chromium (DEN_HUB_RAIL_BROWSER=webkit: WebKit); DEN_SKIP_BROWSER_TESTS=1
+ * skips it. Invented names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
@@ -29,6 +30,8 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
 let latest = "";
+const engine =
+  process.env.DEN_HUB_RAIL_BROWSER === "webkit" ? "webkit" : "chromium";
 
 const CONNECTED = {
   configured: true,
@@ -42,8 +45,14 @@ const CONNECTED = {
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    const pw = await import("playwright");
+    // DEN_HUB_RAIL_BROWSER=webkit (Safari's engine) runs the same tests
+    // there. DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a
+    // Playwright run-server; its localhost is this machine's.
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -148,8 +157,8 @@ describe("the rail's Hub link", () => {
   it("a token Hub rejects, or a role it forbids: greyed, to Settings › Hub, saying why", async () => {
     if (!browser) return;
     for (const [state, why] of [
-      ["rejected", "Reconnect in Settings › Hub"],
-      ["forbidden", "Ask a Hub admin"],
+      ["rejected", "reconnect in Settings"],
+      ["forbidden", "ask an admin for access"],
     ]) {
       const { p, errors } = await open({
         configured: true,
@@ -162,8 +171,14 @@ describe("the rail's Hub link", () => {
       expect(await a.getAttribute("href")).toBe("/settings#agents.hub");
       expect(await a.getAttribute("target")).toBeNull();
       expect(await a.getAttribute("class")).toContain("den-off");
-      // Issue 307: the kit's words; why is on Settings › Hub (and ⌘K).
-      expect([why, await a.getAttribute("title")]).toEqual([why, "Hub"]);
+      // Issue 326: Den passes `off` (data); the kit says why, in its own
+      // words, in the tooltip and the name.
+      expect([
+        await a.getAttribute("title"),
+        await a.getAttribute("aria-label"),
+      ]).toEqual([`Hub, ${why}`, `Hub, ${why}`]);
+      expect(await a.getAttribute("data-nav-off")).not.toBeNull();
+      expect(await a.getAttribute("data-nav-host-text")).toBeNull();
       expect(
         Number(await a.evaluate((e) => getComputedStyle(e).opacity)),
       ).toBeLessThan(1);
@@ -211,10 +226,10 @@ describe("the rail's Hub link", () => {
       connected: false,
     };
     for (const [answer, why] of [
-      [{ ...base, state: "no_token" }, "Not connected to Hub yet"],
-      [{ ...base, state: "unreachable" }, "can't reach Hub right now"],
-      [{ ...base, state: "bad_config" }, "Hub settings have a problem"],
-      [{ ...base, state: "something_new" }, "can't reach Hub right now"],
+      [{ ...base, state: "no_token" }, "connect in Settings"],
+      [{ ...base, state: "unreachable" }, "can't be reached right now"],
+      [{ ...base, state: "bad_config" }, "check Settings"],
+      [{ ...base, state: "something_new" }, "can't be reached right now"],
       // Connected, but no address Den will open (neither its company's nor Hub's).
       [
         {
@@ -222,7 +237,7 @@ describe("the rail's Hub link", () => {
           url: "http://hub.example.test",
           teamUrl: "javascript:alert(1)",
         },
-        "isn't https",
+        "check Settings",
       ],
     ] as const) {
       const { p, errors } = await open(answer);
@@ -233,13 +248,15 @@ describe("the rail's Hub link", () => {
         "/settings#agents.hub",
       ]);
       expect(await a.getAttribute("class")).toContain("den-off");
-      // Issue 307: the kit's words; why is on Settings › Hub (and ⌘K).
-      expect([why, await a.getAttribute("title")]).toEqual([
-        why,
-        (answer as { team?: string }).team
-          ? `${(answer as { team?: string }).team} · Hub`
-          : "Hub",
-      ]);
+      // Issue 326: the greyed link says why again, in the kit's words.
+      const named = (answer as { team?: string }).team
+        ? `${(answer as { team?: string }).team} · Hub`
+        : "Hub";
+      expect([
+        answer,
+        await a.getAttribute("title"),
+        await a.getAttribute("aria-label"),
+      ]).toEqual([answer, `${named}, ${why}`, `${named}, ${why}`]);
       expect(errors).toEqual([]);
       await p.context().close();
     }
@@ -258,12 +275,15 @@ describe("the rail's Hub link", () => {
     for (const how of ["mod", "middle"] as const) {
       const opened = ctx.waitForEvent("page");
       if (how === "mod")
-        await a.click({
-          modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
-        });
+        // The browser's own platform (DEN_PW_WS: a Linux browser).
+        await a.click({ modifiers: ["ControlOrMeta"] });
       else await a.click({ button: "middle" });
       const tab = await opened;
-      await tab.waitForURL("https://hub.example.test/c/acme-co");
+      // WebKit under Playwright leaves a tab opened by a modifier or
+      // middle click blank when its address is routed (a bare probe does
+      // the same): there, the new tab opening is the check.
+      if (engine !== "webkit")
+        await tab.waitForURL("https://hub.example.test/c/acme-co");
       await tab.close();
       expect(p.url()).toContain("/overview");
     }
