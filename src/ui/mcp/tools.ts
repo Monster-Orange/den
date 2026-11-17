@@ -2037,6 +2037,45 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    // Issue 271: the same ask as Settings › Project › Hub project's Create.
+    name: "hub_project_create",
+    title: "Create a Hub project for a project",
+    description:
+      "Ask Hub to create a new Hub project for a project that isn't linked to one, named `name` (default: the project's name), and link the project to it. Hub holds it for an owner of the company, who allows it in Hub; Den links the project by itself once they do, and Hub tells you what they decided. A project already linked, or with an ask waiting, is refused. A project's agent asks for its own project; Den's own agent for any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z
+        .string()
+        .optional()
+        .describe(
+          "The Hub project's name, up to 80 characters (default: the project's)",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("hub_project_create", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `hub_project_create: you work in project "${ctx.scope.workspace}" and can ask for it only, not project "${project}"; nothing was asked.`,
+        );
+      return askPerson(
+        "hub_project_create",
+        "hub_project_create",
+        { project, name: str(a.name) },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     name: "project_mcp_add",
     title: "Add an HTTP MCP server to a project",
     description:

@@ -350,7 +350,18 @@ describe("issue 160: the approval policy", () => {
     );
     // Issue 160: pr_close too: it is a held write now, not only a kind.
     expect(names).toContain("pr_close");
+    // Issue 271: asking Hub for a new project is a held write too.
+    expect(names).toContain("hub_project_create");
     expect(Object.keys(HELD_WRITE_RISK).sort()).toEqual([...names].sort());
+  });
+
+  it("issue 271: hub_project_create is routine: Hub's owner still decides", () => {
+    expect(HELD_WRITE_RISK.hub_project_create.risk).toBe("routine");
+    expect(isCriticalWrite("hub_project_create", false)).toBe(false);
+    expect(policyFor("hub_project_create", {})).toEqual({
+      ...policyFor("repo_clone", {}),
+      from: expect.any(String),
+    });
   });
 });
 
