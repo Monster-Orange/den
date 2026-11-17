@@ -8,6 +8,16 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- After Den updates itself, it no longer tells its own agent to "check
+  with doctor", a tool that agent doesn't have. It says to call
+  release_status, which now has Den's last update of itself (from, to,
+  when, and why if it rolled back) and the new Den's doctor results from
+  that update (each failing or warning check). Den keeps those results
+  beside the update's state; the Den agent page reads them too (GET
+  /api/server-agent/update, read only). A test checks that every tool
+  named to that agent, in its charter, Den's lines and the MCP text, is one
+  it has (#176).
+
 - The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
 
 - A link to a Settings row (the bell's /settings#agents.keep_running, or

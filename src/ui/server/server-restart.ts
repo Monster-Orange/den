@@ -112,13 +112,15 @@ export function backMessage(
   if (m.by === "den")
     return m.rolledBack
       ? `Den is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` +
-          "Den's own update didn't take: commit no pin change. The person has it in the bell."
+          "Den's own update didn't take: commit no pin change. The person has it in the bell. " +
+          "release_status says why, with the new Den's doctor results if its doctor ran."
       : `Den is back on ${version} (pid ${pid}) (it was ${m.fromVersion}). ` +
-          `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. Then check with doctor.`;
+          `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. Then call release_status: it has the new Den's doctor results.`;
   if (m.rolledBack)
     return (
       `Server is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
-      "Your update didn't take: commit no pin change, and tell your person why."
+      "Your update didn't take: commit no pin change, and tell your person why. " +
+      "release_status says why, with the new Den's doctor results if its doctor ran."
     );
   const was = m.fromVersion === version ? "" : ` (it was ${m.fromVersion})`;
   return (

@@ -191,7 +191,7 @@ describe("the restart marker", () => {
         222,
       ),
     ).toBe(
-      "Server is back on 0.4.41 (pid 222), rolled back: Den 0.4.42 wasn't up within 180 s (it never answered), so Den rolled back to 0.4.41. Your update didn't take: commit no pin change, and tell your person why.",
+      "Server is back on 0.4.41 (pid 222), rolled back: Den 0.4.42 wasn't up within 180 s (it never answered), so Den rolled back to 0.4.41. Your update didn't take: commit no pin change, and tell your person why. release_status says why, with the new Den's doctor results if its doctor ran.",
     );
   });
 
@@ -205,7 +205,7 @@ describe("the restart marker", () => {
         222,
       ),
     ).toBe(
-      "Den is back on 0.4.42 (pid 222) (it was 0.4.41). Den updated itself: Den 0.4.42 is out. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. Then check with doctor.",
+      "Den is back on 0.4.42 (pid 222) (it was 0.4.41). Den updated itself: Den 0.4.42 is out. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. Then call release_status: it has the new Den's doctor results.",
     );
     expect(
       backMessage(
@@ -219,7 +219,7 @@ describe("the restart marker", () => {
         222,
       ),
     ).toBe(
-      "Den is back on 0.4.41 (pid 222), rolled back: 0.4.42 never answered, so Den rolled back to 0.4.41. Den's own update didn't take: commit no pin change. The person has it in the bell.",
+      "Den is back on 0.4.41 (pid 222), rolled back: 0.4.42 never answered, so Den rolled back to 0.4.41. Den's own update didn't take: commit no pin change. The person has it in the bell. release_status says why, with the new Den's doctor results if its doctor ran.",
     );
   });
 });

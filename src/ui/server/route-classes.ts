@@ -240,6 +240,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/server-agent",
     "the server agent's name, runtime and state (ON-6): reads only",
   ),
+  R(
+    "/api/server-agent/update",
+    "#176: Den's last update and the new Den's doctor lines: file reads",
+  ),
   R("/api/health", "runs the manifests' health probes: read-only checks"),
   R("/api/test-sources", "git rev-parse in each repo: read-only"),
   R("/api/manifest/validate", "GET validates a file at a path: read-only"),
