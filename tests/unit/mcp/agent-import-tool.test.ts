@@ -1,7 +1,8 @@
 /**
- * MCP agent_import (AG-17.1): opt-in through mcp.actions, scoped like
- * agent_resume (its own workspace, or a granted one). With no session it
- * lists the conversations to bring in; with one it brings it in. The web
+ * MCP agent_import (AG-17.1): scoped like agent_resume (its own
+ * workspace, or a granted one). With no session it lists the conversations
+ * to bring in (opted in through mcp.actions); with one it asks the person
+ * to bring it in: a held write (issue 160). The web
  * server checks the same rule again (agent-resume-grant.ts). The API is a
  * fake that records what was asked of it.
  */
@@ -31,6 +32,9 @@ function fakeApi(): { api: DenApi; calls: Call[] } {
         query,
         ...(body !== undefined ? { body } : {}),
       });
+      // Issue 160: the bring-in is a held write; this one was allowed.
+      if (path === "/api/approvals" && method === "POST")
+        return { id: "r1", state: "done", result: { ok: true, id: "planner" } };
       if (path === "/api/workspaces")
         return {
           active: ["north", "south"],
@@ -60,13 +64,16 @@ const SCOPE: McpScope = {
 };
 
 describe("the agent_import tool", () => {
-  it("is an MCP action, off unless mcp.actions names it", () => {
+  it("issue 160: a held write, registered with the held writes (once), not only when mcp.actions names it", () => {
     expect(MCP_ACTIONS).toContain("agent_import");
-    expect(toolsFor(off).map((t) => t.name)).not.toContain("agent_import");
-    expect(toolsFor(on).map((t) => t.name)).toContain("agent_import");
+    const names = (c: typeof on) => toolsFor(c).map((t) => t.name);
+    expect(names(off)).toContain("agent_import");
+    expect(names(on).filter((n) => n === "agent_import")).toHaveLength(1);
+    // Held writes off: only the opt-in registers it (its list).
+    expect(names({ ...off, approvals: false })).not.toContain("agent_import");
   });
 
-  it("with no session, lists; with one, brings it in with the persona", async () => {
+  it("with no session, lists; with one, asks the person to bring it in (a held write)", async () => {
     const list = fakeApi();
     expect(
       (
@@ -88,10 +95,15 @@ describe("the agent_import tool", () => {
       { api: bring.api, cfg: on, cli: "acme", scope: { ...SCOPE } },
     );
     expect(r.isError).toBe(false);
-    const post = bring.calls.find((c) => /\/import$/.test(c.path));
+    // Never the import route itself: POST /api/approvals, held for the person.
+    expect(bring.calls.some((c) => /\/import$/.test(c.path))).toBe(false);
+    const post = bring.calls.find((c) => c.path === "/api/approvals");
     expect(post).toMatchObject({
-      path: "/api/workspaces/north/conversations/abc-123/import",
-      body: { persona: "planner" },
+      method: "POST",
+      body: {
+        action: "agent_import",
+        args: { project: "north", session: "abc-123", persona: "planner" },
+      },
     });
   });
 
@@ -143,6 +155,8 @@ describe("the agent_import tool", () => {
     expect(
       agentRefusal(p, "GET", "/api/workspaces/north/conversations", "read"),
     ).toMatch(/agent_import/);
+    // Issue 160: the import route is never an agent's, opted in or not:
+    // it asks with the held write.
     expect(
       agentRefusal(
         p,
@@ -150,6 +164,6 @@ describe("the agent_import tool", () => {
         "/api/workspaces/north/conversations/abc/import",
         "shell-grade",
       ),
-    ).toMatch(/agent_import/);
+    ).toMatch(/held write: ask with agent_import/);
   });
 });

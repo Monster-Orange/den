@@ -273,3 +273,144 @@ describe("SRV-P3: repo_clone", () => {
     }
   });
 });
+
+describe("issue 160: agent_import and approval_policy are held writes", () => {
+  it("agent_import: checks the asker's project, session and persona; on Allow brings it in", async () => {
+    const f = fakes();
+    const brought: unknown[] = [];
+    f.deps.agentImport = async (a) => {
+      brought.push(a);
+      return { ok: true, id: "planner", project: a.project };
+    };
+    const a = heldActions(f.deps).agent_import;
+    const c = await a.check(
+      { session: "abc-123", persona: "planner" },
+      { agent: "lead", project: "repos" },
+    );
+    expect(c).toMatchObject({
+      ok: true,
+      args: { project: "repos", session: "abc-123", persona: "planner" },
+      params: { session: "abc-123", persona: "planner", project: "repos" },
+    });
+    if (!c.ok) return;
+    await a.run(c.args);
+    expect(brought).toEqual([
+      { project: "repos", session: "abc-123", persona: "planner" },
+    ]);
+    // Another project's, a bad id, no persona: refused before anything waits.
+    for (const [args, err] of [
+      [{ session: "abc", persona: "p", project: "default" }, /own project/],
+      [{ session: "../x", persona: "p" }, /conversation id/],
+      [{ session: "abc" }, /persona/],
+    ] as const)
+      expect(
+        await a.check({ ...args }, { agent: "lead", project: "repos" }),
+      ).toMatchObject({ ok: false, error: expect.stringMatching(err) });
+    // A Den without the bring-in refuses.
+    expect(
+      await heldActions(fakes().deps).agent_import.check(
+        { session: "abc", persona: "p" },
+        { project: "repos" },
+      ),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("approval_policy: always the person's own Allow; writes the install's or a project's", async () => {
+    const f = fakes();
+    const written: unknown[] = [];
+    f.deps.approvalPolicy = {
+      read: () => ({ policy: "notify" }),
+      write: (project, setting) => void written.push({ project, setting }),
+    };
+    const a = heldActions(f.deps).approval_policy;
+    const c = await a.check(
+      { project: "repos", approvals: { policy: "auto", watch: ["repo:api"] } },
+      { agent: "lead", project: "repos" },
+    );
+    expect(c).toMatchObject({
+      ok: true,
+      personOnly: true,
+      params: { inProject: "1", where: "repos" },
+    });
+    if (!c.ok) return;
+    await a.run(c.args);
+    expect(written).toEqual([
+      {
+        project: "repos",
+        setting: { policy: "auto", watch: ["repo:api"] },
+      },
+    ]);
+    // A project's agent can't ask about the install's, or another project's.
+    expect(
+      await a.check(
+        { approvals: { policy: "auto" } },
+        { agent: "lead", project: "repos" },
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      await a.check(
+        { project: "default", approvals: { policy: "auto" } },
+        { agent: "lead", project: "repos" },
+      ),
+    ).toMatchObject({ ok: false });
+    // A bad setting is refused, naming the key.
+    expect(
+      await a.check({ project: "repos", approvals: { policy: "always" } }, {}),
+    ).toMatchObject({ ok: false, error: expect.stringMatching(/policy/) });
+  });
+});
+
+describe("issue 160: pr_close, closing a stale or superseded PR after a Hub note", () => {
+  it("checks the repo, the pull request and the comment; on Allow closes it with a comment saying why", async () => {
+    const f = fakes();
+    const closed: unknown[] = [];
+    f.deps.prClose = async (a) => {
+      closed.push(a);
+      return { ok: true, repo: a.repo, pr: a.pr };
+    };
+    const a = heldActions(f.deps).pr_close;
+    const c = await a.check(
+      { repo: "acme/api", pr: 42, comment: "Superseded by 57 (Hub note)" },
+      { agent: "lead", project: "repos" },
+    );
+    expect(c).toMatchObject({
+      ok: true,
+      args: {
+        project: "repos",
+        repo: "acme/api",
+        pr: 42,
+        comment: "Superseded by 57 (Hub note)",
+      },
+      params: { repo: "acme/api", pr: "42" },
+    });
+    if (!c.ok) return;
+    expect(c.personOnly).toBeUndefined();
+    await a.run(c.args);
+    expect(closed).toEqual([
+      { repo: "acme/api", pr: 42, comment: "Superseded by 57 (Hub note)" },
+    ]);
+    // A bad repo, a bad number, no comment, another project: refused first.
+    for (const [args, err] of [
+      [{ repo: "api", pr: 1, comment: "x" }, /owner\/name/],
+      [{ repo: "acme/api; rm", pr: 1, comment: "x" }, /owner\/name/],
+      [{ repo: "acme/api", pr: 0, comment: "x" }, /pull request number/],
+      [{ repo: "acme/api", pr: "1x", comment: "x" }, /pull request number/],
+      [{ repo: "acme/api", pr: 1 }, /comment/],
+      [{ repo: "acme/api", pr: 1, comment: "  " }, /comment/],
+      [
+        { repo: "acme/api", pr: 1, comment: "x", project: "default" },
+        /own project/,
+      ],
+    ] as const)
+      expect(
+        await a.check({ ...args }, { agent: "lead", project: "repos" }),
+      ).toMatchObject({ ok: false, error: expect.stringMatching(err) });
+    // A Den without the close refuses.
+    expect(
+      await heldActions(fakes().deps).pr_close.check(
+        { repo: "acme/api", pr: 1, comment: "x" },
+        { project: "repos" },
+      ),
+    ).toMatchObject({ ok: false });
+  });
+});
