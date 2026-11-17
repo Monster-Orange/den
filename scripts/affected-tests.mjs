@@ -162,6 +162,24 @@ export function summaryMarkdown(sel, changedCount) {
 
 const SOURCE_ROOTS = ["tests", "src", "packages", "scripts", "bin"];
 
+/**
+ * A child process's output, or a plain Error with its message and stderr
+ * (a child-process error refers to itself, which nothing can serialize).
+ */
+function run(cmd, args, opts) {
+  try {
+    return execFileSync(cmd, args, {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+      ...opts,
+    });
+  } catch (e) {
+    throw new Error(
+      `${cmd} ${args[0] ?? ""} failed: ${e.message}\n${e.stderr ?? ""}`,
+    );
+  }
+}
+
 /** jest's file lists, at the repo root. */
 export function jestLists(changed, cwd = ROOT) {
   const jest = path.join(cwd, "node_modules", ".bin", "jest");
@@ -170,9 +188,7 @@ export function jestLists(changed, cwd = ROOT) {
       .split("\n")
       .filter(Boolean)
       .map((f) => path.relative(cwd, f));
-  const allTests = rel(
-    execFileSync(jest, ["--listTests"], { cwd, encoding: "utf-8" }),
-  );
+  const allTests = rel(run(jest, ["--listTests"], { cwd }));
   const tests = new Set(allTests);
   // jest's roots are tests/ only; the import graph needs the sources too.
   const roots = SOURCE_ROOTS.filter((r) =>
@@ -186,10 +202,10 @@ export function jestLists(changed, cwd = ROOT) {
   );
   const related = srcs.length
     ? rel(
-        execFileSync(
+        run(
           jest,
           ["--roots", ...roots, "--findRelatedTests", ...srcs, "--listTests"],
-          { cwd, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+          { cwd },
         ),
       )
     : [];
@@ -211,10 +227,10 @@ async function main(argv) {
     );
     return 2;
   }
-  const changed = execFileSync(
+  const changed = run(
     "git",
     ["diff", "--name-only", "--no-renames", `${base}...${head}`],
-    { cwd: ROOT, encoding: "utf-8" },
+    { cwd: ROOT },
   )
     .split("\n")
     .filter(Boolean);

@@ -42,19 +42,44 @@ interface Case {
   caught?: boolean;
 }
 
+/**
+ * Runs ES-module code in a child Node, `input` as JSON on its stdin (read
+ * with `ARGS()`): never in the environment, where Linux caps one variable
+ * at 128 KB (E2BIG; the replay's cases are bigger). A failure comes back
+ * as a plain Error: a child-process error refers to itself (`.error`), and
+ * jest's worker can't send that to the parent.
+ */
+function child(code: string, input: unknown): string {
+  try {
+    return execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import { readFileSync as readStdin } from "node:fs"; const ARGS = () => JSON.parse(readStdin(0, "utf-8"));\n${code}`,
+      ],
+      {
+        encoding: "utf-8",
+        input: JSON.stringify(input),
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
+  } catch (e) {
+    const err = e as { message?: string; stderr?: string };
+    throw new Error(
+      `child node failed: ${err.message ?? e}\n${err.stderr ?? ""}`,
+    );
+  }
+}
+
 /** Calls `fn` of a script module in a child Node with JSON args. */
 function call<T>(script: string, fn: string, ...args: unknown[]): T {
-  const out = execFileSync(
-    process.execPath,
-    [
-      "--input-type=module",
-      "-e",
-      `const m = await import(${JSON.stringify(script)});
-       const r = await m[${JSON.stringify(fn)}](...JSON.parse(process.env.ARGS));
-       const plain = (k, v) => v instanceof Map ? Object.fromEntries(v) : v instanceof Set ? [...v] : v instanceof RegExp ? v.source : v;
-       console.log(JSON.stringify(r ?? null, plain));`,
-    ],
-    { encoding: "utf-8", env: { ...process.env, ARGS: JSON.stringify(args) } },
+  const out = child(
+    `const m = await import(${JSON.stringify(script)});
+     const r = await m[${JSON.stringify(fn)}](...ARGS());
+     const plain = (k, v) => v instanceof Map ? Object.fromEntries(v) : v instanceof Set ? [...v] : v instanceof RegExp ? v.source : v;
+     console.log(JSON.stringify(r ?? null, plain));`,
+    args,
   );
   return JSON.parse(out) as T;
 }
@@ -393,17 +418,12 @@ describe("the replay's parsing and verdicts", () => {
     changed?: string[];
   }) => {
     // Sets do not survive JSON: rebuild them in the child.
-    const out = execFileSync(
-      process.execPath,
-      [
-        "--input-type=module",
-        "-e",
-        `const m = await import(${JSON.stringify(REPLAY)});
-         const a = JSON.parse(process.env.ARGS);
-         const fix = (l) => (l ?? []).map((x) => ({ ...x, failedFiles: new Set(x.failedFiles) }));
-         console.log(JSON.stringify(m.classify({ file: "t.test.ts", attempt: { key: "r1#1", head: "h1", tree: "t-h1" }, base: "main1", changed: a.changed ?? ["src/x.ts"], testReadsMarkdown: false, others: fix(a.others), next: fix(a.next), nextChanged: a.nextChanged, nextRelated: a.nextRelated })));`,
-      ],
-      { encoding: "utf-8", env: { ...process.env, ARGS: JSON.stringify(o) } },
+    const out = child(
+      `const m = await import(${JSON.stringify(REPLAY)});
+       const a = ARGS();
+       const fix = (l) => (l ?? []).map((x) => ({ ...x, failedFiles: new Set(x.failedFiles) }));
+       console.log(JSON.stringify(m.classify({ file: "t.test.ts", attempt: { key: "r1#1", head: "h1", tree: "t-h1" }, base: "main1", changed: a.changed ?? ["src/x.ts"], testReadsMarkdown: false, others: fix(a.others), next: fix(a.next), nextChanged: a.nextChanged, nextRelated: a.nextRelated })));`,
+      o,
     );
     return (JSON.parse(out) as { verdict: string }).verdict;
   };
