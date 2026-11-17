@@ -19,6 +19,7 @@
  *     quiet: { from: "22:00", to: "07:00" }   # none by default
  *     push_timeout_seconds: 30     # how long one push may take (1..3600)
  *     push_ttl_seconds: 86400      # how long a push service keeps it
+ *                                  # (0..2419200); both Settings rows (#367)
  */
 import type { UserConfig } from "../../shared/den-config.js";
 import type { UiLanguage } from "./ui-language.js";
@@ -127,6 +128,12 @@ export function alertPrefs(user: unknown): AlertPrefs {
   };
 }
 
+/** Issue 367: the push limits a page may set, and each one's widest range. */
+const PUSH_LIMITS = {
+  push_timeout_seconds: { min: 1, max: 3600 },
+  push_ttl_seconds: { min: 0, max: 2_419_200 },
+} as const;
+
 /** What /api/settings serves as `alerts`. */
 export function alertSettings(user: UserConfig): Record<string, unknown> {
   const p = alertPrefs(user);
@@ -140,13 +147,17 @@ export function alertSettings(user: UserConfig): Record<string, unknown> {
     phone: p.phone,
     quiet_from: side(q.from),
     quiet_to: side(q.to),
+    // Issue 367: the push limits, their defaults when unset.
+    push_timeout_seconds: p.pushTimeoutSeconds,
+    push_ttl_seconds: p.pushTtlSeconds,
   };
 }
 
 /**
  * A POSTed `alerts`: {desktop?, phone?: boolean; quiet_from?, quiet_to?:
- * "HH:MM" or "" (none)}; null clears one. The push limits are config
- * keys only (`<cli> config` or user.yml).
+ * "HH:MM" or "" (none); push_timeout_seconds? (1..3600),
+ * push_ttl_seconds? (0..2419200): whole seconds}; null clears one (back
+ * to its default).
  */
 export function patchAlerts(
   user: UserConfig,
@@ -170,6 +181,20 @@ export function patchAlerts(
       else return { ok: false, error: `alerts.${k} must be HH:MM, or empty` };
       if (Object.keys(q).length) a.quiet = q;
       else delete a.quiet;
+    } else if (k === "push_timeout_seconds" || k === "push_ttl_seconds") {
+      const { min, max } = PUSH_LIMITS[k];
+      if (x === null) delete a[k];
+      else if (
+        Number.isInteger(x) &&
+        (x as number) >= min &&
+        (x as number) <= max
+      )
+        a[k] = x;
+      else
+        return {
+          ok: false,
+          error: `alerts.${k} must be a whole number from ${min} to ${max}`,
+        };
     } else return { ok: false, error: `alerts has no ${k}` };
   }
   if (Object.keys(a).length) u.alerts = a;
