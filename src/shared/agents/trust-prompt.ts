@@ -12,6 +12,16 @@ export interface TrustPrompt {
   accept: string;
 }
 
+/**
+ * Issue 369: a prompt Den looks for at the end of the screen: its words,
+ * and how many letters and digits may follow its match (its other
+ * choices and key hint) before it counts as gone (default AFTER_MAX).
+ */
+export interface ScreenPrompt {
+  match: RegExp;
+  afterMax?: number;
+}
+
 /** How much of the output's end is looked at (the prompt is the last screen). */
 const TAIL = 2000;
 
@@ -56,6 +66,17 @@ export function trustPromptIn(
   output: string,
   tp: TrustPrompt | undefined,
 ): boolean {
+  return promptOnScreen(output, tp);
+}
+
+/**
+ * Whether the screen ends with prompt `p` (see trustPromptIn): the
+ * trust question, or (issue 369) a permission dialog.
+ */
+export function promptOnScreen(
+  output: string,
+  tp: ScreenPrompt | undefined,
+): boolean {
   if (!tp || !output) return false;
   let raw = output.slice(-TAIL * 4);
   let last = -1;
@@ -71,5 +92,7 @@ export function trustPromptIn(
   }
   if (!m) return false;
   const after = plain.slice(m.index + m[0].length);
-  return after.replace(/[^\p{L}\p{N}]/gu, "").length <= AFTER_MAX;
+  return (
+    after.replace(/[^\p{L}\p{N}]/gu, "").length <= (tp.afterMax ?? AFTER_MAX)
+  );
 }
