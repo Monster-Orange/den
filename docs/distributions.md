@@ -3313,10 +3313,27 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   has one item, "Den's update to X waits: the server agent is waiting on
   your Allow", linked to that agent. After
   `server_agent.update_wait_checks` passes in a row (default 2) it counts
-  as needing you. The update never goes past a pending Allow. After a
-  self-update, the new pin must be committed in the distribution's
-  folder (the server agent is asked to). Two passes in a row with it
-  uncommitted: a log line and one bell item, which says when the server
+  as needing you. The update never goes past a pending Allow.
+- **Den commits and pushes the new pin itself** (#176). Once an update
+  is verified (the watch saw the new version answer, `state: good`) and
+  this Den runs it, the lead install's update check commits the pin and
+  pushes it. It does not wait on the server agent: resumed, busy, idle or
+  not running, the pin goes in. It runs right after the restart, and at
+  every update check until it is pushed. Only `package.json` and
+  `package-lock.json` are staged, by path, and the commit takes only
+  them; anything else dirty or staged stays as it was. The commit is
+  signed with `agents.git.signing_key` when that is set (SSH,
+  `ssh-keygen`); with no key it is unsigned. It never uses the person's
+  GPG key and never prompts. It pushes to the checkout branch's upstream
+  (`branch.<name>.remote` and `.merge`; `origin` and the same branch when
+  unset). A push that fails (offline, rejected) keeps the commit. The next
+  update check pushes it again, and the bell says it once. A pushed pin
+  is one bell item, "Den updated to X: its pin is committed (sha) and
+  pushed". A follower install never commits a pin. `server_agent.pin_commit`
+  (org config): `push` (the default) or `off`, which leaves the pin to the
+  server agent as before. With `update_check_minutes: 0` there are no
+  checks, so Den commits no pin either. A pin still uncommitted two passes
+  in a row: a log line and one bell item, which says when the server
   agent is waiting on your Allow. A version that rolled back here is not tried
   again; a newer one is. A failed update and a rollback each put a notice
   in the bell. A Den run from a checkout is skipped. Settings › Server ›

@@ -18,13 +18,19 @@
  *     waits on them; after server_agent.update_wait_checks passes in a
  *     row it needs them. It never goes past a pending Allow.
  *   - #251: after a self-update, the new pin must be committed in the
- *     distribution's folder (the server agent is asked to). Two passes in
- *     a row with it uncommitted: the log, and one bell item.
+ *     distribution's folder. Two passes in a row with it uncommitted: the
+ *     log, and one bell item.
+ *   - #176: Den commits and pushes that pin itself (pin-commit.ts), on the
+ *     lead install only, once the new version is verified (the watch wrote
+ *     "good" and this Den runs it). The server agent's state doesn't
+ *     matter: resumed, busy, idle or not running. A push that fails is
+ *     tried again at every pass; the bell says it once.
  *
  * Every input is a function (tests fake each); the server wires them.
  */
 import semver from "semver";
 import type { UpdateState } from "./den-update.js";
+import type { PinStep } from "./pin-commit.js";
 import type { UpdateTick } from "../../shared/update-check-state.js";
 import { UPDATE_WAIT_CHECKS_DEFAULT } from "../../shared/den-config.js";
 
@@ -126,6 +132,14 @@ export interface UpdateCheckDeps {
   /** #251: the one bell item while the pin of `version` isn't committed. */
   pinNote?(version: string, why: UpdateWait | null): void;
   pinDone?(): void;
+  /**
+   * #176: commit and push the pin of `version` (pin-commit.ts commitPin),
+   * or push a commit an earlier pass couldn't. Absent: the pin is left to
+   * the server agent (server_agent.pin_commit: off).
+   */
+  pinCommit?(version: string): Promise<PinStep>;
+  /** #176: the bell: the pin pushed, or (once) why it isn't. */
+  pinNotice?(step: PinStep): void;
   /** Run the update now (auto). */
   update(
     version: string,
@@ -202,10 +216,54 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
     );
     d.pinNote?.(have, why);
   };
+  /**
+   * #176: the lead install's verified version: Den commits and pushes its
+   * pin. Each pass, until it is pushed (pin.json says when it is done).
+   */
+  let pinSkipped: string | null = null;
+  const commitPin = async (have: string) => {
+    if (!d.pinCommit || d.role() !== "lead" || d.pinned() !== have) return;
+    const last = d.last();
+    if (!last || last.state !== "good" || last.to !== have) return;
+    const r = await d.pinCommit(have).catch(
+      (e: unknown): PinStep => ({
+        did: "skipped",
+        version: have,
+        why: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    switch (r.did) {
+      case "pushed":
+        d.log?.(
+          `update check: the pin of ${have} is committed and pushed (${r.sha.slice(0, 12)})`,
+        );
+        d.pinNotice?.(r);
+        return;
+      case "push_failed":
+      case "commit_failed":
+        if (r.first) {
+          d.log?.(
+            `update check: the pin of ${have}: ${r.did.replace("_", " ")}: ${r.why}`,
+          );
+          d.pinNotice?.(r);
+        }
+        return;
+      case "skipped":
+        if (pinSkipped === `${have} ${r.why}`) return;
+        pinSkipped = `${have} ${r.why}`;
+        d.log?.(
+          `update check: the pin of ${have} isn't Den's to commit: ${r.why}`,
+        );
+        return;
+      default:
+        return;
+    }
+  };
   return {
     async tick() {
       const have = d.running();
       if (!have) return { did: "current" };
+      await commitPin(have);
       await checkPin(have);
       const no = d.cantUpdate();
       if (no) return { did: "skipped", why: no };

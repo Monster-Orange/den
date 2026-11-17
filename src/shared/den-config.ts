@@ -1250,6 +1250,12 @@ export interface ServerAgentConfig {
    * item counts as needing them (default 2).
    */
   update_wait_checks?: number;
+  /**
+   * #176: after a verified self-update, the lead install commits the new
+   * pin (package.json, package-lock.json) and pushes it to the branch's
+   * upstream: push (default), or off (left to the server agent).
+   */
+  pin_commit?: "push" | "off";
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1283,6 +1289,8 @@ export interface ResolvedServerAgentConfig {
   role: "lead" | "follower";
   /** #251: server_agent.update_wait_checks. */
   updateWaitChecks: number;
+  /** #176: server_agent.pin_commit: push (default) or off. */
+  pinCommit: "push" | "off";
 }
 
 /** #251: server_agent.update_wait_checks when unset. */
@@ -1352,6 +1360,11 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.update_wait_checks: a whole number, 1 or more (got ${JSON.stringify(wc)})`,
     );
+  const pcm = sa.pin_commit;
+  if (pcm !== undefined && pcm !== "push" && pcm !== "off")
+    throw new Error(
+      `server_agent.pin_commit: push or off, not ${JSON.stringify(pcm)}`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1372,6 +1385,7 @@ export function readServerAgentConfig(
     updateCheckMs: Math.round((uc ?? UPDATE_CHECK_MINUTES_DEFAULT) * 60_000),
     role: role ?? "lead",
     updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
+    pinCommit: pcm ?? "push",
   };
 }
 

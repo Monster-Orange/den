@@ -114,7 +114,7 @@ export function backMessage(
       ? `Den is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` +
           "Den's own update didn't take: commit no pin change. The person has it in the bell."
       : `Den is back on ${version} (pid ${pid}) (it was ${m.fromVersion}). ` +
-          `Den updated itself: ${m.reason}. Commit the new pin in your folder (per server_agent.git), then check with doctor.`;
+          `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. Then check with doctor.`;
   if (m.rolledBack)
     return (
       `Server is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` + // words-ok: SRV-1 spec's own line, typed to the agent

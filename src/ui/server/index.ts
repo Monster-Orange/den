@@ -169,6 +169,7 @@ import {
   migrateSelfUpdate,
   readAgentsConfig,
   TOKEN_PEER_WAIT_MS_DEFAULT,
+  UPDATE_WAIT_SECONDS_DEFAULT,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
@@ -7527,6 +7528,74 @@ function startUpdateCheck(): void {
             /* best effort */
           }
         },
+        // #176: Den commits and pushes the lead install's pin itself.
+        pinCommit: async (version) => {
+          const pc = await import("./pin-commit.js");
+          if (readServerAgentConfig().pinCommit === "off")
+            return {
+              did: "skipped" as const,
+              version,
+              why: "server_agent.pin_commit: off",
+            };
+          let signingKey: string | undefined;
+          try {
+            signingKey = readAgentsConfig().git?.signingKey;
+          } catch {
+            signingKey = undefined;
+          }
+          return pc.commitPin(version, {
+            root: getDistRoot(),
+            stateDir: getStateDir(),
+            git: pc.pinGit(getDistRoot(), { signingKey }),
+          });
+        },
+        pinNotice: (step) => {
+          try {
+            const store = notificationDeps().store;
+            const subject = "record:den-pin";
+            store.withdraw(subject, "service");
+            const t = product().title;
+            const v = step.version;
+            if (step.did === "pushed") {
+              const sha = step.sha.slice(0, 12);
+              store.add({
+                kind: "service",
+                subject,
+                scope: "workspace/den-server",
+                text: `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
+                msg: { key: "bell.m.pinPushed", vars: { v, sha } },
+                link: "/server-agent",
+              });
+            } else if (step.did === "push_failed") {
+              const sha = step.sha.slice(0, 12);
+              store.add({
+                kind: "service",
+                subject,
+                scope: "workspace/den-server",
+                text: `${t} ${v}: its pin is committed (${sha}) but the push failed: ${step.why}. ${t} tries again at the next update check`,
+                msg: {
+                  key: "bell.m.pinPushFailed",
+                  vars: { v, sha, why: step.why },
+                },
+                link: "/server-agent",
+              });
+            } else if (step.did === "commit_failed") {
+              store.add({
+                kind: "service",
+                subject,
+                scope: "workspace/den-server",
+                text: `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
+                msg: {
+                  key: "bell.m.pinCommitFailed",
+                  vars: { v, why: step.why },
+                },
+                link: "/server-agent",
+              });
+            }
+          } catch {
+            /* best effort */
+          }
+        },
         update: async (version, reason) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
@@ -7608,6 +7677,29 @@ function startUpdateCheck(): void {
   };
   let check: import("./update-check.js").UpdateCheck | undefined;
   setInterval(() => void tick(), every).unref();
+  // #176: just after an update to this version, one pass as soon as the
+  // watch says it is verified ("good"), so the pin is committed and pushed
+  // then, not a whole interval later. Bounded by the watch's own wait.
+  void import("./den-update.js").then((u) => {
+    const have = engineVersion();
+    const first = u.readUpdateState(getStateDir());
+    if (!have || !first || first.to !== have) return;
+    if (first.state !== "watching" && first.state !== "good") return;
+    let waitMs = UPDATE_WAIT_SECONDS_DEFAULT * 1000;
+    try {
+      waitMs = readServerAgentConfig().updateWaitMs;
+    } catch {
+      /* the default */
+    }
+    const until = Date.now() + waitMs + 60_000;
+    const poll = () => {
+      const s = u.readUpdateState(getStateDir());
+      if (s?.to === have && s.state === "good") return void tick();
+      if (s?.to === have && s.state === "watching" && Date.now() < until)
+        setTimeout(poll, 5_000).unref();
+    };
+    poll();
+  });
 }
 
 /** The start banner: the install's address (D80), never localhost. */

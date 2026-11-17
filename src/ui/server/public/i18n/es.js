@@ -1614,6 +1614,12 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "bell.m.pinNotCommitted":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada en la carpeta de la distribución",
+    "bell.m.pinPushed":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está confirmada ({sha}) y enviada",
+    "bell.m.pinPushFailed":
+      "__DEN_TITLE__ {v}: su versión fijada está confirmada ({sha}), pero el envío falló: {why}. __DEN_TITLE__ lo intenta de nuevo en la próxima comprobación de actualizaciones",
+    "bell.m.pinCommitFailed":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
     "bell.m.rolledBack":
