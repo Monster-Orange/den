@@ -230,7 +230,7 @@ export function hydrateShell(root, opts = {}) {
     }
   }
   // The drawer's slide is armed on the person's first open or close only
-  // (shell.css: body.den-rail-moved), so a load never slides it (#311).
+  // (shell.css: body.den-rail-moved), so a load never slides it (issue 311).
   function armSlide() {
     document.body.classList.add("den-rail-moved");
   }
