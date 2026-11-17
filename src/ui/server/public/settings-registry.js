@@ -458,6 +458,33 @@ function alertRows() {
       read: (ctx) => ctx.data.alerts?.[k] ?? "",
       write: (v, ctx) => ctx.post({ alerts: { [k]: v || null } }),
     })),
+    {
+      // Issue 367: the push limits (user.yml alerts.push_*).
+      id: "notifications.push_timeout",
+      category: "notifications",
+      label: "Push wait",
+      description:
+        "How long __DEN_TITLE__ waits for a push service to take one alert for a device. After this, that alert is left; the next one tries again. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+      keywords: ["notifications", "alerts", "push", "timeout", "wait"],
+      scope: "user",
+      keys: ["alerts.push_timeout_seconds"],
+      control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.push_timeout_seconds ?? 30,
+      write: (v, ctx) => ctx.post({ alerts: { push_timeout_seconds: v } }),
+    },
+    {
+      id: "notifications.push_ttl",
+      category: "notifications",
+      label: "Push kept for",
+      description:
+        "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+      keywords: ["notifications", "alerts", "push", "ttl", "offline", "keep"],
+      scope: "user",
+      keys: ["alerts.push_ttl_seconds"],
+      control: { type: "number", min: 0, max: 2419200, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.push_ttl_seconds ?? 86400,
+      write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
+    },
   ];
 }
 

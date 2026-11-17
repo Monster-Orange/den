@@ -1062,6 +1062,12 @@
       "Alerts outside the bell start again at this time.",
     "set.notifications.quiet.off": "Off",
     "set.notifications.quiet.half": "Quiet hours need a start and an end.",
+    "set.notifications.push_timeout": "Push wait",
+    "set.notifications.push_timeout.d":
+      "How long __DEN_TITLE__ waits for a push service to take one alert for a device. After this, that alert is left; the next one tries again. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push kept for",
+    "set.notifications.push_ttl.d":
+      "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
     "set.notifications.desktop": "Desktop alerts",
     "set.notifications.desktop.d":
       "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",

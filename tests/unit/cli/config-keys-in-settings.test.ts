@@ -91,6 +91,19 @@ describe("MODE-5: `config` sets the limits Settings names, with the page's check
       expect(user().panes).toEqual({ reconnect_max_failures: 20 });
       expect(cli("rm panes.reconnect_max_failures").status).toBe(0);
       expect(user().panes).toBeUndefined();
+      // Issue 367: the push limits are stored, checked as the page checks them.
+      expect(cli("alerts.push_timeout_seconds=45").status).toBe(0);
+      expect(cli("alerts.push_ttl_seconds=600").status).toBe(0);
+      expect(user().alerts).toEqual({
+        push_timeout_seconds: 45,
+        push_ttl_seconds: 600,
+      });
+      const slow = cli("alerts.push_timeout_seconds=0");
+      expect(slow.status).not.toBe(0);
+      expect(slow.stderr + slow.stdout).toMatch(/whole number from 1 to 3600/);
+      expect(cli("rm alerts.push_timeout_seconds").status).toBe(0);
+      expect(cli("rm alerts.push_ttl_seconds").status).toBe(0);
+      expect(user().alerts).toBeUndefined();
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
