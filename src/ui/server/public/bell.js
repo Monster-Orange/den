@@ -71,13 +71,32 @@ const groupName = (g) =>
   "";
 
 /**
+ * Issue 327: a `since` value (an ISO time) reads in the viewer's own time
+ * zone and language; anything else as given.
+ */
+function localVars(vars) {
+  const since = vars?.since;
+  if (typeof since !== "string" || Number.isNaN(Date.parse(since))) return vars;
+  const lang =
+    (typeof document !== "undefined" && document.documentElement?.lang) ||
+    undefined;
+  const when = new Date(since).toLocaleString(lang, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return { ...vars, since: when };
+}
+
+/**
  * What a row says: Den's own items in the page's language (their key and
  * values), else the stored text (Hub's, or an item from before keys).
  */
 export function noteText(n) {
   const m = n?.msg;
   if (m && typeof m.key === "string" && /^bell\.m\./.test(m.key)) {
-    const said = tr(m.key, m.vars ?? {});
+    const said = tr(m.key, localVars(m.vars ?? {}));
     if (said && said !== m.key) return said;
   }
   return n?.text ?? "";

@@ -17,6 +17,11 @@
  *     prompt, a question, a held Allow), one bell item says the update
  *     waits on them; after server_agent.update_wait_checks passes in a
  *     row it needs them. It never goes past a pending Allow.
+ *   - Issue 327: that wait names what the server agent waits on (the
+ *     tool its dialog asks for, or the notice) and since when, in the
+ *     state, the log and the bell. Its bell item goes, read or not, once
+ *     the update goes on, and at the first pass after a restart (the
+ *     process that posted it is gone).
  *   - #251: after a self-update, the new pin must be committed in the
  *     distribution's folder. Two passes in a row with it uncommitted: the
  *     log, and one bell item.
@@ -33,6 +38,7 @@
 import semver from "semver";
 import type { UpdateState } from "./den-update.js";
 import type { PinStep } from "./pin-commit.js";
+import type { NotificationStore } from "../../shared/notifications.js";
 import type { UpdateTick } from "../../shared/update-check-state.js";
 import { UPDATE_WAIT_CHECKS_DEFAULT } from "../../shared/den-config.js";
 
@@ -71,6 +77,72 @@ const WAIT_TEXT: Record<UpdateWait, string> = {
   asked: "the Den agent asked its person a question",
   busy: "the Den agent is in the middle of a turn",
 };
+
+/** Issue 327: what the server agent waits on, and since when (ISO). */
+export interface WaitDetail {
+  what: string;
+  since: string;
+}
+
+/** Why it waits, in words, with what and since when when known. */
+export function waitText(why: UpdateWait, at?: WaitDetail | null): string {
+  const base = WAIT_TEXT[why];
+  if (!at || (why !== "permission" && why !== "asked")) return base;
+  return `${base}: ${at.what || "(no text)"} since ${at.since}`;
+}
+
+/** #251: the one bell item an update waiting on the person keeps. */
+export const UPDATE_WAIT_SUBJECT = "record:den-update-wait";
+
+/**
+ * #251 / issue 327: post and clear that item. `note` replaces any earlier
+ * one (one item); `done` takes it out read or not (withdraw keeps a read
+ * one, so a note the person had opened outlived the update).
+ */
+export function updateWaitNotes(
+  store: Pick<NotificationStore, "add" | "remove">,
+  title: string,
+): {
+  note(
+    version: string,
+    why: UpdateWait,
+    needsYou: boolean,
+    at?: WaitDetail | null,
+  ): void;
+  done(): void;
+} {
+  const done = () =>
+    void store.remove((n) => n.subject === UPDATE_WAIT_SUBJECT);
+  return {
+    note(version, why, needsYou, at) {
+      done();
+      const asked = why === "asked";
+      const head = `${title}'s update to ${version} waits: the ${title} agent`;
+      const base = asked
+        ? `${head} asked you a question`
+        : `${head} is waiting on your Allow`;
+      store.add({
+        kind: needsYou ? "waiting" : "service",
+        subject: UPDATE_WAIT_SUBJECT,
+        scope: "workspace/den-server",
+        text: at ? `${base}: ${at.what} (since ${at.since})` : base,
+        msg: at
+          ? {
+              key: asked
+                ? "bell.m.updateWaitsAskedWhat"
+                : "bell.m.updateWaitsWhat",
+              vars: { v: version, what: at.what, since: at.since },
+            }
+          : {
+              key: asked ? "bell.m.updateWaitsAsked" : "bell.m.updateWaits",
+              vars: { v: version },
+            },
+        link: "/server-agent",
+      });
+    },
+    done,
+  };
+}
 
 /** #142: a bell item asking the person to Allow a Den update. */
 export function isUpdateAsk(n: {
@@ -116,15 +188,23 @@ export interface UpdateCheckDeps {
   idle(): Promise<boolean>;
   /** #251: why an update would wait now, or null (idle). Over idle(). */
   waitWhy?(): Promise<UpdateWait | null>;
+  /** Issue 327: what the server agent waits on, since when, or null. */
+  waitWhat?(): WaitDetail | null;
   /** #251: server_agent.update_wait_checks (default 2). */
   waitChecks?(): number;
   /** #251: a line for the server log and the audit trail. */
   log?(line: string): void;
   /**
    * #251: the one bell item while the update waits on the person; with
-   * `needsYou`, it counts as needing them. done(): it goes.
+   * `needsYou`, it counts as needing them; `at`: what it waits on
+   * (issue 327). done(): it goes, read or not.
    */
-  waitNote?(version: string, why: UpdateWait, needsYou: boolean): void;
+  waitNote?(
+    version: string,
+    why: UpdateWait,
+    needsYou: boolean,
+    at?: WaitDetail | null,
+  ): void;
   waitDone?(): void;
   /**
    * #251: whether the distribution's pin (its package.json) is committed
@@ -177,7 +257,9 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   /** #251: the last wait's reason and how many passes waited on the person. */
   let lastWhy: string | null = null;
   let personPasses = 0;
-  let noted = false;
+  // Issue 327: a bell item from before a restart may be there: the first
+  // pass that doesn't wait clears it.
+  let noted = true;
   const waitWhy = async (): Promise<UpdateWait | null> =>
     d.waitWhy
       ? d.waitWhy().catch(() => "busy" as const)
@@ -332,9 +414,19 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
       }
       const wait = await waitWhy();
       if (wait) {
-        if (wait !== lastWhy) {
-          lastWhy = wait;
-          d.log?.(`update check: Den ${want} waits: ${WAIT_TEXT[wait]}`);
+        const at = waitsOnPerson(wait)
+          ? (() => {
+              try {
+                return d.waitWhat?.() ?? null;
+              } catch {
+                return null;
+              }
+            })()
+          : null;
+        const said = waitText(wait, at);
+        if (said !== lastWhy) {
+          lastWhy = said;
+          d.log?.(`update check: Den ${want} waits: ${said}`);
         }
         if (waitsOnPerson(wait)) {
           personPasses += 1;
@@ -343,6 +435,7 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
             want,
             wait,
             personPasses >= (d.waitChecks?.() ?? UPDATE_WAIT_CHECKS_DEFAULT),
+            at,
           );
         } else {
           personPasses = 0;
@@ -354,7 +447,7 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         return {
           did: "waiting",
           version: want,
-          why: WAIT_TEXT[wait],
+          why: said,
           wait,
         };
       }

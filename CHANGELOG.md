@@ -8,6 +8,15 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A server agent's "waiting · permission" now says what it waits on and
+  since when: the tool its dialog asks for, or the notice, trimmed. The
+  bell row says it, and so do the update check's state, its log line and
+  its "update waits" bell item. A wait no longer outlives its dialog: a
+  new Claude session (a restart, a resume) and Claude Code's idle notice
+  clear it. The "update waits" item now goes once the update goes on,
+  even if the person had read it or it was posted before a restart
+  (#327).
+
 - The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
 
 - A link to a Settings row (the bell's /settings#agents.keep_running, or
