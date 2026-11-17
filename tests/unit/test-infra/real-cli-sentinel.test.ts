@@ -154,7 +154,7 @@ describe("a spawn whose env sets its own PATH keeps the sentinel (nothing runs)"
   it("promisified execFile too", async () => {
     const { stdout } = await promisify(execFile)(
       "/bin/sh",
-      ["-c", "command -v security"],
+      ["-c", "command -v security || true"],
       { env: { PATH: "/usr/bin:/bin" } },
     );
     const f = stdout.trim();
