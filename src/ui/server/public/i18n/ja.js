@@ -893,6 +893,38 @@
     "addr.saved": "保存しました: {url} が応答しました。",
     "addr.notSaved": "保存していません。前のアドレスのままです。",
     "addr.empty": "先にアドレスを入力してください。",
+    "set.workspace.approvals_policy":
+      "このプロジェクトでのエージェントの書き込み",
+    "set.workspace.approvals_policy.d":
+      "このプロジェクトのエージェントがあなたの許可なしにできること。「エージェントの書き込み」より優先されます。エージェントの権限を広げる書き込み、シークレットに触れる書き込み、データを削除する書き込み、お金を使う書き込みは常に確認します。",
+    "set.workspace.approvals_policy.o.install": "全体と同じ",
+    "set.workspace.approvals_policy.o.auto": "実行、通知なし",
+    "set.workspace.approvals_policy.o.notify": "実行して知らせる",
+    "set.workspace.approvals_policy.o.ask": "確認する",
+    "set.workspace.approvals_watch": "このプロジェクトのウォッチ",
+    "set.workspace.approvals_watch.d":
+      "これらへのエージェントの書き込みは、種類にかかわらず先に確認します。カンマ区切り: project:<name>、repo:<name>、service:<repo>/<name>、persona:<id>、agent:<id>、または名前だけ。",
+    "set.workspace.approvals_critical": "このプロジェクトの重要な書き込み",
+    "set.workspace.approvals_critical.d":
+      "このプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "set.agents.approvals_policy": "エージェントの書き込み",
+    "set.agents.approvals_policy.d":
+      "エージェントがあなたの許可なしにできること。実行して知らせる: 実行し、お知らせに表示します。エージェントの権限を広げる書き込み、シークレットに触れる書き込み、データを削除する書き込み、お金を使う書き込みは常に確認します。ウォッチ中やピン留めしたものへの書き込みも同じです。",
+    "set.agents.approvals_policy.o.auto": "実行、通知なし",
+    "set.agents.approvals_policy.o.notify": "実行して知らせる",
+    "set.agents.approvals_policy.o.ask": "確認する",
+    "set.agents.approvals_watch": "ウォッチ",
+    "set.agents.approvals_watch.d":
+      "これらへのエージェントの書き込みは、種類にかかわらず先に確認します。ピン留めしたリポジトリやサービスへの書き込みも同じです。カンマ区切り: project:<name>、repo:<name>、service:<repo>/<name>、persona:<id>、agent:<id>、または名前だけ。",
+    "set.agents.approvals_critical": "重要な書き込み",
+    "set.agents.approvals_critical.d":
+      "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "ap.do.agent_import":
+      "会話 {session} をプロジェクト「{project}」の {persona} エージェントとして取り込む",
+    "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
+    "ap.do.approval_policy.project":
+      "プロジェクト {where} の承認ポリシーを {to} に変更",
+    "ap.do.pr_close": "{repo} のプルリクエスト {pr} を閉じる: {comment}",
     "set.agents.default_mode": "エージェントのモード: Den 全体の既定",
     "set.agents.default_mode.d":
       "__DEN_TITLE__ エージェントを含むすべてのエージェントが動くモードです。プロジェクトが上書きした場合を除きます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。変更は、動いているエージェントにもターンの終わりに自動で反映されます。",

@@ -50,6 +50,9 @@
  *                 palette command (kind "setting", id "setting:<id>"):
  *                 Enter opens /settings?q=<label>#<category>.
  *   settings(), settingsCategories()  the registry, categories by order
+ *   pages()                          every page the rail leads to: NAV,
+ *                                    hidden and conditional ones too, then
+ *                                    Settings ({ id, href } each)
  *   setNavPrefs({ hidden?, order? }), setPins(ids), setCollapsed(bool)
  *                 Navigation (R21): the rail pages hidden, their order,
  *                 the pins; saved to /api/settings `shell`
@@ -1805,6 +1808,38 @@
     "addr.saved": "Saved: {url} answered.",
     "addr.notSaved": "Not saved. The old address stays.",
     "addr.empty": "Type an address first.",
+    "set.workspace.approvals_policy": "Agents' writes here",
+    "set.workspace.approvals_policy.d":
+      "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
+    "set.workspace.approvals_policy.o.install": "As everywhere",
+    "set.workspace.approvals_policy.o.auto": "Run, no note",
+    "set.workspace.approvals_policy.o.notify": "Run and tell me",
+    "set.workspace.approvals_policy.o.ask": "Ask me",
+    "set.workspace.approvals_watch": "Watched here",
+    "set.workspace.approvals_watch.d":
+      "An agent's write on any of these asks you first, whatever its kind. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    "set.workspace.approvals_critical": "Critical here",
+    "set.workspace.approvals_critical.d":
+      "Kinds of agent write that always ask you in this project. Comma-separated, for example repo_clone, service_try.",
+    "set.agents.approvals_policy": "Agent writes",
+    "set.agents.approvals_policy.d":
+      "What an agent may do without your Allow. Run and tell me: it runs, and your updates say so. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks, as does one on something you watch or pinned.",
+    "set.agents.approvals_policy.o.auto": "Run, no note",
+    "set.agents.approvals_policy.o.notify": "Run and tell me",
+    "set.agents.approvals_policy.o.ask": "Ask me",
+    "set.agents.approvals_watch": "Watched",
+    "set.agents.approvals_watch.d":
+      "An agent's write on any of these asks you first, whatever its kind; so does one on a repo or service you pinned. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    "set.agents.approvals_critical": "Critical",
+    "set.agents.approvals_critical.d":
+      "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    "ap.do.agent_import":
+      'Bring in conversation {session} as a {persona} agent of project "{project}"',
+    "ap.do.approval_policy":
+      "Change the approval policy for every project to {to}",
+    "ap.do.approval_policy.project":
+      "Change project {where}'s approval policy to {to}",
+    "ap.do.pr_close": "Close pull request {pr} on {repo}: {comment}",
     "set.agents.default_mode": "Agents' mode: Den-wide default",
     "set.agents.default_mode.d":
       "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",
@@ -7633,6 +7668,15 @@
     },
     nav: function () {
       return NAV.slice();
+    },
+    /**
+     * Every page the rail can lead to (issue 297): the NAV registry, hidden
+     * and conditional pages included, then Settings. { id, href } each.
+     */
+    pages: function () {
+      return NAV.map(function (n) {
+        return { id: n.id, href: n.href };
+      }).concat([{ id: SETTINGS.id, href: SETTINGS.href }]);
     },
     /** NAV in the rail's order (groups, then your order), hidden included. */
     orderedNav: orderedNav,

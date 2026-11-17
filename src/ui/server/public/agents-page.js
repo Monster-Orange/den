@@ -1693,11 +1693,14 @@ function paintTabs(strip) {
         r?.kind === "agent" ? ` title="${esc(t("ag.renameTip"))}"` : "";
       return (
         `<span class="agtab-w" data-id="${esc(id)}">` +
-        `<button type="button" role="tab" class="agtab" data-id="${esc(id)}" aria-selected="${on}" tabindex="${on ? 0 : -1}"${rename}>` +
+        `<button type="button" role="tab" class="agtab" data-id="${esc(id)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-keyshortcuts="Delete"${rename}>` +
         `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
         `<span class="den-sr"${r?.waiting ? "" : " hidden"}>${esc(r?.waiting ? waitingText(r) : t("ag.waiting"))}: </span>` +
         `<span class="tn">${esc(w.name)}</span><span class="tm mono">${esc(w.meta)}</span></button>` +
-        `<button type="button" class="agtab-x" data-act="close" data-id="${esc(id)}" aria-label="${esc(t("ag.detachName", { id: w.name }))}" title="${esc(t("ag.detach"))}">×</button>` +
+        // Issue 297: a tablist owns only tabs, so × is the pointer's
+        // (out of the tab order and the accessibility tree); the keyboard
+        // closes a tab with Delete on it.
+        `<button type="button" class="agtab-x" data-act="close" data-id="${esc(id)}" tabindex="-1" aria-hidden="true" aria-label="${esc(t("ag.detachName", { id: w.name }))}" title="${esc(t("ag.detach"))}">×</button>` +
         `</span>`
       );
     })
@@ -5418,6 +5421,18 @@ export async function mountAgentsPage(root) {
   root.querySelector("#agr").addEventListener("dblclick", (e) => {
     const tab = e.target.closest('[role="tab"]');
     if (tab) renameTab(tab);
+  });
+  // Issue 297: Delete on a tab closes it, as × does; the tab in front
+  // then has the keyboard.
+  root.querySelector("#agr").addEventListener("keydown", (e) => {
+    if (e.key !== "Delete") return;
+    const tab = e.target.closest?.('.agtabs [role="tab"]');
+    if (!tab) return;
+    e.preventDefault();
+    closePane(tab.dataset.id);
+    root
+      .querySelector('#agr .agtabs [role="tab"][aria-selected="true"]')
+      ?.focus();
   });
   // AG-DROP: a file dropped beside a pane never replaces the page.
   guardPageDrops(document, () => window.denShell?.toast?.(t("ag.up.miss")));
