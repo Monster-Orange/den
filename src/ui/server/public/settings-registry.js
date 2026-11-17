@@ -1313,24 +1313,171 @@ export function keepTokenLine(s, t) {
   if (s.old)
     return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
   if (s.set_at) {
-    let date = String(s.set_at).slice(0, 10);
-    try {
-      const tz =
-        document.documentElement.getAttribute("data-den-tz") || undefined;
-      date = new Date(s.set_at).toLocaleDateString(
-        document.documentElement.lang || undefined,
-        { year: "numeric", month: "short", day: "numeric", timeZone: tz },
-      );
-    } catch {
-      /* the ISO date stays */
-    }
-    const set = t("keep.tokenSet", { date });
+    const set = t("keep.tokenSet", { date: localDay(s.set_at) });
     return {
       state: "set",
       text: s.process_local ? `${set} ${t("keep.processLocal")}` : set,
     };
   }
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
+}
+
+/** A set date in the reader's language and time zone (the ISO date if not). */
+function localDay(iso) {
+  let date = String(iso).slice(0, 10);
+  try {
+    const tz =
+      document.documentElement.getAttribute("data-den-tz") || undefined;
+    date = new Date(iso).toLocaleDateString(
+      document.documentElement.lang || undefined,
+      { year: "numeric", month: "short", day: "numeric", timeZone: tz },
+    );
+  } catch {
+    /* the ISO date stays */
+  }
+  return date;
+}
+
+/**
+ * Issue 339: what an account's row says (never a token): no token, or
+ * when it was set.
+ */
+export function accountLine(a, t) {
+  if (!a?.configured) return { state: "missing", text: t("acct.none") };
+  if (!a.set_at) return { state: "set", text: t("acct.setUnknown") };
+  return { state: "set", text: t("acct.set", { date: localDay(a.set_at) }) };
+}
+
+/**
+ * Issue 339: an account's name, or "<vendor> account A" in the reader's
+ * words (a vendor's own account, never a person: words.js, 2026-11-17).
+ */
+export function accountName(a, t, vendor) {
+  return (
+    a.name ||
+    t("acct.default", { vendor: vendor || "", letter: a.letter || a.id })
+  );
+}
+
+/**
+ * Issue 339: a vendor shows its rows once it has more than one account
+ * (or isn't Claude Code, whose account one is today's single field).
+ */
+function accountRows(v) {
+  return v.runtime !== "den-claude" || v.accounts.length > 1;
+}
+
+function renderAccountList(list, t) {
+  return (list || [])
+    .map((v) => {
+      const rows = accountRows(v)
+        ? v.accounts
+            .map((a, i) => {
+              const name = accountName(a, t, v.account || v.name);
+              const l = accountLine(a, t);
+              const last = i === v.accounts.length - 1;
+              return (
+                `<div class="set-note" data-acct="${escR(a.id)}" data-acct-state="${l.state}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">` +
+                `<strong>${escR(name)}</strong> <span data-acct-status>${escR(l.text)}${a.first ? ` ${escR(t("acct.first"))}` : ""}</span>` +
+                `<input type="password" autocomplete="off" spellcheck="false" data-acct-token aria-label="${escR(t("acct.tokenLabel", { name }))}">` +
+                `<button type="button" class="btn sm" data-acct-save>${escR(t("acct.tokenSave"))}</button>` +
+                `<button type="button" class="btn sm" data-acct-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` +
+                `<button type="button" class="btn sm" data-acct-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` +
+                `</div>`
+              );
+            })
+            .join("")
+        : "";
+      return (
+        `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
+        `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.account || v.name }))}</strong></p>` +
+        rows +
+        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.account || v.name }))}</button></div>` +
+        `<p class="set-note" data-acct-note hidden></p>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+/**
+ * Issue 339: Settings' sign-in accounts, per vendor: Add account, Set
+ * sign-in token (the same hidden field as today, cleared before the
+ * answer comes, never filled from the server) and Move up / down. Each
+ * answer is the new list, drawn again.
+ */
+function wireAccounts(host, ctx, t) {
+  const box = host.querySelector("[data-acct-list]");
+  if (!box) return;
+  const legacyRow = host.querySelector("[data-keep-token-row]");
+  const draw = (list) => {
+    ctx.data.agent_accounts = list;
+    box.innerHTML = renderAccountList(list, t);
+    // Claude Code with more than one account: each has its own field.
+    const claude = (list || []).find((v) => v.runtime === "den-claude");
+    // (Its inline display: flex would win over the hidden attribute.)
+    if (legacyRow)
+      legacyRow.style.display = claude && accountRows(claude) ? "none" : "flex";
+  };
+  draw(ctx.data.agent_accounts || []);
+  const post = (url, body, button) =>
+    ctx.shell.busyAction(
+      "save",
+      (headers) => ctx.shell.api("POST", url, body, { headers }),
+      { button },
+    );
+  box.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn || btn.disabled) return;
+    const vbox = btn.closest("[data-acct-runtime]");
+    if (!vbox) return;
+    const runtime = vbox.getAttribute("data-acct-runtime");
+    const note = vbox.querySelector("[data-acct-note]");
+    note.hidden = true;
+    const row = btn.closest("[data-acct]");
+    let url = "";
+    let body = null;
+    if (btn.hasAttribute("data-acct-add")) {
+      url = "/api/agents/accounts";
+      body = { runtime };
+    } else if (row && btn.hasAttribute("data-acct-save")) {
+      const input = row.querySelector("[data-acct-token]");
+      const token = input.value;
+      input.value = "";
+      if (!token.trim()) {
+        input.focus();
+        return;
+      }
+      url = "/api/agents/accounts/token";
+      body = { runtime, account: row.getAttribute("data-acct"), token };
+    } else if (
+      row &&
+      (btn.hasAttribute("data-acct-up") || btn.hasAttribute("data-acct-down"))
+    ) {
+      const ids = [...vbox.querySelectorAll("[data-acct]")].map((r) =>
+        r.getAttribute("data-acct"),
+      );
+      const i = ids.indexOf(row.getAttribute("data-acct"));
+      const j = btn.hasAttribute("data-acct-up") ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= ids.length) return;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      url = "/api/agents/accounts/order";
+      body = { runtime, order: ids };
+    } else return;
+    btn.disabled = true;
+    try {
+      const r = await post(url, body, btn);
+      if (r?.ok) return draw(r.accounts);
+      note.textContent = t("acct.failed", { error: r?.error || "" });
+      note.hidden = false;
+    } catch (e) {
+      note.textContent = t("acct.failed", {
+        error: String(e?.message || ""),
+      });
+      note.hidden = false;
+    }
+    btn.disabled = false;
+  });
 }
 
 /** Issue 299: the only terminal step for the agents' sign-in token. */
@@ -1461,8 +1608,10 @@ function renderKeepRunning(host, ctx) {
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
     `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
-    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
+    `<label class="set-note" data-keep-token-row style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
     `<p class="set-note" data-keep-token-note hidden></p>` +
+    // Issue 339: the sign-in accounts, per vendor.
+    `<div data-acct-list style="display:grid;gap:10px"></div>` +
     `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
@@ -1483,6 +1632,7 @@ function renderKeepRunning(host, ctx) {
     signin.hidden = !box.checked;
   });
   wireTokenField(host, ctx, token, t);
+  wireAccounts(host, ctx, t);
   btn.addEventListener("click", async () => {
     const on = box.checked;
     btn.disabled = true;
@@ -1637,6 +1787,48 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
+    // den#143: how long `web up` waits for the server (user.yml
+    // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
+    id: "server.ready_probe",
+    category: "server",
+    label: "Readiness check, in seconds",
+    description:
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    keywords: [
+      "ready",
+      "probe",
+      "timeout",
+      "busy",
+      "web up",
+      "web.ready_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.probeSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ web_ready: { probe_seconds: v } }),
+  },
+  {
+    id: "server.start_wait",
+    category: "server",
+    label: "Start wait, in seconds",
+    description:
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    keywords: [
+      "start",
+      "ready",
+      "timeout",
+      "busy",
+      "web up",
+      "web.start_wait_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.start_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.startSeconds ?? 120,
+    write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
@@ -2234,7 +2426,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Agents' extra MCP servers: this project",
     description:
-      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. An agent adds one with project_mcp_add, and you Allow it.",
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
     keywords: ["agents", "mcp", "mcp server", "tools", "bearer", "http"],
     scope: "workspace",
     control: { type: "custom", render: renderProjectMcp },
@@ -2682,8 +2874,12 @@ export const DEN_SETTINGS = [
         : L("set.ui.portUnset", "Not set: the distribution's applies"),
   },
   {
-    // SEC-1b: whether this browser is signed in, and Sign out. Signing in
-    // is the CLI's (`web login` prints a one-time link): no form here.
+    // SEC-1b: whether this browser is signed in, and Sign out. Issue 393:
+    // signed out, a Sign in button opens Den's own sign-in page (GitHub,
+    // or a code another device approves). `again=1` shows that page even
+    // on loopback, where nothing asks (D67's approvals banner does the
+    // same); after it, back here. `web login` stays in the description,
+    // a bare equivalent.
     id: "cli.signin",
     category: "cli",
     label: "Browser sign-in",
@@ -2698,7 +2894,18 @@ export const DEN_SETTINGS = [
           host.innerHTML = signedIn
             ? `<output class="set-ro">${escR(L("set.ui.signedIn", "Signed in"))}</output> ` +
               `<button type="button" class="btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
-            : `<output class="set-ro">${L("set.ui.notSignedIn", "Not signed in: run {cmd}", { cmd: "<code>__DEN_CLI__ web login</code>" })}</output>`;
+            : `<output class="set-ro">${escR(L("set.ui.notSignedIn", "Not signed in"))}</output> ` +
+              `<button type="button" class="btn primary" id="set-signin">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
+          host
+            .querySelector("#set-signin")
+            ?.addEventListener("click", () =>
+              location.assign(
+                "/signin?again=1&next=" +
+                  encodeURIComponent(
+                    location.pathname + location.search + location.hash,
+                  ),
+              ),
+            );
           host.querySelector("#set-signout")?.addEventListener("click", () =>
             ctx.shell
               .api("POST", "/api/session/logout", {})
@@ -2706,6 +2913,11 @@ export const DEN_SETTINGS = [
               .catch(() => {}),
           );
         };
+        // Until /api/session answers, an unseen button holds the row at its
+        // drawn height: a row that grows later moves the sections below it,
+        // and a link to the last one (#distribution) would end short of the
+        // foot, with the category above it marked current.
+        host.innerHTML = `<button type="button" class="btn" style="visibility:hidden" aria-hidden="true" tabindex="-1">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
         fetch("/api/session", { cache: "no-store" })
           .then((r) => (r.ok ? r.json() : null))
           .then((b) => draw(b?.signedIn === true))
@@ -3745,7 +3957,9 @@ function renderProjectMode(host, ctx) {
 
 /**
  * Issue 335: Settings › Project › Agents' extra MCP servers. `v` is GET
- * /api/workspaces/:ws/mcp-servers: { servers: [{ name, url }] }.
+ * /api/workspaces/:ws/mcp-servers: { servers: [{ name, url }] }. Issue
+ * 352: each row has Change (its url, or its bearer's secrets.refs name)
+ * and Remove; a bearer's name is never shown, and a value never asked.
  */
 export function projectMcpHtml(v, t) {
   const servers = Array.isArray(v?.servers) ? v.servers : [];
@@ -3754,12 +3968,24 @@ export function projectMcpHtml(v, t) {
   return (
     `<ul class="set-note" data-pmcp-list>` +
     servers
-      .map(
-        (sv) =>
-          `<li data-pmcp="${escR(sv.name)}">${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</li>`,
-      )
+      .map((sv) => {
+        const n = escR(sv.name);
+        return (
+          `<li data-pmcp="${n}"><span data-pmcp-text>${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</span> ` +
+          `<button type="button" class="btn sm" data-pmcp-edit="${n}" aria-label="${escR(t("pmcp.editL", { name: sv.name }))}">${escR(t("pmcp.edit"))}</button> ` +
+          `<button type="button" class="btn sm" data-pmcp-remove="${n}" aria-label="${escR(t("pmcp.removeL", { name: sv.name }))}">${escR(t("pmcp.remove"))}</button>` +
+          `<div data-pmcp-form="${n}" hidden><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">` +
+          `<label>${escR(t("pmcp.url"))} <input type="url" spellcheck="false" autocomplete="off" data-pmcp-url value="${escR(sv.url)}"></label>` +
+          `<label>${escR(t("pmcp.bearer"))} <input type="text" spellcheck="false" autocomplete="off" data-pmcp-bearer placeholder="${escR(t("pmcp.bearerKeep"))}"></label>` +
+          `<label><input type="checkbox" data-pmcp-nobearer> ${escR(t("pmcp.noBearer"))}</label>` +
+          `<button type="button" class="btn sm primary" data-pmcp-save>${escR(t("pmcp.save"))}</button>` +
+          `<button type="button" class="btn sm" data-pmcp-cancel>${escR(t("pmcp.cancel"))}</button>` +
+          `</div></div></li>`
+        );
+      })
       .join("") +
-    `</ul>`
+    `</ul>` +
+    `<div class="rt-err" role="alert" hidden></div>`
   );
 }
 
@@ -3770,10 +3996,87 @@ function renderProjectMcp(host, ctx) {
     return Promise.resolve();
   }
   const t = (k, v) => ctx.shell.t(k, v);
+  const base = `/api/workspaces/${encodeURIComponent(ws)}/mcp-servers`;
+  const fail = (e, fallback) => {
+    const err = host.querySelector(".rt-err");
+    if (!err) return;
+    err.hidden = false;
+    err.textContent = e?.message || fallback;
+  };
+  // Issue 352: a person's own click is the decision; the server checks
+  // it as the held writes are, and answers the list as it is now.
+  const send = (kind, method, name, body, button) =>
+    ctx.shell
+      .busyAction(
+        kind,
+        (headers) =>
+          ctx.shell.api(method, `${base}/${encodeURIComponent(name)}`, body, {
+            headers,
+          }),
+        {
+          button,
+          onFail: (e) =>
+            fail(e, t(kind === "save" ? "busy.saveF" : "pmcp.rmF")),
+        },
+      )
+      .then((r) => {
+        if (r !== undefined && r !== null) return renderProjectMcp(host, ctx);
+      });
   return ctx.shell
-    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/mcp-servers`)
+    .api("GET", base)
     .then((v) => {
       host.innerHTML = projectMcpHtml(v, t);
+      host.querySelectorAll("[data-pmcp-edit]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const name = b.getAttribute("data-pmcp-edit");
+          const form = host.querySelector(
+            `[data-pmcp-form="${CSS.escape(name)}"]`,
+          );
+          if (!form) return;
+          form.hidden = !form.hidden;
+          if (!form.hidden) form.querySelector("[data-pmcp-url]")?.focus();
+        }),
+      );
+      host.querySelectorAll("[data-pmcp-form]").forEach((form) => {
+        const name = form.getAttribute("data-pmcp-form");
+        const cur = (Array.isArray(v?.servers) ? v.servers : []).find(
+          (s) => s.name === name,
+        );
+        form
+          .querySelector("[data-pmcp-cancel]")
+          ?.addEventListener("click", () => {
+            form.hidden = true;
+          });
+        const save = form.querySelector("[data-pmcp-save]");
+        save?.addEventListener("click", () => {
+          const url = form.querySelector("[data-pmcp-url]").value.trim();
+          const bearer = form.querySelector("[data-pmcp-bearer]").value.trim();
+          const none = form.querySelector("[data-pmcp-nobearer]").checked;
+          const body = {
+            ...(url && url !== cur?.url ? { url } : {}),
+            ...(none ? { bearer: null } : bearer ? { bearer } : {}),
+          };
+          if (!Object.keys(body).length) {
+            form.hidden = true;
+            return;
+          }
+          return send("save", "POST", name, body, save);
+        });
+      });
+      host.querySelectorAll("[data-pmcp-remove]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const name = b.getAttribute("data-pmcp-remove");
+          const { askConfirm } = await import("/dialog-den.js");
+          const ok = await askConfirm({
+            title: t("pmcp.rmT"),
+            message: t("pmcp.rmAsk", { name, project: ws }),
+            okLabel: t("pmcp.remove"),
+            danger: true,
+          });
+          if (!ok) return;
+          return send("remove-mcp", "DELETE", name, undefined, b);
+        }),
+      );
     })
     .catch((e) => {
       host.innerHTML = `<p class="set-note" data-pmcp-error>${escR(e?.message || t("pmcp.failed"))}</p>`;

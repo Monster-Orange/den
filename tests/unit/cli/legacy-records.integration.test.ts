@@ -21,11 +21,12 @@ import {
   expect,
   it,
 } from "@jest/globals";
-import { execFileSync, spawn, spawnSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
+import { psOut } from "../../ps.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-legacy-cli-"));
@@ -206,9 +207,7 @@ async function until(
 
 /** The live, marked processes: pid and pgid. */
 function marked(): { pid: number; pgid: number }[] {
-  return execFileSync("ps", ["-A", "-o", "pid=,pgid=,stat=,command="], {
-    encoding: "utf-8",
-  })
+  return psOut(["-A", "-o", "pid=,pgid=,stat=,command="])
     .split("\n")
     .map((l) => l.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/))
     .filter((m): m is RegExpMatchArray => !!m && !m[3].startsWith("Z"))
@@ -218,9 +217,7 @@ function marked(): { pid: number; pgid: number }[] {
 
 /** This test process's own group: never signalled as a group. */
 const OWN_PGID = Number(
-  execFileSync("ps", ["-o", "pgid=", "-p", String(process.pid)], {
-    encoding: "utf-8",
-  }).trim(),
+  psOut(["-o", "pgid=", "-p", String(process.pid)]).trim(),
 );
 
 afterEach(async () => {

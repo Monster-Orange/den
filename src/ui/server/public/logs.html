@@ -1021,7 +1021,7 @@
                 histDone = true;
                 histBtn.style.display = "none";
                 prependNotice(
-                  `── ${t("lg.hist.unavailable", { reason: data.reason })} ──`,
+                  `── ${t("lg.hist.unavailable", { reason: data.t ? t(data.t.key, data.t.vars) : data.reason })} ──`,
                   "log-done",
                 );
                 return;
@@ -1301,7 +1301,12 @@
             let total = 0;
             for (const result of data.results) {
               if (result.error) {
-                line(`── ${result.system}: ${result.error} ──`, "log-done");
+                // issue 171: Den's words when it names a key; a tool's own
+                // error (grep's) as it said it.
+                const why = result.t
+                  ? t(result.t.key, result.t.vars)
+                  : result.error;
+                line(`── ${result.system}: ${why} ──`, "log-done");
                 continue;
               }
               if (result.matches.length === 0) continue;

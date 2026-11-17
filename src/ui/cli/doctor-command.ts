@@ -68,6 +68,7 @@ import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
+import { edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -179,6 +180,7 @@ const SELECTORS: Record<string, Selector> = {
     try {
       const cfg = readEdgeConfig();
       const d = tlsStrategyFor(cfg).detect(env);
+      const image = edgeImageCheck(cfg);
       return {
         kind: "tls",
         selected: cfg.tls.strategy,
@@ -186,8 +188,15 @@ const SELECTORS: Record<string, Selector> = {
         available: d.available,
         reason: d.reason,
         problem: !d.available,
-        warnings: [...edgeTlsWarnings(cfg), ...edgeAccessWarnings(cfg)],
-        notes: [edgeAccessHealthy(cfg)].filter((n): n is string => !!n),
+        warnings: [
+          ...edgeTlsWarnings(cfg),
+          ...edgeAccessWarnings(cfg),
+          ...(image.status === "warn" ? [image.detail] : []),
+        ],
+        notes: [
+          image.status === "ok" ? image.detail : null,
+          edgeAccessHealthy(cfg),
+        ].filter((n): n is string => !!n),
       };
     } catch (err) {
       return {
@@ -544,6 +553,26 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         env: { DEN_AGENT_SIGNIN: "token" },
         stateDir: getStateDir(),
         probe: true,
+      });
+    },
+    // Issue 340: each vendor's pick, read from the store as a start would.
+    signInPicks: async () => {
+      const [
+        { signInPicks },
+        { agentTokenRef, readAgentToken },
+        { runtimeIds },
+      ] = await Promise.all([
+        import("../../shared/agents/signin-accounts.js"),
+        import("../../shared/agents/signin-token.js"),
+        import("../../shared/agents/runtimes.js"),
+      ]);
+      return signInPicks({
+        stateDir: getStateDir(),
+        runtimeIds: runtimeIds(),
+        read: (name) =>
+          readAgentToken({
+            ref: () => agentTokenRef(undefined, undefined, name),
+          }),
       });
     },
     // Issue 338: agents on a runtime with no sign-in data (built-in,

@@ -101,27 +101,66 @@ async function page(width = 1280): Promise<{ p: Page; errors: string[] }> {
 const CONTEXT = "https://example.test/docs/page?a=1&b=two#part";
 const box = (p: Page) => p.locator(`.pane[data-id="${sid}"] .agc .agc-in`);
 
+/** Holds the page's requests to `url` until the returned call. */
+async function hold(p: Page, url: string): Promise<() => void> {
+  let go = () => {};
+  const held = new Promise<void>((r) => (go = r));
+  await p.route(url, async (r) => {
+    await held;
+    await r.continue();
+  });
+  return go;
+}
+
+/** What's new, open over the page (this version unseen): closed. */
+async function closeWhatsNew(p: Page): Promise<void> {
+  await p.locator("#cl-overlay.open").waitFor({ timeout: 20_000 });
+  await p.evaluate(() =>
+    (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
+  );
+  await p.locator("#cl-overlay.open").waitFor({ state: "detached" });
+}
+
+/** The composer has the keyboard (or this fails, naming what has it). */
+async function composerFocused(p: Page): Promise<void> {
+  const ok = await p
+    .waitForFunction(
+      () => document.activeElement?.classList.contains("agc-in"),
+      undefined,
+      { timeout: 5_000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  const at = ok
+    ? "the composer"
+    : await p.evaluate(() => {
+        const a = document.activeElement;
+        return `${a?.tagName}#${a?.id}.${a?.className}`;
+      });
+  expect(at).toBe("the composer");
+}
+
 describe("issue 103: a deep link to an agent", () => {
   it("opens the agent with the URL in its composer, and sends nothing until Send", async () => {
     if (!browser) return;
     const { p, errors } = await page();
     const from = pty.writes.length;
+    // What's new (this version unseen) opens over the page and takes the
+    // keyboard. den#143: on a busy machine it came after the composer as
+    // often as before it, so a test that read focus at once saw either.
+    // Here it comes last; the next test has it first.
+    const release = await hold(p, "**/api/server-info");
     const res = await p.goto(
       `${s.base}/p/north/agents/scout?context=${encodeURIComponent(CONTEXT)}`,
     );
     expect(res?.status()).toBe(200);
     await box(p).waitFor({ timeout: 20_000 });
     expect(await box(p).inputValue()).toBe(CONTEXT);
-    const focused = await p.evaluate(() =>
-      document.activeElement?.classList.contains("agc-in"),
-    );
-    // What's new, on a first visit, lies over the page: closed.
-    await p.evaluate(() =>
-      (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
-    );
+    release();
+    await closeWhatsNew(p);
     // The composer has the keyboard, and the address no longer carries
     // the context (a reload doesn't fill it again).
-    expect(focused).toBe(true);
+    await composerFocused(p);
     expect(new URL(p.url()).searchParams.get("context")).toBeNull();
     // Nothing reached the agent: not the URL, not an Enter.
     await new Promise((r) => setTimeout(r, 1500));
@@ -148,6 +187,25 @@ describe("issue 103: a deep link to an agent", () => {
       .locator(`.pane[data-id="${sid}"] .agc .agc-msg[data-tone="ok"]`)
       .waitFor();
     expect(await box(p).inputValue()).toBe("");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("What's new opening first: once it is closed, the composer has the keyboard", async () => {
+    if (!browser) return;
+    const { p, errors } = await page();
+    // The composer waits for the projects' names, held until What's new
+    // is open.
+    const release = await hold(p, "**/api/workspaces");
+    await p.goto(
+      `${s.base}/p/north/agents/scout?context=${encodeURIComponent(CONTEXT)}`,
+    );
+    await p.locator("#cl-overlay.open").waitFor({ timeout: 20_000 });
+    release();
+    await box(p).waitFor({ timeout: 20_000 });
+    expect(await box(p).inputValue()).toBe(CONTEXT);
+    await closeWhatsNew(p);
+    await composerFocused(p);
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);
