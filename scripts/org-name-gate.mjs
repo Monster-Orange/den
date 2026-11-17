@@ -7,12 +7,18 @@
  * secret can never pass silently.
  *
  *   DEN_ORG_NAMES_FILE=../notes/org-names.txt node scripts/org-name-gate.mjs
+ *   node scripts/org-name-gate.mjs --tree <commit>   that commit's files (pre-push)
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import { orgHitsWide, orgPatterns } from "./org-names.js";
 
+const [flag, tree] = process.argv.slice(2);
+if (flag === "--tree" && !tree) {
+  console.error("usage: org-name-gate.mjs [--tree <commit>]");
+  process.exit(2);
+}
 const patterns = orgPatterns();
 if (patterns.length === 0) {
   console.error(
@@ -25,7 +31,39 @@ if (patterns.length === 0) {
 // own npm name and repo are allowed everywhere; the publisher's name only
 // outside what Den shows (src/ui/server/public), so no distribution's pages
 // ever name it.
-const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
+// A commit's files are read in one `git cat-file --batch` pass.
+function treeFiles(commit) {
+  const list = execFileSync("git", ["ls-tree", "-r", "-z", commit], {
+    encoding: "utf-8",
+    maxBuffer: 1 << 28,
+  })
+    .split("\0")
+    .filter(Boolean)
+    .map((l) => {
+      const [meta, file] = l.split("\t");
+      const [, type, oid] = meta.split(" ");
+      return { type, oid, file };
+    })
+    .filter((e) => e.type === "blob");
+  const out = execFileSync("git", ["cat-file", "--batch"], {
+    input: list.map((e) => e.oid).join("\n") + "\n",
+    maxBuffer: 1 << 30,
+  });
+  const texts = new Map();
+  let at = 0;
+  for (const e of list) {
+    const nl = out.indexOf(10, at);
+    const size = Number(out.subarray(at, nl).toString().split(" ")[2]);
+    texts.set(e.file, out.subarray(nl + 1, nl + 1 + size).toString("utf-8"));
+    at = nl + 1 + size + 1;
+  }
+  return texts;
+}
+const fromTree = flag === "--tree" ? treeFiles(tree) : null;
+const read = (file) =>
+  fromTree ? (fromTree.get(file) ?? "") : readFileSync(file, "utf-8");
+
+const pkg = JSON.parse(read("package.json") || "{}");
 const run = (v) =>
   String(v ?? "")
     .replace(/[\s_-]+/g, "")
@@ -49,14 +87,16 @@ const shown = (file) =>
   file.startsWith("src/ui/server/public/") ||
   file.startsWith("packages/den-ui/src/");
 
-const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf-8" })
-  .split("\0")
-  .filter(Boolean);
+const files = fromTree
+  ? [...fromTree.keys()]
+  : execFileSync("git", ["ls-files", "-z"], { encoding: "utf-8" })
+      .split("\0")
+      .filter(Boolean);
 let hits = 0;
 for (const file of files) {
   let text;
   try {
-    text = readFileSync(file, "utf-8");
+    text = read(file);
   } catch {
     continue;
   }

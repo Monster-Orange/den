@@ -10,6 +10,16 @@ import * as path from "path";
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
 const SHELL = read("shell.js");
+// Issue 95: the frame's markup and look are the UI kit's (den-ui):
+// shell.js draws through its shellHtml, with Den's parts as data.
+const KIT = ["shell-html.js", "shell.css"]
+  .map((f) =>
+    fs.readFileSync(
+      path.join(process.cwd(), "packages", "den-ui", "src", f),
+      "utf-8",
+    ),
+  )
+  .join("\n");
 
 /** Page file → the rail entry it marks current, and its health pin. */
 const PAGES: Record<string, { page: string; healthEnv?: string }> = {
@@ -20,6 +30,8 @@ const PAGES: Record<string, { page: string; healthEnv?: string }> = {
   "logs.html": { page: "logs" },
   "settings.html": { page: "settings" },
   "index.html": { page: "tests" },
+  // Issue 209: the Verify page.
+  "verify.html": { page: "verify" },
   "edge.html": { page: "edge" },
   // The Agents tab (AG-4a-term).
   "agents.html": { page: "agents" },
@@ -119,7 +131,7 @@ describe("every page mounts the shell", () => {
 
 describe("the shell's source", () => {
   it("draws the title in the theme's display face", () => {
-    expect(SHELL).toMatch(/\.den-title \{ font: 600 15px var\(--display\);/);
+    expect(KIT).toMatch(/\.den-title \{\s*font: 600 15px var\(--display\);/);
   });
   it("uses no color literal (theme tokens only, R2)", () => {
     // Black alone is allowed, for a modal scrim (as ui-color-tokens says).
@@ -130,9 +142,14 @@ describe("the shell's source", () => {
   it("draws the scope as the prototype's .ib menus, one Workspace control (R4)", () => {
     // / ORG / WORKSPACE ▾ / ENV ▾: no View select, no Focus pill, no menu
     // of header.js's own (the old pill and its .ws-menu are gone).
+    // The kit draws the crumbs (den-ui 0.7.0): Den's crumbs, in order, are
+    // the org label, one Workspace ▾ (#ws-pill) and the Env ▾ (#env-btn),
+    // each ▾ opening Den's own menu (menu: true).
     expect(SHELL).toMatch(
-      /<span id="org-crumb"[\s\S]*?scopeButton\("ws-pill", "ws"[\s\S]*?scopeButton\("env-btn", "env"/,
+      /DUI\.scopeHtml\(\{[\s\S]*?orgCrumb\([\s\S]*?id: "ws-pill",\s*key: "ws",[\s\S]*?menu: true,[\s\S]*?id: "env-btn",\s*key: "env",[\s\S]*?menu: true,/,
     );
+    expect(SHELL.match(/id: "ws-pill"/g)).toHaveLength(1);
+    expect(SHELL).toMatch(/function orgCrumb\([\s\S]*?id: "org-crumb",/);
     expect(SHELL).not.toMatch(/scope-sel|scope-wrap|den-ws-pill/);
     const header = read("header.js");
     expect(header).not.toMatch(
@@ -153,7 +170,10 @@ describe("the shell's source", () => {
     const hrefs = all.filter((h) => !h.includes("#") && !h.includes("?"));
     for (const h of all.filter((x) => x.includes("#") || x.includes("?")))
       expect([h, hrefs.includes(h.split(/[#?]/)[0])]).toEqual([h, true]);
-    expect(all.filter((h) => h.includes("#"))).toEqual(["/settings#access"]);
+    expect(all.filter((h) => h.includes("#")).sort()).toEqual([
+      "/settings#access",
+      "/settings#agents.hub",
+    ]);
     expect(all.filter((h) => h.includes("?"))).toEqual(["/agents?terminal=1"]);
     expect(hrefs.sort()).toEqual(
       [
@@ -166,7 +186,8 @@ describe("the shell's source", () => {
         "/settings",
         "/release",
         "/services",
-        "/tests",
+        "/test-runs",
+        "/verify",
         // ON-6: the server agent.
       ].sort(),
     );
@@ -195,7 +216,7 @@ describe("one main landmark per page (SA's dev.17 run)", () => {
     },
   );
   it("the skip link goes to it", () => {
-    expect(SHELL).toContain('href="#den-content"');
+    expect(KIT).toContain('href="#den-content"');
     expect(SHELL).toMatch(/getElementById\("den-content"\)/);
   });
 });
@@ -285,8 +306,13 @@ describe("the old settings entry points go to the Settings page (R21)", () => {
   });
   it("the rail's Settings item and the user menu's All settings", () => {
     expect(SHELL).toMatch(/href: "\/settings",/);
+    // The rail's Settings is the kit's (den-ui 0.7.0): Den gives it the
+    // Settings page's href, and the kit draws it in the rail's foot.
+    expect(SHELL).toMatch(/settings: \{\s*href: SETTINGS\.href,/);
+    expect(KIT).toMatch(/settingsHtml\(settings, lang\)/);
+    // ◐ ▾'s All settings opens the Settings page at Appearance.
     expect(read("appearance.js")).toContain(
-      'const settings = "/settings#appearance";',
+      '{ label: t("um.all"), href: "/settings#appearance" }',
     );
   });
   it("Den's rows live only in the registry (settings-registry.js)", () => {

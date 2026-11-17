@@ -43,7 +43,10 @@ describe("recordOwnerGithub", () => {
   });
 
   it("leaves a value already set, an owner already linked, and a silent gh alone", () => {
-    const set = store({ web: { owner_github: "someone" } });
+    // (Its name kept too: gh has nothing left to say; owner-github-name.test.ts.)
+    const set = store({
+      web: { owner_github: "someone", owner_github_name: "Some One" },
+    });
     const gh = () => {
       throw new Error("gh must not run");
     };

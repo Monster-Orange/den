@@ -14,16 +14,21 @@ describe("den-ui package exports", () => {
   it("exports every .js and .css in src/, each to its own file", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(PKG, "package.json"), "utf-8"),
-    ) as { exports: Record<string, string> };
+    ) as { exports: Record<string, string | Record<string, string>> };
+    // The nav inventory (./inventory, its reference files) ships from
+    // inventory/, not src/: checked on its own below.
+    const srcExports = Object.fromEntries(
+      Object.entries(pkg.exports).filter(([k]) => !k.startsWith("./inventory")),
+    ) as Record<string, string>;
     const files = fs
       .readdirSync(path.join(PKG, "src"))
       .filter((f) => /\.(js|css)$/.test(f))
       .sort();
-    const targets = Object.values(pkg.exports)
+    const targets = Object.values(srcExports)
       .map((t) => t.replace(/^\.\/src\//, ""))
       .sort();
     expect(targets).toEqual(files);
-    for (const [key, target] of Object.entries(pkg.exports)) {
+    for (const [key, target] of Object.entries(srcExports)) {
       expect(fs.existsSync(path.join(PKG, target))).toBe(true);
       // A .css is exported with its extension; a .js without.
       const base = path.basename(target);
@@ -31,5 +36,21 @@ describe("den-ui package exports", () => {
         base.endsWith(".css") ? `./${base}` : `./${base.replace(/\.js$/, "")}`,
       );
     }
+  });
+
+  it("exports the nav inventory, its types and its reference files", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(PKG, "package.json"), "utf-8"),
+    ) as {
+      exports: Record<string, string | Record<string, string>>;
+      files: string[];
+    };
+    const inv = pkg.exports["./inventory"] as Record<string, string>;
+    expect(fs.existsSync(path.join(PKG, inv.default!))).toBe(true);
+    expect(fs.existsSync(path.join(PKG, inv.types!))).toBe(true);
+    expect(pkg.exports["./inventory/reference/*"]).toBe(
+      "./inventory/reference/*",
+    );
+    expect(pkg.files).toContain("inventory/");
   });
 });

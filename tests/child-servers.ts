@@ -16,6 +16,7 @@ import * as http from "http";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
+import { isTmpDir, resolveOn, sentinelDir, withSentinel } from "./sentinel.js";
 
 const REGISTRY_DIR = path.join(os.tmpdir(), "den-test-children");
 const recordOf = (pgid: number): string =>
@@ -30,6 +31,67 @@ function killGroup(pgid: number, signal: NodeJS.Signals): void {
 }
 
 /**
+ * What a test's server asks of gh and sudo on its own (`gh auth status`,
+ * `gh api user`, `sudo -n true`): not signed in, and a password needed.
+ * A test that needs other answers puts its own fakes first on PATH, or
+ * names its own DEN_SYSTEM_SUDO.
+ */
+const SERVER_FAKES: Record<string, string> = {
+  gh: "#!/bin/sh\n# A test server's gh (child-servers.ts): not signed in.\nexit 1\n",
+  sudo: "#!/bin/sh\n# A test server's sudo (child-servers.ts): a password is needed.\nexit 1\n",
+};
+
+function serverFakesDir(): string | null {
+  const dir = sentinelDir();
+  if (!dir) return null;
+  const fakes = path.join(path.dirname(dir), "server-fakes");
+  if (!fs.existsSync(path.join(fakes, "sudo"))) {
+    fs.mkdirSync(fakes, { recursive: true });
+    for (const [name, body] of Object.entries(SERVER_FAKES))
+      fs.writeFileSync(path.join(fakes, name), body, { mode: 0o755 });
+  }
+  return fakes;
+}
+
+/**
+ * Issue 163: the env a test's server is started with: `env`, with
+ *
+ * - gh and sudo answered by inert fakes (not signed in, a password needed)
+ *   wherever its PATH would find this machine's (CI's Linux runners have
+ *   both), and DEN_SYSTEM_SUDO the fake sudo unless the env names one;
+ * - its PATH keeping the real-CLI sentinel (tests/sentinel.ts) after the
+ *   test's own temp fake folders and before everything else, so no server
+ *   a test starts can run this machine's claude, op, doppler, security,
+ *   launchctl, sudo, mkcert or gh, even when a helper sets its own PATH.
+ */
+export function serverEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const fakes = serverFakesDir();
+  if (!fakes) return env;
+  const out: NodeJS.ProcessEnv = { ...env };
+  const parts = (env.PATH ?? "/usr/bin:/bin")
+    .split(path.delimiter)
+    .filter(Boolean);
+  const real = Object.keys(SERVER_FAKES).some((n) => {
+    const f = resolveOn(n, parts);
+    return f !== null && !isTmpDir(path.dirname(f));
+  });
+  if (real && !parts.includes(fakes)) {
+    let i = 0;
+    while (i < parts.length && isTmpDir(parts[i]!)) i++;
+    parts.splice(i, 0, fakes);
+    out.PATH = parts.join(path.delimiter);
+  }
+  out.PATH = withSentinel(out.PATH);
+  if (out.PATH === undefined) delete out.PATH;
+  // The sentinel's sudo (the default every test env carries) is for a test
+  // that reaches sudo itself; a server asking on its own gets the fake.
+  const sentinelSudo = path.join(sentinelDir()!, "sudo");
+  if (!out.DEN_SYSTEM_SUDO || out.DEN_SYSTEM_SUDO === sentinelSudo)
+    out.DEN_SYSTEM_SUDO = path.join(fakes, "sudo");
+  return out;
+}
+
+/**
  * `spawn(cmd, args, opts)` in a process group of its own, recorded. `marker`
  * (default: the last argument, the entry script) is what the reaper checks
  * the group still runs before it signals it.
@@ -40,7 +102,11 @@ export function spawnServer(
   opts: SpawnOptions,
   marker: string = args[args.length - 1] ?? cmd,
 ): ChildProcess {
-  const child = spawn(cmd, args, { ...opts, detached: true });
+  const child = spawn(cmd, args, {
+    ...opts,
+    env: serverEnv(opts.env ?? process.env),
+    detached: true,
+  });
   if (child.pid) {
     fs.mkdirSync(REGISTRY_DIR, { recursive: true });
     fs.writeFileSync(

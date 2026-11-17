@@ -17,6 +17,11 @@
  * 3. package.json's `test` script (or a Makefile `test`) is the test suite.
  *
  * `--run "<cmd>"` overrides 1 and 2: that command is `up`.
+ *
+ * Issue 277: a repo that runs nothing (config, docs, rulesets, shared CI)
+ * is a first-class answer. Every question offers NO_RUN_CHOICE, and
+ * `--no-run` (the choice, picked) adds the repo with no services
+ * (noServicesManifest).
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -29,6 +34,18 @@ export const COMPOSE_FILES = [
   "docker-compose.yaml",
   "docker-compose.yml",
 ] as const;
+
+/**
+ * The choice a question offers for a repo that runs nothing. Picked as a
+ * start command (`--run "it runs nothing"`, an agent passing a choice back
+ * as `run`), it means `--no-run`.
+ */
+export const NO_RUN_CHOICE = "it runs nothing";
+
+/** Whether `run` is the no-run choice, as picked. */
+export function isNoRunChoice(run: string | undefined): boolean {
+  return run?.trim().toLowerCase() === NO_RUN_CHOICE;
+}
 
 export interface DetectedCommands {
   /** Where the commands came from. */
@@ -49,7 +66,7 @@ export type Detection =
       decided: false;
       /** A question for the person. */
       ask: string;
-      /** Start commands to choose from (may be empty). */
+      /** Start commands to choose from, then NO_RUN_CHOICE. */
       choices: string[];
     };
 
@@ -72,6 +89,26 @@ export function composeFileOf(repoPath: string): string | undefined {
   return COMPOSE_FILES.find((f) => fs.existsSync(path.join(repoPath, f)));
 }
 
+/** The repo's own test command: a Makefile `test`, else package.json's. */
+function testCommandOf(
+  make: ReadonlySet<string>,
+  scripts: Record<string, string>,
+): string | undefined {
+  return make.has("test")
+    ? "make test"
+    : scripts.test && !/no test specified/.test(scripts.test)
+      ? "npm test"
+      : undefined;
+}
+
+/** The repo's own test command, for a repo that runs nothing. */
+export function detectTestCommand(repoPath: string): string | undefined {
+  return testCommandOf(
+    new Set(listMakeTargets(repoPath).targets),
+    readScripts(repoPath),
+  );
+}
+
 /** How `repoPath` runs, or the question to ask. See the module comment. */
 export function detectRunCommands(
   repoPath: string,
@@ -80,11 +117,7 @@ export function detectRunCommands(
   const make = new Set(listMakeTargets(repoPath).targets);
   const scripts = readScripts(repoPath);
   const composeFile = composeFileOf(repoPath);
-  const test = make.has("test")
-    ? "make test"
-    : scripts.test && !/no test specified/.test(scripts.test)
-      ? "npm test"
-      : undefined;
+  const test = testCommandOf(make, scripts);
   const withExtras = (c: DetectedCommands): DetectedCommands => ({
     ...c,
     ...(test ? { test } : {}),
@@ -127,14 +160,14 @@ export function detectRunCommands(
 
   if (candidates.length === 1)
     return { decided: true, commands: withExtras(candidates[0]) };
-  const choices = candidates.map((c) => c.up);
+  const starts = candidates.map((c) => c.up);
   return {
     decided: false,
     ask:
-      choices.length > 0
-        ? `This repo can start in ${choices.length} ways. Which one do you use to run it locally?`
-        : "How do you usually start this repo locally? (the command you type in its folder)",
-    choices,
+      starts.length > 0
+        ? `This repo can start in ${starts.length} ways. Which one do you use to run it locally? Or does it run nothing (config, docs, shared CI)?`
+        : "How do you usually start this repo locally? (the command you type in its folder) Or does it run nothing (config, docs, rulesets, shared CI)?",
+    choices: [...starts, NO_RUN_CHOICE],
   };
 }
 
@@ -236,6 +269,22 @@ export function sidecarManifest(
       },
     },
     ...(c.test ? { tests: { unit: { cmd: c.test } } } : {}),
+  };
+}
+
+/**
+ * Issue 277: the side-car for a repo that runs nothing: no services, so
+ * nothing to start or health-check; its test suite when it has one.
+ */
+export function noServicesManifest(
+  name: string,
+  test?: string,
+): Record<string, unknown> {
+  return {
+    version: 1,
+    name,
+    services: {},
+    ...(test ? { tests: { unit: { cmd: test } } } : {}),
   };
 }
 

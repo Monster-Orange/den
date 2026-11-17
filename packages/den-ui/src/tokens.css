@@ -1,5 +1,7 @@
 /*
- * den-ui tokens (UK-1). The kit's defaults: a theme laid on top overrides
+ * den-ui tokens (UK-1). The kit's defaults are Den's theme (themes/den,
+ * since 0.7.0: its type, shape and both modes), so a host on the kit's
+ * defaults looks like Den. A theme laid on top overrides
  * colours (both modes), shadow, bar, type, radius, radius-button, density
  * and fonts; never spacing, motion or layers. Every rule here has zero
  * specificity (:where), so any theme rule wins.
@@ -10,13 +12,13 @@
 
 /* Type, shape, space, depth, motion, layers, targets: one set, both modes. */
 :where(:root) {
-  --sans:
-    "Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
-    "Noto Sans JP", sans-serif;
-  --mono: "Space Mono", ui-monospace, Menlo, Consolas, monospace;
-  --display: var(--sans);
-  --ja:
-    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  /* prettier-ignore */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* prettier-ignore */
+  --display: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  /* prettier-ignore */
+  --ja: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
   --fs-xs: 12px;
   --fs-s: 13px;
   --fs-m: 14px;
@@ -25,8 +27,8 @@
   --fs-2xl: 22px;
   --lh: 1.45;
 
-  --radius: 6px;
-  --radius-button: 0.2rem;
+  --radius: 8px;
+  --radius-button: 6px;
   --r: var(--radius);
   --r-btn: var(--radius-button);
 
@@ -56,95 +58,107 @@
 
   --tap: 44px;
   --tap-min: 36px;
+
+  /* Veils behind a pop-up, the same in both modes: the ☰ drawer's and the
+     status drawer's scrim, What's new's overlay, the Report form's backdrop. */
+  --kit-scrim: rgb(0 0 0 / 0.35);
+  --kit-veil: rgba(0, 0, 0, 0.65);
+  --kit-backdrop: rgba(0, 0, 0, 0.3);
 }
 
 /* Light: the default. */
 :where(:root),
 :where(:root[data-mode="light"]) {
   color-scheme: light;
-  --bg: #fffcfc;
-  --surface: #ffffff;
+  --bg: #f2eee8;
+  --surface: #fbf9f6;
   --raised: #ffffff;
-  --sunken: #f4efee;
-  --text: hsl(220 6% 10%);
-  --muted: hsl(220 5% 34%);
-  --faint: #62656a;
-  --border: hsl(20 12% 86%);
-  --border-strong: #97867f;
-  --accent: #e16500;
-  --accent-text: #a34a00;
-  --accent-fill: #c23f00;
+  --sunken: #e8e2d9;
+  --text: #241e18;
+  --muted: #5c5247;
+  --faint: #6d6358;
+  --border: #dcd3c7;
+  --border-strong: #8d7f6d;
+  --accent: #557a2a;
+  --accent-text: #415e1f;
+  --accent-fill: #4a6b23;
   --on-accent: #ffffff;
-  --ok: #11692f;
-  --warn: #865700;
-  --bad: #af0900;
+  --ok: #27613b;
+  --warn: #774c0e;
+  --bad: #983124;
   --info: hsl(213 22% 36%);
-  /* #0e7280 failed the pill rule over --sunken (4.20:1); 4.59:1 now. */
-  --remote: #0d6b79;
+  /* #0e7280 failed the pill rule over --sunken (4.20:1). #0d6b79 failed
+     the disc rule (an agent's initial on its 16% tint) over --sunken
+     (4.33:1); 4.56:1 now, the pill 4.84:1. */
+  --remote: #205d6e;
   --violet: #6a4bc4;
-  --shadow: 0 8px 28px rgb(0 0 0 / 0.14);
+  --shadow: 0 8px 24px rgb(48 36 24 / 0.14);
+  /* A pop-up's or picker dialog's shadow (0.7.0). */
+  --den-pop-shadow: 0 16px 40px rgb(0 0 0 / 0.25);
   /* The shared update pill's shadow (update-pill.css). */
   --upd-shadow:
-    0 2px 4px rgba(32,38,29,.07), 0 10px 28px rgba(32,38,29,.10),
+    0 2px 4px rgba(32, 38, 29, 0.07), 0 10px 28px rgba(32, 38, 29, 0.1),
     inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
-  --bar: linear-gradient(90deg, #ff7300, #af0900);
+  --bar: linear-gradient(90deg, #557a2a 0%, #8a6a48 100%);
 }
 
 /* Dark: asked for, or the system's choice when no mode is set. */
 :where(:root[data-mode="dark"]) {
   color-scheme: dark;
-  --bg: hsl(220 6% 10%);
-  --surface: hsl(220 6% 8.5%);
-  --raised: #1f2023;
-  --sunken: hsl(220 6% 7%);
-  --text: #fffcfc;
-  --muted: #c4c4c4;
-  --faint: #a3a3a3;
-  --border: hsl(220 5% 20%);
-  --border-strong: #676a71;
-  --accent: #ff7300;
-  --accent-text: #ff8f33;
-  --accent-fill: #ff7300;
-  --on-accent: hsl(220 6% 10%);
-  --ok: #4cc777;
-  --warn: #e3a72f;
-  --bad: #ff5a4f;
+  --bg: #1a1612;
+  --surface: #221d18;
+  --raised: #2b251f;
+  --sunken: #14110e;
+  --text: #ede6dc;
+  --muted: #b5aa9b;
+  --faint: #978b7e;
+  --border: #3a322a;
+  --border-strong: #7a6d5d;
+  --accent: #9bbb63;
+  --accent-text: #a8c672;
+  --accent-fill: #9bbb63;
+  --on-accent: #1a1612;
+  --ok: #6fc28f;
+  --warn: #e0a84e;
+  --bad: #ef7f6a;
   --info: hsl(213 30% 74%);
-  --remote: #4fd1db;
+  --remote: #74b8c8;
   --violet: #a993ff;
   --shadow: 0 12px 30px rgb(0 0 0 / 0.5);
+  --den-pop-shadow: 0 16px 40px rgb(0 0 0 / 0.6);
   --upd-shadow:
-    0 2px 4px rgba(0,0,0,.35), 0 10px 28px rgba(0,0,0,.4),
+    0 2px 4px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
-  --bar: linear-gradient(90deg, #ff7300, #af0900);
+  --bar: linear-gradient(90deg, #9bbb63 0%, #a07c55 100%);
 }
 
 @media (prefers-color-scheme: dark) {
   :where(:root:not([data-mode])) {
     color-scheme: dark;
-    --bg: hsl(220 6% 10%);
-    --surface: hsl(220 6% 8.5%);
-    --raised: #1f2023;
-    --sunken: hsl(220 6% 7%);
-    --text: #fffcfc;
-    --muted: #c4c4c4;
-    --faint: #a3a3a3;
-    --border: hsl(220 5% 20%);
-    --border-strong: #676a71;
-    --accent: #ff7300;
-    --accent-text: #ff8f33;
-    --accent-fill: #ff7300;
-    --on-accent: hsl(220 6% 10%);
-    --ok: #4cc777;
-    --warn: #e3a72f;
-    --bad: #ff5a4f;
+    --bg: #1a1612;
+    --surface: #221d18;
+    --raised: #2b251f;
+    --sunken: #14110e;
+    --text: #ede6dc;
+    --muted: #b5aa9b;
+    --faint: #978b7e;
+    --border: #3a322a;
+    --border-strong: #7a6d5d;
+    --accent: #9bbb63;
+    --accent-text: #a8c672;
+    --accent-fill: #9bbb63;
+    --on-accent: #1a1612;
+    --ok: #6fc28f;
+    --warn: #e0a84e;
+    --bad: #ef7f6a;
     --info: hsl(213 30% 74%);
-    --remote: #4fd1db;
+    --remote: #74b8c8;
     --violet: #a993ff;
     --shadow: 0 12px 30px rgb(0 0 0 / 0.5);
+    --den-pop-shadow: 0 16px 40px rgb(0 0 0 / 0.6);
     --upd-shadow:
-      0 2px 4px rgba(0,0,0,.35), 0 10px 28px rgba(0,0,0,.4),
+      0 2px 4px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.4),
       inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
-    --bar: linear-gradient(90deg, #ff7300, #af0900);
+    --bar: linear-gradient(90deg, #9bbb63 0%, #a07c55 100%);
   }
 }

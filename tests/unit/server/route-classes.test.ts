@@ -167,6 +167,8 @@ describe("the classes", () => {
         "/api/session",
         "/api/signin/code",
         "/api/signin/code/:id",
+        // Issue 320: the page's beacon withdraw (its poll id, the proof).
+        "/api/signin/code/:id/withdraw",
         // MODE-5: the address check's other end: 204 or 404, nothing else.
         "/api/web-url/probe",
         "/attest",

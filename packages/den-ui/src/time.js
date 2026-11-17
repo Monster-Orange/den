@@ -19,7 +19,8 @@
  *   opts.zone    an IANA zone. Else <html data-den-tz> (a page), else
  *                setTimeZone's value, else the browser's (or process's).
  *   opts.locale  else <html lang> (in the browser's variant of it), else
- *                the browser's.
+ *                the browser's. upgradeTimes uses the nearest [lang] around
+ *                each <time> first.
  *   opts.now     ms or ISO: "now" for relative and the year rule (tests,
  *                server use).
  *
@@ -93,11 +94,15 @@ export function currentTimeZone(zone) {
  */
 function currentLocale(locale) {
   if (locale) return locale;
+  return localeOf(hasDoc() ? document.documentElement.lang : "");
+}
+
+/** A lang attribute's value as a locale, in the browser's variant of it. */
+function localeOf(lang) {
   const nav =
     typeof navigator !== "undefined" && navigator.language
       ? navigator.language
       : undefined;
-  const lang = hasDoc() ? document.documentElement.lang : "";
   if (!lang) return nav;
   if (nav && !lang.includes("-") && nav.split("-")[0] === lang) return nav;
   return lang;
@@ -234,6 +239,13 @@ export function upgradeTimes(root) {
       style: el.getAttribute("data-den-time"),
       seconds: el.hasAttribute("data-den-seconds"),
     };
+    // The language of the part the time sits in (a row still in English
+    // on a translated page reads in English), then the page's, then the
+    // browser's.
+    const near = typeof el.closest === "function" ? el.closest("[lang]") : null;
+    const page = hasDoc() ? document.documentElement : null;
+    if (near && near !== page)
+      opts.locale = localeOf(near.getAttribute("lang"));
     const text = formatTime(iso, opts);
     if (!text) continue;
     el.textContent = text;

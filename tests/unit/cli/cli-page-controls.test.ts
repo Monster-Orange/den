@@ -57,7 +57,9 @@ const LISTING: Record<string, Entry> = {
   applications: R,
   mcp: script("the stdio MCP server and agent registration"),
   usage: R,
-  feedback: page("shell.js", "den-rb-top"),
+  // Issue 95: the top bar's Report button is drawn by the UI kit
+  // (shell-html.js's reportButtonHtml), through shell.js.
+  feedback: page("shell.js", "DUI.reportButtonHtml("),
   onboard: R,
   repo: R,
 
@@ -117,6 +119,12 @@ const LISTING: Record<string, Entry> = {
   "usage agents": R,
   "usage report": R,
 
+  // Issue 144: the machine's gate slots.
+  "gate run": script("wraps a test command, in a terminal or a gate script"),
+  "gate status": page("agents.html", 'id="ag-gate"'),
+  "gate end": page("gate-chip.js", "/api/gate-slots/end"),
+  "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
+
   "repo detect": R,
 
   "theme add": slot("0.4.48", "add a theme"),
@@ -155,6 +163,11 @@ const LISTING: Record<string, Entry> = {
   "agents rm": page("agents-page.js", 'agentPath(r, "remove"'),
   "agents handback-check": script("a linter for agents' hand-backs"),
   "agents handoff-check": script("a linter for agents' hand-offs"),
+  // Issue 163 (b): `claude setup-token` prints it in a terminal; it is
+  // pasted at a prompt there or piped in, never through a page.
+  "agents token": script(
+    "the agents' sign-in token, pasted at a terminal prompt or piped in",
+  ),
   "agents permission": slot(
     "0.4.46",
     "MODE-1: a project's and an agent's mode",
@@ -179,6 +192,7 @@ const DISPATCH: Record<string, { file: string; not?: string[] }> = {
   theme: { file: "theme-command.ts" },
   plugin: { file: "plugin-command.ts" },
   usage: { file: "usage-command.ts" },
+  gate: { file: "gate-command.ts" },
   repo: { file: "repo-command.ts" },
   onboard: { file: "onboard-command.ts" },
 };

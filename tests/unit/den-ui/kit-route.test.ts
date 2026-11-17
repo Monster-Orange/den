@@ -75,6 +75,12 @@ describe("den-ui at /kit/", () => {
     expect(font.status).toBe(200);
     expect(font.headers["Content-Type"]).toBe("font/woff2");
     expect(font.body.subarray(0, 4).toString()).toBe("wOF2");
+    // The default theme's mark, for a host's brand (den-ui 0.7.0).
+    const mark = fakeRes();
+    serveUiAsset(mark as never, "/kit/marks/den.svg", PUBLIC);
+    expect(mark.status).toBe(200);
+    expect(mark.headers["Content-Type"]).toBe("image/svg+xml");
+    expect(mark.body.toString()).toMatch(/^<svg/);
     const none = fakeRes();
     expect(serveUiAsset(none as never, "/kit/nope.css", PUBLIC)).toBe(true);
     expect(none.status).toBe(404);

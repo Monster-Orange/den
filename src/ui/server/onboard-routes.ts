@@ -5,7 +5,7 @@
  *                          (onboard-reads.ts onboardStatus)
  *   /api/onboard/repos     ?path=<folder>[&max=<n>]: the git repos in a
  *                          folder, how each runs, suggested workspaces
- *   /api/onboard/manifest  ?path=<repo>[&name&run&down&health]: the side-car
+ *   /api/onboard/manifest  ?path=<repo>[&name&run&no_run=1&down&health]: the side-car
  *                          manifest `repo add` would write, validated, and
  *                          nothing written
  *
@@ -122,6 +122,7 @@ export async function handleOnboardRoutes(
       manifestDraft(check.dir, rules, deps.validate, {
         name: param(url, "name"),
         run: param(url, "run"),
+        noRun: param(url, "no_run") === "1",
         down: param(url, "down"),
         health: param(url, "health"),
       }),

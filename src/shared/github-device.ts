@@ -24,6 +24,7 @@
 import * as http from "http";
 import * as https from "https";
 import { githubEndpoints, type GithubEndpoints } from "./github-app.js";
+import { githubDisplayName } from "./web-owner.js";
 
 export interface DeviceCode {
   deviceCode: string;
@@ -54,6 +55,8 @@ export type PollResult =
 export interface GithubIdentity {
   id: number;
   login: string;
+  /** The person's GitHub display name (`/user`'s `.name`), when they set one. */
+  name?: string;
 }
 
 /**
@@ -242,7 +245,8 @@ export function githubDeviceClient(
         typeof j.login !== "string"
       )
         throw new Error(`GitHub's /user answered ${r.status}`);
-      return { id: j.id, login: j.login };
+      const name = githubDisplayName(j.name);
+      return { id: j.id, login: j.login, ...(name ? { name } : {}) };
     },
     async orgMember(token, org, login) {
       const headers = {

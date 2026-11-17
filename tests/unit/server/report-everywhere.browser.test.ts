@@ -44,9 +44,10 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     how: "Start an agent, Rename, Link repo, Move, a job still running (0.4.48; an alertdialog, so two): .btns footer",
   },
   "persona-ui.js": { n: 1, how: "persona editor: .btns footer" },
+  // Issue 95: the rail's ☰ drawer is the UI kit's now (shell-client.js).
   "shell.js": {
-    n: 4,
-    how: "approval and pair dialogs: .btns footer; the rail as a drawer is skipped (Report is on the rail)",
+    n: 3,
+    how: "approval and pair dialogs: .btns footer",
   },
   "ws-delete-agents.js": {
     n: 1,
@@ -56,7 +57,8 @@ const KNOWN: Record<string, { n: number; how: string }> = {
   "restart-den.js": { n: 1, how: "restart: .rd-acts, or a footer of its own" },
   "agent-helpers.js": { n: 1, how: "helpers list: a footer of its own" },
   "transcript-view.js": { n: 2, how: "transcript: a footer of its own" },
-  "header.js": { n: 1, how: "What's new: reportButton() in .cl-footer" },
+  // Issue 95: What's new is the UI kit's (whatsnew.js: Report in its
+  // .cl-footer, from den-kit.js's reportButton).
   "topbar.js": {
     n: 6,
     how: "admin password ask: reportFoot() drawn with it (den#143); status drawer, palette: a footer of their own",
@@ -70,16 +72,21 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     how: "agent details: reportFoot() drawn with them (den#143)",
   },
   "bell.js": {
-    n: 2,
-    how: "the bell's panel: reportFoot() drawn with it (den#143); its inline ask is skipped",
+    n: 1,
+    how: "its inline ask (skipped); the bell's panel is the kit's since den-ui 0.7.0 (hydrateBell), drawn with reportFoot() as its foot (den#143)",
+  },
+  "gate-chip.js": {
+    n: 1,
+    how: "the gate queue (issue 144): a dialog on the body, given Report by the injector (gate-chip.browser.test.ts)",
   },
   "graph.js": {
     n: 1,
     how: "the popped detail panel: reportFoot() drawn with it (panel.js, den#143)",
   },
-  "report-dialog.js": {
-    n: 2,
-    how: "the form itself, and My reports (part of Report: its own way to it)",
+  // Issue 95: the form itself is the UI kit's now (den-ui report.js).
+  "report-den.js": {
+    n: 1,
+    how: "My reports (part of Report: its own way to it)",
   },
   "settings-registry.js": {
     n: 1,

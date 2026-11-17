@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.61] - unreleased
+## [0.4.64] - unreleased
 
 ### Added
 
@@ -31,10 +31,416 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- den-ui: a rail entry's plain count (a badge with no `what`) reads its
+  number again, "Hub Docs, 4". Since 0.7.3 it gave a screen reader no
+  number (issue 307 follow-up).
+
+- A greyed Hub link in the rail says why again, such as "Acme Co · Hub, reconnect in Settings", in its tooltip and the name a screen reader reads. Den passes the reason as data and den-ui words it in English, Spanish and Japanese (issue 326).
+- A server agent's "waiting · permission" now says what it waits on and
+  since when: the tool its dialog asks for, or the notice, trimmed. The
+  bell row says it, and so do the update check's state, its log line and
+  its "update waits" bell item. A wait no longer outlives its dialog: a
+  new Claude session (a restart, a resume) and Claude Code's idle notice
+  clear it. The "update waits" item now goes once the update goes on,
+  even if the person had read it or it was posted before a restart
+  (#327).
+- A stopped or removed agent no longer stays "needs your permission" in
+  the bell. Its wait and its bell row go at once, an ask_human question
+  too, and within a few seconds when it was stopped from the command
+  line. An agent whose session ends by itself drops its permission wait;
+  an open question stays for a resume (#327).
+- After Den updates itself, it no longer tells its own agent to "check
+  with doctor", a tool that agent doesn't have. It says to call
+  release_status, which now has Den's last update of itself (from, to,
+  when, and why if it rolled back) and the new Den's doctor results from
+  that update (each failing or warning check). Den keeps those results
+  beside the update's state; the Den agent page reads them too (GET
+  /api/server-agent/update, read only). A test checks that every tool
+  named to that agent, in its charter, Den's lines and the MCP text, is one
+  it has (#176).
+- With `edge.access_log` on, an edge whose `edge.image` is Traefik v2 starts again. Den added OTLP tracing flags that only Traefik v3 knows, and v2 refused to start. Den now adds them only when the image tag says v3 or later; otherwise the access log runs without request ids, and `edge up` says so in one line. (#330)
+
+- The bell's offer to keep agents running after logout is in "Needs you" and counts on the badge, not folded under Updates (issue 163).
+
+- A link to a Settings row (the bell's /settings#agents.keep_running, or
+  the address typed in) stays on that row while content above it loads
+  late, such as the persona list; before, the row ended up below the
+  fold. The page waits for the row if it isn't drawn yet, marks it for a
+  moment and moves focus to its label. Your first scroll, key, click or
+  touch lets go, and it lets go by itself after 10 s. (#163)
+
+- A signed-out page that signs in another way (with GitHub, a link, or in
+  another tab) now withdraws its own approve-with-a-code request, and waits
+  up to 1.5 s for the answer, before it goes on. It no longer relies on the
+  page's unload alone, so other signed-in browsers stop asking "Allow this
+  computer?" for a computer that is already in (#320).
+- Allow (or Deny) on a code whose page has withdrawn it does nothing and
+  says so in the dialog: "That request has ended". An expired code says it
+  expired. Both are in English, Spanish and Japanese. The server answers
+  410 with code `ended` for a withdrawn code, for a minute (#320).
+- A code whose signed-out page has closed or gone elsewhere can no longer
+  be approved, in Safari too. Safari drops the request a closing page
+  sends to withdraw its code, so the code stayed open and `web approve`
+  answered "Approved". Now the server ends any code its page hasn't asked
+  about for 15 s (`DEN_PAIR_UNSEEN_MS` changes it): Allow and `web
+  approve` answer that the request has ended, and nothing is allowed. The
+  page also withdraws its code with a beacon as it goes, which Safari does
+  send (POST /api/signin/code/<id>/withdraw, an allowed Origin, as the
+  DELETE). A background tab whose code ended this way shows a fresh code
+  by itself, at once when you come back to it (#320).
+
+## [0.4.63] - 2026-11-17
+
+### Added
+
+- Agents under Keep agents running after logout sign in with the CLI's
+  long-lived token, not the login keychain. Make it once with
+  `claude setup-token`, then `<cli> agents token set`: it reads stdin or
+  a prompt that doesn't show it (never the command line), is a person's
+  only, and saves the token in the install's secrets store (1Password or
+  Doppler) under `secrets.refs.agent_signin_token`. A distribution's ref
+  wins; without one it creates the item and writes the ref to user.yml.
+  The env backend is refused. Den reads it at each agent start under the
+  always-on service and passes it in that agent's environment only
+  (`CLAUDE_CODE_OAUTH_TOKEN`): never argv, a log, a record or the plist,
+  whose env carries only `DEN_AGENT_SIGNIN=token`. A caller's own value
+  never reaches an agent. `<cli> agents token status` says whether it is
+  there and when it was set. (#163)
+- `doctor`'s new agent sign-in row, the Settings row and every start
+  under the always-on service say when no token is configured: "agents
+  will not be able to sign in after logout". With one, they say when it
+  was set. The token doesn't carry its expiry, so after
+  `agents.signin_token_warn_days` (user.yml, 330) they say to make a new
+  one. In English, Spanish and Japanese. (#163)
+- Settings › Agents › Keep agents running after logout has a Sign-in
+  token field: paste the token and Save (the working pop-up). It goes to
+  the install's secrets store by the same code as `agents token set`
+  (POST /api/agents/signin-token, a person's only; an agent's request is
+  refused). It is never shown back: no answer, log or page carries it,
+  and the row then says when it was set. One line above it names the
+  only terminal step, `claude setup-token`, with a copy button. In
+  English, Spanish and Japanese. (#299, #163)
+- Under mode always, `doctor`'s agent sign-in row and the Settings row
+  warn when the store's own credential (the 1Password service-account
+  token) is referenced as `keychain:`: the always-on service may not
+  reach it; use `file:` or `env:`. (#163)
+- A checklist for a real logout on a gate machine:
+  `docs/always-on-gate.md`. Not run here. (#163)
+
+- `<cli> agents token clear` and a Clear button beside Save in Settings
+  remove the agents' sign-in token, the way set kept it: Den's own
+  1Password item is deleted, or its Doppler secret, and the ref leaves
+  user.yml; a ref the config names keeps its place, its field or secret
+  deleted; the env backend only had it in this process. A person's only
+  (an agent's request is refused); the command asks y/N unless `--yes`,
+  and Clear asks in the kit's dialog. With no secrets store it answers
+  the same `no_secrets_store` as set. The value is never read or
+  printed. In English, Spanish and Japanese. (#163)
+
+### Changed
+
+- Den's top bar and rail come from the shared UI kit, den-ui 0.7.0: the
+  account menu, the company and project crumbs with a filter, the Report
+  screenshot keeping what you scrolled to, and a brand that never shrinks
+  on a phone.
+- den-ui 0.7.1 (#303): the top bar's search sits in the same place in
+  every product, whatever the crumbs or chips say. Long names end in "…"
+  (the last crumb is kept whole), the search reads "Search…" in every
+  language the kit has, and on a touch screen every bar control takes a
+  44px tap. Who is signed in is drawn by the kit from data (a name, then
+  @login), the same in every product. The search never moves: its place
+  depends on the window's width alone; when the bar is short, the status
+  chips give way first, then the version's text, never Report, the bell
+  or the appearance button. Report, the bell, the version and the
+  appearance button sit at the same place in every product: the version
+  has a fixed slot, its whole text in its title. A status chip that gives
+  way keeps its dot and stays a button, its words in its title and name.
+  A crumb's label gives way before its value. The rail's account entry
+  shows the name over @login, never the role; the account menu's header
+  adds the role on its own line. Den's account entry no longer says
+  "Signed in · this device". Signed in with GitHub, it shows your GitHub
+  name over @login (@login alone when GitHub has no name for you). A
+  browser on the Den computer (not one paired with a link or a code)
+  shows the owner's GitHub name and @login, read from what `web up`
+  keeps with the owner's login (the same `gh api user` call; none per
+  page). With no GitHub identity known it
+  shows "Local".
+- After Den updates itself, it commits and pushes the distribution's new
+  pin (package.json and package-lock.json) itself, on the lead install,
+  once the new version is verified. It no longer waits on the server
+  agent, so a resumed, busy or stopped agent can't drop it. Only the two
+  pin files go in. The commit is signed with `agents.git.signing_key`
+  when set, and unsigned otherwise; never the person's GPG key, never a
+  prompt. A failed push keeps the commit, is tried again at the next
+  update check, and the bell says it once. A follower never commits.
+  New setting `server_agent.pin_commit`: `push` (default), `pr` (the pin
+  on its own branch and a pull request through `gh`) or `off`. The commit
+  follows the approval policy as the routine held write `den_pin_commit`:
+  it runs at once by default, and waits for the person's Allow when the
+  policy says ask (#176).
+- Keep agents running after logout is on by default for a new install:
+  `<cli> service install` with no job yet and the Setting unset installs
+  mode always (one sudo). An explicit off is kept. An existing install
+  with the Setting unset keeps its mode, since switching needs sudo; its
+  web server offers it once in the bell ("Keep agents running after
+  logout: Apply", opening the Setting), Settings shows the offer, and
+  `doctor` names it. (#163)
+- `doctor`'s service line under mode always is no longer a warning: the
+  agent sign-in row says whether agents can sign in. Help, `--plan`,
+  install and the agent page's tip say agents sign in there with the
+  token, instead of "keychain under the daemon not yet shown". (#163)
+
+- Tests never run this machine's claude, op, doppler, security,
+  launchctl, sudo, mkcert or gh. Jest's global setup puts stubs for them
+  on PATH behind the tests' own fakes; every spawn keeps them, even one
+  that sets its own PATH, and Den's sudo by absolute path is the stub
+  too. A stub logs its name and arguments (never input) and exits 99;
+  the test file that made the call fails, and so does the run. (#163)
+
+### Fixed
+
+- A person's first action on a page (Start fresh, Resume, Save and the like) sends its request at once. The working pop-up's code now loads while the page is idle, not after the click, so a slow machine no longer holds the request back (issue 274).
+
+- `agents token status` says what is true for the mode in effect. Not
+  under Keep agents running after logout, no token reads "no sign-in
+  token set; needed only under Keep agents running after logout" (exit
+  0); the warning that agents will not be able to sign in after logout
+  shows only under the always-on service. (#163)
+- Saving the sign-in token on an install with no secrets store
+  (`secrets.provider: none`) is no longer a server error: the answer is
+  409 with code `no_secrets_store` and plain words, and before any paste
+  the Settings field says there is no secrets store, with Save off. In
+  English, Spanish and Japanese. (#163)
+
+- The sign-in token's status follows what is stored, not the config
+  ref: Settings, its API, `agents token status` and `doctor` ask
+  1Password or Doppler whether the item or field holds a value (never
+  shown); a ref with nothing behind it reads "no sign-in token set". The
+  page asks the store at most once per
+  `agents.signin_token_check_seconds` (user.yml, 300), and again at once
+  after a Save or a Remove. (#163)
+- The env secrets backend: Den's record of the set is the one truth for
+  the page and every CLI process, shown as "process-local: kept only
+  until Den restarts". `agents token clear` says what it
+  removed (the record, and the value when it was in that process). (#163)
+- With the env secrets backend, `agents token set` refuses (the value
+  would live only in that CLI process): set it in Settings, or use
+  1password or doppler. Den drops its record of an env token when it
+  starts, since the value ended with the last run. (#163)
+- On an install not under Keep agents running after logout, the Settings
+  row says what the CLI says: no token is needed only under that
+  setting, and with no secrets store, set `secrets.provider` first.
+  Nothing about signing in after logout. In English, Spanish and
+  Japanese. (#163)
+
+### Migrations
+
+- None required. To keep agents signing in after logout under mode
+  always, run `claude setup-token` once and `<cli> agents token set`.
+  A distribution that keeps the token in its own vault sets
+  `secrets.refs.agent_signin_token` in its config. Real logout not shown
+  in tests: the gate checklist covers it.
+
+## [0.4.62] - 2026-11-16
+
+### Added
+
+- Den notices an agent stuck compacting. It counts each running agent's
+  automatic compactions from Claude Code's own records (the transcript's
+  `compact_boundary` lines). More than 3 in 10 minutes rings the bell
+  once per episode and logs a line naming the agent. Its row and pane bar
+  say "Compacting repeatedly", with the likely cause, Stop and Clear.
+- At every start, Den measures the instruction files Claude Code loads
+  for the agent's folder (`CLAUDE.md`, `CLAUDE.local.md`,
+  `.claude/CLAUDE.md`, `AGENTS.md` up the folders, and the user's own),
+  by size only. Over 15% of the model's context, the start, the agent's
+  row and `<cli> doctor` warn, naming the largest file and its size.
+- Optional: hold new deliveries to an agent after its compaction bell,
+  until a person clears it on the Agents page (off by default).
+- Settings › Agents (and `<cli> config`): `agent_context.compaction_loop_count`
+  (3), `compaction_loop_minutes` (10), `pause_after_loop` (off),
+  `instruction_share_percent` (15) and `context_tokens` (200000, when Den
+  doesn't know the model's). In English, Spanish and Japanese.
+- A repo that runs nothing (config, docs, rulesets, shared CI) can join a
+  project: `repo add <folder> --no-run`, or `no_run: true` on the MCP
+  `repo_add` and `manifest_draft`. When Den can't tell how a repo starts,
+  its question now offers "it runs nothing". Such a repo has an empty
+  service list (a manifest may say `services: {}` or `services: []`).
+  Agents and worktrees work in it; `up`, `down`, `restart`, `logs`,
+  `status` and the health row have nothing to start or check for it, and
+  no error. The services and project pages show it with nothing to start. A repo added before with `--run "true"`
+  keeps its fake service until you change its side-car.
+- A shared repo, such as one holding shared components, can be in more
+  than one project, with an agent from each working in it; removing it
+  from one project leaves the others as they were.
+
+### Fixed
+
+- `up -w <project>` in a project that is not active, such as one just made
+  with `workspace create`, no longer stops with "is not active". It makes
+  the project active and says so in one line. A dry run says it would.
+  `up` with nothing named (no repo, no `-a`) still stops, says what to
+  name, and leaves the project as it was.
+- `status <repo>` shows that repo only. For a repo that runs nothing, it
+  prints the same one line in every project it is in, not the project's
+  whole table.
+- When the largest instruction file is the user's own `CLAUDE.md`, the
+  warning, the agent's row and `doctor` name it `~/.claude/CLAUDE.md` (or
+  the config folder with home shown as `~`), never `../../../.claude/CLAUDE.md`.
+  It is counted once when home is reached by a link.
+
+## [0.4.61] - 2026-11-16
+
+### Added
+
+- A `pre-push` hook runs the org-name checks on what is being pushed: the
+  new commits' messages and the pushed commit's files. A name is caught
+  before it reaches the remote, where a pushed commit stays reachable by
+  its id. The patterns can also live in a per-user file,
+  `~/.config/den-dev/org-names.txt`, which git hooks find without any
+  shell variable.
+
+- One queue per machine for heavy test runs. Wrap a gate in
+  `<cli> gate run --kind browser --estimate 6m -- <command>`: it waits for
+  its turn, runs the command, and gives the turn back when the command
+  ends, passes, fails or is killed. A browser run has the machine alone;
+  unit runs share it, 2 at a time by default. Every repo and install on
+  the machine shares the same queue.
+- A run that waits says who holds the machine and until about when. No
+  run is ever stopped by another one.
+- A turn whose process has ended is freed at once. A run past its
+  estimate is flagged, and never stopped.
+- `<cli> gate status` and the Agents page show who holds the machine and
+  who waits; an agent's row says when it holds or waits. A person can end
+  a turn early from the Agents page or with `<cli> gate end`; an agent
+  can't.
+- Agents read the queue with the `gate_slot_status` tool, and hold a turn
+  across several commands with `gate_slot_request` and
+  `gate_slot_release`.
+- Every ask, wait, grant, release and early end is written to the
+  machine's slot log, so waiting time can be counted.
+- Settings › Server: how many unit runs share the machine, and how long
+  past its estimate a run is flagged.
+### Changed
+
+- Den draws its whole top bar and the rail's foot from the UI kit, den-ui
+  0.7.0: the scope crumbs, the search field with ⌘K, the bell and its
+  panel, ◐ ▾ and its menu, the update-waiting pill, Settings and the
+  account entry. Den fills only the kit's slots, and looks the same. A
+  crumb's menu of more than 6 orgs or projects opens on a filter field.
+  Screen readers now hear that filter beside the menu, not inside it. The
+  key caps (⌘K, ⌘⇧F), the theme's mark and its layout, and the phone tap
+  sizes come from the kit too.
+- Den's frame now comes from its UI kit, den-ui 0.6.0: the top bar, the
+  left rail with its pins, collapse and ☰ drawer, the version chip, What's
+  new and the Report form. Nothing looks or works differently. Another
+  product can draw the same frame with its own pages and words.
+- A new check, `npm run gate:den-ui`, fails when Den keeps its own copy of
+  a UI kit part. It runs in CI.
+- The UI kit is now 0.6.1. Its working pop-up can offer a link to the next
+  step in place of Try again, and show progress lines while it works.
+  Its styles come from a stylesheet file, so a page with a strict
+  Content Security Policy can use it. The kit also ships types.
+- The UI kit is now 0.6.2. Its ask-and-tell dialogs take their styles from
+  a stylesheet file, for strict Content Security Policy pages. A report
+  filed through the kit carries its masked screenshot. A failed action can
+  name its next step without a link. A product can show its own mark in
+  the top bar.
+- The UI kit is now 0.6.3. Den's top bar stays at the top of the window
+  on a page that scrolls. In the Report form, ⌘↵ (Ctrl+Enter) moves to
+  the next step, as in every other pop-up; it never sends the report. A
+  row can have its own Report button that opens the form filled in.
+- The UI kit is now 0.6.4. The top bar no longer changes shade when the
+  update pill shows.
+- The UI kit is now 0.6.6. A date or time in a part of a page that is
+  still in English reads in English too, not in the page's language.
+- The UI kit is now 0.6.5. In Safari, focus goes back to the button that
+  opened Report, an ask-or-tell pop-up or What's new when it closes.
+- The light theme's remote colour is a shade darker. An agent's initial
+  on its tinted disc now meets the 4.5:1 contrast bar.
+
+### Fixed
+
+- Hub has its own section in Settings. Settings › Hub holds Hub's
+  address, the connection (with the company it's linked to), what agents
+  get, linking projects, GitHub access and Hub's notification switches.
+  You can set, change or clear Hub's address there: it's checked as you
+  type, and Save keeps it and restarts Den. A broken address can now be
+  fixed there too, without editing a file. Changing the address while
+  connected disconnects from the old Hub first, and Den never sends a
+  token to a Hub that didn't issue it.
+- Den's own agent can set, change or clear Hub's address with a new held
+  write, hub_connect. It runs on your Allow, through the same check and
+  steps as Settings › Hub. A linked project now says that the link is by
+  Hub's hidden ID, so renaming the project in Hub doesn't break it.
+- `agents.claude_ai_connectors: true` now works: agents load the
+  account's claude.ai connectors. Before, a flag Den always passed kept
+  them out. Any other MCP server of the person's or the project's still
+  stays out.
+- Den's own update no longer waits silently. When it waits, the log and
+  the audit say why, once each time the reason changes. When the Den
+  agent is waiting on your Allow or your answer, the bell says Den's
+  update waits on it, and after `server_agent.update_wait_checks` checks
+  in a row (default 2) it counts as needing you. Den never updates past
+  a pending Allow. After a self-update, a new pin left uncommitted in the
+  distribution's folder is reported too.
+- Den's log now says where held Hub comments go: when an agent's
+  comments wait (busy, or waiting on its person), when a restart brings
+  held ones back, when they're typed in and how long the oldest waited,
+  and when Hub's Try again repeats one already held.
+- Agents connected to Hub are now told that approval happens in Hub:
+  publish the doc or mock there, ask for review, and wait for the
+  decision Hub sends back. They no longer ask you to approve it in chat.
+- The bell's count shows only what needs you. An agent sitting idle
+  after its turn no longer counts. A permission prompt, a question the
+  agent asked you (with ask_human, or by ending its turn on one), and
+  Den's own "Allow the update" do count. Only the newest update ask is
+  kept, and it goes once Den runs that version. Opening an agent now
+  takes its updates out of the list, so the Updates count drops.
+- A new Checks page at `/verify` answers "Can we ship?" (issue 209). It
+  shows one answer for each environment, worst first. "Nothing ran" is
+  never shown as ready. A failing environment has a See why button: it
+  lists the first failures, the checks still waiting and what passed, and
+  each failure's Open report shows that check's output. Each run is now
+  kept, with who started it and who allowed it. New routes:
+  `/api/verify/overview`, `/api/verify/runs/:id` and
+  `/api/verify/runs/:id/report`.
+
+### Changed
+
+- `/tests` now redirects (301) to `/verify`. The nav's new Checks item
+  (es "Comprobaciones", ja "チェック") opens `/verify`. The old Tests page
+  moved to `/test-runs`, and the nav's Tests item opens it. Links or
+  bookmarks to `/tests` land on the new Checks page.
+
+### Fixed
+
+- At phone width (below 480 px), every button in the top bar and the runs
+  bar is at least 32 px each way, so it is easy to tap (issue 209).
+
 - Den's web server no longer closes an idle connection after 5 seconds,
   the page's own poll interval. A client that reused a connection just
   then could get a reset (a failed request, or a proxy error). The new
   setting `web.keep_alive_seconds` (default 120) sets how long it waits.
+- The two settings for agents' mode now say which is which. Settings ›
+  Agents is the Den-wide default; Settings › Project setup is this
+  project's override of it. Each says which wins: an agent's own
+  setting, then the project, then the Den-wide default, then its
+  persona. The project row says "Following Den-wide: Auto mode" until
+  it is set, then "Set for this project: … (Den-wide is …)", with Use
+  Den-wide to clear it and a link to the Den-wide default. The Den-wide
+  row says how many projects override it, each linked. The Agents list
+  says "from the Den-wide default" too. A Settings link to a row now
+  opens at that row.
+
+### Fixed
+
+- A Settings link to one row (an agent's mode, for example) now scrolls
+  the row to just below the settings header. Its name and controls show,
+  rather than sitting hidden under the top bar.
+- Where an agent's mode comes from: when nobody has set the Den-wide
+  default, the Agents page now says "from Den's built-in default", so it
+  can't be mistaken for the Den-wide default.
 
 ## [0.4.60] - 2026-11-16
 

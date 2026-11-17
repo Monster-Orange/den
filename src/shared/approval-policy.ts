@@ -122,6 +122,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access",
   },
+  hub_connect: {
+    risk: "critical",
+    why: "points Den at another Hub, or none: where agents publish and read",
+  },
   den_update: {
     risk: "critical",
     why: "installs another Den version (a release)",
@@ -141,6 +145,10 @@ export const HELD_WRITE_RISK: Readonly<
     why: "gives the project's agents a repo they couldn't reach: wider access",
   },
   repo_clone: { risk: "routine", why: "clones a repo into a new folder" },
+  den_pin_commit: {
+    risk: "routine",
+    why: "commits and pushes the distribution's new Den pin (package.json, package-lock.json), nothing else",
+  },
   service_try: { risk: "routine", why: "starts a service locally" },
   verify_run: {
     risk: "critical",

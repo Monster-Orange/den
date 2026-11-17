@@ -76,6 +76,9 @@ export const ROUTES: readonly RouteEntry[] = [
     "/server-agent",
     "/server-agent.html",
     "/tests",
+    "/verify",
+    "/verify.html",
+    "/test-runs",
     "/index.html",
     "/services",
     "/services.html",
@@ -237,6 +240,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/server-agent",
     "the server agent's name, runtime and state (ON-6): reads only",
   ),
+  R(
+    "/api/server-agent/update",
+    "#176: Den's last update and the new Den's doctor lines: file reads",
+  ),
   R("/api/health", "runs the manifests' health probes: read-only checks"),
   R("/api/test-sources", "git rev-parse in each repo: read-only"),
   R("/api/manifest/validate", "GET validates a file at a path: read-only"),
@@ -359,6 +366,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/signin/code/:id",
     "D67: the signed-out page is going; its pending code request ends",
   ),
+  M(
+    ["POST"],
+    "/api/signin/code/:id/withdraw",
+    "issue 320: the same, as the signed-out page's beacon sends it",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",
@@ -392,6 +404,9 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
   M(["POST"], "/api/manifest/validate", "validates posted content (no write)"),
+  R("/api/verify/overview", "issue 209: Verify's answer on each environment"),
+  R("/api/verify/runs/:id", "issue 209: one Verify run's record"),
+  R("/api/verify/runs/:id/report", "issue 209: a module's kept output"),
   M(
     ["POST"],
     "/api/verify/plan",
@@ -419,6 +434,12 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/keep-running-after-logout",
     "re-installs Den's launchd jobs in the chosen mode",
+  ),
+  // #299: Keep agents running after logout › Sign-in token (a person's only).
+  M(
+    ["POST", "DELETE"],
+    "/api/agents/signin-token",
+    "saves (or removes) the agents' sign-in token in the install's secrets store",
   ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
@@ -518,6 +539,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/compacting-clear",
+    "issue 278: a person looked at an agent stuck compacting: its loop is over for now and held deliveries go again; a person's only",
+  ),
+  M(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/move",
     "D72 move an agent to another project ({to, when}): same conversation, at its next idle by default; a person's only",
   ),
@@ -561,6 +587,15 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/hub/github",
     "H5: how many of the company's GitHub repos Den Hub's GitHub App can read, live from Hub, with Hub's github.com install or change link",
+  ),
+  R(
+    "/api/gate-slots",
+    "Issue 144: who holds this machine's heavy-test slots and who waits, with the machine's settings",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/end",
+    "Issue 144: a person ends a gate slot early (never an agent); the run is not stopped",
   ),
   R(
     "/api/notifications",
@@ -755,6 +790,8 @@ export const SIGNIN_FREE: readonly string[] = [
   // SEC-2a: approve this computer with a code, from the signed-out page.
   "/api/signin/code",
   "/api/signin/code/:id",
+  // Issue 320: the page's beacon withdraw (its poll id is the proof).
+  "/api/signin/code/:id/withdraw",
   // HUB-1.7: Hub's redirect back (no session cookie on it): the state
   // this server issued is the proof (hub-connect.ts).
   "/hub/callback",
@@ -803,6 +840,15 @@ export const SIGNIN_GETS: readonly string[] = [
  */
 export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 
+/**
+ * Issue 320: the same withdraw, as a POST: `navigator.sendBeacon` sends
+ * only a POST, and Safari drops a keepalive DELETE as a page goes. Guarded
+ * as SIGNIN_ID_DELETES: an allowed Origin, no CSRF token, signed in or not.
+ */
+export const SIGNIN_ID_BEACONS: readonly string[] = [
+  "/api/signin/code/:id/withdraw",
+];
+
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   // UK-2: how a write sent with the working pop-up's id ended.
@@ -827,6 +873,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/mode",
     "/api/workspaces/:ws/agents/:id/handoff",
     "/api/workspaces/:ws/agents/:id/clear-helpers",
+    "/api/workspaces/:ws/agents/:id/compacting-clear",
     "/api/workspaces/:ws/agents/:id/restart",
     "/api/workspaces/:ws/agents/:id/link",
     "/api/workspaces/:ws/agents/:id/move",
@@ -857,9 +904,15 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "github-routes.ts:SIGNIN_PATH": ["/api/github/signin/:id"],
   "github-routes.ts:LINK_PATH": ["/api/web/owner/link/:id"],
   "pair-routes.ts:POLL_PATH": ["/api/signin/code/:id"],
+  "pair-routes.ts:WITHDRAW_PATH": ["/api/signin/code/:id/withdraw"],
   "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
   "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
   "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],
+  // Issue 209: a Verify run's record, and a module's kept output.
+  "verify-routes.ts:RUN_PATH": [
+    "/api/verify/runs/:id",
+    "/api/verify/runs/:id/report",
+  ],
 };
 
 /** Whether `pathname` matches a table path. */

@@ -82,6 +82,7 @@ import {
   pathMatches,
   routeClass,
   SIGNIN_CSRF_FREE,
+  SIGNIN_ID_BEACONS,
   SIGNIN_ID_DELETES,
   SIGNIN_FREE,
   SIGNIN_GETS,
@@ -686,6 +687,12 @@ export function checkRequest(
     SIGNIN_ID_DELETES.some((r) => pathMatches(r, pathname))
   )
     return ok(null);
+  // Issue 320: the same withdraw, as the page's beacon (a POST).
+  if (
+    method === "POST" &&
+    SIGNIN_ID_BEACONS.some((r) => pathMatches(r, pathname))
+  )
+    return ok(null);
   // A browser's WebSocket can't send a header: on an upgrade the token
   // rides as a subprotocol, `den.csrf.<token>` (AG-4a-term's io).
   const csrf =
@@ -715,6 +722,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/api/session/logout",
   // D34: what a person sees of an agent's helpers is the person's to clear.
   "/api/workspaces/:ws/agents/:id/clear-helpers",
+  // Issue 278: deliveries held after a compaction loop wait for a person.
+  "/api/workspaces/:ws/agents/:id/compacting-clear",
   // D65: what an agent is listed under is the person's to say.
   "/api/workspaces/:ws/agents/:id/link",
   // D72: an agent never moves itself (or another) out of its scope.
@@ -747,6 +756,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/web-url",
   // Issue 163: re-installs the launchd jobs (and may run sudo): a person's.
   "/api/keep-running-after-logout",
+  // #299: the agents' sign-in token, into the secrets store: a person's.
+  "/api/agents/signin-token",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",
@@ -800,6 +811,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/hub/sync",
   "/api/hub/link-suggestions",
   "/api/hub/names-check",
+  // Issue 144: ending a gate slot early is a person's.
+  "/api/gate-slots/end",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */

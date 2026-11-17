@@ -12,7 +12,7 @@
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, start-agent,
  * restart-agent, fresh-start, report-preview, save-report-draft,
  * discard-draft, follow-project, keep-running, send-message, allow-web-app,
- * agent-order, delete-project, remove-service. Waits for
+ * agent-order, delete-project, remove-service, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -55,6 +55,16 @@ export const DEN_ACTIONS = {
       working: "busy.delProjW",
       success: "busy.delProjS",
       failure: "busy.delProjF",
+    },
+  },
+  // Issue 144: a person ends a gate slot early (the run goes on).
+  "gate-end": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.gateEndW",
+      success: "busy.gateEndS",
+      failure: "busy.gateEndF",
     },
   },
   "remove-service": {
@@ -205,6 +215,16 @@ export const DEN_ACTIONS = {
       working: "keep.w",
       success: "keep.s",
       failure: "keep.failed",
+    },
+  },
+  // Issue 163: Settings › Sign-in token › Clear.
+  "clear-token": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "keep.clearW",
+      success: "keep.clearS",
+      failure: "keep.clearF",
     },
   },
   // Issue 103: the composer's Send, under an agent's terminal.

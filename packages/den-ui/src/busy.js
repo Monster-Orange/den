@@ -11,6 +11,9 @@
  *     words: { en: {...}, ... },    extra or replaced shared words
  *     idHeader: "X-Request-Id",     the header the request id rides in
  *     statusUrl: (id) => url,       Check again's GET (never resends)
+ *     request: (id) => Promise<state>  Check again through the product's
+ *                                   adapter instead ({ state, result?,
+ *                                   error? }); statusUrl is then unused
  *     report: (info) => void,       Report: { title, details, requestId }
  *     toast: (text) => void,        a fast success, said without a pop-up
  *     open: (url) => void,          a held answer's page (default: go)
@@ -48,10 +51,25 @@
  *     opts.extra(res)     a node under the success line; waits for Close.
  *     opts.before         reconnect: the product's answer from before (else
  *                         the kit asks reconnect.url first).
+ *     opts.next           a failure trying again won't fix: { label, href },
+ *                         or (err) => { label, href } | null. The Failure
+ *                         pop-up then offers that link (the primary) in
+ *                         place of Try again. With no href ({ label }: who
+ *                         to ask, say), it says the words instead and
+ *                         Close is the primary.
+ *
+ *   run(headers, progress)  progress(text) adds a line under the working
+ *                       title (in order; the newest is the brightest),
+ *                       shown when the pop-up opens and as it works.
+ *
+ * Its look is busy.css (linked from beside this file).
  *
  * Reconnect mode: the request may get no answer (the product stopped
  * first); that counts as going down, and the pop-up waits for it to come
  * back. busyAction then resolves with the new answer from reconnect.url.
+ * Each ask of reconnect.url gives up after ASK_MS: an ask in flight as the
+ * product goes down (or one a proxy holds) may never be answered, and the
+ * next ask must still come.
  *
  * The request contract (Settled in v2): Try again sends the same id only
  * when no answer came back; after the server answered with an error it
@@ -69,6 +87,7 @@ export const NO_ANSWER_MS = 60_000;
 export const SUCCESS_CLOSE_MS = 1200;
 export const POLL_MS = 1000;
 export const POLL_MAX_MS = 3000;
+export const ASK_MS = 3000;
 
 const hook = {
   lang: () =>
@@ -142,35 +161,23 @@ const ICONS = {
 const icon = (k) =>
   `<svg class="bz-ico bz-${k}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
 
-/* Tokens only (UK-1): no colour of its own. */
-const CSS = `
-.bz-dlg{font-family:var(--sans);position:fixed;inset-block:auto;inset-inline:0;top:50%;transform:translateY(-50%);margin:0 auto;height:auto;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;width:min(420px,calc(100vw - 32px));max-width:100%;padding:0;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow-dialog)}
-.bz-dlg::backdrop{background:color-mix(in srgb,var(--sunken) 70%,transparent)}
-.bz-b{padding:var(--space-4) calc(var(--space-4) + 2px);display:grid;gap:10px}
-.bz-b h2{font-size:var(--fs-l);margin:0;outline:none;display:flex;gap:var(--space-2);align-items:center}
-.bz-b p{margin:0;font-size:var(--fs-s);line-height:1.5}
-.bz-ico{width:18px;height:18px;flex:none}
-.bz-ok{color:var(--ok)}.bz-bad{color:var(--bad)}
-.bz-dlg[data-state="noanswer"] .bz-clock{color:var(--warn)}
-.bz-bar{height:2px;background:color-mix(in srgb,var(--accent) 22%,transparent);position:relative;overflow:hidden;border-radius:2px}
-.bz-bar i{position:absolute;inset:0 auto 0 0;width:35%;background:var(--accent);animation:bz-ind 1.4s ease-in-out infinite}
-@keyframes bz-ind{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
-@media (prefers-reduced-motion: reduce){.bz-bar i{animation:none;width:100%;opacity:.7}}
-.bz-b details{font-size:var(--fs-xs);color:var(--muted)}
-.bz-b pre{margin:6px 0 0;font:11.5px/1.5 var(--mono);background:var(--sunken);padding:var(--space-2);border-radius:var(--radius-button);white-space:pre-wrap;overflow-wrap:anywhere}
-.bz-ft{display:flex;flex-wrap:wrap;gap:var(--space-2);justify-content:flex-end;align-items:center}
-.bz-btn{font:inherit;font-size:var(--fs-s);min-height:var(--tap-min);padding:0 var(--space-3);border-radius:var(--radius-button);border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer}
-.bz-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.bz-btn.bz-primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
-@media (max-width:480px){.bz-btn{min-height:var(--tap)}.bz-ft .bz-primary{flex-basis:100%;order:9}}
-`;
+/**
+ * The look is busy.css, beside this file: linked once, never injected, so
+ * a page under style-src 'self' takes it. A page that links it itself (in
+ * its <head>, say) keeps its own link.
+ */
+const CSS_URL = new URL("./busy.css", import.meta.url).href;
 
 function ensureCss() {
   if (document.getElementById("bz-css")) return;
-  const s = document.createElement("style");
-  s.id = "bz-css";
-  s.textContent = CSS;
-  document.head.append(s);
+  for (const l of document.querySelectorAll('link[rel="stylesheet"]'))
+    if (/(^|\/)busy\.css(\?|$)/.test(new URL(l.href, location.href).pathname))
+      return;
+  const l = document.createElement("link");
+  l.id = "bz-css";
+  l.rel = "stylesheet";
+  l.href = CSS_URL;
+  document.head.append(l);
 }
 
 /** <den-busy>: the pop-up's element, defined on first use (a browser only). */
@@ -202,6 +209,20 @@ function newId() {
 }
 
 const later = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** One ask of the reconnect url: its JSON, or null (no answer in ASK_MS). */
+async function askOnce(url) {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), ASK_MS);
+  try {
+    const r = await fetch(url, { cache: "no-store", signal: stop.signal });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** The first message with words: the error's own, its answer's, nothing. */
 export function messageOf(err) {
@@ -249,6 +270,8 @@ export function busyAction(name, run, opts = {}) {
   let lastErr = null;
   let okData = null;
   let lastAt = new Date();
+  /** progress(text)'s lines, this attempt. */
+  let lines = [];
   let finish;
   let fail;
   const result = new Promise((res, rej) => {
@@ -300,14 +323,35 @@ export function busyAction(name, run, opts = {}) {
   const btn = (key, primary) =>
     `<button type="button" class="bz-btn${primary ? " bz-primary" : ""}" data-bz="${key}">${esc(word(key))}</button>`;
 
-  /** Report · Close · [Open the log] · the primary, last. */
-  const footer = (primary, withLog) =>
+  /**
+   * Report · Close · [Open the log] · the primary, last. `next`: the
+   * caller's link ({ label, href }) is the primary.
+   */
+  const footer = (primary, withLog, next) =>
     `<div class="bz-ft">` +
     (hook.report ? btn("report") : "") +
-    btn("close") +
+    // A next step with no link: its words are in the body; Close leads.
+    btn("close", !!next && !next.href) +
     (withLog && hook.logUrl ? btn("log") : "") +
-    btn(primary, true) +
+    (next
+      ? next.href
+        ? `<a class="bz-btn bz-primary" href="${esc(next.href)}">${esc(next.label)}</a>`
+        : ""
+      : btn(primary, true)) +
     `</div>`;
+
+  /** The caller's next step for this failure, or null (then Try again). */
+  function nextStep(err) {
+    let n = opts.next;
+    if (typeof n === "function") {
+      try {
+        n = n(err);
+      } catch {
+        n = null;
+      }
+    }
+    return n && n.label ? n : null;
+  }
 
   function paintWorking(secs, note) {
     state = "working";
@@ -321,8 +365,37 @@ export function busyAction(name, run, opts = {}) {
     paint(
       title("clock", actionWord(a, "working", vars)) +
         `<p aria-live="polite" class="bz-live">${esc(line)}</p>` +
+        progressHtml() +
         `<div class="bz-bar" role="progressbar" aria-label="${esc(word("wait", { who }))}"><i></i></div>`,
     );
+  }
+
+  /** The progress lines so far ("" with none). */
+  function progressHtml() {
+    if (!lines.length) return "";
+    return (
+      `<ol class="bz-prog" aria-label="${esc(word("progress"))}" aria-live="polite">` +
+      lines.map((l) => `<li>${esc(l)}</li>`).join("") +
+      `</ol>`
+    );
+  }
+
+  /** run's progress(text): a new line, in the open pop-up too. */
+  function progress(text) {
+    if (settled || text == null || text === "") return;
+    lines.push(String(text));
+    if (state !== "working" || !d?.open) return;
+    const ol = d.querySelector(".bz-prog");
+    if (ol) {
+      const li = document.createElement("li");
+      li.textContent = String(text);
+      ol.append(li);
+    } else {
+      d.querySelector(".bz-live")?.insertAdjacentHTML(
+        "afterend",
+        progressHtml(),
+      );
+    }
   }
 
   function tick(startedAt) {
@@ -372,13 +445,22 @@ export function busyAction(name, run, opts = {}) {
         ? word("err_code", { who, code: err.status })
         : messageOf(err) || word("network", { who });
     opts.onFail?.(err);
+    const next = nextStep(err);
     paint(
       title("bad", actionWord(a, "failure", vars)) +
         `<p>${esc(why)}</p>` +
         (said && said !== why ? `<p class="bz-said">${esc(said)}</p>` : "") +
+        (next ? `<p class="bz-next">${esc(word("next"))}</p>` : "") +
+        (next && !next.href
+          ? `<p class="bz-step">${esc(next.label)}</p>`
+          : "") +
         `<details><summary>${esc(word("details"))}</summary><pre>${esc(detailsText(err, id, lastAt))}</pre></details>` +
-        footer("retry"),
-      '[data-bz="retry"]',
+        footer("retry", false, next),
+      next
+        ? next.href
+          ? ".bz-ft a.bz-primary"
+          : '[data-bz="close"]'
+        : '[data-bz="retry"]',
     );
     wire();
   }
@@ -492,6 +574,7 @@ export function busyAction(name, run, opts = {}) {
     // Try again: the same id only when no answer came back.
     if (answeredWithError(lastErr)) id = newId();
     lastErr = null;
+    lines = [];
     const startedAt = Date.now();
     state = "working";
     hold(true);
@@ -506,7 +589,7 @@ export function busyAction(name, run, opts = {}) {
       }
     }, OPEN_MS);
     Promise.resolve()
-      .then(() => run({ [hook.idHeader]: id }))
+      .then(() => run({ [hook.idHeader]: id }, progress))
       .then(
         (data) => {
           clearTimeout(opener);
@@ -526,8 +609,13 @@ export function busyAction(name, run, opts = {}) {
   async function checkAgain() {
     let st = null;
     try {
-      const r = await fetch(hook.statusUrl(id), { cache: "no-store" });
-      st = r.ok ? await r.json() : null;
+      // The product's adapter when it has one (its request(id)), else
+      // a GET of statusUrl(id).
+      if (hook.request) st = (await hook.request(id)) ?? null;
+      else {
+        const r = await fetch(hook.statusUrl(id), { cache: "no-store" });
+        st = r.ok ? await r.json() : null;
+      }
     } catch {
       st = null;
     }
@@ -555,13 +643,7 @@ export function busyAction(name, run, opts = {}) {
     while (!settled && Date.now() - startedAt < limit) {
       await later(gap);
       gap = Math.min(POLL_MAX_MS, gap + 500);
-      let now = null;
-      try {
-        const r = await fetch(rc.url, { cache: "no-store" });
-        now = r.ok ? await r.json() : null;
-      } catch {
-        now = null;
-      }
+      const now = await askOnce(rc.url);
       if (settled) return;
       if (now && rc.back(now, before)) {
         const v = rc.version?.(now) ?? "";
@@ -580,13 +662,10 @@ export function busyAction(name, run, opts = {}) {
   // Reconnect mode: how the product answered before it went away.
   let before = opts.before ?? null;
   if (reconnect && hook.reconnect && !before)
-    fetch(hook.reconnect.url, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
-      .then((b) => {
-        before = b;
-        attempt();
-      });
+    askOnce(hook.reconnect.url).then((b) => {
+      before = b;
+      attempt();
+    });
   else attempt();
   return result;
 }

@@ -22,6 +22,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { kitPseudo } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
@@ -157,6 +158,11 @@ async function open(next: string): Promise<Page> {
       body: `(window.denMessages = window.denMessages || {}).es = ${qps};`,
     }),
   );
+  // Issue 95: the kit's own words (Report, say) in the pseudo-locale too.
+  await p.route(`${s!.base}/den-ui-shell.js*`, async (r) => {
+    const res = await r.fetch();
+    r.fulfill({ response: res, body: (await res.text()) + kitPseudo("es") });
+  });
   await p.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
@@ -300,7 +306,8 @@ describe("den#171: Edge, Tests, Release, Logs, Environments and Services in es a
   // den#171, each now through the catalog, must not show in either language.
   const PAGES = [
     "/edge",
-    "/tests",
+    "/verify",
+    "/test-runs",
     "/release",
     "/logs",
     "/environments",

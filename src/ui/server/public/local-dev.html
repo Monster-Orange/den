@@ -2573,7 +2573,20 @@
             pT("pj.checking", "checking…"),
             pT("pj.checkingTip", "waiting for the first health check"),
           );
+        /** Issue 277: a repo that runs nothing (no service of its own). */
+        const runsNothing = (r) =>
+          !!r.raw?.length && r.raw.every((x) => x.runsNothing);
         function repoHealth(r) {
+          // Issue 277: a repo that runs nothing has no health to check.
+          if (runsNothing(r))
+            return healthCell(
+              "unk",
+              pT("pj.noRuntime", "no runtime"),
+              pT(
+                "pj.noRuntimeTip",
+                "This repo runs nothing: nothing to start or health-check. Agents can work in it.",
+              ),
+            );
           if (!_lastHealthAt) return CHECKING();
           const { rollup } = r;
           const checked = rollup.checked;
@@ -2735,7 +2748,7 @@
               <td class="tbl-mono tbl-muted">${escHtml(primary?.branch ?? "")}</td>
               <td>${modeCell}</td>
               <td class="tbl-muted${run.cls ? " " + run.cls : ""}" data-last="${escHtml(repo)}" title="${escHtml(run.title)}">${escHtml(run.text)}</td>
-              <td><div class="tbl-acts">${visitBtn(primary, repo)}<span class="tbl-run">${actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</span></div></td>
+              <td><div class="tbl-acts">${visitBtn(primary, repo)}<span class="tbl-run">${runsNothing(r) ? "" : actBtns(repo, { up: !!startOf(repo).length, restart: !!startOf(repo).length })}${repoMenu(r)}</span></div></td>
             </tr>`;
           const fixes = r.fixes
             .map(

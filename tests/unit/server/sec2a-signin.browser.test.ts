@@ -216,6 +216,50 @@ describe("Sign in with GitHub on the edge's signed-out page", () => {
     await p.goto("about:blank");
     await ctx.close();
   }, 90_000);
+
+  it("#320: signed in with GitHub, the page withdraws its own code before it goes, even if its pagehide never runs", async () => {
+    if (skip()) return;
+    const { ctx, p } = await edgePage();
+    // The page's own code is waiting, as on any signed-out page.
+    await p.waitForSelector("#den-pair-code");
+    // The landing never answers: the page never unloads, so no pagehide.
+    let leaving!: () => void;
+    const left = new Promise<void>((r) => (leaving = r));
+    await p.route(`http://${EDGE}:${port}/`, () => leaving());
+    await p.click("#den-gh-start");
+    await p.waitForSelector("#den-gh-code");
+    // It says it is signed in, then goes (held). (Told by the page itself:
+    // a query waits on the held navigation.)
+    const says = new Promise<void>((r) =>
+      p.on("console", (m) => {
+        if (m.text() === "test:signed-in") r();
+      }),
+    );
+    await p.evaluate(() => {
+      const box = document.querySelector("#den-gh-flow")!;
+      new MutationObserver((_, o) => {
+        if (box.textContent?.includes("Signed in. Loading…")) {
+          o.disconnect();
+          console.log("test:signed-in");
+        }
+      }).observe(box, { childList: true, subtree: true, characterData: true });
+    });
+    gh.approve(lastCode(), { id: 4242, login: "octo-owner" });
+    await says;
+    await left;
+    // A signed-in browser has nothing to allow.
+    const other = await browser!.newContext();
+    const q = await other.newPage();
+    await claimIn(q);
+    // (A count: no code is printed.)
+    const waiting = await q.evaluate(async () => {
+      const r = await fetch("/api/web/waiting", { cache: "no-store" });
+      return ((await r.json()) as { waiting?: unknown[] }).waiting?.length;
+    });
+    expect(waiting).toBe(0);
+    await other.close();
+    await ctx.close();
+  }, 90_000);
 });
 
 describe("Settings › Access", () => {

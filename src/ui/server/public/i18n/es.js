@@ -16,6 +16,90 @@
     "n.services": "Servicios",
     "n.logs": "Registros",
     "n.tests": "Pruebas",
+    "n.verify": "Comprobaciones",
+    "v.ov_t": "¿Podemos publicar?",
+    "v.ov_s": "Una respuesta para cada entorno, en palabras sencillas.",
+    "v.loading": "Leyendo los últimos resultados…",
+    "v.env_local": "Local",
+    "v.env_staging": "Staging",
+    "v.env_prod": "Producción",
+    "v.v_notready": "No está listo",
+    "v.v_ready": "Listo",
+    "v.v_nothing": "No se ejecutó nada",
+    "v.v_notrun": "Aún sin ejecutar",
+    "v.v_partly": "Parece bien, revisado en parte",
+    "v.v_none": "Aún no hay comprobaciones",
+    "v.a_fail1": "{e} no está listo: {m} falló.",
+    "v.a_failn": "{e} no está listo: fallaron {n} comprobaciones.",
+    "v.a_blockedonly":
+      "{e} no está listo: {n} comprobaciones no pudieron ejecutarse.",
+    "v.a_blockedonly.one":
+      "{e} no está listo: {n} comprobación no pudo ejecutarse.",
+    "v.a_waiting": "Otras {n} comprobaciones dependen de ello.",
+    "v.a_waiting.one": "{n} comprobación más depende de ello.",
+    "v.a_nonehere":
+      "Ninguna comprobación se ejecuta aún en {e}, así que no se ejecutó nada. Esto no es un aprobado.",
+    "v.a_nothingran":
+      "En la última ejecución no se ejecutó nada en {e}. Esto no es un aprobado.",
+    "v.a_notrun": "{e} aún no se ha comprobado.",
+    "v.a_partly":
+      "{e} parece bien por ahora: pasaron {p} de {n} comprobaciones. El resto aún no se ha ejecutado aquí.",
+    "v.a_ready": "{e} está listo: pasaron las {n} comprobaciones.",
+    "v.a_ready.one": "{e} está listo: pasó {n} comprobación.",
+    "v.m_agent": "Iniciado por {a} (agente).",
+    "v.m_person": "Iniciado por una persona.",
+    "v.m_allowed": "Permitido por una persona.",
+    "v.m_allowed_den": "Permitido por Den.",
+    "v.m_commit": "Commit {c}.",
+    "v.m_when": "Terminó: {t}.",
+    "v.b_why": "Ver por qué",
+    "v.b_report": "Abrir el informe",
+    "v.back": "Volver a la respuesta",
+    "v.ac_n": "Todas las comprobaciones ({n})",
+    "v.ac_mod": "Comprobación",
+    "v.ac_kind": "Tipo",
+    "v.dep_on": "necesita que {l} pase primero",
+    "v.k_smoke": "humo",
+    "v.k_synthetic": "sintética",
+    "v.k_security": "seguridad",
+    "v.k_performance": "velocidad",
+    "v.k_integration": "integración",
+    "v.s_passed": "pasó",
+    "v.s_failed": "falló",
+    "v.s_blocked": "bloqueada",
+    "v.s_error": "error",
+    "v.s_none": "aún sin ejecutar",
+    "v.s_off": "no se ejecuta aquí",
+    "v.fd_t": "Actividad",
+    "v.fd_none": "Aún no hay ejecuciones.",
+    "v.actor_agent": "agente",
+    "v.actor_person": "persona",
+    "v.actor_den": "Den",
+    "v.who_person": "Una persona",
+    "v.fd_asked": "pidió ejecutar {n} comprobaciones en {e}.",
+    "v.fd_asked.one": "pidió ejecutar {n} comprobación en {e}.",
+    "v.fd_allowed": "permitió la ejecución en {e}.",
+    "v.fd_finished": "La ejecución en {e} terminó: {v}.",
+    "v.why_t": "Por qué lo creemos",
+    "v.why_fail": "{m} falló: «{x}».",
+    "v.why_failq": "{m} falló.",
+    "v.why_err": "{m} no pudo ejecutarse: «{x}».",
+    "v.why_errq": "{m} no pudo ejecutarse.",
+    "v.why_wait": "Estas no pudieron ejecutarse porque esperan a la capa {l}:",
+    "v.why_wait_smoke":
+      "Estas no pudieron ejecutarse porque antes falló una comprobación de humo:",
+    "v.why_rest": "Todo lo demás pasó aquí: {n} comprobaciones.",
+    "v.why_rest.one": "Todo lo demás pasó aquí: {n} comprobación.",
+    "v.no_report": "Esta comprobación no guardó salida para abrir.",
+    "v.em_h": "Añade una comprobación",
+    "v.em_p":
+      "Una comprobación son tres líneas en el manifiesto de un repositorio:",
+    "v.em_where": "Den la lee la próxima vez que planifiques una ejecución.",
+    "v.old_t":
+      "Los tipos de prueba anteriores siguen ejecutándose en la página Pruebas mientras se retiran.",
+    "v.old_link": "Abrir Pruebas",
+    "v.err_load": "Verificación no pudo cargar los resultados.",
+    "v.retry": "Intentar de nuevo",
     "n.environments": "Entornos",
     "n.releases": "Versiones",
     "n.edge": "Edge",
@@ -225,10 +309,6 @@
     "org.n": "{n} proyectos",
     "org.n.one": "{n} proyecto",
     from: "de {d}",
-    "b.logs": "{n} abiertos",
-    "b.logs.one": "{n} abierto",
-    "b.down": "{n} caídos",
-    "b.down.one": "{n} caído",
     "act.pin": "Fijar",
     "act.unpin": "Quitar",
     "act.visit": "Visitar",
@@ -494,7 +574,7 @@
     "busy.restartF": "No se pudo reiniciar {name}.",
     "keep.label": "Mantener los agentes al cerrar sesión",
     "keep.warn":
-      "Con el daemon, un agente puede no llegar a su inicio de sesión (el llavero de inicio): aún no se ha mostrado.",
+      "Allí los agentes inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio.",
     "keep.apply": "Aplicar",
     "keep.pending": "Guardado, aún sin aplicar: pulsa Aplicar.",
     "keep.w": "Aplicando…",
@@ -507,6 +587,37 @@
     "keep.noService":
       "Guardado. Se aplica cuando __DEN_TITLE__ funciona como servicio: __DEN_CLI__ service install",
     "keep.refused": "Sin contraseña de administrador: nada cambió.",
+    "keep.offer":
+      "Aún sin configurar, así que los agentes se detienen al cerrar sesión. Actívalo y pulsa Aplicar (pide tu contraseña de administrador una vez).",
+    "keep.noToken":
+      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. Crea uno con claude setup-token y luego __DEN_CLI__ agents token set.",
+    "keep.credKeychain":
+      "La credencial del almacén está en el llavero de inicio, al que el servicio siempre activo puede no llegar; usa file: o env: (ver docs/always-on-gate.md).",
+    "keep.setup":
+      "El único paso en la terminal: ejecuta esto, inicia sesión en el navegador que abre y pega aquí su token.",
+    "keep.copy": "Copiar",
+    "keep.tokenLabel": "Token de inicio de sesión",
+    "keep.tokenSave": "Guardar",
+    "keep.tokenFailed": "No se guardó: {error}",
+    "keep.tokenClear": "Quitar",
+    "keep.clearTitle": "¿Quitar el token de inicio de sesión?",
+    "keep.clearAsk":
+      "Se quita del almacén de secretos. Con «Mantener los agentes al cerrar sesión», los agentes no podrán iniciar sesión hasta que se defina uno nuevo.",
+    "keep.clearOk": "Quitar",
+    "keep.clearW": "Quitando el token de inicio de sesión…",
+    "keep.clearS": "Quitado.",
+    "keep.clearF": "No se pudo quitar el token de inicio de sesión.",
+    "keep.noTokenNotNeeded":
+      "No hay token de inicio de sesión; solo hace falta con «Mantener los agentes al cerrar sesión».",
+    "keep.processLocal":
+      "Solo en este proceso: se guarda hasta que Den se reinicie.",
+    "keep.noStore":
+      "Esta instalación no tiene almacén de secretos, así que el token de inicio de sesión no se puede guardar. Primero define secrets.provider como 1password o doppler.",
+    "keep.tokenSet":
+      "Los agentes inician sesión con el token guardado el {date}.",
+    "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
+    "keep.tokenOld":
+      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -717,6 +828,10 @@
     "set.ui.ucNext": "siguiente {t}",
     "set.ui.ucDid.asked": "salió {v}, espera tu permiso",
     "set.ui.ucDid.waiting": "salió {v}, espera un momento tranquilo",
+    "set.ui.ucDid.waitAllow":
+      "salió {v}, espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "set.ui.ucDid.waitAsked":
+      "salió {v}, espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "set.ui.ucDid.updating": "actualizando a {v}",
     "set.ui.ucDid.failed": "no se pudo actualizar a {v}",
     "set.ui.ucDid.skipped": "omitida",
@@ -735,6 +850,13 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
+    "set.server.gate_cpu.d":
+      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_overrun":
+      "Prueba marcada pasada su estimación, en minutos",
+    "set.server.gate_overrun.d":
+      "Una prueba que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página Agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -750,6 +872,23 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.compaction_loop": "Compactación repetida: compactaciones",
+    "set.agents.compaction_loop.d":
+      "Cuántas compactaciones automáticas puede tener un agente dentro de los minutos de abajo antes de que la campana avise de que se compacta una y otra vez. Una campana por episodio. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+    "set.agents.compaction_minutes": "Compactación repetida: minutos",
+    "set.agents.compaction_minutes.d":
+      "El intervalo en el que se cuentan las compactaciones de arriba. __DEN_CLI__ config agent_context.compaction_loop_minutes=10",
+    "set.agents.compaction_pause":
+      "Retener entregas tras una compactación repetida",
+    "set.agents.compaction_pause.d":
+      "Activado: cuando la campana avisa de que un agente se compacta una y otra vez, las nuevas entregas (comentarios de Hub, avisos) esperan hasta que una persona lo despeje en la página de agentes. Desactivado (por defecto): se entregan como siempre. __DEN_CLI__ config agent_context.pause_after_loop=true",
+    "set.agents.instruction_share":
+      "Archivos de instrucciones: avisar por encima de",
+    "set.agents.instruction_share.d":
+      "Cuando los archivos de instrucciones que un agente carga al empezar (CLAUDE.md, AGENTS.md y similares, subiendo por sus carpetas) superan esta parte del contexto de su modelo, su fila y doctor avisan y nombran el más grande. El tamaño se estima como bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+    "set.agents.context_tokens": "Tamaño del contexto si se desconoce",
+    "set.agents.context_tokens.d":
+      "El tamaño del contexto, en tokens, sobre el que se toma la parte de arriba cuando __DEN_TITLE__ no conoce el del modelo. __DEN_CLI__ config agent_context.context_tokens=200000",
     "set.agents.list_refresh_wait": "Espera de la lista de agentes",
     "set.agents.list_refresh_wait.d":
       "Cuánto espera la página de agentes su lista. Pasado este tiempo, dice que la lista puede estar desactualizada y lo intenta de nuevo. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
@@ -766,30 +905,40 @@
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
     "addr.empty": "Escribe primero una dirección.",
     "set.workspace.approvals_policy": "Escrituras de los agentes aquí",
-    "set.workspace.approvals_policy.d": "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
+    "set.workspace.approvals_policy.d":
+      "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
     "set.workspace.approvals_policy.o.install": "Como en todas partes",
     "set.workspace.approvals_policy.o.auto": "Ejecutar sin aviso",
     "set.workspace.approvals_policy.o.notify": "Ejecutar y avisarme",
     "set.workspace.approvals_policy.o.ask": "Preguntarme",
     "set.workspace.approvals_watch": "Vigilado aquí",
-    "set.workspace.approvals_watch.d": "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
+    "set.workspace.approvals_watch.d":
+      "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
     "set.workspace.approvals_critical": "Crítico aquí",
-    "set.workspace.approvals_critical.d": "Tipos de escritura de agentes que siempre te preguntan en este proyecto. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.workspace.approvals_critical.d":
+      "Tipos de escritura de agentes que siempre te preguntan en este proyecto. Separados por comas, por ejemplo repo_clone, service_try.",
     "set.agents.approvals_policy": "Escrituras de agentes",
-    "set.agents.approvals_policy.d": "Lo que un agente puede hacer sin tu Permitir. Ejecutar y avisarme: se ejecuta y tus novedades lo dicen. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta, igual que una sobre algo que vigilas o fijaste.",
+    "set.agents.approvals_policy.d":
+      "Lo que un agente puede hacer sin tu Permitir. Ejecutar y avisarme: se ejecuta y tus novedades lo dicen. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta, igual que una sobre algo que vigilas o fijaste.",
     "set.agents.approvals_policy.o.auto": "Ejecutar sin aviso",
     "set.agents.approvals_policy.o.notify": "Ejecutar y avisarme",
     "set.agents.approvals_policy.o.ask": "Preguntarme",
     "set.agents.approvals_watch": "Vigilado",
-    "set.agents.approvals_watch.d": "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea; también una sobre un repo o servicio que fijaste. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
+    "set.agents.approvals_watch.d":
+      "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea; también una sobre un repo o servicio que fijaste. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
     "set.agents.approvals_critical": "Crítico",
-    "set.agents.approvals_critical.d": "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
-    "ap.do.agent_import": "Traer la conversación {session} como agente {persona} del proyecto \"{project}\"",
-    "ap.do.approval_policy": "Cambiar la política de aprobación de todos los proyectos a {to}",
-    "ap.do.approval_policy.project": "Cambiar la política de aprobación del proyecto {where} a {to}",
-    "set.agents.default_mode": "Modo para todos los agentes",
+    "set.agents.approvals_critical.d":
+      "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "ap.do.agent_import":
+      'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
+    "ap.do.approval_policy":
+      "Cambiar la política de aprobación de todos los proyectos a {to}",
+    "ap.do.approval_policy.project":
+      "Cambiar la política de aprobación del proyecto {where} a {to}",
+    "set.agents.default_mode":
+      "Modo de los agentes: valor por defecto de todo Den",
     "set.agents.default_mode.d":
-      "Todos los agentes trabajan en este modo, también el agente de __DEN_TITLE__, salvo que se haya elegido un modo para el agente o que su proyecto fije uno. Un cambio llega a los agentes en marcha al terminar su turno, solo.",
+      "El modo en que trabajan todos los agentes, también el agente de __DEN_TITLE__, salvo que su proyecto lo reemplace. Cuál gana: el propio ajuste de un agente, luego el proyecto, luego el valor por defecto de todo Den, luego su persona. Un cambio llega a los agentes en marcha al terminar su turno, solo.",
     "set.agents.default_mode.o.persona": "El de cada persona",
     "set.agents.default_mode.o.ask": "Preguntar por todo",
     "set.agents.default_mode.o.edits": "Aprobar ediciones",
@@ -810,7 +959,7 @@
     "set.graph.panelWidth": "Panel de detalles",
     "set.workspace.hub": "Proyecto de Hub",
     "hubp.offline": "Esta instalación aún no está conectada a Hub.",
-    "hubp.connect": "Conéctala en Agentes › Hub",
+    "hubp.connect": "Conéctala en Ajustes › Hub",
     "hubp.suggested": "Sugeridos por Hub",
     "hubp.others": "Otros proyectos de Hub de tu empresa",
     "hubp.whyRepo": "tiene estos repos",
@@ -828,6 +977,8 @@
     "hubp.connectBtn": "Conectar con Hub",
     "hubp.sideProject": "Proyecto",
     "hubp.sideHub": "Proyecto en Hub",
+    "hubp.byId":
+      "Den vincula un proyecto de Hub por su ID oculto, así que cambiar en Hub el nombre del proyecto o su nombre corto no rompe el vínculo.",
     "hubp.linkedWhen": "Vinculado cuando esta instalación se conectó a Hub.",
     "hubp.does":
       "Los documentos, maquetas y comentarios que creen los agentes de {project} van a {hub} en Hub.",
@@ -906,10 +1057,9 @@
     "set.embed.key_minutes": "Duración del permiso del panel incrustado",
     "set.embed.context_max_kb": "Página compartida más grande",
     "set.access.machine_name": "Nombre de la máquina",
-    "ident.local": "Local",
-    "ident.device": "Sesión iniciada · este dispositivo",
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
+    "acct.roleOwner": "Propietario",
     "set.access.pair": "Emparejar un dispositivo",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
@@ -1224,6 +1374,10 @@
       "Permítelo solo si este código aparece en la pantalla de ese equipo.",
     "pair.allow": "Permitir",
     "pair.allowed": "Ese equipo ya inició sesión.",
+    "pair.ended":
+      "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
+    "pair.expired": "Ese código caducó. No se permitió nada.",
+    "pair.close": "Cerrar",
     "ap.do.workspace_create": 'Crear el proyecto "{name}"',
     "ap.do.repo_add":
       'Añadir el repositorio de {path} al proyecto "{workspace}"',
@@ -1237,6 +1391,8 @@
       "Añadir la persona {name} ({id}) al proyecto {where}",
     "ap.do.persona_update.project":
       "Cambiar la persona {id} en el proyecto {where}: {fields}",
+    "ap.do.den_pin_commit":
+      "Confirmar la versión fijada de la distribución en Den {version}",
     "ap.do.repo_clone": "Clonar {source} en {path}",
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
@@ -1327,13 +1483,22 @@
     "ag.mode.from": "modo: {m}, de {src}",
     "ag.mode.src.own": "su propio ajuste",
     "ag.mode.src.project": "el proyecto",
-    "ag.mode.src.install": "el modo de todos los agentes",
+    "ag.mode.src.install": "el valor por defecto de todo Den",
     "ag.mode.src.persona": "su persona",
-    "ag.mode.src.default": "el valor por defecto de Den",
-    "set.workspace.agents_mode": "Modo de los agentes",
+    "ag.mode.src.default": "el valor integrado de Den",
+    "set.workspace.agents_mode":
+      "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":
-      "El modo en que funcionan los agentes de este proyecto, salvo los que tienen su propio ajuste. Cada agente dice abajo su modo y de dónde viene. Un cambio llega a los agentes en marcha después de su turno, solo.",
-    "pmode.none": "Sin fijar",
+      "El modo en que funcionan los agentes de este proyecto, por encima del valor por defecto de todo Den. Cuál gana: el propio ajuste de un agente, luego el proyecto, luego el valor por defecto de todo Den, luego su persona. Cada agente dice abajo su modo y de dónde viene. Un cambio llega a los agentes en marcha después de su turno, solo.",
+    "pmode.none": "Usar el de todo Den",
+    "pmode.following": "Sigue el de todo Den: {m}",
+    "pmode.setHere": "Fijado para este proyecto: {m} (el de todo Den es {dw})",
+    "pmode.changeDw": "Cambiar el valor por defecto de todo Den",
+    "dwmode.now": "Vigente en todo Den: {m}",
+    "dwmode.persona": "el modo propio de cada persona",
+    "dwmode.over": "{n} proyectos lo reemplazan:",
+    "dwmode.over.one": "{n} proyecto lo reemplaza:",
+    "dwmode.overNone": "Ningún proyecto lo reemplaza.",
     "pmode.agent": "{name}: {m}, de {src}",
     "pmode.runsAs":
       "{name}: {m}, de {src}. Funciona en {running} hasta que se reinicie.",
@@ -1485,6 +1650,7 @@
     "bell.hub": "Hub · {project}",
     "bell.hubAll": "Hub",
     "bell.m.permission": "{name} necesita tu permiso",
+    "bell.m.permissionWhat": "{name} necesita tu permiso: {what}",
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
@@ -1498,12 +1664,39 @@
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
+    "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
+    "bell.m.compacting":
+      "{name} se compacta una y otra vez: {n} veces en {m} minutos",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
       "Salió __DEN_TITLE__ {v}. Permite la actualización cuando te venga bien (esta instalación usa {have})",
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
+    "bell.m.updateWaits":
+      "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.updateWaitsAsked":
+      "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
+    "bell.m.updateWaitsWhat":
+      "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
+    "bell.m.updateWaitsAskedWhat":
+      "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta: {what} (desde {since})",
+    "bell.m.pinNotCommitted":
+      "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada en la carpeta de la distribución",
+    "bell.m.pinPushed":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está confirmada ({sha}) y enviada",
+    "bell.m.pinPushFailed":
+      "__DEN_TITLE__ {v}: su versión fijada está confirmada ({sha}), pero el envío falló: {why}. __DEN_TITLE__ lo intenta de nuevo en la próxima comprobación de actualizaciones",
+    "bell.m.pinCommitFailed":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
+    "bell.m.pinPrOpened":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinBranchPushed":
+      "__DEN_TITLE__ {v}: la rama {branch} con la versión fijada está enviada; abre una solicitud de cambios para ella ({why})",
+    "bell.m.pinHeld":
+      "__DEN_TITLE__ {v}: confirmar su versión fijada espera tu permiso",
+    "bell.m.pinNotCommittedAllow":
+      "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
@@ -1518,6 +1711,22 @@
     "ag.hub.working.one": "Trabajando en {n} comentario de Hub",
     "ag.hub.working": "Trabajando en {n} comentarios de Hub",
     "ag.hub.queued.one": "{n} comentario de Hub lo espera",
+    "ag.ctx.tag": "Se compacta una y otra vez",
+    "ag.ctx.looping":
+      "Se compacta una y otra vez: {n} compactaciones automáticas en los últimos minutos.",
+    "ag.ctx.causeFiles":
+      "Causa probable: sus archivos de instrucciones ocupan {size}, más del {share}% de su contexto, y se cargan de nuevo tras cada compactación. El más grande es {path} ({big}).",
+    "ag.ctx.causeOther":
+      "Causa probable: su contexto se vuelve a llenar poco después de cada compactación (salidas de herramientas grandes o archivos leídos enteros).",
+    "ag.ctx.held":
+      "Las nuevas entregas a este agente esperan hasta que lo despejes.",
+    "ag.ctx.clear": "Despejar",
+    "ag.ctx.clearHeld": "Reanudar entregas",
+    "ag.ctx.clearName": "Despejar la compactación repetida de {id}",
+    "ag.ctx.cleared": "{id}: despejado",
+    "ag.ins.tag": "Instrucciones grandes",
+    "ag.ins.tip":
+      "Sus archivos de instrucciones ocupan {size}: más del {share}% de su contexto. El más grande es {path} ({big}).",
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
@@ -1558,12 +1767,7 @@
     "hp.st.done": "terminado",
     "hp.st.failed": "falló",
     "hp.st.stopped": "detenido",
-    "b.helpers": "{n} ayudantes en marcha",
-    "b.helpers.one": "{n} ayudante en marcha",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} en Hub",
-    "hub.railTipPlain": "Abrir Hub",
-    "hub.railUnread": "{n} esperan tu respuesta",
     "hub.railRejected":
       "Hub no acepta el token de esta instalación. Vuelve a conectar en Ajustes › Hub.",
     "hub.railForbidden":
@@ -1739,6 +1943,26 @@
     "busy.delProjW": "Eliminando {name}…",
     "busy.delProjS": "Se eliminó {name}.",
     "busy.delProjF": "No se pudo eliminar {name}.",
+    // Issue 144: el chip de turnos de pruebas en Agentes.
+    "gate.chip": "Turno: {kind} · {who} · hasta {at}",
+    "gate.chipWaiting": " · {n} en espera",
+    "gate.kind.browser": "pruebas de navegador",
+    "gate.kind.cpu": "pruebas unitarias",
+    "gate.popH": "Pruebas en esta máquina",
+    "gate.holds": "Ejecuta {kind}, hasta las {at} más o menos",
+    "gate.waits": "Espera para ejecutar {kind}, desde las {at} más o menos",
+    "gate.over": "pasada su estimación",
+    "gate.none": "Ninguna prueba tiene turno ni espera.",
+    "gate.end": "Terminar antes",
+    "gate.endT": "¿Terminar este turno antes?",
+    "gate.endQ":
+      "¿Terminar el turno de {label}? Su ejecución no se detiene; la siguiente puede empezar.",
+    "gate.endGo": "Terminar turno",
+    "gate.rowHolds": "turno: {kind}",
+    "gate.rowWaits": "espera turno: {kind}",
+    "busy.gateEndW": "Terminando el turno de {name}…",
+    "busy.gateEndS": "El turno de {name} terminó.",
+    "busy.gateEndF": "No se pudo terminar el turno de {name}.",
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",
@@ -1759,7 +1983,7 @@
     "ag.mv.done": "{id} se movió a {ws}.",
     "ag.where.logout": "Se detiene al cerrar sesión",
     "ag.where.logoutTip":
-      "Se ejecuta en el escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: Ajustes › Mantener los agentes al cerrar sesión, o {cli} service install --mode always (opcional; el llavero con el daemon aún no se ha mostrado)",
+      "Se ejecuta en el escritorio, así que cerrar sesión lo termina. Para que los agentes sigan: Ajustes › Mantener los agentes al cerrar sesión, o {cli} service install --mode always (los agentes inician sesión allí con un token de larga duración: {cli} agents token set)",
     "ag.where.bg": "Sin GUI",
     "ag.where.bgTip":
       "Sigue ejecutándose tras cerrar sesión, fuera de la sesión de escritorio: sin el llavero de inicio de sesión ni apps con GUI. 1Password usa el token de la cuenta de servicio, los navegadores van sin interfaz y las carpetas protegidas necesitan Acceso total al disco ({cli} doctor).",
@@ -2024,6 +2248,9 @@
     "pj.validate.go": "Validar",
     "pj.validate.paste": "…o pega aquí el contenido de {file}",
     "pj.checking": "comprobando…",
+    "pj.noRuntime": "sin ejecución",
+    "pj.noRuntimeTip":
+      "Este repositorio no ejecuta nada: nada que iniciar ni comprobar. Los agentes pueden trabajar en él.",
     "pj.checkingTip": "esperando la primera comprobación de estado",
     "pj.noUp": "{id} no tiene comando up",
     "pj.start": "Iniciar",
@@ -2146,6 +2373,22 @@
     "set.ui.rot.never": "nunca",
     "set.ui.rot.add": "Añadir excepción",
     "set.ui.hub.badConfig": "hub en user.yml no es válido",
+    "setc.hub": "Hub",
+    "setc.hub.d":
+      "Den Hub es donde viven los documentos, maquetas, comentarios y aprobaciones de tu empresa. Conecta esta instalación y cada agente podrá buscar y publicar allí, y recibirá los comentarios y decisiones sobre su trabajo. Consulta docs/hub.md en la documentación de Den.",
+    "set.ui.hub.addrNotUrl":
+      "Eso no es una dirección web. Empieza por https://",
+    "set.ui.hub.addrHttps":
+      "La dirección de Hub debe empezar por https:// (http:// solo para esta máquina).",
+    "set.ui.hub.save": "Guardar",
+    "set.ui.hub.clear": "Borrar",
+    "set.ui.hub.saveNote":
+      "Guardar la conserva en tu configuración y reinicia Den. Borrar desconecta; los agentes pierden las herramientas de Hub al reiniciarse.",
+    "set.ui.hub.empty":
+      "Aún no hay Hub. Escribe la dirección del Hub de tu empresa y pulsa Conectar. Guardar solo conserva la dirección.",
+    "set.ui.hub.saved":
+      "Guardado. Den se reinició con la nueva dirección de Hub.",
+    "set.ui.hub.cleared": "Borrado. Den se reinició sin Hub.",
     "set.ui.hub.address": "Dirección de Hub",
     "set.ui.hub.connect": "Conectar",
     "set.ui.hub.connectLinks":
@@ -2393,7 +2636,7 @@
     "set.cli.local_dev.d":
       "Desactivado oculta Proyectos y las API de proyectos para ti. __DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "Activado: __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Así, un agente puede no llegar a su inicio de sesión (el llavero de inicio): aún no se ha mostrado. Desactivado (por defecto): los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
+      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: créalo una vez con claude setup-token y luego __DEN_CLI__ agents token set. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "Si up y restart abren pestañas de terminal de forma predeterminada. __DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
@@ -2604,6 +2847,11 @@
     "svc.notCloned.note": "aún sin clonar — usa Sincronizar en Proyectos",
     "svc.sub.note": "lo gestiona su sistema",
     "svc.noCmds": "no hay comandos para este entorno",
+    "svc.noRuntime": "sin ejecución",
+    "svc.runsNothing.note":
+      "no ejecuta nada: nada que iniciar ni comprobar; los agentes pueden trabajar en él",
+    "svc.runsNothing.title":
+      "Este repositorio no ejecuta nada (configuración, documentación, reglas o CI compartida). No tiene servicios, así que nada se inicia ni se comprueba.",
     "svc.notCloned.title": "Aún sin clonar",
     "svc.notCloned": "sin clonar",
     "svc.layers.title": "Capas del manifiesto aplicadas",

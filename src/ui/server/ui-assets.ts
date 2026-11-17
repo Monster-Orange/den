@@ -23,8 +23,6 @@ export const UI_MODULES: readonly string[] = [
   "/panel.js",
   "/graph.css",
   "/appearance.js",
-  "/version-label.js",
-  "/changelog-view.js",
   "/health-fit.js",
   "/health-rollup.js",
   "/shell.js",
@@ -34,6 +32,8 @@ export const UI_MODULES: readonly string[] = [
   // NT-3: the bell in the top bar.
   "/bell.js",
   "/edge-page.js",
+  // Issue 209: the Verify page.
+  "/verify-page.js",
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
@@ -72,6 +72,8 @@ export const UI_MODULES: readonly string[] = [
   "/log-source.js",
   // D50: how every pop-over closes (a press outside, Esc).
   "/popover.js",
+  // Issue 144: the Agents page's gate chip (heavy test runs take turns).
+  "/gate-chip.js",
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
@@ -81,10 +83,12 @@ export const UI_MODULES: readonly string[] = [
   "/busy-den.js",
   // issue 133: Den's words and Report on the kit's dialogs (/kit/dialog.js).
   "/dialog-den.js",
-  // FB (den#81): Report an issue, the dialog.
-  "/report-dialog.js",
-  // FB (den#81): the screenshot and its mask.
-  "/report-shot.js",
+  // FB (den#81): Report an issue: the kit's form on Den's adapter, and
+  // My reports (issue 95: the form, its screenshot, What's new and the
+  // version chip are the kit's now, /kit/).
+  "/report-den.js",
+  // Issue 95: Den's adapter for the kit's client entry (/kit/kit.js).
+  "/den-kit.js",
   // FB (den#81): the Report button in every pop-up's footer.
   "/report-inject.js",
   "/ws-delete-agents.js",
@@ -135,18 +139,40 @@ export const KIT_FILES: readonly string[] = [
   "base.css",
   "busy.js",
   "busy-words.js",
+  // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).
+  "busy.css",
   "dialog.js",
+  // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
+  "dialog.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
+  // Issue 95 (UI kit slice 1): the global shell (top bar, rail, pins,
+  // collapse, ☰ drawer), the version chip, What's new, the Report form
+  // and the kit's words, and the client entry (window.DenUI).
+  "strings.js",
+  "icons.js",
+  "shell-html.js",
+  "shell-client.js",
+  "shell.css",
+  "version.js",
+  "whatsnew.js",
+  "whatsnew.css",
+  "report.js",
+  "report.css",
+  "report-shot.js",
+  "kit.js",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",
   "fonts/rubik-latin-ext-500-normal.woff2",
   "fonts/space-mono-latin-400-normal.woff2",
   "fonts/space-mono-latin-ext-400-normal.woff2",
+  // den-ui 0.7.0: the default theme's mark, for a host's brand
+  // (markHtml({ src: "/kit/marks/den.svg", label })).
+  "marks/den.svg",
 ];
 
 /** The kit's file for a /kit/ path, or null. */
@@ -161,6 +187,171 @@ export function kitAssetFile(
   return fs.existsSync(file) ? file : null;
 }
 
+/**
+ * Issue 95: the kit's shell for Den's classic shell.js. shell.js runs where
+ * it stands (a classic script: the frame is in the DOM before the page's
+ * own scripts look for it), so it can't import an ES module. Den serves the
+ * kit's own files, unchanged but for their import and export words, as one
+ * classic script that sets window.DenUIShell; shell.js draws the frame
+ * with it. One markup source: the kit's shell-html.js.
+ */
+export const KIT_SHELL_SCRIPT = "/den-ui-shell.js";
+const KIT_SHELL_PARTS = [
+  "strings.js",
+  "icons.js",
+  "shell-html.js",
+  "shell-client.js",
+];
+/**
+ * den-ui 0.7.0: shell-client.js imports focusBack from dialog.js. dialog.js
+ * has names of its own (esc, open) that would clash in one scope, so it
+ * goes first in a scope of its own, giving only what shell-client needs.
+ */
+const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
+  { file: "dialog.js", names: ["openerOf", "focusBack"] },
+];
+const KIT_SHELL_NAMES = [
+  "shellHtml",
+  "topBarHtml",
+  "markHtml",
+  "railHtml",
+  "railGroupHtml",
+  "navItemHtml",
+  "versionChipHtml",
+  "reportButtonHtml",
+  "hydrateShell",
+  "syncPinToggles",
+  "icon",
+  "esc",
+  "kitT",
+  "addStrings",
+  "setProduct",
+  // den-ui 0.7.0: the scope crumbs, the search, the bell, the account
+  // entry, Settings, ◐ ▾ and the update-waiting pill.
+  "scopeHtml",
+  "scopeCrumbHtml",
+  "searchHtml",
+  "bellButtonHtml",
+  "bellPanelHtml",
+  "bellCount",
+  "accountHtml",
+  "accountMenuHtml",
+  "menuHasFilter",
+  "menuFilterParts",
+  "settingsHtml",
+  "appearanceButtonHtml",
+  "appearanceMenuHtml",
+  "waitingHtml",
+  "hydrateScope",
+  "hydrateSearch",
+  "hydrateBell",
+  "hydrateAccount",
+  "attachMenuFilter",
+  "hydrateAppearance",
+  "setWaiting",
+];
+
+/**
+ * A module's block comments left out: only a comment on lines of its own
+ * (nothing before its opening, nothing after its close).
+ */
+export function stripBlockComments(src: string): string {
+  const lines = src.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    // A comment opening a line, closing on a line with nothing after it.
+    if (/^\s*\/\*/.test(lines[i]!)) {
+      let j = i;
+      let close = lines[j]!.indexOf("*/", lines[j]!.indexOf("/*") + 2);
+      while (close < 0 && j + 1 < lines.length) {
+        j++;
+        close = lines[j]!.indexOf("*/");
+      }
+      if (close >= 0 && lines[j]!.slice(close + 2).trim() === "") {
+        i = j;
+        continue;
+      }
+    }
+    out.push(lines[i]!);
+  }
+  return out.join("\n");
+}
+
+/** The kit's names /den-ui-shell.js gives window.DenUIShell. */
+export const KIT_SHELL_EXPORTS: readonly string[] = KIT_SHELL_NAMES;
+
+/** The classic script of the kit's shell (KIT_SHELL_SCRIPT), or null. */
+export function kitShellScript(
+  engineRoot: string = getEngineRoot(),
+): string | null {
+  const dir = path.join(engineRoot, "packages", "den-ui", "src");
+  const parts: string[] = [];
+  for (const { file: f, names } of KIT_SHELL_SCOPED) {
+    const file = path.join(dir, f);
+    if (!fs.existsSync(file)) return null;
+    parts.push(
+      `// ── den-ui ${f} (its own scope) ──\n` +
+        `const { ${names.join(", ")} } = (function () {\n` +
+        // Its comments stay in the kit: they name files (dialog.css) a
+        // page links itself, which this script never loads.
+        stripBlockComments(fs.readFileSync(file, "utf-8"))
+          .replace(/^import\s+[^;]+;\s*$/gm, "")
+          .replace(/^export\s+(?=(async\s+)?function|const|let|class)/gm, "") +
+        `\nreturn { ${names.join(", ")} };\n})();`,
+    );
+  }
+  for (const f of KIT_SHELL_PARTS) {
+    const file = path.join(dir, f);
+    if (!fs.existsSync(file)) return null;
+    parts.push(
+      `// ── den-ui ${f} ──\n` +
+        fs
+          .readFileSync(file, "utf-8")
+          // Its own imports are the parts above it; re-exports go.
+          .replace(/^(import|export)\s*\{[^}]*\}\s*from\s*"[^"]+";\s*$/gm, "")
+          .replace(/^import\s+[^;]+;\s*$/gm, "")
+          .replace(/^export\s+(?=(async\s+)?function|const|let|class)/gm, ""),
+    );
+  }
+  return (
+    "(function () {\n" +
+    parts.join("\n") +
+    `\nwindow.DenUIShell = { ${KIT_SHELL_NAMES.join(", ")} };\n})();\n`
+  );
+}
+
+/** The kit's stylesheets every page with the shell links, in this order. */
+export const KIT_PAGE_CSS: readonly string[] = [
+  "/kit/shell.css",
+  "/kit/whatsnew.css",
+  "/kit/report.css",
+  // den-ui 0.6.1: the working pop-up's look, on the page from the start
+  // (busy.js links it itself on a page without it).
+  "/kit/busy.css",
+  // den-ui 0.6.2: the ask-and-tell dialogs' look, likewise.
+  "/kit/dialog.css",
+];
+
+/**
+ * A page with the shell (its `<script src="/shell.js">`): the kit's
+ * stylesheets at the end of its <head>, so they come after the page's own
+ * styles, as the shell's did, and the kit's shell script just before
+ * shell.js. A page without the shell comes back unchanged.
+ */
+export function kitPage(html: string): string {
+  const shell = '<script src="/shell.js"></script>';
+  if (!html.includes(shell)) return html;
+  const links = KIT_PAGE_CSS.map(
+    (href) => `<link rel="stylesheet" href="${href}" />`,
+  ).join("");
+  return html
+    .replace("</head>", () => `${links}</head>`)
+    .replace(
+      shell,
+      () => `<script src="${KIT_SHELL_SCRIPT}"></script>${shell}`,
+    );
+}
+
 /** Serves a UI module or vendored asset; false when `pathname` is neither. */
 export function serveUiAsset(
   res: http.ServerResponse,
@@ -171,6 +362,20 @@ export function serveUiAsset(
     serveFile(res, path.join(publicDir, pathname.slice(1)));
     return true;
   }
+  if (pathname === KIT_SHELL_SCRIPT) {
+    const js = kitShellScript();
+    if (!js) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": "text/javascript; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(js);
+    return true;
+  }
   if (pathname.startsWith("/kit/")) {
     const kit = kitAssetFile(pathname);
     if (!kit) {
@@ -179,19 +384,20 @@ export function serveUiAsset(
       return true;
     }
     // The bytes change only with Den itself.
+    const bytes = kit.endsWith(".woff2") || kit.endsWith(".svg");
     res.writeHead(200, {
       "Content-Type": kit.endsWith(".css")
         ? "text/css; charset=utf-8"
         : kit.endsWith(".js")
           ? "text/javascript; charset=utf-8"
-          : "font/woff2",
-      "Cache-Control": kit.endsWith(".woff2")
-        ? "public, max-age=86400"
-        : "no-cache",
+          : kit.endsWith(".svg")
+            ? "image/svg+xml"
+            : "font/woff2",
+      "Cache-Control": bytes ? "public, max-age=86400" : "no-cache",
     });
     // Issue 231: its own imports carry Den's version, as Den's scripts do.
     res.end(
-      kit.endsWith(".woff2")
+      bytes
         ? fs.readFileSync(kit)
         : stampServed(kit, fs.readFileSync(kit, "utf-8")),
     );

@@ -319,17 +319,42 @@ describe("the pages", () => {
   it("the bar has the search field and the three chips, in the prototype's order", () => {
     const shell = read("shell.js");
     const at = (s: string) => shell.indexOf(s);
+    // Den's parts, in the kit's slots (issue 95): the search in `start`
+    // (the kit's field, den-ui 0.7.0), the chips in `end`, ◐ ▾ in
+    // `account`.
     const order = [
-      'id="den-search"',
+      "DUI.searchHtml(",
       'id="den-status"',
       'id="den-runs"',
       'id="den-lock"',
-      'id="version-pill"',
       'id="den-user"',
     ].map(at);
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(shell).toContain('<kbd aria-hidden="true">⌘K</kbd>');
+    // The kit's top bar puts them in this order: the chips (end), Report,
+    // the bell, the version chip, then ◐ ▾ (account).
+    const kit = fs.readFileSync(
+      path.join(process.cwd(), "packages", "den-ui", "src", "shell-html.js"),
+      "utf-8",
+    );
+    const bar = kit.slice(kit.indexOf("export function topBarHtml"));
+    const kitOrder = [
+      "slots.end",
+      "reportButtonHtml({ inTop: true",
+      "slots.bell",
+      "versionChipHtml(",
+      "slots.account",
+    ].map((x) => bar.indexOf(x));
+    expect(kitOrder.every((i) => i > 0)).toBe(true);
+    expect([...kitOrder].sort((a, b) => a - b)).toEqual(kitOrder);
+    // The search field is #den-search with ⌘K inside it: the kit draws
+    // it (searchHtml), with no id or shortcut of Den's own overriding it.
+    const search = kit.slice(kit.indexOf("export function searchHtml"));
+    expect(search).toContain('esc(id || "den-search")');
+    expect(search).toContain(`'<kbd aria-hidden="true">⌘K</kbd>'`);
+    // The kit's words for its placeholder and its name, in Den's language:
+    // Den passes none of its own.
+    expect(shell).toContain("DUI.searchHtml({ lang: lang })");
     // The dot row and the "+N" chip are gone from the bar.
     expect(shell).not.toContain('id="health"');
     expect(read("header.js")).not.toMatch(/health-more|_layoutHealthRow/);

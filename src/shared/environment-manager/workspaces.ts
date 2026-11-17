@@ -398,7 +398,9 @@ function auditWorkspacesWrite(
   try {
     const was = (before.workspaces ?? {}) as Record<string, WorkspaceConfig>;
     const now = after.workspaces ?? {};
-    const names = [...new Set([...Object.keys(was), ...Object.keys(now)])].sort();
+    const names = [
+      ...new Set([...Object.keys(was), ...Object.keys(now)]),
+    ].sort();
     const changed: string[] = [];
     for (const ws of names) {
       const a = was[ws];
@@ -1115,6 +1117,24 @@ export function workspaceAgentPermission(
     return read().workspaces[ws]?.agents?.permission ?? undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Issue 268: the projects whose agents' mode overrides the Den-wide
+ * default (`<ws>.agents.permission` set), sorted; none when the file
+ * can't be read. What Settings › Agents counts ("1 project overrides this").
+ */
+export function workspacesOverridingAgentMode(
+  read: () => WorkspacesFile = readWorkspacesFile,
+): string[] {
+  try {
+    return Object.entries(read().workspaces ?? {})
+      .filter(([, w]) => w?.agents?.permission != null)
+      .map(([ws]) => ws)
+      .sort();
+  } catch {
+    return [];
   }
 }
 

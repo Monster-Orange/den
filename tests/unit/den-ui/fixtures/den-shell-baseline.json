@@ -1,0 +1,4781 @@
+{
+ "__env": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.0 Safari/537.36 | 1 | 15px Rubik=286.201 | 15px sans-serif=316.018 | 13px 'Space Mono'=248.041 | 13px monospace=292.500",
+ "shell-1280": {
+  "tree": {
+   "tag": "header",
+   "attrs": {
+    "class": "den-top"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "den-left"
+     },
+     "kids": [
+      {
+       "tag": "button",
+       "attrs": {
+        "class": "den-ib den-menu-btn",
+        "id": "den-menu-btn",
+        "aria-label": "Menu",
+        "aria-expanded": "false",
+        "aria-controls": "den-rail"
+       },
+       "kids": [],
+       "text": "☰"
+      },
+      {
+       "tag": "a",
+       "attrs": {
+        "class": "den-brand",
+        "href": "/",
+        "title": "Acme"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-mark den-mark-svg",
+          "id": "den-mark",
+          "aria-hidden": "true",
+          "data-mark": "{\"kind\":\"svg\",\"src\":\"/theme/den/mark.svg\"}",
+          "title": "Den"
+         },
+         "kids": [
+          {
+           "tag": "img",
+           "attrs": {
+            "src": "/theme/den/mark.svg",
+            "alt": "",
+            "width": "18",
+            "height": "18"
+           },
+           "kids": []
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-title",
+          "data-nav-role": "brand-title"
+         },
+         "kids": [],
+         "text": "acme"
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "den-scope",
+        "role": "group",
+        "aria-label": "Scope"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "id": "org-crumb",
+          "class": "den-ib den-org den-opt",
+          "data-nav-role": "crumb",
+          "title": "Org: acme (acme)"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Company"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-org-name"
+           },
+           "kids": [],
+           "text": "acme"
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep den-org-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "ws-pill",
+          "class": "den-ib den-scope-btn",
+          "data-scope": "ws",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+          "title": "View: what every page shows (north, south). It starts, stops and routes nothing. CLI default: north."
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Project"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "All active"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep den-ws-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "env-btn",
+          "class": "den-ib den-scope-btn den-last",
+          "data-scope": "env",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Env"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "local"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "select",
+         "attrs": {
+          "id": "env-sel",
+          "hidden": "",
+          "aria-hidden": "true",
+          "tabindex": "-1"
+         },
+         "kids": [
+          {
+           "tag": "option",
+           "attrs": {
+            "value": "local"
+           },
+           "kids": [],
+           "text": "local"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "tag": "button",
+     "attrs": {
+      "type": "button",
+      "class": "den-search",
+      "id": "den-search",
+      "aria-haspopup": "dialog",
+      "data-nav-kit": "search",
+      "aria-keyshortcuts": "Meta+K Control+K",
+      "aria-label": "Search"
+     },
+     "kids": [
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "den-search-ph"
+       },
+       "kids": [],
+       "text": "Search…"
+      },
+      {
+       "tag": "kbd",
+       "attrs": {
+        "aria-hidden": "true"
+       },
+       "kids": [],
+       "text": "⌘K"
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "den-search-ic",
+        "aria-hidden": "true"
+       },
+       "kids": [],
+       "text": "⌕"
+      }
+     ]
+    },
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "den-chips"
+     },
+     "kids": [
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "den-end"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-status",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "aria-busy": "false",
+          "title": "0 checked · 2 not checked"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n"
+           },
+           "kids": [],
+           "text": "2 not checked"
+          }
+         ]
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-runs",
+          "data-den-named": "Runs",
+          "aria-label": "Runs",
+          "title": "Runs",
+          "aria-expanded": "false",
+          "aria-controls": "den-dock"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n den-lbl-l"
+           },
+           "kids": [],
+           "text": "Runs"
+          }
+         ]
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-lock",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "hidden": "",
+          "data-den-named": "🔑Admin password needed",
+          "aria-label": "🔑Admin password needed",
+          "title": "🔑Admin password needed"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lock-ic",
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "🔑"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lbl-l"
+           },
+           "kids": [],
+           "text": "Admin password needed"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "type": "button",
+        "class": "den-rb den-rb-top",
+        "data-den-report": "",
+        "aria-keyshortcuts": "Meta+Shift+F Control+Shift+F",
+        "title": "Report an issue (⌘⇧F)"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "viewBox": "0 0 24 24",
+          "aria-hidden": "true"
+         },
+         "kids": [
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M4 5h16v11H9l-5 4V5z"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 8v4M12 14.2v.01"
+           },
+           "kids": []
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {},
+         "kids": [],
+         "text": "Report"
+        },
+        {
+         "tag": "kbd",
+         "attrs": {
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "⌘⇧F"
+        }
+       ]
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "type": "button",
+        "class": "den-ib den-bell",
+        "id": "den-bell",
+        "aria-haspopup": "dialog",
+        "aria-expanded": "false",
+        "aria-label": "Notifications",
+        "title": "Notifications",
+        "data-wired": "1",
+        "aria-controls": "den-bell-pop"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "viewBox": "0 0 24 24",
+          "width": "16",
+          "height": "16",
+          "aria-hidden": "true",
+          "fill": "none",
+          "stroke": "currentColor",
+          "stroke-width": "2",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round"
+         },
+         "kids": [
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M10.3 21a1.94 1.94 0 0 0 3.4 0"
+           },
+           "kids": []
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-bell-n",
+          "hidden": ""
+         },
+         "kids": [],
+         "text": "0"
+        }
+       ]
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "class": "den-ib v-pill",
+        "id": "version-pill",
+        "title": "View changelog"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "v-txt",
+          "title": "v9.9.0"
+         },
+         "kids": [],
+         "text": "v9.9.0"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "v-pip",
+          "id": "v-pip"
+         },
+         "kids": []
+        }
+       ]
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "den-user",
+        "id": "den-user"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "id": "appearance-btn",
+          "type": "button",
+          "class": "den-ib appearance-btn",
+          "title": "Appearance and theme",
+          "aria-label": "Appearance",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+          "data-wired": "1"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "◐ ▾"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "header.den-top",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     1280,
+     48
+    ],
+    "style": {
+     "display": "grid",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "12px",
+     "padding-bottom": "0px",
+     "padding-left": "12px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal 8px",
+     "z-index": "20",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#den-rail",
+    "count": 1,
+    "rect": [
+     0,
+     48,
+     233,
+     852
+    ],
+    "style": {
+     "display": "flex",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "10px",
+     "padding-right": "8px",
+     "padding-bottom": "10px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "15",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#den-menu-btn",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "none",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-brand",
+    "count": 1,
+    "rect": [
+     12,
+     12.5,
+     71,
+     22
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-chips",
+    "count": 1,
+    "rect": [
+     776,
+     7.5,
+     492,
+     32
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "4px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-rb-top",
+    "count": 1,
+    "rect": [
+     964.53,
+     7.5,
+     125,
+     32
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "12px",
+     "font-weight": "400",
+     "line-height": "17.4px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "6px",
+     "padding-top": "0px",
+     "padding-right": "10px",
+     "padding-bottom": "0px",
+     "padding-left": "10px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#den-bell",
+    "count": 1,
+    "rect": [
+     1093.53,
+     10.5,
+     34,
+     26
+    ],
+    "style": {
+     "display": "flex",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#version-pill",
+    "count": 1,
+    "rect": [
+     1131.53,
+     8.34,
+     96,
+     30.3
+    ],
+    "style": {
+     "display": "flex",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#den-user",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "contents",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-rail .den-ni",
+    "count": 14,
+    "rect": [
+     8,
+     80,
+     216,
+     32.3
+    ],
+    "style": {
+     "display": "flex",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "6px",
+     "padding-top": "6px",
+     "padding-right": "10px",
+     "padding-bottom": "6px",
+     "padding-left": "10px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "10px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-collapse-btn",
+    "count": 1,
+    "rect": [
+     8,
+     857.7,
+     216,
+     32.3
+    ],
+    "style": {
+     "display": "flex",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "6px",
+     "padding-top": "6px",
+     "padding-right": "10px",
+     "padding-bottom": "6px",
+     "padding-left": "10px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "10px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "version-1280": {
+  "tree": {
+   "tag": "button",
+   "attrs": {
+    "class": "den-ib v-pill",
+    "id": "version-pill",
+    "title": "View changelog"
+   },
+   "kids": [
+    {
+     "tag": "span",
+     "attrs": {
+      "class": "v-txt",
+      "title": "v9.9.0"
+     },
+     "kids": [],
+     "text": "v9.9.0"
+    },
+    {
+     "tag": "span",
+     "attrs": {
+      "class": "v-pip",
+      "id": "v-pip"
+     },
+     "kids": []
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "#version-pill",
+    "count": 1,
+    "rect": [
+     1131.53,
+     8.34,
+     96,
+     30.3
+    ],
+    "style": {
+     "display": "flex",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#version-pill .v-txt",
+    "count": 1,
+    "rect": [
+     1160.53,
+     13.34,
+     38,
+     20.3
+    ],
+    "style": {
+     "display": "block",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#v-pip",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "none",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgb(85, 122, 42)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "50%",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "whatsnew-1280": {
+  "tree": {
+   "tag": "div",
+   "attrs": {
+    "id": "cl-overlay",
+    "class": "cl-overlay open"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "cl-box",
+      "role": "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "cl-title"
+     },
+     "kids": [
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "cl-hdr"
+       },
+       "kids": [
+        {
+         "tag": "h3",
+         "attrs": {
+          "id": "cl-title",
+          "tabindex": "-1"
+         },
+         "kids": [],
+         "text": "What's new"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "cl-close",
+          "id": "cl-close-btn",
+          "title": "Close",
+          "aria-label": "Close"
+         },
+         "kids": [],
+         "text": "×"
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "cl-body",
+        "id": "cl-body"
+       },
+       "kids": [
+        {
+         "tag": "div",
+         "attrs": {
+          "class": "cl-entry"
+         },
+         "kids": [
+          {
+           "tag": "div",
+           "attrs": {
+            "class": "cl-ver-row"
+           },
+           "kids": [
+            {
+             "tag": "h4",
+             "attrs": {
+              "class": "cl-ver"
+             },
+             "kids": [],
+             "text": "v9.9.0"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "cl-date"
+             },
+             "kids": [],
+             "text": "2026-11-16"
+            },
+            {
+             "tag": "div",
+             "attrs": {
+              "class": "cl-copy-group"
+             },
+             "kids": [
+              {
+               "tag": "button",
+               "attrs": {
+                "class": "cl-copy-btn",
+                "data-cl-version": "9.9.0",
+                "title": "Copy as Markdown",
+                "aria-label": "Copy v9.9.0 as Markdown"
+               },
+               "kids": [
+                {
+                 "tag": "svg",
+                 "attrs": {
+                  "width": "13",
+                  "height": "13",
+                  "viewBox": "0 0 13 13",
+                  "fill": "none",
+                  "stroke": "currentColor",
+                  "stroke-width": "1.3",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  "aria-hidden": "true"
+                 },
+                 "kids": [
+                  {
+                   "tag": "rect",
+                   "attrs": {
+                    "x": "4",
+                    "y": "0.5",
+                    "width": "8.5",
+                    "height": "8.5",
+                    "rx": "1.5"
+                   },
+                   "kids": []
+                  },
+                  {
+                   "tag": "path",
+                   "attrs": {
+                    "d": "M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"
+                   },
+                   "kids": []
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "tag": "button",
+               "attrs": {
+                "class": "cl-slack-btn",
+                "data-cl-version": "9.9.0",
+                "title": "Copy for Slack",
+                "aria-label": "Copy v9.9.0 for Slack"
+               },
+               "kids": [
+                {
+                 "tag": "svg",
+                 "attrs": {
+                  "width": "13",
+                  "height": "13",
+                  "viewBox": "0 0 13 13",
+                  "fill": "none",
+                  "stroke": "currentColor",
+                  "stroke-width": "1.3",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  "aria-hidden": "true"
+                 },
+                 "kids": [
+                  {
+                   "tag": "path",
+                   "attrs": {
+                    "d": "M1 2a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L5 12v-3H2a1 1 0 0 1-1-1V2z"
+                   },
+                   "kids": []
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "tag": "div",
+           "attrs": {
+            "class": "cl-sec"
+           },
+           "kids": [],
+           "text": "Added"
+          },
+          {
+           "tag": "ul",
+           "attrs": {
+            "class": "cl-items"
+           },
+           "kids": [
+            {
+             "tag": "li",
+             "attrs": {},
+             "kids": [],
+             "text": "A shared shell for every page."
+            },
+            {
+             "tag": "li",
+             "attrs": {},
+             "kids": [],
+             "text": "The release notes in one place."
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "cl-footer"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-rb",
+          "data-den-report": "",
+          "aria-keyshortcuts": "Meta+Shift+F Control+Shift+F",
+          "title": "Report an issue (⌘⇧F)"
+         },
+         "kids": [
+          {
+           "tag": "svg",
+           "attrs": {
+            "viewBox": "0 0 24 24",
+            "aria-hidden": "true"
+           },
+           "kids": [
+            {
+             "tag": "path",
+             "attrs": {
+              "d": "M4 5h16v11H9l-5 4V5z"
+             },
+             "kids": []
+            },
+            {
+             "tag": "path",
+             "attrs": {
+              "d": "M12 8v4M12 14.2v.01"
+             },
+             "kids": []
+            }
+           ]
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Report"
+          },
+          {
+           "tag": "kbd",
+           "attrs": {
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "⌘⇧F"
+          }
+         ]
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "cl-more-btn",
+          "id": "cl-more",
+          "aria-controls": "cl-body",
+          "aria-expanded": "false"
+         },
+         "kids": [],
+         "text": "Show all versions (1 earlier)"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "class": "cl-got-it",
+          "id": "cl-got-it-btn"
+         },
+         "kids": [],
+         "text": "Got it"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "#cl-overlay",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     1280,
+     900
+    ],
+    "style": {
+     "display": "flex",
+     "position": "fixed",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0.65)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "1000",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-box",
+    "count": 1,
+    "rect": [
+     350,
+     328,
+     580,
+     244
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(220, 211, 199)",
+     "border-radius": "10px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(48, 36, 24, 0.14) 0px 8px 24px 0px"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-hdr",
+    "count": 1,
+    "rect": [
+     351,
+     329,
+     578,
+     49
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "13px",
+     "padding-right": "18px",
+     "padding-bottom": "13px",
+     "padding-left": "18px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "10px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-body",
+    "count": 1,
+    "rect": [
+     351,
+     378,
+     578,
+     140
+    ],
+    "style": {
+     "display": "block",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "16px",
+     "padding-right": "18px",
+     "padding-bottom": "16px",
+     "padding-left": "18px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-footer",
+    "count": 1,
+    "rect": [
+     351,
+     518,
+     578,
+     53
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(220, 211, 199)",
+     "border-radius": "0px",
+     "padding-top": "10px",
+     "padding-right": "18px",
+     "padding-bottom": "10px",
+     "padding-left": "18px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-got-it-btn",
+    "count": 1,
+    "rect": [
+     848,
+     529,
+     63,
+     32
+    ],
+    "style": {
+     "display": "block",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "12px",
+     "font-weight": "600",
+     "line-height": "normal",
+     "color": "rgb(255, 255, 255)",
+     "background-color": "rgb(74, 107, 35)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(255, 255, 255)",
+     "border-radius": "5px",
+     "padding-top": "5px",
+     "padding-right": "16px",
+     "padding-bottom": "5px",
+     "padding-left": "16px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "update-1280": {
+  "tree": {
+   "tag": "div",
+   "attrs": {
+    "class": "den-upd",
+    "role": "region",
+    "aria-label": "Update"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "upd-pill"
+     },
+     "kids": [
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-icon",
+        "aria-hidden": "true"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "width": "18",
+          "height": "18",
+          "viewBox": "0 0 24 24",
+          "fill": "none",
+          "stroke": "currentColor",
+          "stroke-width": "1.75",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round"
+         },
+         "kids": [
+          {
+           "tag": "circle",
+           "attrs": {
+            "cx": "12",
+            "cy": "12",
+            "r": "10"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 16v-4"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 8h.01"
+           },
+           "kids": []
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-msg",
+        "aria-hidden": "true"
+       },
+       "kids": [],
+       "text": "A new version of Den is available."
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-sr",
+        "role": "status"
+       },
+       "kids": [],
+       "text": "A new version of Den is available."
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-acts"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "upd-go"
+         },
+         "kids": [],
+         "text": "Reload"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "upd-dismiss",
+          "aria-label": "Not now"
+         },
+         "kids": [],
+         "text": "×"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": ".den-upd",
+    "count": 1,
+    "rect": [
+     16,
+     -1,
+     1248,
+     50
+    ],
+    "style": {
+     "display": "flex",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "30",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-upd .upd-pill",
+    "count": 1,
+    "rect": [
+     443.5,
+     -1,
+     393,
+     50
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "21px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "color(srgb 0.984314 0.976471 0.964706 / 0.2)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "999px",
+     "padding-top": "8px",
+     "padding-right": "12px",
+     "padding-bottom": "8px",
+     "padding-left": "24px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "16px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(32, 38, 29, 0.07) 0px 2px 4px 0px, rgba(32, 38, 29, 0.1) 0px 10px 28px 0px, color(srgb 0.141176 0.117647 0.0941176 / 0.14) 0px 1px 0px 0px inset"
+    }
+   }
+  ]
+ },
+ "report-1280": {
+  "tree": {
+   "tag": "dialog",
+   "attrs": {
+    "class": "fb-dlg",
+    "aria-modal": "true",
+    "role": "dialog",
+    "aria-label": "Report an issue",
+    "data-step": "write",
+    "open": ""
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "fb-b"
+     },
+     "kids": [
+      {
+       "tag": "h2",
+       "attrs": {
+        "tabindex": "-1"
+       },
+       "kids": [],
+       "text": "Report an issue"
+      },
+      {
+       "tag": "p",
+       "attrs": {
+        "class": "fb-sub"
+       },
+       "kids": [],
+       "text": "Tell us what is wrong, or what you wish Acme did. It becomes a GitHub issue, filed as you."
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "type": "button",
+        "class": "fb-lk",
+        "data-act": "mine"
+       },
+       "kids": [],
+       "text": "My reports"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-steps",
+        "aria-live": "polite"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "fb-wide"
+         },
+         "kids": [
+          {
+           "tag": "b",
+           "attrs": {},
+           "kids": [],
+           "text": "1 Write"
+          }
+         ],
+         "text": "› 2 Include › 3 Review and send"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "fb-narrow"
+         },
+         "kids": [
+          {
+           "tag": "b",
+           "attrs": {},
+           "kids": [],
+           "text": "Write"
+          }
+         ],
+         "text": "1/3 ·"
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-h",
+        "id": "fb-kind"
+       },
+       "kids": [],
+       "text": "What is it?"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-kinds",
+        "role": "radiogroup",
+        "aria-labelledby": "fb-kind"
+       },
+       "kids": [
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "radio",
+            "name": "fb-kind",
+            "value": "bug",
+            "checked": ""
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Bug"
+          }
+         ]
+        },
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "radio",
+            "name": "fb-kind",
+            "value": "idea"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Idea"
+          }
+         ]
+        },
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "radio",
+            "name": "fb-kind",
+            "value": "question"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Question"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "label",
+       "attrs": {
+        "class": "fb-f"
+       },
+       "kids": [
+        {
+         "tag": "input",
+         "attrs": {
+          "type": "text",
+          "data-f": "title",
+          "maxlength": "200",
+          "value": ""
+         },
+         "kids": []
+        }
+       ],
+       "text": "Title"
+      },
+      {
+       "tag": "label",
+       "attrs": {
+        "class": "fb-f"
+       },
+       "kids": [
+        {
+         "tag": "textarea",
+         "attrs": {
+          "data-f": "description",
+          "maxlength": "20000"
+         },
+         "kids": []
+        }
+       ],
+       "text": "What happened, and what did you expect?"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-h"
+       },
+       "kids": [],
+       "text": "Screenshot of this page"
+      },
+      {
+       "tag": "p",
+       "attrs": {
+        "class": "fb-fine"
+       },
+       "kids": [],
+       "text": "Includes the open dialog or drawer. Drag on it to black out anything private."
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-shot"
+       },
+       "kids": [
+        {
+         "tag": "canvas",
+         "attrs": {
+          "data-shot": "",
+          "role": "img",
+          "aria-label": "Screenshot of this page",
+          "width": "1280",
+          "height": "900"
+         },
+         "kids": []
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-tools"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "undo"
+         },
+         "kids": [],
+         "text": "Undo"
+        },
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "checkbox",
+            "data-f": "noshot"
+           },
+           "kids": []
+          }
+         ],
+         "text": "Don't include a screenshot"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "fb-fine",
+          "aria-live": "polite"
+         },
+         "kids": [],
+         "text": "0 areas hidden"
+        }
+       ]
+      },
+      {
+       "tag": "details",
+       "attrs": {
+        "class": "fb-kbd"
+       },
+       "kids": [
+        {
+         "tag": "summary",
+         "attrs": {},
+         "kids": [],
+         "text": "Mask by size and position"
+        },
+        {
+         "tag": "div",
+         "attrs": {
+          "class": "fb-tools"
+         },
+         "kids": [
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "x",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "0"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Left %"
+          },
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "y",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "0"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Top %"
+          },
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "w",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "20"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Width %"
+          },
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "h",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "20"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Height %"
+          },
+          {
+           "tag": "button",
+           "attrs": {
+            "type": "button",
+            "data-act": "addmask"
+           },
+           "kids": [],
+           "text": "Add area"
+          },
+          {
+           "tag": "button",
+           "attrs": {
+            "type": "button",
+            "data-act": "maskall"
+           },
+           "kids": [],
+           "text": "Mask the whole screenshot"
+          }
+         ]
+        },
+        {
+         "tag": "ul",
+         "attrs": {
+          "class": "fb-masks"
+         },
+         "kids": []
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-btns"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "next",
+          "class": "fb-pri"
+         },
+         "kids": [],
+         "text": "Next: Include"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "later"
+         },
+         "kids": [],
+         "text": "Finish later"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "cancel"
+         },
+         "kids": [],
+         "text": "Cancel"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "dialog.fb-dlg",
+    "count": 1,
+    "rect": [
+     320,
+     16,
+     640,
+     868
+    ],
+    "style": {
+     "display": "block",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(255, 255, 255)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "12px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "320px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(48, 36, 24, 0.14) 0px 8px 24px 0px"
+    }
+   },
+   {
+    "sel": "dialog.fb-dlg .fb-btns",
+    "count": 1,
+    "rect": [
+     339,
+     970.88,
+     602,
+     40
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "14px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "working-1280": {
+  "tree": {
+   "tag": "dialog",
+   "attrs": {
+    "class": "bz-dlg",
+    "aria-labelledby": "bz-h",
+    "aria-modal": "true",
+    "data-state": "working",
+    "aria-busy": "true",
+    "open": ""
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "bz-b"
+     },
+     "kids": [
+      {
+       "tag": "h2",
+       "attrs": {
+        "id": "bz-h",
+        "tabindex": "-1"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "class": "bz-ico bz-clock",
+          "viewBox": "0 0 24 24",
+          "aria-hidden": "true"
+         },
+         "kids": [
+          {
+           "tag": "circle",
+           "attrs": {
+            "cx": "12",
+            "cy": "12",
+            "r": "9",
+            "fill": "none",
+            "stroke": "currentColor",
+            "stroke-width": "2"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 7v5l3 2",
+            "fill": "none",
+            "stroke": "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round"
+           },
+           "kids": []
+          }
+         ]
+        }
+       ],
+       "text": "Linking projects…"
+      },
+      {
+       "tag": "p",
+       "attrs": {
+        "aria-live": "polite",
+        "class": "bz-live"
+       },
+       "kids": [],
+       "text": "Waiting for Hub…"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "bz-bar",
+        "role": "progressbar",
+        "aria-label": "Waiting for Hub…"
+       },
+       "kids": [
+        {
+         "tag": "i",
+         "attrs": {},
+         "kids": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "dialog.bz-dlg",
+    "count": 1,
+    "rect": [
+     430,
+     403.25,
+     420,
+     93.5
+    ],
+    "style": {
+     "display": "block",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "8px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "430px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(48, 36, 24, 0.14) 0px 8px 24px 0px"
+    }
+   },
+   {
+    "sel": "dialog.bz-dlg h2",
+    "count": 1,
+    "rect": [
+     449,
+     420.25,
+     382,
+     18
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "15px",
+     "font-weight": "700",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "shell-390": {
+  "tree": {
+   "tag": "header",
+   "attrs": {
+    "class": "den-top"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "den-left"
+     },
+     "kids": [
+      {
+       "tag": "button",
+       "attrs": {
+        "class": "den-ib den-menu-btn",
+        "id": "den-menu-btn",
+        "aria-label": "Menu",
+        "aria-expanded": "false",
+        "aria-controls": "den-rail"
+       },
+       "kids": [],
+       "text": "☰"
+      },
+      {
+       "tag": "a",
+       "attrs": {
+        "class": "den-brand",
+        "href": "/",
+        "title": "Acme"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-mark den-mark-svg",
+          "id": "den-mark",
+          "aria-hidden": "true",
+          "data-mark": "{\"kind\":\"svg\",\"src\":\"/theme/den/mark.svg\"}",
+          "title": "Den"
+         },
+         "kids": [
+          {
+           "tag": "img",
+           "attrs": {
+            "src": "/theme/den/mark.svg",
+            "alt": "",
+            "width": "18",
+            "height": "18"
+           },
+           "kids": []
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-title",
+          "data-nav-role": "brand-title"
+         },
+         "kids": [],
+         "text": "acme"
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "den-scope",
+        "role": "group",
+        "aria-label": "Scope"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "id": "org-crumb",
+          "class": "den-ib den-org den-opt",
+          "data-nav-role": "crumb",
+          "title": "Org: acme (acme)"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Company"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-org-name"
+           },
+           "kids": [],
+           "text": "acme"
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep den-org-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "ws-pill",
+          "class": "den-ib den-scope-btn",
+          "data-scope": "ws",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+          "title": "View: what every page shows (north, south). It starts, stops and routes nothing. CLI default: north."
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Project"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "All active"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-sep den-ws-sep",
+          "data-nav-role": "crumb-sep",
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "/"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "id": "env-btn",
+          "class": "den-ib den-scope-btn den-last",
+          "data-scope": "env",
+          "data-nav-role": "crumb",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-k"
+           },
+           "kids": [],
+           "text": "Env"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-v"
+           },
+           "kids": [
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "den-vn"
+             },
+             "kids": [],
+             "text": "local"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "aria-hidden": "true"
+             },
+             "kids": [],
+             "text": "▾"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "tag": "select",
+         "attrs": {
+          "id": "env-sel",
+          "hidden": "",
+          "aria-hidden": "true",
+          "tabindex": "-1"
+         },
+         "kids": [
+          {
+           "tag": "option",
+           "attrs": {
+            "value": "local"
+           },
+           "kids": [],
+           "text": "local"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "tag": "button",
+     "attrs": {
+      "type": "button",
+      "class": "den-search",
+      "id": "den-search",
+      "aria-haspopup": "dialog",
+      "data-nav-kit": "search",
+      "aria-keyshortcuts": "Meta+K Control+K",
+      "aria-label": "Search"
+     },
+     "kids": [
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "den-search-ph"
+       },
+       "kids": [],
+       "text": "Search…"
+      },
+      {
+       "tag": "kbd",
+       "attrs": {
+        "aria-hidden": "true"
+       },
+       "kids": [],
+       "text": "⌘K"
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "den-search-ic",
+        "aria-hidden": "true"
+       },
+       "kids": [],
+       "text": "⌕"
+      }
+     ]
+    },
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "den-chips"
+     },
+     "kids": [
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "den-end"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-status",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "aria-busy": "false",
+          "title": "0 checked · 2 not checked"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n"
+           },
+           "kids": [],
+           "text": "2 not checked"
+          }
+         ]
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-runs",
+          "data-den-named": "Runs",
+          "aria-label": "Runs",
+          "title": "Runs",
+          "aria-expanded": "false",
+          "aria-controls": "den-dock"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-dot off",
+            "aria-hidden": "true"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-n den-lbl-l"
+           },
+           "kids": [],
+           "text": "Runs"
+          }
+         ]
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-chip",
+          "id": "den-lock",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          "hidden": "",
+          "data-den-named": "🔑Admin password needed",
+          "aria-label": "🔑Admin password needed",
+          "title": "🔑Admin password needed"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lock-ic",
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "🔑"
+          },
+          {
+           "tag": "span",
+           "attrs": {
+            "class": "den-lbl-l"
+           },
+           "kids": [],
+           "text": "Admin password needed"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "type": "button",
+        "class": "den-rb den-rb-top",
+        "data-den-report": "",
+        "aria-keyshortcuts": "Meta+Shift+F Control+Shift+F",
+        "title": "Report an issue (⌘⇧F)"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "viewBox": "0 0 24 24",
+          "aria-hidden": "true"
+         },
+         "kids": [
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M4 5h16v11H9l-5 4V5z"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 8v4M12 14.2v.01"
+           },
+           "kids": []
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {},
+         "kids": [],
+         "text": "Report"
+        },
+        {
+         "tag": "kbd",
+         "attrs": {
+          "aria-hidden": "true"
+         },
+         "kids": [],
+         "text": "⌘⇧F"
+        }
+       ]
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "type": "button",
+        "class": "den-ib den-bell",
+        "id": "den-bell",
+        "aria-haspopup": "dialog",
+        "aria-expanded": "false",
+        "aria-label": "Notifications",
+        "title": "Notifications",
+        "data-wired": "1",
+        "aria-controls": "den-bell-pop"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "viewBox": "0 0 24 24",
+          "width": "16",
+          "height": "16",
+          "aria-hidden": "true",
+          "fill": "none",
+          "stroke": "currentColor",
+          "stroke-width": "2",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round"
+         },
+         "kids": [
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M10.3 21a1.94 1.94 0 0 0 3.4 0"
+           },
+           "kids": []
+          }
+         ]
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "den-bell-n",
+          "hidden": ""
+         },
+         "kids": [],
+         "text": "0"
+        }
+       ]
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "class": "den-ib v-pill",
+        "id": "version-pill",
+        "title": "View changelog"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "v-txt",
+          "title": "v9.9.0"
+         },
+         "kids": [],
+         "text": "v9.9.0"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "v-pip",
+          "id": "v-pip"
+         },
+         "kids": []
+        }
+       ]
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "den-user",
+        "id": "den-user"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "id": "appearance-btn",
+          "type": "button",
+          "class": "den-ib appearance-btn",
+          "title": "Appearance and theme",
+          "aria-label": "Appearance",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+          "data-wired": "1"
+         },
+         "kids": [
+          {
+           "tag": "span",
+           "attrs": {
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "◐ ▾"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "header.den-top",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     390,
+     48
+    ],
+    "style": {
+     "display": "grid",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "12px",
+     "padding-bottom": "0px",
+     "padding-left": "12px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal 8px",
+     "z-index": "20",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#den-rail",
+    "count": 1,
+    "rect": [
+     -274.05,
+     48,
+     261,
+     796
+    ],
+    "style": {
+     "display": "flex",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "10px",
+     "padding-right": "8px",
+     "padding-bottom": "10px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "42",
+     "opacity": "1",
+     "box-shadow": "rgba(48, 36, 24, 0.14) 0px 8px 24px 0px"
+    }
+   },
+   {
+    "sel": "#den-menu-btn",
+    "count": 1,
+    "rect": [
+     12,
+     7.5,
+     32,
+     32
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-brand",
+    "count": 1,
+    "rect": [
+     52,
+     12.5,
+     22,
+     22
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-chips",
+    "count": 1,
+    "rect": [
+     144,
+     7.5,
+     234,
+     32
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "4px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-rb-top",
+    "count": 1,
+    "rect": [
+     216.53,
+     7.5,
+     83,
+     32
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "12px",
+     "font-weight": "400",
+     "line-height": "17.4px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "6px",
+     "padding-top": "0px",
+     "padding-right": "10px",
+     "padding-bottom": "0px",
+     "padding-left": "10px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#den-bell",
+    "count": 1,
+    "rect": [
+     303.53,
+     7.5,
+     34,
+     32
+    ],
+    "style": {
+     "display": "flex",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#version-pill",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "none",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#den-user",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "contents",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-rail .den-ni",
+    "count": 14,
+    "rect": [
+     -266.05,
+     80,
+     244,
+     32.3
+    ],
+    "style": {
+     "display": "flex",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "6px",
+     "padding-top": "6px",
+     "padding-right": "10px",
+     "padding-bottom": "6px",
+     "padding-left": "10px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "10px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-collapse-btn",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "none",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "6px",
+     "padding-top": "6px",
+     "padding-right": "10px",
+     "padding-bottom": "6px",
+     "padding-left": "10px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "10px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "version-390": {
+  "tree": {
+   "tag": "button",
+   "attrs": {
+    "class": "den-ib v-pill",
+    "id": "version-pill",
+    "title": "View changelog"
+   },
+   "kids": [
+    {
+     "tag": "span",
+     "attrs": {
+      "class": "v-txt",
+      "title": "v9.9.0"
+     },
+     "kids": [],
+     "text": "v9.9.0"
+    },
+    {
+     "tag": "span",
+     "attrs": {
+      "class": "v-pip",
+      "id": "v-pip"
+     },
+     "kids": []
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "#version-pill",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "none",
+     "position": "relative",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "1px",
+     "border-top-color": "rgba(0, 0, 0, 0)",
+     "border-radius": "6px",
+     "padding-top": "4px",
+     "padding-right": "8px",
+     "padding-bottom": "4px",
+     "padding-left": "8px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "6px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#version-pill .v-txt",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "inline",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#v-pip",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "style": {
+     "display": "none",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "20.3px",
+     "color": "rgb(92, 82, 71)",
+     "background-color": "rgb(85, 122, 42)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(92, 82, 71)",
+     "border-radius": "50%",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "whatsnew-390": {
+  "tree": {
+   "tag": "div",
+   "attrs": {
+    "id": "cl-overlay",
+    "class": "cl-overlay open"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "cl-box",
+      "role": "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "cl-title"
+     },
+     "kids": [
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "cl-hdr"
+       },
+       "kids": [
+        {
+         "tag": "h3",
+         "attrs": {
+          "id": "cl-title",
+          "tabindex": "-1"
+         },
+         "kids": [],
+         "text": "What's new"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "cl-close",
+          "id": "cl-close-btn",
+          "title": "Close",
+          "aria-label": "Close"
+         },
+         "kids": [],
+         "text": "×"
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "cl-body",
+        "id": "cl-body"
+       },
+       "kids": [
+        {
+         "tag": "div",
+         "attrs": {
+          "class": "cl-entry"
+         },
+         "kids": [
+          {
+           "tag": "div",
+           "attrs": {
+            "class": "cl-ver-row"
+           },
+           "kids": [
+            {
+             "tag": "h4",
+             "attrs": {
+              "class": "cl-ver"
+             },
+             "kids": [],
+             "text": "v9.9.0"
+            },
+            {
+             "tag": "span",
+             "attrs": {
+              "class": "cl-date"
+             },
+             "kids": [],
+             "text": "2026-11-16"
+            },
+            {
+             "tag": "div",
+             "attrs": {
+              "class": "cl-copy-group"
+             },
+             "kids": [
+              {
+               "tag": "button",
+               "attrs": {
+                "class": "cl-copy-btn",
+                "data-cl-version": "9.9.0",
+                "title": "Copy as Markdown",
+                "aria-label": "Copy v9.9.0 as Markdown"
+               },
+               "kids": [
+                {
+                 "tag": "svg",
+                 "attrs": {
+                  "width": "13",
+                  "height": "13",
+                  "viewBox": "0 0 13 13",
+                  "fill": "none",
+                  "stroke": "currentColor",
+                  "stroke-width": "1.3",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  "aria-hidden": "true"
+                 },
+                 "kids": [
+                  {
+                   "tag": "rect",
+                   "attrs": {
+                    "x": "4",
+                    "y": "0.5",
+                    "width": "8.5",
+                    "height": "8.5",
+                    "rx": "1.5"
+                   },
+                   "kids": []
+                  },
+                  {
+                   "tag": "path",
+                   "attrs": {
+                    "d": "M8.5 9v2.5a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h2.5"
+                   },
+                   "kids": []
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "tag": "button",
+               "attrs": {
+                "class": "cl-slack-btn",
+                "data-cl-version": "9.9.0",
+                "title": "Copy for Slack",
+                "aria-label": "Copy v9.9.0 for Slack"
+               },
+               "kids": [
+                {
+                 "tag": "svg",
+                 "attrs": {
+                  "width": "13",
+                  "height": "13",
+                  "viewBox": "0 0 13 13",
+                  "fill": "none",
+                  "stroke": "currentColor",
+                  "stroke-width": "1.3",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  "aria-hidden": "true"
+                 },
+                 "kids": [
+                  {
+                   "tag": "path",
+                   "attrs": {
+                    "d": "M1 2a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L5 12v-3H2a1 1 0 0 1-1-1V2z"
+                   },
+                   "kids": []
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "tag": "div",
+           "attrs": {
+            "class": "cl-sec"
+           },
+           "kids": [],
+           "text": "Added"
+          },
+          {
+           "tag": "ul",
+           "attrs": {
+            "class": "cl-items"
+           },
+           "kids": [
+            {
+             "tag": "li",
+             "attrs": {},
+             "kids": [],
+             "text": "A shared shell for every page."
+            },
+            {
+             "tag": "li",
+             "attrs": {},
+             "kids": [],
+             "text": "The release notes in one place."
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "cl-footer"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "den-rb",
+          "data-den-report": "",
+          "aria-keyshortcuts": "Meta+Shift+F Control+Shift+F",
+          "title": "Report an issue (⌘⇧F)"
+         },
+         "kids": [
+          {
+           "tag": "svg",
+           "attrs": {
+            "viewBox": "0 0 24 24",
+            "aria-hidden": "true"
+           },
+           "kids": [
+            {
+             "tag": "path",
+             "attrs": {
+              "d": "M4 5h16v11H9l-5 4V5z"
+             },
+             "kids": []
+            },
+            {
+             "tag": "path",
+             "attrs": {
+              "d": "M12 8v4M12 14.2v.01"
+             },
+             "kids": []
+            }
+           ]
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Report"
+          },
+          {
+           "tag": "kbd",
+           "attrs": {
+            "aria-hidden": "true"
+           },
+           "kids": [],
+           "text": "⌘⇧F"
+          }
+         ]
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "cl-more-btn",
+          "id": "cl-more",
+          "aria-controls": "cl-body",
+          "aria-expanded": "false"
+         },
+         "kids": [],
+         "text": "Show all versions (1 earlier)"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "class": "cl-got-it",
+          "id": "cl-got-it-btn"
+         },
+         "kids": [],
+         "text": "Got it"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "#cl-overlay",
+    "count": 1,
+    "rect": [
+     0,
+     0,
+     390,
+     844
+    ],
+    "style": {
+     "display": "flex",
+     "position": "fixed",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0.65)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "1000",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-box",
+    "count": 1,
+    "rect": [
+     15.59,
+     297,
+     358.8,
+     250
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(220, 211, 199)",
+     "border-radius": "10px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(48, 36, 24, 0.14) 0px 8px 24px 0px"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-hdr",
+    "count": 1,
+    "rect": [
+     16.59,
+     298,
+     356.8,
+     49
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "13px",
+     "padding-right": "18px",
+     "padding-bottom": "13px",
+     "padding-left": "18px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "10px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-body",
+    "count": 1,
+    "rect": [
+     16.59,
+     347,
+     356.8,
+     140
+    ],
+    "style": {
+     "display": "block",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "16px",
+     "padding-right": "18px",
+     "padding-bottom": "16px",
+     "padding-left": "18px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-overlay .cl-footer",
+    "count": 1,
+    "rect": [
+     16.59,
+     487,
+     356.8,
+     59
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(220, 211, 199)",
+     "border-radius": "0px",
+     "padding-top": "10px",
+     "padding-right": "18px",
+     "padding-bottom": "10px",
+     "padding-left": "18px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": "#cl-got-it-btn",
+    "count": 1,
+    "rect": [
+     294.05,
+     498,
+     61.34,
+     38
+    ],
+    "style": {
+     "display": "block",
+     "position": "static",
+     "font-family": "\"Times New Roman\"",
+     "font-size": "12px",
+     "font-weight": "600",
+     "line-height": "normal",
+     "color": "rgb(255, 255, 255)",
+     "background-color": "rgb(74, 107, 35)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(255, 255, 255)",
+     "border-radius": "5px",
+     "padding-top": "5px",
+     "padding-right": "16px",
+     "padding-bottom": "5px",
+     "padding-left": "16px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "update-390": {
+  "tree": {
+   "tag": "div",
+   "attrs": {
+    "class": "den-upd",
+    "role": "region",
+    "aria-label": "Update"
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "upd-pill card"
+     },
+     "kids": [
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-icon",
+        "aria-hidden": "true"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "width": "18",
+          "height": "18",
+          "viewBox": "0 0 24 24",
+          "fill": "none",
+          "stroke": "currentColor",
+          "stroke-width": "1.75",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round"
+         },
+         "kids": [
+          {
+           "tag": "circle",
+           "attrs": {
+            "cx": "12",
+            "cy": "12",
+            "r": "10"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 16v-4"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 8h.01"
+           },
+           "kids": []
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-msg",
+        "aria-hidden": "true"
+       },
+       "kids": [],
+       "text": "A new version of Den is available."
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-sr",
+        "role": "status"
+       },
+       "kids": [],
+       "text": "A new version of Den is available."
+      },
+      {
+       "tag": "span",
+       "attrs": {
+        "class": "upd-acts"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "upd-go"
+         },
+         "kids": [],
+         "text": "Reload"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "upd-dismiss",
+          "aria-label": "Not now"
+         },
+         "kids": [],
+         "text": "×"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": ".den-upd",
+    "count": 1,
+    "rect": [
+     16,
+     -1,
+     358,
+     102.89
+    ],
+    "style": {
+     "display": "flex",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "30",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   },
+   {
+    "sel": ".den-upd .upd-pill",
+    "count": 1,
+    "rect": [
+     16,
+     -1,
+     358,
+     102.89
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "14px",
+     "font-weight": "400",
+     "line-height": "21px",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "color(srgb 0.984314 0.976471 0.964706 / 0.2)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "20px",
+     "padding-top": "8px",
+     "padding-right": "8px",
+     "padding-bottom": "8px",
+     "padding-left": "16px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(32, 38, 29, 0.07) 0px 2px 4px 0px, rgba(32, 38, 29, 0.1) 0px 10px 28px 0px, color(srgb 0.141176 0.117647 0.0941176 / 0.14) 0px 1px 0px 0px inset"
+    }
+   }
+  ]
+ },
+ "report-390": {
+  "tree": {
+   "tag": "dialog",
+   "attrs": {
+    "class": "fb-dlg",
+    "aria-modal": "true",
+    "role": "dialog",
+    "aria-label": "Report an issue",
+    "data-step": "write",
+    "open": ""
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "fb-b"
+     },
+     "kids": [
+      {
+       "tag": "h2",
+       "attrs": {
+        "tabindex": "-1"
+       },
+       "kids": [],
+       "text": "Report an issue"
+      },
+      {
+       "tag": "p",
+       "attrs": {
+        "class": "fb-sub"
+       },
+       "kids": [],
+       "text": "Tell us what is wrong, or what you wish Acme did. It becomes a GitHub issue, filed as you."
+      },
+      {
+       "tag": "button",
+       "attrs": {
+        "type": "button",
+        "class": "fb-lk",
+        "data-act": "mine"
+       },
+       "kids": [],
+       "text": "My reports"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-steps",
+        "aria-live": "polite"
+       },
+       "kids": [
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "fb-wide"
+         },
+         "kids": [
+          {
+           "tag": "b",
+           "attrs": {},
+           "kids": [],
+           "text": "1 Write"
+          }
+         ],
+         "text": "› 2 Include › 3 Review and send"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "fb-narrow"
+         },
+         "kids": [
+          {
+           "tag": "b",
+           "attrs": {},
+           "kids": [],
+           "text": "Write"
+          }
+         ],
+         "text": "1/3 ·"
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-h",
+        "id": "fb-kind"
+       },
+       "kids": [],
+       "text": "What is it?"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-kinds",
+        "role": "radiogroup",
+        "aria-labelledby": "fb-kind"
+       },
+       "kids": [
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "radio",
+            "name": "fb-kind",
+            "value": "bug",
+            "checked": ""
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Bug"
+          }
+         ]
+        },
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "radio",
+            "name": "fb-kind",
+            "value": "idea"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Idea"
+          }
+         ]
+        },
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "radio",
+            "name": "fb-kind",
+            "value": "question"
+           },
+           "kids": []
+          },
+          {
+           "tag": "span",
+           "attrs": {},
+           "kids": [],
+           "text": "Question"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "tag": "label",
+       "attrs": {
+        "class": "fb-f"
+       },
+       "kids": [
+        {
+         "tag": "input",
+         "attrs": {
+          "type": "text",
+          "data-f": "title",
+          "maxlength": "200",
+          "value": ""
+         },
+         "kids": []
+        }
+       ],
+       "text": "Title"
+      },
+      {
+       "tag": "label",
+       "attrs": {
+        "class": "fb-f"
+       },
+       "kids": [
+        {
+         "tag": "textarea",
+         "attrs": {
+          "data-f": "description",
+          "maxlength": "20000"
+         },
+         "kids": []
+        }
+       ],
+       "text": "What happened, and what did you expect?"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-h"
+       },
+       "kids": [],
+       "text": "Screenshot of this page"
+      },
+      {
+       "tag": "p",
+       "attrs": {
+        "class": "fb-fine"
+       },
+       "kids": [],
+       "text": "Includes the open dialog or drawer. Drag on it to black out anything private."
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-shot"
+       },
+       "kids": [
+        {
+         "tag": "canvas",
+         "attrs": {
+          "data-shot": "",
+          "role": "img",
+          "aria-label": "Screenshot of this page",
+          "width": "390",
+          "height": "844"
+         },
+         "kids": []
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-tools"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "undo"
+         },
+         "kids": [],
+         "text": "Undo"
+        },
+        {
+         "tag": "label",
+         "attrs": {},
+         "kids": [
+          {
+           "tag": "input",
+           "attrs": {
+            "type": "checkbox",
+            "data-f": "noshot"
+           },
+           "kids": []
+          }
+         ],
+         "text": "Don't include a screenshot"
+        },
+        {
+         "tag": "span",
+         "attrs": {
+          "class": "fb-fine",
+          "aria-live": "polite"
+         },
+         "kids": [],
+         "text": "0 areas hidden"
+        }
+       ]
+      },
+      {
+       "tag": "details",
+       "attrs": {
+        "class": "fb-kbd"
+       },
+       "kids": [
+        {
+         "tag": "summary",
+         "attrs": {},
+         "kids": [],
+         "text": "Mask by size and position"
+        },
+        {
+         "tag": "div",
+         "attrs": {
+          "class": "fb-tools"
+         },
+         "kids": [
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "x",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "0"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Left %"
+          },
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "y",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "0"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Top %"
+          },
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "w",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "20"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Width %"
+          },
+          {
+           "tag": "label",
+           "attrs": {},
+           "kids": [
+            {
+             "tag": "input",
+             "attrs": {
+              "type": "number",
+              "data-m": "h",
+              "min": "0",
+              "max": "100",
+              "step": "1",
+              "value": "20"
+             },
+             "kids": []
+            }
+           ],
+           "text": "Height %"
+          },
+          {
+           "tag": "button",
+           "attrs": {
+            "type": "button",
+            "data-act": "addmask"
+           },
+           "kids": [],
+           "text": "Add area"
+          },
+          {
+           "tag": "button",
+           "attrs": {
+            "type": "button",
+            "data-act": "maskall"
+           },
+           "kids": [],
+           "text": "Mask the whole screenshot"
+          }
+         ]
+        },
+        {
+         "tag": "ul",
+         "attrs": {
+          "class": "fb-masks"
+         },
+         "kids": []
+        }
+       ]
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "fb-btns"
+       },
+       "kids": [
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "next",
+          "class": "fb-pri"
+         },
+         "kids": [],
+         "text": "Next: Include"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "later"
+         },
+         "kids": [],
+         "text": "Finish later"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "data-act": "cancel"
+         },
+         "kids": [],
+         "text": "Cancel"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "dialog.fb-dlg",
+    "count": 1,
+    "rect": [
+     0,
+     67.53,
+     390,
+     776.47
+    ],
+    "style": {
+     "display": "block",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(255, 255, 255)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "12px 12px 0px 0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(48, 36, 24, 0.14) 0px 8px 24px 0px"
+    }
+   },
+   {
+    "sel": "dialog.fb-dlg .fb-btns",
+    "count": 1,
+    "rect": [
+     15,
+     707,
+     360,
+     150
+    ],
+    "style": {
+     "display": "flex",
+     "position": "sticky",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(255, 255, 255)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "14px",
+     "padding-left": "0px",
+     "margin-top": "14px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ },
+ "working-390": {
+  "tree": {
+   "tag": "dialog",
+   "attrs": {
+    "class": "bz-dlg",
+    "aria-labelledby": "bz-h",
+    "aria-modal": "true",
+    "data-state": "working",
+    "aria-busy": "true",
+    "open": ""
+   },
+   "kids": [
+    {
+     "tag": "div",
+     "attrs": {
+      "class": "bz-b"
+     },
+     "kids": [
+      {
+       "tag": "h2",
+       "attrs": {
+        "id": "bz-h",
+        "tabindex": "-1"
+       },
+       "kids": [
+        {
+         "tag": "svg",
+         "attrs": {
+          "class": "bz-ico bz-clock",
+          "viewBox": "0 0 24 24",
+          "aria-hidden": "true"
+         },
+         "kids": [
+          {
+           "tag": "circle",
+           "attrs": {
+            "cx": "12",
+            "cy": "12",
+            "r": "9",
+            "fill": "none",
+            "stroke": "currentColor",
+            "stroke-width": "2"
+           },
+           "kids": []
+          },
+          {
+           "tag": "path",
+           "attrs": {
+            "d": "M12 7v5l3 2",
+            "fill": "none",
+            "stroke": "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round"
+           },
+           "kids": []
+          }
+         ]
+        }
+       ],
+       "text": "Linking projects…"
+      },
+      {
+       "tag": "p",
+       "attrs": {
+        "aria-live": "polite",
+        "class": "bz-live"
+       },
+       "kids": [],
+       "text": "Waiting for Hub…"
+      },
+      {
+       "tag": "div",
+       "attrs": {
+        "class": "bz-bar",
+        "role": "progressbar",
+        "aria-label": "Waiting for Hub…"
+       },
+       "kids": [
+        {
+         "tag": "i",
+         "attrs": {},
+         "kids": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "measures": [
+   {
+    "sel": "dialog.bz-dlg",
+    "count": 1,
+    "rect": [
+     16,
+     375.25,
+     358,
+     93.5
+    ],
+    "style": {
+     "display": "block",
+     "position": "fixed",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "16px",
+     "font-weight": "400",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgb(251, 249, 246)",
+     "border-top-width": "1px",
+     "border-top-color": "rgb(141, 127, 109)",
+     "border-radius": "8px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "16px",
+     "gap": "normal",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "rgba(48, 36, 24, 0.14) 0px 8px 24px 0px"
+    }
+   },
+   {
+    "sel": "dialog.bz-dlg h2",
+    "count": 1,
+    "rect": [
+     35,
+     392.25,
+     320,
+     18
+    ],
+    "style": {
+     "display": "flex",
+     "position": "static",
+     "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+     "font-size": "15px",
+     "font-weight": "700",
+     "line-height": "normal",
+     "color": "rgb(36, 30, 24)",
+     "background-color": "rgba(0, 0, 0, 0)",
+     "border-top-width": "0px",
+     "border-top-color": "rgb(36, 30, 24)",
+     "border-radius": "0px",
+     "padding-top": "0px",
+     "padding-right": "0px",
+     "padding-bottom": "0px",
+     "padding-left": "0px",
+     "margin-top": "0px",
+     "margin-left": "0px",
+     "gap": "8px",
+     "z-index": "auto",
+     "opacity": "1",
+     "box-shadow": "none"
+    }
+   }
+  ]
+ }
+}

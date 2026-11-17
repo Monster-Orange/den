@@ -310,7 +310,9 @@ describe("its folder (SRV-1b)", () => {
         updateWaitMs: 180_000,
         promptCheckMs: 2_000,
         updateCheckMs: 30 * 60_000,
+        updateWaitChecks: 2,
         role: "lead",
+        pinCommit: "push",
       });
       expect(
         readServerAgentConfig(
@@ -337,7 +339,9 @@ describe("its folder (SRV-1b)", () => {
         updateWaitMs: 600_000,
         promptCheckMs: 500,
         updateCheckMs: 30 * 60_000,
+        updateWaitChecks: 2,
         role: "lead",
+        pinCommit: "push",
       });
       for (const bad of [0, 0.4, 61, "2", Number.NaN])
         expect(() =>
@@ -385,5 +389,56 @@ describe("its folder (SRV-1b)", () => {
     await settle();
     await startServerAgent(resolveAgentsDeps(moved), {}, server(false));
     expect(r.made.at(-1)!.opts.cwd).toBe(ops);
+  });
+});
+
+describe("server_agent.update_wait_checks (#251)", () => {
+  it("a whole number, 1 or more; a bad one names the key", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-uwc-"));
+    try {
+      expect(
+        readServerAgentConfig(
+          { server_agent: { update_wait_checks: 4 } },
+          root,
+          {},
+        ).updateWaitChecks,
+      ).toBe(4);
+      for (const bad of [0, 1.5, "2"])
+        expect(() =>
+          readServerAgentConfig(
+            { server_agent: { update_wait_checks: bad as number } },
+            root,
+            {},
+          ),
+        ).toThrow(/server_agent\.update_wait_checks/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("server_agent.pin_commit (#176)", () => {
+  it("push by default, or pr, or off; a bad one names the key", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-pcm-"));
+    try {
+      expect(readServerAgentConfig({}, root, {}).pinCommit).toBe("push");
+      expect(
+        readServerAgentConfig({ server_agent: { pin_commit: "off" } }, root, {})
+          .pinCommit,
+      ).toBe("off");
+      expect(
+        readServerAgentConfig({ server_agent: { pin_commit: "pr" } }, root, {})
+          .pinCommit,
+      ).toBe("pr");
+      expect(() =>
+        readServerAgentConfig(
+          { server_agent: { pin_commit: "branch" as "off" } },
+          root,
+          {},
+        ),
+      ).toThrow(/server_agent\.pin_commit/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

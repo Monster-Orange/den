@@ -68,7 +68,12 @@ describe("the lead install", () => {
     let idle = false;
     const { d, calls } = fake({ mode: () => "auto", idle: async () => idle });
     const c = updateCheck(d);
-    expect(await c.tick()).toEqual({ did: "waiting", version: "1.3.0" });
+    expect(await c.tick()).toEqual({
+      did: "waiting",
+      version: "1.3.0",
+      wait: "busy",
+      why: "the Den agent is in the middle of a turn",
+    });
     expect(calls).toEqual([]);
     idle = true;
     expect(await c.tick()).toEqual({ did: "updating", version: "1.3.0" });

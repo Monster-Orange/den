@@ -16,6 +16,7 @@
  *                     (lifecycle-exec.ts), until it is ready or exits;
  *                     an inactive workspace is activated first, on the
  *                     same Allow, and the Review says so
+ *   hub_connect       #267: set, change or clear Hub's address
  *   den_restart       SRV-1a: restart this Den's web server, in place
  *                     (server-restart.ts); the agent that asked is told
  *                     when it is back
@@ -41,6 +42,10 @@
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
  *                     folder is every project's
+ *   den_pin_commit    #176: commit and push (or open a pull request for)
+ *                     the distribution's new Den pin after a verified
+ *                     self-update (pin-commit.ts). Den asks for it itself
+ *                     when the approval policy says ask; routine
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -130,6 +135,8 @@ export interface HeldActionDeps {
   };
   /** SRV-P4: project_mode's check and save (agent-ops.ts). */
   projectMode?: HeldOp;
+  /** #267: hub_connect's check and write (hub-address.ts). */
+  hubAddress?: HeldOp;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
@@ -154,6 +161,8 @@ export interface HeldActionDeps {
       setting: Record<string, unknown> | undefined,
     ) => void;
   };
+  /** #176: den_pin_commit's check and run (pin-commit.ts). */
+  pinCommit?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -189,7 +198,7 @@ export interface HeldOp {
     args: Record<string, unknown>,
     who?: HeldAsker,
   ) => HeldOpCheck<object>;
-  run: (args: Record<string, unknown>) => Promise<unknown>;
+  run: (args: Record<string, unknown>, asked?: AskedBy) => Promise<unknown>;
 }
 
 /** The longest reason a restart may give (one line). */
@@ -273,6 +282,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         down: str(a.down),
         health: str(a.health),
       };
+      // Issue 277: a repo that runs nothing joins with no services.
+      const noRun = a.no_run === true;
       const draft = repoAdd(
         {
           spec: where.dir,
@@ -281,6 +292,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           dryRun: true,
           workspace,
           ...opts,
+          ...(noRun ? { noRun } : {}),
         },
         d.validate,
         where.dir,
@@ -304,9 +316,9 @@ export function heldActions(d: HeldActionDeps): HeldActions {
               .split("\n")
               .map((l) => `  ${l}`)
           : []),
-        ...(draft.services?.length
-          ? [`Services: ${draft.services.join(", ")}.`]
-          : []),
+        draft.services?.length
+          ? `Services: ${draft.services.join(", ")}.`
+          : "Services: none. It runs nothing: nothing starts or is checked; agents can work in it.",
       ];
       return {
         ok: true,
@@ -314,6 +326,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           path: where.dir,
           ...(workspace ? { workspace } : {}),
           ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v)),
+          ...(noRun ? { no_run: true } : {}),
         },
         summary: `add the repo at ${folder} to project "${ws}"${isNew ? " (new)" : ""}`,
         params: {
@@ -334,6 +347,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           workspace: str(a.workspace),
           name: str(a.name),
           run: str(a.run),
+          ...(a.no_run === true ? { noRun: true } : {}),
           down: str(a.down),
           health: str(a.health),
         },
@@ -478,18 +492,20 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const c = o.check(a, who);
       return c.ok ? { ...c, args: { ...c.args } } : c;
     },
-    run: (a) => o!.run(a),
+    run: (a, asked) => o!.run(a, asked),
   });
   const projectMode = op(
     d.projectMode,
     "this Den can't set a project's mode here",
   );
+  const hubConnect = op(d.hubAddress, "this Den can't set Hub's address here");
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
     d.agentMode,
     "this Den can't change an agent's mode here",
   );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
+  const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -558,7 +574,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const project = wsArg(a.project ?? a.workspace) ?? who?.project;
       if (!project || !NAME_RE.test(project))
         return { ok: false, error: "name the project" };
-      if (who?.project && !isServerScope(who.project) && project !== who.project)
+      if (
+        who?.project &&
+        !isServerScope(who.project) &&
+        project !== who.project
+      )
         return {
           ok: false,
           error: `a project's agent brings conversations into its own project (${who.project}), not ${project}`,
@@ -567,7 +587,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         return { ok: false, error: `there is no project "${project}"` };
       const session = str(a.session);
       if (!session || !SESSION_RE.test(session))
-        return { ok: false, error: "session must be a conversation id" };
+        return { ok: false, error: "session must be a conversation id" }; // words-ok: the session parameter, for the agent
       const persona = str(a.persona);
       if (!persona || !NAME_RE.test(persona))
         return { ok: false, error: "name the persona to run it as" };
@@ -675,7 +695,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           ? (a.approvals as Record<string, unknown>)
           : undefined;
       d.approvalPolicy!.write(project, next);
-      return { ok: true, ...(project ? { project } : {}), approvals: next ?? null };
+      return {
+        ok: true,
+        ...(project ? { project } : {}),
+        approvals: next ?? null,
+      };
     },
   };
 
@@ -690,10 +714,12 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     persona_update: personaUpdate,
     repo_clone: repoClone,
     project_mode: projectMode,
+    hub_connect: hubConnect,
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,
+    den_pin_commit: pinCommit,
   };
 }

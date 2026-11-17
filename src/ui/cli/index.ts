@@ -159,8 +159,8 @@ import {
   takeAppFlag,
 } from "./applications-command.js";
 import { loadApplications } from "../../shared/environment-manager/load-applications.js";
-import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
-import type { RepoKind, ValidationResult } from "../../shared/types/index.js";
+import { noRuntimeReason, repoHasRuntime } from "../../shared/repo-kind.js";
+import type { ValidationResult } from "../../shared/types/index.js";
 import { localCommandsFor } from "../../shared/stacks/manifest-commands.js";
 import {
   buildUpPlan,
@@ -202,6 +202,7 @@ import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { USAGE_HELP, cmdUsage } from "./usage-command.js";
+import { GATE_HELP, cmdGate } from "./gate-command.js";
 import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
@@ -345,12 +346,13 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   status: {
-    usage: "status [-A <app>] [--scope <all|project>] [--verbose]",
+    usage: "status [<repo>…] [-A <app>] [--scope <all|project>] [--verbose]",
     lines: [
       "Show service health for what is in view: every active project by",
       "default (the web UI's scope), or --scope <project> for one. A",
       "service several projects share is listed once, with its owners.",
       "--verbose (or --all) shows one row per service instead of per repo.",
+      "Name repos to show only those.",
     ],
   },
   logs: {
@@ -559,6 +561,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   sessions: SESSIONS_HELP,
   agents: AGENTS_HELP,
   usage: USAGE_HELP,
+  gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
   feedback: FEEDBACK_HELP,
@@ -615,6 +618,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "sessions",
   "agents",
   "usage",
+  "gate",
   "hub",
   "notifications",
   "feedback",
@@ -649,6 +653,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "agents",
   // den#6: reads local transcripts and agent records, no org data.
   "usage",
+  // Issue 144: the machine's gate slots, no org data.
+  "gate",
   // D52: calls Den's own proxy to Hub, no org data.
   "hub",
   // NT: the bell's own file, no org data.
@@ -741,11 +747,15 @@ interface UpReport {
   failed: string[];
   alreadyRunning: string[];
   skipped: string[];
+  /** Repos with no runtime of their own, and why (issue 277). */
+  noRuntime: { repo: string; why: string }[];
 }
 
 class DenCLI {
   /** Set while `up --json` runs. */
   private upReport: UpReport | null = null;
+  /** The project `up -w` made active (issue 291), for `up --json`. */
+  private upActivated: string | null = null;
 
   private static readonly serviceCommands = new Set([
     "up",
@@ -799,7 +809,7 @@ class DenCLI {
       try {
         const parsed = parseCliArgs(args);
         telCmd = telemetryCommandName(parsed.command);
-        this.applyGlobalFlags(parsed);
+        if (!this.applyGlobalFlags(parsed)) return;
         this.prepareServiceCommand(parsed.command);
         await this.handleCommand(
           parsed.command ? [parsed.command, ...parsed.args] : [],
@@ -826,21 +836,24 @@ class DenCLI {
   /**
    * Handle command line arguments
    */
-  private applyGlobalFlags(parsed: ParsedCliArgs): void {
+  private applyGlobalFlags(parsed: ParsedCliArgs): boolean {
     if (parsed.flags.workspace) {
+      const ws = parsed.flags.workspace;
       const file = readWorkspacesFile();
-      if (!file.workspaces[parsed.flags.workspace]) {
-        throw new Error(`Project "${parsed.flags.workspace}" does not exist`);
+      if (!file.workspaces[ws]) {
+        throw new Error(`Project "${ws}" does not exist`);
       }
       if (
         workspaceFlagRequiresActive(parsed.command ?? "") &&
-        !isWorkspaceActive(parsed.flags.workspace)
+        !isWorkspaceActive(ws)
       ) {
-        throw new Error(
-          `Project "${parsed.flags.workspace}" is not active — run \`${product().cli} workspace activate ${parsed.flags.workspace}\` first`,
-        );
+        if (parsed.command !== "up")
+          throw new Error(
+            `Project "${ws}" is not active — run \`${product().cli} workspace activate ${ws}\` first`,
+          );
+        if (!this.activateForUp(ws, parsed.args)) return false;
       }
-      process.env.DEN_WORKSPACE_OVERRIDE = parsed.flags.workspace;
+      process.env.DEN_WORKSPACE_OVERRIDE = ws;
     }
 
     if (parsed.flags.forceTabs !== undefined) {
@@ -850,6 +863,46 @@ class DenCLI {
     if (parsed.flags.skipSecrets) {
       process.env.DEN_SKIP_SECRETS = "1";
     }
+    return true;
+  }
+
+  /**
+   * Issue 291: `up -w <project>` in a project that is not active (one just
+   * made with `workspace create`) makes it active, as `repo add -w` does for
+   * a project it makes, and says so in one line. What runs is defined over
+   * the active set, so up never runs outside it. A dry run (--dry-run, -n,
+   * --plan) changes nothing and says it would. Without what to start (no
+   * repo, no -a) it is the usual usage error, and nothing is made active
+   * (a release gate found the project left active by a failed up). False:
+   * stop here.
+   */
+  private activateForUp(ws: string, args: string[]): boolean {
+    const end = args.indexOf("--");
+    const own = end === -1 ? args : args.slice(0, end);
+    const dry = ["--dry-run", "-n", "--plan"].some((f) => own.includes(f));
+    const target =
+      own.some((a) => !a.startsWith("-")) ||
+      own.includes("-a") ||
+      own.includes("--all");
+    if (!target) {
+      console.error(
+        chalk.red(
+          `\n  ${upNeedsTarget(product().cli, ws, own.includes("--plan"))}\n`,
+        ),
+      );
+      process.exitCode = 2;
+      return false;
+    }
+    if (!dry) {
+      activateWorkspace(ws);
+      this.upActivated = ws;
+    }
+    process.stderr.write(
+      chalk.gray(
+        `\n  ${dry ? "Would make" : "Made"} project "${ws}" active to start it.\n`,
+      ),
+    );
+    return true;
   }
 
   private prepareServiceCommand(command: string | undefined): void {
@@ -1133,6 +1186,10 @@ class DenCLI {
 
         case "usage":
           process.exitCode = await cmdUsage(args.slice(1));
+          break;
+
+        case "gate":
+          process.exitCode = await cmdGate(args.slice(1));
           break;
 
         case "hub":
@@ -1690,6 +1747,28 @@ class DenCLI {
       getFocusedWorkspaceName() ??
       undefined;
     const force = opts?.force ?? false;
+    // Issue 277: a repo with no runtime of its own (one that runs nothing,
+    // a module, a library) has no command to run: said, never an error.
+    if (!plan) {
+      const none = this.noRuntimeRepos(workspace ? [workspace] : undefined);
+      const repoOf = (a: string) => a.split("/")[0];
+      const idle = addresses.filter((a) => none.has(repoOf(a)));
+      if (idle.length > 0) {
+        console.log(
+          chalk.gray(
+            `  Nothing to ${command} (no runtime of their own): ${idle.map((a) => `${a} (${none.get(repoOf(a))})`).join(", ")}`,
+          ),
+        );
+        if (command === "up")
+          for (const a of idle)
+            this.upReport?.noRuntime.push({
+              repo: a,
+              why: none.get(repoOf(a))!,
+            });
+        addresses = addresses.filter((a) => !none.has(repoOf(a)));
+        if (addresses.length === 0) return;
+      }
+    }
     // R13: why a remote service is not run here, or null.
     const remoteRefusal = (address: string): string | null => {
       const placed = resolveService(address, workspace);
@@ -2511,14 +2590,23 @@ class DenCLI {
     );
   }
 
-  /** Workspace repos with no runtime (modules, libraries) → their kind. */
-  private noRuntimeRepos(): Map<string, RepoKind> {
-    const out = new Map<string, RepoKind>();
-    for (const s of getWorkspaceServices()) {
-      const kind = repoKind(s.repoPath);
-      if (!hasRuntime(kind)) out.set(s.repoName, kind);
-    }
+  /**
+   * Workspace repos with no runtime (modules, libraries, repos that run
+   * nothing) → why.
+   */
+  private noRuntimeRepos(workspaces?: string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const ws of workspaces ?? [undefined])
+      for (const s of getWorkspaceServices(ws)) {
+        const why = noRuntimeReason(s.repoPath);
+        if (why) out.set(s.repoName, why);
+      }
     return out;
+  }
+
+  /** "cfg (runs nothing), sdk (library)": repos with no runtime, and why. */
+  private static noRuntimeList(none: Map<string, string>): string {
+    return [...none].map(([r, why]) => `${r} (${why})`).join(", ");
   }
 
   /** Drop modules/libraries from a start/stop order, saying so once. */
@@ -2531,6 +2619,8 @@ class DenCLI {
           `  Not ${verb} (no runtime of their own): ${skipped.map((r) => `${r} (${none.get(r)})`).join(", ")}`,
         ),
       );
+    for (const repo of skipped)
+      this.upReport?.noRuntime.push({ repo, why: none.get(repo)! });
     return order.filter((r) => !none.has(r));
   }
 
@@ -2545,8 +2635,7 @@ class DenCLI {
   } | null {
     // Modules and libraries ship inside another repo's runtime: never started.
     const services = getWorkspaceServices().filter(
-      (s) =>
-        (!only || only.has(s.repoName)) && hasRuntime(repoKind(s.repoPath)),
+      (s) => (!only || only.has(s.repoName)) && repoHasRuntime(s.repoPath),
     );
     if (services.length === 0) return null;
     const repos = new Set(services.map((s) => s.repoName));
@@ -2568,12 +2657,20 @@ class DenCLI {
   ): Promise<void> {
     const target = this.allWorkspaceOrder(only);
     if (!target) {
+      // Issue 277: repos that run nothing are not a failure to start.
+      const none = new Map(
+        [...this.noRuntimeRepos()].filter(([r]) => !only || only.has(r)),
+      );
+      for (const [repo, why] of none)
+        this.upReport?.noRuntime.push({ repo, why });
       console.log(
         chalk.yellow(
-          "\n  No services in the active project — nothing to start.\n",
+          none.size > 0
+            ? `\n  Nothing to start: no repo in the active project has a runtime of its own: ${DenCLI.noRuntimeList(none)}.\n`
+            : "\n  No services in the active project — nothing to start.\n",
         ),
       );
-      if (plan) process.exitCode = 1;
+      if (plan && none.size === 0) process.exitCode = 1;
       return;
     }
     const { rawOrder, graph } = target;
@@ -3140,6 +3237,7 @@ class DenCLI {
       failed: [],
       alreadyRunning: [],
       skipped: [],
+      noRuntime: [],
     };
     const bin = fs.existsSync(
       nodePath.join(getDistRoot(), "bin", product().cli),
@@ -3211,9 +3309,12 @@ class DenCLI {
         !failedExit &&
         report.failed.length === 0 &&
         unhealthy.length === 0 &&
-        touched.length > 0,
+        // Issue 277: a repo with nothing to start was asked for and is fine.
+        (touched.length > 0 || report.noRuntime.length > 0),
       workspace: workspace ?? null,
+      ...(this.upActivated ? { activated: this.upActivated } : {}),
       services,
+      ...(report.noRuntime.length > 0 ? { noRuntime: report.noRuntime } : {}),
     };
     if (error) {
       out.error = error;
@@ -3227,7 +3328,7 @@ class DenCLI {
     } else if (failedExit) {
       out.error = "up failed (its log is on stderr)";
       out.fix = `${bin} up ${args.join(" ")} --plan`.replace(/\s+/g, " ");
-    } else if (touched.length === 0) {
+    } else if (touched.length === 0 && report.noRuntime.length === 0) {
       out.error =
         "nothing was started: no repo named, and the folder up ran in is not a repo in the project";
       out.fix = `${bin} up -a --json`;
@@ -3265,11 +3366,18 @@ class DenCLI {
     const terminator = args.indexOf("--");
     const own = terminator === -1 ? args : args.slice(0, terminator);
     const all = own.includes("-a") || own.includes("--all");
+    // Issue 277: a repo with no runtime had nothing to stop: said apart.
+    const none = this.noRuntimeRepos();
+    const named = own.filter((a) => !a.startsWith("-"));
+    const noRuntime = named
+      .filter((r) => none.has(r))
+      .map((repo) => ({ repo, why: none.get(repo)! }));
     const out: Record<string, unknown> = {
       ok: !error && !failedExit,
       workspace:
         process.env.DEN_WORKSPACE_OVERRIDE ?? getFocusedWorkspaceName() ?? null,
-      services: own.filter((a) => !a.startsWith("-")),
+      services: named.filter((r) => !none.has(r)),
+      ...(noRuntime.length > 0 ? { noRuntime } : {}),
       ...(all ? { all: true } : {}),
     };
     if (!out.ok) {
@@ -3608,7 +3716,34 @@ class DenCLI {
             focus: named.name,
           }
         : scopeView(scopeArg?.ok ? scopeArg.value : undefined);
-    const only = app ? focusedAppRepos(app) : null;
+    // Issue 291: `status <repo>…` answers for those repos only.
+    const repoArgs = canonicalTargets(args.filter((a) => !a.startsWith("-")));
+    const namedRepos = new Set(repoArgs.map((a) => parseAddress(a).repoName));
+    if (namedRepos.size > 0) {
+      const inView = new Set(
+        view.workspaces.flatMap((w) =>
+          getWorkspaceServices(w.name).map((s) => s.repoName),
+        ),
+      );
+      const missing = [...namedRepos].filter((r) => !inView.has(r));
+      if (missing.length > 0) {
+        const where =
+          view.workspaces.length === 1
+            ? `project ${view.workspaces[0].name}`
+            : "the active projects";
+        console.log(
+          chalk.red(
+            `\n  ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not in ${where}.\n`,
+          ),
+        );
+        process.exit(1);
+      }
+    }
+    const appRepos = app ? focusedAppRepos(app) : null;
+    const only =
+      namedRepos.size === 0
+        ? appRepos
+        : new Set([...namedRepos].filter((r) => !appRepos || appRepos.has(r)));
     const verbose = args.includes("--verbose") || args.includes("--all");
     const spinner = ora("Checking service health...").start();
     const raw = (
@@ -3630,9 +3765,17 @@ class DenCLI {
     const noAutostart = this.noAutostartSet();
 
     if (results.length === 0) {
+      // Issue 277: repos that run nothing have nothing to check.
+      const none = new Map(
+        [...this.noRuntimeRepos(view.workspaces.map((w) => w.name))].filter(
+          ([r]) => !only || only.has(r),
+        ),
+      );
       console.log(
         chalk.yellow(
-          `\n  No services registered. Run: ${product().cli} register\n`,
+          none.size > 0
+            ? `\n  No services to check: ${DenCLI.noRuntimeList(none)} ${none.size === 1 ? "has no runtime of its own" : "have no runtime of their own"}.\n`
+            : `\n  No services registered. Run: ${product().cli} register\n`,
         ),
       );
       return;
@@ -3727,6 +3870,17 @@ class DenCLI {
         ),
       );
       process.exit(1);
+    }
+
+    // Issue 277: a repo with no runtime has no service logs to show.
+    const why = noRuntimeReason(resolved.repoPath);
+    if (why) {
+      console.log(
+        chalk.gray(
+          `\n  ${resolved.repoName} has no runtime of its own (${why}): no service logs.\n`,
+        ),
+      );
+      return;
     }
 
     // The canonical run-state test (same as the web down-skip and log search):

@@ -26,6 +26,7 @@ import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
 import chalk from "chalk";
 import {
+  agentsKeepRunningAfterLogout,
   readAgentsConfig,
   readDenConfig,
   readUserConfig,
@@ -50,7 +51,16 @@ import {
   type CheckState,
 } from "../../shared/update-check-state.js";
 import { product } from "../../shared/product.js";
-import { listRecords } from "../../shared/agents/records.js";
+import { listRecords, type AgentRecord } from "../../shared/agents/records.js";
+import { getRuntime } from "../../shared/agents/runtimes.js";
+import {
+  contextTokensFor,
+  contextWatchSettings,
+  instructionCheck,
+  instructionWarning,
+  sizeText,
+  type ContextWatchSettings,
+} from "../../shared/agents/context-watch.js";
 import { eventsFile } from "../../shared/dev-metrics/emit.js";
 import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
@@ -513,6 +523,19 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         return true;
       }
     },
+    // Issue 163 (b): the agents' sign-in token, read from the store.
+    signIn: async () => {
+      const { agentTokenStatus } =
+        await import("../../shared/agents/signin-token.js");
+      return agentTokenStatus({
+        // The daemon's view: doctor asks only under mode always.
+        env: { DEN_AGENT_SIGNIN: "token" },
+        stateDir: getStateDir(),
+        probe: true,
+      });
+    },
+    // Issue 163 (a): unset over a login install is offered.
+    keepSetting: () => agentsKeepRunningAfterLogout(),
   };
 }
 
@@ -545,12 +568,12 @@ export function hubLines(
   // HUB-1.7: what to do about it is in Settings (Connect, Reconnect).
   const fix =
     st.state === "no_token" || st.state === "rejected"
-      ? ` (Settings › Agents › Hub: ${st.state === "rejected" ? "Reconnect" : "Connect"})`
+      ? ` (Settings › Hub: ${st.state === "rejected" ? "Reconnect" : "Connect"})`
       : "";
   // #71: connected, on an older token Den can't replace itself.
   const legacy =
     st.connected && st.legacy
-      ? "; on an older Hub token kept where Den can't replace it (Settings › Agents › Hub: Reconnect)"
+      ? "; on an older Hub token kept where Den can't replace it (Settings › Hub: Reconnect)"
       : "";
   const detail = st.connected
     ? `${st.url}: connected${who ? ` (${who})` : ""}${legacy}`
@@ -887,6 +910,68 @@ export function requestKeepLines(
 }
 
 /**
+ * Issue 278: each running agent's instruction files (the ones its runtime
+ * loads at start for its folder, by stat only) against a share of its
+ * model's context (agent_context.instruction_share_percent). Over it: a
+ * warning naming the largest file, relative to the agent's folder, and its
+ * size. A warning, never a failure. Nothing when no agent runs.
+ */
+export function instructionSizeLines(
+  title: string,
+  deps: {
+    records?: () => AgentRecord[];
+    settings?: () => ContextWatchSettings;
+    env?: NodeJS.ProcessEnv;
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  let records: AgentRecord[] = [];
+  let s: ContextWatchSettings;
+  try {
+    records = (deps.records ?? (() => listRecords(getStateDir())))();
+    s = (
+      deps.settings ??
+      (() => contextWatchSettings(readUserConfig().agent_context))
+    )();
+  } catch {
+    return { lines: [], checks: [] };
+  }
+  const env = deps.env ?? process.env;
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const rec of records) {
+    if (rec.stoppedAt) continue;
+    const rt = getRuntime(rec.runtime);
+    if (!rt?.instructionFiles) continue;
+    const c = instructionCheck(rt.instructionFiles(rec.cwd, env), rec.cwd, {
+      sharePercent: s.sharePercent,
+      contextTokens: contextTokensFor(rec.model, rec.version, s.contextTokens),
+      home: env.HOME,
+    });
+    const who = `${rec.workspace}/${rec.id}`;
+    if (c.over) {
+      const detail = `${who}: ${instructionWarning(c)}`;
+      lines.push(`  instructions  ⚠  ${detail}`);
+      checks.push({
+        id: `agents:instructions:${who}`,
+        status: "warn",
+        detail,
+        fix: `Make ${c.largest?.path ?? "the instruction files"} smaller (move detail into files the agent reads when it needs them), or raise agent_context.instruction_share_percent`,
+      });
+    } else
+      checks.push({
+        id: `agents:instructions:${who}`,
+        status: "ok",
+        detail: `${who}: instruction files ${sizeText(c.totalBytes)}, within ${c.sharePercent}% of a ${c.contextTokens}-token context`,
+      });
+  }
+  if (!lines.length) return { lines: [], checks };
+  return {
+    lines: ["", `${title} doctor: agents' instruction files`, "", ...lines],
+    checks,
+  };
+}
+
+/**
  * agents.git.signing_key: whether agents' commits sign and verify with the
  * key (a commit in a temp repo, checkAgentSigning), and the line that adds
  * its .pub to GitHub as a signing key. Nothing when unset.
@@ -1120,6 +1205,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
     }
+    // Issue 278: instruction files over the share of the context.
+    r.checks.push(...instructionSizeLines(readBrand().name).checks);
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1166,6 +1253,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
+  for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {

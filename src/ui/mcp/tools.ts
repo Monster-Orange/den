@@ -2,10 +2,15 @@
  * The MCP tools. Read tools are always registered; action tools only when the
  * org names them in `mcp.actions`. Every tool is a thin call to the web API
  * (see api.ts); the guards (guards.ts) run first, and all text returned is
- * passed through the secret redactor.
+ * passed through the secret redactor. The gate-slot tools (issue 144) are
+ * the exception: the slots are the machine's, not an install's, and work
+ * with no Den running, so they read and write the machine's slot store
+ * directly, and give back only the agent's own.
  */
 import * as path from "path";
 import { z } from "zod";
+import { GateStore } from "../../shared/gates/store.js";
+import { gateView } from "../../shared/gates/view.js";
 import {
   MCP_ACTIONS,
   type McpAction,
@@ -87,6 +92,8 @@ export interface ToolContext {
    * (DEN_ACTOR_TOKEN); default this process's env. Tests pass one.
    */
   env?: Record<string, string | undefined>;
+  /** The machine's gate slots (issue 144); tests pass a temp store. */
+  gates?: GateStore;
 }
 
 type Args = Record<string, unknown>;
@@ -120,6 +127,15 @@ const PILLARS = [
 ] as const;
 
 const envArg = z.enum(ENVS).optional().describe("Environment (default local)");
+
+/** Issue 277: a repo that runs nothing joins with no services. */
+const noRunArg = z
+  .boolean()
+  .optional()
+  .describe(
+    'true: the repo runs nothing (config, docs, rulesets, shared CI): it joins with no services, so nothing starts or is health-checked, and agents work in it. The "it runs nothing" choice, picked',
+  );
+
 const workspaceArg = z
   .string()
   .optional()
@@ -198,6 +214,34 @@ function actionResult(
   return out;
 }
 
+// ── Gate slots (issue 144) ──────────────────────────────────────────────────
+
+/** The slots this MCP server asked for: the only ones it may give back. */
+const mySlots = new Set<string>();
+let defaultGates: GateStore | undefined;
+const gatesOf = (ctx: ToolContext): GateStore =>
+  ctx.gates ?? (defaultGates ??= new GateStore());
+
+/** Your slot, and who holds the machine now and until when. */
+function slotView(store: GateStore, id: string) {
+  const v = gateView(store);
+  const mine = v.slots.find((x) => x.id === id);
+  return {
+    ...mine,
+    heldBy: v.slots
+      .filter((x) => x.granted && x.id !== id)
+      .map(({ id, kind, who, label, expectedEnd, overrun }) => ({
+        id,
+        kind,
+        who,
+        label,
+        expectedEnd,
+        overrun,
+      })),
+    queue: v.slots.length,
+  };
+}
+
 // ── Read tools ──────────────────────────────────────────────────────────────
 
 const read = (
@@ -207,6 +251,26 @@ const read = (
   shape: z.ZodRawShape,
   run: DenTool["run"],
 ): DenTool => ({ name, title, description, action: false, shape, run });
+
+/**
+ * #176: Den's last update of itself and the new Den's doctor results (GET
+ * /api/server-agent/update), or why there is none. A web server older than
+ * the route says so; release_status still answers its runs.
+ */
+async function denUpdateOf(api: DenApi): Promise<unknown> {
+  try {
+    const body = (await api.get("/api/server-agent/update")) as {
+      update?: unknown;
+    } | null;
+    return body?.update ?? null;
+  } catch (e) {
+    if (e instanceof DenHttpError && e.status === 404)
+      return {
+        unknown: `the running Den is older than ${ROUTE_SINCE["/api/server-agent/update"]}: its last update shows after a restart onto a newer one`,
+      };
+    throw e;
+  }
+}
 
 const READ_TOOLS: DenTool[] = [
   read(
@@ -314,9 +378,80 @@ const READ_TOOLS: DenTool[] = [
     async (_a, { api }) => api.get("/api/notifications"),
   ),
   read(
+    "gate_slot_status",
+    "Gate slots on this machine",
+    "Issue 144: who holds a heavy-test slot on this machine and who waits, across every repo and install here: each slot's id, kind (browser runs alone; cpu shares), who, label, grantedAt and expectedEnd (overrun when past it by the margin), or its expectedStart in the queue, and the machine's settings. Read this instead of messaging other agents. Reads only.",
+    {},
+    async (_a, ctx) => gateView(gatesOf(ctx)),
+  ),
+  read(
+    "gate_slot_request",
+    "Ask for a gate slot",
+    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Never stops anyone's run; a later ask only waits.",
+    {
+      kind: z
+        .enum(["browser", "cpu"])
+        .optional()
+        .describe("browser (runs alone) or cpu (shares); default cpu"),
+      estimate_minutes: z
+        .number()
+        .positive()
+        .optional()
+        .describe("How long you expect to hold it (default 10)"),
+      label: z
+        .string()
+        .optional()
+        .describe("What runs, a few words (no command arguments)"),
+      id: z
+        .string()
+        .optional()
+        .describe("Your slot's id: ask again to see where you stand"),
+    },
+    async (a, ctx) => {
+      const store = gatesOf(ctx);
+      const id = str(a.id);
+      if (id) {
+        if (!mySlots.has(id))
+          throw new Refusal("gate_slot_request: that slot isn't yours.");
+        if (!store.get(id)) {
+          mySlots.delete(id);
+          throw new Refusal(
+            "gate_slot_request: that slot is gone (released, or ended early by a person); ask for a new one.",
+          );
+        }
+        return slotView(store, id);
+      }
+      const e = store.ask({
+        kind: a.kind === "browser" ? "browser" : "cpu",
+        who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
+        label: (str(a.label) ?? "tests").slice(0, 120),
+        pid: process.pid,
+        estimateMin:
+          typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
+        agent: true,
+        ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
+      });
+      mySlots.add(e.id);
+      return slotView(store, e.id);
+    },
+  ),
+  read(
+    "gate_slot_release",
+    "Give a gate slot back",
+    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting). Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`.",
+    { id: z.string().describe("Your slot's id") },
+    async (a, ctx) => {
+      const id = str(a.id) ?? "";
+      if (!mySlots.has(id))
+        throw new Refusal("gate_slot_release: that slot isn't yours.");
+      mySlots.delete(id);
+      return { released: gatesOf(ctx).release(id) };
+    },
+  ),
+  read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, agent_folder, agent_mode, agent_import, approval_policy): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_connect, agent_folder, agent_mode, agent_import, approval_policy): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -598,18 +733,21 @@ const READ_TOOLS: DenTool[] = [
   read(
     "release_status",
     "Release status",
-    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool.",
+    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, and the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran.",
     {
       env: z
         .string()
         .optional()
         .describe("Release environment for the verify table"),
     },
-    async (a, { api }) => ({
+    async (a, { api, scope }) => ({
       runs: await api.get("/api/release/runs"),
       ...(str(a.env)
         ? { status: await api.get("/api/release/status", { env: str(a.env) }) }
         : {}),
+      // #176: Den's own update and its doctor results, for the whole Den's
+      // callers (the server agent); a project's agent has no part in it.
+      ...(scope ? {} : { denUpdate: await denUpdateOf(api) }),
     }),
   ),
   read(
@@ -726,7 +864,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "manifest_draft",
     "Draft a side-car manifest",
-    "The side-car manifest `repo add` would write for one repo, checked by the same validator, with nothing written (`repo add --dry-run`): `draft` (the YAML), `validation`, `manifest.file` (where it would go, never in the repo) and `services`. When the repo can start in several ways it answers `ask` and `choices` instead: call again with `run` set to the one the person picks. A repo with its own manifest needs no draft (`manifest.source: repo`). `path`: the repo's absolute folder (or ~/…) inside the person's home.",
+    "The side-car manifest `repo add` would write for one repo, checked by the same validator, with nothing written (`repo add --dry-run`): `draft` (the YAML), `validation`, `manifest.file` (where it would go, never in the repo) and `services`. When Den can't tell how the repo starts it answers `ask` and `choices` instead: call again with `run` set to the one the person picks, or `no_run: true` when they pick 'it runs nothing'. A repo with its own manifest needs no draft (`manifest.source: repo`). `path`: the repo's absolute folder (or ~/…) inside the person's home.",
     {
       path: z.string().describe("The repo's folder: absolute, or ~/…"),
       name: z
@@ -737,6 +875,7 @@ const READ_TOOLS: DenTool[] = [
         .string()
         .optional()
         .describe("The start command, when detection asked which one"),
+      no_run: noRunArg,
       down: z.string().optional().describe("The stop command"),
       health: z
         .string()
@@ -751,6 +890,7 @@ const READ_TOOLS: DenTool[] = [
           path: p,
           name: str(a.name),
           run: str(a.run),
+          ...(a.no_run === true ? { no_run: "1" } : {}),
           down: str(a.down),
           health: str(a.health),
         }),
@@ -1041,7 +1181,7 @@ const agentImportTool: DenTool = {
   name: "agent_import",
   title: "Bring in a conversation",
   description:
-    "Bring in a conversation started outside Den (in the project's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without session: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent); the list needs mcp.actions to name agent_import. With session and persona: asks the person to bring that one in (a held write: it waits for their Allow unless the approval policy says otherwise) and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.",
+    "Bring in a conversation started outside Den (in the project's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without session: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent); the list needs mcp.actions to name agent_import. With session and persona: asks the person to bring that one in (a held write: it waits for their Allow unless the approval policy says otherwise) and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.", // words-ok: the tool's session parameter, for the agent
   action: true,
   shape: {
     session: z
@@ -1471,7 +1611,7 @@ const RESTART_NEXT =
 
 /** SRV-1b: what the agent does after den_update. */
 const UPDATE_NEXT =
-  'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you. On the new version: commit the new pin (package.json, package-lock.json) in your folder, as server_agent.git says (a pull request, or a push). If Den says it rolled back, commit nothing and tell your person why.'; // words-ok: SRV-1's own line, for the agent
+  'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you. On the new version Den commits and pushes the new pin (package.json, package-lock.json) itself; commit it yourself only when server_agent.pin_commit is off. If Den says it rolled back, commit nothing and tell your person why.'; // words-ok: SRV-1's own line, for the agent
 
 const HELD =
   " Den's approval policy decides: a change that widens what an agent may do waits for the person's Allow in Den's browser dialog; others may run at once (the answer says done). Give ask: true and a note saying why to wait for the Allow anyway. A request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
@@ -1578,7 +1718,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "repo_add",
     title: "Add a repo",
     description:
-      "Add the local repo at `path` to a project, as `repo add` does (manifest_draft first shows what it would write)." +
+      "Add the local repo at `path` to a project, as `repo add` does (manifest_draft first shows what it would write). A repo that runs nothing (config, docs, rulesets, shared CI) is added with `no_run: true`: never invent a start command for it. A repo can be in more than one project (a shared repo, such as one holding shared components)." +
       HELD,
     action: true,
     shape: {
@@ -1596,6 +1736,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         .string()
         .optional()
         .describe("The start command, when detection asked which"),
+      no_run: noRunArg,
       down: z.string().optional().describe("The stop command"),
       health: z
         .string()
@@ -1615,12 +1756,33 @@ const APPROVAL_TOOLS: DenTool[] = [
           workspace: str(a.workspace),
           name: str(a.name),
           run: str(a.run),
+          ...(a.no_run === true ? { no_run: true } : {}),
           down: str(a.down),
           health: str(a.health),
         },
         a,
         ctx,
       );
+    },
+  },
+  {
+    name: "hub_connect",
+    title: "Set Hub's address",
+    description:
+      "Set, change or clear Hub's address for this whole install (`url`, https; none clears it). Checked as Settings › Hub checks it. On the person's Allow, Den disconnects from the Hub it uses now (so that Hub revokes its key), saves the address and restarts. The key itself still needs the person's Connect in Settings › Hub, in a browser: tell them so after. Den's own agent only." +
+      HELD,
+    action: true,
+    shape: {
+      url: z
+        .string()
+        .describe("Hub's address (https://…), or none to clear it"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("hub_connect", ctx.scope);
+      const url = needArg("hub_connect", a, "url", "Hub's address, or none");
+      return askPerson("hub_connect", "hub_connect", { url }, a, ctx);
     },
   },
   {
@@ -1663,7 +1825,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "den_update",
     title: "Update Den",
     description:
-      'Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, checks the new version with doctor, and restarts; if the new version isn\'t up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types "Server is back on <version> (pid …)" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person.' + // words-ok: SRV-1's own line
+      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (release_status shows what it found), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person." + // words-ok: SRV-1's own line
       HELD,
     action: true,
     shape: {
@@ -2179,6 +2341,7 @@ export const ROUTE_SINCE: Readonly<Record<string, string>> = {
   "/api/security/plan": "0.2.0",
   "/api/verify/plan": "0.4.51",
   "/api/verify/run": "0.4.51",
+  "/api/server-agent/update": "0.4.64",
 };
 
 /** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */

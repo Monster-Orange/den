@@ -121,6 +121,9 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   Settings › Access › Waiting devices), or a one-time link (`<cli> web
 login`, which waits until it's used; `web open` opens it; Settings ›
   Access pairs a device with a QR code). The rail's chip shows who you are.
+- **Den Hub.** Connect an install to your company's Hub from Settings › Hub. Agents then
+  search Hub and publish docs and mocks there, and comments and approvals in Hub reach them. See
+  [docs/hub.md](hub.md).
 - **Web UI and CLI** over the same state.
 
 ## Strategies

@@ -9,6 +9,9 @@
  *     words: { en: {...}, ... },   extra or replaced shared words (ok, cancel)
  *     report: () => html,          the Report button's HTML for the footer
  *                                  ("" or null: none)
+ *     css: "/kit/dialog.css",      where dialog.css is, for a page that
+ *                                  doesn't link it (default: beside
+ *                                  another kit stylesheet on the page)
  *   })
  *
  *   askConfirm(opts) → Promise<boolean>      OK true; Cancel or Esc false
@@ -27,9 +30,75 @@
  * askConfirm and tell are role="alertdialog"; askText is role="dialog".
  * Each is named by its title (aria-labelledby) and described by its
  * message (aria-describedby). Focus moves in (Cancel for danger, the
- * field for askText, else OK) and goes back to what had it on close.
+ * field for askText, else OK) and goes back to what opened it on close
+ * (opts.opener, else the focused element or the control just pressed).
  * Enter in askText's field is OK.
  */
+
+// Focus goes back to what opened a pop-up (here, Report, What's new). The
+// browser's own dialog restore isn't enough: Safari doesn't focus a button
+// on a click, so the element "focused before" a dialog opened from a click
+// is the body. openerOf(hint) at open: the hint, else the focused element,
+// else the control just pressed. focusBack(el) at close: focus it again,
+// without scrolling, if it is still on the page and can take focus. Kept
+// here, not in a file of its own: hosts that serve a list of kit files
+// already serve this one.
+
+const FOCUSABLE =
+  'button, a[href], input, select, textarea, summary, [tabindex], [contenteditable=""], [contenteditable="true"]';
+
+/** A press counts as the opener for this long (ms). */
+const PRESS_MS = 1500;
+
+let pressed = null;
+let pressedAt = 0;
+
+function focusable(el) {
+  if (!el || el.nodeType !== 1 || !el.isConnected) return false;
+  if (typeof document !== "undefined" && el === document.body) return false;
+  if (el.disabled) return false;
+  return !!el.matches?.(FOCUSABLE);
+}
+
+const controlOf = (t) =>
+  t && t.nodeType === 1 && t.closest ? t.closest(FOCUSABLE) : null;
+
+// The control a pointer or key just pressed, seen before any page handler.
+if (typeof document !== "undefined" && document.addEventListener) {
+  const note = (e) => {
+    const c = controlOf(e.target);
+    if (!c) return;
+    pressed = c;
+    pressedAt = Date.now();
+  };
+  for (const type of ["pointerdown", "mousedown", "click", "keydown"])
+    document.addEventListener(type, note, true);
+}
+
+/** What opened the pop-up: `hint`, the focused element, or the press. */
+export function openerOf(hint) {
+  if (focusable(hint)) return hint;
+  const h = controlOf(hint);
+  if (focusable(h)) return h;
+  const at = typeof document !== "undefined" ? document.activeElement : null;
+  if (focusable(at)) return at;
+  const ev = typeof window !== "undefined" ? window.event : null;
+  const t = controlOf(ev?.target);
+  if (focusable(t)) return t;
+  if (focusable(pressed) && Date.now() - pressedAt < PRESS_MS) return pressed;
+  return null;
+}
+
+/** Focus `el` again (no scroll), when it is still there and focusable. */
+export function focusBack(el) {
+  if (!focusable(el)) return false;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    return false;
+  }
+  return document.activeElement === el;
+}
 
 export const DIALOG_WORDS = {
   en: { ok: "OK", cancel: "Cancel" },
@@ -44,6 +113,7 @@ const hook = {
     "en",
   words: {},
   report: null,
+  css: null,
 };
 
 /** The product's language, words and Report (see the top of this file). */
@@ -72,30 +142,30 @@ const esc = (s) =>
       ],
   );
 
-/** Tokens only (UK-1): no colour of its own. */
-const CSS = `
-.dk-dlg{font-family:var(--sans);position:fixed;inset-block:auto;inset-inline:0;top:50%;transform:translateY(-50%);margin:0 auto;height:auto;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;width:min(440px,calc(100vw - 32px));max-width:100%;padding:0;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow-dialog);box-sizing:border-box}
-.dk-dlg::backdrop{background:color-mix(in srgb,var(--sunken) 70%,transparent)}
-.dk-b{padding:var(--space-4) calc(var(--space-4) + 2px);display:grid;gap:10px;margin:0}
-.dk-b h2{font-size:var(--fs-l);margin:0;overflow-wrap:anywhere}
-.dk-msg{margin:0;font-size:var(--fs-s);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;max-height:50dvh;overflow:auto}
-.dk-in{font:inherit;font-size:var(--fs-s);min-height:var(--tap-min);padding:0 var(--space-2);border:1px solid var(--border-strong);border-radius:var(--radius-button);background:var(--bg);color:var(--text);width:100%;box-sizing:border-box}
-.dk-in:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.dk-ft{display:flex;flex-wrap:wrap;gap:var(--space-2);justify-content:flex-end;align-items:center}
-.dk-ft > :first-child:not(.dk-btn){margin-right:auto}
-.dk-btn{font:inherit;font-size:var(--fs-s);min-height:var(--tap-min);padding:0 var(--space-3);border-radius:var(--radius-button);border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer}
-.dk-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.dk-btn.dk-primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
-.dk-btn.dk-danger{background:var(--bad);border-color:var(--bad);color:var(--on-accent)}
-@media (max-width:480px){.dk-btn{min-height:var(--tap)}}
-`;
-
+/**
+ * The look is dialog.css: linked, never injected, so a page under
+ * style-src 'self' takes it. A page that links it (in its <head>) keeps
+ * its own link. Else it is linked from configureDialog({ css }), or from
+ * the folder of another kit stylesheet on the page (tokens.css, say).
+ */
+const KIT_SHEET = /(^|\/)(tokens|base|fonts|busy|shell|update-pill)\.css$/;
 function ensureCss() {
   if (document.getElementById("dk-css")) return;
-  const s = document.createElement("style");
-  s.id = "dk-css";
-  s.textContent = CSS;
-  document.head.append(s);
+  let near = null;
+  for (const l of document.querySelectorAll('link[rel="stylesheet"]')) {
+    const u = new URL(l.href, location.href);
+    if (/(^|\/)dialog\.css$/.test(u.pathname)) return;
+    if (!near && KIT_SHEET.test(u.pathname)) near = u;
+  }
+  const href =
+    hook.css ||
+    (near ? new URL("dialog.css", near).href.replace(/\?.*$/, "") : null);
+  if (!href) return;
+  const l = document.createElement("link");
+  l.id = "dk-css";
+  l.rel = "stylesheet";
+  l.href = href;
+  document.head.append(l);
 }
 
 let seq = 0;
@@ -141,7 +211,7 @@ function open(kind, opts = {}) {
   ensureCss();
   const n = ++seq;
   const ids = { h: `dk-h-${n}`, m: `dk-m-${n}` };
-  const opener = document.activeElement;
+  const opener = openerOf(opts.opener);
   const d = document.createElement("dialog");
   d.className = "dk-dlg";
   d.dataset.dkKind = kind;
@@ -164,12 +234,7 @@ function open(kind, opts = {}) {
       const answer = answerOf(kind, ok, field?.value);
       if (d.open) d.close();
       d.remove();
-      try {
-        if (opener && opener.isConnected && opener !== document.body)
-          opener.focus?.();
-      } catch {
-        /* nothing to go back to */
-      }
+      focusBack(opener);
       resolve(answer);
     };
     // Esc is Cancel (for tell, it closes). Handled on the dialog's own

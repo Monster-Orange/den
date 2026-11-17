@@ -246,6 +246,38 @@ function keepApproveKey(b) {
   }
 }
 
+/**
+ * Issue 320: how long a page that just signed in waits for its own pairing
+ * code's withdrawal before it goes on anyway.
+ */
+const LEAVE_WAIT_MS = 1500;
+/** Withdraws this page's pending pairing code (wirePair sets it). */
+let leavePair = () => Promise.resolve();
+
+/**
+ * Issue 320: signed in (GitHub, a link, another tab): withdraw this page's own
+ * code and wait for the answer, within LEAVE_WAIT_MS, then go to `url`.
+ * pagehide's keepalive DELETE alone can be dropped, or never run, and the
+ * code would stay waiting: every signed-in browser would ask to let in a
+ * computer that is already in.
+ */
+function goSignedIn(url) {
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    location.replace(url);
+  };
+  setTimeout(go, LEAVE_WAIT_MS);
+  let left;
+  try {
+    left = Promise.resolve(leavePair());
+  } catch {
+    left = Promise.resolve();
+  }
+  left.then(go, go);
+}
+
 export function landingAfterSignIn(loc) {
   if (loc.pathname !== "/signin") return loc.pathname + loc.search + loc.hash;
   const n = new URLSearchParams(loc.search).get("next") || "/";
@@ -437,7 +469,7 @@ function wireGithub(root, t, s, attest = "") {
           show(
             `<p class="lead" style="margin-top:12px">${esc(t("err.signin.githubDone"))}</p>`,
           );
-          location.replace(landingAfterSignIn(location));
+          goSignedIn(landingAfterSignIn(location));
           return;
         }
         fail(
@@ -546,30 +578,62 @@ function wirePair(root, t, s) {
   // D67: this page's pending request (its poll id), withdrawn as the page
   // goes, so no signed-in browser asks to let a closed tab in.
   let mine = null;
+  // Issue 320: the current request's poll, to run at once.
+  let askNow = null;
+  // Issue 320: a promise of the answer, for a page that waits for it.
   const withdraw = () => {
     const id = mine;
     mine = null;
-    if (!id) return;
+    if (!id) return Promise.resolve();
     try {
-      fetch(`/api/signin/code/${encodeURIComponent(id)}`, {
+      return fetch(`/api/signin/code/${encodeURIComponent(id)}`, {
         method: "DELETE",
         keepalive: true,
         cache: "no-store",
         credentials: "same-origin",
-      }).catch(() => {});
+      }).then(
+        () => {},
+        () => {},
+      );
     } catch {
       /* going anyway: it stops being polled, and drops off the list */
+      return Promise.resolve();
     }
   };
   const stop = () => {
     clearTimeout(poll);
     clearTimeout(tick);
+    askNow = null;
     gen++;
   };
+  // Issue 320: as the page goes, a beacon too. Safari drops a keepalive
+  // DELETE sent from pagehide, but sends a beacon. Either ends it; the
+  // server also ends a request its page stopped asking for.
+  const beacon = (id) => {
+    try {
+      navigator.sendBeacon?.(
+        `/api/signin/code/${encodeURIComponent(id)}/withdraw`,
+      );
+    } catch {
+      /* the server ends it anyway */
+    }
+  };
   window.addEventListener("pagehide", () => {
+    const id = mine;
     withdraw();
+    if (id) beacon(id);
     stop();
   });
+  // Issue 320: back from the background (a slow-polled tab), ask at once:
+  // a request the server ended gets a fresh code now, not a minute later.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && askNow) askNow();
+  });
+  // Issue 320: signed in another way: no more polling, and the code goes first.
+  leavePair = () => {
+    stop();
+    return withdraw();
+  };
   // Back from the back-forward cache: its request is gone, so a new one.
   window.addEventListener("pageshow", (e) => {
     if (e.persisted) begin();
@@ -664,13 +728,18 @@ function wirePair(root, t, s) {
           tick = setTimeout(count, Math.min(1000, ms % 1000 || 1000));
         };
         count();
-        const ask = () =>
-          fetch(`/api/signin/code/${encodeURIComponent(b.id)}`, {
+        let asking = false;
+        const ask = () => {
+          if (asking) return;
+          asking = true;
+          clearTimeout(poll);
+          return fetch(`/api/signin/code/${encodeURIComponent(b.id)}`, {
             cache: "no-store",
             credentials: "same-origin",
           })
             .then((r) => r.json().catch(() => ({})))
             .then((p) => {
+              asking = false;
               if (now !== gen) return;
               if (p.state === "pending") {
                 poll = setTimeout(ask, 1500);
@@ -684,6 +753,13 @@ function wirePair(root, t, s) {
                 location.replace(landingAfterSignIn(location));
                 return;
               }
+              // Issue 320: gone (the server ended it: this page went
+              // unheard, as a background tab may) is no dead end: a fresh
+              // code, by itself.
+              if (p.state === "gone") {
+                mine = null;
+                return begin();
+              }
               ended(
                 p.state === "denied"
                   ? "err.signin.codeDenied"
@@ -691,8 +767,11 @@ function wirePair(root, t, s) {
               );
             })
             .catch(() => {
+              asking = false;
               if (now === gen) poll = setTimeout(ask, 3000);
             });
+        };
+        askNow = ask;
         poll = setTimeout(ask, 1500);
       })
       .catch(() => {
@@ -775,7 +854,7 @@ function mountSignedOut(root, sh, d) {
             keepApproveKey(b);
             err.textContent = "";
             form.innerHTML = `<p class="lead" id="den-confirm-in">${esc(t("err.signin.youreIn"))}</p>`;
-            location.replace(typeof b.next === "string" ? b.next : "/");
+            goSignedIn(typeof b.next === "string" ? b.next : "/");
             return;
           }
           err.textContent =
@@ -857,7 +936,7 @@ function mountSignedOut(root, sh, d) {
       } catch {
         /* none */
       }
-      location.replace(location.href);
+      goSignedIn(location.href);
     })
     .catch(() => {});
 }

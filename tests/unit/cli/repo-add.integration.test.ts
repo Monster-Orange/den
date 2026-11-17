@@ -297,7 +297,11 @@ describe("repo add", () => {
       ok: false,
       error: `Den could not tell how ${repo} starts`,
       ask: expect.stringMatching(/2 ways/),
-      choices: ["docker compose -f compose.yaml up -d", "npm run dev"],
+      choices: [
+        "docker compose -f compose.yaml up -d",
+        "npm run dev",
+        "it runs nothing",
+      ],
       fix: `./bin/acme repo add ${repo} --run "docker compose -f compose.yaml up -d" --json`,
     });
     expect(fs.existsSync(path.join(dist, "manifests", "web.acme.yml"))).toBe(

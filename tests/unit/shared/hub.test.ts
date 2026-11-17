@@ -27,6 +27,7 @@ import {
   type HubConfig,
 } from "../../../src/shared/hub.js";
 import type { SecretsProvider } from "../../../src/shared/secrets/index.js";
+import * as hubMod from "../../../src/shared/hub.js";
 
 const TOKEN = "hubi_TESTONLYabc987";
 const noSecrets = () => ({});
@@ -740,5 +741,70 @@ describe("hubStatus", () => {
       "a [token] b [token]",
     );
     expect(scrubToken("plain", null)).toBe("plain");
+  });
+});
+
+describe("#267: Hub's address from Settings", () => {
+  const patch = (
+    hubMod as {
+      patchHubUrl?: (
+        u: Record<string, unknown>,
+        v: unknown,
+      ) => { ok: true; url: string | null } | { ok: false; error: string };
+    }
+  ).patchHubUrl;
+  it("sets hub.url in user.yml (trimmed, no trailing slash), keeps the rest", () => {
+    const user: Record<string, unknown> = { hub: { allow_tools: false } };
+    expect(patch?.(user, "  https://hub.example.com/ ")).toEqual({
+      ok: true,
+      url: "https://hub.example.com",
+    });
+    expect(user.hub).toEqual({
+      allow_tools: false,
+      url: "https://hub.example.com",
+    });
+  });
+  it("http only to this machine; not a URL: refused with the same words as the check", () => {
+    const user: Record<string, unknown> = {};
+    expect(patch?.(user, "http://hub.example.com")).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/https/),
+    });
+    expect(patch?.(user, "http://localhost:3000")).toMatchObject({ ok: true });
+    expect(patch?.(user, "not a url")).toMatchObject({ ok: false });
+    expect(patch?.(user, 7)).toMatchObject({ ok: false });
+  });
+  it("a different address drops the token (never sent to another Hub); the same one keeps it", () => {
+    const tok = { kind: "file", path: "/x" };
+    const same: Record<string, unknown> = {
+      hub: {
+        url: "https://hub.example.com",
+        token: tok,
+        mcp_url: "https://hub.example.com/mcp",
+      },
+    };
+    patch?.(same, "https://hub.example.com/");
+    expect(same.hub).toMatchObject({ token: tok });
+    const moved: Record<string, unknown> = {
+      hub: {
+        url: "https://hub.example.com",
+        token: tok,
+        mcp_url: "https://hub.example.com/mcp",
+      },
+    };
+    patch?.(moved, "https://other.example.com");
+    expect(moved.hub).toEqual({ url: "https://other.example.com" });
+  });
+  it("null or empty clears hub.url, and an empty hub block goes", () => {
+    const user: Record<string, unknown> = {
+      hub: { url: "https://hub.example.com" },
+    };
+    expect(patch?.(user, "")).toEqual({ ok: true, url: null });
+    expect(user).toEqual({});
+    const kept: Record<string, unknown> = {
+      hub: { url: "https://hub.example.com", allow_tools: true },
+    };
+    expect(patch?.(kept, null)).toEqual({ ok: true, url: null });
+    expect(kept.hub).toEqual({ allow_tools: true });
   });
 });

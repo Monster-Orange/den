@@ -39,7 +39,10 @@ that setting yourself: it is the person's.
    makes the workspace active, so its services can start.
 4. For each repo, call manifest_draft, then repo_add. Den brings the repo in
    unchanged, with a side-car manifest. If Den can't tell how a repo starts,
-   ask the person one question.
+   ask the person one question, with Den's choices. "It runs nothing"
+   (config, docs, rulesets, shared CI) is a choice: add that repo with
+   repo_add's no-run option, never with a made-up start command. A repo may
+   be in more than one workspace.
 5. Call service_try on one service. If it fails, call onboard_status and status,
    and read the service's logs (logs_tail, logs_search). Fix what you can through Den's tools; otherwise tell the
    person the one command to run.
@@ -66,16 +69,25 @@ restarts on it. Give a one-line reason, then end your turn. Den saves the
 pin first. If the new version isn't up in time, Den rolls back by itself.
 When Den is back it types "Server is back on <version> (pid …)":
 
-- On the new version: commit the new pin in your folder, and open a pull
-  request (or push, per `server_agent.git`). Then check with
-  onboard_status and status.
+- On the new version: Den commits the new pin (package.json,
+  package-lock.json) and pushes it itself once the new version is
+  verified, so leave those two files alone. Commit them yourself only when
+  `server_agent.pin_commit` is `off`. Then call release_status: its
+  `denUpdate` has the new Den's doctor results from the update (each
+  failing or warning check). Then check with onboard_status and status.
 - Rolled back: the line says why. Commit nothing, and tell the person.
+  release_status has why too, and the new Den's doctor results if its
+  doctor ran.
+
+The same goes when Den updated itself (its own check, not your ask): its
+line starts "Den is back on <version>", and release_status has the
+update and its doctor results.
 
 Den also looks at npm by itself (every 30 minutes by default): with
 `self_update: ask` the person gets "update Den to X" to Allow, and with
 `auto` Den updates when you are between turns. You don't need to ask for
-an update just because a new version is out; you still commit the new
-pin when Den comes back on it.
+an update just because a new version is out, and Den commits the new pin
+itself when it comes back on it.
 
 A Den run from a checkout (not from npm) is updated with git there: say so,
 and use den_restart_server after.
@@ -92,13 +104,18 @@ Reads (they change nothing):
   the whole Den at a glance, environments and the edge.
 - `logs_search`, `logs_tail`: a service's logs.
 - `tests_available`, `security_latest`, `release_status`: tests, the
-  latest security scans, and releases.
+  latest security scans, and releases. `release_status` also has Den's
+  last update of itself and the new Den's doctor results from it.
 - `repos_detect`, `manifest_draft`, `manifest_validate`: find repos,
   draft and check a side-car manifest.
 - `agent_helpers`: an agent's helpers.
 - `ask_human`: ask your person a question.
 - `notifications_list`: your person's bell.
 - `approval_check`: where one of your held asks stands.
+- `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
+- `gate_slot_request`, `gate_slot_release`: hold a slot across several
+  test commands, and give it back (your own only). For one command, run it
+  as `<cli> gate run -- <command>` instead.
 
 Hub files (through Den, as you; when Hub is connected):
 
@@ -123,6 +140,8 @@ Held (each waits for the person's Allow):
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
 - `persona_create`, `persona_update`: add or change a persona.
+- `hub_connect`: set, change or clear Hub's address. After the Allow, Den
+  restarts; the person then clicks Connect in Settings › Hub.
 - `den_restart_server`, `den_update`: restart or update Den.
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It

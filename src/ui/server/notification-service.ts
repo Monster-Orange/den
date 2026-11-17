@@ -46,6 +46,74 @@ async function outputMark(agent: string): Promise<string | null> {
   }
 }
 
+/**
+ * #142: the question an agent's finished turn ended on (its transcript's
+ * last answer), or null. Claude Code agents only: others have no
+ * transcript Den reads.
+ */
+async function endedAsking(agent: string): Promise<string | null> {
+  const rec = readRecord(getStateDir(), agent);
+  if (!rec || !HOOKED_RUNTIMES.has(rec.runtime ?? "")) return null;
+  const [{ transcriptFile }, { lastAnswerQuestion }] = await Promise.all([
+    import("../../shared/agents/den-claude.js"),
+    import("../../shared/agents/conversations.js"),
+  ]);
+  return lastAnswerQuestion(transcriptFile(rec.resumeToken));
+}
+
+/**
+ * Issue 327: how agent `rec` ended, or null while it runs (or Den can't
+ * tell). `live`: the sessions running now (id → startedAt), or null when
+ * the session host didn't answer. Removed (no record), or stopped since
+ * its session started (`agents stop`, even while it still ends):
+ * "stopped". Its session gone, not stopped: "exited".
+ */
+export function agentEnded(
+  rec: Pick<AgentRecord, "stoppedAt" | "session"> | null,
+  live: ReadonlyMap<string, string> | null,
+): "stopped" | "exited" | null {
+  if (!rec) return "stopped";
+  if (live === null) return rec.stoppedAt ? "stopped" : null;
+  const started = live.get(rec.session.id);
+  if (started === undefined) return rec.stoppedAt ? "stopped" : "exited";
+  return rec.stoppedAt && rec.stoppedAt >= started ? "stopped" : null;
+}
+
+/** Issue 327: which of these waiting agents ended (see agentEnded). */
+async function endedAgents(
+  agents: readonly string[],
+): Promise<Map<string, "stopped" | "exited">> {
+  let live: Map<string, string> | null = null;
+  try {
+    const { webDeps } = await import("./agent-routes.js");
+    const c = await webDeps().connectExisting();
+    if (c)
+      try {
+        live = new Map(
+          (await c.list())
+            .filter((x) => !x.exited)
+            .map((x) => [x.ref.id, x.startedAt]),
+        );
+      } finally {
+        c.close();
+      }
+  } catch {
+    live = null;
+  }
+  const out = new Map<string, "stopped" | "exited">();
+  for (const a of agents) {
+    let rec: AgentRecord | null;
+    try {
+      rec = readRecord(getStateDir(), a);
+    } catch {
+      continue; // unreadable now: the next tick looks again
+    }
+    const how = agentEnded(rec, live);
+    if (how) out.set(a, how);
+  }
+  return out;
+}
+
 /** The runtimes whose hooks say when they wait: their bells add nothing. */
 const HOOKED_RUNTIMES = new Set(["den-claude"]);
 
@@ -112,6 +180,8 @@ export function notificationDeps(): {
     },
     hooked: (id) =>
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
+    endedAsking,
+    ended: endedAgents,
   });
   if (!timer) {
     let busy = false;
@@ -162,7 +232,27 @@ export function personTyped(sessionId: string): void {
   }
 }
 
+/**
+ * Issue 327: agent `id` was stopped or removed here: its wait and its
+ * bell row go now, not on the next tick. Never throws.
+ */
+export function agentGone(id: string): void {
+  try {
+    attention?.gone(id);
+  } catch {
+    /* the bell is best effort: the tick clears it */
+  }
+}
+
 /** NT-3b: the agents the hooks say wait for their person, and why. */
 export function attentionWaiting(): Map<string, string> {
   return attention ? attention.waitingNow() : new Map();
+}
+
+/** Issue 327: what `agent` waits on and since when, or null. */
+export function attentionDetail(
+  agent: string,
+): { what: string; since: string } | null {
+  const w = attention?.waitingDetail(agent);
+  return w ? { what: w.what, since: w.since } : null;
 }

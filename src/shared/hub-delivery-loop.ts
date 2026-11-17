@@ -123,6 +123,11 @@ export class DeliveryLoop {
   private readonly typing = new Set<string>();
   /** Thread id → the newest Hub delivery's time on it (issue 166 de-dup). */
   private readonly threadsAt = new Map<string, number>();
+  /**
+   * #248: agents whose queue waits while they're busy (or held for their
+   * person), said once until it's typed.
+   */
+  private readonly waitSaid = new Set<string>();
   /** What persist() last wrote. */
   private persisted = "null";
   private readonly hb: number;
@@ -167,6 +172,16 @@ export class DeliveryLoop {
       });
       for (const id of ids) this.states.set(id, "working");
     }
+    // #248: say what a restart brought back, so a later typing of it
+    // isn't a mystery.
+    for (const [agent, q] of this.queue)
+      this.d.log?.(
+        `hub delivery: restored ${q.length} held Hub item${q.length === 1 ? "" : "s"} for ${agent}; typed when it's idle`,
+      );
+    for (const [agent, a] of this.active)
+      this.d.log?.(
+        `hub delivery: restored ${a.ids.length} typed Hub item${a.ids.length === 1 ? "" : "s"} for ${agent}; done when its turn ends`,
+      );
   }
 
   /** Save what's held, for restore(). */
@@ -334,6 +349,9 @@ export class DeliveryLoop {
     const q = (this.queue.get(dv.agent) ?? []).filter((a) => {
       if (!same(a)) return true;
       this.replaced.set(dv.id, [...(this.replaced.get(dv.id) ?? []), a.id]);
+      this.d.log?.(
+        `hub delivery ${dv.id}: repeats held ${a.id} for ${dv.agent} (Hub's Try again): typed once`,
+      );
       return false;
     });
     q.push(dv);
@@ -403,7 +421,16 @@ export class DeliveryLoop {
           await this.ack(dv.id, "queued");
       return;
     }
-    if (s !== "idle") return;
+    if (s !== "idle") {
+      // #248: say once that it waits, and on what.
+      if (!this.waitSaid.has(agent)) {
+        this.waitSaid.add(agent);
+        this.d.log?.(
+          `hub delivery: holding ${q.length} Hub item${q.length === 1 ? "" : "s"} for ${agent}: it is busy or waiting on its person`,
+        );
+      }
+      return;
+    }
     const o = this.d.owner();
     if (!o) {
       this.d.ownerWanted?.();
@@ -425,7 +452,23 @@ export class DeliveryLoop {
       if (!typed)
         this.queue.set(agent, [...q, ...(this.queue.get(agent) ?? [])]);
     }
-    if (!typed) return;
+    if (!typed) {
+      this.d.log?.(
+        `hub delivery: couldn't type ${q.length} Hub item${q.length === 1 ? "" : "s"} into ${agent}; kept for the next try`,
+      );
+      return;
+    }
+    this.waitSaid.delete(agent);
+    const oldest = Math.min(
+      ...q.map((dv) => {
+        const t = Date.parse(dv.createdAt);
+        return Number.isFinite(t) ? t : now;
+      }),
+    );
+    const waited = Math.max(0, Math.round((now - oldest) / 1000));
+    this.d.log?.(
+      `hub delivery: typed ${q.length} Hub item${q.length === 1 ? "" : "s"} into ${agent} (oldest waited ${waited}s)`,
+    );
     this.active.set(agent, {
       ids: q.map((dv) => dv.id),
       artifact: q[0].thread.artifact,

@@ -1,6 +1,6 @@
 /**
  * HUB-1.7: Connect to Hub. A person connects this install from Settings ›
- * Agents › Hub; nobody copies a token or edits config.
+ * Hub; nobody copies a token or edits config.
  *
  *   1. POST /api/hub/connect { url? }  (signed in, CSRF): a PKCE verifier
  *      and a single-use state are made and kept here (10 min); the answer

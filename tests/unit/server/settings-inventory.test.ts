@@ -41,8 +41,18 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
   // 0.4.48: Den on the Docker bridge for the edge.
   web_bridge: { listen: true, probe_seconds: true },
+  // Issue 144: the machine's gate slots.
+  gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
+  // Issue 278: agents stuck compacting; instruction size.
+  agent_context: {
+    compaction_loop_count: true,
+    compaction_loop_minutes: true,
+    pause_after_loop: true,
+    instruction_share_percent: true,
+    context_tokens: true,
+  },
   // Issue 103: Settings › Embedding.
   embed: EMBED_DEFAULTS as unknown as Record<string, unknown>,
 };
@@ -102,6 +112,7 @@ describe("the settings inventory (R21)", () => {
         "graph.workspaces",
         // HUB-1.5: Hub's tools without asking.
         "hub_allow_tools",
+        "hub_url",
         // The UI's language (R19, 0.3.0-dev.39).
         "language",
         // issue 206: the time zone date-times are shown in.
@@ -132,9 +143,17 @@ describe("the settings inventory (R21)", () => {
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         "web_bridge.listen",
         "web_bridge.probe_seconds",
+        "gate_slots.cpu_slots",
+        "gate_slots.overrun_margin_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",
+        // Issue 278: agents stuck compacting; instruction size.
+        "agent_context.compaction_loop_count",
+        "agent_context.compaction_loop_minutes",
+        "agent_context.pause_after_loop",
+        "agent_context.instruction_share_percent",
+        "agent_context.context_tokens",
         // Issue 103: Settings › Embedding.
         "embed.url_max_chars",
         "embed.origins",

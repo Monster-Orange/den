@@ -497,6 +497,22 @@ export interface UserConfig {
     host_timeout_seconds?: unknown;
     refresh_timeout_seconds?: unknown;
   };
+  /**
+   * Issue 278: agents stuck compacting and instruction files that eat the
+   * context (context-watch.ts): compaction_loop_count (3) automatic
+   * compactions within compaction_loop_minutes (10) ring the bell;
+   * pause_after_loop (false) holds new deliveries until a person clears
+   * it; instruction files over instruction_share_percent (15) of the
+   * model's context (context_tokens, 200000, when Den doesn't know the
+   * model's) warn.
+   */
+  agent_context?: {
+    compaction_loop_count?: unknown;
+    compaction_loop_minutes?: unknown;
+    pause_after_loop?: unknown;
+    instruction_share_percent?: unknown;
+    context_tokens?: unknown;
+  };
   panes?: {
     reconnect_seconds?: unknown;
     reconnect_max_seconds?: unknown;
@@ -1228,6 +1244,19 @@ export interface ServerAgentConfig {
    * minutes (default 30; 0: never).
    */
   update_check_minutes?: number;
+  /**
+   * #251: passes in a row an update waits on the person (the server agent
+   * at a permission prompt or a question, a held Allow) before its bell
+   * item counts as needing them (default 2).
+   */
+  update_wait_checks?: number;
+  /**
+   * #176: after a verified self-update, the lead install commits the new
+   * pin (package.json, package-lock.json) and pushes it to the branch's
+   * upstream: push (default), pr (its own branch and a pull request), or
+   * off (left to the server agent).
+   */
+  pin_commit?: "push" | "pr" | "off";
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1259,7 +1288,14 @@ export interface ResolvedServerAgentConfig {
   updateCheckMs: number;
   /** SRV-P6 / LEAD-1: lead (default) or follower, from user.yml. */
   role: "lead" | "follower";
+  /** #251: server_agent.update_wait_checks. */
+  updateWaitChecks: number;
+  /** #176: server_agent.pin_commit: push (default), pr or off. */
+  pinCommit: "push" | "pr" | "off";
 }
+
+/** #251: server_agent.update_wait_checks when unset. */
+export const UPDATE_WAIT_CHECKS_DEFAULT = 2;
 
 /** SRV-P6: server_agent.update_check_minutes when unset. */
 export const UPDATE_CHECK_MINUTES_DEFAULT = 30;
@@ -1317,6 +1353,19 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.update_check_minutes: minutes, 5 or more, or 0 for never (got ${JSON.stringify(uc)})`,
     );
+  const wc = sa.update_wait_checks;
+  if (
+    wc !== undefined &&
+    (typeof wc !== "number" || !Number.isInteger(wc) || wc < 1)
+  )
+    throw new Error(
+      `server_agent.update_wait_checks: a whole number, 1 or more (got ${JSON.stringify(wc)})`,
+    );
+  const pcm = sa.pin_commit;
+  if (pcm !== undefined && pcm !== "push" && pcm !== "pr" && pcm !== "off")
+    throw new Error(
+      `server_agent.pin_commit: push, pr or off, not ${JSON.stringify(pcm)}`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1336,6 +1385,8 @@ export function readServerAgentConfig(
     promptCheckMs: Math.round((pc ?? PROMPT_CHECK_SECONDS_DEFAULT) * 1000),
     updateCheckMs: Math.round((uc ?? UPDATE_CHECK_MINUTES_DEFAULT) * 60_000),
     role: role ?? "lead",
+    updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
+    pinCommit: pcm ?? "push",
   };
 }
 

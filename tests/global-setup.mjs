@@ -43,6 +43,32 @@ const OPCTL_SHIM = `#!/bin/sh
 if [ "$1" = container ] && [ "$2" = ls ]; then exit 0; fi
 ${OPENER_SHIM.split("\n").slice(1).join("\n")}`;
 
+/**
+ * Issue 163: the real-CLI sentinel (tests/sentinel.ts). These names never
+ * run this machine's program in a test, a child process or a server a test
+ * starts. The stub logs its name and argv (never stdin) beside its folder,
+ * per JEST_WORKER_ID, and exits 99; setup.ts fails the test file that made
+ * a call, and global teardown fails the run. Keep in step with
+ * SENTINEL_BINS in tests/sentinel.ts.
+ */
+const SENTINEL_BINS = [
+  "claude",
+  "op",
+  "doppler",
+  "security",
+  "launchctl",
+  "sudo",
+  "mkcert",
+  "gh",
+];
+const SENTINEL_STUB = `#!/bin/sh
+# The real-CLI sentinel (tests/sentinel.ts): a test reached this machine's
+# program. Name and argv only, never stdin. DEN_SENTINEL_WORKER: the
+# worker of a spawn whose env left JEST_WORKER_ID out (sentinel.ts).
+printf '%s %s\\n' "$(basename "$0")" "$*" | tr -d '\\r' >> "$(dirname "$0")/../sentinel-calls-\${DEN_SENTINEL_WORKER:-\${JEST_WORKER_ID:-0}}.log"
+exit 99
+`;
+
 export default function globalSetup() {
   process.env.DEN_TEST_RUN = String(process.pid);
   const killed = reap((r) => !alive(Number(r.run)) && !alive(Number(r.owner)));
@@ -63,8 +89,20 @@ export default function globalSetup() {
   for (const bin of OPENERS)
     fs.writeFileSync(path.join(stubs, bin), OPENER_SHIM, { mode: 0o755 });
   fs.writeFileSync(path.join(stubs, "opctl"), OPCTL_SHIM, { mode: 0o755 });
-  process.env.PATH = [stubs, process.env.PATH ?? "/usr/bin:/bin"].join(
-    path.delimiter,
-  );
+  // Issue 163: the sentinel, before any worker starts: after these inert
+  // stand-ins (fakes go ahead of it), before every folder of this machine.
+  const sentinel = path.join(path.dirname(stubs), "sentinel");
+  fs.mkdirSync(sentinel, { recursive: true });
+  for (const bin of SENTINEL_BINS)
+    fs.writeFileSync(path.join(sentinel, bin), SENTINEL_STUB, { mode: 0o755 });
+  process.env.PATH = [
+    stubs,
+    sentinel,
+    process.env.PATH ?? "/usr/bin:/bin",
+  ].join(path.delimiter);
   process.env.DEN_TEST_GLOBAL_STUBS = stubs;
+  process.env.DEN_TEST_SENTINEL = sentinel;
+  // Den runs the system's sudo by absolute path, never PATH (sudo-store.ts):
+  // in a test that is the sentinel's, unless the test names its own fake.
+  process.env.DEN_SYSTEM_SUDO = path.join(sentinel, "sudo");
 }

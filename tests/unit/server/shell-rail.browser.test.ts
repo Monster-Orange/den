@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const SHELL = fs.readFileSync(
@@ -60,6 +61,9 @@ async function mount(
   });
   await p.route("http://den.test/**", async (r) => {
     const url = new URL(r.request().url());
+    // Issue 95: the kit's shell, as Den serves it.
+    const kit = kitAsset(url.pathname);
+    if (kit) return r.fulfill(kit);
     if (url.pathname === "/shell.js")
       return r.fulfill({
         contentType: "text/javascript; charset=utf-8",
@@ -72,7 +76,9 @@ async function mount(
     }
     return r.fulfill({
       contentType: "text/html; charset=utf-8",
-      body: `<!doctype html><html><head><style>:root { --mono: monospace; --sans: sans-serif; --display: sans-serif; }</style></head><body>${opts.before ?? ""}<div id="den-shell" data-page="${page}"></div><script src="/shell.js"></script><main id="den-content">page${opts.after ?? ""}</main></body></html>`,
+      body: kitPage(
+        `<!doctype html><html><head><style>:root { --mono: monospace; --sans: sans-serif; --display: sans-serif; }</style></head><body>${opts.before ?? ""}<div id="den-shell" data-page="${page}"></div><script src="/shell.js"></script><main id="den-content">page${opts.after ?? ""}</main></body></html>`,
+      ),
     });
   });
   await p.goto("http://den.test/x");
@@ -107,7 +113,7 @@ describe("the rail", () => {
         tag: null,
         items: ["local-dev", "graph", "agents", "terminal", "services", "logs"],
       },
-      { heading: "Verify", tag: null, items: ["tests"] },
+      { heading: "Verify", tag: null, items: ["verify", "tests"] },
       { heading: "Ship", tag: null, items: ["environments", "release"] },
       "den-rail-grow",
       "settings",
@@ -214,7 +220,7 @@ describe("the rail", () => {
         null,
         ["local-dev", "graph", "agents", "terminal", "services", "logs"],
       ],
-      ["Verify", null, ["tests"]],
+      ["Verify", null, ["verify", "tests"]],
       ["Ship", null, ["environments", "release"]],
       ["Acme", "acme", ["early", "edge"]],
     ]);
@@ -741,15 +747,23 @@ describe("pins (a consumer's dev.17 run)", () => {
     await p.context().close();
   });
 
-  it("a pinned row is named by its id; Visit ↗ is its own control (0.4.18: no ×)", async () => {
+  it("a pinned row is named by its id and its kind; Visit ↗ is its own control (0.4.18: no ×)", async () => {
     if (!browser) return;
     const { p } = await mount("services", {
       shell: { pins: ["shop-web"], collapsed: false },
     });
     await p.waitForSelector('[data-pin="shop-web"]');
+    // Issue 307: the kit's SERVICE tag at the row's end, read with the name.
     expect(
-      await p.getByRole("link", { name: "shop-web", exact: true }).count(),
+      await p
+        .getByRole("link", { name: "shop-web · Service", exact: true })
+        .count(),
     ).toBe(1);
+    expect(
+      await p.$eval('[data-pin="shop-web"] [data-nav-role="kind"]', (e) =>
+        (e as HTMLElement).innerText.trim(),
+      ),
+    ).toBe("SERVICE");
     expect(
       await p.getAttribute('[data-pin="shop-web"]', "aria-keyshortcuts"),
     ).toBe("Delete");
@@ -1034,7 +1048,8 @@ describe("Navigation prefs (R21)", () => {
       shell: {
         pins: [],
         collapsed: false,
-        hidden: ["tests"],
+        // Both Verify pages hidden: the empty group goes too.
+        hidden: ["verify", "tests"],
         order: ["logs", "local-dev"],
       },
     });

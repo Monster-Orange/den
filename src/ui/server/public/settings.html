@@ -285,8 +285,20 @@
         gap: 24px;
         align-items: start;
       }
-      #set-body section[data-cat] {
+      #set-body section[data-cat],
+      #set-body [data-setting] {
+        /* Issue 268: a row's deep link lands below the sticky header too. */
         scroll-margin-top: var(--set-top, 0px);
+      }
+      /* Issue 163: where a link arrived, marked for a moment. */
+      #set-body .set-arrived {
+        outline: 2px solid var(--accent);
+        outline-offset: 4px;
+        border-radius: var(--radius-button);
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+        transition:
+          background 0.4s,
+          outline-color 0.4s;
       }
       .set-nav {
         position: sticky;
@@ -599,7 +611,7 @@
       .rot-add {
         margin-top: 10px;
       }
-      /* HUB-1.5: Settings › Agents › Hub. */
+      /* HUB-1.5: Settings › Hub. */
       .hub-st {
         display: grid;
         grid-template-columns: max-content 1fr;

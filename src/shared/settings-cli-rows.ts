@@ -16,10 +16,14 @@
  *                                     web.bridge_probe_seconds (0.4.48)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
+ *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
+ *     pause_after_loop?, instruction_share_percent?, context_tokens? }
+ *                                     user.yml agent_context.* (issue 278)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
  */
+import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -31,10 +35,17 @@ export const PERSON_ONLY_SETTINGS = [
   "crash_loop",
   // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
   "web_bridge",
+  // Issue 144: the machine's gate slots (every install and repo here).
+  "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
   "agents_list",
+  // Issue 278: when an agent counts as stuck compacting, and whether Den
+  // then holds its deliveries.
+  "agent_context",
   // Review M5 (0.4.46): what agents may do without asking.
   "hub_allow_tools",
+  // Issue 267: Hub's address (an agent asks with hub_connect).
+  "hub_url",
   // The programs Den runs when a person opens a file or a terminal.
   "editor",
   "terminal",
@@ -137,6 +148,11 @@ const AGENTS_LIST: Record<string, Limit> = {
     int: false,
   },
 };
+
+/** Issue 278: user.yml agent_context's numbers (context-watch.ts). */
+const AGENT_CONTEXT: Record<string, Limit> = Object.fromEntries(
+  Object.entries(CONTEXT_WATCH_KEYS).map(([k, l]) => [k, { key: k, ...l }]),
+);
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
 const LOG_LINES = { min: 1000, max: 1_000_000 };
@@ -288,7 +304,40 @@ export function patchCliRows(
       });
     if (Object.keys(rest).length) bridgeRest = rest;
   }
+  // Issue 278: agent_context.pause_after_loop (a switch) and its numbers.
+  const ac = body.agent_context;
+  let contextRest: unknown = undefined;
+  if (ac !== undefined) {
+    if (!isObj(ac))
+      return {
+        ok: false,
+        error: `agent_context is an object: pause_after_loop, ${Object.keys(AGENT_CONTEXT).join(", ")}`,
+      };
+    const { pause_after_loop: pause, ...rest } = ac;
+    if (pause !== undefined && pause !== null && typeof pause !== "boolean")
+      return {
+        ok: false,
+        error: "agent_context.pause_after_loop is true, false or null",
+      };
+    if (pause !== undefined)
+      apply.push(() => {
+        const b = isObj(user.agent_context) ? { ...user.agent_context } : {};
+        if (pause === null) delete b.pause_after_loop;
+        else b.pause_after_loop = pause;
+        if (Object.keys(b).length) user.agent_context = b;
+        else delete user.agent_context;
+      });
+    if (Object.keys(rest).length) contextRest = rest;
+  }
   const e =
+    patchBlock(
+      user,
+      "agent_context",
+      "agent_context",
+      AGENT_CONTEXT,
+      contextRest,
+      apply,
+    ) ??
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
     patchBlock(
       user,

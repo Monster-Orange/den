@@ -177,6 +177,15 @@ const esc = (s) =>
   );
 const slug = (id) => String(id).replace(/[^a-zA-Z0-9_-]/g, "-");
 const SWATCHES = ["accent", "ok", "warn", "bad", "bg", "surface", "text"];
+/**
+ * Issue 163: how long a link to a row or category keeps it in view while
+ * content above it loads late (the persona list), at most. Any scroll,
+ * key, click or touch of yours ends it sooner. A page-only constant, not
+ * a Setting: it never limits anything, it only stops holding a place.
+ */
+export const ANCHOR_MS = 10_000;
+/** How long the arrived-at row stays marked after it last moved. */
+export const MARK_MS = 2_500;
 
 /**
  * Mount the page into `root` (#den-content's settings markup). `deps`:
@@ -314,7 +323,10 @@ export async function mountSettings(deps) {
   }
   function currentCategory(list) {
     const ids = list.map((s) => s.category.id);
-    return ids.includes(state.category) ? state.category : (ids[0] ?? null);
+    if (ids.includes(state.category)) return state.category;
+    // Issue 268: a row's id (/settings#agents.default_mode) is its category.
+    const holds = list.find((s) => s.rows.some((r) => r.id === state.category));
+    return holds ? holds.category.id : (ids[0] ?? null);
   }
   function drawNav(list) {
     const cur = currentCategory(list);
@@ -780,10 +792,91 @@ export async function mountSettings(deps) {
     markCurrent(cur);
     // Plain /settings stays at the top: the title and the search box are
     // what you land on. Only a URL that names a category moves you to it.
-    if (!state.category) return;
-    scrollToCategory(cur);
-    if (!state.q) focusHeading(cur);
+    if (!state.category) {
+      unanchor();
+      return;
+    }
+    // Issue 268: a category's id, to its section; a row's id, to that row.
+    const rowId = state.category !== cur ? slug(state.category) : null;
+    anchorTo(
+      () => (rowId ? $(`setting-${rowId}`) : $(`cat-${cur}`)),
+      () => {
+        if (state.q) return;
+        if (!rowId) return focusHeading(cur);
+        const l = $(`l-${rowId}`);
+        if (!l) return;
+        l.setAttribute("tabindex", "-1");
+        l.focus({ preventScroll: true });
+      },
+    );
   };
+  // Issue 163: the place a link arrived at holds while late content (the
+  // persona list, a plugin's rows) loads above it, and waits for the row
+  // if it isn't drawn yet. It lets go at your first scroll, key, click or
+  // touch, or after ANCHOR_MS. The row is marked until it has stayed put
+  // for MARK_MS.
+  let anchor = null;
+  const LET_GO = ["wheel", "keydown", "pointerdown", "touchstart"];
+  function unanchor() {
+    if (!anchor) return;
+    const a = anchor;
+    anchor = null;
+    a.ro?.disconnect();
+    a.mo.disconnect();
+    clearTimeout(a.end);
+    for (const ev of LET_GO)
+      window.removeEventListener(ev, unanchor, { capture: true });
+    // The mark stays a moment longer, so it can be seen.
+    a.unmark();
+  }
+  function anchorTo(find, focus) {
+    unanchor();
+    let last = null;
+    let markTimer = 0;
+    let marked = null;
+    let focused = false;
+    const unmark = (later) => {
+      clearTimeout(markTimer);
+      const drop = () => marked?.classList.remove("set-arrived");
+      if (later) markTimer = setTimeout(drop, MARK_MS);
+      else drop();
+    };
+    const place = () => {
+      const el = find();
+      if (!el) return;
+      if (marked !== el) {
+        marked?.classList.remove("set-arrived");
+        marked = el;
+      }
+      el.classList.add("set-arrived");
+      const top = el.getBoundingClientRect().top;
+      if (last === null || Math.abs(top - last) > 1) {
+        el.scrollIntoView({ block: "start" });
+        last = el.getBoundingClientRect().top;
+      }
+      if (!focused) {
+        focused = true;
+        focus();
+      }
+      unmark(true);
+    };
+    const a = {
+      ro:
+        typeof ResizeObserver === "function"
+          ? new ResizeObserver(() => anchor === a && place())
+          : null,
+      // A redraw (a plugin's rows, the appearance) replaces the rows.
+      mo: new MutationObserver(() => anchor === a && place()),
+      end: setTimeout(unanchor, ANCHOR_MS),
+      unmark: () => unmark(true),
+    };
+    anchor = a;
+    a.ro?.observe(body);
+    a.mo.observe(body, { childList: true });
+    for (const ev of LET_GO)
+      window.addEventListener(ev, unanchor, { capture: true, passive: true });
+    place();
+  }
   const fromUrl = () => {
     state = readLocation(location);
     if (search.value !== state.q) search.value = state.q;

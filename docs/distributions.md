@@ -106,8 +106,9 @@ Den never opens or focuses a browser, unless `DEN_ALLOW_OPEN=1` is set.
 ### repo add
 
 `<cli> repo add <path|git-url> [--sidecar] [-w <project>] [--name <repo>]
-[--run "<cmd>"] [--down "<cmd>"] [--health <url>] [--branch <branch>]
-[--json]` adds a repo to a project without writing into the repo.
+[--run "<cmd>" | --no-run] [--down "<cmd>"] [--health <url>]
+[--branch <branch>] [--json]` adds a repo to a project without writing into
+the repo.
 
 - A path is the person's own checkout, added dev-managed at that path. A git
   URL is cloned where Den keeps its managed clones
@@ -127,7 +128,8 @@ Den never opens or focuses a browser, unless `DEN_ALLOW_OPEN=1` is set.
   (`docker compose -f <file> up -d` and `down`) or `package.json`'s `dev`,
   else `start`, script. One candidate decides. Two, or none, is a question:
   the answer has `ask` and `choices`, nothing is written, and a re-run names
-  the command with `--run "<cmd>"`. A Makefile `test` target or a
+  the command with `--run "<cmd>"`. The last choice is always
+  `it runs nothing`, which means `--no-run`. A Makefile `test` target or a
   `package.json` `test` script becomes the repo's `tests.unit`.
   `--health <url>` adds an HTTP health check. Without it, when the start
   script names a port (`--port`, `-p`, `PORT=`) or runs a dev server with a
@@ -135,6 +137,25 @@ Den never opens or focuses a browser, unless `DEN_ALLOW_OPEN=1` is set.
   Gatsby 8000, webpack-dev-server 8080), the side-car gets
   `http://localhost:<port>/` as its health URL, so the service has Visit ↗.
   No port: no health URL is guessed.
+- **A repo that runs nothing** (config, docs, rulesets, shared CI) is added
+  with `--no-run` (`no_run: true` on the MCP `repo_add` and
+  `manifest_draft`). Its side-car has an empty service list
+  (`services: {}`); a repo's own manifest may say `services: {}` or
+  `services: []`. It joins the project for agents and worktrees like any
+  repo. Nothing starts and nothing is health-checked: `up`, `down`,
+  `restart` and `logs` of it say it has no runtime of its own and exit 0
+  (`--json`: `ok: true` with `noRuntime`), `status` and the health row have
+  no row for it, the services and project pages show it with nothing to
+  start (`runs: "none"`, `runsNothing: true` in `/api/services`), and its
+  `tests:` still run on the Checks page. `--no-run` with `--run`, `--down` or `--health` is refused.
+- A repo added before with the old workaround, `--run "true"`, keeps its
+  side-car and its one service. `--no-run` never changes a manifest: on a
+  repo whose manifest already runs something it answers with the file to
+  edit (set `services: {}`).
+- A repo can be in more than one project: a shared repo, such as one
+  holding shared components, is added to each with `-w`. Each project has
+  its own entry, an agent in each project can work in it, and removing it
+  from one project leaves the others as they were.
 - The project is `-w <workspace>` (made and activated if it doesn't exist),
   else the focused one, else a new `default` project.
 - The same repo again answers `ok` with `existed: true`. A different repo
@@ -1051,6 +1072,9 @@ later plugins.
 Connect an install to your company's Hub and every agent Den launches
 gets Hub's tools: it can search Hub and publish docs and mocks there.
 Without it, nothing about agents changes.
+
+[docs/hub.md](hub.md) is the step-by-step guide: connecting, what agents get, projects,
+notifications and troubleshooting. This section is the technical detail.
 
 ### Connect to Hub (HUB-1.7)
 
@@ -2516,7 +2540,7 @@ terminal and agent) as launchd jobs, restarted if they exit:
 
 ```bash
 ./bin/acme service install                # install (or refresh) and start them
-./bin/acme service install --mode always  # keep them running after logout (opt-in)
+./bin/acme service install --mode login   # stop them at logout (a new install is always)
 ./bin/acme service install --plan  # what install would do; writes and loads nothing
 ./bin/acme service status      # launchd's view: state, pid, last exit code
 ./bin/acme service print       # the web plist it would install; installs nothing
@@ -2547,16 +2571,50 @@ you to run.
 
 ### Login or always
 
-| `--mode`          | Jobs                                                  | At logout                   |
-| ----------------- | ----------------------------------------------------- | --------------------------- |
-| `login` (default) | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent      |
-| `always`          | LaunchDaemons that run as you (`UserName`), from boot | keep running, and so agents |
+| `--mode`                        | Jobs                                                  | At logout                   |
+| ------------------------------- | ----------------------------------------------------- | --------------------------- |
+| `always` (default, new install) | LaunchDaemons that run as you (`UserName`), from boot | keep running, and so agents |
+| `login`                         | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent      |
 
-`always` is opt-in: Settings › Agents › Keep agents running after logout
-(off by default), then Apply. Whether an agent reaches its sign-in (the
-login keychain) under the daemon is not yet shown, and `doctor` says so on
-its service line. A real logout has not been shown in tests either: they
-use the launchd job files and a restart of the session host.
+`always` is the default for a new install: Settings › Agents › Keep agents
+running after logout. An install from before 0.4.63 with the Setting never
+set keeps its mode, because switching needs sudo; its web server offers it
+once in the bell ("Keep agents running after logout: Apply"), Settings
+shows the offer, and `doctor` names it. An explicit off stays off.
+
+**Agents' sign-in under `always`.** A LaunchDaemon started after a logout
+isn't assumed to reach the login keychain, and the CLI's interactive
+sign-in expires on its own. So agents started under `always` sign in with
+the CLI's long-lived token instead:
+
+```bash
+claude setup-token                 # once, by you: prints a long-lived token
+./bin/acme agents token set        # paste it at the prompt (not shown), or pipe it in
+./bin/acme agents token status     # whether it is there, and when it was set
+```
+
+Or paste it in Settings › Agents › Keep agents running after logout ›
+Sign-in token and Save: the same store, by the same code, and it is never
+shown back. Under `always`, `doctor` and the Settings row also warn when
+the store's own credential (`secrets.onepassword.token`) is a `keychain:`
+source, which the daemon may not reach: use `file:` or `env:`.
+
+The token is kept in the install's secrets store (`secrets.provider`:
+1Password or Doppler), under `secrets.refs.agent_signin_token`. A
+distribution's ref wins; without one, `token set` creates the item and
+writes the ref to your user.yml. The `env` backend is refused: a daemon
+never sees your shell. Den reads the token at each agent start under
+`always` and passes it in that agent's environment only
+(`CLAUDE_CODE_OAUTH_TOKEN`): never argv, a log, a record or the plist. The
+plist carries only `DEN_AGENT_SIGNIN=token`. `token set` reads stdin or a
+prompt, never the command line, and is a person's only.
+
+`doctor` (its agent sign-in row) and the Settings row say when `always` is
+set but no token is configured ("agents will not be able to sign in after
+logout"), and when it was set. The token doesn't say when it expires, so
+after `agents.signin_token_warn_days` (330) they say to make a new one. A
+real logout is checked on a gate machine with the checklist in
+`docs/always-on-gate.md`.
 
 `always` takes your admin password once (sudo writes and loads the
 LaunchDaemons in `/Library/LaunchDaemons`). Apply in Settings asks for it
@@ -2567,7 +2625,7 @@ changes any job, so a refusal leaves the old mode.
 Which mode install uses: an explicit `--mode`; else the Setting
 (`agents.keep_running_after_logout` in user.yml: true is always, false is
 login); else the mode already installed, so re-running it after an
-upgrade never changes it; else login. Switching mode removes the other mode's
+upgrade never changes it; else always (a new install). Switching mode removes the other mode's
 jobs: never both. Use `always` on a machine you reach from elsewhere (ssh, a
 browser on another machine); `login` on a laptop.
 
@@ -2828,9 +2886,13 @@ agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 **It binds cooperating agents only.** The scope lives in the MCP server's
 process. The web server's HTTP API does not check it yet, so an agent that
 calls the API itself (curl, a browser) is not held to its project. Enforcing
-the scope in the HTTP server is WS-3a, planned for 0.4. `mcp connect` still
-registers the unscoped server; to hand one agent a scoped server, add it to
-that agent's config yourself, for example in a project's `.mcp.json`:
+the scope in the HTTP server is WS-3a, planned for 0.4. Agents Den starts
+already get a scoped server: Den writes their MCP config itself and starts
+them in strict MCP mode (`--strict-mcp-config`), so a project's `.mcp.json`
+is ignored for them; nothing you put there reaches them. `mcp connect`
+still registers the unscoped server. To hand an agent you run yourself
+(outside Den) a scoped server, add it to that agent's own config, for
+example in a project's `.mcp.json`:
 `"args": ["mcp", "--workspace", "north", "--actor", "agent:planner"]`.
 
 ### One call from a shell
@@ -2891,11 +2953,14 @@ Read tools (always registered):
 | `stacks`             | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                              |
 | `ask_human`          | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                      |
 | `notifications_list` | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                              |
+| `gate_slot_status`   | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                |
+| `gate_slot_request`  | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                       |
+| `gate_slot_release`  | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                    |
 | `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
 | `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
 | `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
 | `repos_detect`       | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                     |
-| `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when it can start in several ways (call again with `run`)                                                                                              |
+| `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when Den can't tell how it starts (call again with `run`, or `no_run: true` for "it runs nothing")                                                     |
 
 **Health states.** A service with no verdict says why in `why`: no health
 check in the manifest for the env, remote with no check or `target.url`
@@ -3048,10 +3113,14 @@ notifications list` still lists it. A row's ⊘ turns its kind off after
   one agent fold into one row with ×N. Items older than
   `notifications.fold_days` (3, 7, 14 or 30; default 7) fold under one
   "Older than N days" row and don't count on the badge. Only what needs
-  the person (an agent waiting, a decision, a mention) shows open and
-  counts on the badge; the rest (an agent finished, an answer, releases
-  and checks) folds into one closed "Updates (N)" row, and opening that
-  agent marks its updates read. Mark all read marks what is shown. `/api/settings` serves and takes them as
+  the person shows open and counts on the badge: an agent at a permission
+  prompt, an agent that asked them something (with `ask_human`, or by
+  ending its turn on a question), a decision such as Den's own "Allow the
+  update" (only the newest; it goes once Den runs that version), and a
+  mention. An agent sitting idle after its turn doesn't count. The rest
+  (an agent finished, an answer, releases and checks) folds into one
+  closed "Updates (N)" row, and opening that agent takes its updates out
+  of the list, so the count drops. Mark all read marks what is shown. `/api/settings` serves and takes them as
   `bell_kinds` and `bell_fold_days`.
 - **Settings** (den.yml, then user.yml): `notifications.asks_per_hour`
   (default 30, at least 1): how many `ask_human` questions one agent may
@@ -3331,7 +3400,43 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   X" waits for the person (24 hours) and the bell says X is out, once per
   version. With `auto` Den runs `den_update` at a quiet moment: the
   server agent not mid-turn, no Allow open, no update under way; busy, it
-  tries on a later pass. A version that rolled back here is not tried
+  tries on a later pass. A pass that waits says why, in the log and the
+  audit, once each time the reason changes. While the server agent waits
+  on its person (a permission prompt, a question, a held Allow), the bell
+  has one item, "Den's update to X waits: the server agent is waiting on
+  your Allow", linked to that agent. After
+  `server_agent.update_wait_checks` passes in a row (default 2) it counts
+  as needing you. The update never goes past a pending Allow.
+- **Den commits and pushes the new pin itself** (#176). Once an update
+  is verified (the watch saw the new version answer, `state: good`) and
+  this Den runs it, the lead install's update check commits the pin and
+  pushes it. It does not wait on the server agent: resumed, busy, idle or
+  not running, the pin goes in. It runs right after the restart, and at
+  every update check until it is pushed. Only `package.json` and
+  `package-lock.json` are staged, by path, and the commit takes only
+  them; anything else dirty or staged stays as it was. The commit is
+  signed with `agents.git.signing_key` when that is set (SSH,
+  `ssh-keygen`); with no key it is unsigned. It never uses the person's
+  GPG key and never prompts. It pushes to the checkout branch's upstream
+  (`branch.<name>.remote` and `.merge`; `origin` and the same branch when
+  unset). A push that fails (offline, rejected) keeps the commit. The next
+  update check pushes it again, and the bell says it once. A pushed pin
+  is one bell item, "Den updated to X: its pin is committed (sha) and
+  pushed". A follower install never commits a pin. `server_agent.pin_commit`
+  (org config): `push` (the default), `pr` or `off`. `pr` commits the pin
+  on its own branch, `den/pin-<version>`, without moving the checkout's
+  branch or index, pushes that branch and opens a pull request with `gh`
+  onto the checkout's upstream branch. When `gh` can't, the branch stays
+  pushed, the bell links where to open the pull request (on GitHub), and
+  the next check tries `gh` again. `off` leaves the pin to the server
+  agent as before. The commit is the held write `den_pin_commit`
+  (routine) under the [approval policy](#onboarding-writes-held-for-the-person):
+  by default it runs at once; with `approvals.writes.den_pin_commit: ask`
+  (or `approvals.policy: ask`) in `user.yml`, Den holds it for your Allow,
+  once per version, with one bell item, and commits nothing until then. With `update_check_minutes: 0` there are no
+  checks, so Den commits no pin either. A pin still uncommitted two passes
+  in a row: a log line and one bell item, which says when the server
+  agent is waiting on your Allow. A version that rolled back here is not tried
   again; a newer one is. A failed update and a rollback each put a notice
   in the bell. A Den run from a checkout is skipped. Settings › Server ›
   New versions sets `self_update` (a person's only). Doctor's "New
@@ -4159,6 +4264,15 @@ agents:
 | ----------------------------- | -------------------------------------------------------- | -------- |
 | `agents.subagents.model`      | `sonnet`, `haiku`, `opus`, a full model id, or `inherit` | `sonnet` |
 | `agents.claude_ai_connectors` | `true` or `false`                                        | `false`  |
+
+With `agents.claude_ai_connectors: true`, an agent loads Den's own MCP
+servers and the account's claude.ai connectors, nothing else. Den then
+starts Claude Code without `--strict-mcp-config` (which keeps the
+connectors out too) and keeps every other server out by name in the
+agent's settings: the person's user-scope and this folder's local-scope
+servers in `deniedMcpServers`, and the project's `.mcp.json` servers in
+`disabledMcpjsonServers`, with `enableAllProjectMcpServers: false`. Off,
+the agent starts with `--strict-mcp-config` as before.
 
 Both keys are the org's: set in a person's `config/local/user.yml` they
 do nothing, and `<cli> doctor` says so. A persona's `subagent_model` wins
@@ -5079,6 +5193,72 @@ Only the boolean `true` counts. With it, and a Sentry DSN in
 also sent, best effort. A DSN on its own never sends. `CI=true` and
 `DEV_METRICS_DISABLED=1` stop sending even when opted in.
 
+### Agents stuck compacting, and instruction files that eat the context
+
+An agent whose instruction files are a large share of its context fills
+again within a turn or two of each compaction, because Claude Code loads
+those files again after every one. It then compacts over and over. Den
+watches for both.
+
+**Compacting repeatedly.** Every few seconds the server reads each running
+agent's automatic compactions from its own session records: the
+`compact_boundary` records in Claude Code's transcript, with
+`compactMetadata.trigger` `auto` (a manual `/compact` never counts). Den
+follows the transcript from where it last stopped, and reads only its last
+`agents.turn_read_max_mb` on the first look. More than
+`agent_context.compaction_loop_count` (3) within
+`agent_context.compaction_loop_minutes` (10) is one episode:
+
+- the bell rings once, and the server log names the agent, its project
+  and the likely cause;
+- its row and its pane bar say **Compacting repeatedly**. Under the row:
+  how many compactions, the likely cause, **Stop** (the same Stop as its
+  pane's) and **Clear**.
+
+The episode ends once the count in the window drops back to the limit; a
+later loop is a new episode with a new bell. Clear ends it at once. Only
+compactions after a Clear count again.
+
+**Optional pause.** With `agent_context.pause_after_loop: true` (off by
+default), new deliveries to the agent (Hub comments, tool notes) wait from
+the bell until a person clears it on the Agents page (the button reads
+**Let deliveries go**). Den uses the same hold it uses for an agent waiting
+at a permission prompt. Clearing is a person's: an agent's token is
+refused `POST /api/workspaces/<ws>/agents/<id>/compacting-clear`.
+
+**Instruction size, at every start.** Each start and resume measures the
+instruction files Claude Code will load for the agent's folder, by size
+only (Den never reads them):
+
+- the user's own `CLAUDE.md` in Claude Code's config folder
+  (`$CLAUDE_CONFIG_DIR`, else `~/.claude`);
+- `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md` and `AGENTS.md` in
+  the agent's folder and each folder above it, up to the home folder (for
+  a folder outside home, up to its repo's root).
+
+Den estimates tokens as bytes / 4. Over
+`agent_context.instruction_share_percent` (15) of the model's context, the
+start warns, the agent's row gets a **Large instructions** tag, and
+`<cli> doctor` warns, each naming the largest file (its path relative to
+the agent's folder) and its size. A `[1m]` model's context is 1,000,000
+tokens; otherwise `agent_context.context_tokens` (200000).
+
+Not counted: files Claude Code loads only when the agent works in a folder
+below its own, what an `@` import pulls in, and an organization's managed
+policy file. Claude Code itself reads parent folders up to `/`; Den stops
+at home. `AGENTS.md` is counted as many folders keep their instructions
+there; check whether your Claude Code version loads it.
+
+```yaml
+# config/local/user.yml (Settings › Agents, or <cli> config agent_context.<key>=<value>)
+agent_context:
+  compaction_loop_count: 3
+  compaction_loop_minutes: 10
+  pause_after_loop: false
+  instruction_share_percent: 15
+  context_tokens: 200000
+```
+
 ## Agent usage: tokens and outcomes, read locally
 
 `<cli> usage agents [-w <ws>] [--json]` reads each agent's transcripts on
@@ -5118,6 +5298,51 @@ Den reads Claude Code's transcripts (`$CLAUDE_CONFIG_DIR/projects`, else
 `~/.claude/projects`). A plugin can add a reader for another runtime with
 the `usage` kind (server tier). A runtime with no reader shows "no usage
 source reads <runtime>".
+
+## Gate slots: heavy test runs taken in turn
+
+One machine often runs gates for several repos and installs at once: a
+browser suite here, two unit suites there. Run together they slow each
+other down and make timing tests fail. `<cli> gate` takes them in turn.
+
+```
+<cli> gate run --kind browser --estimate 6m -- npm run test:browser
+<cli> gate run --kind cpu --estimate 20m -- npm test
+<cli> gate status            # who holds a slot, who waits, until when
+<cli> gate end <id>          # a person ends a slot early (never an agent)
+<cli> gate settings --cpu-slots 3
+```
+
+- A `browser` run holds the machine alone. `cpu` runs share it, up to
+  `cpu_slots` (default 2), never beside a browser run. First come, first
+  served: a waiting browser run stops new cpu grants, so it can't starve.
+- Nothing is pre-empted. A later run only waits, and says each minute who
+  holds the slot and when it should end. A live holder keeps its slot
+  however long it runs.
+- `gate run` gives the slot back however the command ends: success,
+  failure, or a signal. On Ctrl-C, SIGTERM or SIGHUP it passes the signal
+  to the command and gives the slot back when the command has ended, so a
+  slot is never free while its run goes on. Its exit code is the
+  command's.
+- A slot whose processes are gone is taken back at once (on the next
+  read): the wrapper and the command it started both count, so a wrapper
+  killed with SIGKILL leaves the slot to its command until that ends.
+- Past its estimate plus `overrun_margin_minutes` (default 15) a run is
+  flagged once (in `gate status`, on the Agents page, to `gate run`'s
+  output, and in the slot log), never stopped.
+- A person ends a slot early on the Agents page (the gate chip) or with
+  `gate end`; the run is not stopped. An agent can't: the web route
+  refuses an agent's token, `gate end` refuses in an agent's terminal, and
+  the MCP tools give back only the agent's own slot.
+- The slots are the machine user's, shared by every install and repo, and
+  need no running Den: `DEN_GATE_DIR`, else `~/Library/Application
+Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`
+  (`~/.local/state`). Settings are in `settings.json` there (Settings ›
+  Server, or `gate settings`; a person's only). Every ask, wait, grant,
+  release, take-back, overdue flag and early end is in `events.jsonl`: a
+  grant carries the minutes waited, a wait the slots it waits behind, so
+  Coach can count time lost to waiting. Ending a slot from a page also
+  writes this install's audit, pointing to the slot log.
 
 ## Pinning and upgrading
 

@@ -6,7 +6,7 @@
  * dependency checks, workspace-level commands, and sync.
  */
 
-import { hasRuntime, repoKind } from "../../shared/repo-kind.js";
+import { repoHasRuntime } from "../../shared/repo-kind.js";
 import { reservedWorkspaceError } from "../../shared/agents/server-agent.js";
 import { loadApplicationTree } from "../../shared/environment-manager/load-applications.js";
 import { localCommandsFor } from "../../shared/stacks/manifest-commands.js";
@@ -1310,14 +1310,21 @@ export async function handleWorkspaceRoutes(
 
     const catalog = readCatalog();
     // Modules and libraries have no runtime: never started or stopped.
-    const allServices = listWorkspaceServices(
-      ws.config,
-      catalog,
-      ws.name,
-    ).filter((s) => hasRuntime(repoKind(s.repoPath)));
+    const inProject = listWorkspaceServices(ws.config, catalog, ws.name);
+    const allServices = inProject.filter((s) => repoHasRuntime(s.repoPath));
     if (allServices.length === 0) {
-      emit({ type: "error", text: "No services in active project" });
-      emit({ type: "done", exitCode: 1, duration: 0 });
+      // Issue 277: a project whose repos all run nothing (config, docs,
+      // shared CI) has nothing to run, and that is not an error.
+      if (inProject.length > 0) {
+        emit({
+          type: "line",
+          text: `Nothing to run: no repo in this project has a runtime of its own (${[...new Set(inProject.map((s) => s.repoName))].join(", ")})`,
+        });
+        emit({ type: "done", exitCode: 0, duration: 0 });
+      } else {
+        emit({ type: "error", text: "No services in active project" });
+        emit({ type: "done", exitCode: 1, duration: 0 });
+      }
       res.end();
       return;
     }

@@ -225,14 +225,21 @@ function fixture(
 
 /**
  * The vendor CLIs that ran, but D17's one question to gh: `web up` and
- * doctor ask which login is signed in (web.owner_github). Nothing else may.
+ * doctor ask which login is signed in (web.owner_github), with its display
+ * name. Nothing else may.
  */
 function externalCalls(file: string): string[] {
   return fs.existsSync(file)
     ? fs
         .readFileSync(file, "utf-8")
         .split("\n")
-        .filter((l) => l && l !== "gh api user --jq .login")
+        .filter(
+          (l) =>
+            l &&
+            l !== "gh api user --jq .login" &&
+            // The same question, with the display name (the account entry).
+            l !== 'gh api user --jq [.login, (.name // "")] | @tsv',
+        )
     : [];
 }
 

@@ -222,7 +222,7 @@ describe("#71 hubStatus with rotation (the server's /api/hub)", () => {
     const doc = hubLines(st, "Acme");
     expect(doc.check).toMatchObject({ status: "warn" });
     expect(doc.lines.join("\n")).toMatch(
-      /connected .*older Hub token kept where Den can't replace it \(Settings › Agents › Hub: Reconnect\)/,
+      /connected .*older Hub token kept where Den can't replace it \(Settings › Hub: Reconnect\)/,
     );
     const html = hubHtml(st, null, (k: string) => `[${k}]`);
     expect(html).toContain("[hub.legacy]");

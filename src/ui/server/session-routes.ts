@@ -68,6 +68,10 @@ import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { agentFilesDir, listRecords } from "../../shared/agents/records.js";
+import {
+  readCompacting,
+  readInstructionCheck,
+} from "../../shared/agents/context-watch.js";
 import { healRecordWorkspaces } from "../../shared/agents/heal-workspace.js";
 import { readClearedAt } from "../../shared/agents/helpers-cleared.js";
 import { softNewlineSeq } from "../../shared/agents/catalog.js";
@@ -427,6 +431,53 @@ export interface ListedSession {
   mcpStale?: AgentRow["mcpStale"];
   /** Issue 193: Den is restarting it to load Hub's new tools. */
   toolsRestarting?: true;
+  /**
+   * Issue 278: it is compacting repeatedly (active), or its deliveries
+   * wait for a person after a loop (paused): its row's tag and callout.
+   */
+  compacting?: {
+    active: boolean;
+    count: number;
+    rangAt?: string;
+    paused?: true;
+  };
+  /** Issue 278: its instruction files were over the share at its last start. */
+  instructions?: {
+    totalBytes: number;
+    tokens: number;
+    sharePercent: number;
+    contextTokens: number;
+    largest?: { path: string; bytes: number };
+  };
+}
+
+/** Issue 278: an agent's compaction loop and instruction check, for its row. */
+export function contextFields(
+  stateDir: string,
+  id: string,
+  stopped: boolean,
+): Pick<ListedSession, "compacting" | "instructions"> {
+  const dir = agentFilesDir(stateDir, id);
+  const out: Pick<ListedSession, "compacting" | "instructions"> = {};
+  const c = readCompacting(dir);
+  // A stopped agent's loop is over (Stop was the way out); a hold stays.
+  if (c && ((c.active && !stopped) || c.paused))
+    out.compacting = {
+      active: c.active && !stopped,
+      count: c.count ?? 0,
+      ...(c.rangAt ? { rangAt: c.rangAt } : {}),
+      ...(c.paused ? { paused: true as const } : {}),
+    };
+  const i = readInstructionCheck(dir);
+  if (i?.over)
+    out.instructions = {
+      totalBytes: i.totalBytes,
+      tokens: i.tokens,
+      sharePercent: i.sharePercent,
+      contextTokens: i.contextTokens,
+      ...(i.largest ? { largest: i.largest } : {}),
+    };
+  return out;
 }
 
 /**
@@ -639,7 +690,11 @@ export function listedSessions(
         });
         return st ? { mcpStale: st } : {};
       })(),
-      ...(toolsRestarting.has(rec.id) ? { toolsRestarting: true as const } : {}),
+      ...(toolsRestarting.has(rec.id)
+        ? { toolsRestarting: true as const }
+        : {}),
+      // Issue 278: compacting repeatedly, and instructions over the share.
+      ...contextFields(d.stateDir(), rec.id, isStoppedState(r.state)),
       // D32: the helpers it started in its own session.
       ...(() => {
         const h = rowHelpers(

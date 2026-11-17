@@ -84,6 +84,15 @@ export const DEN_SETTING_CATEGORIES = [
       "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
   },
   {
+    // issue 267: Hub has a section of its own: its address, the connection,
+    // what agents get from it, and its notifications.
+    id: "hub",
+    label: "Hub",
+    order: 55.5,
+    description:
+      "Den Hub is where your company's docs, mocks, comments and approvals live. Connect this install, and every agent can search and publish there, and gets the comments and decisions on its work. See docs/hub.md in Den's docs.",
+  },
+  {
     // Bell v6 (0.4.45): the person's bell.
     id: "notifications",
     label: "Notifications",
@@ -192,11 +201,23 @@ function updateCheckText(data) {
       l.did === "asked"
         ? L("set.ui.ucDid.asked", "{v} is out, waiting for your Allow", v)
         : l.did === "waiting"
-          ? L(
-              "set.ui.ucDid.waiting",
-              "{v} is out, waiting for a quiet moment",
-              v,
-            )
+          ? l.wait === "permission" || l.wait === "approval"
+            ? L(
+                "set.ui.ucDid.waitAllow",
+                "{v} is out, waiting: the __DEN_TITLE__ agent is waiting on your Allow",
+                v,
+              )
+            : l.wait === "asked"
+              ? L(
+                  "set.ui.ucDid.waitAsked",
+                  "{v} is out, waiting: the __DEN_TITLE__ agent asked you a question",
+                  v,
+                )
+              : L(
+                  "set.ui.ucDid.waiting",
+                  "{v} is out, waiting for a quiet moment",
+                  v,
+                )
           : l.did === "updating"
             ? L("set.ui.ucDid.updating", "updating to {v}", v)
             : l.did === "failed"
@@ -282,7 +303,8 @@ function bellRows() {
   return [
     ...BELL_ROWS.map(([k, label, description]) => ({
       id: `notifications.${k}`,
-      category: "notifications",
+      // issue 267: Hub's own kinds sit in Settings › Hub.
+      category: HUB_BELL_KINDS.has(k) ? "hub" : "notifications",
       label,
       description,
       keywords: ["notifications", "bell", "badge", "kinds", k],
@@ -897,6 +919,158 @@ export async function applyKeepRunning(on, { post, askSudo, waitBack }) {
   return { state: "applied", mode: r.mode };
 }
 
+/**
+ * Issue 163 (b): what the Settings row says about the agents' sign-in
+ * token under the always-on service: none set (agents will not be able to
+ * sign in after logout), the store's credential in the login keychain,
+ * old, or when it was set. Never the token: the
+ * server sends whether one is configured and when it was set.
+ */
+export function keepTokenLine(s, t) {
+  // Issue 163 (dev.2 gate): per mode, as the CLI says it. No store comes
+  // first; not under the always-on service, nothing about logout.
+  if (!s || !s.configured)
+    return {
+      state: "missing",
+      text: s?.no_store
+        ? t("keep.noStore")
+        : s && s.mode !== "token"
+          ? t("keep.noTokenNotNeeded")
+          : t("keep.noToken"),
+    };
+  // The store's own credential in the login keychain: the daemon may not
+  // reach it, so the token can't be read either.
+  if (s.cred_keychain) return { state: "cred", text: t("keep.credKeychain") };
+  if (s.old)
+    return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
+  if (s.set_at) {
+    let date = String(s.set_at).slice(0, 10);
+    try {
+      const tz =
+        document.documentElement.getAttribute("data-den-tz") || undefined;
+      date = new Date(s.set_at).toLocaleDateString(
+        document.documentElement.lang || undefined,
+        { year: "numeric", month: "short", day: "numeric", timeZone: tz },
+      );
+    } catch {
+      /* the ISO date stays */
+    }
+    const set = t("keep.tokenSet", { date });
+    return {
+      state: "set",
+      text: s.process_local ? `${set} ${t("keep.processLocal")}` : set,
+    };
+  }
+  return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
+}
+
+/** Issue 299: the only terminal step for the agents' sign-in token. */
+export const SETUP_TOKEN_CMD = "claude setup-token";
+
+/**
+ * Issue 299: Settings' Sign-in token field. Save sends the pasted token once
+ * (the working pop-up), clears the field before the answer comes, and
+ * shows what the server says: set <date>, or why not. The token is never
+ * put back in the page.
+ */
+function wireTokenField(host, ctx, line, t) {
+  const input = host.querySelector("[data-keep-token-input]");
+  const save = host.querySelector("[data-keep-token-save]");
+  const note = host.querySelector("[data-keep-token-note]");
+  host.querySelector("[data-keep-copy]").addEventListener("click", () => {
+    void navigator.clipboard?.writeText(SETUP_TOKEN_CMD);
+  });
+  // No secrets store: nothing can keep the token, so the field says so
+  // before any paste and Save stays off (the server answers 409 besides).
+  const noStore = () => {
+    note.textContent = t("keep.noStore");
+    note.hidden = false;
+    input.disabled = true;
+    save.disabled = true;
+  };
+  if (ctx.data.agent_signin?.no_store) noStore();
+  // Issue 163: Clear removes it from the store, the way it was kept; the
+  // kit's confirm dialog first. A person's only (the server refuses an agent).
+  const clear = host.querySelector("[data-keep-token-clear]");
+  const showLine = (signin) => {
+    const l = keepTokenLine(signin, t);
+    line.dataset.keepToken = l.state;
+    line.textContent = l.text;
+    line.hidden = false;
+    clear.hidden = l.state === "missing";
+  };
+  clear.addEventListener("click", async () => {
+    note.hidden = true;
+    const { askConfirm } = await import("/dialog-den.js");
+    const ok = await askConfirm({
+      title: t("keep.clearTitle"),
+      message: t("keep.clearAsk"),
+      okLabel: t("keep.clearOk"),
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await ctx.shell.busyAction(
+        "clear-token",
+        (headers) =>
+          ctx.shell.api("DELETE", "/api/agents/signin-token", undefined, {
+            headers,
+          }),
+        { button: clear },
+      );
+      if (r?.ok) showLine(r.signin);
+    } catch (e) {
+      if (e?.code === "no_secrets_store") noStore();
+    } finally {
+      clear.disabled = false;
+    }
+  });
+  save.addEventListener("click", async () => {
+    const token = input.value;
+    input.value = "";
+    note.hidden = true;
+    if (!token.trim()) {
+      input.focus();
+      return;
+    }
+    save.disabled = true;
+    try {
+      const r = await ctx.shell.busyAction(
+        "save",
+        (headers) =>
+          ctx.shell.api(
+            "POST",
+            "/api/agents/signin-token",
+            { token },
+            { headers },
+          ),
+        { button: save },
+      );
+      if (r?.ok) {
+        showLine(r.signin);
+      } else if (r?.code === "no_secrets_store") {
+        noStore();
+        return;
+      } else {
+        note.textContent = t("keep.tokenFailed", {
+          error: r?.error || "",
+        });
+        note.hidden = false;
+      }
+    } catch (e) {
+      if (e?.code === "no_secrets_store") {
+        noStore();
+        return;
+      }
+      note.textContent = t("keep.tokenFailed", {
+        error: String(e?.message || ""),
+      });
+      note.hidden = false;
+    }
+    save.disabled = false;
+  });
+}
+
 /** Issue 163: the switch, Apply, and what it means under the daemon. */
 function renderKeepRunning(host, ctx) {
   const t = (k, v) => ctx.shell.t(k, v);
@@ -904,10 +1078,23 @@ function renderKeepRunning(host, ctx) {
   const mode = ctx.data.service_mode;
   // Set one way, running the other: Apply hasn't run (or didn't take).
   const pending = mode && (mode === "always") !== on0;
+  // Issue 163 (a): an existing login install, the Setting never set.
+  const offer = ctx.data.keep_running_unset === true;
+  // Issue 163 (b): the agents' sign-in token, when it is on.
+  const signLine = keepTokenLine(ctx.data.agent_signin, t);
   host.innerHTML =
     `<div data-keep style="display:grid;gap:8px">` +
     `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
+    `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
+    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
+    // Issue 299: the token is pasted here; the one terminal step is named, with
+    // a copy button. The field is never filled from the server.
+    `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
+    `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
+    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
+    `<p class="set-note" data-keep-token-note hidden></p>` +
+    `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
     `</div>`;
@@ -919,9 +1106,14 @@ function renderKeepRunning(host, ctx) {
     note.hidden = !msg;
     note.textContent = msg || "";
   };
+  const token = host.querySelector("[data-keep-token]");
+  const signin = host.querySelector("[data-keep-signin]");
   box.addEventListener("change", () => {
     warn.hidden = !box.checked;
+    token.hidden = !box.checked;
+    signin.hidden = !box.checked;
   });
+  wireTokenField(host, ctx, token, t);
   btn.addEventListener("click", async () => {
     const on = box.checked;
     btn.disabled = true;
@@ -973,6 +1165,9 @@ function drawRestart(host) {
     .querySelector("#set-restart-den")
     .addEventListener("click", () => void restartDen({ from: "settings" }));
 }
+
+/** issue 267: the bell's kinds that come from Hub, shown in Settings › Hub. */
+const HUB_BELL_KINDS = new Set(["hub", "pick", "shared"]);
 
 export const DEN_SETTINGS = [
   {
@@ -1073,6 +1268,34 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
+    // Issue 144: the machine's gate slots (gates/store.ts settings.json),
+    // shared by every install here. A person's only.
+    id: "server.gate_cpu",
+    category: "server",
+    label: "Unit test runs at once, on this machine",
+    description:
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+    keywords: ["gate", "slot", "tests", "queue", "cpu", "parallel"],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlots ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_slots: v } }),
+  },
+  {
+    id: "server.gate_overrun",
+    category: "server",
+    label: "Test run flagged past its estimate, in minutes",
+    description:
+      "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    keywords: ["gate", "slot", "overrun", "estimate", "tests"],
+    scope: "user",
+    keys: ["gate_slots.overrun_margin_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
+    write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version
@@ -1565,12 +1788,22 @@ export const DEN_SETTINGS = [
   {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
+    // Issue 268: named as the override of the Den-wide default.
     id: "workspace.agents_mode",
     category: "workspace",
-    label: "Agents' mode",
+    label: "Agents' mode: this project (overrides the Den-wide default)",
     description:
-      "The mode this project's agents run in, unless an agent has its own setting. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
-    keywords: ["agents", "mode", "permission", "auto", "ask", "own setting"],
+      "The mode this project's agents run in, over the Den-wide default. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
+    keywords: [
+      "agents",
+      "mode",
+      "permission",
+      "auto",
+      "ask",
+      "own setting",
+      "override",
+      "den-wide",
+    ],
     scope: "workspace",
     control: { type: "custom", render: renderProjectMode },
     read: () => null,
@@ -1674,21 +1907,27 @@ export const DEN_SETTINGS = [
       ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
   },
   {
-    // 0.4.46 MODE-UI: one mode for every agent, set once.
+    // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
+    // named as the Den-wide default, with what is in effect and the
+    // projects that override it.
     id: "agents.default_mode",
     category: "agents",
-    label: "Mode for every agent",
+    label: "Agents' mode: Den-wide default",
     description:
-      "Every agent runs in this mode, the __DEN_TITLE__ agent too, unless a mode was chosen for the agent or its project sets one. A change reaches running agents after their turn, on its own.",
-    keywords: ["agents", "mode", "permission", "auto", "ask", "approve"],
+      "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",
+    keywords: [
+      "agents",
+      "mode",
+      "permission",
+      "auto",
+      "ask",
+      "approve",
+      "den-wide",
+      "default",
+      "override",
+    ],
     scope: "user",
-    control: seg([
-      { value: "persona", label: "Each persona's" },
-      { value: "ask", label: "Ask for everything" },
-      { value: "edits", label: "Auto-approve edits" },
-      { value: "auto", label: "Auto mode" },
-      { value: "all", label: "Auto-approve all" },
-    ]),
+    control: { type: "custom", render: renderDenWideMode },
     keys: ["agents_default_mode"],
     read: (ctx) => ctx.data.agents_default_mode ?? "persona",
     write: (v, ctx) =>
@@ -1761,6 +2000,75 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agents_list?.refresh_timeout_seconds ?? 15,
     write: (v, ctx) =>
       ctx.post({ agents_list: { refresh_timeout_seconds: v } }),
+  },
+  {
+    // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+    id: "agents.compaction_loop",
+    category: "agents",
+    label: "Compacting repeatedly: compactions",
+    description:
+      "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+    keywords: ["compaction", "compact", "loop", "context", "bell"],
+    scope: "user",
+    keys: ["agent_context.compaction_loop_count"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agent_context?.compaction_loop_count ?? 3,
+    write: (v, ctx) =>
+      ctx.post({ agent_context: { compaction_loop_count: v } }),
+  },
+  {
+    id: "agents.compaction_minutes",
+    category: "agents",
+    label: "Compacting repeatedly: minutes",
+    description:
+      "The window the compactions above are counted in. __DEN_CLI__ config agent_context.compaction_loop_minutes=10",
+    keywords: ["compaction", "compact", "loop", "minutes", "window"],
+    scope: "user",
+    keys: ["agent_context.compaction_loop_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.agent_context?.compaction_loop_minutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ agent_context: { compaction_loop_minutes: v } }),
+  },
+  {
+    id: "agents.compaction_pause",
+    category: "agents",
+    label: "Hold deliveries after a compaction loop",
+    description:
+      "On: once the bell says an agent is compacting repeatedly, new deliveries to it (Hub comments, notes) wait until a person clears it on the Agents page. Off (the default): they go as usual. __DEN_CLI__ config agent_context.pause_after_loop=true",
+    keywords: ["compaction", "pause", "hold", "deliveries", "loop"],
+    scope: "user",
+    keys: ["agent_context.pause_after_loop"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.agent_context?.pause_after_loop === true,
+    write: (v, ctx) => ctx.post({ agent_context: { pause_after_loop: v } }),
+  },
+  {
+    id: "agents.instruction_share",
+    category: "agents",
+    label: "Instruction files: warn above",
+    description:
+      "When the instruction files an agent loads at start (CLAUDE.md, AGENTS.md and the like, up its folders) are more than this share of its model's context, its row and doctor warn, naming the largest. Sizes are estimated as bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+    keywords: ["instructions", "CLAUDE.md", "AGENTS.md", "context", "size"],
+    scope: "user",
+    keys: ["agent_context.instruction_share_percent"],
+    control: { type: "number", min: 1, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.agent_context?.instruction_share_percent ?? 15,
+    write: (v, ctx) =>
+      ctx.post({ agent_context: { instruction_share_percent: v } }),
+  },
+  {
+    id: "agents.context_tokens",
+    category: "agents",
+    label: "Context size when unknown",
+    description:
+      "The context size, in tokens, the share above is taken of when __DEN_TITLE__ doesn't know the model's own. __DEN_CLI__ config agent_context.context_tokens=200000",
+    keywords: ["context", "tokens", "size", "model"],
+    scope: "user",
+    keys: ["agent_context.context_tokens"],
+    control: { type: "number", min: 1000, max: 100000000, step: 1000 },
+    read: (ctx) => ctx.data.agent_context?.context_tokens ?? 200000,
+    write: (v, ctx) => ctx.post({ agent_context: { context_tokens: v } }),
   },
   {
     id: "agents.layout",
@@ -1844,7 +2152,7 @@ export const DEN_SETTINGS = [
 
   {
     id: "agents.hub",
-    category: "agents",
+    category: "hub",
     label: "Hub",
     description:
       "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its company comes from this install's token, its Hub project from Project setup › Hub project.",
@@ -1862,14 +2170,14 @@ export const DEN_SETTINGS = [
     ],
     scope: "user",
     control: { type: "custom", render: renderHub },
-    keys: ["hub_allow_tools"],
+    keys: ["hub_allow_tools", "hub_url"],
     read: () => null,
     write: (v, ctx) => ctx.post({ hub_allow_tools: v }),
   },
 
   {
     id: "agents.hub_link_all",
-    category: "agents",
+    category: "hub",
     // Issue 167 (mock v6 B): the anchor stays; the row is Unclear matches.
     label: "Unclear matches",
     description:
@@ -1914,13 +2222,14 @@ export const DEN_SETTINGS = [
   },
 
   {
-    // Issue 163: opt-in, off by default. Apply re-installs Den's launchd
-    // jobs: on, as LaunchDaemons (mode always) that outlive a logout.
+    // Issue 163: on by default for a new install (0.4.63); an existing one
+    // is offered it. Apply re-installs Den's launchd jobs: on, as
+    // LaunchDaemons (mode always) that outlive a logout.
     id: "agents.keep_running",
     category: "agents",
     label: "Keep agents running after logout",
     description:
-      "On: __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. Under it an agent may not reach its sign-in (the login keychain): not yet shown. Off (the default): agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     keywords: [
       "logout",
       "log out",
@@ -2111,7 +2420,7 @@ export const DEN_SETTINGS = [
   {
     // H5: how much of the org Den Hub's GitHub App can read, live from Hub.
     id: "distribution.hub_github",
-    category: "distribution",
+    category: "hub",
     label: "Den Hub's GitHub access",
     description:
       "How many of your company's GitHub repos Den Hub can read, asked live from Hub. Den Hub reads a repo only through your company's GitHub App install; the button opens GitHub to install it or change its repos. When you come back, Den sends its projects to Hub again and the repos link by themselves.",
@@ -2534,7 +2843,7 @@ const HUB_FLASH = {
 };
 
 /**
- * HUB-1.5/1.7: Settings › Agents › Hub (b: GET /api/hub; flash: what the
+ * HUB-1.5/1.7: Settings › Hub (b: GET /api/hub; flash: what the
  * last Connect came to). Not connected: Hub's address and Connect.
  * Connected: the company (a link), role, who signed in, this install,
  * Disconnect. A token Hub refuses offers Reconnect; a role that no longer
@@ -2562,6 +2871,50 @@ function editionsHtml(e) {
   return lines.length ? `<div class="hub-eds">${lines.join("")}</div>` : "";
 }
 
+/**
+ * issue 267: what's wrong with an address for Hub, in the person's words, or
+ * null. The same rule as the server's hubUrlProblem: https, or http only
+ * to this machine. Empty is fine (it clears the address).
+ */
+export function hubAddressProblem(v) {
+  const url = String(v ?? "").trim();
+  if (!url) return null;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return L(
+      "set.ui.hub.addrNotUrl",
+      "That isn't a web address. It starts with https://",
+    );
+  }
+  const local =
+    ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ||
+    u.hostname.endsWith(".localhost");
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && local))
+    return L(
+      "set.ui.hub.addrHttps",
+      "Hub's address must start with https:// (http:// only for this machine).",
+    );
+  return null;
+}
+
+/** issue 267: Hub's address, with Save and Clear, in every state but the first. */
+function hubAddressHtml(b) {
+  return (
+    `<form class="hub-addr" data-hub-addr>` +
+    `<label for="hub-addr">${escR(L("set.ui.hub.address", "Hub's address"))}</label> ` +
+    `<input type="url" id="hub-addr" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
+    ` <button type="submit" class="btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
+    (b.url
+      ? ` <button type="button" class="btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
+      : "") +
+    `</form>` +
+    `<p class="set-note set-warn" data-hub-addr-problem role="status" hidden></p>` +
+    `<p class="set-note" data-hub-addr-note>${escR(L("set.ui.hub.saveNote", "Save keeps it in your settings and restarts Den. Clear disconnects; agents lose Hub's tools when they next restart."))}</p>`
+  );
+}
+
 export function hubHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
@@ -2577,7 +2930,10 @@ export function hubHtml(b, flash, t = (k) => k) {
       note(
         b.problem || L("set.ui.hub.badConfig", "hub in user.yml is not valid"),
         "data-hub-problem",
-      )
+      ) +
+      // issue 267: fix it here, no file to edit.
+      hubAddressHtml(b) +
+      `<div class="rt-err" role="alert" hidden></div>`
     );
   if (state === "no_token")
     return (
@@ -2586,7 +2942,16 @@ export function hubHtml(b, flash, t = (k) => k) {
       `<label for="hub-url">${escR(L("set.ui.hub.address", "Hub's address"))}</label> ` +
       `<input type="url" id="hub-url" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
       ` <button type="submit" class="btn sm primary" data-hub-action="connect">${escR(L("set.ui.hub.connect", "Connect"))}</button>` +
+      ` <button type="button" class="btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
+      (b.url
+        ? ` <button type="button" class="btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
+        : "") +
       `</form>` +
+      `<p class="set-note set-warn" data-hub-addr-problem role="status" hidden></p>` +
+      // issue 267: with no Hub yet, what it is.
+      (b.url
+        ? ""
+        : `<p class="set-note" data-hub-empty>${escR(L("set.ui.hub.empty", "No Hub yet. Type your company's Hub address, then Connect. Save only keeps the address."))}</p>`) +
       `<p class="set-note" data-hub-connect-does>${escR(L("set.ui.hub.connectLinks", "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you."))}</p>` +
       `<p class="set-note">${escR(L("set.ui.hub.connectNote", "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown."))}</p>` +
       // 0.4.45: the two editions, until this install is connected, where
@@ -2653,6 +3018,7 @@ export function hubHtml(b, flash, t = (k) => k) {
     )}</p>`;
   return (
     flashHtml +
+    hubAddressHtml(b) +
     `<dl class="hub-st" data-hub>` +
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
@@ -2672,6 +3038,91 @@ export function hubHtml(b, flash, t = (k) => k) {
     `<div class="rt-err" role="alert" hidden></div>` +
     tools
   );
+}
+
+/**
+ * issue 267: Hub's address. The check as you type; Save writes it to your
+ * settings and restarts Den, then the row says where it stands. Clear
+ * disconnects first (Hub revokes the key; unreachable, it's removed here
+ * anyway), clears it and restarts.
+ */
+function wireHubAddress(host, ctx, err, busy) {
+  const input =
+    host.querySelector("#hub-addr") || host.querySelector("#hub-url");
+  const problem = host.querySelector("[data-hub-addr-problem]");
+  const save = host.querySelector('[data-hub-action="save-url"]');
+  const clear = host.querySelector('[data-hub-action="clear-url"]');
+  if (!input || !save) return;
+  const check = () => {
+    const p = hubAddressProblem(input.value);
+    if (problem) {
+      problem.hidden = !p;
+      problem.textContent = p || "";
+    }
+    save.disabled = !!p || !input.value.trim();
+    return p;
+  };
+  input.addEventListener("input", check);
+  check();
+  const t = (k, v) => ctx.shell.t(k, v);
+  const connected = !!host.querySelector("[data-hub]");
+  const was = input.defaultValue.trim().replace(/\/+$/, "");
+  // One working pop-up for the whole step. Connected and moving away: the
+  // old Hub revokes its token first (unreachable: removed here anyway; the
+  // server drops a token whose address changed too). Then the address.
+  const apply = async (url, button) => {
+    busy(true);
+    err("");
+    try {
+      const r = await ctx.shell.busyAction(
+        "save",
+        async (headers) => {
+          if (connected && url !== was)
+            await ctx.shell
+              .api("POST", "/api/hub/disconnect", {}, { headers })
+              .catch(() =>
+                ctx.shell.api(
+                  "POST",
+                  "/api/hub/disconnect",
+                  { force: true },
+                  { headers },
+                ),
+              )
+              .catch(() => undefined);
+          return ctx.shell.api(
+            "POST",
+            "/api/settings",
+            { hub_url: url },
+            { headers },
+          );
+        },
+        { button, onFail: (e) => err(e?.message || t("busy.saveF")) },
+      );
+      if (!r) return busy(false);
+      // Den reads Hub's address at start: restart it, and wait.
+      await restartDen({ confirm: false, from: "settings" });
+      await drawHub(host, ctx, null, {
+        ok: true,
+        message: url
+          ? L(
+              "set.ui.hub.saved",
+              "Saved. Den restarted with Hub's new address.",
+            )
+          : L("set.ui.hub.cleared", "Cleared. Den restarted without Hub."),
+      });
+    } catch (e) {
+      busy(false);
+      err(e?.message || t("busy.saveF"));
+    }
+  };
+  const submit = (ev) => {
+    ev?.preventDefault?.();
+    if (check()) return;
+    void apply(input.value.trim().replace(/\/+$/, ""), save);
+  };
+  save.addEventListener("click", submit);
+  host.querySelector("[data-hub-addr]")?.addEventListener("submit", submit);
+  clear?.addEventListener("click", () => void apply(null, clear));
 }
 
 /**
@@ -2750,6 +3201,55 @@ function takeHubFlash() {
  */
 const PMODES = ["none", "ask", "edits", "auto", "all"];
 
+const DW_MODES = ["persona", "ask", "edits", "auto", "all"];
+
+/** Issue 268: a mode's words in the status lines (none: each persona's). */
+const modeWords = (m, t) =>
+  m && m !== "persona" ? t(`pm.${m}`) : t("dwmode.persona");
+
+/**
+ * Issue 268: Settings › Agents › the Den-wide default. `v` is its value
+ * ("persona": unset); `overrides` the projects that override it
+ * (agents_mode_overrides), each a link to its own row.
+ */
+export function denWideModeHtml(v, overrides, t) {
+  const now = DW_MODES.includes(v) ? v : "persona";
+  const btns = DW_MODES.map(
+    (m) =>
+      `<button type="button" data-dwmode="${m}" aria-pressed="${m === now}">${escR(t(`set.agents.default_mode.o.${m}`))}</button>`,
+  ).join("");
+  const list = Array.isArray(overrides) ? overrides : [];
+  const over = list.length
+    ? `${escR(t("dwmode.over", { n: list.length }))} ` +
+      list
+        .map(
+          (ws) =>
+            `<a href="/settings?project=${encodeURIComponent(ws)}#workspace.agents_mode">${escR(ws)}</a>`,
+        )
+        .join(", ")
+    : escR(t("dwmode.overNone"));
+  return (
+    `<div class="seg" role="group" data-dwmode-seg aria-label="${escR(t("set.agents.default_mode"))}">${btns}</div>` +
+    `<p class="set-note" data-dw-now>${escR(t("dwmode.now", { m: modeWords(now, t) }))}</p>` +
+    `<p class="set-note" data-dw-overrides="${list.length}">${over}</p>`
+  );
+}
+
+function renderDenWideMode(host, ctx, api) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  host.innerHTML = denWideModeHtml(
+    api?.value,
+    ctx.data?.agents_mode_overrides,
+    t,
+  );
+  host.querySelectorAll("[data-dwmode]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (b.getAttribute("aria-pressed") === "true") return;
+      api?.save(b.getAttribute("data-dwmode"));
+    }),
+  );
+}
+
 /**
  * Issue 225: Settings › Project › Agents' mode. `v` is GET
  * /api/workspaces/:ws/agent-modes: { mode, install, agents, own }. The
@@ -2789,8 +3289,15 @@ export function projectModeHtml(v, t) {
   const offer = n
     ? `<div data-pmode-offer="${n}"><button type="button" class="btn sm primary" data-pmode-follow>${escR(t("pmode.follow", { n }))}</button></div>`
     : "";
+  // Issue 268: what is in effect for this project, and where from.
+  const dw = modeWords(v?.install, t);
+  const status = v?.mode
+    ? t("pmode.setHere", { m: modeWords(v.mode, t), dw })
+    : t("pmode.following", { m: dw });
   return (
     `<div class="seg" role="group" data-pmode-seg aria-label="${escR(t("set.workspace.agents_mode"))}">${btns}</div>` +
+    `<p class="set-note"><span data-pmode-now="${v?.mode ? "project" : "den-wide"}">${escR(status)}</span> ` +
+    `<a href="/settings#agents.default_mode" data-pmode-dw>${escR(t("pmode.changeDw"))}</a></p>` +
     (agents.length
       ? `<ul class="set-note" data-pmode-list>${rows}</ul>`
       : `<p class="set-note" data-pmode-none>${escR(t("pmode.noAgents"))}</p>`) +
@@ -3326,6 +3833,7 @@ export function hubProjectHtml(b, t, name) {
       `<span aria-hidden="true">↔</span>` +
       `<div><small>${escR(t("hubp.sideHub"))}</small><b data-hubp-name>${name(linked)}</b></div></div>` +
       `<p class="set-note">${escR(t("hubp.linkedWhen"))}</p>` +
+      `<p class="set-note" data-hubp-byid>${escR(t("hubp.byId"))}</p>` +
       `<p class="set-note">${escR(t("hubp.does", { project: ws, hub: hubName }))}</p>` +
       `<details class="hubp-more" data-hubp-more><summary>${escR(t("hubp.more"))}</summary>` +
       `<p class="set-note">${escR(t("hubp.moreNote"))}</p>` +
@@ -3803,6 +4311,7 @@ function wireHub(host, ctx) {
       ev.preventDefault();
       connect();
     });
+  wireHubAddress(host, ctx, err, busy);
   host
     .querySelectorAll('button[data-hub-action="connect"]')
     .forEach(

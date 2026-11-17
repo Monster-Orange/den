@@ -93,6 +93,8 @@ export function agentSessionEnv(
   extraDirs: readonly string[] = [],
   /** The distribution's env for its agents: agents.git's GIT_CONFIG_*. */
   declared: Record<string, string> = {},
+  /** Issue 163 (b): the sign-in token's env (the always-on service only). */
+  signIn: Record<string, string> = {},
 ): Record<string, string> {
   return buildSessionEnv({
     caller: withSessionPath(caller, extraDirs),
@@ -106,5 +108,6 @@ export function agentSessionEnv(
     },
     scrub: allScrubEnv(),
     ownLaunch: rt.launchEnv ?? [],
+    signIn,
   });
 }
