@@ -1157,6 +1157,21 @@ export function workspaceHubToolsRestart(
 }
 
 /**
+ * Issue 335: workspace `ws`'s `agents.mcp_servers` as written (checked
+ * where it is used); undefined when unset or the file can't be read.
+ */
+export function workspaceMcpServersRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws]?.agents?.mcp_servers ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Set (an intent) or clear (null) workspace `ws`'s `agents.permission`.
  * The caller checks the intent first.
  */

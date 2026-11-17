@@ -127,7 +127,13 @@ import {
   workspaceAgentPermission,
   setWorkspaceAgentPermission,
   workspacePermissionKey,
+  workspaceMcpServersRaw,
 } from "../../shared/environment-manager/workspaces.js";
+import {
+  parseProjectMcpServers,
+  projectMcpHeadersHelper,
+  type ProjectMcpServer,
+} from "../../shared/agents/project-mcp.js";
 import {
   BUILTIN_CATALOG,
   type CatalogEntry,
@@ -399,6 +405,11 @@ export interface AgentsDeps extends SessionsDeps {
   processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
+  /**
+   * Issue 335: project `ws`'s `agents.mcp_servers` as written (default:
+   * workspaces.yml's; undefined: unset). Checked where it is used.
+   */
+  workspaceMcpServers?: (ws: string) => unknown;
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
   workspaceHubProject?: (ws: string) => HubProjectLink | null;
   /**
@@ -439,6 +450,7 @@ export interface AgentsResolved extends Resolved {
     inboxOnStop?: "nudge" | "off";
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  workspaceMcpServers: (ws: string) => unknown;
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
   /**
@@ -727,6 +739,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    workspaceMcpServers:
+      d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
@@ -859,7 +873,43 @@ export function agentMcp(
     ],
     env: { ...distLocationEnv(d.env), ...server.env },
     scope: ws,
+    ...(() => {
+      // Issue 335: the project's own HTTP servers; a bearer is read at
+      // each connect by `<cli> mcp headers <name>`, never written here.
+      const extra = projectMcpServers(d, ws).map((s) => ({
+        name: s.name,
+        url: s.url,
+        ...(s.bearer
+          ? {
+              headersHelper: projectMcpHeadersHelper(
+                bin,
+                { ...distLocationEnv(d.env), ...server.env },
+                s.name,
+              ),
+            }
+          : {}),
+      }));
+      return extra.length ? { extra } : {};
+    })(),
   };
+}
+
+/**
+ * Issue 335: project `ws`'s extra MCP servers, checked (a bad entry is
+ * left out; doctor names it). Never Den's own server's name nor Hub's.
+ */
+export function projectMcpServers(
+  d: Pick<AgentsResolved, "workspaceMcpServers" | "cli">,
+  ws: string,
+): ProjectMcpServer[] {
+  if (isServerScope(ws)) return [];
+  let raw: unknown;
+  try {
+    raw = d.workspaceMcpServers(ws);
+  } catch {
+    return [];
+  }
+  return parseProjectMcpServers(raw, [d.cli, HUB_SERVER]).servers;
 }
 
 // ── rows ────────────────────────────────────────────────────────────────────

@@ -476,7 +476,13 @@ export const BASH_READERS = [
 export function strayMcpServers(
   input: Pick<LaunchInput, "env" | "worktree" | "mcp">,
 ): { user: string[]; project: string[] } {
-  const own = new Set([input.mcp.name, input.mcp.hub?.name].filter(Boolean));
+  const own = new Set(
+    [
+      input.mcp.name,
+      input.mcp.hub?.name,
+      ...(input.mcp.extra ?? []).map((x) => x.name),
+    ].filter(Boolean),
+  );
   const names = (o: unknown): string[] =>
     o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o) : [];
   const readJson = (f: string): Record<string, unknown> | null => {
