@@ -22,6 +22,7 @@
  * The page header is the prototype's .ph (R20). edgeView(status) is pure
  * (HTML from /api/edge's JSON), so tests need no server.
  */
+import { dockerState, tlsStrategy } from "./value-words.js";
 
 /**
  * A word in the page's language (issue 171): shell.js's catalog, "edge.*".
@@ -88,8 +89,14 @@ export function certHeading(strategy, issued) {
 export function edgeView(st) {
   if (!st || st.configured === false)
     return (
-      `<div class="empty"><b>${esc(t("edge.none"))}</b> ` +
-      `${esc(st?.error ?? "")}</div>`
+      `<div class="empty"><b>${esc(t("edge.none"))}</b>` +
+      // The config's own message (a file, a key): quoted as the CLI says it.
+      (st?.unreachable
+        ? ` ${esc(t("edge.unreachable"))}`
+        : st?.error
+          ? ` <code translate="no">${esc(st.error)}</code>`
+          : "") +
+      `</div>`
     );
   const tls = st.tls ?? { strategy: "none" };
   const none = tls.strategy === "none";
@@ -121,7 +128,7 @@ export function edgeView(st) {
     tile(
       t("edge.k.container"),
       st.up ? t("edge.up") : t("edge.down"),
-      `<span class="mono">${esc(st.container)}</span>: ${esc(st.state)}`,
+      `<span class="mono">${esc(st.container)}</span>: ${esc(dockerState(st.state))}`,
       !st.up,
     ),
     tile(
@@ -130,7 +137,7 @@ export function edgeView(st) {
       `${esc(t("edge.network"))} <span class="mono">${esc(st.network)}</span>`,
       false,
     ),
-    tile("TLS", tls.strategy, esc(tlsNote(tls)), false),
+    tile("TLS", tlsStrategy(tls.strategy), esc(tlsNote(tls)), false),
     tile(
       t("edge.k.trust"),
       trust,
@@ -237,7 +244,7 @@ export function edgeView(st) {
 /** The header's sub line: org / container · state. */
 export function edgeSub(st) {
   if (!st || st.configured === false) return t("edge.notConfigured");
-  return `${st.org} / ${st.container} · ${st.state}`;
+  return `${st.org} / ${st.container} · ${dockerState(st.state)}`;
 }
 
 /** Fetch /api/edge and draw the page into `root` (the header's sub line too). */
@@ -246,13 +253,12 @@ export async function mountEdge(root, sub, fetchFn = fetch) {
   try {
     const r = await fetchFn("/api/edge");
     st = await r.json();
-  } catch (e) {
-    st = {
-      configured: false,
-      error: (e && e.message) || t("edge.unreachable"),
-    };
+  } catch {
+    // The browser's own error ("Failed to fetch") is not a word of Den's.
+    st = { configured: false, unreachable: true };
   }
-  if (sub) sub.textContent = edgeSub(st);
+  if (sub)
+    sub.textContent = st.unreachable ? t("edge.unreachable") : edgeSub(st);
   root.innerHTML = edgeView(st);
   root.removeAttribute("aria-busy");
   return st;

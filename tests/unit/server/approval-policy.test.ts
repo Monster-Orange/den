@@ -316,6 +316,26 @@ describe("issue 160: the approval policy", () => {
     });
   });
 
+  it("a project's extra MCP servers are critical (issues 335, 352): add, remove and update; no setting lowers them", () => {
+    for (const w of [
+      "project_mcp_add",
+      "project_mcp_remove",
+      "project_mcp_update",
+    ]) {
+      expect([w, HELD_WRITE_RISK[w]?.risk]).toEqual([w, "critical"]);
+      expect([w, isCriticalWrite(w, false)]).toEqual([w, true]);
+      // project_mcp_remove's name also says "deletes" (CRITICAL_AREAS).
+      const p = policyFor(w, {
+        install: { policy: "auto", writes: { [w]: "auto" } },
+      });
+      expect([w, p.kind, p.from]).toEqual([
+        w,
+        "ask",
+        expect.stringMatching(/^critical/),
+      ]);
+    }
+  });
+
   it("an agent may still ask, and says why", async () => {
     await reset();
     const noWhy = await ask({
