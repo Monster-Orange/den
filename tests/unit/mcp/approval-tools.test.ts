@@ -668,3 +668,48 @@ describe("issue 199: agent_mode", () => {
     expect(none.text).toMatch(/agent/);
   });
 });
+
+describe("issue 160: pr_close", () => {
+  it("asks with the repo, the pull request and a comment; a held write with no mcp.actions", async () => {
+    expect(toolsFor(cfg()).map((t) => t.name)).toContain("pr_close");
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, repo: "acme/api", pr: 12 },
+    }));
+    const r = await callTool(
+      "pr_close",
+      {
+        repo: "acme/api",
+        pr: 12,
+        comment: "Superseded by 15, per the Hub note",
+        note: "stale since the Hub note",
+      },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "pr_close",
+      args: {
+        project: "north",
+        repo: "acme/api",
+        pr: 12,
+        comment: "Superseded by 15, per the Hub note",
+      },
+      note: "stale since the Hub note",
+    });
+  });
+
+  it("needs the repo, the pull request and a comment: refused before anything is asked", async () => {
+    const { api, calls } = fakeApi([]);
+    for (const args of [
+      { pr: 1, comment: "x" },
+      { repo: "acme/api", comment: "x" },
+      { repo: "acme/api", pr: 1 },
+    ]) {
+      const r = await callTool("pr_close", args, ctx(api, true));
+      expect(r.isError).toBe(true);
+    }
+    expect(calls.filter((c) => c.path === "/api/approvals")).toEqual([]);
+  });
+});

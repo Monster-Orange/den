@@ -108,6 +108,7 @@ import {
   isWorkspaceActive,
   listWorkspaceServices,
   readWorkspacesFile,
+  writeWorkspacesFile,
   resolveDepAddress,
   parseAddress,
   readManifestAnyBranch,
@@ -1024,7 +1025,14 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
-import { policyFor, readPolicySetting } from "../../shared/approval-policy.js";
+import {
+  approvalsView,
+  patchApprovals,
+  pinsAsWatched,
+  policyFor,
+  readPolicySetting,
+  writeTargets,
+} from "../../shared/approval-policy.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import { checkHubAddress, runHubAddress } from "./hub-address.js";
@@ -1069,12 +1077,15 @@ import {
   checkPersonaCreate,
   checkPersonaUpdate,
   checkProjectMode,
+  checkProjectMcpAdd,
+  runProjectMcpAdd,
   createAgent,
   runAgentFolder,
   runAgentMode,
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
+  runAgentImport,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -2544,6 +2555,46 @@ function approvalDeps(): ApprovalDeps {
       );
       return res;
     },
+    // Issue 160: an agent asks to bring a conversation in (asks by default).
+    agentImport: (a) => runAgentImport(agentWebDeps(), a),
+    // Issue 160: an agent closes a stale or superseded pull request after
+    // a Hub note (auto unless the repo is watched or pinned).
+    prClose: async ({ repo, pr, comment }) => {
+      const r = await runGh([
+        "pr",
+        "close",
+        String(pr),
+        "--repo",
+        repo,
+        "--comment",
+        comment,
+      ]);
+      return r.code === 0
+        ? { ok: true, repo, pr }
+        : {
+            ok: false,
+            error: `gh pr close: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ")}`,
+          };
+    },
+    // Issue 160: an agent asks to change the approval policy (always asks).
+    approvalPolicy: {
+      read: (project) => {
+        if (!project) {
+          const v = readUserConfig().approvals;
+          return v && typeof v === "object"
+            ? (v as Record<string, unknown>)
+            : undefined;
+        }
+        const all = readWorkspacesFile().workspaces ?? {};
+        if (!Object.hasOwn(all, project))
+          throw new Error(`there is no project "${project}"`);
+        const v = all[project].approvals;
+        return v && typeof v === "object"
+          ? (v as Record<string, unknown>)
+          : undefined;
+      },
+      write: (project, setting) => writeApprovals(project, setting),
+    },
     // SRV-P1: an agent asks to add an agent to a project.
     agentCreate: {
       check: (a, who) => checkAgentCreate(agentWebDeps(), a, who),
@@ -2581,6 +2632,11 @@ function approvalDeps(): ApprovalDeps {
     projectMode: {
       check: (a, who) => checkProjectMode(agentWebDeps(), a, who),
       run: (a) => runProjectMode(agentWebDeps(), a),
+    },
+    // Issue 335: an agent asks to add an HTTP MCP server to a project.
+    projectMcp: {
+      check: (a, who) => checkProjectMcpAdd(agentWebDeps(), a, who),
+      run: (a) => runProjectMcpAdd(agentWebDeps(), a),
     },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
@@ -2635,15 +2691,64 @@ function approvalDeps(): ApprovalDeps {
         : null,
     // Issue 160: the approval policy, the person's (user.yml) and each
     // project's (workspaces.yml), read per ask. A bad value throws: held.
-    policy: (action, project, widens) =>
-      policyFor(action, {
+    // Issue 160: what the write is on, against what the person watches
+    // (approvals.watch) and pinned to the rail (their favorites).
+    policy: (action, project, widens, ask) => {
+      const user = readUserConfig();
+      return policyFor(action, {
         widens,
-        install: readPolicySetting(readUserConfig().approvals),
+        areas: ask?.areas,
+        install: readPolicySetting(user.approvals),
         project: project ? projectPolicy(project) : undefined,
-      }),
+        targets: writeTargets(action, ask?.args ?? {}, project),
+        pins: pinsAsWatched(shellPrefs(user.shell).pins),
+      });
+    },
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
   };
   return approvals;
+}
+/** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
+export function approvalsSettings(raw: unknown): {
+  approvals_policy: string | null;
+  approvals_watch: string[];
+  approvals_critical: string[];
+} {
+  const v = approvalsView(raw);
+  return {
+    approvals_policy: v.policy,
+    approvals_watch: v.watch,
+    approvals_critical: v.critical,
+  };
+}
+/**
+ * Issue 160: write the approval policy, the install's (user.yml) or one
+ * project's (workspaces.yml); undefined clears it. Checked first.
+ */
+function writeApprovals(
+  project: string | undefined,
+  setting: Record<string, unknown> | undefined,
+): void {
+  const checked = setting
+    ? readPolicySetting(
+        setting,
+        project ? `workspaces.${project}.approvals` : "approvals",
+      )
+    : undefined;
+  const empty = !checked || Object.keys(checked).length === 0;
+  if (!project) {
+    const user = readUserConfig();
+    if (empty) delete user.approvals;
+    else user.approvals = checked;
+    writeUserConfig(user);
+    return;
+  }
+  const file = readWorkspacesFile();
+  const ws = file.workspaces?.[project];
+  if (!ws) throw new Error(`there is no project "${project}"`);
+  if (empty) delete ws.approvals;
+  else ws.approvals = checked;
+  writeWorkspacesFile(file);
 }
 /**
  * #176: commit and push (or open a pull request for) the pin of `version`
@@ -6405,6 +6510,8 @@ async function handleRequest(
         // Issue 268: the projects that override it (Settings › Agents).
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
+        // Issue 160: the install's approval policy (user.yml approvals).
+        ...approvalsSettings(user.approvals),
         // SRV-P6: where it came from, and the update checks' last and next.
         ...updateCheckSettings(),
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
@@ -6525,6 +6632,9 @@ async function handleRequest(
           agents_list?: unknown;
           agent_context?: unknown;
           embed?: unknown;
+          approvals_policy?: unknown;
+          approvals_watch?: unknown;
+          approvals_critical?: unknown;
         };
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
@@ -6595,6 +6705,23 @@ async function handleRequest(
           delete sa.self_update_from;
           sa.self_update = v;
           user.server_agent = sa;
+        }
+        // Issue 160: the install's approval policy (user.yml approvals), a
+        // person's only (PERSON_ONLY_SETTINGS): an agent asks with
+        // approval_policy, a held write that always waits for the Allow.
+        if (
+          body.approvals_policy !== undefined ||
+          body.approvals_watch !== undefined ||
+          body.approvals_critical !== undefined
+        ) {
+          const a = patchApprovals(user.approvals, {
+            policy: body.approvals_policy,
+            watch: body.approvals_watch,
+            critical: body.approvals_critical,
+          });
+          if (!a.ok) return send400(res, a.error);
+          if (a.value) user.approvals = a.value;
+          else delete user.approvals;
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Hub); null clears it (the default, on).
@@ -6754,6 +6881,7 @@ async function handleRequest(
           ok: true,
           agents_default_mode: user.agents?.default_mode ?? null,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
+          ...approvalsSettings(user.approvals),
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},

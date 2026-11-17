@@ -1009,6 +1009,22 @@ body.den-has-shell .den-upd {
   font-size: 11px;
   white-space: nowrap;
 }
+/* Issue 101: Needs you, then Earlier, each under a quiet heading. */
+.den-bell-sec + .den-bell-sec {
+  border-top: 1px solid var(--border);
+}
+.den-bell-sech {
+  margin: 0;
+  padding: 10px 12px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.den-bell-none {
+  margin: 0;
+  padding: 6px 12px 10px;
+  color: var(--muted);
+}
 .den-bell-empty {
   padding: 16px 12px;
   color: var(--muted);

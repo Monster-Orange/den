@@ -139,10 +139,19 @@ Held (each waits for the person's Allow):
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
+- `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
+  bearer is the name of a secrets.refs entry, never a value. Only the
+  person's own Allow runs it; agents get it at their next start or resume.
 - `persona_create`, `persona_update`: add or change a persona.
 - `hub_connect`: set, change or clear Hub's address. After the Allow, Den
   restarts; the person then clicks Connect in Settings › Hub.
 - `den_restart_server`, `den_update`: restart or update Den.
+- `agent_import`: bring in a conversation as an agent. It asks the person.
+- `approval_policy`: ask the person to change the approval policy. It
+  always waits for their Allow.
+- `pr_close`: close a stale or superseded pull request after a Hub note,
+  with a comment saying why. It runs at once unless the person watches or
+  pinned the repo.
 
 Only when Den's config turns them on (`mcp.actions`):
 
@@ -152,8 +161,8 @@ Only when Den's config turns them on (`mcp.actions`):
 - `run_tests`: run tests.
 - `verify_run`: run Verify's plan. Here it runs at once; on a shared
   environment it waits for the person's Allow, always.
-- `agent_resume`, `agent_import`: resume an agent, or bring in a
-  conversation.
+- `agent_resume`: resume an agent. `agent_import`'s list of
+  conversations.
 
 ## Never
 
