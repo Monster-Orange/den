@@ -970,14 +970,28 @@ export function compareNav(actual, reference, opts = {}) {
   // Name over @login is taller than @login alone: an entry with another
   // line count than the reference's (both the kit's shapes) moves nothing
   // else's place; its own height and what it centres are its data.
+  const tall = /^(box\.(height|top|bottom)|style\.height)$/;
   const acct = actual.elements.find((e) => e.account);
   const acctRef = acct && reference.elements.find((e) => e.key === acct.key);
-  if (acct && acctRef && (acct.lines ?? 0) !== (acctRef.lines ?? 0)) {
-    const own = (k) => k === acct.key || k.startsWith(acct.key + " >");
-    const tall = /^(box\.(height|top|bottom)|style\.height)$/;
-    return diffs.filter((d) => !(own(d.key) && tall.test(d.property)));
-  }
-  return diffs;
+  const acctOwn =
+    acct && acctRef && (acct.lines ?? 0) !== (acctRef.lines ?? 0)
+      ? (k) => k === acct.key || k.startsWith(acct.key + " >")
+      : () => false;
+  // Issue 313: a container empty on one side and holding something on
+  // the other is as tall as what it holds; its top, bottom and height are
+  // not compared (its x and width are). Children by the recorded parent.
+  const kids = (snap) => {
+    const n = new Map();
+    for (const e of snap.elements)
+      if (e.parent) n.set(e.parent, (n.get(e.parent) || 0) + 1);
+    return n;
+  };
+  const ka = kids(actual);
+  const kr = kids(reference);
+  const emptyOneSide = (k) => !ka.get(k) !== !kr.get(k);
+  return diffs.filter(
+    (d) => !(tall.test(d.property) && (acctOwn(d.key) || emptyOneSide(d.key))),
+  );
   function styles(w, g, skip) {
     for (const p of STYLE_PROPS) {
       if (skip.includes(p)) continue;
