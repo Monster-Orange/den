@@ -24,7 +24,9 @@ import {
 import {
   accessLogArgs,
   renderEdgeCompose,
+  traefikMajor,
 } from "../../../src/shared/edge/render.js";
+import { edgeUpNotices } from "../../../src/shared/edge/runtime.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
 
 const SECRET = "s3cr3t-0ne-t1me";
@@ -180,6 +182,100 @@ describe("render", () => {
       ]),
     );
     expect(renderEdgeCompose(c)).toContain("./access:/var/log/edge");
+  });
+});
+
+describe("only flags the edge's Traefik understands (#330)", () => {
+  const base = {
+    org: "acme",
+    domain: "acme.localhost",
+    aliases: [],
+    image: "traefik:v3.7.17",
+    workspaces: [],
+    routes: {},
+    ports: null,
+    stateDir: "/tmp/acme/edge",
+    tls: { strategy: "none" },
+    tlsFrom: "explicit",
+    httpsRedirect: false,
+    dockerLabels: null,
+    include: null,
+    mounts: {},
+    networks: [],
+    args: [],
+    accessLog: on,
+  } as unknown as EdgeConfig;
+  const withImage = (image: string) => ({ ...base, image });
+  const tracing = (image: string) =>
+    accessLogArgs(withImage(image)).filter((a) => a.startsWith("--tracing"));
+  const ACCESS = [
+    "--accesslog=true",
+    "--accesslog.format=json",
+    "--accesslog.filepath=/var/log/edge/access.json",
+    "--accesslog.bufferingsize=0",
+  ];
+
+  it("a Traefik v2 edge gets the access log without tracing, which v2 rejects", () => {
+    expect(accessLogArgs(withImage("traefik:v2.11"))).toEqual(ACCESS);
+    expect(tracing("traefik:v2.11.3")).toEqual([]);
+    expect(tracing("traefik:2.11")).toEqual([]);
+  });
+
+  it("a Traefik v3 edge gets the trace ids", () => {
+    for (const image of [
+      "traefik:v3.7.17",
+      "traefik:3.7",
+      "docker.io/library/traefik:v3.7.17",
+      `traefik:v3.7@sha256:${"a".repeat(64)}`,
+      "traefik:v4.0",
+    ])
+      expect(tracing(image)).toEqual([
+        "--tracing=true",
+        "--tracing.otlp=true",
+        "--tracing.otlp.http.endpoint=http://127.0.0.1:1/v1/traces",
+      ]);
+  });
+
+  it("a tag Den can't read a version from never gets a flag that could stop the edge", () => {
+    for (const image of [
+      "traefik:latest",
+      "traefik",
+      `traefik@sha256:${"a".repeat(64)}`,
+      "registry.local:5000/edge-proxy:v3.7",
+      "traefik:nightly",
+    ]) {
+      expect(accessLogArgs(withImage(image))).toEqual(ACCESS);
+    }
+  });
+
+  it("reads the major version from the image's tag", () => {
+    expect(traefikMajor("traefik:v2.11")).toBe(2);
+    expect(traefikMajor("traefik:v2.11.3")).toBe(2);
+    expect(traefikMajor("traefik:2.11")).toBe(2);
+    expect(traefikMajor("docker.io/library/traefik:v3.7.17")).toBe(3);
+    expect(traefikMajor("localhost:5000/traefik:v3.1")).toBe(3);
+    expect(traefikMajor(`traefik:v3.7@sha256:${"b".repeat(64)}`)).toBe(3);
+    expect(traefikMajor("traefik:v3.7-alpine")).toBe(3);
+    expect(traefikMajor("traefik:latest")).toBeNull();
+    expect(traefikMajor("traefik")).toBeNull();
+    expect(traefikMajor(`traefik@sha256:${"b".repeat(64)}`)).toBeNull();
+    expect(traefikMajor("acme/edge:v3.7")).toBeNull();
+  });
+
+  it("edge up says when the access log is on without request ids", () => {
+    expect(edgeUpNotices(withImage("traefik:v2.11"), null)).toEqual([
+      "Access log on without request ids: traefik:v2.11 is older than Traefik v3.",
+    ]);
+    expect(edgeUpNotices(withImage("traefik:latest"), null)).toEqual([
+      "Access log on without request ids: Den can't tell which Traefik version traefik:latest is.",
+    ]);
+    expect(edgeUpNotices(base, null)).toEqual([]);
+    expect(
+      edgeUpNotices(
+        { ...withImage("traefik:v2.11"), accessLog: undefined },
+        null,
+      ),
+    ).toEqual([]);
   });
 });
 

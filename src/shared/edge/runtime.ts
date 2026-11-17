@@ -13,6 +13,7 @@ import {
   droppedEdgeArgs,
   EDGE_ROOT_LABEL,
   edgeCommand,
+  accessLogNoTraceNotice,
   edgeCommandDrift,
   edgeNames,
   renderEdgeCompose,
@@ -308,6 +309,8 @@ export function edgeUpNotices(
         "PROXY protocol trust from edge.proxy_protocol.trusted_ips. Remove it " +
         "from the config to silence this.",
     );
+  const noTrace = accessLogNoTraceNotice(cfg);
+  if (noTrace) out.push(noTrace);
   const drift = edgeCommandDrift(running, edgeCommand(cfg));
   if (drift.length)
     out.push(

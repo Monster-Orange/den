@@ -353,10 +353,35 @@ export const EDGE_ACCESS_DIR = "/var/log/edge";
 export const EDGE_ACCESS_RAW = `${EDGE_ACCESS_DIR}/access.json`;
 
 /**
+ * The Traefik major version an image reference names, from its tag:
+ * `traefik:v2.11`, `traefik:2.11.3`, `docker.io/library/traefik:v3.7.17`,
+ * `traefik:v3.7@sha256:…`. Null when Den can't tell: no tag, `latest` or
+ * another word, a bare digest, or an image not named `traefik` (#330).
+ */
+export function traefikMajor(image: string): number | null {
+  const ref = image.trim().split("@")[0] ?? "";
+  const last = ref.slice(ref.lastIndexOf("/") + 1);
+  const colon = last.indexOf(":");
+  if (colon < 0) return null;
+  if (last.slice(0, colon).toLowerCase() !== "traefik") return null;
+  const m = /^v?(\d+)(\.\d+)*([-+].*)?$/i.exec(last.slice(colon + 1));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * True when the edge's Traefik takes the OTLP tracing flags: v3 or later.
+ * Traefik v2 rejects them and the edge never starts (#330), so a version
+ * Den can't read gets none.
+ */
+export function edgeTracesRequests(cfg: Pick<EdgeConfig, "image">): boolean {
+  return (traefikMajor(cfg.image) ?? 0) >= 3;
+}
+
+/**
  * `edge.access_log` (#63): Traefik's JSON access log into the raw file Den
- * masks, and tracing so each line (and the upstream, in `traceparent`)
- * has the request id. The OTLP exporter points at a closed local port:
- * the trace ids are wanted, the spans are not.
+ * masks, and, on Traefik v3 or later, tracing so each line (and the
+ * upstream, in `traceparent`) has the request id. The OTLP exporter points
+ * at a closed local port: the trace ids are wanted, the spans are not.
  */
 export function accessLogArgs(cfg: EdgeConfig): string[] {
   if (!cfg.accessLog?.enabled) return [];
@@ -365,10 +390,22 @@ export function accessLogArgs(cfg: EdgeConfig): string[] {
     "--accesslog.format=json",
     `--accesslog.filepath=${EDGE_ACCESS_RAW}`,
     "--accesslog.bufferingsize=0",
-    "--tracing=true",
-    "--tracing.otlp=true",
-    "--tracing.otlp.http.endpoint=http://127.0.0.1:1/v1/traces",
+    ...(edgeTracesRequests(cfg)
+      ? [
+          "--tracing=true",
+          "--tracing.otlp=true",
+          "--tracing.otlp.http.endpoint=http://127.0.0.1:1/v1/traces",
+        ]
+      : []),
   ];
+}
+
+/** `edge up`'s line when the access log is on without request ids (#330). */
+export function accessLogNoTraceNotice(cfg: EdgeConfig): string | null {
+  if (!cfg.accessLog?.enabled || edgeTracesRequests(cfg)) return null;
+  return traefikMajor(cfg.image) === null
+    ? `Access log on without request ids: Den can't tell which Traefik version ${cfg.image} is.`
+    : `Access log on without request ids: ${cfg.image} is older than Traefik v3.`;
 }
 
 /**
