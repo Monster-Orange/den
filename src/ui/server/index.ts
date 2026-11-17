@@ -169,6 +169,7 @@ import {
   migrateSelfUpdate,
   readAgentsConfig,
   TOKEN_PEER_WAIT_MS_DEFAULT,
+  UPDATE_WAIT_SECONDS_DEFAULT,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
@@ -2541,6 +2542,8 @@ function approvalDeps(): ApprovalDeps {
             import("./agent-routes.js").then((m) => m.applyModesNow()),
         }),
     },
+    // #176: the pin commit, when the approval policy holds it.
+    pinCommit: pinCommitHeldOp(),
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
@@ -2588,6 +2591,201 @@ function approvalDeps(): ApprovalDeps {
   };
   return approvals;
 }
+/**
+ * #176: commit and push (or open a pull request for) the pin of `version`
+ * (pin-commit.ts). `policy`: the approval policy decides first, and a
+ * held den_pin_commit waits for the person; the Allow's own run passes
+ * false.
+ */
+async function runPinCommit(
+  version: string,
+  policy: boolean,
+): Promise<import("./pin-commit.js").PinStep> {
+  const pc = await import("./pin-commit.js");
+  const mode = readServerAgentConfig().pinCommit;
+  if (mode === "off")
+    return { did: "skipped", version, why: "server_agent.pin_commit: off" };
+  let signingKey: string | undefined;
+  try {
+    signingKey = readAgentsConfig().git?.signingKey;
+  } catch {
+    signingKey = undefined;
+  }
+  return pc.commitPin(version, {
+    root: getDistRoot(),
+    stateDir: getStateDir(),
+    git: pc.pinGit(getDistRoot(), { signingKey }),
+    mode,
+    ...(policy
+      ? {
+          allow: () => {
+            try {
+              return policyFor("den_pin_commit", {
+                install: readPolicySetting(readUserConfig().approvals),
+              }).kind === "ask"
+                ? "ask"
+                : "run";
+            } catch {
+              // A policy Den can't read holds the write (never runs unasked).
+              return "ask";
+            }
+          },
+          ask: async (v: string) => {
+            const ap = approvalDeps();
+            const ok = await ap.actions.den_pin_commit.check({ version: v });
+            if (!ok.ok) return false;
+            try {
+              const a = ap.queue.request({
+                actor: "den:update-check",
+                action: "den_pin_commit",
+                args: ok.args,
+                summary: ok.summary,
+                params: ok.params,
+                details: ok.details,
+                ttlMs: UPDATE_ASK_TTL_MS,
+              });
+              recordAction(null, {
+                verb: "approval-ask",
+                detail: `den_pin_commit: ${a.summary} [${a.id}]`,
+              });
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        }
+      : {}),
+  });
+}
+
+/** #176: den_pin_commit, held for the person when the policy says ask. */
+function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
+  return {
+    check: (a) => {
+      const version = typeof a.version === "string" ? a.version.trim() : "";
+      if (!semver.valid(version))
+        return { ok: false, error: "version: one like 0.4.44" };
+      if (version !== engineVersion())
+        return {
+          ok: false,
+          error: `this Den runs ${engineVersion() ?? "?"}, not ${version}`,
+        };
+      let mode: string;
+      try {
+        mode = readServerAgentConfig().pinCommit;
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+      if (mode === "off")
+        return { ok: false, error: "server_agent.pin_commit is off" };
+      return {
+        ok: true,
+        args: { version },
+        summary: `commit the distribution's pin to Den ${version}`,
+        params: { version },
+        details: [
+          mode === "pr"
+            ? `Den commits package.json and package-lock.json on the branch den/pin-${version} and opens a pull request.`
+            : "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
+          "Nothing else in the distribution's folder is committed.",
+        ],
+      };
+    },
+    run: async (a) => {
+      const step = await runPinCommit(String(a.version), false);
+      pinBellNotice(step);
+      const ok =
+        step.did === "pushed" ||
+        step.did === "pr" ||
+        step.did === "clean" ||
+        step.did === "done";
+      return ok
+        ? { ok: true, step }
+        : { ok: false, error: JSON.stringify(step) };
+    },
+  };
+}
+
+/** #176: the bell for the pin step: one item, the newest replacing it. */
+function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
+  try {
+    const store = notificationDeps().store;
+    const subject = "record:den-pin";
+    const t = product().title;
+    const v = step.version;
+    const add = (
+      text: string,
+      key: string,
+      vars: Record<string, string>,
+      link = "/server-agent",
+    ) => {
+      store.withdraw(subject, "service");
+      store.add({
+        kind: "service",
+        subject,
+        scope: "workspace/den-server",
+        text,
+        msg: { key, vars: { v, ...vars } },
+        link,
+      });
+    };
+    switch (step.did) {
+      case "pushed": {
+        const sha = step.sha.slice(0, 12);
+        add(
+          `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
+          "bell.m.pinPushed",
+          { sha },
+        );
+        return;
+      }
+      case "push_failed": {
+        const sha = step.sha.slice(0, 12);
+        add(
+          `${t} ${v}: its pin is committed (${sha}) but the push failed: ${step.why}. ${t} tries again at the next update check`,
+          "bell.m.pinPushFailed",
+          { sha, why: step.why },
+        );
+        return;
+      }
+      case "commit_failed":
+        add(
+          `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
+          "bell.m.pinCommitFailed",
+          { why: step.why },
+        );
+        return;
+      case "pr":
+        add(
+          `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
+          "bell.m.pinPrOpened",
+          { branch: step.branch },
+          step.url,
+        );
+        return;
+      case "branch_pushed":
+        add(
+          `${t} ${v}: the pin branch ${step.branch} is pushed; open a pull request for it (${step.why})`,
+          "bell.m.pinBranchPushed",
+          { branch: step.branch, why: step.why },
+          step.link ?? "/server-agent",
+        );
+        return;
+      case "held":
+        add(
+          `${t} ${v}: committing its pin waits for your Allow`,
+          "bell.m.pinHeld",
+          {},
+        );
+        return;
+      default:
+        return;
+    }
+  } catch {
+    /* the bell is best effort */
+  }
+}
+
 /** Issue 160: project `ws`'s own approval policy (workspaces.yml), checked. */
 function projectPolicy(ws: string) {
   const all = readWorkspacesFile().workspaces ?? {};
@@ -7527,6 +7725,10 @@ function startUpdateCheck(): void {
             /* best effort */
           }
         },
+        // #176: Den commits and pushes the lead install's pin itself; the
+        // approval policy (issue 160) may hold it for the person.
+        pinCommit: (version) => runPinCommit(version, true),
+        pinNotice: pinBellNotice,
         update: async (version, reason) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
@@ -7608,6 +7810,29 @@ function startUpdateCheck(): void {
   };
   let check: import("./update-check.js").UpdateCheck | undefined;
   setInterval(() => void tick(), every).unref();
+  // #176: just after an update to this version, one pass as soon as the
+  // watch says it is verified ("good"), so the pin is committed and pushed
+  // then, not a whole interval later. Bounded by the watch's own wait.
+  void import("./den-update.js").then((u) => {
+    const have = engineVersion();
+    const first = u.readUpdateState(getStateDir());
+    if (!have || !first || first.to !== have) return;
+    if (first.state !== "watching" && first.state !== "good") return;
+    let waitMs = UPDATE_WAIT_SECONDS_DEFAULT * 1000;
+    try {
+      waitMs = readServerAgentConfig().updateWaitMs;
+    } catch {
+      /* the default */
+    }
+    const until = Date.now() + waitMs + 60_000;
+    const poll = () => {
+      const s = u.readUpdateState(getStateDir());
+      if (s?.to === have && s.state === "good") return void tick();
+      if (s?.to === have && s.state === "watching" && Date.now() < until)
+        setTimeout(poll, 5_000).unref();
+    };
+    poll();
+  });
 }
 
 /** The start banner: the install's address (D80), never localhost. */
