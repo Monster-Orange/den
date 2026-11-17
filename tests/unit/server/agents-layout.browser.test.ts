@@ -548,6 +548,22 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       .click();
     expect(await tabs.count()).toBe(2);
     await shot(p, "tabs-waiting");
+    // Issue 297: × is the pointer's; the keyboard's is Delete on the tab.
+    const x = p.locator(
+      `#agr .agtab-w[data-id="${sid.scout}"] [data-act="close"]`,
+    );
+    expect(await x.getAttribute("tabindex")).toBe("-1");
+    expect(await x.getAttribute("aria-hidden")).toBe("true");
+    expect(await tab(sid.scout).getAttribute("aria-keyshortcuts")).toBe(
+      "Delete",
+    );
+    await tab(sid.scout).focus();
+    await p.keyboard.press("Delete");
+    expect(await tabs.count()).toBe(1);
+    expect(await tab(sid.reviewer).getAttribute("aria-selected")).toBe("true");
+    expect(
+      await p.evaluate(() => document.activeElement?.getAttribute("data-id")),
+    ).toBe(sid.reviewer);
     await p.context().close();
   }, 90_000);
 

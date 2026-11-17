@@ -760,10 +760,12 @@ export function renderPersonasSettings(host, ctx) {
       l.innerHTML = personaListHtml(f, data.personas, data.categories, row);
   };
   const draw = () => {
+    // A group, not a list (issue 297): category headings sit among the
+    // rows, and a list owns only list items.
     host.innerHTML =
       `<div class="pe-set"><div class="fldh"><span class="helpl">${esc(t("pe.what"))}</span><span class="sp"></span><button type="button" class="den-btn sm" data-x="new">${esc(t("ag.new.newP"))}</button></div>` +
       filterBarHtml(f, "set", data.personas, data.categories) +
-      `<div class="plist" role="list" aria-label="${esc(t("set.agents.personas"))}"></div></div>`;
+      `<div class="plist" role="group" aria-label="${esc(t("set.agents.personas"))}"></div></div>`;
     drawList();
   };
   const load = async () => {

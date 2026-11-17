@@ -63,6 +63,7 @@ import type * as http from "http";
 import { readMcpConfig } from "../../shared/den-config.js";
 import { LIFECYCLE_CMDS } from "../mcp/guards.js";
 import {
+  AGENT_IMPORT_HELD,
   agentImportRefusal,
   agentImportTarget,
   agentResumeRefusal,
@@ -915,6 +916,8 @@ export function agentRefusal(
   const imp = agentImportTarget(pathname);
   if (imp)
     return (
+      // Issue 160: the bring-in itself is a held write, never the route.
+      (imp.imports ? `${p.actor}: ${AGENT_IMPORT_HELD}.` : null) ??
       agentImportRefusal(p, imp.ws, mcpActions()) ??
       workspaceRefusal(p, pathname)
     );
