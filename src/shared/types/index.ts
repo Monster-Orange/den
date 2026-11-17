@@ -759,6 +759,12 @@ export interface WorkspaceConfig {
    * {to, held, url?, askedAt}. See shared/hub-project-link.ts.
    */
   hub_rename?: unknown;
+  /**
+   * Issue 271: a new Hub project asked of Hub for this project, waiting for
+   * an owner there (or declined): {held, name, slug, url?, askedAt, by,
+   * agent?, outcome?}. See shared/hub-project-create.ts.
+   */
+  hub_create?: unknown;
 }
 
 export interface WorkspacesFile {
