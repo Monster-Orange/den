@@ -273,7 +273,8 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await rail.locator(".den-bdg").waitFor({ timeout: 15_000 });
     expect(await rail.locator(".den-bdg").textContent()).toBe("1");
     expect(await rail.getAttribute("aria-label")).toBe(
-      "Agents, 1 helper running",
+      // Issue 307: the badge says what it counts; the kit words it.
+      "Agents, 1 running",
     );
     expect(errors).toEqual([]);
     await p.context().close();

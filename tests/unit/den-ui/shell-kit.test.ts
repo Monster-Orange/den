@@ -118,7 +118,8 @@ describe("shellHtml (shell-html.js), in Node", () => {
       /href="\/a" data-nav="a" data-nav-role="page" aria-current="page"/,
     );
     expect(html).toMatch(
-      /<div class="den-pin-row" data-nav-role="page"><a class="den-ni" href="\/b" data-nav="b" title/,
+      // 0.7.3: a pin row's Delete shortcut is the kit's own.
+      /<div class="den-pin-row" data-nav-role="page"><a class="den-ni" href="\/b" data-nav="b" aria-keyshortcuts="Delete" title/,
     );
     // The kit's words in the page's language.
     expect(html).toContain(ja["kit.pages"]);

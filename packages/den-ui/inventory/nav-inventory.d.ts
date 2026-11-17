@@ -47,6 +47,10 @@ export interface NavElement {
   labelOnly?: boolean;
   /** The kit's stamp on what it draws (data-nav-kit). */
   kit?: string;
+  /** 0.7.3: a rail entry's kind tag (data-nav-kind): project, den, service, hub, artifact. */
+  kind?: string;
+  /** 0.7.3: host text in an entry of the rail (data-nav-host-text): compareNav fails on it. */
+  hostText?: string;
 }
 export interface NavTheme {
   id: string;
@@ -84,7 +88,7 @@ export interface NavCompareOptions {
 export interface NavDiff {
   key: string;
   slot: NavSlot | "";
-  /** "env" (another browser build), "theme" (another theme), "element", "order", "slot", "role", "tag", "name", "classes", "box.<edge>", "style.<prop>", "version". */
+  /** "env" (another browser build), "theme" (another theme), "element", "order", "slot", "role", "tag", "name", "classes", "kind", "hostText", "box.<edge>", "style.<prop>", "version". */
   property: string;
   reference: string | number;
   actual: string | number;
@@ -122,7 +126,7 @@ export declare function topSlotDiffs(
   snap: NavSnapshot,
   tolerance?: number,
 ): NavDiff[];
-/** 0.7.1: host HTML in the kit's account and search slots (warnings). */
+/** 0.7.1: host HTML in the kit's account and search slots; 0.7.3: host text in an entry of the rail. */
 export declare function navWarnings(snap: NavSnapshot): string[];
 export declare function collectNav(
   page: NavPage,

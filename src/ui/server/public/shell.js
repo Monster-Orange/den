@@ -1104,10 +1104,6 @@
     "org.n": "{n} projects",
     "org.n.one": "{n} project",
     from: "from {d}",
-    "b.logs": "{n} open",
-    "b.logs.one": "{n} open",
-    "b.down": "{n} down",
-    "b.down.one": "{n} down",
     "act.pin": "Pin",
     "act.unpin": "Unpin",
     "act.visit": "Visit",
@@ -2510,12 +2506,7 @@
     "hp.st.done": "done",
     "hp.st.failed": "failed",
     "hp.st.stopped": "stopped",
-    "b.helpers": "{n} helpers running",
-    "b.helpers.one": "{n} helper running",
     "hub.rail": "Hub",
-    "hub.railTip": "{team} on Hub",
-    "hub.railTipPlain": "Open Hub",
-    "hub.railUnread": "{n} waiting on you",
     "hub.railRejected":
       "Hub doesn't accept this install's token. Reconnect in Settings › Hub.",
     "hub.railForbidden":
@@ -4206,10 +4197,7 @@
       // D32: helpers the agents started that run now.
       badge: function (s) {
         return s.helpersRunning > 0
-          ? {
-              n: s.helpersRunning,
-              label: t("b.helpers", { n: s.helpersRunning }),
-            }
+          ? { n: s.helpersRunning, what: "running" }
           : null;
       },
     },
@@ -4237,9 +4225,7 @@
       href: "/services",
       // R13: down services, from the health row's rollup, live.
       badge: function (s) {
-        return s.down > 0
-          ? { n: s.down, bad: true, label: t("b.down", { n: s.down }) }
-          : null;
+        return s.down > 0 ? { n: s.down, bad: true, what: "down" } : null;
       },
     },
     {
@@ -4251,9 +4237,7 @@
       href: "/logs",
       badge: function (s) {
         // Open log streams (Den keeps no new-lines count yet).
-        return s.openLogs > 0
-          ? { n: s.openLogs, label: t("b.logs", { n: s.openLogs }) }
-          : null;
+        return s.openLogs > 0 ? { n: s.openLogs, what: "open" } : null;
       },
     },
     // Issue 209: Verify's page ("Checks"), and the older test kinds'
@@ -4728,13 +4712,14 @@
           lead: healthDot(p),
           mono: true,
           pin: p,
+          // Issue 307: the kit's SERVICE tag at the row's end.
+          kind: "service",
           after: pinVisit(p),
           attrs: {
             "data-pin": p,
             "data-svpanel": p,
             "aria-haspopup": "dialog",
             "aria-expanded": state.svpOpen === p ? "true" : "false",
-            "aria-keyshortcuts": "Delete",
           },
         });
       });
@@ -4838,39 +4823,30 @@
     var h = state.hub;
     var link = hubLink();
     if (!link) return null;
-    var label = t("hub.rail");
-    if (!link.href) {
-      var why = link.why;
+    // Issue 307: data only. The label is the company it opens (else
+    // Hub's name) and the kind is "hub": the kit words the tooltip and
+    // the name ("Acme Co · Hub", a count "3 waiting" after it).
+    var label = h.team || t("hub.rail");
+    if (!link.href)
       return {
         id: "hub",
         cls: "den-hub den-off",
         href: "/settings#agents.hub",
         label: label,
         icon: "hub",
-        tip: why,
-        attrs: {
-          "data-hub": h.state || "unknown",
-          "aria-label": label + ": " + why,
-        },
+        kind: "hub",
+        attrs: { "data-hub": h.state || "unknown" },
       };
-    }
-    var tip = h.team
-      ? t("hub.railTip", { team: h.team })
-      : t("hub.railTipPlain");
     var n = typeof h.unread === "number" && h.unread > 0 ? h.unread : 0;
-    var waiting = n ? t("hub.railUnread", { n: n }) : "";
     return {
       id: "hub",
       cls: "den-hub",
       href: link.href,
       label: label,
       icon: "hub",
-      tip: tip,
-      badge: n ? { n: n > 99 ? "99+" : n } : null,
-      attrs: {
-        "data-hub": "connected",
-        "aria-label": label + ", " + tip + (waiting ? ", " + waiting : ""),
-      },
+      kind: "hub",
+      badge: n ? { n: n > 99 ? "99+" : n, what: "waiting" } : null,
+      attrs: { "data-hub": "connected" },
     };
   }
 

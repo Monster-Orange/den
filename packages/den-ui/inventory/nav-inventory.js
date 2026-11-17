@@ -21,7 +21,8 @@
  * entries after its spacer, .den-rail-grow: Settings, the collapse
  * toggle). For each: its key (below), its parent's key, slot, role, tag,
  * accessible name, classes, box { x, y, w, h } and computed styles
- * (STYLE_PROPS).
+ * (STYLE_PROPS), and a rail entry's kind tag (0.7.3: `kind`, compared on
+ * every entry both sides draw).
  *
  * The key names an element the same way on every run: `#id` when it has
  * an id; `[data-nav="x"]` for a rail entry; else its parent's key, " > ",
@@ -299,6 +300,15 @@ export async function collectNav(page, opts = {}) {
               : {}),
             ...(el.hasAttribute("data-nav-kit")
               ? { kit: el.getAttribute("data-nav-kit") }
+              : {}),
+            // Issue 307: a rail entry's kind tag (project, den, service,
+            // hub, artifact), compared across products.
+            ...(el.hasAttribute("data-nav-kind")
+              ? { kind: el.getAttribute("data-nav-kind") }
+              : {}),
+            // 0.7.3: host text in an entry of the rail (the kit stamps it).
+            ...(el.hasAttribute("data-nav-host-text")
+              ? { hostText: el.getAttribute("data-nav-host-text") }
               : {}),
           });
         }
@@ -678,6 +688,10 @@ export function navWarnings(snap) {
       out.push(
         `account: ${e.key} is not the kit's (host HTML; draw it with accountHtml)`,
       );
+    if (e.hostText)
+      out.push(
+        `rail entry: ${e.key} has the host's ${e.hostText} (pass data: the kit owns its words)`,
+      );
     if (
       e.slot === "top" &&
       e.classes.includes("den-search") &&
@@ -881,9 +895,32 @@ export function compareNav(actual, reference, opts = {}) {
   );
   // Issue 303: the search's slot, from the viewport alone.
   diffs.push(...topSlotDiffs(actual, tol));
+  // Issue 307: an entry both sides draw (host content too: its key is its
+  // data-nav id) has the same kind tag, or none on both. The tag's look is
+  // the "kind" role's, compared below with the first of each role.
+  {
+    const wantKind = new Map(allWant.map((e) => [e.key, e]));
+    for (const g of allGot) {
+      const w = wantKind.get(g.key);
+      if (w && (w.kind ?? "") !== (g.kind ?? ""))
+        add(w, "kind", w.kind ?? "(none)", g.kind ?? "(none)");
+    }
+  }
   // A crumb's value outlasts its label: one whose label shows while its
   // value is hidden fails, whatever the reference drew (crumbs are host
   // content, so this is checked on every element drawn).
+  // 0.7.3: hosts pass data; the kit owns a rail entry's words. Host text
+  // on an entry (a title, aria-label, aria-labelledby, aria-description,
+  // a badge's label) fails, whatever the reference drew.
+  for (const g of actual.elements)
+    if (g.hostText)
+      diffs.push({
+        key: g.key,
+        slot: g.slot,
+        property: "hostText",
+        reference: "none",
+        actual: g.hostText,
+      });
   for (const g of actual.elements)
     if (g.labelOnly)
       diffs.push({
