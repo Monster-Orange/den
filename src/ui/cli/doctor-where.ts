@@ -24,6 +24,10 @@ import {
   sessionWarning,
 } from "../../shared/launchd-session.js";
 import { localDate } from "../../shared/local-time.js";
+import {
+  tokenStatusLine,
+  type TokenStatus,
+} from "../../shared/agents/signin-token.js";
 
 export type ServiceMode = "always" | "login";
 
@@ -57,10 +61,26 @@ export interface WhereDeps {
    * `.sessions` plist is loaded). False on a web-only install.
    */
   hostJobInstalled?: () => boolean;
+  /**
+   * Issue 163 (b): the agents' sign-in token (agentTokenStatus, the store
+   * read). Asked only under mode always.
+   */
+  signIn?: () => Promise<TokenStatus | null>;
+  /**
+   * Issue 163 (a): Settings › Keep agents running after logout (undefined:
+   * unset). Unset over a login install: doctor offers it.
+   */
+  keepSetting?: () => boolean | undefined;
 }
 
 export interface WhereRow {
-  what: "server" | "session host" | "full disk access" | "service";
+  what:
+    | "server"
+    | "session host" // words-ok: the existing row name, unchanged
+    | "full disk access"
+    | "service"
+    | "agent sign-in"
+    | "keep running";
   session: string;
   /** info: as chosen, worth knowing (login mode ends at logout). */
   status: "ok" | "info" | "warn";
@@ -98,6 +118,16 @@ export function webOnlyHostDetail(
     `The service runs only the web part here: it has no host job, so the host running now (pid ${pid ?? "?"}) ` +
     `was started outside it and won't come back by itself after a restart. Its terminals and agents end then. ` +
     `Fix: ${cli} service install (it adds the host job; nothing running stops).`
+  );
+}
+
+/** Issue 163 (a): the offer, as doctor says it (the bell and Settings say it too). */
+export function keepRunningOffer(cli: string): string {
+  return (
+    `Keep agents running after logout is not set, and agents stop when you log out. ` +
+    `Turn it on: Settings › Agents › Keep agents running after logout › Apply, ` +
+    `or ${cli} config agents.keep_running_after_logout=true, then ${cli} service install (one sudo). ` +
+    `Then ${cli} agents token set, so agents can sign in after logout.`
   );
 }
 
@@ -196,7 +226,7 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
       what: "service",
       session: "not installed",
       status: "ok",
-      detail: `${d.cli} service install (login, the default; --mode always is opt-in; ${ALWAYS_CAVEAT})`,
+      detail: `${d.cli} service install (always, the default for a new install: agents keep running after logout, one sudo; ${ALWAYS_CAVEAT}; --mode login stops them at logout)`,
     });
   else if (svc.state === "not-loaded")
     rows.push({
@@ -209,14 +239,44 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
     rows.push({
       what: "service",
       session: `${svc.mode} (${svc.domain})`,
-      // Issue 163: under the daemon the keychain is not yet shown.
-      status: svc.state !== "unknown" && svc.mode === "always" ? "warn" : "ok",
+      // Issue 163: the sign-in row below says whether agents can sign in.
+      status: "ok",
       ...(svc.state === "unknown"
         ? { detail: "launchctl could not be asked whether it is loaded" }
         : svc.mode === "always"
           ? { detail: ALWAYS_WHERE_WARNING }
           : {}),
     });
+  // Issue 163 (b): under the daemon agents sign in with the token.
+  if (svc?.mode === "always" && d.signIn) {
+    const st = await d.signIn().catch(() => null);
+    if (st) {
+      const l = tokenStatusLine(st, d.cli, (iso) => localDate(iso));
+      rows.push({
+        what: "agent sign-in",
+        session: l.status === "ok" ? "token" : "no token",
+        status: l.status,
+        detail: l.text,
+      });
+    }
+  }
+  // Issue 163 (a): an install from before it was on by default, the
+  // Setting never set: switching needs sudo, so it is offered, not done.
+  if (svc?.mode === "login" && d.keepSetting) {
+    let keep: boolean | undefined;
+    try {
+      keep = d.keepSetting();
+    } catch {
+      keep = false;
+    }
+    if (keep === undefined)
+      rows.push({
+        what: "keep running",
+        session: "not set",
+        status: "info",
+        detail: keepRunningOffer(d.cli),
+      });
+  }
   return rows;
 }
 

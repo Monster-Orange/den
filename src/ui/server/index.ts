@@ -329,7 +329,11 @@ import {
   setWebUrl,
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
-import { handleKeepRunningRoutes } from "./keep-running-routes.js";
+import {
+  handleKeepRunningRoutes,
+  noteKeepRunningOffer,
+} from "./keep-running-routes.js";
+import { agentTokenStatusNow } from "../../shared/agents/signin-token.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -6101,12 +6105,41 @@ async function handleRequest(
         })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
-        // Issue 163: Keep agents running after logout (off when unset).
-        keep_running_after_logout: (() => {
+        // Issue 163: Keep agents running after logout. Unset: on for a new
+        // install (no service yet), off over an existing login install,
+        // which the page then offers to turn on (keep_running_unset).
+        ...(() => {
+          let keep: boolean | undefined;
           try {
-            return agentsKeepRunningAfterLogout(() => user) === true;
+            keep = agentsKeepRunningAfterLogout(() => user);
           } catch {
-            return false;
+            keep = false;
+          }
+          const mode = installedServiceMode();
+          return {
+            keep_running_after_logout:
+              keep ?? (mode === null || mode === "always"),
+            keep_running_unset: keep === undefined && mode === "login",
+          };
+        })(),
+        // Issue 163 (b): the agents' sign-in token under the always-on
+        // service: never the token, only whether one is configured and
+        // when it was set (nothing is read from the store on a page view).
+        agent_signin: (() => {
+          try {
+            const st = agentTokenStatusNow({
+              env: { DEN_AGENT_SIGNIN: "token" },
+              stateDir: getStateDir(),
+            });
+            return {
+              configured: st.configured,
+              set_at: st.setAt,
+              age_days: st.ageDays,
+              old: st.old,
+              store: st.store,
+            };
+          } catch {
+            return null;
           }
         })(),
         // Issue 278: agents stuck compacting; instruction size (agent_context.*).
@@ -7194,6 +7227,16 @@ void CRASH_GATE.then(() =>
     }
     // Issue 278: agents stuck compacting ring the bell (agent_context.*).
     startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
+    // Issue 163 (a): an install from before it was on by default is
+    // offered Keep agents running after logout once (it needs sudo).
+    try {
+      noteKeepRunningOffer(notificationDeps().store, getStateDir(), {
+        installed: installedServiceMode,
+        keep: () => agentsKeepRunningAfterLogout(),
+      });
+    } catch {
+      /* the bell is best effort; doctor and Settings offer it too */
+    }
     // #57: agents whose record names a project by its pre-D70 key follow it.
     void import("../../shared/agents/heal-workspace.js").then(async (m) => {
       const { isServerScope } =

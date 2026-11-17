@@ -2490,7 +2490,7 @@ terminal and agent) as launchd jobs, restarted if they exit:
 
 ```bash
 ./bin/acme service install                # install (or refresh) and start them
-./bin/acme service install --mode always  # keep them running after logout (opt-in)
+./bin/acme service install --mode login   # stop them at logout (a new install is always)
 ./bin/acme service install --plan  # what install would do; writes and loads nothing
 ./bin/acme service status      # launchd's view: state, pid, last exit code
 ./bin/acme service print       # the web plist it would install; installs nothing
@@ -2521,16 +2521,44 @@ you to run.
 
 ### Login or always
 
-| `--mode`          | Jobs                                                  | At logout                   |
-| ----------------- | ----------------------------------------------------- | --------------------------- |
-| `login` (default) | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent      |
-| `always`          | LaunchDaemons that run as you (`UserName`), from boot | keep running, and so agents |
+| `--mode`                        | Jobs                                                  | At logout                   |
+| ------------------------------- | ----------------------------------------------------- | --------------------------- |
+| `always` (default, new install) | LaunchDaemons that run as you (`UserName`), from boot | keep running, and so agents |
+| `login`                         | LaunchAgents in the desktop session (`gui/<uid>`)     | stop, with every agent      |
 
-`always` is opt-in: Settings › Agents › Keep agents running after logout
-(off by default), then Apply. Whether an agent reaches its sign-in (the
-login keychain) under the daemon is not yet shown, and `doctor` says so on
-its service line. A real logout has not been shown in tests either: they
-use the launchd job files and a restart of the session host.
+`always` is the default for a new install: Settings › Agents › Keep agents
+running after logout. An install from before 0.4.63 with the Setting never
+set keeps its mode, because switching needs sudo; its web server offers it
+once in the bell ("Keep agents running after logout: Apply"), Settings
+shows the offer, and `doctor` names it. An explicit off stays off.
+
+**Agents' sign-in under `always`.** A LaunchDaemon started after a logout
+isn't assumed to reach the login keychain, and the CLI's interactive
+sign-in expires on its own. So agents started under `always` sign in with
+the CLI's long-lived token instead:
+
+```bash
+claude setup-token                 # once, by you: prints a long-lived token
+./bin/acme agents token set        # paste it at the prompt (not shown), or pipe it in
+./bin/acme agents token status     # whether it is there, and when it was set
+```
+
+The token is kept in the install's secrets store (`secrets.provider`:
+1Password or Doppler), under `secrets.refs.agent_signin_token`. A
+distribution's ref wins; without one, `token set` creates the item and
+writes the ref to your user.yml. The `env` backend is refused: a daemon
+never sees your shell. Den reads the token at each agent start under
+`always` and passes it in that agent's environment only
+(`CLAUDE_CODE_OAUTH_TOKEN`): never argv, a log, a record or the plist. The
+plist carries only `DEN_AGENT_SIGNIN=token`. `token set` reads stdin or a
+prompt, never the command line, and is a person's only.
+
+`doctor` (its agent sign-in row) and the Settings row say when `always` is
+set but no token is configured ("agents will not be able to sign in after
+logout"), and when it was set. The token doesn't say when it expires, so
+after `agents.signin_token_warn_days` (330) they say to make a new one. A
+real logout is checked on a gate machine with the checklist in
+`docs/always-on-gate.md`.
 
 `always` takes your admin password once (sudo writes and loads the
 LaunchDaemons in `/Library/LaunchDaemons`). Apply in Settings asks for it
@@ -2541,7 +2569,7 @@ changes any job, so a refusal leaves the old mode.
 Which mode install uses: an explicit `--mode`; else the Setting
 (`agents.keep_running_after_logout` in user.yml: true is always, false is
 login); else the mode already installed, so re-running it after an
-upgrade never changes it; else login. Switching mode removes the other mode's
+upgrade never changes it; else always (a new install). Switching mode removes the other mode's
 jobs: never both. Use `always` on a machine you reach from elsewhere (ssh, a
 browser on another machine); `login` on a laptop.
 

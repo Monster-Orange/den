@@ -17,16 +17,19 @@ import { spawnSync } from "child_process";
 
 /**
  * Issue 163: `service install --mode always` (Settings › Keep agents
- * running after logout) is opt-in. It keeps the server, the host and every
- * agent running after logout; whether an agent reaches its sign-in (the
- * login keychain) under the daemon is not yet shown. Every place that
+ * running after logout; the default for a new install since 0.4.63). It
+ * keeps the server, the host and every agent running after logout. A
+ * daemon started after logout isn't assumed to reach the login keychain,
+ * so agents there sign in with the CLI's long-lived token from the
+ * install's secrets store (agents/signin-token.ts). Every place that
  * offers it says so.
  */
-export const ALWAYS_CAVEAT = "keychain under the daemon not yet shown";
+export const ALWAYS_CAVEAT =
+  "agents sign in there with a long-lived token from your secrets store (agents token set)";
 
 /** Issue 163: the where-line under mode always (doctor, the service row). */
 export const ALWAYS_WHERE_WARNING =
-  "agents keep running after logout; under the daemon an agent may not reach its sign-in (the login keychain): not yet shown";
+  "agents keep running after logout; they sign in with the long-lived token, not the login keychain (see agent sign-in)";
 
 export type LaunchctlRunner = () => { status: number | null; stdout: string };
 
@@ -72,7 +75,7 @@ export function webUpWarning(
   cli: string,
 ): string | null {
   if (session !== "Background" && session !== "System") return null;
-  return `this shell runs outside the desktop login (${session}, e.g. ssh): a Den started here keeps running after logout but has no login keychain and no GUI, and its agents run here too. To run it as a service: ${cli} service install --mode always (opt-in; ${ALWAYS_CAVEAT}) or --mode login`;
+  return `this shell runs outside the desktop login (${session}, e.g. ssh): a Den started here keeps running after logout but has no login keychain and no GUI, and its agents run here too. To run it as a service: ${cli} service install --mode always (${ALWAYS_CAVEAT}) or --mode login`;
 }
 
 /** Whether a process in this session ends when the person logs out. */
@@ -91,8 +94,8 @@ export function sessionWarning(
   what: string,
 ): string | null {
   if (endsAtLogout(session))
-    return `the ${what} runs in the desktop login (${session}): it stops when you log out. To keep it running: ${cli} service install --mode always (opt-in; ${ALWAYS_CAVEAT})`;
+    return `the ${what} runs in the desktop login (${session}): it stops when you log out. To keep it running: ${cli} service install --mode always (${ALWAYS_CAVEAT})`;
   if (session === "Background" || session === "System")
-    return `the ${what} keeps running after logout (${session}); it has no login keychain and no GUI, so it uses the 1Password service-account token, headless browsers and Full Disk Access instead`;
+    return `the ${what} keeps running after logout (${session}); it has no login keychain and no GUI, so agents sign in with the long-lived token, and it uses the 1Password service-account token, headless browsers and Full Disk Access instead`; // words-ok: 1Password names it a service account
   return null;
 }

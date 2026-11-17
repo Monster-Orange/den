@@ -180,7 +180,7 @@ import { localDateTime } from "../../shared/local-time.js";
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check|token> ...",
   lines: [
     "Agents: a persona and a project, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -290,6 +290,12 @@ export const AGENTS_HELP = {
     "    checks a hand-back to a person: URL, machine, branch, what changed, what",
     "    to click and decisions are all there, every ID is explained, and each",
     "    decision is a numbered yes/no question; exit 1 with what to fix",
+    "{cli} agents token set   ·   {cli} agents token status",
+    "    the long-lived sign-in token agents use under Keep agents running after",
+    "    logout (make it once with claude setup-token): set reads it from stdin or",
+    "    a prompt that doesn't show it, never the command line, and saves it in",
+    "    the install's secrets store. status: whether it is there and when it was",
+    "    set. A person's only",
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -1533,6 +1539,128 @@ async function listPersonas(
   return 0;
 }
 
+/** Issue 163 (b): `agents token set`'s input and store. */
+export interface AgentsTokenDeps {
+  /** The token, from stdin or a hidden prompt (default: readTokenInput). */
+  tokenInput?: () => Promise<string>;
+  /** Write it to the install's secrets store (default: saveAgentToken). */
+  tokenSave?: (
+    token: string,
+  ) => Promise<{ ref: "configured" | "created"; store: string }>;
+}
+
+/**
+ * The token from stdin (piped), or a prompt that doesn't echo it (a
+ * terminal). Never from argv.
+ */
+export async function readTokenInput(
+  stdin: NodeJS.ReadStream = process.stdin,
+  stderr: NodeJS.WriteStream = process.stderr,
+): Promise<string> {
+  if (!stdin.isTTY) {
+    let text = "";
+    for await (const chunk of stdin) text += String(chunk);
+    return text;
+  }
+  stderr.write("Paste the token (it isn't shown), then Enter: ");
+  return new Promise((resolve) => {
+    let text = "";
+    const raw = typeof stdin.setRawMode === "function";
+    if (raw) stdin.setRawMode(true);
+    stdin.resume();
+    const done = (v: string) => {
+      stdin.off("data", onData);
+      if (raw) stdin.setRawMode(false);
+      stdin.pause();
+      stderr.write("\n");
+      resolve(v);
+    };
+    const onData = (b: Buffer) => {
+      for (const ch of b.toString("utf-8")) {
+        if (ch === "\r" || ch === "\n") return done(text);
+        if (ch === "\u0003") return done("");
+        if (ch === "\u007f" || ch === "\b") text = text.slice(0, -1);
+        else text += ch;
+      }
+    };
+    stdin.on("data", onData);
+  });
+}
+
+/**
+ * `agents token set` (issue 163 b): the CLI's long-lived sign-in token
+ * (den-claude: made once with `claude setup-token`), into the install's
+ * secrets store, for agents under the always-on service. Read from stdin
+ * or a hidden prompt, never argv; a person's only; nothing printed carries
+ * it. `agents token status`: what doctor says about it.
+ */
+async function tokenCmd(
+  args: string[],
+  d: AgentsResolved,
+  deps: AgentsTokenDeps,
+): Promise<number> {
+  const [sub, ...rest] = args;
+  const where = `agents token ${sub ?? ""}`.trim();
+  if (sub !== "set" && sub !== "status")
+    throw new UsageError(`${where}: use agents token set | status`);
+  if (rest.length)
+    // Never echo what was given: it may be the token itself.
+    throw new UsageError(
+      `${where} takes no arguments: the token is read from stdin or a prompt, never on the command line (it would stay in your shell history and the process list)`,
+    );
+  const {
+    agentTokenStatus,
+    saveAgentToken,
+    tokenShapeError,
+    tokenStatusLine,
+    TOKEN_MAKE_HINT,
+  } = await import("../../shared/agents/signin-token.js");
+  if (sub === "status") {
+    const st = await agentTokenStatus({
+      env: { ...d.env, DEN_AGENT_SIGNIN: "token" },
+      stateDir: d.stateDir(),
+      probe: true,
+    });
+    const l = tokenStatusLine(st, d.cli);
+    (l.status === "ok" ? d.out : d.err)(
+      `${l.status === "ok" ? "✓" : "⚠"} ${l.text}`,
+    );
+    return l.status === "ok" ? 0 : 1;
+  }
+  if (isAgentTokenEnv(d.env)) {
+    d.err(
+      `✗ ${where}: only a person sets the agents' sign-in token (this is an agent)`,
+    );
+    return 1;
+  }
+  const input = await (deps.tokenInput ?? (() => readTokenInput()))();
+  const bad = tokenShapeError(input);
+  if (bad) {
+    d.err(
+      `✗ ${where}: ${bad}. Make one with ${TOKEN_MAKE_HINT}, then pipe it in: ${d.cli} agents token set < file, or paste it at the prompt`,
+    );
+    return 1;
+  }
+  let res: { ref: "configured" | "created"; store: string };
+  try {
+    res = await (
+      deps.tokenSave ??
+      ((t: string) => saveAgentToken(t, { stateDir: d.stateDir() }))
+    )(input.trim());
+  } catch (e) {
+    const msg = String((e as Error).message ?? e)
+      .split(input.trim())
+      .join("***");
+    d.err(`✗ ${where}: ${msg}`);
+    return 1;
+  }
+  d.out(
+    `✓ the agents' sign-in token is saved in ${res.store}${res.ref === "created" ? ` (a new item; secrets.refs.agent_signin_token is in your user.yml)` : ""}. ` +
+      `Agents started under Keep agents running after logout use it from their next start.`,
+  );
+  return 0;
+}
+
 export interface AgentsDoctorDeps {
   /** Resolve the login shell's PATH first (default: initLoginPath). */
   loginPath?: () => Promise<void>;
@@ -1897,7 +2025,7 @@ export function linkLines(
 /** `<cli> agents ...`; returns the exit code. */
 export async function cmdAgents(
   args: string[],
-  deps: AgentsDeps & AgentsDoctorDeps = {},
+  deps: AgentsDeps & AgentsDoctorDeps & AgentsTokenDeps = {},
 ): Promise<number> {
   const d = resolveAgentsDeps(deps);
   const sub =
@@ -1973,6 +2101,8 @@ export async function cmdAgents(
           return await handbackCheck(rest, d, deps);
         case "handoff-check":
           return await handbackCheck(rest, d, deps, "handoff");
+        case "token":
+          return await tokenCmd(rest, d, deps);
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

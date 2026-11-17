@@ -919,6 +919,33 @@ export async function applyKeepRunning(on, { post, askSudo, waitBack }) {
   return { state: "applied", mode: r.mode };
 }
 
+/**
+ * Issue 163 (b): what the Settings row says about the agents' sign-in
+ * token under the always-on service: none set (agents will not be able to
+ * sign in after logout), old, or when it was set. Never the token: the
+ * server sends whether one is configured and when it was set.
+ */
+export function keepTokenLine(s, t) {
+  if (!s || !s.configured) return { state: "missing", text: t("keep.noToken") };
+  if (s.old)
+    return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
+  if (s.set_at) {
+    let date = String(s.set_at).slice(0, 10);
+    try {
+      const tz =
+        document.documentElement.getAttribute("data-den-tz") || undefined;
+      date = new Date(s.set_at).toLocaleDateString(
+        document.documentElement.lang || undefined,
+        { year: "numeric", month: "short", day: "numeric", timeZone: tz },
+      );
+    } catch {
+      /* the ISO date stays */
+    }
+    return { state: "set", text: t("keep.tokenSet", { date }) };
+  }
+  return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
+}
+
 /** Issue 163: the switch, Apply, and what it means under the daemon. */
 function renderKeepRunning(host, ctx) {
   const t = (k, v) => ctx.shell.t(k, v);
@@ -926,10 +953,16 @@ function renderKeepRunning(host, ctx) {
   const mode = ctx.data.service_mode;
   // Set one way, running the other: Apply hasn't run (or didn't take).
   const pending = mode && (mode === "always") !== on0;
+  // Issue 163 (a): an existing login install, the Setting never set.
+  const offer = ctx.data.keep_running_unset === true;
+  // Issue 163 (b): the agents' sign-in token, when it is on.
+  const signLine = keepTokenLine(ctx.data.agent_signin, t);
   host.innerHTML =
     `<div data-keep style="display:grid;gap:8px">` +
     `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
+    `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
+    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
     `</div>`;
@@ -941,8 +974,10 @@ function renderKeepRunning(host, ctx) {
     note.hidden = !msg;
     note.textContent = msg || "";
   };
+  const token = host.querySelector("[data-keep-token]");
   box.addEventListener("change", () => {
     warn.hidden = !box.checked;
+    token.hidden = !box.checked;
   });
   btn.addEventListener("click", async () => {
     const on = box.checked;
@@ -1956,13 +1991,14 @@ export const DEN_SETTINGS = [
   },
 
   {
-    // Issue 163: opt-in, off by default. Apply re-installs Den's launchd
-    // jobs: on, as LaunchDaemons (mode always) that outlive a logout.
+    // Issue 163: on by default for a new install (0.4.63); an existing one
+    // is offered it. Apply re-installs Den's launchd jobs: on, as
+    // LaunchDaemons (mode always) that outlive a logout.
     id: "agents.keep_running",
     category: "agents",
     label: "Keep agents running after logout",
     description:
-      "On: __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. Under it an agent may not reach its sign-in (the login keychain): not yet shown. Off (the default): agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     keywords: [
       "logout",
       "log out",

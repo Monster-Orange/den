@@ -26,6 +26,7 @@ import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
 import chalk from "chalk";
 import {
+  agentsKeepRunningAfterLogout,
   readAgentsConfig,
   readDenConfig,
   readUserConfig,
@@ -522,6 +523,19 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         return true;
       }
     },
+    // Issue 163 (b): the agents' sign-in token, read from the store.
+    signIn: async () => {
+      const { agentTokenStatus } =
+        await import("../../shared/agents/signin-token.js");
+      return agentTokenStatus({
+        // The daemon's view: doctor asks only under mode always.
+        env: { DEN_AGENT_SIGNIN: "token" },
+        stateDir: getStateDir(),
+        probe: true,
+      });
+    },
+    // Issue 163 (a): unset over a login install is offered.
+    keepSetting: () => agentsKeepRunningAfterLogout(),
   };
 }
 

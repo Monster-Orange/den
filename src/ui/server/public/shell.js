@@ -1041,7 +1041,7 @@
     "set.agents.personas.d":
       "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
     "set.agents.keep_running.d":
-      "On: __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. Under it an agent may not reach its sign-in (the login keychain): not yet shown. Off (the default): agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     "set.cli.local_dev.d":
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     "set.cli.cli_tabs.d":
@@ -1382,7 +1382,7 @@
     "busy.restartF": "Couldn't restart {name}.",
     "keep.label": "Keep agents running after logout",
     "keep.warn":
-      "Under the daemon an agent may not reach its sign-in (the login keychain): not yet shown.",
+      "Agents there sign in with a long-lived token from your secrets store, not the login keychain.",
     "keep.apply": "Apply",
     "keep.pending": "Saved, not applied yet: press Apply.",
     "keep.w": "Applying…",
@@ -1395,6 +1395,14 @@
     "keep.noService":
       "Saved. It applies when __DEN_TITLE__ runs as a service: __DEN_CLI__ service install",
     "keep.refused": "No admin password: nothing changed.",
+    "keep.offer":
+      "Not set yet, so agents stop when you log out. Turn it on and press Apply (it asks for your admin password once).",
+    "keep.noToken":
+      "No sign-in token is set: agents will not be able to sign in after logout. Make one with claude setup-token, then __DEN_CLI__ agents token set.",
+    "keep.tokenSet": "Agents sign in with the token set {date}.",
+    "keep.tokenStore": "Agents sign in with the token in {store}.",
+    "keep.tokenOld":
+      "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
@@ -2378,6 +2386,7 @@
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
+    "bell.m.keepOffer": "Keep agents running after logout: Apply",
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
@@ -2680,7 +2689,7 @@
     "ag.mv.done": "{id} moved to {ws}.",
     "ag.where.logout": "Stops at logout",
     "ag.where.logoutTip":
-      "It runs in the desktop login, so logging out ends it. To keep agents running: Settings › Keep agents running after logout, or {cli} service install --mode always (opt-in; keychain under the daemon not yet shown)",
+      "It runs in the desktop login, so logging out ends it. To keep agents running: Settings › Keep agents running after logout, or {cli} service install --mode always (agents sign in there with a long-lived token: {cli} agents token set)",
     "ag.where.bg": "No GUI",
     "ag.where.bgTip":
       "It keeps running after logout, outside the desktop session: no login keychain and no GUI apps. 1Password uses the service-account token, browsers run headless, and protected folders need Full Disk Access ({cli} doctor).",

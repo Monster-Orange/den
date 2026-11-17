@@ -20,7 +20,8 @@
  * across logout (one sudo). Which mode install uses (issue 163): an
  * explicit --mode, else the Setting "Keep agents running after logout"
  * (agents.keep_running_after_logout, when set: on is always, off is
- * login), else the mode already installed, else login. `--plan` prints
+ * login), else the mode already installed, else always: a new install
+ * keeps agents running after logout by default (0.4.63). `--plan` prints
  * both jobs' plists (the web job's and the session host's). Both modes also
  * install the session host as its own job, on Den's node copy
  * (`<stateDir>/bin/<cli>-sessions-host`, the path Full Disk Access is
@@ -57,6 +58,7 @@ import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { notSetLine, readWebUrl } from "../../shared/web-url.js";
 import { ALWAYS_CAVEAT } from "../../shared/launchd-session.js";
+import { HOST_JOB_FILE } from "../../shared/agents/signin-token.js";
 import {
   classifyServerInfo,
   ForeignServerError,
@@ -295,7 +297,7 @@ export function hostExePath(stateDir: string, cli: string): string {
  * (`<cli> sessions` waits for it instead of starting one).
  */
 export function hostJobFile(stateDir: string): string {
-  return path.join(stateDir, "sessions-host-job.json");
+  return path.join(stateDir, HOST_JOB_FILE);
 }
 
 /** `--mode <m>` / `--mode=<m>` from install's args; undefined when absent. */
@@ -357,11 +359,12 @@ export function serviceHelp(cli: string): string[] {
     `  print                          the web plist it would install; installs nothing`,
     `  uninstall                      stop them and remove their plists`,
     ``,
-    `  --mode login   (default) LaunchAgents in the desktop session: stop at logout, with every agent`,
-    `  --mode always  LaunchDaemons running as you, one sudo: agents keep running after logout. Opt-in; ${ALWAYS_CAVEAT}`,
+    `  --mode always  (default for a new install) LaunchDaemons running as you, one sudo:`,
+    `                 agents keep running after logout; ${ALWAYS_CAVEAT}`,
+    `  --mode login   LaunchAgents in the desktop login: stop at logout, with every agent`,
     `  Without --mode, install follows Settings › Keep agents running after logout`,
     `  (agents.keep_running_after_logout: on is always, off is login); unset, it keeps`,
-    `  the mode already installed.`,
+    `  the mode already installed, and a new install is always.`,
   ];
 }
 
@@ -420,7 +423,8 @@ export async function cmdService(
     ((l: string) => serviceJobState(l, home, process.getuid?.() ?? 0));
   const installed = jobOf(label);
   // Issue 163: --mode, then the Setting, then the mode it has (re-running
-  // install keeps it), then login.
+  // install keeps it: switching needs sudo, so an existing install is
+  // offered Apply instead), then always: on by default for a new install.
   const keep = (
     deps.keepRunning ??
     (deps.run ? () => undefined : () => agentsKeepRunningAfterLogout())
@@ -428,7 +432,7 @@ export async function cmdService(
   const settingMode: ServiceMode | undefined =
     keep === undefined ? undefined : keep ? "always" : "login";
   const mode: ServiceMode =
-    askedMode ?? settingMode ?? installed?.mode ?? "login";
+    askedMode ?? settingMode ?? installed?.mode ?? "always";
   const stateDir = deps.stateDir ?? getStateDir();
   const env: Record<string, string> = {
     DEN_ROOT: distRoot,
@@ -466,7 +470,7 @@ export async function cmdService(
         : path.join(home, "Library", "LaunchAgents");
     log(`service install --plan (read-only: nothing is written or loaded)`);
     log(
-      `  mode:    ${mode}${mode === "always" ? ` (LaunchDaemons running as you: agents keep running after logout; opt-in; one sudo; ${ALWAYS_CAVEAT})` : " (LaunchAgents: stop at logout)"}`,
+      `  mode:    ${mode}${mode === "always" ? ` (LaunchDaemons running as you: agents keep running after logout; one sudo; ${ALWAYS_CAVEAT})` : " (LaunchAgents: stop at logout)"}`,
     );
     log(`  label:   ${label}`);
     log(`  plist:   ${path.join(dir, `${label}.plist`)}`);
@@ -531,7 +535,7 @@ export async function cmdService(
     if (line) log(line);
     if (mode === "always")
       log(
-        `note: --mode always is opt-in; ${ALWAYS_CAVEAT}: under the daemon an agent may not reach its sign-in (the login keychain)`,
+        `note: --mode always: ${ALWAYS_CAVEAT}. Without one, agents will not be able to sign in after logout: ${product().cli} doctor says whether it is set`,
       );
   }
   const code = run("bash", [script, sub!], {

@@ -23,7 +23,9 @@
  * itself asks sudo once before it changes anything, so a refusal there
  * leaves the old mode too.
  */
+import * as fs from "fs";
 import type * as http from "http";
+import * as path from "path";
 import type { ServiceMode } from "../cli/doctor-where.js";
 
 export interface KeepRunningDeps {
@@ -135,5 +137,54 @@ export function handleKeepRunningRoutes(
     if (!res.headersSent)
       d.sendJson(res, { ok: false, error: (e as Error).message }, 500);
   });
+  return true;
+}
+
+/** Issue 163 (a): the offer is made once per install: this file says it was. */
+export const KEEP_OFFER_FILE = "keep-running-offer.json";
+
+/**
+ * Issue 163 (a): an install from before Keep agents running after logout
+ * was on by default (a login service, the Setting never set) is not
+ * switched silently, since that needs sudo. Its web server offers it once:
+ * one bell note, "Keep agents running after logout: Apply", that opens the
+ * Setting. True when it was added now.
+ */
+export function noteKeepRunningOffer(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  stateDir: string,
+  d: {
+    installed: () => ServiceMode | null;
+    keep: () => boolean | undefined;
+  },
+): boolean {
+  if (d.installed() !== "login") return false;
+  let keep: boolean | undefined;
+  try {
+    keep = d.keep();
+  } catch {
+    return false;
+  }
+  if (keep !== undefined) return false;
+  const file = path.join(stateDir, KEEP_OFFER_FILE);
+  if (fs.existsSync(file)) return false;
+  store.add({
+    kind: "service",
+    subject: "record:keep-running-offer",
+    scope: "workspace/den-server",
+    text: "Keep agents running after logout: Apply",
+    msg: { key: "bell.m.keepOffer", vars: {} },
+    link: "/settings#agents.keep_running",
+  });
+  try {
+    fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ offeredAt: new Date().toISOString() }) + "\n",
+      { mode: 0o600 },
+    );
+  } catch {
+    /* offered again next start: better than never */
+  }
   return true;
 }
