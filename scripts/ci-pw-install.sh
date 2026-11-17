@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Playwright's browsers and their system packages, for CI (ci.yml and
-# release.yml call only this; tests/unit/test-infra/pw-install.test.ts
-# keeps it so).
+# Playwright's browsers and their system packages, for CI (ci.yml,
+# release.yml and repeat.yml call only this;
+# tests/unit/test-infra/pw-install.test.ts keeps it so).
 #
 # `npx playwright install --with-deps chromium webkit` hung twice until the
 # job's 20-minute timeout: its apt part crawled from the Ubuntu mirror, a
@@ -16,17 +16,27 @@
 #   CI_PW_DEPS_SECONDS     the system packages, default 180
 #   CI_PW_INSTALL_SECONDS  the browsers, default 90
 #
-#   bash scripts/ci-pw-install.sh           install both
-#   bash scripts/ci-pw-install.sh version   print version=<Playwright's version> (the cache key)
+#   bash scripts/ci-pw-install.sh [browser ...]  install (default: chromium webkit)
+#   bash scripts/ci-pw-install.sh version        print version=<Playwright's version> (the cache key)
 set -u
-
-browsers=(chromium webkit)
 
 if [ "${1:-}" = version ]; then
   v=$(node -p 'require("./package-lock.json").packages["node_modules/playwright"].version') || exit 1
   echo "version=$v"
   exit 0
 fi
+
+browsers=("$@")
+[ ${#browsers[@]} -gt 0 ] || browsers=(chromium webkit)
+for b in "${browsers[@]}"; do
+  case "$b" in
+    chromium | webkit | firefox) ;;
+    *)
+      echo "::error::not a Playwright browser: $b (chromium, webkit or firefox)" >&2
+      exit 2
+      ;;
+  esac
+done
 
 deps_s=${CI_PW_DEPS_SECONDS:-180}
 install_s=${CI_PW_INSTALL_SECONDS:-90}

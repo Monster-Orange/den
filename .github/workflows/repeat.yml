@@ -1,0 +1,105 @@
+# Runs chosen test files many times, to tell a flaky test from a broken one
+# (issue 398; for example 20 runs of one file). Run by hand only
+# (workflow_dispatch needs write access to this repo, so a fork can't start
+# it). Each run's pass or fail goes to the job summary.
+#
+# Where it runs: the self-hosted runners only when the
+# DEN_SELF_HOSTED_NIGHT repo variable is 'on' (the night switch, apart from
+# ci.yml's day switch); otherwise GitHub-hosted.
+name: repeat
+
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: "Test files, space-separated (paths under tests/)"
+        required: true
+        type: string
+      count:
+        description: "Runs per Node"
+        required: false
+        default: "20"
+        type: string
+      nodes:
+        description: "Node versions"
+        required: false
+        default: "both"
+        type: choice
+        options: ["22", "24", "both"]
+      browsers:
+        description: "Playwright browsers to install"
+        required: false
+        default: "chromium webkit"
+        type: choice
+        options: ["none", "chromium", "webkit", "chromium webkit"]
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    runs-on: ${{ vars.DEN_SELF_HOSTED_NIGHT == 'on' && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(inputs.nodes == 'both' && '["22.13.0","24.13.0"]' || inputs.nodes == '22' && '["22.13.0"]' || '["24.13.0"]') }}
+    env:
+      DEN_TEST_WORKERS: "2"
+      # Inputs reach the shell through the environment, never pasted into
+      # the script.
+      FILES: ${{ inputs.files }}
+      COUNT: ${{ inputs.count }}
+      BROWSERS: ${{ inputs.browsers }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Check the inputs
+        run: |
+          case "$COUNT" in ''|*[!0-9]*) echo "count must be a whole number"; exit 1;; esac
+          [ "$COUNT" -ge 1 ] && [ "$COUNT" -le 100 ] || { echo "count must be 1 to 100"; exit 1; }
+          for f in $FILES; do
+            [[ "$f" =~ ^tests/[A-Za-z0-9_./-]+$ ]] && [[ "$f" != *..* ]] || { echo "not a test path: $f"; exit 1; }
+            [ -f "$f" ] || { echo "no such file: $f"; exit 1; }
+          done
+      - run: npm ci
+      # Issue 398: the install goes through scripts/ci-pw-install.sh (a time
+      # limit and one retry per part; the browsers come from the cache).
+      - if: ${{ inputs.browsers != 'none' }}
+        id: pw
+        run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
+      - if: ${{ inputs.browsers != 'none' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+      - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
+        if: ${{ inputs.browsers != 'none' }}
+        timeout-minutes: 10
+        # $BROWSERS unquoted on purpose: one argument per browser; the
+        # script refuses any name that is not a browser.
+        run: bash scripts/ci-pw-install.sh $BROWSERS
+      - name: Run the files ${{ inputs.count }} times
+        run: |
+          fails=0
+          {
+            echo "### Node ${{ matrix.node }}: $COUNT runs"
+            echo
+            echo "Files: \`$FILES\`"
+            echo
+            echo "| Run | Result | Seconds |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for i in $(seq 1 "$COUNT"); do
+            start=$(date +%s)
+            if npx jest --forceExit $FILES > "run-$i.log" 2>&1; then r=pass
+            else r=FAIL; fails=$((fails + 1)); tail -n 60 "run-$i.log"; fi
+            echo "| $i | $r | $(( $(date +%s) - start )) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "run $i: $r"
+          done
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "**$fails of $COUNT runs failed.**" >> "$GITHUB_STEP_SUMMARY"
+          [ "$fails" -eq 0 ]

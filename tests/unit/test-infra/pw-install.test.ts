@@ -18,6 +18,10 @@ import * as yaml from "yaml";
 
 const ROOT = process.cwd();
 const SCRIPT = "bash scripts/ci-pw-install.sh";
+// The install step: the script, alone or with a browser list (not `version`).
+const installs = (s: Step) =>
+  s.run === SCRIPT ||
+  (!!s.run?.startsWith(`${SCRIPT} `) && !s.run.includes(" version"));
 
 interface Step {
   id?: string;
@@ -55,11 +59,15 @@ describe("CI installs Playwright only through scripts/ci-pw-install.sh", () => {
   it("the jobs that run the browser tests install through it", () => {
     const users = WORKFLOWS.flatMap((file) =>
       Object.entries(jobs(file))
-        .filter(([, j]) => (j.steps ?? []).some((s) => s.run === SCRIPT))
+        .filter(([, j]) => (j.steps ?? []).some(installs))
         .map(([name]) => `${file}:${name}`),
     );
     expect(users).toEqual(
-      expect.arrayContaining(["ci.yml:tests", "release.yml:tests"]),
+      expect.arrayContaining([
+        "ci.yml:tests",
+        "release.yml:tests",
+        "repeat.yml:repeat",
+      ]),
     );
   });
 
@@ -67,7 +75,7 @@ describe("CI installs Playwright only through scripts/ci-pw-install.sh", () => {
     for (const file of WORKFLOWS)
       for (const [name, job] of Object.entries(jobs(file))) {
         const steps = job.steps ?? [];
-        const at = steps.findIndex((s) => s.run === SCRIPT);
+        const at = steps.findIndex(installs);
         if (at < 0) continue;
         const t = steps[at]["timeout-minutes"];
         expect([file, name, typeof t === "number" && t > 0 && t <= 10]).toEqual(
@@ -177,6 +185,20 @@ exit 0
     expect([r.deps, r.install]).toEqual([2, 0]);
     expect(r.out).toMatch(/::error::.*install-deps.*failed twice/);
   }, 30_000);
+
+  it("the browsers are arguments: chromium and webkit when none are given", () => {
+    const r = run("chromium-only", {}, ["chromium"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/fake npx playwright install-deps chromium \(/);
+    expect(r.out).toMatch(/fake npx playwright install chromium \(/);
+  });
+
+  it("an unknown browser is refused before anything installs", () => {
+    const r = run("bad-browser", {}, ["chromium", "edge;rm"]);
+    expect(r.code).toBe(2);
+    expect([r.deps, r.install]).toEqual([0, 0]);
+    expect(r.out).toMatch(/not a Playwright browser: edge;rm/);
+  });
 
   it("the limits are settings; a bad one is refused", () => {
     const r = run("bad", { CI_PW_DEPS_SECONDS: "soon" });
