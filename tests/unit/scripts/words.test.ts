@@ -67,6 +67,54 @@ describe("the words gate's rules", () => {
     expect(neverShownIn("Un bot de la empresa", "es")).toEqual(["bot"]);
   });
 
+  // 2026-11-17 (issue 339): a vendor's own account is the vendor's word,
+  // as "MCP server" is the protocol's: allowed only right after a vendor's
+  // name or a {placeholder}. A bare account is still never shown.
+  it.each([
+    "Add {vendor} account",
+    "{vendor} account A",
+    "Claude account",
+    "Codex account 2",
+    "added ${name} account 2",
+    "Cuenta de {vendor} A",
+    "Añadir cuenta de {vendor}",
+    "{vendor} アカウント A",
+    "{vendor} アカウントを追加",
+  ])("a vendor's account: %j is clean", (text) => {
+    expect(neverShownIn(text)).toEqual([]);
+  });
+
+  it.each([
+    ["Link your account", ["account"]],
+    ["Add account", ["account"]],
+    ["the account of {vendor}", ["account"]],
+    ["Añadir cuenta", ["cuenta"]],
+    ["アカウントを追加", ["アカウント"]],
+  ])("a bare account: %j says %j", (text, words) => {
+    expect(neverShownIn(text)).toEqual(words);
+  });
+
+  it("a template's ${…} reads as a {placeholder} before a vendor's account", () => {
+    const [s] = proseIn("  d.out(`✓ added ${rt.name} account ${a.id}`);");
+    expect(neverShownIn(s!)).toEqual([]);
+    const [bare] = proseIn("  d.out(`✓ added the account ${a.id} here`);");
+    expect(neverShownIn(bare!)).toEqual(["account"]);
+  });
+
+  it("the vendor names cover every built-in runtime's vendor, name and accountName", async () => {
+    const { VENDOR_NAMES } = await import("../../../scripts/words.js");
+    const { BUILTIN_CATALOG } =
+      await import("../../../src/shared/agents/catalog.js");
+    for (const e of BUILTIN_CATALOG)
+      expect([
+        e.id,
+        VENDOR_NAMES.includes(e.vendor),
+        VENDOR_NAMES.includes(e.name),
+        // Issue 339: what the vendor calls the account (every built-in has one).
+        VENDOR_NAMES.includes(e.accountName),
+      ]).toEqual([e.id, true, true, true]);
+  });
+
   it("tells the language by its script and words", () => {
     expect(languageOf("プロジェクト")).toBe("ja");
     expect(languageOf("El proyecto no existe")).toBe("es");
@@ -75,7 +123,7 @@ describe("the words gate's rules", () => {
 
   it("reads only strings with two words in a row, never comments or keys", () => {
     expect(proseIn('  throw new Error(`no session "${id}" here`);')).toEqual([
-      'no session " " here',
+      'no session "{}" here',
     ]);
     expect(proseIn("  // the workspace is gone")).toEqual([]);
     expect(proseIn('  const k = "workspace";')).toEqual([]);

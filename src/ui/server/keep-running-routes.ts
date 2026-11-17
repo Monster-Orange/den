@@ -331,3 +331,120 @@ export function handleSignInTokenRoute(
   });
   return true;
 }
+
+/**
+ * Issue 339: Settings › Keep agents running after logout › the sign-in
+ * accounts, per vendor (signin-accounts.ts). Each is a person's only (an
+ * agent's request is refused, as `agents accounts` refuses in an agent's
+ * session):
+ *
+ *   POST /api/agents/accounts {runtime, name?}            Add account
+ *   POST /api/agents/accounts/token {runtime, account, token}
+ *        Set sign-in token: its own item in the install's secrets store,
+ *        by the same code as `agents accounts set-token`
+ *   POST /api/agents/accounts/order {runtime, order: [id, ...]}
+ *
+ * The token is never in an answer, a log line or an error. Answers:
+ *   { ok: true, accounts }    the Settings list (agent_accounts)
+ *   { ok: false, error }      400 a bad request, 403 an agent, 409 a config
+ *                             gap, 500 the store
+ */
+export interface AccountsRouteDeps {
+  isAgent: (req: http.IncomingMessage) => boolean;
+  add: (runtime: string, name?: string) => void;
+  order: (runtime: string, ids: string[]) => void;
+  saveToken: (
+    runtime: string,
+    account: string,
+    token: string,
+  ) => Promise<{ store: string }>;
+  /** The Settings list (never a token). */
+  view: () => unknown | Promise<unknown>;
+  log?: (line: string) => void;
+  readBody: (req: http.IncomingMessage) => Promise<string>;
+  sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
+}
+
+export function handleAccountsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: AccountsRouteDeps,
+): boolean {
+  if (
+    (pathname !== "/api/agents/accounts" &&
+      pathname !== "/api/agents/accounts/token" &&
+      pathname !== "/api/agents/accounts/order") ||
+    req.method !== "POST"
+  )
+    return false;
+  void (async () => {
+    if (d.isAgent(req))
+      return d.sendJson(
+        res,
+        { ok: false, error: "only a person changes the agents' sign-in" },
+        403,
+      );
+    let body: Record<string, unknown>;
+    try {
+      body = (JSON.parse(await d.readBody(req)) ?? {}) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return d.sendJson(res, { ok: false, error: "not JSON" }, 400);
+    }
+    const runtime = typeof body.runtime === "string" ? body.runtime : "";
+    if (!runtime)
+      return d.sendJson(res, { ok: false, error: "runtime is a string" }, 400);
+    const bad = (error: string) => d.sendJson(res, { ok: false, error }, 400);
+    const { withoutSecret, tokenShapeError } =
+      await import("../../shared/agents/signin-token.js");
+    let value = "";
+    try {
+      if (pathname === "/api/agents/accounts") {
+        if (body.name !== undefined && typeof body.name !== "string")
+          return bad("name is a string");
+        d.add(runtime, body.name as string | undefined);
+      } else if (pathname === "/api/agents/accounts/order") {
+        const order = body.order;
+        if (!Array.isArray(order) || !order.every((x) => typeof x === "string"))
+          return bad("order is a list of ids");
+        d.order(runtime, order as string[]);
+      } else {
+        if (typeof body.account !== "string")
+          return bad("`account` is a string");
+        if (typeof body.token !== "string") return bad("token is a string");
+        const shape = tokenShapeError(body.token);
+        if (shape) return bad(shape);
+        value = body.token.trim();
+        const saved = await d.saveToken(runtime, body.account, value);
+        d.log?.(
+          `agents' sign-in token for ${runtime} ${body.account} saved in ${saved.store} (by a person)`,
+        );
+      }
+    } catch (e) {
+      const error =
+        withoutSecret(String((e as Error)?.message ?? e), value) ||
+        "the secrets store refused it";
+      const code = (e as { code?: unknown })?.code;
+      const status =
+        code === "accounts"
+          ? 400
+          : configGapCode(e) || code === "env_outside_den"
+            ? 409
+            : 500;
+      const gap = configGapCode(e);
+      return d.sendJson(
+        res,
+        gap ? { ok: false, code: gap, error } : { ok: false, error },
+        status,
+      );
+    }
+    return d.sendJson(res, { ok: true, accounts: await d.view() });
+  })().catch(() => {
+    if (!res.headersSent)
+      d.sendJson(res, { ok: false, error: "not saved" }, 500);
+  });
+  return true;
+}

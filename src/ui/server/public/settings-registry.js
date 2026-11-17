@@ -1116,24 +1116,171 @@ export function keepTokenLine(s, t) {
   if (s.old)
     return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
   if (s.set_at) {
-    let date = String(s.set_at).slice(0, 10);
-    try {
-      const tz =
-        document.documentElement.getAttribute("data-den-tz") || undefined;
-      date = new Date(s.set_at).toLocaleDateString(
-        document.documentElement.lang || undefined,
-        { year: "numeric", month: "short", day: "numeric", timeZone: tz },
-      );
-    } catch {
-      /* the ISO date stays */
-    }
-    const set = t("keep.tokenSet", { date });
+    const set = t("keep.tokenSet", { date: localDay(s.set_at) });
     return {
       state: "set",
       text: s.process_local ? `${set} ${t("keep.processLocal")}` : set,
     };
   }
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
+}
+
+/** A set date in the reader's language and time zone (the ISO date if not). */
+function localDay(iso) {
+  let date = String(iso).slice(0, 10);
+  try {
+    const tz =
+      document.documentElement.getAttribute("data-den-tz") || undefined;
+    date = new Date(iso).toLocaleDateString(
+      document.documentElement.lang || undefined,
+      { year: "numeric", month: "short", day: "numeric", timeZone: tz },
+    );
+  } catch {
+    /* the ISO date stays */
+  }
+  return date;
+}
+
+/**
+ * Issue 339: what an account's row says (never a token): no token, or
+ * when it was set.
+ */
+export function accountLine(a, t) {
+  if (!a?.configured) return { state: "missing", text: t("acct.none") };
+  if (!a.set_at) return { state: "set", text: t("acct.setUnknown") };
+  return { state: "set", text: t("acct.set", { date: localDay(a.set_at) }) };
+}
+
+/**
+ * Issue 339: an account's name, or "<vendor> account A" in the reader's
+ * words (a vendor's own account, never a person: words.js, 2026-11-17).
+ */
+export function accountName(a, t, vendor) {
+  return (
+    a.name ||
+    t("acct.default", { vendor: vendor || "", letter: a.letter || a.id })
+  );
+}
+
+/**
+ * Issue 339: a vendor shows its rows once it has more than one account
+ * (or isn't Claude Code, whose account one is today's single field).
+ */
+function accountRows(v) {
+  return v.runtime !== "den-claude" || v.accounts.length > 1;
+}
+
+function renderAccountList(list, t) {
+  return (list || [])
+    .map((v) => {
+      const rows = accountRows(v)
+        ? v.accounts
+            .map((a, i) => {
+              const name = accountName(a, t, v.account || v.name);
+              const l = accountLine(a, t);
+              const last = i === v.accounts.length - 1;
+              return (
+                `<div class="set-note" data-acct="${escR(a.id)}" data-acct-state="${l.state}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">` +
+                `<strong>${escR(name)}</strong> <span data-acct-status>${escR(l.text)}${a.first ? ` ${escR(t("acct.first"))}` : ""}</span>` +
+                `<input type="password" autocomplete="off" spellcheck="false" data-acct-token aria-label="${escR(t("acct.tokenLabel", { name }))}">` +
+                `<button type="button" class="btn sm" data-acct-save>${escR(t("acct.tokenSave"))}</button>` +
+                `<button type="button" class="btn sm" data-acct-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` +
+                `<button type="button" class="btn sm" data-acct-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` +
+                `</div>`
+              );
+            })
+            .join("")
+        : "";
+      return (
+        `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
+        `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.account || v.name }))}</strong></p>` +
+        rows +
+        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.account || v.name }))}</button></div>` +
+        `<p class="set-note" data-acct-note hidden></p>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+/**
+ * Issue 339: Settings' sign-in accounts, per vendor: Add account, Set
+ * sign-in token (the same hidden field as today, cleared before the
+ * answer comes, never filled from the server) and Move up / down. Each
+ * answer is the new list, drawn again.
+ */
+function wireAccounts(host, ctx, t) {
+  const box = host.querySelector("[data-acct-list]");
+  if (!box) return;
+  const legacyRow = host.querySelector("[data-keep-token-row]");
+  const draw = (list) => {
+    ctx.data.agent_accounts = list;
+    box.innerHTML = renderAccountList(list, t);
+    // Claude Code with more than one account: each has its own field.
+    const claude = (list || []).find((v) => v.runtime === "den-claude");
+    // (Its inline display: flex would win over the hidden attribute.)
+    if (legacyRow)
+      legacyRow.style.display = claude && accountRows(claude) ? "none" : "flex";
+  };
+  draw(ctx.data.agent_accounts || []);
+  const post = (url, body, button) =>
+    ctx.shell.busyAction(
+      "save",
+      (headers) => ctx.shell.api("POST", url, body, { headers }),
+      { button },
+    );
+  box.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn || btn.disabled) return;
+    const vbox = btn.closest("[data-acct-runtime]");
+    if (!vbox) return;
+    const runtime = vbox.getAttribute("data-acct-runtime");
+    const note = vbox.querySelector("[data-acct-note]");
+    note.hidden = true;
+    const row = btn.closest("[data-acct]");
+    let url = "";
+    let body = null;
+    if (btn.hasAttribute("data-acct-add")) {
+      url = "/api/agents/accounts";
+      body = { runtime };
+    } else if (row && btn.hasAttribute("data-acct-save")) {
+      const input = row.querySelector("[data-acct-token]");
+      const token = input.value;
+      input.value = "";
+      if (!token.trim()) {
+        input.focus();
+        return;
+      }
+      url = "/api/agents/accounts/token";
+      body = { runtime, account: row.getAttribute("data-acct"), token };
+    } else if (
+      row &&
+      (btn.hasAttribute("data-acct-up") || btn.hasAttribute("data-acct-down"))
+    ) {
+      const ids = [...vbox.querySelectorAll("[data-acct]")].map((r) =>
+        r.getAttribute("data-acct"),
+      );
+      const i = ids.indexOf(row.getAttribute("data-acct"));
+      const j = btn.hasAttribute("data-acct-up") ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= ids.length) return;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      url = "/api/agents/accounts/order";
+      body = { runtime, order: ids };
+    } else return;
+    btn.disabled = true;
+    try {
+      const r = await post(url, body, btn);
+      if (r?.ok) return draw(r.accounts);
+      note.textContent = t("acct.failed", { error: r?.error || "" });
+      note.hidden = false;
+    } catch (e) {
+      note.textContent = t("acct.failed", {
+        error: String(e?.message || ""),
+      });
+      note.hidden = false;
+    }
+    btn.disabled = false;
+  });
 }
 
 /** Issue 299: the only terminal step for the agents' sign-in token. */
@@ -1264,8 +1411,10 @@ function renderKeepRunning(host, ctx) {
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
     `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
-    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
+    `<label class="set-note" data-keep-token-row style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
     `<p class="set-note" data-keep-token-note hidden></p>` +
+    // Issue 339: the sign-in accounts, per vendor.
+    `<div data-acct-list style="display:grid;gap:10px"></div>` +
     `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
@@ -1286,6 +1435,7 @@ function renderKeepRunning(host, ctx) {
     signin.hidden = !box.checked;
   });
   wireTokenField(host, ctx, token, t);
+  wireAccounts(host, ctx, t);
   btn.addEventListener("click", async () => {
     const on = box.checked;
     btn.disabled = true;
