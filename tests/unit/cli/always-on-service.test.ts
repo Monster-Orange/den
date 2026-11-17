@@ -24,6 +24,11 @@ import * as path from "path";
 import { cmdService } from "../../../src/ui/cli/service-command.js";
 import { whereRows, type WhereDeps } from "../../../src/ui/cli/doctor-where.js";
 import { noteKeepRunningOffer } from "../../../src/ui/server/keep-running-routes.js";
+import {
+  bellPrefs,
+  bellView,
+  type Notification,
+} from "../../../src/shared/notifications.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import type { TokenStatus } from "../../../src/shared/agents/signin-token.js";
 
@@ -209,6 +214,29 @@ describe("the one-time offer for an existing install (a)", () => {
     expect(noteKeepRunningOffer(s, dir, d)).toBe(false);
     expect(s.added).toHaveLength(1);
     expect(s.added[0]!.msg?.key).toBe("bell.m.keepOffer");
+  });
+
+  // Issue 163: an offer the person must act on is in "needs you": counted
+  // on the badge, never folded under Updates.
+  it("needs you: on the badge, not folded under Updates", () => {
+    const added: Omit<Notification, "id" | "source" | "at" | "read">[] = [];
+    noteKeepRunningOffer(
+      { add: (n) => void added.push(n as never) },
+      tmp("den-offer-"),
+      { installed: () => "login", keep: () => undefined },
+    );
+    expect(added).toHaveLength(1);
+    const item = {
+      ...added[0]!,
+      id: "n1",
+      source: "den",
+      at: new Date().toISOString(),
+      read: false,
+    } as Notification;
+    const view = bellView([item], bellPrefs({}));
+    expect(view.unread).toBe(1);
+    expect(view.recent.map((n) => n.id)).toEqual(["n1"]);
+    expect(view.updates).toEqual([]);
   });
 
   it.each([
