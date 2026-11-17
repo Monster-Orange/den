@@ -13,7 +13,7 @@
  * start-agent, restart-agent, fresh-start, report-preview, save-report-draft,
  * discard-draft, follow-project, keep-running, send-message, allow-web-app,
  * ask-allow,
- * agent-order, delete-project, remove-service, gate-end. Waits for
+ * agent-order, delete-project, remove-service, remove-mcp, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -75,6 +75,16 @@ export const DEN_ACTIONS = {
       working: "busy.rmSvcW",
       success: "busy.rmSvcS",
       failure: "busy.rmSvcF",
+    },
+  },
+  // Issue 352: Settings › Project › Agents' extra MCP servers › Remove.
+  "remove-mcp": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "pmcp.rmW",
+      success: "pmcp.rmS",
+      failure: "pmcp.rmF",
     },
   },
   link: {
