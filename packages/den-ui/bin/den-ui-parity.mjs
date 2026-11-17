@@ -175,7 +175,7 @@ export const COMPONENTS = {
   search: {
     label: "search field with ⌘K inside",
     markup: [cls("den-search"), cls("den-search-ph"), cls("den-search-ic")],
-    css: ["den-search", "den-search-ph", "den-search-ic"],
+    css: ["den-search", "den-search-ph", "den-search-ic", "den-kbd"],
     code: ["searchHtml", "hydrateSearch"],
     files: [],
   },

@@ -776,6 +776,96 @@ for (const engine of ["chromium", "webkit"]) {
       await p.context().close();
     });
 
+    it("one key cap: Report's ⌘⇧F and search's ⌘K are the same .den-kbd cap", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      const caps = await p.evaluate(() => {
+        const look = (el: Element | null) => {
+          if (!el) return null;
+          const c = getComputedStyle(el);
+          return {
+            h: Math.round(el.getBoundingClientRect().height),
+            border: [
+              c.borderTopWidth,
+              c.borderRightWidth,
+              c.borderBottomWidth,
+              c.borderLeftWidth,
+              c.borderTopStyle,
+            ].join(" "),
+            radius: c.borderTopLeftRadius,
+            pad: c.paddingLeft + " " + c.paddingRight,
+            bg: c.backgroundColor,
+            surface: (() => {
+              const t = document.createElement("i");
+              t.style.setProperty("background", "var(--surface)");
+              document.body.appendChild(t);
+              const v = getComputedStyle(t).backgroundColor;
+              t.remove();
+              return v;
+            })(),
+          };
+        };
+        const extra = document.createElement("kbd");
+        extra.className = "den-kbd";
+        extra.textContent = "⌘J";
+        document.body.appendChild(extra);
+        return {
+          report: look(document.querySelector(".den-top .den-rb kbd")),
+          search: look(document.querySelector(".den-search kbd")),
+          host: look(extra),
+        };
+      });
+      for (const c of [caps.report, caps.search, caps.host]) {
+        expect(c).not.toBeNull();
+        expect(c!.border).toBe("1px 1px 2px 1px solid");
+        expect(c!.radius).toBe("4px");
+        expect(c!.pad).toBe("5px 5px");
+        expect(c!.bg).toBe(c!.surface);
+      }
+      expect(caps.report!.h).toBe(caps.search!.h);
+      await p.context().close();
+    });
+
+    it('a rail group\'s heading is as tall with its "from" tag as without', async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, "?bare");
+      const hs = await p.evaluate(() => {
+        const D = (
+          window as unknown as {
+            DenUI: { shellHtml: (m: unknown) => string };
+          }
+        ).DenUI;
+        const box = document.createElement("div");
+        box.innerHTML = D.shellHtml({
+          product: { name: "Acme", version: "1.0.0" },
+          groups: [
+            { id: "a", label: "First" },
+            { id: "b", label: "Second", from: "plugin" },
+            { id: "c", label: "Third" },
+          ],
+          nav: ["a", "b", "c"].map((g) => ({
+            id: "p" + g,
+            label: "Page " + g,
+            href: "#" + g,
+            group: g,
+            icon: "home",
+          })),
+        });
+        document.body.appendChild(box);
+        return [...box.querySelectorAll(".den-gh")].map((h) => [
+          h.querySelector(".den-tagx") ? "tag" : "plain",
+          h.getBoundingClientRect().height,
+        ]);
+      });
+      // The tag never makes its heading taller: the heading is the plain
+      // one's height (32px in Den's fonts), whatever the faces measure.
+      expect(hs.map((h) => h[0])).toEqual(["plain", "tag", "plain"]);
+      expect(hs[1]![1]).toBe(hs[2]![1]);
+      await p.context().close();
+    });
+
     it("Settings in the rail's foot, then the account entry, then Collapse", async () => {
       const b = browsers[engine];
       if (!b) return;

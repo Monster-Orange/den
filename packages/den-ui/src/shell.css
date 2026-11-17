@@ -264,14 +264,17 @@ body.den-has-shell > #den-content {
 .den-rail > .den-rail-group:first-child > .den-gh {
   padding-top: 2px;
 }
+/* A group's "from" tag: never taller than the heading's own line (its
+   10px words on a 12px line, centred), so the heading stays 32px. */
 .den-tagx {
-  font: 10px var(--mono);
+  font: 10px/12px var(--mono);
   color: var(--faint);
   border: 1px dashed var(--border-strong);
   border-radius: 4px;
   padding: 0 4px;
   text-transform: none;
   letter-spacing: 0;
+  align-self: center;
 }
 .den-ni {
   display: flex;
@@ -629,7 +632,11 @@ body.den-has-shell .den-upd {
 .den-search-ic {
   flex: none;
 }
-.den-search kbd {
+/* A key cap: the search's ⌘K, the top bar's Report ⌘⇧F, and any .den-kbd
+   a host draws. One rule, so they never drift apart. */
+.den-kbd,
+.den-search kbd,
+.den-top .den-rb kbd {
   font: 11px var(--mono);
   border: 1px solid var(--border);
   border-bottom-width: 2px;

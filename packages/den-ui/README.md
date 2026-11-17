@@ -428,6 +428,12 @@ selected }`, a line under them, the languages `{ id, name, current }`,
 - **Settings**: `settings: { href, label?, current? }` on `shellHtml` or
   `railHtml` puts Settings in the rail's foot after the host's entries and
   before the account entry. `settingsHtml(...)` draws it alone.
+- **Key caps**: `.den-kbd` is the one key-cap rule: the search's ⌘K,
+  Report's ⌘⇧F and any `<kbd class="den-kbd">` a host draws (its palette's
+  hints, say). A 1px border with a 2px bottom, 4px corners, `--surface`
+  behind, 5px each side. A host deletes its own copy.
+- **Group headings**: a heading with its "from" tag is as tall as one
+  without (32px in Den's fonts): the tag sits on a 12px line, centred.
 - The kit's menus (◐ ▾, a crumb's own menu) wear `.den-pop`, `.den-mi`,
   `.den-ml`, `.den-hr` and `.den-mnote`, styled in `shell.css`.
 - Wiring: `DenUI.hydrate(root, { scope, search, bell, account, appearance })` (or

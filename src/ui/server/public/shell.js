@@ -7669,8 +7669,7 @@
     "  line-height: 1.45; text-decoration: none; }",
     ".ptabs [role='tab']:hover { color: var(--text); }",
     ".ptabs [role='tab'][aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }",
-    ".den-top kbd, .den-pal kbd { font: 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px;",
-    "  border-radius: 4px; padding: 0 5px; color: var(--muted); background: var(--surface); }",
+    // The key caps (⌘K, Report's ⌘⇧F) are the kit's (.den-kbd, den-ui 0.7.0).
     ".den-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);",
     "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer; font: inherit;",
     "  font-size: 13px; white-space: nowrap; flex-shrink: 0; color: var(--text); }",
