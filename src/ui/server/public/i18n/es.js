@@ -2777,6 +2777,12 @@
     "set.notifications.quiet.off": "No",
     "set.notifications.quiet.half":
       "Las horas de silencio necesitan un inicio y un fin.",
+    "set.notifications.push_timeout": "Espera del push",
+    "set.notifications.push_timeout.d":
+      "Cuánto espera __DEN_TITLE__ a que un servicio de push acepte un aviso para un dispositivo. Pasado este tiempo, ese aviso se deja; el siguiente lo intenta de nuevo. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push guardado durante",
+    "set.notifications.push_ttl.d":
+      "Cuánto guarda un servicio de push un aviso para un dispositivo apagado o sin conexión, en segundos. 86400 es un día; 0 lo descarta si el dispositivo no está encendido ahora. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
     "set.notifications.desktop": "Avisos en el escritorio",
     "set.notifications.desktop.d":
       "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
