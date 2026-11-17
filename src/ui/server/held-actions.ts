@@ -17,6 +17,9 @@
  *                     an inactive workspace is activated first, on the
  *                     same Allow, and the Review says so
  *   hub_connect       #267: set, change or clear Hub's address
+ *   hub_project_create issue 271: ask Hub for a new project to link a
+ *                     project to (hub-create-routes.ts, the code Settings
+ *                     runs); an owner decides it in Hub, Den links it
  *   den_restart       SRV-1a: restart this Den's web server, in place
  *                     (server-restart.ts); the agent that asked is told
  *                     when it is back
@@ -143,6 +146,8 @@ export interface HeldActionDeps {
   projectMode?: HeldOp;
   /** #267: hub_connect's check and write (hub-address.ts). */
   hubAddress?: HeldOp;
+  /** Issue 271: ask Hub for a new project to link a project to. */
+  hubCreate?: HeldOp;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
@@ -522,6 +527,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't add a project's MCP servers here",
   );
   const hubConnect = op(d.hubAddress, "this Den can't set Hub's address here");
+  const hubCreate = op(d.hubCreate, "this Den can't ask Hub for projects here");
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
     d.agentMode,
@@ -796,6 +802,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     project_mode: projectMode,
     project_mcp_add: projectMcp,
     hub_connect: hubConnect,
+    hub_project_create: hubCreate,
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,

@@ -916,6 +916,190 @@ export async function hubPlanRename(
   };
 }
 
+/** Issue 271: the longest name Hub takes for a project. */
+export const HUB_PROJECT_NAME_MAX = 80;
+/** Issue 271: Hub's short names: lowercase letters, digits, hyphens, up to 39. */
+const HUB_SLUG_MAX = 39;
+
+/**
+ * Issue 271: the short name Den proposes for a new Hub project, from its
+ * name: lowercase letters, digits and hyphens, up to 39; "project" when
+ * nothing is left. One in `taken` gets -2, -3, … (still up to 39).
+ */
+export function hubSlugFor(
+  name: string,
+  taken: readonly string[] = [],
+): string {
+  const base =
+    name
+      .normalize("NFKD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, HUB_SLUG_MAX)
+      .replace(/-+$/, "") || "project";
+  const used = new Set(taken.map((t) => t.toLowerCase()));
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const tail = `-${n}`;
+    const s = `${base.slice(0, HUB_SLUG_MAX - tail.length).replace(/-+$/, "")}${tail}`;
+    if (!used.has(s)) return s;
+  }
+}
+
+/** A held ask Hub made for a new project (issue 271). */
+export interface HubPlanAsk {
+  held: string;
+  state: string;
+  slug: string;
+  name: string;
+  summary?: string;
+  /** Hub's page where an owner allows it (http(s) only). */
+  url?: string;
+}
+
+/** How many short names Den tries when Hub says one is taken. */
+const SLUG_TRIES = 5;
+
+/**
+ * Issue 271: ask Hub for a new project, as a change an owner decides in
+ * Hub: POST <url>/api/projects/plan with {changes: [{op: "create", slug,
+ * name}], reason}. Den proposes the slug from the name, skipping `taken`
+ * (Hub's project list); a slug Hub refuses as taken (400, at once) is
+ * re-picked before anyone is asked. `caller`: the agent that asks (a held
+ * write), so Hub's answer reaches it; none for a person in Settings.
+ */
+export async function hubPlanCreate(
+  url: string,
+  token: string,
+  ask: {
+    name: string;
+    reason: string;
+    taken?: readonly string[];
+    caller?: HubCaller;
+  },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<HubPlanAsk> {
+  const name = ask.name.replace(/\s+/g, " ").trim();
+  const reason = ask.reason.replace(/\s+/g, " ").trim();
+  if (!reason) throw new Error("say why: Hub's owner reads the reason");
+  if (!name || name.length > HUB_PROJECT_NAME_MAX)
+    throw new Error(
+      `name: 1 to ${HUB_PROJECT_NAME_MAX} characters, as Hub takes it`,
+    );
+  const taken = [...(ask.taken ?? [])];
+  for (let i = 0; ; i++) {
+    const slug = hubSlugFor(name, taken);
+    let b: Record<string, unknown>;
+    try {
+      b = await hubCall(
+        `${url}/api/projects/plan`,
+        {
+          method: "POST",
+          headers: {
+            ...(ask.caller ? hubHeaders(token, ask.caller) : bearer(token)),
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            changes: [{ op: "create", slug, name }],
+            reason,
+          }),
+        },
+        opts,
+      );
+    } catch (e) {
+      if (
+        e instanceof HubCallError &&
+        e.status === 400 &&
+        /\btaken\b/i.test(e.message) &&
+        i < SLUG_TRIES - 1
+      ) {
+        taken.push(slug);
+        continue;
+      }
+      throw e;
+    }
+    const held = str(b.held);
+    if (!held) throw new HubCallError("refused", "Hub held no change for it");
+    const link = str(b.url);
+    const summary = str(b.summary);
+    return {
+      held,
+      state: str(b.state) ?? "pending",
+      slug,
+      name,
+      ...(summary ? { summary } : {}),
+      ...(link && /^https?:\/\//.test(link) ? { url: link } : {}),
+    };
+  }
+}
+
+/** What Den reads of a plan's outcome (issue 271). */
+export type HubPlanState = "pending" | "applied" | "declined" | "superseded";
+
+export interface HubPlanOutcome {
+  held: string;
+  state: HubPlanState;
+  decidedAt: string | null;
+  /** What its creates made (applied: with Hub's hidden id) or will make. */
+  projects: {
+    id: string | null;
+    slug: string;
+    name: string;
+    url: string | null;
+  }[];
+}
+
+/**
+ * Issue 271: what became of a plan this install asked for: GET
+ * <url>/api/projects/plan/:held with the install's token. An unknown
+ * state reads as superseded (nothing changed: ask again).
+ */
+export async function hubPlanOutcome(
+  url: string,
+  token: string,
+  held: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<HubPlanOutcome> {
+  const b = await hubCall(
+    `${url}/api/projects/plan/${encodeURIComponent(held)}`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    opts,
+  );
+  const st = str(b.state);
+  const state: HubPlanState =
+    st === "pending" || st === "applied" || st === "declined"
+      ? st
+      : "superseded";
+  const projects = (Array.isArray(b.projects) ? b.projects : []).flatMap(
+    (x: unknown) => {
+      const o = (x ?? {}) as Record<string, unknown>;
+      const slug = str(o.slug);
+      if (!slug) return [];
+      const link = str(o.url);
+      return [
+        {
+          id: str(o.id) ?? null,
+          slug,
+          name: str(o.name) ?? slug,
+          url: link && /^https?:\/\//.test(link) ? link : null,
+        },
+      ];
+    },
+  );
+  return {
+    held: str(b.held) ?? held,
+    state,
+    decidedAt: str(b.decided_at) ?? null,
+    projects,
+  };
+}
+
 /**
  * H5: tell Hub this install's full project list: PUT
  * <url>/api/installs/self/projects (GITHUB-COVERAGE / H5 sync). The raw

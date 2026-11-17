@@ -138,6 +138,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "restarts Den for every project; server_agent.self_update decides for Den's own agent",
   },
+  hub_project_create: {
+    risk: "routine",
+    why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
+  },
   agent_create: {
     risk: "routine",
     why: "starts an agent in the project's mode or a stricter one",

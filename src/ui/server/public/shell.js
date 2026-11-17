@@ -1668,6 +1668,27 @@
     "hubp.linkProject": "Link {project} to a Hub project",
     "hubp.scope":
       "Linking affects only the project {project}. Your other projects aren't changed.",
+    // Issue 271: Create a Hub project from the link picker.
+    "hubp.createOpt": "Create a Hub project named {name}",
+    "hubp.newName": "Name in Hub",
+    "hubp.create": "Create",
+    "hubp.nameEmpty": "Type a name for the Hub project.",
+    "hubp.nameLong": "A Hub project's name is up to 80 characters.",
+    "hubp.asked":
+      "Den asked Hub to create the Hub project {name} for {project}.",
+    "hubp.youAllow":
+      "You're an owner in Hub. Allow it there, and Den links {project} to it.",
+    "hubp.allowBtn": "Allow in Hub",
+    "hubp.ownerMust":
+      "An owner of {company} in Hub must allow it. Den links {project} on its own when they do.",
+    "hubp.ownerMustAny":
+      "An owner of your company in Hub must allow it. Den links {project} on its own when they do.",
+    "hubp.declined":
+      "An owner in Hub declined the Hub project {name}. Pick a Hub project, or ask again.",
+    "hubp.ended": "Hub's ask for {name} ended with no change. Ask again.",
+    "hubp.createW": "Asking Hub to create {name}…",
+    "hubp.createS": "Asked. An owner allows it in Hub.",
+    "hubp.createF": "Hub didn't take the ask. Nothing was created.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
     "hub.reconnect": "Reconnect",
@@ -2187,6 +2208,13 @@
       "This lets {agent} act without asking you: {from} → follow project ({to})",
     "ap.pm.warn": "This lets agents in {project} act without asking you.",
     "ap.pm.project": "Project: {project}",
+    // Issue 271: hub_project_create's Allow.
+    "ap.do.hub_project_create":
+      "Ask Hub to create the Hub project {name} for project {project}",
+    "ap.hc.project": "Project: {project}",
+    "ap.hc.name": "Name in Hub: {name}",
+    "ap.hc.owner":
+      "An owner in Hub allows it there; Den links the project to it once they do.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":

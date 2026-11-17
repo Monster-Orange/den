@@ -141,7 +141,15 @@ many it linked and how many need your pick.
 name point to different ones, Den doesn't guess. The bell says "N projects need your pick". Settings ›
 Hub lists each such project with Hub's choices, none picked. Pick one and press **Link**.
 
-Den never links on its own beyond the clear matches. Each link is recorded in the audit trail.
+**No Hub project fits yet.** In Settings › Project › Hub project, the picker's first option is
+"Create a Hub project named <this project's name>". Change the name if you like, then press
+**Create**. Den asks Hub for the new project, and an owner of your company decides it in Hub. If you
+are an owner, **Allow in Hub** is right there in the row. If you aren't, the row says an owner must
+allow it. Either way, Den links the project by itself once the new Hub project is made. Den's own
+agent can ask the same with its held write `hub_project_create`.
+
+Den never links on its own beyond the clear matches and a new Hub project you asked for. Each link is
+recorded in the audit trail.
 
 From a shell:
 
