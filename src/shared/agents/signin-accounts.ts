@@ -91,7 +91,7 @@ export function signInRuntime(runtimeId: string): {
   if (!rt) throw new AccountsError(`no runtime "${runtimeId}"`);
   if (!rt.signInTokenEnv)
     throw new AccountsError(
-      `${rt.catalog?.name ?? runtimeId} has no sign-in data (agents.runtime_catalog, signIn), so it has no accounts`, // words-ok: a vendor's sign-in account (issue 339)
+      `${rt.catalog?.name ?? runtimeId} has no sign-in data (agents.runtime_catalog, signIn), so it has no sign-ins`,
     );
   return {
     id: runtimeId,
@@ -181,15 +181,15 @@ export function nameError(name: string): string | null {
   return null;
 }
 
-/** "Account A" for "1", ... "Account Z", then "Account 27". */
+/** "Sign-in A" for "1", ... "Sign-in Z", then "Sign-in 27". */
 export function defaultLetter(id: string): string {
   const n = Number(id);
   return n >= 1 && n <= 26 ? String.fromCharCode(64 + n) : id;
 }
 
-/** What people see: the name, or "Account A". */
+/** What people see: the name, or "Sign-in A". */
 export function accountLabel(a: Pick<SignInAccount, "id" | "name">): string {
-  return a.name ?? `Account ${defaultLetter(a.id)}`;
+  return a.name ?? `Sign-in ${defaultLetter(a.id)}`;
 }
 
 /** The account's named ref under secrets.refs. */
@@ -210,8 +210,7 @@ export function newAccountRef(
 ): Partial<SecretRef> | null {
   if (runtimeId === "den-claude" && accountId === "1")
     return newAgentTokenRef(backend);
-  const which =
-    accountId === "1" ? runtimeId : `${runtimeId}, account ${accountId}`;
+  const which = accountId === "1" ? runtimeId : `${runtimeId}, ${accountId}`;
   switch (backend) {
     case "1password":
       return {
@@ -250,7 +249,7 @@ export function findAccount(
     );
   if (!hit)
     throw new AccountsError(
-      `no account "${w}" (${list.map((a) => `${a.id} ${accountLabel(a)}`).join(", ")})`, // words-ok: a vendor's sign-in account (issue 339)
+      `no sign-in "${w}" (${list.map((a) => `${a.id} ${accountLabel(a)}`).join(", ")})`,
     );
   return hit;
 }
@@ -291,7 +290,7 @@ export function setAccountOrder(
     !ids.every((id) => have.includes(id))
   )
     throw new AccountsError(
-      `the order names every account once: ${have.join(" ")}`, // words-ok: a vendor's sign-in account (issue 339)
+      `the order names every sign-in once: ${have.join(" ")}`,
     );
   r.accounts = ids.map((id) => r.accounts.find((a) => a.id === id)!);
   writeFile(stateDir, f);

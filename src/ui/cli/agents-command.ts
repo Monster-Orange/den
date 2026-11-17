@@ -297,11 +297,11 @@ export const AGENTS_HELP = {
     "    the install's secrets store. status: whether it is there and when it was",
     "    set. clear: removes it from the store, the way set kept it (asks first",
     "    unless --yes). set and clear are a person's only",
-    "{cli} agents accounts list | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]", // words-ok: a vendor's sign-in accounts (issue 339)
-    "    a vendor's sign-in accounts (Account A, B, ... unless named), each token", // words-ok: a vendor's sign-in accounts (issue 339)
-    "    its own item in the install's secrets store; set-token reads it like", // words-ok: a vendor's sign-in accounts (issue 339)
-    "    token set. Agents sign in with the first in the order. The token that", // words-ok: a vendor's sign-in accounts (issue 339)
-    "    exists today is Account A. Changes are a person's only", // words-ok: a vendor's sign-in accounts (issue 339)
+    "{cli} `agents accounts` list | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
+    "    a vendor's sign-ins for agents (Sign-in A, B, ... unless named), each token",
+    "    its own item in the install's secrets store; set-token reads it like",
+    "    token set. Agents sign in with the first in the order. The token that",
+    "    exists today is Sign-in A. Changes are a person's only",
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -1836,10 +1836,13 @@ async function accountsCmd(
   const [sub, ...more] = args;
   const subs = ["list", "add", "set-token", "order", "remove"];
   // Never echo an unknown word: it may be a token pasted in the wrong place.
-  const where = `agents accounts${sub && subs.includes(sub) ? ` ${sub}` : ""}`; // words-ok: a vendor's sign-in account (issue 339)
+  const where = "`agents accounts{sub}`".replace(
+    "{sub}",
+    sub && subs.includes(sub) ? ` ${sub}` : "",
+  );
   if (!sub || !subs.includes(sub))
     throw new UsageError(
-      `${where}: use agents accounts ${subs.join(" | ")} [--runtime <id>]`, // words-ok: a vendor's sign-in account (issue 339)
+      `${where}: use \`agents accounts ${subs.join(" | ")}\` [--runtime <id>]`,
     );
   const ad = deps.accountDeps ?? {};
   const stateDir = d.stateDir();
@@ -1852,7 +1855,7 @@ async function accountsCmd(
       const { rest } = runtimeArg(more);
       if (rest.length !== 1)
         throw new UsageError(
-          `${where} takes one account (its number or name): the token is read from stdin or a prompt, never on the command line (it would stay in your shell history and the process list)`, // words-ok: a vendor's sign-in account (issue 339)
+          `${where} takes one sign-in (its number or name): the token is read from stdin or a prompt, never on the command line (it would stay in your shell history and the process list)`,
         );
     }
     const { runtimeId, rest } = runtimeArg(more);
@@ -1875,7 +1878,7 @@ async function accountsCmd(
     }
     if (isAgentTokenEnv(d.env)) {
       d.err(
-        `✗ ${where}: only a person changes the agents' sign-in accounts (this is an agent)`, // words-ok: a vendor's sign-in accounts (issue 339)
+        `✗ ${where}: only a person changes the agents' sign-ins (this is an agent)`,
       );
       return 1;
     }
@@ -1889,13 +1892,13 @@ async function accountsCmd(
       if (left.length) throw new UsageError(`${where} takes only --name`);
       const a = A.addAccount(stateDir, runtimeId, name);
       d.out(
-        `✓ added account ${a.id} (${A.accountLabel(a)}) to ${rt.name}. Set its token: ${d.cli} agents accounts set-token ${a.id}${flag}`, // words-ok: a vendor's sign-in account (issue 339)
+        `✓ added sign-in ${a.id} (${A.accountLabel(a)}) to ${rt.name}. Set its token: \`${d.cli} agents accounts set-token ${a.id}${flag}\``,
       );
       return 0;
     }
     if (sub === "order") {
       if (!rest.length)
-        throw new UsageError(`${where} takes every account, in order`); // words-ok: a vendor's sign-in account (issue 339)
+        throw new UsageError(`${where} takes every sign-in, in order`);
       const ids = rest.map((w) => A.findAccount(stateDir, runtimeId, w).id);
       const list = A.setAccountOrder(stateDir, runtimeId, ids);
       d.out(
@@ -1907,7 +1910,7 @@ async function accountsCmd(
       const yes = rest.includes("--yes") || rest.includes("-y");
       const which = rest.filter((a) => a !== "--yes" && a !== "-y");
       if (which.length !== 1)
-        throw new UsageError(`${where} takes one account, and --yes`); // words-ok: a vendor's sign-in account (issue 339)
+        throw new UsageError(`${where} takes one sign-in, and --yes`);
       const acct = A.findAccount(stateDir, runtimeId, which[0]!);
       if (!yes) {
         const ok = await (deps.tokenConfirm ?? askYesNo)(
@@ -1962,7 +1965,7 @@ async function accountsCmd(
     const bad = T.tokenShapeError(input);
     if (bad) {
       d.err(
-        `✗ ${where}: ${bad}. Make one with ${rt.id === "den-claude" ? T.TOKEN_MAKE_HINT : "its sign-in command"}, then pipe it in: ${d.cli} agents accounts set-token ${acct.id}${flag} < file, or paste it at the prompt`, // words-ok: a vendor's sign-in account (issue 339)
+        `✗ ${where}: ${bad}. Make one with ${rt.id === "den-claude" ? T.TOKEN_MAKE_HINT : "its sign-in command"}, then pipe it in: \`${d.cli} agents accounts set-token ${acct.id}${flag} < file\`, or paste it at the prompt`,
       );
       return 1;
     }

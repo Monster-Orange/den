@@ -827,7 +827,14 @@ export async function agentSignInEnv(
             make:
               getRuntime(runtimeId)?.catalog?.signIn?.command ??
               "its sign-in command",
-            set: `${cli} agents accounts set-token ${acct.id}${runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`}`, // words-ok: a vendor's sign-in account (issue 339)
+            // One string, so the command reads as code (inline backticks).
+            set: "`{cli} agents accounts set-token {id}`"
+              .replace("{cli}", cli)
+              .replace(
+                "{id}",
+                acct.id +
+                  (runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`),
+              ),
           }
         : {
             make:

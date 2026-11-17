@@ -1002,23 +1002,23 @@ function renderAccountList(list, t) {
               const l = accountLine(a, t);
               const last = i === v.accounts.length - 1;
               return (
-                `<div class="set-note" data-account="${escR(a.id)}" data-account-state="${l.state}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">` +
-                `<strong>${escR(name)}</strong> <span data-account-status>${escR(l.text)}${a.first ? ` ${escR(t("acct.first"))}` : ""}</span>` +
-                `<input type="password" autocomplete="off" spellcheck="false" data-account-token aria-label="${escR(t("acct.tokenLabel", { name }))}">` + // words-ok: a vendor's sign-in account (issue 339)
-                `<button type="button" class="btn sm" data-account-save>${escR(t("acct.tokenSave"))}</button>` +
-                `<button type="button" class="btn sm" data-account-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` + // words-ok: a vendor's sign-in account (issue 339)
-                `<button type="button" class="btn sm" data-account-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` + // words-ok: a vendor's sign-in account (issue 339)
+                `<div class="set-note" data-acct="${escR(a.id)}" data-acct-state="${l.state}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">` +
+                `<strong>${escR(name)}</strong> <span data-acct-status>${escR(l.text)}${a.first ? ` ${escR(t("acct.first"))}` : ""}</span>` +
+                `<input type="password" autocomplete="off" spellcheck="false" data-acct-token aria-label="${escR(t("acct.tokenLabel", { name }))}">` +
+                `<button type="button" class="btn sm" data-acct-save>${escR(t("acct.tokenSave"))}</button>` +
+                `<button type="button" class="btn sm" data-acct-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` +
+                `<button type="button" class="btn sm" data-acct-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` +
                 `</div>`
               );
             })
             .join("")
         : "";
       return (
-        `<div data-accounts-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
+        `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
         `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.name }))}</strong></p>` +
         rows +
-        `<div><button type="button" class="btn sm" data-account-add>${escR(t("acct.add"))}</button></div>` +
-        `<p class="set-note" data-account-note hidden></p>` +
+        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add"))}</button></div>` +
+        `<p class="set-note" data-acct-note hidden></p>` +
         `</div>`
       );
     })
@@ -1032,7 +1032,7 @@ function renderAccountList(list, t) {
  * answer is the new list, drawn again.
  */
 function wireAccounts(host, ctx, t) {
-  const box = host.querySelector("[data-accounts]");
+  const box = host.querySelector("[data-acct-list]");
   if (!box) return;
   const legacyRow = host.querySelector("[data-keep-token-row]");
   const draw = (list) => {
@@ -1054,19 +1054,19 @@ function wireAccounts(host, ctx, t) {
   box.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button");
     if (!btn || btn.disabled) return;
-    const vbox = btn.closest("[data-accounts-runtime]");
+    const vbox = btn.closest("[data-acct-runtime]");
     if (!vbox) return;
-    const runtime = vbox.getAttribute("data-accounts-runtime");
-    const note = vbox.querySelector("[data-account-note]");
+    const runtime = vbox.getAttribute("data-acct-runtime");
+    const note = vbox.querySelector("[data-acct-note]");
     note.hidden = true;
-    const row = btn.closest("[data-account]");
+    const row = btn.closest("[data-acct]");
     let url = "";
     let body = null;
-    if (btn.hasAttribute("data-account-add")) {
+    if (btn.hasAttribute("data-acct-add")) {
       url = "/api/agents/accounts";
       body = { runtime };
-    } else if (row && btn.hasAttribute("data-account-save")) {
-      const input = row.querySelector("[data-account-token]");
+    } else if (row && btn.hasAttribute("data-acct-save")) {
+      const input = row.querySelector("[data-acct-token]");
       const token = input.value;
       input.value = "";
       if (!token.trim()) {
@@ -1074,17 +1074,16 @@ function wireAccounts(host, ctx, t) {
         return;
       }
       url = "/api/agents/accounts/token";
-      body = { runtime, account: row.getAttribute("data-account"), token };
+      body = { runtime, account: row.getAttribute("data-acct"), token };
     } else if (
       row &&
-      (btn.hasAttribute("data-account-up") ||
-        btn.hasAttribute("data-account-down"))
+      (btn.hasAttribute("data-acct-up") || btn.hasAttribute("data-acct-down"))
     ) {
-      const ids = [...vbox.querySelectorAll("[data-account]")].map((r) =>
-        r.getAttribute("data-account"),
+      const ids = [...vbox.querySelectorAll("[data-acct]")].map((r) =>
+        r.getAttribute("data-acct"),
       );
-      const i = ids.indexOf(row.getAttribute("data-account"));
-      const j = btn.hasAttribute("data-account-up") ? i - 1 : i + 1;
+      const i = ids.indexOf(row.getAttribute("data-acct"));
+      const j = btn.hasAttribute("data-acct-up") ? i - 1 : i + 1;
       if (i < 0 || j < 0 || j >= ids.length) return;
       [ids[i], ids[j]] = [ids[j], ids[i]];
       url = "/api/agents/accounts/order";
@@ -1237,7 +1236,7 @@ function renderKeepRunning(host, ctx) {
     `<label class="set-note" data-keep-token-row style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
     `<p class="set-note" data-keep-token-note hidden></p>` +
     // Issue 339: the sign-in accounts, per vendor.
-    `<div data-accounts style="display:grid;gap:10px"></div>` +
+    `<div data-acct-list style="display:grid;gap:10px"></div>` +
     `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +

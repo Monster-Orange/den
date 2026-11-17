@@ -1420,9 +1420,9 @@
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
       "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
-    "acct.title": "{vendor}: sign-in accounts", // words-ok: a vendor's sign-in account (issue 339)
-    "acct.default": "Account {letter}", // words-ok: a vendor's sign-in account (issue 339)
-    "acct.add": "Add account", // words-ok: a vendor's sign-in account (issue 339)
+    "acct.title": "{vendor}: sign-ins",
+    "acct.default": "Sign-in {letter}",
+    "acct.add": "Add sign-in",
     "acct.none": "No token.",
     "acct.set": "Token set {date}.",
     "acct.setUnknown": "Token set.",

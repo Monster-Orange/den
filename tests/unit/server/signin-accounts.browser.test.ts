@@ -1,7 +1,7 @@
 /**
  * Issue 339: in a browser, Settings › Agents › Keep agents running after
  * logout › the sign-in accounts. A person adds an account to Claude Code
- * (Account B), sets its token in the same hidden field as today, and moves
+ * (Sign-in B), sets its token in the same hidden field as today, and moves
  * it first. The token goes to its own item in the install's secrets store
  * (Doppler here, its CLI a shim that keeps what it gets on stdin in the
  * server's temp dir, per key), never account one's; the order stays after
@@ -79,23 +79,23 @@ describe("issue 339: Settings › sign-in accounts", () => {
       }
     });
     await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
-    const vendor = p.locator('[data-accounts-runtime="den-claude"]');
+    const vendor = p.locator('[data-acct-runtime="den-claude"]');
     await vendor.waitFor({ state: "attached" });
     // One account, as today: today's field, and Add account.
-    expect(await vendor.locator("[data-account]").count()).toBe(0);
-    await vendor.locator("[data-account-add]").click();
-    const b = vendor.locator('[data-account="2"]');
+    expect(await vendor.locator("[data-acct]").count()).toBe(0);
+    await vendor.locator("[data-acct-add]").click();
+    const b = vendor.locator('[data-acct="2"]');
     await b.waitFor();
-    expect(await vendor.locator("[data-account]").count()).toBe(2);
-    expect(await b.textContent()).toContain("Account B");
-    expect(await b.getAttribute("data-account-state")).toBe("missing");
+    expect(await vendor.locator("[data-acct]").count()).toBe(2);
+    expect(await b.textContent()).toContain("Sign-in B");
+    expect(await b.getAttribute("data-acct-state")).toBe("missing");
     // Today's single field steps aside: each account has its own.
     expect(await p.locator("[data-keep-token-input]").isVisible()).toBe(false);
-    const input = b.locator("[data-account-token]");
+    const input = b.locator("[data-acct-token]");
     expect(await input.getAttribute("type")).toBe("password");
     await input.fill(TOKEN);
-    await b.locator("[data-account-save]").click();
-    await p.waitForSelector('[data-account="2"][data-account-state="set"]');
+    await b.locator("[data-acct-save]").click();
+    await p.waitForSelector('[data-acct="2"][data-acct-state="set"]');
     expect(await input.inputValue()).toBe("");
     // Its own item: the one key in the store is account 2's.
     const kept = fs.readdirSync(path.join(s!.tmp, "kept"));
@@ -105,25 +105,22 @@ describe("issue 339: Settings › sign-in accounts", () => {
       TOKEN,
     );
     // Move it first: kept after a reload.
-    await b.locator("[data-account-up]").click();
+    await b.locator("[data-acct-up]").click();
     await p.waitForFunction(
       () =>
         document
-          .querySelector('[data-accounts-runtime="den-claude"] [data-account]')
-          ?.getAttribute("data-account") === "2",
+          .querySelector('[data-acct-runtime="den-claude"] [data-acct]')
+          ?.getAttribute("data-acct") === "2",
     );
     await p.reload();
-    await p.waitForSelector(
-      '[data-accounts-runtime="den-claude"] [data-account]',
-      {
-        state: "attached",
-      },
-    );
+    await p.waitForSelector('[data-acct-runtime="den-claude"] [data-acct]', {
+      state: "attached",
+    });
     expect(
       await p
-        .locator('[data-accounts-runtime="den-claude"] [data-account]')
+        .locator('[data-acct-runtime="den-claude"] [data-acct]')
         .first()
-        .getAttribute("data-account"),
+        .getAttribute("data-acct"),
     ).toBe("2");
     // Never shown back.
     for (const x of bodies) expect(x).not.toContain(TOKEN);

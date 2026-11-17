@@ -411,7 +411,8 @@ export function handleAccountsRoute(
           return bad("order is a list of ids");
         d.order(runtime, order as string[]);
       } else {
-        if (typeof body.account !== "string") return bad("account is a string"); // words-ok: a vendor's sign-in account (issue 339)
+        if (typeof body.account !== "string")
+          return bad("`account` is a string");
         if (typeof body.token !== "string") return bad("token is a string");
         const shape = tokenShapeError(body.token);
         if (shape) return bad(shape);

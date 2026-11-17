@@ -97,12 +97,12 @@ function everything(r: Rig): string {
 }
 
 describe("agents accounts", () => {
-  it("list: one account with no file, as today (Account A, Claude Code)", async () => {
+  it("list: one account with no file, as today (Sign-in A, Claude Code)", async () => {
     const { r, run } = await acctRig(new MemStore());
     expect(await run("list")).toBe(0);
     const out = r.out.join("\n");
     expect(out).toMatch(/Claude Code/);
-    expect(out).toMatch(/1\s+Account A/);
+    expect(out).toMatch(/1\s+Sign-in A/);
     expect(out).toMatch(/no token/);
     expect(fs.existsSync(path.join(r.stateDir, ACCOUNTS_FILE))).toBe(false);
   });
@@ -111,7 +111,7 @@ describe("agents accounts", () => {
     const store = new MemStore();
     const { r, run, refs } = await acctRig(store);
     expect(await run("add", "--name", "Work")).toBe(0);
-    expect(r.out.join("\n")).toMatch(/added account 2 \(Work\)/);
+    expect(r.out.join("\n")).toMatch(/added sign-in 2 \(Work\)/);
     expect(await run("set-token", "Work")).toBe(0);
     expect(r.out.join("\n")).toMatch(/saved in 1Password/);
     expect(Object.keys(refs)).toEqual(["agent_signin_token__2"]);
@@ -124,7 +124,7 @@ describe("agents accounts", () => {
     r.out.length = 0;
     expect(await run("list")).toBe(0);
     const out = r.out.join("\n");
-    expect(out.indexOf("Work")).toBeLessThan(out.indexOf("Account A"));
+    expect(out.indexOf("Work")).toBeLessThan(out.indexOf("Sign-in A"));
     expect(out).toMatch(/Work.*token set/);
     expect(await run("remove", "2", "--yes")).toBe(0);
     expect(store.deleted).toHaveLength(1);
@@ -158,7 +158,7 @@ describe("agents accounts", () => {
     expect(r.err.join("\n")).toMatch(/not an email/);
     expect(await run("add")).toBe(0);
     expect(await run("order", "2")).toBe(2);
-    expect(r.err.join("\n")).toMatch(/every account/);
+    expect(r.err.join("\n")).toMatch(/every sign-in/);
     r.err.length = 0;
     expect(everything(r)).not.toContain("@");
   });

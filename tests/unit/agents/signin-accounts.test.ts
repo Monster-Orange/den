@@ -1,7 +1,7 @@
 /**
  * Issue 339 (slice 2 of the always-on accounts design, issue 163): for
  * each vendor (a runtime with sign-in data), a list of accounts, each with
- * a name ("Account A" unless named), its own sign-in token in its own item
+ * a name ("Sign-in A" unless named), its own sign-in token in its own item
  * of the install's secrets store, and an order the person can change.
  *
  *   - The single token that exists today is account one: an install with
@@ -112,7 +112,7 @@ describe("an install with one token upgrades with no change", () => {
     const r = await alwaysOn(store);
     const list = listAccounts(r.stateDir, "den-claude");
     expect(list.map((a) => a.id)).toEqual(["1"]);
-    expect(accountLabel(list[0]!)).toBe("Account A");
+    expect(accountLabel(list[0]!)).toBe("Sign-in A");
     expect(accountRefName("den-claude", "1")).toBe("agent_signin_token");
     expect(firstAccountRefName(r.stateDir, "den-claude")).toBe(
       "agent_signin_token",
@@ -129,7 +129,7 @@ describe("a second account", () => {
     const store = new MemStore();
     const b = addAccount(r.stateDir, "den-claude");
     expect(b.id).toBe("2");
-    expect(accountLabel(b)).toBe("Account B");
+    expect(accountLabel(b)).toBe("Sign-in B");
     const saved: Record<string, unknown> = {};
     const res = await saveAccountToken(TOKEN_B, {
       runtimeId: "den-claude",
@@ -146,7 +146,7 @@ describe("a second account", () => {
     const item = store.writes[0]!.item;
     expect(item).toMatch(/agent sign-in/);
     expect(item).not.toBe(newAgentTokenRef("1password")!.item);
-    expect(item).toMatch(/account 2/);
+    expect(item).toMatch(/\(den-claude, 2\)/);
     // Account one's record is untouched; the token is in no file.
     expect(
       fs.existsSync(path.join(r.stateDir, "agent-signin-token.json")),
@@ -204,11 +204,11 @@ describe("the order", () => {
     const r = await rig();
     addAccount(r.stateDir, "den-claude");
     expect(() => setAccountOrder(r.stateDir, "den-claude", ["2"])).toThrow(
-      /every account/,
+      /every sign-in/,
     );
     expect(() =>
       setAccountOrder(r.stateDir, "den-claude", ["2", "2", "1"]),
-    ).toThrow(/every account/);
+    ).toThrow(/every sign-in/);
     expect(listAccounts(r.stateDir, "den-claude").map((a) => a.id)).toEqual([
       "1",
       "2",
