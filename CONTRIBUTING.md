@@ -73,6 +73,37 @@ docker stop pw
 The browser's `localhost` and `*.localhost` are this machine's
 (`exposeNetwork`), so the test runs as it would locally.
 
+### Quarantined tests
+
+`tests/quarantine.json` lists flaky tests. On a pull request, CI leaves
+them out of the blocking test steps and runs them in a last step that
+can't block. Each step's job summary has a table of them, passed or
+failed, with their age. On a push to main and in `release.yml` the list
+is ignored: every test blocks.
+
+The switch is `DEN_TEST_QUARANTINE`: unset runs everything (the default),
+`exclude` skips the listed tests, `only` runs just them.
+
+To add an entry, you need evidence: the same sha failed, then passed.
+
+```bash
+node scripts/flake-evidence.mjs <red run id>
+```
+
+It reads the Actions API (read-only) and prints an entry per failing test.
+If no other run on that sha passed, it says so in `evidence.note`; it
+never makes one up. Paste the entries for the flaky tests, not the ones
+that are really broken. Each entry has `file`, `test` (the full name
+jest prints, or the test's own title, exactly; `/regex/` matches the full
+name), `issue`, `added` (YYYY-MM-DD) and `evidence`.
+
+To remove an entry, delete it in the PR that fixes the test.
+
+The weekly rule: each entry is fixed or deleted within `max_age_days`
+(14 by default; `DEN_QUARANTINE_MAX_AGE_DAYS` overrides it).
+`tests/unit/test-infra/quarantine.test.ts` fails on an older entry, or on
+one with no issue or no evidence.
+
 ## Adding a strategy
 
 - **Secrets backend:** implement `SecretsProvider`
