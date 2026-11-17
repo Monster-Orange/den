@@ -65,4 +65,40 @@ describe("test files that start Docker containers (issue 296)", () => {
       expect([f, runs]).toEqual([f, [["skip"], ["only"]]]);
     }
   });
+
+  it("gate every publish in the release: both halves pass before anything ships", () => {
+    type Job = {
+      needs?: string | string[];
+      "continue-on-error"?: unknown;
+      steps?: { run?: string; "continue-on-error"?: unknown }[];
+    };
+    const doc = yaml.parse(
+      fs.readFileSync(
+        path.join(ROOT, ".github", "workflows", "release.yml"),
+        "utf-8",
+      ),
+    ) as { jobs: Record<string, Job> };
+    const needs = (j: string): string[] => {
+      const n = doc.jobs[j]?.needs ?? [];
+      return typeof n === "string" ? [n] : n;
+    };
+    /** Every job `j` waits on, directly or through another job. */
+    const upstream = (j: string, seen = new Set<string>()): Set<string> => {
+      for (const n of needs(j))
+        if (!seen.has(n)) {
+          seen.add(n);
+          upstream(n, seen);
+        }
+      return seen;
+    };
+    // A failed step fails the tests job, and every publishing job waits on it.
+    for (const j of ["publish", "den-ui"])
+      expect([j, upstream(j).has("tests")]).toEqual([j, true]);
+    const t = doc.jobs.tests;
+    expect(t["continue-on-error"]).toBeUndefined();
+    for (const s of (t.steps ?? []).filter((x) =>
+      x.run?.startsWith("npm test"),
+    ))
+      expect(s["continue-on-error"]).toBeUndefined();
+  });
 });

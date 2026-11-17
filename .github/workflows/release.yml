@@ -260,7 +260,8 @@ jobs:
   # exists on npm (its first publish is by hand, from the den-ui/v<version> GitHub release's tarball) and a trusted
   # publisher for this file is set on it. Until then, and for a version already on npm or a prerelease, it skips.
   den-ui:
-    needs: [checks]
+    # Issue 296: the kit ships only once both test halves pass, as Den does.
+    needs: [checks, tests]
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45
     permissions:
