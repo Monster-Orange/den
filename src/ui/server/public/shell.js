@@ -751,7 +751,14 @@
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
     "set.ui.noPairHost":
-      "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+      "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
+    "set.ui.edgeStart": "Start the edge",
+    "set.ui.edgeApply": "Apply",
+    "set.ui.edgeStarted": "Edge started",
+    "set.ui.edgeCurrent": "Edge up to date, nothing restarted",
+    "set.ui.edgeRecreated":
+      "Edge recreated because {why}; it was unreachable for about {s} s",
+    "set.ui.edgeWhy": "its settings changed",
     "set.ui.edgeHost": "Edge hostname",
     "set.ui.pairScan":
       "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good.",
@@ -1434,6 +1441,9 @@
     "keep.s": "Applied. __DEN_TITLE__ restarts.",
     "keep.needs": "Needs your admin password.",
     "keep.failed": "Not applied. Nothing changed.",
+    "busy.edgeW": "Starting the edge…",
+    "busy.edgeS": "Edge started",
+    "busy.edgeF": "The edge didn't start.",
     "keep.onNow": "On: agents keep running after you log out.",
     "keep.offNow": "Off: agents stop when you log out.",
     "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
