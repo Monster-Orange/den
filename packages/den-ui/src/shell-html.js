@@ -547,7 +547,7 @@ export function searchHtml({ id, shortcut, lang } = {}) {
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
-    '" aria-haspopup="dialog"' +
+    '" aria-haspopup="dialog" data-nav-kit="search"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
     esc(kitT(lang, "kit.search.label")) +
@@ -673,18 +673,73 @@ export function bellPanelHtml({
  * name and tooltip read "label · detail". It is a rail entry (.den-ni)
  * marked data-den-account. No label: nothing.
  */
+/**
+ * Who is signed in, as the kit draws it (0.7.1): the name on the first
+ * line, @login on the second (with " · role" after it); @login alone
+ * when no name is known. From data: { name?, login?, role? }; with no
+ * identity, { local: true } draws the kit's word for this computer. The old
+ * { label, detail } (or the menu's { name, detail }) still work for one
+ * release, as they were given, marked data-nav-legacy for the nav
+ * inventory. Returns { lines: [first, second?], shape, legacy, full }.
+ */
+export function accountWho(a) {
+  if (!a) return null;
+  const legacy = a.label != null || a.detail != null;
+  const name = a.name ?? a.label ?? "";
+  const login = a.login
+    ? String(a.login).startsWith("@")
+      ? String(a.login)
+      : "@" + a.login
+    : (a.detail ?? "");
+  const role = a.role || "";
+  const second = [name ? login : "", name && role ? role : ""]
+    .filter(Boolean)
+    .join(" · ");
+  let first = name || [login, role].filter(Boolean).join(" · ");
+  // No identity known at all: the kit's own word for this computer.
+  const local = !first && !!a.local;
+  if (local) first = kitT(a.lang, "kit.account.local");
+  if (!first) return null;
+  const shape = [
+    name ? "name" : "",
+    a.login || a.detail ? "login" : "",
+    role ? "role" : "",
+    local ? "local" : "",
+  ]
+    .filter(Boolean)
+    .join(",");
+  return {
+    lines: second ? [first, second] : [first],
+    shape,
+    legacy,
+    full: second ? first + " · " + second : first,
+  };
+}
+
+function whoLinesHtml(who) {
+  return (
+    '<span class="den-acct-n">' +
+    esc(who.lines[0]) +
+    "</span>" +
+    (who.lines[1]
+      ? '<span class="den-acct-l">' + esc(who.lines[1]) + "</span>"
+      : "")
+  );
+}
+
 export function accountHtml(a) {
-  if (!a || !a.label) return "";
-  const full = a.detail ? a.label + " · " + a.detail : a.label;
+  const who = accountWho(a);
+  if (!who) return "";
+  const full = who.full;
   const more = { ...(a.attrs || {}) };
   if (a.id) more.id = a.id;
-  // Who is signed in: the host's words (host content for the nav inventory).
+  more["data-nav-shape"] = who.shape;
+  if (who.legacy) more["data-nav-legacy"] = "account";
+  // Who is signed in: the host's data (host content for the nav
+  // inventory, which compares its shape: which fields, how many lines).
   const words =
-    '<span class="den-lbl" data-nav-role="account-name">' +
-    esc(a.label) +
-    (a.detail
-      ? '<span class="den-acct-d"> · ' + esc(a.detail) + "</span>"
-      : "") +
+    '<span class="den-lbl den-acct" data-nav-role="account-name">' +
+    whoLinesHtml(who) +
     "</span>";
   if (a.href == null && a.menu && !a.id) more.id = "den-account";
   const open =
@@ -853,20 +908,32 @@ export function appearanceMenuHtml({
 }
 
 /**
- * The account entry's menu: who is signed in (name), where (detail), a
- * rule, then the entries.
- *   accountMenuHtml({ name, detail?, items, lang })
+ * The account entry's menu: who is signed in (accountWho: the name, then
+ * @login), a rule, then the entries.
+ *   accountMenuHtml({ name?, login?, role?, items, lang })
+ * ({ name, detail } is the old path, for one release.)
  * items: [{ label, href }] links, [{ label, id }] buttons (onPick "item"),
  * or [{ label, action: { method?, url, csrf?, field? } }]: a form that
  * posts to url on its own, with no script (csrf, if any, in a hidden
  * field named `field`, "csrf" by default).
  */
-export function accountMenuHtml({ name, detail, items } = {}) {
+export function accountMenuHtml({ name, login, role, detail, items } = {}) {
   const parts = [];
-  const who =
-    (name ? '<div class="den-ml">' + esc(name) + "</div>" : "") +
-    (detail ? '<p class="den-mnote">' + esc(detail) + "</p>" : "");
-  if (who) parts.push(who);
+  // The menu's { name, detail } were free text: the old path maps them
+  // as the entry's label and detail.
+  const w = accountWho(
+    detail != null ? { label: name, detail } : { name, login, role },
+  );
+  if (w)
+    parts.push(
+      '<div class="den-ml den-acct" data-nav-shape="' +
+        esc(w.shape) +
+        '"' +
+        (w.legacy ? ' data-nav-legacy="account"' : "") +
+        ">" +
+        whoLinesHtml(w) +
+        "</div>",
+    );
   const rows = (items || [])
     .map((it) => {
       if (!it || !it.label) return "";

@@ -17,6 +17,7 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   compareNav,
+  navWarnings,
   NAV_BROWSER_IMAGE,
   NAV_THEME,
   type NavSnapshot,
@@ -213,6 +214,46 @@ describe("nav inventory: red cases on the reference", () => {
     expect(ids(s, ref).filter((x) => PINNED.test(x.split(" ")[0]!))).toEqual(
       [],
     );
+  });
+
+  // 0.7.1: kit-owned slots are compared by their content's shape too.
+  const ACCT = "#den-ident";
+  const withShape = (shape: string) => {
+    const r = copy(ref);
+    at(r, ACCT).shape = shape;
+    return r;
+  };
+  it("an account drawn with other fields (a name and @login against @login alone) fails on its shape", () => {
+    const r = withShape("login");
+    const s = withShape("name,login");
+    expect(ids(s, r)).toEqual([`${ACCT} shape`]);
+    expect(ids(withShape("login"), r)).toEqual([]);
+  });
+
+  it("an account given the old label/detail fails: flagged as deprecated", () => {
+    const r = withShape("login");
+    const s = withShape("login");
+    at(s, ACCT).legacy = true;
+    expect(ids(s, r)).toEqual([`${ACCT} legacy`]);
+  });
+
+  it("two searches of different widths at the same viewport fail", () => {
+    const s = copy(ref);
+    at(s, "#den-search").box.w += 116;
+    expect(ids(s, ref)).toContain("#den-search box.right");
+  });
+
+  it("lists host HTML in the account and search slots (a warning, not a failure)", () => {
+    const s = withShape("login");
+    at(s, ACCT).account = true;
+    at(s, "#den-search").kit = "search";
+    expect(navWarnings(s)).toEqual([]);
+    delete at(s, ACCT).shape;
+    delete at(s, "#den-search").kit;
+    expect(navWarnings(s).sort()).toEqual([
+      `account: ${ACCT} is not the kit's (host HTML; draw it with accountHtml)`,
+      "search: #den-search is not the kit's (host HTML; draw it with searchHtml)",
+    ]);
   });
 
   it("a host slot's contents are the host's own", () => {

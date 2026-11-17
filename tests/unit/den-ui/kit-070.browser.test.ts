@@ -129,10 +129,10 @@ if (!q.has("bare")) {
   if (q.has("longver")) model.product = { ...model.product, version: "0.4.63-dev.12" };
   model.settings = { href: "#settings" };
   model.account = q.has("act")
-    ? { label: "Signed in", detail: "this device", action: true }
+    ? { name: "Ada Lovelace", login: "ada", action: true }
     : q.has("acctmenu")
-      ? { label: "Signed in", detail: "this device", menu: true }
-      : { label: "Signed in", detail: "this device", href: "#account" };
+      ? { name: "Ada Lovelace", login: "ada", menu: true }
+      : { name: "Ada Lovelace", login: "ada", href: "#account" };
   model.hydrate = {
     search: { onActivate: (via) => window.log.search.push(via) },
     bell: {
@@ -144,8 +144,8 @@ if (!q.has("bare")) {
     account: {
       onAction: () => window.log.account++,
       menu: () => ({
-        name: "Signed in",
-        detail: "this device",
+        name: "Ada Lovelace",
+        login: "ada",
         items: [
           { label: "Sessions", href: "#sessions" },
           { label: "Sign out", action: { method: "post", url: "/out", csrf: "tok-1" } },
@@ -376,7 +376,8 @@ for (const engine of ["chromium", "webkit"]) {
       });
       expect(got.acct).toEqual({
         href: "#account",
-        text: "Signed in · this device",
+        // The kit's two lines: the name, then @login.
+        text: "Ada Lovelace@ada",
         inFoot: true,
       });
       expect(got.order.indexOf("den-scope")).toBeGreaterThan(
@@ -634,7 +635,7 @@ for (const engine of ["chromium", "webkit"]) {
       await expect(p.evaluate(() => location.hash)).resolves.toBe("#account");
       await expect(
         p.locator("[data-den-account]").getAttribute("title"),
-      ).resolves.toBe("Signed in · this device");
+      ).resolves.toBe("Ada Lovelace · @ada");
       await p.context().close();
       const q = await open(b, "?act");
       await expect(
@@ -1025,7 +1026,7 @@ for (const engine of ["chromium", "webkit"]) {
       ).resolves.toEqual({
         foot: [
           "settings:Settings",
-          "account:Signed in · this device",
+          "account:Ada Lovelace@ada",
           "collapse:Collapse",
         ],
         href: "#settings",
@@ -1064,8 +1065,8 @@ for (const engine of ["chromium", "webkit"]) {
           ),
         ),
       ).resolves.toEqual([
-        "den-ml: Signed in",
-        "den-mnote: this device",
+        // Drawn as the rail's entry is: the name, then @login.
+        "den-ml den-acct: Ada Lovelace@ada",
         "den-hr: ",
         "den-mi: Sessions",
         "form post /out: csrf | Sign out",

@@ -910,6 +910,23 @@ body.den-has-shell .den-upd {
 .den-acct-d {
   color: var(--faint);
 }
+/* Who is signed in (0.7.1): the name, then @login under it, quieter;
+   the same in the rail's entry and the account menu's header. */
+.den-acct {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.den-acct-n,
+.den-acct-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.den-acct-l {
+  font-size: 11px;
+  color: var(--faint);
+}
 
 /* Narrow: the crumbs' keys and the optional crumb give way, then the
    crumbs hide and the search is its icon. */

@@ -48,6 +48,7 @@
 import { addStrings, kitT, setProduct } from "./strings.js";
 import {
   accountHtml,
+  accountWho,
   accountMenuHtml,
   appearanceButtonHtml,
   appearanceMenuHtml,
@@ -270,6 +271,7 @@ const DenUI = {
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
+  accountWho,
   accountMenuHtml,
   settingsHtml,
   appearanceButtonHtml,

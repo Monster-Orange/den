@@ -124,7 +124,7 @@ const model = {
     account: '<span id="who">me</span>' + DenUI.appearanceButtonHtml(),
   },
   settings: { href: "#settings" },
-  account: { label: "Signed in", detail: "this device", href: "#me" },
+  account: { name: "Ada Lovelace", login: "ada", href: "#me" },
 };
 window.searched = 0;
 window.shell = DenUI.mount(document.getElementById("shell"), {

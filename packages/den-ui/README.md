@@ -201,8 +201,8 @@ browsers to it through `DEN_PW_WS`:
     DEN_PW_WS=ws://localhost:3921/
 
     import { chromium } from "playwright";   // 1.61.1, as the image
-    import { collectNav, compareNav, formatNavDiffs, NAV_BROWSER_IMAGE,
-      NAV_THEME } from "@monster-orange/den-ui/inventory";
+    import { collectNav, compareNav, formatNavDiffs, navWarnings,
+      NAV_BROWSER_IMAGE, NAV_THEME } from "@monster-orange/den-ui/inventory";
     import { readFileSync } from "node:fs";
     import { createRequire } from "node:module";
 
@@ -216,12 +216,17 @@ browsers to it through `DEN_PW_WS`:
     const ref = JSON.parse(readFileSync(createRequire(import.meta.url)
       .resolve("@monster-orange/den-ui/inventory/reference/den-chromium-1280.json"),
       "utf-8"));
+    const snap = await collectNav(page, { image: NAV_BROWSER_IMAGE,
+      theme: NAV_THEME });
     const diffs = compareNav(
-      await collectNav(page, { image: NAV_BROWSER_IMAGE, theme: NAV_THEME }),
+      snap,
       ref,
       { hostSlots: ["#my-status"] },   // what the host fills itself
     );
     expect(formatNavDiffs(diffs)).toBe("");   // one line per difference
+    // 0.7.1: host HTML where the kit's account or search should be.
+    // Listed, not failed, until 0.7.2 gives every slot a data path.
+    for (const w of navWarnings(snap)) console.warn(w);
 
 Pass `theme` as the theme the page really draws in (Den reads it from
 `/api/themes`). On another browser build (a different fingerprint: user
@@ -348,6 +353,19 @@ browser test, on the image (Den's real server on the demo distribution,
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).
+
+- **The account is data.** `accountHtml` and `accountMenuHtml` take
+  `{ name?, login, role? }`, and the kit draws both alike: the name on
+  the first line, `@login` (and ` · role`) under it; `@login` alone when
+  no name is known. The kit adds the `@`. The old `{ label, detail }`
+  (and the menu's `{ name, detail }`) still work for this release, drawn
+  as given, and the nav inventory fails a host that uses them
+  (`legacy`). `accountWho(a)` gives the lines and the shape.
+- **Shape, not only style.** The inventory compares what a kit slot
+  draws: the account's fields (`shape`: `name`, `login`, `role`), the
+  old fields (`legacy`), and the search's box (pinned: its width and
+  height). `navWarnings(snap)` lists host HTML where the kit's account
+  or search should be: a warning in 0.7.1, a failure in 0.7.2.
 
 - **Three parts.** The bar is a grid: the left part (`div.den-left`: ☰,
   the brand, and what `start` holds before the search, the crumbs), the

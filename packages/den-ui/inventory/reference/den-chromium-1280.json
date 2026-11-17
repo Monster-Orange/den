@@ -1415,7 +1415,8 @@
     "color": "rgb(109, 99, 88)",
     "opacity": "1",
     "box-shadow": "none"
-   }
+   },
+   "kit": "search"
   },
   {
    "key": "#den-search > span.den-search-ph",
@@ -5125,7 +5126,9 @@
     "color": "rgb(92, 82, 71)",
     "opacity": "1",
     "box-shadow": "none"
-   }
+   },
+   "shape": "name",
+   "account": true
   },
   {
    "key": "#den-ident > svg",
@@ -5186,9 +5189,70 @@
    "slot": "foot",
    "role": "span",
    "tag": "span",
+   "name": "",
+   "classes": [
+    "den-lbl",
+    "den-acct"
+   ],
+   "box": {
+    "x": 46,
+    "y": 831.41,
+    "w": 168,
+    "h": 20.3
+   },
+   "style": {
+    "display": "flex",
+    "visibility": "visible",
+    "height": "20.2969px",
+    "border-top-left-radius": "0px",
+    "border-top-right-radius": "0px",
+    "border-bottom-right-radius": "0px",
+    "border-bottom-left-radius": "0px",
+    "background-color": "rgba(0, 0, 0, 0)",
+    "border-top-width": "0px",
+    "border-top-style": "none",
+    "border-top-color": "rgb(92, 82, 71)",
+    "border-right-width": "0px",
+    "border-right-style": "none",
+    "border-right-color": "rgb(92, 82, 71)",
+    "border-bottom-width": "0px",
+    "border-bottom-style": "none",
+    "border-bottom-color": "rgb(92, 82, 71)",
+    "border-left-width": "0px",
+    "border-left-style": "none",
+    "border-left-color": "rgb(92, 82, 71)",
+    "font-size": "14px",
+    "font-weight": "400",
+    "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
+    "font-style": "normal",
+    "line-height": "20.3px",
+    "letter-spacing": "normal",
+    "text-transform": "none",
+    "padding-top": "0px",
+    "padding-right": "0px",
+    "padding-bottom": "0px",
+    "padding-left": "0px",
+    "row-gap": "normal",
+    "column-gap": "normal",
+    "color": "rgb(92, 82, 71)",
+    "opacity": "1",
+    "box-shadow": "none"
+   },
+   "host": {
+    "role": "account-name",
+    "key": "#den-ident > span.den-lbl",
+    "fit": 168
+   }
+  },
+  {
+   "key": "#den-ident > span.den-lbl > span.den-acct-n",
+   "parent": "#den-ident > span.den-lbl",
+   "slot": "foot",
+   "role": "span",
+   "tag": "span",
    "name": "Signed in · this device",
    "classes": [
-    "den-lbl"
+    "den-acct-n"
    ],
    "box": {
     "x": 46,
@@ -5236,8 +5300,7 @@
    },
    "host": {
     "role": "account-name",
-    "key": "#den-ident > span.den-lbl",
-    "fit": 139
+    "key": "#den-ident > span.den-lbl"
    }
   },
   {

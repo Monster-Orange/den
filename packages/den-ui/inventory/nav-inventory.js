@@ -266,6 +266,16 @@ export async function collectNav(page, opts = {}) {
             ...(el.getAttribute("data-nav-name") === "host"
               ? { hostName: true }
               : {}),
+            // 0.7.1: a kit-owned slot's content shape (which fields it
+            // draws), the old free-text path, and the kit's own stamp.
+            ...(el.hasAttribute("data-nav-shape")
+              ? { shape: el.getAttribute("data-nav-shape") }
+              : {}),
+            ...(el.hasAttribute("data-nav-legacy") ? { legacy: true } : {}),
+            ...(el.hasAttribute("data-den-account") ? { account: true } : {}),
+            ...(el.hasAttribute("data-nav-kit")
+              ? { kit: el.getAttribute("data-nav-kit") }
+              : {}),
           });
         }
         if (el.tagName.toLowerCase() === "svg") return mySlot;
@@ -532,6 +542,31 @@ const COLUMN = ["rail", "foot"];
  * whatever the host's words: a host's crumbs, title or chips never excuse
  * moving them.
  */
+/**
+ * 0.7.1: host HTML in the kit's account and search slots, listed (a
+ * warning: 0.7.2 makes every slot data, and then it fails). The kit
+ * stamps what it draws: the account entry's data-nav-shape, the search's
+ * data-nav-kit.
+ */
+export function navWarnings(snap) {
+  const out = [];
+  for (const e of snap.elements) {
+    if (e.account && e.shape == null)
+      out.push(
+        `account: ${e.key} is not the kit's (host HTML; draw it with accountHtml)`,
+      );
+    if (
+      e.slot === "top" &&
+      e.classes.includes("den-search") &&
+      e.kit !== "search"
+    )
+      out.push(
+        `search: ${e.key} is not the kit's (host HTML; draw it with searchHtml)`,
+      );
+  }
+  return out;
+}
+
 export const PINNED_CLASSES = [
   "den-search",
   "den-rb-top",
@@ -730,6 +765,11 @@ export function compareNav(actual, reference, opts = {}) {
         !(p === "name" && (holdsHost.has(w.key) || w.hostName || g.hostName))
       )
         add(w, p, w[p], g[p]);
+    // 0.7.1: what a kit-owned slot draws (its fields, its lines), and
+    // the old free-text path, flagged.
+    if ((w.shape ?? "") !== (g.shape ?? "")) add(w, "shape", w.shape, g.shape);
+    if (g.legacy && !w.legacy)
+      add(w, "legacy", "data", "label/detail (deprecated)");
     const wc = w.classes.join(" ");
     const gc = g.classes.join(" ");
     if (wc !== gc) add(w, "classes", wc, gc);

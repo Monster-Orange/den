@@ -44,6 +44,7 @@ import {
   collectNav,
   compareNav,
   formatNavDiffs,
+  navWarnings,
   NAV_BROWSER_IMAGE,
   NAV_THEME,
   pinNavFonts,
@@ -311,6 +312,8 @@ for (const b of BROWSERS)
               compareNav(snap, ref, { hostSlots: DEN_HOST_SLOTS }),
             ),
           ).toBe("");
+          // 0.7.1: Den draws its account and search with the kit.
+          expect(navWarnings(snap)).toEqual([]);
         } finally {
           await ctx.unrouteAll({ behavior: "ignoreErrors" });
           await ctx.close();
@@ -504,6 +507,53 @@ for (const b of BROWSERS)
         },
       ],
     ];
+    // 0.7.1: the kit's slots compared by their content's shape. Den's
+    // reference draws one line; another app drawing a name and @login
+    // (its two lines and their fields) is not the same component.
+    // (The change runs in the page: its one argument is JSON.)
+    const drawAccount = (arg: string) => {
+      const { shape, lines } = JSON.parse(arg) as {
+        shape: string;
+        lines: string[];
+      };
+      const a = document.querySelector<HTMLElement>("[data-den-account]")!;
+      a.setAttribute("data-nav-shape", shape);
+      a.querySelector(".den-lbl")!.innerHTML = lines
+        .map((t, i) => `<span class="den-acct-${i ? "l" : "n"}">${t}</span>`)
+        .join("");
+    };
+    it("fails when a host's account entry has other fields (a name and @login)", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, drawAccount, {
+        arg: JSON.stringify({
+          shape: "name,login",
+          lines: ["A person", "@a-person"],
+        }),
+      });
+      expect(ids(d)).toContain("#den-ident shape");
+    }, 60_000);
+
+    it("fails when a host still passes the old label/detail", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, () => {
+        document
+          .querySelector("[data-den-account]")!
+          .setAttribute("data-nav-legacy", "account");
+      });
+      expect(ids(d)).toEqual(["#den-ident legacy"]);
+    }, 60_000);
+
+    it("fails when a host's search is another width at the same viewport", async () => {
+      if (skip(b)) return;
+      const d = await diffAfter(b, W, H, () => {
+        document
+          .querySelector<HTMLElement>("#den-search")!
+          .style.setProperty("width", "420px");
+      });
+      // Pinned: its right edge moves, with no host-shift excuse.
+      expect(ids(d)).toContain("#den-search box.right");
+    }, 60_000);
+
     it("passes on host content at 390: the account entry's words", async () => {
       if (skip(b)) return;
       const d = await diffAfter(b, 390, 844, () => {

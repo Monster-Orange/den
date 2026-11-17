@@ -178,7 +178,17 @@ export interface BellPanelOptions {
   lang?: string;
 }
 export interface Account {
-  label: string;
+  /** 0.7.1: who is signed in, as data. The kit draws the name, then @login. */
+  name?: string;
+  /** The login, without "@" (the kit adds it). */
+  login?: string;
+  role?: string;
+  /** No identity known: the kit's word for this computer ("Local"). */
+  local?: boolean;
+  lang?: string;
+  /** @deprecated 0.7.1: use name (flagged by the nav inventory). */
+  label?: string;
+  /** @deprecated 0.7.1: use login (flagged by the nav inventory). */
   detail?: string;
   /**
    * A link; else `menu: true`, a button opening the account menu
@@ -207,8 +217,15 @@ export declare function searchHtml(o?: SearchOptions): string;
 export declare function bellCount(n: number | null | undefined): string;
 export declare function bellButtonHtml(o?: BellButtonOptions): string;
 export declare function bellPanelHtml(o?: BellPanelOptions): string;
-/** The rail's account entry; no label, "". */
+/** The rail's account entry; nobody known, "". */
 export declare function accountHtml(a: Account | null | undefined): string;
+/** Who is signed in, as the kit draws it: its lines and its shape. */
+export declare function accountWho(a: Account | null | undefined): {
+  lines: [string] | [string, string];
+  shape: string;
+  legacy: boolean;
+  full: string;
+} | null;
 /** An account menu entry: a link, a button (onPick "item"), or a form post. */
 export type AccountMenuItem =
   | { label: string; href: string }
@@ -224,9 +241,11 @@ export type AccountMenuItem =
       };
     };
 export interface AccountMenu {
-  /** Who is signed in. */
+  /** Who is signed in, as data (0.7.1), drawn as the entry is. */
   name?: string;
-  /** Where ("Signed in · this device"). */
+  login?: string;
+  role?: string;
+  /** @deprecated 0.7.1: use login (flagged by the nav inventory). */
   detail?: string;
   items?: AccountMenuItem[];
   lang?: string;

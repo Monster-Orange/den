@@ -4853,16 +4853,23 @@
     if (id.kind === "github" || id.kind === "device") return t("ident.device");
     return "";
   }
+  // Who is signed in, as data (den-ui 0.7.1): a GitHub login, or this
+  // device's word as the name. The kit draws it (the name, then @login).
   function accountModel() {
-    var label = identityLabel(state.identity);
-    if (!label) return null;
-    return {
+    var id = state.identity;
+    if (!identityLabel(id)) return null;
+    var who =
+      id.kind === "github" && id.login
+        ? { login: id.login }
+        : id.kind === "local"
+          ? { local: true, lang: lang }
+          : { name: identityLabel(id) };
+    return Object.assign(who, {
       navId: "identity",
       href: "/settings#access",
-      label: label,
       id: "den-ident",
-      attrs: { "data-ident": state.identity.kind },
-    };
+      attrs: { "data-ident": id.kind },
+    });
   }
   /** What GET /api/session said about this browser: the chip, and a toast once after a sign-in. */
   function applyIdentity(b) {

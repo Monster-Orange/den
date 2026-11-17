@@ -35,6 +35,14 @@ export interface NavElement {
   };
   /** Its accessible name is the host's words (data-nav-name="host"). */
   hostName?: boolean;
+  /** 0.7.1: a kit-owned slot's content shape (data-nav-shape: its fields). */
+  shape?: string;
+  /** 0.7.1: drawn from the old free-text fields (data-nav-legacy). */
+  legacy?: boolean;
+  /** The rail's account entry (data-den-account). */
+  account?: boolean;
+  /** The kit's stamp on what it draws (data-nav-kit). */
+  kit?: string;
 }
 export interface NavTheme {
   id: string;
@@ -93,6 +101,8 @@ export declare const NAV_THEME: NavTheme;
  * width, with no host-content allowance.
  */
 export declare const PINNED_CLASSES: readonly string[];
+/** 0.7.1: host HTML in the kit's account and search slots (warnings). */
+export declare function navWarnings(snap: NavSnapshot): string[];
 export declare function collectNav(
   page: NavPage,
   opts?: { image?: string; theme?: NavTheme },
