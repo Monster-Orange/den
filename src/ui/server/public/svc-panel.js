@@ -30,6 +30,7 @@ import { sudoRun } from "./topbar.js";
 import { formatTime } from "/kit/time.js";
 import { logStreamUrl } from "./log-source.js";
 import { dismissable, focusBack } from "./popover.js";
+import { healthReason } from "./value-words.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -152,7 +153,12 @@ export function serviceOf(id) {
     service: sub || r?.service || repo,
     url: r?.openUrl || null,
     ok: r ? r.ok : null,
-    error: r?.error || (r?.status ? `HTTP ${r.status}` : ""),
+    // Issue 171: the check's reason in the page's language.
+    error: r?.error
+      ? (healthReason(r.error, r.ms) ?? r.error)
+      : r?.status
+        ? `HTTP ${r.status}`
+        : "",
     workspaces: r?.workspaces ?? [],
     repoPath: r?.repoPath || "",
     known: !!r,

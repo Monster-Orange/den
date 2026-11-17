@@ -367,6 +367,8 @@ export interface ListedSession {
   persona?: string;
   runtime?: string;
   model?: string;
+  /** Issue 340: the label of the vendor account it runs on (never an email). */
+  signIn?: string;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -631,6 +633,7 @@ export function listedSessions(
             subagentModelFrom: r.subagentModelFrom,
           }
         : {}),
+      ...(rec.signIn ? { signIn: rec.signIn.label } : {}),
       ...(rec.version ? { version: rec.version } : {}),
       ...newerOf(rec),
       ...(rec.permission ? { permission: rec.permission } : {}),

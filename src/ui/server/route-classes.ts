@@ -443,6 +443,18 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/agents/signin-token",
     "saves (or removes) the agents' sign-in token in the install's secrets store",
   ),
+  // Issue 339: the agents' sign-in accounts (a person's only).
+  M(["POST"], "/api/agents/accounts", "adds a {vendor} account for agents"),
+  M(
+    ["POST"],
+    "/api/agents/accounts/token",
+    "saves a {vendor} account's token in the install's secrets store",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/accounts/order",
+    "changes the order agents use {vendor} accounts in",
+  ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
     ["POST"],
@@ -513,6 +525,11 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/workspaces/:ws/mcp-servers",
     "issue 335: a project's extra MCP servers, names and urls only (an agent adds one with project_mcp_add)",
+  ),
+  M(
+    ["POST", "DELETE"],
+    "/api/workspaces/:ws/mcp-servers/:name",
+    "issue 352: a person changes one's url or bearer reference, or removes it; a person's only (an agent asks with project_mcp_update or project_mcp_remove)",
   ),
   R(
     "/api/workspaces/:ws/agent-modes",
@@ -938,6 +955,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:DETAILS_PATH": ["/api/workspaces/:ws/agents/:id/details"],
   "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
+  "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],

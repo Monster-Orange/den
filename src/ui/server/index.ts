@@ -341,6 +341,7 @@ import {
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
 import {
+  handleAccountsRoute,
   handleKeepRunningRoutes,
   handleSignInTokenRoute,
   noteKeepRunningOffer,
@@ -351,6 +352,14 @@ import {
   dropStaleEnvTokenRecord,
   saveAgentToken,
 } from "../../shared/agents/signin-token.js";
+import {
+  accountsView,
+  addAccount,
+  saveAccountToken,
+  setAccountOrder,
+} from "../../shared/agents/signin-accounts.js";
+import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
+import { accountNameOf } from "../../shared/agents/catalog.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -1094,6 +1103,10 @@ import {
   checkProjectMode,
   checkProjectMcpAdd,
   runProjectMcpAdd,
+  checkProjectMcpRemove,
+  runProjectMcpRemove,
+  checkProjectMcpUpdate,
+  runProjectMcpUpdate,
   createAgent,
   runAgentFolder,
   runAgentMode,
@@ -2665,6 +2678,15 @@ function approvalDeps(): ApprovalDeps {
       check: (a, who) => checkProjectMcpAdd(agentWebDeps(), a, who),
       run: (a) => runProjectMcpAdd(agentWebDeps(), a),
     },
+    // Issue 352: an agent asks to remove one, or change its url or bearer.
+    projectMcpRemove: {
+      check: (a, who) => checkProjectMcpRemove(agentWebDeps(), a, who),
+      run: (a) => runProjectMcpRemove(agentWebDeps(), a),
+    },
+    projectMcpUpdate: {
+      check: (a, who) => checkProjectMcpUpdate(agentWebDeps(), a, who),
+      run: (a) => runProjectMcpUpdate(agentWebDeps(), a),
+    },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
       run: (a) => runAgentFolder(agentWebDeps(), a),
@@ -3128,6 +3150,48 @@ async function agentSigninView(
   }
   signinViewCache = { at: now, view };
   return view;
+}
+
+/**
+ * Issue 339: Settings' sign-in accounts, per vendor (a runtime with
+ * sign-in data), in the person's order. Never a token: from the config and
+ * the state dir only.
+ */
+function agentAccountsView(): {
+  runtime: string;
+  name: string;
+  account: string;
+  accounts: Record<string, unknown>[];
+}[] {
+  const out: {
+    runtime: string;
+    name: string;
+    account: string;
+    accounts: Record<string, unknown>[];
+  }[] = [];
+  for (const id of runtimeIds()) {
+    const rt = getRuntime(id);
+    if (!rt?.signInTokenEnv) continue;
+    try {
+      out.push({
+        runtime: id,
+        name: rt.catalog?.name ?? id,
+        // Whose account it is, in the vendor's words ("Claude").
+        account: rt.catalog ? accountNameOf(rt.catalog) : id,
+        accounts: accountsView(getStateDir(), id).map((a) => ({
+          id: a.id,
+          name: a.name,
+          letter: a.letter,
+          configured: a.configured,
+          set_at: a.setAt,
+          first: a.first,
+        })),
+      });
+    } catch {
+      /* a bad list: left out, as nothing is guessed */
+    }
+  }
+  return out;
 }
 
 /**
@@ -3661,6 +3725,31 @@ async function handleRequest(
         saveAgentToken(token, { stateDir: getStateDir(), inDen: true }),
       clear: () => clearAgentToken({ stateDir: getStateDir() }),
       status: () => agentSigninView(true),
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // Issue 339: Settings › the sign-in accounts, per vendor.
+  if (
+    handleAccountsRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      add: (runtime, name) => void addAccount(getStateDir(), runtime, name),
+      order: (runtime, ids) =>
+        void setAccountOrder(getStateDir(), runtime, ids),
+      saveToken: async (runtime, account, token) => {
+        const r = await saveAccountToken(token, {
+          runtimeId: runtime,
+          accountId: account,
+          stateDir: getStateDir(),
+          inDen: true,
+        });
+        // Account one of Claude Code is today's row: asked again at once.
+        await agentSigninView(true);
+        return r;
+      },
+      view: () => agentAccountsView(),
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
@@ -5123,12 +5212,17 @@ async function handleRequest(
         url.searchParams.get("workspace"),
       );
       if (source.kind === "unsupported")
-        return sendJson(res, { unsupported: true, reason: source.reason });
+        return sendJson(res, {
+          unsupported: true,
+          reason: source.reason,
+          ...(source.t ? { t: source.t } : {}),
+        });
       const snapshot = await ensureSnapshot(source);
       if (!snapshot)
         return sendJson(res, {
           unsupported: true,
           reason: "could not snapshot the container log",
+          t: { key: "lg.why.noSnapshot" },
         });
       return sendJson(res, readPageBefore(snapshot, cursor, limit));
     } catch (e) {
@@ -6641,6 +6735,8 @@ async function handleRequest(
         // service: never the token, only whether one is configured and
         // when it was set (nothing is read from the store on a page view).
         agent_signin: await agentSigninView(),
+        // Issue 339: the sign-in accounts per vendor (never a token).
+        agent_accounts: agentAccountsView(),
         // Issue 278: agents stuck compacting; instruction size (agent_context.*).
         agent_context: (() => {
           const c = contextWatchSettings(user.agent_context);
