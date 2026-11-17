@@ -4,6 +4,15 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.63] - unreleased
+
+### Changed
+
+- Den's top bar and rail come from the shared UI kit, den-ui 0.7.0: the
+  account menu, the company and project crumbs with a filter, the Report
+  screenshot keeping what you scrolled to, and a brand that never shrinks
+  on a phone.
+
 ## [0.4.62] - 2026-11-16
 
 ### Added
