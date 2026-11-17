@@ -83,6 +83,17 @@ data and HTML slots; it keeps no copy of the kit's markup, CSS or code.
   Also `topBarHtml`, `railHtml`, `navItemHtml`, `versionChipHtml`,
   `reportButtonHtml`, `icon(name)` (`src/icons.js`) and `esc`.
 
+- **Kind tags (0.7.3).** A pin or a link into another product sets
+  `kind` on its nav item: `"project"`, `"den"`, `"service"`, `"hub"`, or
+  `{ artifact: "Mock" }` (an artifact pin's own word, in the host's
+  language). The kit draws a small uppercase tag at the row's end in the
+  scope labels' look, and the tooltip and name read "North · Project"
+  (a host's own `tip` and `aria-label` win). Any other kind is dropped:
+  the tag never names a machine. A project pin may set
+  `icon: { initial: "North" }` for its initial in a disc. The nav
+  inventory records each entry's kind and `compareNav` reports a `kind`
+  difference.
+
 - **Slots.** The top bar reads: ☰, the brand, `start` (a search, a scope
   menu), then the right group: `end` (status chips), Report, `bell`, the
   version chip, `account`. Report · bell · account keep their place
