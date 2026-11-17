@@ -4,26 +4,6 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.65] - unreleased
-
-### Added
-
-- A project's agents can use extra HTTP MCP servers. List them in the
-  project's `agents.mcp_servers` (workspaces.yml) as `{ name, url,
-  bearer }`. The bearer is optional and names a `secrets.refs` entry,
-  never a value. Den adds each server to the MCP config it writes for
-  that project's agents only. Like Hub's entry, a server with a bearer
-  gets a headers helper, `<cli> mcp headers <name>`, which reads the
-  bearer from the install's store at each connect. The helper takes the
-  project from the agent's own token, so another project's agent can't
-  read it. The bearer is never in the MCP file, the agent's env or a log
-  (issue 335).
-- Settings › Project lists a project's extra MCP servers by name and
-  address, and doctor has a line for each (a bad entry, or a bearer whose
-  `secrets.refs` entry isn't set, warns). An agent adds one with the held
-  write `project_mcp_add`, which always waits for the person's own Allow
-  (issue 335).
-
 ## [0.4.64] - unreleased
 
 ### Fixed
