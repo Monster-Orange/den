@@ -5209,12 +5209,17 @@ async function handleRequest(
         url.searchParams.get("workspace"),
       );
       if (source.kind === "unsupported")
-        return sendJson(res, { unsupported: true, reason: source.reason });
+        return sendJson(res, {
+          unsupported: true,
+          reason: source.reason,
+          ...(source.t ? { t: source.t } : {}),
+        });
       const snapshot = await ensureSnapshot(source);
       if (!snapshot)
         return sendJson(res, {
           unsupported: true,
           reason: "could not snapshot the container log",
+          t: { key: "lg.why.noSnapshot" },
         });
       return sendJson(res, readPageBefore(snapshot, cursor, limit));
     } catch (e) {
@@ -6702,6 +6707,18 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // den#143: how long `web up` waits for the server.
+        web_ready: (() => {
+          try {
+            const c = readWebAuthConfig(getDistRoot(), product().configFile);
+            return {
+              probeSeconds: c.readyProbeSeconds,
+              startSeconds: c.startWaitSeconds,
+            };
+          } catch {
+            return null;
+          }
+        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6791,6 +6808,7 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          web_ready?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
@@ -6823,6 +6841,7 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            web_ready: body.web_ready,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
           });

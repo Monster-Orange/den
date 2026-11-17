@@ -14,6 +14,9 @@
  *   web_bridge: { listen?: auto | off, probe_seconds? }
  *                                     user.yml web.bridge_listen,
  *                                     web.bridge_probe_seconds (0.4.48)
+ *   web_ready: { probe_seconds?, start_seconds? }
+ *                                     user.yml web.ready_probe_seconds,
+ *                                     web.start_wait_seconds (den#143)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
@@ -24,6 +27,7 @@
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
+import { WEB_WAIT_RANGE } from "./web-session.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -35,6 +39,8 @@ export const PERSON_ONLY_SETTINGS = [
   "crash_loop",
   // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
   "web_bridge",
+  // den#143: how long `web up` waits for the server, on a busy machine too.
+  "web_ready",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -132,6 +138,20 @@ const CRASH: Record<string, Limit> = {
 
 const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
+};
+
+/** den#143: `web up`'s waits (web-session.ts WEB_WAIT_RANGE). */
+const WEB_READY: Record<string, Limit> = {
+  probe_seconds: {
+    key: "ready_probe_seconds",
+    ...WEB_WAIT_RANGE,
+    int: false,
+  },
+  start_seconds: {
+    key: "start_wait_seconds",
+    ...WEB_WAIT_RANGE,
+    int: false,
+  },
 };
 
 const AGENTS_LIST: Record<string, Limit> = {
@@ -339,6 +359,7 @@ export function patchCliRows(
       apply,
     ) ??
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
+    patchBlock(user, "web_ready", "web", WEB_READY, body.web_ready, apply) ??
     patchBlock(
       user,
       "panes_reconnect",

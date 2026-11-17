@@ -1697,6 +1697,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
   },
   {
+    // den#143: how long `web up` waits for the server (user.yml
+    // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
+    id: "server.ready_probe",
+    category: "server",
+    label: "Readiness check, in seconds",
+    description:
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    keywords: [
+      "ready",
+      "probe",
+      "timeout",
+      "busy",
+      "web up",
+      "web.ready_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.probeSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ web_ready: { probe_seconds: v } }),
+  },
+  {
+    id: "server.start_wait",
+    category: "server",
+    label: "Start wait, in seconds",
+    description:
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    keywords: [
+      "start",
+      "ready",
+      "timeout",
+      "busy",
+      "web up",
+      "web.start_wait_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.start_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.startSeconds ?? 120,
+    write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",

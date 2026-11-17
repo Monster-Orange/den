@@ -52,8 +52,12 @@ export function records() {
 function members(pgid, marker) {
   let ps = "";
   try {
+    // den#143: the whole list. Past Node's default 1 MiB (a busy machine)
+    // the read failed and nothing was reaped. PS_MAX_BUFFER in
+    // src/shared/process/ps-buffer.ts; this .mjs can't import the .ts.
     ps = execFileSync("ps", ["-A", "-o", "pid=,pgid=,command="], {
       encoding: "utf-8",
+      maxBuffer: 32 * 1024 * 1024,
     });
   } catch {
     return [];

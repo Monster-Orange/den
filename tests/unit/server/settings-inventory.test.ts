@@ -41,6 +41,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
   // 0.4.48: Den on the Docker bridge for the edge.
   web_bridge: { listen: true, probe_seconds: true },
+  // den#143: how long `web up` waits for the server.
+  web_ready: { probe_seconds: true, start_seconds: true },
   // Issue 144: the machine's gate slots.
   gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
   // den#156: the Agents list's waits.
@@ -143,6 +145,9 @@ describe("the settings inventory (R21)", () => {
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         "web_bridge.listen",
         "web_bridge.probe_seconds",
+        // den#143: how long `web up` waits for the server.
+        "web_ready.probe_seconds",
+        "web_ready.start_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
         // den#156: the Agents list's waits.
