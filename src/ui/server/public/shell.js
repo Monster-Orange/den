@@ -2252,6 +2252,13 @@
       "Bearer: read from secrets.refs.{ref} at each call; never written to the agent's files or env.",
     "ap.mcp.noBearer": "No bearer: its calls carry no Authorization header.",
     "ap.mcp.next": "Agents in {project} get it at their next start or resume.",
+    "ap.do.project_mcp_remove":
+      "Remove MCP server {name} ({url}) from project {project}'s agents",
+    "ap.do.project_mcp_update":
+      "Change MCP server {name} for project {project}'s agents (now {url})",
+    "ap.mcp.removeWarn":
+      "Agents in {project} lose the tools of {name} at their next start or resume.",
+    "ap.mcp.urlChange": "MCP {name}: {from} → {to}",
     "pmode.none": "Use Den-wide",
     "pmode.following": "Following Den-wide: {m}",
     "pmode.setHere": "Set for this project: {m} (Den-wide is {dw})",

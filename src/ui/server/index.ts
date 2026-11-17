@@ -1071,6 +1071,10 @@ import {
   checkProjectMode,
   checkProjectMcpAdd,
   runProjectMcpAdd,
+  checkProjectMcpRemove,
+  runProjectMcpRemove,
+  checkProjectMcpUpdate,
+  runProjectMcpUpdate,
   createAgent,
   runAgentFolder,
   runAgentMode,
@@ -2588,6 +2592,15 @@ function approvalDeps(): ApprovalDeps {
     projectMcp: {
       check: (a, who) => checkProjectMcpAdd(agentWebDeps(), a, who),
       run: (a) => runProjectMcpAdd(agentWebDeps(), a),
+    },
+    // Issue 352: an agent asks to remove one, or change its url or bearer.
+    projectMcpRemove: {
+      check: (a, who) => checkProjectMcpRemove(agentWebDeps(), a, who),
+      run: (a) => runProjectMcpRemove(agentWebDeps(), a),
+    },
+    projectMcpUpdate: {
+      check: (a, who) => checkProjectMcpUpdate(agentWebDeps(), a, who),
+      run: (a) => runProjectMcpUpdate(agentWebDeps(), a),
     },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),

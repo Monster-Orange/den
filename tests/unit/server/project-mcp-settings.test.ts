@@ -66,6 +66,11 @@ describe("issue 335: the project's extra MCP servers in Settings", () => {
     "ap.mcp.bearer",
     "ap.mcp.noBearer",
     "ap.mcp.next",
+    // Issue 352.
+    "ap.do.project_mcp_remove",
+    "ap.do.project_mcp_update",
+    "ap.mcp.removeWarn",
+    "ap.mcp.urlChange",
   ];
   const catalog = (lang: string): Record<string, string> => {
     const window: Record<string, unknown> = {};

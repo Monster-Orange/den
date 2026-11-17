@@ -1477,6 +1477,13 @@
       "Sin bearer: sus llamadas no llevan cabecera Authorization.",
     "ap.mcp.next":
       "Los agentes de {project} lo reciben en su próximo inicio o reanudación.",
+    "ap.do.project_mcp_remove":
+      "Quitar el MCP {name} ({url}) de los agentes del proyecto {project}",
+    "ap.do.project_mcp_update":
+      "Cambiar el MCP {name} de los agentes del proyecto {project} (ahora {url})",
+    "ap.mcp.removeWarn":
+      "Los agentes de {project} pierden las herramientas de {name} en su próximo inicio o reanudación.",
+    "ap.mcp.urlChange": "MCP {name}: de {from} a {to}",
     "pmode.none": "Usar el de todo Den",
     "pmode.following": "Sigue el de todo Den: {m}",
     "pmode.setHere": "Fijado para este proyecto: {m} (el de todo Den es {dw})",

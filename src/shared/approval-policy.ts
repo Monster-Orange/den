@@ -60,6 +60,14 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "gives a project's agents new tools, and sends a bearer to a new address",
   },
+  project_mcp_remove: {
+    risk: "critical",
+    why: "takes tools away from a project's agents at their next start (issue 352: the person's own Allow)",
+  },
+  project_mcp_update: {
+    risk: "critical",
+    why: "sends a project's agents' calls, and maybe a bearer, to another address",
+  },
   persona_create: {
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access",

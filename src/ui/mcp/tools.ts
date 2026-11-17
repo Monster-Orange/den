@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, hub_connect, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1579,6 +1579,21 @@ function needArg(tool: string, a: Args, k: string, what: string): string {
   return v;
 }
 
+/**
+ * Issues 335, 352: the project a project_mcp_* ask is for: a project's
+ * agent's own (it may name only that one); Den's own agent names it.
+ */
+function projectMcpProject(tool: string, a: Args, ctx: ToolContext): string {
+  const project = ctx.scope
+    ? (str(a.project) ?? ctx.scope.workspace)
+    : needArg(tool, a, "project", "the project");
+  if (ctx.scope && project !== ctx.scope.workspace)
+    throw new ScopeRefusal(
+      `${tool}: you work in project "${ctx.scope.workspace}" and can change it only, not project "${project}"; nothing was asked.`,
+    );
+  return project;
+}
+
 const noteArg = z
   .string()
   .max(500)
@@ -2072,6 +2087,82 @@ const APPROVAL_TOOLS: DenTool[] = [
         "project_mcp_add",
         "project_mcp_add",
         { project, name, url, bearer: str(a.bearer) },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_mcp_remove",
+    title: "Remove an HTTP MCP server from a project",
+    description:
+      "Remove one of a project's extra HTTP MCP servers (`name`), so its agents no longer get it. The person's own Allow always decides. Agents lose it at their next start or resume. A project's agent removes from its own project; Den's own agent from any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z.string().describe("Its name, as the project's MCP list shows it"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = projectMcpProject("project_mcp_remove", a, ctx);
+      const name = needArg("project_mcp_remove", a, "name", "its name");
+      return askPerson(
+        "project_mcp_remove",
+        "project_mcp_remove",
+        { project, name },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_mcp_update",
+    title: "Change a project's HTTP MCP server",
+    description:
+      "Change one of a project's extra HTTP MCP servers (`name`): a new `url`, a new `bearer` (the name of a secrets.refs entry the person has set: never a token itself), or `no_bearer: true` to send none. The person's own Allow always decides. Agents get the change at their next start or resume. A project's agent changes its own project's; Den's own agent any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z.string().describe("Its name, as the project's MCP list shows it"),
+      url: z
+        .string()
+        .optional()
+        .describe(
+          "Its new Streamable HTTP address: https, or http to this machine",
+        ),
+      bearer: z
+        .string()
+        .optional()
+        .describe("The name of a secrets.refs entry, never a value"),
+      no_bearer: z
+        .boolean()
+        .optional()
+        .describe("true: its calls carry no bearer"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = projectMcpProject("project_mcp_update", a, ctx);
+      const name = needArg("project_mcp_update", a, "name", "its name");
+      return askPerson(
+        "project_mcp_update",
+        "project_mcp_update",
+        {
+          project,
+          name,
+          url: str(a.url),
+          bearer: str(a.bearer),
+          ...(a.no_bearer === true ? { no_bearer: true } : {}),
+        },
         a,
         ctx,
       );

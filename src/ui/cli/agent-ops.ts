@@ -4794,6 +4794,68 @@ export function projectMcpView(
   };
 }
 
+/**
+ * Issues 335, 352: the project a project_mcp_* ask is for, checked: a
+ * project (never Den's own agent's place) that exists, and, when a
+ * project's agent asks, its own.
+ */
+function projectMcpTarget(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string },
+  action: string,
+  verb: string,
+): { ok: true; ws: string } | { ok: false; error: string } {
+  const p = raw.project;
+  if (p !== undefined && p !== null && typeof p !== "string")
+    return { ok: false, error: "project must be text" };
+  const ws = typeof p === "string" ? p.trim() : "";
+  if (isServerScope(ws))
+    return {
+      ok: false,
+      error: `${ws} is Den's own agent's place, not a project`,
+    };
+  checkWorkspaceName(action, ws);
+  if (!d.workspaceExists(ws)) return { ok: false, error: `no project "${ws}"` };
+  if (who.project && !isServerScope(who.project) && who.project !== ws)
+    return {
+      ok: false,
+      error: `${who.agent ?? "this agent"} works in project ${who.project}: it can ${verb} that project only, not project ${ws}`,
+    };
+  return { ok: true, ws };
+}
+
+/**
+ * Issue 352: a project_mcp_add or _update ask as its check reads it. The
+ * queue checks a request again on Allow with the args the first check
+ * gave (`{ project, server }`); an agent asks with them flat.
+ */
+function flatMcpArgs(raw: Record<string, unknown>): Record<string, unknown> {
+  const sv = raw.server;
+  if (!sv || typeof sv !== "object" || Array.isArray(sv)) return raw;
+  const s = sv as Record<string, unknown>;
+  return {
+    project: raw.project,
+    name: s.name,
+    url: s.url,
+    ...(s.bearer ? { bearer: s.bearer } : { no_bearer: true }),
+  };
+}
+
+/** Issue 352: project `ws`'s server `name`, or why not. */
+function projectMcpServerOf(
+  d: AgentsResolved,
+  ws: string,
+  rawName: unknown,
+): { ok: true; server: ProjectMcpServer } | { ok: false; error: string } {
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  if (!name) return { ok: false, error: "name: give the MCP's name" };
+  const server = projectMcpServers(d, ws).find((s) => s.name === name);
+  return server
+    ? { ok: true, server }
+    : { ok: false, error: `project ${ws} has no MCP server "${name}"` };
+}
+
 export interface ProjectMcpAddArgs {
   project: string;
   server: ProjectMcpServer;
@@ -4816,20 +4878,12 @@ export function checkProjectMcpAdd(
     error,
   });
   try {
-    const p = raw.project;
-    if (p !== undefined && p !== null && typeof p !== "string")
-      return no("project must be text");
-    const ws = typeof p === "string" ? p.trim() : "";
-    if (isServerScope(ws))
-      return no(`${ws} is Den's own agent's place, not a project`);
-    checkWorkspaceName("project_mcp_add", ws);
-    if (!d.workspaceExists(ws)) return no(`no project "${ws}"`);
-    if (who.project && !isServerScope(who.project) && who.project !== ws)
-      return no(
-        `${who.agent ?? "this agent"} works in project ${who.project}: it can add to that project only, not project ${ws}`,
-      );
+    const a = flatMcpArgs(raw);
+    const t = projectMcpTarget(d, a, who, "project_mcp_add", "add to");
+    if (!t.ok) return t;
+    const ws = t.ws;
     const c = checkProjectMcpServer(
-      { name: raw.name, url: raw.url, bearer: raw.bearer },
+      { name: a.name, url: a.url, bearer: a.bearer },
       [d.cli, HUB_SERVER],
     );
     if (!c.ok) return no(c.error);
@@ -4886,14 +4940,216 @@ export async function runProjectMcpAdd(
   | { ok: true; project: string; servers: { name: string; url: string }[] }
   | { ok: false; error: string }
 > {
-  const flat =
-    raw.server && typeof raw.server === "object"
-      ? { project: raw.project, ...(raw.server as Record<string, unknown>) }
-      : raw;
-  const c = checkProjectMcpAdd(d, flat);
+  const c = checkProjectMcpAdd(d, raw);
   if (!c.ok) return c;
   const ws = c.args.project;
   d.saveWorkspaceMcpServers(ws, [...projectMcpServers(d, ws), c.args.server]);
+  return { ok: true, ...projectMcpView(d, ws) };
+}
+
+export interface ProjectMcpRemoveArgs {
+  project: string;
+  name: string;
+}
+
+/**
+ * Issue 352: checks a project_mcp_remove ask: take one of a project's
+ * extra MCP servers away from its agents. Always the person's own Allow,
+ * as adding one is. A project's agent asks for its own project; Den's
+ * agent for any.
+ */
+export function checkProjectMcpRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<ProjectMcpRemoveArgs> {
+  try {
+    const t = projectMcpTarget(
+      d,
+      raw,
+      who,
+      "project_mcp_remove",
+      "remove from",
+    );
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const f = projectMcpServerOf(d, ws, raw.name);
+    if (!f.ok) return f;
+    const { name, url } = f.server;
+    const lines: [string, DetailKey][] = [
+      [
+        `Agents in ${ws} lose the tools of ${name} at their next start or resume.`,
+        { key: "ap.mcp.removeWarn", vars: { project: ws, name } },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [`MCP: ${name} at ${url}`, { key: "ap.mcp.server", vars: { name, url } }],
+    ];
+    return {
+      ok: true,
+      personOnly: true,
+      summary: `remove MCP ${name} (${url}) from project ${ws}'s agents`,
+      params: { project: ws, name, url },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, name },
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Issue 352: on Allow, removes it (checked again); names and urls back. */
+export async function runProjectMcpRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; project: string; servers: { name: string; url: string }[] }
+  | { ok: false; error: string }
+> {
+  const c = checkProjectMcpRemove(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  d.saveWorkspaceMcpServers(
+    ws,
+    projectMcpServers(d, ws).filter((s) => s.name !== c.args.name),
+  );
+  return { ok: true, ...projectMcpView(d, ws) };
+}
+
+export interface ProjectMcpUpdateArgs {
+  project: string;
+  /** The server as it will be: same name, its new url and bearer. */
+  server: ProjectMcpServer;
+}
+
+/**
+ * Issue 352: checks a project_mcp_update ask: a new url, a new bearer
+ * reference (a secrets.refs name that is set, never a value), or no
+ * bearer (`no_bearer: true`) for one of a project's extra MCP servers.
+ * Always the person's own Allow: it sends the agents' calls, and maybe a
+ * bearer, somewhere else.
+ */
+export function checkProjectMcpUpdate(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<ProjectMcpUpdateArgs> {
+  const no = (error: string): HeldOpCheck<ProjectMcpUpdateArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const a = flatMcpArgs(raw);
+    const t = projectMcpTarget(d, a, who, "project_mcp_update", "change");
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const f = projectMcpServerOf(d, ws, a.name);
+    if (!f.ok) return f;
+    const cur = f.server;
+    const noBearer = a.no_bearer === true;
+    if (a.no_bearer !== undefined && typeof a.no_bearer !== "boolean")
+      return no("no_bearer must be true or false");
+    const hasUrl = a.url !== undefined && a.url !== null && a.url !== "";
+    const hasBearer =
+      a.bearer !== undefined && a.bearer !== null && a.bearer !== "";
+    if (noBearer && hasBearer) return no("give bearer or no_bearer, not both");
+    if (!hasUrl && !hasBearer && !noBearer)
+      return no("nothing to change: give url, bearer or no_bearer");
+    const c = checkProjectMcpServer(
+      {
+        name: cur.name,
+        url: hasUrl ? a.url : cur.url,
+        bearer: noBearer ? undefined : hasBearer ? a.bearer : cur.bearer,
+      },
+      [d.cli, HUB_SERVER],
+    );
+    if (!c.ok) return no(c.error);
+    const next = c.server;
+    const urlChanged = next.url !== cur.url;
+    const bearerChanged = next.bearer !== cur.bearer;
+    if (!urlChanged && !bearerChanged)
+      return no(`project ${ws}'s MCP server "${cur.name}" is already so`);
+    if (bearerChanged && next.bearer && !d.secretRefSet(next.bearer))
+      return no(
+        `secrets.refs.${next.bearer} is not set: a person adds it to the install's config first`,
+      );
+    const lines: [string, DetailKey][] = [];
+    if (urlChanged)
+      lines.push([
+        `This gives agents in ${ws} new tools, and sends their calls to ${next.url}.`,
+        { key: "ap.mcp.warn", vars: { project: ws, url: next.url } },
+      ]);
+    lines.push([
+      `Project: ${ws}`,
+      { key: "ap.pm.project", vars: { project: ws } },
+    ]);
+    if (urlChanged)
+      lines.push([
+        `MCP ${cur.name}: ${cur.url} → ${next.url}`,
+        {
+          key: "ap.mcp.urlChange",
+          vars: { name: cur.name, from: cur.url, to: next.url },
+        },
+      ]);
+    if (bearerChanged)
+      lines.push(
+        next.bearer
+          ? [
+              `Bearer: read from secrets.refs.${next.bearer} at each call; never written to the agent's files or env.`,
+              { key: "ap.mcp.bearer", vars: { ref: next.bearer } },
+            ]
+          : [
+              "No bearer: its calls carry no Authorization header.",
+              { key: "ap.mcp.noBearer" },
+            ],
+      );
+    lines.push([
+      `Agents in ${ws} get it at their next start or resume.`,
+      { key: "ap.mcp.next", vars: { project: ws } },
+    ]);
+    const what = [
+      urlChanged ? `url ${cur.url} → ${next.url}` : "",
+      bearerChanged
+        ? next.bearer
+          ? `bearer secrets.refs.${next.bearer}`
+          : "no bearer"
+        : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return {
+      ok: true,
+      personOnly: true,
+      summary: `change MCP ${cur.name} in project ${ws}'s agents: ${what}`,
+      params: { project: ws, name: cur.name, url: next.url },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, server: next },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/**
+ * Issue 352: on Allow, saves the server as checked (checked again), in
+ * its place in the list; names and urls back.
+ */
+export async function runProjectMcpUpdate(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; project: string; servers: { name: string; url: string }[] }
+  | { ok: false; error: string }
+> {
+  const c = checkProjectMcpUpdate(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  const next = c.args.server;
+  d.saveWorkspaceMcpServers(
+    ws,
+    projectMcpServers(d, ws).map((s) => (s.name === next.name ? next : s)),
+  );
   return { ok: true, ...projectMcpView(d, ws) };
 }
 

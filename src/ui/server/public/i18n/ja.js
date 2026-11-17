@@ -1439,6 +1439,13 @@
       "bearer なし: 呼び出しに Authorization ヘッダーは付きません。",
     "ap.mcp.next":
       "{project} のエージェントは次の起動または再開時にこれを使えます。",
+    "ap.do.project_mcp_remove":
+      "MCP {name} ({url}) をプロジェクト {project} のエージェントから外す",
+    "ap.do.project_mcp_update":
+      "プロジェクト {project} のエージェントの MCP {name} を変更 (変更後 {url})",
+    "ap.mcp.removeWarn":
+      "{project} のエージェントは次の起動または再開時に {name} のツールを使えなくなります。",
+    "ap.mcp.urlChange": "MCP {name}: {from} から {to} へ",
     "pmode.none": "Den 全体の既定を使う",
     "pmode.following": "Den 全体の既定に従っています: {m}",
     "pmode.setHere": "このプロジェクトで設定: {m} (Den 全体は {dw})",
