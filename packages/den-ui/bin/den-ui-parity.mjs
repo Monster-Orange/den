@@ -82,6 +82,8 @@ export const COMPONENTS = {
       "den-collapse-btn",
       "den-pin-row",
       "den-scrim",
+      // 0.7.1: the 44px tap on touch, for any control.
+      "den-hit",
       // Not here: den-has-shell, den-rail-collapsed and den-rail-open are
       // the body's state classes, for a page to lay its own content out by.
     ],

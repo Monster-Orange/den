@@ -356,8 +356,8 @@ The top bar's search sits in the same place in every product (issue 303).
   its search in `start` and puts it in its slot; a host's markup is
   unchanged.
 - **Settings** (custom properties on `.den-top`, with their defaults):
-  `--den-top-left` (444px), `--den-top-search` (304px),
-  `--den-top-right-min` (280px), and under 720px `--den-top-left-md`
+  `--den-top-left` (444px), `--den-top-search` (304px), and under 720px
+  `--den-top-left-md`
   (200px) and, under 480px, `--den-top-left-sm` (62px: ☰ and the mark).
   At 1280px the search is at x 464, 304 wide; on a phone at x 82.
 - **Giving way.** Long words never move the search. The crumbs give way
@@ -365,8 +365,12 @@ The top bar's search sits in the same place in every product (issue 303).
   keeps its words and a long one ends in "…"; the last crumb is kept
   whole. Then the install name ends in "…". Under about 1100px the
   host's chips give way (their words end in "…"; the kit's buttons keep
-  their size). When even the kit's buttons would not fit, the left part
-  gives way and the search moves left, the same in every product.
+  their size). The chips' column is never narrower than the kit's own
+  buttons, so the chips never run under the search: when the bar is too
+  narrow for all three parts, the left part gives way and the search
+  moves left. A host chip is width 0 growing to its own width
+  (`max-width: max-content`): put its words in its last child, a span,
+  which ends in "…".
 - **A gap after ⌕**: 8px between the search and the chips, and 8px more
   before the first chip.
 - **The search's words** are the kit's ("Search…", named "Search"; es,
@@ -374,6 +378,12 @@ The top bar's search sits in the same place in every product (issue 303).
 - **Touch** (`pointer: coarse`): every control in the bar takes a 44×44px
   tap (an `::after` hit area, centred; the look is the same), and the
   key hints (⌘K, ⌘⇧F, any `.den-kbd`) hide.
+- **`.den-hit`**: the same 44×44px tap for a host's own buttons and tabs.
+  On a touch screen it is `position: relative` plus a transparent,
+  centred `::after` at least 44×44px; without touch it does nothing. Its
+  look and layout never change. It sits beside `.den-kbd`, the one
+  key-cap rule, which hides on a touch screen wherever it is (a palette,
+  a button). `den-ui-parity` knows both: a host keeps no copy.
 - **Nav inventory**: the search, Report, the bell, the version chip and ◐
   ▾ (`PINNED_CLASSES`) are compared at the reference's x and width: no
   host-content shift excuses moving them. Den's references, and the

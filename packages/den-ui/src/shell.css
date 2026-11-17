@@ -61,24 +61,17 @@ body.den-has-shell > #den-content {
   top: 8px;
 }
 .den-top {
-  /* issue 303: three parts. The left part (☰, the brand, the crumbs) and
+  /* Issue 303: three parts. The left part (☰, the brand, the crumbs) and
      the search have set widths, so the search sits at the same x and
      width in every product whatever the host's words; the chips take the
-     rest, pinned to the right edge. The left part gives way only when the
-     kit's own buttons would not fit (--den-top-right-min). Settings:
-     --den-top-left (444px), --den-top-search (304px),
-     --den-top-right-min (280px). */
+     rest, pinned to the right edge. The chips' column is never narrower
+     than the kit's own buttons (the host's chips count for nothing
+     there): when the bar is too narrow for all three, the left part gives
+     way. Settings: --den-top-left (444px), --den-top-search (304px). */
   display: grid;
   grid-template-columns:
-    minmax(
-      0,
-      min(
-        var(--den-top-left, 444px),
-        100% - var(--den-top-search, 304px) - var(--den-top-right-min, 280px) -
-          16px
-      )
-    )
-    var(--den-top-search, 304px) minmax(0, 1fr);
+    minmax(0, var(--den-top-left, 444px)) var(--den-top-search, 304px)
+    minmax(min-content, 1fr);
   align-items: center;
   column-gap: 8px;
   height: var(--den-top-h);
@@ -237,8 +230,12 @@ body.den-has-shell > #den-content {
 }
 /* A host chip gives way: its last part (its words, in a span) ends in
    "…". */
+/* Width 0, growing to its own width: a host chip takes only the room
+   there is, and counts for nothing in the chips' least width. */
 .den-end > * {
-  flex: 0 1 auto;
+  width: 0;
+  flex: 1 1 auto;
+  max-width: max-content;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -929,7 +926,7 @@ body.den-has-shell .den-upd {
      --den-top-left-sm, 62px: ☰ and the mark). */
   .den-top {
     grid-template-columns: minmax(0, var(--den-top-left-md, 200px)) auto minmax(
-        0,
+        min-content,
         1fr
       );
   }
@@ -951,7 +948,10 @@ body.den-has-shell .den-upd {
 /* A phone's tap targets: every top-bar button 32px or more each way. */
 @media (max-width: 479.98px) {
   .den-top {
-    grid-template-columns: var(--den-top-left-sm, 62px) auto minmax(0, 1fr);
+    grid-template-columns: var(--den-top-left-sm, 62px) auto minmax(
+        min-content,
+        1fr
+      );
   }
   .den-top button {
     min-height: 32px;
@@ -1123,14 +1123,19 @@ body.den-has-shell .den-upd {
   }
 }
 
-/* Touch (issue 303): every control in the top bar takes a 44×44px tap,
-   through a hit area centred on it (the look is the same), and the key
-   hints, which a touch screen has no keys for, hide. */
+/* Touch (issue 303): .den-hit is the kit's 44×44px tap, for any control
+   (the kit's top bar uses it, and a host may put it on its own buttons
+   and tabs): a hit area centred on the control, transparent, with no
+   change to its look or layout, on a touch screen only. Key hints
+   (.den-kbd, and the bar's kbd) hide on a touch screen, wherever they
+   are. */
 @media (pointer: coarse) {
+  .den-hit,
   .den-top button,
   .den-top a[href] {
     position: relative;
   }
+  .den-hit::after,
   .den-top button::after,
   .den-top a[href]::after {
     content: "";
@@ -1142,9 +1147,10 @@ body.den-has-shell .den-upd {
     min-width: 44px;
     min-height: 44px;
     transform: translate(-50%, -50%);
+    background: transparent;
   }
-  .den-top kbd,
-  .den-top .den-kbd {
+  .den-kbd,
+  .den-top kbd {
     display: none;
   }
 }

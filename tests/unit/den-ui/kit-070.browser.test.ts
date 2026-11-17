@@ -125,6 +125,8 @@ if (!q.has("bare")) {
       '<button type="button" class="den-chip" id="host-b"><span>Runs</span></button>';
   // ?longname: a long install name.
   if (q.has("longname")) model.product = { ...model.product, name: "A Very Long Install Name For This Place And Then Some" };
+  // ?longver: a long version (a dev build's) widens the kit's own chip.
+  if (q.has("longver")) model.product = { ...model.product, version: "0.4.63-dev.12" };
   model.settings = { href: "#settings" };
   model.account = q.has("act")
     ? { label: "Signed in", detail: "this device", action: true }
@@ -1369,6 +1371,20 @@ for (const engine of ["chromium", "webkit"]) {
       ]);
     });
 
+    it("narrower than the left part, the search and the kit's buttons need: the chips never run under the search", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1280, 1100, 960, 800])
+        for (const q of ["?chips", "?long&chips&longver", "?longver"]) {
+          const p = await open(b, q, w);
+          const m = await measure(p);
+          await p.context().close();
+          // ⌕ to the first chip: a clear gap, never an overlap.
+          expect([w, q, m.gap >= 12]).toEqual([w, q, true]);
+          expect([w, q, m.overflow]).toEqual([w, q, false]);
+        }
+    });
+
     it("at 390 the search sits at the same x, short or long names, with or without host chips", async () => {
       const b = browsers[engine];
       if (!b) return;
@@ -1391,6 +1407,55 @@ for (const engine of ["chromium", "webkit"]) {
   // Issue 303: on a touch screen every top-bar control takes a 44px tap
   // (an ::after hit area: the look is the same) and the key hints hide.
   describe(`issue 303 touch targets (${engine})`, () => {
+    // The kit's two touch rules for any host element: .den-hit (a 44px
+    // tap on touch, nothing without) and .den-kbd (hidden on touch).
+    const hostTouch = (p: Page) =>
+      p.evaluate(() => {
+        const main = document.getElementById("den-content")!;
+        main.insertAdjacentHTML(
+          "beforeend",
+          '<p style="padding:40px"><button type="button" class="den-hit" id="hh" style="font-size:12px;padding:2px 4px">x</button> <kbd class="den-kbd" id="hk">⌘J</kbd></p>',
+        );
+        const b = document.getElementById("hh")!;
+        const r = b.getBoundingClientRect();
+        const cx = r.x + r.width / 2;
+        const cy = r.y + r.height / 2;
+        const edges = [
+          [cx, cy - 21],
+          [cx, cy + 21],
+          [cx - 21, cy],
+          [cx + 21, cy],
+        ].map(
+          ([x, y]) => document.elementFromPoint(x!, y!)?.closest("#hh") != null,
+        );
+        const k = document.getElementById("hk")!;
+        return {
+          small: r.width < 44 && r.height < 44,
+          box: [Math.round(r.width), Math.round(r.height)],
+          edges,
+          kbd: k.getClientRects().length > 0,
+        };
+      });
+
+    it("a host's .den-hit takes a 44px tap on touch and none without; a host's .den-kbd hides on touch", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const t = await open(b, "", 390, engine === "webkit");
+      const onTouch = await hostTouch(t);
+      await t.context().close();
+      const m = await open(b, "", 390, false);
+      const noTouch = await hostTouch(m);
+      await m.context().close();
+      expect(noTouch.small).toBe(true);
+      expect(noTouch.edges).toEqual([false, false, false, false]);
+      expect(noTouch.kbd).toBe(true);
+      if (engine !== "webkit") return;
+      // Same look: the button's own box is unchanged.
+      expect(onTouch.box).toEqual(noTouch.box);
+      expect(onTouch.edges).toEqual([true, true, true, true]);
+      expect(onTouch.kbd).toBe(false);
+    });
+
     it("at 390 on touch: every bar control's hit box is 44×44, no key hint shows, and the bar looks the same", async () => {
       const b = browsers[engine];
       if (!b || engine !== "webkit") return;
