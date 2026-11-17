@@ -72,16 +72,19 @@ When Den is back it types "Server is back on <version> (pid …)":
 - On the new version: Den commits the new pin (package.json,
   package-lock.json) and pushes it itself once the new version is
   verified, so leave those two files alone. Commit them yourself only when
-  `server_agent.pin_commit` is `off`. Then call release_status: its
-  `denUpdate` has the new Den's doctor results from the update (each
-  failing or warning check). Then check with onboard_status and status.
-- Rolled back: the line says why. Commit nothing, and tell the person.
-  release_status has why too, and the new Den's doctor results if its
-  doctor ran.
+  `server_agent.pin_commit` is `off`. The line itself says what the new
+  Den's doctor found (each failing or warning check), or that nothing was
+  kept. Then check with onboard_status and status.
+- Rolled back: the line says why, and what the new Den's doctor found if
+  it ran. Commit nothing, and tell the person.
 
 The same goes when Den updated itself (its own check, not your ask): its
-line starts "Den is back on <version>", and release_status has the
-update and its doctor results.
+line starts "Den is back on <version>".
+
+Your Den tools keep running the Den they started on: an update restarts
+Den, not you. Until the person restarts you from Den (Restart keeps this
+conversation), a tool's answer ends with a note saying so, and anything
+the new Den added is missing from it. Ask the person for that restart.
 
 Den also looks at npm by itself (every 30 minutes by default): with
 `self_update: ask` the person gets "update Den to X" to Allow, and with

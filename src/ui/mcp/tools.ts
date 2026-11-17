@@ -1828,7 +1828,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "den_update",
     title: "Update Den",
     description:
-      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (release_status shows what it found), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person." + // words-ok: SRV-1's own line
+      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (Den's line when it is back says what it found, and so do release_status's doctor results), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person." + // words-ok: SRV-1's own line
       HELD,
     action: true,
     shape: {
