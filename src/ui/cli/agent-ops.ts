@@ -323,6 +323,9 @@ import {
 import {
   accountRefName,
   firstAccount,
+  pickAccount,
+  type AccountSource,
+  type PickDeps,
 } from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
@@ -414,6 +417,13 @@ export interface AgentsDeps extends SessionsDeps {
     provider: SecretsProvider;
     ref: SecretRef | null;
   };
+  /**
+   * Issue 340: the sign-in source (slice 6) that maps a folder to a
+   * sign-in and reports the active one (default: none is set).
+   */
+  signInSource?: () => AccountSource | null;
+  /** Issue 340: a sign-in that hit its usage cap (slice 4; default: none). */
+  signInCapped?: (runtimeId: string, accountId: string) => boolean;
   /** 0.4.48: this machine's processes (default: ps), for jobs an agent left running. */
   processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
@@ -483,6 +493,8 @@ export interface AgentsResolved extends Resolved {
     tokenEnv: string | undefined,
     /** Issue 338: whose token (the runtime's id; unset: Claude Code's). */
     runtimeId?: string,
+    /** Issue 340: the agent's folder, for the sign-in source's mapping. */
+    folder?: string,
   ) => Promise<AgentSignIn>;
 }
 
@@ -490,6 +502,8 @@ export interface AgentsResolved extends Resolved {
 export interface AgentSignIn {
   env: Record<string, string>;
   warning?: string;
+  /** Issue 340: the sign-in picked (its label; never an email). */
+  account?: { id: string; label: string };
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -772,7 +786,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
     processes: d.processes ?? readProcesses,
-    agentSignIn: (tokenEnv, runtimeId) =>
+    agentSignIn: (tokenEnv, runtimeId, folder) =>
       agentSignInEnv(
         tokenEnv,
         base.env,
@@ -780,6 +794,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
         base.cli,
         d.signInStore,
         runtimeId,
+        {
+          ...(folder !== undefined ? { folder } : {}),
+          source: d.signInSource?.() ?? null,
+          ...(d.signInCapped ? { capped: d.signInCapped } : {}),
+        },
       ),
   });
 }
@@ -804,20 +823,40 @@ export async function agentSignInEnv(
    * (agentTokenRefName), so a vendor's token reaches its agents only.
    */
   runtimeId = "den-claude",
+  /**
+   * Issue 340: the agent's folder, the sign-in source (slice 6) and the
+   * cap (slice 4), for pickAccount. None: Den's order, as before.
+   */
+  pick: Pick<PickDeps, "folder" | "source" | "capped"> = {},
 ): Promise<AgentSignIn> {
   if (!tokenEnv || agentSignInMode(env, stateDir) !== "token")
     return { env: {} };
-  // Issue 339: the first account in the person's order (account one, the
-  // token that exists today, unless they changed it). Slice 3 picks per agent.
+  // Issue 340: the folder's sign-in, else the active one, else the first
+  // in the person's order that is not capped (account one, the token that
+  // exists today, unless they changed it).
+  const { picked, misses } = await pickAccount({
+    ...pick,
+    stateDir,
+    runtimeId,
+    read: (name) => {
+      const s = store?.(name);
+      return readAgentToken(
+        s
+          ? { provider: () => s.provider, ref: () => s.ref }
+          : { ref: () => agentTokenRef(undefined, undefined, name) },
+      );
+    },
+  });
+  if (picked)
+    return {
+      env: { [tokenEnv]: picked.token },
+      account: { id: picked.account.id, label: picked.label },
+    };
+  // None: what the start says is about the first in the order, as before.
   const acct = firstAccount(stateDir, runtimeId);
   const refName = accountRefName(runtimeId, acct.id);
-  const s = store?.(refName);
-  const r = await readAgentToken(
-    s
-      ? { provider: () => s.provider, ref: () => s.ref }
-      : { ref: () => agentTokenRef(undefined, undefined, refName) },
-  );
-  if (r.token) return { env: { [tokenEnv]: r.token } };
+  const reason = misses.find((m) => m.id === acct.id)?.reason;
+  const r = { reason: reason ?? "not set" };
   // Not Claude Code's: made with its own command, kept under its own ref.
   const how =
     refName === AGENT_TOKEN_REF_NAME
@@ -2872,7 +2911,11 @@ async function startSession(
 ): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
-  const signIn = await d.agentSignIn(launch.tokenEnv, launch.rec.runtime);
+  const signIn = await d.agentSignIn(
+    launch.tokenEnv,
+    launch.rec.runtime,
+    launch.rec.cwd,
+  );
   const tty = d.stdout.isTTY;
   const minted = mintActorToken(d.stateDir(), {
     agentId: launch.rec.id,
@@ -2931,6 +2974,9 @@ async function startSession(
   delete rec.exitCode;
   delete rec.interruptedAt;
   delete rec.restartFailed;
+  // Issue 340: the sign-in this session runs on (its label only).
+  if (signIn.account) rec.signIn = { ...signIn.account };
+  else delete rec.signIn;
   writeRecord(d.stateDir(), rec);
   return {
     rec,
