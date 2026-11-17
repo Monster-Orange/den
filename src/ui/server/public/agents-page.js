@@ -545,6 +545,15 @@ function subagentTag(r) {
   return `<span class="tagx" data-subagents="${esc(r.subagentModel)}" title="${esc(tip)}">${esc(t("ag.subagents", { model }))}</span>`;
 }
 
+/**
+ * Issue 340: the vendor account it runs on under the always-on service, by
+ * its label (never an email): the pane bar's tag. Nothing without one.
+ */
+function signInTag(r) {
+  if (r?.kind !== "agent" || !r.signIn) return "";
+  return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
+}
+
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
   // D28: on_due off: nothing will happen, so nothing is shown.
@@ -2199,7 +2208,8 @@ function paintBar(p) {
     modeTagHtml(r, true) +
     whereTag(r, true) +
     linkTag(r) +
-    subagentTag(r);
+    subagentTag(r) +
+    signInTag(r);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +

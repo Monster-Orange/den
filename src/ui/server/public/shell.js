@@ -2794,6 +2794,9 @@
       "Its subagents (Explore too) run on {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Its subagents (Explore too) run on {model}: Den's default. agents.subagents.model or a persona's subagent_model changes it.",
+    "ag.signIn": "on {label}",
+    "ag.signIn.tip":
+      "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",

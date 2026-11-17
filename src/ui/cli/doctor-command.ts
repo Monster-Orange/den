@@ -554,6 +554,26 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         probe: true,
       });
     },
+    // Issue 340: each vendor's pick, read from the store as a start would.
+    signInPicks: async () => {
+      const [
+        { signInPicks },
+        { agentTokenRef, readAgentToken },
+        { runtimeIds },
+      ] = await Promise.all([
+        import("../../shared/agents/signin-accounts.js"),
+        import("../../shared/agents/signin-token.js"),
+        import("../../shared/agents/runtimes.js"),
+      ]);
+      return signInPicks({
+        stateDir: getStateDir(),
+        runtimeIds: runtimeIds(),
+        read: (name) =>
+          readAgentToken({
+            ref: () => agentTokenRef(undefined, undefined, name),
+          }),
+      });
+    },
     // Issue 338: agents on a runtime with no sign-in data (built-in,
     // the distribution's or user.yml's catalog entries).
     noSignIn: () => {

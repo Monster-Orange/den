@@ -2008,6 +2008,9 @@
       "Sus subagentes (Explore también) usan {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Sus subagentes (Explore también) usan {model}: el valor por defecto de Den. Lo cambian agents.subagents.model o subagent_model de una persona.",
+    "ag.signIn": "con {label}",
+    "ag.signIn.tip":
+      "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
