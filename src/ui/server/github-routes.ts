@@ -94,6 +94,8 @@ export interface GithubRouteDeps {
     req: http.IncomingMessage,
     via: "github" | "link",
     login?: string,
+    /** The GitHub display name from the same `/user`, when set. */
+    name?: string,
   ) => { cookie: string; approveKey: string };
   /** The edge hostnames that route here, and the URL a browser uses for each. */
   edgeRoutes: () => { host: string; url: string }[];
@@ -352,11 +354,12 @@ export async function handleGithubRoutes(
       return true;
     }
     if (v.state === "ok") {
-      if (!deps.flows.claim(v.id, "signin")) {
+      const who = deps.flows.claim(v.id, "signin");
+      if (!who) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
-      const s = deps.signIn(req, "github", v.login);
+      const s = deps.signIn(req, "github", v.login, who.name);
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");
       // The approval key goes to this answer only (web-session.ts).

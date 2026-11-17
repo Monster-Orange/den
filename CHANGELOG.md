@@ -73,8 +73,12 @@ config and manifest changes a distribution must make to move to it under
   A crumb's label gives way before its value. The rail's account entry
   shows the name over @login, never the role; the account menu's header
   adds the role on its own line. Den's account entry no longer says
-  "Signed in · this device": with no GitHub identity known it shows
-  "Local".
+  "Signed in · this device". Signed in with GitHub, it shows your GitHub
+  name over @login (@login alone when GitHub has no name for you). A
+  browser on the Den computer shows the owner's GitHub name and @login,
+  read from what `web up` keeps with the owner's login (the same
+  `gh api user` call; none per page). With no GitHub identity known it
+  shows "Local".
 - After Den updates itself, it commits and pushes the distribution's new
   pin (package.json and package-lock.json) itself, on the lead install,
   once the new version is verified. It no longer waits on the server

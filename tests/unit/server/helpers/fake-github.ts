@@ -20,6 +20,8 @@ import type { AddressInfo } from "net";
 export interface FakeAccount {
   id: number;
   login: string;
+  /** The display name `/user` answers (`.name`); unset: null, as GitHub does. */
+  name?: string;
 }
 
 interface Code {
@@ -157,7 +159,12 @@ export async function startFakeGithub(
         const m = /^Bearer (\S+)$/.exec(req.headers.authorization ?? "");
         const a = m ? tokens.get(m[1]) : undefined;
         if (!a) return send(401, { message: "Bad credentials" });
-        return send(200, { id: a.id, login: a.login, type: "User" });
+        return send(200, {
+          id: a.id,
+          login: a.login,
+          name: a.name ?? null,
+          type: "User",
+        });
       }
       const mine = /^\/user\/memberships\/orgs\/([^/]+)$/.exec(req.url ?? "");
       const pub = /^\/orgs\/([^/]+)\/members\/([^/]+)$/.exec(req.url ?? "");

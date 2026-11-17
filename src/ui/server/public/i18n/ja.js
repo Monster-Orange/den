@@ -1007,6 +1007,7 @@
     "set.embed.context_max_kb": "共有するページの最大サイズ",
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
+    "acct.roleOwner": "オーナー",
     "set.access.pair": "デバイスをペアリング",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",

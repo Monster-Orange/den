@@ -1032,6 +1032,7 @@
     "set.access.machine_name": "Nombre de la máquina",
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
+    "acct.roleOwner": "Propietario",
     "set.access.pair": "Emparejar un dispositivo",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
