@@ -322,8 +322,10 @@ export async function collectNav(page, opts = {}) {
         "sans-serif",
         "serif",
         "monospace",
-        rootCs.getPropertyValue("--sans").trim(),
-        rootCs.getPropertyValue("--mono").trim(),
+        // One line, single-spaced: a token written over lines (tokens.css
+        // wraps long values) is the same family (navFamily, below).
+        rootCs.getPropertyValue("--sans").replace(/\s+/g, " ").trim(),
+        rootCs.getPropertyValue("--mono").replace(/\s+/g, " ").trim(),
       ])
         if (fam)
           for (const wt of ["400", "500"]) faceKeys.add(`${wt} 14px ${fam}`);
@@ -362,9 +364,20 @@ export function fingerprint(snap) {
   return JSON.stringify([
     env.userAgent || "",
     Object.keys(faces)
-      .sort()
-      .map((k) => [k, faces[k]]),
+      .map((k) => [navFamily(k), faces[k]])
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
   ]);
+}
+
+/**
+ * A font family (or a face key) as one line: every run of whitespace one
+ * space, the ends trimmed. "a,\n    b" is "a, b": a token's value keeps
+ * the line breaks it was written with, and must still name one face.
+ */
+export function navFamily(s) {
+  return String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Where a snapshot was taken, in words: its image (if named) and browser. */

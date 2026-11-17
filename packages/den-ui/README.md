@@ -280,7 +280,15 @@ env, elements, tokens }`. `env`: `userAgent`, `faces` (the
   files, never from the working folder: the package's `imports` entry
   `#den-ui-fonts-dir` is `inventory/fonts-dir.mjs` for an ES module
   (`import.meta.url`) and `inventory/fonts-dir.cjs` for CommonJS
-  (`__dirname`). Both ship in `inventory/`; a host serves neither. `NAV_BROWSER_IMAGE` and
+  (`__dirname`). Both ship in `inventory/`; a host serves neither.
+- Font families in the fingerprint are one line each (`navFamily`: every
+  run of whitespace one space, trimmed), so a token written over several
+  lines names the same face as one written on one.
+- The user agent: under `@playwright/test`, the config's device
+  `userAgent` leaks into the contexts of a browser you connect to, and the
+  environment check then sees another user agent than the reference's.
+  Set `test.use({ userAgent: "" })`, or create the context with no
+  `userAgent`. `NAV_BROWSER_IMAGE` and
   `NAV_THEME` are exported beside it.
 
 Den runs it in `tests/unit/den-ui/nav-inventory.browser.test.ts` (CI's

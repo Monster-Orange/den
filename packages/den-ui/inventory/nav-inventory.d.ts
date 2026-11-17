@@ -81,6 +81,8 @@ export declare function collectNav(
 ): Promise<NavSnapshot>;
 /** The browser build's fingerprint: user agent and the faces' widths. */
 export declare function fingerprint(snap: NavSnapshot): string;
+/** A font family or face key as one line: whitespace runs one space, trimmed. */
+export declare function navFamily(s: string): string;
 export declare function compareNav(
   actual: NavSnapshot,
   reference: NavSnapshot,
