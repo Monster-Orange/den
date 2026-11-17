@@ -20,8 +20,11 @@ config and manifest changes a distribution must make to move to it under
   when set, and unsigned otherwise; never the person's GPG key, never a
   prompt. A failed push keeps the commit, is tried again at the next
   update check, and the bell says it once. A follower never commits.
-  New setting `server_agent.pin_commit`: `push` (default) or `off`
-  (#176).
+  New setting `server_agent.pin_commit`: `push` (default), `pr` (the pin
+  on its own branch and a pull request through `gh`) or `off`. The commit
+  follows the approval policy as the routine held write `den_pin_commit`:
+  it runs at once by default, and waits for the person's Allow when the
+  policy says ask (#176).
 
 ## [0.4.62] - 2026-11-16
 

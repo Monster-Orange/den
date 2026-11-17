@@ -418,7 +418,7 @@ describe("server_agent.update_wait_checks (#251)", () => {
 });
 
 describe("server_agent.pin_commit (#176)", () => {
-  it("push by default, or off; a bad one names the key", () => {
+  it("push by default, or pr, or off; a bad one names the key", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-pcm-"));
     try {
       expect(readServerAgentConfig({}, root, {}).pinCommit).toBe("push");
@@ -426,9 +426,13 @@ describe("server_agent.pin_commit (#176)", () => {
         readServerAgentConfig({ server_agent: { pin_commit: "off" } }, root, {})
           .pinCommit,
       ).toBe("off");
+      expect(
+        readServerAgentConfig({ server_agent: { pin_commit: "pr" } }, root, {})
+          .pinCommit,
+      ).toBe("pr");
       expect(() =>
         readServerAgentConfig(
-          { server_agent: { pin_commit: "pr" as "off" } },
+          { server_agent: { pin_commit: "branch" as "off" } },
           root,
           {},
         ),

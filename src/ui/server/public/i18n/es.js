@@ -1330,6 +1330,8 @@
       "Añadir la persona {name} ({id}) al proyecto {where}",
     "ap.do.persona_update.project":
       "Cambiar la persona {id} en el proyecto {where}: {fields}",
+    "ap.do.den_pin_commit":
+      "Confirmar la versión fijada de la distribución en Den {version}",
     "ap.do.repo_clone": "Clonar {source} en {path}",
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
@@ -1620,6 +1622,12 @@
       "__DEN_TITLE__ {v}: su versión fijada está confirmada ({sha}), pero el envío falló: {why}. __DEN_TITLE__ lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
+    "bell.m.pinPrOpened":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinBranchPushed":
+      "__DEN_TITLE__ {v}: la rama {branch} con la versión fijada está enviada; abre una solicitud de cambios para ella ({why})",
+    "bell.m.pinHeld":
+      "__DEN_TITLE__ {v}: confirmar su versión fijada espera tu permiso",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
     "bell.m.rolledBack":

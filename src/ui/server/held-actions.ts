@@ -42,6 +42,10 @@
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
  *                     folder is every project's
+ *   den_pin_commit    #176: commit and push (or open a pull request for)
+ *                     the distribution's new Den pin after a verified
+ *                     self-update (pin-commit.ts). Den asks for it itself
+ *                     when the approval policy says ask; routine
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -128,6 +132,8 @@ export interface HeldActionDeps {
   agentMode?: HeldOp;
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
   verifyRun?: HeldOp;
+  /** #176: den_pin_commit's check and run (pin-commit.ts). */
+  pinCommit?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -468,6 +474,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't change an agent's mode here",
   );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
+  const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -541,5 +548,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,
+    den_pin_commit: pinCommit,
   };
 }

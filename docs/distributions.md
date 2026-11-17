@@ -3330,8 +3330,17 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   update check pushes it again, and the bell says it once. A pushed pin
   is one bell item, "Den updated to X: its pin is committed (sha) and
   pushed". A follower install never commits a pin. `server_agent.pin_commit`
-  (org config): `push` (the default) or `off`, which leaves the pin to the
-  server agent as before. With `update_check_minutes: 0` there are no
+  (org config): `push` (the default), `pr` or `off`. `pr` commits the pin
+  on its own branch, `den/pin-<version>`, without moving the checkout's
+  branch or index, pushes that branch and opens a pull request with `gh`
+  onto the checkout's upstream branch. When `gh` can't, the branch stays
+  pushed, the bell links where to open the pull request (on GitHub), and
+  the next check tries `gh` again. `off` leaves the pin to the server
+  agent as before. The commit is the held write `den_pin_commit`
+  (routine) under the [approval policy](#onboarding-writes-held-for-the-person):
+  by default it runs at once; with `approvals.writes.den_pin_commit: ask`
+  (or `approvals.policy: ask`) in `user.yml`, Den holds it for your Allow,
+  once per version, with one bell item, and commits nothing until then. With `update_check_minutes: 0` there are no
   checks, so Den commits no pin either. A pin still uncommitted two passes
   in a row: a log line and one bell item, which says when the server
   agent is waiting on your Allow. A version that rolled back here is not tried

@@ -24,7 +24,9 @@
  *     lead install only, once the new version is verified (the watch wrote
  *     "good" and this Den runs it). The server agent's state doesn't
  *     matter: resumed, busy, idle or not running. A push that fails is
- *     tried again at every pass; the bell says it once.
+ *     tried again at every pass; the bell says it once. With pin_commit:
+ *     pr it opens a pull request instead; the approval policy (issue 160)
+ *     may hold it for the person's Allow.
  *
  * Every input is a function (tests fake each); the server wires them.
  */
@@ -193,8 +195,13 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   let pinUncommitted = 0;
   let pinNoted: string | null = null;
   /** #251: the running version's pin committed? Two passes: say so. */
+  /**
+   * #176: the version whose pin is on its way another way (a pull request,
+   * a held Allow): its uncommitted files are expected, not said again.
+   */
+  let pinElsewhere: string | null = null;
   const checkPin = async (have: string) => {
-    if (!d.pinState || d.pinned() !== have) return;
+    if (!d.pinState || d.pinned() !== have || pinElsewhere === have) return;
     const st = await d.pinState().catch(() => null);
     if (st !== "uncommitted") {
       pinUncommitted = 0;
@@ -232,7 +239,31 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         why: e instanceof Error ? e.message : String(e),
       }),
     );
+    if (
+      r.did === "pr" ||
+      r.did === "branch_pushed" ||
+      r.did === "held" ||
+      (r.did === "done" && r.how === "pr")
+    )
+      pinElsewhere = have;
     switch (r.did) {
+      case "pr":
+        d.log?.(
+          `update check: the pin of ${have} is on ${r.branch}, pull request ${r.url}`,
+        );
+        d.pinNotice?.(r);
+        return;
+      case "branch_pushed":
+      case "held":
+        if (r.first) {
+          d.log?.(
+            r.did === "held"
+              ? `update check: the pin of ${have} waits for the person's Allow (approval policy)`
+              : `update check: the pin of ${have} is on ${r.branch}, but no pull request: ${r.why}`,
+          );
+          d.pinNotice?.(r);
+        }
+        return;
       case "pushed":
         d.log?.(
           `update check: the pin of ${have} is committed and pushed (${r.sha.slice(0, 12)})`,

@@ -1253,9 +1253,10 @@ export interface ServerAgentConfig {
   /**
    * #176: after a verified self-update, the lead install commits the new
    * pin (package.json, package-lock.json) and pushes it to the branch's
-   * upstream: push (default), or off (left to the server agent).
+   * upstream: push (default), pr (its own branch and a pull request), or
+   * off (left to the server agent).
    */
-  pin_commit?: "push" | "off";
+  pin_commit?: "push" | "pr" | "off";
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1289,8 +1290,8 @@ export interface ResolvedServerAgentConfig {
   role: "lead" | "follower";
   /** #251: server_agent.update_wait_checks. */
   updateWaitChecks: number;
-  /** #176: server_agent.pin_commit: push (default) or off. */
-  pinCommit: "push" | "off";
+  /** #176: server_agent.pin_commit: push (default), pr or off. */
+  pinCommit: "push" | "pr" | "off";
 }
 
 /** #251: server_agent.update_wait_checks when unset. */
@@ -1361,9 +1362,9 @@ export function readServerAgentConfig(
       `server_agent.update_wait_checks: a whole number, 1 or more (got ${JSON.stringify(wc)})`,
     );
   const pcm = sa.pin_commit;
-  if (pcm !== undefined && pcm !== "push" && pcm !== "off")
+  if (pcm !== undefined && pcm !== "push" && pcm !== "pr" && pcm !== "off")
     throw new Error(
-      `server_agent.pin_commit: push or off, not ${JSON.stringify(pcm)}`,
+      `server_agent.pin_commit: push, pr or off, not ${JSON.stringify(pcm)}`,
     );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")

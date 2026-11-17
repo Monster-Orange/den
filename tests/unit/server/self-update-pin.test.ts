@@ -23,9 +23,16 @@ import {
 } from "../../../src/ui/server/den-update.js";
 import {
   commitPin,
+  compareLink,
   pinGit,
   readPinRecord,
+  type PinCommitDeps,
 } from "../../../src/ui/server/pin-commit.js";
+import { heldActions } from "../../../src/ui/server/held-actions.js";
+import {
+  HELD_WRITE_RISK,
+  policyFor,
+} from "../../../src/shared/approval-policy.js";
 import {
   updateCheck,
   type UpdateCheckDeps,
@@ -125,7 +132,10 @@ async function selfUpdate(): Promise<void> {
 }
 
 /** The new Den's update check (1.1.0 runs), its git real, in temp dirs. */
-function newDen(over: Partial<UpdateCheckDeps> = {}) {
+function newDen(
+  over: Partial<UpdateCheckDeps> = {},
+  pin: Partial<PinCommitDeps> = {},
+) {
   const bell: string[] = [];
   const logs: string[] = [];
   const d: UpdateCheckDeps = {
@@ -144,7 +154,7 @@ function newDen(over: Partial<UpdateCheckDeps> = {}) {
     notice: (v, text) => bell.push(`notice ${v}: ${text}`),
     log: (l) => logs.push(l),
     pinCommit: (v: string) =>
-      commitPin(v, { root, stateDir, git: pinGit(root, { env }) }),
+      commitPin(v, { root, stateDir, git: pinGit(root, { env }), ...pin }),
     pinNotice: (s: { did: string; version: string }) =>
       bell.push(`pin ${s.did} ${s.version}`),
     ...over,
@@ -289,5 +299,172 @@ describe("#176: Den commits and pushes the pin after its self-update", () => {
     });
     expect(step).toMatchObject({ did: "pushed", version: "1.1.0" });
     expect(git(root, "cat-file", "commit", "HEAD")).not.toMatch(/gpgsig/);
+  });
+
+  /**
+   * A fake gh, by its full path: it records its arguments and answers as
+   * `answer` says (a pull request's address, or a failure).
+   */
+  function fakeGh(answer: "ok" | "fail"): {
+    argv: string[];
+    calls: () => string[][];
+  } {
+    const log = path.join(tmp, "gh-calls.jsonl");
+    const script = path.join(tmp, "fake-gh.cjs");
+    fs.writeFileSync(
+      script,
+      `const fs = require("fs");
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+if (fs.existsSync(${JSON.stringify(path.join(tmp, "gh-fails"))})) {
+  process.stderr.write("gh: not logged in\\n");
+  process.exit(1);
+}
+process.stdout.write("https://example.invalid/acme/dist/pull/7\\n");
+`,
+    );
+    if (answer === "fail") fs.writeFileSync(path.join(tmp, "gh-fails"), "");
+    return {
+      argv: [process.execPath, script],
+      calls: () =>
+        fs.existsSync(log)
+          ? fs
+              .readFileSync(log, "utf8")
+              .trim()
+              .split("\n")
+              .map((l) => JSON.parse(l) as string[])
+          : [],
+    };
+  }
+
+  describe("server_agent.pin_commit: pr", () => {
+    it("the pin goes on its own branch, gh opens the pull request, and the checkout's branch and index stay put", async () => {
+      await selfUpdate();
+      fs.writeFileSync(path.join(root, "draft.md"), "staged draft\n");
+      git(root, "add", "draft.md");
+      const head = git(root, "rev-parse", "HEAD");
+      const gh = fakeGh("ok");
+      const { check, bell } = newDen({}, { mode: "pr", gh: gh.argv });
+
+      await check.tick();
+
+      const branch = "den/pin-1.1.0";
+      expect(git(remote, "log", "-1", "--format=%s", branch)).toBe(
+        "Den 1.1.0: pin the distribution to Den 1.1.0",
+      );
+      expect(
+        git(remote, "show", "--name-only", "--format=", branch)
+          .split("\n")
+          .sort(),
+      ).toEqual(["package-lock.json", "package.json"]);
+      expect(git(remote, "rev-parse", `${branch}~1`)).toBe(head);
+      expect(git(remote, "rev-parse", "main")).toBe(head);
+      // The checkout: same commit, same index, the pin still in its files.
+      expect(git(root, "rev-parse", "HEAD")).toBe(head);
+      expect(git(root, "status", "--porcelain").split("\n").sort()).toEqual([
+        " M package-lock.json",
+        " M package.json",
+        "A  draft.md",
+      ]);
+      expect(gh.calls()).toHaveLength(1);
+      expect(gh.calls()[0]).toEqual(
+        expect.arrayContaining([
+          "pr",
+          "create",
+          "--head",
+          branch,
+          "--base",
+          "main",
+        ]),
+      );
+      expect(bell).toEqual(["pin pr 1.1.0"]);
+      expect(readPinRecord(stateDir)).toMatchObject({
+        state: "pr_opened",
+        url: "https://example.invalid/acme/dist/pull/7",
+      });
+      // Done: no second pull request.
+      await check.tick();
+      expect(gh.calls()).toHaveLength(1);
+      expect(bell).toHaveLength(1);
+    });
+
+    it("gh can't open it: the branch is pushed, the bell says so once, and the next check tries gh again", async () => {
+      await selfUpdate();
+      const gh = fakeGh("fail");
+      const { check, bell } = newDen({}, { mode: "pr", gh: gh.argv });
+      await check.tick();
+      await check.tick();
+      expect(git(remote, "log", "-1", "--format=%s", "den/pin-1.1.0")).toMatch(
+        /^Den 1\.1\.0: pin/,
+      );
+      expect(bell).toEqual(["pin branch_pushed 1.1.0"]);
+      expect(gh.calls()).toHaveLength(2);
+      fs.rmSync(path.join(tmp, "gh-fails"));
+      await check.tick();
+      expect(bell).toEqual(["pin branch_pushed 1.1.0", "pin pr 1.1.0"]);
+    });
+
+    it("a GitHub remote gives the compare page to open it by hand", () => {
+      expect(
+        compareLink("git@github.com:acme/dist.git", "main", "den/pin-1.1.0"),
+      ).toBe(
+        "https://github.com/acme/dist/compare/main...den/pin-1.1.0?expand=1",
+      );
+      expect(compareLink("/tmp/remote.git", "main", "x")).toBeNull();
+    });
+  });
+
+  describe("the approval policy (issue 160)", () => {
+    it("den_pin_commit is a placed, routine held write: the default runs it, ask holds it", () => {
+      expect(HELD_WRITE_RISK.den_pin_commit.risk).toBe("routine");
+      expect(
+        Object.keys(heldActions({} as Parameters<typeof heldActions>[0])),
+      ).toContain("den_pin_commit");
+      expect(policyFor("den_pin_commit", {}).kind).toBe("notify");
+      expect(
+        policyFor("den_pin_commit", {
+          install: { writes: { den_pin_commit: "ask" } },
+        }).kind,
+      ).toBe("ask");
+    });
+
+    it("the policy says ask: nothing is committed, one held Allow and one bell item; the Allow commits and pushes", async () => {
+      await selfUpdate();
+      const before = git(remote, "rev-parse", "main");
+      const asked: string[] = [];
+      const { check, bell } = newDen(
+        {},
+        { allow: () => "ask", ask: (v) => (asked.push(v), true) },
+      );
+      await check.tick();
+      await check.tick();
+      expect(asked).toEqual(["1.1.0"]);
+      expect(bell).toEqual(["pin held 1.1.0"]);
+      expect(git(root, "rev-parse", "HEAD")).toBe(before);
+      expect(git(remote, "rev-parse", "main")).toBe(before);
+      // The person's Allow runs it (no policy on that run).
+      const step = await commitPin("1.1.0", {
+        root,
+        stateDir,
+        git: pinGit(root, { env }),
+      });
+      expect(step).toMatchObject({ did: "pushed", version: "1.1.0" });
+      expect(git(remote, "log", "-1", "--format=%s", "main")).toBe(
+        "Den 1.1.0: pin the distribution to Den 1.1.0",
+      );
+    });
+
+    it("the policy says run (notify, auto): it commits and pushes at once", async () => {
+      await selfUpdate();
+      const asked: string[] = [];
+      const { check } = newDen(
+        {},
+        { allow: () => "run", ask: (v) => (asked.push(v), true) },
+      );
+      await check.tick();
+      expect(asked).toEqual([]);
+      expect(git(remote, "log", "-1", "--format=%s", "main")).toBe(
+        "Den 1.1.0: pin the distribution to Den 1.1.0",
+      );
+    });
   });
 });
