@@ -588,6 +588,9 @@
     "keep.clearW": "サインイントークンを削除しています…",
     "keep.clearS": "削除しました。",
     "keep.clearF": "サインイントークンを削除できませんでした。",
+    "keep.noTokenNotNeeded":
+      "サインイン用トークンはありません。「ログアウト後もエージェントを動かす」のときだけ必要です。",
+    "keep.processLocal": "このプロセスのみ: Den が再起動するまで保持されます。",
     "keep.noStore":
       "このインストールにはシークレットストアがないため、サインイントークンを保存できません。先に secrets.provider を 1password か doppler に設定してください。",
     "keep.tokenSet":

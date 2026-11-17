@@ -213,6 +213,49 @@ export interface TokenStoreDeps {
   saveRef?: (ref: Partial<SecretRef>) => void;
   stateDir: string;
   now?: () => Date;
+  /**
+   * The save runs inside Den's own running process (Settings). The env
+   * backend keeps the value only in the process that sets it, so anywhere
+   * else (the CLI) it is refused.
+   */
+  inDen?: boolean;
+}
+
+/** `agents token set` (or any save outside Den's process) with env. */
+export const ENV_SET_OUTSIDE_DEN =
+  "with secrets.provider env the token lives only in Den's running process; set it in Settings, or use 1password or doppler";
+
+export class EnvOutsideDenError extends Error {
+  readonly code = "env_outside_den";
+  constructor() {
+    super(ENV_SET_OUTSIDE_DEN);
+    this.name = "EnvOutsideDenError";
+  }
+}
+
+/**
+ * At Den's start, with the env backend: the value Settings kept lived in
+ * the process that just ended, so Den's record of it is stale unless the
+ * value is in this process's environment (set by whoever started Den).
+ * Removes the stale record; true when it did. Never reads the value.
+ */
+export function dropStaleEnvTokenRecord(d: {
+  stateDir: string;
+  env?: NodeJS.ProcessEnv;
+  ref?: () => SecretRef | null;
+  status?: () => ReturnType<typeof secretsStatus>;
+}): boolean {
+  const env = d.env ?? process.env;
+  const st = (
+    d.status ?? (() => secretsStatus(undefined, env, { detect: false }))
+  )();
+  if (st.backend !== "env") return false;
+  const file = path.join(d.stateDir, TOKEN_META_FILE);
+  if (!fs.existsSync(file)) return false;
+  const key = (d.ref ?? (() => agentTokenRef()))()?.key;
+  if (key && env[key] !== undefined && env[key] !== "") return false;
+  fs.rmSync(file, { force: true });
+  return true;
 }
 
 /**
@@ -251,6 +294,7 @@ export async function saveAgentToken(
       );
     created = fresh;
   }
+  if (st.backend === "env" && !d.inDen) throw new EnvOutsideDenError();
   try {
     await provider.set(ref, value);
   } catch (err) {
@@ -304,6 +348,8 @@ export type TokenClearResult =
       how: "item" | "deleted" | "process";
       /** The ref Den wrote to user.yml is gone too. */
       refDropped: boolean;
+      /** env: the value was in this process (the web server) and is gone. */
+      inProcess?: boolean;
     };
 
 /**
@@ -323,15 +369,20 @@ export async function clearAgentToken(
     fs.rmSync(path.join(d.stateDir, TOKEN_META_FILE), { force: true });
   };
   if (st.backend === "env") {
+    // Den's record (the meta file) and, in the web server, the value in its
+    // process: a new CLI process has only the record.
     const env = d.env ?? process.env;
     const key = ref?.key;
+    const hadRecord = fs.existsSync(path.join(d.stateDir, TOKEN_META_FILE));
+    const inProcess = !!key && env[key] !== undefined;
     forget();
-    if (!key || env[key] === undefined) return { cleared: false };
-    delete env[key];
+    if (inProcess) delete env[key!];
+    if (!hadRecord && !inProcess) return { cleared: false };
     return {
       cleared: true,
       store: st.label,
       how: "process",
+      inProcess,
       refDropped: false,
     };
   }
@@ -433,6 +484,13 @@ export class NoSecretsStoreError extends Error {
 export const NO_TOKEN_NOT_NEEDED =
   "no sign-in token set; needed only under Keep agents running after logout";
 
+/** The same, on an install with no secrets store: that comes first. */
+export const NO_TOKEN_NO_STORE =
+  "no sign-in token set, and this install has no secrets store: set secrets.provider to 1password or doppler first; the token is needed only under Keep agents running after logout";
+
+/** The env backend's value lives in the web server's process only. */
+export const PROCESS_LOCAL_NOTE = "process-local: kept only until Den restarts";
+
 export interface TokenStatus {
   /** Agents started now sign in with the token (the always-on service). */
   mode: SignInMode;
@@ -454,6 +512,11 @@ export interface TokenStatus {
   /** No secrets store (secrets.provider none): nothing can keep it. */
   noStore?: boolean;
   /**
+   * The env backend: the value lives only in the web server's process, so
+   * Den's record of the set (the meta file) is what status reads.
+   */
+  processLocal?: boolean;
+  /**
    * The store's own credential (1Password's service-account token) is
    * referenced as `keychain:`, which the always-on service may not reach.
    */
@@ -472,6 +535,8 @@ export async function agentTokenStatus(
   d: TokenStatusDeps,
 ): Promise<TokenStatus> {
   const out = agentTokenStatusNow(d);
+  // The env backend: Den's record is the truth (agentTokenStatusNow).
+  if (out.processLocal) return out;
   const ref = out.configured ? (d.ref ?? (() => agentTokenRef()))() : null;
   if (d.probe && ref) {
     const r = await readAgentToken({ ref: () => ref, provider: d.provider });
@@ -544,6 +609,7 @@ export function agentTokenStatusNow(d: TokenStatusDeps): TokenStatus {
     warnDays,
     store,
     noStore: backend === "none",
+    ...(backend === "env" ? { processLocal: true, stored: meta !== null } : {}),
     credInKeychain,
   };
   return out;
@@ -573,13 +639,19 @@ function tokenLine(
   // Not under the always-on service: agents sign in from the desktop login,
   // so no token is nothing to warn about.
   if ((!st.configured || st.stored === false) && st.mode !== "token")
-    return { status: "ok", text: NO_TOKEN_NOT_NEEDED };
+    return {
+      status: "ok",
+      text: st.noStore ? NO_TOKEN_NO_STORE : NO_TOKEN_NOT_NEEDED,
+    };
   if (!st.configured || st.stored === false)
     return {
       status: "warn",
       text:
         `Keep agents running after logout is on, but no sign-in token is configured: ` +
-        `agents will not be able to sign in after logout. ${fix[0]!.toUpperCase()}${fix.slice(1)}` +
+        `agents will not be able to sign in after logout. ` +
+        (st.noStore
+          ? `This install has no secrets store: set secrets.provider to 1password or doppler first, then ${fix}`
+          : `${fix[0]!.toUpperCase()}${fix.slice(1)}`) +
         (st.reason && st.reason !== "not set" ? ` (${st.reason})` : ""),
     };
   if (st.old)
@@ -590,7 +662,7 @@ function tokenLine(
   return {
     status: "ok",
     text: st.setAt
-      ? `agents sign in with the token set ${localDate(st.setAt)}${st.store ? ` (in ${st.store})` : ""}`
+      ? `agents sign in with the token set ${localDate(st.setAt)}${st.store ? ` (in ${st.store})` : ""}${st.processLocal ? ` (${PROCESS_LOCAL_NOTE})` : ""}`
       : `agents sign in with the token in ${st.store || "the secrets store"} (when it was set is not known)`,
   };
 }

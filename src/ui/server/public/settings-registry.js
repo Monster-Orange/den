@@ -927,7 +927,17 @@ export async function applyKeepRunning(on, { post, askSudo, waitBack }) {
  * server sends whether one is configured and when it was set.
  */
 export function keepTokenLine(s, t) {
-  if (!s || !s.configured) return { state: "missing", text: t("keep.noToken") };
+  // Issue 163 (dev.2 gate): per mode, as the CLI says it. No store comes
+  // first; not under the always-on service, nothing about logout.
+  if (!s || !s.configured)
+    return {
+      state: "missing",
+      text: s?.no_store
+        ? t("keep.noStore")
+        : s && s.mode !== "token"
+          ? t("keep.noTokenNotNeeded")
+          : t("keep.noToken"),
+    };
   // The store's own credential in the login keychain: the daemon may not
   // reach it, so the token can't be read either.
   if (s.cred_keychain) return { state: "cred", text: t("keep.credKeychain") };
@@ -945,7 +955,11 @@ export function keepTokenLine(s, t) {
     } catch {
       /* the ISO date stays */
     }
-    return { state: "set", text: t("keep.tokenSet", { date }) };
+    const set = t("keep.tokenSet", { date });
+    return {
+      state: "set",
+      text: s.process_local ? `${set} ${t("keep.processLocal")}` : set,
+    };
   }
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
 }

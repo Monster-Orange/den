@@ -83,12 +83,23 @@ describe("Keep agents running after logout: the sign-in token line", () => {
   const t = (k: string, v?: Record<string, unknown>) =>
     `${k}${v ? ` ${JSON.stringify(v)}` : ""}`;
 
-  it("none configured: agents will not be able to sign in after logout", () => {
-    expect(keepTokenLine({ configured: false }, t)).toEqual({
+  it("none configured in mode always: agents will not be able to sign in after logout", () => {
+    expect(keepTokenLine({ configured: false, mode: "token" }, t)).toEqual({
       state: "missing",
       text: "keep.noToken",
     });
     expect(keepTokenLine(null, t).state).toBe("missing");
+  });
+
+  it("none configured, not in mode always: says nothing about logout failing", () => {
+    expect(keepTokenLine({ configured: false, mode: "desktop" }, t)).toEqual({
+      state: "missing",
+      text: "keep.noTokenNotNeeded",
+    });
+    expect(
+      keepTokenLine({ configured: false, mode: "desktop", no_store: true }, t)
+        .text,
+    ).toBe("keep.noStore");
   });
 
   it("old: says how many days, to make a new one", () => {

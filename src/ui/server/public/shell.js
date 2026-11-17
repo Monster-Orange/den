@@ -1415,6 +1415,9 @@
     "keep.clearW": "Removing the sign-in token…",
     "keep.clearS": "Removed.",
     "keep.clearF": "Couldn't remove the sign-in token.",
+    "keep.noTokenNotNeeded":
+      "No sign-in token is set; it's needed only under Keep agents running after logout.",
+    "keep.processLocal": "Process-local: kept only until Den restarts.",
     "keep.noStore":
       "There's no secrets store for this install, so the sign-in token can't be kept. Set secrets.provider to 1password or doppler first.",
     "keep.tokenSet": "Agents sign in with the token set {date}.",

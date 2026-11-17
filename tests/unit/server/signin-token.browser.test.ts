@@ -44,6 +44,8 @@ beforeAll(async () => {
         'if [ "$1" = "--version" ]; then echo "v3.0.0"; exit 0; fi',
         'mkdir -p "$TMP/kept"',
         'if [ "$1" = secrets ] && [ "$2" = set ]; then cat > "$TMP/kept/$3"; exit 0; fi',
+        // `doppler secrets get KEY --plain`: the row asks whether it is stored.
+        'if [ "$1" = secrets ] && [ "$2" = get ]; then [ -s "$TMP/kept/$3" ] && cat "$TMP/kept/$3" && exit 0; exit 1; fi',
         // `doppler secrets delete KEY --yes --silent`: the kept value goes.
         'if [ "$1" = secrets ] && [ "$2" = delete ]; then echo "$3" >> "$TMP/deleted"; rm -f "$TMP/kept/$3"; exit 0; fi',
         "exit 1",
