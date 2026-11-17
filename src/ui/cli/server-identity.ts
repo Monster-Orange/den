@@ -20,6 +20,11 @@ import * as path from "path";
 import { CLI_SPAWN_TIMEOUT_MS } from "../../shared/constants.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
+import {
+  readWebAuthConfig,
+  WEB_READY_PROBE_SECONDS,
+  WEB_START_WAIT_SECONDS,
+} from "../../shared/web-session.js";
 
 /** The distribution a command acts for. */
 export interface OwnServer {
@@ -43,8 +48,27 @@ export type ServerIdentity =
   /** Someone else's server. `who` reads "acme-ops at /srv/acme-ops". */
   | { kind: "foreign"; who: string };
 
-/** How long one probe of /api/server-info may take. */
-export const SERVER_INFO_TIMEOUT_MS = 1_500;
+/**
+ * den#143: `web up`'s waits, read now: one readiness probe's
+ * (web.ready_probe_seconds) and the whole start's (web.start_wait_seconds),
+ * in ms. Settings with permissive defaults, never a fixed number: a busy
+ * machine answers late, and a cold tsx start is slow. The defaults when
+ * the config can't be read.
+ */
+export function webReadyWaits(): { probeMs: number; startMs: number } {
+  try {
+    const c = readWebAuthConfig(getDistRoot(), product().configFile);
+    return {
+      probeMs: c.readyProbeSeconds * 1000,
+      startMs: c.startWaitSeconds * 1000,
+    };
+  } catch {
+    return {
+      probeMs: WEB_READY_PROBE_SECONDS * 1000,
+      startMs: WEB_START_WAIT_SECONDS * 1000,
+    };
+  }
+}
 
 /** This distribution: its root and product name. */
 export function ownServer(): OwnServer {
@@ -150,7 +174,7 @@ export function classifyServerInfoResponse(
 export function identifyServer(
   port: number,
   own: OwnServer = ownServer(),
-  timeoutMs: number = SERVER_INFO_TIMEOUT_MS,
+  timeoutMs: number = webReadyWaits().probeMs,
   host: string = "127.0.0.1",
 ): Promise<ServerIdentity> {
   return new Promise((resolve) => {
