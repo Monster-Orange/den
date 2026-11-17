@@ -104,6 +104,78 @@ The weekly rule: each entry is fixed or deleted within `max_age_days`
 `tests/unit/test-infra/quarantine.test.ts` fails on an older entry, or on
 one with no issue or no evidence.
 
+## Merging
+
+A pull request merges once its own run is green. When only main moved
+under it, it merges **without another run**, if:
+
+- it still merges cleanly into main, and
+- none of the files it changes were changed on main since the commit its
+  green run tested (no overlap with what landed).
+
+Otherwise main is merged into the branch and it runs again. Main's own
+full run (every test, every Node version, quarantine ignored) is the
+backstop: if main goes red after such a merge, fix it forward within 30
+minutes or revert that merge. A red main blocks other merges until then.
+
+## Live checks
+
+Each pull request that closes a clause of an issue also ships a live
+check, `gate/<issue>.mjs`, written next to its red-first test (reuse the
+end-to-end spec where it fits). A harness runs every file in `gate/`
+against a bed (a running Den, by its URL and its CLI) on each dev tag,
+with no one in the loop, and reports PASS or FAIL per clause.
+
+```js
+// gate/406.mjs
+export const issue = 406;
+export const clauses = [
+  "two lines when the person has a name",
+  "the person signs in on a second device",
+];
+// Optional: run once per cell; expect then gets [{ cell, result }].
+export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
+export const timeoutMs = 120000; // optional; a cell over it is ok: false
+export async function setup(ctx) {} // prepare the bed; returns state
+export async function run(ctx, state) {} // act; returns what it saw
+export async function teardown(ctx, state) {} // optional; always called
+export function expect(cells) {
+  return [
+    { clause: clauses[0], ok: true, evidence: ["entry-1280"] },
+    { clause: clauses[1], ok: null, skip: "person" }, // not run, and why
+  ];
+}
+```
+
+- `issue` matches the file name. `clauses` names each clause the check
+  proves, as the issue words it, and `expect` answers each one once.
+- `ok` is `true`, `false`, or `null` for "not run". `null` always comes
+  with `skip`: `"person"` for a person's own act (an Allow, an answer, an
+  approval), or `"needs-<thing>"` for what the bed lacks (for example
+  `"needs-signed-in-cli"`). A check never presses a person's decision.
+- `teardown` runs even when `run` throws. A check only reads, or makes
+  what it needs under its own names and removes them; it never changes
+  the bed's settings for good, and never touches a live install.
+- Names stay neutral (the one rule above applies here too).
+
+What the harness passes in `ctx`:
+
+|                                        |                                                                                                                                         |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.url`                              | the bed's address                                                                                                                       |
+| `ctx.cli(args)`                        | runs the bed's CLI: `{ code, out, err }`, one-time codes already masked                                                                 |
+| `ctx.api(path, init?)`                 | a signed-in `fetch` against the bed                                                                                                     |
+| `ctx.page`, `ctx.browser`, `ctx.width` | with a `matrix`: a signed-in page in this cell                                                                                          |
+| `ctx.shot(name, { mask? })`            | a screenshot into the evidence folder; pairing and device codes masked by default                                                       |
+| `ctx.evidence(name)`                   | an absolute path in this tag's evidence folder, for logs and files                                                                      |
+| `ctx.agent(name)`                      | the bed's stub agent controls (a permission request, an idle prompt, a session start, a question to the person, a line of output, stop) |
+
+Names in a row's `evidence` are written into the verdict next to it.
+
+`node scripts/gate-shape.mjs` checks every file has this shape, and
+`tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with
+the rules for `expect`'s rows (`checkRows`).
+
 ## Adding a strategy
 
 - **Secrets backend:** implement `SecretsProvider`

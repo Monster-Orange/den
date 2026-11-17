@@ -177,12 +177,51 @@ describe("issue 172: quiet hours and the setting", () => {
     expect(alertPrefs(u)).toMatchObject({ desktop: true, quiet: null });
     expect(patchAlerts(u, { desktop: "yes" }).ok).toBe(false);
     expect(patchAlerts(u, { quiet_to: "7pm" }).ok).toBe(false);
-    // The push limits are config keys, not page settings.
-    expect(patchAlerts(u, { push_timeout_seconds: 5 }).ok).toBe(false);
     expect(
       alertPrefs({ alerts: { push_timeout_seconds: 0, push_ttl_seconds: 60 } }),
     ).toMatchObject({ pushTimeoutSeconds: 30, pushTtlSeconds: 60 });
     expect(patchAlerts(u, { nope: 1 }).ok).toBe(false);
+  });
+
+  it("issue 367: the push limits are page settings, with permissive defaults", () => {
+    const u: Record<string, unknown> = {};
+    // Unset: the defaults, served so the page shows them.
+    expect(alertSettings(u)).toMatchObject({
+      push_timeout_seconds: 30,
+      push_ttl_seconds: 86_400,
+    });
+    expect(
+      patchAlerts(u, { push_timeout_seconds: 5, push_ttl_seconds: 0 }),
+    ).toEqual({ ok: true });
+    expect(alertPrefs(u)).toMatchObject({
+      pushTimeoutSeconds: 5,
+      pushTtlSeconds: 0,
+    });
+    expect(alertSettings(u)).toMatchObject({
+      push_timeout_seconds: 5,
+      push_ttl_seconds: 0,
+    });
+    // The widest each push service takes: an hour to answer, 28 days kept.
+    expect(
+      patchAlerts(u, {
+        push_timeout_seconds: 3600,
+        push_ttl_seconds: 2_419_200,
+      }),
+    ).toEqual({ ok: true });
+    // Out of range or not a whole number: refused, the value kept.
+    for (const bad of [0, 3601, 2.5, "30"])
+      expect(patchAlerts(u, { push_timeout_seconds: bad }).ok).toBe(false);
+    for (const bad of [-1, 2_419_201, 1.5, "60"])
+      expect(patchAlerts(u, { push_ttl_seconds: bad }).ok).toBe(false);
+    expect(alertPrefs(u)).toMatchObject({
+      pushTimeoutSeconds: 3600,
+      pushTtlSeconds: 2_419_200,
+    });
+    // null: back to the default.
+    expect(
+      patchAlerts(u, { push_timeout_seconds: null, push_ttl_seconds: null }),
+    ).toEqual({ ok: true });
+    expect(u).toEqual({});
   });
 });
 

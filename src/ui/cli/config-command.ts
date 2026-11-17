@@ -7,6 +7,7 @@ import {
   type UserConfig,
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
+import { patchAlerts } from "../../shared/alerts.js";
 
 import { product } from "../../shared/product.js";
 type ConfigKey = keyof UserConfig;
@@ -67,6 +68,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   ],
   "agent_context.context_tokens": ["agent_context", "context_tokens"],
   "agent_context.pause_after_loop": ["agent_context", "pause_after_loop"],
+  // Issue 367: how long one push may take, and how long a push service keeps it.
+  "alerts.push_timeout_seconds": ["alerts", "push_timeout_seconds"],
+  "alerts.push_ttl_seconds": ["alerts", "push_ttl_seconds"],
 };
 
 /**
@@ -102,7 +106,11 @@ function setSwitch(name: string, value: unknown): void {
 function setDotted(name: string, value: unknown): void {
   const [field, limit] = DOTTED[name]!;
   const user = readUserConfig() as Record<string, unknown>;
-  const r = patchCliRows(user, { [field]: { [limit]: value } }, { cli: true });
+  // Issue 367: alerts are checked as the Settings page checks them.
+  const r =
+    field === "alerts"
+      ? patchAlerts(user as UserConfig, { [limit]: value })
+      : patchCliRows(user, { [field]: { [limit]: value } }, { cli: true });
   if (!r.ok) throw new Error(r.error);
   writeUserConfig(user as UserConfig);
 }
