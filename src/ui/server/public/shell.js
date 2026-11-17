@@ -7382,6 +7382,30 @@
    * itself after it shows: drawn with it, it is there at once and stays
    * through a repaint (the injector's comes a frame late and is wiped).
    */
+  /**
+   * Issue 274: the working pop-up's code (busy-den.js, the kit's busy.js),
+   * one load per page. It loads while the page is idle after it opens, so
+   * a person's first action sends its request at once, not after a
+   * download; a failed load is tried again on the next action.
+   */
+  var busyMod = null;
+  function loadBusy() {
+    if (!busyMod)
+      busyMod = import("/busy-den.js").catch(function (err) {
+        busyMod = null;
+        throw err;
+      });
+    return busyMod;
+  }
+  function warmBusy() {
+    loadBusy().catch(function () {
+      /* the action that needs it loads it again */
+    });
+  }
+  if (typeof window.requestIdleCallback === "function")
+    window.requestIdleCallback(warmBusy, { timeout: 1500 });
+  else setTimeout(warmBusy, 500);
+
   function reportFoot() {
     var b = reportButton();
     return b ? '<div class="den-rb-foot">' + b + "</div>" : "";
@@ -7469,7 +7493,7 @@
         b.disabled = true;
         b.setAttribute("aria-busy", "true");
       }
-      return import("/busy-den.js").then(function (m) {
+      return loadBusy().then(function (m) {
         return m.busyAction(name, run, opts);
       });
     },
