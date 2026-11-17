@@ -1032,6 +1032,9 @@ export async function handleAgentRoutes(
       // The answer comes once the session has ended (200, stopped: true),
       // or, still running after the wait, 202 with stillStopping: true.
       const s = await stopAgent(d, id!, ws);
+      // Issue 327: its wait and bell row go with it (its token is revoked:
+      // nothing it asked can be answered now).
+      await forgetWait(s.rec.id);
       audit(s.stillStopping ? `${what} (still stopping)` : what);
       sendJson(
         res,
@@ -1372,6 +1375,7 @@ export async function handleAgentRoutes(
       });
     } else if (verb === "remove") {
       const removed = await removeAgent(d, id!, ws);
+      for (const r of removed) await forgetWait(r.agent);
       audit(what);
       sendJson(res, { ok: true, removed });
     } else {
@@ -1391,6 +1395,12 @@ export async function handleAgentRoutes(
     sendError(res, e, ws);
   }
   return true;
+}
+
+/** Issue 327: a stopped or removed agent waits on no one. */
+async function forgetWait(id: string): Promise<void> {
+  const { agentGone } = await import("./notification-service.js");
+  agentGone(id);
 }
 
 const IMPORT_KEYS = ["persona", "runtime", "id", "model", "version", "outside"];

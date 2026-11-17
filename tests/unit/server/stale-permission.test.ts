@@ -16,6 +16,7 @@ import {
   ATTENTION_EVENTS,
   attentionOf,
 } from "../../../src/shared/agents/guardrails/attention-hook";
+import { agentEnded } from "../../../src/ui/server/notification-service";
 import * as updateCheckMod from "../../../src/ui/server/update-check";
 import {
   updateCheck,
@@ -266,5 +267,89 @@ describe("the update's waits item goes when the update goes on", () => {
     expect(
       store.list().filter((n) => n.subject === "record:den-update-wait"),
     ).toEqual([]);
+  });
+});
+
+describe("a wait doesn't outlive its agent (stopped, removed, exited)", () => {
+  const ended = new Map<string, "stopped" | "exited">();
+  function mkEnded() {
+    const store = new NotificationStore(dir, () => new Date(clock));
+    const a = new Attention({
+      store,
+      outputMark: async () => "m",
+      nameOf: () => "Planner",
+      now: () => clock,
+      hooked: () => true,
+      ended: async (agents) =>
+        new Map([...ended].filter(([x]) => agents.includes(x))),
+    });
+    return { store, a };
+  }
+  beforeEach(() => ended.clear());
+
+  it("stopped (the CLI's stop too, which the server doesn't see): the wait and its bell row go on the next check", async () => {
+    const { store, a } = mkEnded();
+    await a.event(
+      "planner",
+      "north",
+      ev({ hook_event_name: "PermissionRequest", tool_name: "Bash" }),
+    );
+    expect(store.list().map((n) => n.kind)).toEqual(["waiting"]);
+    await a.check();
+    expect(a.waitingNow().get("planner")).toBe("permission");
+    ended.set("planner", "stopped");
+    await a.check();
+    expect(a.waitingNow().has("planner")).toBe(false);
+    expect(store.list()).toEqual([]);
+  });
+
+  it("stopped or removed ends an ask too; a session that exited by itself keeps it", async () => {
+    const { store, a } = mkEnded();
+    await a.event("planner", "north", {
+      event: "waiting",
+      why: "asked",
+      text: "Which branch?",
+      hooked: true,
+    });
+    ended.set("planner", "exited");
+    await a.check();
+    expect(a.waitingNow().get("planner")).toBe("asked");
+    ended.set("planner", "stopped");
+    await a.check();
+    expect(a.waitingNow().has("planner")).toBe(false);
+    expect(store.list()).toEqual([]);
+  });
+
+  it("a session that exited by itself ends a permission wait", async () => {
+    const { a } = mkEnded();
+    await a.event(
+      "planner",
+      "north",
+      ev({ hook_event_name: "PermissionRequest", tool_name: "Bash" }),
+    );
+    ended.set("planner", "exited");
+    await a.check();
+    expect(a.waitingNow().has("planner")).toBe(false);
+  });
+
+  it("agentEnded: removed, stopped since it started, exited, or running", () => {
+    const session = { backend: "den-pty", id: "s1" } as const;
+    const at = "2026-01-02T03:00:00.000Z";
+    const later = "2026-01-02T03:10:00.000Z";
+    const live = new Map([["s1", at]]);
+    expect(agentEnded(null, live)).toBe("stopped");
+    expect(agentEnded({ session }, live)).toBeNull();
+    expect(agentEnded({ session, stoppedAt: later }, live)).toBe("stopped");
+    // A stop from before this session started is history.
+    expect(
+      agentEnded({ session, stoppedAt: "2026-01-02T02:00:00.000Z" }, live),
+    ).toBeNull();
+    expect(agentEnded({ session }, new Map())).toBe("exited");
+    expect(agentEnded({ session, stoppedAt: later }, new Map())).toBe(
+      "stopped",
+    );
+    // The host didn't answer: only a stop counts.
+    expect(agentEnded({ session }, null)).toBeNull();
+    expect(agentEnded({ session, stoppedAt: later }, null)).toBe("stopped");
   });
 });

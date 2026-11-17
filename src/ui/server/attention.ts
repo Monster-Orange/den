@@ -64,6 +64,14 @@ export interface AttentionDeps {
    * that ends asking its person something needs them, as ask_human does.
    */
   endedAsking?: (agent: string) => Promise<string | null>;
+  /**
+   * Issue 327: of these waiting agents, the ones that ended: "stopped"
+   * (stopped or removed) or "exited" (its session ended by itself). An
+   * agent missing from the answer runs on, or Den can't tell.
+   */
+  ended?: (
+    agents: readonly string[],
+  ) => Promise<ReadonlyMap<string, "stopped" | "exited">>;
 }
 
 /** Output in this long after the event is the agent drawing it, not going on. */
@@ -332,6 +340,7 @@ export class Attention {
    * waiting. In its first SETTLE_MS, output only moves the mark.
    */
   async check(): Promise<void> {
+    await this.sweepEnded();
     for (const [agent, w] of [...this.waiting]) {
       if (w.byHook) continue;
       const m = await this.d.outputMark(agent);
@@ -347,5 +356,28 @@ export class Attention {
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
     this.clear(agent);
+  }
+
+  /**
+   * Issue 327: a wait never outlives its agent. A stopped or removed one
+   * (`agents stop` from the CLI too, which the server doesn't see) ends
+   * every wait, an ask too: nothing can answer it after. A session that
+   * ended by itself ends a dialog; an ask stays (Den holds the question
+   * for a resume).
+   */
+  private async sweepEnded(): Promise<void> {
+    if (!this.d.ended || !this.waiting.size) return;
+    let ended: ReadonlyMap<string, "stopped" | "exited">;
+    try {
+      ended = await this.d.ended([...this.waiting.keys()]);
+    } catch {
+      return;
+    }
+    for (const [agent, how] of ended) {
+      const w = this.waiting.get(agent);
+      if (!w) continue;
+      if (how === "exited" && w.why === "asked") continue;
+      this.clear(agent);
+    }
   }
 }
