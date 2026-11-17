@@ -2485,8 +2485,12 @@ export const DEN_SETTINGS = [
         : L("set.ui.portUnset", "Not set: the distribution's applies"),
   },
   {
-    // SEC-1b: whether this browser is signed in, and Sign out. Signing in
-    // is the CLI's (`web login` prints a one-time link): no form here.
+    // SEC-1b: whether this browser is signed in, and Sign out. Issue 393:
+    // signed out, a Sign in button opens Den's own sign-in page (GitHub,
+    // or a code another device approves). `again=1` shows that page even
+    // on loopback, where nothing asks (D67's approvals banner does the
+    // same); after it, back here. `web login` stays in the description,
+    // a bare equivalent.
     id: "cli.signin",
     category: "cli",
     label: "Browser sign-in",
@@ -2501,7 +2505,18 @@ export const DEN_SETTINGS = [
           host.innerHTML = signedIn
             ? `<output class="set-ro">${escR(L("set.ui.signedIn", "Signed in"))}</output> ` +
               `<button type="button" class="btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
-            : `<output class="set-ro">${L("set.ui.notSignedIn", "Not signed in: run {cmd}", { cmd: "<code>__DEN_CLI__ web login</code>" })}</output>`;
+            : `<output class="set-ro">${escR(L("set.ui.notSignedIn", "Not signed in"))}</output> ` +
+              `<button type="button" class="btn primary" id="set-signin">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
+          host
+            .querySelector("#set-signin")
+            ?.addEventListener("click", () =>
+              location.assign(
+                "/signin?again=1&next=" +
+                  encodeURIComponent(
+                    location.pathname + location.search + location.hash,
+                  ),
+              ),
+            );
           host.querySelector("#set-signout")?.addEventListener("click", () =>
             ctx.shell
               .api("POST", "/api/session/logout", {})

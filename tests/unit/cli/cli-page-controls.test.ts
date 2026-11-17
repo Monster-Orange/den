@@ -74,7 +74,8 @@ const LISTING: Record<string, Entry> = {
   "workspace seed": script("seeds the default project"),
 
   "web token": script("prints a credential for scripts; never on a page"),
-  "web login": page("settings-registry.js", "/api/web/pair"),
+  // Issue 393: Settings › Browser sign-in's Sign in button.
+  "web login": page("settings-registry.js", 'id="set-signin"'),
   "web sessions": R,
   "web logout": page("settings-registry.js", "data-signout-all"),
   "web owner": page("settings-registry.js", "/api/web/owner"),
