@@ -621,6 +621,18 @@
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
     "keep.tokenOld":
       "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
+    "acct.title": "Cuentas de {vendor}",
+    "acct.default": "Cuenta de {vendor} {letter}",
+    "acct.add": "Añadir cuenta de {vendor}",
+    "acct.none": "Sin token.",
+    "acct.set": "Token guardado el {date}.",
+    "acct.setUnknown": "Token guardado.",
+    "acct.first": "Los agentes inician sesión con esta.",
+    "acct.tokenLabel": "Token de inicio de sesión de {name}",
+    "acct.tokenSave": "Guardar token de inicio de sesión",
+    "acct.up": "Subir",
+    "acct.down": "Bajar",
+    "acct.failed": "No se guardó: {error}",
     "busy.askAllowW": "Preguntando…",
     "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
     "busy.askAllowF": "No se pudo preguntar.",
@@ -1546,10 +1558,26 @@
     "set.workspace.mcp_servers":
       "MCP adicionales de los agentes: este proyecto",
     "set.workspace.mcp_servers.d":
-      "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Un agente añade uno con project_mcp_add, y tú lo permites.",
+      "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Cambia o quita uno aquí. Un agente lo pide con project_mcp_add, project_mcp_update o project_mcp_remove, y tú lo permites.",
     "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
+    "pmcp.edit": "Cambiar",
+    "pmcp.editL": "Cambiar {name}",
+    "pmcp.remove": "Quitar",
+    "pmcp.removeL": "Quitar {name}",
+    "pmcp.url": "Dirección",
+    "pmcp.bearer": "Bearer",
+    "pmcp.bearerKeep": "un nombre de secrets.refs; en blanco lo mantiene",
+    "pmcp.noBearer": "Sin bearer",
+    "pmcp.save": "Guardar",
+    "pmcp.cancel": "Cancelar",
+    "pmcp.rmT": "¿Quitar el MCP?",
+    "pmcp.rmAsk":
+      "¿Quitar {name} de los agentes del proyecto {project}? Pierden sus herramientas en su próximo inicio o reanudación.",
+    "pmcp.rmW": "Quitando el MCP…",
+    "pmcp.rmS": "Quitado.",
+    "pmcp.rmF": "No se pudo quitar el MCP.",
     "ap.do.project_mcp_add":
       "Añadir el MCP {name} ({url}) a los agentes del proyecto {project}",
     "ap.mcp.warn":
@@ -1561,6 +1589,13 @@
       "Sin bearer: sus llamadas no llevan cabecera Authorization.",
     "ap.mcp.next":
       "Los agentes de {project} lo reciben en su próximo inicio o reanudación.",
+    "ap.do.project_mcp_remove":
+      "Quitar el MCP {name} ({url}) de los agentes del proyecto {project}",
+    "ap.do.project_mcp_update":
+      "Cambiar el MCP {name} de los agentes del proyecto {project} (ahora {url})",
+    "ap.mcp.removeWarn":
+      "Los agentes de {project} pierden las herramientas de {name} en su próximo inicio o reanudación.",
+    "ap.mcp.urlChange": "MCP {name}: de {from} a {to}",
     "pmode.none": "Usar el de todo Den",
     "pmode.following": "Sigue el de todo Den: {m}",
     "pmode.setHere": "Fijado para este proyecto: {m} (el de todo Den es {dw})",
@@ -1976,6 +2011,9 @@
       "Sus subagentes (Explore también) usan {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Sus subagentes (Explore también) usan {model}: el valor por defecto de Den. Lo cambian agents.subagents.model o subagent_model de una persona.",
+    "ag.signIn": "con {label}",
+    "ag.signIn.tip":
+      "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
