@@ -400,7 +400,7 @@ export function openWhatsNew() {
 export function closeWhatsNew() {
   const overlay = document.getElementById("cl-overlay");
   const wasOpen = !!overlay?.classList.contains("open");
-  // den#143: where the keyboard is now. The page may have given it to a
+  // Issue 143: where the keyboard is now. The page may have given it to a
   // field of its own while this was open (a deep link's composer, which
   // came after What's new): that field keeps it.
   const at = document.activeElement;
