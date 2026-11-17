@@ -305,7 +305,10 @@ import {
 import { denWebBase } from "../../shared/web-dial.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
+  AGENT_TOKEN_REF_NAME,
   agentSignInMode,
+  agentTokenRef,
+  agentTokenRefName,
   readAgentToken,
   tokenStatusLine,
 } from "../../shared/agents/signin-token.js";
@@ -392,9 +395,13 @@ export interface AgentsDeps extends SessionsDeps {
   /**
    * Issue 163 (b): the secrets store and ref the agents' sign-in token is
    * read from under the always-on service (default: the install's
-   * configured backend and secrets.refs.agent_signin_token).
+   * configured backend and secrets.refs.agent_signin_token). Issue 338:
+   * asked with the runtime's ref name (agentTokenRefName).
    */
-  signInStore?: () => { provider: SecretsProvider; ref: SecretRef | null };
+  signInStore?: (refName: string) => {
+    provider: SecretsProvider;
+    ref: SecretRef | null;
+  };
   /** 0.4.48: this machine's processes (default: ps), for jobs an agent left running. */
   processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
@@ -448,7 +455,11 @@ export interface AgentsResolved extends Resolved {
   hubProblem: () => string | null;
   processes: () => ProcessRow[];
   /** Issue 163 (b): the env a start signs in with, and what to say. */
-  agentSignIn: (tokenEnv: string | undefined) => Promise<AgentSignIn>;
+  agentSignIn: (
+    tokenEnv: string | undefined,
+    /** Issue 338: whose token (the runtime's id; unset: Claude Code's). */
+    runtimeId?: string,
+  ) => Promise<AgentSignIn>;
 }
 
 /** Issue 163 (b): a start's sign-in env, and a warning when it has none. */
@@ -731,13 +742,14 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
     processes: d.processes ?? readProcesses,
-    agentSignIn: (tokenEnv) =>
+    agentSignIn: (tokenEnv, runtimeId) =>
       agentSignInEnv(
         tokenEnv,
         base.env,
         base.stateDir(),
         base.cli,
         d.signInStore,
+        runtimeId,
       ),
   });
 }
@@ -753,18 +765,39 @@ export async function agentSignInEnv(
   env: NodeJS.ProcessEnv,
   stateDir: string,
   cli: string,
-  store?: () => { provider: SecretsProvider; ref: SecretRef | null },
+  store?: (refName: string) => {
+    provider: SecretsProvider;
+    ref: SecretRef | null;
+  },
+  /**
+   * Issue 338: the runtime whose token it is, each under its own ref
+   * (agentTokenRefName), so a vendor's token reaches its agents only.
+   */
+  runtimeId = "den-claude",
 ): Promise<AgentSignIn> {
   if (!tokenEnv || agentSignInMode(env, stateDir) !== "token")
     return { env: {} };
-  const s = store?.();
+  const refName = agentTokenRefName(runtimeId);
+  const s = store?.(refName);
   const r = await readAgentToken(
-    s ? { provider: () => s.provider, ref: () => s.ref } : {},
+    s
+      ? { provider: () => s.provider, ref: () => s.ref }
+      : { ref: () => agentTokenRef(undefined, undefined, refName) },
   );
   if (r.token) return { env: { [tokenEnv]: r.token } };
+  // Not Claude Code's: made with its own command, kept under its own ref.
+  const how =
+    refName === AGENT_TOKEN_REF_NAME
+      ? undefined
+      : {
+          make:
+            getRuntime(runtimeId)?.catalog?.signIn?.command ??
+            "its sign-in command",
+          set: `set secrets.refs.${refName} in your user.yml`,
+        };
   return {
     env: {},
-    warning: `⚠ ${tokenStatusLine({ mode: "token", configured: r.reason !== "not set", stored: false, setAt: null, ageDays: null, old: false, warnDays: 0, store: "", ...(r.reason ? { reason: r.reason } : {}) }, cli).text}`,
+    warning: `⚠ ${tokenStatusLine({ mode: "token", configured: r.reason !== "not set", stored: false, setAt: null, ageDays: null, old: false, warnDays: 0, store: "", ...(r.reason ? { reason: r.reason } : {}) }, cli, undefined, how).text}`,
   };
 }
 
@@ -2756,7 +2789,7 @@ async function startSession(
 ): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
-  const signIn = await d.agentSignIn(launch.tokenEnv);
+  const signIn = await d.agentSignIn(launch.tokenEnv, launch.rec.runtime);
   const tty = d.stdout.isTTY;
   const minted = mintActorToken(d.stateDir(), {
     agentId: launch.rec.id,

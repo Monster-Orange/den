@@ -4,6 +4,21 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.66] - unreleased
+
+### Added
+
+- Agents: a runtime catalog entry can carry its sign-in data (`signIn`:
+  the variable its CLI signs in from, the command that makes the
+  credential, how long it lasts, and how the CLI words a usage limit).
+  Claude Code moves onto it with no change. A vendor added in
+  `agents.runtime_catalog` (user.yml or the distribution's config) with
+  `signIn` gets its own token under the always-on service, from
+  `secrets.refs.agent_signin_token_<id>`, in its own agents' environment
+  only. An entry with none is allowed; `doctor` says its agents cannot
+  sign in after logout and will stop. Codex CLI, Gemini CLI and Grok
+  Build ship with none (issue 338).
+
 ## [0.4.64] - unreleased
 
 ### Fixed
