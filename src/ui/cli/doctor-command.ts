@@ -25,6 +25,7 @@ import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
+import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
   agentsKeepRunningAfterLogout,
@@ -895,6 +896,36 @@ export function addressLines(
 }
 
 /**
+ * Issue 367: the contact push alerts give the push services. With an
+ * https address (web.url) they get it; without one, a mailto fallback
+ * some refuse, so a phone may get no push: warn, and say what to set.
+ */
+export function pushContactLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  title: string,
+  cli: string,
+): { lines: string[]; check: OnboardCheck } {
+  const c = pushContact(w?.url);
+  const detail = c.accepted
+    ? `push services are given ${c.subject} as the contact`
+    : `push alerts may not reach phones: with no https address, push services are given ${c.subject} as the contact, and some refuse it. Set one in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Push alerts`,
+      "",
+      `  push  ${c.accepted ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: {
+      id: "push_contact",
+      status: c.accepted ? "ok" : "warn",
+      detail,
+      ...(c.accepted ? {} : { settings: ADDRESS_SETTINGS_LINK }),
+    },
+  };
+}
+
+/**
  * H1 (0.4.48): whether the edge set up here carries Den's proof (the
  * generated edge.yml has the current one). Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
@@ -1316,6 +1347,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    r.checks.push(
+      pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
+    );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
       const rk = requestKeepLines(readBrand().name);
@@ -1373,6 +1407,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
+  for (const l of pushContactLines(
+    readWebUrl(),
+    readBrand().name,
+    product().cli,
+  ).lines)
+    console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
