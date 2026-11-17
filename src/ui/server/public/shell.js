@@ -2130,6 +2130,7 @@
       "Add the persona {name} ({id}) to project {where}",
     "ap.do.persona_update.project":
       "Change the persona {id} in project {where}: {fields}",
+    "ap.do.den_pin_commit": "Commit the distribution's pin to Den {version}",
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
@@ -2409,6 +2410,18 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
     "bell.m.pinNotCommitted":
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed in the distribution's folder",
+    "bell.m.pinPushed":
+      "__DEN_TITLE__ updated to {v}: its pin is committed ({sha}) and pushed",
+    "bell.m.pinPushFailed":
+      "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push failed: {why}. __DEN_TITLE__ tries again at the next update check",
+    "bell.m.pinCommitFailed":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
+    "bell.m.pinPrOpened":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinBranchPushed":
+      "__DEN_TITLE__ {v}: the pin branch {branch} is pushed; open a pull request for it ({why})",
+    "bell.m.pinHeld":
+      "__DEN_TITLE__ {v}: committing its pin waits for your Allow",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed: the __DEN_TITLE__ agent is waiting on your Allow",
     "bell.m.rolledBack":

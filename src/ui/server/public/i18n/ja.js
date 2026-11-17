@@ -1313,6 +1313,8 @@
       "ペルソナ {name} ({id}) をプロジェクト {where} に追加",
     "ap.do.persona_update.project":
       "プロジェクト {where} のペルソナ {id} を変更: {fields}",
+    "ap.do.den_pin_commit":
+      "ディストリビューションの固定バージョンを Den {version} でコミット",
     "ap.do.repo_clone": "{source} を {path} にクローン",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
@@ -1585,6 +1587,18 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.pinNotCommitted":
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがディストリビューションのフォルダーにコミットされていません",
+    "bell.m.pinPushed":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはコミット ({sha}) され、プッシュされました",
+    "bell.m.pinPushFailed":
+      "__DEN_TITLE__ {v}: 固定バージョンはコミット ({sha}) されましたが、プッシュに失敗しました: {why}。__DEN_TITLE__ は次の更新チェックで再試行します",
+    "bell.m.pinCommitFailed":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
+    "bell.m.pinPrOpened":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinBranchPushed":
+      "__DEN_TITLE__ {v}: 固定バージョンのブランチ {branch} はプッシュされました。プルリクエストを作成してください ({why})",
+    "bell.m.pinHeld":
+      "__DEN_TITLE__ {v}: 固定バージョンのコミットはあなたの許可を待っています",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
     "bell.m.rolledBack":

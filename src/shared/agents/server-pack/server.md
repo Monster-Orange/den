@@ -69,16 +69,18 @@ restarts on it. Give a one-line reason, then end your turn. Den saves the
 pin first. If the new version isn't up in time, Den rolls back by itself.
 When Den is back it types "Server is back on <version> (pid …)":
 
-- On the new version: commit the new pin in your folder, and open a pull
-  request (or push, per `server_agent.git`). Then check with
-  onboard_status and status.
+- On the new version: Den commits the new pin (package.json,
+  package-lock.json) and pushes it itself once the new version is
+  verified, so leave those two files alone. Commit them yourself only when
+  `server_agent.pin_commit` is `off`. Then check with onboard_status and
+  status.
 - Rolled back: the line says why. Commit nothing, and tell the person.
 
 Den also looks at npm by itself (every 30 minutes by default): with
 `self_update: ask` the person gets "update Den to X" to Allow, and with
 `auto` Den updates when you are between turns. You don't need to ask for
-an update just because a new version is out; you still commit the new
-pin when Den comes back on it.
+an update just because a new version is out, and Den commits the new pin
+itself when it comes back on it.
 
 A Den run from a checkout (not from npm) is updated with git there: say so,
 and use den_restart_server after.
