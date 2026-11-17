@@ -196,7 +196,11 @@ export function versionChipHtml({ version, lang } = {}) {
   return (
     '<button class="den-ib v-pill" id="version-pill" title="' +
     esc(kitT(lang, "kit.version.title")) +
-    '"><span class="v-txt">' +
+    '"><span class="v-txt"' +
+    (version
+      ? ' title="v' + esc(String(version).replace(/^v/, "")) + '"'
+      : "") +
+    ">" +
     esc(version ? "v" + String(version).replace(/^v/, "") : "v…") +
     '</span><span class="v-pip" id="v-pip"></span></button>'
   );

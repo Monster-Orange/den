@@ -69,9 +69,26 @@ body.den-has-shell > #den-content {
      there): when the bar is too narrow for all three, the left part gives
      way. Settings: --den-top-left (444px), --den-top-search (304px). */
   display: grid;
+  /* The search never moves (issue 303): its x is a function of the
+     viewport only, the same in any host. The left part is
+     --den-top-left (444px), less what the search and the kit's right
+     group need (--den-top-right, 280px); the right group gives way
+     inside its column (the host's chips, then the version's text),
+     never Report, the bell or ◐. searchSlot() in the inventory is the
+     same sum. */
   grid-template-columns:
-    minmax(0, var(--den-top-left, 444px)) var(--den-top-search, 304px)
-    minmax(min-content, 1fr);
+    minmax(
+      0,
+      min(
+        var(--den-top-left, 444px),
+        calc(
+          100% - var(--den-top-search, 304px) - var(--den-top-right, 280px) -
+            16px
+        )
+      )
+    )
+    var(--den-top-search, 304px)
+    minmax(0, 1fr);
   align-items: center;
   column-gap: 8px;
   height: var(--den-top-h);
@@ -225,31 +242,80 @@ body.den-has-shell > #den-content {
 .den-chips > * {
   flex: none;
 }
+/* The version gives way after the host's chips: its text ends in "…"
+   (the whole of it in the text's title), never below "v0…". */
+.den-chips > .v-pill,
+#den-shell .den-chips > .v-pill {
+  flex: 0 1 auto;
+  min-width: 44px;
+}
+.den-chips > .v-pill .v-txt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Report, the bell and ◐ are the kit's: their font and box are set here,
+   so a host's own rules (letter-spacing, box-sizing) can't size them. */
+.den-chips > .den-rb-top,
+.den-chips > #den-bell,
+.den-chips > .appearance-btn {
+  font-family: var(--sans);
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-transform: none;
+  box-sizing: border-box;
+}
+/* The host's chips (issue 303): the first to give way when the bar is
+   short. Their group takes the room left of the kit's buttons, right
+   aligned, clipped on the x axis only (a touch tap area still reaches
+   above and below); under 40px its chips hide, so none ever sits under
+   the search. */
 .den-end {
-  display: contents;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: clip;
+  container-type: inline-size;
 }
 /* A host chip gives way: its last part (its words, in a span) ends in
    "…". */
 /* Width 0, growing to its own width: a host chip takes only the room
    there is, and counts for nothing in the chips' least width. */
-.den-end > * {
-  width: 0;
-  flex: 1 1 auto;
+.den-top .den-end > * {
+  width: auto;
+  flex: 0 1 auto;
   max-width: max-content;
   min-width: 0;
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
 }
-.den-end > * > :last-child {
+.den-top .den-end > * > :last-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 @media not (pointer: coarse) {
-  .den-end > * {
+  .den-top .den-end > * {
     overflow: hidden;
+  }
+}
+/* On a touch screen nothing is clipped, so a chip's 44px tap reaches
+   past its group; chips with no room still hide (below). */
+@media (pointer: coarse) {
+  .den-end {
+    overflow-x: visible;
+  }
+}
+/* (After the rules above: a host chip's display.) */
+@container (max-width: 40px) {
+  .den-top .den-end > * {
+    display: none;
   }
 }
 .den-user {

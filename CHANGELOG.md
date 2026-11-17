@@ -17,7 +17,10 @@ config and manifest changes a distribution must make to move to it under
   (the last crumb is kept whole), the search reads "Search…" in every
   language the kit has, and on a touch screen every bar control takes a
   44px tap. Who is signed in is drawn by the kit from data (a name, then
-  @login), the same in every product.
+  @login), the same in every product. The search never moves: its place
+  depends on the window's width alone; when the bar is short, the status
+  chips give way first, then the version's text, never Report, the bell
+  or the appearance button.
 - After Den updates itself, it commits and pushes the distribution's new
   pin (package.json and package-lock.json) itself, on the lead install,
   once the new version is verified. It no longer waits on the server

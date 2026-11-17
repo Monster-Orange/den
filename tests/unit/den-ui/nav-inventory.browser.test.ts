@@ -45,6 +45,7 @@ import {
   compareNav,
   formatNavDiffs,
   navWarnings,
+  searchSlotDiffs,
   NAV_BROWSER_IMAGE,
   NAV_THEME,
   pinNavFonts,
@@ -226,6 +227,8 @@ const EXPECT: Record<string, string[]> = {
     "#den-search > span.den-search-ph box.right",
     "#den-search box.left",
     "#den-search box.right",
+    // Off its slot too (searchSlot, from the viewport alone).
+    "#den-search slot.x",
   ],
   bell: [
     "#den-bell > svg element",
@@ -238,6 +241,8 @@ const EXPECT: Record<string, string[]> = {
     "header.den-top > div.den-chips > button.den-rb > svg box.right",
     "header.den-top > div.den-chips > button.den-rb box.left",
     "header.den-top > div.den-chips > button.den-rb box.right",
+    // The host's chips' group (a box since 0.7.1) takes the room.
+    "header.den-top > div.den-chips > div.den-end box.right",
   ],
   swap: [
     "#den-bell > svg box.left",
@@ -325,6 +330,27 @@ for (const b of BROWSERS)
     // ── red cases: each one change, each must fail on exactly it ─────────
     const [W, H] = WIDTHS[0];
     const PH = `${SEARCH} > span.den-search-ph`;
+
+    // Issue 303: the search never moves: at widths with no reference,
+    // its box is checked against searchSlot alone.
+    for (const vw of [1100, 960])
+      it(`Den's search sits at searchSlot at ${vw}`, async () => {
+        if (skip(b)) return;
+        const { p, ctx } = await open(b, vw, H);
+        try {
+          const snap = await snapOf(p);
+          expect(formatNavDiffs(searchSlotDiffs(snap))).toBe("");
+          // Den's numbers before the fix (397.5 at 1100) fail.
+          const off = structuredClone(snap);
+          off.elements.find((e) => e.key === SEARCH)!.box.x = 397.5;
+          expect(searchSlotDiffs(off).map((d) => d.property)).toEqual([
+            "slot.x",
+          ]);
+        } finally {
+          await ctx.unrouteAll({ behavior: "ignoreErrors" });
+          await ctx.close();
+        }
+      }, 60_000);
 
     it("fails when the search field moves 3 px", async () => {
       if (skip(b)) return;

@@ -33,6 +33,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { searchSlot } from "../../../packages/den-ui/inventory/nav-inventory.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -1384,6 +1385,36 @@ for (const engine of ["chromium", "webkit"]) {
           expect([w, q, m.gap >= 12]).toEqual([w, q, true]);
           expect([w, q, m.overflow]).toEqual([w, q, false]);
         }
+    });
+
+    // The lead's rule (issue 303): the search never moves. Its x is a
+    // function of the viewport only (searchSlot), the same in any host at
+    // every width; when the bar is short the right group gives way (the
+    // host's chips, then the version's text), never Report, bell or ◐.
+    it("at 1100, 960 and 800 the search sits at searchSlot's x in any host; Report, bell and ◐ keep their size", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const w of [1100, 960, 800]) {
+        const slot = searchSlot(w);
+        const got: Record<string, Awaited<ReturnType<typeof measure>>> = {};
+        for (const q of ["", "?chips", "?longver", "?long&chips&longver"]) {
+          const p = await open(b, q, w);
+          got[q || "short"] = await measure(p);
+          await p.context().close();
+        }
+        for (const [k, m] of Object.entries(got)) {
+          expect([w, k, m.search]).toEqual([w, k, [slot.x, slot.w]]);
+          for (const it of ["report", "bell", "appearance"] as const)
+            expect([w, k, it, m[it]![1]]).toEqual([
+              w,
+              k,
+              it,
+              got.short![it]![1],
+            ]);
+          expect([w, k, m.overflow]).toEqual([w, k, false]);
+          expect([w, k, m.gap >= 12]).toEqual([w, k, true]);
+        }
+      }
     });
 
     it("at 390 the search sits at the same x, short or long names, with or without host chips", async () => {

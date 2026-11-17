@@ -101,6 +101,14 @@ export declare const NAV_THEME: NavTheme;
  * width, with no host-content allowance.
  */
 export declare const PINNED_CLASSES: readonly string[];
+/** The search's x and width for a viewport width, the same in any host. */
+export declare function searchSlot(viewportW: number): { x: number; w: number };
+export declare const TOP_RIGHT_MIN: number;
+/** The search away from searchSlot (slot.x, slot.w), at any width. */
+export declare function searchSlotDiffs(
+  snap: NavSnapshot,
+  tolerance?: number,
+): NavDiff[];
 /** 0.7.1: host HTML in the kit's account and search slots (warnings). */
 export declare function navWarnings(snap: NavSnapshot): string[];
 export declare function collectNav(

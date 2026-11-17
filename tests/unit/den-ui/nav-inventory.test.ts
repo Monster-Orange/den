@@ -18,6 +18,7 @@ import * as path from "path";
 import {
   compareNav,
   navWarnings,
+  searchSlot,
   NAV_BROWSER_IMAGE,
   NAV_THEME,
   type NavSnapshot,
@@ -107,7 +108,8 @@ describe("nav inventory: red cases on the reference", () => {
       // The placeholder is host content: where it sits is not compared.
       .filter((e) => e.key.startsWith("#den-search") && !e.host)
       .flatMap((e) => [`${e.key} box.left`, `${e.key} box.right`]);
-    expect(ids(s, ref)).toEqual(keys.sort());
+    // …and it is off its slot (searchSlot, from the viewport alone).
+    expect(ids(s, ref)).toEqual([...keys, "#den-search slot.x"].sort());
   });
 
   it("2 px is within the tolerance", () => {
@@ -241,6 +243,23 @@ describe("nav inventory: red cases on the reference", () => {
     const s = copy(ref);
     at(s, "#den-search").box.w += 116;
     expect(ids(s, ref)).toContain("#den-search box.right");
+  });
+
+  it("searchSlot: the search's x and width for a viewport, the same in any host", () => {
+    expect(searchSlot(1280)).toEqual({ x: 464, w: 304 });
+    expect(searchSlot(1100)).toEqual({ x: 464, w: 304 });
+    expect(searchSlot(960)).toEqual({ x: 356, w: 304 });
+    expect(searchSlot(800)).toEqual({ x: 196, w: 304 });
+    expect(searchSlot(390)).toEqual({ x: 82, w: 54 });
+    expect(searchSlot(600)).toEqual({ x: 220, w: 54 });
+  });
+
+  it("a search away from searchSlot fails at any width, with no reference box", () => {
+    const s = copy(ref);
+    const e = at(s, "#den-search");
+    s.viewport.w = 1100;
+    e.box.x = 397.5;
+    expect(ids(s, s)).toContain("#den-search slot.x");
   });
 
   it("lists host HTML in the account and search slots (a warning, not a failure)", () => {

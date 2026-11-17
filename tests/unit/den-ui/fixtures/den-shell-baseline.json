@@ -253,6 +253,7 @@
       "class": "den-search",
       "id": "den-search",
       "aria-haspopup": "dialog",
+      "data-nav-kit": "search",
       "aria-keyshortcuts": "Meta+K Control+K",
       "aria-label": "Search"
      },
@@ -503,7 +504,8 @@
         {
          "tag": "span",
          "attrs": {
-          "class": "v-txt"
+          "class": "v-txt",
+          "title": "v9.9.0"
          },
          "kids": [],
          "text": "v9.9.0"
@@ -932,7 +934,8 @@
     {
      "tag": "span",
      "attrs": {
-      "class": "v-txt"
+      "class": "v-txt",
+      "title": "v9.9.0"
      },
      "kids": [],
      "text": "v9.9.0"
@@ -2635,6 +2638,7 @@
       "class": "den-search",
       "id": "den-search",
       "aria-haspopup": "dialog",
+      "data-nav-kit": "search",
       "aria-keyshortcuts": "Meta+K Control+K",
       "aria-label": "Search"
      },
@@ -2885,7 +2889,8 @@
         {
          "tag": "span",
          "attrs": {
-          "class": "v-txt"
+          "class": "v-txt",
+          "title": "v9.9.0"
          },
          "kids": [],
          "text": "v9.9.0"
@@ -3314,7 +3319,8 @@
     {
      "tag": "span",
      "attrs": {
-      "class": "v-txt"
+      "class": "v-txt",
+      "title": "v9.9.0"
      },
      "kids": [],
      "text": "v9.9.0"

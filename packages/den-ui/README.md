@@ -361,6 +361,16 @@ The top bar's search sits in the same place in every product (issue 303).
   (and the menu's `{ name, detail }`) still work for this release, drawn
   as given, and the nav inventory fails a host that uses them
   (`legacy`). `accountWho(a)` gives the lines and the shape.
+- **The search never moves.** Its x is a function of the viewport only:
+  `searchSlot(width)` gives `{ x, w }` (464 / 304 at 1100 and up, 356 at
+  960, 82 / 54 on a phone), the same in any host. When the bar is short
+  the right group gives way inside its column: the host's chips first
+  (they end in "…", down to nothing), then the version's text ("v0.4…",
+  the whole version in its title). Report, the bell and ◐ never shrink,
+  and the kit sets their font and box so a host's rules can't size
+  them. Settings: `--den-top-right` (280px, what the right group keeps).
+  `searchSlotDiffs(snap)` checks a snapshot at any width (no reference
+  needed); `compareNav` runs it too.
 - **Shape, not only style.** The inventory compares what a kit slot
   draws: the account's fields (`shape`: `name`, `login`, `role`), the
   old fields (`legacy`), and the search's box (pinned: its width and

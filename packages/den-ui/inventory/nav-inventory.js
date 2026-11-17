@@ -543,6 +543,59 @@ const COLUMN = ["rail", "foot"];
  * moving them.
  */
 /**
+ * The search's slot for a viewport width (issue 303, "the search never
+ * moves"): its x and width are a function of the viewport only, the same
+ * in any host. Above 720px: the left part is 444px, less what the bar
+ * needs for the search and the kit's right group (TOP_RIGHT_MIN);
+ * 481–720px: 200px; up to 480px: 62px. The bar's padding is 12px and
+ * its column gap 8px. Mirrors shell.css's .den-top columns (defaults).
+ */
+export const TOP_RIGHT_MIN = 280;
+export function searchSlot(viewportW) {
+  const pad = 12;
+  const gap = 8;
+  if (viewportW > 720) {
+    const left = Math.max(
+      0,
+      Math.min(444, viewportW - 2 * pad - 304 - 2 * gap - TOP_RIGHT_MIN),
+    );
+    return { x: pad + left + gap, w: 304 };
+  }
+  return { x: pad + (viewportW < 480 ? 62 : 200) + gap, w: 54 };
+}
+
+/**
+ * The search away from its slot (searchSlot for the snapshot's viewport):
+ * a difference per edge, at any width, with no reference box needed.
+ */
+export function searchSlotDiffs(snap, tolerance = 2) {
+  const out = [];
+  const slot = searchSlot(snap.viewport.w);
+  for (const e of snap.elements) {
+    if (e.slot !== "top" || !e.classes.includes("den-search") || !e.box)
+      continue;
+    const near = (a, b) => Math.abs(a - b) <= tolerance;
+    if (!near(e.box.x, slot.x))
+      out.push({
+        key: e.key,
+        slot: e.slot,
+        property: "slot.x",
+        reference: String(slot.x),
+        actual: String(e.box.x),
+      });
+    if (!near(e.box.w, slot.w))
+      out.push({
+        key: e.key,
+        slot: e.slot,
+        property: "slot.w",
+        reference: String(slot.w),
+        actual: String(e.box.w),
+      });
+  }
+  return out;
+}
+
+/**
  * 0.7.1: host HTML in the kit's account and search slots, listed (a
  * warning: 0.7.2 makes every slot data, and then it fails). The kit
  * stamps what it draws: the account entry's data-nav-shape, the search's
@@ -756,6 +809,8 @@ export function compareNav(actual, reference, opts = {}) {
       (k) => (ea.column[k] || 0) - (er.column[k] || 0),
     ),
   );
+  // Issue 303: the search's slot, from the viewport alone.
+  diffs.push(...searchSlotDiffs(actual, tol));
   for (const w of want) {
     const g = gotBy.get(w.key);
     if (!g) continue;
