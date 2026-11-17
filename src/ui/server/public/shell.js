@@ -1399,6 +1399,8 @@
       "Not set yet, so agents stop when you log out. Turn it on and press Apply (it asks for your admin password once).",
     "keep.noToken":
       "No sign-in token is set: agents will not be able to sign in after logout. Make one with claude setup-token, then __DEN_CLI__ agents token set.",
+    "keep.credKeychain":
+      "The store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md).",
     "keep.tokenSet": "Agents sign in with the token set {date}.",
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":

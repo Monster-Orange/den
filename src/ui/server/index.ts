@@ -6137,6 +6137,8 @@ async function handleRequest(
               age_days: st.ageDays,
               old: st.old,
               store: st.store,
+              // The store's credential is a keychain: source (1Password).
+              cred_keychain: st.credInKeychain === true,
             };
           } catch {
             return null;

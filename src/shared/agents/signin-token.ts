@@ -143,7 +143,7 @@ export function newAgentTokenRef(
 export function tokenShapeError(raw: string): string | null {
   const t = raw.trim();
   if (!t) return "no token given";
-  if (/\s/.test(t)) return "a token is one word: it has spaces or line breaks";
+  if (/\s/.test(t)) return "a token is one word: it has blanks or line breaks";
   if (t.length < 16) return "too short to be a token";
   if (t.length > 4096) return "too long to be a token";
   return null;
@@ -314,7 +314,16 @@ export interface TokenStatus {
   stored?: boolean;
   /** Why it isn't stored, in plain words (never the token). */
   reason?: string;
+  /**
+   * The store's own credential (1Password's service-account token) is
+   * referenced as `keychain:`, which the always-on service may not reach.
+   */
+  credInKeychain?: boolean;
 }
+
+/** What doctor and the sign-in row say when credInKeychain. */
+export const CRED_KEYCHAIN_WARNING =
+  "the store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md)";
 
 /**
  * The token's state, for doctor and Settings: from the config and the state
@@ -345,6 +354,12 @@ export interface TokenStatusDeps {
   status?: () => ReturnType<typeof secretsStatus>;
   warnDays?: () => number;
   now?: () => Date;
+  /**
+   * Where the store's own credential comes from, as configured
+   * (`secrets.onepassword.token`: keychain:, file: or env:). Read from the
+   * config only; nothing is read from the keychain.
+   */
+  credSource?: () => string | undefined;
 }
 
 /** The token's state from the config and the state dir alone (a page view). */
@@ -357,13 +372,29 @@ export function agentTokenStatusNow(d: TokenStatusDeps): TokenStatus {
     ? Math.max(0, Math.floor((now - Date.parse(meta.setAt)) / 86_400_000))
     : null;
   let store = "";
+  let backend = "";
   try {
-    store = (
+    const st = (
       d.status ?? (() => secretsStatus(undefined, d.env, { detect: false }))
-    )().label;
+    )();
+    store = st.label;
+    backend = st.backend;
   } catch {
     store = "";
   }
+  let cred: string | undefined;
+  try {
+    cred = (
+      d.credSource ??
+      (() => readSecretsConfig().onepassword?.token ?? undefined)
+    )();
+  } catch {
+    cred = undefined;
+  }
+  const credInKeychain =
+    backend === "1password" &&
+    typeof cred === "string" &&
+    cred.trim().startsWith("keychain:");
   const out: TokenStatus = {
     mode: agentSignInMode(d.env, d.stateDir),
     configured: !!ref,
@@ -372,6 +403,7 @@ export function agentTokenStatusNow(d: TokenStatusDeps): TokenStatus {
     old: ageDays !== null && ageDays >= warnDays,
     warnDays,
     store,
+    credInKeychain,
   };
   return out;
 }
@@ -384,6 +416,17 @@ export function tokenStatusLine(
   st: TokenStatus,
   cli: string,
   localDate: (iso: string) => string = (iso) => iso.slice(0, 10),
+): { status: "ok" | "warn"; text: string } {
+  const l = tokenLine(st, cli, localDate);
+  return st.credInKeychain
+    ? { status: "warn", text: `${l.text}. Also, ${CRED_KEYCHAIN_WARNING}` }
+    : l;
+}
+
+function tokenLine(
+  st: TokenStatus,
+  cli: string,
+  localDate: (iso: string) => string,
 ): { status: "ok" | "warn"; text: string } {
   const fix = `make one with ${TOKEN_MAKE_HINT}, then ${cli} agents token set`;
   if (!st.configured || st.stored === false)

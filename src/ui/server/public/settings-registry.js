@@ -922,11 +922,15 @@ export async function applyKeepRunning(on, { post, askSudo, waitBack }) {
 /**
  * Issue 163 (b): what the Settings row says about the agents' sign-in
  * token under the always-on service: none set (agents will not be able to
- * sign in after logout), old, or when it was set. Never the token: the
+ * sign in after logout), the store's credential in the login keychain,
+ * old, or when it was set. Never the token: the
  * server sends whether one is configured and when it was set.
  */
 export function keepTokenLine(s, t) {
   if (!s || !s.configured) return { state: "missing", text: t("keep.noToken") };
+  // The store's own credential in the login keychain: the daemon may not
+  // reach it, so the token can't be read either.
+  if (s.cred_keychain) return { state: "cred", text: t("keep.credKeychain") };
   if (s.old)
     return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
   if (s.set_at) {

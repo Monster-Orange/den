@@ -357,3 +357,64 @@ describe("what doctor and Settings say about the token", () => {
     expect(old.text).toMatch(/set 350 days ago .*lasts about a year/);
   });
 });
+
+/**
+ * Issue 163 (b), lead's answer 3: the store's own credential (the
+ * 1Password service-account token) referenced as keychain: may not be
+ * reachable from the always-on service. doctor's sign-in row warns.
+ */
+describe("the store's credential in the login keychain", () => {
+  const CRED_WARN =
+    "the store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md)";
+  const st = async (stateDir: string, source: string | undefined) =>
+    agentTokenStatus({
+      env: { DEN_AGENT_SIGNIN: "token" },
+      stateDir,
+      ref: () => REF,
+      status: () => ({
+        backend: "1password" as const,
+        label: "1Password",
+        implicit: false,
+        detect: { available: true },
+      }),
+      credSource: () => source,
+      warnDays: () => 330,
+      now: () => new Date("2026-11-16T10:00:00Z"),
+    });
+
+  it("keychain: warns, even with a token set", async () => {
+    const r = await rig();
+    fs.writeFileSync(
+      path.join(r.stateDir, "agent-signin-token.json"),
+      JSON.stringify({ setAt: "2026-11-10T10:00:00Z" }),
+    );
+    const s = await st(r.stateDir, "keychain:op-den");
+    expect(s.credInKeychain).toBe(true);
+    const l = tokenStatusLine(s, "acme");
+    expect(l.status).toBe("warn");
+    expect(l.text).toContain(CRED_WARN);
+  });
+
+  it("no token and keychain: both warnings", async () => {
+    const r = await rig();
+    const s = await st(r.stateDir, "keychain:op-den");
+    const l = tokenStatusLine({ ...s, configured: false }, "acme");
+    expect(l.text).toMatch(/agents will not be able to sign in after logout/);
+    expect(l.text).toContain(CRED_WARN);
+  });
+
+  it.each([
+    ["file:/x/op-token"],
+    ["env:OP_SERVICE_ACCOUNT_TOKEN"],
+    [undefined],
+  ])("%s: no such warning", async (source) => {
+    const r = await rig();
+    fs.writeFileSync(
+      path.join(r.stateDir, "agent-signin-token.json"),
+      JSON.stringify({ setAt: "2026-11-10T10:00:00Z" }),
+    );
+    const s = await st(r.stateDir, source);
+    expect(s.credInKeychain).toBe(false);
+    expect(tokenStatusLine(s, "acme").status).toBe("ok");
+  });
+});

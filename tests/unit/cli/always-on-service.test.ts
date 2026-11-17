@@ -359,3 +359,36 @@ describe("agents token set (b)", () => {
     expect(r.err.join("\n")).toMatch(/no token given.*claude setup-token/);
   });
 });
+
+describe("doctor: the store's credential in the login keychain (b)", () => {
+  it("under always, the sign-in row warns with the fix", async () => {
+    const rows = await whereRows({
+      cli: "acme",
+      platform: "darwin",
+      server: async () => ({ launchd: "System" }),
+      host: async () => ({ launchd: "System", pid: 5 }),
+      service: () => ({
+        state: "loaded",
+        mode: "always",
+        plist: "/Library/LaunchDaemons/x.plist",
+        domain: "system",
+      }),
+      signIn: async () => ({
+        mode: "token",
+        configured: true,
+        setAt: "2026-11-01T10:00:00Z",
+        ageDays: 15,
+        old: false,
+        warnDays: 330,
+        store: "1Password",
+        stored: true,
+        credInKeychain: true,
+      }),
+    });
+    const row = rows.find((r) => r.what === "agent sign-in")!;
+    expect(row.status).toBe("warn");
+    expect(row.detail).toContain(
+      "the store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md)",
+    );
+  });
+});

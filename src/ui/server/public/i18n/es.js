@@ -595,6 +595,8 @@
       "Aún sin configurar, así que los agentes se detienen al cerrar sesión. Actívalo y pulsa Aplicar (pide tu contraseña de administrador una vez).",
     "keep.noToken":
       "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. Crea uno con claude setup-token y luego __DEN_CLI__ agents token set.",
+    "keep.credKeychain":
+      "La credencial del almacén está en el llavero de inicio, al que el servicio siempre activo puede no llegar; usa file: o env: (ver docs/always-on-gate.md).",
     "keep.tokenSet":
       "Los agentes inician sesión con el token guardado el {date}.",
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",

@@ -109,3 +109,19 @@ describe("Keep agents running after logout: the sign-in token line", () => {
     ).toEqual({ state: "set", text: 'keep.tokenStore {"store":"Doppler"}' });
   });
 });
+
+describe("Keep agents running after logout: the store's credential line", () => {
+  const t = (k: string) => k;
+  it("cred_keychain: the row warns", () => {
+    expect(
+      keepTokenLine(
+        {
+          configured: true,
+          set_at: "2026-11-16T10:00:00Z",
+          cred_keychain: true,
+        },
+        t,
+      ),
+    ).toEqual({ state: "cred", text: "keep.credKeychain" });
+  });
+});
