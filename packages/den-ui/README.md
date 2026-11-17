@@ -456,6 +456,8 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   own copy.
 - **A phone's tap targets**: below 480px every top-bar button is at least
   32px each way (`shell.css`).
+- **The brand on a phone**: below 480px the brand (its mark alone) never
+  shrinks; the host's chips give way.
 - **Search name**: `searchHtml({ label })` names the field; by default
   the kit's "Search" (en, es, ja), not the placeholder.
 - **Filtered menus**: a menu with the filter field is a pop-up holding the

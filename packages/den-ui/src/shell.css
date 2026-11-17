@@ -564,6 +564,12 @@ body.den-has-shell .den-upd {
     white-space: nowrap;
     border: 0;
   }
+  /* The brand is its mark alone here (the title is hidden): it never
+     shrinks below it; the host's chips give way instead. */
+  .den-brand {
+    flex-shrink: 0;
+    min-width: max-content;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .den-rail {

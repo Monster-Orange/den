@@ -806,6 +806,41 @@ for (const engine of ["chromium", "webkit"]) {
       await p.context().close();
     });
 
+    it("a phone's top bar: a wide host chip never squeezes the brand's mark", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b);
+      await p.setViewportSize({ width: 390, height: 844 });
+      const r = await p.evaluate(() => {
+        const chips = document.querySelector(".den-top .den-chips")!;
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "den-chip";
+        chip.textContent = "A host's very wide status chip, 12 of 12 up";
+        // A host's chip that may give way (as Den's status chip does).
+        chip.style.setProperty("min-width", "0");
+        chip.style.setProperty("flex-shrink", "1");
+        chip.style.setProperty("overflow", "hidden");
+        chips.prepend(chip);
+        const brand = document
+          .querySelector(".den-brand")!
+          .getBoundingClientRect();
+        const mark = document
+          .getElementById("den-mark")!
+          .getBoundingClientRect();
+        return {
+          brand: brand.width,
+          mark: mark.width,
+          markRight: mark.right,
+          brandRight: brand.right,
+        };
+      });
+      expect(r.mark).toBeGreaterThan(0);
+      expect(r.brand).toBeGreaterThanOrEqual(r.mark);
+      expect(r.brandRight).toBeGreaterThanOrEqual(r.markRight);
+      await p.context().close();
+    });
+
     it("a phone's top bar: ☰, search, bell and ◐ ▾ are 32px tap targets, on one line", async () => {
       const b = browsers[engine];
       if (!b) return;
