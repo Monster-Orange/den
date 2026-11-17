@@ -706,9 +706,10 @@ function drawPair(host, ctx) {
       if (!hosts.length) {
         host.innerHTML = `<output class="set-ro" id="set-pair">${L(
           "set.ui.noPairHost",
-          "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+          "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
           { cmd: "<code>__DEN_CLI__ edge up</code>" },
         )}</output>`;
+        drawEdgeUp(host, ctx);
         return;
       }
       host.innerHTML =
@@ -756,6 +757,66 @@ function drawPair(host, ctx) {
     .catch(() => {
       host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
     });
+}
+
+/**
+ * Issue 395: Start the edge (Apply, when it runs): what `edge up` runs, on
+ * the server (POST /api/edge/up, a person's only), with the working pop-up
+ * until it answers; then what it did: started, up to date (nothing
+ * restarted), or recreated and why, and about how long it was unreachable.
+ */
+function edgeUpText(o) {
+  if (o?.kind === "started") return L("set.ui.edgeStarted", "Edge started");
+  if (o?.kind === "current")
+    return L("set.ui.edgeCurrent", "Edge up to date, nothing restarted");
+  const why = (o?.changes || [])
+    .map((c) => `${c.field}: ${c.old} → ${c.new}`)
+    .join(", ");
+  return L(
+    "set.ui.edgeRecreated",
+    "Edge recreated because {why}; it was unreachable for about {s} s",
+    {
+      why: why || L("set.ui.edgeWhy", "its settings changed"),
+      s: o?.downSeconds ?? 1,
+    },
+  );
+}
+
+function drawEdgeUp(host, ctx) {
+  const box = document.createElement("div");
+  box.style.cssText = "flex-basis:100%;margin-top:8px";
+  box.innerHTML =
+    `<button type="button" class="btn sm" id="set-edge-up">${escHtml(L("set.ui.edgeStart", "Start the edge"))}</button>` +
+    '<p class="set-note" id="set-edge-up-out" aria-live="polite" hidden></p>';
+  host.appendChild(box);
+  const btn = box.querySelector("#set-edge-up");
+  const out = box.querySelector("#set-edge-up-out");
+  // Running already: the button applies the config to it.
+  fetch("/api/edge", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((b) => {
+      if (b?.up) btn.textContent = L("set.ui.edgeApply", "Apply");
+    })
+    .catch(() => {});
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    out.hidden = true;
+    try {
+      const r = await ctx.shell.busyAction(
+        "edge-up",
+        (headers) => ctx.shell.api("POST", "/api/edge/up", {}, { headers }),
+        { button: btn, success: (r) => edgeUpText(r?.outcome) },
+      );
+      if (r?.outcome) {
+        out.textContent = edgeUpText(r.outcome);
+        out.hidden = false;
+        if (r.outcome.kind !== "current")
+          btn.textContent = L("set.ui.edgeApply", "Apply");
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 /**

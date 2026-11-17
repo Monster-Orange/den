@@ -344,6 +344,8 @@ import {
   handleSignInTokenRoute,
   noteKeepRunningOffer,
 } from "./keep-running-routes.js";
+import { handleEdgeUpRoute } from "./edge-up-routes.js";
+import { runEdgeUp } from "../../shared/edge/up.js";
 import {
   agentTokenStatus,
   clearAgentToken,
@@ -3657,6 +3659,18 @@ async function handleRequest(
       status: () => agentSigninView(true),
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // Issue 395: Settings › Access › Start the edge: what `edge up` runs.
+  if (
+    handleEdgeUpRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      run: async () =>
+        (await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") }))
+          .outcome,
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
   )

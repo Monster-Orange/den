@@ -397,6 +397,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/pair",
     "mints a one-time sign-in link for another device (Pair a device)",
   ),
+  S(
+    ["POST"],
+    "/api/edge/up",
+    "issue 395: Settings' Start the edge runs `edge up` (docker); a person's only, never an agent's token",
+  ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),

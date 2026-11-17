@@ -11,7 +11,8 @@
  * Auto-close (a fast success says so in a toast, a slow one closes after
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, create-hub,
  * start-agent, restart-agent, fresh-start, report-preview, save-report-draft,
- * discard-draft, follow-project, keep-running, send-message, allow-web-app,
+ * discard-draft, follow-project, keep-running, edge-up, send-message,
+ * allow-web-app,
  * ask-allow,
  * agent-order, delete-project, remove-service, gate-end. Waits for
  * Done: sign-out-all, send-report.
@@ -217,6 +218,16 @@ export const DEN_ACTIONS = {
       working: "pmode.followW",
       success: "pmode.followS",
       failure: "pmode.followF",
+    },
+  },
+  // Issue 395: Settings › Access › Start the edge (Apply): `edge up`.
+  "edge-up": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.edgeW",
+      success: "busy.edgeS",
+      failure: "busy.edgeF",
     },
   },
   "keep-running": {

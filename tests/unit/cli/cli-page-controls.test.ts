@@ -83,7 +83,8 @@ const LISTING: Record<string, Entry> = {
   "web claim-link": script("a setup link for a new device, from a shell"),
   "web url": page("settings-registry.js", "/api/web-url"),
 
-  "edge up": slot("0.4.47", "start the edge"),
+  // Issue 395: Settings › Access › Start the edge (Apply, when it runs).
+  "edge up": page("settings-registry.js", "/api/edge/up"),
   "edge down": slot("0.4.47", "stop the edge"),
   "edge trust": slot("0.4.47", "trust the local certificate"),
   "edge untrust": slot("0.4.47", "untrust the local certificate"),
