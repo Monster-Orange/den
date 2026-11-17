@@ -10,6 +10,7 @@
  */
 
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import * as path from "path";
 import * as yaml from "yaml";
 import type { ServiceCatalog, ServiceCatalogEntry } from "../types/index.js";
@@ -46,7 +47,7 @@ export function readCatalog(): ServiceCatalog {
 
 export function writeCatalog(catalog: ServiceCatalog): void {
   fs.mkdirSync(path.dirname(CATALOG_PATH), { recursive: true });
-  fs.writeFileSync(CATALOG_PATH, yaml.stringify(catalog), "utf-8");
+  writeFileAtomic(CATALOG_PATH, yaml.stringify(catalog));
 }
 
 export function upsertCatalogEntry(

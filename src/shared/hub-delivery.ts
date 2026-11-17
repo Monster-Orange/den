@@ -9,7 +9,7 @@
  * information (anyone else). No I/O here but the de-dup file.
  */
 import fs from "node:fs";
-import path from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export type Verified = "hub_session" | "hub_token";
 
@@ -484,14 +484,11 @@ export class SeenDeliveries {
 
   private save(): void {
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.tmp`;
-      fs.writeFileSync(
-        tmp,
+      writeFileAtomic(
+        this.file,
         JSON.stringify({ ids: this.ids, last: this.last, held: this.held }),
         { mode: 0o600 },
       );
-      fs.renameSync(tmp, this.file);
     } catch {
       /* best effort: the worst case is a repeat Den de-dups in memory */
     }

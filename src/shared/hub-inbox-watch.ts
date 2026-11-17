@@ -19,6 +19,7 @@
  * No timers of its own: tick() is called on a beat and reads when due.
  */
 import fs from "node:fs";
+import { writeFileAtomic } from "./atomic-write.js";
 import path from "node:path";
 import {
   LOCAL_PREFIX,
@@ -260,7 +261,7 @@ export class InboxWatcher {
     const since = this.now();
     try {
       fs.mkdirSync(path.dirname(this.d.stateFile), { recursive: true });
-      fs.writeFileSync(this.d.stateFile, `${JSON.stringify({ since })}\n`, {
+      writeFileAtomic(this.d.stateFile, `${JSON.stringify({ since })}\n`, {
         mode: 0o600,
       });
     } catch {

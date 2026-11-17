@@ -19,6 +19,7 @@ import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 import {
   GATE_DEFAULTS,
   byAsked,
@@ -203,14 +204,7 @@ export class GateStore {
       if (v === null) delete cur[k];
       else if (v !== undefined) cur[k] = v;
     }
-    this.atomicWrite(file, JSON.stringify(cur, null, 2) + "\n");
-  }
-
-  private atomicWrite(file: string, body: string): void {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.${randomBytes(3).toString("hex")}.tmp`;
-    fs.writeFileSync(tmp, body);
-    fs.renameSync(tmp, file);
+    writeFileAtomic(file, JSON.stringify(cur, null, 2) + "\n");
   }
 
   /** The slot log: every ask, wait, grant, release, flag and early end. */
@@ -307,7 +301,7 @@ export class GateStore {
   }
 
   private write(e: GateEntry) {
-    this.atomicWrite(this.file(e.id), JSON.stringify(e));
+    writeFileAtomic(this.file(e.id), JSON.stringify(e));
   }
 
   private remove(id: string) {
@@ -396,7 +390,8 @@ export class GateStore {
           : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
-      fs.writeFileSync(this.file(e.id), JSON.stringify(e), { flag: "wx" });
+      // Created whole and only once (#380): readAll never sees it half-written.
+      writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
       this.record(e, { event: "asked" });
       const all = this.settle();
       const now = all.find((x) => x.id === e.id) ?? e;
