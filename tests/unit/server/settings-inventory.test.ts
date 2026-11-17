@@ -177,6 +177,10 @@ describe("the settings inventory (R21)", () => {
         // Issue 367: how long a push may take, and a push service keeps it.
         "alerts.push_timeout_seconds",
         "alerts.push_ttl_seconds",
+        // Issue 160: the install's approval policy.
+        "approvals_policy",
+        "approvals_watch",
+        "approvals_critical",
       ].sort(),
     );
   });

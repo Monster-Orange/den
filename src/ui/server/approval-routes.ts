@@ -32,7 +32,9 @@ import {
   type Decision,
 } from "./approvals.js";
 import {
+  criticalWhy,
   isCriticalWrite,
+  type CriticalArea,
   type PolicyKind,
 } from "../../shared/approval-policy.js";
 import type { NotificationStore } from "../../shared/notifications.js";
@@ -64,6 +66,11 @@ export type HeldCheck =
        * widens what an agent may do, so it is critical.
        */
       personOnly?: boolean;
+      /**
+       * Issue 160: what this ask touches (secrets, deletes of data,
+       * money): critical, whatever the write's placement says.
+       */
+      areas?: CriticalArea[];
       /** Issue 199: the agents that keep a mode of their own. */
       ownMode?: { agent: string; mode: string }[];
       /**
@@ -226,6 +233,8 @@ export async function handleApprovalRoutes(
       action: string,
       project: string | undefined,
       widens: boolean,
+      /** Issue 160: the checked args (what it is on) and what it touches. */
+      ask?: { args: Record<string, unknown>; areas?: CriticalArea[] },
     ) => { kind: PolicyKind; from: string };
     /** Issue 160: a write the policy ran under notify, for the person's updates. */
     notify?: (a: Approval, project: string | undefined, from: string) => void;
@@ -372,15 +381,21 @@ export async function handleApprovalRoutes(
     const project =
       typeof stored.project === "string" ? stored.project : agent?.workspace;
     let ran: { kind: PolicyKind; from: string } | null = null;
+    // Issue 160: why the policy holds it (critical, watched, …), for the asker.
+    let heldBy: string | undefined;
     if (
       a.agent &&
       !askAnyway &&
       deps.policy &&
-      !isCriticalWrite(action, checked.personOnly === true)
+      !isCriticalWrite(action, checked.personOnly === true, checked.areas)
     ) {
       try {
-        const p = deps.policy(action, project, checked.personOnly === true);
+        const p = deps.policy(action, project, checked.personOnly === true, {
+          args: stored,
+          ...(checked.areas?.length ? { areas: checked.areas } : {}),
+        });
         if (p.kind !== "ask") ran = p;
+        else heldBy = p.from;
       } catch {
         ran = null; // a bad setting: held, as with ask
       }
@@ -390,7 +405,11 @@ export async function handleApprovalRoutes(
     else
       try {
         auto =
-          a.agent && !checked.personOnly && !askAnyway
+          a.agent &&
+          !checked.personOnly &&
+          !checked.areas?.length &&
+          !heldBy &&
+          !askAnyway
             ? (deps.autoAllow?.(action, a.agent) ?? null)
             : null;
       } catch {
@@ -433,6 +452,18 @@ export async function handleApprovalRoutes(
       {
         ok: true,
         ...approvalView(a),
+        ...(a.state === "pending" && a.agent && !askAnyway
+          ? {
+              askedBecause:
+                heldBy ??
+                criticalWhy(
+                  action,
+                  checked.personOnly === true,
+                  checked.areas,
+                ) ??
+                undefined,
+            }
+          : {}),
         ...(ticket ? { ticket: ticket.ticket } : {}),
       },
       202,

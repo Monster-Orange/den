@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, hub_connect, agent_folder, agent_mode): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1175,14 +1175,16 @@ const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 /**
  * MCP agent_import (AG-17.1): bring in a conversation started outside Den
- * as an agent of this workspace (or a granted one). No session: the list.
- * Opt-in through mcp.actions; the web server checks the scope again.
+ * as an agent of this workspace (or a granted one). No session: the list,
+ * opted in through mcp.actions. Issue 160: the bring-in is a held write
+ * (POST /api/approvals) that asks the person by default; it is registered
+ * with the held writes. The web server checks the scope again.
  */
 const agentImportTool: DenTool = {
   name: "agent_import",
   title: "Bring in a conversation",
   description:
-    "Bring in a conversation started outside Den (in the project's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without session: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent). With session and persona: brings that one in and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.",
+    "Bring in a conversation started outside Den (in the project's folder) as a Den agent: its runtime's own resume, in the folder it ran in, under Den's token, hooks and guards. Without `session`: lists the conversations there are (id, title, lastAt, cwd, runtime, open, agent); the list needs mcp.actions to name agent_import. With `session` and `persona`: asks the person to bring that one in (a held write: it waits for their Allow unless the approval policy says otherwise) and answers with the agent. Refused while it is still open in another terminal (written in the last minute), or when an agent already continues it.",
   action: true,
   shape: {
     session: z
@@ -1193,7 +1195,8 @@ const agentImportTool: DenTool = {
     runtime: z.string().optional().describe("The runtime (default den-claude)"),
     workspace: workspaceArg,
   },
-  async run(a, { api, scope }) {
+  async run(a, ctx) {
+    const { api, scope } = ctx;
     let ws = str(a.workspace) ?? scope?.workspace;
     if (!ws) {
       const focused = (await api.get("/api/workspaces")) as {
@@ -1218,11 +1221,13 @@ const agentImportTool: DenTool = {
     const persona = str(a.persona);
     if (!persona || !NAME_RE.test(persona))
       throw new Refusal("agent_import: name the persona to run it as");
-    return api.get(
-      `${base}/${encodeURIComponent(session)}/import`,
-      {},
-      "POST",
-      { persona, ...(runtime ? { runtime } : {}) },
+    // Issue 160: a held write; the person allows it (by default).
+    return askPerson(
+      "agent_import",
+      "agent_import",
+      { project: ws, session, persona, runtime },
+      a,
+      ctx,
     );
   },
 };
@@ -2233,6 +2238,96 @@ const APPROVAL_TOOLS: DenTool[] = [
       return askPerson("verify_run", "verify_run", body, a, ctx);
     },
   },
+  // Issue 160: agent_import's bring-in is a held write (asks by default).
+  {
+    ...agentImportTool,
+    description: agentImportTool.description + HELD,
+    shape: { ...agentImportTool.shape, note: noteArg, ask: askArg },
+  },
+  {
+    name: "approval_policy",
+    title: "Change the approval policy",
+    description:
+      "Ask the person to change Den's approval policy: the install's (every project), or one project's with `project`. `approvals` is the whole setting: { policy: auto | notify | ask, writes: { <write>: auto | notify | ask }, watch: [project:<name>, repo:<name>, …], critical: [<write>, …] }, or null to clear it. It always waits for the person's Allow: only a person changes the policy without one. A project's agent asks for its own project only.",
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (omit: the install's policy, every project)"),
+      approvals: z
+        .union([z.record(z.string(), z.unknown()), z.null()])
+        .describe("The setting: { policy, writes, watch, critical }, or null"),
+      note: noteArg,
+    },
+    async run(a, ctx) {
+      if (a.approvals === undefined)
+        throw new Refusal(
+          "approval_policy: give approvals ({ policy, writes, watch, critical }, or null)",
+        );
+      return askPerson(
+        "approval_policy",
+        "approval_policy",
+        {
+          project: str(a.project),
+          approvals: a.approvals as unknown,
+        } as Args,
+        a,
+        ctx,
+      );
+    },
+  },
+  // Issue 160: closing a stale or superseded PR after a Hub note. Auto
+  // unless the person watches or pinned the repo.
+  {
+    name: "pr_close",
+    title: "Close a pull request",
+    description:
+      "Close a stale or superseded pull request after a Hub note says so: `repo` (owner/name), `pr` (its number) and `comment` (why, posted on the pull request; name what supersedes it). Nothing is merged and no branch is deleted. A project's agent closes for its own project." +
+      HELD,
+    action: true,
+    shape: {
+      repo: z.string().describe("The GitHub repo, owner/name"),
+      pr: z.number().int().positive().describe("The pull request number"),
+      comment: z
+        .string()
+        .describe(
+          "Posted on the pull request: why it closes (stale, or superseded by which)",
+        ),
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : str(a.project);
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `pr_close: you work in project "${ctx.scope.workspace}" and close pull requests for it only, not project "${project}"; nothing was asked.`,
+        );
+      const repo = needArg("pr_close", a, "repo", "owner/name");
+      const pr = typeof a.pr === "number" ? a.pr : Number(str(a.pr));
+      if (!Number.isSafeInteger(pr) || pr < 1)
+        throw new Refusal("pr_close: give pr (the pull request number).");
+      const comment = needArg(
+        "pr_close",
+        a,
+        "comment",
+        "why it closes, posted on the pull request",
+      );
+      return askPerson(
+        "pr_close",
+        "pr_close",
+        { project, repo, pr, comment } as Args,
+        a,
+        ctx,
+      );
+    },
+  },
 ];
 
 /**
@@ -2254,13 +2349,15 @@ export function approvalsState(
 
 /** The tools to register: every read tool, hub_put and hub_pull, the held writes (unless turned off), plus the actions the org named. */
 export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
+  const held = cfg.approvals ? APPROVAL_TOOLS : [];
   const tools = [
     ...READ_TOOLS,
     ...HUB_FILE_TOOLS,
-    ...(cfg.approvals ? APPROVAL_TOOLS : []),
-    ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a)).map(
-      (a) => ACTION_TOOLS[a],
-    ),
+    ...held,
+    // Issue 160: agent_import is a held write too; registered once.
+    ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a))
+      .map((a) => ACTION_TOOLS[a])
+      .filter((t) => !held.some((h) => h.name === t.name)),
   ];
   return scope ? tools.map((t) => pinnedTool(t, scope)) : tools;
 }
