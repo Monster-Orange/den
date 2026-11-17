@@ -4,7 +4,9 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.64] - unreleased
+## [0.4.64] - 2026-11-17
+
+den-ui 0.7.4 ships with this release (the rail's plain counts and greyed-entry reasons). den-ui 0.7.2 and 0.7.3 were never published to npm: 0.7.4 supersedes both.
 
 ### Fixed
 
