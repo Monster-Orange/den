@@ -37,6 +37,10 @@
  *                               shown in Setup ("claude setup-token")
  *                 lastsDays     how long it lasts, for the "make a new
  *                               one" warning
+ *                 docs          the vendor's own page on that sign-in
+ *                               (https), which Settings links where it
+ *                               says where the token comes from (issue
+ *                               399)
  *                 limitPattern  how the CLI words a usage limit (a
  *                               case-insensitive pattern), so Den can see
  *                               a cap in the agent's output
@@ -89,6 +93,8 @@ export interface CatalogSignIn {
   command?: string;
   /** How many days the credential lasts. */
   lastsDays?: number;
+  /** The vendor's own docs on that sign-in (an https URL; issue 399). */
+  docs?: string;
   /** A case-insensitive pattern for its usage-limit message. */
   limitPattern?: string;
 }
@@ -147,7 +153,13 @@ const ENTRY_KEYS = [
 ] as const;
 
 /** The keys `signIn` takes. */
-const SIGN_IN_KEYS = ["env", "command", "lastsDays", "limitPattern"] as const;
+const SIGN_IN_KEYS = [
+  "env",
+  "command",
+  "lastsDays",
+  "limitPattern",
+  "docs",
+] as const;
 
 /** Den's built-in catalog, in the order lists show them. */
 export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
@@ -185,6 +197,7 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
       env: "CLAUDE_CODE_OAUTH_TOKEN",
       command: "claude setup-token",
       lastsDays: 365,
+      docs: "https://code.claude.com/docs/en/authentication",
       limitPattern:
         "usage limit reached|limit reached\\s*[∙·]\\s*resets|you've hit your (usage )?limit",
     },
@@ -336,7 +349,7 @@ function denOwnsEnv(name: string): boolean {
 function validateSignIn(raw: unknown, where: string): CatalogSignIn {
   if (!isMapping(raw))
     throw new Error(
-      `${where}: must be a mapping { env, command, lastsDays, limitPattern }`,
+      `${where}: must be a mapping { env, command, lastsDays, limitPattern, docs }`,
     );
   for (const k of Object.keys(raw))
     if (!(SIGN_IN_KEYS as readonly string[]).includes(k))
@@ -368,6 +381,21 @@ function validateSignIn(raw: unknown, where: string): CatalogSignIn {
         `${where}.lastsDays: must be a whole number of days, 1-3650`,
       );
     out.lastsDays = n;
+  }
+  if (raw.docs !== undefined) {
+    const d = raw.docs;
+    let ok = typeof d === "string" && d.length <= 300 && !/\s/.test(d);
+    if (ok)
+      try {
+        ok = new URL(d as string).protocol === "https:";
+      } catch {
+        ok = false;
+      }
+    if (!ok)
+      throw new Error(
+        `${where}.docs: must be the vendor's https URL, up to 300 characters`,
+      );
+    out.docs = d as string;
   }
   if (raw.limitPattern !== undefined) {
     const p = raw.limitPattern;

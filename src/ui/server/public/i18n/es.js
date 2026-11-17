@@ -593,7 +593,7 @@
     "keep.offer":
       "Aún sin configurar, así que los agentes se detienen al cerrar sesión. Actívalo y pulsa Aplicar (pide tu contraseña de administrador una vez).",
     "keep.noToken":
-      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. Crea uno con claude setup-token y luego __DEN_CLI__ agents token set.",
+      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. {runtime} crea uno cuando inicias sesión en él ({docs}); pégalo en {field}, abajo.",
     "keep.credKeychain":
       "La credencial del almacén está en el llavero de inicio, al que el servicio siempre activo puede no llegar; usa file: o env: (ver docs/always-on-gate.md).",
     "keep.setup":
@@ -620,7 +620,9 @@
       "Los agentes inician sesión con el token guardado el {date}.",
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
     "keep.tokenOld":
-      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
+      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año. {runtime} crea uno nuevo cuando inicias sesión en él ({docs}); pégalo en {field}, abajo.",
+    "keep.docs": "su documentación de inicio de sesión",
+    "keep.runtimeAny": "La CLI de tus agentes",
     "acct.title": "Cuentas de {vendor}",
     "acct.default": "Cuenta de {vendor} {letter}",
     "acct.add": "Añadir cuenta de {vendor}",
@@ -2804,7 +2806,7 @@
     "set.cli.local_dev.d":
       "Desactivado oculta Proyectos y las API de proyectos para ti. __DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: créalo una vez con claude setup-token y luego __DEN_CLI__ agents token set. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
+      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: la CLI de tus agentes lo crea cuando inicias sesión en ella, y tú lo pegas en Token de inicio de sesión, abajo. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "Si up y restart abren pestañas de terminal de forma predeterminada. __DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":

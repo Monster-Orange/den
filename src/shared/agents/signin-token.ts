@@ -92,6 +92,14 @@ export const DEFAULT_TOKEN_WARN_DAYS = (CLAUDE_SIGN_IN.lastsDays ?? 365) - 35;
 /** How the person makes the token (den-claude's catalog sign-in data). */
 export const TOKEN_MAKE_HINT = CLAUDE_SIGN_IN.command ?? "claude setup-token";
 
+/**
+ * Issue 399: where the token comes from, for Settings: the runtime's name
+ * and the vendor's own page on its sign-in (catalog signIn.docs), linked
+ * instead of a command to run.
+ */
+export const TOKEN_RUNTIME = builtinEntry("den-claude")!.name;
+export const TOKEN_DOCS = CLAUDE_SIGN_IN.docs;
+
 export type SignInMode = "token" | "desktop";
 
 /**
