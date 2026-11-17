@@ -2409,7 +2409,8 @@
     "set.ui.portUnset": "未設定: ディストリビューションの値を使用",
     "set.ui.signedIn": "サインイン済み",
     "set.ui.signOut": "サインアウト",
-    "set.ui.notSignedIn": "サインインしていません: {cmd} を実行してください",
+    "set.ui.notSignedIn": "サインインしていません",
+    "set.ui.signIn": "サインイン",
     "set.ui.savedIn": "{vault} に保存済み",
     "set.ui.theVault": "保管庫",
     "set.ui.savedMemory": "Den が再起動するまでメモリーに保持",
@@ -2690,6 +2691,27 @@
     "set.notifications.fold_days.o.7": "7日",
     "set.notifications.fold_days.o.14": "14日",
     "set.notifications.fold_days.o.30": "30日",
+    "set.notifications.phone": "このデバイスへのプッシュ通知",
+    "set.notifications.phone.d":
+      "スマートフォンで __DEN_TITLE__ を開き、そこでこれをオンにしてください。エージェントがあなたを必要とすると、__DEN_TITLE__ を閉じていてもスマートフォンに表示されます。このデバイスでは、タブをすべて閉じていても届きます。デバイスごとにオンにします。",
+    "set.notifications.phone.none":
+      "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
+    "set.notifications.phone.failed":
+      "ここではプッシュをオンにできませんでした。",
+    "set.notifications.quiet_from": "通知を止める時間の開始",
+    "set.notifications.quiet_from.d":
+      "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",
+    "set.notifications.quiet_to": "通知を止める時間の終了",
+    "set.notifications.quiet_to.d":
+      "この時刻から、ベル以外の通知が再び出ます。",
+    "set.notifications.quiet.off": "オフ",
+    "set.notifications.quiet.half": "開始と終了の両方を選んでください。",
+    "set.notifications.desktop": "デスクトップ通知",
+    "set.notifications.desktop.d":
+      "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
+    "set.notifications.desktop.denied":
+      "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
+    "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",

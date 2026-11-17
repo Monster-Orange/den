@@ -95,6 +95,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/favicon.ico",
+    // Issue 172: the app manifest (a phone's home screen, for push).
+    "/manifest.webmanifest",
     "/theme.css",
     "/theme/*",
     "/theme-favicon",
@@ -651,6 +653,24 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/notifications/looking",
     "NT-2: a page shows these agents now, so they don't notify",
+  ),
+  R(
+    "/api/alerts",
+    "Issue 172: the person's new alerts (an agent needs them) for an open tab to show; never an agent's",
+  ),
+  R(
+    "/api/alerts/push-key",
+    "Issue 172: this install's push public key (VAPID), for a device to subscribe; never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/subscribe",
+    "Issue 172: a person adds this device to get alerts by push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/unsubscribe",
+    "Issue 172: a person stops push alerts to a device",
   ),
   R(
     "/api/hub/link-suggestions",

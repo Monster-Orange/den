@@ -111,6 +111,16 @@ export interface AttentionDeps {
   leadOf?: (agent: string, workspace: string) => Promise<string | null>;
   /** Issue 101: type `text` to agent `lead`; false when Den couldn't. */
   tellLead?: (lead: string, text: string) => Promise<boolean>;
+  /**
+   * Issue 172: an agent began to need its person (a permission prompt or
+   * a question), and its person isn't looking at it: alert them outside
+   * the bell (alert-feed.ts). Once per wait, never for a repeat.
+   */
+  alert?: (n: {
+    agent: string;
+    workspace: string;
+    why: "permission" | "asked";
+  }) => void;
 }
 
 /** Output in this long after the event is the agent drawing it, not going on. */
@@ -328,8 +338,20 @@ export class Attention {
         });
       return { lead };
     }
+    const looking = this.onScreen(agent);
+    // Issue 172: a new need (not the same wait said again) alerts.
+    if (
+      !looking &&
+      (ev.why === "permission" || ev.why === "asked") &&
+      prev?.why !== ev.why
+    )
+      try {
+        this.d.alert?.({ agent, workspace, why: ev.why });
+      } catch {
+        /* an alert is best effort: the bell has it */
+      }
     // #142: without hooks, a bell is all there is: an update, not a need.
-    if (!this.onScreen(agent))
+    if (!looking)
       this.d.store.add({
         kind: ev.why === "input" ? "finished" : "waiting",
         subject,
