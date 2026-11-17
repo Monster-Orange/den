@@ -696,6 +696,12 @@ export interface WorkspaceConfig {
     runtimes?: Record<string, { bin?: unknown } | null>;
     permission?: unknown;
     hub_tools_restart?: unknown;
+    /**
+     * Issue 335: extra HTTP MCP servers for this project's agents:
+     * `[{ name, url, bearer? }]`, bearer the name of a secrets.refs entry
+     * (shared/agents/project-mcp.ts).
+     */
+    mcp_servers?: unknown;
   };
   /**
    * Issue 160: this project's approval policy, over the install's
@@ -759,6 +765,12 @@ export interface WorkspaceConfig {
    * {to, held, url?, askedAt}. See shared/hub-project-link.ts.
    */
   hub_rename?: unknown;
+  /**
+   * Issue 271: a new Hub project asked of Hub for this project, waiting for
+   * an owner there (or declined): {held, name, slug, url?, askedAt, by,
+   * agent?, outcome?}. See shared/hub-project-create.ts.
+   */
+  hub_create?: unknown;
 }
 
 export interface WorkspacesFile {

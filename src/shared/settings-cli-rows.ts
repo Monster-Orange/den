@@ -66,6 +66,10 @@ export const PERSON_ONLY_SETTINGS = [
   "keep_running_after_logout",
   // Issue 103: deep links and the embedded agent pane (Settings › Embedding).
   "embed",
+  // Issue 160: the approval policy itself: an agent asks (approval_policy).
+  "approvals_policy",
+  "approvals_watch",
+  "approvals_critical",
 ] as const;
 
 /**

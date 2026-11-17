@@ -187,12 +187,13 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
-function groupsHtml(groups, ui) {
+/** `needs`: issue 101, a Needs you group has no Mark read. */
+function groupsHtml(groups, ui, needs = false) {
   return groups
     .map(
       (g) =>
         `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
-        (g.subjects.some((s) => s.items.some((n) => !n.read))
+        (!needs && g.subjects.some((s) => s.items.some((n) => !n.read))
           ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}">${esc(tr("bell.read"))}</button>`
           : "") +
         `</div>` +
@@ -250,7 +251,7 @@ export function bellPanel(b, ui = {}) {
     ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
       (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
     : "";
-  if (!groups.length && !older.count)
+  if (!groups.length && !older.count && !updates.count)
     return {
       ...panel,
       items: [],
@@ -262,17 +263,21 @@ export function bellPanel(b, ui = {}) {
             : "") +
           `<p><a href="${SETTINGS}" data-bell="settings">${esc(tr("bell.settings"))}</a></p>`,
       },
-      after: updatesHtml,
     };
+  // Issue 101: the kit heads the two sections; Den gives their rows.
+  // Needs you (first, no Mark read: a row stays while the agent waits),
+  // then Earlier: Updates and Older, as before.
   return {
     ...panel,
-    body: groupsHtml(groups, u),
-    after:
-      updatesHtml +
-      (older.count
-        ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
-          (u.older ? groupsHtml(older.groups ?? [], u) : "")
-        : ""),
+    sections: {
+      needs: groupsHtml(groups, u, true),
+      earlier:
+        updatesHtml +
+        (older.count
+          ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
+            (u.older ? groupsHtml(older.groups ?? [], u) : "")
+          : ""),
+    },
   };
 }
 

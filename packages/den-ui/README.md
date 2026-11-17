@@ -511,6 +511,8 @@ button)`. A crumb left out of the list draws nothing, and no separator
   on `<body>`: a heading, then the host's `items` as rows (`{ text, href?,
 time?, read? }`) or the empty state. `bellPanelHtml(...)` takes `actions`
   (buttons beside the heading), `lead`, `body` (the host's own rows),
+  `sections` (issue 101: `{ needs, earlier? }`, the rows of each; the kit
+  heads them "Needs you", always first, and "Earlier", in its own words),
   `empty`, `after` and `foot`. A click on the bell toggles the panel.
   Opening it focuses its first link or button. Esc closes it and focus goes
   back to the bell, in Safari too (`focusBack` from `dialog.js`). A click

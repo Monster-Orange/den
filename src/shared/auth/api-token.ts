@@ -24,6 +24,7 @@
  */
 
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import * as path from "path";
 import { getCredentials } from "./headless-login.js";
 import { mintAccessToken } from "./token-providers/index.js";
@@ -114,8 +115,7 @@ function saveCache(filePath: string, token: CachedToken): void {
   // Cached JWTs are secrets — keep the dir and file owner-only (0700/0600).
   if (!fs.existsSync(AUTH_DIR))
     fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(filePath, JSON.stringify(token, null, 2), { mode: 0o600 });
-  fs.chmodSync(filePath, 0o600); // mode arg is ignored if the file already exists
+  writeFileAtomic(filePath, JSON.stringify(token, null, 2), { mode: 0o600 });
 }
 
 /**

@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 import { getReposRoot } from "../den-config.js";
 import { edgeNames } from "../edge/render.js";
 import type { EdgeConfig } from "../edge/types.js";
@@ -109,7 +110,7 @@ function generatedEnv(
     }
   if (changed) {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    fs.writeFileSync(
+    writeFileAtomic(
       file,
       Object.entries(have)
         .map(([k, v]) => `${k}=${v}`)
@@ -323,7 +324,7 @@ export function stackUp(
   }
   const dir = stackDir(ctx, s);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
+  writeFileAtomic(
     path.join(dir, "override.yml"),
     renderOverride(s, resolved, ctx.workspace),
   );
@@ -353,7 +354,7 @@ export function stackUp(
   }
   const nets = routedNetworks(s, resolved);
   joinEdge(ctx.edge, nets);
-  fs.writeFileSync(
+  writeFileAtomic(
     stackRoutesFile(ctx.edge, projectName(s.name, ctx.workspace)),
     renderStackRoutes(ctx.edge, s, resolved),
   );

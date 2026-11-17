@@ -18,6 +18,7 @@ import type { WorkspacesFile } from "./types/index.js";
 import { callerName } from "./config-audit.js";
 import { forgetLinkSeen } from "./hub-links-seen.js";
 import { WORKSPACE_NAME_MAX } from "./workspace-name.js";
+import { parseHubCreate, type HubCreate } from "./hub-project-create.js";
 
 export interface HubProjectLink {
   /** Hub's project id (proj_…). */
@@ -84,6 +85,8 @@ export function setHubProject(
     next.hub_project = ok;
     // Issue 167: a rename asked of another Hub project isn't this one's.
     if (was?.id !== ok.id) delete next.hub_rename;
+    // Issue 271: linked now, so a new Hub project asked for it is moot.
+    delete next.hub_create;
   } else {
     // 0.4.45 (Vision 11-13): unlink keeps Hub's last name as the project's
     // own, so the name shown does not change. The slug never changes.
@@ -155,6 +158,36 @@ export function setHubRename(
   const ok = r ? parseHubRename(r) : null;
   if (ok) next.hub_rename = ok;
   else delete next.hub_rename;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file, by);
+}
+
+/** Issue 271: project `ws`'s new Hub project asked of Hub, or null. */
+export function hubCreateOf(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): HubCreate | null {
+  try {
+    return parseHubCreate(read().workspaces[ws]?.hub_create);
+  } catch {
+    return null;
+  }
+}
+
+/** Issue 271: keep a new Hub project asked for `ws`, or drop it (null). */
+export function setHubCreate(
+  ws: string,
+  c: HubCreate | null,
+  by: string = callerName(),
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
+  const next = { ...cfg };
+  const ok = c ? parseHubCreate(c) : null;
+  if (ok) next.hub_create = ok;
+  else if (!("hub_create" in next)) return;
+  else delete next.hub_create;
   file.workspaces[ws] = next;
   writeWorkspacesFile(file, by);
 }

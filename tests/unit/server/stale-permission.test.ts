@@ -17,6 +17,8 @@ import {
   attentionOf,
 } from "../../../src/shared/agents/guardrails/attention-hook";
 import { agentEnded } from "../../../src/ui/server/notification-service";
+import { denClaude } from "../../../src/shared/agents/den-claude";
+import { promptOnScreen } from "../../../src/shared/agents/trust-prompt";
 import * as updateCheckMod from "../../../src/ui/server/update-check";
 import {
   updateCheck,
@@ -351,5 +353,108 @@ describe("a wait doesn't outlive its agent (stopped, removed, exited)", () => {
     // The host didn't answer: only a stop counts.
     expect(agentEnded({ session }, null)).toBeNull();
     expect(agentEnded({ session, stoppedAt: later }, null)).toBe("stopped");
+  });
+});
+
+describe("issue 369: waiting rows kept across a restart", () => {
+  function mk369(d: {
+    ended?: Record<string, "stopped" | "exited">;
+    open?: Record<string, boolean | null>;
+  }) {
+    const store = new NotificationStore(dir, () => new Date(clock));
+    const a = new Attention({
+      store,
+      outputMark: async () => "m",
+      nameOf: (id) => id,
+      now: () => clock,
+      hooked: () => true,
+      ended: async (ids) =>
+        new Map(
+          ids.flatMap((i) => (d.ended?.[i] ? [[i, d.ended[i]] as const] : [])),
+        ),
+      dialogOpen: async (id) => (d.open && id in d.open ? d.open[id] : false),
+    });
+    return { store, a };
+  }
+  const keep = (store: NotificationStore, id: string, key: string) =>
+    store.add({
+      kind: "waiting",
+      subject: `agent:${id}`,
+      scope: "workspace/north",
+      text: `${id} ${key === "bell.m.asked" ? "asked: Ship it?" : "needs your permission: Bash"}`,
+      msg: { key, vars: { name: id, what: "Bash", text: "Ship it?" } },
+    });
+  const subjects = (store: NotificationStore) =>
+    store
+      .list()
+      .map((n) => n.subject)
+      .sort();
+
+  it("leaves a not-back-after-restart row alone, and decides the rest", async () => {
+    const { store, a } = mk369({
+      ended: { gone: "stopped", left: "exited" },
+      open: { live: true },
+    });
+    keep(store, "gone", "bell.m.permissionWhat");
+    keep(store, "idle", "bell.m.permission");
+    keep(store, "live", "bell.m.permissionWhat");
+    keep(store, "left", "bell.m.asked");
+    keep(store, "back", "bell.m.restartFailed");
+    await a.reconcile();
+    expect(subjects(store)).toEqual(["agent:back", "agent:left", "agent:live"]);
+    expect([...a.waitingNow()].sort()).toEqual([
+      ["left", "asked"],
+      ["live", "permission"],
+    ]);
+    expect(a.waitingDetail("live")?.what).toBe("Bash");
+    // Adopted: a hook clears it as any other wait.
+    clock += 5000;
+    await a.event("live", "north", { event: "resumed", from: "tool" });
+    expect(subjects(store)).toEqual(["agent:back", "agent:left"]);
+  });
+
+  it("a stopped agent's ask goes too", async () => {
+    const { store, a } = mk369({ ended: { gone: "stopped" } });
+    keep(store, "gone", "bell.m.asked");
+    await a.reconcile();
+    expect(subjects(store)).toEqual([]);
+  });
+
+  it("can't tell yet: the row stays, and the next check decides it", async () => {
+    const open: Record<string, boolean | null> = { slow: null };
+    const { store, a } = mk369({ open });
+    keep(store, "slow", "bell.m.permissionWhat");
+    await a.check();
+    expect(subjects(store)).toEqual(["agent:slow"]);
+    expect(a.waitingNow().has("slow")).toBe(false);
+    open.slow = false;
+    await a.check();
+    expect(subjects(store)).toEqual([]);
+  });
+});
+
+describe("issue 369: Claude Code's permission dialog on screen", () => {
+  const p = denClaude.permissionPrompt;
+  const dialog = (q: string) =>
+    [
+      "\x1b[2J\x1b[H",
+      "Bash command\r\n  npm test\r\n\r\n",
+      `${q}\r\n`,
+      "\x1b[36m❯\x1b[0m 1. Yes\r\n",
+      "  2. Yes, and don't ask again for npm test commands in /work/a/very/long/folder/name/for/the/notes/repo\r\n",
+      "  3. No, and tell Claude what to do differently (esc)\r\n",
+    ].join("");
+
+  it("sees each wording, and not once answered", () => {
+    for (const q of [
+      "Do you want to proceed?",
+      "Do you want to make this edit to notes.ts?",
+      "Do you want to create plan.md?",
+      "Do you want to allow Claude to fetch this content?",
+    ])
+      expect(promptOnScreen(dialog(q), p)).toBe(true);
+    const answered = `${dialog("Do you want to proceed?")}\x1b[2J\x1b[H⏺ Bash(npm test)\r\n  ⎿ 12 passed\r\n> `;
+    expect(promptOnScreen(answered, p)).toBe(false);
+    expect(promptOnScreen("\x1b[2J\x1b[H> ", p)).toBe(false);
   });
 });

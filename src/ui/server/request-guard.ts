@@ -63,6 +63,7 @@ import type * as http from "http";
 import { readMcpConfig } from "../../shared/den-config.js";
 import { LIFECYCLE_CMDS } from "../mcp/guards.js";
 import {
+  AGENT_IMPORT_HELD,
   agentImportRefusal,
   agentImportTarget,
   agentResumeRefusal,
@@ -77,6 +78,7 @@ import {
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
 import {
+  EMBED_KEY_ROUTES,
   isMutatingGet,
   pathMatches,
   routeClass,
@@ -210,7 +212,8 @@ export type GuardResult =
         | "origin_rejected"
         | "csrf"
         | "cross_site"
-        | "agent_forbidden";
+        | "agent_forbidden"
+        | "embed_key_scope";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
@@ -536,6 +539,19 @@ export function checkRequest(
         "This server answers only to its own host names (localhost, " +
         "127.0.0.1, [::1] with its port, or its edge hostname).",
     };
+  // Issue 334: an embed key reaches its own routes only, never another
+  // (loopback lets an anonymous request through: the key must not ride along).
+  if (header(req, "x-den-embed-key") !== undefined) {
+    const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (!EMBED_KEY_ROUTES.some((r) => pathMatches(r, p)))
+      return {
+        ok: false,
+        status: 403,
+        code: "embed_key_scope",
+        error:
+          "An embed key reaches only its agent's embed routes (say and state). Nothing ran.",
+      };
+  }
   const peerLoopback = ctx.peerIsLoopback ? ctx.peerIsLoopback(req) : true;
   // The edge: local when it attests this machine; a client it can't place
   // signs in unless web.edge_unattested is local; never local when this
@@ -658,6 +674,13 @@ export function checkRequest(
   const origin = header(req, "origin");
   if (origin === undefined) {
     if (principal) return ok(principal);
+    // Issue 334: a web app's own server sends no Origin; its app key is the
+    // proof (the route checks it; a browser always sends an Origin here).
+    if (
+      pathname === "/api/embed/say" &&
+      (header(req, "x-den-embed-key") ?? "").startsWith("den_sk_")
+    )
+      return ok(null);
     return {
       ok: false,
       status: 403,
@@ -777,6 +800,7 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/services/autostart",
   "/api/workspaces/:ws/hub-project",
   "/api/workspaces/:ws/hub-rename",
+  "/api/workspaces/:ws/hub-create",
   // Another agent's life and record: a person's (an agent resumes and
   // imports only when opted in, above).
   "/api/workspaces/:ws/agents/:id/stop",
@@ -794,6 +818,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/order",
   // Issue 103: letting a web app use an agent is a person's.
   "/api/embed/keys",
+  // Issue 334: the app keys a person made.
+  "/api/embed/app-keys",
   "/api/agents/clear-stopped",
   "/api/agents/restore",
   "/api/agents/rotation",
@@ -891,6 +917,8 @@ export function agentRefusal(
   const imp = agentImportTarget(pathname);
   if (imp)
     return (
+      // Issue 160: the bring-in itself is a held write, never the route.
+      (imp.imports ? `${p.actor}: ${AGENT_IMPORT_HELD}.` : null) ??
       agentImportRefusal(p, imp.ws, mcpActions()) ??
       workspaceRefusal(p, pathname)
     );

@@ -11,12 +11,31 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels the older run: only the
+# newest commit's result counts, and the old run held runner slots other
+# PRs were queued for. Pushes to main are never cancelled (each main
+# commit gets its full run).
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Where each job runs. Every job uses the same runs-on guard: a
+  # self-hosted runner only when the DEN_SELF_HOSTED repo variable is 'on'
+  # and the code came from this repo (a push, or a pull request whose head
+  # branch lives here). A fork's pull request always runs GitHub-hosted, so
+  # code from outside never reaches the box. The variable is the off switch:
+  # unset or anything but 'on' puts every job back on GitHub-hosted runners.
+  # The self-hosted runners are ephemeral containers that take one job each
+  # and are thrown away after it. pull_request_target is never used (a test
+  # fails if it appears). release.yml stays GitHub-hosted: trusted publishing
+  # needs a GitHub-hosted runner.
+  #
   # The fast gates, once per Node at both ends of the supported range: the
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -60,7 +79,7 @@ jobs:
   # side (jest --shard): every test runs once per Node, as before; the suite
   # took 13–19 min (up to 30 with setup) in one job.
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
     # jest's cores-minus-one the shared runner starved and the heaviest
@@ -100,7 +119,7 @@ jobs:
   # no DEN_PW_WS) the suite skips: a local browser lays text out a few px
   # apart. --verbose: the red cases show by name in the log.
   den-ui-nav:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       NAV_IMAGE: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6
@@ -133,7 +152,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
