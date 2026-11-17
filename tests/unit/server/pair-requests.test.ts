@@ -8,6 +8,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   formatPairCode,
   MAX_PENDING_PAIRS,
+  MAX_WITHDRAWN_KEPT,
   newPairCode,
   normalizePairCode,
   PAIR_ALPHABET,
@@ -188,9 +189,38 @@ describe("D67: only codes a page still waits on", () => {
     expect(pairs.waiting()).toEqual([]);
     expect(pairs.get(r.id)).toBeNull();
     expect(pairs.withdraw(r.id)).toBe(false);
+    // #320: approving it after does nothing, and says it ended.
+    expect(pairs.approve(r.code)).toEqual({ ok: false, error: "ended" });
+    expect(pairs.deny(r.code)).toEqual({ ok: false, error: "ended" });
+    expect(pairs.claim(r.id)).toBeNull();
     const ok = pairs.create({ userAgent: UA });
     expect(pairs.approve(ok.code)).toMatchObject({ ok: true });
     expect(pairs.withdraw(ok.id)).toBe(false);
     expect(pairs.claim(ok.id)?.state).toBe("approved");
+  });
+
+  it("#320: a withdrawn request says ended for a minute, then is forgotten; only so many are kept", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now });
+    const r = pairs.create({ userAgent: UA });
+    pairs.withdraw(r.id);
+    c.advance(59_000);
+    expect(pairs.approve(r.code)).toEqual({ ok: false, error: "ended" });
+    c.advance(1000);
+    expect(pairs.approve(r.code)).toEqual({ ok: false, error: "unknown" });
+    const made = Array.from({ length: MAX_WITHDRAWN_KEPT + 3 }, () => {
+      const x = pairs.create({ userAgent: UA });
+      pairs.withdraw(x.id);
+      c.advance(1);
+      return x;
+    });
+    expect(pairs.approve(made[0].code)).toEqual({
+      ok: false,
+      error: "unknown",
+    });
+    expect(pairs.approve(made[made.length - 1].code)).toEqual({
+      ok: false,
+      error: "ended",
+    });
   });
 });

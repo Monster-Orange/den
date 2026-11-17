@@ -1347,6 +1347,10 @@
       "Permítelo solo si este código aparece en la pantalla de ese equipo.",
     "pair.allow": "Permitir",
     "pair.allowed": "Ese equipo ya inició sesión.",
+    "pair.ended":
+      "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
+    "pair.expired": "Ese código caducó. No se permitió nada.",
+    "pair.close": "Cerrar",
     "ap.do.workspace_create": 'Crear el proyecto "{name}"',
     "ap.do.repo_add":
       'Añadir el repositorio de {path} al proyecto "{workspace}"',

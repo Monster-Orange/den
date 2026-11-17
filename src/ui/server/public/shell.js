@@ -2131,6 +2131,10 @@
     "pair.help": "Allow it only if this code is on that computer's screen.",
     "pair.allow": "Allow",
     "pair.allowed": "That computer is signed in.",
+    "pair.ended":
+      "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
+    "pair.expired": "That code expired. Nothing was allowed.",
+    "pair.close": "Close",
     "ap.do.workspace_create": 'Create the project "{name}"',
     "ap.do.repo_add": 'Add the repo at {path} to project "{workspace}"',
     "ap.do.repo_add.new":
@@ -7187,8 +7191,22 @@
           if (verb === "approve") toast(t("pair.allowed"));
         },
         function (e) {
-          err.textContent = (e && e.message) || String(e);
+          // #320: a code that ended (its page withdrew it, or it expired
+          // or was used): nothing happened, said plainly. Only Close stays.
+          var code = e && e.code;
+          var gone =
+            code === "ended" || code === "unknown"
+              ? t("pair.ended")
+              : code === "expired"
+                ? t("pair.expired")
+                : "";
+          err.textContent = gone || (e && e.message) || String(e);
           err.hidden = false;
+          if (gone) {
+            d.querySelector("#den-pair-allow").hidden = true;
+            d.querySelector("#den-pair-deny").hidden = true;
+            d.querySelector("#den-pair-later").textContent = t("pair.close");
+          }
         },
       );
     };
@@ -7218,6 +7236,8 @@
     $("den-pair-later").textContent = t("ap.later");
     $("den-pair-deny").textContent = t("ap.deny");
     $("den-pair-allow").textContent = t("pair.allow");
+    $("den-pair-deny").hidden = false;
+    $("den-pair-allow").hidden = false;
     if (!d.open) d.showModal();
   }
   function prPoll() {

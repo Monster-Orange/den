@@ -35,6 +35,11 @@ export const PAIR_TTL_MS = 10 * 60_000;
 export const PAIR_UNSEEN_MS = 15_000;
 /** The most pending requests at once; a new one drops the oldest. */
 export const MAX_PENDING_PAIRS = 5;
+/**
+ * #320: the most withdrawn requests kept to say "ended" (a signed-out page
+ * can make and withdraw many); past it, the oldest is forgotten.
+ */
+export const MAX_WITHDRAWN_KEPT = 20;
 /** How long an ended request still answers its page (denied, expired). */
 export const PAIR_ENDED_KEEP_MS = 60_000;
 /** Approve or deny attempts allowed per window. */
@@ -72,7 +77,13 @@ export function normalizePairCode(input: string): string | null {
   return s;
 }
 
-export type PairState = "pending" | "approved" | "denied" | "expired";
+export type PairState =
+  | "pending"
+  | "approved"
+  | "denied"
+  | "expired"
+  /** #320: its page withdrew it (closed, or signed in another way). */
+  | "withdrawn";
 
 /** What the approver sees of a request (and the page, of its own). */
 export interface PairView {
@@ -97,7 +108,10 @@ interface PairRequest extends PairView {
 
 export type ApproveResult =
   | { ok: true; request: PairView }
-  | { ok: false; error: "malformed" | "unknown" | "expired" | "rate_limited" };
+  | {
+      ok: false;
+      error: "malformed" | "unknown" | "expired" | "ended" | "rate_limited";
+    };
 
 export class PairRequests {
   private readonly byId = new Map<string, PairRequest>();
@@ -165,19 +179,28 @@ export class PairRequests {
   get(id: string): PairView | null {
     this.sweep();
     const r = this.byId.get(id);
-    if (r) r.seenAt = this.now();
-    return r ? view(r) : null;
+    if (!r || r.state === "withdrawn") return null;
+    r.seenAt = this.now();
+    return view(r);
   }
 
   /**
    * D67: its page is going (closed, or signed in another way): a pending
-   * request ends at once, by its poll id. Whether there was one.
+   * request ends at once, by its poll id. Whether there was one. #320: it
+   * is kept a minute as withdrawn, so an Allow on it (a dialog opened just
+   * before) says it ended instead of "no such code".
    */
   withdraw(id: string): boolean {
     this.sweep();
     const r = this.byId.get(id);
     if (!r || r.state !== "pending") return false;
-    this.byId.delete(id);
+    const kept = [...this.byId.values()]
+      .filter((x) => x.state === "withdrawn")
+      .sort((x, y) => (x.forgetAt ?? 0) - (y.forgetAt ?? 0));
+    while (kept.length >= MAX_WITHDRAWN_KEPT)
+      this.byId.delete(kept.shift()!.id);
+    r.state = "withdrawn";
+    r.forgetAt = this.now() + PAIR_ENDED_KEEP_MS;
     return true;
   }
 
@@ -233,6 +256,7 @@ export class PairRequests {
     const r = [...this.byId.values()].find((x) => x.code === code);
     if (!r) return { ok: false, error: "unknown" };
     if (r.state === "expired") return { ok: false, error: "expired" };
+    if (r.state === "withdrawn") return { ok: false, error: "ended" };
     if (r.state !== "pending") return { ok: false, error: "unknown" };
     r.state = state;
     if (state === "denied") r.forgetAt = now + PAIR_ENDED_KEEP_MS;

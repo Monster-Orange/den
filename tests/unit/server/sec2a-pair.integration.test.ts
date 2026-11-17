@@ -374,6 +374,25 @@ describe("approve this computer with a code", () => {
     expect([json(p).state, cookieOf(p)]).toEqual(["denied", ""]);
   });
 
+  it("#320: approving a code its page withdrew does nothing and says it ended; no cookie", async () => {
+    const a = await askCode();
+    const gone = await call("DELETE", `/api/signin/code/${a.id}`, lan());
+    expect(json(gone)).toEqual({ ok: true, withdrawn: true });
+    const r = await call(
+      "POST",
+      "/api/web/approve",
+      bearer(),
+      JSON.stringify({ code: a.code }),
+    );
+    expect([r.status, json(r).code, json(r).error]).toEqual([
+      410,
+      "ended",
+      "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
+    ]);
+    const p = await call("GET", `/api/signin/code/${a.id}`);
+    expect([p.status, cookieOf(p)]).toEqual([404, ""]);
+  });
+
   it("another site can't ask for a code; signed out, nobody can approve one", async () => {
     const cross = await call(
       "POST",

@@ -240,6 +240,59 @@ describe("D67: approve from another computer, in browsers only", () => {
     await b.context().close();
   }, 120_000);
 
+  it("#320: Allow on a code that has ended does nothing and says so; no new session", async () => {
+    if (skip()) return;
+    const a = await open();
+    await a.goto(claimLink(local(), mintClaimCode(readWebSecret(stateDir)!)));
+    await a.waitForFunction(
+      () => localStorage.getItem("den.approveKey")?.length === 43,
+    );
+    await a.goto(`${local()}/settings`);
+    const b = await open();
+    expect((await b.goto(`${edge()}/settings`))?.status()).toBe(401);
+    const code = await codeOn(b);
+    await a.waitForSelector("#den-pair-dlg[open]", { timeout: 15_000 });
+    expect((await a.textContent("#den-pair-dlg-code"))?.trim()).toBe(code);
+    // Another tab of A asks the server; A's own list stays as it was (as
+    // between two polls) while B's page goes.
+    const q = await a.context().newPage();
+    await q.goto(`${local()}/api/session`);
+    const getJson = <T>(url: string) =>
+      q.evaluate(
+        (u) => fetch(u, { cache: "no-store" }).then((r) => r.json()),
+        url,
+      ) as Promise<T>;
+    const waitingNow = async () =>
+      (await getJson<{ waiting: unknown[] }>("/api/web/waiting")).waiting
+        .length;
+    const sessions = async () =>
+      (await getJson<{ sessions: unknown[] }>("/api/web/sessions")).sessions
+        .length;
+    expect(await waitingNow()).toBe(1);
+    const stale = await q.evaluate(() =>
+      fetch("/api/web/waiting", { cache: "no-store" }).then((r) => r.text()),
+    );
+    await a.route(`${local()}/api/web/waiting`, (r) =>
+      r.fulfill({ contentType: "application/json", body: stale }),
+    );
+    await b.goto("about:blank");
+    for (let i = 0; i < 50 && (await waitingNow()) > 0; i++)
+      await q.waitForTimeout(200);
+    expect(await waitingNow()).toBe(0);
+    const before = await sessions();
+    await a.click("#den-pair-allow");
+    await a.waitForSelector("#den-pair-err:not([hidden])");
+    expect(await a.textContent("#den-pair-err")).toBe(
+      "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
+    );
+    expect(await a.isVisible("#den-pair-allow")).toBe(false);
+    expect(await a.isVisible("#den-pair-deny")).toBe(false);
+    expect(await sessions()).toBe(before);
+    await a.click("#den-pair-later");
+    await a.context().close();
+    await b.context().close();
+  }, 120_000);
+
   it("raised no page errors", () => {
     expect(errors).toEqual([]);
   });
