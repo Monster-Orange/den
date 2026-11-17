@@ -48,8 +48,19 @@ const STOPPED_AT = "2026-11-06T10:00:00.000Z";
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_HELPERS_BROWSER=webkit|firefox runs it there (Safari too).
+    const pw = await import("playwright");
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
+    browser = process.env.DEN_PW_WS
+      ? await pw[engine].connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -554,8 +565,15 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
      * #143: open the details with their answer `delay` ms late; every place
      * and size they have while seen, and every time they are placed (a
      * write of their top edge).
+     *
+     * `detailsFirst`: the details win the race against OPEN_MS (the
+     * shown-anyway wait) whatever the machine's speed. A 150 ms answer
+     * alone did not: on a loaded runner the request's own trip took the
+     * rest of the 300 ms, the wait fired first, and the details grew after
+     * they were shown (the other test's case, not this one's). So the
+     * shown-anyway timer set while they load is held until they are ready.
      */
-    async function openLate(delay: number) {
+    async function openLate(delay: number, detailsFirst = false) {
       const p = await open("north");
       await shown(p);
       // A long last ask: the details change size when it comes.
@@ -577,60 +595,86 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           });
         },
       );
-      await p.evaluate((delay) => {
-        const w = window as unknown as {
-          __rects: string[];
-          __tops: number[];
-          __placed: number;
-        };
-        w.__rects = [];
-        w.__tops = [];
-        w.__placed = 0;
-        const set = CSSStyleDeclaration.prototype.setProperty;
-        CSSStyleDeclaration.prototype.setProperty = function (
-          this: CSSStyleDeclaration,
-          k: string,
-          ...rest: [string | null, string?]
-        ) {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (k === "top" && g && g.style === this) w.__placed++;
-          return set.call(this, k, ...rest);
-        };
-        // The moment they turn ready (before the next frame): their box,
-        // and whether their Report button is already in them.
-        const w2 = w as unknown as {
-          __atReady: { h: number; y: number; report: boolean } | null;
-        };
-        w2.__atReady = null;
-        new MutationObserver(() => {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
-          const b = g.getBoundingClientRect();
-          w2.__atReady = {
-            h: Math.round(b.height),
-            y: Math.round(b.y),
-            report: !!g.querySelector("[data-den-report]"),
+      await p.evaluate(
+        ([delay, detailsFirst]) => {
+          const w = window as unknown as {
+            __rects: string[];
+            __tops: number[];
+            __placed: number;
           };
-        }).observe(document.body, {
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["data-state"],
-        });
-        const t0 = performance.now();
-        const look = () => {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (g && getComputedStyle(g).visibility !== "hidden") {
-            const b = g.getBoundingClientRect();
-            const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
-            if (w.__rects.at(-1) !== k) w.__rects.push(k);
-            if (w.__tops.at(-1) !== Math.round(b.y))
-              w.__tops.push(Math.round(b.y));
+          w.__rects = [];
+          w.__tops = [];
+          w.__placed = 0;
+          if (detailsFirst) {
+            // OPEN_MS's timer, set by openDetails while they are loading.
+            const later = window.setTimeout.bind(window);
+            const held: (() => void)[] = [];
+            window.setTimeout = ((fn: () => void, ms?: number) => {
+              if (
+                ms === 300 &&
+                document.querySelector('.den-agd[data-state="loading"]')
+              ) {
+                held.push(fn);
+                return -1;
+              }
+              return later(fn, ms);
+            }) as typeof window.setTimeout;
+            new MutationObserver(() => {
+              if (document.querySelector('.den-agd[data-state="ready"]'))
+                held.splice(0).forEach((fn) => later(fn, 0));
+            }).observe(document.body, {
+              subtree: true,
+              attributes: true,
+              attributeFilter: ["data-state"],
+            });
           }
-          if (performance.now() - t0 < delay + 1500)
-            requestAnimationFrame(look);
-        };
-        requestAnimationFrame(look);
-      }, delay);
+          const set = CSSStyleDeclaration.prototype.setProperty;
+          CSSStyleDeclaration.prototype.setProperty = function (
+            this: CSSStyleDeclaration,
+            k: string,
+            ...rest: [string | null, string?]
+          ) {
+            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            if (k === "top" && g && g.style === this) w.__placed++;
+            return set.call(this, k, ...rest);
+          };
+          // The moment they turn ready (before the next frame): their box,
+          // and whether their Report button is already in them.
+          const w2 = w as unknown as {
+            __atReady: { h: number; y: number; report: boolean } | null;
+          };
+          w2.__atReady = null;
+          new MutationObserver(() => {
+            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
+            const b = g.getBoundingClientRect();
+            w2.__atReady = {
+              h: Math.round(b.height),
+              y: Math.round(b.y),
+              report: !!g.querySelector("[data-den-report]"),
+            };
+          }).observe(document.body, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["data-state"],
+          });
+          const t0 = performance.now();
+          const look = () => {
+            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            if (g && getComputedStyle(g).visibility !== "hidden") {
+              const b = g.getBoundingClientRect();
+              const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
+              if (w.__rects.at(-1) !== k) w.__rects.push(k);
+              if (w.__tops.at(-1) !== Math.round(b.y))
+                w.__tops.push(Math.round(b.y));
+            }
+            if (performance.now() - t0 < delay + 1500)
+              requestAnimationFrame(look);
+          };
+          requestAnimationFrame(look);
+        },
+        [delay, detailsFirst] as const,
+      );
       await btn(p, "scout").click();
       await p.locator('.den-agd[data-state="ready"]').waitFor();
       await p.waitForTimeout(delay + 1600);
@@ -659,7 +703,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
 
     it("#143: they open where they stay: shown once their details are in, never growing or moving after", async () => {
       if (skip()) return;
-      const { p, rects, placed, atReady, last } = await openLate(150);
+      const { p, rects, placed, atReady, last } = await openLate(150, true);
       // Whole when shown: its Report button in, and the same box after.
       expect(atReady?.report).toBe(true);
       expect(last).toEqual({ h: atReady?.h, y: atReady?.y });

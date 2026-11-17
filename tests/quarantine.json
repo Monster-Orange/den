@@ -18,21 +18,6 @@
       }
     },
     {
-      "file": "tests/unit/server/agents-ag14.browser.test.ts",
-      "test": "stopped agents on the Agents page (AG-14, D37) D45: a stopped agent's details, from its row #143: they open where they stay: shown once their details are in, never growing or moving after",
-      "issue": 143,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44161015653,
-        "failed_job": 134314526109,
-        "job": "tests (22.13.0, 2)",
-        "sha": "8e71583d9ba204d9cb47f75d24dd76be7eb9f28f",
-        "passed_run": 44161015653,
-        "passed_job": 134314526529,
-        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 2) (job 134314526529), same sha, other Node"
-      }
-    },
-    {
       "file": "tests/unit/server/agents-layout.browser.test.ts",
       "test": "the Agents tab's layouts (AG-4b) switches Focus (the default), Tabs and Tile from the header, with ⌃⇧1 / ⌃⇧2 / ⌃⇧3 and from ⌘K; the URL says it, and it is saved for the person",
       "issue": 143,
