@@ -121,6 +121,8 @@ async function main(argv) {
       headers: {
         authorization: `Bearer ${token}`,
         accept: "application/vnd.github+json",
+        "user-agent": "den-release-ci-guard",
+        "x-github-api-version": "2022-11-28",
       },
     });
     if (!res.ok) throw new Error(`GET ${p}: ${res.status}`);

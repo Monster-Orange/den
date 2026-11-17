@@ -126,9 +126,16 @@ one with no issue or no evidence.
 
 ### The tests a pull request runs
 
-A push to `main` and a release run every test on both Nodes. A pull
-request runs Node 24 only: the same checks, then the tests the change
-affects. To see the list and the reason for each:
+A push to `main`, the nightly run of `main` and a release run every test
+and check on both Nodes. A pull request runs the tests the change affects
+on both Nodes too (#398's replay found real failures on one Node only, on
+each side), but its checks and the install smoke on Node 22 only: none
+failed on one Node alone. A change to `package.json` (`engines` too),
+`package-lock.json`, `.nvmrc` or a workspace package's `package.json`
+runs them on both (`scripts/pr-nodes.js`). A release is made only from a
+commit whose push run passed on both Nodes (`scripts/release-ci-green.js`
+in `release.yml`'s check job; it waits up to `RELEASE_CI_WAIT_MINUTES`,
+45 by default). To see the list and the reason for each:
 
 ```bash
 node scripts/affected-tests.mjs origin/main HEAD
@@ -173,7 +180,8 @@ trusted publishing (no token anywhere):
 - The gates run on both ends of the supported Node range, the lowest that
   `engines` allows and the Node installs run, and both must pass. The
   tarball is built on the lowest. `ci.yml` runs the same matrix on every
-  push and pull request.
+  push to `main` and nightly, and the release waits for that push run to
+  pass on both Nodes.
 - npm can take about 20 minutes to serve a version after accepting it. The
   publish job waits for it (up to 30 minutes) before the GitHub release.
   Don't rerun publish in that window: npm answers 409 for a staged version.

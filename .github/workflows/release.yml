@@ -1,6 +1,7 @@
 # Releases @monster-orange/den (CONTRIBUTING › Releasing). npm's trusted publishing only: no token anywhere, in CI or out. npm
 # trusts this file by its name: never rename it.
-# - A push to main whose package.json version isn't on npm yet IS the release: the gates, the tarball and SHA256SUMS,
+# - A push to main whose package.json version isn't on npm yet, and whose ci.yml push run passed on both Nodes, IS the
+#   release: the gates, the tarball and SHA256SUMS,
 #   the tag v<version> (made here, unless it already tags this commit or one before it), `npm publish` over OIDC with
 #   provenance, and a GitHub release with the tarball and SHA256SUMS. A version already on npm: nothing runs past the
 #   check. No human step, after the package's first publish (by hand, once: until then the check stops here too).
@@ -28,10 +29,15 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # the CI guard below can wait for ci.yml's push run (CI_WAIT_MINUTES)
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read # ci.yml's runs and jobs, for the CI guard
     outputs:
       version: ${{ steps.check.outputs.version }}
-      release: ${{ steps.check.outputs.release }}
+      # both: the version is new here, and ci.yml's push run passed on both Nodes
+      release: ${{ steps.check.outputs.release == 'true' && steps.ci.outputs.release == 'true' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -87,6 +93,20 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" != push ]; then release=false; fi
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "$name@$version: release=$release ($GITHUB_EVENT_NAME)"
+      # The CI guard: a pull request runs its checks on one Node (ci.yml), so
+      # release only from a commit whose ci.yml push run passed, with every
+      # job on both Nodes there and green. It waits while that run goes
+      # (up to CI_WAIT_MINUTES), reads the Actions API with this workflow's
+      # token, and changes nothing. Anything else: release=false, and the
+      # summary says why (scripts/release-ci-green.js).
+      - name: ci.yml's push run on this commit passed on both Nodes
+        id: ci
+        if: steps.check.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODES: "22.13.0 24.13.0" # ci.yml's matrix
+          CI_WAIT_MINUTES: ${{ vars.RELEASE_CI_WAIT_MINUTES || '45' }}
+        run: node scripts/release-ci-green.js "$GITHUB_SHA"
 
   # The gates, on both ends of the supported Node range (as ci.yml): the
   # lowest that package.json's engines allows, and the Node installs run.

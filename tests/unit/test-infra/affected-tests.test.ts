@@ -565,21 +565,23 @@ describe("ci.yml (issue 398)", () => {
   ) as { jobs: Record<string, Job> };
   const runs = (j: Job) => j.steps.map((s) => s.run ?? "").join("\n");
 
-  it("a push to main runs the full matrix; none of it runs on a pull request", () => {
+  it("a push to main (and the nightly run) runs the full matrix; none of it runs on a pull request", () => {
     for (const name of ["checks", "tests", "dist-smoke"]) {
       expect([name, ci.jobs[name].if]).toEqual([
         name,
-        "github.event_name == 'push'",
+        "github.event_name != 'pull_request'",
       ]);
       expect(ci.jobs[name].strategy?.matrix?.node).toEqual([
         "22.13.0",
         "24.13.0",
       ]);
     }
-    expect(ci.jobs["den-ui-nav"].if).toContain("github.event_name == 'push'");
+    expect(ci.jobs["den-ui-nav"].if).toContain(
+      "github.event_name != 'pull_request'",
+    );
   });
 
-  it("a pull request: both Nodes, the checks, then the subset with its reasons in the summary", () => {
+  it("a pull request: both Nodes, the checks (pr-nodes.test.ts: on which Nodes), then the subset with its reasons in the summary", () => {
     const pr = ci.jobs.pr;
     expect(pr.if).toBe("github.event_name == 'pull_request'");
     expect(ci.jobs["pr-shards"].needs).toEqual(["static", "pr"]);
@@ -594,9 +596,10 @@ describe("ci.yml (issue 398)", () => {
       "scripts/dist-smoke.sh",
     ])
       expect([gate, text.includes(gate)]).toEqual([gate, true]);
-    // The checks come before the tests.
+    // The checks come before the tests run (the subset is picked first:
+    // seconds, and it says which Nodes the checks run on).
     expect(text.indexOf("npm run typecheck")).toBeLessThan(
-      text.indexOf("affected-tests.mjs"),
+      text.indexOf("mapfile -t files < affected.txt && npm test"),
     );
     expect(text).toMatch(
       /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --summary "\$GITHUB_STEP_SUMMARY"/,

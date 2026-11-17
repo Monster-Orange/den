@@ -3,15 +3,23 @@
 # patterns live in the DEN_ORG_NAMES secret, never in the repo).
 #
 # Issue 398: a push to main runs everything on both Nodes (checks, tests,
-# den-ui-nav, dist-smoke). A pull request runs on both Nodes too: the pr
-# job (the same checks and dist-smoke, then the tests the change affects:
-# scripts/affected-tests.mjs), and pr-shards when that subset is large.
+# den-ui-nav, dist-smoke), and so does a nightly run of main. A pull
+# request runs the tests the change affects (scripts/affected-tests.mjs)
+# on both Nodes, in the pr job, and in pr-shards when that subset is
+# large; its checks and dist-smoke run on Node 22 only, or on both when
+# it changes the Node or the dependencies (scripts/pr-nodes.js).
+# release.yml releases only from a commit whose push run passed on both.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  # Nightly, main's full matrix on both Nodes (a schedule runs on the
+  # default branch): what a pull request leaves to one Node still meets
+  # both every day, even with no push.
+  schedule:
+    - cron: "17 10 * * *"
 
 permissions:
   contents: read
@@ -72,7 +80,7 @@ jobs:
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
@@ -106,7 +114,9 @@ jobs:
       # The same names, over the messages of the new commits (issue 189):
       # a PR's base..head, a push's before..after. Needs the full history
       # (fetch-depth above). Messages already on main are not rewritten.
+      # The nightly run has no new commits.
       - name: Org-name gate, commit messages
+        if: github.event_name != 'schedule'
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
           RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -118,7 +128,7 @@ jobs:
   # took 13–19 min (up to 30 with setup) in one job.
   tests:
     needs: [static]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
@@ -165,7 +175,7 @@ jobs:
   # the subset when den-ui or the shell changed: the pr job's "nav" output).
   den-ui-nav:
     needs: [static, pr]
-    if: ${{ !cancelled() && needs.static.result == 'success' && (github.event_name == 'push' || needs.pr.outputs.nav == 'true') }}
+    if: ${{ !cancelled() && needs.static.result == 'success' && (github.event_name != 'pull_request' || needs.pr.outputs.nav == 'true') }}
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
@@ -199,7 +209,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
@@ -216,16 +226,20 @@ jobs:
       - run: npm ci
       - run: bash scripts/dist-smoke.sh
 
-  # Issue 398: a pull request, on both Nodes (some failures show on one
-  # only: the replay found real ones on Node 22 alone). The same checks and
-  # install smoke as above, then the tests the change affects
+  # Issue 398: a pull request. The tests the change affects
   # (scripts/affected-tests.mjs: jest's related tests, the browser specs
   # tests/affected-map.json maps to a changed page, a smoke set; or all of
   # them when a shared file changed), listed with the reason for each in
-  # the job summary. A small subset runs here; a large one (all, more than
-  # 150 files, or more than 30 browser specs) runs in pr-shards, four ways. Issue 397: quarantined
-  # tests are left out of the blocking steps and run in a last step that
-  # can't block.
+  # the job summary, run on both Nodes: the replay found real failures on
+  # one Node only, on each side (12 on Node 22, 11 on Node 24), in the unit
+  # tests and the browser specs. The checks and the install smoke run on
+  # Node 22 only (check-nodes): none failed on one Node alone in the
+  # audit's runs. A change to package.json (engines too), the lockfile,
+  # .nvmrc or a workspace package.json runs them on both
+  # (scripts/pr-nodes.js). A small subset runs here; a large one (all,
+  # more than 150 files, or more than 30 browser specs) runs in pr-shards,
+  # four ways. Issue 397: quarantined tests are left out of the blocking
+  # steps and run in a last step that can't block.
   pr:
     needs: [static]
     if: github.event_name == 'pull_request'
@@ -253,26 +267,15 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: node scripts/words-gate.mjs
-      - run: npm run lint
-      - run: npm run -s gate:den-ui
-      - name: Org-name gate
-        env:
-          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
-        run: node scripts/org-name-gate.mjs
-      - name: Org-name gate, commit messages
-        env:
-          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
-          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
-          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
-      - run: bash scripts/dist-smoke.sh
-      - name: Pick the tests this change affects
+      # First (seconds): the tests this change affects, and the Nodes its
+      # checks run on.
+      - name: Pick the tests this change affects, and the Nodes for its checks
         id: select
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
+          NODES: "22.13.0,24.13.0" # the matrix above
         run: |
+          node scripts/pr-nodes.js "$BASE" HEAD --nodes "$NODES" >> "$GITHUB_OUTPUT"
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
           # Large: everything, more than 150 files, or more than 30 browser
           # specs (they take most of the time: ~30 s each against ~2 s).
@@ -286,6 +289,28 @@ jobs:
           if grep -qxE 'ALL|tests/unit/den-ui/nav-inventory\.browser\.test\.ts' affected.txt; then
             echo 'nav=true' >> "$GITHUB_OUTPUT"
           fi
+      - if: contains(fromJSON(steps.select.outputs.check-nodes), matrix.node)
+        run: npm run typecheck
+      - if: contains(fromJSON(steps.select.outputs.check-nodes), matrix.node)
+        run: node scripts/words-gate.mjs
+      - if: contains(fromJSON(steps.select.outputs.check-nodes), matrix.node)
+        run: npm run lint
+      - if: contains(fromJSON(steps.select.outputs.check-nodes), matrix.node)
+        run: npm run -s gate:den-ui
+      - name: Org-name gate
+        if: contains(fromJSON(steps.select.outputs.check-nodes), matrix.node)
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+        run: node scripts/org-name-gate.mjs
+      - name: Org-name gate, commit messages
+        if: contains(fromJSON(steps.select.outputs.check-nodes), matrix.node)
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
+      - if: contains(fromJSON(steps.select.outputs.check-nodes), matrix.node)
+        run: bash scripts/dist-smoke.sh
       - if: steps.select.outputs.shards == '[]'
         run: npx playwright install --with-deps chromium webkit
       # Issue 296: the files that start Docker containers run after the rest.
