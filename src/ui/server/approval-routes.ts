@@ -229,6 +229,11 @@ export async function handleApprovalRoutes(
     ) => { kind: PolicyKind; from: string };
     /** Issue 160: a write the policy ran under notify, for the person's updates. */
     notify?: (a: Approval, project: string | undefined, from: string) => void;
+    /**
+     * Issue 172: an agent's write held for the person's Allow (not run by
+     * the policy or a setting): alert them outside the bell.
+     */
+    held?: (agent: string, project: string | undefined) => void;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -417,7 +422,12 @@ export async function handleApprovalRoutes(
         } catch {
           /* the bell is best effort: the trail has it */
         }
-    }
+    } else if (a.agent && a.state === "pending")
+      try {
+        deps.held?.(a.agent, project);
+      } catch {
+        /* an alert is best effort: the Allow dialog still asks */
+      }
     sendJson(
       res,
       {

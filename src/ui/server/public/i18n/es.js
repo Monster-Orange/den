@@ -2591,6 +2591,22 @@
     "set.notifications.fold_days.o.7": "7 días",
     "set.notifications.fold_days.o.14": "14 días",
     "set.notifications.fold_days.o.30": "30 días",
+    "set.notifications.quiet_from": "Inicio de las horas de silencio",
+    "set.notifications.quiet_from.d":
+      "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",
+    "set.notifications.quiet_to": "Fin de las horas de silencio",
+    "set.notifications.quiet_to.d":
+      "Los avisos fuera de la campana vuelven a esta hora.",
+    "set.notifications.quiet.off": "No",
+    "set.notifications.quiet.half":
+      "Las horas de silencio necesitan un inicio y un fin.",
+    "set.notifications.desktop": "Avisos en el escritorio",
+    "set.notifications.desktop.d":
+      "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
+    "set.notifications.desktop.denied":
+      "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
+    "set.notifications.desktop.none":
+      "Este navegador no puede mostrar notificaciones.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",

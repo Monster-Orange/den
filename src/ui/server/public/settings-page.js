@@ -465,6 +465,9 @@ export async function mountSettings(deps) {
           )
           .join("") +
         "</select>";
+      // Issue 172: a select may say what its value means (quiet hours).
+      const notice = r.control.notice?.(ctx);
+      if (notice) ctl += `<p class="set-warn" role="status">${esc(notice)}</p>`;
     } else if (t === "number") {
       const c = r.control;
       ctl =

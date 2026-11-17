@@ -328,6 +328,7 @@ function bellRows() {
       read: (ctx) => on(ctx, k),
       write: (v, ctx) => ctx.post({ bell_kinds: { [k]: v === true } }),
     })),
+    ...alertRows(),
     {
       id: "notifications.fold_days",
       category: "notifications",
@@ -343,6 +344,98 @@ function bellRows() {
       read: (ctx) => String(ctx.data.bell_fold_days ?? 7),
       write: (v, ctx) => ctx.post({ bell_fold_days: Number(v) }),
     },
+  ];
+}
+
+/**
+ * Issue 172: alerts outside the bell (alerts.js). Desktop alerts is on
+ * when the person has it on (user.yml alerts.desktop, default on) and
+ * this browser lets the page notify; turning it on asks the browser.
+ */
+const notifyApi = () =>
+  typeof window !== "undefined" && typeof window.Notification === "function"
+    ? window.Notification
+    : null;
+
+function alertRows() {
+  return [
+    {
+      id: "notifications.desktop",
+      category: "notifications",
+      label: "Desktop alerts",
+      description:
+        "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+      keywords: ["notifications", "alerts", "desktop", "browser", "push"],
+      scope: "user",
+      control: {
+        type: "toggle",
+        notice: () => {
+          const N = notifyApi();
+          if (!N)
+            return L(
+              "set.notifications.desktop.none",
+              "This browser can't show notifications.",
+            );
+          return N.permission === "denied"
+            ? L(
+                "set.notifications.desktop.denied",
+                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+              )
+            : "";
+        },
+      },
+      keys: ["alerts.desktop"],
+      read: (ctx) =>
+        ctx.data.alerts?.desktop !== false &&
+        notifyApi()?.permission === "granted",
+      write: async (v, ctx) => {
+        const N = notifyApi();
+        if (v === true && N && N.permission === "default")
+          await N.requestPermission();
+        return ctx.post({ alerts: { desktop: v === true } });
+      },
+    },
+    ...[
+      [
+        "quiet_from",
+        "Quiet hours start",
+        "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+      ],
+      [
+        "quiet_to",
+        "Quiet hours end",
+        "Alerts outside the bell start again at this time.",
+      ],
+    ].map(([k, label, description]) => ({
+      id: `notifications.${k}`,
+      category: "notifications",
+      label,
+      description,
+      keywords: ["notifications", "alerts", "quiet", "hours", "night"],
+      scope: "user",
+      control: {
+        type: "select",
+        options: () => [
+          { value: "", label: L("set.notifications.quiet.off", "Off") },
+          ...Array.from({ length: 24 }, (_, h) => {
+            const t = `${String(h).padStart(2, "0")}:00`;
+            return { value: t, label: t };
+          }),
+        ],
+        notice: (ctx) => {
+          const a = ctx.data.alerts ?? {};
+          return k === "quiet_from" && !a.quiet_from !== !a.quiet_to
+            ? L(
+                "set.notifications.quiet.half",
+                "Quiet hours need a start and an end.",
+              )
+            : "";
+        },
+      },
+      keys: [`alerts.${k}`],
+      read: (ctx) => ctx.data.alerts?.[k] ?? "",
+      write: (v, ctx) => ctx.post({ alerts: { [k]: v || null } }),
+    })),
   ];
 }
 

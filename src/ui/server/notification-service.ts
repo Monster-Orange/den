@@ -20,9 +20,15 @@ import {
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
+import { AlertFeed } from "./alert-feed.js";
+import { alertPrefs } from "./alerts.js";
+import { uiLanguage } from "./ui-language.js";
+import { timeZonePref } from "./time-zone-pref.js";
+import { product } from "../../shared/product.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
+let alerts: AlertFeed | null = null;
 let timer: NodeJS.Timeout | null = null;
 const askLimit = new AskLimit();
 
@@ -164,9 +170,31 @@ async function sessionBells(): Promise<
   }
 }
 
+/** An agent's name as the bell says it. */
+function nameOf(id: string): string {
+  const r = readRecord(getStateDir(), id);
+  return r?.displayName || r?.persona || id;
+}
+
+/**
+ * Issue 172: the alerts outside the bell (alert-feed.ts): the person's
+ * prefs, language and zone read each time from user.yml.
+ */
+export function alertFeed(): AlertFeed {
+  alerts ??= new AlertFeed({
+    prefs: () => alertPrefs(readUserConfig()),
+    lang: () => uiLanguage(readUserConfig().language),
+    zone: () => timeZonePref(readUserConfig().time_zone),
+    title: () => product().title,
+    nameOf,
+  });
+  return alerts;
+}
+
 export function notificationDeps(): {
   store: NotificationStore;
   attention: Attention;
+  alerts: AlertFeed;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
 } {
@@ -174,14 +202,12 @@ export function notificationDeps(): {
   attention ??= new Attention({
     store,
     outputMark,
-    nameOf: (id) => {
-      const r = readRecord(getStateDir(), id);
-      return r?.displayName || r?.persona || id;
-    },
+    nameOf,
     hooked: (id) =>
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
     endedAsking,
     ended: endedAgents,
+    alert: (n) => void alertFeed().needs(n),
   });
   if (!timer) {
     let busy = false;
@@ -199,6 +225,7 @@ export function notificationDeps(): {
   return {
     store,
     attention,
+    alerts: alertFeed(),
     asks: {
       limit: askLimit,
       // Read each time: a change to user.yml counts at once.

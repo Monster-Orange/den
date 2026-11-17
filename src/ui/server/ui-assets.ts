@@ -31,6 +31,8 @@ export const UI_MODULES: readonly string[] = [
   "/topbar.js",
   // NT-3: the bell in the top bar.
   "/bell.js",
+  // Issue 172: alerts outside the bell (desktop notifications).
+  "/alerts.js",
   "/edge-page.js",
   // Issue 209: the Verify page.
   "/verify-page.js",

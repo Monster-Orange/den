@@ -16,6 +16,9 @@
  *                                     unmutes.
  *   POST /api/notifications/looking  NT-2: a page shows these agents now,
  *                                     visible and focused: {agents: [...]}.
+ *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
+ *                                     for an open tab to show (alert-feed.ts),
+ *                                     {seq, alerts}; the person's only.
  * An agent reads the bell (notifications_list) but changes nothing in it
  * but its own attention.
  */
@@ -31,6 +34,7 @@ import {
   type Which,
 } from "../../shared/notifications.js";
 import type { Attention, WaitingWhy } from "./attention.js";
+import type { AlertFeed } from "./alert-feed.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf } from "./request-guard.js";
 
@@ -41,6 +45,7 @@ export const NOTIFICATION_PATHS = [
   "/api/notifications/clear",
   "/api/notifications/mute",
   "/api/notifications/looking",
+  "/api/alerts",
 ] as const;
 
 export const isNotificationPath = (p: string) =>
@@ -53,6 +58,8 @@ export interface NotificationRouteDeps {
   asks?: { limit: AskLimit; perHour: () => number };
   /** Bell v6: the person's kinds and fold (absent: the defaults). */
   prefs?: () => BellPrefs;
+  /** Issue 172: the alerts an open tab shows (absent: none). */
+  alerts?: AlertFeed;
 }
 
 async function jsonBody(
@@ -173,6 +180,23 @@ export async function handleNotificationRoutes(
           : { event: "finished", text: str(b?.text) },
     );
     sendJson(res, { ok: true });
+    return true;
+  }
+
+  if (pathname === "/api/alerts") {
+    if (method !== "GET")
+      return (refuse(res, 405, "method", "GET only."), true);
+    if (agent) {
+      refuse(res, 403, "person_only", "Alerts are the person's.");
+      return true;
+    }
+    const raw = new URL(req.url ?? "/", "http://x").searchParams.get("after");
+    const after = raw !== null && /^\d{1,12}$/.test(raw) ? Number(raw) : null;
+    res.setHeader("Cache-Control", "no-store");
+    sendJson(res, {
+      ok: true,
+      ...(deps.alerts?.after(after) ?? { seq: 0, alerts: [] }),
+    });
     return true;
   }
 

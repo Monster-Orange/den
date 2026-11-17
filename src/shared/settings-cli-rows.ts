@@ -60,6 +60,8 @@ export const PERSON_ONLY_SETTINGS = [
   "keep_running_after_logout",
   // Issue 103: deep links and the embedded agent pane (Settings › Embedding).
   "embed",
+  // Issue 172: whether, and when, the person is alerted outside the bell.
+  "alerts",
 ] as const;
 
 /**

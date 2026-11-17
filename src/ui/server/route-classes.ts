@@ -619,6 +619,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "NT-2: a page shows these agents now, so they don't notify",
   ),
   R(
+    "/api/alerts",
+    "Issue 172: the person's new alerts (an agent needs them) for an open tab to show; never an agent's",
+  ),
+  R(
     "/api/hub/link-suggestions",
     "#68: each project, its Hub project, and Hub's first suggestion for an unlinked one (names only)",
   ),

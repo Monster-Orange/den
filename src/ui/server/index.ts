@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import {
+  alertFeed,
   attentionDetail,
   attentionWaiting,
   notificationDeps,
@@ -1025,6 +1026,7 @@ import {
   type HeldActions,
 } from "./approval-routes.js";
 import { policyFor, readPolicySetting } from "../../shared/approval-policy.js";
+import { alertSettings, patchAlerts } from "./alerts.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import { checkHubAddress, runHubAddress } from "./hub-address.js";
@@ -2344,6 +2346,7 @@ type ApprovalDeps = {
   autoAllow: (action: string, agent: string) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
+  held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -2642,6 +2645,9 @@ function approvalDeps(): ApprovalDeps {
         project: project ? projectPolicy(project) : undefined,
       }),
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
+    // Issue 172: a write held for the person's Allow alerts them.
+    held: (agent, project) =>
+      void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
   };
   return approvals;
 }
@@ -6389,6 +6395,8 @@ async function handleRequest(
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
+        // Issue 172: alerts outside the bell (alerts.ts).
+        alerts: alertSettings(user),
         editor_open: editorOpen(user),
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
@@ -6510,6 +6518,7 @@ async function handleRequest(
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
+          alerts?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           hub_url?: unknown;
@@ -6629,6 +6638,11 @@ async function handleRequest(
         if (body.bell_fold_days !== undefined) {
           const f = patchBellFoldDays(user, body.bell_fold_days);
           if (!f.ok) return send400(res, f.error);
+        }
+        // Issue 172: alerts outside the bell, and quiet hours.
+        if (body.alerts !== undefined) {
+          const a = patchAlerts(user, body.alerts);
+          if (!a.ok) return send400(res, a.error);
         }
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
@@ -6767,6 +6781,7 @@ async function handleRequest(
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
+          alerts: alertSettings(user),
           editor_open: editorOpen(user),
           embed: embedSettings(user),
         });
