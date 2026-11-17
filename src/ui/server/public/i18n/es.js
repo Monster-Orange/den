@@ -2764,6 +2764,28 @@
     "set.notifications.fold_days.o.7": "7 días",
     "set.notifications.fold_days.o.14": "14 días",
     "set.notifications.fold_days.o.30": "30 días",
+    "set.notifications.phone": "Avisos en este dispositivo por push",
+    "set.notifications.phone.d":
+      "Abre __DEN_TITLE__ en tu teléfono y activa esto allí: cuando un agente te necesite, el teléfono lo mostrará, aunque __DEN_TITLE__ esté cerrado. Aquí funciona con todas las pestañas cerradas. Cada dispositivo lo activa para sí.",
+    "set.notifications.phone.none":
+      "Este navegador no puede recibir push. En un iPhone, añade __DEN_TITLE__ a la pantalla de inicio (Compartir y luego Añadir a pantalla de inicio) y ábrelo desde allí.",
+    "set.notifications.phone.failed": "No se pudo activar el push aquí.",
+    "set.notifications.quiet_from": "Inicio de las horas de silencio",
+    "set.notifications.quiet_from.d":
+      "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",
+    "set.notifications.quiet_to": "Fin de las horas de silencio",
+    "set.notifications.quiet_to.d":
+      "Los avisos fuera de la campana vuelven a esta hora.",
+    "set.notifications.quiet.off": "No",
+    "set.notifications.quiet.half":
+      "Las horas de silencio necesitan un inicio y un fin.",
+    "set.notifications.desktop": "Avisos en el escritorio",
+    "set.notifications.desktop.d":
+      "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
+    "set.notifications.desktop.denied":
+      "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
+    "set.notifications.desktop.none":
+      "Este navegador no puede mostrar notificaciones.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",

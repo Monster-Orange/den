@@ -34,6 +34,9 @@ jobs:
       release: ${{ steps.check.outputs.release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the parent too: only the commit that set the version releases (below)
+          fetch-depth: 2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.14.0
@@ -61,6 +64,23 @@ jobs:
               echo "::warning::$name isn't on npm yet: its first publish is by hand (CONTRIBUTING › Releasing)"; release=false
             else
               cat npm-view.err; exit 1
+            fi
+          fi
+          # npm shows a new version 20-60 minutes after its publish: until then any later push to main still carrying
+          # that version reads "not on npm" too, and would publish it again from a commit with unreleased code. Only
+          # the commit that set the version releases: its first parent has another version, and no tag v<version>
+          # names another commit.
+          if [ "$release" = true ] && git cat-file -e HEAD^1 2> /dev/null; then
+            parent=$(git show HEAD^1:package.json | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).version')
+            if [ "$parent" = "$version" ]; then
+              echo "$version was set before this commit (its parent has it too): not published again"; release=false
+            fi
+          fi
+          if [ "$release" = true ]; then
+            # an annotated tag: the ^{} line is the commit it tags
+            tagged=$(git ls-remote origin "refs/tags/v$version^{}" "refs/tags/v$version" | sort -k2 -r | head -n 1 | cut -f1)
+            if [ -n "$tagged" ] && [ "$tagged" != "$(git rev-parse HEAD)" ]; then
+              echo "v$version already tags $tagged, not this commit: not published again"; release=false
             fi
           fi
           case "$version" in *-*) echo "$version is a prerelease: not published"; release=false;; esac
