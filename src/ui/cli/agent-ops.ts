@@ -1089,6 +1089,8 @@ export interface AgentRow {
   resumeOnRestart?: boolean;
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
+  /** Issue 340: the label of the vendor account it runs on (never an email). */
+  signIn?: string;
   outcome?: AgentRecord["outcome"];
   usage?: AgentRecord["usage"];
   /**
@@ -1255,6 +1257,7 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
     ...(rec.resumeOnRestart !== undefined
       ? { resumeOnRestart: rec.resumeOnRestart }
       : {}),
+    ...(rec.signIn ? { signIn: rec.signIn.label } : {}),
     ...newerOf(rec),
     workspace: rec.workspace,
     cwd: rec.cwd,

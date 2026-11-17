@@ -1847,6 +1847,9 @@
       "サブエージェント（Explore も）は {model} で動きます: agents.subagents.model。",
     "ag.subagents.from.default":
       "サブエージェント（Explore も）は {model} で動きます: Den の既定値。agents.subagents.model かペルソナの subagent_model で変えられます。",
+    "ag.signIn": "{label} で実行",
+    "ag.signIn.tip":
+      "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",

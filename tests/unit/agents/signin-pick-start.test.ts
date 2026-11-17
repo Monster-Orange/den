@@ -142,6 +142,13 @@ describe("a start picks its sign-in", () => {
     expect(await startIn(r, "south", "s1")).toBe(T2);
     expect(readRecord(r.stateDir, "n1")!.signIn?.id).toBe("1");
     expect(readRecord(r.stateDir, "s1")!.signIn?.id).toBe("2");
+    // The agent says which, by label, wherever it is listed.
+    r.out.length = 0;
+    expect(await cmdAgents(["list", "-w", "south", "--json"], r.deps)).toBe(0);
+    const rows = JSON.parse(r.out.join("\n")) as { signIn?: string }[];
+    expect(rows[0]!.signIn).toBe(
+      accountLabel({ id: "2" }, vendorName("den-claude")),
+    );
     // The source was asked with each agent's own folder.
     expect(seen).toHaveLength(2);
     // Each token reached its own agent only.
