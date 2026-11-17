@@ -130,6 +130,7 @@ describe("resolveHistorySource", () => {
     expect(a).toEqual({
       kind: "unsupported",
       reason: "invalid repo/service name",
+      t: { key: "lg.why.badName" },
     });
     const b = await resolveHistorySource("shop", "../creds", "local");
     expect(b.kind).toBe("unsupported");

@@ -32,6 +32,8 @@ export const UI_MODULES: readonly string[] = [
   // NT-3: the bell in the top bar.
   "/bell.js",
   "/edge-page.js",
+  // Issue 171: values the server sends, in the page's language.
+  "/value-words.js",
   // Issue 209: the Verify page.
   "/verify-page.js",
   "/error-page.js",

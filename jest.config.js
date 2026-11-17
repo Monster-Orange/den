@@ -1,4 +1,7 @@
 import { dockerSuiteRegex } from "./tests/docker-suites.mjs";
+import quarantineList from "./tests/quarantine.cjs";
+
+const { loadQuarantine, quarantinedFiles, quarantineMode } = quarantineList;
 
 // den#143: on a busy machine fewer workers means fewer load flakes. A
 // setting, never a number here: DEN_TEST_WORKERS (8, or 50%); unset or
@@ -11,10 +14,31 @@ const workers = (process.env.DEN_TEST_WORKERS ?? "").trim();
 const docker = (process.env.DEN_TEST_DOCKER ?? "").trim();
 if (docker && docker !== "skip" && docker !== "only")
   throw new Error(`DEN_TEST_DOCKER is skip or only (got "${docker}")`);
-const ignored = {
+const dockerIgnored = {
   skip: [dockerSuiteRegex()],
   only: [`^(?!.*${dockerSuiteRegex()})`],
 }[docker];
+
+// Issue 397: DEN_TEST_QUARANTINE (tests/quarantine.cjs). Off unless set:
+// only CI's pull request runs set it. "exclude" skips the quarantined
+// tests, "only" runs just them (only their files). Both use the
+// quarantine test environment and add the quarantine reporter's table.
+const quarantine = quarantineMode();
+const quarantineIgnored =
+  quarantine === "only"
+    ? (() => {
+        const files = quarantinedFiles(loadQuarantine().entries);
+        return files.length
+          ? [
+              `^(?!.*/(?:${files.map((f) => f.replace(/[.]/g, "\\.")).join("|")})$)`,
+            ]
+          : [".*"];
+      })()
+    : [];
+const ignored =
+  dockerIgnored || quarantineIgnored.length
+    ? [...(dockerIgnored ?? []), ...quarantineIgnored]
+    : undefined;
 
 export default {
   ...(workers
@@ -96,4 +120,11 @@ export default {
   // is hardening, NOT the fix for the 2026-07/08 CI hangs — those were an
   // infinite mkdirSync loop on a /proc fixture; see dev-metrics.emit.test.ts.)
   workerIdleMemoryLimit: "1GB",
+  // Last, so it wins over testEnvironment above (issue 397).
+  ...(quarantine
+    ? {
+        testEnvironment: "<rootDir>/tests/quarantine-env.cjs",
+        reporters: ["default", "<rootDir>/tests/quarantine-reporter.cjs"],
+      }
+    : {}),
 };

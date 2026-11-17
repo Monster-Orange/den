@@ -5187,12 +5187,17 @@ async function handleRequest(
         url.searchParams.get("workspace"),
       );
       if (source.kind === "unsupported")
-        return sendJson(res, { unsupported: true, reason: source.reason });
+        return sendJson(res, {
+          unsupported: true,
+          reason: source.reason,
+          ...(source.t ? { t: source.t } : {}),
+        });
       const snapshot = await ensureSnapshot(source);
       if (!snapshot)
         return sendJson(res, {
           unsupported: true,
           reason: "could not snapshot the container log",
+          t: { key: "lg.why.noSnapshot" },
         });
       return sendJson(res, readPageBefore(snapshot, cursor, limit));
     } catch (e) {
