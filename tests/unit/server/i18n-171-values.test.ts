@@ -284,3 +284,21 @@ describe.each(["es", "ja"])("issue 171 values in %s", (lang) => {
     expect(found).toEqual([]);
   });
 });
+
+describe("issue 171 values in en", () => {
+  it("a health reason stays as sent: the words the CLI prints", async () => {
+    installShell("en");
+    const { healthCellWords, healthReason } =
+      (await import("../../../src/ui/server/public/value-words.js")) as unknown as {
+        healthCellWords: (r: Vars) => { what: string; title: string };
+        healthReason: (e: string, ms?: number) => string | null;
+      };
+    expect(healthReason("connect ECONNREFUSED 127.0.0.1:9")).toBeNull();
+    expect(healthCellWords({ ok: false, error: "fetch failed" }).what).toBe(
+      "fetch failed",
+    );
+    expect(
+      healthCellWords({ ok: false, error: "timeout", ms: 5000 }).what,
+    ).toBe("timed out after 5 s");
+  });
+});

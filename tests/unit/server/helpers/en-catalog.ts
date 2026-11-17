@@ -44,7 +44,9 @@ export function installEnShell(): void {
       vars?.[k] == null ? m : String(vars[k]),
     );
   };
-  (globalThis as Record<string, unknown>).window = { denShell: { t } };
+  (globalThis as Record<string, unknown>).window = {
+    denShell: { t, lang: () => "en" },
+  };
 }
 
 /** A catalog other than en (public/i18n/<lang>.js), as the page loads it. */
@@ -89,5 +91,7 @@ export function installShell(lang: string): void {
       /\{(\w+)\}/g,
       (m, k: string) => (vars?.[k] == null ? m : String(vars[k])),
     );
-  (globalThis as Record<string, unknown>).window = { denShell: { t } };
+  (globalThis as Record<string, unknown>).window = {
+    denShell: { t, lang: () => lang },
+  };
 }

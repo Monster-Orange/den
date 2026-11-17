@@ -11,6 +11,9 @@
 /** A word in the page's language: shell.js's catalog. Without the shell, the key. */
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
 
+/** Whether the page is in English (the shell's language). */
+const inEnglish = () => globalThis.window?.denShell?.lang?.() === "en";
+
 /** The catalog's word for `key`, or null when the catalog has none. */
 function word(key, vars) {
   const w = t(key, vars);
@@ -55,24 +58,27 @@ export function perfStatus(status) {
       : String(status ?? "");
 }
 
-/** The metric labels report-normalizer.ts writes into a report. */
+/**
+ * The metric labels report-normalizer.ts writes into a report, by slug
+ * (the stored label, lowercase, each run of other characters as "_").
+ */
 const PERF_LABELS = {
-  "HTTP requests": "val.perf.httpReqs",
-  Iterations: "val.perf.iterations",
-  "Virtual users": "val.perf.vus",
-  "HTTP avg": "val.perf.httpAvg",
-  "HTTP p50": "val.perf.httpP50",
-  "HTTP p95": "val.perf.httpP95",
-  "HTTP p99": "val.perf.httpP99",
-  "HTTP max": "val.perf.httpMax",
-  "Requests / sec": "val.perf.reqRate",
-  "Iterations / sec": "val.perf.iterRate",
-  "Failure rate": "val.perf.failRate",
+  http_requests: "val.perf.httpReqs",
+  iterations: "val.perf.iterations",
+  virtual_users: "val.perf.vus",
+  http_avg: "val.perf.httpAvg",
+  http_p50: "val.perf.httpP50",
+  http_p95: "val.perf.httpP95",
+  http_p99: "val.perf.httpP99",
+  http_max: "val.perf.httpMax",
+  requests_sec: "val.perf.reqRate",
+  iterations_sec: "val.perf.iterRate",
+  failure_rate: "val.perf.failRate",
 };
 
 /** A perf metric's label in the page's language (a custom metric's name as is). */
 export function perfLabel(label) {
-  const key = PERF_LABELS[label];
+  const key = PERF_LABELS[slug(label)];
   return (key && word(key)) ?? String(label ?? "");
 }
 
@@ -83,8 +89,11 @@ export function perfLabel(label) {
  */
 export function healthReason(error, ms) {
   const e = String(error ?? "").trim();
-  // No shell (a module's unit test): the reason as sent.
+  // No shell (a module's unit test): the reason as sent. In English the
+  // reason stays as sent too: it is the words `<cli> status` prints and
+  // the error people search for (ECONNREFUSED); es and ja get Den's words.
   if (!e || !globalThis.window?.denShell?.t) return null;
+  if (inEnglish()) return null;
   let m;
   if ((m = /^(.*) \(twice in a row\)$/.exec(e)))
     return t("val.h.twice", {
@@ -131,7 +140,12 @@ export function healthReason(error, ms) {
  * title's reason. `r` is one check's result from /api/health/stream.
  */
 export function healthCellWords(r) {
-  const known = healthReason(r.error, r.ms);
+  // English: the reason as sent, a timeout with how long it waited (0.4.17).
+  const known = inEnglish()
+    ? r.error === "timeout" && r.ms
+      ? t("env.timedOut", { s: Math.max(1, Math.round(r.ms / 1000)) })
+      : r.error || null
+    : healthReason(r.error, r.ms);
   // Den's own words when it knows the reason; else a plain "down" in the
   // cell and the reason as sent (a check's own output) in the title.
   const why = known ?? (r.error ? String(r.error) : "");
