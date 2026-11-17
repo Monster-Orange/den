@@ -3,6 +3,11 @@
   "version": "0.6.6",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Monster-Orange/den.git",
+    "directory": "packages/den-ui"
+  },
   "type": "module",
   "types": "./src/kit.d.ts",
   "exports": {
