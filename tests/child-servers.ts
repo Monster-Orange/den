@@ -16,6 +16,7 @@ import * as http from "http";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
+import { withSentinel } from "./sentinel.js";
 
 const REGISTRY_DIR = path.join(os.tmpdir(), "den-test-children");
 const recordOf = (pgid: number): string =>
@@ -30,6 +31,18 @@ function killGroup(pgid: number, signal: NodeJS.Signals): void {
 }
 
 /**
+ * Issue 163: the env a test's server is started with: `env`, its PATH
+ * keeping the real-CLI sentinel (tests/sentinel.ts) after the test's own
+ * temp fake folders and before everything else, so no server a test starts
+ * can run this machine's claude, op, doppler, security, launchctl, sudo,
+ * mkcert or gh, even when a helper sets its own PATH.
+ */
+export function serverEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const PATH = withSentinel(env.PATH);
+  return PATH === env.PATH ? env : { ...env, PATH };
+}
+
+/**
  * `spawn(cmd, args, opts)` in a process group of its own, recorded. `marker`
  * (default: the last argument, the entry script) is what the reaper checks
  * the group still runs before it signals it.
@@ -40,7 +53,11 @@ export function spawnServer(
   opts: SpawnOptions,
   marker: string = args[args.length - 1] ?? cmd,
 ): ChildProcess {
-  const child = spawn(cmd, args, { ...opts, detached: true });
+  const child = spawn(cmd, args, {
+    ...opts,
+    env: serverEnv(opts.env ?? process.env),
+    detached: true,
+  });
   if (child.pid) {
     fs.mkdirSync(REGISTRY_DIR, { recursive: true });
     fs.writeFileSync(

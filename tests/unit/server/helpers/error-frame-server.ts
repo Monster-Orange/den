@@ -4,9 +4,10 @@
  *
  *   - its env is built from a minimal set (HOME, PATH, the DEN_* it needs):
  *     never this process's env, so no credential reaches it or a log;
- *   - PATH starts with shims for docker, op, doppler, mkcert, aws, opctl
- *     and gh that fail at once: a route that would ask them gets an error,
- *     nothing real runs;
+ *   - PATH starts with shims for docker, op, doppler, mkcert, aws, opctl,
+ *     gh, launchctl and sudo that fail at once: a route that would ask them
+ *     gets an error, nothing real runs; Den's sudo by absolute path
+ *     (DEN_SYSTEM_SUDO) is the sudo shim;
  *   - the engine is a temp copy (every entry of Den's checkout symlinked,
  *     package.json copied), pointed at by DEN_ENGINE_ROOT, so a test can
  *     bump "the engine on disk" without touching the real package.json;
@@ -104,6 +105,8 @@ export async function startFrameServer(
     "aws",
     "opctl",
     "gh",
+    "launchctl",
+    "sudo",
   ])
     write(
       path.join(shim, tool),
@@ -117,6 +120,7 @@ export async function startFrameServer(
   const env: NodeJS.ProcessEnv = {
     HOME: home,
     PATH: `${shim}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+    DEN_SYSTEM_SUDO: path.join(shim, "sudo"),
     DEN_ROOT: root,
     DEN_ENGINE_ROOT: engine,
     DEN_HOME: path.join(tmp, "den-home"),

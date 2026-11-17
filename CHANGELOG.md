@@ -60,6 +60,13 @@ config and manifest changes a distribution must make to move to it under
   install and the agent page's tip say agents sign in there with the
   token, instead of "keychain under the daemon not yet shown". (#163)
 
+- Tests never run this machine's claude, op, doppler, security,
+  launchctl, sudo, mkcert or gh. Jest's global setup puts stubs for them
+  on PATH behind the tests' own fakes; every spawn keeps them, even one
+  that sets its own PATH, and Den's sudo by absolute path is the stub
+  too. A stub logs its name and arguments (never input) and exits 99;
+  the test file that made the call fails, and so does the run. (#163)
+
 ### Migrations
 
 - None required. To keep agents signing in after logout under mode

@@ -950,11 +950,11 @@ export function keepTokenLine(s, t) {
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
 }
 
-/** #299: the only terminal step for the agents' sign-in token. */
+/** Issue 299: the only terminal step for the agents' sign-in token. */
 export const SETUP_TOKEN_CMD = "claude setup-token";
 
 /**
- * #299: Settings' Sign-in token field. Save sends the pasted token once
+ * Issue 299: Settings' Sign-in token field. Save sends the pasted token once
  * (the working pop-up), clears the field before the answer comes, and
  * shows what the server says: set <date>, or why not. The token is never
  * put back in the page.
@@ -1026,7 +1026,7 @@ function renderKeepRunning(host, ctx) {
     `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
     `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
-    // #299: the token is pasted here; the one terminal step is named, with
+    // Issue 299: the token is pasted here; the one terminal step is named, with
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
     `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +

@@ -73,14 +73,14 @@ export interface WhereDeps {
   keepSetting?: () => boolean | undefined;
 }
 
+/** The rows before issue 163. */
+interface WhereRowBase {
+  what: "server" | "session host" | "full disk access" | "service";
+}
+
 export interface WhereRow {
-  what:
-    | "server"
-    | "session host" // words-ok: the existing row name, unchanged
-    | "full disk access"
-    | "service"
-    | "agent sign-in"
-    | "keep running";
+  /** Issue 163 adds the sign-in and keep-running rows. */
+  what: WhereRowBase["what"] | "agent sign-in" | "keep running";
   session: string;
   /** info: as chosen, worth knowing (login mode ends at logout). */
   status: "ok" | "info" | "warn";

@@ -211,6 +211,15 @@ export async function startAgentsPageServer(
   const bin = path.join(tmp, "bin");
   const ran = path.join(tmp, "claude-ran");
   write(path.join(bin, "docker"), "#!/bin/sh\nexit 1\n", 0o755);
+  // The server asks launchd which login it runs in (D20, launchctl
+  // managername): a desktop login here, never this machine's launchctl
+  // (/bin, the real-CLI sentinel, tests/sentinel.ts). Anything else fails.
+  // A test's own `scripts.launchctl` replaces it.
+  write(
+    path.join(bin, "launchctl"),
+    '#!/bin/sh\nif [ "$1" = managername ]; then echo Aqua; exit 0; fi\nexit 1\n',
+    0o755,
+  );
   write(
     path.join(bin, "sudo"),
     opts.sudoPassword === undefined

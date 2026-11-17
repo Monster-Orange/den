@@ -96,6 +96,6 @@ export function sessionWarning(
   if (endsAtLogout(session))
     return `the ${what} runs in the desktop login (${session}): it stops when you log out. To keep it running: ${cli} service install --mode always (${ALWAYS_CAVEAT})`;
   if (session === "Background" || session === "System")
-    return `the ${what} keeps running after logout (${session}); it has no login keychain and no GUI, so agents sign in with the long-lived token, and it uses the 1Password service-account token, headless browsers and Full Disk Access instead`; // words-ok: 1Password names it a service account
+    return `the ${what} keeps running after logout (${session}); it has no login keychain and no GUI, so agents sign in with the long-lived token, and it uses secrets.onepassword.token for 1Password, headless browsers and Full Disk Access instead`;
   return null;
 }
