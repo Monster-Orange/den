@@ -2413,6 +2413,7 @@
     "bell.m.permissionWhat": "{name} needs your permission: {what}",
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
+    "bell.m.toLead": "{name} asked the lead, {lead}: {text}",
     "bell.m.pick": "{n} projects need your pick",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",

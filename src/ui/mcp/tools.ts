@@ -349,7 +349,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "ask_human",
     "Ask your person",
-    "NT-1: ask your person a question that needs their decision. Den marks you waiting (every list shows it) and puts the question in their bell, unless they are looking at you now. Their answer comes as your next input: end your turn after asking. The mark clears itself when your output moves again. Changes nothing but your own waiting mark. A question is at most 300 characters; too many in an hour are held back (notifications.asks_per_hour).",
+    "NT-1: ask your person a question that needs their decision. Den marks you waiting (every list shows it) and puts the question in their bell, unless they are looking at you now. Issue 101: in a project with a lead (an agent of role lead or orchestrator), the question goes to the lead instead, who asks the person only when it needs them. Their answer comes as your next input: end your turn after asking. The mark clears itself when your output moves again. Changes nothing but your own waiting mark. A question is at most 300 characters; too many in an hour are held back (notifications.asks_per_hour).",
     {
       question: z
         .string()
@@ -362,11 +362,14 @@ const READ_TOOLS: DenTool[] = [
         throw new Refusal(
           "ask_human: a question is at most 300 characters; put the detail in your reply.",
         );
-      await api.get("/api/agents/self/attention", {}, "POST", {
+      const r = (await api.get("/api/agents/self/attention", {}, "POST", {
         event: "waiting",
         why: "asked",
         text: question,
-      });
+      })) as { lead?: unknown } | null;
+      // Issue 101: a project with a lead: the question went to it.
+      if (typeof r?.lead === "string" && r.lead)
+        return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.`;
       return "Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.";
     },
   ),

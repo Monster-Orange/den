@@ -1640,6 +1640,7 @@
     "bell.m.permissionWhat": "{name} necesita tu permiso: {what}",
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
+    "bell.m.toLead": "{name} preguntó al líder, {lead}: {text}",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",

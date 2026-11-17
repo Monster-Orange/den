@@ -1,0 +1,109 @@
+/**
+ * Issue 101: Den's bell gives the kit the rows of its two sections:
+ * Needs you (an agent waiting, a pick, a mention), first, with no Mark
+ * read; Earlier (Updates and Older, as before).
+ */
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+
+const g = globalThis as unknown as { window?: unknown };
+const had = g.window;
+beforeAll(() => {
+  g.window = {
+    denShell: {
+      t: (k: string, v?: Record<string, unknown>) =>
+        `[${k}${v ? `:${Object.values(v).join("|")}` : ""}]`,
+    },
+  };
+});
+afterAll(() => {
+  g.window = had;
+});
+
+const at = new Date().toISOString();
+const item = (id: string, kind: string, read = false) => ({
+  id,
+  kind,
+  subject: `agent:${id}`,
+  scope: "workspace/north",
+  text: `${id} text`,
+  link: `/agents?project=north&agent=${id}`,
+  at,
+  read,
+});
+const groups = (...items: ReturnType<typeof item>[]) => [
+  {
+    scope: "workspace/north",
+    subjects: items.map((n) => ({ subject: n.subject, items: [n] })),
+  },
+];
+
+describe("issue 101: Needs you first, then Earlier", () => {
+  it("a waiting agent is in Needs you, before Earlier's Updates; no Mark read there", async () => {
+    const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel({
+      groups: groups(item("asker", "waiting")),
+      unread: 1,
+      updates: {
+        count: 1,
+        unread: 1,
+        groups: groups(item("shipper", "service")),
+      },
+    });
+    expect(p.sections).toBeDefined();
+    expect(p.sections.needs).toContain('data-kind="waiting"');
+    expect(p.sections.needs).not.toContain('data-bell="scope"');
+    expect(p.sections.earlier).toContain('data-bell="updates"');
+    expect(p.sections.needs).not.toContain('data-bell="updates"');
+    // The panel's own heading actions stay (Mark all read).
+    expect(p.actions).toContain('data-bell="all"');
+    const { bellHtml } = await import("../../../src/ui/server/public/bell.js");
+    const h = bellHtml({
+      groups: groups(item("asker", "waiting")),
+      unread: 1,
+      updates: {
+        count: 1,
+        unread: 0,
+        groups: groups(item("shipper", "service")),
+      },
+    });
+    expect(h.indexOf('data-sec="needs"')).toBeGreaterThan(-1);
+    expect(h.indexOf('data-kind="waiting"')).toBeLessThan(
+      h.indexOf('data-sec="earlier"'),
+    );
+  });
+
+  it("nothing needs you, only updates: Needs you still heads the panel", async () => {
+    const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel({
+      groups: [],
+      unread: 0,
+      updates: { count: 1, unread: 0, groups: groups(item("s", "service")) },
+    });
+    expect(p.sections).toEqual({
+      needs: "",
+      earlier: expect.stringContaining('data-bell="updates"'),
+    });
+  });
+
+  it("Older is in Earlier, and its open items keep their Mark read", async () => {
+    const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel(
+      {
+        groups: [],
+        unread: 0,
+        foldDays: 7,
+        older: { count: 1, groups: groups(item("o", "waiting")) },
+      },
+      { older: true },
+    );
+    expect(p.sections.earlier).toContain('data-bell="older"');
+    expect(p.sections.earlier).toContain('data-bell="scope"');
+  });
+
+  it("nothing at all: the empty state, no sections", async () => {
+    const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel({ groups: [], unread: 0 });
+    expect(p.sections).toBeUndefined();
+    expect(p.empty.text).toBe("[bell.empty]");
+  });
+});

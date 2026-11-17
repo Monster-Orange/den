@@ -3029,6 +3029,15 @@ agent and kind.
   token. Any agent can call the MCP tool `ask_human` with a question; its
   prompt says to, when it needs a decision. The agent is marked waiting
   in every list, and the item clears itself when its output moves again.
+- **A question goes to the project's lead** (issue 101). When the asking
+  agent's project has a running lead (an agent whose persona's role is
+  `lead` or `orchestrator`; the longest running one), Den types the
+  question to the lead instead of putting it under the person's "Needs
+  you". The bell lists it under Earlier as "<agent> asked the lead,
+  <lead>: …", with the agent's turn updates. The lead decides it, or asks
+  the person with `ask_human`. A permission prompt, a lead's own
+  question, a project with no lead, and a lead that is itself waiting on
+  its person or that Den can't type to: the person, as before.
 - **The terminal's bell.** An agent whose runtime has no such hook (not
   Claude Code) counts as waiting for input when its output rings: a bare
   BEL, OSC 9 (not OSC 9;4, a progress bar) or OSC 777;notify. A BEL that
