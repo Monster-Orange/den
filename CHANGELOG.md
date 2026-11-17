@@ -21,6 +21,11 @@ config and manifest changes a distribution must make to move to it under
   clear it. The "update waits" item now goes once the update goes on,
   even if the person had read it or it was posted before a restart
   (#327).
+- A stopped or removed agent no longer stays "needs your permission" in
+  the bell. Its wait and its bell row go at once, an ask_human question
+  too, and within a few seconds when it was stopped from the command
+  line. An agent whose session ends by itself drops its permission wait;
+  an open question stays for a resume (#327).
 - After Den updates itself, it no longer tells its own agent to "check
   with doctor", a tool that agent doesn't have. It says to call
   release_status, which now has Den's last update of itself (from, to,
