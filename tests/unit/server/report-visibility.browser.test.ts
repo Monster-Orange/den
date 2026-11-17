@@ -48,8 +48,15 @@ afterAll(async () => {
   await closeBrowserSuite({ browsers: Object.values(browsers) });
 }, 60_000);
 
-/** Den's own Report routes, with a fake `gh` that says `answer`. */
-function den(answer: GhResult): ReportRouteDeps {
+/**
+ * Den's own Report routes, with a fake `gh` that says `answer` (a list:
+ * one per lookup, the last one again after) and a clock.
+ */
+function den(
+  answer: GhResult | GhResult[],
+  clock: () => number = Date.now,
+): ReportRouteDeps {
+  const said = Array.isArray(answer) ? [...answer] : [answer];
   const state = fs.mkdtempSync(path.join(os.tmpdir(), "den-vis-b-"));
   return {
     settings: () =>
@@ -63,7 +70,9 @@ function den(answer: GhResult): ReportRouteDeps {
       args[0] === "auth"
         ? { code: 0, stdout: "", stderr: "" }
         : args[0] === "api" && args[1] === "repos/acme-eng/engine"
-          ? answer
+          ? said.length > 1
+            ? said.shift()!
+            : said[0]!
           : { code: 1, stdout: "", stderr: "unknown" },
     names: () => ({ home: "/Users/pat", hosts: [], projects: [] }),
     diagnostics: async () => ({}),
@@ -74,6 +83,7 @@ function den(answer: GhResult): ReportRouteDeps {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
     },
+    now: clock,
   };
 }
 
@@ -180,6 +190,30 @@ describe.each(["chromium", "webkit"])(
           stderr: "",
         }),
       );
+      expect(await seen(p)).toEqual({
+        pill: "Private repository",
+        warn: 0,
+        note: 1,
+      });
+      await p.context().close();
+    }, 60_000);
+
+    it("a failed lookup, then a real answer within the hours kept: the next open shows private", async () => {
+      const b = browsers[name];
+      if (!b) return;
+      let t = 1_000_000;
+      const d = den(
+        [
+          { code: 1, stdout: "", stderr: "HTTP 502" },
+          { code: 0, stdout: JSON.stringify({ private: true }), stderr: "" },
+        ],
+        () => t,
+      );
+      let p = await review(b, d);
+      expect((await seen(p)).pill).toBe("Public repository");
+      await p.context().close();
+      t += 2 * 60_000;
+      p = await review(b, d);
       expect(await seen(p)).toEqual({
         pill: "Private repository",
         warn: 0,

@@ -7,10 +7,12 @@
  * `gh`: `gh api repos/<owner>/<name>` → `visibility` (else `private`). No
  * new scope: reading a repo you can file in needs none.
  *
- * Kept per repo, in memory and in <state>/report-visibility.json, for
- * feedback.visibility_cache_hours (24). An unknown answer, a failure or no
- * access is kept as null (the form reads it as public, the safe wording)
- * and tried again after as long. A lookup never holds GET /api/report past
+ * A real answer is kept per repo, in memory and in
+ * <state>/report-visibility.json, for feedback.visibility_cache_hours
+ * (24). An unknown answer or a failure reads as public (the safe wording)
+ * but is held only FAILED_HOLD_MS (a minute, so repeated opens don't storm
+ * GitHub), then asked again: one blip never labels a private repo public
+ * for the hours kept. A lookup never holds GET /api/report past
  * feedback.visibility_timeout_seconds (3): one still running keeps going
  * and fills the cache for the next open. One lookup per repo at a time.
  */
@@ -27,6 +29,9 @@ interface Entry {
 }
 
 const FILE = "report-visibility.json";
+
+/** How long an unknown answer or a failure is held before asking again. */
+const FAILED_HOLD_MS = 60_000;
 
 /** GitHub's answer for a repo → its visibility, or null when it doesn't say. */
 export function visibilityOf(stdout: string): RepoVisibility | null {
@@ -122,7 +127,8 @@ class Cache {
     await Promise.all(
       repos.map(async (repo) => {
         const e = this.mem.get(repo);
-        if (e && o.now() - e.at < o.ttlMs) {
+        const keep = e?.v ? o.ttlMs : Math.min(o.ttlMs, FAILED_HOLD_MS);
+        if (e && o.now() - e.at < keep) {
           out[repo] = e.v;
           return;
         }

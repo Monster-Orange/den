@@ -6,8 +6,9 @@
  * - private and internal repos say so; public says public;
  * - an unknown answer, a failure, or no GitHub sign-in reads as public
  *   (and with no sign-in nothing is looked up);
- * - kept for feedback.visibility_cache_hours: a second open within it
- *   makes no second call; after it, one more; kept on disk too;
+ * - a real answer is kept for feedback.visibility_cache_hours: a second
+ *   open within it makes no second call; after it, one more; kept on disk
+ *   too. A failure is held a minute at most, then asked again;
  * - a slow GitHub never holds the form past
  *   feedback.visibility_timeout_seconds: public now, the real answer on
  *   the next open, from the same one call.
@@ -156,7 +157,10 @@ describe("GET /api/report: each destination's visibility (issue 415)", () => {
 
   it("a second open within the hours kept makes no second call; after them, one more", async () => {
     user = { visibility_cache_hours: 2 };
-    answers = { "acme-eng/notes": ok({ private: true }) };
+    answers = {
+      "acme-eng/engine": ok({ visibility: "public" }),
+      "acme-eng/notes": ok({ private: true }),
+    };
     expect(visOf(await info())["acme-eng/notes"]).toBe("private");
     expect(lookups.sort()).toEqual(["acme-eng/engine", "acme-eng/notes"]);
     clock += 3_600_000;
@@ -167,14 +171,39 @@ describe("GET /api/report: each destination's visibility (issue 415)", () => {
       fs.readFileSync(path.join(state, "report-visibility.json"), "utf-8"),
     );
     expect(kept["acme-eng/notes"].v).toBe("private");
-    // A failure is kept as long, then tried again.
+    // After the hours kept: asked again.
     clock += 2 * 3_600_000;
-    answers = {};
-    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
-    expect(lookups).toHaveLength(4);
-    clock += 3_600_000;
     await info();
     expect(lookups).toHaveLength(4);
+  });
+
+  it("a failure is not kept for the hours: the next open asks again and shows the real answer", async () => {
+    answers = {
+      "acme-eng/engine": ok({ visibility: "public" }),
+      "acme-eng/notes": { code: 1, stdout: "", stderr: "HTTP 502" },
+    };
+    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    // Within a minute: held, so repeated opens don't storm GitHub.
+    clock += 30_000;
+    await info();
+    expect(lookups.filter((r) => r === "acme-eng/notes")).toHaveLength(1);
+    // After it, well within the hours kept: asked again, now private.
+    clock += 31_000;
+    answers["acme-eng/notes"] = ok({ private: true, visibility: "private" });
+    expect(visOf(await info())["acme-eng/notes"]).toBe("private");
+    expect(lookups.filter((r) => r === "acme-eng/notes")).toHaveLength(2);
+    // The real answer is kept for the hours; public stayed kept too.
+    clock += 3_600_000;
+    await info();
+    expect(lookups).toHaveLength(3);
+  });
+
+  it("no sign-in, then a sign-in: the next open looks it up", async () => {
+    signedIn = false;
+    answers = { "acme-eng/notes": ok({ private: true }) };
+    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    signedIn = true;
+    expect(visOf(await info())["acme-eng/notes"]).toBe("private");
   });
 
   it("a slow GitHub: public within the wait, the answer on the next open, one call", async () => {
