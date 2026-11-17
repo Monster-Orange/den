@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.62] - unreleased
+## [0.4.62] - 2026-11-16
 
 ### Added
 
@@ -42,6 +42,8 @@ config and manifest changes a distribution must make to move to it under
 - `up -w <project>` in a project that is not active, such as one just made
   with `workspace create`, no longer stops with "is not active". It makes
   the project active and says so in one line. A dry run says it would.
+  `up` with nothing named (no repo, no `-a`) still stops, says what to
+  name, and leaves the project as it was.
 - `status <repo>` shows that repo only. For a repo that runs nothing, it
   prints the same one line in every project it is in, not the project's
   whole table.
