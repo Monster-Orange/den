@@ -1,4 +1,5 @@
 import { formatTime } from "/kit/time.js";
+import { perfLabel, perfStatus } from "/value-words.js";
 
 /**
  * A word in the page's language (issue 171): shell.js's catalog, "perf.*".
@@ -95,7 +96,7 @@ function renderMetricList(metrics) {
     .map(
       (metric) => `
         <div class="perf-stat">
-          <span class="perf-stat-label">${escapeHtml(metric.label)}</span>
+          <span class="perf-stat-label">${escapeHtml(perfLabel(metric.label))}</span>
           <strong>${escapeHtml(
             formatDisplayValue(metric.value, {
               unit: metric.unit,
@@ -324,7 +325,7 @@ export function renderPerfReportHtml(report) {
               <span class="perf-module-toggle" aria-hidden="true">▸</span>
               <span class="perf-module-title">${escapeHtml(moduleReport.module)}</span>
             </span>
-            <span class="perf-badge ${moduleReport.status === "passed" ? "perf-ok" : "perf-fail"}">${escapeHtml(moduleReport.status)}</span>
+            <span class="perf-badge ${moduleReport.status === "passed" ? "perf-ok" : "perf-fail"}">${escapeHtml(perfStatus(moduleReport.status))}</span>
           </summary>
           <div class="perf-section">
             <h4>${escapeHtml(t("perf.summary"))}</h4>
@@ -363,7 +364,7 @@ export function renderPerfReportHtml(report) {
       <header class="perf-run-header">
         <div>
           <h2>${escapeHtml(t("perf.summary"))}</h2>
-          <p>${escapeHtml(report.environment)} · ${escapeHtml(report.status)}</p>
+          <p>${escapeHtml(report.environment)} · ${escapeHtml(perfStatus(report.status))}</p>
         </div>
         <div class="perf-run-meta">
           <span>${escapeHtml(t("perf.modules", { n: String(report.modules?.length ?? 0) }))}</span>
