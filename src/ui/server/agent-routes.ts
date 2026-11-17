@@ -575,6 +575,13 @@ export async function handleAgentRoutes(
     if (hit)
       return m.hubRenameRoute(req, res, hit[1], await m.defaultHubRenameDeps());
   }
+  // Issue 271: ask Hub for a new project to link to (held for an owner).
+  if (pathname.endsWith("/hub-create")) {
+    const m = await import("./hub-create-routes.js");
+    const hit = m.HUB_CREATE_ROUTE.exec(pathname);
+    if (hit)
+      return m.hubCreateRoute(req, res, hit[1], await m.defaultHubCreateDeps());
+  }
   // #68: link every project to Hub's suggestion in one confirm.
   if (pathname === "/api/hub/link-suggestions") {
     const [la, audit, guard] = await Promise.all([
@@ -2037,6 +2044,11 @@ export function startAgentUpkeep(
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }
+    // Issue 369: bell waits kept from before the restart, against the
+    // agents now (their dialogs too).
+    await import("./notification-service.js")
+      .then((m) => m.reconcileKeptWaits())
+      .catch(() => undefined);
   };
   const prune = async () => {
     try {

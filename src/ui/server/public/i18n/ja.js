@@ -608,6 +608,9 @@
     "acct.up": "上へ",
     "acct.down": "下へ",
     "acct.failed": "保存できませんでした: {error}",
+    "busy.askAllowW": "確認しています…",
+    "busy.askAllowS": "確認しました。ダイアログで許可してください。",
+    "busy.askAllowF": "確認できませんでした。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -990,6 +993,29 @@
     "hubp.linkProject": "{project} を Hub プロジェクトにリンク",
     "hubp.scope":
       "リンクされるのはプロジェクト「{project}」だけです。ほかのプロジェクトは変わりません。",
+    // Issue 271: リンクの選択肢から Hub プロジェクトを作成。
+    "hubp.createOpt": "Hub プロジェクト「{name}」を作成",
+    "hubp.newName": "Hub での名前",
+    "hubp.create": "作成",
+    "hubp.nameEmpty": "Hub プロジェクトの名前を入力してください。",
+    "hubp.nameLong": "Hub プロジェクトの名前は 80 文字までです。",
+    "hubp.asked":
+      "Den は {project} のために Hub プロジェクト「{name}」の作成を Hub に依頼しました。",
+    "hubp.youAllow":
+      "あなたは Hub のオーナーです。Hub で許可すると、Den が {project} をリンクします。",
+    "hubp.allowBtn": "Hub で許可",
+    "hubp.ownerMust":
+      "Hub で {company} のオーナーが許可する必要があります。許可されると Den が {project} を自動でリンクします。",
+    "hubp.ownerMustAny":
+      "Hub であなたの会社のオーナーが許可する必要があります。許可されると Den が {project} を自動でリンクします。",
+    "hubp.declined":
+      "Hub のオーナーが Hub プロジェクト「{name}」を却下しました。Hub プロジェクトを選ぶか、もう一度依頼してください。",
+    "hubp.ended":
+      "「{name}」の Hub への依頼は変更なしで終わりました。もう一度依頼してください。",
+    "hubp.createW": "Hub に「{name}」の作成を依頼しています…",
+    "hubp.createS": "依頼しました。Hub でオーナーが許可します。",
+    "hubp.createF":
+      "Hub は依頼を受け付けませんでした。何も作成されていません。",
     "hub.legacy":
       "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
     "hub.reconnect": "再接続",
@@ -1044,6 +1070,9 @@
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",
     "set.embed.url_max": "リンクのコンテキストの最大長",
+    "set.embed.app_keys": "アプリキー",
+    "set.embed.app_key_audit":
+      "1 行のアクティビティにまとめるアプリキーの読み取り",
     "set.embed.origins": "エージェントを埋め込めるウェブアプリ",
     "set.embed.key_minutes": "埋め込みパネルの許可の有効時間",
     "set.embed.context_max_kb": "共有するページの最大サイズ",
@@ -1377,12 +1406,32 @@
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
+    "ap.do.embed_key_create":
+      "{origin} が {project} の {agent} にメッセージを送り、状態を読めるようにする",
+    "ap.do.embed_key_revoke":
+      "{project} の {agent} 用の {origin} のキーを取り消す",
+    "ap.det.embed_key_create.reach":
+      "{origin} 自身のバックエンド用のキーを作ります。届くのは {project} の {agent} だけです: その状態と、ターンが終わった後に入力されるメッセージ。",
+    "ap.det.embed_key_create.once":
+      "キーは許可した後に、ここで一度だけ表示されます。Den はハッシュだけを保存します。",
+    "ap.det.embed_key_create.revoke":
+      "設定 › 埋め込み でいつでも取り消せます。",
+    "ap.det.embed_key_revoke.reach":
+      "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
+    "ap.det.embed_key_revoke.held":
+      "送信済みでエージェントのターンを待っているメッセージは、そのまま入力されます。",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
     "ap.pm.warn":
       "これにより {project} のエージェントはあなたに確認せずに動作します。",
     "ap.pm.project": "プロジェクト: {project}",
+    "ap.do.hub_project_create":
+      "プロジェクト {project} のために Hub プロジェクト「{name}」の作成を Hub に依頼",
+    "ap.hc.project": "プロジェクト: {project}",
+    "ap.hc.name": "Hub での名前: {name}",
+    "ap.hc.owner":
+      "Hub のオーナーが Hub で許可します。許可されると Den がプロジェクトをリンクします。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
@@ -2287,6 +2336,21 @@
     "set.ui.devicesSignedIn":
       "デバイスの一覧はサインイン中にのみ表示されます。",
     "set.ui.asked": "{ago} に要求",
+    "set.ui.appKeyAllow": "ダイアログで許可してください。",
+    "set.ui.appKeyAgent": "エージェント",
+    "set.ui.appKeyOrigin": "ウェブアプリ",
+    "set.ui.appKeyLabel": "名前 (任意)",
+    "set.ui.appKeyMake": "キーを作成",
+    "set.ui.appKeyNoOrigin": "まず上のリストにウェブアプリを追加してください。",
+    "set.ui.appKeyNone": "アプリキーはまだありません。",
+    "set.ui.appKeyUsed": "最終使用 {when}",
+    "set.ui.appKeyUnused": "未使用",
+    "set.ui.appKeyRevoked": "取り消し済み {when}",
+    "set.ui.appKeyRevoke": "取り消す",
+    "set.ui.appKeyOnce":
+      "このキーを今すぐウェブアプリのバックエンドにコピーしてください。もう表示されません。",
+    "set.ui.appKeyNew": "新しいアプリキー",
+    "set.ui.copy": "コピー",
     "set.ui.saveOrigins": "リストを保存",
     "set.ui.approve": "承認",
     "set.ui.deny": "拒否",
@@ -2629,6 +2693,10 @@
       "サインアウト中のページにコードが表示されているコンピューターです。承認すると、そのページは自動でサインインします。コードの有効期限は 10 分です。__DEN_CLI__ web approve <code> でもコマンドラインから同じことができます。",
     "set.embed.url_max.d":
       "エージェントへのリンクがメッセージ欄に渡せるウェブアドレスの最大長です。これより長いと、その旨を示すページが開きます。",
+    "set.embed.app_keys.d":
+      "このコンピューター上のウェブアプリ自身のバックエンド用のキーです: その人のメッセージを 1 つのエージェントに渡し (エージェントのターンの後に入力されます)、そのエージェントの状態を読めます。それ以外は何もできません。キーは一つずつ許可し、一度だけ表示され、ここで取り消せます。",
+    "set.embed.app_key_audit.d":
+      "アプリキーによる状態の読み取りは、この秒数ごとに 1 行として回数とともにアクティビティ記録に残ります。頻繁に確認するウェブアプリで記録があふれません。",
     "set.embed.origins.d":
       "各ウェブアプリのアドレスを正確に、1 行に 1 つずつ: https://app.example.com。これらだけが自分のページの中にエージェントのパネルを表示でき、それもあなたが許可した後だけです。ほかのサイトは、この Den のどのページも自分のページの中に表示できません。",
     "set.embed.key_minutes.d":

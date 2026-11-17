@@ -669,6 +669,43 @@ describe("issue 199: agent_mode", () => {
   });
 });
 
+describe("issue 271: hub_project_create", () => {
+  it("asks with the project and the name; the name may be left to Den", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, project: "north" },
+    }));
+    const r = await callTool(
+      "hub_project_create",
+      { project: "north", name: "North Star" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "hub_project_create",
+      args: { project: "north", name: "North Star" },
+    });
+    const own = await callTool("hub_project_create", {}, ctx(api, true));
+    expect(own.isError).toBe(false);
+    expect(
+      calls.filter((c) => c.path === "/api/approvals").pop()?.body,
+    ).toEqual({ action: "hub_project_create", args: { project: "north" } });
+  });
+
+  it("a project's agent can't ask for another project; nothing is asked", async () => {
+    const { api, calls } = fakeApi([]);
+    const r = await callTool(
+      "hub_project_create",
+      { project: "elsewhere" },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/project "north".*not project "elsewhere"/);
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+});
+
 describe("issue 160: pr_close", () => {
   it("asks with the repo, the pull request and a comment; a held write with no mcp.actions", async () => {
     expect(toolsFor(cfg()).map((t) => t.name)).toContain("pr_close");
