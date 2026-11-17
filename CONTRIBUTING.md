@@ -84,7 +84,12 @@ is ignored: every test blocks.
 The switch is `DEN_TEST_QUARANTINE`: unset runs everything (the default),
 `exclude` skips the listed tests, `only` runs just them.
 
-To add an entry, you need evidence: the same sha failed, then passed.
+Quarantine is for flakes only. To add an entry, you need evidence: one
+sha, a run (or attempt) that failed the test on it, and a run (or
+attempt) that passed it on the same sha: a re-run attempt, another run,
+or the other Node's job in the same run. A failure with no pass on its
+sha is a real failure: fix it. `quarantine.test.ts` fails on an entry
+without that pair.
 
 ```bash
 node scripts/flake-evidence.mjs <red run id>
@@ -92,7 +97,7 @@ node scripts/flake-evidence.mjs <red run id>
 
 It reads the Actions API (read-only) and prints an entry per failing test.
 If no other run on that sha passed, it says so in `evidence.note`; it
-never makes one up. Paste the entries for the flaky tests, not the ones
+never makes one up, and that entry can't be added. Paste the entries for the flaky tests, not the ones
 that are really broken. Each entry has `file`, `test` (the full name
 jest prints, or the test's own title, exactly; `/regex/` matches the full
 name), `issue`, `added` (YYYY-MM-DD) and `evidence`.

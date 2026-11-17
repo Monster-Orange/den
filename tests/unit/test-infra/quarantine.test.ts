@@ -44,7 +44,7 @@ type Doc = { max_age_days?: number; entries: Entry[] };
 const ROOT = path.join(__dirname, "../../..");
 const FIXTURE = "tests/fixtures/quarantine/flaky.fixture.ts";
 const FLAKY = "quarantine fixture the flaky one";
-const ev = { failed_run: 1, passed_run: 2, sha: "abc" };
+const ev = { failed_run: 1, passed_run: 2, sha: "abc1234" };
 
 describe("which tests a quarantine entry names", () => {
   const e: Entry = {
@@ -221,7 +221,99 @@ describe("the list stays short-lived (the weekly rule)", () => {
         today,
         {},
       ),
-    ).toEqual([expect.stringMatching(/passed_run, or a note/)]);
+    ).toEqual([
+      expect.stringMatching(
+        /one sha with a failing run\/attempt and a passing run\/attempt/,
+      ),
+    ]);
+  });
+});
+
+describe("quarantine is for flakes only: a fail and a pass on the same sha", () => {
+  const today = new Date("2026-11-20T12:00:00Z");
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const problems = (evidence: Record<string, unknown>): string[] =>
+    q.quarantineProblems(
+      {
+        entries: [
+          {
+            file: FIXTURE,
+            test: FLAKY,
+            issue: 397,
+            added: "2026-11-20",
+            evidence,
+          },
+        ],
+      },
+      today,
+      {},
+    );
+  const NO_PAIR =
+    /one sha with a failing run\/attempt and a passing run\/attempt/;
+
+  it("only a failing run: fails (red first)", () => {
+    expect(problems({ failed_run: 10, failed_job: 1, sha: SHA })).toEqual([
+      expect.stringMatching(NO_PAIR),
+    ]);
+  });
+
+  it("a note in place of a passing run: fails", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        sha: SHA,
+        note: "no run on this sha passed it",
+      }),
+    ).toEqual([expect.stringMatching(NO_PAIR)]);
+  });
+
+  it("no sha: fails", () => {
+    expect(problems({ failed_run: 10, passed_run: 11 })).toEqual([
+      expect.stringMatching(NO_PAIR),
+    ]);
+  });
+
+  it("the same run and attempt with no jobs, or the same job: fails", () => {
+    expect(problems({ failed_run: 10, passed_run: 10, sha: SHA })).toEqual([
+      expect.stringMatching(NO_PAIR),
+    ]);
+    expect(
+      problems({
+        failed_run: 10,
+        failed_job: 5,
+        passed_run: 10,
+        passed_job: 5,
+        sha: SHA,
+      }),
+    ).toEqual([expect.stringMatching(NO_PAIR)]);
+  });
+
+  it("a pass in another run on the same sha: kept", () => {
+    expect(problems({ failed_run: 10, passed_run: 11, sha: SHA })).toEqual([]);
+  });
+
+  it("a re-run attempt that passed: kept", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        failed_attempt: 1,
+        passed_run: 10,
+        passed_attempt: 2,
+        sha: SHA,
+      }),
+    ).toEqual([]);
+  });
+
+  it("the other Node's job in the same run: kept", () => {
+    expect(
+      problems({
+        failed_run: 10,
+        failed_job: 5,
+        passed_run: 10,
+        passed_job: 6,
+        sha: SHA,
+      }),
+    ).toEqual([]);
   });
 });
 
