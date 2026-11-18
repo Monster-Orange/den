@@ -78,14 +78,33 @@ async function itemsFor(ctx, a, ok = (l) => l.length > 0) {
   }
 }
 
+/**
+ * A turn's end as Claude Code sends it: the answer on screen, then its
+ * Stop hook with the answer as `last_assistant_message`. Not
+ * `ctl.stop()`: that stops the agent, and no turn ends.
+ */
+async function turnEnd(a, answer) {
+  await a.ctl.print(answer);
+  await a.ctl.hook("Stop", {
+    stop_hook_active: false,
+    last_assistant_message: answer,
+  });
+}
+
 async function stub(ctx, state, role) {
   const name = `gate93-${role}-${state.tag}`;
   const ctl = await ctx.agent(name);
   const a = { name, id: ctl?.id ?? name, ctl };
   state.made.push(a);
   // A handle creates nothing: start the agent and wait until it runs,
-  // so its session (and its file) exist before sessionStart.
-  ctl.start("tester");
+  // so its session (and its file) exist before sessionStart. A refused
+  // start (agents.max_concurrent reached) says so here, not later as a
+  // missing file.
+  const r = await ctl.start("tester");
+  if (r && typeof r.code === "number" && r.code !== 0)
+    throw new Error(
+      `${name}: the bed refused to start it (agents.max_concurrent?): ${String(r.all ?? r.err ?? r.out ?? "").slice(0, 200)}`,
+    );
   a.runMs = await ctl.running(20000);
   await ctl.sessionStart?.();
   return a;
@@ -109,8 +128,8 @@ export async function setup(ctx) {
   // Two turn ends: an unread item takes the next of its kind in, so the
   // first is read (as the person would have) and the second folds under ×2.
   for (let i = 0; i < 2; i++) {
-    await turns.ctl.print(`Turn ${i + 1} done.`);
-    await turns.ctl.stop();
+    // The agent runs on between them; teardown stops it.
+    await turnEnd(turns, `Turn ${i + 1} done.`);
     const got = await itemsFor(ctx, turns, (l) => l.some((n) => !n.read));
     if (i === 0)
       for (const n of got.filter((n) => !n.read))

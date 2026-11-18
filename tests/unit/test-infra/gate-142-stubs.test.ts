@@ -99,3 +99,84 @@ describe("gate/142.mjs under agents.max_concurrent", () => {
     expect(r.error).toMatch(/gate142-perm-/);
   }, 120_000);
 });
+
+/**
+ * Gate 93's setup on a fake bed: its "turns" stub must end two turns with
+ * the Stop hook (never ctl.stop(), which stops the agent), so the turns
+ * row exists and no wait runs out (WAIT_MS is 20 s). Until 11-18 it
+ * stopped the agent, its row never came, and clause 4 always skipped.
+ */
+function runGate93() {
+  const js = `
+    const g = await import("./gate/93.mjs");
+    const items = [];
+    let stops = 0, hooks = 0, refused = 0;
+    const running = new Set();
+    const groups = (l) => [{ scope: "workspace/w", subjects: l.map((n) => ({ subject: n.subject, items: [n] })) }];
+    const bell = () => {
+      const needs = items.filter((n) => n.kind === "waiting");
+      const updates = items.filter((n) => n.kind === "finished");
+      return { unread: needs.filter((n) => !n.read).length, waiting: [], groups: groups(needs), updates: { count: updates.length, groups: groups(updates) } };
+    };
+    const add = (name, kind) => items.push({ id: name + ":" + items.length, subject: "agent:" + name, kind, read: false, link: "/agents?agent=" + name });
+    const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+    const ctx = {
+      page: null,
+      url: "http://bed.invalid",
+      api: async (p, init) => {
+        if (p === "/api/notifications") return ok(bell());
+        if (p === "/api/notifications/read") {
+          const id = JSON.parse(init.body).id;
+          for (const n of items) if (n.id === id) n.read = true;
+        }
+        return ok(p === "/api/settings" ? { bell_kinds: { finished: false } } : { ok: true });
+      },
+      agent: async (name) => ({
+        id: name,
+        start() {
+          if (running.size + 1 >= 4) { refused++; return { code: 1, all: "agents.max_concurrent is 4" }; }
+          running.add(name);
+          return { code: 0, all: "started" };
+        },
+        running: async () => (running.has(name) ? 10 : null),
+        stop: async () => { stops++; running.delete(name); },
+        sessionStart: async () => {},
+        print: async () => {},
+        askHuman: async () => add(name, "waiting"),
+        hook: async (ev) => {
+          if (ev === "Stop" && running.has(name)) { hooks++; add(name, "finished"); }
+        },
+      }),
+    };
+    const t0 = Date.now();
+    let error = null, links = null;
+    try { links = (await g.setup(ctx)).links; } catch (e) { error = String(e?.message ?? e); }
+    console.log(JSON.stringify({ ms: Date.now() - t0, stops, hooks, refused, links, error }));`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    timeout: 120_000,
+  });
+  if (r.status !== 0) throw new Error(r.stderr || `exit ${r.status}`);
+  return JSON.parse(r.stdout.trim().split("\n").pop()!) as {
+    ms: number;
+    stops: number;
+    hooks: number;
+    refused: number;
+    links: Record<string, string | null> | null;
+    error: string | null;
+  };
+}
+
+describe("gate/93.mjs: its turns stub ends turns, it doesn't stop", () => {
+  it("two Stop hooks, no ctl.stop() in setup, the turns row with no wait run out", () => {
+    const r = runGate93();
+    expect(r.error).toBeNull();
+    expect(r.refused).toBe(0);
+    expect(r.stops).toBe(0);
+    expect(r.hooks).toBe(2);
+    expect(r.links?.turns).toMatch(/gate93-turns-/);
+    // WAIT_MS is 20 s: one wait run out would show here.
+    expect(r.ms).toBeLessThan(15_000);
+  }, 120_000);
+});
