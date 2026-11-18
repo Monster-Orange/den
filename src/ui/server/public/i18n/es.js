@@ -2149,6 +2149,15 @@
       "Se ejecuta como su propia CLI en el proyecto: las herramientas y los modos de permiso de Den llegarán más adelante.",
     "ag.rt.notInstalled": "no instalado",
     "ag.rt.needsArgv": "la persona no tiene plantilla argv",
+    // issue 479: a quarantined runtime copy is never started.
+    "ag.rt.quarantined":
+      "{name} no puede iniciarse: macOS puso esta copia en cuarentena, así que Den no la ejecutó y macOS no mostró ningún aviso:",
+    "ag.rt.useOther": "Usar otra copia encontrada:",
+    "ag.rt.clearSelf":
+      "O quítala tú: abre su carpeta, ejecútala una vez desde una terminal y permítela cuando macOS lo pregunte. Den nunca quita la cuarentena.",
+    "ag.rt.openFolder": "Abrir su carpeta",
+    "ag.rt.checkAgain": "Comprobar de nuevo",
+    "ag.rt.notDone": "No funcionó",
     "pj.expand": "Expandir la lista de proyectos",
     "gr.act.autostartOff": "Inicio automático: desactivado (activar)",
     "gr.act.autostartOn": "Inicio automático: activado (desactivar)",

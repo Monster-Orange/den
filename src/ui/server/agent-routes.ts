@@ -348,6 +348,8 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
         ...(e.hints.length ? { hints: e.hints } : {}),
         ...(e.running ? { running: e.running } : {}),
         ...(e.job ? { job: e.job } : {}),
+        // Issue 479: the quarantined copy and the choices, for the page.
+        ...(e.quarantined ? { quarantined: e.quarantined } : {}),
       },
       e.status,
     );

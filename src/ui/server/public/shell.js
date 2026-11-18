@@ -2973,6 +2973,15 @@
       "It runs as its own CLI in the project: Den's tools and permission modes are coming for it.",
     "ag.rt.notInstalled": "not installed",
     "ag.rt.needsArgv": "the persona has no argv template",
+    // issue 479: a quarantined runtime copy is never started.
+    "ag.rt.quarantined":
+      "{name} can't start: macOS has quarantined this copy, so Den did not run it and macOS showed no warning:",
+    "ag.rt.useOther": "Use another copy found:",
+    "ag.rt.clearSelf":
+      "Or clear it yourself: open its folder, run it once from a terminal and allow it when macOS asks. Den never removes the quarantine.",
+    "ag.rt.openFolder": "Open its folder",
+    "ag.rt.checkAgain": "Check again",
+    "ag.rt.notDone": "That didn't work",
     // issue 171: the Edge page.
     "edge.reading": "Reading the edge…",
     "edge.tls.implicit":

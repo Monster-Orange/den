@@ -531,6 +531,11 @@ export class AgentError extends Error {
   readonly running?: { id: string; sessionId: string };
   /** 0.4.48: job_running: how long the job it left running has run. */
   readonly job?: { minutes: number };
+  /**
+   * Issue 479: runtime_quarantined: the copy it would run, and the
+   * choices, so a page can offer them.
+   */
+  readonly quarantined?: QuarantinedRuntime;
   constructor(
     message: string,
     o: {
@@ -540,6 +545,7 @@ export class AgentError extends Error {
       hints?: string[];
       running?: { id: string; sessionId: string };
       job?: { minutes: number };
+      quarantined?: QuarantinedRuntime;
     } = {},
   ) {
     super(message);
@@ -550,8 +556,28 @@ export class AgentError extends Error {
     this.hints = o.hints ?? [];
     if (o.running) this.running = o.running;
     if (o.job) this.job = o.job;
+    if (o.quarantined) this.quarantined = o.quarantined;
   }
 }
+
+/**
+ * Issue 479: a runtime whose CLI copy carries com.apple.quarantine, as a
+ * start refuses it: the copy, the folder it is in, the scope a pin of
+ * another copy goes to (where the setting that chose it lives), and the
+ * other copies found that are not quarantined (never run here).
+ */
+export interface QuarantinedRuntime {
+  runtime: string;
+  name: string;
+  path: string;
+  dir: string;
+  scope: "global" | "workspace";
+  setting: string;
+  others: RuntimeCopy[];
+}
+
+/** Issue 479: a start refused because its CLI copy is quarantined. */
+export const RUNTIME_QUARANTINED = "runtime_quarantined";
 
 /** A request that was wrong as asked (CLI exit 2; HTTP 400 unless given). */
 const usage = (message: string, status = 400) =>
@@ -2782,7 +2808,69 @@ async function availableOrRefuse(
         : [],
       503,
     );
+  quarantineOrRefuse(d, rt, det);
   return det;
+}
+
+/**
+ * Issue 479: refused, before anything is spawned, when the CLI copy `rt`
+ * would run carries com.apple.quarantine: running it would make macOS
+ * show its warning. Says why, the path and the choices (another copy
+ * found, or clear this one yourself). Den never clears the attribute.
+ */
+function quarantineOrRefuse(
+  d: AgentsResolved,
+  rt: Runtime,
+  det: RuntimeDetect,
+): void {
+  if (!det.available || !det.quarantined || !det.path) return;
+  const name = rt.label || rt.id;
+  const key = binSettingKey(rt.id);
+  const others = (det.others ?? []).filter((o) => !o.quarantined);
+  const dir = path.dirname(det.path);
+  throw new AgentError(
+    `${rt.id} can't start: macOS has quarantined ${det.path} (com.apple.quarantine), so Den did not run it and macOS showed no warning. ` +
+      (others.length
+        ? `A person can use another copy found (${others.map((o) => o.path).join(", ")}) or clear this one.`
+        : "A person can clear it, or install another copy."),
+    {
+      status: 409,
+      code: RUNTIME_QUARANTINED,
+      hints: [
+        ...others.map(
+          (o) =>
+            `Use another copy: set ${key} to ${o.path} in ${d.userConfigFile()} (or Settings › Runtimes › Use this).`,
+        ),
+        `Or clear it yourself: in ${dir}, run ${path.basename(det.path)} once from a terminal and allow it when macOS asks. Den never removes the quarantine.`,
+      ],
+      quarantined: {
+        runtime: rt.id,
+        name,
+        path: det.path,
+        dir,
+        scope: det.source === "workspace" ? "workspace" : "global",
+        setting: key,
+        others,
+      },
+    },
+  );
+}
+
+/**
+ * Issue 479: before an agent is stopped to be started again (restart,
+ * move, persona change, relaunch): refused while its runtime's copy is
+ * quarantined, so it is never left stopped by a start that can't run.
+ */
+async function notQuarantined(
+  d: AgentsResolved,
+  runtime: string,
+  ws?: string,
+): Promise<void> {
+  syncCatalog(d);
+  const rt = getRuntime(runtime);
+  if (!rt) return;
+  await interactiveSearch(d, [rt], ws);
+  quarantineOrRefuse(d, rt, detectRuntime(d, rt, ws));
 }
 
 function runtimeFor(id: string): Runtime {
@@ -6270,6 +6358,7 @@ export async function restartAgent(
           [`Resume it: ${d.cli} agents resume ${rec.id}`],
         );
     }
+    await notQuarantined(d, cur.runtime, cur.workspace);
     let stopped: Stopped;
     try {
       stopped = await stopAgent(
@@ -6498,6 +6587,7 @@ export async function moveAgent(
   }
   // Review M1: stop, move and resume as one change (not the wait above).
   return lockAgent(d, rec.id, async () => {
+    await notQuarantined(d, rec.runtime, to);
     const stopped = await stopAgent(d, rec.id, rec.workspace);
     if (stopped.stillStopping)
       throw refused(
@@ -6642,6 +6732,7 @@ async function switchPersona(
   req: PersonaRequest,
   where: string,
 ): Promise<PersonaChanged> {
+  await notQuarantined(d, rec.runtime, rec.workspace);
   const stopped = await stopAgent(d, rec.id, rec.workspace);
   if (stopped.stillStopping)
     throw refused(
@@ -7038,6 +7129,7 @@ export async function relaunchAgent(
     // The rotated session ends here, if it is still open.
     const s = sessionOf(await hostSessions(d), rec);
     if (s && !s.exited) {
+      await notQuarantined(d, rec.runtime, rec.workspace);
       const stopped = await stopAgent(d, rec.id, ws);
       if (stopped.stillStopping)
         throw refused(`agent ${rec.id} is still stopping; try again`);

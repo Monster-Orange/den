@@ -97,6 +97,8 @@ export function runtimeOptions(personas, runtimes, personaId, t) {
         const parts = [
           label,
           r.version,
+          // Issue 479: never run, so Start says why (readiness).
+          r.quarantined ? t("set.ui.rt.quarantined") : "",
           r.denTools === false ? t("ag.rt.denTools") : "",
         ];
         return no
@@ -132,6 +134,25 @@ export function readiness(data, personaId, runtimeId, t) {
     };
   const name = runtimeName(runtimes, r.id);
   const mono = (x) => `<span class="mono">${escHtml(x)}</span>`;
+  // Issue 479: a quarantined copy is never run: Start is off, and the
+  // line offers the choices.
+  if (r.available && r.quarantined && r.path)
+    return {
+      ok: false,
+      tone: "warn",
+      html: quarantinedHtml(
+        {
+          runtime: r.id,
+          name,
+          path: r.path,
+          dir: dirOf(r.path),
+          scope: r.source === "workspace" ? "workspace" : "global",
+          setting: r.setting || `agents.runtimes.${r.id}.bin`,
+          others: r.others ?? [],
+        },
+        t,
+      ),
+    };
   if (r.available) {
     const no = cantStart(personas, r, personaId, t);
     if (no)
@@ -187,6 +208,107 @@ export function readiness(data, personaId, runtimeId, t) {
       ".";
   }
   return { ok: false, tone: "warn", html: `${what} ${fixHtml}` };
+}
+
+/** A path's folder ("/" for a file at the root). */
+const dirOf = (p) => {
+  const i = String(p).lastIndexOf("/");
+  return i > 0 ? p.slice(0, i) : "/";
+};
+
+/**
+ * Issue 479: why a quarantined runtime copy wasn't started, its path, and
+ * the choices: "Use this" for each other copy found that isn't
+ * quarantined (pins agents.runtimes.<id>.bin at `scope`, as Settings ›
+ * Runtimes does), open its folder to clear it yourself, and check again.
+ * `q` is the server's runtime_quarantined detail (or a runtime row's).
+ * Den never clears the quarantine. wireQuarantine handles the buttons.
+ */
+export function quarantinedHtml(q, t) {
+  const mono = (x) => `<span class="mono">${escHtml(x)}</span>`;
+  const others = (q.others ?? []).filter((o) => !o.quarantined);
+  const btn = (attrs, label, aria) =>
+    `<button type="button" class="den-btn sm" ${attrs}${aria ? ` aria-label="${escHtml(aria)}"` : ""}>${escHtml(label)}</button>`;
+  return (
+    `<span data-quarantined="${escHtml(q.runtime)}">` +
+    escHtml(t("ag.rt.quarantined", { name: q.name })) +
+    " " +
+    mono(q.path) +
+    (others.length
+      ? ` <span class="ag-q-others" role="list">` +
+        escHtml(t("ag.rt.useOther")) +
+        others
+          .map(
+            (o) =>
+              ` <span role="listitem">${mono(o.path)} (${escHtml(o.version || t("set.ui.rt.versionUnknown"))}) ` +
+              btn(
+                `data-q-pin="${escHtml(q.runtime)}" data-q-scope="${escHtml(q.scope)}" data-bin="${escHtml(o.path)}"`,
+                t("set.ui.rt.useThis"),
+                t("set.ui.rt.useThisFor", { path: o.path, name: q.name }),
+              ) +
+              `</span>`,
+          )
+          .join("") +
+        `</span>`
+      : "") +
+    " " +
+    escHtml(t("ag.rt.clearSelf")) +
+    " " +
+    btn(`data-q-open="${escHtml(q.dir)}"`, t("ag.rt.openFolder")) +
+    " " +
+    btn("data-q-again", t("ag.rt.checkAgain")) +
+    `<span class="ag-q-err" role="alert" hidden></span>` +
+    `</span>`
+  );
+}
+
+/**
+ * Issue 479: the buttons quarantinedHtml draws, under `host` (bound once):
+ * Use this pins that copy (POST /api/agents/runtimes/<id>/path, a
+ * person's own change) then `reload()`; Open its folder opens a terminal
+ * there (POST /api/terminal/open); Check again is `reload()`. A refusal
+ * shows in the line, never as a toast. `ws` (a value or a function): the
+ * project shown, for a pin at project scope.
+ */
+export function wireQuarantine(host, { api, reload, ws, t }) {
+  if (!host || host.dataset.qWired) return;
+  host.dataset.qWired = "1";
+  host.addEventListener("click", async (e) => {
+    const b = e.target?.closest?.(
+      "button[data-q-pin],button[data-q-open],button[data-q-again]",
+    );
+    if (!b || !host.contains(b)) return;
+    e.preventDefault();
+    const err = b.closest("[data-quarantined]")?.querySelector(".ag-q-err");
+    if (err) err.hidden = true;
+    b.disabled = true;
+    try {
+      if (b.dataset.qPin) {
+        const w = typeof ws === "function" ? ws() : ws;
+        const scope =
+          b.dataset.qScope === "workspace" && w ? "workspace" : "global";
+        await api(
+          "POST",
+          `/api/agents/runtimes/${encodeURIComponent(b.dataset.qPin)}/path`,
+          {
+            scope,
+            ...(scope === "workspace" ? { workspace: w } : {}),
+            bin: b.dataset.bin,
+          },
+        );
+        await reload();
+      } else if (b.dataset.qOpen) {
+        await api("POST", "/api/terminal/open", { path: b.dataset.qOpen });
+      } else await reload();
+    } catch (x) {
+      if (err) {
+        err.textContent = x?.message || t("ag.rt.notDone");
+        err.hidden = false;
+      }
+    } finally {
+      b.disabled = false;
+    }
+  });
 }
 
 /**

@@ -130,7 +130,7 @@ describe("issue 479 (1): a quarantined runtime copy is never started", () => {
     expect(e.code).toBe("runtime_quarantined");
     expect(e.status).toBe(409);
     expect(e.message).toContain(c.r.claude);
-    expect(e.message).toMatch(/quarantined by macOS/);
+    expect(e.message).toMatch(/macOS has quarantined/);
     expect(e.message).toMatch(/did not run it/);
     // The choices: the other copy that runs (never the quarantined third),
     // or clear it yourself; Den never clears it.
@@ -236,7 +236,7 @@ describe("issue 479 (2): another agent's start gets the same refusal, no retry",
     expect(rc).toBe(1);
     const err = c.r.err.join("\n");
     expect(err).toContain(c.r.claude);
-    expect(err).toMatch(/quarantined by macOS/);
+    expect(err).toMatch(/macOS has quarantined/);
     expect(err).toContain(`set agents.runtimes.den-claude.bin to ${c.other}`);
     expect(c.r.made).toHaveLength(0);
     expect(fs.existsSync(c.r.ran)).toBe(false);
@@ -342,7 +342,7 @@ describe("issue 479 (1): the Start dialog says so before Start", () => {
     expect(html).toContain('data-bin="/opt/b/claude"');
     expect(html).toContain('data-q-scope="global"');
     expect(html).not.toContain('data-bin="/opt/c/claude"');
-    expect(html).toContain("ag.rt.useThis");
+    expect(html).toContain("set.ui.rt.useThis");
     expect(html).toContain('data-q-open="/opt/a"');
     expect(html).toContain("ag.rt.openFolder");
     expect(html).toContain("ag.rt.clearSelf");

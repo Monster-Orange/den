@@ -16,7 +16,7 @@
  * The page's table styles (table.svc, .tablewrap, .tbl-*) and the shell's
  * (.den-sec, .den-btn, .den-dot) are reused as they are.
  */
-import { fillStartForm } from "/agent-start.js";
+import { fillStartForm, wireQuarantine } from "/agent-start.js";
 import { timeHtml } from "/kit/time.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
@@ -195,6 +195,18 @@ async function refresh(ws) {
 
 function fillForm(form, data) {
   fillStartForm(form, data, t);
+  // Issue 479: a quarantined runtime's choices (Use this, open its folder).
+  wireQuarantine(form.querySelector("[data-runtime-ready]"), {
+    api,
+    t,
+    reload: async () => {
+      personasAsked = api("GET", "/api/personas").catch((err) => {
+        personasAsked = null;
+        throw err;
+      });
+      fillForm(form, await personasAsked);
+    },
+  });
 }
 
 async function openForm(sec) {

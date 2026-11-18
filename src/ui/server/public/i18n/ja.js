@@ -2090,6 +2090,15 @@
       "プロジェクトで独自の CLI として動きます。Den のツールと権限モードは今後対応します。",
     "ag.rt.notInstalled": "未インストール",
     "ag.rt.needsArgv": "ペルソナに argv テンプレートがありません",
+    // issue 479: a quarantined runtime copy is never started.
+    "ag.rt.quarantined":
+      "{name} を開始できません: macOS がこのコピーを隔離しているため、Den は実行しておらず、macOS の警告も出ていません:",
+    "ag.rt.useOther": "見つかった別のコピーを使う:",
+    "ag.rt.clearSelf":
+      "または自分で解除: フォルダを開き、ターミナルから一度実行して、macOS に聞かれたら許可します。Den が隔離を外すことはありません。",
+    "ag.rt.openFolder": "フォルダを開く",
+    "ag.rt.checkAgain": "もう一度確認",
+    "ag.rt.notDone": "うまくいきませんでした",
     "pj.expand": "プロジェクト一覧を展開",
     "gr.act.autostartOff": "自動起動: オフ (オンにする)",
     "gr.act.autostartOn": "自動起動: オン (オフにする)",

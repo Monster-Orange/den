@@ -87,7 +87,13 @@
  * and Start fresh. A running one says "Handoff due" or "Ready to relaunch"
  * as a tag.
  */
-import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
+import {
+  quarantinedHtml,
+  readiness,
+  runtimeName,
+  runtimeOptions,
+  wireQuarantine,
+} from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
@@ -4143,6 +4149,7 @@ function paintRuntimeFields(reset) {
   ready.innerHTML = r.html;
   ready.hidden = !r.html;
   ready.dataset.tone = r.tone;
+  wireStartQuarantine(ready);
   go.disabled = !r.ok;
   go.dataset.blocked = r.ok ? "" : "runtime";
 }
@@ -4588,6 +4595,15 @@ function startBody() {
 
 function showStartError(err) {
   const el = $d("#ag-err");
+  // Issue 479: its runtime's copy is quarantined: why, the path and the
+  // choices (Use this, open its folder), not only the message.
+  const q = err?.data?.quarantined;
+  if (q?.path) {
+    el.innerHTML = quarantinedHtml(q, t);
+    wireStartQuarantine(el);
+    el.hidden = false;
+    return;
+  }
   el.textContent = err?.message || String(err);
   // AG-10.10: that agent is running: offer to open it.
   const running = err?.data?.running;
@@ -4604,6 +4620,25 @@ function showStartError(err) {
     el.append(" ", b);
   }
   el.hidden = false;
+}
+
+/**
+ * Issue 479: the quarantine line's buttons in the Start dialog (its
+ * readiness line, or the refusal after Start). A pin or Check again asks
+ * the runtimes again and repaints; the person presses Start.
+ */
+function wireStartQuarantine(host) {
+  wireQuarantine(host, {
+    api,
+    t,
+    ws: () => $d("#ag-ws")?.value || viewWorkspaces()[0],
+    reload: async () => {
+      const ws = $d("#ag-ws")?.value || viewWorkspaces()[0];
+      personasAsked.delete(ws || "");
+      $d("#ag-err").hidden = true;
+      await fillForWorkspace(ws);
+    },
+  });
 }
 
 /**
