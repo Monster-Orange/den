@@ -44,7 +44,10 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    browser = await pw[engine].launch();
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -83,6 +86,12 @@ beforeAll(async () => {
     text: "Quiet finished its turn",
     msg: { key: "bell.m.turn", vars: { name: "Quiet" } },
   });
+  // The question's agent is a real one: its record, its session ended by
+  // itself (issue 424). Issue 369: the server's first attention check (2 s
+  // after it starts) withdraws an unread "asked" row whose agent has no
+  // record, as a leftover from before. Rows written before that check went;
+  // rows written after it stayed. Which came first was timing.
+  s.seed({ id: "asker", workspace: "north" });
   st.add({
     kind: "waiting",
     subject: "agent:asker",
@@ -267,10 +276,20 @@ describe("bell v6: a quieter bell", () => {
     expect(await s!.settingsGet()).toMatchObject({
       bell_kinds: { release: false },
     });
+    // Undo's save, armed before the click: the note goes at the click and
+    // the save follows it (issue 424: in WebKit the note was gone before
+    // the save landed, and the save landed in the next test).
+    const undone = p.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/settings") &&
+        r.request().method() === "POST" &&
+        JSON.stringify(r.request().postDataJSON()).includes('"release":true'),
+    );
     await toast.locator("button").click();
     await p.waitForFunction(
       () => document.querySelector(".den-toast-act") === null,
     );
+    await undone;
     expect(await s!.settingsGet()).toMatchObject({
       bell_kinds: { release: true },
     });
