@@ -231,25 +231,51 @@ describe("in CI", () => {
     env?: Record<string, string>;
     "continue-on-error"?: unknown;
     if?: string;
+    id?: string;
   };
   const wf = (f: string) =>
     yaml.parse(
       fs.readFileSync(path.join(ROOT, ".github", "workflows", f), "utf-8"),
     ) as {
-      jobs: Record<string, { env?: Record<string, string>; steps: Step[] }>;
+      jobs: Record<
+        string,
+        {
+          env?: Record<string, string>;
+          steps: Step[];
+          strategy?: { matrix: { shard: number[] } };
+          "timeout-minutes"?: number;
+        }
+      >;
     };
   it("only a pull request turns it on, and the quarantined step can't block", () => {
-    const t = wf("ci.yml").jobs.tests;
-    expect(t.env?.DEN_TEST_QUARANTINE).toBe(
-      "${{ github.event_name == 'pull_request' && 'exclude' || '' }}",
+    // Issue 398: pull requests run in the pr job (a small subset) or
+    // pr-shards (a large one); main's tests job never sets it.
+    const jobs = wf("ci.yml").jobs;
+    expect(jobs.tests.env?.DEN_TEST_QUARANTINE).toBeUndefined();
+    for (const name of ["pr", "pr-shards"]) {
+      const j = jobs[name];
+      expect([name, j.env?.DEN_TEST_QUARANTINE]).toEqual([name, "exclude"]);
+      const qs = j.steps.filter((s) => s.env?.DEN_TEST_QUARANTINE === "only");
+      expect(qs).toHaveLength(1);
+      expect(qs[0]["continue-on-error"]).toBe(true);
+      expect(qs[0].if).toMatch(/^\$\{\{ !cancelled\(\)/);
+    }
+    const shardStep = jobs["pr-shards"].steps.find(
+      (s) => s.env?.DEN_TEST_QUARANTINE === "only",
     );
-    const qs = t.steps.filter((s) => s.env?.DEN_TEST_QUARANTINE === "only");
-    expect(qs).toHaveLength(1);
-    expect(qs[0]["continue-on-error"]).toBe(true);
-    expect(qs[0].if).toBe(
-      "${{ !cancelled() && github.event_name == 'pull_request' }}",
-    );
-    expect(qs[0].run).toContain("--shard=${{ matrix.shard }}/4");
+    // The big pull-request run splits as many ways as main's tests job, and
+    // has the same room: in four parts a shard ran past a 20-min limit.
+    const pick = (
+      jobs.pr.steps.find((s) => s.id === "select")?.run ?? ""
+    ).match(/shards=\[([\d,]+)\]/);
+    const n = pick ? pick[1].split(",").length : 0;
+    expect(n).toBe(wf("ci.yml").jobs.tests.strategy!.matrix.shard.length);
+    for (const st of jobs["pr-shards"].steps.filter((s) =>
+      (s.run ?? "").includes("--shard="),
+    ))
+      expect(st.run).toContain(`--shard=\${{ matrix.shard }}/${n}`);
+    expect(shardStep?.run).toContain(`--shard=\${{ matrix.shard }}/${n}`);
+    expect(jobs["pr-shards"]["timeout-minutes"]).toBeGreaterThanOrEqual(30);
   });
   it("the release never sets it", () => {
     expect(
