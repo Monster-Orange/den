@@ -151,6 +151,20 @@ browsers (`~/.cache/ms-playwright`) and apt's downloaded packages
 The limits are settings: `CI_PW_DEPS_SECONDS` (default 240) and
 `CI_PW_INSTALL_SECONDS` (default 90).
 
+### Waiting in browser tests
+
+Wait for what the page does, never for a fixed time:
+
+- After a change the page saves, wait for the save's answer and then for the
+  page's own last step (its announcement, or the row back in the list). A list
+  shows a move before the server has it; a test that stops there leaves the
+  save in flight, and on a busy runner it lands in the next test.
+- A save slower than 300 ms opens the working pop-up, which stays at least
+  600 ms and takes the keyboard. A key pressed before it closes goes to the
+  pop-up, not the row. Waiting for the page's last step covers this too.
+- Each test leaves nothing running: every request it started has answered
+  before it ends.
+
 ## Merging
 
 A pull request merges once its own run is green. When only main moved
