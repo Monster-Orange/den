@@ -5364,6 +5364,14 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - Past its estimate plus `overrun_margin_minutes` (default 15) a run is
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
+- A waiter that leaves before its turn records `left-waiting`, not
+  `released`: the signal that stopped it (`SIGINT`, `SIGTERM`, `SIGHUP`),
+  or `asked` when its asker gave the place back; the minutes it waited;
+  and its place in the queue. On a signal, `gate run` says so on stderr
+  ("gate: <id> left the queue on SIGTERM after N min (place K)") and exits
+  129, 130 or 143. `gate status` and the gate chip show these rows for
+  `left_waiting_minutes` (default 60). The gate never drops a waiter on
+  its own: only one whose processes are gone is taken back.
 - A person ends a slot early on the Agents page (the gate chip) or with
   `gate end`; the run is not stopped. An agent can't: the web route
   refuses an agent's token, `gate end` refuses in an agent's terminal, and

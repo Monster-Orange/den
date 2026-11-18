@@ -6,14 +6,18 @@
  * ~/Library/Application Support/den/gate-slots (macOS), else
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
- *   settings.json     cpu_slots, overrun_margin_minutes
- *   events.jsonl      the slot log: asked, waits, granted, released, taken
- *                     back, overdue, ended early (Coach reads time lost)
+ *   settings.json     cpu_slots, overrun_margin_minutes, left_waiting_minutes
+ *   events.jsonl      the slot log: asked, waits, granted, released, left
+ *                     waiting, taken back, overdue, ended early (Coach reads
+ *                     time lost)
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone, at once, and
  * records it; it flags (once) a holder past its estimate plus the margin.
- * Nothing here kills a process or takes a live holder's slot.
+ * Nothing here kills a process or takes a live holder's slot, and a live
+ * waiter is never dropped: a waiter leaves only by its own give-back
+ * (`left-waiting`, with why) or when its processes are gone
+ * (`taken-back-gone`).
  */
 import { randomBytes } from "crypto";
 import * as fs from "fs";
@@ -55,6 +59,21 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
 export type GateSettingsPatch = {
   cpu_slots?: number | null;
   overrun_margin_minutes?: number | null;
+  left_waiting_minutes?: number | null;
+};
+
+/**
+ * The machine's settings: the queue rules' (rules.ts), and how far back
+ * `gate status` and the page show who left the queue (issue 524).
+ */
+export interface GateStoreSettings extends GateSettings {
+  /** Left-waiting rows this recent are shown under the queue, minutes. */
+  leftWaitingMinutes: number;
+}
+
+export const GATE_STORE_DEFAULTS: GateStoreSettings = {
+  ...GATE_DEFAULTS,
+  leftWaitingMinutes: 60,
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -64,6 +83,7 @@ export const GATE_LIMITS: Record<
 > = {
   cpu_slots: { min: 1, max: 64, int: true },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  left_waiting_minutes: { min: 0, max: 7 * 24 * 60, int: false },
 };
 
 /**
@@ -106,6 +126,7 @@ export type GateEvent =
   | "waits"
   | "granted"
   | "released"
+  | "left-waiting"
   | "taken-back-gone"
   | "overdue"
   | "ended-early";
@@ -117,8 +138,18 @@ export interface GateEventRow {
   kind: GateKind;
   who: string;
   label: string;
-  /** granted: minutes waited. released, taken back: minutes held. */
+  /**
+   * granted, left-waiting: minutes waited. released, taken back: minutes
+   * held.
+   */
   minutes?: number;
+  /**
+   * left-waiting: the signal that stopped its asker (SIGTERM, ...), or
+   * "asked" when the asker's own code gave the place back.
+   */
+  signal?: string;
+  /** left-waiting: its place in the queue when it left (1 is next). */
+  place?: number;
   /** waits: the slots it waits behind. */
   behind?: string[];
   /** waits: when it may expect to start (ISO). */
@@ -161,7 +192,7 @@ export class GateStore {
     return path.join(this.dir, "slots");
   }
 
-  settings(): GateSettings {
+  settings(): GateStoreSettings {
     try {
       const v = JSON.parse(
         fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
@@ -182,9 +213,13 @@ export class GateStore {
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
         ),
+        leftWaitingMinutes: num(
+          "left_waiting_minutes",
+          GATE_STORE_DEFAULTS.leftWaitingMinutes,
+        ),
       };
     } catch {
-      return { ...GATE_DEFAULTS };
+      return { ...GATE_STORE_DEFAULTS };
     }
   }
 
@@ -442,14 +477,56 @@ export class GateStore {
 
   /** The holder is done (or the waiter gives up). */
   release(id: string): boolean {
+    return this.giveBack(id) !== null;
+  }
+
+  /**
+   * Gives a slot back; returns the slot log's row, or null if no slot. A
+   * holder's is `released` (minutes held). A waiter's is `left-waiting`
+   * (issue 524): `signal` names what stopped its asker, else "asked"; with
+   * the minutes it waited and its place in the queue.
+   */
+  giveBack(id: string, signal?: string): GateEventRow | null {
     return this.locked(() => {
-      const e = this.readAll().find((x) => x.id === id);
-      if (!e) return false;
+      const all = this.readAll();
+      const e = all.find((x) => x.id === id);
+      if (!e) return null;
+      const now = this.now();
       this.remove(id);
-      this.record(e, { event: "released", ...this.heldFor(e, this.now()) });
+      const row: Partial<GateEventRow> = e.grantedAt
+        ? { event: "released", ...this.heldFor(e, now) }
+        : {
+            event: "left-waiting",
+            signal: signal ?? "asked",
+            minutes: (now - Date.parse(e.askedAt)) / 60_000,
+            place:
+              all
+                .filter((x) => !x.grantedAt)
+                .sort(byAsked)
+                .findIndex((x) => x.id === id) + 1,
+          };
+      const at = this.record(e, row);
       this.settle();
-      return true;
+      return {
+        at,
+        id: e.id,
+        kind: e.kind,
+        who: e.who,
+        label: e.label,
+        ...row,
+      } as GateEventRow;
     });
+  }
+
+  /**
+   * Who left the queue before their grant in the last
+   * `left_waiting_minutes`, newest first (issue 524).
+   */
+  leftWaiting(now = this.now()): GateEventRow[] {
+    const since = now - this.settings().leftWaitingMinutes * 60_000;
+    return this.events()
+      .filter((r) => r.event === "left-waiting" && Date.parse(r.at) >= since)
+      .reverse();
   }
 
   /**

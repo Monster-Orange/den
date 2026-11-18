@@ -209,6 +209,81 @@ describe("gate run", () => {
     expect(t.d.store.list().map((e) => e.label)).toEqual(["l"]);
   });
 
+  it("issue 524: SIGTERM while waiting records left-waiting and says so on stderr, once; exit 143", async () => {
+    let now = Date.parse("2026-11-18T10:00:00Z");
+    const t = deps({ now: () => now });
+    t.d.store = new GateStore({
+      dir: t.d.store.dir,
+      alive: () => true,
+      now: () => now,
+    });
+    const s = t.d.store;
+    s.ask({ kind: "browser", who: "w", label: "h", pid: 7, estimateMin: 5 });
+    s.ask({ kind: "cpu", who: "w", label: "ahead", pid: 8, estimateMin: 5 });
+    // Asked before this run: it is place 2.
+    now += 1_000;
+    let sleeps = 0;
+    t.d.sleep = () => {
+      now += 2_000;
+      if (++sleeps === 3210) t.signal("SIGTERM");
+      return Promise.resolve();
+    };
+    expect(
+      await cmdGate(
+        ["run", "--kind", "cpu", "--label", "mine", "--", "x"],
+        t.d,
+      ),
+    ).toBe(143);
+    expect(t.exits).toEqual([143]);
+    expect(t.ran).toEqual([]);
+    const mine = s.events().filter((e) => e.label === "mine");
+    expect(mine.map((e) => e.event)).toEqual([
+      "asked",
+      "waits",
+      "left-waiting",
+    ]);
+    expect(mine.at(-1)).toMatchObject({
+      signal: "SIGTERM",
+      minutes: 107,
+      place: 2,
+    });
+    expect(t.err.filter((l) => l.includes("left the queue"))).toEqual([
+      `gate: ${mine[0]!.id} left the queue on SIGTERM after 107 min (place 2)`,
+    ]);
+  });
+
+  it("issue 524: SIGHUP and SIGINT while waiting keep their codes, 129 and 130", async () => {
+    for (const [sig, code] of [
+      ["SIGHUP", 129],
+      ["SIGINT", 130],
+    ] as const) {
+      const t = deps();
+      t.d.store.ask({
+        kind: "browser",
+        who: "w",
+        label: "h",
+        pid: 7,
+        estimateMin: 5,
+      });
+      t.d.sleep = () => {
+        t.signal(sig);
+        return Promise.resolve();
+      };
+      expect(await cmdGate(["run", "--", "x"], t.d)).toBe(code);
+      expect(t.exits).toEqual([code]);
+      expect(t.d.store.events().at(-1)).toMatchObject({
+        event: "left-waiting",
+        signal: sig,
+        place: 1,
+      });
+      expect(t.err.at(-1)).toMatch(
+        new RegExp(
+          `^gate: cpu-[0-9a-f]+ left the queue on ${sig} after 0 min \\(place 1\\)$`,
+        ),
+      );
+    }
+  });
+
   it("a real run killed with SIGTERM stops its command and gives its slot back", async () => {
     const dir = tmp();
     const store = new GateStore({ dir });
@@ -368,7 +443,9 @@ describe("gate end and settings: a person's only", () => {
     expect(await cmdGate(["settings", "--cpu-slots", "4"], agent)).toBe(2);
     expect(t.d.store.settings().cpuSlots).toBe(2);
     expect(await cmdGate(["settings", "--cpu-slots", "4"], t.d)).toBe(0);
-    expect(t.out.at(-1)).toBe("cpu slots 4 · flagged 15 min past its estimate");
+    expect(t.out.at(-1)).toBe(
+      "cpu slots 4 · flagged 15 min past its estimate · left the queue shown 60 min",
+    );
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });
 });
@@ -408,6 +485,92 @@ describe("gate status", () => {
     });
     expect(j.slots[1]).toMatchObject({ id: b.id, granted: false });
     expect(typeof j.slots[1]!.expectedStart).toBe("string");
+  });
+});
+
+describe("gate status: who left the queue (issue 524)", () => {
+  it("shows the last hour's left-waiting rows under the queue, and in --json", async () => {
+    let now = Date.parse("2026-11-18T10:00:00Z");
+    const t = deps({ now: () => now });
+    t.d.store = new GateStore({
+      dir: t.d.store.dir,
+      alive: () => true,
+      now: () => now,
+    });
+    const s = t.d.store;
+    s.ask({ kind: "browser", who: "H", label: "h", pid: 1, estimateMin: 500 });
+    const old = s.ask({
+      kind: "cpu",
+      who: "G",
+      label: "old",
+      pid: 2,
+      estimateMin: 5,
+    });
+    const left = s.ask({
+      kind: "cpu",
+      who: "L",
+      label: "lint",
+      pid: 3,
+      estimateMin: 5,
+    });
+    s.giveBack(old.id, "SIGINT");
+    now += 30 * 60_000;
+    s.giveBack(left.id, "SIGTERM");
+    now += 40 * 60_000;
+    await cmdGate(["status"], t.d);
+    expect(t.out).toHaveLength(3);
+    expect(t.out[1]).toBe("Left the queue in the last 60 min:");
+    expect(t.out[2]).toMatch(
+      new RegExp(
+        `^${left.id}  left cpu  L  "lint"  on SIGTERM after 30 min \\(place 1\\), at `,
+      ),
+    );
+    t.out.length = 0;
+    await cmdGate(["status", "--json"], t.d);
+    const j = JSON.parse(t.out[0]!) as { left: { id: string }[] };
+    expect(j.left.map((r) => r.id)).toEqual([left.id]);
+  });
+
+  it("with no one holding or waiting, still says who left", async () => {
+    const t = deps();
+    const w = t.d.store.ask({
+      kind: "browser",
+      who: "H",
+      label: "h",
+      pid: 1,
+      estimateMin: 5,
+    });
+    const x = t.d.store.ask({
+      kind: "browser",
+      who: "X",
+      label: "x",
+      pid: 2,
+      estimateMin: 5,
+    });
+    t.d.store.release(x.id);
+    t.d.store.release(w.id);
+    await cmdGate(["status"], t.d);
+    expect(t.out[0]).toBe("No gate runs hold or wait.");
+    expect(t.out[2]).toMatch(
+      new RegExp(
+        `^${x.id}  left browser  X  "x"  when it asked, after 0 min \\(place 1\\), at `,
+      ),
+    );
+  });
+
+  it("settings: --left-waiting-minutes is a person's; it says the window", async () => {
+    const t = deps();
+    const agent = { ...t.d, env: { DEN_ACTOR_TOKEN: "x" } };
+    expect(
+      await cmdGate(["settings", "--left-waiting-minutes", "120"], agent),
+    ).toBe(2);
+    expect(
+      await cmdGate(["settings", "--left-waiting-minutes", "120"], t.d),
+    ).toBe(0);
+    expect(t.d.store.settings().leftWaitingMinutes).toBe(120);
+    expect(t.out.at(-1)).toBe(
+      "cpu slots 2 · flagged 15 min past its estimate · left the queue shown 120 min",
+    );
   });
 });
 

@@ -1,6 +1,6 @@
 /**
  * Issue 144 GATE-SLOT: the queue as the web page, the MCP tools and
- * `gate status --json` show it.
+ * `gate status --json` show it, with who left the queue lately (issue 524).
  */
 import { expectedEnd, expectedStart, overrun } from "./rules.js";
 import type { GateStore } from "./store.js";
@@ -18,6 +18,21 @@ export interface GateSlotView {
   overrun?: boolean;
   askedAt?: string;
   expectedStart?: string;
+}
+
+/** A run that left the queue before its grant (issue 524). */
+export interface GateLeftView {
+  id: string;
+  kind: "browser" | "cpu";
+  who: string;
+  label: string;
+  at: string;
+  /** The signal that stopped it, or "asked". */
+  signal: string;
+  /** Minutes it waited. */
+  minutes: number;
+  /** Its place in the queue when it left (1 is next). */
+  place: number;
 }
 
 export function gateView(store: GateStore, now = Date.now()) {
@@ -42,5 +57,15 @@ export function gateView(store: GateStore, now = Date.now()) {
           expectedStart: new Date(expectedStart(all, e.id, now)).toISOString(),
         }),
   }));
-  return { settings, slots };
+  const left: GateLeftView[] = store.leftWaiting(now).map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    who: r.who,
+    label: r.label,
+    at: r.at,
+    signal: r.signal ?? "asked",
+    minutes: r.minutes ?? 0,
+    place: r.place ?? 0,
+  }));
+  return { settings, slots, left };
 }

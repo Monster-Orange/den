@@ -2046,6 +2046,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
   },
   {
+    // Issue 524: how long a run that left the queue shows, with why.
+    id: "server.gate_left",
+    category: "server",
+    label: "Runs that left the queue, shown for minutes",
+    description:
+      "A test run that leaves the queue before its turn (a signal, or its asker gave the place back) is shown with why, this long, in `gate status` and on the Agents page. __DEN_CLI__ gate settings --left-waiting-minutes 60",
+    keywords: ["gate", "slot", "queue", "left", "signal", "tests"],
+    scope: "user",
+    keys: ["gate_slots.left_waiting_minutes"],
+    control: { type: "number", min: 0, max: 10080, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.leftWaitingMinutes ?? 60,
+    write: (v, ctx) => ctx.post({ gate_slots: { left_waiting_minutes: v } }),
+  },
+  {
     // SRV-P6 (0.4.48): how this install takes a new version
     // (user.yml server_agent.self_update). A person's only.
     id: "server.self_update",
