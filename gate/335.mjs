@@ -10,7 +10,9 @@
 // for the bearer (ctx.secretSeen). The harness
 // holds the test value and answers with paths only: the check never sees, prints or writes it, and never
 // reads a process's environment. That the value never reaches the agent's env is a Den unit test of what
-// the session is launched with (tests/unit/agents/project-mcp.test.ts). Teardown removes both stubs.
+// the session is launched with (tests/unit/agents/project-mcp.test.ts). Clause 6 (issue 473) runs A's
+// headers helper in A's own session (handle.sh), with Den's server in reach and out of it. Teardown
+// removes both stubs.
 export const issue = 335;
 export const clauses = [
   "the servers are listed in Settings (names and urls only)",
@@ -92,6 +94,84 @@ async function seenBy(ctx, a) {
   };
 }
 
+/** A fetch answer's body as text (ctx.fetch keeps it as text or JSON). */
+const textOf = (r) =>
+  typeof r?.body === "string" ? r.body : JSON.stringify(r?.body ?? {});
+
+/**
+ * Clause 6 (issue 473): the helper Den wrote into A's MCP config, run in A's
+ * own session (handle.sh), as its MCP client runs it. It must print the
+ * header, which only Den's running server can hand it (the agent's env never
+ * holds the bearer). Then the same helper with Den's server out of its reach
+ * (DEN_BIND_HOST=::1, where Den doesn't listen): it must fail and say Den
+ * isn't running, never falling back to a store or an env of its own. The
+ * session prints only "header=yes|no" and a count, never the header. Den's
+ * side: GET /api/mcp-servers/bearers says it can serve SERVER's bearer
+ * (never a value), and POST /api/agents/self/mcp-headers refuses a person
+ * (403: an agent's own token only).
+ */
+async function headerCheck(ctx, a) {
+  const out = { route: null, self: null, up: null, down: null, noSh: false };
+  if (typeof ctx.fetch === "function") {
+    try {
+      const r = await ctx.fetch("/api/mcp-servers/bearers");
+      const text = textOf(r);
+      let servers = [];
+      try {
+        servers = JSON.parse(text).servers ?? [];
+      } catch {
+        servers = [];
+      }
+      const sv = servers.find((x) => x?.name === SERVER);
+      out.route = {
+        status: r.status,
+        listed: !!sv,
+        served: sv?.served === true,
+        why: sv?.why ? String(sv.why).slice(0, 200) : null,
+        secretish: SECRETISH.test(text),
+      };
+      const p = await ctx.fetch("/api/agents/self/mcp-headers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: SERVER }),
+      });
+      out.self = { status: p.status, secretish: SECRETISH.test(textOf(p)) };
+    } catch (e) {
+      out.route = { error: String(e?.message ?? e).slice(0, 200) };
+    }
+  }
+  if (typeof a.ctl.sh !== "function") {
+    out.noSh = true;
+    return out;
+  }
+  let helper = null;
+  try {
+    const cfg = await ctx.readBed(`state:agent-files/${a.id}/mcp.json`);
+    helper = JSON.parse(cfg ?? "").mcpServers?.[SERVER]?.headersHelper ?? null;
+  } catch {
+    helper = null;
+  }
+  if (!helper || !/\bmcp headers ['"]?gate-mcp['"]?$/.test(helper)) {
+    out.noHelper = true;
+    return out;
+  }
+  const verdict = (pre) =>
+    `out=$(${pre}${helper} 2>/dev/null); c=$?; ` +
+    `case "$out" in *'"Authorization":"Bearer '?*) h=yes;; *) h=no;; esac; ` +
+    `n=$(${pre}${helper} 2>&1 >/dev/null | grep -c "isn't running"); ` +
+    `echo "code=$c header=$h down=$n"`;
+  const parse = (r) => {
+    const t = String(r?.out ?? r?.all ?? "");
+    const m = /code=(\d+) header=(yes|no) down=(\d+)/.exec(t);
+    return m
+      ? { code: Number(m[1]), header: m[2] === "yes", says: Number(m[3]) > 0 }
+      : { bad: t.slice(0, 120) };
+  };
+  out.up = parse(await a.ctl.sh(verdict("")));
+  out.down = parse(await a.ctl.sh(verdict("DEN_BIND_HOST=::1 ")));
+  return out;
+}
+
 /** Clauses 3 and 5, both through the two stubs. Never throws: an error is the clause's own answer. */
 async function agents(ctx, state) {
   const out = { a: null, b: null, error: null, seen: null };
@@ -102,6 +182,8 @@ async function agents(ctx, state) {
     out.bHandle = b.workspace ?? null;
     out.a = await seenBy(ctx, a);
     out.b = await seenBy(ctx, b);
+    // Clause 6, while A runs: its helper, in its own session.
+    out.header = await headerCheck(ctx, a);
     for (const x of [a, b]) await x.ctl.stop();
     if (!out.noSecretSeen) {
       // Each agent's files and record, every session's files, Den's logs (all in Den's
@@ -295,6 +377,61 @@ function noBearer(r) {
   };
 }
 
+/** Clause 6: the helper gets the header from Den's server, and fails clearly without it. */
+function header(r) {
+  const c = { clause: clauses[5] };
+  const g = r.agents;
+  if (!r.line) return { ...c, ...NO_SERVER };
+  if (g.error) return { ...c, ok: false, detail: g.error };
+  const h = g.header ?? {};
+  const rt = h.route;
+  const den = !rt
+    ? "needs-harness-fetch: Den's side was not asked"
+    : rt.error
+      ? `Den's bearers check: ${rt.error}`
+      : `Den's bearers check: HTTP ${rt.status}, ${rt.listed ? (rt.served ? `serves ${SERVER}` : `can't serve ${SERVER}: ${rt.why}`) : `no ${SERVER}`}; a person at the agents' own route: HTTP ${h.self?.status}`;
+  const denOk =
+    !rt ||
+    (!rt.error &&
+      rt.status === 200 &&
+      rt.served &&
+      !rt.secretish &&
+      h.self?.status === 403 &&
+      !h.self.secretish);
+  if (h.noSh)
+    return denOk && rt
+      ? {
+          ...c,
+          ok: null,
+          skip: "needs-harness-agent-sh",
+          detail: `${den}; the stub's handle has no sh, to run the helper in its session`,
+        }
+      : { ...c, ok: false, detail: den };
+  if (h.noHelper)
+    return {
+      ...c,
+      ok: false,
+      detail: `A's MCP config has no ${SERVER} headers helper; ${den}`,
+    };
+  const up = h.up ?? {};
+  const down = h.down ?? {};
+  const words = (x) =>
+    x.bad !== undefined
+      ? `said "${x.bad}"`
+      : `exit ${x.code}, ${x.header ? "a header" : "no header"}${x.says ? ", says Den isn't running" : ""}`;
+  return {
+    ...c,
+    ok:
+      denOk &&
+      up.code === 0 &&
+      up.header === true &&
+      down.code !== 0 &&
+      down.header === false &&
+      down.says === true,
+    detail: `in A's session, the helper: ${words(up)}; with Den out of reach: ${words(down)}; ${den}`,
+  };
+}
+
 export function expect(cells) {
   const all = (f) => cells.every(({ result }) => f(result));
   const r0 = cells[0].result;
@@ -344,12 +481,6 @@ export function expect(cells) {
       detail: "the add waits on the person's own Allow",
     },
     noBearer(r0),
-    {
-      clause: clauses[5],
-      ok: null,
-      skip: "needs-issue-473",
-      detail:
-        "under the env secrets provider the helper reads the agent's own env, not the install's store (issue 473)",
-    },
+    header(r0),
   ];
 }

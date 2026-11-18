@@ -42,6 +42,14 @@ interface Opts {
   /** The harness reads nothing under Den's state folder (only the transcripts). */
   stateUnsearched?: boolean;
   refuse?: boolean;
+  /**
+   * Issue 473: "fixed" (the helper asks Den's server), "env" (before the
+   * fix: the bearer is handed through the agent's env, so the helper prints
+   * it even with Den out of reach, and Den has no bearer routes), "routes"
+   * (the routes, but a helper that still reads its env), "nosh" (a handle
+   * with no sh).
+   */
+  den?: "fixed" | "env" | "routes" | "nosh";
 }
 
 function onBed(o: Opts = {}): Out {
@@ -86,11 +94,28 @@ function onBed(o: Opts = {}): Out {
           stop: async () => ({ code: 0 }),
           remove: async () => { removed.push(id); records.delete(id); return { code: 0 }; },
         };
-        h.sh = async () => ({ status: 0, out: '{"Authorization":"Bearer <redacted>"}', err: "" });
+        const den = o.den ?? "fixed";
+        if (den !== "nosh") h.sh = async (cmd) => {
+          const away = /DEN_BIND_HOST=::1 /.test(cmd);
+          const helper = /mcp headers gate-mcp/.test(cmd);
+          const out = !helper ? "code=127 header=no down=0"
+            : den === "fixed" ? (away ? "code=1 header=no down=1" : "code=0 header=yes down=0")
+            : "code=0 header=yes down=0";
+          return { status: 0, out: out + "\\n", err: "" };
+        };
         return h;
       },
       goto: async () => {},
       shot: async () => {},
+      fetch: async (p) => {
+        const den = o.den ?? "fixed";
+        if (den === "env") return { status: 404, headers: {}, body: '{"ok":false}' };
+        if (p === "/api/mcp-servers/bearers")
+          return { status: 200, headers: {}, body: JSON.stringify({ servers: [{ project: "default", name: "gate-mcp", served: true }] }) };
+        if (p === "/api/agents/self/mcp-headers")
+          return { status: 403, headers: {}, body: '{"ok":false,"code":"agent_only"}' };
+        return { status: 404, headers: {}, body: "{}" };
+      },
     };
     // The harness's answer: how many files it read under paths, and the paths that held the value.
     // A path in Den's state folder needs "state:"; without it (or with stateUnsearched) it reads nothing.
@@ -219,11 +244,34 @@ describe("gate/335: an agent per project, and the bearer in no file or log", () 
     expect(o.removed).toHaveLength(2);
   });
 
-  it("the header clause skips as needs-issue-473 until that fix lands", () => {
-    expect(row(onBed(), HEADER)).toMatchObject({
+  it("issue 473 fixed: the helper prints the header in A's session, and with Den out of reach fails saying so", () => {
+    const r = row(onBed(), HEADER);
+    expect(r).toMatchObject({ ok: true });
+    expect(r?.skip).toBeUndefined();
+    expect(r?.detail).toMatch(
+      /the helper: exit 0, a header; with Den out of reach: exit 1, no header, says Den isn't running; Den's bearers check: HTTP 200, serves gate-mcp; a person at the agents' own route: HTTP 403/,
+    );
+  });
+
+  it("before issue 473's fix (the bearer handed through the agent's env): the header clause fails", () => {
+    const r = row(onBed({ den: "env" }), HEADER);
+    expect(r).toMatchObject({ ok: false });
+    expect(r?.detail).toMatch(/with Den out of reach: exit 0, a header/);
+  });
+
+  it("Den's routes there, but a helper that still reads its env: fails", () => {
+    expect(row(onBed({ den: "routes" }), HEADER)).toMatchObject({ ok: false });
+  });
+
+  it("a handle with no sh: skips naming it, only when Den's side passes", () => {
+    expect(row(onBed({ den: "nosh" }), HEADER)).toMatchObject({
       ok: null,
-      skip: "needs-issue-473",
+      skip: "needs-harness-agent-sh",
     });
+  });
+
+  it("the header clause never skips as needs-issue-473", () => {
+    expect(fs.readFileSync(GATE, "utf-8")).not.toMatch(/needs-issue-473/);
   });
 
   it("skips as needs-test-bearer only when the bed has no test value", () => {
