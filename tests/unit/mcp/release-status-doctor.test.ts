@@ -4,7 +4,7 @@
  * them beside the update's state (<state>/server-agent/update/doctor.json),
  * GET /api/server-agent/update reads both, and release_status shows them
  * to the whole Den's callers (never a project's agent). Den's line when it
- * is back points there, not at a doctor tool the agent doesn't have.
+ * is back says them itself (#384): the agent's tools predate the update.
  *
  * Every command is faked (no npm, no Den CLI, no restart); the API is a
  * fake that records what was asked.
@@ -262,7 +262,7 @@ describe("#176: release_status shows Den's last update and its doctor", () => {
   });
 });
 
-describe("#176: Den's line when it is back points at release_status", () => {
+describe("#384: Den's line when it is back says the doctor results itself", () => {
   const marker = (over: Partial<RestartMarker> = {}): RestartMarker => ({
     id: "",
     reason: "update Den 0.4.41 → 0.4.42",
@@ -273,23 +273,92 @@ describe("#176: Den's line when it is back points at release_status", () => {
     at: "2026-11-17T12:00:00.000Z",
     ...over,
   });
-
-  it("updated: release_status has the new Den's doctor results", () => {
-    const t = backMessage(marker(), "0.4.42", 222);
-    expect(t).toMatch(
-      /Then call release_status: it has the new Den's doctor results\.$/,
-    );
-    expect(t).not.toMatch(/with doctor/);
+  const update = (lines: string[] | null) => ({
+    state: "good" as const,
+    from: "0.4.41",
+    to: "0.4.42",
+    at: "2026-11-17T12:00:05.000Z",
+    ...(lines ? { doctor: { at: "2026-11-17T12:00:03.000Z", lines } } : {}),
   });
 
-  it("rolled back: release_status says why, and what doctor found if it ran", () => {
-    const den = backMessage(marker({ rolledBack: true }), "0.4.41", 222);
-    expect(den).toMatch(/release_status/);
-    const asked = backMessage(
-      marker({ by: undefined, rolledBack: true }),
+  it("updated: the doctor lines, on one line, and no tool sent to for them", () => {
+    const t = backMessage(
+      marker(),
+      "0.4.42",
+      222,
+      update(["warn hub: not\nconnected", "fail pin: no pin"]),
+    );
+    expect(t).toContain(
+      "The new Den's doctor found: warn hub: not connected; fail pin: no pin.",
+    );
+    expect(t).not.toMatch(/\n/);
+    expect(t).not.toMatch(/release_status|with doctor/);
+    expect(t).toMatch(/restarts you from Den/);
+  });
+
+  it("updated, doctor clean or not kept, and a long list cut short", () => {
+    expect(backMessage(marker(), "0.4.42", 222, update([]))).toContain(
+      "The new Den's doctor found nothing failing or warning.",
+    );
+    expect(backMessage(marker(), "0.4.42", 222, update(null))).toContain(
+      "No doctor results were kept for this update.",
+    );
+    expect(backMessage(marker(), "0.4.42", 222, null)).toContain(
+      "No doctor results were kept for this update.",
+    );
+    const many = Array.from({ length: 11 }, (_, i) => `warn c${i}: x`);
+    const t = backMessage(marker(), "0.4.42", 222, update(many));
+    expect(t).toContain("warn c7: x; and 3 more.");
+    expect(t).not.toContain("warn c8");
+  });
+
+  it("an older update's results are not this one's", () => {
+    const old = { ...update(["warn old: x"]), from: "0.4.39", to: "0.4.40" };
+    const t = backMessage(marker(), "0.4.42", 222, old);
+    expect(t).not.toContain("warn old");
+    expect(t).toContain("No doctor results were kept for this update.");
+  });
+
+  it("rolled back: why, and what doctor found; the agent's own update too", () => {
+    const rolled = {
+      ...update(["fail edge: down"]),
+      state: "rolled_back" as const,
+    };
+    const den = backMessage(
+      marker({ rolledBack: true, fromVersion: "0.4.42" }),
       "0.4.41",
       222,
+      rolled,
     );
-    expect(asked).toMatch(/release_status/);
+    expect(den).toContain("The new Den's doctor found: fail edge: down.");
+    expect(den).not.toMatch(/release_status|restarts you from Den/);
+    const asked = backMessage(
+      marker({ by: undefined, rolledBack: true, fromVersion: "0.4.42" }),
+      "0.4.41",
+      222,
+      rolled,
+    );
+    expect(asked).toContain("fail edge: down");
+    const good = backMessage(
+      marker({ by: undefined }),
+      "0.4.42",
+      222,
+      update(["warn hub: x"]),
+    );
+    expect(good).toMatch(
+      /You restarted it: update Den 0\.4\.41 → 0\.4\.42\. The new Den's doctor found: warn hub: x\. Your Den tools .* Carry on from where you were\.$/,
+    );
+  });
+
+  it("a plain restart (no update) says nothing of doctor", () => {
+    const t = backMessage(
+      marker({ by: undefined, reason: "new pin" }),
+      "0.4.41",
+      222,
+      update(["warn hub: x"]),
+    );
+    expect(t).toBe(
+      "Server is back on 0.4.41 (pid 222). You restarted it: new pin. Carry on from where you were.",
+    );
   });
 });

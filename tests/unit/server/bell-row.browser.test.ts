@@ -166,8 +166,10 @@ describe.each([1280, 390])(
         expect(await r.count()).toBe(1);
         // The middle of the question's text (its two-line span, or the
         // link that holds it: the first in the row, in either shape).
-        const box = (await r.locator(".den-bell-t, a").first().boundingBox())!;
-        await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        // locator.click() aims at the element's centre and waits until it
+        // is visible and still, finding it again if the bell redraws the
+        // row; a boundingBox() read once can be null mid-redraw.
+        await r.locator(".den-bell-t, a").first().click();
         await p.waitForURL(new RegExp(esc(link)));
         await p.context().close();
       },

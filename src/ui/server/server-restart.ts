@@ -18,6 +18,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { recordAction, type AuditEntry } from "./audit.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import type { LastUpdate } from "./den-update.js";
 
 export interface RestartMarker {
   /** The approval it ran for. */
@@ -103,29 +104,82 @@ export function takeRestartMarker(
   }
 }
 
-/** What Den types into the agent's session when the new server is up. */
+/** At most this many doctor lines go into the line Den types. */
+const DOCTOR_LINES_MAX = 8;
+
+/**
+ * #384: what the new Den's doctor found for the update this restart is
+ * back from, said in the line itself. The agent reading it runs Den tools
+ * that started before the update (its MCP server is a child of its
+ * session, which outlives the restart), so the line sends it to no tool
+ * for this. One line: what is typed is submitted with Enter.
+ */
+function doctorNews(
+  m: RestartMarker,
+  version: string,
+  update: LastUpdate | null | undefined,
+): string {
+  const ours =
+    update &&
+    [update.from, update.to].includes(version) &&
+    [update.from, update.to].includes(m.fromVersion);
+  if (!ours || !update.doctor)
+    return " No doctor results were kept for this update.";
+  const lines = update.doctor.lines.map((l) =>
+    l.replace(/\s+/g, " ").trim().slice(0, 200),
+  );
+  if (!lines.length)
+    return " The new Den's doctor found nothing failing or warning.";
+  const more = lines.length - DOCTOR_LINES_MAX;
+  return (
+    ` The new Den's doctor found: ${lines.slice(0, DOCTOR_LINES_MAX).join("; ")}` +
+    (more > 0 ? `; and ${more} more` : "") +
+    "."
+  );
+}
+
+/** #384: an update leaves the agent's Den tools on the Den they started on. */
+const TOOLS_LINE =
+  " Your Den tools keep running the Den they started on until the person restarts you from Den (Restart keeps this conversation).";
+
+/**
+ * What Den types into the agent's session when the new server is up.
+ * `update`: Den's last update of itself (lastUpdate), for its doctor
+ * results when this restart is back from it.
+ */
 export function backMessage(
   m: RestartMarker,
   version: string,
   pid: number,
+  update?: LastUpdate | null,
 ): string {
   if (m.by === "den")
     return m.rolledBack
       ? `Den is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` +
-          "Den's own update didn't take: commit no pin change. The person has it in the bell. " +
-          "release_status says why, with the new Den's doctor results if its doctor ran."
+          "Den's own update didn't take: commit no pin change. The person has it in the bell." +
+          doctorNews(m, version, update)
       : `Den is back on ${version} (pid ${pid}) (it was ${m.fromVersion}). ` +
-          `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. Then call release_status: it has the new Den's doctor results.`;
+          `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off.` +
+          doctorNews(m, version, update) +
+          TOOLS_LINE;
   if (m.rolledBack)
     return (
       `Server is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
-      "Your update didn't take: commit no pin change, and tell your person why. " +
-      "release_status says why, with the new Den's doctor results if its doctor ran."
+      "Your update didn't take: commit no pin change, and tell your person why." +
+      doctorNews(m, version, update)
     );
   const was = m.fromVersion === version ? "" : ` (it was ${m.fromVersion})`;
+  // An update the agent asked for (den_update): what doctor found, and
+  // that its tools are still the old Den's.
+  const updated =
+    m.fromVersion !== version &&
+    update?.from === m.fromVersion &&
+    update.to === version
+      ? doctorNews(m, version, update) + TOOLS_LINE
+      : "";
   return (
     `Server is back on ${version} (pid ${pid})${was}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
-    `You restarted it: ${m.reason}. Carry on from where you were.`
+    `You restarted it: ${m.reason}.${updated} Carry on from where you were.`
   );
 }
 
