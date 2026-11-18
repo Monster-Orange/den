@@ -354,7 +354,16 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       viewport: { width: 1280, height: 860 },
     });
     contexts.push(ctx);
+    await ctx.addInitScript((v) => {
+      try {
+        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+          localStorage.setItem(k, v);
+      } catch {
+        /* none */
+      }
+    }, latest);
     const p = await ctx.newPage();
+    p.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
     let fail = true;
     let hold: (() => void) | null = null;
     const held = new Promise<void>((r) => (hold = r));

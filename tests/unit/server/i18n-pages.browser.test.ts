@@ -277,12 +277,14 @@ describe("pages in a pseudo-locale: no literal inside <main>", () => {
     expect([...found]).toEqual([]);
   }, 60_000);
 
-  it("Agents, the terminal and the server agent's page", async () => {
+  it("Agents, Terminals, the terminal and the server agent's page", async () => {
     if (!browser) return;
     const found = new Set<string>();
     for (const [url, ready] of [
       ["/agents", "#den-content"],
-      ["/agents?terminal=1", ".xterm, #den-content"],
+      // Issue 482: a terminal is on its own page, Terminals.
+      ["/terminals", "#den-content"],
+      ["/terminals?terminal=1", ".xterm, #den-content"],
       ["/server-agent", "#den-content"],
     ]) {
       const p = await open(url);

@@ -73,6 +73,32 @@ describe("Close a shell", () => {
     expect(await listed()).not.toContain(name);
   }, 30_000);
 
+  it("issue 482: ?keep=1 (Terminals' Stop) ends it and keeps its row, exited", async () => {
+    const open = await call("POST", "/api/workspaces/north/sessions");
+    const { id, name } = open.json.session as { id: string; name: string };
+    const pty = s.made.at(-1)!;
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      if (sig === "SIGHUP") setTimeout(() => pty.exit(129), 10);
+    };
+    const r = await call(
+      "POST",
+      `/api/sessions/${encodeURIComponent(id)}/close?keep=1`,
+    );
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ ok: true, forgotten: false });
+    const row = (
+      (await call("GET", "/api/sessions?ws=north")).json.sessions as {
+        name: string;
+        exited?: boolean;
+        endedAt?: string;
+      }[]
+    ).find((x) => x.name === name);
+    expect(row?.exited).toBe(true);
+    expect(Date.parse(row?.endedAt ?? "")).not.toBeNaN();
+  }, 30_000);
+
   it("one that ignores HUP: KILL after the grace", async () => {
     const open = await call("POST", "/api/workspaces/north/sessions");
     const { id } = open.json.session as { id: string };

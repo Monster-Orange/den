@@ -11,6 +11,13 @@
  *      agents.exited_shell_minutes (default 10); one with unread output
  *      stays until removed.
  *
+ * Issue 482 (mock v3): plain shells live on Terminals now, never in the
+ * Agents list. So 1.–4. are Terminals': an exited shell moves to the
+ * Exited group, with Restart and Remove on its row; a running one has
+ * neither, and its pane shows Stop (not Close). Clear stopped is Agents'
+ * and takes stopped agents only: an exited shell stays, on Terminals.
+ * The auto-leave (4.) is the server's, unchanged.
+ *
  * The demo distribution with a session host in this process and a
  * scripted PTY: nothing really runs. Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -39,7 +46,11 @@ let host: HostClient | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -97,20 +108,22 @@ async function open(next: string): Promise<Page> {
   return p;
 }
 
+/** Terminals' Exited group's row for `id`. */
 const inStopped = (p: Page, id: string) =>
-  p.locator(`#agl details[data-stopped] [data-shell="${id}"]`);
+  p.locator(`#agl [data-group="exited"] .tmr[data-shell="${id}"]`);
+/** Terminals' Running group's row for `id`. */
 const inGroup = (p: Page, id: string) =>
-  p.locator(`#agl .wsg:not([data-stopped]) .agr[data-id="${id}"]`);
+  p.locator(`#agl [data-group="running"] .tmr[data-shell="${id}"]`);
 const listed = async (id: string) =>
   (await host!.list()).some((v) => v.ref.id === id);
 
 describe("#80: an exited shell has a way out", () => {
-  it("a running shell shows Close, never Remove; once it exits it moves to Stopped, with Remove", async () => {
+  it("a running shell shows Stop, never Remove; once it exits it moves to Exited, with Restart and Remove", async () => {
     if (!browser) return;
     const sh = await shell("one");
-    const p = await open(`/agents?project=north&layout=focus&open=${sh.id}`);
+    const p = await open(`/terminals?project=north&open=${sh.id}`);
     await p.waitForSelector(
-      `.pane[data-id="${sh.id}"] [data-act="close-shell"]`,
+      `.pane[data-id="${sh.id}"] [data-act="stop-shell"]`,
     );
     await expect(inGroup(p, sh.id).count()).resolves.toBe(1);
     expect(await p.$$(`#agl [data-act="remove-shell"]`)).toHaveLength(0);
@@ -118,17 +131,17 @@ describe("#80: an exited shell has a way out", () => {
     await exited(sh.id);
     await inStopped(p, sh.id).waitFor({ state: "attached", timeout: 15_000 });
     await expect(inGroup(p, sh.id).count()).resolves.toBe(0);
+    await expect(
+      inStopped(p, sh.id).locator('[data-act="restart-shell"]').count(),
+    ).resolves.toBe(1);
     // Remove takes it out, here and on the host.
-    await p.$eval("#agl details[data-stopped]", (d) => {
-      (d as HTMLDetailsElement).open = true;
-    });
     await inStopped(p, sh.id).locator('[data-act="remove-shell"]').click();
     await inStopped(p, sh.id).waitFor({ state: "detached" });
     expect(await listed(sh.id)).toBe(false);
     await p.context().close();
   }, 60_000);
 
-  it("Clear stopped takes out exited shells and stopped agents together", async () => {
+  it("issue 482: Clear stopped (on Agents) takes out stopped agents; an exited shell stays, on Terminals", async () => {
     if (!browser) return;
     const sh = await shell("two");
     sh.pty.exit(0);
@@ -141,14 +154,17 @@ describe("#80: an exited shell has a way out", () => {
       stoppedAt: "2026-11-06T10:00:00.000Z",
     });
     const p = await open(`/agents?project=north&layout=focus`);
-    await inStopped(p, sh.id).waitFor({ state: "attached" });
+    await p.waitForSelector('#agl .agst[data-agent="idle"]');
+    expect(await p.locator(`#agl [data-shell="${sh.id}"]`).count()).toBe(0);
     await p.locator("#ag-clear").click();
-    await inStopped(p, sh.id).waitFor({ state: "detached" });
     await p.waitForSelector('#agl .agst[data-agent="idle"]', {
       state: "detached",
     });
-    expect(await listed(sh.id)).toBe(false);
+    expect(await listed(sh.id)).toBe(true);
     await p.context().close();
+    const q = await open(`/terminals?project=north`);
+    await inStopped(q, sh.id).waitFor({ state: "attached" });
+    await q.context().close();
   }, 60_000);
 
   it("after agents.exited_shell_minutes, one with nothing unread leaves by itself; one with unread output stays", async () => {
@@ -163,10 +179,9 @@ describe("#80: an exited shell has a way out", () => {
       const unseen = await shell("unseen");
       // `seen` exits with its pane open; `unseen` prints while no one
       // looks, then exits.
-      const p = await open(
-        `/agents?project=north&layout=focus&open=${seen.id}`,
-      );
-      await p.waitForSelector(`.pane[data-id="${seen.id}"] .agto:not(:empty)`);
+      const p = await open(`/terminals?project=north&open=${seen.id}`);
+      // Issue 482: Terminals has no To line; the pane's screen instead.
+      await p.waitForSelector(`.pane[data-id="${seen.id}"] .xterm-rows`);
       await p.waitForTimeout(300);
       seen.pty.exit(0);
       unseen.pty.emit("a result no one read\r\n");
@@ -175,7 +190,7 @@ describe("#80: an exited shell has a way out", () => {
       await exited(unseen.id);
       await p.waitForTimeout(1500);
       await p.reload();
-      await p.waitForSelector("#agl .wsg");
+      await p.waitForSelector("#agl .tmr");
       expect(await listed(seen.id)).toBe(false);
       expect(await listed(unseen.id)).toBe(true);
       await expect(inStopped(p, unseen.id).count()).resolves.toBe(1);

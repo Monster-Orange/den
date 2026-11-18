@@ -4,6 +4,11 @@
  * It ends the shell as closing a terminal does and its pane goes; an
  * agent's pane has no such button. Translated. The demo distribution, the
  * scripted PTY. Invented names only.
+ *
+ * Issue 482 (mock v3): a shell's pane is on Terminals now, and its bar's
+ * button is Stop (POST …/close?keep=1): the shell ends as closing a
+ * terminal does, its row stays under Exited (Restart, Remove), and its
+ * pane shows "This shell ended". An agent's pane (on Agents) has neither.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
@@ -22,7 +27,11 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -73,8 +82,8 @@ async function open(path: string): Promise<Page> {
   return p;
 }
 
-describe("Close shell", () => {
-  it("a shell's pane: Close shell ends it and the pane goes; an agent's pane has none", async () => {
+describe("Stop on a shell (was Close shell)", () => {
+  it("a shell's pane: Stop ends it, its row stays exited, the pane says it ended; an agent's pane has none", async () => {
     if (skip()) return;
     const shell = (await post("/api/workspaces/north/sessions")).session as {
       id: string;
@@ -95,7 +104,7 @@ describe("Close shell", () => {
       ).json()) as { sessions: { id: string; agent?: string }[] }
     ).sessions;
     const agentId = rows.find((r) => r.agent === "planner")!.id;
-    // The agent's pane: no Close shell (Stop is its way).
+    // The agent's pane: no shell Stop (its own Stop is its way).
     const a = await open(
       `/agents?ws=north&open=${encodeURIComponent(agentId)}`,
     );
@@ -104,32 +113,44 @@ describe("Close shell", () => {
       .waitFor({ timeout: 15_000 });
     expect(
       await a
-        .locator(`.pane[data-id="${agentId}"] [data-act="close-shell"]`)
+        .locator(
+          `.pane[data-id="${agentId}"] :is([data-act="close-shell"], [data-act="stop-shell"])`,
+        )
         .count(),
     ).toBe(0);
     await a.context().close();
+    // Issue 482: the old Agents link lands on Terminals.
     const p = await open(
       `/agents?ws=north&open=${encodeURIComponent(shell.id)}`,
     );
+    await p.waitForURL(/\/terminals\?/);
     const pane = p.locator(`.pane[data-id="${shell.id}"]`);
-    const btn = pane.locator('[data-act="close-shell"]');
+    const btn = pane.locator('[data-act="stop-shell"]');
     await btn.waitFor({ timeout: 15_000 });
-    expect(await btn.textContent()).toBe("Close shell");
+    expect(await pane.locator('[data-act="close-shell"]').count()).toBe(0);
+    expect(await btn.textContent()).toBe("Stop");
     await btn.click();
-    await pane.waitFor({ state: "detached", timeout: 15_000 });
+    await pane.locator(".tm-ended").waitFor({ timeout: 15_000 });
+    expect(await pane.locator(".tm-ended b").textContent()).toBe(
+      "This shell ended",
+    );
     expect(pty.signals).toEqual(["SIGHUP"]);
+    await p
+      .locator(`#agl [data-group="exited"] .tmr[data-shell="${shell.id}"]`)
+      .waitFor({ timeout: 15_000 });
     // The gate's copy note: not the × toast ("it keeps running").
     const toast = (await p.locator(".den-toast").textContent()) ?? "";
     expect(toast).toMatch(/^Closed /);
     expect(toast).not.toMatch(/keeps running/);
+    // Kept, exited: Restart and Remove are its way out.
     const after = (
       (await (
         await fetch(`${s!.base}/api/sessions?ws=north`, {
           headers: denAuth(s!.stateDir),
         })
-      ).json()) as { sessions: { id: string }[] }
-    ).sessions.map((r) => r.id);
-    expect(after).not.toContain(shell.id);
+      ).json()) as { sessions: { id: string; exited?: boolean }[] }
+    ).sessions.find((r) => r.id === shell.id);
+    expect(after?.exited).toBe(true);
     await p.context().close();
   }, 90_000);
 
@@ -144,10 +165,10 @@ describe("Close shell", () => {
         `/agents?ws=north&open=${encodeURIComponent(shell.id)}`,
       );
       const btn = p.locator(
-        `.pane[data-id="${shell.id}"] [data-act="close-shell"]`,
+        `.pane[data-id="${shell.id}"] [data-act="stop-shell"]`,
       );
       await btn.waitFor({ timeout: 15_000 });
-      expect(await btn.textContent()).toBe("シェルを閉じる");
+      expect(await btn.textContent()).toBe("停止");
       await p.context().close();
     } finally {
       await s!.settings({ language: null });
