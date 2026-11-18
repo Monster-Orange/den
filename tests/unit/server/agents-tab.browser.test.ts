@@ -445,7 +445,7 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
-  it("⌘K offers each session as Agents › <ws> / <name>, and Start agent…", async () => {
+  it("⌘K offers a terminal as Terminals › <ws> / <name>, never under Agents, and Start agent…", async () => {
     if (skip()) return;
     const p = await page("/agents");
     await p.click("#den-search");
@@ -453,9 +453,15 @@ describe("the Agents tab", () => {
     await p.waitForSelector('#den-pal-list li[role="option"]');
     const first = p.locator('#den-pal-list li[role="option"]').first();
     expect(await first.locator(".den-pal-l").textContent()).toBe(
-      "Agents › north / shell",
+      "Terminals › north / shell",
     );
-    expect(await first.locator(".den-kind").textContent()).toBe("Agent");
+    expect(await first.locator(".den-kind").textContent()).toBe("Terminal");
+    // Issue 482: Agents › … is for agents only.
+    expect(
+      await p.$$eval("#den-pal-list .den-pal-l", (xs) =>
+        xs.map((x) => x.textContent ?? ""),
+      ),
+    ).not.toContain("Agents › north / shell");
     await p.fill("#den-pal-q", "start agent");
     await p.waitForFunction(() =>
       [...document.querySelectorAll("#den-pal-list .den-pal-l")].some(

@@ -517,6 +517,9 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       for (let i = 0; i < 100 && pty.writes.length === n; i++)
         await p.waitForTimeout(50);
       expect(Buffer.concat(pty.writes.slice(n)).toString()).toBe("\u001b");
+      // A touch's release sends it; the click after it doesn't again.
+      await p.waitForTimeout(900);
+      expect(Buffer.concat(pty.writes.slice(n)).toString()).toBe("\u001b");
       await back.tap();
       await p.locator("#agl").waitFor({ state: "visible" });
       expect(await pane.isVisible()).toBe(false);
