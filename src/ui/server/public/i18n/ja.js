@@ -2298,6 +2298,7 @@
     "pj.delete": "削除",
     "pj.activeTag": "(アクティブ)",
     "pj.openTerm": "ターミナルで開く",
+    "pj.openTermIn": "{app}で開く",
     "pj.openEditor": "エディターで開く",
     "pj.moreActions": "その他の操作",
     "pj.moreFor": "{ws} のその他の操作",
