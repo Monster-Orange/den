@@ -12,7 +12,9 @@
  *     through Den. Hub's file links (/f/*) are GET and HEAD only (405).
  *   - The agent's own Authorization and any X-Den-* header it sent are
  *     dropped. Den sets Authorization (the install token), X-Den-Agent,
- *     X-Den-Agent-Id, X-Den-Workspace, X-Den-Session, X-Den-Repos and X-Den-Project.
+ *     X-Den-Agent-Id, X-Den-Workspace, X-Den-Session, X-Den-Repos and X-Den-Project,
+ *     and the version handshake (X-Den-Version, X-Den-Protocol,
+ *     X-Den-Capabilities; issue 521). An unsupported Hub gets reads only.
  *   - Redirects are not followed; Hub's status and body pass through as
  *     they are (its 413 says its own limit). Bodies stream both ways, with
  *     no size of Den's own: Hub enforces its limits.
@@ -22,6 +24,13 @@ import * as https from "https";
 import { agentPrincipalOf } from "./request-guard.js";
 import { pathMatches } from "./route-classes.js";
 import { sendJson } from "./http-helpers.js";
+import {
+  hubWriteRefusal,
+  mcpBodyReadsOnly,
+  noteHubCompat,
+  readHubCompat,
+  withDenHandshake,
+} from "../../shared/hub-compat.js";
 
 export const HUB_PROXY_PREFIX = "/hub";
 const HUB_CALLBACK = "/hub/callback";
@@ -68,6 +77,11 @@ const BACK = [
   "mcp-session-id",
   "retry-after",
   "location",
+  // Issue 521: Hub's compat answer, so an agent can read it too.
+  "x-hub-version",
+  "x-hub-protocol",
+  "x-hub-compat",
+  "x-hub-compat-reason",
 ];
 
 export interface HubUpstream {
@@ -239,11 +253,42 @@ export async function handleHubProxy(
     const v = req.headers[h];
     if (v !== undefined) headers[h] = v;
   }
-  // Den's, last: the agent's own Authorization and X-Den-* never pass.
-  Object.assign(headers, up.headers);
+  // Den's, last: the agent's own Authorization and X-Den-* never pass,
+  // and the version handshake (issue 521) is always Den's own.
+  Object.assign(headers, withDenHandshake(up.headers));
+  // Issue 521: an unsupported Hub gets reads only. A write is refused
+  // before any of it reaches Hub; an MCP message is read first, and only
+  // one that reads (initialize, tools/list, a read tool) goes on.
+  let held: Buffer | null = null;
+  const refusal = hubWriteRefusal(target.href, method);
+  if (refusal) {
+    let reads = false;
+    if (sub === "/mcp" && method === "POST") {
+      held = await new Promise<Buffer>((resolve) => {
+        const parts: Buffer[] = [];
+        req.on("data", (c: Buffer) => parts.push(c));
+        req.on("end", () => resolve(Buffer.concat(parts)));
+        req.on("error", () => resolve(Buffer.alloc(0)));
+      });
+      reads = mcpBodyReadsOnly(held.toString("utf-8"));
+    }
+    if (!reads) {
+      answered(409, refusal);
+      noteInit(false, refusal);
+      sendJson(res, { error: refusal, code: "hub_unsupported" }, 409);
+      return true;
+    }
+  }
   const lib = target.protocol === "https:" ? https : http;
   await new Promise<void>((resolve) => {
     const out = lib.request(target, { method, headers }, (hubRes) => {
+      noteHubCompat(
+        target.href,
+        readHubCompat((n) => {
+          const v = hubRes.headers[n];
+          return Array.isArray(v) ? v[0] : v;
+        }),
+      );
       const back: Record<string, string | string[]> = {};
       for (const h of BACK) {
         const v = hubRes.headers[h];
@@ -284,6 +329,7 @@ export async function handleHubProxy(
       resolve();
     });
     if (method === "GET" || method === "HEAD") out.end();
+    else if (held) out.end(held);
     else req.pipe(out);
   });
   return true;

@@ -7,6 +7,7 @@
 import {
   ProjectSync,
   projectList,
+  projectSyncBody,
   syncAgents,
 } from "../../shared/hub-project-sync.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
@@ -41,10 +42,7 @@ export function projectSync(): ProjectSync {
       const at = await hubAndToken();
       if (!at) return null;
       const hub = await import("../../shared/hub.js");
-      return hub.hubPutProjects(at.url, at.token, {
-        projects,
-        sent_at: new Date().toISOString(),
-      });
+      return hub.hubPutProjects(at.url, at.token, projectSyncBody(projects));
     },
   }));
 }

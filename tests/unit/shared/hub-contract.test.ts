@@ -27,7 +27,10 @@ const EXPORT = "npm run hub-contract:export";
 describe("Hub contract fixtures (issue 521)", () => {
   it(`the folder for ${PKG.version} matches the code (run \`${EXPORT}\` after changing a request)`, async () => {
     expect(fs.existsSync(DIR)).toBe(true);
-    const drift = contractDrift(await buildHubContract(), readContractFolder(DIR));
+    const drift = contractDrift(
+      await buildHubContract(),
+      readContractFolder(DIR),
+    );
     expect(drift).toEqual([]);
   });
 
@@ -54,9 +57,13 @@ describe("Hub contract fixtures (issue 521)", () => {
     const m = JSON.parse(
       fs.readFileSync(path.join(DIR, "manifest.json"), "utf-8"),
     ) as Record<string, unknown>;
-    expect(Object.keys(m).sort()).toEqual(
-      ["capabilities", "den_version", "exported_at", "generator", "protocol"],
-    );
+    expect(Object.keys(m).sort()).toEqual([
+      "capabilities",
+      "den_version",
+      "exported_at",
+      "generator",
+      "protocol",
+    ]);
     expect(m.den_version).toBe(PKG.version);
     expect(m.generator).toBe("scripts/hub-contract-export.mjs");
     const built = await buildHubContract();

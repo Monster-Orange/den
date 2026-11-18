@@ -268,3 +268,27 @@ describe("Hub's compat answer (issue 521)", () => {
     );
   });
 });
+
+describe("where the person sees it (issue 521)", () => {
+  it("Settings' Hub row and doctor say unsupported, with Hub's reason", async () => {
+    const { hubHtml } =
+      await import("../../../src/ui/server/public/settings-registry.js");
+    const { hubLines } = await import("../../../src/ui/cli/doctor-command.js");
+    const hub = await fakeHub(() => ({
+      "X-Hub-Compat": "unsupported",
+      "X-Hub-Compat-Reason": "protocol 1 retired",
+    }));
+    const st = await hubStatus({
+      config: () =>
+        ({ url: hub.url, tokenRef: "x", tokenFrom: "hub.token" }) as never,
+      token: async () => TOKEN,
+    });
+    const html = hubHtml(st, null);
+    expect(html).toContain('data-hub-compat="unsupported"');
+    expect(html).toContain("Reads only");
+    expect(html).toContain("protocol 1 retired");
+    const d = hubLines(st, "Den");
+    expect(d.check?.status).toBe("warn");
+    expect(d.check?.detail).toContain("protocol 1 retired");
+  });
+});

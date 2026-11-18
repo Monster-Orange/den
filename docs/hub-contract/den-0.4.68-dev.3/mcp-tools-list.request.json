@@ -1,0 +1,20 @@
+{
+  "method": "POST",
+  "path": "/mcp",
+  "headers": {
+    "Accept": "application/json, text/event-stream",
+    "Authorization": "Bearer <token>",
+    "Content-Type": "application/json",
+    "Mcp-Protocol-Version": "2025-06-18",
+    "Mcp-Session-Id": "<uuid>",
+    "X-Den-Capabilities": "compat.readonly,connect.pkce,connect.rotate,deliveries.ack,deliveries.stream,inbox,mcp.proxy,mcp.tools.watch,notifications,projects.plan,projects.sync",
+    "X-Den-Protocol": "1",
+    "X-Den-Version": "0.4.68-dev.3"
+  },
+  "body": {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "params": {},
+    "id": 3
+  }
+}

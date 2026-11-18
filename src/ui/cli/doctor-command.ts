@@ -637,10 +637,16 @@ export function hubLines(
     st.connected && st.legacy
       ? "; on an older Hub token kept where Den can't replace it (Settings › Hub: Reconnect)"
       : "";
+  // Issue 521: Hub's compat answer, when it is degraded or unsupported.
+  const compat = st.compat
+    ? st.compat.state === "unsupported"
+      ? `; Hub doesn't support this version of Den, so Den only reads from Hub: ${st.compat.reason ?? "Hub gave no reason"}`
+      : `; Hub says this Den works with limits: ${st.compat.reason ?? "Hub gave no reason"}`
+    : "";
   const detail = st.connected
-    ? `${st.url}: connected${who ? ` (${who})` : ""}${legacy}`
-    : `${st.url || "hub.url"}: not connected: ${st.problem ?? "no answer"}${fix}`;
-  const good = st.connected && !legacy;
+    ? `${st.url}: connected${who ? ` (${who})` : ""}${legacy}${compat}`
+    : `${st.url || "hub.url"}: not connected: ${st.problem ?? "no answer"}${fix}${compat}`;
+  const good = st.connected && !legacy && !compat;
   return {
     lines: [
       "",

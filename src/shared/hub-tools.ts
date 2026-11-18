@@ -33,6 +33,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { noteHubResponse, withDenHandshake } from "./hub-compat.js";
 
 /** Each Hub tool's parameters and the required ones, sorted. */
 export type ToolShape = Record<
@@ -194,13 +195,14 @@ export async function fetchHubTools(
     try {
       res = await f(mcpUrl, {
         method: "POST",
-        headers: {
+        // Issue 521: the version handshake, Den's values.
+        headers: withDenHandshake({
           Authorization: `Bearer ${token}`,
           Accept: "application/json, text/event-stream",
           "Content-Type": "application/json",
           ...(session ? { "Mcp-Session-Id": session } : {}),
           ...(seq > 1 ? { "Mcp-Protocol-Version": version } : {}),
-        },
+        }),
         body: JSON.stringify({
           jsonrpc: "2.0",
           method,
@@ -215,6 +217,7 @@ export async function fetchHubTools(
         `Hub could not be reached: ${(e as Error)?.message ?? e}`,
       );
     }
+    noteHubResponse(mcpUrl, res);
     session = res.headers.get("mcp-session-id") ?? session;
     if (!res.ok) {
       await res.body?.cancel().catch(() => undefined);

@@ -51,6 +51,7 @@
     "gate:den-ui": "node packages/den-ui/bin/den-ui-parity.mjs --root . --src src",
     "docs:shots": "node scripts/doc-shots.mjs",
     "docs:links": "node scripts/docs-links.js",
+    "hub-contract:export": "tsx scripts/hub-contract-export.mjs",
     "example:regen": "rm -rf examples/distribution && ./bin/den create acme examples/distribution --port 7777",
     "dist-smoke": "bash scripts/dist-smoke.sh"
   },

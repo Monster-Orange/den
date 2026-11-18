@@ -27,6 +27,7 @@ import {
   type HubConfig,
 } from "../../../src/shared/hub.js";
 import type { SecretsProvider } from "../../../src/shared/secrets/index.js";
+import { denHandshakeHeaders } from "../../../src/shared/hub-compat.js";
 import * as hubMod from "../../../src/shared/hub.js";
 
 const TOKEN = "hubi_TESTONLYabc987";
@@ -292,6 +293,8 @@ describe("headers and repos", () => {
       "X-Den-Repos": "acme/north,acme/kit",
       // H5: not linked to a Hub project.
       "X-Den-Project": "none",
+      // Issue 521: the version handshake.
+      ...denHandshakeHeaders(),
     });
   });
 
