@@ -72,6 +72,21 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
 
   const skip = () => !browser;
 
+  /**
+   * A page error, but not WebKit's word for this page's own fetch cut off
+   * by a navigation (the rail's Terminals, a redirect): "… due to access
+   * control checks." for Den's own host (as terminal-recent's).
+   */
+  function pageError(msg: string) {
+    if (
+      name === "webkit" &&
+      msg.endsWith(" due to access control checks.") &&
+      msg.includes(`/${new URL(s!.base).host}/`)
+    )
+      return;
+    errors.push(`${name}: ${msg}`);
+  }
+
   async function scope(v: string) {
     const r = await fetch(`${s!.base}/api/scope`, {
       method: "POST",
@@ -135,7 +150,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       [latest, opts.seen !== false] as const,
     );
     const p = await ctx.newPage();
-    p.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+    p.on("pageerror", (e) => pageError(e.message));
     await p.goto(signInUrl(s!.stateDir, s!.base, path));
     return p;
   }
@@ -384,7 +399,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       }
     }, latest);
     const p = await ctx.newPage();
-    p.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+    p.on("pageerror", (e) => pageError(e.message));
     let fail = true;
     let hold: (() => void) | null = null;
     const held = new Promise<void>((r) => (hold = r));
