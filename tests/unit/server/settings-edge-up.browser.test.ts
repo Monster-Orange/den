@@ -51,7 +51,12 @@ afterAll(async () => {
 /** The fake edge: whether it runs, and what each Start the edge answers. */
 async function open(
   e: (typeof ENGINES)[number],
-  edge: { up: boolean; answers: unknown[] },
+  edge: {
+    up: boolean;
+    answers: unknown[];
+    hosts?: string[];
+    drift?: unknown;
+  },
 ): Promise<{ p: Page; posts: number[] }> {
   const ctx = await browsers[e]!.newContext({
     viewport: { width: 1280, height: 900 },
@@ -74,11 +79,17 @@ async function open(
   const posts: number[] = [];
   await p.route("**/api/web/pair", (r) =>
     r.request().method() === "GET"
-      ? r.fulfill({ json: { hosts: [] } })
+      ? r.fulfill({ json: { hosts: edge.hosts ?? [] } })
       : r.continue(),
   );
   await p.route("**/api/edge", (r) =>
-    r.fulfill({ json: { configured: true, up: edge.up } }),
+    r.fulfill({
+      json: {
+        configured: true,
+        up: edge.up,
+        ...(edge.drift ? { drift: edge.drift } : {}),
+      },
+    }),
   );
   await p.route("**/api/edge/up", async (r) => {
     posts.push(Date.now());
@@ -157,6 +168,44 @@ describe.each(ENGINES)("issue 395 in %s: Start the edge", (e) => {
     await dialog(p).waitFor({ state: "detached", timeout: 10_000 });
     await p.locator("#set-edge-up:not([disabled])").waitFor();
     expect(await press(p)).toBe("Edge up to date, nothing restarted");
+    await p.context().close();
+  });
+  it("the config changed under a running edge: it says what the edge runs and what the config says, with Apply, even with an edge hostname", async () => {
+    if (!browsers[e] || !s) return;
+    const { p, posts } = await open(e, {
+      up: true,
+      hosts: ["den.acme.localhost"],
+      drift: {
+        running: { image: "traefik:v3.7.17", version: "3.7.17" },
+        config: { image: "traefik:v3.8.0", version: "3.8.0" },
+        line: "the edge runs traefik:v3.7.17; the config says traefik:v3.8.0",
+        runs: "traefik:v3.7.17",
+        says: "traefik:v3.8.0",
+      },
+      answers: [
+        {
+          kind: "recreated",
+          changes: [
+            { field: "image", old: "traefik:v3.7.17", new: "traefik:v3.8.0" },
+          ],
+          downSeconds: 3,
+        },
+      ],
+    });
+    await p.goto(`${s.base}/settings#access`);
+    const drift = p.locator("#set-edge-drift");
+    await drift.waitFor({ timeout: 20_000 });
+    expect(await drift.textContent()).toContain(
+      "The edge runs traefik:v3.7.17; the config says traefik:v3.8.0.",
+    );
+    const btn = p.locator("#set-edge-up");
+    expect(await btn.textContent()).toBe("Apply");
+    expect(await press(p)).toBe(
+      "Edge recreated because image: traefik:v3.7.17 → traefik:v3.8.0; it was unreachable for about 3 s",
+    );
+    expect(posts.length).toBe(1);
+    // Applied: the edge runs the config now, so the line goes.
+    expect(await p.locator("#set-edge-drift").isHidden()).toBe(true);
     await p.context().close();
   });
 });
