@@ -221,12 +221,15 @@ describe("AG-0.1: agents.runtimes.<id>.bin (user.yml)", () => {
     const read = () => yaml.parse(fs.readFileSync(userYml, "utf-8"));
     const setting = configuredRuntimeBin("den-claude", read);
     expect(setting).toBe(chosen.bin);
+    // Issue 456: the copy the search finds is listed, never run.
     expect(rt().detect(env, { bin: setting })).toEqual({
       available: true,
       path: chosen.bin,
       source: "setting",
+      others: [{ path: onPath.bin, source: "PATH" }],
       searched: [],
     });
+    expect(fs.existsSync(onPath.ran)).toBe(false);
     // Another runtime's block is not this one's.
     expect(configuredRuntimeBin("generic", read)).toBeUndefined();
   });

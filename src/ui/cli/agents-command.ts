@@ -2107,7 +2107,17 @@ export function doctorLines(
       `  path      ${r.path}${r.source ? ` (${SOURCE_WORD[r.source] ?? r.source})` : ""}`,
     );
   if (r.available && r.setting)
-    lines.push(`  version   ${r.version ?? "unknown"}`);
+    lines.push(
+      `  version   ${r.version ?? "unknown"}${r.quarantined ? " (quarantined, not run)" : ""}`,
+    );
+  // Issue 456: the other copies found, never run; one is pinned by its path.
+  (r.others ?? []).forEach((o, i) =>
+    lines.push(
+      `  ${i === 0 ? "also      " : "          "}${o.path} (${o.version ?? "version unknown"}, ${SOURCE_WORD[o.source] ?? o.source}${o.quarantined ? ", quarantined, not run" : ""})`,
+    ),
+  );
+  if (r.others?.length && r.setting)
+    lines.push(`            to use one, set ${r.setting} to its path`);
   if (!r.setting) lines.push("  path      none to find (the persona's argv)");
   else if (r.searched?.length) {
     const key = r.searched.join("\0");

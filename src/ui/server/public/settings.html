@@ -606,6 +606,25 @@
       .rt-err[hidden] {
         display: none;
       }
+      /* Issue 456: the other copies found, under the one used. */
+      .rt-o {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 4px;
+        font-size: 12.5px;
+      }
+      .rt-oh,
+      .rt-ov {
+        color: var(--muted);
+      }
+      .rt-oi {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
       /* D28: Settings › Agents › Rotation. */
       .rot-inst {
         display: grid;

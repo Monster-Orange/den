@@ -20,6 +20,8 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   clearVersionCache,
+  installVersion,
+  isQuarantined,
   resetInteractivePath,
   runtimeVersion,
   setQuarantineReader,
@@ -30,6 +32,8 @@ import {
   resolveAgentsDeps,
   setRuntimePath,
 } from "../../../src/ui/cli/agent-ops.js";
+import { doctorLines } from "../../../src/ui/cli/agents-command.js";
+import { runtimeRowHtml } from "../../../src/ui/server/public/settings-registry.js";
 import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
 
 afterEach(async () => {
@@ -64,9 +68,9 @@ interface Copies {
 /**
  * Two codex copies. The older one is Homebrew-style
  * (`Cellar/codex/0.30.0/bin/codex`, linked from `homebrew/bin`), and
- * `homebrew/bin` is both a well-known dir and on the login shell's PATH.
- * The newer one is first on the interactive shell's PATH only (an rc
- * file's PATH).
+ * `homebrew/bin` is a well-known dir (and on the plain login shell's
+ * PATH). The newer one is first on the interactive shell's PATH only (an
+ * rc file's PATH).
  */
 async function twoCopies(): Promise<Copies> {
   const r = await rig();
@@ -86,7 +90,7 @@ async function twoCopies(): Promise<Copies> {
     [
       "#!/bin/sh",
       `echo "$1" >> "${asked}"`,
-      `case "$1" in -ilc) P="${rcBin}:${brewBin}:/usr/bin";; *) P="${brewBin}:/usr/bin";; esac`,
+      `case "$1" in -ilc) P="${rcBin}:/usr/bin";; *) P="${brewBin}:/usr/bin";; esac`,
       "printf '__DEN_PATH_BEGIN__%s__DEN_PATH_END__' \"$P\"",
       "",
     ].join("\n"),
@@ -187,5 +191,127 @@ describe("issue 456: the copy the terminal runs", () => {
     expect(row.others).toEqual([
       { path: c.newer, source: "interactive-shell", version: undefined },
     ]);
+  });
+});
+
+describe("issue 456: the copies' versions and the quarantine, read without running", () => {
+  it("an npm install's version is its package.json's; the reader is asked once per file", async () => {
+    const r = await rig();
+    // Under nvm's node directory: node's version is never taken for its.
+    const pkg = path.join(
+      r.dir,
+      "versions",
+      "node",
+      "v24.22.3",
+      "lib",
+      "node_modules",
+      "@vendor",
+      "cli",
+    );
+    write(
+      path.join(pkg, "package.json"),
+      JSON.stringify({ name: "@vendor/cli", version: "1.2.3" }),
+      0o644,
+    );
+    const bin = write(path.join(pkg, "bin", "cli.js"), "#!/bin/sh\nexit 0\n");
+    expect(installVersion(bin)).toBe("1.2.3");
+    let asked = 0;
+    setQuarantineReader(() => {
+      asked++;
+      return false;
+    });
+    expect(isQuarantined(bin)).toBe(false);
+    expect(isQuarantined(bin)).toBe(false);
+    expect(asked).toBe(1);
+    // A reader that throws reads as not quarantined.
+    setQuarantineReader(() => {
+      throw new Error("no xattr");
+    });
+    expect(isQuarantined(bin)).toBe(false);
+  });
+});
+
+describe("issue 456: Settings › Agents › Runtimes shows the copies", () => {
+  const row = {
+    id: "codex",
+    label: "Codex CLI",
+    vendor: "OpenAI",
+    available: true,
+    version: "0.60.0",
+    path: "/u/rc-bin/codex",
+    source: "interactive-shell",
+    setting: "agents.runtimes.codex.bin",
+    others: [
+      {
+        path: "/opt/homebrew/bin/codex",
+        source: "well-known",
+        version: "0.30.0",
+      },
+      { path: "/usr/local/bin/codex", source: "PATH", quarantined: true },
+    ],
+  };
+
+  it("the one used, then the others with their versions, each pinned with a click", () => {
+    const h = runtimeRowHtml(row, "");
+    expect(h).toContain("/u/rc-bin/codex");
+    expect(h).toContain("✓ 0.60.0");
+    expect(h).toContain("detected · interactive shell");
+    expect(h).toContain("Also found:");
+    expect(h).toMatch(
+      /data-copy="\/opt\/homebrew\/bin\/codex".*0\.30\.0.*detected · install directory.*data-pin-path="codex" data-bin="\/opt\/homebrew\/bin\/codex"[^>]*>Use this</,
+    );
+    expect(h).toMatch(
+      /data-copy="\/usr\/local\/bin\/codex".*version unknown.*quarantined, not run.*data-bin="\/usr\/local\/bin\/codex"/,
+    );
+    // The one used is not offered again.
+    expect(h).not.toContain('data-bin="/u/rc-bin/codex"');
+  });
+
+  it("a quarantined CLI in use says so instead of a checked version; one copy lists nothing more", () => {
+    const h = runtimeRowHtml(
+      { ...row, version: undefined, quarantined: true, others: undefined },
+      "",
+    );
+    expect(h).toContain('data-quarantined="true">quarantined, not run<');
+    expect(h).not.toContain("✓");
+    expect(h).not.toContain("Also found:");
+  });
+});
+
+describe("issue 456: agents doctor lists the copies", () => {
+  it("names the one used, then each other copy with its version and source", () => {
+    const lines = doctorLines(
+      {
+        id: "codex",
+        available: true,
+        version: "0.60.0",
+        path: "/u/rc-bin/codex",
+        source: "interactive-shell",
+        searched: ["/u/rc-bin"],
+        setting: "agents.runtimes.codex.bin",
+        others: [
+          {
+            path: "/opt/homebrew/bin/codex",
+            source: "well-known",
+            version: "0.30.0",
+          },
+          { path: "/usr/local/bin/codex", source: "PATH", quarantined: true },
+        ],
+        resume: false,
+        default: false,
+        models: [],
+      },
+      "acme",
+      "/u/user.yml",
+    );
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        "  path      /u/rc-bin/codex (interactive shell PATH)",
+        "  version   0.60.0",
+        "  also      /opt/homebrew/bin/codex (0.30.0, install directory)",
+        "            /usr/local/bin/codex (version unknown, PATH, quarantined, not run)",
+        "            to use one, set agents.runtimes.codex.bin to its path",
+      ]),
+    );
   });
 });
