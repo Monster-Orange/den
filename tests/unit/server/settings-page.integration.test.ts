@@ -280,6 +280,8 @@ describe("the Settings page writes only what you change (R21)", () => {
       "embed",
       "secrets",
       "server",
+      // Issue 511: Settings › Gate.
+      "gate",
       "cli",
       "distribution",
     ]);

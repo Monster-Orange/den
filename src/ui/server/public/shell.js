@@ -1856,7 +1856,7 @@
       "How many browser test runs (`gate run --kind browser`) may hold the machine at once. One starts only while the load per core is low enough and enough PTYs are free. By default 1 below 8 cores, else 1 for every 8 cores, at most 3. __DEN_CLI__ gate settings --browser-slots 1",
     "set.server.gate_pty": "PTYs kept free for a browser test run",
     "set.server.gate_pty.d":
-      "A browser test run starts only while more than this many PTYs are free below the system's limit, so new terminals and agents still start. __DEN_CLI__ gate settings --pty-headroom 50",
+      "A browser test run starts only while more than this many PTYs are free below the system's limit, so new shells and agents still start. __DEN_CLI__ gate settings --pty-headroom 50",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. Browser test runs take the browser slots instead. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",

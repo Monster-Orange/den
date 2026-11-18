@@ -865,7 +865,7 @@
       "マシンを同時に使えるブラウザーテスト実行 (`gate run --kind browser`) の数です。コアあたりの負荷が十分に低く、空いている PTY が足りているときだけ始まります。既定値は、コアが 8 個未満なら 1、それ以上なら 8 コアごとに 1 (最大 3) です。__DEN_CLI__ gate settings --browser-slots 1",
     "set.server.gate_pty": "ブラウザーテストのために空けておく PTY",
     "set.server.gate_pty.d":
-      "システムの上限まで空いている PTY がこの数より多いときだけ、ブラウザーテストが始まります。新しいターミナルやエージェントが起動できるようにするためです。__DEN_CLI__ gate settings --pty-headroom 50",
+      "システムの上限まで空いている PTY がこの数より多いときだけ、ブラウザーテストが始まります。新しいシェルやエージェントが起動できるようにするためです。__DEN_CLI__ gate settings --pty-headroom 50",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
       "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストはブラウザー用の枠を使います。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
