@@ -237,3 +237,73 @@ describe("issue 394: applyShellSave keeps the newer save of each key", () => {
     });
   });
 });
+
+describe("issue 394 review: inherited names and far-future stamps", () => {
+  it("an inherited name (constructor, toString, __proto__) is not a key, even set to null", () => {
+    for (const k of [
+      "constructor",
+      "toString",
+      "hasOwnProperty",
+      "__proto__",
+    ]) {
+      const patch = JSON.parse(`{"${k}":null,"changedAt":1}`);
+      expect(applyShellSave(undefined, patch).ok).toBe(false);
+      expect(
+        mergeShellPrefs(shellPrefs(undefined), JSON.parse(`{"${k}":null}`)).ok,
+      ).toBe(false);
+    }
+  });
+
+  it("a stored stamp under an inherited name is dropped", () => {
+    const r = applyShellSave(
+      { pins: ["a"], changedAt: JSON.parse('{"constructor":5,"toString":6}') },
+      { pins: ["b"], changedAt: 1 },
+    );
+    expect(r.ok && r.value).toEqual({ pins: ["b"], changedAt: { pins: 1 } });
+  });
+
+  it("a changedAt later than now plus the allowance is stored as now; the next real save wins", () => {
+    const now = 1_000_000;
+    const at = { now, skewMs: 300_000 };
+    const far = applyShellSave(
+      undefined,
+      { collapsed: true, changedAt: 8.64e15 },
+      at,
+    );
+    expect(far.ok && far.value).toEqual({
+      collapsed: true,
+      changedAt: { collapsed: now },
+    });
+    const next = applyShellSave(
+      far.ok ? far.value : undefined,
+      { collapsed: false, changedAt: now + 1 },
+      { now: now + 1, skewMs: 300_000 },
+    );
+    expect(next.ok && next.ignored).toEqual([]);
+    expect(next.ok && next.value).toEqual({
+      changedAt: { collapsed: now + 1 },
+    });
+  });
+
+  it("within the allowance a changedAt is kept as given (a clock a little ahead)", () => {
+    const r = applyShellSave(
+      undefined,
+      { pins: ["a"], changedAt: 1_000_000 + 299_000 },
+      { now: 1_000_000, skewMs: 300_000 },
+    );
+    expect(r.ok && r.value).toEqual({
+      pins: ["a"],
+      changedAt: { pins: 1_299_000 },
+    });
+  });
+
+  it("a far-future stamp already stored counts as now, so a real save still wins", () => {
+    const r = applyShellSave(
+      { collapsed: true, changedAt: { collapsed: 8.64e15 } },
+      { collapsed: false, changedAt: 2_000_000 },
+      { now: 2_000_000, skewMs: 300_000 },
+    );
+    expect(r.ok && r.ignored).toEqual([]);
+    expect(r.ok && r.value).toEqual({ changedAt: { collapsed: 2_000_000 } });
+  });
+});

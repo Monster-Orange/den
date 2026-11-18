@@ -207,3 +207,81 @@ describe("issue 394: POST /api/settings/shell, the beacon form", () => {
     expect(yml()).toContain("changedAt");
   });
 });
+
+describe("issue 394 review: the shell save's edges", () => {
+  it("an inherited name ({ constructor: null }) is refused (400), and nothing is written", async () => {
+    const before = yml();
+    for (const k of ["constructor", "toString"]) {
+      const r = await beacon(`{"shell":{"${k}":null,"changedAt":1}}`, {
+        origin: own(),
+      });
+      expect(r.status).toBe(400);
+    }
+    expect(
+      await postSettings(
+        JSON.parse('{"shell":{"constructor":null,"changedAt":1}}'),
+      ),
+    ).toBe(400);
+    expect(yml()).toBe(before);
+  });
+
+  it("a far-future changedAt, then a normal save: the normal save wins (the shell route)", async () => {
+    expect(
+      (
+        await beacon(
+          { shell: { collapsed: true, changedAt: 8.64e15 } },
+          { origin: own() },
+        )
+      ).status,
+    ).toBe(200);
+    expect(yml()).not.toContain("8640000000000000");
+    const r = await beacon(
+      { shell: { collapsed: false, changedAt: Date.now() + 1000 } },
+      { origin: own() },
+    );
+    expect(JSON.parse(r.text)).toMatchObject({ ok: true, ignored: [] });
+    expect((await settings()).shell.collapsed).toBe(false);
+  });
+
+  it("a far-future changedAt, then a normal save: the normal save wins (POST /api/settings)", async () => {
+    expect(
+      await postSettings({ shell: { collapsed: true, changedAt: 8.64e15 } }),
+    ).toBe(200);
+    expect(
+      await postSettings({
+        shell: { collapsed: false, changedAt: Date.now() + 1000 },
+      }),
+    ).toBe(200);
+    expect((await settings()).shell.collapsed).toBe(false);
+  });
+
+  it("the allowance is a Setting (web.shell_save_skew_seconds, default 300)", async () => {
+    const got = async () =>
+      (
+        (await (
+          await fetch(`http://localhost:${port}/api/settings`, {
+            headers: denAuth(path.join(tmp, "home", ".den")),
+          })
+        ).json()) as { shell_save: { skewSeconds: number } }
+      ).shell_save;
+    expect(await got()).toEqual({ skewSeconds: 300 });
+    expect(await postSettings({ shell_save: { skew_seconds: 60 } })).toBe(200);
+    expect(await got()).toEqual({ skewSeconds: 60 });
+    expect(yml()).toContain("shell_save_skew_seconds: 60");
+    expect(await postSettings({ shell_save: { skew_seconds: -1 } })).toBe(400);
+    expect(await postSettings({ shell_save: { skew_seconds: null } })).toBe(
+      200,
+    );
+    expect(await got()).toEqual({ skewSeconds: 300 });
+  });
+
+  it("a body over the size cap is refused (413), and nothing is written", async () => {
+    const before = yml();
+    const big = JSON.stringify({
+      shell: { pins: [], changedAt: Date.now(), pad: "x".repeat(300 * 1024) },
+    });
+    const r = await beacon(big, { origin: own() });
+    expect(r.status).toBe(413);
+    expect(yml()).toBe(before);
+  });
+});
