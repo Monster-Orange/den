@@ -151,10 +151,17 @@ export interface HubConfig {
    */
   agentTokenRetrySeconds: number;
   /**
-   * Issue 249 hub.agent_token_max_age_days (default 0: never): an agent's
-   * token older than this is revoked and replaced at its next Hub call.
+   * Issue 249 hub.agent_token_max_age_days (default 30; 0: never): an
+   * agent's token older than this is replaced at its next Hub call, with
+   * no person act: Den mints the new one, swaps it in, then revokes the
+   * old one by its id.
    */
   agentTokenMaxAgeDays: number;
+  /**
+   * Issue 249 hub.agents_grant (Connect writes it): this install's Connect
+   * sent agents=yes, so Hub's grant covers its agents.
+   */
+  agentsGrant: boolean;
 }
 
 type RawHub =
@@ -178,6 +185,7 @@ type RawHub =
       agent_tokens?: unknown;
       agent_token_retry_seconds?: unknown;
       agent_token_max_age_days?: unknown;
+      agents_grant?: unknown;
     }
   | undefined;
 
@@ -312,6 +320,9 @@ export function readHubConfig(
     throw new Error(
       "hub.agent_token_max_age_days must be a number, 0 or more (0: never)",
     );
+  const grant = h.agents_grant;
+  if (grant !== undefined && grant !== null && typeof grant !== "boolean")
+    throw new Error("hub.agents_grant must be true or false");
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -342,7 +353,8 @@ export function readHubConfig(
     toolsRestart: tr !== false,
     agentTokens: agentTok !== false,
     agentTokenRetrySeconds: agentRetry,
-    agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 0,
+    agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 30,
+    agentsGrant: grant === true,
   };
 }
 

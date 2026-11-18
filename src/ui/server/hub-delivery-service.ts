@@ -66,6 +66,26 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   return token ? { url: cfg.url, token } : null;
 }
 
+/** Issue 249: note Hub's features; post or take back the reconnect item. */
+async function syncAgentGrant(
+  url: string,
+  features: readonly string[] | undefined,
+): Promise<void> {
+  try {
+    const g = await import("../../shared/hub-agent-grant.js");
+    const hub = await import("../../shared/hub.js");
+    g.noteHubFeatures(url, features);
+    const { notificationDeps } = await import("./notification-service.js");
+    g.syncAgentGrantNote(notificationDeps().store, {
+      connected: true,
+      offered: g.hubOffersAgentGrant(url),
+      granted: hub.readHubConfig()?.agentsGrant === true,
+    });
+  } catch {
+    /* a note that can't be kept never stops deliveries */
+  }
+}
+
 /** The body of a fetch Response as text chunks. */
 async function* chunks(res: Response): AsyncIterable<string> {
   const reader = res.body!.getReader();
@@ -275,6 +295,9 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
       feedCarries = feedKinds(w.features);
+      // Issue 249: whether Hub takes agents=yes, and the one reconnect
+      // item for an install connected before it.
+      void syncAgentGrant(a.url, w.features);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {

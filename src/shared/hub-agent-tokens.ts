@@ -30,6 +30,7 @@ import {
   hubMintAgentToken,
   hubRevokeAgentToken,
   readHubConfig,
+  type HubConfig,
 } from "./hub.js";
 import { getStateDir } from "./paths.js";
 
@@ -47,6 +48,8 @@ export interface AgentHubToken {
   at: string;
   /** Removed here, but Hub couldn't revoke it yet: never used again. */
   revokePending?: true;
+  /** Ids of tokens it replaced (rotation) that Hub hasn't revoked yet. */
+  retire?: string[];
 }
 
 /** hub.agent_tokens, hub.agent_token_retry_seconds, hub.agent_token_max_age_days. */
@@ -159,7 +162,7 @@ export class HubAgentTokens {
   private readonly inflight = new Map<string, Promise<string | null>>();
   /** Hub said it has no agent grant: not asked again until `until`. */
   private notOffered: { url: string; until: number } | null = null;
-  /** An agent whose mint failed otherwise: not asked again until then. */
+  /** An agent whose mint (or revoke) failed: not asked again until then. */
   private readonly failedUntil = new Map<string, number>();
 
   constructor(private readonly deps: HubAgentTokensDeps) {}
@@ -168,15 +171,24 @@ export class HubAgentTokens {
     return (this.deps.now ?? Date.now)();
   }
 
+  private revokeOne(hub: HubInstall, tokenId: string): Promise<boolean> {
+    return (this.deps.revoke ?? hubRevokeAgentToken)(
+      hub.url,
+      hub.token,
+      tokenId,
+    );
+  }
+
   /** Whether agent `id` calls Hub with its own token now. */
   bound(id: string): boolean {
     return agentHubBound(this.deps.stateDir(), id);
   }
 
   /**
-   * The token agent `a` calls Hub with: its own (minted the first time),
-   * or null for the install's (the server agent, the setting off, a Hub
-   * without agent tokens, or a mint that failed). Never throws.
+   * The token agent `a` calls Hub with: its own (minted the first time,
+   * rotated when older than hub.agent_token_max_age_days), or null for
+   * the install's (the server agent, the setting off, a Hub without agent
+   * tokens, or a first mint that failed). Never throws.
    */
   async tokenFor(
     hub: HubInstall,
@@ -185,19 +197,9 @@ export class HubAgentTokens {
     const s = this.deps.settings();
     if (!s.enabled || usesInstallToken(a) || !AGENT_ID_RE.test(a.id))
       return null;
-    const cur = readAgentHubToken(this.deps.stateDir(), a.id);
-    if (
-      cur &&
-      !cur.revokePending &&
-      cur.hubUrl === hub.url &&
-      !this.tooOld(cur, s)
-    )
-      return cur.token;
     const going = this.inflight.get(a.id);
     if (going) return going;
-    const p = this.mint(hub, a, cur, s).finally(() =>
-      this.inflight.delete(a.id),
-    );
+    const p = this.resolve(hub, a, s).finally(() => this.inflight.delete(a.id));
     this.inflight.set(a.id, p);
     return p;
   }
@@ -208,75 +210,134 @@ export class HubAgentTokens {
     return Number.isFinite(at) && this.now() - at > s.maxAgeDays * 86_400_000;
   }
 
-  private async mint(
+  private waiting(hub: HubInstall, id: string): boolean {
+    const now = this.now();
+    return (
+      (this.notOffered?.url === hub.url && now < this.notOffered.until) ||
+      (this.failedUntil.get(id) ?? 0) > now
+    );
+  }
+
+  private wait(id: string, s: AgentHubTokenSettings): void {
+    this.failedUntil.set(id, this.now() + s.retrySeconds * 1000);
+  }
+
+  private async resolve(
     hub: HubInstall,
     a: { id: string; name: string },
-    cur: AgentHubToken | null,
     s: AgentHubTokenSettings,
   ): Promise<string | null> {
     const stateDir = this.deps.stateDir();
-    const now = this.now();
-    if (this.notOffered?.url === hub.url && now < this.notOffered.until)
-      return null;
-    if ((this.failedUntil.get(a.id) ?? 0) > now) return null;
-    if (cur) {
-      // Too old, or a revoke Hub couldn't take before: this Hub revokes its
-      // own first. Until it can, a too-old one stays in use and one waiting
-      // to be revoked is never used. Another Hub's was revoked at its
-      // Disconnect.
-      if (cur.hubUrl === hub.url) {
-        const gone = await (this.deps.revoke ?? hubRevokeAgentToken)(
-          hub.url,
-          hub.token,
-          cur.tokenId,
-        ).then(
-          () => true,
-          () => false,
-        );
-        if (!gone) {
-          this.failedUntil.set(a.id, now + s.retrySeconds * 1000);
-          return cur.revokePending ? null : cur.token;
-        }
+    let cur = readAgentHubToken(stateDir, a.id);
+    // Another Hub's: that Hub revoked it at its Disconnect.
+    if (cur && cur.hubUrl !== hub.url) {
+      dropAgentHubToken(stateDir, a.id);
+      cur = null;
+    }
+    const usable = cur && !cur.revokePending ? cur : null;
+    if (usable && !this.tooOld(usable, s)) {
+      if (usable.retire?.length && !this.waiting(hub, a.id))
+        await this.retire(hub, a.id, s);
+      return usable.token;
+    }
+    if (this.waiting(hub, a.id)) return usable?.token ?? null;
+    if (cur?.revokePending) {
+      // A removed agent back (Undo): its old token goes first, never used.
+      const gone = await this.revokeOne(hub, cur.tokenId).then(
+        () => true,
+        () => false,
+      );
+      if (!gone) {
+        this.wait(a.id, s);
+        return null;
       }
       dropAgentHubToken(stateDir, a.id);
     }
+    // A first token, or rotation: mint the new one first. A mint that
+    // fails keeps the old one in use, and is tried again after the wait.
     const name = hubAgentName(a.id, a.name);
+    let g: { token: string; tokenId: string };
     try {
-      const g = await (this.deps.mint ?? hubMintAgentToken)(
-        hub.url,
-        hub.token,
-        { id: a.id, name },
-      );
-      writeAgentHubToken(stateDir, {
-        agentId: a.id,
-        agentName: name,
-        hubUrl: hub.url,
-        tokenId: g.tokenId,
-        token: g.token,
-        at: new Date(this.now()).toISOString(),
+      g = await (this.deps.mint ?? hubMintAgentToken)(hub.url, hub.token, {
+        id: a.id,
+        name,
       });
-      this.failedUntil.delete(a.id);
-      return g.token;
     } catch (e) {
       const until = this.now() + s.retrySeconds * 1000;
       if (e instanceof HubCallError && (e.status === 404 || e.status === 405))
         this.notOffered = { url: hub.url, until };
       else this.failedUntil.set(a.id, until);
-      return null;
+      return usable?.token ?? null;
     }
+    // Swap it in, then revoke the old one by its id: from here on only
+    // the new one goes out.
+    const retire = usable ? [usable.tokenId, ...(usable.retire ?? [])] : [];
+    writeAgentHubToken(stateDir, {
+      agentId: a.id,
+      agentName: name,
+      hubUrl: hub.url,
+      tokenId: g.tokenId,
+      token: g.token,
+      at: new Date(this.now()).toISOString(),
+      ...(retire.length ? { retire } : {}),
+    });
+    this.failedUntil.delete(a.id);
+    if (retire.length) await this.retire(hub, a.id, s);
+    return g.token;
+  }
+
+  /** Revoke agent `id`'s replaced tokens; the ones Hub couldn't stay listed. */
+  private async retire(
+    hub: HubInstall,
+    id: string,
+    s: AgentHubTokenSettings,
+  ): Promise<void> {
+    const stateDir = this.deps.stateDir();
+    const t = readAgentHubToken(stateDir, id);
+    if (!t?.retire?.length) return;
+    const left: string[] = [];
+    for (const old of t.retire)
+      await this.revokeOne(hub, old).catch(() => void left.push(old));
+    const next: AgentHubToken = { ...(readAgentHubToken(stateDir, id) ?? t) };
+    if (left.length) next.retire = left;
+    else delete next.retire;
+    writeAgentHubToken(stateDir, next);
+    if (left.length) this.wait(id, s);
   }
 
   /** Hub no longer takes agent `id`'s token (a 401): forget it here. */
   rejected(id: string): void {
     const stateDir = this.deps.stateDir();
     const t = readAgentHubToken(stateDir, id);
-    if (t && !t.revokePending) dropAgentHubToken(stateDir, id);
+    if (t && !t.revokePending && !t.retire?.length)
+      dropAgentHubToken(stateDir, id);
+    else if (t && !t.revokePending)
+      // Its replaced tokens still wait to be revoked: keep their ids.
+      writeAgentHubToken(stateDir, { ...t, revokePending: true });
+  }
+
+  /** Revoke `t` and its replaced tokens; whether `t` itself was revoked now. */
+  private async revokeEvery(
+    hub: HubInstall,
+    t: AgentHubToken,
+  ): Promise<{ revoked: boolean; failed: boolean }> {
+    let failed = false;
+    let revoked = false;
+    for (const old of t.retire ?? [])
+      await this.revokeOne(hub, old).catch(() => void (failed = true));
+    try {
+      revoked = await this.revokeOne(hub, t.tokenId);
+    } catch {
+      failed = true;
+    }
+    return { revoked, failed };
   }
 
   /**
-   * Agent `id` is removed: revoke its token on Hub and forget it here.
-   * `hub` null (not connected now) or Hub not answering: kept, marked,
-   * never used, and revoked at the next unbindAll.
+   * Agent `id` is removed: revoke its token (and any it replaced) on Hub
+   * and forget it here. `hub` null (not connected now) or Hub not
+   * answering: kept, marked, never used, and revoked at the agent's next
+   * call (an Undo) or the next unbindAll.
    */
   async unbind(
     hub: HubInstall | null,
@@ -287,16 +348,10 @@ export class HubAgentTokens {
     this.failedUntil.delete(id);
     if (!t) return { revoked: false };
     if (hub && t.hubUrl === hub.url) {
-      try {
-        const revoked = await (this.deps.revoke ?? hubRevokeAgentToken)(
-          hub.url,
-          hub.token,
-          t.tokenId,
-        );
+      const r = await this.revokeEvery(hub, t);
+      if (!r.failed) {
         dropAgentHubToken(stateDir, id);
-        return { revoked };
-      } catch {
-        /* kept below */
+        return { revoked: r.revoked };
       }
     }
     writeAgentHubToken(stateDir, { ...t, revokePending: true });
@@ -320,20 +375,12 @@ export class HubAgentTokens {
         dropAgentHubToken(stateDir, t.agentId);
         continue;
       }
-      try {
-        if (
-          await (this.deps.revoke ?? hubRevokeAgentToken)(
-            hub.url,
-            hub.token,
-            t.tokenId,
-          )
-        )
-          revoked += 1;
-        dropAgentHubToken(stateDir, t.agentId);
-      } catch {
+      const r = await this.revokeEvery(hub, t);
+      if (r.revoked) revoked += 1;
+      if (!r.failed || opts.force) dropAgentHubToken(stateDir, t.agentId);
+      else {
         failed += 1;
-        if (opts.force) dropAgentHubToken(stateDir, t.agentId);
-        else writeAgentHubToken(stateDir, { ...t, revokePending: true });
+        writeAgentHubToken(stateDir, { ...t, revokePending: true });
       }
     }
     this.failedUntil.clear();
@@ -360,23 +407,35 @@ export async function unbindAgentHubToken(
   }).unbind(h ? { url: h.url, token: h.token } : null, id);
 }
 
-/** The defaults: on, ask again after 10 minutes, no maximum age. */
+/** The defaults: on, ask again after 10 minutes, rotate every 30 days. */
 export const AGENT_HUB_TOKEN_DEFAULTS: AgentHubTokenSettings = {
   enabled: true,
   retrySeconds: 600,
-  maxAgeDays: 0,
+  maxAgeDays: 30,
 };
+
+/** The settings from hub.* as read (readHubConfig), defaults for the rest. */
+export function agentHubTokenSettingsOf(
+  c: Partial<
+    Pick<
+      HubConfig,
+      "agentTokens" | "agentTokenRetrySeconds" | "agentTokenMaxAgeDays"
+    >
+  >,
+): AgentHubTokenSettings {
+  return {
+    enabled: c.agentTokens ?? AGENT_HUB_TOKEN_DEFAULTS.enabled,
+    retrySeconds:
+      c.agentTokenRetrySeconds ?? AGENT_HUB_TOKEN_DEFAULTS.retrySeconds,
+    maxAgeDays: c.agentTokenMaxAgeDays ?? AGENT_HUB_TOKEN_DEFAULTS.maxAgeDays,
+  };
+}
 
 /** hub.agent_token* as configured now (a bad hub block: the defaults). */
 export function agentHubTokenSettings(): AgentHubTokenSettings {
   try {
     const c = readHubConfig();
-    if (c)
-      return {
-        enabled: c.agentTokens,
-        retrySeconds: c.agentTokenRetrySeconds,
-        maxAgeDays: c.agentTokenMaxAgeDays,
-      };
+    if (c) return agentHubTokenSettingsOf(c);
   } catch {
     /* the defaults */
   }

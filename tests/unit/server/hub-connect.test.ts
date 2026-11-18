@@ -187,6 +187,59 @@ describe("start: den_url, this Den's https edge address", () => {
   });
 });
 
+// Issue 249 (b): agents=yes on /connect, only once Hub says it takes it.
+describe("the agents' grant on Connect", () => {
+  it("agents=yes is sent only when Hub says it takes it; off otherwise (and by default)", () => {
+    expect(start(harness()).q.agents).toBeUndefined();
+    expect(
+      start(harness({ agentGrant: () => false })).q.agents,
+    ).toBeUndefined();
+    const asked: string[] = [];
+    const on = harness({
+      agentGrant: (url) => {
+        asked.push(url);
+        return true;
+      },
+    });
+    expect(start(on).q.agents).toBe("yes");
+    expect(asked).toEqual([HUB]);
+  });
+
+  it("a Connect with agents=yes is kept as hub.agents_grant and clears the reconnect item; one without is not; Disconnect clears it", async () => {
+    const cleared: string[] = [];
+    const h = harness({
+      agentGrant: () => true,
+      agentGrantSettled: () => void cleared.push("settled"),
+      config: () =>
+        ({
+          url: HUB,
+          tokenRef: null,
+          tokenSource: { kind: "file", path: "/state/hub/token" },
+          tokenFrom: "hub.token",
+        }) as unknown as HubConfig,
+    });
+    const { q } = start(h);
+    expect((await h.hc.finish(back({ state: q.state, code: "c1" }))).ok).toBe(
+      true,
+    );
+    expect((h.user().hub as Record<string, unknown>).agents_grant).toBe(true);
+    expect(cleared).toEqual(["settled"]);
+    await h.hc.disconnect();
+    expect(
+      (h.user().hub as Record<string, unknown>).agents_grant,
+    ).toBeUndefined();
+    expect(cleared).toEqual(["settled", "settled"]);
+
+    const old = harness({ agentGrant: () => false });
+    old.setUser({ hub: { agents_grant: true } });
+    const o = start(old);
+    await old.hc.finish(back({ state: o.q.state, code: "c2" }));
+    expect(
+      (old.user().hub as Record<string, unknown>).agents_grant,
+    ).toBeUndefined();
+  });
+});
+
 describe("finish: what comes back from Hub", () => {
   it("approved: trades the code with the verifier, keeps the token, writes hub.* in user.yml", async () => {
     const h = harness();

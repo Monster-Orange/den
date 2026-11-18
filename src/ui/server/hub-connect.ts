@@ -44,6 +44,10 @@ import {
   type HubTokenRotation,
 } from "../../shared/hub.js";
 import { recordAction } from "./audit.js";
+import {
+  AGENT_GRANT_NOTE_SUBJECT,
+  hubOffersAgentGrant,
+} from "../../shared/hub-agent-grant.js";
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
@@ -66,6 +70,8 @@ interface Pending {
   hubUrl: string;
   redirectUri: string;
   at: number;
+  /** Issue 249: agents=yes went to Hub with it. */
+  agents: boolean;
 }
 
 /** What hub.token becomes after a connect: a store ref, or a file source. */
@@ -109,6 +115,16 @@ export interface HubConnectDeps {
     hub: { url: string; token: string },
     force: boolean,
   ) => Promise<{ revoked: number; failed: number }>;
+  /**
+   * Issue 249: whether Hub `hubUrl` takes agents=yes on /connect (its
+   * whoami features say so). Absent or false: not sent.
+   */
+  agentGrant?: (hubUrl: string) => boolean;
+  /**
+   * Issue 249: the agents' grant is in place, or Hub is disconnected: the
+   * reconnect item goes (hub-agent-grant.ts). Absent: nothing.
+   */
+  agentGrantSettled?: () => void;
 }
 
 /** A `<name>.localhost` host: this machine (RFC 6761). */
@@ -329,6 +345,16 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     },
     linkAfter: async () =>
       (await import("./hub-link-all-routes.js")).defaultLinkAfter(),
+    agentGrant: (url) => hubOffersAgentGrant(url),
+    agentGrantSettled: () => {
+      void import("./notification-service.js")
+        .then((m) =>
+          m
+            .notificationDeps()
+            .store.remove((n) => n.subject === AGENT_GRANT_NOTE_SUBJECT),
+        )
+        .catch(() => undefined);
+    },
     unbindAgents: async (hub, force) =>
       (await import("../../shared/hub-agent-tokens.js"))
         .serverHubAgentTokens()
@@ -409,11 +435,15 @@ export class HubConnect {
     const state = newHubState();
     const { verifier, challenge } = newPkce();
     const redirectUri = `${new URL(origin).origin}/hub/callback`;
+    // Issue 249: the one grant covers this install's agents, once Hub
+    // says it takes it; until then Connect is as it was.
+    const agents = this.deps.agentGrant?.(hubUrl) === true;
     this.pending.set(state, {
       verifier,
       hubUrl,
       redirectUri,
       at: this.deps.now(),
+      agents,
     });
     const q = new URLSearchParams({
       install: this.deps.installLabel(),
@@ -427,6 +457,7 @@ export class HubConnect {
     // reconnect sends it again.
     const denUrl = denUrlOrigin(this.deps.denUrl?.() ?? "");
     if (denUrl) q.set("den_url", denUrl);
+    if (agents) q.set("agents", "yes");
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }
 
@@ -526,7 +557,10 @@ export class HubConnect {
     if (grant.mcpUrl && !hubUrlProblem(grant.mcpUrl))
       hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
+    if (p.agents) hub.agents_grant = true;
+    else delete hub.agents_grant;
     this.deps.writeUser({ ...user, hub });
+    if (p.agents) this.deps.agentGrantSettled?.();
     // 0.4.47: the token Den keeps in memory is the old one: read anew.
     forgetHubToken(undefined, Date.now(), { now: true });
     return {
@@ -591,9 +625,11 @@ export class HubConnect {
     };
     delete hub.token;
     delete hub.mcp_url;
+    delete hub.agents_grant;
     if (Object.keys(hub).length) user.hub = hub;
     else delete user.hub;
     this.deps.writeUser(user);
+    this.deps.agentGrantSettled?.();
     return {
       ok: true,
       revoked,

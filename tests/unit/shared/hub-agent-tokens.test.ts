@@ -23,6 +23,7 @@ import {
   HubAgentTokens,
   agentHubTokenDir,
   readAgentHubToken,
+  agentHubTokenSettingsOf,
   type AgentHubTokenSettings,
 } from "../../../src/shared/hub-agent-tokens.js";
 import { agentFilesDir } from "../../../src/shared/agents/records.js";
@@ -59,7 +60,8 @@ interface Seen {
  * `mode`: "ok", "absent" (404 for /connect/agent, as Hub before it), or
  * "down" (500).
  */
-async function fakeHub(mode: { v: "ok" | "absent" | "down" } = { v: "ok" }) {
+type Mode = "ok" | "absent" | "down" | "nomint" | "norevoke";
+async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
   const seen: Seen[] = [];
   const live = new Map<string, string>(); // token_id -> agent id
   let n = 0;
@@ -89,6 +91,7 @@ async function fakeHub(mode: { v: "ok" | "absent" | "down" } = { v: "ok" }) {
         return json(401, { error: "unauthorized" });
       if (req.url === "/connect/agent" && req.method === "POST") {
         if (mode.v === "absent") return json(404, { error: "not_found" });
+        if (mode.v === "nomint") return json(503, { error: "busy" });
         n += 1;
         const id = `00000000-0000-4000-8000-00000000000${n}`;
         live.set(id, String(body.agent_id));
@@ -99,6 +102,7 @@ async function fakeHub(mode: { v: "ok" | "absent" | "down" } = { v: "ok" }) {
         });
       }
       if (req.url === "/connect/revoke" && req.method === "POST") {
+        if (mode.v === "norevoke") return json(503, { error: "busy" });
         const id = String(body.token_id ?? "");
         if (!live.has(id)) return json(404, { error: "no such token" });
         live.delete(id);
@@ -256,7 +260,7 @@ describe("issue 249: the server's store of agent tokens", () => {
   });
 
   it("a Hub without the grant: the install token, and Den asks again only after hub.agent_token_retry_seconds", async () => {
-    const mode = { v: "absent" as "ok" | "absent" | "down" };
+    const mode = { v: "absent" as Mode };
     const hub = await fakeHub(mode);
     const stateDir = tmp();
     let now = 1_000_000;
@@ -313,23 +317,109 @@ describe("issue 249: the server's store of agent tokens", () => {
     expect(readAgentHubToken(stateDir, "ada")?.hubUrl).toBe(two.url);
   });
 
-  it("hub.agent_token_max_age_days: an older token is revoked and replaced", async () => {
+  it("rotation at the 30-day default: the new token is minted and swapped in before the old one is revoked; the old one is never used after", async () => {
     const hub = await fakeHub();
     const stateDir = tmp();
     let now = Date.parse("2026-11-01T00:00:00Z");
     const b = new HubAgentTokens({
       stateDir: () => stateDir,
-      settings: settings({ maxAgeDays: 7 }),
+      settings: () => agentHubTokenSettingsOf({}),
       now: () => now,
     });
     const h = { url: hub.url, token: INSTALL };
     const a = { id: "ada", name: "Ada", workspace: "north" };
     const first = await b.tokenFor(h, a);
-    now += 6 * 86_400_000;
+    const firstId = readAgentHubToken(stateDir, "ada")!.tokenId;
+    now += 29 * 86_400_000;
     expect(await b.tokenFor(h, a)).toBe(first);
+    expect(hub.seen.filter((s) => s.url === "/connect/agent")).toHaveLength(1);
     now += 2 * 86_400_000;
+    const mark = hub.seen.length;
+    expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
+    // Mint new first, then revoke the old one by its id: no person act.
+    expect(hub.seen.slice(mark).map((s) => s.url)).toEqual([
+      "/connect/agent",
+      "/connect/revoke",
+    ]);
+    expect(hub.seen[mark + 1].body).toEqual({ token_id: firstId });
+    expect([...hub.live.keys()]).toEqual([
+      readAgentHubToken(stateDir, "ada")!.tokenId,
+    ]);
+    // After the swap, only the new one goes out.
+    for (let i = 0; i < 3; i++)
+      expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
+  });
+
+  it("rotation: a mint that fails keeps the old token in use, revokes nothing, and is tried again after the retry wait", async () => {
+    const mode = { v: "ok" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    let now = Date.parse("2026-11-01T00:00:00Z");
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ maxAgeDays: 30, retrySeconds: 60 }),
+      now: () => now,
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    const first = await b.tokenFor(h, a);
+    now += 31 * 86_400_000;
+    mode.v = "nomint";
+    expect(await b.tokenFor(h, a)).toBe(first);
+    expect(hub.seen.filter((s) => s.url === "/connect/revoke")).toEqual([]);
+    expect(hub.live.size).toBe(1);
+    const mints = () =>
+      hub.seen.filter((s) => s.url === "/connect/agent").length;
+    const before = mints();
+    now += 30_000;
+    expect(await b.tokenFor(h, a)).toBe(first);
+    expect(mints()).toBe(before);
+    mode.v = "ok";
+    now += 31_000;
     expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
     expect(hub.live.size).toBe(1);
+  });
+
+  it("rotation: an old token Hub couldn't revoke after the swap is revoked at a later call; the new one is used meanwhile", async () => {
+    const mode = { v: "ok" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    let now = Date.parse("2026-11-01T00:00:00Z");
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ maxAgeDays: 30, retrySeconds: 60 }),
+      now: () => now,
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    await b.tokenFor(h, a);
+    now += 31 * 86_400_000;
+    mode.v = "norevoke";
+    expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
+    expect(hub.live.size).toBe(2);
+    mode.v = "ok";
+    now += 61_000;
+    expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
+    expect(hub.live.size).toBe(1);
+    // Removing it later revokes what is left.
+    expect(await b.unbind(h, "ada")).toEqual({ revoked: true });
+    expect(hub.live.size).toBe(0);
+  });
+
+  it("hub.agent_token_max_age_days 0: never rotated", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    let now = Date.parse("2026-11-01T00:00:00Z");
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ maxAgeDays: 0 }),
+      now: () => now,
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    const first = await b.tokenFor(h, a);
+    now += 400 * 86_400_000;
+    expect(await b.tokenFor(h, a)).toBe(first);
   });
 
   it("unbind: revokes the agent's token on Hub and forgets it here", async () => {
@@ -355,7 +445,7 @@ describe("issue 249: the server's store of agent tokens", () => {
   });
 
   it("unbind with Hub down: kept to revoke later; the next unbindAll revokes it", async () => {
-    const mode = { v: "ok" as "ok" | "absent" | "down" };
+    const mode = { v: "ok" as Mode };
     const hub = await fakeHub(mode);
     const stateDir = tmp();
     const b = new HubAgentTokens({
@@ -377,7 +467,7 @@ describe("issue 249: the server's store of agent tokens", () => {
   });
 
   it("a revoke still waiting is tried again at the agent's next call (an Undo); once Hub takes it, a new token", async () => {
-    const mode = { v: "ok" as "ok" | "absent" | "down" };
+    const mode = { v: "ok" as Mode };
     const hub = await fakeHub(mode);
     const stateDir = tmp();
     let now = 1_000_000;
@@ -439,7 +529,7 @@ describe("issue 249: the server's store of agent tokens", () => {
 });
 
 describe("issue 249: the settings, with permissive defaults", () => {
-  it("hub.agent_tokens on, retry every 600 s, no maximum age", () => {
+  it("hub.agent_tokens on, retry every 600 s, rotation every 30 days (0: never)", () => {
     const c = readHubConfig(
       { hub: { url: "https://hub.example.test" } },
       {},
@@ -447,7 +537,7 @@ describe("issue 249: the settings, with permissive defaults", () => {
     );
     expect(c?.agentTokens).toBe(true);
     expect(c?.agentTokenRetrySeconds).toBe(600);
-    expect(c?.agentTokenMaxAgeDays).toBe(0);
+    expect(c?.agentTokenMaxAgeDays).toBe(30);
   });
 
   it("bad values name their key", () => {
@@ -464,8 +554,6 @@ describe("issue 249: the settings, with permissive defaults", () => {
     expect(rd({ agent_token_max_age_days: -1 })).toThrow(
       "hub.agent_token_max_age_days",
     );
-    expect(rd({ agent_token_max_age_days: 30 })().agentTokenMaxAgeDays).toBe(
-      30,
-    );
+    expect(rd({ agent_token_max_age_days: 0 })().agentTokenMaxAgeDays).toBe(0);
   });
 });
