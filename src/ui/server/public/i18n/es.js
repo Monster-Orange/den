@@ -2597,6 +2597,12 @@
     "set.ui.hub.whyForbidden":
       "Tu rol en Hub ya no permite conectar instalaciones. Pide a un administrador de Hub que cambie tu rol y luego vuelve a conectar.",
     "set.ui.hub.noAnswer": "Hub no respondió.",
+    "set.ui.hub.compat": "Compatibilidad",
+    "set.ui.hub.compatDegraded": "Funciona con límites",
+    "set.ui.hub.compatUnsupported": "Solo lectura",
+    "set.ui.hub.whyDegraded": "Hub dice que este Den funciona con límites: {reason}",
+    "set.ui.hub.whyUnsupported": "Hub no admite esta versión de Den. Den solo lee de Hub hasta que se actualice Den o Hub: {reason}",
+    "set.ui.hub.noReason": "Hub no dio ningún motivo.",
     "set.ui.hub.tools":
       "Los agentes usan las herramientas de Hub sin preguntar",
     "set.ui.hub.toolsOn":

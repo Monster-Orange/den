@@ -3750,6 +3750,30 @@ export function hubHtml(b, flash, t = (k) => k) {
     forbidden: ["warn", L("set.ui.hub.forbidden", "Not allowed")],
     unreachable: ["warn", L("set.ui.hub.unreachable", "Can't reach Hub")],
   }[state] || ["warn", L("set.ui.hub.notConnected", "Not connected")];
+  const compat =
+    b.compat &&
+    (b.compat.state === "degraded" || b.compat.state === "unsupported")
+      ? b.compat
+      : null;
+  const compatWhy = compat
+    ? compat.state === "unsupported"
+      ? L(
+          "set.ui.hub.whyUnsupported",
+          "Hub doesn't support this version of Den. Den only reads from Hub until Den or Hub is updated: {reason}",
+          {
+            reason:
+              compat.reason || L("set.ui.hub.noReason", "Hub gave no reason."),
+          },
+        )
+      : L(
+          "set.ui.hub.whyDegraded",
+          "Hub says this Den works with limits: {reason}",
+          {
+            reason:
+              compat.reason || L("set.ui.hub.noReason", "Hub gave no reason."),
+          },
+        )
+    : "";
   const team = b.team
     ? b.teamUrl && /^https?:\/\//i.test(b.teamUrl)
       ? // D51: Den → Hub is a plain link, in this tab (⌘-click: a new one).
@@ -3762,6 +3786,19 @@ export function hubHtml(b, flash, t = (k) => k) {
       L("set.ui.hub.status", "Status"),
       `<span class="set-tag ${status[0]}" data-hub-state="${escR(state)}">${escR(status[1])}</span>`,
     ],
+    // Issue 521: Hub's compat answer, only when it is not ok.
+    ...(compat
+      ? [
+          [
+            L("set.ui.hub.compat", "Compatibility"),
+            `<span class="set-tag warn" data-hub-compat="${escR(compat.state)}">${escR(
+              compat.state === "unsupported"
+                ? L("set.ui.hub.compatUnsupported", "Reads only")
+                : L("set.ui.hub.compatDegraded", "Works with limits"),
+            )}</span>`,
+          ],
+        ]
+      : []),
     ...(team ? [[L("set.ui.hub.company", "Company"), team]] : []),
     ...(b.role ? [[L("set.ui.hub.role", "Role"), escR(b.role)]] : []),
     ...(b.login
@@ -3805,6 +3842,7 @@ export function hubHtml(b, flash, t = (k) => k) {
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
     (why ? note(why, "data-hub-problem") : "") +
+    (compatWhy ? note(compatWhy, "data-hub-compat-note") : "") +
     `<div class="hub-acts">` +
     (state === "rejected" || b.legacy
       ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `

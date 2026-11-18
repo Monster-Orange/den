@@ -25,6 +25,14 @@ import * as crypto from "crypto";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
 import { readHubProjectChoices } from "./hub-project-link.js";
 import {
+  denHandshakeHeaders,
+  hubCompatFor,
+  hubWriteRefusal,
+  noteHubResponse,
+  withDenHandshake,
+  type HubCompat,
+} from "./hub-compat.js";
+import {
   getSecretsProvider,
   namedSecretRef,
   readSecretsConfig,
@@ -598,6 +606,8 @@ export function hubHeaders(
     "X-Den-Project": headerSafe(who.project || "none"),
     // The server agent's scope is never a project: Hub's drift skips it.
     ...(isServerScope(who.workspace) ? { "X-Den-Scope": "server" } : {}),
+    // Issue 521: the version handshake, Den's values.
+    ...denHandshakeHeaders(),
   };
 }
 
@@ -705,7 +715,37 @@ export type HubStatus =
       rotated?: boolean;
       /** Why it isn't connected, in words (never the token). */
       problem?: string;
+      /**
+       * Issue 521: Hub's compat answer, only when it is degraded or
+       * unsupported (ok and not reported say nothing).
+       */
+      compat?: HubStatusCompat;
     };
+
+/** What Settings and doctor show of Hub's compat answer. */
+export interface HubStatusCompat {
+  state: "degraded" | "unsupported";
+  reason?: string;
+  hubVersion?: string;
+}
+
+/** Hub's kept answer for `url`, as HubStatus carries it (or nothing). */
+function statusCompat(url: string): { compat?: HubStatusCompat } {
+  let c: HubCompat | null = null;
+  try {
+    c = hubCompatFor(url);
+  } catch {
+    c = null;
+  }
+  if (!c || (c.state !== "degraded" && c.state !== "unsupported")) return {};
+  return {
+    compat: {
+      state: c.state,
+      ...(c.reason ? { reason: c.reason } : {}),
+      ...(c.hubVersion ? { hubVersion: c.hubVersion } : {}),
+    },
+  };
+}
 
 type FetchFn = typeof fetch;
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
@@ -717,10 +757,16 @@ async function hubCall(
   opts: { timeoutMs?: number; fetch?: FetchFn },
 ): Promise<Record<string, unknown>> {
   const timeout = opts.timeoutMs ?? 5000;
+  // Issue 521: an unsupported Hub gets reads only; a write is refused
+  // here, before any of it is sent.
+  const refusal = hubWriteRefusal(url, init.method ?? "GET");
+  if (refusal)
+    throw new HubCallError("refused", refusal, "hub_unsupported", 409);
   let res: Response;
   try {
     res = await (opts.fetch ?? fetch)(url, {
       ...init,
+      headers: withDenHandshake(init.headers as Record<string, string>),
       redirect: "error",
       signal: AbortSignal.timeout(timeout),
     });
@@ -733,6 +779,7 @@ async function hubCall(
         : `Hub could not be reached: ${(e as Error)?.message ?? e}`,
     );
   }
+  noteHubResponse(url, res);
   let body: Record<string, unknown> = {};
   try {
     const v = (await res.json()) as unknown;
@@ -1283,11 +1330,11 @@ export async function hubOpenDeliveryStream(
       `${url}/api/installs/self/deliveries/stream`,
       {
         method: "GET",
-        headers: {
+        headers: withDenHandshake({
           ...bearer(token),
           Accept: "text/event-stream",
           ...(lastId ? { "Last-Event-ID": lastId } : {}),
-        },
+        }),
         redirect: "error",
         signal: ctl.signal,
       },
@@ -1300,6 +1347,7 @@ export async function hubOpenDeliveryStream(
   } finally {
     clearTimeout(t);
   }
+  noteHubResponse(`${url}/api/installs/self/deliveries/stream`, res);
   if (res.status === 401)
     throw new HubCallError("rejected", "Hub did not accept the token");
   if (res.status === 403)
@@ -1593,6 +1641,7 @@ async function hubStatusOnce(
       ...(who.unread !== undefined ? { unread: who.unread } : {}),
       ...(who.token === "legacy" && !rotated ? { legacy: true } : {}),
       ...(rotated ? { rotated: true } : {}),
+      ...statusCompat(cfg.url),
     };
   } catch (e) {
     const kind = e instanceof HubCallError ? e.kind : "unreachable";
@@ -1613,6 +1662,7 @@ async function hubStatusOnce(
           : `Hub did not answer: ${(e as Error)?.message ?? e}`,
         token,
       ),
+      ...statusCompat(cfg.url),
     };
   }
 }

@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/connect/revoke",
+  "headers": {
+    "Accept": "application/json",
+    "Authorization": "Bearer <token>",
+    "X-Den-Capabilities": "compat.readonly,connect.pkce,connect.rotate,deliveries.ack,deliveries.stream,inbox,mcp.proxy,mcp.tools.watch,notifications,projects.plan,projects.sync",
+    "X-Den-Protocol": "1",
+    "X-Den-Version": "0.4.68-dev.3"
+  },
+  "body": null
+}

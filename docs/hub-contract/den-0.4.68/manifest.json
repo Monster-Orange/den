@@ -1,0 +1,19 @@
+{
+  "den_version": "0.4.68-dev.3",
+  "protocol": 1,
+  "capabilities": [
+    "compat.readonly",
+    "connect.pkce",
+    "connect.rotate",
+    "deliveries.ack",
+    "deliveries.stream",
+    "inbox",
+    "mcp.proxy",
+    "mcp.tools.watch",
+    "notifications",
+    "projects.plan",
+    "projects.sync"
+  ],
+  "exported_at": "2026-11-18T23:37:16.336Z",
+  "generator": "scripts/hub-contract-export.mjs"
+}

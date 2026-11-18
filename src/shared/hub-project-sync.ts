@@ -106,6 +106,14 @@ export function projectList(
     });
 }
 
+/** The body of PUT /api/installs/self/projects: the list and when it was sent. */
+export function projectSyncBody(
+  projects: SyncProject[],
+  sentAt: string = new Date().toISOString(),
+): { projects: SyncProject[]; sent_at: string } {
+  return { projects, sent_at: sentAt };
+}
+
 export interface Uncovered {
   workspace: string;
   repo: string;

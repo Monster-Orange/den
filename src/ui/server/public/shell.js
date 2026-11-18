@@ -848,6 +848,12 @@
     "set.ui.hub.whyForbidden":
       "Your role on Hub no longer allows connecting installs. Ask a Hub admin to change your role, then Reconnect.",
     "set.ui.hub.noAnswer": "Hub didn't answer.",
+    "set.ui.hub.compat": "Compatibility",
+    "set.ui.hub.compatDegraded": "Works with limits",
+    "set.ui.hub.compatUnsupported": "Reads only",
+    "set.ui.hub.whyDegraded": "Hub says this Den works with limits: {reason}",
+    "set.ui.hub.whyUnsupported": "Hub doesn't support this version of Den. Den only reads from Hub until Den or Hub is updated: {reason}",
+    "set.ui.hub.noReason": "Hub gave no reason.",
     "set.ui.hub.tools": "Agents use Hub's tools without asking",
     "set.ui.hub.toolsOn":
       "Agents can publish and comment in Hub without asking; writes are versioned and stay in this install's team.", // words-ok: moved word for word into the catalog (0.4.45)

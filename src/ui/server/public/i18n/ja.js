@@ -2532,6 +2532,12 @@
     "set.ui.hub.whyForbidden":
       "Hub でのあなたのロールでは、インストールを接続できなくなりました。Hub の管理者にロールの変更を依頼してから、再接続してください。",
     "set.ui.hub.noAnswer": "Hub が応答しませんでした。",
+    "set.ui.hub.compat": "互換性",
+    "set.ui.hub.compatDegraded": "一部制限あり",
+    "set.ui.hub.compatUnsupported": "読み取りのみ",
+    "set.ui.hub.whyDegraded": "Hub によると、この Den は一部の機能に制限があります: {reason}",
+    "set.ui.hub.whyUnsupported": "Hub はこのバージョンの Den に対応していません。Den か Hub が更新されるまで、Den は Hub から読み取るだけです: {reason}",
+    "set.ui.hub.noReason": "Hub は理由を示していません。",
     "set.ui.hub.tools": "エージェントが確認なしで Hub のツールを使う",
     "set.ui.hub.toolsOn":
       "エージェントは確認なしで Hub に公開やコメントができます。書き込みはバージョン管理され、このインストールのチーム内にとどまります。", // words-ok: the en string's own word, translated
