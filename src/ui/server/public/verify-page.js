@@ -361,7 +361,19 @@ export function errorView() {
 }
 
 /** Mounts the page in `root`, reading the overview and following ?why=. */
+/** Issue 440: the preview notice's content: the tag, then one line. */
+export function previewNote() {
+  return `<span class="den-k">${esc(t("v.pv_tag"))}</span> <span>${esc(t("v.pv_line"))}</span>`;
+}
+
 export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
+  // Issue 440: until Den's own checks are on it (issue 441), the page
+  // says it is a preview, in the kit's tag look.
+  const pv = root.ownerDocument?.getElementById("verify-preview");
+  if (pv) {
+    pv.innerHTML = previewNote();
+    pv.hidden = false;
+  }
   const narrow = () =>
     globalThis.matchMedia?.("(max-width: 700px)")?.matches ?? false;
   let ov = null;

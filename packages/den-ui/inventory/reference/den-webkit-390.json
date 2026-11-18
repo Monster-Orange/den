@@ -2533,7 +2533,7 @@
    "slot": "rail",
    "role": "link",
    "tag": "a",
-   "name": "Checks",
+   "name": "Checks · Preview",
    "classes": [
     "den-ni"
    ],
@@ -2585,7 +2585,8 @@
     "role": "page",
     "key": "[data-nav=\"verify\"]",
     "fit": 244
-   }
+   },
+   "kind": "preview"
   },
   {
    "key": "[data-nav=\"verify\"] > svg",
@@ -2657,7 +2658,7 @@
    "box": {
     "x": -228.05,
     "y": 311.78,
-    "w": 196,
+    "w": 134.25,
     "h": 20.3
    },
    "style": {
@@ -2701,6 +2702,67 @@
    "host": {
     "role": "page",
     "key": "[data-nav=\"verify\"]"
+   }
+  },
+  {
+   "key": "[data-nav=\"verify\"] > span.den-k",
+   "parent": "[data-nav=\"verify\"]",
+   "slot": "rail",
+   "role": "span",
+   "tag": "span",
+   "name": "Preview",
+   "classes": [
+    "den-k",
+    "den-ni-kind"
+   ],
+   "box": {
+    "x": -83.8,
+    "y": 313.92,
+    "w": 51.75,
+    "h": 16
+   },
+   "style": {
+    "display": "block",
+    "visibility": "visible",
+    "height": "16px",
+    "border-top-left-radius": "0px",
+    "border-top-right-radius": "0px",
+    "border-bottom-right-radius": "0px",
+    "border-bottom-left-radius": "0px",
+    "background-color": "rgba(0, 0, 0, 0)",
+    "border-top-width": "0px",
+    "border-top-style": "none",
+    "border-top-color": "rgb(109, 99, 88)",
+    "border-right-width": "0px",
+    "border-right-style": "none",
+    "border-right-color": "rgb(109, 99, 88)",
+    "border-bottom-width": "0px",
+    "border-bottom-style": "none",
+    "border-bottom-color": "rgb(109, 99, 88)",
+    "border-left-width": "0px",
+    "border-left-style": "none",
+    "border-left-color": "rgb(109, 99, 88)",
+    "font-size": "11px",
+    "font-weight": "400",
+    "font-family": "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace",
+    "font-style": "normal",
+    "line-height": "normal",
+    "letter-spacing": "0.66px",
+    "text-transform": "uppercase",
+    "padding-top": "0px",
+    "padding-right": "0px",
+    "padding-bottom": "0px",
+    "padding-left": "0px",
+    "row-gap": "normal",
+    "column-gap": "normal",
+    "color": "rgb(109, 99, 88)",
+    "opacity": "1",
+    "box-shadow": "none"
+   },
+   "host": {
+    "role": "kind",
+    "key": "[data-nav=\"verify\"] > span.den-k",
+    "fit": 51.74
    }
   },
   {

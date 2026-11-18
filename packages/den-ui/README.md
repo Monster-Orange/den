@@ -102,6 +102,11 @@ data and HTML slots; it keeps no copy of the kit's markup, CSS or code.
   `navWarnings` lists it and `compareNav` fails on it (`hostText`).
   `data-*` attrs stay allowed.
 
+- **Preview (0.7.5).** A page that isn't finished sets `kind:
+"preview"` on its entry: the kit's tag reads "Preview" ("Vista previa",
+  "プレビュー"), and the tooltip and accessible name "Checks · Preview".
+  The host removes it once the page is done.
+
 - **Off entries (0.7.4).** An entry that can't be opened sets `off` to
   why, as data: `"connect"` (not connected yet), `"reconnect"` (its
   sign-in is no longer accepted), `"forbidden"` (not allowed; an admin
