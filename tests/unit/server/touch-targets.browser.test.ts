@@ -177,7 +177,11 @@ async function phone(
     }
   }, latest);
   const p = await ctx.newPage();
-  p.on("pageerror", (e) => errors.push(`${engine} ${url}: ${e.message}`));
+  // Only while the page is in use: WebKit reports a fetch the page had
+  // open when its context closes as an error.
+  p.on("pageerror", (e) => {
+    if (!done.has(p)) errors.push(`${engine} ${url}: ${e.message}`);
+  });
   await p.route("**/api/notifications/read", (r) =>
     r.fulfill({ json: { ok: true } }),
   );
@@ -194,6 +198,12 @@ async function phone(
   }
   await p.waitForFunction(() => "denShell" in window);
   return p;
+}
+
+const done = new WeakSet<Page>();
+async function close(p: Page): Promise<void> {
+  done.add(p);
+  await close(p);
 }
 
 type Small = { what: string; w: number; h: number };
@@ -230,6 +240,8 @@ async function sweep(
       const shown = (el: Element) => {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) return false;
+        // Off the screen sideways (the shut rail drawer) is not a tap.
+        if (r.right <= 0 || r.left >= window.innerWidth) return false;
         const cs = getComputedStyle(el);
         if (cs.visibility === "hidden" || cs.display === "none") return false;
         for (let e: Element | null = el; e; e = e.parentElement) {
@@ -315,7 +327,7 @@ describe.each(ENGINES)(
       expect(r.n).toBeGreaterThan(5);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
-      await p.context().close();
+      await close(p);
     }, 60_000);
 
     it("the rail drawer: every row is 44px or more", async () => {
@@ -328,7 +340,7 @@ describe.each(ENGINES)(
       expect(r.n).toBeGreaterThan(3);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
-      await p.context().close();
+      await close(p);
     }, 60_000);
 
     it("/services: every row and control is 44px or more, no sideways scroll", async () => {
@@ -340,19 +352,19 @@ describe.each(ENGINES)(
       expect(r.n).toBeGreaterThan(5);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
-      await p.context().close();
+      await close(p);
     }, 60_000);
 
-    it("/settings: every tab and control is 44px or more, no sideways scroll", async () => {
+    it("/settings: every category and control is 44px or more, no sideways scroll", async () => {
       if (skip()) return;
       const p = await phone(engine, "/settings");
-      await p.waitForSelector("[role=tablist] [role=tab]", { timeout: 20_000 });
+      await p.waitForSelector("#set-nav .set-ni", { timeout: 20_000 });
       await p.waitForTimeout(1000);
       const r = await sweep(p, "body");
       expect(r.n).toBeGreaterThan(5);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
-      await p.context().close();
+      await close(p);
     }, 60_000);
 
     it("the bell's notifications: every row and control is 44px or more", async () => {
@@ -364,7 +376,7 @@ describe.each(ENGINES)(
       expect(r.n).toBeGreaterThan(1);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
-      await p.context().close();
+      await close(p);
     }, 60_000);
 
     it("a kit menu (the top bar's ◐ ▾): every item is 44px or more", async () => {
@@ -377,7 +389,7 @@ describe.each(ENGINES)(
       expect(r.n).toBeGreaterThan(1);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
-      await p.context().close();
+      await close(p);
     }, 60_000);
 
     it("the held-write ask: Allow, Deny, Review, Later stacked full width, Allow first, each 44px", async () => {
@@ -402,41 +414,62 @@ describe.each(ENGINES)(
       });
       expect(res.status).toBe(202);
       await p.waitForSelector("#den-ap-dlg[open]", { timeout: 20_000 });
-      const b = await p.evaluate(() => {
-        const d = document.getElementById("den-ap-dlg")!;
-        const foot = d.querySelector(".btns")!;
-        const fr = foot.getBoundingClientRect();
-        const cs = getComputedStyle(foot);
-        const inner =
-          fr.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-        const box = (id: string) => {
-          const r = document.getElementById(id)!.getBoundingClientRect();
-          return { top: r.top, bottom: r.bottom, w: r.width, h: r.height };
-        };
-        return {
-          inner,
-          allow: box("den-ap-allow"),
-          deny: box("den-ap-deny"),
-          review: box("den-ap-review"),
-          later: box("den-ap-later"),
-        };
-      });
-      for (const k of ["allow", "deny", "review", "later"] as const) {
-        expect([k, b[k].h >= MIN - 0.5]).toEqual([k, true]);
-        expect([k, Math.abs(b[k].w - b.inner) <= 1]).toEqual([k, true]);
+      try {
+        await measureAsk(p);
+      } finally {
+        // Deny it, so the ask never opens over the next test's page.
+        await p.click("#den-ap-deny").catch(() => undefined);
+        await p
+          .waitForFunction(
+            () =>
+              !(
+                document.getElementById(
+                  "den-ap-dlg",
+                ) as HTMLDialogElement | null
+              )?.open,
+            undefined,
+            { timeout: 15_000 },
+          )
+          .catch(() => undefined);
+        await close(p);
       }
-      // Allow first, then Deny, each on its own line, 8px apart.
-      expect(b.allow.bottom).toBeLessThanOrEqual(b.deny.top);
-      expect(Math.round(b.deny.top - b.allow.bottom)).toBe(8);
-      expect(b.deny.bottom).toBeLessThanOrEqual(b.review.top);
-      expect(b.review.bottom).toBeLessThanOrEqual(b.later.top);
-      const r = await sweep(p, "#den-ap-dlg");
-      expect(report(r.small)).toEqual([]);
-      await noSideways(p);
-      await p.context().close();
     }, 60_000);
   },
 );
+
+async function measureAsk(p: Page): Promise<void> {
+  const b = await p.evaluate(() => {
+    const d = document.getElementById("den-ap-dlg")!;
+    const foot = d.querySelector(".btns")!;
+    const fr = foot.getBoundingClientRect();
+    const cs = getComputedStyle(foot);
+    const inner =
+      fr.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const box = (id: string) => {
+      const r = document.getElementById(id)!.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, w: r.width, h: r.height };
+    };
+    return {
+      inner,
+      allow: box("den-ap-allow"),
+      deny: box("den-ap-deny"),
+      review: box("den-ap-review"),
+      later: box("den-ap-later"),
+    };
+  });
+  for (const k of ["allow", "deny", "review", "later"] as const) {
+    expect([k, b[k].h >= MIN - 0.5]).toEqual([k, true]);
+    expect([k, Math.abs(b[k].w - b.inner) <= 1]).toEqual([k, true]);
+  }
+  // Allow first, then Deny, each on its own line, 8px apart.
+  expect(b.allow.bottom).toBeLessThanOrEqual(b.deny.top);
+  expect(Math.round(b.deny.top - b.allow.bottom)).toBe(8);
+  expect(b.deny.bottom).toBeLessThanOrEqual(b.review.top);
+  expect(b.review.bottom).toBeLessThanOrEqual(b.later.top);
+  const r = await sweep(p, "#den-ap-dlg");
+  expect(report(r.small)).toEqual([]);
+  await noSideways(p);
+}
 
 it("no page errors", () => {
   expect(errors).toEqual([]);

@@ -312,6 +312,16 @@
       .cmd-btn.logs-btn {
         border-color: var(--muted);
       }
+      /* Issue 302: on a touch screen or a phone, a card's name, pin and
+         commands are 44px targets each way. */
+      @media (pointer: coarse), (max-width: 767.98px) {
+        .svc-name-btn,
+        .pin-btn,
+        .cmd-btn {
+          min-height: 44px;
+          min-width: 44px;
+        }
+      }
       .cmd-btn.logs-btn:hover:not(:disabled) {
         border-color: var(--warn);
         color: var(--warn);

@@ -8133,10 +8133,15 @@
     "  background: var(--bg); }",
     ".den-bell-ask p { margin: 0 0 6px; }",
     ".den-bell-ask div { display: flex; gap: 8px; }",
-    // A phone: the small buttons 32px (the kit's shell.css makes the
-    // panel full width and its rows 44px).
-    "@media (max-width: 480px) {",
-    "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 32px; min-width: 32px; } }",
+    // Issue 302: on a touch screen or a phone, the small buttons are 44px
+    // targets each way (the kit's shell.css makes the panel full width and
+    // its rows 44px).
+    "@media (pointer: coarse), (max-width: 767.98px) {",
+    "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 44px; min-width: 44px; } }",
+    // Issue 302: Den's buttons on every page (.den-btn, .den-btn.sm), the
+    // bell's "Mark all read" and its folds, 44px each way there too.
+    "@media (pointer: coarse), (max-width: 767.98px) {",
+    "  .den-btn, .den-bell-sc button, .den-bell-older { min-height: 44px; min-width: 44px; } }",
     "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
@@ -8356,11 +8361,12 @@
     // (The kit's shell.css hides the crumbs' keys at 860px, the crumbs and
     // the search's words at 720px.)
     "@media (max-width: 860px) { .den-chip .den-lbl-l { display: none; } }",
-    // A phone's tap targets (issue 209, T9): the dock's buttons 32 px or
-    // more each way. The top bar's, and the title visually hidden, are the
-    // kit's shell.css (den-ui 0.7.0).
-    "@media (max-width: 479.98px) {",
-    "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
+    // A phone's tap targets (issue 209, T9; 44px since issue 302): the
+    // dock's buttons 44px or more each way, on a touch screen or a phone.
+    // The top bar's, and the title visually hidden, are the kit's
+    // shell.css (den-ui 0.7.0).
+    "@media (pointer: coarse), (max-width: 767.98px) {",
+    "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 44px; min-width: 44px; }",
     "}",
   ].join("\n");
   document.head.appendChild(style);

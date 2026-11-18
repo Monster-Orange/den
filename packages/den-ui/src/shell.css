@@ -1318,3 +1318,45 @@ body.den-has-shell .den-upd {
     display: none;
   }
 }
+
+/* Issue 302: on a touch screen, or a phone (the phone kit's line,
+   767.98px), every row, tab and menu item is a 44px target each way:
+   the rail's rows and their buttons, the kit's menus and tabs, the
+   bell's rows. Its look stays; only the row grows to the target. */
+@media (pointer: coarse), (max-width: 767.98px) {
+  .den-ni,
+  .den-pop .den-mi,
+  .den-pop input.den-mfilter,
+  .den-bell-row,
+  .den-bell-row a,
+  .den-bell-hd button,
+  .den-bell-empty a,
+  [role="tablist"] > [role="tab"],
+  [role="tablist"] > * > [role="tab"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .den-bell-empty a {
+    display: inline-flex;
+    align-items: center;
+  }
+  /* A row's link fills its row's height; its words stay one under the
+     other, centred on the row. */
+  .den-bell-row a {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .den-pvisit,
+  .den-rail .den-ib,
+  .den-pop .den-ib,
+  .den-rb-in,
+  .den-bell-pop .den-rb {
+    width: auto;
+    height: auto;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
