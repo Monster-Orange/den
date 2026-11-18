@@ -198,6 +198,8 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     expect(
       await box(p, "scout").evaluate((el) => getComputedStyle(el).fontSize),
     ).toBe("16px");
+    // The mock's frame 2: an agent open on a phone has no runs dock.
+    expect(await p.locator("#den-dock").isVisible()).toBe(false);
     // A phone's box is always there: no Close.
     expect(await pane(p, "scout").locator(".agc .agc-close").count()).toBe(0);
     const over = await p.evaluate(
@@ -257,6 +259,8 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     ).toBe(true);
     expect(await p.locator(".den-top").isVisible()).toBe(false);
     expect(await p.locator("#den-dock").isVisible()).toBe(false);
+    // The mock's frame 3: the pane's own bar steps aside too.
+    expect(await pane(p, "scout").locator(".bar2").isVisible()).toBe(false);
     const b = (await box(p, "scout").boundingBox())!;
     const send = (await sendBtn(p, "scout").boundingBox())!;
     expect(b.y).toBeGreaterThanOrEqual(0);
