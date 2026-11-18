@@ -83,6 +83,8 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
+  // Issue 448: which shell the rail's Terminal opens.
+  "/shell-pick.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
