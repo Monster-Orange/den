@@ -7,7 +7,7 @@ config and manifest changes a distribution must make to move to it under
 ## [0.4.65] - unreleased
 
 0.4.65-dev.1 was skipped: its commit failed CI and was never handed to a
-gate. 0.4.65-dev.2 is the first candidate.
+gate.
 
 ### Added
 
@@ -222,6 +222,14 @@ gate. 0.4.65-dev.2 is the first candidate.
 - Push alerts give the push services this install's https address as the
   contact. Without an https address, `doctor` now warns that push alerts
   may not reach phones, and says how to set one. (#367) (#382)
+- Terminal in the rail (and a project's Terminal here) opens the shell
+  already running in that project, in front and ready to type, instead
+  of starting a new one each click. It starts a shell only when none is
+  running there (issue 448). (#450)
+- With several shells running in a project, Terminal opens the one you
+  used last in this browser (else the newest) (issue 448). (#450)
+- New terminal, in a shell's bar, starts another shell in its project in
+  one click (issue 448). (#450)
 
 ### Fixed
 
@@ -322,6 +330,8 @@ gate. 0.4.65-dev.2 is the first candidate.
 - Gate slots: a slot lock left by a process that was killed is taken
   back at once, instead of blocking the next gate run for up to 30 s
   (issue 275). (#437)
+- A message that pops up at the bottom no longer covers a terminal's
+  "To" line that appears after it (issue 448). (#450)
 
 ### Tests and CI
 
@@ -359,6 +369,8 @@ gate. 0.4.65-dev.2 is the first candidate.
   50 ms. (#449)
 - Tests: the SIGKILL gate test waits until the slot names its run before
   killing the wrapper. (#451)
+- Tests: the agent-order test waits for each move's save and its own
+  announcement, not a fixed time (issue 452). (#453)
 
 ## [0.4.64] - 2026-11-17
 
