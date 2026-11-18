@@ -477,6 +477,29 @@ const checked = (from: string) => {
 };
 
 describe("the user menu (initAppearance, R10)", () => {
+  it("issue 81: My reports is in it while reports are on, and opens them", () => {
+    const sh = denShell as typeof denShell & {
+      reportButton?: () => string;
+      myReports?: () => void;
+    };
+    const ids = () =>
+      (appearanceMenu() as KitMenu).items.map((i) => i.id ?? i.href);
+    let opened = 0;
+    try {
+      sh.reportButton = () => "<button data-den-report></button>";
+      sh.myReports = () => void opened++;
+      expect(ids()).toEqual(["my-reports", "restart", "/settings#appearance"]);
+      appearancePick("item", "my-reports");
+      expect(opened).toBe(1);
+      // Reports off: no Report button, and no My reports.
+      sh.reportButton = () => "";
+      expect(ids()).toEqual(["restart", "/settings#appearance"]);
+    } finally {
+      delete sh.reportButton;
+      delete sh.myReports;
+    }
+  });
+
   it("draws the active theme's mark, not the favicon", () => {
     expect(img()?.src).toBe("/theme/sun/mark-dark.svg"); // dark mode
     expect(img()?.alt).toBe("");

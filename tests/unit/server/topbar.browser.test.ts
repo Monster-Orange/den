@@ -1018,6 +1018,8 @@ describe("the user menu (R10) and Runs (R7)", () => {
       "English ✓",
       "日本語",
       "Español",
+      // Issue 81: My reports is in the user menu.
+      "My reports",
       "Restart Den…",
       "All settings",
     ]);

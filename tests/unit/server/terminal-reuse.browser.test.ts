@@ -16,6 +16,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { leaveRefusals } from "./helpers/webkit-leave.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const errors: string[] = [];
@@ -53,6 +54,12 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
 
   const skip = () => !browser;
 
+  /**
+   * WebKit's refused fetch while the rail's click loads the next page (the
+   * rail's helpers count polls 1.5 s after load): helpers/webkit-leave.ts.
+   */
+  const nav = leaveRefusals(() => s!.base);
+
   async function open(path: string): Promise<Page> {
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 860 },
@@ -67,14 +74,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
       }
     }, latest);
     const p = await ctx.newPage();
-    p.on("pageerror", (e) => {
-      if (leaving.has(p) && refusedOwnFetch(e.message)) return;
-      errors.push(`${name}: ${e.message}`);
-    });
-    // The next page is in: the one before it starts nothing more.
-    p.on("framenavigated", (f) => {
-      if (f === p.mainFrame()) leaving.delete(p);
-    });
+    nav.watch(p, (msg) => errors.push(`${name}: ${msg}`));
     await p.goto(signInUrl(s!.stateDir, s!.base, path));
     return p;
   }
@@ -87,22 +87,9 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
           ?.dataset.id ?? null,
     );
 
-  /**
-   * WebKit refuses a fetch a page starts after a click has begun loading
-   * the next page, and reports it as a page error ("Fetch API cannot load
-   * <url> due to access control checks."). The page's polls (the rail's
-   * helpers count first, 1.5 s after load) run on timers, so one can start
-   * in that gap. Only that message, for this server's own URL, and only
-   * while the test's own click is loading the next page.
-   */
-  const leaving = new Set<Page>();
-  const refusedOwnFetch = (msg: string) =>
-    msg.endsWith(" due to access control checks.") &&
-    msg.includes(`/${new URL(s!.base).host}/`);
-
   /** The rail's Terminal, once the page has used ?terminal=. */
   async function railTerminal(p: Page) {
-    leaving.add(p);
+    nav.leave(p);
     await p.locator('#den-rail [data-nav="terminal"]').click();
     await p.waitForURL(/terminal=1/).catch(() => {});
     await p.waitForFunction(() => !location.search.includes("terminal="));

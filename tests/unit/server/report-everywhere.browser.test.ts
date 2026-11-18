@@ -93,7 +93,10 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     how: "Unlink from a Hub project (issue 167): reportButton(true) in .hubp-dlg-acts",
   },
   "popover.js": { n: 3, how: "not a pop-up: how pop-ups close" },
-  "report-inject.js": { n: 2, how: "not a pop-up: the injector's own list" },
+  "report-inject.js": {
+    n: 3,
+    how: "not a pop-up: the injector's own list (and the rail drawer's, issue 81)",
+  },
 };
 
 /** What counts as building a pop-up, in page code. */

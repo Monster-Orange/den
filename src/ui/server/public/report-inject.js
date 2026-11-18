@@ -21,6 +21,20 @@ export const LAYERS =
   'dialog[open], [role="dialog"], [role="alertdialog"], .den-drawer';
 
 /**
+ * The shell's menus (the user menu ◐ ▾, the scope menus, the kit's menus
+ * on <body>): pop-ups too (issue 81). Each gets Report as a menu item of
+ * its own at its foot, kept in view when the menu scrolls.
+ */
+export const MENUS = '.den-pop[role="menu"]';
+
+/**
+ * The rail as a drawer below 720 px: the top bar is inert behind it, so
+ * the drawer gets Report of its own at the rail's foot (issue 81). Its box
+ * is display: contents; the rail (the nav) is what shows.
+ */
+export const DRAWER = '.den-rail-box[role="dialog"]';
+
+/**
  * Pop-ups that carry Report another way, or that aren't pop-ups of their
  * own. Each says why.
  */
@@ -29,7 +43,7 @@ export const SKIP = [
   ".fb-dlg",
   // The working pop-up has its own Report (busy.js, data-bz="report").
   ".bz-dlg",
-  // The rail as a drawer on a phone: Report is on the rail, by Settings.
+  // The rail: as a drawer, it gets Report at its foot (addToDrawer).
   ".den-rail",
   ".den-rail-box",
   // An ask drawn inside the bell's panel: the panel has the button.
@@ -91,11 +105,58 @@ export function addTo(layer, html) {
   return true;
 }
 
+/** A menu showing with no Report of its own gets one at its foot. */
+export function addToMenu(menu, html) {
+  if (!html || !shown(menu)) return false;
+  if (menu.querySelector("[data-den-report]")) return false;
+  const foot = document.createElement("div");
+  foot.className = "den-rb-foot den-rb-menu";
+  foot.setAttribute("role", "none");
+  foot.innerHTML = html;
+  foot.querySelector("[data-den-report]")?.setAttribute("role", "menuitem");
+  menu.append(foot);
+  return true;
+}
+
+/**
+ * The open drawer's rail gets Report at its foot, again after the rail
+ * repaints. It shows only while the drawer is open (CSS below).
+ */
+export function addToDrawer(box, html) {
+  const rail = box.querySelector(".den-rail");
+  if (!html || !rail) return false;
+  if (rail.querySelector(":scope > .den-rb-drawer")) return false;
+  const foot = document.createElement("div");
+  foot.className = "den-rb-foot den-rb-drawer";
+  foot.innerHTML = html;
+  rail.append(foot);
+  return true;
+}
+
+const CSS = `
+.den-rb-menu { position: sticky; bottom: -6px; margin: 6px -6px -6px;
+  padding: 6px 8px; background: var(--raised); border-radius: 0 0 10px 10px; }
+.den-rb-drawer { position: sticky; bottom: -10px; margin: auto -8px -10px;
+  background: var(--surface); }
+body:not(.den-rail-open) .den-rb-drawer { display: none; }
+`;
+function addStyle() {
+  if (document.getElementById("den-rb-inject-css")) return;
+  const st = document.createElement("style");
+  st.id = "den-rb-inject-css";
+  st.textContent = CSS;
+  document.head.append(st);
+}
+
 /** Every pop-up showing now gets the button; how many were given one. */
 export function sweep(html, root = document) {
   let n = 0;
   for (const layer of root.querySelectorAll(LAYERS))
     if (addTo(layer, html)) n++;
+  for (const menu of root.querySelectorAll(MENUS))
+    if (addToMenu(menu, html)) n++;
+  for (const box of root.querySelectorAll(DRAWER))
+    if (addToDrawer(box, html)) n++;
   return n;
 }
 
@@ -123,18 +184,26 @@ export function startReportInjector({ button, off }) {
   function run() {
     queued = false;
     if (off()) return;
+    addStyle();
     sweep(button());
-    for (const layer of document.querySelectorAll(LAYERS)) {
-      if (watched.has(layer) || layer.matches(SKIP)) continue;
+    // The drawer is watched too: the rail repaints and wipes its foot.
+    for (const layer of document.querySelectorAll(
+      `${LAYERS}, ${MENUS}, ${DRAWER}`,
+    )) {
+      if (watched.has(layer)) continue;
+      if (layer.matches(SKIP) && !layer.matches(DRAWER)) continue;
       watched.add(layer);
       inner.observe(layer, { childList: true, subtree: true });
     }
   }
+  const ANY = `${LAYERS}, ${MENUS}`;
   const isLayer = (n) =>
-    n.nodeType === 1 && (n.matches(LAYERS) || !!n.querySelector(LAYERS));
+    n.nodeType === 1 && (n.matches(ANY) || !!n.querySelector(ANY));
   new MutationObserver((records) => {
     for (const r of records) {
-      if (r.type === "attributes" ? r.target.matches(LAYERS) : false)
+      if (
+        r.type === "attributes" ? r.target.matches(`${ANY}, ${DRAWER}`) : false
+      )
         return queue();
       if (r.target.tagName === "DIALOG") return queue();
       for (const n of r.addedNodes) if (isLayer(n)) return queue();
@@ -142,7 +211,8 @@ export function startReportInjector({ button, off }) {
   }).observe(document.documentElement, {
     attributes: true,
     subtree: true,
-    attributeFilter: ["open", "hidden", "popover"],
+    // role: the rail's box is a dialog only while it is the drawer.
+    attributeFilter: ["open", "hidden", "popover", "role"],
   });
   new MutationObserver((records) => {
     for (const r of records)
