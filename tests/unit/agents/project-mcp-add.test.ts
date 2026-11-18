@@ -16,7 +16,10 @@ import {
   runProjectMcpAdd,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
-import { projectMcpLines } from "../../../src/ui/cli/doctor-command.js";
+import {
+  mcpBearerProblem,
+  projectMcpLines,
+} from "../../../src/ui/cli/doctor-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
 import { heldActions } from "../../../src/ui/server/held-actions.js";
 import { routeClass } from "../../../src/ui/server/route-classes.js";
@@ -167,7 +170,14 @@ describe("issue 335: Settings and doctor show names and urls only", () => {
     );
   });
 
-  it("doctor: a line per server, name and url; an unset ref or a bad entry warns, with no value", () => {
+  it("doctor: a line per server, name and url; a bearer that can't be served is ✗ with why, a bad entry warns, with no value", () => {
+    // Issue 473: why each bearer can't be served (null: it can).
+    const why: Record<string, string | null> = {
+      tracker: null,
+      wiki: "secrets.refs.w is not set",
+      notes:
+        "secrets.provider is env and NOTES_TOKEN isn't in the server's env",
+    };
     const out = projectMcpLines(
       [
         {
@@ -175,19 +185,45 @@ describe("issue 335: Settings and doctor show names and urls only", () => {
           raw: [
             { name: "tracker", url: URL_A, bearer: "tracker_token" },
             { name: "wiki", url: "https://wiki.example.test/mcp", bearer: "w" },
+            { name: "notes", url: "https://notes.example.test", bearer: "n" },
+            { name: "open", url: "https://open.example.test" },
             { name: "bad", url: "http://far.example.test", bearer: VALUE },
           ],
         },
       ],
-      (n) => n === "tracker_token",
+      (_ws, sv) => why[sv.name] ?? null,
     );
     expect(out.lines).toEqual([
       `  mcp server  ✓  north: tracker ${URL_A}`,
-      "  mcp server  ⚠  north: wiki https://wiki.example.test/mcp: secrets.refs.w is not set, so its calls carry no bearer",
-      "  mcp server  ⚠  north: agents.mcp_servers[2]: url must be https (http only to this machine): http://far.example.test",
+      "  mcp server  ✗  north: wiki https://wiki.example.test/mcp: its bearer can't be served, so it won't connect: secrets.refs.w is not set",
+      "  mcp server  ✗  north: notes https://notes.example.test: its bearer can't be served, so it won't connect: secrets.provider is env and NOTES_TOKEN isn't in the server's env",
+      "  mcp server  ✓  north: open https://open.example.test",
+      "  mcp server  ⚠  north: agents.mcp_servers[4]: url must be https (http only to this machine): http://far.example.test",
     ]);
-    expect(out.checks.map((c) => c.status)).toEqual(["ok", "warn", "warn"]);
+    expect(out.checks.map((c) => c.status)).toEqual([
+      "ok",
+      "fail",
+      "fail",
+      "ok",
+      "warn",
+    ]);
     expect(JSON.stringify(out)).not.toContain(VALUE);
     expect(JSON.stringify(out)).not.toContain("tracker_token");
+  });
+
+  it("issue 473, doctor: an unset ref, or the env provider (the helper's own env), can't be served", () => {
+    const set = (n: string) => n === "tracker_token";
+    expect(
+      mcpBearerProblem("w", { refSet: set, provider: () => "1password" }),
+    ).toBe("secrets.refs.w is not set");
+    expect(
+      mcpBearerProblem("tracker_token", { refSet: set, provider: () => "env" }),
+    ).toMatch(/^secrets\.provider is env/);
+    expect(
+      mcpBearerProblem("tracker_token", {
+        refSet: set,
+        provider: () => "1password",
+      }),
+    ).toBeNull();
   });
 });

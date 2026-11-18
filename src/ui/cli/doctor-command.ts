@@ -21,7 +21,10 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
-import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
+import {
+  parseProjectMcpServers,
+  type ProjectMcpServer,
+} from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
@@ -713,12 +716,14 @@ export function hubProjectLines(
 
 /**
  * Issue 335: each project's extra MCP servers, by name and url only
- * (never a bearer or its value). A bad entry, or a bearer whose
- * secrets.refs entry isn't set, warns: agents start without that one.
+ * (never a bearer or its value). A bad entry warns: agents start without
+ * that one. Issue 473: a bearer that can't be served is ✗, with why
+ * (`unserved` says why, or null when it can be): that server won't
+ * connect, so doctor never shows it ✓.
  */
 export function projectMcpLines(
   projects: { ws: string; raw: unknown }[],
-  refSet: (name: string) => boolean,
+  unserved: (ws: string, sv: ProjectMcpServer) => string | null,
   taken: readonly string[] = [],
 ): { lines: string[]; checks: OnboardCheck[] } {
   const lines: string[] = [];
@@ -726,14 +731,14 @@ export function projectMcpLines(
   for (const { ws, raw } of projects) {
     const { servers, problems } = parseProjectMcpServers(raw, taken);
     for (const sv of servers) {
-      const unset = sv.bearer && !refSet(sv.bearer);
-      const detail = unset
-        ? `${ws}: ${sv.name} ${sv.url}: secrets.refs.${sv.bearer} is not set, so its calls carry no bearer`
+      const why = sv.bearer ? unserved(ws, sv) : null;
+      const detail = why
+        ? `${ws}: ${sv.name} ${sv.url}: its bearer can't be served, so it won't connect: ${why}`
         : `${ws}: ${sv.name} ${sv.url}`;
-      lines.push(`  mcp server  ${unset ? "⚠" : "✓"}  ${detail}`);
+      lines.push(`  mcp server  ${why ? "✗" : "✓"}  ${detail}`);
       checks.push({
         id: `mcp:server:${ws}:${sv.name}`,
-        status: unset ? "warn" : "ok",
+        status: why ? "fail" : "ok",
         detail,
       });
     }
@@ -744,6 +749,21 @@ export function projectMcpLines(
     });
   }
   return { lines, checks };
+}
+
+/**
+ * Issue 473: why bearer ref `ref` can't be served to an agent, or null.
+ * Unset: it can't. The env provider: the headers helper reads the agent's
+ * own env, where the bearer never is, so it can't either.
+ */
+export function mcpBearerProblem(
+  ref: string,
+  d: { refSet: (ref: string) => boolean; provider: () => string },
+): string | null {
+  if (!d.refSet(ref)) return `secrets.refs.${ref} is not set`;
+  if (d.provider() === "env")
+    return "secrets.provider is env, and the headers helper reads the agent's own env, where the bearer never is";
+  return null;
 }
 
 /** Issue 335: every project's agents.mcp_servers, as written. */
@@ -764,11 +784,29 @@ async function projectMcpDoctor(): Promise<{
   lines: string[];
   checks: OnboardCheck[];
 }> {
-  const { namedSecretRef } = await import("../../shared/secrets/index.js");
+  const { namedSecretRef, readSecretsConfig, resolveProviderName } =
+    await import("../../shared/secrets/index.js");
   const { HUB_SERVER } = await import("../../shared/hub.js");
+  const provider = () => {
+    try {
+      return resolveProviderName(readSecretsConfig());
+    } catch {
+      return "";
+    }
+  };
   return projectMcpLines(
     await projectsMcpRaw(),
-    (n) => namedSecretRef(n) !== null,
+    (_ws, sv) =>
+      mcpBearerProblem(sv.bearer!, {
+        refSet: (n) => {
+          try {
+            return namedSecretRef(n) !== null;
+          } catch {
+            return false;
+          }
+        },
+        provider,
+      }),
     [product().cli, HUB_SERVER],
   );
 }
