@@ -6,7 +6,8 @@
 //
 // Setup starts two stub agents under this check's own names (gate335-*): one in the server's project, one
 // in OTHER (ctx.agent(id, { workspace })). It reads each one's record and MCP config, then has the harness
-// search the agents' files, the session files and Den's logs for the bearer (ctx.secretSeen). The harness
+// search the agents' files, the session files, Den's logs and each stub's transcript (ctx.transcriptPath)
+// for the bearer (ctx.secretSeen). The harness
 // holds the test value and answers with paths only: the check never sees, prints or writes it, and never
 // reads a process's environment. That the value never reaches the agent's env is a Den unit test of what
 // the session is launched with (tests/unit/agents/project-mcp.test.ts). Teardown removes both stubs.
@@ -101,9 +102,9 @@ async function agents(ctx, state) {
     out.b = await seenBy(ctx, b);
     for (const x of [a, b]) await x.ctl.stop();
     if (!out.noSecretSeen) {
-      // Each agent's files and record, every session's files, Den's logs. The runtime's
-      // transcript lives with the runtime, outside the bed's folder.
-      const paths = [
+      // Each agent's files and record, every session's files, Den's logs, and each
+      // stub's transcript (the runtime's own file, outside the bed's folder).
+      const dirs = [
         ...state.made.flatMap((x) => [
           `agent-files/${x.id}`,
           `agents/${x.id}.json`,
@@ -111,9 +112,24 @@ async function agents(ctx, state) {
         "sessions",
         "logs",
       ];
+      const noTranscriptPath = typeof ctx.transcriptPath !== "function";
+      const transcripts = noTranscriptPath
+        ? []
+        : await Promise.all(
+            state.made.map(async (x) => ({
+              id: x.id,
+              path: (await ctx.transcriptPath(x.id)) || null,
+            })),
+          );
+      const paths = [
+        ...dirs,
+        ...transcripts.map((t) => t.path).filter(Boolean),
+      ];
       const r = await ctx.secretSeen(REF, paths);
       out.seen = {
         paths,
+        noTranscriptPath,
+        noTranscript: transcripts.filter((t) => !t.path).map((t) => t.id),
         searched: Number(r?.searched) || 0,
         hits: (Array.isArray(r?.hits) ? r.hits : []).map(String),
         error: r?.error ? String(r.error).slice(0, 200) : null,
@@ -248,15 +264,22 @@ function noBearer(r) {
       skip: "needs-test-bearer",
       detail: `no test value behind secrets.refs.${REF}: ${x.error}`,
     };
+  // A transcript not searched is said, never passed over silently.
+  const gaps = x.noTranscriptPath
+    ? "; needs-harness-transcriptPath: the transcripts were not searched"
+    : x.noTranscript?.length
+      ? `; transcript not found: ${x.noTranscript.join(", ")}`
+      : "";
   return {
     ...c,
     ok: x.searched > 0 && x.hits.length === 0,
     detail:
-      x.searched === 0
+      (x.searched === 0
         ? `searched nothing (${x.paths.join(", ")})`
         : x.hits.length
           ? `the bearer is in ${x.hits.join(", ")}`
-          : `in none of ${x.searched} files under ${x.paths.join(", ")}; the launch env is a Den unit test`,
+          : `in none of ${x.searched} files under ${x.paths.join(", ")}; the launch env is a Den unit test`) +
+      gaps,
   };
 }
 

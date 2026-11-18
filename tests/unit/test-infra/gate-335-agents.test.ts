@@ -36,6 +36,9 @@ interface Opts {
   leakToB?: boolean;
   hit?: boolean;
   searchNothing?: boolean;
+  /** ctx.transcriptPath: "file" (each stub has one), "none" (null), "missing" (no method). */
+  transcript?: "file" | "none" | "missing";
+  hitTranscript?: boolean;
   refuse?: boolean;
 }
 
@@ -88,7 +91,13 @@ function onBed(o: Opts = {}): Out {
     if (!o.noSecretSeen) ctx.secretSeen = async (ref, paths) =>
       o.refSet === false ? { searched: 0, hits: [], error: "no test value for " + ref }
       : o.searchNothing ? { searched: 0, hits: [] }
-      : { searched: paths.length * 3, hits: o.hit ? [paths[0] + "/mcp.json"] : [] };
+      : { searched: paths.length * 3, hits: [
+          ...(o.hit ? [paths[0] + "/mcp.json"] : []),
+          ...(o.hitTranscript ? paths.filter((p) => p.endsWith(".jsonl")) : []),
+        ] };
+    // The stub's own transcript, outside the bed's folder; null: no record or no file yet.
+    if (o.transcript !== "missing") ctx.transcriptPath = (id) =>
+      o.transcript === "none" || !records.has(id) ? null : "/runtime/projects/bed/" + id + ".jsonl";
     const page = {
       locator: () => ({ waitFor: async () => {}, scrollIntoViewIfNeeded: async () => {} }),
       waitForSelector: async () => {},
@@ -142,6 +151,29 @@ describe("gate/335: an agent per project, and the bearer in no file or log", () 
     const r = row(onBed({ hit: true }), BEARER);
     expect(r).toMatchObject({ ok: false });
     expect(r?.detail).toMatch(/the bearer is in agent-files\//);
+  });
+
+  it("searches each stub's transcript; a hit there fails, naming the path", () => {
+    const r = row(onBed({ hitTranscript: true }), BEARER);
+    expect(r).toMatchObject({ ok: false });
+    expect(r?.detail).toMatch(
+      /the bearer is in \/runtime\/projects\/bed\/gate335-a-\w+\.jsonl, \/runtime\/projects\/bed\/gate335-b-\w+\.jsonl/,
+    );
+  });
+
+  it("a transcript the harness can't find is named in the detail, not passed over", () => {
+    const r = row(onBed({ transcript: "none" }), BEARER);
+    expect(r).toMatchObject({ ok: true });
+    expect(r?.detail).toMatch(
+      /transcript not found: gate335-a-\w+, gate335-b-\w+/,
+    );
+  });
+
+  it("no ctx.transcriptPath says needs-harness-transcriptPath in the detail, and the clause still runs", () => {
+    const r = row(onBed({ transcript: "missing" }), BEARER);
+    expect(r).toMatchObject({ ok: true });
+    expect(r?.skip).toBeUndefined();
+    expect(r?.detail).toMatch(/needs-harness-transcriptPath/);
   });
 
   it("fails when the harness searched nothing", () => {
