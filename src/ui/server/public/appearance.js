@@ -397,6 +397,12 @@ export function appearanceMenu() {
         }))
       : [],
     items: [
+      // Issue 81 (FB-7): My reports is in the user menu. Report itself is
+      // the menu's own Report button at its foot (report-inject.js). Both
+      // are gone when reports are off (no Report button then).
+      ...(sh?.reportButton?.()
+        ? [{ label: t("fb.mine"), id: "my-reports" }]
+        : []),
       // D64: always here, not only when the server is stale.
       { label: t("rd.menu"), id: "restart" },
       // "All settings": the Settings page, at Appearance (R10, R21).
@@ -419,6 +425,7 @@ export function appearancePick(kind, value) {
     return value === (sh?.lang?.() ?? "en") ? null : sh?.setLanguage?.(value);
   if (kind === "item" && value === "restart")
     return void restartDen({ from: "menu" });
+  if (kind === "item" && value === "my-reports") return void sh?.myReports?.();
   return null;
 }
 
