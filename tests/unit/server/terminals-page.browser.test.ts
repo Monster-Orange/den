@@ -492,12 +492,44 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       expect(
         await p.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(390);
+      // The list keeps its dock as it was; the saved choice never changes.
+      const dockShown = await p.locator("#den-dock").isVisible();
+      const saved = () =>
+        p.evaluate(() =>
+          Object.keys(localStorage)
+            .filter((k) => /dock/i.test(k))
+            .map((k) => `${k}=${localStorage.getItem(k)}`)
+            .join(";"),
+        );
+      const savedBefore = await saved();
       await row(p, sid).locator("button.agr").tap();
       const pane = p.locator(`.pane[data-id="${sid}"]`);
       await pane.locator(".xterm-rows").waitFor();
       const box = (await pane.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(388);
       expect(await p.locator("#agl").isVisible()).toBe(false);
+      // Mock A5 (Den Design, 11-18): the terminal fills the screen, the
+      // keys row pinned at its foot, and no runs dock in this view.
+      await p.waitForTimeout(300);
+      const keysBox = (await pane.locator(".tm-keys").boundingBox())!;
+      expect(keysBox.y + keysBox.height).toBeGreaterThanOrEqual(844 - 2);
+      const termBox = (await pane.locator(".term").boundingBox())!;
+      expect(termBox.height).toBeGreaterThanOrEqual(844 * 0.55);
+      expect(await p.locator("#den-dock").isVisible()).toBe(false);
+      // The title: name over path, the path cut short before Stop.
+      const nameBox = (await pane.locator(".tm-title b").boundingBox())!;
+      const whereBox = (await pane.locator(".tm-title .where").boundingBox())!;
+      const stopBox = (await pane
+        .locator('[data-act="stop-shell"]')
+        .boundingBox())!;
+      expect(whereBox.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height - 1);
+      expect(whereBox.x + whereBox.width).toBeLessThanOrEqual(stopBox.x);
+      expect(stopBox.height).toBeGreaterThanOrEqual(44);
+      expect(
+        await pane
+          .locator(".tm-title .where")
+          .evaluate((e) => getComputedStyle(e).textOverflow),
+      ).toBe("ellipsis");
       const back = pane.locator(".tm-back");
       expect((await back.textContent())?.trim()).toBe("‹ Terminals");
       expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -523,6 +555,8 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       await back.tap();
       await p.locator("#agl").waitFor({ state: "visible" });
       expect(await pane.isVisible()).toBe(false);
+      expect(await p.locator("#den-dock").isVisible()).toBe(dockShown);
+      expect(await saved()).toBe(savedBefore);
     } finally {
       await scope("all");
     }
