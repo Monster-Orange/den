@@ -122,8 +122,11 @@ jobs:
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
@@ -275,8 +278,11 @@ jobs:
       - if: steps.select.outputs.shards == '[]'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         if: steps.select.outputs.shards == '[]'
         timeout-minutes: 15
@@ -334,8 +340,11 @@ jobs:
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
