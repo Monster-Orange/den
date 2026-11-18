@@ -731,6 +731,8 @@ export function listedSessions(
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
       ...(s.launchd ? { launchd: s.launchd } : {}),
       startedAt: s.startedAt,
+      // Issue 448: when a person last typed in it (the rail's Terminal).
+      ...(s.inputAt ? { inputAt: s.inputAt } : {}),
       attachable: true,
     });
   }

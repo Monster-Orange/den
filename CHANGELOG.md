@@ -14,6 +14,15 @@ config and manifest changes a distribution must make to move to it under
   142, #468).
 - Bell: just opening an agent's pane no longer counts as answering its
   question (#468).
+- The rail's Terminal opens the shell used most recently. With All
+  projects selected, that is across every project, not the first one
+  listed; with one project, that project's (issue 448, #484).
+- "Used" means a person typed in it, from any browser or machine: Den now
+  remembers when each shell last had input, so a reload or another
+  computer gets the same answer (#484).
+- The rail's Terminal never opens a shell that has exited, even one that
+  ended while the page was open. With no running shell, it starts a new
+  one (#484).
 
 ## [0.4.66] - 2026-11-18
 
