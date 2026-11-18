@@ -898,6 +898,9 @@
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
       "Una prueba que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página Agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_left": "Pruebas que salieron de la cola, en minutos",
+    "set.server.gate_left.d":
+      "Una prueba que sale de la cola antes de su turno (una señal, o quien la pidió devolvió su puesto) se muestra con el motivo durante este tiempo en `gate status` y en la página Agentes. __DEN_CLI__ gate settings --left-waiting-minutes 60",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2119,6 +2122,11 @@
     "gate.endGo": "Terminar turno",
     "gate.rowHolds": "turno: {kind}",
     "gate.rowWaits": "espera turno: {kind}",
+    "gate.leftH": "Salieron de la cola en los últimos {n} min",
+    "gate.leftSig":
+      "Salió por {sig} tras {min} min (puesto {place}), a las {at}",
+    "gate.leftAsked":
+      "Devolvió su puesto tras {min} min (puesto {place}), a las {at}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

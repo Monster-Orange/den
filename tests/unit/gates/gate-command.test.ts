@@ -220,6 +220,8 @@ describe("gate run", () => {
     const s = t.d.store;
     s.ask({ kind: "browser", who: "w", label: "h", pid: 7, estimateMin: 5 });
     s.ask({ kind: "cpu", who: "w", label: "ahead", pid: 8, estimateMin: 5 });
+    // Asked before this run: it is place 2.
+    now += 1_000;
     let sleeps = 0;
     t.d.sleep = () => {
       now += 2_000;

@@ -875,6 +875,9 @@
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_left": "順番待ちを離れた実行を表示する時間 (分)",
+    "set.server.gate_left.d":
+      "順番が来る前に待ち行列を離れたテスト実行 (シグナル、または依頼元が順番を返した) は、理由とともにこの時間 `gate status` とエージェント画面に表示されます。__DEN_CLI__ gate settings --left-waiting-minutes 60",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2057,6 +2060,9 @@
     "gate.endGo": "順番を終える",
     "gate.rowHolds": "順番: {kind}",
     "gate.rowWaits": "順番待ち: {kind}",
+    "gate.leftH": "直近 {n} 分に順番待ちを離れた実行",
+    "gate.leftSig": "{sig} で離れました。{min} 分待ち (順番 {place})、{at}",
+    "gate.leftAsked": "自ら順番を返しました。{min} 分待ち (順番 {place})、{at}",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",

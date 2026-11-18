@@ -6,7 +6,9 @@
  * should end or start, and End early (a person's only: the route refuses
  * an agent). End early asks first (the kit's dialog), then goes through
  * the working pop-up. Ending a slot frees it; the run itself is not
- * stopped. The queue is a dialog on the body, so Report finds it.
+ * stopped. The queue is a dialog on the body, so Report finds it. Under
+ * the queue, the runs that left it before their turn lately, and why (a
+ * signal, or their asker gave the place back; issue 524).
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -32,6 +34,8 @@ export function startGateChip(o) {
   const kind = (k) =>
     t(k === "browser" ? "gate.kind.browser" : "gate.kind.cpu");
   let slots = [];
+  let left = [];
+  let leftMin = 60;
   let pop = null;
   let release = null;
   let timer = 0;
@@ -78,6 +82,25 @@ export function startGateChip(o) {
     );
   }
 
+  function leftHtml(r) {
+    const vars = { min: Math.round(r.minutes), place: r.place, at: hm(r.at) };
+    const why =
+      r.signal === "asked"
+        ? t("gate.leftAsked", vars)
+        : t("gate.leftSig", { ...vars, sig: r.signal });
+    return (
+      '<li class="gate-li" data-gate-left="' +
+      esc(r.id) +
+      '"><div class="gate-who">' +
+      esc(r.who) +
+      ' · <span class="mono">' +
+      esc(r.label) +
+      '</span></div><div class="gate-when">' +
+      esc(why) +
+      "</div></li>"
+    );
+  }
+
   function paintPop() {
     pop.innerHTML =
       '<h2 class="gate-h" id="gate-pop-h">' +
@@ -85,7 +108,14 @@ export function startGateChip(o) {
       "</h2>" +
       (slots.length
         ? '<ul class="gate-ul">' + slots.map(lineHtml).join("") + "</ul>"
-        : '<p class="gate-none">' + esc(t("gate.none")) + "</p>");
+        : '<p class="gate-none">' + esc(t("gate.none")) + "</p>") +
+      (left.length
+        ? '<h3 class="gate-h gate-left-h">' +
+          esc(t("gate.leftH", { n: leftMin })) +
+          '</h3><ul class="gate-ul gate-left">' +
+          left.map(leftHtml).join("") +
+          "</ul>"
+        : "");
   }
 
   async function endIt(li, btn) {
@@ -152,7 +182,10 @@ export function startGateChip(o) {
       });
       if (r.ok) {
         const before = JSON.stringify(slots);
-        slots = (await r.json()).slots ?? [];
+        const v = await r.json();
+        slots = v.slots ?? [];
+        left = v.left ?? [];
+        leftMin = v.settings?.leftWaitingMinutes ?? leftMin;
         paintChip();
         if (JSON.stringify(slots) !== before) o.onChange?.();
       }

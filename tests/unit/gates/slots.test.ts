@@ -213,7 +213,9 @@ describe("the store", () => {
     let now = T0;
     const s = new GateStore({ dir: tmp(), now: () => now });
     const holder = ask(s, "browser");
+    now += 60_000;
     const first = ask(s, "cpu");
+    now += 60_000;
     const second = ask(s, "cpu");
     now += 107 * 60_000;
     expect(s.giveBack(second.id, "SIGTERM")).toMatchObject({
@@ -236,7 +238,7 @@ describe("the store", () => {
     expect(s.events().at(-1)).toMatchObject({
       event: "released",
       id: holder.id,
-      minutes: 107,
+      minutes: 109,
     });
     expect(s.events().at(-1)!.signal).toBeUndefined();
     expect(s.giveBack(holder.id)).toBeNull();

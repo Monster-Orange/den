@@ -7,10 +7,12 @@
  *       waits for a slot (saying who holds it and until when, each
  *       minute), runs the command, gives the slot back when it ends however
  *       it ends; exits with the command's code
- *   status [--json]          who holds, who waits, overruns
+ *   status [--json]          who holds, who waits, overruns, and who left
+ *                            the queue lately and why (issue 524)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   settings [--cpu-slots N] [--overrun-margin-minutes N]
+ *            [--left-waiting-minutes N]
  *                            the machine's; a person changes them
  */
 import { spawn } from "child_process";
@@ -26,6 +28,7 @@ import {
 import {
   GateStore,
   checkGatePatch,
+  type GateEventRow,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
@@ -41,9 +44,10 @@ export const GATE_HELP = {
     "",
     "{cli} gate run [--kind browser|cpu] [--estimate 6m] [--label <l>] -- <cmd>",
     "    waits for a slot, runs <cmd>, gives the slot back when it ends",
-    "{cli} gate status [--json]      who holds a slot, who waits",
+    "{cli} gate status [--json]      who holds a slot, who waits, who left",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
+    "                    [--left-waiting-minutes N]",
   ],
 };
 
@@ -152,6 +156,15 @@ export function whoAsks(env: NodeJS.ProcessEnv, cwd: string): string {
 const hm = (ms: number) =>
   new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+/** Why a run left the queue, in words (issue 524). */
+const leftWhy = (r: Pick<GateEventRow, "signal" | "minutes" | "place">) =>
+  `${!r.signal || r.signal === "asked" ? "when it asked," : `on ${r.signal}`} after ${Math.round(r.minutes ?? 0)} min (place ${r.place ?? 0})`;
+
+/** One line for a run that left the queue before its grant. */
+export function leftLine(r: GateEventRow): string {
+  return `${r.id}  left ${r.kind}  ${r.who}  "${r.label}"  ${leftWhy(r)}, at ${hm(Date.parse(r.at))}`;
+}
+
 /** One line for a holder or waiter. */
 export function slotLine(
   e: GateEntry,
@@ -218,16 +231,20 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   let child: GateRun | undefined;
   let released = false;
   let cancelled: number | undefined;
-  const release = () => {
-    if (!released) s.release(id);
+  const release = (signal?: NodeJS.Signals) => {
+    const row = released ? null : s.giveBack(id, signal);
     released = true;
+    return row;
   };
-  // While waiting, a signal gives the place back and leaves. While the
-  // command runs, it goes to the command, whose end gives the slot back:
-  // a slot is never free while the run it was for goes on.
+  // While waiting, a signal gives the place back (recorded as
+  // left-waiting, with the signal; issue 524), says so, and leaves. While
+  // the command runs, it goes to the command, whose end gives the slot
+  // back: a slot is never free while the run it was for goes on.
   const off = d.onSignal((sig) => {
     if (child) return child.kill(sig);
-    release();
+    const row = release(sig);
+    if (row?.event === "left-waiting")
+      d.err(`gate: ${id} left the queue ${leftWhy(row)}`);
     cancelled = signalCode(sig);
     d.exit(cancelled);
   });
@@ -278,11 +295,14 @@ function status(args: string[], d: GateDeps): number {
   }
   const all = d.store.list();
   const set = d.store.settings();
-  if (all.length === 0) {
-    d.out("No gate runs hold or wait.");
-    return 0;
-  }
+  if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
+  // Issue 524: a lost place shows its reason.
+  const left = d.store.leftWaiting(d.now());
+  if (left.length) {
+    d.out(`Left the queue in the last ${set.leftWaitingMinutes} min:`);
+    for (const r of left) d.out(leftLine(r));
+  }
   return 0;
 }
 
@@ -308,11 +328,13 @@ function settings(args: string[], d: GateDeps): number {
   const { f } = flags(args, {
     "--cpu-slots": true,
     "--overrun-margin-minutes": true,
+    "--left-waiting-minutes": true,
   });
   const raw: Record<string, number> = {};
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
+    ["--left-waiting-minutes", "left_waiting_minutes"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);
@@ -328,7 +350,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate`,
+    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · left the queue shown ${s.leftWaitingMinutes} min`,
   );
   return 0;
 }

@@ -1863,6 +1863,9 @@
     "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
     "set.server.gate_overrun.d":
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_left": "Runs that left the queue, shown for minutes",
+    "set.server.gate_left.d":
+      "A test run that leaves the queue before its turn (a signal, or its asker gave the place back) is shown with why, this long, in `gate status` and on the Agents page. __DEN_CLI__ gate settings --left-waiting-minutes 60",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2935,6 +2938,11 @@
     "gate.endGo": "End slot",
     "gate.rowHolds": "gate: {kind}",
     "gate.rowWaits": "waits for gate: {kind}",
+    // Issue 524: runs that left the queue before their turn, and why.
+    "gate.leftH": "Left the queue in the last {n} min",
+    "gate.leftSig": "Left on {sig} after {min} min (place {place}), at {at}",
+    "gate.leftAsked":
+      "Gave its place back after {min} min (place {place}), at {at}",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
