@@ -81,3 +81,24 @@ export function engineStaleMessage(c: EngineCheck, cli: string): string {
     `Restart it: ${cli} web restart (or your service restart).`
   );
 }
+
+/**
+ * #384: the line an MCP server adds to each answer once the engine on disk
+ * is not the one it loaded. An agent's MCP server is a child of its
+ * session: Den updating itself restarts the web server, not the session,
+ * so the agent's tools keep the old code until it is restarted from Den.
+ * `agent`: the caller is a Den agent (else a person's own MCP client).
+ */
+export function toolsStaleMessage(c: EngineCheck, agent: boolean): string {
+  const same = c.onDisk.version === c.loaded.version;
+  const v = (s: EngineStamp) =>
+    (s.version ?? "an unknown version") +
+    (same && s.buildId ? ` (build ${s.buildId})` : "");
+  return (
+    `Note: Den was updated to ${v(c.onDisk)} after these Den tools started on ${v(c.loaded)}. ` +
+    `They still run ${v(c.loaded)}'s code, so anything ${v(c.onDisk)} added is missing from this answer. ` +
+    (agent
+      ? `Ask the person to restart you from Den (Restart keeps this conversation) to load ${v(c.onDisk)}'s tools.`
+      : `Reconnect this MCP server in your client to load ${v(c.onDisk)}'s tools.`)
+  );
+}
