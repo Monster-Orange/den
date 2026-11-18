@@ -22,7 +22,6 @@ import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import type { AgentsPageServer } from "./helpers/agents-page-server.js";
-import { leaveRefusals } from "./helpers/webkit-leave.js";
 import {
   clickScrim,
   missingReports,
@@ -48,9 +47,9 @@ export function reportSweep(
   const browsers: Partial<Record<Engine, Browser>> = {};
   let s: AgentsPageServer | null = null;
   const errors: string[] = [];
-  // Every page error fails the sweep, but WebKit's refused fetch while
-  // the sweep's own goto leaves a page (helpers/webkit-leave.ts).
-  const nav = leaveRefusals(() => s!.base);
+  // Every page error fails the sweep. It never navigates a page away
+  // (each route gets a page of its own), so WebKit's refused fetch on
+  // leaving a page (helpers/webkit-leave.ts) can't happen here.
 
   beforeAll(async () => {
     try {
@@ -93,7 +92,6 @@ export function reportSweep(
 
   async function sweepPage(p: Page, route: string, width: number) {
     const bad: string[] = [];
-    nav.leave(p);
     await p.goto(s!.base + route);
     await p.waitForFunction(shellUp);
     await p.waitForSelector(".den-top [data-den-report]", { timeout: 10_000 });
@@ -131,7 +129,7 @@ export function reportSweep(
 
   async function pagesOf(ctx: BrowserContext): Promise<string[]> {
     const p = await ctx.newPage();
-    nav.watch(p, (msg) => errors.push(`the sign-in page: ${msg}`));
+    p.on("pageerror", (e) => errors.push(`the sign-in page: ${e.message}`));
     await p.goto(signInUrl(s!.stateDir, s!.base, "/"));
     await p.waitForFunction(shellUp);
     const paths = (await p.evaluate(navPages)) as string[];
@@ -155,16 +153,26 @@ export function reportSweep(
           try {
             const pages = await pagesOf(ctx);
             expect(pages.length).toBeGreaterThan(5);
-            const p = await ctx.newPage();
-            nav.watch(p, (msg) =>
-              errors.push(`${engine} ${lang} ${width}: ${msg}`),
-            );
-            await p.goto(s!.base + "/");
-            // (A string: the page's DOM is not in the tests' type check.)
-            await p.waitForFunction(
-              `document.documentElement.lang === ${JSON.stringify(lang)}`,
-            );
-            for (const r of pages) bad.push(...(await sweepPage(p, r, width)));
+            // A page of its own for each route, closed after it: the sweep
+            // never navigates a page away, so no fetch is cut off mid-way.
+            for (const r of pages) {
+              const p = await ctx.newPage();
+              p.on("pageerror", (e) =>
+                errors.push(`${engine} ${lang} ${width} ${r}: ${e.message}`),
+              );
+              try {
+                bad.push(...(await sweepPage(p, r, width)));
+                // (A string: the page's DOM is not in the tests' type check.)
+                if (
+                  !(await p.evaluate(
+                    `document.documentElement.lang === ${JSON.stringify(lang)}`,
+                  ))
+                )
+                  bad.push(`${r} @${width}: not in ${lang}`);
+              } finally {
+                await p.close();
+              }
+            }
           } finally {
             await ctx.close();
           }
