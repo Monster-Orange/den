@@ -289,7 +289,7 @@ export async function run(ctx) {
       out.steps.exited = {
         a: {
           ended: e,
-          endedOk: endedA,
+          endedOk: Boolean(endedA),
           keyed: keyedA,
           running: Boolean(keyedA) && (await shells(page, ws)).includes(keyedA),
           hadRunning: runningA.length,
