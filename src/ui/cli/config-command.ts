@@ -78,6 +78,10 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "visibility_timeout_seconds",
   ],
   "feedback.visibility_retry_seconds": ["feedback", "visibility_retry_seconds"],
+  // Issue 455: how long, and how often, Den checks its own address.
+  "web.address_check_timeout_seconds": ["address_check", "timeout_seconds"],
+  "web.address_check_retries": ["address_check", "retries"],
+  "web.address_check_cache_seconds": ["address_check", "cache_seconds"],
 };
 
 /**
