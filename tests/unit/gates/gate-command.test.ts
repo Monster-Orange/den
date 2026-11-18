@@ -268,6 +268,12 @@ describe("gate run", () => {
     );
     const sleeper = Number(/sleeper (\d+)/.exec(err)?.[1]);
     strays.push(sleeper);
+    // The wrapper records the run's pid just after it starts it; the run
+    // can print first. Kill the wrapper only once the slot names the run,
+    // which is the case this test is about.
+    for (let i = 0; i < 250 && store.list()[0]?.runPid !== sleeper; i++)
+      await new Promise((r) => setTimeout(r, 20));
+    expect(store.list()[0]?.runPid).toBe(sleeper);
     await new Promise<void>((resolve) => {
       k.on("exit", () => resolve());
       k.kill("SIGKILL");
