@@ -357,6 +357,12 @@ import {
 } from "../../shared/edge/address-check.js";
 import { containerState } from "../../shared/edge/runtime.js";
 import { sh as edgeSh } from "../../shared/edge/exec.js";
+import {
+  applyEdgeConfig,
+  edgeDrift,
+  type EdgeApplied,
+} from "../../shared/edge/apply.js";
+import { createEdgeOffer } from "./edge-offer.js";
 import { runEdgeUp } from "../../shared/edge/up.js";
 import {
   agentTokenStatus,
@@ -1176,6 +1182,7 @@ import {
 import {
   hasEdgeBlock,
   readEdgeConfig,
+  readEdgeOfferSeconds,
   readWebPort,
 } from "../../shared/edge/config.js";
 import {
@@ -2735,6 +2742,8 @@ function approvalDeps(): ApprovalDeps {
     },
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    // Issue 395: edge_up, the server agent's and Den's own offer.
+    edgeUp: edgeUpHeldDeps(),
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
@@ -2899,6 +2908,65 @@ async function runPinCommit(
         }
       : {}),
   });
+}
+
+/**
+ * Issue 395: the one edge_up path: Settings' Start the edge (POST
+ * /api/edge/up), the held edge_up and Den's own offer all run this.
+ * Issue 519 calls applyEdgeConfig with its `change` the same way.
+ */
+function edgeApply(): Promise<EdgeApplied> {
+  return applyEdgeConfig({ log: (l) => serverLog(`  ${l}`, "lifecycle") });
+}
+
+/** Issue 395: edge_up's parts (edge-offer.ts edgeUpHeld). */
+function edgeUpHeldDeps(): import("./edge-offer.js").EdgeUpHeldDeps {
+  return {
+    image: () => readEdgeConfig().image,
+    drift: () => edgeDrift(readEdgeConfig()),
+    apply: edgeApply,
+  };
+}
+
+/**
+ * Issue 395: every edge.offer_check_seconds (0: never), whether a config
+ * change moved edge.image or edge.args away from the running edge; then
+ * Den holds an edge_up for the person by itself. Read once at start.
+ */
+function startEdgeOffer(): void {
+  let every: number;
+  try {
+    if (!hasEdgeBlock()) return;
+    every = readEdgeOfferSeconds();
+  } catch (e) {
+    serverLog(`  ⚠ edge config check off: ${(e as Error).message}`, "warn");
+    return;
+  }
+  if (!every) return;
+  const offer = createEdgeOffer({
+    config: () => (hasEdgeBlock() ? readEdgeConfig() : null),
+    drift: (cfg) => edgeDrift(cfg),
+    queue: () => approvalDeps().queue,
+    action: approvalDeps().actions.edge_up,
+    log: (l) => {
+      serverLog(`  ${l}`, "lifecycle");
+      recordAction(null, { verb: "approval-ask", detail: l });
+    },
+  });
+  let busy = false;
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      await offer.tick();
+    } catch {
+      /* best effort: the next tick looks again */
+    } finally {
+      busy = false;
+    }
+  };
+  void tick();
+  setInterval(() => void tick(), every * 1000).unref();
 }
 
 /** #176: den_pin_commit, held for the person when the policy says ask. */
@@ -3830,9 +3898,7 @@ async function handleRequest(
   if (
     handleEdgeUpRoute(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
-      run: async () =>
-        (await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") }))
-          .outcome,
+      run: () => edgeApply(),
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -7985,6 +8051,8 @@ void CRASH_GATE.then(() =>
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
+    // Issue 395: a config change under the running edge: offer edge_up.
+    startEdgeOffer();
     // 0.4.48: on Linux, the Docker bridge too, for the edge.
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),

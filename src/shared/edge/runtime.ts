@@ -232,7 +232,7 @@ export function existingEdge(name: string): ExistingEdge | null {
   return { root, mountsDir };
 }
 
-function realOrSelf(p: string): string {
+export function realOrSelf(p: string): string {
   try {
     return fs.realpathSync(p);
   } catch {
@@ -294,7 +294,7 @@ export function inspectEdge(name: string): RunningEdge | null {
 }
 
 /** The id the image reference resolves to here, or null (not pulled). */
-function localImageId(ref: string): string | null {
+export function localImageId(ref: string): string | null {
   const r = sh("docker", ["image", "inspect", "-f", "{{.Id}}", ref]);
   return r.code === 0 && r.out ? r.out : null;
 }

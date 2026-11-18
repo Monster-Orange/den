@@ -2341,6 +2341,16 @@ user, and the CLI does that for you:
   settings changed (forwarded-header trust): recreating it once. Routes
   drop only while it restarts."). Upgrading to 0.4.5 does this once.
 
+- **Den offers to recreate the edge after a config change** (issue 395).
+  When `edge.image` or `edge.args` changes (a merge, an edit) and the
+  running edge no longer matches, Den holds an `edge_up` for the person
+  by itself: "the edge runs traefik:v3.7.17; the config says
+  traefik:v3.8.0". Settings › Access shows the same line with an Apply
+  button, and the server agent has the held `edge_up` tool. All three run
+  the same code as `edge up`, and say when done whether the edge was
+  recreated, and why. `edge.offer_check_seconds` (default 30; 0 turns it
+  off; 5 to 86400) is how often Den looks.
+
 - **"Your edge is reachable from other machines".** When Den can tell, at
   start, that the edge is reachable beyond this machine (an edge hostname
   that resolves to an address that isn't loopback, such as a LAN or

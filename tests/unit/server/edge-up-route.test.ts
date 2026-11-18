@@ -18,6 +18,8 @@ import {
 } from "../../../src/ui/server/request-guard.js";
 import { routeClass } from "../../../src/ui/server/route-classes.js";
 import type { EdgeUpOutcome } from "../../../src/shared/edge/spec.js";
+import { applyEdgeConfig } from "../../../src/shared/edge/apply.js";
+import type { EdgeConfig } from "../../../src/shared/edge/types.js";
 
 const PATH = "/api/edge/up";
 
@@ -99,7 +101,16 @@ describe("issue 395: what the route answers, against a fake edge runner", () => 
       const pathname = new URL(req.url ?? "/", "http://x").pathname;
       const handled = handleEdgeUpRoute(req, res, pathname, {
         isAgent: (r) => r.headers["x-test-agent"] === "1",
-        run: () => (runs++, next()),
+        // The one edge_up path, its `edge up` the fake (issue 395).
+        run: () => (
+          runs++,
+          applyEdgeConfig({
+            up: async () => ({
+              cfg: { image: "traefik:v3.7" } as EdgeConfig,
+              outcome: await next(),
+            }),
+          })
+        ),
         log: (l) => logged.push(l),
         sendJson: (r, body, status = 200) => {
           r.writeHead(status, { "content-type": "application/json" });
@@ -160,6 +171,14 @@ describe("issue 395: what the route answers, against a fake edge runner", () => 
     expect(r.body.line).toBe(
       "Edge recreated because image: traefik:v3.6 → traefik:v3.7; it was unreachable for about 27 s",
     );
+    expect(r.body).toMatchObject({
+      edge_status: {
+        image: "traefik:v3.7",
+        version: "3.7",
+        recreated: true,
+        why: "image: traefik:v3.6 → traefik:v3.7",
+      },
+    });
     expect(logged.at(-1)).toContain("Edge recreated because image");
   });
 

@@ -157,6 +157,9 @@ Held (each waits for the person's Allow):
   owner in Hub allows it there; Den links the project by itself once they
   do, and Hub tells you what they decided. Don't link it again yourself.
 - `den_restart_server`, `den_update`: restart or update Den.
+- `edge_up`: start the edge, or recreate it on the config's image and
+  args. It always waits for the person's Allow. When the config changes
+  under the running edge, Den asks for it by itself: don't ask again.
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It
   always waits for their Allow.

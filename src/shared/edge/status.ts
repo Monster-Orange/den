@@ -76,6 +76,12 @@ export interface EdgeStatus {
    * being swept).
    */
   accessLog: { enabled: boolean; log: string; warnings: string[] };
+  /**
+   * Issue 395: what the running edge and the config disagree on
+   * (edge.image, edge.args): "the edge runs X; the config says Y". Null
+   * when they agree or nothing runs; absent where Den did not look.
+   */
+  drift?: import("./apply.js").EdgeDrift | null;
 }
 
 export interface EdgeHttps {

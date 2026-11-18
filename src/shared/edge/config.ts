@@ -79,6 +79,7 @@ interface RawEdge {
   proxy_protocol?: { trusted_ips?: unknown } | null;
   upstream_idle_seconds?: unknown;
   access_log?: unknown;
+  offer_check_seconds?: unknown;
 }
 
 function readYaml(file: string): Record<string, unknown> {
@@ -240,6 +241,31 @@ function readTls(team: RawEdge, user: RawEdge, root: string): ResolvedTls {
 /** True when the org config has an `edge:` block (an edge is configured). */
 export function hasEdgeBlock(root: string = getDistRoot()): boolean {
   return layers(root).team.edge !== undefined;
+}
+
+/** Issue 395: how often Den looks for an edge config change by default. */
+export const EDGE_OFFER_CHECK_SECONDS = 30;
+
+/**
+ * Issue 395: `edge.offer_check_seconds` (user.yml over the team's): how
+ * often the web server looks whether edge.image or edge.args changed
+ * under the running edge, to offer the person an edge_up. 0 turns it
+ * off; otherwise 5 to 86400. Default 30.
+ */
+export function readEdgeOfferSeconds(root: string = getDistRoot()): number {
+  const { team, user } = layers(root);
+  const edge = (l: Record<string, unknown>) => (l.edge ?? {}) as RawEdge;
+  const v = edge(user).offer_check_seconds ?? edge(team).offer_check_seconds;
+  if (v === undefined || v === null) return EDGE_OFFER_CHECK_SECONDS;
+  if (
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    (v === 0 || (v >= 5 && v <= 86_400))
+  )
+    return v;
+  throw new Error(
+    `edge.offer_check_seconds: 0 (off), or seconds from 5 to 86400 (got ${JSON.stringify(v)})`,
+  );
 }
 
 /** The web UI's route name: the brand name as a slug ("Den" → "den"). */

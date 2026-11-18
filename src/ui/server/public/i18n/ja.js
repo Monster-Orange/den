@@ -962,6 +962,13 @@
     "ap.do.approval_policy.project":
       "プロジェクト {where} の承認ポリシーを {to} に変更",
     "ap.do.pr_close": "{repo} のプルリクエスト {pr} を閉じる: {comment}",
+    "ap.do.edge_up": "エッジを起動するか、設定を適用する ({image})",
+    "ap.det.edge_up.drift":
+      "今、エッジは {runs} で動いていますが、設定は {says} です。",
+    "ap.det.edge_up.runs":
+      "Den は edge up と同じことをします: 設定のイメージ ({image}) と引数でエッジを動かし、動いているスタックがそのネットワークに入り直します。",
+    "ap.det.edge_up.drops":
+      "エッジを作り直すときは、再起動の数秒間ルートが途切れます。作り直したかどうかと、その理由は後で Den が伝えます。",
     "set.agents.default_mode": "エージェントのモード: Den 全体の既定",
     "set.agents.default_mode.d":
       "__DEN_TITLE__ エージェントを含むすべてのエージェントが動くモードです。プロジェクトが上書きした場合を除きます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。変更は、動いているエージェントにもターンの終わりに自動で反映されます。",
@@ -2434,6 +2441,8 @@
     "set.ui.edgeApply": "適用",
     "set.ui.edgeStarted": "エッジを起動しました",
     "set.ui.edgeCurrent": "エッジは最新です。何も再起動していません",
+    "set.ui.edgeDrift":
+      "エッジは {runs} で動いていますが、設定は {says} です。「適用」で設定どおりに作り直します。",
     "set.ui.edgeRecreated":
       "{why} のためエッジを作り直しました。約 {s} 秒間つながりませんでした",
     "set.ui.edgeWhy": "設定が変わった",

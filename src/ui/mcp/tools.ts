@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, edge_up, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2403,6 +2403,25 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  // Issue 395: recreate the edge on the config's image and args.
+  {
+    name: "edge_up",
+    title: "Start or recreate the edge",
+    description:
+      "Start the HTTPS edge, or recreate it on the config's edge.image and edge.args after they changed: what `edge up` runs, and what Settings › Access › Apply runs. It always waits for the person's Allow: every project's routes drop for a few seconds while the edge restarts. Den also asks for it by itself when a config change moves edge.image or edge.args away from the edge that runs (edge_status's `drift` says what the edge runs and what the config says). The answer's edge_status: the image, its Traefik version, whether the edge was recreated, and why. Den's own agent only." +
+      HELD,
+    action: true,
+    shape: { note: noteArg, ask: askArg },
+    async run(a, ctx) {
+      refuseScoped("edge_up", ctx.scope);
+      const r = await askPerson("edge_up", "edge_up", {}, a, ctx);
+      const st = (r as { result?: { edge_status?: unknown } })?.result
+        ?.edge_status;
+      return st && typeof r === "object"
+        ? { ...(r as object), edge_status: st }
+        : r;
     },
   },
   // Issue 160: closing a stale or superseded PR after a Hub note. Auto
