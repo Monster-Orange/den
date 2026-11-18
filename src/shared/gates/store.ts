@@ -240,7 +240,11 @@ export class GateStore {
     }
   }
 
-  /** Holds the lock while `fn` runs. A lock older than 30 s is stale. */
+  /**
+   * Holds the lock while `fn` runs. The lock names its holder's pid; a
+   * lock whose holder is gone (killed while holding it) is taken back at
+   * once (issue 275), and any lock older than 30 s is stale.
+   */
   private locked<T>(fn: () => T): T {
     const lock = path.join(this.dir, "lock");
     fs.mkdirSync(this.dir, { recursive: true });
@@ -248,12 +252,20 @@ export class GateStore {
     for (;;) {
       try {
         fs.mkdirSync(lock);
+        try {
+          fs.writeFileSync(path.join(lock, "pid"), String(process.pid));
+        } catch {
+          /* the 30 s rule still covers it */
+        }
         break;
       } catch (e) {
         if ((e as { code?: string }).code !== "EEXIST") throw e;
         try {
-          if (Date.now() - fs.statSync(lock).mtimeMs > 30_000)
-            fs.rmdirSync(lock);
+          if (
+            Date.now() - fs.statSync(lock).mtimeMs > 30_000 ||
+            this.holderGone(lock)
+          )
+            fs.rmSync(lock, { recursive: true, force: true });
         } catch {
           /* someone else took it back */
         }
@@ -266,11 +278,22 @@ export class GateStore {
       return fn();
     } finally {
       try {
-        fs.rmdirSync(lock);
+        fs.rmSync(lock, { recursive: true, force: true });
       } catch {
         /* already gone */
       }
     }
+  }
+
+  /** The lock names a pid, and that process is no longer running. */
+  private holderGone(lock: string): boolean {
+    let pid = 0;
+    try {
+      pid = Number(fs.readFileSync(path.join(lock, "pid"), "utf-8").trim());
+    } catch {
+      return false; // no pid yet: its holder may be writing it
+    }
+    return Number.isInteger(pid) && pid > 0 && !this.alive(pid);
   }
 
   private readAll(): GateEntry[] {
