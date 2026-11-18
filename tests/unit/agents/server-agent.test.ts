@@ -119,7 +119,12 @@ describe("the server agent", () => {
     );
     expect(prompt).toMatch(/never the person's service\s+repos/);
     expect(prompt).toMatch(/den_update installs another Den version/);
-    expect(prompt).toMatch(/Rolled back: the line says why\. Commit nothing/);
+    // Issue 384: the back-on line itself carries the new Den's doctor
+    // results, on a rollback too; stale Den tools say so.
+    expect(prompt).toMatch(
+      /Rolled back: the line says why, and what the new Den's doctor found if\s+it ran\. Commit nothing/,
+    );
+    expect(prompt).toMatch(/an update restarts\s+Den, not you/);
     expect(prompt).toMatch(/server_agent\.git/);
     expect(prompt).not.toMatch(/You have no checkout/);
     // Asks before every write: the runtime's own permission prompt too.
