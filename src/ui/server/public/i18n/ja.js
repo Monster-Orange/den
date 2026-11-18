@@ -572,7 +572,7 @@
     "keep.offer":
       "まだ設定されていないため、ログアウトでエージェントは止まります。オンにして「適用」を押してください（管理者パスワードを一度だけ求めます）。",
     "keep.noToken":
-      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。claude setup-token で作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。トークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
     "keep.credKeychain":
       "ストアの認証情報がログインキーチェーンにあり、常時稼働のサービスからは届かないことがあります。file: か env: を使ってください（docs/always-on-gate.md を参照）。",
     "keep.setup":
@@ -598,7 +598,9 @@
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
     "keep.tokenOld":
-      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です: claude setup-token で新しく作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です。新しいトークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
+    "keep.docs": "サインインのドキュメント",
+    "keep.runtimeAny": "エージェントの CLI",
     "acct.title": "{vendor} アカウント",
     "acct.default": "{vendor} アカウント {letter}",
     "acct.add": "{vendor} アカウントを追加",
@@ -2742,7 +2744,7 @@
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。claude setup-token で一度作り、__DEN_CLI__ agents token set で保存してください。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
+      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。トークンはエージェントの CLI にサインインすると作られ、下の「サインイン用トークン」に貼り付けます。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":

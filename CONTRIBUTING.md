@@ -104,6 +104,35 @@ The weekly rule: each entry is fixed or deleted within `max_age_days`
 `tests/unit/test-infra/quarantine.test.ts` fails on an older entry, or on
 one with no issue or no evidence.
 
+### The tests a pull request runs
+
+A push to `main` and a release run every test on both Nodes. A pull
+request runs the same checks, then the tests the change affects, on
+both Nodes. To see the list and the reason for each:
+
+```bash
+node scripts/affected-tests.mjs origin/main HEAD
+```
+
+- **related**: the tests that import a changed file (`jest --findRelatedTests`);
+- **mapped**: from `tests/affected-map.json`: the browser specs of a changed
+  page (a spec opens pages by URL, so imports never reach it), and tests
+  that read files by path (docs, the changelog, `examples/`, `public/`);
+  a change to a UI catalog (`public/i18n/*.js`) also runs the tests that
+  import the English-catalog helper, and the specs that name a changed key
+  or its English text;
+- **smoke**: a few fast, broad tests, every time;
+- **everything**: a change to a shared file (the shell, the kit, the request
+  guard, `package.json`, jest or test setup, CI) runs them all.
+
+`node scripts/affected-map.mjs` rewrites the map's page rules from the code
+(CI also adds them fresh, so a new spec is never left out).
+`scripts/ci-replay.mjs` replays the last 30 days of red CI runs and fails if
+the subset would have missed a real failure;
+`tests/fixtures/ci-replay-cases.json` keeps those failures, and
+`tests/unit/test-infra/affected-tests.test.ts` fails if the map stops
+catching one.
+
 ## Merging
 
 A pull request merges once its own run is green. When only main moved
@@ -160,17 +189,28 @@ export function expect(cells) {
 
 What the harness passes in `ctx`:
 
-|                                        |                                                                                                                                         |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.url`                              | the bed's address                                                                                                                       |
-| `ctx.cli(args)`                        | runs the bed's CLI: `{ code, out, err }`, one-time codes already masked                                                                 |
-| `ctx.api(path, init?)`                 | a signed-in `fetch` against the bed                                                                                                     |
-| `ctx.page`, `ctx.browser`, `ctx.width` | with a `matrix`: a signed-in page in this cell                                                                                          |
-| `ctx.shot(name, { mask? })`            | a screenshot into the evidence folder; pairing and device codes masked by default                                                       |
-| `ctx.evidence(name)`                   | an absolute path in this tag's evidence folder, for logs and files                                                                      |
-| `ctx.agent(name)`                      | the bed's stub agent controls (a permission request, an idle prompt, a session start, a question to the person, a line of output, stop) |
+|                                         |                                                                                                                                                                                                                              |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.url`                               | the bed's address                                                                                                                                                                                                            |
+| `ctx.cli(args)`                         | runs the bed's CLI: `{ code, out, err }`, one-time codes already masked                                                                                                                                                      |
+| `ctx.api(path, init?)`                  | a signed-in `fetch` against the bed                                                                                                                                                                                          |
+| `ctx.page`, `ctx.browser`, `ctx.width`  | with a `matrix`: a signed-in page in this cell                                                                                                                                                                               |
+| `ctx.shot(name, { mask? })`             | a screenshot into the evidence folder; pairing and device codes masked by default                                                                                                                                            |
+| `ctx.evidence(name)`                    | an absolute path in this tag's evidence folder, for logs and files                                                                                                                                                           |
+| `ctx.agent(id)`                         | the bed's stub agent: `start(persona)`, `running(ms)`, `stop()`, `restart()`, `remove()`, `state()`, `waiting(why)`, `askHuman(q)`, `permissionRequest(tool)`, `idlePrompt()`, `sessionStart(kind)`, `print(text)`, `exit()` |
+| `ctx.fetch(path, init?)`                | like `api`, keeping the status: `{ status, headers, body }` (refusals are judged by status)                                                                                                                                  |
+| `ctx.readBed(rel)`                      | a file under the bed's folder or its state folder, read only: its text (codes masked), or null                                                                                                                               |
+| `ctx.listBed(rel = '.')`                | the names in a folder under the bed's folder or its state folder, sorted, read only; or null                                                                                                                                 |
+| `ctx.goto(page, path)`, `ctx.sleep(ms)` | open a bed page; wait                                                                                                                                                                                                        |
+| `ctx.until(fn, ms)`                     | waits for `fn` to be true: the ms it took, or null                                                                                                                                                                           |
+| `ctx.bell(page)`                        | `{ badge, unread, waiting[] }`                                                                                                                                                                                               |
+| `ctx.edge`                              | the bed's own edge: `inspect()`, `swap({ image, accessLog })`, `restore()`, `status(path)`                                                                                                                                   |
+| `ctx.signedOut(browser, width)`         | a page with no session: `{ ctx, page }`                                                                                                                                                                                      |
+| `ctx.shotOf(page, name, { mask? })`     | `shot` for another page                                                                                                                                                                                                      |
 
 Names in a row's `evidence` are written into the verdict next to it.
+Anything else on `ctx` is the harness's internals and may change: never
+use it. Setup's state reaches `expect` only through what `run` returns.
 
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with

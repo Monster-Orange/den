@@ -1366,13 +1366,19 @@ export function keepTokenLine(s, t) {
         ? t("keep.noStore")
         : s && s.mode !== "token"
           ? t("keep.noTokenNotNeeded")
-          : t("keep.noToken"),
+          : t("keep.noToken", { runtime: tokenRuntime(s, t) }),
+      // Issue 399: the line points at the Sign-in token field below.
+      ...(s?.no_store || (s && s.mode !== "token") ? {} : { go: true }),
     };
   // The store's own credential in the login keychain: the daemon may not
   // reach it, so the token can't be read either.
   if (s.cred_keychain) return { state: "cred", text: t("keep.credKeychain") };
   if (s.old)
-    return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
+    return {
+      state: "old",
+      text: t("keep.tokenOld", { n: s.age_days, runtime: tokenRuntime(s, t) }),
+      go: true,
+    };
   if (s.set_at) {
     const set = t("keep.tokenSet", { date: localDay(s.set_at) });
     return {
@@ -1541,6 +1547,28 @@ function wireAccounts(host, ctx, t) {
   });
 }
 
+/** Issue 399: the runtime that makes the token (the catalog's name). */
+function tokenRuntime(s, t) {
+  return s?.runtime || t("keep.runtimeAny");
+}
+
+/**
+ * Issue 399: the token line as HTML. A line that says where the token
+ * comes from links the vendor's own sign-in docs ({docs}, the runtime
+ * catalog's signIn.docs, never a URL of the page's own) and the Sign-in
+ * token field below ({field}, which focuses it): no command to run.
+ */
+export function keepTokenHtml(l, s, t) {
+  const html = escR(l.text);
+  if (!l.go) return html;
+  const docs =
+    typeof s?.docs === "string" && /^https:\/\//.test(s.docs)
+      ? `<a href="${escR(s.docs)}" target="_blank" rel="noopener noreferrer" data-keep-token-docs>${escR(t("keep.docs"))}</a>`
+      : escR(t("keep.docs"));
+  const field = `<a href="#" data-keep-token-go>${escR(t("keep.tokenLabel"))}</a>`;
+  return html.replace("{docs}", docs).replace("{field}", field);
+}
+
 /** Issue 299: the only terminal step for the agents' sign-in token. */
 export const SETUP_TOKEN_CMD = "claude setup-token";
 
@@ -1569,10 +1597,26 @@ function wireTokenField(host, ctx, line, t) {
   // Issue 163: Clear removes it from the store, the way it was kept; the
   // kit's confirm dialog first. A person's only (the server refuses an agent).
   const clear = host.querySelector("[data-keep-token-clear]");
+  // Issue 399: "paste it into Sign-in token below" goes to the field; with
+  // more than one Claude Code account (issue 339), the first one's.
+  line.addEventListener("click", (e) => {
+    const go = e.target?.closest?.("[data-keep-token-go]");
+    if (!go) return;
+    e.preventDefault();
+    const row = host.querySelector("[data-keep-token-row]");
+    const to =
+      row && row.style.display === "none"
+        ? host.querySelector(
+            '[data-acct-runtime="den-claude"] [data-acct-token]',
+          ) || input
+        : input;
+    to.scrollIntoView({ block: "center" });
+    to.focus();
+  });
   const showLine = (signin) => {
     const l = keepTokenLine(signin, t);
     line.dataset.keepToken = l.state;
-    line.textContent = l.text;
+    line.innerHTML = keepTokenHtml(l, signin, t);
     line.hidden = false;
     clear.hidden = l.state === "missing";
   };
@@ -1664,7 +1708,7 @@ function renderKeepRunning(host, ctx) {
     `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
     `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
-    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
+    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${keepTokenHtml(signLine, ctx.data.agent_signin, t)}</p>` +
     // Issue 299: the token is pasted here; the one terminal step is named, with
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
@@ -2887,7 +2931,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Keep agents running after logout",
     description:
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     keywords: [
       "logout",
       "log out",

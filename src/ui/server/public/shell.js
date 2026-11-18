@@ -1093,7 +1093,7 @@
     "set.agents.personas.d":
       "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
     "set.agents.keep_running.d":
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     "set.cli.local_dev.d":
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     "set.cli.cli_tabs.d":
@@ -1453,7 +1453,7 @@
     "keep.offer":
       "Not set yet, so agents stop when you log out. Turn it on and press Apply (it asks for your admin password once).",
     "keep.noToken":
-      "No sign-in token is set: agents will not be able to sign in after logout. Make one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "No sign-in token is set: agents will not be able to sign in after logout. {runtime} makes one when you sign in to it ({docs}); paste it into {field} below.",
     "keep.credKeychain":
       "The store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md).",
     "keep.setup":
@@ -1478,7 +1478,9 @@
     "keep.tokenSet": "Agents sign in with the token set {date}.",
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
-      "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "The sign-in token was set {n} days ago, and it lasts about a year. {runtime} makes a new one when you sign in to it ({docs}); paste it into {field} below.",
+    "keep.docs": "its sign-in docs",
+    "keep.runtimeAny": "Your agents' CLI",
     "acct.title": "{vendor} accounts",
     "acct.default": "{vendor} account {letter}",
     "acct.add": "Add {vendor} account",
