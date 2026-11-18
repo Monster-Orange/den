@@ -2,12 +2,12 @@
  * Issue 144 GATE-SLOT: the queue as the web page, the MCP tools and
  * `gate status --json` show it.
  */
-import { expectedEnd, expectedStart, overrun } from "./rules.js";
+import { expectedEnd, expectedStart, overrun, type GateKind } from "./rules.js";
 import type { GateStore } from "./store.js";
 
 export interface GateSlotView {
   id: string;
-  kind: "browser" | "cpu";
+  kind: GateKind;
   who: string;
   label: string;
   granted: boolean;
@@ -20,11 +20,14 @@ export interface GateSlotView {
   overrun?: boolean;
   askedAt?: string;
   expectedStart?: string;
+  /** Why it waits, in words (issue 511). */
+  waits?: string;
 }
 
 export function gateView(store: GateStore, now = Date.now()) {
   const all = store.list();
   const settings = store.settings();
+  const why = store.whyAll(all, now);
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -43,6 +46,7 @@ export function gateView(store: GateStore, now = Date.now()) {
       : {
           askedAt: e.askedAt,
           expectedStart: new Date(expectedStart(all, e.id, now)).toISOString(),
+          ...(why.has(e.id) ? { waits: why.get(e.id) } : {}),
         }),
   }));
   return { settings, slots };

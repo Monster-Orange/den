@@ -383,7 +383,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_status",
     "Gate slots on this machine",
-    "Issue 144: who holds a heavy-test slot on this machine and who waits, across every repo and install here: each slot's id, kind (browser runs alone; cpu shares), who, label, grantedAt and expectedEnd (overrun when past it by the margin), or its expectedStart in the queue, and the machine's settings. Read this instead of messaging other agents. Reads only.",
+    "Issue 144: who holds a heavy-test slot on this machine and who waits, across every repo and install here: each slot's id, kind (browser takes one of the browser slots; cpu shares), why a waiter waits (`waits`), who, label, grantedAt and expectedEnd (overrun when past it by the margin), or its expectedStart in the queue, and the machine's settings. Read this instead of messaging other agents. Reads only.",
     {},
     async (_a, ctx) => gateView(gatesOf(ctx)),
   ),
@@ -395,7 +395,9 @@ const READ_TOOLS: DenTool[] = [
       kind: z
         .enum(["browser", "cpu"])
         .optional()
-        .describe("browser (runs alone) or cpu (shares); default cpu"),
+        .describe(
+          "browser (one of the browser slots) or cpu (shares); default cpu",
+        ),
       estimate_minutes: z
         .number()
         .positive()

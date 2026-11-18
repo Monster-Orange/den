@@ -397,7 +397,7 @@ describe("gate end and settings: a person's only", () => {
       browserSlots: 2,
       ptyHeadroom: 80,
     });
-    expect(t.out.at(-1)).toMatch(/^browser slots 2 · cpu slots 2 · /);
+    expect(t.out.at(-1)).toMatch(/^browser slots 2 · cpu slots 4 · .* · 80 PTYs kept free$/);
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });
 });

@@ -5343,8 +5343,15 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 <cli> gate settings --cpu-slots 3
 ```
 
-- A `browser` run holds the machine alone. `cpu` runs share it, up to
-  `cpu_slots` (default 2). First come, first served: a waiting browser
+- A `browser` run takes one of `browser_slots` (default 1 below 8 cores,
+  else 1 per 8 cores, at most 3), and starts only while the 1-minute load
+  per core is at or under `max_load_per_core` and more than `pty_headroom`
+  (default 50) PTYs are free below the system's limit (Linux
+  `/proc/sys/kernel/pty`, macOS `kern.tty.ptmx_max`, read only). A waiter's
+  line in `gate status` says why it waits, and the status starts with each
+  browser slot and who holds it. `cpu` runs share the machine, up to
+  `cpu_slots` (default 2), never with a browser run starting beside them.
+- A reserved `release` slot is counted apart: no ordinary run takes it. First come, first served: a waiting browser
   run stops new cpu grants, so it can't starve.
 - Beside a browser run's hold, up to `cpu_beside_browser` (default 1 on
   a machine with 8 or more cores, else 0)

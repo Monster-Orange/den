@@ -133,6 +133,14 @@ export const DEN_SETTING_CATEGORIES = [
       "The Den web server this page talks to. A restart keeps agents and services running.",
   },
   {
+    // Issue 511: the machine's gate (heavy test runs, taken in turn).
+    id: "gate",
+    label: "Gate",
+    order: 59.5,
+    description:
+      "Heavy test runs on this machine (`gate run`), taken in turn. Every install and repo here shares the same queue.",
+  },
+  {
     id: "cli",
     label: "Command line",
     order: 60,
@@ -1978,13 +1986,41 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
+    // Issue 511: browser test runs that may hold at once (default by cores).
+    id: "server.gate_browser",
+    category: "gate",
+    label: "Browser test runs at once, on this machine",
+    description:
+      "How many browser test runs (`gate run --kind browser`) may hold the machine at once. One starts only while the load per core is low enough and enough PTYs are free. By default 1 below 8 cores, else 1 for every 8 cores, at most 3. __DEN_CLI__ gate settings --browser-slots 1",
+    keywords: ["gate", "slot", "tests", "queue", "browser", "parallel"],
+    scope: "user",
+    keys: ["gate_slots.browser_slots"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    // The server sends the machine's value (its default follows its cores).
+    read: (ctx) => ctx.data.gate_slots?.browserSlots ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { browser_slots: v } }),
+  },
+  {
+    id: "server.gate_pty",
+    category: "gate",
+    label: "PTYs kept free for a browser test run",
+    description:
+      "A browser test run starts only while more than this many PTYs are free below the system's limit, so new terminals and agents still start. __DEN_CLI__ gate settings --pty-headroom 50",
+    keywords: ["gate", "slot", "tests", "browser", "pty", "terminal"],
+    scope: "user",
+    keys: ["gate_slots.pty_headroom"],
+    control: { type: "number", min: 0, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.ptyHeadroom ?? 50,
+    write: (v, ctx) => ctx.post({ gate_slots: { pty_headroom: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",
-    category: "server",
+    category: "gate",
     label: "Unit test runs at once, on this machine",
     description:
-      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run runs alone, apart from the unit-test runs allowed beside it. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. Browser test runs take the browser slots instead. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
     keywords: ["gate", "slot", "tests", "queue", "cpu", "parallel"],
     scope: "user",
     keys: ["gate_slots.cpu_slots"],
@@ -1994,7 +2030,7 @@ export const DEN_SETTINGS = [
   },
   {
     id: "server.gate_overrun",
-    category: "server",
+    category: "gate",
     label: "Test run flagged past its estimate, in minutes",
     description:
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -2008,7 +2044,7 @@ export const DEN_SETTINGS = [
   {
     // Issue 462: unit-test runs that may start beside a browser hold.
     id: "server.gate_beside",
-    category: "server",
+    category: "gate",
     label: "Unit test runs beside a browser test run",
     description:
       "How many unit-test runs may start while a browser test run holds the machine, if each is expected to end before the browser run that waits next. 0: a browser test run always runs alone. By default 1 on a machine with 8 or more cores, else 0. __DEN_CLI__ gate settings --cpu-beside-browser 1",
@@ -2022,10 +2058,10 @@ export const DEN_SETTINGS = [
   },
   {
     id: "server.gate_load",
-    category: "server",
-    label: "Busiest load for a run beside a browser test run, per core",
+    category: "gate",
+    label: "Busiest load for a browser test run, per core",
     description:
-      "No unit-test run starts beside a browser test run while the machine's 1-minute load average per core is above this. __DEN_CLI__ gate settings --max-load-per-core 2",
+      "No browser test run, and no unit-test run beside one, starts while the machine's 1-minute load average per core is above this. __DEN_CLI__ gate settings --max-load-per-core 2",
     keywords: ["gate", "slot", "tests", "load", "cpu", "browser", "backfill"],
     scope: "user",
     keys: ["gate_slots.max_load_per_core"],

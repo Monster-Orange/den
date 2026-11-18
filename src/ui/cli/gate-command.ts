@@ -21,7 +21,6 @@ import {
   expectedStart,
   overrun,
   type GateEntry,
-  type GateKind,
 } from "../../shared/gates/rules.js";
 import {
   GateStore,
@@ -35,9 +34,10 @@ import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 export const GATE_HELP = {
   usage: "gate <run|status|end|settings> ...",
   lines: [
-    "Heavy test runs on this machine, taken in turn: a browser suite runs",
-    "alone but for one unit suite beside it that ends in time (8+ cores); unit suites",
-    "share (2 at a time by default). Every repo and install",
+    "Heavy test runs on this machine, taken in turn: browser suites take one",
+    "of the browser slots (1 per 8 cores, at most 3, by default) while the load",
+    "and PTYs allow; one unit suite may run beside them if it ends in time",
+    "(8+ cores); unit suites share (2 at a time by default). Every repo and install",
     "on the machine shares the same queue. A run is never stopped by another.",
     "",
     "{cli} gate run [--kind browser|cpu] [--estimate 6m] [--label <l>] -- <cmd>",
@@ -46,6 +46,7 @@ export const GATE_HELP = {
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
     "                    [--cpu-beside-browser N] [--max-load-per-core N]",
+    "                    [--browser-slots N] [--pty-headroom N]",
   ],
 };
 
@@ -154,19 +155,51 @@ export function whoAsks(env: NodeJS.ProcessEnv, cwd: string): string {
 const hm = (ms: number) =>
   new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** One line for a holder or waiter. */
+/**
+ * Issue 511: the browser slots, and who holds each: a line for the count,
+ * then one per slot.
+ */
+export function browserSlotLines(
+  all: GateEntry[],
+  slots: number,
+  now: number,
+  margin: { overrunMarginMinutes: number },
+): string[] {
+  const held = all.filter((e) => e.kind === "browser" && e.grantedAt);
+  const n = Math.max(slots, held.length);
+  if (held.length === 0) return [`browser slots ${slots}: all free`];
+  const out = [
+    `browser slots ${slots}: ${held.length} held, ${Math.max(0, slots - held.length)} free`,
+  ];
+  for (let i = 0; i < n; i++) {
+    const h = held[i];
+    if (!h) {
+      out.push(`  slot ${i + 1}: free`);
+      continue;
+    }
+    const late = overrun(h, margin, now) ? " (past its estimate)" : "";
+    out.push(
+      `  slot ${i + 1}: ${h.id}  ${h.who}  "${h.label}"  until about ${hm(expectedEnd(h))}${late}`,
+    );
+  }
+  return out;
+}
+
+/** One line for a holder or waiter; a waiter says why it waits (issue 511). */
 export function slotLine(
   e: GateEntry,
   all: GateEntry[],
   now: number,
   margin: { overrunMarginMinutes: number },
+  why?: string,
 ): string {
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
     const beside = e.beside ? " beside a browser run" : "";
     return `${e.id}  holds ${e.kind}${beside}  ${e.who}  "${e.label}"  until about ${hm(expectedEnd(e))}${late}`;
   }
-  return `${e.id}  waits for ${e.kind}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now))}`;
+  const because = why ? ` · waits: ${why}` : "";
+  return `${e.id}  waits for ${e.kind}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now))}${because}`;
 }
 
 function flags(args: string[], known: Record<string, boolean>) {
@@ -209,7 +242,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   const s = d.store;
   const actor = d.env[AGENT_ACTOR_ENV]?.trim();
   let e: GateEntry | null = s.ask({
-    kind: kind as GateKind,
+    kind,
     who: whoAsks(d.env, d.cwd),
     label,
     pid: d.pid,
@@ -242,6 +275,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         const set = s.settings();
         for (const h of all.filter((x) => x.grantedAt))
           d.err(`waiting: ${slotLine(h, all, d.now(), set)}`);
+        const why = s.why(all, id, d.now());
+        if (why) d.err(`gate: ${id} waits: ${why}`);
         said = d.now();
       }
       await d.sleep(2_000);
@@ -281,11 +316,14 @@ function status(args: string[], d: GateDeps): number {
   }
   const all = d.store.list();
   const set = d.store.settings();
+  const now = d.now();
+  for (const l of browserSlotLines(all, set.browserSlots, now, set)) d.out(l);
   if (all.length === 0) {
     d.out("No gate runs hold or wait.");
     return 0;
   }
-  for (const e of all) d.out(slotLine(e, all, d.now(), set));
+  const why = d.store.whyAll(all, now);
+  for (const e of all) d.out(slotLine(e, all, now, set, why.get(e.id)));
   return 0;
 }
 
@@ -313,6 +351,8 @@ function settings(args: string[], d: GateDeps): number {
     "--overrun-margin-minutes": true,
     "--cpu-beside-browser": true,
     "--max-load-per-core": true,
+    "--browser-slots": true,
+    "--pty-headroom": true,
   });
   const raw: Record<string, number> = {};
   for (const [flag, key] of [
@@ -320,6 +360,8 @@ function settings(args: string[], d: GateDeps): number {
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--cpu-beside-browser", "cpu_beside_browser"],
     ["--max-load-per-core", "max_load_per_core"],
+    ["--browser-slots", "browser_slots"],
+    ["--pty-headroom", "pty_headroom"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);
@@ -335,7 +377,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · ${s.cpuBesideBrowser} cpu beside a browser run, under load ${s.maxLoadPerCore} per core`,
+    `browser slots ${s.browserSlots} · cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · ${s.cpuBesideBrowser} cpu beside a browser run, under load ${s.maxLoadPerCore} per core · ${s.ptyHeadroom} PTYs kept free`,
   );
   return 0;
 }

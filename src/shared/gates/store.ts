@@ -7,7 +7,7 @@
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
  *   settings.json     cpu_slots, overrun_margin_minutes, cpu_beside_browser,
- *                     max_load_per_core
+ *                     max_load_per_core, browser_slots, pty_headroom
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
  *                     back, overdue, ended early (Coach reads time lost)
  *   lock/             held while the grant decision is made
@@ -16,6 +16,7 @@
  * records it; it flags (once) a holder past its estimate plus the margin.
  * Nothing here kills a process or takes a live holder's slot.
  */
+import { execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -28,8 +29,11 @@ import {
   gone,
   grants,
   overrun,
+  waitReason,
+  waitReasons,
   type GateEntry,
   type GateKind,
+  type GateNow,
   type GateSettings,
 } from "./rules.js";
 
@@ -58,6 +62,8 @@ export type GateSettingsPatch = {
   overrun_margin_minutes?: number | null;
   cpu_beside_browser?: number | null;
   max_load_per_core?: number | null;
+  browser_slots?: number | null;
+  pty_headroom?: number | null;
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -69,12 +75,14 @@ export const GATE_LIMITS: Record<
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   cpu_beside_browser: { min: 0, max: 64, int: true },
   max_load_per_core: { min: 0, max: 1024, int: false },
+  browser_slots: { min: 1, max: 64, int: true },
+  pty_headroom: { min: 0, max: 100_000, int: true },
 };
 
 /**
  * A settings change as the web sends it ({cpu_slots,
- * overrun_margin_minutes, cpu_beside_browser, max_load_per_core}, null
- * clears), checked; or what is wrong.
+ * overrun_margin_minutes, cpu_beside_browser, max_load_per_core,
+ * browser_slots, pty_headroom}, null clears), checked; or what is wrong.
  */
 export function checkGatePatch(
   v: unknown,
@@ -107,6 +115,16 @@ export function checkGatePatch(
   return { ok: true, patch };
 }
 
+/** What an ask says about itself. */
+export interface GateAsk {
+  who: string;
+  label: string;
+  pid: number;
+  estimateMin: number;
+  agent?: boolean;
+  actor?: string;
+}
+
 export type GateEvent =
   | "asked"
   | "waits"
@@ -129,6 +147,8 @@ export interface GateEventRow {
   behind?: string[];
   /** waits: when it may expect to start (ISO). */
   expectedStart?: string;
+  /** waits: why, in words (issue 511). */
+  why?: string;
   /** ended-early: who ended it. */
   by?: string;
 }
@@ -152,6 +172,42 @@ export interface GateStoreOpts {
   loadPerCore?: () => number;
   /** The machine's cpu count, for the defaults (issue 462). */
   cores?: () => number;
+  /** The system's PTYs in use and its limit (issue 511); the machine's by default. */
+  ptys?: () => { used: number; max: number } | undefined;
+}
+
+/**
+ * The system's PTYs in use and its limit, read only (issue 511): Linux
+ * /proc/sys/kernel/pty/{nr,max}; macOS kern.tty.ptmx_max (sysctl, read,
+ * never written) and the /dev/ttys* nodes. Unknown elsewhere: no check.
+ */
+export function machinePtys(): { used: number; max: number } | undefined {
+  try {
+    if (process.platform === "linux") {
+      const n = (f: string) =>
+        Number(fs.readFileSync(`/proc/sys/kernel/pty/${f}`, "utf-8").trim());
+      const used = n("nr");
+      const max = n("max");
+      return Number.isFinite(used) && Number.isFinite(max)
+        ? { used, max }
+        : undefined;
+    }
+    if (process.platform === "darwin") {
+      const max = Number(
+        execFileSync("/usr/sbin/sysctl", ["-n", "kern.tty.ptmx_max"], {
+          encoding: "utf-8",
+          timeout: 2_000,
+        }).trim(),
+      );
+      const used = fs
+        .readdirSync("/dev")
+        .filter((n) => /^ttys\d+$/.test(n)).length;
+      return Number.isFinite(max) && max > 0 ? { used, max } : undefined;
+    }
+  } catch {
+    /* unknown: no check */
+  }
+  return undefined;
 }
 
 const machineLoadPerCore = (): number =>
@@ -164,6 +220,7 @@ export class GateStore {
   private readonly lockWaitMs: number;
   private readonly loadPerCore: () => number;
   private readonly cores: () => number;
+  private readonly ptys: () => { used: number; max: number } | undefined;
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
@@ -172,6 +229,7 @@ export class GateStore {
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.loadPerCore = o.loadPerCore ?? machineLoadPerCore;
     this.cores = o.cores ?? (() => os.cpus().length);
+    this.ptys = o.ptys ?? machinePtys;
   }
 
   private get slots() {
@@ -204,6 +262,8 @@ export class GateStore {
           num("cpu_beside_browser", defaults.cpuBesideBrowser),
         ),
         maxLoadPerCore: num("max_load_per_core", defaults.maxLoadPerCore),
+        browserSlots: Math.floor(num("browser_slots", defaults.browserSlots)),
+        ptyHeadroom: Math.floor(num("pty_headroom", defaults.ptyHeadroom)),
       };
     } catch {
       return { ...defaults };
@@ -380,11 +440,9 @@ export class GateStore {
       this.remove(e.id);
       this.record(e, { event: "taken-back-gone", ...this.heldFor(e, now) });
     }
-    // Only waiters may start, so the load is read only when one waits.
+    // Only waiters may start, so the machine is read only when one waits.
     const waiting = entries.some((e) => !e.grantedAt);
-    const ids = waiting
-      ? grants(entries, s, { now, loadPerCore: this.loadPerCore() })
-      : [];
+    const ids = waiting ? grants(entries, s, this.machine(now)) : [];
     for (const id of ids) {
       const e = entries.find((x) => x.id === id)!;
       e.grantedAt = at;
@@ -420,20 +478,51 @@ export class GateStore {
     return this.list().find((e) => e.id === id) ?? null;
   }
 
-  /** Asks for a slot; returns the entry (granted at once if it may start). */
-  ask(o: {
-    kind: GateKind;
-    who: string;
-    label: string;
-    pid: number;
-    estimateMin: number;
-    agent?: boolean;
-    actor?: string;
-  }): GateEntry {
+  /**
+   * The machine as the rules read it (issue 511): the time, the load per
+   * core and the PTYs. Tests pass fakes; this never writes anything.
+   */
+  machine(now = this.now()): GateNow {
+    const ptys = this.ptys();
+    return { now, loadPerCore: this.loadPerCore(), ...(ptys ? { ptys } : {}) };
+  }
+
+  /** Why a waiter waits now, in words, or undefined (issue 511). */
+  why(entries: GateEntry[], id: string, now = this.now()): string | undefined {
+    return waitReason(entries, this.settings(), this.machine(now), id);
+  }
+
+  /** Why each waiter waits now, by id (the machine read once). */
+  whyAll(entries: GateEntry[], now = this.now()): Map<string, string> {
+    return waitReasons(entries, this.settings(), this.machine(now));
+  }
+
+  /**
+   * Asks for an ordinary slot; returns the entry (granted at once if it may
+   * start). The release slot is not one: see askRelease.
+   */
+  ask(o: GateAsk & { kind: "browser" | "cpu" }): GateEntry {
+    if ((o.kind as GateKind) === "release")
+      throw new Error(
+        "the release slot is reserved for a release check (issue 498): use askRelease",
+      );
+    return this.enqueue(o.kind, o);
+  }
+
+  /**
+   * Issue 498's seam: asks for the reserved release slot, counted apart
+   * from the browser and cpu slots. No ordinary run reaches this: gate
+   * run, the MCP tool and the web take only browser or cpu.
+   */
+  askRelease(o: GateAsk): GateEntry {
+    return this.enqueue("release", o);
+  }
+
+  private enqueue(kind: GateKind, o: GateAsk): GateEntry {
     return this.locked(() => {
       const e: GateEntry = {
-        id: `${o.kind}-${randomBytes(5).toString("hex")}`,
-        kind: o.kind,
+        id: `${kind}-${randomBytes(5).toString("hex")}`,
+        kind,
         who: o.who.slice(0, 200),
         label: o.label.slice(0, 120),
         pid: o.pid,
@@ -457,6 +546,10 @@ export class GateStore {
           expectedStart: new Date(
             expectedStart(all, e.id, this.now()),
           ).toISOString(),
+          ...(() => {
+            const why = this.why(all, e.id);
+            return why ? { why } : {};
+          })(),
         });
       return now;
     });

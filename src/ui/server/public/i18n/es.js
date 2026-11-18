@@ -879,9 +879,16 @@
     "set.server.start_wait": "Espera al arrancar, en segundos",
     "set.server.start_wait.d":
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
+    "set.server.gate_browser": "Pruebas de navegador a la vez, en esta máquina",
+    "set.server.gate_browser.d":
+      "Cuántas pruebas de navegador (`gate run --kind browser`) pueden ocupar la máquina a la vez. Una empieza solo si la carga por núcleo es bastante baja y quedan suficientes PTY libres. Por defecto, 1 con menos de 8 núcleos; si no, 1 por cada 8 núcleos, como mucho 3. __DEN_CLI__ gate settings --browser-slots 1",
+    "set.server.gate_pty":
+      "PTY que se dejan libres para una prueba de navegador",
+    "set.server.gate_pty.d":
+      "Una prueba de navegador empieza solo si quedan más de estos PTY libres por debajo del límite del sistema, para que los terminales y agentes nuevos sigan arrancando. __DEN_CLI__ gate settings --pty-headroom 50",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
-      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador se ejecuta sola, salvo las pruebas unitarias permitidas a su lado. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Las pruebas de navegador usan en su lugar los turnos de navegador. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
@@ -891,9 +898,9 @@
     "set.server.gate_beside.d":
       "Cuántas pruebas unitarias pueden empezar mientras una prueba de navegador ocupa la máquina, si se espera que cada una termine antes de la siguiente prueba de navegador en espera. 0: una prueba de navegador siempre se ejecuta sola. Por defecto, 1 en una máquina con 8 núcleos o más; si no, 0. __DEN_CLI__ gate settings --cpu-beside-browser 1",
     "set.server.gate_load":
-      "Carga máxima para una prueba junto a una de navegador, por núcleo",
+      "Carga máxima para una prueba de navegador, por núcleo",
     "set.server.gate_load.d":
-      "Ninguna prueba unitaria empieza junto a una prueba de navegador mientras la carga media de 1 minuto por núcleo de la máquina supere esta cifra. __DEN_CLI__ gate settings --max-load-per-core 2",
+      "Ninguna prueba de navegador, ni ninguna prueba unitaria a su lado, empieza mientras la carga media de 1 minuto por núcleo de la máquina supere esta cifra. __DEN_CLI__ gate settings --max-load-per-core 2",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2686,6 +2693,9 @@
     "setc.server": "Servidor", // words-ok: the en string's own word, translated
     "setc.server.d":
       "El servidor web de Den con el que habla esta página. Un reinicio mantiene en marcha los agentes y los servicios.", // words-ok: the en string's own word, translated
+    "setc.gate": "Gate",
+    "setc.gate.d":
+      "Las pruebas pesadas de esta máquina (`gate run`), por turnos. Cada instalación y repositorio de aquí comparte la misma cola.",
     "setc.cli": "Línea de comandos",
     "setc.cli.d":
       "También son tuyos (config/local/user.yml) y se definen desde la línea de comandos: __DEN_CLI__ config <key>=<value>.",

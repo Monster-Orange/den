@@ -860,9 +860,15 @@
     "set.server.start_wait": "起動の待ち時間 (秒)",
     "set.server.start_wait.d":
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
+    "set.server.gate_browser": "このマシンで同時に動かすブラウザーテスト",
+    "set.server.gate_browser.d":
+      "マシンを同時に使えるブラウザーテスト実行 (`gate run --kind browser`) の数です。コアあたりの負荷が十分に低く、空いている PTY が足りているときだけ始まります。既定値は、コアが 8 個未満なら 1、それ以上なら 8 コアごとに 1 (最大 3) です。__DEN_CLI__ gate settings --browser-slots 1",
+    "set.server.gate_pty": "ブラウザーテストのために空けておく PTY",
+    "set.server.gate_pty.d":
+      "システムの上限まで空いている PTY がこの数より多いときだけ、ブラウザーテストが始まります。新しいターミナルやエージェントが起動できるようにするためです。__DEN_CLI__ gate settings --pty-headroom 50",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
-      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは、その横で許された単体テストを除き、単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
+      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストはブラウザー用の枠を使います。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -870,9 +876,9 @@
     "set.server.gate_beside.d":
       "ブラウザーテストがマシンを使っている間に始めてよい単体テスト実行の数です。次に待っているブラウザーテストより前に終わる見込みのものだけが始まります。0 にするとブラウザーテストは常に単独で動きます。既定値は、コアが 8 個以上のマシンでは 1、それ以外では 0 です。__DEN_CLI__ gate settings --cpu-beside-browser 1",
     "set.server.gate_load":
-      "ブラウザーテストの横で動かすときの、コアあたりの負荷の上限",
+      "ブラウザーテストを始めるときの、コアあたりの負荷の上限",
     "set.server.gate_load.d":
-      "マシンの 1 分間の平均負荷をコア数で割った値がこれを超えている間は、ブラウザーテストの横で単体テストを始めません。__DEN_CLI__ gate settings --max-load-per-core 2",
+      "マシンの 1 分間の平均負荷をコア数で割った値がこれを超えている間は、ブラウザーテストも、その横の単体テストも始めません。__DEN_CLI__ gate settings --max-load-per-core 2",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2621,6 +2627,9 @@
     "setc.server": "サーバー", // words-ok: the en string's own word, translated
     "setc.server.d":
       "このページが通信している Den の Web サーバーです。再起動してもエージェントとサービスは動き続けます。", // words-ok: the en string's own word, translated
+    "setc.gate": "Gate",
+    "setc.gate.d":
+      "このマシンの重いテスト実行 (`gate run`) を順番に動かします。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。",
     "setc.cli": "コマンドライン",
     "setc.cli.d":
       "これもあなた個人の設定 (config/local/user.yml) で、コマンドラインから設定します: __DEN_CLI__ config <key>=<value>。",
