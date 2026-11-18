@@ -336,9 +336,38 @@ describe.each(ENGINES)(
       expect(await s.settings({ shell: { dock: true } })).toBe(200);
       try {
         const { p, errors } = await phone(engine);
+        // From the first parse on: every time the dock is drawn open and
+        // shown, before or after the Agents page mounts. It never is on a
+        // phone (no flash open on the list, none behind an open agent).
+        await p.context().addInitScript(() => {
+          const w = window as unknown as { dockOpenSeen: string[] };
+          w.dockOpenSeen = [];
+          const look = () => {
+            const d = document.getElementById("den-dock");
+            if (
+              d &&
+              d.classList.contains("open") &&
+              getComputedStyle(d).display !== "none"
+            )
+              w.dockOpenSeen.push(location.pathname);
+          };
+          new MutationObserver(look).observe(document, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ["class", "data-phone-agent"],
+          });
+          document.addEventListener("DOMContentLoaded", look);
+        });
+        const seen = () =>
+          p.evaluate(
+            () =>
+              (window as unknown as { dockOpenSeen: string[] }).dockOpenSeen,
+          );
         await openAgent(p, "scout");
-        // Frame 2: no dock with an agent open.
+        // Frame 2: no dock with an agent open, and never drawn open.
         expect(await p.locator("#den-dock").isVisible()).toBe(false);
+        expect(await seen()).toEqual([]);
         await new Promise((r) => setTimeout(r, 500));
         // Frame 1: the list, no agent open: the dock is there, shut.
         await p.goto(`${s.base}/agents`);
@@ -360,6 +389,8 @@ describe.each(ENGINES)(
           .catch(() => false);
         expect(shut).toBe(true);
         expect(await p.locator("#den-dock").isVisible()).toBe(true);
+        // Never drawn open on the list, not even before the page mounted.
+        expect(await seen()).toEqual([]);
         expect(errors).toEqual([]);
         await p.context().close();
         // The saved choice is the person's, as it was.
