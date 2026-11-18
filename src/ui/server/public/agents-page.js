@@ -95,6 +95,7 @@ import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
+import { hostNote } from "/host-note.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -1050,8 +1051,11 @@ function paintList() {
     notes.push(
       `<div class="agnote" data-note="backend">${esc(t("ag.noBackend", { cli: CLI }))}</div>`,
     );
-  // den#156: the host didn't answer in time: this list may be old.
-  if (st.hostDown)
+  // Issue 500: a stuck terminal host, or one on an older version, with
+  // a Restart; else den#156's "this list may be old".
+  const hn = hostNote(st.data);
+  if (hn) notes.push(hostNoteHtml(hn));
+  else if (st.hostDown)
     notes.push(
       `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
     );
@@ -3116,6 +3120,36 @@ async function closeShell(p, button) {
     button.disabled = false;
     window.denShell?.errorToast?.(err);
   }
+  await refresh();
+}
+
+/**
+ * Issue 500: what Terminal says about the terminal host (host-note.js),
+ * with its Restart.
+ */
+function hostNoteHtml(n) {
+  const host = n.vars.host ?? t("ag.host.unknownVer");
+  const text =
+    n.kind === "stuck"
+      ? t("ag.host.stuck", { host, why: n.vars.why })
+      : t("ag.host.older", { host, den: n.vars.den ?? "?" });
+  return (
+    `<div class="agnote" data-note="host-${n.kind}" role="${n.kind === "stuck" ? "alert" : "status"}">${esc(text)} ` +
+    `<button type="button" class="den-btn sm" data-act="host-restart">${esc(t("ag.host.restart"))}</button></div>`
+  );
+}
+
+/**
+ * Issue 500: Restart the terminal host, through the working pop-up. Its
+ * shells end: older-version notice says "when you're done".
+ */
+async function restartHost(button) {
+  await window.denShell.busyAction(
+    "restart-host",
+    (headers) =>
+      api("POST", "/api/sessions/host/restart", undefined, { headers }),
+    { button },
+  );
   await refresh();
 }
 
@@ -5446,6 +5480,7 @@ export async function mountAgentsPage(root) {
     if (act) {
       const which = act.dataset.act;
       if (which === "resume-all") return void resumeAll(act);
+      if (which === "host-restart") return void restartHost(act);
       if (which === "review") return review();
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
@@ -5831,6 +5866,8 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     window.denShell?.toast?.(
       t("ag.term.failed", { e: err?.message || String(err) }),
     );
+    // Issue 500: a stuck terminal host shows its note, with a Restart.
+    await refresh().catch(() => {});
   }
 }
 

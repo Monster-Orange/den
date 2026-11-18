@@ -64,7 +64,7 @@ import {
   readWorkspacesFile,
   listWorkspaceServices,
 } from "../../shared/environment-manager/workspaces.js";
-import { getStateDir } from "../../shared/paths.js";
+import { engineVersion, getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { agentFilesDir, listRecords } from "../../shared/agents/records.js";
@@ -88,6 +88,11 @@ import {
 } from "../../shared/sessions/client.js";
 import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
+import {
+  hostIsOlder,
+  readHostFile,
+  restartHost,
+} from "../../shared/sessions/host-check.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import type { HelperSettings } from "../../shared/agents/helpers.js";
@@ -110,7 +115,10 @@ import {
   type AgentRow,
 } from "../cli/agent-ops.js";
 import type { AgentRecord, Override } from "../../shared/agents/records.js";
-import { state as sessionState } from "../cli/sessions-command.js";
+import {
+  resolveDeps as sessionsDeps,
+  state as sessionState,
+} from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
@@ -183,6 +191,13 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
+  /** Issue 500: this Den's version (its package.json). */
+  denVersion?: () => string | undefined;
+  /**
+   * Issue 500: start a host of this version (the CLI's: spawned, or its
+   * launchd job brings it back), resolving once it answers.
+   */
+  startHost?: () => Promise<void>;
 }
 
 /** den#156: how long a list waits for the host, and the page for a list. */
@@ -212,6 +227,8 @@ interface Resolved {
   repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
   listWaits: () => ListWaits;
+  denVersion: () => string | undefined;
+  startHost: () => Promise<void>;
 }
 
 /** A workspace name as `?ws=` may give it. */
@@ -219,24 +236,35 @@ const WS_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 function resolve(d: SessionRouteDeps = {}): Resolved {
   const stateDir = d.stateDir ?? (() => getStateDir());
+  const listWaits =
+    d.listWaits ??
+    (() => {
+      try {
+        return agentsListWaits();
+      } catch {
+        // A wrong value in user.yml: Settings says so; the defaults hold.
+        return { host_timeout_seconds: 10, refresh_timeout_seconds: 15 };
+      }
+    });
   return {
     stateDir,
     dist: d.dist ?? (() => product().name),
-    listWaits:
-      d.listWaits ??
-      (() => {
-        try {
-          return agentsListWaits();
-        } catch {
-          // A wrong value in user.yml: Settings says so; the defaults hold.
-          return { host_timeout_seconds: 10, refresh_timeout_seconds: 15 };
-        }
+    denVersion: d.denVersion ?? (() => engineVersion()),
+    startHost:
+      d.startHost ??
+      (async () => {
+        const c = await sessionsDeps({ stateDir }).connect();
+        c.close();
       }),
+    listWaits,
     connectExisting:
       d.connectExisting ??
       (async () => {
         try {
-          return await connectHost(sessionPaths(stateDir()).socket);
+          // Issue 500: a host that doesn't answer is an error, in time.
+          return await connectHost(sessionPaths(stateDir()).socket, {
+            timeoutMs: listWaits().host_timeout_seconds * 1000,
+          });
         } catch (e) {
           if (noHost(e)) return null;
           throw e;
@@ -313,6 +341,8 @@ export const IO_PROTOCOL = "den.io";
 const IO_PATH = /^\/api\/sessions\/([^/]+)\/io$/;
 const UPLOAD_PATH = /^\/api\/sessions\/([^/]+)\/uploads$/;
 const CLOSE_PATH = /^\/api\/sessions\/([^/]+)\/close$/;
+/** Issue 500: Terminal's Restart for the terminal host. */
+export const HOST_RESTART_PATH = "/api/sessions/host/restart";
 /**
  * D54: the browsers viewing each session now (by session id). Each hears
  * how many there are when that changes: one left alone sizes the PTY.
@@ -782,11 +812,27 @@ export async function handleSessionList(
   let sessions: SessionInfo[] = [];
   let host = false;
   let hostError: string | undefined;
+  // Issue 500: the host's version against this Den's, and a stuck one.
+  let hostVersion:
+    | { host: string | null; den: string | null; older: boolean }
+    | undefined;
+  let hostStuck: { reason: string; version: string | null } | undefined;
   const waits = d.listWaits();
   try {
     const c = await d.connectExisting();
     if (c) {
       host = true;
+      const den = d.denVersion() ?? null;
+      hostVersion = {
+        host: c.hostVersion,
+        den,
+        older: hostIsOlder(c.hostVersion, den ?? undefined),
+      };
+      if (c.hostStartError)
+        hostStuck = {
+          reason: c.hostStartError.error,
+          version: c.hostVersion,
+        };
       try {
         // den#156: a host that doesn't answer is an error, never a wait
         // that holds this list (and the page's next one) for good.
@@ -800,6 +846,15 @@ export async function handleSessionList(
     }
   } catch (e) {
     hostError = (e as Error).message;
+    // Issue 500: it took the connection and never said hello, or didn't
+    // answer the list: Terminal says so, with its version and a Restart.
+    hostStuck = {
+      reason: hostError,
+      version:
+        hostVersion?.host ??
+        readHostFile(sessionPaths(d.stateDir()).hostFile)?.version ??
+        null,
+    };
   }
   // `?ws=<name>`: that workspace's too, active or not, and whether it is
   // active and known (the page says so rather than show all of them).
@@ -825,6 +880,8 @@ export async function handleSessionList(
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
+    ...(hostVersion ? { hostVersion } : {}),
+    ...(hostStuck ? { hostStuck } : {}),
     // den#156: how long the page waits for its next list.
     refreshTimeoutSeconds: waits.refresh_timeout_seconds,
     backend: pty.available
@@ -1220,6 +1277,58 @@ async function handleClose(
 }
 
 /**
+ * Issue 500: `POST /api/sessions/host/restart`, Terminal's Restart: the
+ * terminal host stops (its shells end, which the person chose by the
+ * click) and one of this version starts. A person's only; audited.
+ */
+async function handleHostRestart(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  d: Resolved,
+): Promise<void> {
+  req.resume();
+  const audit = (detail: string, refused?: string) =>
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "host-restart",
+        detail: detail.slice(0, 400),
+        ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
+      },
+      principalOf(req),
+    );
+  if (agentPrincipalOf(req)) {
+    audit("terminal host", "person_only");
+    return sendJson(
+      res,
+      {
+        ok: false,
+        error: "Restarting the terminal host is the person's.",
+        code: "person_only",
+      },
+      403,
+    );
+  }
+  const timeoutMs = d.listWaits().host_timeout_seconds * 1000;
+  try {
+    await restartHost({
+      socket: sessionPaths(d.stateDir()).socket,
+      timeoutMs,
+      start: d.startHost,
+    });
+    const c = await d.connectExisting();
+    const version = c?.hostVersion ?? null;
+    c?.close();
+    audit(`terminal host restarted${version ? ` on v${version}` : ""}`);
+    sendJson(res, { ok: true, version });
+  } catch (e) {
+    const error = `the terminal host: ${(e as Error).message}`;
+    audit("terminal host", error);
+    sendJson(res, { ok: false, error, code: "session_host" }, 503);
+  }
+}
+
+/**
  * A plain HTTP request to an io route: it is a WebSocket. For a GET, the
  * refusal its upgrade would get (404, 503), else 426; 404 for anything
  * else under /api/sessions/.
@@ -1230,6 +1339,10 @@ export async function sendSessionHttp(
   pathname: string,
   deps: SessionRouteDeps = {},
 ): Promise<void> {
+  if (pathname === HOST_RESTART_PATH && req.method === "POST") {
+    await handleHostRestart(req, res, resolve(deps));
+    return;
+  }
   const close = CLOSE_PATH.exec(pathname);
   if (close && req.method === "POST") {
     let target = close[1];

@@ -47,6 +47,10 @@ export class HostClient extends EventEmitter {
   hostStartedAt = "";
   /** D20: the host's launchd session (null off macOS or an older host). */
   hostLaunchd: string | null = null;
+  /** Issue 500: the host's package version (null from an older host). */
+  hostVersion: string | null = null;
+  /** Issue 500: why the host's last start failed, when it did. */
+  hostStartError: { at: string; error: string } | null = null;
 
   constructor(private readonly socket: net.Socket) {
     super();
@@ -163,11 +167,18 @@ export class HostClient extends EventEmitter {
     }
   }
 
-  async hello(): Promise<void> {
-    const r = await this.request("hello");
+  /** `timeoutMs` (issue 500): a host that doesn't answer fails, never hangs. */
+  async hello(timeoutMs?: number): Promise<void> {
+    const r = await this.request("hello", {}, timeoutMs);
     this.hostPid = Number(r.pid);
     this.hostStartedAt = String(r.startedAt ?? "");
     this.hostLaunchd = typeof r.launchd === "string" ? r.launchd : null;
+    this.hostVersion = typeof r.version === "string" ? r.version : null;
+    const se = r.startError as { at?: unknown; error?: unknown } | undefined;
+    this.hostStartError =
+      se && typeof se.error === "string"
+        ? { at: String(se.at ?? ""), error: se.error }
+        : null;
   }
 
   async start(
@@ -289,8 +300,22 @@ export function noHost(e: unknown): boolean {
   return code === "ENOENT" || code === "ECONNREFUSED";
 }
 
-/** Connect to the host on `socket` and say hello (checks the protocol). */
-export function connectHost(socket: string): Promise<HostClient> {
+/**
+ * How long a hello waits by default (issue 500): the Setting "Terminal
+ * host wait" (agents_list.host_timeout_seconds) is its 10 s; callers that
+ * read it pass it.
+ */
+export const DEFAULT_HELLO_TIMEOUT_MS = 10_000;
+
+/**
+ * Connect to the host on `socket` and say hello (checks the protocol).
+ * Issue 500: a host that takes the connection and never answers fails
+ * with HostError "timeout" after `timeoutMs`, never a wait for good.
+ */
+export function connectHost(
+  socket: string,
+  o: { timeoutMs?: number } = {},
+): Promise<HostClient> {
   return new Promise((resolve, reject) => {
     const s = net.connect(socket);
     const fail = (e: Error) => reject(e);
@@ -298,7 +323,7 @@ export function connectHost(socket: string): Promise<HostClient> {
     s.once("connect", () => {
       s.off("error", fail);
       const c = new HostClient(s);
-      c.hello().then(
+      c.hello(o.timeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS).then(
         () => resolve(c),
         (e: Error) => {
           c.close();
@@ -317,12 +342,15 @@ export interface EnsureHostOptions {
   timeoutMs?: number;
   /** Named in the timeout error: where the host writes its log. */
   logHint?: string;
+  /** Issue 500: how long a host that answers the socket has to say hello. */
+  helloTimeoutMs?: number;
 }
 
 /** A client of the running host, started first when none answers. */
 export async function ensureHost(o: EnsureHostOptions): Promise<HostClient> {
+  const hello = { timeoutMs: o.helloTimeoutMs };
   try {
-    return await connectHost(o.socket);
+    return await connectHost(o.socket, hello);
   } catch (e) {
     if (!noHost(e)) throw e;
   }
@@ -331,7 +359,7 @@ export async function ensureHost(o: EnsureHostOptions): Promise<HostClient> {
   for (;;) {
     await new Promise((r) => setTimeout(r, 50));
     try {
-      return await connectHost(o.socket);
+      return await connectHost(o.socket, hello);
     } catch (e) {
       if (!noHost(e)) throw e;
       if (Date.now() > deadline)

@@ -572,6 +572,9 @@
     "busy.restartW": "Reiniciando {name}…",
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
+    "busy.hostW": "Reiniciando el host de terminales…",
+    "busy.hostS": "El host de terminales se reinició.",
+    "busy.hostF": "No se pudo reiniciar el host de terminales.",
     "busy.modeW": "Cambiando el modo de {name}…",
     "busy.modeS": "Modo de {name} cambiado.",
     "busy.modeF": "No se pudo cambiar el modo de {name}. Nada cambió.",
@@ -912,7 +915,7 @@
       "El primer intento espera 1 s y cada espera se duplica, hasta este valor. __DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
-      "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "Cuánto esperan la lista de agentes, Terminal y doctor al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo, y Terminal y doctor dicen que no responde. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.agents.compaction_loop": "Compactación repetida: compactaciones",
     "set.agents.compaction_loop.d":
       "Cuántas compactaciones automáticas puede tener un agente dentro de los minutos de abajo antes de que la campana avise de que se compacta una y otra vez. Una campana por episodio. __DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -1978,6 +1981,12 @@
       "Los terminales necesitan el módulo PTY opcional (den-pty no está disponible): {cli} doctor explica por qué",
     "ag.hostDown":
       "Den no pudo contactar a tiempo con el host de terminales, así que esta lista puede estar desactualizada. Lo intenta de nuevo cada pocos segundos.",
+    "ag.host.stuck":
+      "El host de terminales no responde ({why}; {host}), así que no puede iniciarse ninguna terminal. Reinícialo para volver a iniciar shells.",
+    "ag.host.older":
+      "El host de terminales ejecuta una versión anterior ({host}, Den es {den}). Reinícialo cuando termines.",
+    "ag.host.restart": "Reiniciar",
+    "ag.host.unknownVer": "una versión desconocida",
     "ag.noHost":
       "No hay ningún host de sesiones en marcha: aún no se ha iniciado nada",
     "ag.ws": "Proyecto",

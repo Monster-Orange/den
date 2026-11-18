@@ -116,7 +116,10 @@ describe("the host reports its version (clause 1)", () => {
     await host(dir, "0.4.66");
     const c = await client(dir);
     expect(c.hostVersion).toBe("0.4.66");
-    const r = await checkHost({ socket: sessionPaths(dir).socket, timeoutMs: 2000 });
+    const r = await checkHost({
+      socket: sessionPaths(dir).socket,
+      timeoutMs: 2000,
+    });
     expect(r).toMatchObject({ state: "ok", version: "0.4.66", live: 0 });
   });
 });
@@ -197,7 +200,11 @@ describe("after a verified update (clause 2)", () => {
     );
 
     const body = await getList(dir);
-    expect(body.hostVersion).toEqual({ host: "0.4.66", den: "0.4.68", older: true });
+    expect(body.hostVersion).toEqual({
+      host: "0.4.66",
+      den: "0.4.68",
+      older: true,
+    });
     expect(hostNote(body)).toEqual({
       kind: "older",
       vars: { host: "v0.4.66", den: "v0.4.68" },

@@ -1432,6 +1432,9 @@
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
+    "busy.hostW": "Restarting the terminal host…",
+    "busy.hostS": "The terminal host restarted.",
+    "busy.hostF": "Couldn't restart the terminal host.",
     "busy.modeW": "Setting {name}'s mode…",
     "busy.modeS": "{name}'s mode is set.",
     "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
@@ -1878,7 +1881,7 @@
       "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
-      "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "How long the Agents list, Terminal and doctor wait for the terminal host. After this, the list says it couldn't reach it and tries again, and Terminal and doctor say it isn't answering. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.agents.compaction_loop": "Compacting repeatedly: compactions",
     "set.agents.compaction_loop.d":
       "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -2798,6 +2801,13 @@
       "Terminals need the optional PTY module (den-pty is unavailable): {cli} doctor says why",
     "ag.hostDown":
       "Den couldn't reach the terminal host in time, so this list may be out of date. Trying again every few seconds.",
+    // Issue 500: the terminal host's notes on Terminal.
+    "ag.host.stuck":
+      "The terminal host isn't answering ({why}; {host}), so no terminal can start. Restart it to start shells again.",
+    "ag.host.older":
+      "The terminal host runs an older version ({host}, Den is {den}). Restart it when you're done.",
+    "ag.host.restart": "Restart",
+    "ag.host.unknownVer": "an unknown version",
     "ag.noHost": "No session host is running: nothing has started yet",
     "ag.ws": "Project",
     "ag.pal": "Agents › {ws} / {name}",

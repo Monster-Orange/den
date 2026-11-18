@@ -46,7 +46,7 @@ import {
   type SigningCheck,
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
-import { getStateDir } from "../../shared/paths.js";
+import { engineVersion, getStateDir } from "../../shared/paths.js";
 import {
   readCheckState,
   selfUpdateSummary,
@@ -120,6 +120,11 @@ import {
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import {
+  checkHost,
+  hostIsOlder,
+  type HostCheck,
+} from "../../shared/sessions/host-check.js";
 
 export interface DoctorRow {
   kind: string;
@@ -991,6 +996,79 @@ export function bridgeListenLines(
 }
 
 /**
+ * Issue 500: doctor's terminal host row. ✗ when it doesn't answer within
+ * the Terminal host wait, or can't start a shell: the reason and its
+ * version. ⚠ when it runs an older version than this Den (an update left
+ * it, its shells running). Nothing running is fine: the first shell
+ * starts one.
+ */
+export function hostLines(
+  check: HostCheck,
+  den: string | undefined,
+  title: string,
+  cli: string,
+): { lines: string[]; problem: boolean; check: OnboardCheck } {
+  const v = (x: string | null | undefined) =>
+    x ? `v${x}` : "an unknown version";
+  const restart = `${cli} sessions host --stop (its shells end; the next one starts a host of this version)`; // words-ok: the CLI command `sessions host --stop`
+  const shells = (n: number) => `${n} shell${n === 1 ? "" : "s"} running`;
+  let mark: "✓" | "⚠" | "✗";
+  let status: "ok" | "warn" | "fail";
+  let detail: string;
+  if (check.state === "none") {
+    mark = "✓";
+    status = "ok";
+    detail = "not running: it starts with the first terminal or agent";
+  } else if (check.state === "stuck" || check.state === "failing") {
+    mark = "✗";
+    status = "fail";
+    const pid = check.pid !== undefined ? `, pid ${check.pid}` : "";
+    detail =
+      check.state === "stuck"
+        ? `${check.reason} (${v(check.version)}${pid}), so no terminal or agent can start. Restart it: ${restart}`
+        : `the terminal host can't start a shell: ${check.reason} (${v(check.version)}${pid})`;
+  } else if (hostIsOlder(check.version, den)) {
+    mark = "⚠";
+    status = "warn";
+    detail =
+      `The terminal host runs an older version (${v(check.version)}, Den is v${den}). Restart it when you're done.` +
+      ` ${shells(check.live)}; Terminal's Restart, or ${restart}`;
+  } else {
+    mark = "✓";
+    status = "ok";
+    detail = `${v(check.version)}, pid ${check.pid}, ${shells(check.live)}`;
+  }
+  return {
+    lines: [
+      "",
+      `${title} doctor: terminal host`,
+      "",
+      `  host  ${mark}  ${detail}`,
+    ],
+    problem: status === "fail",
+    check: { id: "sessions_host", status, detail },
+  };
+}
+
+/** Issue 500: the running host, asked within the Terminal host wait. */
+async function hostCheckNow(): Promise<HostCheck> {
+  const { sessionPaths } = await import("../../shared/sessions/paths.js");
+  const { agentsListWaits } = await import("../../shared/den-config.js");
+  let s = 10;
+  try {
+    s = agentsListWaits().host_timeout_seconds;
+  } catch {
+    /* the default */
+  }
+  const p = sessionPaths(getStateDir());
+  return checkHost({
+    socket: p.socket,
+    hostFile: p.hostFile,
+    timeoutMs: s * 1000,
+  });
+}
+
+/**
  * SRV-P6 (0.4.48): server_agent.self_update, always: its value, where it
  * came from (user.yml, the org config not yet copied, or the default),
  * and the update check's last pass and next (the running Den writes them).
@@ -1352,6 +1430,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
+      const hl = hostLines(
+        await hostCheckNow(),
+        engineVersion(),
+        readBrand().name,
+        product().cli,
+      );
+      r.checks.push(hl.check);
+      if (hl.problem) r.ok = false;
+    }
+    {
       const rk = requestKeepLines(readBrand().name);
       if (rk.check) r.checks.push(rk.check);
     }
@@ -1414,6 +1502,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   ).lines)
     console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
+  const hostRow = hostLines(
+    await hostCheckNow(),
+    engineVersion(),
+    readBrand().name,
+    product().cli,
+  );
+  for (const l of hostRow.lines) console.log(l);
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
@@ -1432,7 +1527,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ownerProblem ||
       cfg.problem ||
       sign.problem ||
-      addr.problem
+      addr.problem ||
+      hostRow.problem
       ? 1
       : 0;
   }
@@ -1457,6 +1553,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     held.problem ||
     ownerProblem ||
     cfg.problem ||
+    hostRow.problem ||
     found
     ? 1
     : 0;

@@ -22,11 +22,17 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  agentsListWaits,
   readAgentsConfig,
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import { cliEntrypoint } from "../../shared/engine.js";
-import { getDistRoot, getInvokeCwd, getStateDir } from "../../shared/paths.js";
+import {
+  engineVersion,
+  getDistRoot,
+  getInvokeCwd,
+  getStateDir,
+} from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { ENV_NAME_RE, isCredentialShaped } from "../../shared/secret-env.js";
 import { allScrubEnv, withSessionPath } from "../../shared/agents/runtimes.js";
@@ -190,6 +196,18 @@ function spawnHost(stateDir: string): void {
   }
 }
 
+/**
+ * Issue 500: how long a host has to answer (the Setting "Terminal host
+ * wait", agents_list.host_timeout_seconds), in ms.
+ */
+export function hostWaitMs(): number {
+  try {
+    return agentsListWaits().host_timeout_seconds * 1000;
+  } catch {
+    return 10_000;
+  }
+}
+
 export function resolveDeps(d: SessionsDeps): Resolved {
   const stateDir = d.stateDir ?? (() => getStateDir());
   return {
@@ -207,6 +225,7 @@ export function resolveDeps(d: SessionsDeps): Resolved {
           logHint: job
             ? `its launchd job ${job.label} (${job.mode}): ${product().cli} service status`
             : path.join(stateDir(), "logs", product().cli, "sessions-host.log"),
+          helloTimeoutMs: hostWaitMs(),
         });
       }),
     connectExisting:
@@ -215,7 +234,9 @@ export function resolveDeps(d: SessionsDeps): Resolved {
         ? d.connect
         : async () => {
             try {
-              return await connectHost(sessionPaths(stateDir()).socket);
+              return await connectHost(sessionPaths(stateDir()).socket, {
+                timeoutMs: hostWaitMs(),
+              });
             } catch (e) {
               if (noHost(e)) return null;
               throw e;
@@ -756,6 +777,8 @@ async function host(args: string[], d: Resolved): Promise<number> {
     return runSessionHost({
       stateDir: d.stateDir(),
       pty: () => loadPty(),
+      // Issue 500: hello says it, so an update can replace an older host.
+      version: engineVersion(),
       // D18: the launchd job's: wait out a host started before it.
       standBy: Boolean(p.flags["--stand-by"]),
     });

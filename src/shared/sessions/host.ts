@@ -64,6 +64,11 @@ export interface SessionHostOptions {
    * What it starts inherits it, so the agents have it too.
    */
   fullDiskAccess?: () => boolean | null;
+  /**
+   * Issue 500: the package version it was started from (hello says it, and
+   * sessions.host.json), so an update can tell an older host from its own.
+   */
+  version?: string;
 }
 
 interface Session {
@@ -223,6 +228,8 @@ export class SessionHost {
   private server: net.Server | null = null;
   private readonly startedAt = new Date().toISOString();
   private closed = false;
+  /** Issue 500: why the last start failed (cleared by one that works). */
+  private lastStartError: { at: string; error: string } | null = null;
   /** D20: where it runs; stamped on every session it starts. */
   private readonly launchd: string | null;
 
@@ -292,6 +299,7 @@ export class SessionHost {
       }
       this.load();
       await this.bind(socket);
+      this.writeHostFile();
       return "listening";
     } finally {
       try {
@@ -299,6 +307,30 @@ export class SessionHost {
       } catch {
         /* gone */
       }
+    }
+  }
+
+  /**
+   * Issue 500: who serves now (pid, version, start), for a reader whose
+   * hello goes unanswered: doctor can still name the stuck host's version.
+   */
+  private writeHostFile(): void {
+    try {
+      const tmp = `${this.paths.hostFile}.${process.pid}.tmp`;
+      fs.writeFileSync(
+        tmp,
+        JSON.stringify({
+          pid: process.pid,
+          version: this.opts.version ?? null,
+          startedAt: this.startedAt,
+        }) + "\n",
+        { mode: 0o600 },
+      );
+      fs.renameSync(tmp, this.paths.hostFile);
+    } catch (e) {
+      this.log(
+        `could not write ${this.paths.hostFile}: ${(e as Error).message}`,
+      );
     }
   }
 
@@ -502,7 +534,18 @@ export class SessionHost {
           `this session host speaks protocol v${PROTOCOL_VERSION}, the client v${String(req.v)}`,
         );
       conn.send({ id, ok: true, ...this.dispatch(conn, req) });
+      if (req.op === "start") this.lastStartError = null;
     } catch (e) {
+      // Issue 500: a host that can't start shells says so (hello, doctor).
+      if (
+        req.op === "start" &&
+        e instanceof Refusal &&
+        (e.code === "unavailable" || e.code === "spawn")
+      )
+        this.lastStartError = {
+          at: new Date().toISOString(),
+          error: e.message,
+        };
       conn.send({
         id,
         ok: false,
@@ -527,6 +570,9 @@ export class SessionHost {
           pid: process.pid,
           startedAt: this.startedAt,
           launchd: this.launchd,
+          // Issue 500: null from a host started without one.
+          version: this.opts.version ?? null,
+          ...(this.lastStartError ? { startError: this.lastStartError } : {}),
         };
       case "list":
         return {

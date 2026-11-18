@@ -8352,12 +8352,50 @@ function startUpdateCheck(): void {
     const until = Date.now() + waitMs + 60_000;
     const poll = () => {
       const s = u.readUpdateState(getStateDir());
-      if (s?.to === have && s.state === "good") return void tick();
+      if (s?.to === have && s.state === "good") {
+        void refreshHostNow(have);
+        return void tick();
+      }
       if (s?.to === have && s.state === "watching" && Date.now() < until)
         setTimeout(poll, 5_000).unref();
     };
     poll();
   });
+}
+
+/**
+ * Issue 500: after a verified update to this version, an idle terminal
+ * host on an older version is restarted on this one; one with shells
+ * running is left (Terminal and doctor say it runs an older version).
+ */
+async function refreshHostNow(have: string): Promise<void> {
+  try {
+    const [{ refreshHostAfterUpdate }, { sessionPaths }, cli] =
+      await Promise.all([
+        import("./host-refresh.js"),
+        import("../../shared/sessions/paths.js"),
+        import("../cli/sessions-command.js"),
+      ]);
+    const stateDir = getStateDir();
+    const r = await refreshHostAfterUpdate({
+      stateDir,
+      denVersion: have,
+      socket: sessionPaths(stateDir).socket,
+      timeoutMs: cli.hostWaitMs(),
+      start: async () => {
+        const c = await cli.resolveDeps({}).connect();
+        c.close();
+      },
+      log: (l) => serverLog(l, "lifecycle"),
+    });
+    if (r === "replaced" || r === "busy")
+      serverLog(`  terminal host after the update: ${r}`, "lifecycle");
+  } catch (e) {
+    serverLog(
+      `  ⚠ terminal host after the update: ${(e as Error).message}`,
+      "warn",
+    );
+  }
 }
 
 /** The start banner: the install's address (D80), never localhost. */

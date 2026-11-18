@@ -549,6 +549,9 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "busy.hostW": "ターミナルホストを再起動しています…",
+    "busy.hostS": "ターミナルホストを再起動しました。",
+    "busy.hostF": "ターミナルホストを再起動できませんでした。",
     "busy.modeW": "{name} のモードを設定しています…",
     "busy.modeS": "{name} のモードを設定しました。",
     "busy.modeF":
@@ -890,7 +893,7 @@
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
-      "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "エージェント一覧、ターミナル、doctor がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行し、ターミナルと doctor は応答がないことを表示します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.agents.compaction_loop": "圧縮の繰り返し: 回数",
     "set.agents.compaction_loop.d":
       "下の分数のうちにエージェントが自動圧縮をこの回数より多く行うと、ベルが圧縮を繰り返していると知らせます。1 回の繰り返しにつきベルは 1 回です。__DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -1920,6 +1923,12 @@
       "ターミナルにはオプションの PTY モジュールが必要です（den-pty は使えません）。理由は {cli} doctor で確認できます",
     "ag.hostDown":
       "Den が時間内にターミナルホストに接続できなかったため、この一覧は古い可能性があります。数秒ごとに再試行しています。",
+    "ag.host.stuck":
+      "ターミナルホストが応答しません（{why}、{host}）。そのためターミナルを開始できません。再起動するとシェルを再び開始できます。",
+    "ag.host.older":
+      "ターミナルホストは古いバージョンで動いています（{host}、Den は {den}）。作業が終わったら再起動してください。",
+    "ag.host.restart": "再起動",
+    "ag.host.unknownVer": "不明なバージョン",
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
     "ag.ws": "プロジェクト",
     "ag.pal": "エージェント › {ws} / {name}",
