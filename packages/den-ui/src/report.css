@@ -223,6 +223,52 @@
 .fb-shot img {
   cursor: default;
 }
+/* Taking a screenshot… (issue 469): the form works meanwhile. */
+.fb-taking {
+  line-height: normal;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.fb-bar {
+  width: 40%;
+  height: 2px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  position: relative;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.fb-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: var(--accent);
+  animation: fb-ind 1.4s ease-in-out infinite;
+}
+@keyframes fb-ind {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-bar i {
+    animation: none;
+    width: 100%;
+    opacity: 0.7;
+  }
+}
+.fb-btns button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
 .fb-kbd input[type="number"] {
   width: 5em;
   font: 13px var(--sans);

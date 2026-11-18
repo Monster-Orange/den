@@ -2,9 +2,10 @@
  * den-ui: the Report form's screenshot, and its mask.
  *
  * capture() takes the page as the person sees it, with any dialog, drawer
- * or menu that is open, before the form opens (the form itself is left
- * out). It uses html-to-image (MIT; the product serves it and names its
- * URL with configureShots({ library })), loaded the first time. It never throws: a
+ * or menu that is open (the form itself is left out). It makes its own
+ * lean copy of the page (issue 469); html-to-image (MIT; the product serves
+ * it and names its URL with configureShots({ library })) is loaded only if
+ * that fails. It never throws: a
  * page that can't be captured, or that takes longer than `seconds`, gives
  * null, and the form offers to send without one.
  *
@@ -46,10 +47,10 @@ function loadLib() {
   return lib;
 }
 
+const TIMED_OUT = "capture timed out";
+
 function timeout(ms) {
-  return new Promise((_, no) =>
-    setTimeout(() => no(new Error("capture timed out")), ms),
-  );
+  return new Promise((_, no) => setTimeout(() => no(new Error(TIMED_OUT)), ms));
 }
 
 /*
@@ -197,9 +198,457 @@ function imageOf(url) {
 
 /**
  * The page as shown now, as a canvas the size of the window, or null.
- * `skip(el)`: elements to leave out (the form).
+ * `skip(el)`: elements to leave out (the form). The lean copy first
+ * (below); html-to-image only if it fails.
  */
 export async function capture({ seconds = 15, skip = () => false } = {}) {
+  try {
+    return await Promise.race([lean(skip), timeout(seconds * 1000)]);
+  } catch (err) {
+    // Too slow: none. Anything else: the library's way.
+    if (err?.message === TIMED_OUT) return null;
+    return viaLibrary(seconds, skip);
+  }
+}
+
+/*
+ * The lean copy (issue 469). html-to-image writes every computed style of
+ * every element into the copy: on a full page that is tens of MB of SVG,
+ * seconds to build, parse and draw. This copy writes only what differs
+ * from what the copy would get anyway:
+ *
+ * - a property the element inherits: only when it differs from its
+ *   parent's (or the browser's own style for that tag sets it);
+ * - any other property: only when it differs from the browser's default
+ *   for that tag, read once per tag in an empty frame of the same page.
+ *
+ * A property not known to be inherited is compared with the default: at
+ * worst written when it need not be, never left out when it must be.
+ * Hidden elements (display: none) are left out. Images and url()s are
+ * inlined, each URL fetched once per page. The scroll plan is written into
+ * the copy as it is made (no parse of the SVG back). The copy yields to
+ * the page every few milliseconds, so the open form keeps taking keys.
+ */
+const SVG_NS = "http://www.w3.org/2000/svg";
+const BOX = "data-den-shot-box";
+const INHERITED = new Set([
+  "color",
+  "direction",
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-weight",
+  "font-stretch",
+  "font-variant",
+  "font-variant-caps",
+  "font-variant-ligatures",
+  "font-variant-numeric",
+  "font-variant-east-asian",
+  "font-feature-settings",
+  "font-variation-settings",
+  "font-kerning",
+  "font-optical-sizing",
+  "font-size-adjust",
+  "line-height",
+  "letter-spacing",
+  "word-spacing",
+  "text-align",
+  "text-align-last",
+  "text-indent",
+  "text-transform",
+  "text-shadow",
+  "text-rendering",
+  "text-underline-position",
+  "white-space",
+  "white-space-collapse",
+  "text-wrap",
+  "text-wrap-mode",
+  "text-wrap-style",
+  "word-break",
+  "overflow-wrap",
+  "word-wrap",
+  "line-break",
+  "hyphens",
+  "tab-size",
+  "visibility",
+  "list-style-type",
+  "list-style-position",
+  "list-style-image",
+  "quotes",
+  "border-collapse",
+  "border-spacing",
+  "caption-side",
+  "empty-cells",
+  "writing-mode",
+  "text-orientation",
+  "color-scheme",
+  "-webkit-font-smoothing",
+  "-webkit-text-fill-color",
+  "-webkit-text-stroke-color",
+  "-webkit-text-stroke-width",
+  "-webkit-locale",
+  "-webkit-writing-mode",
+  "fill",
+  "fill-opacity",
+  "fill-rule",
+  "stroke",
+  "stroke-width",
+  "stroke-opacity",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "paint-order",
+]);
+// Nothing a still picture shows.
+const NOT_DRAWN =
+  /^(--|transition|animation|scroll-|overscroll|touch-action|user-select|-webkit-user-|cursor$|will-change|caret-color|pointer-events|view-transition|-webkit-tap-highlight|interactivity|interpolate-size|timeline-|anchor-|position-try|-webkit-line-break)/;
+// Not copied at all: what draws nothing, or what the copy can't load.
+const LEFT_OUT = new Set([
+  "SCRIPT",
+  "NOSCRIPT",
+  "STYLE",
+  "LINK",
+  "TEMPLATE",
+  "META",
+  "TITLE",
+  "BASE",
+  "HEAD",
+  "SOURCE",
+  "TRACK",
+]);
+
+let box = null;
+
+/** The empty frame the defaults are read in, made once per page. */
+function frame() {
+  if (box && box.frame.isConnected && box.frame.contentDocument?.body)
+    return box;
+  const f = document.createElement("iframe");
+  f.setAttribute(BOX, "");
+  f.setAttribute("aria-hidden", "true");
+  f.tabIndex = -1;
+  f.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:200px;height:200px;border:0;visibility:hidden;pointer-events:none";
+  document.documentElement.append(f);
+  const doc = f.contentDocument;
+  if (!doc) throw new Error("no frame");
+  doc.open();
+  doc.write("<!doctype html><html><head></head><body></body></html>");
+  doc.close();
+  const win = f.contentWindow;
+  const cs = win.getComputedStyle(doc.body);
+  const names = [];
+  for (let i = 0; i < cs.length; i++)
+    if (!NOT_DRAWN.test(cs[i])) names.push(cs[i]);
+  if (!names.length) throw new Error("no computed style in the frame");
+  box = {
+    frame: f,
+    doc,
+    win,
+    names,
+    inh: names.map((n) => INHERITED.has(n)),
+    tags: new Map(),
+  };
+  return box;
+}
+
+/**
+ * The browser's own style for a tag: each property's value, and whether
+ * its style sheet sets an inherited one (so it can't be left to the
+ * parent).
+ */
+function defaultsOf(b, el) {
+  const svg = el.namespaceURI === SVG_NS;
+  const key = (svg ? "svg:" : "") + el.localName;
+  let d = b.tags.get(key);
+  if (d) return d;
+  const probe = svg
+    ? b.doc.createElementNS(SVG_NS, el.localName)
+    : b.doc.createElement(el.localName);
+  b.doc.body.append(probe);
+  const cs = b.win.getComputedStyle(probe);
+  const body = b.win.getComputedStyle(b.doc.body);
+  const vals = b.names.map((n) => cs.getPropertyValue(n));
+  const ua = b.names.map(
+    (n, i) => b.inh[i] && vals[i] !== body.getPropertyValue(n),
+  );
+  probe.remove();
+  d = { vals, ua };
+  b.tags.set(key, d);
+  return d;
+}
+
+/** The declarations to write for one element, and its values (for its children). */
+function declsOf(b, cs, d, parent) {
+  const { names, inh } = b;
+  const vals = new Array(names.length);
+  let css = "";
+  for (let i = 0; i < names.length; i++) {
+    const v = cs.getPropertyValue(names[i]);
+    vals[i] = v;
+    if (!v) continue;
+    const write = inh[i]
+      ? !parent || d.ua[i] || v !== parent[i]
+      : v !== d.vals[i];
+    if (write) css += `${names[i]}:${v};`;
+  }
+  return { css, vals };
+}
+
+const inlined = new Map();
+
+/** A URL's content as a data: URL, fetched once per page ("" if it can't be). */
+function dataUrlOf(url) {
+  let abs;
+  try {
+    abs = new URL(url, location.href).href;
+  } catch {
+    return Promise.resolve("");
+  }
+  if (abs.startsWith("data:")) return Promise.resolve(abs);
+  let p = inlined.get(abs);
+  if (!p) {
+    p = fetch(abs)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((blob) =>
+        blob
+          ? new Promise((ok) => {
+              const fr = new FileReader();
+              fr.onload = () => ok(String(fr.result || ""));
+              fr.onerror = () => ok("");
+              fr.readAsDataURL(blob);
+            })
+          : "",
+      )
+      .catch(() => "");
+    inlined.set(abs, p);
+  }
+  return p;
+}
+
+const URL_RE = /url\((["']?)([^"')]+)\1\)/g;
+
+/** css with each url() it names inlined (none dropped silently: "" stays ""). */
+async function inlineUrls(css) {
+  const urls = new Set();
+  for (const m of css.matchAll(URL_RE))
+    if (!m[2].startsWith("data:") && !m[2].startsWith("#")) urls.add(m[2]);
+  if (!urls.size) return css;
+  const got = new Map();
+  await Promise.all([...urls].map(async (u) => got.set(u, await dataUrlOf(u))));
+  return css.replace(URL_RE, (all, q, u) =>
+    got.has(u) ? (got.get(u) ? `url("${got.get(u)}")` : "none") : all,
+  );
+}
+
+/** Whether an element is in the top layer (a modal dialog, a popover). */
+function onTop(el) {
+  try {
+    return el.matches(":modal") || el.matches(":popover-open");
+  } catch {
+    return false;
+  }
+}
+
+async function lean(skip) {
+  const b = frame();
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const backgroundColor = getComputedStyle(document.body).backgroundColor;
+  const skipEl = (el) => el.hasAttribute(BOX) || skip(el);
+  const steps = new Map();
+  for (const s of scrollPlan(skipEl)) steps.set(s.el, s);
+  const root = document.documentElement;
+  const x = window.scrollX;
+  const y = window.scrollY;
+  if (x || y) {
+    const s = steps.get(root) || { el: root, css: "", text: null };
+    s.css += `position:relative;top:${-y}px;left:${-x}px;bottom:auto;right:auto;`;
+    steps.set(root, s);
+  }
+
+  const late = []; // [copy, css] whose url()s are inlined before drawing
+  const imgs = []; // [copy, src]
+  const pseudo = []; // style rules for ::before / ::after
+  let pn = 0;
+  const setStyle = (copy, css) => {
+    if (css.includes("url(")) late.push([copy, css]);
+    else if (css) copy.setAttribute("style", css);
+  };
+
+  /** One element's copy (not its children), or null when it draws nothing. */
+  const copyOf = (el, parent) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none") return null;
+    const svg = el.namespaceURI === SVG_NS;
+    const tag = el.localName;
+    let copy;
+    if (svg) copy = el.cloneNode(true);
+    else if (tag === "canvas" || tag === "video" || tag === "iframe") {
+      let src = "";
+      try {
+        if (tag === "canvas") src = el.toDataURL();
+      } catch {
+        /* a tainted canvas: drawn as its box */
+      }
+      copy = document.createElement(src ? "img" : "div");
+      if (src) copy.setAttribute("src", src);
+    } else {
+      // A defined custom element would run its own code: a plain span
+      // (an unknown tag's defaults) stands in.
+      copy = document.createElement(
+        tag.includes("-") && customElements.get(tag) ? "span" : tag,
+      );
+      for (const a of el.attributes) {
+        const n = a.name;
+        if (
+          n === "style" ||
+          n === "src" ||
+          n === "srcset" ||
+          n === "loading" ||
+          n === "decoding" ||
+          // display decides, already written: these would hide the copy.
+          n === "hidden" ||
+          n === "popover" ||
+          n === TAG ||
+          n.startsWith("on")
+        )
+          continue;
+        try {
+          copy.setAttribute(n, a.value);
+        } catch {
+          /* a name XML can't carry */
+        }
+      }
+    }
+    if (tag === "img" && !svg) {
+      const src = el.currentSrc || el.src;
+      if (src && el.complete && el.naturalWidth) imgs.push([copy, src]);
+    }
+    if (tag === "input") {
+      if (el.type === "checkbox" || el.type === "radio") {
+        if (el.checked) copy.setAttribute("checked", "");
+        else copy.removeAttribute("checked");
+      } else if (el.type !== "file" && el.type !== "password")
+        copy.setAttribute("value", el.value);
+    }
+    if (tag === "textarea") copy.textContent = el.value;
+    if (tag === "option") {
+      if (el.selected) copy.setAttribute("selected", "");
+      else copy.removeAttribute("selected");
+    }
+    const d = defaultsOf(b, el);
+    const { css, vals } = declsOf(b, cs, d, parent);
+    let more = "";
+    const step = steps.get(el);
+    if (step?.css) more += step.css;
+    if (onTop(el)) more += "z-index:2147483646;";
+    if (el === root) more += `width:${width}px;height:${height}px;`;
+    setStyle(copy, css + more);
+    if (!svg) {
+      for (const which of ["::before", "::after"]) {
+        const ps = getComputedStyle(el, which);
+        const content = ps.getPropertyValue("content");
+        if (!content || content === "none" || content === "normal") continue;
+        const pd = defaultsOf(b, { localName: "span" });
+        const p = declsOf(b, ps, pd, vals).css;
+        const cls = `den-shot-p${pn++}`;
+        copy.classList.add(cls);
+        pseudo.push(`.${cls}${which}{${p}content:${content};}`);
+      }
+    }
+    return { copy, vals, svg, step };
+  };
+
+  const top = copyOf(root, null);
+  if (!top) throw new Error("nothing to copy");
+  const stack = [];
+  const push = (el, into) => {
+    const kids = [...(el.shadowRoot ?? el).childNodes];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push([kids[i], into]);
+  };
+  if (document.body && !skipEl(document.body)) push(root, top);
+  let slice = performance.now();
+  let n = 0;
+  while (stack.length) {
+    const [node, into] = stack.pop();
+    if (node.nodeType === 3) {
+      const t = document.createTextNode(node.nodeValue);
+      if (into.step?.text && node.nodeValue.trim()) {
+        const span = document.createElement("span");
+        span.setAttribute(
+          "style",
+          `position:relative;top:${into.step.text.dy}px;left:${into.step.text.dx}px;`,
+        );
+        span.append(t);
+        into.copy.append(span);
+      } else into.copy.append(t);
+      continue;
+    }
+    if (node.nodeType !== 1) continue;
+    if (LEFT_OUT.has(node.tagName.toUpperCase()) || skipEl(node)) continue;
+    const c = copyOf(node, into.vals);
+    if (!c) continue;
+    into.copy.append(c.copy);
+    if (!c.svg && node.localName !== "textarea") push(node, c);
+    // Every few milliseconds the page gets its turn (keys, paint).
+    if (++n % 32 === 0 && performance.now() - slice > 8) {
+      await nextTask();
+      slice = performance.now();
+    }
+  }
+  if (pseudo.length) {
+    const st = document.createElement("style");
+    st.textContent = pseudo.join("\n");
+    top.copy.append(st);
+  }
+  await Promise.all([
+    ...late.map(async ([copy, css]) =>
+      copy.setAttribute("style", await inlineUrls(css)),
+    ),
+    ...imgs.map(async ([copy, src]) => {
+      const u = await dataUrlOf(src);
+      if (u) copy.setAttribute("src", u);
+    }),
+    pseudo.length
+      ? inlineUrls(pseudo.join("\n")).then((t) => {
+          top.copy.lastChild.textContent = t;
+        })
+      : null,
+  ]);
+
+  const svgEl = document.createElementNS(SVG_NS, "svg");
+  svgEl.setAttribute("width", String(width));
+  svgEl.setAttribute("height", String(height));
+  svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const fo = document.createElementNS(SVG_NS, "foreignObject");
+  fo.setAttribute("x", "0");
+  fo.setAttribute("y", "0");
+  fo.setAttribute("width", "100%");
+  fo.setAttribute("height", "100%");
+  fo.append(top.copy);
+  svgEl.append(fo);
+  const url =
+    "data:image/svg+xml;charset=utf-8," +
+    encodeURIComponent(new XMLSerializer().serializeToString(svgEl));
+  const img = await imageOf(url);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const g = canvas.getContext("2d");
+  g.fillStyle = backgroundColor;
+  g.fillRect(0, 0, width, height);
+  g.drawImage(img, 0, 0, width, height);
+  if (!canvas.width || !canvas.height) throw new Error("empty");
+  return canvas;
+}
+
+/** The next task: the page's own work gets its turn. */
+const nextTask = () => new Promise((ok) => setTimeout(ok, 0));
+
+/** The page through html-to-image (the way before issue 469), or null. */
+async function viaLibrary(seconds, skip) {
   let plan = [];
   try {
     const h2i = await Promise.race([loadLib(), timeout(seconds * 1000)]);
@@ -226,7 +675,7 @@ export async function capture({ seconds = 15, skip = () => false } = {}) {
       // The page's own fonts are already there: not fetched again.
       skipFonts: true,
       backgroundColor,
-      filter: (n) => !(n.nodeType === 1 && skip(n)),
+      filter: (n) => !(n.nodeType === 1 && (skip(n) || n.hasAttribute(BOX))),
     };
     let canvas;
     if (!plan.length) {

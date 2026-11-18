@@ -137,6 +137,20 @@ async function timedOpen(p: Page): Promise<number> {
     () =>
       new Promise<number>((ok, no) => {
         const t0 = performance.now();
+        // The longest the page was busy, until the shot is in the form.
+        const w = window as unknown as { denGap: number; denShotAt: number };
+        w.denGap = 0;
+        w.denShotAt = 0;
+        let last = t0;
+        const gap = setInterval(() => {
+          const now = performance.now();
+          w.denGap = Math.max(w.denGap, now - last);
+          last = now;
+          if (document.querySelector("dialog.fb-dlg canvas[data-shot]")) {
+            w.denShotAt = now - t0;
+            clearInterval(gap);
+          }
+        }, 10);
         const stop = setTimeout(() => no(new Error("never usable")), 20_000);
         const tick = () => {
           const el = document.activeElement as HTMLInputElement | null;
@@ -165,6 +179,18 @@ describe("issue 469: Report opens at once, the screenshot after", () => {
     // The screenshot arrives in the form that is already open.
     await dlg(p).locator("canvas[data-shot]").waitFor({ timeout: 20_000 });
     expect(await dlg(p).locator('[data-f="title"]').inputValue()).toBe("x");
+    const after = await p.evaluate(() => {
+      const w = window as unknown as {
+        denGap: number;
+        denShotAt: number;
+        htmlToImage?: unknown;
+      };
+      return { gap: w.denGap, shotAt: w.denShotAt, lib: !!w.htmlToImage };
+    });
+    note("shot1", after.shotAt);
+    note("busiest1", after.gap);
+    // The lean copy took it: html-to-image was never needed.
+    expect(after.lib).toBe(false);
     await p.keyboard.press("Escape");
     await dlg(p).locator('[data-act="discard"]').click();
     await dlg(p).waitFor({ state: "detached" });
@@ -202,19 +228,26 @@ describe("issue 469: Report opens at once, the screenshot after", () => {
   for (const [lang, taking, waiting] of [
     ["en", "Taking a screenshot…", "Waiting for the screenshot…"],
     ["es", "Haciendo la captura…", "Esperando la captura…"],
-    ["ja", "スクリーンショットを撮っています…", "スクリーンショットを待っています…"],
+    [
+      "ja",
+      "スクリーンショットを撮っています…",
+      "スクリーンショットを待っています…",
+    ],
   ] as const) {
     it(`${lang}: while the shot is drawn the form works; Send waits for it, says so, and the shot still goes`, async () => {
       if (skip()) return;
       const sent: unknown[] = [];
       const p = await page(sent, lang);
-      // A slow screenshot: html-to-image held back until the test lets go.
+      // A slow screenshot: the theme's mark (the shot inlines it) held
+      // back until the test lets go.
       let release = () => {};
       const held = new Promise<void>((ok) => (release = ok));
-      await p.route("**/vendor/html-to-image.js*", async (r) => {
+      const hold = async (r: Route) => {
         await held;
         await r.continue();
-      });
+      };
+      await p.route("**/theme/**", hold);
+      await p.route("**/vendor/html-to-image.js*", hold);
       await timedOpen(p);
       await dlg(p).getByText(taking).waitFor();
       await dlg(p).locator('[data-f="title"]').fill("Pane drops");

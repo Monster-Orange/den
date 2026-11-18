@@ -277,14 +277,31 @@ export async function openReport(opts = {}) {
     }
     return typeof d.shot === "string" ? shots.canvasOf(d.shot) : null;
   };
-  st.shot = !shots
-    ? null
-    : opts.draft
-      ? await fromDraft()
-      : await shots.capture({
-          seconds: st.info.captureSeconds || 15,
-          skip: (el) => el.classList?.contains("fb-dlg"),
-        });
+  // A new report (issue 469): the form opens at once; the screenshot is
+  // taken once the form has been painted (the form itself left out) and
+  // fills in when drawn. Review, Send and Finish later wait for it
+  // (waitShot), never drop it.
+  if (shots && opts.draft) st.shot = await fromDraft();
+  st.shotPending = !!shots && !opts.draft;
+  const shotDone = !st.shotPending
+    ? Promise.resolve(st.shot)
+    : new Promise((ok) => {
+        // After the form's first paint (a hidden tab paints none: soon).
+        requestAnimationFrame(() => setTimeout(ok, 0));
+        setTimeout(ok, 250);
+      }).then(async () => {
+        const c =
+          current === self
+            ? await shots.capture({
+                seconds: st.info.captureSeconds || 15,
+                skip: (el) => el.classList?.contains("fb-dlg"),
+              })
+            : null;
+        st.shot = c;
+        st.shotPending = false;
+        if (current === self) shotArrived();
+        return c;
+      });
   if (current !== self) return self;
   document.body.append(dlg);
   st.diag = diag?.sections || diag || {};
@@ -390,28 +407,16 @@ export async function openReport(opts = {}) {
   const linkBtn = (href, label, pri) =>
     `<a href="${esc(href)}" target="_blank" rel="noopener"${pri ? ' class="fb-pri"' : ""}>${esc(label)}</a>`;
 
-  /** Draws the step; `focusSel` keeps focus where the person was. */
-  function render(focusSel) {
-    let h = "";
-    let role = "dialog";
-    let label = t("kit.report.title");
-    const err = st.error
-      ? `<p class="fb-err" role="alert">${esc(st.error)}</p>`
-      : "";
-    if (st.step === "write") {
-      h = `<h2 tabindex="-1">${esc(t("kit.report.title"))}</h2>
-<p class="fb-sub">${esc(t("kit.report.sub"))}</p>${cfg.mine ? `<button type="button" class="fb-lk" data-act="mine">${esc(t("kit.report.mine"))}</button>` : ""}${stepsHtml(0)}
-<div class="fb-h" id="fb-kind">${esc(t("kit.report.kind"))}</div>
-<div class="fb-kinds" role="radiogroup" aria-labelledby="fb-kind">${KINDS.map(
-        (k) =>
-          `<label><input type="radio" name="fb-kind" value="${k}"${st.kind === k ? " checked" : ""}><span>${esc(t(`kit.report.k.${k}`))}</span></label>`,
-      ).join("")}</div>
-<label class="fb-f">${esc(t("kit.report.titleL"))}<input type="text" data-f="title" maxlength="200" value="${esc(st.title)}"></label>
-<label class="fb-f">${esc(t("kit.report.desc"))}<textarea data-f="description" maxlength="20000">${esc(st.description)}</textarea></label>
-<div class="fb-h">${esc(t("kit.report.shot"))}</div>
-${
-  st.shot
-    ? `<p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
+  /** "Taking a screenshot…" while it is drawn (issue 469). */
+  const takingHtml = () =>
+    `<div class="fb-shot fb-taking" role="status" aria-live="polite"><span class="fb-bar" aria-hidden="true"><i></i></span><span>${esc(t("kit.report.taking"))}</span></div>`;
+  /** Write's screenshot part: taking it, the shot and its tools, or none. */
+  function writeShotHtml() {
+    if (st.shotPending)
+      return `${takingHtml()}
+<div class="fb-tools"><label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label></div>`;
+    return st.shot
+      ? `<p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
 <div class="fb-shot"${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>
 <div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
 ${
@@ -438,8 +443,69 @@ ${
         )
         .join("")}</ul></details>`
 }`
-    : `<p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p>`
-}${err}
+      : `<p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p>`;
+  }
+  /** Review's screenshot: taking it, or the masked image. */
+  function reviewShotHtml() {
+    if (st.noShot) return "";
+    if (st.shotPending)
+      return `<div class="fb-h">${esc(t("kit.report.shot"))}</div>${takingHtml()}`;
+    return shotOn()
+      ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`
+      : "";
+  }
+  /**
+   * The screenshot is drawn: only its part of the form is redrawn, so the
+   * text being typed, the caret and focus stay where they are.
+   */
+  function shotArrived() {
+    const area = dlg.querySelector("[data-shot-area]");
+    if (!area) return;
+    const had = area.contains(document.activeElement)
+      ? document.activeElement.getAttribute("data-f")
+      : null;
+    area.innerHTML = st.step === "write" ? writeShotHtml() : reviewShotHtml();
+    paintShot();
+    if (had) area.querySelector(`[data-f="${had}"]`)?.focus();
+  }
+  /**
+   * Before a send or Finish later: a screenshot still being drawn is
+   * waited for, with the button saying so, never dropped.
+   */
+  async function waitShot(button) {
+    if (!st.shotPending || st.noShot) return;
+    const label = button?.textContent;
+    if (button) {
+      button.disabled = true;
+      button.textContent = t("kit.report.waitShot");
+    }
+    await shotDone;
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
+  /** Draws the step; `focusSel` keeps focus where the person was. */
+  function render(focusSel) {
+    let h = "";
+    let role = "dialog";
+    let label = t("kit.report.title");
+    const err = st.error
+      ? `<p class="fb-err" role="alert">${esc(st.error)}</p>`
+      : "";
+    if (st.step === "write") {
+      h = `<h2 tabindex="-1">${esc(t("kit.report.title"))}</h2>
+<p class="fb-sub">${esc(t("kit.report.sub"))}</p>${cfg.mine ? `<button type="button" class="fb-lk" data-act="mine">${esc(t("kit.report.mine"))}</button>` : ""}${stepsHtml(0)}
+<div class="fb-h" id="fb-kind">${esc(t("kit.report.kind"))}</div>
+<div class="fb-kinds" role="radiogroup" aria-labelledby="fb-kind">${KINDS.map(
+        (k) =>
+          `<label><input type="radio" name="fb-kind" value="${k}"${st.kind === k ? " checked" : ""}><span>${esc(t(`kit.report.k.${k}`))}</span></label>`,
+      ).join("")}</div>
+<label class="fb-f">${esc(t("kit.report.titleL"))}<input type="text" data-f="title" maxlength="200" value="${esc(st.title)}"></label>
+<label class="fb-f">${esc(t("kit.report.desc"))}<textarea data-f="description" maxlength="20000">${esc(st.description)}</textarea></label>
+<div class="fb-h">${esc(t("kit.report.shot"))}</div>
+<div data-shot-area>${writeShotHtml()}</div>${err}
 <div class="fb-btns">${btn("next", t("kit.report.next"), true)}${laterBtn(t("kit.report.later"))}${btn("cancel", t("kit.report.cancel"))}</div>`;
     } else if (st.step === "include") {
       label = t("kit.report.incH");
@@ -479,11 +545,7 @@ ${
       }${visPill(repos)}</div>`
     : ""
 }
-<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${
-        shotOn()
-          ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`
-          : ""
-      }
+<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre><div data-shot-area>${reviewShotHtml()}</div>
 ${sends() ? visNote(repos) : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
 <div class="fb-btns">${sends() ? btn("send", t("kit.report.send"), true) : btn("copy", t("kit.report.copy"), true)}${laterBtn(t("kit.report.later"))}${btn("back-include", t("kit.report.back"))}</div>`;
     } else if (st.step === "signin") {
@@ -582,6 +644,8 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
   }
 
   async function saveDraft() {
+    await waitShot(dlg.querySelector('[data-act="later"]'));
+    if (current !== self) return;
     const r = await write(
       (h) =>
         ad.saveDraft(
@@ -641,6 +705,12 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
   }
 
   async function send() {
+    await waitShot(
+      dlg.querySelector(
+        '[data-act="send"],[data-act="addto"],[data-act="filenew"],[data-act="retry"]',
+      ),
+    );
+    if (current !== self) return;
     if (!ad.send && ad.fileReport) return fileIt();
     if (st.viaApp) return viaApp();
     const r = await write(
