@@ -46,6 +46,11 @@ beforeAll(async () => {
     scope: "workspace/north",
     text: "Release 1 shipped",
   });
+  // The question's agent is a real one (issue 424, as bell-v6): the
+  // server's first attention check withdraws an unread "asked" row whose
+  // agent has no record (issue 369), and whether that check came before or
+  // after this row was timing.
+  s.seed({ id: "asker", workspace: "north" });
   st.add({
     kind: "waiting",
     subject: "agent:asker",

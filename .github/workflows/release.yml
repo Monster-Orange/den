@@ -138,7 +138,19 @@ jobs:
           cache: npm
       - run: npm ci
       # the browser tests (the What's new dialog) need Chromium, as in ci.yml
-      - run: npx playwright install --with-deps chromium webkit
+      # Playwright's browsers (cached by OS and Playwright's version) and their
+      # system packages, each part with a time limit and one retry
+      # (scripts/ci-pw-install.sh): the one-line install hung on a slow apt
+      # mirror until the job's timeout.
+      - id: pw
+        run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+      - name: Playwright's browsers and system packages
+        timeout-minutes: 15
+        run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the
       # rest, never beside the browser tests (tests/docker-suites.mjs).
       - run: npm test -- --shard=${{ matrix.shard }}/6

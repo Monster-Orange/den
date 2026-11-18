@@ -8000,7 +8000,14 @@ async function serverBack(): Promise<void> {
   const m = takeRestartMarker(getStateDir());
   if (!m) return;
   const version = engineVersion() ?? "?";
-  const text = backMessage(m, version, process.pid);
+  // #384: the update's doctor results go in the line itself.
+  let update: import("./den-update.js").LastUpdate | null = null;
+  try {
+    update = (await import("./den-update.js")).lastUpdate(getStateDir());
+  } catch {
+    /* no update record: the line says none was kept */
+  }
+  const text = backMessage(m, version, process.pid, update);
   let told = "nobody to tell";
   if (m.agent === SERVER_AGENT_ID) {
     try {

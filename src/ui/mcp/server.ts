@@ -17,7 +17,16 @@ import {
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { engineVersion, getStateDir } from "../../shared/paths.js";
+import {
+  engineVersion,
+  getEngineRoot,
+  getStateDir,
+} from "../../shared/paths.js";
+import {
+  engineWatch,
+  toolsStaleMessage,
+  type EngineCheck,
+} from "../server/engine-stamp.js";
 import {
   ACTOR_TOKEN_FILE_ENV,
   actorTokenOf,
@@ -55,6 +64,11 @@ export interface DenMcpOptions {
   log?: (line: string) => void;
   /** `--workspace` + `--actor`: one workspace, one agent (AG-2a-core). */
   scope?: McpScope;
+  /**
+   * #384: the engine these tools loaded against the one on disk (default:
+   * engineWatch on the engine root, read now).
+   */
+  engine?: { check(): EngineCheck };
 }
 
 /**
@@ -102,6 +116,11 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   // ON-6: the server agent's scope is the whole Den (its tools unpinned).
   const toolScope = workspaceScope(opts.scope);
   const tools = toolsFor(opts.cfg, toolScope);
+  // #384: this process outlives a Den update (an agent's is a child of its
+  // session); once npm has replaced the engine under it, each answer says
+  // its tools are the old Den's, and how to load the new ones.
+  const engine = opts.engine ?? engineWatch(getEngineRoot);
+  const isAgent = opts.scope?.actor.startsWith("agent:") === true;
   const server = new McpServer(
     { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
@@ -172,8 +191,19 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
               (r.isError ? ` · ${r.text.split("\n")[0]}` : ""),
           );
         }
+        const e = engine.check();
         return {
-          content: [{ type: "text" as const, text: r.text }],
+          content: [
+            { type: "text" as const, text: r.text },
+            ...(e.stale
+              ? [
+                  {
+                    type: "text" as const,
+                    text: toolsStaleMessage(e, isAgent),
+                  },
+                ]
+              : []),
+          ],
           isError: r.isError,
         };
       },

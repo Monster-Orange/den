@@ -256,6 +256,25 @@ describe("the store", () => {
     expect(ask(s, "cpu").grantedAt).toBeDefined();
   });
 
+  it("issue 275: a lock whose holder is gone is taken back at once; a live holder's is not", () => {
+    const dir = tmp();
+    const lock = path.join(dir, "lock");
+    const dead = new GateStore({
+      dir,
+      lockWaitMs: 200,
+      alive: (pid) => pid !== 999999,
+    });
+    fs.mkdirSync(lock, { recursive: true });
+    fs.writeFileSync(path.join(lock, "pid"), "999999");
+    // A killed process left a fresh lock: no 30 s wait for it.
+    expect(ask(dead, "cpu").grantedAt).toBeDefined();
+    expect(fs.existsSync(lock)).toBe(false);
+    const live = new GateStore({ dir, lockWaitMs: 200, alive: () => true });
+    fs.mkdirSync(lock);
+    fs.writeFileSync(path.join(lock, "pid"), "999999");
+    expect(() => ask(live, "browser")).toThrow("the gate-slot lock");
+  });
+
   it("eight processes asking at once: exactly one browser grant", async () => {
     const dir = tmp();
     const child = path.join(__dirname, "ask-child.ts");

@@ -17,17 +17,30 @@
  *     after "with", "call", "use" or "run" ("check with doctor").
  * NOT_TOOLS lists the snake_case words in that text that aren't tools,
  * each with what it is. Add one only for a word that is not a tool.
+ *
+ * #384: a named tool must also give what the text says it gives, to that
+ * caller. FIELD_PROMISES finds "<tool> has <field>" in the text; each one
+ * is called the way the server agent calls it (its MCP server, with its
+ * real scope: --workspace den-server --actor agent:server) after a recorded
+ * update, and its answer must hold the field. A line Den types when it is
+ * back is read by tools that started before the update (the agent's MCP
+ * server outlives it), so such a line promises no tool field at all: what
+ * it says of the update, it says itself.
  */
 import { describe, expect, it } from "@jest/globals";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import * as fs from "fs";
 import * as path from "path";
 import type { ZodTypeAny } from "zod";
 import { toolsFor } from "../../../src/ui/mcp/tools.js";
+import type { DenApi } from "../../../src/ui/mcp/api.js";
 import * as mcpServer from "../../../src/ui/mcp/server.js";
 import {
   backMessage,
   type RestartMarker,
 } from "../../../src/ui/server/server-restart.js";
+import type { LastUpdate } from "../../../src/ui/server/den-update.js";
 import {
   MCP_ACTIONS,
   type ResolvedMcpConfig,
@@ -91,18 +104,57 @@ const marker = (over: Partial<RestartMarker> = {}): RestartMarker => ({
   ...over,
 });
 
-/** backMessage's every branch. */
+/** The update Den recorded (state.json and doctor.json), as the route reads it. */
+const UPDATE: LastUpdate = {
+  state: "good",
+  from: "0.4.41",
+  to: "0.4.42",
+  at: "2026-11-17T12:00:05.000Z",
+  doctor: {
+    at: "2026-11-17T12:00:03.000Z",
+    lines: ["warn hub: not connected", "fail pin: package.json has no pin"],
+  },
+};
+const ROLLED: LastUpdate = {
+  state: "rolled_back",
+  from: "0.4.41",
+  to: "0.4.42",
+  at: "2026-11-17T12:00:05.000Z",
+  why: "0.4.42 never answered",
+  doctor: UPDATE.doctor!,
+};
+
+/** backMessage's every branch (with the update it is back from, if any). */
 const BACK_LINES: Record<string, string> = {
-  "Den updated itself": backMessage(marker({ by: "den" }), "0.4.42", 222),
+  "Den updated itself": backMessage(
+    marker({ by: "den" }),
+    "0.4.42",
+    222,
+    UPDATE,
+  ),
+  "Den updated itself, no doctor results kept": backMessage(
+    marker({ by: "den" }),
+    "0.4.42",
+    222,
+    { ...UPDATE, doctor: undefined },
+  ),
   "Den's own update rolled back": backMessage(
-    marker({ by: "den", rolledBack: true }),
+    marker({ by: "den", rolledBack: true, fromVersion: "0.4.42" }),
     "0.4.41",
     222,
+    ROLLED,
   ),
   "the agent's update rolled back": backMessage(
-    marker({ rolledBack: true }),
+    marker({ rolledBack: true, fromVersion: "0.4.42" }),
     "0.4.41",
     222,
+    ROLLED,
+  ),
+  "the agent's update, a new version": backMessage(
+    marker({ reason: "update Den 0.4.41 → 0.4.42" }),
+    "0.4.42",
+    222,
+    UPDATE,
   ),
   "the agent's restart, a new version": backMessage(marker(), "0.4.42", 222),
   "the agent's restart, the same version": backMessage(marker(), "0.4.41", 222),
@@ -205,5 +257,171 @@ describe("#176: what Den tells its server agent names only tools it has", () => 
 
   it("NOT_TOOLS holds no real tool", () => {
     expect(Object.keys(NOT_TOOLS).filter((n) => NAMES.has(n))).toEqual([]);
+  });
+});
+
+/**
+ * #384: "<tool> has <field>": the field path an answer must hold. A text
+ * names release_status for Den's last update (`denUpdate`) or for the new
+ * Den's doctor results (`denUpdate.doctor`).
+ */
+const FIELD_PROMISES: { re: RegExp; tool: string; field: string[] }[] = [
+  {
+    re: /\brelease_status\b[^.]*?(?:\bdoctor results\b)/gi,
+    tool: "release_status",
+    field: ["denUpdate", "doctor"],
+  },
+  {
+    re: /\brelease_status\b[^.]*?(?:`?denUpdate`?|\blast update\b|\bthe update\b)/gi,
+    tool: "release_status",
+    field: ["denUpdate"],
+  },
+];
+
+/** What `text` promises a tool's answer holds. */
+function promisesIn(text: string): { tool: string; field: string[] }[] {
+  const out = new Map<string, { tool: string; field: string[] }>();
+  for (const p of FIELD_PROMISES)
+    for (const _ of text.matchAll(p.re))
+      out.set(`${p.tool}:${p.field.join(".")}`, {
+        tool: p.tool,
+        field: p.field,
+      });
+  return [...out.values()];
+}
+
+/** The web server's answers after a recorded update (UPDATE). */
+function updatedApi(): DenApi {
+  return {
+    baseUrl: "http://localhost:1",
+    async get(p) {
+      if (p === "/api/server-agent/update") return { update: UPDATE };
+      if (p === "/api/release/runs") return { runs: [] };
+      // A project's agent's scope is checked against the projects.
+      if (p === "/api/workspaces")
+        return {
+          active: ["north"],
+          focus: "north",
+          workspaces: { north: { services: {} } },
+        };
+      return {};
+    },
+    async stream() {
+      return { events: [], lines: [], ended: "done", exitCode: 0 };
+    },
+  };
+}
+
+/**
+ * Call `tool` as an agent calls it: through the MCP server Den starts for
+ * it (`--workspace <ws> --actor <actor>`), over the protocol.
+ */
+async function callAs(
+  scope: { workspace: string; actor: string },
+  tool: string,
+): Promise<Record<string, unknown>> {
+  const server = mcpServer.createDenMcpServer({
+    cfg: cfg(),
+    baseUrl: "http://localhost:1",
+    cli: "acme",
+    api: updatedApi(),
+    scope,
+    log: () => {},
+  });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "acme-test", version: "1" });
+  await Promise.all([server.connect(a), client.connect(b)]);
+  try {
+    const r = (await client.callTool({ name: tool, arguments: {} })) as {
+      isError?: boolean;
+      content: { text: string }[];
+    };
+    if (r.isError) throw new Error(`${tool}: ${r.content[0]?.text}`);
+    return JSON.parse(r.content[0].text) as Record<string, unknown>;
+  } finally {
+    await client.close();
+  }
+}
+
+/** Whether `body` holds the field path. */
+function holds(body: unknown, field: string[]): boolean {
+  let v: unknown = body;
+  for (const k of field) {
+    if (v === null || typeof v !== "object" || !Object.hasOwn(v, k))
+      return false;
+    v = (v as Record<string, unknown>)[k];
+  }
+  return v !== null && v !== undefined;
+}
+
+const SERVER_AGENT = { workspace: SERVER_SCOPE, actor: "agent:server" };
+
+describe("#384: a named tool gives what the text says, as the server agent calls it", () => {
+  it("the finder sees the promises, and the check sees one broken (a project's agent has no denUpdate)", async () => {
+    expect(
+      promisesIn(
+        "Then call release_status: it has the new Den's doctor results.",
+      ),
+    ).toEqual([{ tool: "release_status", field: ["denUpdate", "doctor"] }]);
+    expect(
+      promisesIn("release_status has Den's last update of itself."),
+    ).toEqual([{ tool: "release_status", field: ["denUpdate"] }]);
+    expect(promisesIn("Call onboard_status, then status.")).toEqual([]);
+    // A project's agent's release_status leaves Den's update out (by design):
+    // the check would catch a text promising it to that caller.
+    const project = await callAs(
+      { workspace: "north", actor: "agent:planner" },
+      "release_status",
+    );
+    expect(holds(project, ["denUpdate"])).toBe(false);
+  });
+
+  it("the server agent's release_status, after a recorded update, has denUpdate and its doctor results", async () => {
+    const body = await callAs(SERVER_AGENT, "release_status");
+    expect(body.denUpdate).toEqual(UPDATE);
+  });
+
+  it("every promise in the pack, the tool texts and the server agent's instructions holds", async () => {
+    const texts: Record<string, string> = {};
+    for (const f of fs.readdirSync(PACK).filter((x) => x.endsWith(".md")))
+      texts[`pack ${f}`] = fs.readFileSync(path.join(PACK, f), "utf8");
+    for (const t of TOOLS) texts[`tool ${t.name}`] = t.description;
+    texts["instructions, the server agent"] =
+      instructions()["the server agent"];
+    const found: string[] = [];
+    const broken: string[] = [];
+    for (const [where, text] of Object.entries(texts))
+      for (const p of promisesIn(text)) {
+        found.push(`${where}: ${p.tool} ${p.field.join(".")}`);
+        if (!holds(await callAs(SERVER_AGENT, p.tool), p.field))
+          broken.push(`${where}: ${p.tool} has no ${p.field.join(".")}`);
+      }
+    // Not vacuous: the pack and the instructions do promise them.
+    expect(found.length).toBeGreaterThan(0);
+    expect(broken).toEqual([]);
+  });
+
+  it("a line Den types when it is back promises no tool field (its reader's tools predate the update)", () => {
+    const bad: Record<string, string[]> = {};
+    for (const [k, text] of Object.entries(BACK_LINES)) {
+      const p = promisesIn(text);
+      if (p.length) bad[k] = p.map((x) => `${x.tool} ${x.field.join(".")}`);
+    }
+    expect(bad).toEqual({});
+  });
+
+  it("the line says the update's doctor results itself, or that none were kept", () => {
+    const up = BACK_LINES["Den updated itself"];
+    expect(up).toContain("warn hub: not connected");
+    expect(up).toContain("fail pin: package.json has no pin");
+    expect(BACK_LINES["the agent's update, a new version"]).toContain(
+      "warn hub: not connected",
+    );
+    expect(BACK_LINES["Den's own update rolled back"]).toContain(
+      "warn hub: not connected",
+    );
+    expect(BACK_LINES["Den updated itself, no doctor results kept"]).toMatch(
+      /no doctor results/i,
+    );
   });
 });
