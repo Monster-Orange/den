@@ -62,7 +62,9 @@ function beacon(
     r.end(data);
   });
 }
-async function settings(): Promise<{ shell: { pins: string[]; collapsed: boolean } }> {
+async function settings(): Promise<{
+  shell: { pins: string[]; collapsed: boolean };
+}> {
   const r = await fetch(`http://localhost:${port}/api/settings`, {
     headers: denAuth(path.join(tmp, "home", ".den")),
   });
@@ -79,11 +81,14 @@ async function postSettings(body: unknown): Promise<number> {
   });
   return r.status;
 }
-const yml = () => (fs.existsSync(userYml) ? fs.readFileSync(userYml, "utf-8") : "");
+const yml = () =>
+  fs.existsSync(userYml) ? fs.readFileSync(userYml, "utf-8") : "";
 const own = () => `http://localhost:${port}`;
 
 beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-shell-save-")));
+  tmp = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "den-shell-save-")),
+  );
   const root = path.join(tmp, "dist");
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
   write(path.join(root, "config", "den.yml"), "environments: [local]\n");
@@ -134,7 +139,9 @@ describe("issue 394: POST /api/settings/shell, the beacon form", () => {
 
   it("with no Origin: 403, and nothing is stored", async () => {
     const before = yml();
-    const r = await beacon({ shell: { pins: ["bare"], changedAt: Date.now() } });
+    const r = await beacon({
+      shell: { pins: ["bare"], changedAt: Date.now() },
+    });
     expect(r.status).toBe(403);
     expect(yml()).toBe(before);
   });
@@ -167,24 +174,35 @@ describe("issue 394: POST /api/settings/shell, the beacon form", () => {
 
   it("an older changedAt doesn't overwrite a newer one (answering ok)", async () => {
     expect(
-      (await beacon({ shell: { pins: [], changedAt: 5000 } }, { origin: own() }))
-        .status,
+      (
+        await beacon(
+          { shell: { pins: [], changedAt: 5000 } },
+          { origin: own() },
+        )
+      ).status,
     ).toBe(200);
     const late = await beacon(
       { shell: { pins: ["stale"], collapsed: true, changedAt: 4000 } },
       { origin: own() },
     );
     expect(late.status).toBe(200);
-    expect(JSON.parse(late.text)).toMatchObject({ ok: true, ignored: ["pins"] });
+    expect(JSON.parse(late.text)).toMatchObject({
+      ok: true,
+      ignored: ["pins"],
+    });
     const s = (await settings()).shell;
     expect(s.pins).toEqual([]);
     expect(s.collapsed).toBe(true);
   });
 
   it("/api/settings with a shell block keeps the stamps (newest still wins)", async () => {
-    expect(await postSettings({ shell: { pins: ["a"], changedAt: 9000 } })).toBe(200);
+    expect(
+      await postSettings({ shell: { pins: ["a"], changedAt: 9000 } }),
+    ).toBe(200);
     expect(await postSettings({ editor: "vim" })).toBe(200);
-    expect(await postSettings({ shell: { pins: ["b"], changedAt: 8000 } })).toBe(200);
+    expect(
+      await postSettings({ shell: { pins: ["b"], changedAt: 8000 } }),
+    ).toBe(200);
     expect((await settings()).shell.pins).toEqual(["a"]);
     expect(yml()).toContain("changedAt");
   });

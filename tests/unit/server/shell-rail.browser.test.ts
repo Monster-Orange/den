@@ -74,9 +74,7 @@ async function mount(
     if (url.pathname === "/api/settings/shell") {
       const b = JSON.parse(r.request().postData() ?? "null");
       const { changedAt, ...shell } = b.shell;
-      posts.push(
-        typeof changedAt === "number" ? { shell } : { unstamped: b },
-      );
+      posts.push(typeof changedAt === "number" ? { shell } : { unstamped: b });
       return r.fulfill({ json: { ok: true } });
     }
     if (url.pathname === "/api/settings") {

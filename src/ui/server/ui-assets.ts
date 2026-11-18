@@ -174,7 +174,7 @@ export const KIT_FILES: readonly string[] = [
   "report.js",
   "report.css",
   "report-shot.js",
-  // den-ui 0.7.5 (issue 394): a rail change saved as the page goes.
+  // den-ui 0.7.7 (issue 394): a rail change saved as the page goes.
   "save-shell.js",
   "kit.js",
   "fonts/rubik-latin-400-normal.woff2",
@@ -214,7 +214,7 @@ const KIT_SHELL_PARTS = [
   "icons.js",
   "shell-html.js",
   "shell-client.js",
-  // den-ui 0.7.5 (issue 394): shell.js saves the rail with it.
+  // den-ui 0.7.7 (issue 394): shell.js saves the rail with it.
   "save-shell.js",
 ];
 /**
@@ -264,7 +264,7 @@ const KIT_SHELL_NAMES = [
   "attachMenuFilter",
   "hydrateAppearance",
   "setWaiting",
-  // den-ui 0.7.5 (issue 394): a rail change saved as the page goes.
+  // den-ui 0.7.7 (issue 394): a rail change saved as the page goes.
   "saveShell",
 ];
 

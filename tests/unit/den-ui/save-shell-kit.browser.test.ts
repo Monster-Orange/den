@@ -1,5 +1,5 @@
 /**
- * den-ui 0.7.5, issue 394: DUI.saveShell keeps a rail change that the
+ * den-ui 0.7.7, issue 394: DUI.saveShell keeps a rail change that the
  * person leaves the page right after. A bare page built from the kit's own
  * file saves a patch to a small server here and, in the same tick, goes to
  * another page. The server reads a save's body only after 300 ms, as a
@@ -135,7 +135,9 @@ async function pageA(engine: string) {
   const ctx = await browsers[engine]!.newContext();
   const p = await ctx.newPage();
   await p.goto(`${origin}/a`);
-  await p.waitForFunction(() => (window as unknown as { ready?: boolean }).ready);
+  await p.waitForFunction(
+    () => (window as unknown as { ready?: boolean }).ready,
+  );
   return { ctx, p };
 }
 
@@ -161,7 +163,10 @@ describe.each(["chromium", "webkit"])("DUI.saveShell in %s", (engine) => {
     const got = saves.map((s) => s.body?.shell);
     expect(got.length).toBeGreaterThan(0);
     for (const s of got)
-      expect(s).toMatchObject({ pins: ["garden"], changedAt: expect.any(Number) });
+      expect(s).toMatchObject({
+        pins: ["garden"],
+        changedAt: expect.any(Number),
+      });
     await ctx.close();
   }, 30_000);
 
@@ -177,9 +182,13 @@ describe.each(["chromium", "webkit"])("DUI.saveShell in %s", (engine) => {
         window as unknown as {
           saveShell: (u: string, p: unknown, o: unknown) => Promise<boolean>;
         }
-      ).saveShell("/save", { collapsed: true }, {
-        headers: { "X-Probe-Csrf": "t1" },
-      }),
+      ).saveShell(
+        "/save",
+        { collapsed: true },
+        {
+          headers: { "X-Probe-Csrf": "t1" },
+        },
+      ),
     );
     expect(yes).toBe(true);
     const got = mine("collapsed");
@@ -223,9 +232,13 @@ describe.each(["chromium", "webkit"])("DUI.saveShell in %s", (engine) => {
       const w = window as unknown as {
         saveShell: (u: string, patch: unknown) => Promise<boolean>;
       };
-      void w.saveShell("/save", { order: ["home"] }, {
-        headers: { "X-Probe-Csrf": "t3" },
-      });
+      void w.saveShell(
+        "/save",
+        { order: ["home"] },
+        {
+          headers: { "X-Probe-Csrf": "t3" },
+        },
+      );
       window.dispatchEvent(new Event("pagehide"));
     });
     await waitFor(() => mine("order").length >= 2, 4000);

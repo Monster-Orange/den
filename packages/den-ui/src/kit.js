@@ -42,7 +42,7 @@
  *                               focus goes back to opener (else the
  *                               control that opened it) on close
  *   DenUI.busy.run(action, run, opts)   the working pop-up (busy.js)
- *   DenUI.saveShell(url, patch, { headers?, changedAt? })  (0.7.5) a rail
+ *   DenUI.saveShell(url, patch, { headers?, changedAt? })  (0.7.7) a rail
  *                               change saved so leaving the page can't
  *                               lose it: keepalive, then a beacon if the
  *                               page hides first (save-shell.js)

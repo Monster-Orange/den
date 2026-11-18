@@ -33,7 +33,9 @@ function write(file: string, content: string): void {
 }
 
 beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-rail-save-")));
+  tmp = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "den-rail-save-")),
+  );
   const root = path.join(tmp, "dist");
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
   write(path.join(root, "config", "den.yml"), "environments: [local]\n");
@@ -119,7 +121,9 @@ describe.each(["chromium", "webkit"])("the rail in %s", (engine) => {
       (
         window as unknown as { denShell: { unpin(id: string): void } }
       ).denShell.unpin("shop");
-      (document.querySelector('.den-rail [data-nav="logs"]') as HTMLElement).click();
+      (
+        document.querySelector('.den-rail [data-nav="logs"]') as HTMLElement
+      ).click();
     });
     await p.waitForURL(`${base}/logs`);
     await settled;

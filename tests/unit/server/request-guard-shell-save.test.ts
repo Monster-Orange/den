@@ -40,7 +40,8 @@ const ctx = (signedIn: boolean): GuardContext => ({
         }
       : null,
   csrfToken: "start-csrf",
-  session: () => (signedIn ? { key: "k".repeat(64), csrf: "session-csrf" } : null),
+  session: () =>
+    signedIn ? { key: "k".repeat(64), csrf: "session-csrf" } : null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
   peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
   localNet: () => ({ own: ["127.0.0.1", "::1"], bridges: [] }),
@@ -145,7 +146,11 @@ describe("issue 394: the shell save's beacon form", () => {
     ).toMatchObject({ ok: false, status: 403, code: "csrf" });
     expect(
       checkRequest(
-        beacon("loopback", { origin: `http://localhost:${PORT}` }, "/api/settings"),
+        beacon(
+          "loopback",
+          { origin: `http://localhost:${PORT}` },
+          "/api/settings",
+        ),
         ctx(false),
       ),
     ).toMatchObject({ ok: false, status: 403, code: "csrf" });

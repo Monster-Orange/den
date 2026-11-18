@@ -359,7 +359,7 @@ reference again, on purpose only: `DEN_UI_NAV_CAPTURE=1` with the
 browser test, on the image (Den's real server on the demo distribution,
 `/settings`).
 
-## Saving a rail change as the page goes (0.7.5)
+## Saving a rail change as the page goes (0.7.7)
 
 - `src/save-shell.js` (export `./save-shell`; also `DenUI.saveShell`):
   a pin, an unpin, collapse, an order or the dock, saved so that leaving
