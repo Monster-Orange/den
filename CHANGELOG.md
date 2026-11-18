@@ -6,7 +6,16 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.66] - unreleased
 
-den-ui 0.7.5 ships before this release, on its own.
+den-ui 0.7.5 ships with this release (the shared Markdown editor). It
+did not publish on its own: the kit's publish rides Den's release (issue
+464 decouples them).
+
+### Fixed
+
+- Pinned services follow the project filter (issue 402). With the view
+  filtered to one project, the rail's Pinned list shows only that
+  project's services; All active shows every pin again. Filtering never
+  changes or deletes a pin. (#461)
 
 ### Added
 
