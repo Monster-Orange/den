@@ -1777,6 +1777,11 @@
     "hubgh.none": "no repos (no access)",
     "hubgh.give": "Give Den Hub access",
     "hubgh.change": "Change repos",
+    "hubgh.error":
+      "Den Hub couldn't check {org} on GitHub: {reason}. Try again later.",
+    "hubgh.errorNoReason":
+      "Den Hub couldn't check {org} on GitHub. Try again later.",
+    "hubgh.retry": "Check again",
     "set.distribution.hub_github": "Den Hub's GitHub access",
     "set.agents.hub_github": "Den Hub's GitHub access",
     "hubla.noProjects": "No projects here yet.",

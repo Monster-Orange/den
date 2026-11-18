@@ -1090,6 +1090,11 @@
     "hubgh.none": "ningún repo (sin acceso)",
     "hubgh.give": "Dar acceso a Den Hub",
     "hubgh.change": "Cambiar repos",
+    "hubgh.error":
+      "Den Hub no pudo comprobar {org} en GitHub: {reason}. Inténtalo más tarde.",
+    "hubgh.errorNoReason":
+      "Den Hub no pudo comprobar {org} en GitHub. Inténtalo más tarde.",
+    "hubgh.retry": "Comprobar de nuevo",
     "set.distribution.hub_github": "Acceso de Den Hub a GitHub",
     "set.agents.hub_github": "Acceso de Den Hub a GitHub",
     "hubla.noProjects": "Aún no hay proyectos.",

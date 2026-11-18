@@ -154,7 +154,11 @@ export function readSyncReply(body: unknown): {
   return { setups, errors, uncovered };
 }
 
-export type OrgAccess = "all" | "some" | "none";
+/**
+ * Issue 526: "error" is an org Hub couldn't ask GitHub about. Access may be
+ * fine; Den says so and never offers an install or manage link for it.
+ */
+export type OrgAccess = "all" | "some" | "none" | "error";
 export interface OrgCoverage {
   org: string;
   access: OrgAccess;
@@ -162,6 +166,27 @@ export interface OrgCoverage {
   total: number;
   installUrl?: string;
   manageUrl?: string;
+  /** Hub's reason, for an error org: one plain line, never a link. */
+  error?: string;
+}
+
+/** The longest reason from Hub Den shows. */
+const ERROR_MAX = 200;
+
+/**
+ * Issue 526: Hub's error text is untrusted. Its first line, printable
+ * ASCII only, bounded; anything that looks like a link is dropped whole.
+ * "Hub couldn't ask GitHub (<reason>)" gives the reason alone.
+ */
+export function hubErrorReason(v: unknown): string {
+  if (typeof v !== "string") return "";
+  const line = v
+    .split(/[\r\n]/)[0]
+    .replace(/[^\x20-\x7e]/g, "")
+    .trim();
+  if (/[a-z][a-z0-9+.-]*:\/\/|www\./i.test(line)) return "";
+  const m = /^Hub couldn't ask GitHub \((.+)\)\.?$/.exec(line);
+  return (m ? m[1] : line).trim().slice(0, ERROR_MAX);
 }
 
 const count = (v: unknown) =>
@@ -177,6 +202,18 @@ export function readCoverage(body: unknown): OrgCoverage[] {
     const org = plain(o.org, 39);
     const access = o.access;
     if (!ORG_RE.test(org)) return [];
+    if (access === "error") {
+      const error = hubErrorReason(o.error);
+      return [
+        {
+          org,
+          access,
+          covered: count(o.covered),
+          total: count(o.total),
+          ...(error ? { error } : {}),
+        },
+      ];
+    }
     if (access !== "all" && access !== "some" && access !== "none") return [];
     return [
       {
@@ -188,6 +225,30 @@ export function readCoverage(body: unknown): OrgCoverage[] {
         ...(githubUrlOk(o.manage_url) ? { manageUrl: o.manage_url } : {}),
       },
     ];
+  });
+}
+
+/**
+ * Issue 526: Hub names repos and orgs in lowercase; Den matches them to
+ * its own repos case-insensitively, on the repo field only (never a URL),
+ * and shows its own spelling of the repo and its owner.
+ */
+export function withDenSpelling(
+  uncovered: Uncovered[],
+  own: string[],
+): Uncovered[] {
+  const byKey = new Map<string, string>();
+  for (const r of own)
+    if (typeof r === "string") byKey.set(r.toLowerCase(), r);
+  return uncovered.map((u) => {
+    const r = byKey.get(u.repo.toLowerCase());
+    if (!r) return u;
+    const owner = r.split("/")[0];
+    return {
+      ...u,
+      repo: r,
+      org: owner.toLowerCase() === u.org.toLowerCase() ? owner : u.org,
+    };
   });
 }
 
@@ -210,6 +271,11 @@ export interface ProjectSyncDeps {
    * `kind: "refused"` (Hub's 400) isn't retried until the list changes.
    */
   send: (projects: SyncProject[]) => Promise<Record<string, unknown> | null>;
+  /**
+   * Issue 526: project `ws`'s repos as Den spells them. Hub answers in
+   * lowercase; a repo Hub names is shown with Den's spelling.
+   */
+  spelling?: (ws: string) => string[];
   now?: () => Date;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -239,7 +305,17 @@ export class ProjectSync {
 
   /** Repos Hub can't see in project `ws`, from the last answer. */
   uncoveredFor(ws: string): Uncovered[] {
-    return (this.result?.uncovered ?? []).filter((u) => u.workspace === ws);
+    const mine = (this.result?.uncovered ?? []).filter(
+      (u) => u.workspace === ws,
+    );
+    if (!mine.length || !this.deps.spelling) return mine;
+    let own: string[];
+    try {
+      own = this.deps.spelling(ws);
+    } catch {
+      return mine;
+    }
+    return withDenSpelling(mine, own);
   }
 
   /** Send soon, even when the list is unchanged (start, connect, coming back from an install). */

@@ -800,20 +800,36 @@ export function hubGithubLines(
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
   for (const o of cov.orgs) {
+    // Issue 526: Hub couldn't ask GitHub. Access may be fine: say so, and
+    // never a link, even when Hub sends one.
+    if (o.access === "error") {
+      const detail = o.error
+        ? `Den Hub couldn't check ${o.org} on GitHub: ${o.error}. Try again later.`
+        : `Den Hub couldn't check ${o.org} on GitHub. Try again later.`;
+      lines.push(`  hub github   ⚠  ${detail}`);
+      checks.push({ id: `hub:github:${o.org}`, status: "warn", detail });
+      continue;
+    }
     const what =
       o.access === "all"
         ? "all repos"
         : o.access === "some"
           ? `${o.covered} of ${o.total} repos`
           : "no repos (no access)";
+    // some: change repos (manage, else install). none: give access when
+    // there's no installation; one that leaves these repos out sends only
+    // manage_url, and that's Change repos.
+    const give = o.access === "none" && !!o.installUrl;
     const url =
       o.access === "all"
         ? undefined
-        : ((o.access === "some" ? o.manageUrl : undefined) ?? o.installUrl);
+        : o.access === "some"
+          ? (o.manageUrl ?? o.installUrl)
+          : (o.installUrl ?? o.manageUrl);
     const detail = `${o.org}: Den Hub can read ${what}`;
     const ok = o.access === "all";
     lines.push(
-      `  hub github   ${ok ? "✓" : "⚠"}  ${detail}${url ? `. ${o.access === "none" ? "Give Den Hub access" : "Change repos"}: ${url}` : ""}`,
+      `  hub github   ${ok ? "✓" : "⚠"}  ${detail}${url ? `. ${give ? "Give Den Hub access" : "Change repos"}: ${url}` : ""}`,
     );
     checks.push({
       id: `hub:github:${o.org}`,
