@@ -518,12 +518,14 @@ export interface UserConfig {
    * Issue 487: the GitHub budget guard (github-budget/settings.ts):
    * poll_seconds (60) between the server's CI polls, reserve (1000)
    * requests kept for releases and people, watch_min_seconds (120) the
-   * least `gh run watch --interval` agents may use.
+   * least `gh run watch --interval` agents may use, gh_timeout_seconds
+   * (30) how long one `gh api` call may take.
    */
   github_budget?: {
     poll_seconds?: unknown;
     reserve?: unknown;
     watch_min_seconds?: unknown;
+    gh_timeout_seconds?: unknown;
   };
   panes?: {
     reconnect_seconds?: unknown;

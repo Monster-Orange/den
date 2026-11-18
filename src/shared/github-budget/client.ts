@@ -1,12 +1,20 @@
 /**
- * Issue 487: the GitHub REST calls Den's server makes for the CI watcher,
- * over HTTP with conditional requests: each GET carries the ETag of the
- * last answer (If-None-Match), and a 304 (unchanged) costs the account
- * nothing. rate_limit costs nothing either.
+ * Issue 487: how Den's server asks GitHub for the CI watcher: through the
+ * person's own gh, one `gh api -i <path>` per request. gh reads its own
+ * stored sign-in, so no GitHub credential ever enters Den's process: Den
+ * builds no credential header and asks gh for none.
  *
- * The token comes from `token()` (the server reads the person's own gh
- * sign-in once); it is sent only to apiBase and never logged or returned.
+ * Conditional requests still hold: a GET with the last answer's ETag sends
+ * `-H "If-None-Match: <etag>"`, and an unchanged answer is a 304 that costs
+ * nothing. gh exits 1 on a 304 (and on any status from 300 up) with the
+ * status line and headers still on stdout (-i), so the status comes from
+ * there, never from the exit code. rate_limit costs nothing either.
+ *
+ * Run with execFile and an argument list (no shell), within a timeout (the
+ * github_budget.gh_timeout_seconds setting). Only the parsed fields leave
+ * here: gh's output is never logged.
  */
+import { execFile } from "child_process";
 import { rateFromHeaders, type RateLimit } from "./budget.js";
 
 export interface GithubGet {
@@ -23,42 +31,98 @@ export interface GithubHttp {
   rateLimit(): Promise<RateLimit | null>;
 }
 
-export const GITHUB_API = "https://api.github.com";
-
-export function createGithubHttp(o: {
-  apiBase?: string;
-  token: () => Promise<string | null>;
-  timeoutMs?: number;
-}): GithubHttp {
-  const apiBase = (o.apiBase ?? GITHUB_API).replace(/\/+$/, "");
-  const timeoutMs = o.timeoutMs ?? 15_000;
-  async function get(p: string, etag?: string | null): Promise<GithubGet> {
-    const token = await o.token();
-    const headers: Record<string, string> = {
-      accept: "application/vnd.github+json",
-      "x-github-api-version": "2022-11-28",
-      "user-agent": "den-ci-watcher",
-    };
-    if (token) headers.authorization = `Bearer ${token}`;
-    if (etag) headers["if-none-match"] = etag;
-    const res = await fetch(`${apiBase}${p}`, {
-      headers,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const text = res.status === 304 ? "" : await res.text();
-    let body: unknown = null;
+/** gh's `-i` output: the status line, headers, a blank line, the body. */
+export function parseIncluded(
+  out: string,
+): { status: number; headers: Headers; body: string } | null {
+  const m = /^HTTP\/[\d.]+ (\d{3})[^\n]*\n/.exec(out);
+  if (!m) return null;
+  const rest = out.slice(m[0].length);
+  const end = /\r?\n\r?\n/.exec(rest);
+  const head = end ? rest.slice(0, end.index) : rest;
+  const body = end ? rest.slice(end.index + end[0].length) : "";
+  const headers = new Headers();
+  for (const line of head.split(/\r?\n/)) {
+    const at = line.indexOf(":");
+    if (at <= 0) continue;
     try {
-      body = text ? JSON.parse(text) : null;
+      headers.append(line.slice(0, at).trim(), line.slice(at + 1).trim());
     } catch {
-      body = null;
+      /* a header Headers won't take: not one we read */
     }
+  }
+  return { status: Number(m[1]), headers, body };
+}
+
+/** An owner/repo REST path, or rate_limit: what Den may ask gh for. */
+const PATH_RE =
+  /^\/(rate_limit|repos\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/[A-Za-z0-9._/?=&-]+)$/;
+/** An ETag as GitHub sends it: W/"…" or "…", printable, no newline. */
+const ETAG_RE = /^(W\/)?"[\x21\x23-\x7e]{1,200}"$/;
+
+export function createGhCliHttp(o: {
+  /** gh's name or path (default "gh", found on PATH). */
+  bin?: string;
+  /** The env gh runs with (default this process's). */
+  env?: NodeJS.ProcessEnv;
+  /** github_budget.gh_timeout_seconds, in ms, read on each call. */
+  timeoutMs: () => number;
+}): GithubHttp {
+  const bin = o.bin ?? "gh";
+  const run = (args: string[]) =>
+    new Promise<{ code: number; stdout: string }>((resolve, reject) => {
+      execFile(
+        bin,
+        args,
+        {
+          encoding: "utf-8",
+          timeout: o.timeoutMs(),
+          maxBuffer: 32 * 1024 * 1024,
+          ...(o.env ? { env: o.env } : {}),
+        },
+        (err, stdout) => {
+          const e = err as {
+            code?: unknown;
+            killed?: boolean;
+            message: string;
+          } | null;
+          if (e && typeof e.code !== "number")
+            // Not found, timed out, killed: no answer to read.
+            return reject(
+              new Error(
+                e.code === "ENOENT"
+                  ? "gh isn't installed here (Den asks GitHub through it)"
+                  : `gh didn't answer (${e.killed ? "timed out" : String(e.code ?? e.message)})`,
+              ),
+            );
+          resolve({ code: e ? (e.code as number) : 0, stdout: stdout ?? "" });
+        },
+      );
+    });
+
+  async function get(p: string, etag?: string | null): Promise<GithubGet> {
+    if (!PATH_RE.test(p)) throw new Error(`not a path Den asks for: ${p}`);
+    const args = ["api", "-i"];
+    if (etag && ETAG_RE.test(etag)) args.push("-H", `If-None-Match: ${etag}`);
+    args.push(p.slice(1));
+    const r = await run(args);
+    const parsed = parseIncluded(r.stdout);
+    if (!parsed) throw new Error(`gh gave no answer for ${p} (exit ${r.code})`);
+    let body: unknown = null;
+    if (parsed.status !== 304 && parsed.body)
+      try {
+        body = JSON.parse(parsed.body);
+      } catch {
+        body = null;
+      }
     return {
-      status: res.status,
-      etag: res.headers.get("etag"),
+      status: parsed.status,
+      etag: parsed.headers.get("etag"),
       body,
-      rate: rateFromHeaders(res.headers),
+      rate: rateFromHeaders(parsed.headers),
     };
   }
+
   return {
     get,
     async rateLimit() {

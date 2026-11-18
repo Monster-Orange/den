@@ -25,7 +25,8 @@
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
- *   github_budget: { poll_seconds?, reserve?, watch_min_seconds? }
+ *   github_budget: { poll_seconds?, reserve?, watch_min_seconds?,
+ *     gh_timeout_seconds? }
  *                                     user.yml github_budget.* (issue 487)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout

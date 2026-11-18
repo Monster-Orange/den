@@ -78,6 +78,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     poll_seconds: true,
     reserve: true,
     watch_min_seconds: true,
+    gh_timeout_seconds: true,
   },
 };
 
@@ -173,6 +174,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
         // Issue 487: the GitHub budget guard.
+        "github_budget.gh_timeout_seconds",
         "github_budget.poll_seconds",
         "github_budget.reserve",
         "github_budget.watch_min_seconds",

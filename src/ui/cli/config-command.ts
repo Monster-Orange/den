@@ -82,6 +82,7 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "github_budget.poll_seconds": ["github_budget", "poll_seconds"],
   "github_budget.reserve": ["github_budget", "reserve"],
   "github_budget.watch_min_seconds": ["github_budget", "watch_min_seconds"],
+  "github_budget.gh_timeout_seconds": ["github_budget", "gh_timeout_seconds"],
 };
 
 /**

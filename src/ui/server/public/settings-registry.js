@@ -1931,6 +1931,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ github_budget: { watch_min_seconds: v } }),
   },
   {
+    id: "server.github_gh_timeout",
+    category: "server",
+    label: "GitHub budget: gh call timeout",
+    description:
+      "How long one call to GitHub through gh may take, when __DEN_TITLE__ watches a run for agents. gh keeps your GitHub sign-in; __DEN_TITLE__ never holds it. __DEN_CLI__ config github_budget.gh_timeout_seconds=30",
+    keywords: ["github", "budget", "gh", "timeout", "ci_wait"],
+    scope: "user",
+    keys: ["github_budget.gh_timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github_budget?.gh_timeout_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ github_budget: { gh_timeout_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",

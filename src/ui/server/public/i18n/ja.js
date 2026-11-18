@@ -888,6 +888,9 @@
     "set.server.github_watch_min": "GitHub の予算：許可する最も遅い監視",
     "set.server.github_watch_min.d":
       "エージェントが `gh run watch --interval` に指定できる最短の間隔です。これより速い監視はブロックされ、ci_wait を使うよう伝えます。__DEN_CLI__ config github_budget.watch_min_seconds=120",
+    "set.server.github_gh_timeout": "GitHub の予算：gh の呼び出しの制限時間",
+    "set.server.github_gh_timeout.d":
+      "__DEN_TITLE__ がエージェントのために実行を見守るとき、gh を通した GitHub への 1 回の呼び出しにかけられる時間です。GitHub のサインインは gh が持ち、__DEN_TITLE__ は持ちません。__DEN_CLI__ config github_budget.gh_timeout_seconds=30",
     "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
     "set.agents.pane_reconnect.d":
       "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",

@@ -6830,6 +6830,7 @@ async function handleRequest(
             poll_seconds: g.pollSeconds,
             reserve: g.reserve,
             watch_min_seconds: g.watchMinSeconds,
+            gh_timeout_seconds: g.ghTimeoutSeconds,
           };
         })(),
         // Issue 103: Settings › Embedding (embed.*).

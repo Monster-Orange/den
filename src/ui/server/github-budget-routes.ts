@@ -77,6 +77,7 @@ export async function handleGithubBudgetRoutes(
       reserve: s.reserve,
       pollSeconds: s.pollSeconds,
       watchMinSeconds: s.watchMinSeconds,
+      ghTimeoutSeconds: s.ghTimeoutSeconds,
       below,
       spend: d.budget.spendBy(),
       watching: d.watcher.stats(),

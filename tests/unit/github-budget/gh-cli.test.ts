@@ -26,7 +26,8 @@ afterAll(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-const client = () => createGhCliHttp({ env: fake.env, timeoutMs: () => 10_000 });
+const client = () =>
+  createGhCliHttp({ env: fake.env, timeoutMs: () => 10_000 });
 
 describe("the watcher asks through gh, and never holds a token", () => {
   it("each poll is one `gh api -i`, with no auth call and no Authorization header from Den", async () => {

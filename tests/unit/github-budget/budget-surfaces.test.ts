@@ -12,7 +12,7 @@ import * as os from "os";
 import * as path from "path";
 import { GithubBudget } from "../../../src/shared/github-budget/budget.js";
 import { createGhCliHttp } from "../../../src/shared/github-budget/client.js";
-import { fakeGh } from "./fake-gh.js";
+import { fakeGh as makeFakeGh } from "./fake-gh.js";
 import { CiWatcher } from "../../../src/shared/github-budget/ci-watcher.js";
 import {
   GITHUB_BUDGET_LIMITS,
@@ -90,7 +90,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => fakeGh.listen(0, "127.0.0.1", r));
   ghBase = `http://127.0.0.1:${(fakeGh.address() as AddressInfo).port}`;
   const api = createGhCliHttp({
-    env: fakeGh(dir, ghBase).env,
+    env: makeFakeGh(dir, ghBase).env,
     timeoutMs: () => 10_000,
   });
   budget = new GithubBudget({
@@ -311,6 +311,7 @@ describe("settings", () => {
       pollSeconds: 60,
       reserve: 1000,
       watchMinSeconds: 120,
+      ghTimeoutSeconds: 30,
     });
     expect(GITHUB_BUDGET_LIMITS.poll_seconds.default).toBe(60);
   });
