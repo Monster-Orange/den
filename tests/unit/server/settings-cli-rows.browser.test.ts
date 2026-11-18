@@ -174,6 +174,51 @@ describe("MODE-5: Settings rows that were the command line's", () => {
     await p.context().close();
   });
 
+  /**
+   * Issue 424: one click saved twice. A redraw while the save was out (a
+   * plugin's rows arriving, any `den:settings`) drew the switch from the
+   * old value, off and free again; check() then saw it off and clicked a
+   * second time, and so would a person. The save is held here so the
+   * redraw lands in it every time.
+   */
+  it("one click saves once, even when the page redraws mid-save", async () => {
+    if (skip()) return;
+    const p = await settings();
+    const posts: unknown[] = [];
+    p.on("request", (r) => {
+      if (r.url().endsWith("/api/settings") && r.method() === "POST")
+        posts.push(r.postDataJSON());
+    });
+    let release!: () => void;
+    const held = new Promise<void>((res) => (release = res));
+    await p.route("**/api/settings", async (route) => {
+      if (route.request().method() === "POST") await held;
+      await route.continue();
+    });
+    const sent = p.waitForRequest(
+      (r) => r.url().endsWith("/api/settings") && r.method() === "POST",
+    );
+    await ctl(p, "cli.cli_tabs").click();
+    await sent;
+    // The redraw, mid-save.
+    await p.evaluate(() =>
+      window.dispatchEvent(new CustomEvent("den:settings")),
+    );
+    // The switch shows the value being saved and is held until it lands.
+    expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(true);
+    expect(await ctl(p, "cli.cli_tabs").isDisabled()).toBe(true);
+    // check() (and a person's second look) finds it on: no second click.
+    await ctl(p, "cli.cli_tabs").check({ timeout: 5_000 });
+    release();
+    await savedMark(p, "cli.cli_tabs");
+    expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(true);
+    expect(await ctl(p, "cli.cli_tabs").isDisabled()).toBe(false);
+    expect(posts).toEqual([{ cli_tabs: true }]);
+    await p.unroute("**/api/settings");
+    await s!.settings({ cli_tabs: null });
+    await p.context().close();
+  });
+
   it("every row of these is a control, none read-only", async () => {
     if (skip()) return;
     const p = await settings();
