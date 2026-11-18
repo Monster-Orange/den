@@ -1,15 +1,15 @@
 /**
  * Issue 249: the install's one grant that covers its agents. Connect
- * sends agents=yes on Hub's /connect only once Hub says it takes it (its
- * whoami features name HUB_AGENT_GRANT_FEATURE); until then Connect is as
- * it was, and agents use the install's token. A Connect that sent it is
- * kept as hub.agents_grant (user.yml).
+ * always sends agents=yes on Hub's /connect (a Hub that doesn't know the
+ * field ignores it). After the token, Hub's whoami says whether the grant
+ * took (its features name HUB_AGENT_GRANT_FEATURE); only then is it kept
+ * as hub.agents_grant (user.yml). So a new install needs one Allow.
  *
- * An install connected before that gets ONE item in the person's
- * attention list (Needs you): "Reconnect to Hub so your agents sign their
- * own work", which opens Settings › Hub, where Connect is. It goes once
- * the grant is in place, Hub no longer takes it, or Hub is disconnected.
- * Never a command to type.
+ * An install whose grant didn't take (it connected to an older Hub) gets
+ * ONE item in the person's attention list (Needs you) once Hub takes it:
+ * "Reconnect to Hub so your agents sign their own work", which opens
+ * Settings › Hub, where Connect is. It goes once the grant is in place,
+ * Hub no longer takes it, or Hub is disconnected. Never a command.
  */
 import type { NotificationStore } from "./notifications.js";
 

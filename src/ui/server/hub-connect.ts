@@ -34,6 +34,7 @@ import {
   HubCallError,
   hubRevoke,
   hubUrlProblem,
+  hubWhoami,
   newHubState,
   newPkce,
   readHubConfig,
@@ -47,6 +48,7 @@ import { recordAction } from "./audit.js";
 import {
   AGENT_GRANT_NOTE_SUBJECT,
   hubOffersAgentGrant,
+  noteHubFeatures,
 } from "../../shared/hub-agent-grant.js";
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
@@ -70,8 +72,6 @@ interface Pending {
   hubUrl: string;
   redirectUri: string;
   at: number;
-  /** Issue 249: agents=yes went to Hub with it. */
-  agents: boolean;
 }
 
 /** What hub.token becomes after a connect: a store ref, or a file source. */
@@ -116,10 +116,10 @@ export interface HubConnectDeps {
     force: boolean,
   ) => Promise<{ revoked: number; failed: number }>;
   /**
-   * Issue 249: whether Hub `hubUrl` takes agents=yes on /connect (its
-   * whoami features say so). Absent or false: not sent.
+   * Issue 249: after the token, whether Hub's grant covers this install's
+   * agents (its whoami features name connect.agents). Absent: never kept.
    */
-  agentGrant?: (hubUrl: string) => boolean;
+  confirmAgents?: (hubUrl: string, token: string) => Promise<boolean>;
   /**
    * Issue 249: the agents' grant is in place, or Hub is disconnected: the
    * reconnect item goes (hub-agent-grant.ts). Absent: nothing.
@@ -345,7 +345,11 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     },
     linkAfter: async () =>
       (await import("./hub-link-all-routes.js")).defaultLinkAfter(),
-    agentGrant: (url) => hubOffersAgentGrant(url),
+    confirmAgents: async (url, token) => {
+      const w = await hubWhoami(url, token, { timeoutMs: 5000 });
+      noteHubFeatures(url, w.features);
+      return hubOffersAgentGrant(url);
+    },
     agentGrantSettled: () => {
       void import("./notification-service.js")
         .then((m) =>
@@ -435,15 +439,11 @@ export class HubConnect {
     const state = newHubState();
     const { verifier, challenge } = newPkce();
     const redirectUri = `${new URL(origin).origin}/hub/callback`;
-    // Issue 249: the one grant covers this install's agents, once Hub
-    // says it takes it; until then Connect is as it was.
-    const agents = this.deps.agentGrant?.(hubUrl) === true;
     this.pending.set(state, {
       verifier,
       hubUrl,
       redirectUri,
       at: this.deps.now(),
-      agents,
     });
     const q = new URLSearchParams({
       install: this.deps.installLabel(),
@@ -457,7 +457,10 @@ export class HubConnect {
     // reconnect sends it again.
     const denUrl = denUrlOrigin(this.deps.denUrl?.() ?? "");
     if (denUrl) q.set("den_url", denUrl);
-    if (agents) q.set("agents", "yes");
+    // Issue 249: the one grant covers this install's agents. Always sent:
+    // a Hub that doesn't know the field ignores it, and whoami after the
+    // token says whether it took.
+    q.set("agents", "yes");
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }
 
@@ -557,10 +560,14 @@ export class HubConnect {
     if (grant.mcpUrl && !hubUrlProblem(grant.mcpUrl))
       hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
-    if (p.agents) hub.agents_grant = true;
+    // Issue 249: kept only when Hub's whoami confirms the grant took.
+    const took = this.deps.confirmAgents
+      ? await this.deps.confirmAgents(hubUrl, grant.token).catch(() => false)
+      : false;
+    if (took) hub.agents_grant = true;
     else delete hub.agents_grant;
     this.deps.writeUser({ ...user, hub });
-    if (p.agents) this.deps.agentGrantSettled?.();
+    if (took) this.deps.agentGrantSettled?.();
     // 0.4.47: the token Den keeps in memory is the old one: read anew.
     forgetHubToken(undefined, Date.now(), { now: true });
     return {
