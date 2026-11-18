@@ -179,6 +179,17 @@ describe("session host", () => {
     expect(Date.parse((await c.list())[0].bellAt ?? "")).not.toBeNaN();
   });
 
+  it("issue 482: list says the folder each session started in", async () => {
+    const dir = stateDir();
+    await host(dir);
+    const c = await client(dir);
+    const { ref } = await c.start(spec("acme-north:shell"));
+    const row = (await c.list()).find((x) => x.ref.id === ref.id) as {
+      cwd?: string;
+    };
+    expect(row.cwd).toBe(spec("acme-north:shell").cwd);
+  });
+
   it("issue 448: a person's input stamps inputAt; a terminal's reply to a query doesn't", async () => {
     const dir = stateDir();
     const { made } = await host(dir);
