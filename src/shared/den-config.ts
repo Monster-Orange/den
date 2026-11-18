@@ -537,6 +537,14 @@ export interface UserConfig {
     capture_seconds?: unknown;
     /** How many of the person's reports My reports shows (20, 1..100). */
     my_reports_max?: unknown;
+    /**
+     * Issue 415: how long a destination's visibility on GitHub is kept
+     * (24 h, 0..720), and how long Report waits to learn it (3 s, 0.5..60).
+     */
+    visibility_cache_hours?: unknown;
+    visibility_timeout_seconds?: unknown;
+    /** How long a failed lookup is held before asking again (60 s, 0..3600). */
+    visibility_retry_seconds?: unknown;
   };
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;

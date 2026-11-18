@@ -13,6 +13,9 @@
  *                 with the link. With no way to send, the form offers
  *                 Copy report only.
  *       info()           → { repos: [{ repo }], maxPerHour, captureSeconds }
+ *                 each repo may say its visibility ("public" | "private" |
+ *                 "internal"; missing or anything else reads as public)
+ *                 and an audience (who can see it, plain text)
  *       diagnostics()    → { sections: { name: text } }  shown on Include
  *       preview(form, headers)  → { status, data: { title, body } }
  *                 the text the product will post (its redactor's); else
@@ -294,6 +297,32 @@ export async function openReport(opts = {}) {
   function allSections() {
     return { ...st.diag, ...st.client };
   }
+  /**
+   * Who can see the selected repo (issue 415): public unless the host says
+   * private or internal, with the host's audience words then.
+   */
+  function vis(repos) {
+    const r = repos.find((x) => x.repo === st.repo) || {};
+    const v =
+      r.visibility === "private" || r.visibility === "internal"
+        ? r.visibility
+        : "public";
+    const who = v === "public" ? "" : String(r.audience || "").trim();
+    return { v, who };
+  }
+  /** The pill after the destination, then the audience when not public. */
+  function visPill(repos) {
+    const { v, who } = vis(repos);
+    const key = { public: "pub", private: "priv", internal: "int" }[v];
+    return `<span class="fb-pill" data-vis="${v}">${esc(t(`kit.report.${key}`))}</span>${who ? `<span class="fb-fine">${esc(who)}</span>` : ""}`;
+  }
+  /** Above Send: the public warning, or a quiet line for a private repo. */
+  function visNote(repos) {
+    const { v, who } = vis(repos);
+    if (v === "public")
+      return `<div class="fb-warn" role="note"><b>${esc(t("kit.report.pub"))}.</b> ${esc(t("kit.report.pubW"))}</div>`;
+    return `<p class="fb-fine" role="note" data-vis-note>${esc(who ? t("kit.report.privW", { who }) : t("kit.report.privN"))}</p>`;
+  }
   /** Whether a screenshot goes with the report. */
   function shotOn() {
     return !!st.shot && !st.noShot;
@@ -447,7 +476,7 @@ ${
               )
               .join("")}</select>`
           : `<b>${esc(st.repo)}</b>`
-      }<span class="fb-pill">${esc(t("kit.report.pub"))}</span></div>`
+      }${visPill(repos)}</div>`
     : ""
 }
 <pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${
@@ -455,7 +484,7 @@ ${
           ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`
           : ""
       }
-${sends() ? `<div class="fb-warn" role="note"><b>${esc(t("kit.report.pub"))}.</b> ${esc(t("kit.report.pubW"))}</div>` : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
+${sends() ? visNote(repos) : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
 <div class="fb-btns">${sends() ? btn("send", t("kit.report.send"), true) : btn("copy", t("kit.report.copy"), true)}${laterBtn(t("kit.report.later"))}${btn("back-include", t("kit.report.back"))}</div>`;
     } else if (st.step === "signin") {
       label = t("kit.report.siH");
@@ -782,6 +811,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
     if (f === "repo") {
       st.repo = el.value;
+      render('[data-f="repo"]');
       void preview();
     }
   });

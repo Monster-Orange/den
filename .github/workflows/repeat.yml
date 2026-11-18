@@ -74,11 +74,14 @@ jobs:
       - if: ${{ inputs.browsers != 'none' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         if: ${{ inputs.browsers != 'none' }}
-        timeout-minutes: 10
+        timeout-minutes: 15
         # $BROWSERS unquoted on purpose: one argument per browser; the
         # script refuses any name that is not a browser.
         run: bash scripts/ci-pw-install.sh $BROWSERS

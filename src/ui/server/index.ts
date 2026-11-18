@@ -373,7 +373,10 @@ import {
   publicSearchOpen,
   runGh,
 } from "./report-routes.js";
-import { readFeedbackSettings } from "../../shared/report-store.js";
+import {
+  feedbackSettings,
+  readFeedbackSettings,
+} from "../../shared/report-store.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -6792,6 +6795,16 @@ async function handleRequest(
             return null;
           }
         })(),
+        // Issue 415: how long Report keeps, and waits for, a repo's
+        // visibility (feedback.*), their defaults when unset.
+        feedback: (() => {
+          const f = feedbackSettings(null, {}, user.feedback);
+          return {
+            visibility_cache_hours: f.visibilityCacheHours,
+            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+            visibility_retry_seconds: f.visibilityRetrySeconds,
+          };
+        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
@@ -6842,6 +6855,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
+          feedback?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -6874,6 +6888,7 @@ async function handleRequest(
             web_ready: body.web_ready,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
+            feedback: body.feedback,
           });
           if (!c.ok) return send400(res, c.error);
         }
