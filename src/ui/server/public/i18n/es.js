@@ -876,7 +876,7 @@
     "set.server.address_check_cache":
       "Comprobación de dirección guardada durante",
     "set.server.address_check_cache.d":
-      "Cuánto tiempo reutilizan el aviso de la página y Ajustes › Edge la última comprobación de la dirección de __DEN_TITLE__. 0 comprueba en cada lectura. __DEN_CLI__ config web.address_check_cache_seconds=60",
+      "Cuánto tiempo reutilizan el aviso de la página y Edge la última comprobación de la dirección de __DEN_TITLE__. 0 comprueba en cada lectura. __DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.bridge_listen": "Puente de Docker, para el edge",
     "set.server.bridge_listen.d":
       "Solo en Linux, con un edge configurado aquí: __DEN_TITLE__ también escucha en la dirección del puente de Docker, por donde el edge llega a esta máquina. Desactivado: solo 127.0.0.1, y el edge no llega a __DEN_TITLE__. Se aplica en el siguiente arranque. __DEN_CLI__ config web.bridge_listen=off",
@@ -2981,7 +2981,7 @@
     "edgeAddr.banner.unknown":
       "El puerto {port} lo usa algo que __DEN_TITLE__ no sabe nombrar, así que {host} va allí.",
     "edgeAddr.banner.none": "Todavía nada responde en {host}.",
-    "edgeAddr.banner.fix": "Arréglalo en Ajustes › Edge",
+    "edgeAddr.banner.fix": "Arréglalo en Edge",
     "edgeAddr.banner.dismiss": "Descartar",
     "edgeAddr.card.title":
       "El proxy de __DEN_TITLE__ no está en marcha: el puerto {port} está en uso",

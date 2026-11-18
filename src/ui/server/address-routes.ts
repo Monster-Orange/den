@@ -10,7 +10,7 @@
  *        check_cache_seconds old at most, else a new one): the address
  *        people are given and how it answered, the one Den proved, what
  *        holds the port, the routes for another proxy, the edge's
- *        container and ports. The page banner and Settings › Edge read it.
+ *        container and ports. The page banner and Edge read it.
  *   POST /api/edge/address/check           "Check again": a new check. When
  *        the address people are given now reaches Den through another
  *        proxy (Den's own is not running), edge.publish: false is set for

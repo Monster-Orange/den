@@ -250,7 +250,7 @@ export function givenAddress(s: AddressState): string | null {
   return s.wanted ?? s.address;
 }
 
-/** A host port, and who holds it (issue 455: Settings › Edge's Ports row). */
+/** A host port, and who holds it (issue 455: Edge's Ports row). */
 export async function portState(
   port: number,
   owner: (port: number) => PortOwner | null = portOwner,

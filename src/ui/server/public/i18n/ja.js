@@ -854,7 +854,7 @@
       "時間内に応答しなかったアドレスに __DEN_TITLE__ がもう一度尋ねる回数。__DEN_CLI__ config web.address_check_retries=2",
     "set.server.address_check_cache": "アドレス確認の保持時間",
     "set.server.address_check_cache.d":
-      "ページのバナーと設定 › Edge が __DEN_TITLE__ のアドレスの前回の確認を使い回す時間。0 は読むたびに確認します。__DEN_CLI__ config web.address_check_cache_seconds=60",
+      "ページのバナーと Edge が __DEN_TITLE__ のアドレスの前回の確認を使い回す時間。0 は読むたびに確認します。__DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.bridge_listen": "Docker ブリッジ (edge 用)",
     "set.server.bridge_listen.d":
       "Linux のみ。ここに edge がある場合、__DEN_TITLE__ は Docker ブリッジのアドレスでも待ち受けます。edge はそこからこのマシンに届きます。オフ: 127.0.0.1 のみで、edge から __DEN_TITLE__ に届きません。次の起動から反映されます。__DEN_CLI__ config web.bridge_listen=off",
@@ -2909,7 +2909,7 @@
     "edgeAddr.banner.unknown":
       "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
     "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",
-    "edgeAddr.banner.fix": "設定 › Edge で直す",
+    "edgeAddr.banner.fix": "Edge で直す",
     "edgeAddr.banner.dismiss": "閉じる",
     "edgeAddr.card.title":
       "__DEN_TITLE__ のプロキシは動いていません: ポート {port} は使用中です",

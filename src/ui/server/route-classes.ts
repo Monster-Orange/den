@@ -133,7 +133,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/security/plan",
     "/api/stacks",
     "/api/edge",
-    // Issue 455: the address check (banner, Settings › Edge) and the
+    // Issue 455: the address check (banner, Edge) and the
     // identity probe's other end.
     "/api/edge/address",
     "/api/den-identity",

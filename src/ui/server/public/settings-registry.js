@@ -1922,7 +1922,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Address check kept for",
     description:
-      "How long the page banner and Settings › Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
+      "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
     keywords: ["address", "check", "edge", "cache"],
     scope: "user",
     keys: ["address_check.cache_seconds"],

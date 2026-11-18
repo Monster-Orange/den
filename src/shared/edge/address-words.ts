@@ -46,7 +46,7 @@ export const ADDRESS_WORDS: Readonly<
       "Port {port} is in use by something {title} cannot name. {title} is at {address} until it is free.",
     none: "Nothing answers at {wanted} yet. {title} is at {address} for now.",
     open: "Open it: {link}",
-    toUse: "To use {host} without a port: Settings › Edge, or  {cli} doctor",
+    toUse: "To use {host} without a port: Edge, or  {cli} doctor",
     "kind.container": "Docker container",
     "kind.process": "process",
     "doctor.head":
@@ -80,7 +80,7 @@ export const ADDRESS_WORDS: Readonly<
       "El puerto {port} lo usa algo que {title} no sabe nombrar. {title} está en {address} hasta que quede libre.",
     none: "Todavía nada responde en {wanted}. {title} está en {address} por ahora.",
     open: "Ábrelo: {link}",
-    toUse: "Para usar {host} sin puerto: Ajustes › Edge, o  {cli} doctor",
+    toUse: "Para usar {host} sin puerto: Edge, o  {cli} doctor",
     "kind.container": "contenedor de Docker",
     "kind.process": "proceso",
     "doctor.head":
@@ -116,7 +116,7 @@ export const ADDRESS_WORDS: Readonly<
       "ポート {port} は {title} が特定できない何かが使っています。空くまで、{title} は {address} にあります。",
     none: "{wanted} ではまだ何も応答しません。今は {title} は {address} にあります。",
     open: "開く: {link}",
-    toUse: "{host} をポートなしで使うには: 設定 › Edge、または  {cli} doctor",
+    toUse: "{host} をポートなしで使うには: Edge、または  {cli} doctor",
     "kind.container": "Docker コンテナ",
     "kind.process": "プロセス",
     "doctor.head":

@@ -1,7 +1,7 @@
 /**
  * Issue 455 (mock v3): when the wanted address answers as another server,
  * every page shows the address banner once: "Den is at {address} for
- * now.", why, "Fix it in Settings › Edge" and ×. Dismissed, or on a later
+ * now.", why, "Fix it in Edge" and ×. Dismissed, or on a later
  * page, it says nothing. The Edge page shows the card: the owner, "What
  * would you like to do?" with "Add Den to that proxy" before "Free port
  * 80", the three proxies, Copy and Check again. 1440 and 390 wide, in
@@ -21,6 +21,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { proxyRoutes } from "../../../src/shared/edge/proxy-route.js";
 
 jest.setTimeout(90_000);
 
@@ -52,19 +53,19 @@ afterAll(async () => {
   });
 });
 
-const NGINX = [
-  "server {",
-  "  listen 80;",
-  "  server_name den.acme.localhost;",
-  "  location / {",
-  "    proxy_pass http://host.docker.internal:4321;",
-  "    proxy_http_version 1.1;",
-  "    proxy_set_header Host $host;",
-  "    proxy_set_header Upgrade $http_upgrade;",
-  '    proxy_set_header Connection "upgrade";',
-  "  }",
-  "}",
-].join("\n");
+/**
+ * The routes, as the server builds them (proxy-route.ts), to the port Den
+ * serves on here: one source for the address the card states and every
+ * snippet's port (Den Design, issue 455).
+ */
+const routesFor = (direct: string) =>
+  proxyRoutes({
+    host: "den.acme.localhost",
+    listen: 80,
+    upstreamHost: "host.docker.internal",
+    upstreamPort: Number(new URL(direct).port),
+    name: "den",
+  });
 
 /** What the check found: another server holds the wanted address's port. */
 const held = (direct: string) => ({
@@ -83,13 +84,7 @@ const held = (direct: string) => ({
     denEdge: false,
   },
   answeredAs: "nginx",
-  routes: {
-    nginx: NGINX,
-    caddy:
-      "http://den.acme.localhost {\n  reverse_proxy host.docker.internal:4321\n}",
-    traefik:
-      'http:\n  routers:\n    den:\n      rule: "Host(`den.acme.localhost`)"',
-  },
+  routes: routesFor(direct),
   routeKind: "nginx",
   edge: {
     container: "acme-edge",
@@ -164,12 +159,20 @@ describe.each(ENGINES)("issue 455 in %s", (e) => {
         "Port 80 is held by nginx (web-proxy-1), so den.acme.localhost goes to nginx instead.",
       );
       const fix = b.locator(".den-bn-a");
-      expect(await fix.textContent()).toBe("Fix it in Settings › Edge");
+      expect(await fix.textContent()).toBe("Fix it in Edge");
       expect(await fix.getAttribute("href")).toBe("/edge");
       const x = b.locator(".den-bn-x");
       const box = await x.boundingBox();
       expect(box!.width).toBeGreaterThanOrEqual(44);
       expect(box!.height).toBeGreaterThanOrEqual(44);
+      // × sits top-right, beside the title (mock v3), at 390 too.
+      const title = await b.locator(".den-bn-body b").boundingBox();
+      const bannerBox = await b.boundingBox();
+      expect(box!.y).toBeLessThan(title!.y + title!.height);
+      expect(box!.x).toBeGreaterThan(title!.x);
+      expect(box!.x + box!.width).toBeGreaterThan(
+        bannerBox!.x + bannerBox!.width - 60,
+      );
       expect(await sideScroll(p)).toBe(false);
       await shot(p, `banner-${e}-${width}`);
 
@@ -183,7 +186,7 @@ describe.each(ENGINES)("issue 455 in %s", (e) => {
       await p.context().close();
     });
 
-    it("Settings › Edge: the owner, the two choices in order, the route, Copy, Check again", async () => {
+    it("Edge: the owner, the two choices in order, the route, Copy, Check again", async () => {
       if (!browsers[e] || !s) return;
       const p = await open(e, width);
       await p.goto(`${s.base}/edge`);
@@ -193,10 +196,19 @@ describe.each(ENGINES)("issue 455 in %s", (e) => {
       expect(text).toContain("port 80 is in use");
       expect(text).toContain("web-proxy-1");
       expect(text).toContain("What would you like to do?");
-      expect(text.indexOf("Add Den to that proxy")).toBeLessThan(
-        text.indexOf("Free port 80"),
+      // The product's title (the demo's is its brand's).
+      const add = text.search(/Add \S+ to that proxy/);
+      expect(add).toBeGreaterThan(-1);
+      expect(add).toBeLessThan(text.indexOf("Free port 80"));
+      // The address the card states and the snippet's port are one port.
+      const port = new URL(s.base).port;
+      expect(text).toContain(`serving at ${s.base} instead`);
+      expect(await card.locator("pre").textContent()).toBe(
+        routesFor(s.base).nginx,
       );
-      expect(await card.locator("pre").textContent()).toBe(NGINX);
+      expect(await card.locator("pre").textContent()).toContain(
+        `proxy_pass http://host.docker.internal:${port};`,
+      );
       for (const id of ["#addr-copy", "#addr-check"]) {
         const box = await card.locator(id).boundingBox();
         expect([id, box!.height >= 44]).toEqual([id, true]);

@@ -2,7 +2,7 @@
  * Issue 455, clause 8: when another proxy already owns port 80, the route
  * that proxy needs so Den's name reaches Den: one block to paste, for
  * nginx, Caddy or Traefik (a dynamic-config file). Den never edits another
- * project's files; it only shows these (Settings › Edge, `edge route`).
+ * project's files; it only shows these (Edge, `edge route`).
  *
  * Each sends Den's host name to Den's web port, keeps the Host header
  * (Den answers only to its own names) and passes WebSocket upgrades (the

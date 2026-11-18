@@ -973,7 +973,7 @@ const CONFIG_FREE_ROUTES = new Set([
   // edge's own config and docker, never org data (starting it stays gated).
   "/api/edge",
   // Issue 455: the identity probe, and the address check (the banner and
-  // Settings › Edge): web.secret, web.url and the edge's own config only.
+  // Edge): web.secret, web.url and the edge's own config only.
   "/api/den-identity",
   "/api/edge/address",
   "/api/edge/address/check",

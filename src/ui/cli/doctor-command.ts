@@ -900,7 +900,7 @@ export function addressLines(
  * identity probe, den-identity.ts), and when it doesn't, what holds its
  * port, the address that does work, and the two ways out (mock v3's doctor
  * lines). Always said here: doctor is one of the two quiet places the fact
- * lives (Settings › Edge is the other).
+ * lives (Edge is the other).
  */
 export async function addressCheckLines(
   title: string,

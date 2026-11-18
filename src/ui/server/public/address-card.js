@@ -1,5 +1,5 @@
 /**
- * Issue 455 (mock v3, approved): Settings › Edge when something else holds
+ * Issue 455 (mock v3, approved): Edge when something else holds
  * the port Den's address needs. A status card on top of the Edge page that
  * names the owner and says where Den serves instead; "What would you like
  * to do?" with the two ways out, in the approved order (Add Den to that

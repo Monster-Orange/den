@@ -242,6 +242,44 @@ function fakeProbe(den: string[], other: string[] = []) {
 const DIRECT = "http://localhost:7777";
 const WANTED = "http://den.acme.localhost";
 
+describe("the port Den states and every route's port are one (Den Design)", () => {
+  // One source: the port Den's server listens on. The address Den gives
+  // (direct) and the upstream of the nginx, Caddy and Traefik routes all
+  // come from it, so a card or notice can never name one port while its
+  // snippet sends to another.
+  for (const webPort of [7777, 8088, 55429]) {
+    it(`port ${webPort}`, async () => {
+      const direct = `http://localhost:${webPort}`;
+      const s = await checkAddress({
+        webPort,
+        wanted: WANTED,
+        key: KEY,
+        settings: { timeoutMs: 1000, retries: 0, cacheMs: 0 },
+        probe: fakeProbe([direct], [WANTED]),
+        owner: () => ({
+          owner: "nginx",
+          kind: "container",
+          name: "web-proxy-1",
+          denEdge: false,
+        }),
+      });
+      expect([s.direct, s.address]).toEqual([direct, direct]);
+      const stated = Number(new URL(s.address!).port);
+      const ports = Object.entries(s.routes ?? {}).map(([k, r]) => [
+        k,
+        [...r.matchAll(/host\.docker\.internal:(\d+)/g)].map((m) =>
+          Number(m[1]),
+        ),
+      ]);
+      expect(ports).toEqual([
+        ["nginx", [stated]],
+        ["caddy", [stated]],
+        ["traefik", [stated]],
+      ]);
+    });
+  }
+});
+
 describe("the check", () => {
   const settings = { timeoutMs: 1000, retries: 0, cacheMs: 0 };
   it("the wanted address answers as Den: it is the address", async () => {

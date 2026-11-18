@@ -1842,7 +1842,7 @@
       "How many more times __DEN_TITLE__ asks an address that didn't answer in time. __DEN_CLI__ config web.address_check_retries=2",
     "set.server.address_check_cache": "Address check kept for",
     "set.server.address_check_cache.d":
-      "How long the page banner and Settings › Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
+      "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.bridge_listen": "Docker bridge, for the edge",
     "set.server.bridge_listen.d":
       "Linux only, with an edge set up here: __DEN_TITLE__ also listens on the Docker bridge's address, where the edge reaches this machine. Off: only 127.0.0.1, and the edge can't reach __DEN_TITLE__. Applies at the next start. __DEN_CLI__ config web.bridge_listen=off",
@@ -3038,7 +3038,7 @@
     "edgeAddr.banner.unknown":
       "Port {port} is in use by something __DEN_TITLE__ cannot name, so {host} goes there instead.",
     "edgeAddr.banner.none": "Nothing answers at {host} yet.",
-    "edgeAddr.banner.fix": "Fix it in Settings › Edge",
+    "edgeAddr.banner.fix": "Fix it in Edge",
     "edgeAddr.banner.dismiss": "Dismiss",
     "edgeAddr.card.title":
       "__DEN_TITLE__'s proxy is not running: port {port} is in use",
@@ -6924,7 +6924,7 @@
   // and working address: shown on the first page, and again only when the
   // working address changes; × dismisses it for good for that address. It
   // never comes back on every page while the port stays held: the fact
-  // lives in Settings › Edge and `doctor`.
+  // lives in Edge and `doctor`.
   var ADDR_LS = "den.address.banner";
   /** A page's href, from its NAV registry entry (R11a). */
   function navHref(id) {
@@ -8480,12 +8480,12 @@
     ".den-banner .den-bn-n { font: 11px var(--mono); color: var(--faint); }",
     ".den-banner .den-tbtn { margin-left: auto; align-self: center; }",
     // Issue 455: the address banner: a title line, then why and the fix
-    // link; × is a 44px target, and the banner wraps at 390.
-    ".den-banner .den-bn-body { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }",
+    // link; × sits top-right beside the title in a 44px box, at every width.
+    ".den-banner .den-bn-body { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }",
     ".den-banner .den-bn-body b { display: block; font-size: 14px; }",
     ".den-banner .den-bn-body .den-bn-t { margin-right: 6px; }",
     ".den-banner .den-bn-a { color: var(--accent-text); text-decoration: underline; }",
-    ".den-banner .den-bn-x { margin-left: auto; align-self: center; min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; border-radius: var(--radius-button, 8px); }",
+    ".den-banner .den-bn-x { flex: 0 0 44px; margin: -12px -10px -12px auto; align-self: flex-start; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; border-radius: var(--radius-button, 8px); }",
     ".den-banner .den-bn-x:hover { color: var(--text); background: var(--surface-2, transparent); }",
     // The runs dock (.dock, .bar, .runs, .rtab, pre: R16), at the foot of
     // the content column; content-box as in the prototype.

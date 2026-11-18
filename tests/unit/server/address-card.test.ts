@@ -1,5 +1,5 @@
 /**
- * Issue 455: Settings › Edge's card against mock v3 (approved), clause by
+ * Issue 455: Edge's card against mock v3 (approved), clause by
  * clause, in English: the title, the status line naming the owner, "What
  * would you like to do?" with its two options in the approved order, the
  * three proxies, Copy, the after-reload line, Check again and its result,
@@ -14,6 +14,7 @@ import {
   cardShown,
   checkResult,
 } from "../../../src/ui/server/public/address-card.js";
+import { proxyRoutes } from "../../../src/shared/edge/proxy-route.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 
@@ -69,11 +70,14 @@ const STATE = {
     denEdge: false,
   },
   answeredAs: "nginx",
-  routes: {
-    nginx: "server {\n  listen 80;\n}",
-    caddy: "http://x {\n}",
-    traefik: "http:\n",
-  },
+  // As the server builds them: to the port Den states (7777).
+  routes: proxyRoutes({
+    host: "den.acme.localhost",
+    listen: 80,
+    upstreamHost: "host.docker.internal",
+    upstreamPort: 7777,
+    name: "den",
+  }),
   routeKind: "nginx",
   edge: {
     container: "acme-edge",
@@ -104,7 +108,7 @@ const text = (html: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-describe("Settings › Edge's card (mock v3)", () => {
+describe("Edge's card (mock v3)", () => {
   const html = addressCardView(STATE);
   const words = text(html);
   it("the title names the port", () => {
@@ -133,7 +137,11 @@ describe("Settings › Edge's card (mock v3)", () => {
     expect(
       [...html.matchAll(/data-kind="(\w+)"[^>]*>(\w+)</g)].map((m) => m[2]),
     ).toEqual(["nginx", "Caddy", "Traefik"]);
-    expect(html).toContain("server {\n  listen 80;\n}");
+    expect(html).toContain(
+      "server {\n  listen 80;\n  server_name den.acme.localhost;",
+    );
+    // The card's stated address and its snippet: one port.
+    expect(html).toContain("proxy_pass http://host.docker.internal:7777;");
     expect(words).toContain("Copy");
     expect(words).toContain(
       "After you reload that proxy, Den checks http://den.acme.localhost reaches Den and switches its links to it. Den's own proxy stays off (edge.publish: false, set for you).",
@@ -200,7 +208,7 @@ describe("the page banner's words (mock v3)", () => {
     ).toBe(
       "Port 80 is held by nginx (web-proxy-1), so den.acme.localhost goes to nginx instead.",
     );
-    expect(t("edgeAddr.banner.fix")).toBe("Fix it in Settings › Edge");
+    expect(t("edgeAddr.banner.fix")).toBe("Fix it in Edge");
     expect(t("edgeAddr.banner.dismiss")).toBe("Dismiss");
   });
 });

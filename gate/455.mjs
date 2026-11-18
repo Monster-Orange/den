@@ -8,10 +8,10 @@ export const clauses = [
   "the edge port check covers IPv4, IPv6 and the wildcard, on every up",
   "Den picks a working way in itself, with no port question",
   "doctor says whether the address is this Den, and names a busy port's owner and the options",
-  "the banner shows once per browser and address, and Settings › Edge shows the owner and the two choices",
+  "the banner shows once per browser and address, and Edge shows the owner and the two choices",
   "every new string has en/es/ja text",
   "when the edge can't start, every place uses the address that works, and says why once",
-  "the route for nginx, Caddy and Traefik is ready to paste (doctor and Settings › Edge)",
+  "the route for nginx, Caddy and Traefik is ready to paste (doctor and Edge)",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1440, 390] };
 export const timeoutMs = 120000;

@@ -240,7 +240,7 @@ export const DEN_ACTIONS = {
       failure: "pmode.followF",
     },
   },
-  // Issue 455: Settings › Edge › Check again (the address check).
+  // Issue 455: Edge › Check again (the address check).
   "check-edge-address": {
     who: "__DEN_TITLE__",
     autoClose: true,
@@ -250,7 +250,7 @@ export const DEN_ACTIONS = {
       failure: "edgeAddr.busy.checkF",
     },
   },
-  // Issue 455: Settings › Edge › Take over (an old Den edge holds the port).
+  // Issue 455: Edge › Take over (an old Den edge holds the port).
   "edge-take-over": {
     who: "__DEN_TITLE__",
     autoClose: true,
