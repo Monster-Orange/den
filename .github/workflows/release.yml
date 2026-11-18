@@ -149,7 +149,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the
       # rest, never beside the browser tests (tests/docker-suites.mjs).

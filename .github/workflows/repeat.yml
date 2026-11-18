@@ -78,7 +78,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         if: ${{ inputs.browsers != 'none' }}
-        timeout-minutes: 10
+        timeout-minutes: 15
         # $BROWSERS unquoted on purpose: one argument per browser; the
         # script refuses any name that is not a browser.
         run: bash scripts/ci-pw-install.sh $BROWSERS
