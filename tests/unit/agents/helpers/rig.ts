@@ -12,7 +12,10 @@ import { connectHost } from "../../../../src/shared/sessions/client.js";
 import { SessionHost } from "../../../../src/shared/sessions/host.js";
 import { sessionPaths } from "../../../../src/shared/sessions/paths.js";
 import type { PtyLoad } from "../../../../src/shared/sessions/pty.js";
-import type { ResolvedAgentsConfig } from "../../../../src/shared/den-config.js";
+import {
+  SHELL_PATH_TIMEOUT,
+  type ResolvedAgentsConfig,
+} from "../../../../src/shared/den-config.js";
 import { validateCatalog } from "../../../../src/shared/agents/catalog.js";
 import type { AgentsDeps } from "../../../../src/ui/cli/agents-command.js";
 import {
@@ -175,6 +178,8 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     exitWatchMs: 0,
     // Stop doesn't wait for the session to end unless a test asks (0.4.8).
     stopWaitMs: 0,
+    // Never this machine's user.yml: the shell PATH wait's default (10 s).
+    shellPathTimeoutSeconds: () => SHELL_PATH_TIMEOUT.default,
     // Never this machine's user.yml.
     runtimeBin: (id) => r.runtimeBins[id],
     workspaceRuntimeBin: (ws, id) => r.wsBins[ws]?.[id],

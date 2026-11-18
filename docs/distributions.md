@@ -5122,13 +5122,23 @@ first match wins:
 
 3. **Your interactive shell's PATH**, the first choice: the CLI your
    terminal runs. `$SHELL -ilc` is asked once, before the first search
-   (stdin closed, 3-second timeout, the answer kept), so a PATH set in an
-   interactive startup file such as `~/.zshrc` counts. Its source is
+   (stdin closed, the answer kept), so a PATH set in an interactive
+   startup file such as `~/.zshrc` counts. Its source is
    `interactive-shell`. Until it answers, or when it fails, the next
    three decide.
 4. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
-   start, in the background, under a 3-second timeout. On a timeout or
-   any failure it is left out.
+   start, in the background. On a timeout or any failure it is left out.
+
+   Both asks wait at most **Settings › Agents › Shell PATH wait**
+   (`agents.shell_path_timeout_seconds` in user.yml: 10 when unset, 1 to
+   120), so a slow startup file is still read:
+
+   ```yaml
+   # config/local/user.yml
+   agents:
+     shell_path_timeout_seconds: 10
+   ```
+
 5. **The server's own PATH.**
 6. **The runtime's install directories** (its catalog entry's; for
    den-claude: `~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`,

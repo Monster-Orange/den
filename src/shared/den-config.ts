@@ -574,6 +574,11 @@ export interface UserConfig {
     mode_check_seconds?: unknown;
     /** 0.4.46: how long that restore waits for Hub first (120 s). */
     restore_hub_wait_seconds?: unknown;
+    /**
+     * Issue 456: how long Den waits for your shell's PATH, the login
+     * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
+     */
+    shell_path_timeout_seconds?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -828,6 +833,45 @@ export function agentsModeCheckSeconds(
   throw new Error(
     `agents.mode_check_seconds must be a number, at least 5 (user.yml; got ${JSON.stringify(v)})`,
   );
+}
+
+/** Issue 456: agents.shell_path_timeout_seconds when unset, and its range. */
+export const SHELL_PATH_TIMEOUT = { default: 10, min: 1, max: 120 } as const;
+
+/**
+ * Issue 456: agents.shell_path_timeout_seconds (user.yml), how long Den
+ * waits for the login and the interactive shell's PATH: 10 when unset,
+ * 1 to 120. A wrong value throws, naming the key.
+ */
+export function agentsShellPathTimeoutSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.shell_path_timeout_seconds;
+  if (v === undefined || v === null) return SHELL_PATH_TIMEOUT.default;
+  if (
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    v >= SHELL_PATH_TIMEOUT.min &&
+    v <= SHELL_PATH_TIMEOUT.max
+  )
+    return v;
+  throw new Error(
+    `agents.shell_path_timeout_seconds must be a number from ${SHELL_PATH_TIMEOUT.min} to ${SHELL_PATH_TIMEOUT.max} (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * The shell PATH wait in ms for a caller that must never fail (the
+ * server's start, detection): a wrong value is the default.
+ */
+export function shellPathTimeoutMs(
+  read: () => UserConfig = readUserConfig,
+): number {
+  try {
+    return agentsShellPathTimeoutSeconds(read) * 1000;
+  } catch {
+    return SHELL_PATH_TIMEOUT.default * 1000;
+  }
 }
 
 /** agents.restore_hub_wait_seconds (user.yml): 120 when unset, at least 0. */

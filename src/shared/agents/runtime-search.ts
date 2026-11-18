@@ -15,12 +15,12 @@
  *   2. interactive-shell  issue 456, the first choice: the interactive
  *                   login shell's PATH (`$SHELL -ilc`, where many people
  *                   set PATH in .zshrc/.bashrc), the PATH their terminal
- *                   has. Asked once per process, stdin closed, under the
- *                   same 3-second timeout, and kept (ensureInteractivePath);
- *                   until it answers, or when it fails, the fallbacks
- *                   below decide.
+ *                   has. Asked once per process, stdin closed, under
+ *                   agents.shell_path_timeout_seconds (10 s), and kept
+ *                   (ensureInteractivePath); until it answers, or when it
+ *                   fails, the fallbacks below decide.
  *   3. login-shell  the login shell's PATH (`$SHELL -lc`), resolved once
- *                   at server start, async, under a 3-second timeout; on
+ *                   at server start, async, under the same timeout; on
  *                   any failure it is left out (the current PATH remains).
  *   4. PATH         the caller's own PATH.
  *   5. well-known   the runtime's install directories (its `find.dirs`:
@@ -63,7 +63,12 @@ export const LOGIN_SHELL_ENV = "DEN_LOGIN_SHELL";
 export const RUNTIME_DIRS_ENV = "DEN_RUNTIME_DIRS";
 /** "off": the quarantine attribute is never read (tests). */
 export const QUARANTINE_CHECK_ENV = "DEN_QUARANTINE_CHECK";
-export const LOGIN_PATH_TIMEOUT_MS = 3000;
+/**
+ * How long a shell is given to say its PATH when the caller passes no
+ * timeout: agents.shell_path_timeout_seconds's default (den-config.ts
+ * SHELL_PATH_TIMEOUT), which callers read and pass (issue 456).
+ */
+export const LOGIN_PATH_TIMEOUT_MS = 10_000;
 
 /** How a runtime's CLI is found and its version asked (catalog-shaped). */
 export interface RuntimeFind {

@@ -2710,6 +2710,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_list: { host_timeout_seconds: v } }),
   },
   {
+    // Issue 456: how long Den waits for your shell's PATH (-lc and -ilc).
+    id: "agents.shell_path_wait",
+    category: "agents",
+    label: "Shell PATH wait",
+    description:
+      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    keywords: ["timeout", "shell", "path", "zshrc", "cli", "runtime", "wait"],
+    scope: "user",
+    keys: ["agents_shell.path_timeout_seconds"],
+    control: { type: "number", min: 1, max: 120, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_shell?.path_timeout_seconds ?? 10,
+    write: (v, ctx) => ctx.post({ agents_shell: { path_timeout_seconds: v } }),
+  },
+  {
     id: "agents.list_refresh_wait",
     category: "agents",
     label: "Agents list wait",

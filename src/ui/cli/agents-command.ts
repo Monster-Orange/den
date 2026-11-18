@@ -2252,7 +2252,14 @@ async function doctor(
   const ws = workspaceFlag(where, p);
   if (ws && !d.workspaceExists(ws))
     throw new UsageError(`${where}: project "${ws}" does not exist`);
-  await (deps.loginPath ?? (() => initLoginPath({ env: d.env })))();
+  await (
+    deps.loginPath ??
+    (() =>
+      initLoginPath({
+        env: d.env,
+        timeoutMs: d.shellPathTimeoutSeconds() * 1000,
+      }))
+  )();
   const rts = await listRuntimes(d, ws);
   const def = rts.find((r) => r.default);
   const code = def?.available ? 0 : 1;

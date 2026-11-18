@@ -102,6 +102,7 @@ import * as path from "path";
 import {
   AGENTS_RESERVED_KEYS,
   configuredRuntimeBin,
+  shellPathTimeoutMs,
   configuredRuntimeCatalog,
   readAgentsConfig,
   readDenConfig,
@@ -356,6 +357,11 @@ export interface AgentsDeps extends SessionsDeps {
    * 5000 ms; 0: it doesn't wait, as `--no-wait`).
    */
   stopWaitMs?: number;
+  /**
+   * Issue 456: agents.shell_path_timeout_seconds, how long the shell is
+   * given to say its PATH (default: user.yml's, 10 when unset).
+   */
+  shellPathTimeoutSeconds?: () => number;
   /** `agents.runtimes.<id>.bin` (default: user.yml's; undefined: unset). */
   runtimeBin?: (id: string) => unknown;
   /**
@@ -458,6 +464,7 @@ export interface AgentsResolved extends Resolved {
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
   stopWaitMs: number;
+  shellPathTimeoutSeconds: () => number;
   runtimeBin: (id: string) => unknown;
   workspaceRuntimeBin: (ws: string, id: string) => unknown;
   workspacePermission: (ws: string) => unknown;
@@ -779,6 +786,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
     stopWaitMs: d.stopWaitMs ?? STOP_WAIT_MS,
+    shellPathTimeoutSeconds:
+      d.shellPathTimeoutSeconds ?? (() => shellPathTimeoutMs() / 1000),
     runtimeBin: d.runtimeBin ?? ((id) => configuredRuntimeBin(id)),
     workspaceRuntimeBin:
       d.workspaceRuntimeBin ?? ((ws, id) => workspaceRuntimeBin(ws, id)),
@@ -2681,7 +2690,11 @@ async function interactiveSearch(
   const searched = rts.some(
     (rt) => rt.catalog && !runtimeSetting(d, rt.id, ws),
   );
-  if (searched) await ensureInteractivePath({ env: d.env });
+  if (searched)
+    await ensureInteractivePath({
+      env: d.env,
+      timeoutMs: d.shellPathTimeoutSeconds() * 1000,
+    });
 }
 
 /**
