@@ -8,7 +8,9 @@
 // (POST /api/agents/runtimes/<id>/path, as Settings' Use this does), then
 // marks that one file with com.apple.quarantine (xattr -w, on nothing
 // else). Restart of the running agent, through the route the page uses,
-// must refuse before it stops anything. Per cell, through the page as a
+// must refuse before it stops anything: Den's own agent list says it runs,
+// in the same session, right after and 4 s later (never the handle's
+// running(), which resumes an agent). Per cell, through the page as a
 // person uses it: the Start dialog says why, shows the path with Copy
 // path and keeps Start off; the stopped agent's Resume refuses and offers
 // Open Settings › Runtimes, which opens at the runtime's row. The stub
@@ -56,11 +58,33 @@ function stubFolder(ctx, prefix) {
 }
 
 /**
- * A harness wait held: running(ms) and until() answer the ms it took (0
- * when it already held, which is a success) or null on a timeout, as every
- * gate on main reads them. Never truthiness, never `=== true`.
+ * Agent `id`'s row in project `ws`, as Den lists it (GET
+ * /api/workspaces/<ws>/agents; asking starts nothing): its state and the
+ * session it runs in. Null when it isn't listed or Den didn't answer.
  */
-const held = (v) => v !== null;
+async function agentRow(ctx, ws, id) {
+  try {
+    const r = await ctx.api(`/api/workspaces/${encodeURIComponent(ws)}/agents`);
+    if (!r.ok) return null;
+    const row = ((await r.json())?.agents ?? []).find((x) => x.agent === id);
+    if (!row) return null;
+    return {
+      state: row.state ?? null,
+      session: row.session?.id ?? null,
+      startedAt: row.startedAt ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** The same session: by its id, else (no id listed) by when it started. */
+const sameSession = (a, b) =>
+  !!a &&
+  !!b &&
+  (a.session !== null || b.session !== null
+    ? a.session === b.session
+    : a.startedAt !== null && a.startedAt === b.startedAt);
 
 /** A runtimes answer, as a list (the route answers a list or { runtimes }). */
 const listOf = (v) =>
@@ -198,21 +222,27 @@ export async function setup(ctx) {
       quarantined: row?.quarantined === true,
     };
 
-    // Restart, as the page asks it (POST …/restart { when: "now" }).
+    // Restart, as the page asks it (POST …/restart { when: "now" }). Whether
+    // the agent still runs is Den's own row, read with no side effect: never
+    // the handle's running(), which resumes an agent that isn't running.
+    const was = await agentRow(ctx, ws, a.id);
     const r = await postJson(
       ctx,
       `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(a.id)}/restart`,
       { when: "now" },
     );
     const body = bodyOf(r);
-    await ctx.sleep(1500);
+    const now = await agentRow(ctx, ws, a.id);
+    await ctx.sleep(4000);
+    const later = await agentRow(ctx, ws, a.id);
     state.restart = {
       status: r.status,
       code: body.code ?? null,
       path: body.quarantined?.path ?? null,
       said: String(body.error ?? "").slice(0, 300),
-      running: held(await a.ctl.running(5000)),
-      state: (await a.ctl.state?.()) ?? null,
+      before: was,
+      now,
+      later,
     };
   } catch (e) {
     state.error = String(e?.message ?? e).slice(0, 300);
@@ -400,8 +430,17 @@ function rows(r, cell) {
         re.status === 409 &&
         re.code === "runtime_quarantined" &&
         re.path === r.file &&
-        re.running === true,
-      detail: `restart: HTTP ${re.status} ${re.code ?? ""} ${re.path ?? ""}; the agent ${re.running ? "still runs" : `isn't running (${re.state ?? "?"})`}`,
+        re.before?.state === "running" &&
+        re.now?.state === "running" &&
+        re.later?.state === "running" &&
+        sameSession(re.before, re.now) &&
+        sameSession(re.before, re.later),
+      detail:
+        `restart: HTTP ${re.status} ${re.code ?? ""} ${re.path ?? ""}; ` +
+        `Den lists the agent ${re.before?.state ?? "missing"} before, ${re.now?.state ?? "missing"} right after, ${re.later?.state ?? "missing"} 4 s later; ` +
+        (sameSession(re.before, re.now) && sameSession(re.before, re.later)
+          ? "the same session"
+          : `its session changed (${re.before?.session ?? re.before?.startedAt ?? "?"} → ${re.later?.session ?? re.later?.startedAt ?? "?"})`),
     }),
     c(4, {
       ok: ran.length === 0 && r.seen?.marked === true,

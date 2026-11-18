@@ -35,7 +35,7 @@ type Row = {
 function runGate(
   right: boolean,
   xattr: string | null = XATTR,
-  stopsFirst = false,
+  restart: "holds" | "stopsFirst" | "replaces" = "holds",
 ) {
   const evidence = path.join(TMP, right ? "right" : "wrong");
   const js = `
@@ -43,9 +43,11 @@ function runGate(
     const fs = await import("fs");
     const path = await import("path");
     const g = await import("./gate/479.mjs");
-    const RIGHT = ${right}, STOPS_FIRST = ${stopsFirst};
+    const RIGHT = ${right}, RESTART = ${JSON.stringify(restart)};
+    let sessions = 0;
+    const fresh = (id) => Object.assign(agents.get(id), { running: true, session: "s" + ++sessions });
     const WS = "proj-a", RT = "den-claude";
-    const agents = new Map(); // id -> { running }
+    const agents = new Map(); // id -> { running, session }
     const pins = new Map(); // ws -> bin
     const pinnedTo = [];
     let calls = [];
@@ -59,7 +61,7 @@ function runGate(
       if (RIGHT && q) return { status: 409, body: { ok: false, code: "runtime_quarantined",
         error: RT + " can't start: macOS has quarantined " + q, quarantined: { runtime: RT, path: q } } };
       if (copy()) spawnSync(copy(), []);
-      agents.get(id).running = true;
+      fresh(id);
       return { status: 200, body: { ok: true } };
     };
     const ok = (body, status = 200) => ({ ok: status < 400, status, json: async () => body, body });
@@ -74,8 +76,13 @@ function runGate(
       }
       if ((m = /\\/agents\\/([^/]+)\\/restart$/.exec(p))) {
         const id = decodeURIComponent(m[1]);
-        // STOPS_FIRST: refuses, but only after stopping the agent.
-        if (RIGHT && quarantinedCopy()) { if (STOPS_FIRST) agents.get(id).running = false; return launch(id); }
+        // "stopsFirst": refuses, but only after stopping the agent;
+        // "replaces": refuses, after starting it again in a new session.
+        if (RIGHT && quarantinedCopy()) {
+          if (RESTART === "stopsFirst") agents.get(id).running = false;
+          if (RESTART === "replaces") fresh(id);
+          return launch(id);
+        }
         agents.get(id).running = false;
         const r = launch(id);
         return ok(r.body, r.status);
@@ -96,15 +103,23 @@ function runGate(
       api: async (p) => p.startsWith("/api/agents/runtimes")
         ? ok([{ id: RT, source: pins.has(WS) ? "workspace" : "setting", path: copy() ?? "/bed/bin/claude",
             ...(RIGHT && quarantinedCopy() ? { quarantined: true } : {}) }])
+        : p === "/api/workspaces/" + WS + "/agents"
+          ? ok({ workspace: WS, agents: [...agents].map(([agent, a]) => ({ agent, workspace: WS,
+              state: a.running ? "running" : "stopped", ...(a.running ? { session: { id: a.session } } : {}) })) })
         : ok({}),
       fetch: async (p, init) => { const r = await fetchFn(p, init); return { status: r.status, headers: {}, body: JSON.stringify(r.body) }; },
       agent: async (name) => {
         agents.set(name, { running: false });
         return {
           id: name,
-          start: async () => { agents.get(name).running = true; return { code: 0 }; },
-          // As the bed: the ms it took (0: it already ran), or null on a timeout.
-          running: async () => (agents.get(name)?.running ? 0 : null),
+          start: async () => { fresh(name); return { code: 0 }; },
+          // As the bed: it resumes an agent that isn't running, then answers
+          // the ms it took (0: it already ran), or null on a timeout.
+          running: async () => {
+            if (!agents.has(name)) return null;
+            if (!agents.get(name).running) fresh(name);
+            return 0;
+          },
           state: async () => (agents.get(name)?.running ? "running" : "stopped"),
           stop: async () => { if (agents.has(name)) agents.get(name).running = false; },
           remove: async () => { agents.delete(name); },
@@ -217,16 +232,26 @@ describe("gate/479.mjs on a fake bed", () => {
     expect(r.stubs.every((x) => x.under && !x.there)).toBe(true);
   }, 120_000);
 
-  it("running() answers 0 ms for an agent already running: that is a pass", () => {
+  it("restart refused, Den lists the agent running in the same session: a pass", () => {
     const r = runGate(true);
     expect(r.rows[3]).toMatchObject({ ok: true });
-    expect(r.rows[3].detail).toMatch(/still runs/);
+    expect(r.rows[3].detail).toMatch(
+      /running before, running right after, running 4 s later; the same session/,
+    );
   }, 120_000);
 
-  it("a restart that refuses only after stopping the agent: clause 4 fails", () => {
-    const r = runGate(true, XATTR, true);
+  it("a restart that refuses only after stopping the agent: clause 4 fails, though running() would resume it", () => {
+    const r = runGate(true, XATTR, "stopsFirst");
     expect(r.rows[3]).toMatchObject({ ok: false });
-    expect(r.rows[3].detail).toMatch(/HTTP 409 .*isn't running/);
+    expect(r.rows[3].detail).toMatch(
+      /HTTP 409 .*running before, stopped right after, stopped 4 s later/,
+    );
+  }, 120_000);
+
+  it("a restart that refuses after starting a new session: clause 4 fails", () => {
+    const r = runGate(true, XATTR, "replaces");
+    expect(r.rows[3]).toMatchObject({ ok: false });
+    expect(r.rows[3].detail).toMatch(/its session changed \(s\d+ → s\d+\)/);
   }, 120_000);
 
   it("a Den that runs the quarantined copy: red on every clause", () => {
