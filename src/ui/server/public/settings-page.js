@@ -251,18 +251,6 @@ export async function mountSettings(deps) {
     // new row's pressed button on its old value until a reload.
     for (const [k, v] of Object.entries(reply))
       if (k !== "ok" && v !== undefined) ctx.data[k] = v;
-    // Issue 424: the reply leaves out some keys (the rows that were the
-    // command line's, Terminal tabs among them). Read them back, or the
-    // redraw shows the old value: a switch just turned on showed off, and
-    // a second look (check(), a person) turned it on and saved it again.
-    if (
-      typeof reply === "object" &&
-      Object.keys(patch).some((k) => !(k in reply))
-    ) {
-      const now = await getJson("/api/settings").catch(() => null);
-      for (const k of Object.keys(patch))
-        if (now && now[k] !== undefined) ctx.data[k] = now[k];
-    }
     return true;
   }
   async function saveWorkspace(patch) {
