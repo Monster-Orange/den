@@ -3,6 +3,8 @@
  * the same pane agents use. Typing reaches it; what it prints shows. A
  * reload keeps the tab and starts no second shell. A project's "Terminal
  * here" opens one in that project. The label and tooltip are translated.
+ * Issue 448: a project that already runs a shell gets that one again
+ * (terminal-reuse.browser.test.ts has the rest).
  *
  * The demo distribution (helpers/agents-page-server.ts), a scripted PTY
  * (no real shell runs). Invented names only.
@@ -24,7 +26,11 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -143,15 +149,18 @@ describe("D73: Terminal", () => {
     expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
   }, 90_000);
 
-  it("the 0.4.39 gate: a second Terminal adds a tab; the rail's opens in the project in view", async () => {
+  it("the 0.4.39 gate: another project's Terminal adds a tab; the rail's opens in the project in view", async () => {
     if (skip()) return;
+    // north and south each run a shell already (the tests above): issue
+    // 448, Terminal opens that one again, as a tab next to the others.
     const p = await open("/?ws=north");
+    const first = s!.made.length;
     await p.locator("#ws-term-here").click();
     await p.waitForFunction(() => !location.search.includes("terminal="));
     await p.waitForSelector(".pane[data-id]");
-    const first = s!.made.length;
     const firstId = new URL(p.url()).searchParams.get("open")!;
     expect(firstId).toBeTruthy();
+    expect(s!.made.length).toBe(first);
 
     // Another project's Terminal here: the first tab stays.
     await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=south"));
@@ -162,8 +171,7 @@ describe("D73: Terminal", () => {
         (new URLSearchParams(location.search).get("open") ?? "").split(",")
           .length === 2,
     );
-    expect(s!.made.length).toBe(first + 1);
-    expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
+    expect(s!.made.length).toBe(first);
     const open2 = new URL(p.url()).searchParams.get("open")!.split(",");
     expect(open2[0]).toBe(firstId);
     await p.reload();
@@ -174,8 +182,8 @@ describe("D73: Terminal", () => {
       open2,
     );
 
-    // The rail's Terminal from /agents?ws=south: a shell in south (not the
-    // first project), a third tab.
+    // The rail's Terminal from /agents?ws=south: south's shell (not the
+    // first project's) in front, no third tab.
     await p.goto(
       signInUrl(
         s!.stateDir,
@@ -187,11 +195,15 @@ describe("D73: Terminal", () => {
     await p.locator('#den-rail [data-nav="terminal"]').click();
     await p.waitForFunction(() => !location.search.includes("terminal="));
     await p.waitForFunction(
-      () =>
-        (new URLSearchParams(location.search).get("open") ?? "").split(",")
-          .length === 3,
+      (id) =>
+        new URLSearchParams(location.search).get("front") === id &&
+        Boolean(document.activeElement?.closest(`.pane[data-id="${id}"]`)),
+      open2[1],
     );
-    expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
+    expect(new URL(p.url()).searchParams.get("open")!.split(",")).toEqual(
+      open2,
+    );
+    expect(s!.made.length).toBe(first);
   }, 120_000);
 
   it("in Spanish: Terminal, with its tooltip", async () => {

@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { denAuth, signInUrl } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -216,27 +216,74 @@ describe("translated pages fit", () => {
     "the terminal in %s at %ipx: its toast leaves the To line clear",
     async (lang, width) => {
       if (!browser) return;
+      // Issue 448: Terminal reopens a running shell (no toast then), so
+      // each case starts its own and ends it: the toast is its "started".
+      const before = s!.made.length;
       const p = await open(lang, width, "/agents?terminal=1");
       await p.waitForSelector(".den-toast");
       await p.waitForSelector(".agto[data-toast-clear]");
       // The toast looks again 0.5 s after it shows (the line may come later).
       await p.waitForTimeout(700);
-      const overlap = await p.evaluate(() => {
-        const t = document.querySelector(".den-toast")!.getBoundingClientRect();
-        return Array.from(document.querySelectorAll(".agto"))
-          .map((x) => x.getBoundingClientRect())
-          .filter(
-            (m) =>
-              m.width &&
-              t.left < m.right &&
-              t.right > m.left &&
-              t.top < m.bottom &&
-              t.bottom > m.top,
-          ).length;
-      });
+      const overlap = await toastOverTo(p);
       await p.close();
-      expect(overlap).toBe(0);
+      const made = s!.made.slice(before);
+      for (const pty of made) pty.exit(0);
+      expect({ made: made.length, overlap }).toEqual({ made: 1, overlap: 0 });
     },
     60_000,
   );
+
+  it("a toast up before the terminal's To line shows moves off it when the line comes", async () => {
+    if (!browser) return;
+    const r = await fetch(`${s!.base}/api/workspaces/north/sessions`, {
+      method: "POST",
+      headers: { ...denAuth(s!.stateDir), "content-type": "application/json" },
+      body: "{}",
+    });
+    const { session } = (await r.json()) as { session: { id: string } };
+    const pty = s!.made.at(-1)!;
+    const p = await open("ja", 1280, "/agents?ws=north");
+    const row = p.locator(`#agl .agr[data-id="${session.id}"]`);
+    await row.waitFor();
+    // A toast that stays up (an Undo's, 10 s), shown before the pane.
+    await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: {
+            toastAction(m: string, l: string, f: () => void, ms: number): void;
+          };
+        }
+      ).denShell.toastAction("保存しました", "元に戻す", () => {}, 10_000),
+    );
+    // Past the toast's own looks at 0.1 s and 0.5 s: the line comes later.
+    await p.waitForTimeout(700);
+    await row.click();
+    await p.waitForFunction(() =>
+      Array.from(document.querySelectorAll(".agto[data-toast-clear]")).some(
+        (x) => x.getBoundingClientRect().height > 0,
+      ),
+    );
+    await p.waitForTimeout(400);
+    const overlap = await toastOverTo(p);
+    await p.close();
+    pty.exit(0);
+    expect(overlap).toBe(0);
+  }, 60_000);
 });
+
+/** How many To lines the toast covers. */
+function toastOverTo(p: Page): Promise<number> {
+  return p.evaluate(() => {
+    const t = document.querySelector(".den-toast")!.getBoundingClientRect();
+    return Array.from(document.querySelectorAll(".agto"))
+      .map((x) => x.getBoundingClientRect())
+      .filter(
+        (m) =>
+          m.width &&
+          t.left < m.right &&
+          t.right > m.left &&
+          t.top < m.bottom &&
+          t.bottom > m.top,
+      ).length;
+  });
+}

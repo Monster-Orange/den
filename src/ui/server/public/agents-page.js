@@ -307,6 +307,59 @@ function rememberedOpen() {
   }
 }
 
+/**
+ * Issue 448: when this browser last used each shell (its terminal took the
+ * keyboard), so the rail's Terminal opens the one used last. Per browser;
+ * a shell it never used counts from when it started.
+ */
+const SHELL_USED_KEY = "den-shell-used";
+
+function shellUsed() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SHELL_USED_KEY) ?? "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function markShellUsed(id) {
+  const r = rowOf(id);
+  if (r?.kind !== "session") return;
+  const live = new Set((st.data?.sessions ?? []).map((x) => x.id));
+  const used = {};
+  for (const [k, v] of Object.entries(shellUsed()))
+    if (live.has(k) && typeof v === "number") used[k] = v;
+  used[id] = Date.now();
+  try {
+    localStorage.setItem(SHELL_USED_KEY, JSON.stringify(used));
+  } catch {
+    /* none: the newest shell instead */
+  }
+}
+
+/**
+ * Issue 448: project `ws`'s running plain shell used last (`used`: id to
+ * ms; else its start), or null when none runs there. `ws` null: in any
+ * project.
+ */
+export function latestShell(rows, ws, used = {}) {
+  const at = (r) =>
+    Math.max(
+      typeof used[r.id] === "number" ? used[r.id] : 0,
+      Date.parse(r.startedAt ?? "") || 0,
+    );
+  let best = null;
+  for (const r of rows ?? [])
+    if (
+      r?.kind === "session" &&
+      !r.exited &&
+      (ws === null || r.workspace === ws)
+    )
+      if (!best || at(r) >= at(best)) best = r;
+  return best;
+}
+
 function writeUrl() {
   try {
     // #80: the browser's tabs, every project's: a project's view only
@@ -2190,6 +2243,11 @@ function paintBar(p) {
     r?.kind === "session" && !r.exited
       ? `<button type="button" class="den-btn sm" data-act="close-shell" title="${esc(t("ag.closeShellTip"))}">${esc(t("ag.closeShell"))}</button>`
       : "";
+  // Issue 448: a second shell on purpose (the rail's Terminal reopens this).
+  const newShell =
+    r?.kind === "session"
+      ? `<button type="button" class="den-btn sm" data-act="new-shell" title="${esc(t("ag.newShellTip"))}">${esc(t("ag.newShell"))}</button>`
+      : "";
   // The mock's pane bar: Resume (primary) on an ended agent that can.
   const resume =
     r && isStopped(r) && r.resumable
@@ -2238,7 +2296,7 @@ function paintBar(p) {
     (r?.kind === "agent" && compactingHtml(r, t, { withStop: false })
       ? `<span class="agctx" data-compacting-bar>${compactingHtml(r, t, { withStop: false })}</span>`
       : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${newShell}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
   // changed, and never takes the keyboard off the bar: a button there that
   // had focus has it again after a redraw.
@@ -2957,6 +3015,7 @@ async function openPane(id, { front = true } = {}) {
   el.addEventListener("focusin", () => {
     if (!p.following) claimSize(p);
     st.keyPane = p.id;
+    markShellUsed(p.id);
   });
   p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
@@ -3078,6 +3137,16 @@ async function closeShell(p, button) {
     window.denShell?.errorToast?.(err);
   }
   await refresh();
+}
+
+/** Issue 448: the shell bar's New terminal: another shell in its project. */
+async function newShell(r, button) {
+  button.disabled = true;
+  try {
+    await openTerminal(r.workspace, { fresh: true });
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ── Stopped agents (AG-14) ──────────────────────────────────────────────
@@ -5541,7 +5610,10 @@ export async function mountAgentsPage(root) {
       if (r) void openLink(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
     else if (b.dataset.act === "close-shell") void closeShell(p, b);
-    else if (b.dataset.act === "tools-restart") {
+    else if (b.dataset.act === "new-shell") {
+      const r = rowOf(id);
+      if (r?.kind === "session") void newShell(r, b);
+    } else if (b.dataset.act === "tools-restart") {
       const r = rowOf(id);
       if (r) void restartForTools(r, b);
     } else if (b.dataset.act === "mode-apply") {
@@ -5735,17 +5807,31 @@ export async function mountAgentsPage(root) {
  * view), in a pane like an agent's. The pane is in ?open=, so a reload
  * keeps it, and the shell outlives a Den restart (the sessions host).
  * Used once: the URL drops ?terminal=.
+ *
+ * Issue 448: a shell already running in that project opens again (the
+ * one used last) and takes the keyboard; a new one starts only when none
+ * runs, or with `fresh` (the shell bar's New terminal).
  */
-async function openTerminal(asked = "") {
+async function openTerminal(asked = "", { fresh = false } = {}) {
   const all = st.data?.workspaces ?? [];
+  const used = shellUsed();
+  // Issue 448: no project named or in view (every project shows): the
+  // shell used last, in any of them, before the first project.
   const ws =
     asked ||
     urlWorkspace() ||
     (st.scope && st.scope !== "all" && all.includes(st.scope)
       ? st.scope
-      : all[0]);
+      : (fresh ? null : latestShell(visibleRows(), null, used)?.workspace) ||
+        all[0]);
   if (!ws) {
     window.denShell?.toast?.(t("ag.term.failed", { e: t("ag.term.noWs") }));
+    return;
+  }
+  const running = fresh ? null : latestShell(st.data?.sessions ?? [], ws, used);
+  if (running) {
+    await switchToProjectOf(running);
+    await bringShell(running.id);
     return;
   }
   try {
@@ -5757,12 +5843,26 @@ async function openTerminal(asked = "") {
     await refresh();
     // #80: a shell in another project: this page switches to it first.
     if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
-    if (r?.session?.id) await openPane(r.session.id);
+    if (r?.session?.id) await bringShell(r.session.id);
   } catch (err) {
     window.denShell?.toast?.(
       t("ag.term.failed", { e: err?.message || String(err) }),
     );
   }
+}
+
+/**
+ * Issue 448: shell `id`'s pane in front (opened as a tab when it is not
+ * open), with the keyboard once its terminal can take keys.
+ */
+async function bringShell(id) {
+  if (st.panes.has(id)) {
+    st.cur = id;
+    paintLayout();
+    paintList();
+    writeUrl();
+  } else await openPane(id);
+  focusTerm(id);
 }
 
 /**

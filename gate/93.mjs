@@ -83,6 +83,10 @@ async function stub(ctx, state, role) {
   const ctl = await ctx.agent(name);
   const a = { name, id: ctl?.id ?? name, ctl };
   state.made.push(a);
+  // A handle creates nothing: start the agent and wait until it runs,
+  // so its session (and its file) exist before sessionStart.
+  ctl.start("tester");
+  a.runMs = await ctl.running(20000);
   await ctl.sessionStart?.();
   return a;
 }
