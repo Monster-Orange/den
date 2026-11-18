@@ -187,6 +187,18 @@ export const en = {
   "kit.report.copyFailed":
     "Could not copy. Select the text and copy it yourself.",
   "kit.report.copyH": "Copy the report",
+  // The Markdown editor (markdown-editor.js, 0.7.5): its toolbar.
+  "kit.md.toolbar": "Formatting",
+  "kit.md.toolKey": "{name} ({key})",
+  "kit.md.bold": "Bold",
+  "kit.md.italic": "Italic",
+  "kit.md.code": "Code",
+  "kit.md.link": "Link",
+  "kit.md.heading": "Heading",
+  "kit.md.bulleted": "Bulleted list",
+  "kit.md.numbered": "Numbered list",
+  "kit.md.quote": "Quote",
+  "kit.md.linkText": "text",
 };
 
 export const es = {
@@ -372,6 +384,17 @@ export const es = {
   "kit.report.copyFailed":
     "No se pudo copiar. Selecciona el texto y cópialo tú.",
   "kit.report.copyH": "Copia el informe",
+  "kit.md.toolbar": "Formato",
+  "kit.md.toolKey": "{name} ({key})",
+  "kit.md.bold": "Negrita",
+  "kit.md.italic": "Cursiva",
+  "kit.md.code": "Código",
+  "kit.md.link": "Enlace",
+  "kit.md.heading": "Encabezado",
+  "kit.md.bulleted": "Lista con viñetas",
+  "kit.md.numbered": "Lista numerada",
+  "kit.md.quote": "Cita",
+  "kit.md.linkText": "texto",
 };
 
 export const ja = {
@@ -552,6 +575,17 @@ export const ja = {
   "kit.report.copyFailed":
     "コピーできませんでした。テキストを選んでコピーしてください。",
   "kit.report.copyH": "報告をコピー",
+  "kit.md.toolbar": "書式",
+  "kit.md.toolKey": "{name}（{key}）",
+  "kit.md.bold": "太字",
+  "kit.md.italic": "斜体",
+  "kit.md.code": "コード",
+  "kit.md.link": "リンク",
+  "kit.md.heading": "見出し",
+  "kit.md.bulleted": "箇条書き",
+  "kit.md.numbered": "番号付きリスト",
+  "kit.md.quote": "引用",
+  "kit.md.linkText": "テキスト",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */

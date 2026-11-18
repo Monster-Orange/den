@@ -4,6 +4,18 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.66] - unreleased
+
+den-ui 0.7.5 ships before this release, on its own.
+
+### Added
+
+- den-ui 0.7.5: a shared Markdown editor (`./markdown-editor`,
+  `./markdown-editor.css`). CodeMirror 6 on the Markdown text, the live
+  preview drawn in place, IME-safe Enter, loaded lazily behind a plain
+  textarea; toolbar words in en, es and ja. Den's own pages don't load
+  it.
+
 ## [0.4.65] - 2026-11-18
 
 0.4.65-dev.1 was skipped: its commit failed CI and was never handed to a
