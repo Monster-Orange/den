@@ -2,7 +2,7 @@
   "$comment": [
     "Issue 398: what a pull request runs besides jest --findRelatedTests (scripts/affected-tests.mjs).",
     "everything: a changed file matching one of these runs every test (shared shell, kit, request guard, packages, jest and test setup, CI, the selector itself).",
-    "smoke: always run on a pull request: the server boots and answers (server-smoke), every page loads in a browser (report-every-page), and every nav page and shell pop-up shows Report in Chromium and WebKit, en/es/ja (report-sweep, issue 81), every asset and route is served and classified (ui-assets, route-classes).",
+    "smoke: always run on a pull request: the server boots and answers (server-smoke), every page loads in a browser (report-every-page), and every nav page and shell pop-up shows Report in Chromium and WebKit, in English (report-sweep, issue 81; Spanish and Japanese run in the shards, report-sweep-i18n), every asset and route is served and classified (ui-assets, route-classes).",
     "rules: when a changed file matches `when`, the tests matching `run` go too. Page rules come from how browser specs load pages (the URL each opens, and the public/*.js each page loads, transitively); the rest are tests that read files by path, which jest import graph cannot see.",
     "A rule may also name `importers` (helper files: the tests that import them, by jest import graph, run too) and `mentions` (the browser specs that name a changed catalog key or its English text run too).",
     "tests/fixtures/ci-replay-cases.json holds the real CI failures of the replay (scripts/ci-replay.mjs); tests/unit/test-infra/affected-tests.test.ts fails if this map stops catching one."
@@ -95,6 +95,8 @@
         "tests/unit/server/report-choices.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
@@ -122,6 +124,8 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
       "why": "edge.html"
@@ -131,7 +135,11 @@
         "src/ui/server/public/embed-connect.html",
         "src/ui/server/public/embed-connect.js"
       ],
-      "run": ["tests/unit/server/one-url-per-module.browser.test.ts"],
+      "run": [
+        "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts"
+      ],
       "why": "embed-connect.html"
     },
     {
@@ -141,7 +149,9 @@
       ],
       "run": [
         "tests/unit/server/embed-frame.browser.test.ts",
-        "tests/unit/server/one-url-per-module.browser.test.ts"
+        "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts"
       ],
       "why": "embed.html"
     },
@@ -157,6 +167,8 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
@@ -173,6 +185,8 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/untrusted-reports.browser.test.ts"
       ],
       "why": "error.html"
@@ -189,6 +203,8 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/run-outcome.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
         "tests/unit/server/untrusted-reports.browser.test.ts",
@@ -247,6 +263,7 @@
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
         "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -261,8 +278,6 @@
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
-        "tests/unit/server/terminal-recent.browser.test.ts",
-        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
@@ -282,6 +297,8 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts"
@@ -302,6 +319,8 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
       "why": "release.html"
@@ -323,6 +342,8 @@
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
@@ -355,6 +376,8 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pins-project-filter.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
@@ -412,6 +435,8 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
@@ -453,6 +478,8 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/verify-page.browser.test.ts"
       ],
       "why": "verify.html"
@@ -509,6 +536,8 @@
         "tests/unit/server/report-choices.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
@@ -601,6 +630,7 @@
         "tests/unit/server/report-choices.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
         "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -688,6 +718,8 @@
         "tests/unit/server/report-choices.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
@@ -776,6 +808,8 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
@@ -828,6 +862,8 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
+        "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
@@ -884,6 +920,7 @@
         "tests/unit/server/pins-project-filter.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
         "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
@@ -1029,6 +1066,7 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
         "tests/unit/server/report-sweep.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/run-outcome.browser.test.ts",
@@ -1102,7 +1140,7 @@
         "tests/unit/server/my-reports.browser.test.ts",
         "tests/unit/server/report-choices.browser.test.ts",
         "tests/unit/server/report-dialog.browser.test.ts",
-        "tests/unit/server/report-sweep.browser.test.ts",
+        "tests/unit/server/report-sweep-i18n.browser.test.ts",
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
