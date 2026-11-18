@@ -8,7 +8,6 @@ import { describe, expect, it } from "@jest/globals";
 import {
   buildScopeMenuModel,
   ownersLabel,
-  projectRepos,
 } from "../../../src/ui/server/public/workspace-picker.js";
 
 const TIP =
@@ -108,34 +107,35 @@ describe("ownersLabel", () => {
   });
 });
 
-describe("issue 402: the pins follow the project filter", () => {
+describe("issue 402: the project the pins are made for", () => {
   const data = {
     workspaces: {
-      alpha: {
-        services: { shop: {}, "shop/db": {} },
-        repos: { tools: "main" },
-      },
+      alpha: { services: { shop: {}, "shop/db": {} } },
       beta: { services: { "billing/api": {} } },
     },
     active: ["alpha", "beta"],
     focus: "alpha",
   };
-  it("a project's repos: from its services and its managed clones", () => {
-    expect(projectRepos(data, "alpha")).toEqual(["shop", "tools"]);
-    expect(projectRepos(data, "beta")).toEqual(["billing"]);
-    expect(projectRepos(data, "nope")).toEqual([]);
-  });
-  it("filtered to one project, the model names its repos; All active, null", () => {
-    expect(buildScopeMenuModel({ scope: "beta" }, data).pinRepos).toEqual([
-      "billing",
-    ]);
-    expect(buildScopeMenuModel({ scope: "all" }, data).pinRepos).toBeNull();
-    expect(buildScopeMenuModel(null, data).pinRepos).toBeNull();
-  });
-  it("one active project is no filter: every pin shows", () => {
+  it("a project picked names it; All active (or none known), null", () => {
+    expect(buildScopeMenuModel({ scope: "beta" }, data).pinProject).toBe(
+      "beta",
+    );
+    expect(buildScopeMenuModel({ scope: "all" }, data).pinProject).toBeNull();
+    expect(buildScopeMenuModel(null, data).pinProject).toBeNull();
     expect(
-      buildScopeMenuModel({ scope: "alpha" }, { ...data, active: ["alpha"] })
-        .pinRepos,
+      buildScopeMenuModel({ scope: "all" }, { workspaces: {}, active: [] })
+        .pinProject,
     ).toBeNull();
+  });
+  it("one active project is the project picked", () => {
+    expect(
+      buildScopeMenuModel({ scope: "all" }, { ...data, active: ["alpha"] })
+        .pinProject,
+    ).toBe("alpha");
+  });
+  it("the 0.4.66 repo filter is gone", () => {
+    expect("pinRepos" in buildScopeMenuModel({ scope: "beta" }, data)).toBe(
+      false,
+    );
   });
 });
