@@ -4,7 +4,8 @@
  * agents (ctx.agent: their real hook events into Den), read back through
  * GET /api/notifications and the page's badge.
  *
- * Unit tests for the same paths: tests/unit/server/bell-needs-you.test.ts.
+ * Unit tests for the same paths: tests/unit/server/bell-needs-you.test.ts,
+ * bell-142-turn-end.test.ts and bell-142.integration.test.ts.
  * Names are this check's own (gate142-*); teardown marks their items read,
  * removes the agents, and puts the one setting it turns on back.
  */
@@ -116,6 +117,19 @@ async function pageBadge(ctx) {
   });
 }
 
+/**
+ * A turn's end as Claude Code sends it: the answer on screen, then its
+ * Stop hook with the answer as `last_assistant_message` (the hook tells
+ * Den the question it ended on). Not `ctl.stop()`: that stops the agent.
+ */
+async function turnEnd(a, answer) {
+  await a.ctl.print(answer);
+  await a.ctl.hook("Stop", {
+    stop_hook_active: false,
+    last_assistant_message: answer,
+  });
+}
+
 /** A stub agent under this check's own name, recorded for teardown. */
 async function stub(ctx, state, role) {
   const name = `gate142-${role}-${state.tag}`;
@@ -177,8 +191,7 @@ export async function run(ctx, state) {
   // still needs you (the idle notice doesn't undo it).
   {
     const a = await stub(ctx, state, "turnq");
-    await a.ctl.print(`Built it.\n\n${QUESTION}`);
-    await a.ctl.stop();
+    await turnEnd(a, `Built it.\n\n${QUESTION}`);
     await a.ctl.idlePrompt();
     const v = await until(ctx, a, (v) => v.needs.some((n) => !n.read));
     seen.endedAsking = {
@@ -193,8 +206,7 @@ export async function run(ctx, state) {
     const a = await stub(ctx, state, "idle");
     state.idle = a;
     const before = (await bellFor(ctx, a)).unread;
-    await a.ctl.print("Built it. All checks pass.");
-    await a.ctl.stop();
+    await turnEnd(a, "Built it. All checks pass.");
     await a.ctl.idlePrompt();
     const v = await until(ctx, a, (v) => v.updates.length > 0);
     // The idle notice comes after the turn's end; give it time to land.
