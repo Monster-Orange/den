@@ -25,6 +25,7 @@ import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
+import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
   agentsKeepRunningAfterLogout,
@@ -67,6 +68,7 @@ import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
+import { edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -178,6 +180,7 @@ const SELECTORS: Record<string, Selector> = {
     try {
       const cfg = readEdgeConfig();
       const d = tlsStrategyFor(cfg).detect(env);
+      const image = edgeImageCheck(cfg);
       return {
         kind: "tls",
         selected: cfg.tls.strategy,
@@ -185,8 +188,15 @@ const SELECTORS: Record<string, Selector> = {
         available: d.available,
         reason: d.reason,
         problem: !d.available,
-        warnings: [...edgeTlsWarnings(cfg), ...edgeAccessWarnings(cfg)],
-        notes: [edgeAccessHealthy(cfg)].filter((n): n is string => !!n),
+        warnings: [
+          ...edgeTlsWarnings(cfg),
+          ...edgeAccessWarnings(cfg),
+          ...(image.status === "warn" ? [image.detail] : []),
+        ],
+        notes: [
+          image.status === "ok" ? image.detail : null,
+          edgeAccessHealthy(cfg),
+        ].filter((n): n is string => !!n),
       };
     } catch (err) {
       return {
@@ -545,6 +555,26 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         probe: true,
       });
     },
+    // Issue 340: each vendor's pick, read from the store as a start would.
+    signInPicks: async () => {
+      const [
+        { signInPicks },
+        { agentTokenRef, readAgentToken },
+        { runtimeIds },
+      ] = await Promise.all([
+        import("../../shared/agents/signin-accounts.js"),
+        import("../../shared/agents/signin-token.js"),
+        import("../../shared/agents/runtimes.js"),
+      ]);
+      return signInPicks({
+        stateDir: getStateDir(),
+        runtimeIds: runtimeIds(),
+        read: (name) =>
+          readAgentToken({
+            ref: () => agentTokenRef(undefined, undefined, name),
+          }),
+      });
+    },
     // Issue 338: agents on a runtime with no sign-in data (built-in,
     // the distribution's or user.yml's catalog entries).
     noSignIn: () => {
@@ -862,6 +892,36 @@ export function addressLines(
     ],
     problem: false,
     check: { id: "address", status: w.confirmed ? "ok" : "warn", detail },
+  };
+}
+
+/**
+ * Issue 367: the contact push alerts give the push services. With an
+ * https address (web.url) they get it; without one, a mailto fallback
+ * some refuse, so a phone may get no push: warn, and say what to set.
+ */
+export function pushContactLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  title: string,
+  cli: string,
+): { lines: string[]; check: OnboardCheck } {
+  const c = pushContact(w?.url);
+  const detail = c.accepted
+    ? `push services are given ${c.subject} as the contact`
+    : `push alerts may not reach phones: with no https address, push services are given ${c.subject} as the contact, and some refuse it. Set one in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Push alerts`,
+      "",
+      `  push  ${c.accepted ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: {
+      id: "push_contact",
+      status: c.accepted ? "ok" : "warn",
+      detail,
+      ...(c.accepted ? {} : { settings: ADDRESS_SETTINGS_LINK }),
+    },
   };
 }
 
@@ -1287,6 +1347,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    r.checks.push(
+      pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
+    );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
       const rk = requestKeepLines(readBrand().name);
@@ -1344,6 +1407,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
+  for (const l of pushContactLines(
+    readWebUrl(),
+    readBrand().name,
+    product().cli,
+  ).lines)
+    console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)

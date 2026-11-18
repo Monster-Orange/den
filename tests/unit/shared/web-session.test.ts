@@ -286,6 +286,9 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       edgeUnattested: "signin",
       bridgeListen: "auto",
       bridgeProbeSeconds: 10,
+      // den#143: `web up`'s readiness waits.
+      readyProbeSeconds: 10,
+      startWaitSeconds: 120,
       // D16: a sign-in link lasts 5 minutes unless set.
       loginLinkTtlMs: 5 * 60_000,
     });

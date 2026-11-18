@@ -118,6 +118,14 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "gives a project's agents new tools, and sends a bearer to a new address",
   },
+  project_mcp_remove: {
+    risk: "critical",
+    why: "takes tools away from a project's agents at their next start (issue 352: the person's own Allow)",
+  },
+  project_mcp_update: {
+    risk: "critical",
+    why: "sends a project's agents' calls, and maybe a bearer, to another address",
+  },
   persona_create: {
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access",
@@ -138,6 +146,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "restarts Den for every project; server_agent.self_update decides for Den's own agent",
   },
+  hub_project_create: {
+    risk: "routine",
+    why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
+  },
   agent_create: {
     risk: "routine",
     why: "starts an agent in the project's mode or a stricter one",
@@ -157,6 +169,14 @@ export const HELD_WRITE_RISK: Readonly<
   verify_run: {
     risk: "critical",
     why: "runs checks against a shared environment (CRITICAL_HELD_ACTIONS)",
+  },
+  embed_key_create: {
+    risk: "critical",
+    why: "lets a web app message an agent and read its state; a person's own ask",
+  },
+  embed_key_revoke: {
+    risk: "critical",
+    why: "a person's own ask, from Settings › Embedding",
   },
   approval_policy: {
     risk: "critical",

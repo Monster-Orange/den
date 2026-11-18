@@ -37,11 +37,19 @@
  *                               shown in Setup ("claude setup-token")
  *                 lastsDays     how long it lasts, for the "make a new
  *                               one" warning
+ *                 docs          the vendor's own page on that sign-in
+ *                               (https), which Settings links where it
+ *                               says where the token comes from (issue
+ *                               399)
  *                 limitPattern  how the CLI words a usage limit (a
  *                               case-insensitive pattern), so Den can see
  *                               a cap in the agent's output
  *                 None: its agents cannot sign in after logout, and doctor
  *                 says so. Nothing is guessed.
+ *   accountName   what the vendor itself calls the account a person signs
+ *                 in with ("Claude" for Claude Code: "Claude account A";
+ *                 issue 339). An account is the vendor's, not the CLI's.
+ *                 Unset (a config-added entry): the entry's name.
  *
  * Each built-in entry was checked against the vendor's own docs or
  * installer (the URLs beside it). A vendor with no official CLI is left
@@ -85,6 +93,8 @@ export interface CatalogSignIn {
   command?: string;
   /** How many days the credential lasts. */
   lastsDays?: number;
+  /** The vendor's own docs on that sign-in (an https URL; issue 399). */
+  docs?: string;
   /** A case-insensitive pattern for its usage-limit message. */
   limitPattern?: string;
 }
@@ -105,6 +115,18 @@ export interface CatalogEntry {
   titleFromOsc?: boolean;
   /** How its agents sign in without a person (issue 338). None: they can't. */
   signIn?: CatalogSignIn;
+  /**
+   * Issue 339: what the vendor calls the account ("Claude"). Unset: the
+   * entry's name (accountNameOf).
+   */
+  accountName?: string;
+}
+
+/** Issue 339: whose account it is, in the vendor's words: "<this> account A". */
+export function accountNameOf(
+  e: Pick<CatalogEntry, "name" | "accountName">,
+): string {
+  return e.accountName ?? e.name;
 }
 
 /** The bytes Shift+Enter sends for an entry (ESC CR when it says none). */
@@ -127,10 +149,17 @@ const ENTRY_KEYS = [
   "sessionName",
   "titleFromOsc",
   "signIn",
+  "accountName",
 ] as const;
 
 /** The keys `signIn` takes. */
-const SIGN_IN_KEYS = ["env", "command", "lastsDays", "limitPattern"] as const;
+const SIGN_IN_KEYS = [
+  "env",
+  "command",
+  "lastsDays",
+  "limitPattern",
+  "docs",
+] as const;
 
 /** Den's built-in catalog, in the order lists show them. */
 export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
@@ -168,9 +197,14 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
       env: "CLAUDE_CODE_OAUTH_TOKEN",
       command: "claude setup-token",
       lastsDays: 365,
+      docs: "https://code.claude.com/docs/en/authentication",
       limitPattern:
         "usage limit reached|limit reached\\s*[∙·]\\s*resets|you've hit your (usage )?limit",
     },
+    // https://code.claude.com/docs/en/authentication: "log in with your
+    // claude.ai account"; setup-token "authenticates with your Claude
+    // subscription".
+    accountName: "Claude",
   },
   // Codex CLI. https://github.com/openai/codex: binary `codex`, npm
   // @openai/codex, Homebrew cask codex. The standalone installer
@@ -192,6 +226,11 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // The composer's insert_newline is Ctrl+J (codex-rs/tui keymap): a
     // plain terminal's Shift+Enter and Alt+Enter submit (openai/codex#20580).
     softNewline: "lf",
+    // https://learn.chatgpt.com/docs/auth (developers.openai.com/codex/auth
+    // redirects there): "Sign in with ChatGPT", "your ChatGPT account" (an
+    // API key is an "OpenAI Platform account"; the subscription sign-in is
+    // ChatGPT's).
+    accountName: "ChatGPT",
   },
   // Gemini CLI. https://github.com/google-gemini/gemini-cli: binary
   // `gemini`, npm @google/gemini-cli, Homebrew formula gemini-cli;
@@ -212,6 +251,9 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // https://geminicli.com/docs/reference/keyboard-shortcuts: Alt+Enter
     // (ESC CR), Ctrl+J and Shift+Enter insert a newline.
     softNewline: "esc-cr",
+    // https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/authentication.mdx:
+    // "Sign in with Google", "your personal Google account".
+    accountName: "Google",
   },
   // Grok Build. https://docs.x.ai/build/overview: install with
   // https://x.ai/cli/install.sh, run `grok` in a project directory. The
@@ -230,6 +272,10 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["$GROK_BIN_DIR", "~/.grok/bin", "~/.local/bin", "/usr/local/bin"],
     launch: { argv: ["{bin}"] },
+    // https://docs.x.ai/build/overview says only "opens a browser for
+    // authentication" (or XAI_API_KEY) and never names the account, so the
+    // vendor's company name.
+    accountName: "xAI",
   },
 ];
 
@@ -303,7 +349,7 @@ function denOwnsEnv(name: string): boolean {
 function validateSignIn(raw: unknown, where: string): CatalogSignIn {
   if (!isMapping(raw))
     throw new Error(
-      `${where}: must be a mapping { env, command, lastsDays, limitPattern }`,
+      `${where}: must be a mapping { env, command, lastsDays, limitPattern, docs }`,
     );
   for (const k of Object.keys(raw))
     if (!(SIGN_IN_KEYS as readonly string[]).includes(k))
@@ -335,6 +381,21 @@ function validateSignIn(raw: unknown, where: string): CatalogSignIn {
         `${where}.lastsDays: must be a whole number of days, 1-3650`,
       );
     out.lastsDays = n;
+  }
+  if (raw.docs !== undefined) {
+    const d = raw.docs;
+    let ok = typeof d === "string" && d.length <= 300 && !/\s/.test(d);
+    if (ok)
+      try {
+        ok = new URL(d as string).protocol === "https:";
+      } catch {
+        ok = false;
+      }
+    if (!ok)
+      throw new Error(
+        `${where}.docs: must be the vendor's https URL, up to 300 characters`,
+      );
+    out.docs = d as string;
   }
   if (raw.limitPattern !== undefined) {
     const p = raw.limitPattern;
@@ -479,6 +540,21 @@ export function validateCatalogEntry(
     raw.signIn === undefined
       ? undefined
       : validateSignIn(raw.signIn, `${where}.signIn`);
+  let accountName: string | undefined;
+  if (raw.accountName !== undefined) {
+    const a = raw.accountName;
+    // A vendor's name, never a person's email (issue 339).
+    if (
+      typeof a !== "string" ||
+      !a.trim() ||
+      a.length > 40 ||
+      /[\0\n\r@]/.test(a)
+    )
+      throw new Error(
+        `${where}.accountName: must name the vendor as it names its sign-in ("Claude", as in Claude account), 1-40 characters, one line, no @`,
+      );
+    accountName = a.trim();
+  }
   return {
     id,
     vendor: text(`${where}.vendor`, raw.vendor),
@@ -489,6 +565,7 @@ export function validateCatalogEntry(
     launch: { argv },
     ...traits,
     ...(signIn ? { signIn } : {}),
+    ...(accountName ? { accountName } : {}),
   };
 }
 

@@ -6,6 +6,7 @@ import { prepareAccessRaw } from "./access-sweep.js";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 import { must, sh } from "./exec.js";
 import { readWebPort } from "./config.js";
 import { ensureEdgeProof, readEdgeProof, rotateEdgeProof } from "./proof.js";
@@ -29,13 +30,23 @@ import {
   tlsStrategyFor,
   warnImplicitTlsOnce,
 } from "./tls.js";
+import {
+  edgeChangesText,
+  edgeSpecChanges,
+  edgeUpLine,
+  edgeUpOutcome,
+  parseEdgeInspect,
+  renderedEdgeSpec,
+  type EdgeUpOutcome,
+  type RunningEdge,
+} from "./spec.js";
 import type { EdgeConfig } from "./types.js";
 
 export { assertCaUsable, caDir, caTrusted, sharedCa };
 
+/** Traefik watches these files: each is replaced whole (#380). */
 function write(file: string, content: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, content, "utf-8");
+  writeFileAtomic(file, content);
 }
 
 /**
@@ -43,11 +54,7 @@ function write(file: string, content: string): void {
  * whole (a rename), so Traefik's watch never reads half of it.
  */
 function writeSecret(file: string, content: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, { encoding: "utf-8", mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, content, { mode: 0o600 });
 }
 
 /**
@@ -172,7 +179,7 @@ export function syncIncluded(cfg: EdgeConfig): string[] {
   for (const f of readLedger(cfg.stateDir))
     if (!files.includes(f) && !isOwnedElsewhere(f) && !f.includes("/"))
       fs.rmSync(path.join(dyn, f), { force: true });
-  fs.writeFileSync(
+  writeFileAtomic(
     path.join(cfg.stateDir, INCLUDED_LEDGER),
     JSON.stringify(files, null, 2) + "\n",
   );
@@ -269,25 +276,16 @@ export function assertEdgeOwnedHere(
   );
 }
 
-/** A container's command (`docker inspect .Config.Cmd`), or null. */
-export function runningEdgeCommand(name: string): string[] | null {
-  const r = sh("docker", [
-    "inspect",
-    "--type",
-    "container",
-    "-f",
-    "{{json .Config.Cmd}}",
-    name,
-  ]);
-  if (r.code !== 0) return null;
-  try {
-    const v: unknown = JSON.parse(r.out);
-    return Array.isArray(v) && v.every((x) => typeof x === "string")
-      ? (v as string[])
-      : null;
-  } catch {
-    return null;
-  }
+/** The edge container as `docker inspect` gives it, or null (#385). */
+export function inspectEdge(name: string): RunningEdge | null {
+  const r = sh("docker", ["inspect", "--type", "container", name]);
+  return r.code === 0 ? parseEdgeInspect(r.out) : null;
+}
+
+/** The id the image reference resolves to here, or null (not pulled). */
+function localImageId(ref: string): string | null {
+  const r = sh("docker", ["image", "inspect", "-f", "{{.Id}}", ref]);
+  return r.code === 0 && r.out ? r.out : null;
 }
 
 /**
@@ -295,6 +293,8 @@ export function runningEdgeCommand(name: string): string[] | null {
  * it drops (Den owns the entrypoints' trust), and, when the running edge's
  * command differs from the new one, that it recreates the edge once and
  * why. Pure: `running` is the running container's command, or null.
+ * edgeUp passes null: its #385 line (spec.ts) names every field that
+ * changed, the command's flags among them.
  */
 export function edgeUpNotices(
   cfg: EdgeConfig,
@@ -371,11 +371,35 @@ export async function edgeUp(
   const compose = path.join(cfg.stateDir, "compose.yml");
   // SEC-2a: say what changed before compose recreates the edge for it.
   const log = opts.log ?? ((l: string) => console.log(l));
-  for (const line of edgeUpNotices(cfg, runningEdgeCommand(n.container)))
-    log(line);
-  write(compose, renderEdgeCompose(cfg, realOrSelf(cfg.stateDir)));
+  // #385: the running container's spec against the one rendered now
+  // (image, ports, command flags, mounts, networks), said before compose
+  // recreates it, and what happened after.
+  const root = realOrSelf(cfg.stateDir);
+  const before = inspectEdge(n.container);
+  const changes = before
+    ? edgeSpecChanges(
+        before.spec,
+        renderedEdgeSpec(cfg, root, localImageId(cfg.image)),
+        realOrSelf,
+      )
+    : [];
+  for (const line of edgeUpNotices(cfg, null)) log(line);
+  if (before?.running && changes.length)
+    log(
+      `Recreating ${n.container} because ${edgeChangesText(changes)}: ` +
+        "routes drop while it restarts.",
+    );
+  write(compose, renderEdgeCompose(cfg, root));
+  const began = Date.now();
   must("docker", ["compose", "-f", compose, "up", "-d", "--remove-orphans"]);
-  return { certs, included };
+  const outcome: EdgeUpOutcome = edgeUpOutcome(
+    before,
+    inspectEdge(n.container),
+    changes,
+    { began, ended: Date.now() },
+  );
+  log(edgeUpLine(outcome));
+  return { certs, included, outcome };
 }
 
 export function edgeDown(cfg: EdgeConfig): void {

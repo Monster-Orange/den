@@ -728,6 +728,21 @@
     "set.ui.signOutAllDone": "Signed out everywhere",
     "set.ui.devicesSignedIn": "The devices can only be listed signed in.",
     "set.ui.asked": "asked {ago}",
+    "set.ui.appKeyAllow": "Allow it in the dialog.",
+    "set.ui.appKeyAgent": "Agent",
+    "set.ui.appKeyOrigin": "Web app",
+    "set.ui.appKeyLabel": "Name (optional)",
+    "set.ui.appKeyMake": "Make key",
+    "set.ui.appKeyNoOrigin": "Add the web app to the list above first.",
+    "set.ui.appKeyNone": "No app keys yet.",
+    "set.ui.appKeyUsed": "last used {when}",
+    "set.ui.appKeyUnused": "never used",
+    "set.ui.appKeyRevoked": "revoked {when}",
+    "set.ui.appKeyRevoke": "Revoke",
+    "set.ui.appKeyOnce":
+      "Copy this key into the web app's backend now. It is not shown again.",
+    "set.ui.appKeyNew": "New app key",
+    "set.ui.copy": "Copy",
     "set.ui.saveOrigins": "Save list",
     "set.ui.approve": "Approve",
     "set.ui.deny": "Deny",
@@ -736,7 +751,14 @@
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
     "set.ui.noPairHost":
-      "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+      "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
+    "set.ui.edgeStart": "Start the edge",
+    "set.ui.edgeApply": "Apply",
+    "set.ui.edgeStarted": "Edge started",
+    "set.ui.edgeCurrent": "Edge up to date, nothing restarted",
+    "set.ui.edgeRecreated":
+      "Edge recreated because {why}; it was unreachable for about {s} s",
+    "set.ui.edgeWhy": "its settings changed",
     "set.ui.edgeHost": "Edge hostname",
     "set.ui.pairScan":
       "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good.",
@@ -753,7 +775,8 @@
     "set.ui.portUnset": "Not set: the distribution's applies",
     "set.ui.signedIn": "Signed in",
     "set.ui.signOut": "Sign out",
-    "set.ui.notSignedIn": "Not signed in: run {cmd}",
+    "set.ui.notSignedIn": "Not signed in",
+    "set.ui.signIn": "Sign in",
     "set.ui.savedIn": "Saved in {vault}",
     "set.ui.theVault": "the vault",
     "set.ui.savedMemory": "Held in memory until Den restarts",
@@ -1032,6 +1055,32 @@
     "set.notifications.fold_days.o.7": "7 days",
     "set.notifications.fold_days.o.14": "14 days",
     "set.notifications.fold_days.o.30": "30 days",
+    "set.notifications.phone": "Alerts on this device by push",
+    "set.notifications.phone.d":
+      "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+    "set.notifications.phone.none":
+      "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+    "set.notifications.phone.failed": "Couldn't turn on push here.",
+    "set.notifications.quiet_from": "Quiet hours start",
+    "set.notifications.quiet_from.d":
+      "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+    "set.notifications.quiet_to": "Quiet hours end",
+    "set.notifications.quiet_to.d":
+      "Alerts outside the bell start again at this time.",
+    "set.notifications.quiet.off": "Off",
+    "set.notifications.quiet.half": "Quiet hours need a start and an end.",
+    "set.notifications.push_timeout": "Push wait",
+    "set.notifications.push_timeout.d":
+      "How long __DEN_TITLE__ waits for a push service to take one alert for a device. After this, that alert is left; the next one tries again. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push kept for",
+    "set.notifications.push_ttl.d":
+      "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "Desktop alerts",
+    "set.notifications.desktop.d":
+      "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+    "set.notifications.desktop.denied":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+    "set.notifications.desktop.none": "This browser can't show notifications.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
@@ -1044,7 +1093,7 @@
     "set.agents.personas.d":
       "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
     "set.agents.keep_running.d":
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     "set.cli.local_dev.d":
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     "set.cli.cli_tabs.d":
@@ -1067,6 +1116,10 @@
       "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
     "set.embed.url_max.d":
       "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
+    "set.embed.app_keys.d":
+      "A key for a web app's own backend on this computer: it can pass on its person's messages to one agent, typed after the agent's turn, and read that agent's state. Nothing else. You allow each key, it is shown once, and you can revoke it here.",
+    "set.embed.app_key_audit.d":
+      "An app key's state reads go into the activity trail as one line per this many seconds, with how many there were, so a web app that checks often doesn't flood it.",
     "set.embed.origins.d":
       "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
     "set.embed.key_minutes.d":
@@ -1388,6 +1441,9 @@
     "keep.s": "Applied. __DEN_TITLE__ restarts.",
     "keep.needs": "Needs your admin password.",
     "keep.failed": "Not applied. Nothing changed.",
+    "busy.edgeW": "Starting the edge…",
+    "busy.edgeS": "Edge started",
+    "busy.edgeF": "The edge didn't start.",
     "keep.onNow": "On: agents keep running after you log out.",
     "keep.offNow": "Off: agents stop when you log out.",
     "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
@@ -1397,7 +1453,7 @@
     "keep.offer":
       "Not set yet, so agents stop when you log out. Turn it on and press Apply (it asks for your admin password once).",
     "keep.noToken":
-      "No sign-in token is set: agents will not be able to sign in after logout. Make one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "No sign-in token is set: agents will not be able to sign in after logout. {runtime} makes one when you sign in to it ({docs}); paste it into {field} below.",
     "keep.credKeychain":
       "The store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md).",
     "keep.setup":
@@ -1422,7 +1478,24 @@
     "keep.tokenSet": "Agents sign in with the token set {date}.",
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
-      "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "The sign-in token was set {n} days ago, and it lasts about a year. {runtime} makes a new one when you sign in to it ({docs}); paste it into {field} below.",
+    "keep.docs": "its sign-in docs",
+    "keep.runtimeAny": "Your agents' CLI",
+    "acct.title": "{vendor} accounts",
+    "acct.default": "{vendor} account {letter}",
+    "acct.add": "Add {vendor} account",
+    "acct.none": "No token.",
+    "acct.set": "Token set {date}.",
+    "acct.setUnknown": "Token set.",
+    "acct.first": "Agents sign in with this one.",
+    "acct.tokenLabel": "Sign-in token for {name}",
+    "acct.tokenSave": "Set sign-in token",
+    "acct.up": "Move up",
+    "acct.down": "Move down",
+    "acct.failed": "Not saved: {error}",
+    "busy.askAllowW": "Asking…",
+    "busy.askAllowS": "Asked. Allow it in the dialog.",
+    "busy.askAllowF": "Couldn't ask.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
@@ -1668,6 +1741,27 @@
     "hubp.linkProject": "Link {project} to a Hub project",
     "hubp.scope":
       "Linking affects only the project {project}. Your other projects aren't changed.",
+    // Issue 271: Create a Hub project from the link picker.
+    "hubp.createOpt": "Create a Hub project named {name}",
+    "hubp.newName": "Name in Hub",
+    "hubp.create": "Create",
+    "hubp.nameEmpty": "Type a name for the Hub project.",
+    "hubp.nameLong": "A Hub project's name is up to 80 characters.",
+    "hubp.asked":
+      "Den asked Hub to create the Hub project {name} for {project}.",
+    "hubp.youAllow":
+      "You're an owner in Hub. Allow it there, and Den links {project} to it.",
+    "hubp.allowBtn": "Allow in Hub",
+    "hubp.ownerMust":
+      "An owner of {company} in Hub must allow it. Den links {project} on its own when they do.",
+    "hubp.ownerMustAny":
+      "An owner of your company in Hub must allow it. Den links {project} on its own when they do.",
+    "hubp.declined":
+      "An owner in Hub declined the Hub project {name}. Pick a Hub project, or ask again.",
+    "hubp.ended": "Hub's ask for {name} ended with no change. Ask again.",
+    "hubp.createW": "Asking Hub to create {name}…",
+    "hubp.createS": "Asked. An owner allows it in Hub.",
+    "hubp.createF": "Hub didn't take the ask. Nothing was created.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
     "hub.reconnect": "Reconnect",
@@ -1745,6 +1839,12 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "Readiness check, in seconds",
+    "set.server.ready_probe.d":
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "Start wait, in seconds",
+    "set.server.start_wait.d":
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
@@ -1853,6 +1953,8 @@
     "acct.roleOwner": "Owner",
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
+    "set.embed.app_keys": "App keys",
+    "set.embed.app_key_audit": "App key reads in one activity line",
     "set.embed.origins": "Web apps that may embed agents",
     "set.embed.key_minutes": "Embedded pane's permission lasts",
     "set.embed.context_max_kb": "Largest shared page",
@@ -2182,11 +2284,31 @@
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
+    "ap.do.embed_key_create":
+      "Let {origin} message {agent} in {project} and read its state",
+    "ap.do.embed_key_revoke": "Revoke {origin}'s key for {agent} in {project}",
+    "ap.det.embed_key_create.reach":
+      "Makes a key for {origin}'s own backend. It reaches only {agent} in {project}: its state, and messages typed after its turn ends.",
+    "ap.det.embed_key_create.once":
+      "The key is shown once, here, after you allow. Den keeps only its hash.",
+    "ap.det.embed_key_create.revoke":
+      "You can revoke it any time in Settings › Embedding.",
+    "ap.det.embed_key_revoke.reach":
+      "{origin} can no longer message {agent} or read its state with this key.",
+    "ap.det.embed_key_revoke.held":
+      "Messages it sent that wait for the agent's turn are still typed.",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
     "ap.pm.warn": "This lets agents in {project} act without asking you.",
     "ap.pm.project": "Project: {project}",
+    // Issue 271: hub_project_create's Allow.
+    "ap.do.hub_project_create":
+      "Ask Hub to create the Hub project {name} for project {project}",
+    "ap.hc.project": "Project: {project}",
+    "ap.hc.name": "Name in Hub: {name}",
+    "ap.hc.owner":
+      "An owner in Hub allows it there; Den links the project to it once they do.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":
@@ -2274,10 +2396,26 @@
       "The mode this project's agents run in, over the Den-wide default. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
     "set.workspace.mcp_servers": "Agents' extra MCP servers: this project",
     "set.workspace.mcp_servers.d":
-      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. An agent adds one with project_mcp_add, and you Allow it.",
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
     "pmcp.none": "No extra MCP servers for this project's agents.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "Couldn't read this project's MCP servers.",
+    "pmcp.edit": "Change",
+    "pmcp.editL": "Change {name}",
+    "pmcp.remove": "Remove",
+    "pmcp.removeL": "Remove {name}",
+    "pmcp.url": "Address",
+    "pmcp.bearer": "Bearer",
+    "pmcp.bearerKeep": "a secrets.refs name; blank keeps it",
+    "pmcp.noBearer": "No bearer",
+    "pmcp.save": "Save",
+    "pmcp.cancel": "Cancel",
+    "pmcp.rmT": "Remove the MCP server?",
+    "pmcp.rmAsk":
+      "Remove {name} from project {project}'s agents? They lose its tools at their next start or resume.",
+    "pmcp.rmW": "Removing the MCP server…",
+    "pmcp.rmS": "Removed.",
+    "pmcp.rmF": "Couldn't remove the MCP server.",
     "ap.do.project_mcp_add":
       "Add MCP server {name} ({url}) to project {project}'s agents",
     "ap.mcp.warn":
@@ -2287,6 +2425,13 @@
       "Bearer: read from secrets.refs.{ref} at each call; never written to the agent's files or env.",
     "ap.mcp.noBearer": "No bearer: its calls carry no Authorization header.",
     "ap.mcp.next": "Agents in {project} get it at their next start or resume.",
+    "ap.do.project_mcp_remove":
+      "Remove MCP server {name} ({url}) from project {project}'s agents",
+    "ap.do.project_mcp_update":
+      "Change MCP server {name} for project {project}'s agents (now {url})",
+    "ap.mcp.removeWarn":
+      "Agents in {project} lose the tools of {name} at their next start or resume.",
+    "ap.mcp.urlChange": "MCP {name}: {from} → {to}",
     "pmode.none": "Use Den-wide",
     "pmode.following": "Following Den-wide: {m}",
     "pmode.setHere": "Set for this project: {m} (Den-wide is {dw})",
@@ -2694,6 +2839,9 @@
       "Its subagents (Explore too) run on {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Its subagents (Explore too) run on {model}: Den's default. agents.subagents.model or a persona's subagent_model changes it.",
+    "ag.signIn": "on {label}",
+    "ag.signIn.tip":
+      "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
@@ -2839,6 +2987,67 @@
     "edge.cert.none": "None: the included config holds the certs.",
     "edge.notConfigured": "Not configured",
     "edge.unreachable": "unreachable",
+    // issue 171: values the pages show (value-words.js, log-history.ts).
+    "val.docker.created": "created",
+    "val.docker.running": "running",
+    "val.docker.paused": "paused",
+    "val.docker.restarting": "restarting",
+    "val.docker.removing": "removing",
+    "val.docker.exited": "stopped",
+    "val.docker.dead": "dead (can't restart)",
+    "val.docker.absent": "not found",
+    "val.tls.none": "none",
+    "val.tls.files": "files",
+    "val.gh.success": "succeeded",
+    "val.gh.failure": "failed",
+    "val.gh.error": "error",
+    "val.gh.cancelled": "cancelled",
+    "val.gh.timed_out": "timed out",
+    "val.gh.inactive": "inactive",
+    "val.gh.in_progress": "in progress",
+    "val.gh.queued": "queued",
+    "val.gh.pending": "pending",
+    "val.gh.waiting": "waiting",
+    "val.gh.requested": "requested",
+    "val.gh.skipped": "skipped",
+    "val.gh.action_required": "action required",
+    "val.gh.neutral": "neutral",
+    "val.gh.stale": "stale",
+    "val.gh.startup_failure": "failed to start",
+    "val.perf.httpReqs": "HTTP requests",
+    "val.perf.iterations": "Iterations",
+    "val.perf.vus": "Virtual clients (VUs)",
+    "val.perf.httpAvg": "HTTP avg",
+    "val.perf.httpP50": "HTTP p50",
+    "val.perf.httpP95": "HTTP p95",
+    "val.perf.httpP99": "HTTP p99",
+    "val.perf.httpMax": "HTTP max",
+    "val.perf.reqRate": "Requests / sec",
+    "val.perf.iterRate": "Iterations / sec",
+    "val.perf.failRate": "Failure rate",
+    "val.h.twice": "{why}, twice in a row",
+    "val.h.timeout": "timed out",
+    "val.h.noAnswer": "no answer in {s} s",
+    "val.h.dns": "name not found (DNS)",
+    "val.h.noRoute": "no route for it (404)",
+    "val.h.fallback": "not this service (localhost answered with an error)",
+    "val.h.killed": "stopped by {signal}",
+    "val.h.exit": "check failed (exit code {code})",
+    "val.h.refused": "connection refused",
+    "val.h.reset": "connection dropped",
+    "val.h.unreachable": "no answer",
+    "val.h.tls": "certificate not accepted",
+    "val.h.dockerUnknown": "Docker didn't answer",
+    "val.h.noContainer": "no container {name}",
+    "val.h.unhealthy": "{name}: failing its health check",
+    "val.h.starting": "{name}: starting",
+    "val.h.healthy": "{name}: healthy",
+    "val.h.container": "{name}: {state}",
+    "lg.why.badName": "not a valid repo or service name",
+    "lg.why.notLocal": "only on local for now, not on {env}",
+    "lg.why.noProject": "can't tell which project {name} is in",
+    "lg.why.noSource": "{name} has no running container or log file",
+    "lg.why.noSnapshot": "couldn't copy the container's log",
     // issue 171: the Environments page.
     "env.recheck": "Re-check",
     "env.checking": "checking…",
@@ -7097,6 +7306,14 @@
             });
             return;
           } else if (decision === "allow") toast(apDoneWords(a, res));
+          // Issue 334: the page that asked hears what ran (a new app key,
+          // in it once: the server forgets it after this answer).
+          if (decision === "allow" && res && res.ok !== false)
+            window.dispatchEvent(
+              new CustomEvent("den:approval-done", {
+                detail: { id: a.id, action: a.action, result: res },
+              }),
+            );
           apClose();
           apPoll();
         },
@@ -7169,6 +7386,11 @@
       });
     else hideBanner("approvals");
   }
+  // Issue 334: a page that just asked (Settings › Embedding) opens the
+  // dialog now, not at the next poll.
+  window.addEventListener("den:approvals-poll", function () {
+    apPoll();
+  });
   function apPoll() {
     if (document.hidden || ap.busy) return;
     apList(false).then(

@@ -17,6 +17,9 @@
  *                     an inactive workspace is activated first, on the
  *                     same Allow, and the Review says so
  *   hub_connect       #267: set, change or clear Hub's address
+ *   hub_project_create issue 271: ask Hub for a new project to link a
+ *                     project to (hub-create-routes.ts, the code Settings
+ *                     runs); an owner decides it in Hub, Den links it
  *   den_restart       SRV-1a: restart this Den's web server, in place
  *                     (server-restart.ts); the agent that asked is told
  *                     when it is back
@@ -46,9 +49,16 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
+ *   embed_key_create  issue 334: an app key for a web app's own server,
+ *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
+ *                     person's own ask and Allow only; the key is shown
+ *                     once, to the Allow's browser
  *   project_mcp_add   issue 335: one more HTTP MCP server for a project's
  *                     agents, its bearer a secrets.refs name (agent-ops.ts
  *                     checkProjectMcpAdd); always the person's own Allow
+ *   project_mcp_remove issue 352: take one away, or change its url or
+ *   project_mcp_update bearer reference (agent-ops.ts checkProjectMcpRemove,
+ *                     checkProjectMcpUpdate); always the person's own Allow
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -143,12 +153,20 @@ export interface HeldActionDeps {
   projectMode?: HeldOp;
   /** #267: hub_connect's check and write (hub-address.ts). */
   hubAddress?: HeldOp;
+  /** Issue 271: ask Hub for a new project to link a project to. */
+  hubCreate?: HeldOp;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
   projectMcp?: HeldOp;
+  /** Issue 352: project_mcp_remove's check and save (agent-ops.ts). */
+  projectMcpRemove?: HeldOp;
+  /** Issue 352: project_mcp_update's check and save (agent-ops.ts). */
+  projectMcpUpdate?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
+  /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
+  appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
   verifyRun?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
@@ -203,10 +221,14 @@ export interface HeldActionDeps {
  * Issue 208: held writes that always ask the person. No setting and no
  * approval policy lets one run without their own Allow: a Verify run on
  * a shared environment sends requests to an environment others use.
- * Each one's check also says personOnly, for today's auto-allow.
+ * Each one's check also says personOnly, for today's auto-allow. Issue
+ * 334: an app key hands a web app access to an agent, so making and
+ * revoking one are the person's own too.
  */
 export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "verify_run",
+  "embed_key_create",
+  "embed_key_revoke",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -521,13 +543,30 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.projectMcp,
     "this Den can't add a project's MCP servers here",
   );
+  const projectMcpRemove = op(
+    d.projectMcpRemove,
+    "this Den can't remove a project's MCP servers here",
+  );
+  const projectMcpUpdate = op(
+    d.projectMcpUpdate,
+    "this Den can't change a project's MCP servers here",
+  );
   const hubConnect = op(d.hubAddress, "this Den can't set Hub's address here");
+  const hubCreate = op(d.hubCreate, "this Den can't ask Hub for projects here");
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
     d.agentMode,
     "this Den can't change an agent's mode here",
   );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
+  const appKeyCreate = op(
+    d.appKeys?.create,
+    "this Den can't make app keys here",
+  );
+  const appKeyRevoke = op(
+    d.appKeys?.revoke,
+    "this Den can't revoke app keys here",
+  );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
 
   const repoClone: HeldAction = {
@@ -795,7 +834,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     repo_clone: repoClone,
     project_mode: projectMode,
     project_mcp_add: projectMcp,
+    project_mcp_remove: projectMcpRemove,
+    project_mcp_update: projectMcpUpdate,
     hub_connect: hubConnect,
+    hub_project_create: hubCreate,
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,
@@ -803,5 +845,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     approval_policy: approvalPolicy,
     pr_close: prClose,
     den_pin_commit: pinCommit,
+    embed_key_create: appKeyCreate,
+    embed_key_revoke: appKeyRevoke,
   };
 }

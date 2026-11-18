@@ -7,6 +7,7 @@ import {
   type UserConfig,
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
+import { patchAlerts } from "../../shared/alerts.js";
 
 import { product } from "../../shared/product.js";
 type ConfigKey = keyof UserConfig;
@@ -43,6 +44,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // 0.4.48: Den on the Docker bridge for the edge (Linux).
   "web.bridge_listen": ["web_bridge", "listen"],
   "web.bridge_probe_seconds": ["web_bridge", "probe_seconds"],
+  // den#143: how long `web up` waits for the server.
+  "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
+  "web.start_wait_seconds": ["web_ready", "start_seconds"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   "agents_list.refresh_timeout_seconds": [
@@ -64,6 +68,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   ],
   "agent_context.context_tokens": ["agent_context", "context_tokens"],
   "agent_context.pause_after_loop": ["agent_context", "pause_after_loop"],
+  // Issue 367: how long one push may take, and how long a push service keeps it.
+  "alerts.push_timeout_seconds": ["alerts", "push_timeout_seconds"],
+  "alerts.push_ttl_seconds": ["alerts", "push_ttl_seconds"],
 };
 
 /**
@@ -99,7 +106,11 @@ function setSwitch(name: string, value: unknown): void {
 function setDotted(name: string, value: unknown): void {
   const [field, limit] = DOTTED[name]!;
   const user = readUserConfig() as Record<string, unknown>;
-  const r = patchCliRows(user, { [field]: { [limit]: value } }, { cli: true });
+  // Issue 367: alerts are checked as the Settings page checks them.
+  const r =
+    field === "alerts"
+      ? patchAlerts(user as UserConfig, { [limit]: value })
+      : patchCliRows(user, { [field]: { [limit]: value } }, { cli: true });
   if (!r.ok) throw new Error(r.error);
   writeUserConfig(user as UserConfig);
 }

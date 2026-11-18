@@ -352,6 +352,9 @@ export function edgeCommand(cfg: EdgeConfig): string[] {
 export const EDGE_ACCESS_DIR = "/var/log/edge";
 export const EDGE_ACCESS_RAW = `${EDGE_ACCESS_DIR}/access.json`;
 
+/** The edge image Den ships as its default (`edge.image`). */
+export const DEFAULT_TRAEFIK_IMAGE = "traefik:v3.7.17";
+
 /**
  * The Traefik major version an image reference names, from its tag:
  * `traefik:v2.11`, `traefik:2.11.3`, `docker.io/library/traefik:v3.7.17`,
@@ -406,6 +409,33 @@ export function accessLogNoTraceNotice(cfg: EdgeConfig): string | null {
   return traefikMajor(cfg.image) === null
     ? `Access log on without request ids: Den can't tell which Traefik version ${cfg.image} is.`
     : `Access log on without request ids: ${cfg.image} is older than Traefik v3.`;
+}
+
+/**
+ * Doctor's line for `edge.image` (#331): OK on Traefik v3 or later; else a
+ * warning naming what's missing and the default image to move to. Only the
+ * request ids need v3: every other flag and route Den renders works on v2.
+ */
+export function edgeImageCheck(cfg: Pick<EdgeConfig, "image">): {
+  status: "ok" | "warn";
+  detail: string;
+} {
+  const major = traefikMajor(cfg.image);
+  const fix = `Set edge.image to ${DEFAULT_TRAEFIK_IMAGE}, Den's default.`;
+  if (major === null)
+    return {
+      status: "warn",
+      detail: `edge.image ${cfg.image}: Den can't tell which Traefik version it is, so it leaves out the flags only some versions take (request ids in the access log). ${fix}`,
+    };
+  if (major < 3)
+    return {
+      status: "warn",
+      detail: `edge.image ${cfg.image} is Traefik v${major}: the access log has no request ids (OTLP tracing needs v3). ${fix}`,
+    };
+  return {
+    status: "ok",
+    detail: `edge.image ${cfg.image} is Traefik v${major}: every flag Den sets works`,
+  };
 }
 
 /**

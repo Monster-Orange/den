@@ -186,6 +186,10 @@ import {
   followProjectMode,
   projectModeView,
   projectMcpView,
+  checkProjectMcpRemove,
+  runProjectMcpRemove,
+  checkProjectMcpUpdate,
+  runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
 import { recordAction } from "./audit.js";
@@ -246,6 +250,8 @@ const AGENTS_PATH =
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
+/** Issue 352: one of them, changed or removed by a person. */
+const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
 /** D32: an agent's helpers, and one helper's transcript (read-only). */
 const HELPERS_PATH =
@@ -370,6 +376,14 @@ function sessionTitleOf(
  * Issue 216: a restart's audit detail says when another request had
  * already restarted it (then this one didn't).
  */
+/**
+ * Issue 340: the audit line's words for the sign-in a start picked (its
+ * label: never an email, never a token); "" when none was.
+ */
+export function onSignIn(rec: { signIn?: { label: string } }): string {
+  return rec.signIn ? `; on ${rec.signIn.label}` : "";
+}
+
 function restarted(what: string, s: { already?: { at: string } }): string {
   return s.already
     ? `${what}: already restarted by another request at ${s.already.at}`
@@ -542,6 +556,9 @@ export async function handleAgentRoutes(
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
   const mcpp = MCP_SERVERS_PATH.exec(pathname);
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
+  const mcp1 = MCP_SERVER_PATH.exec(pathname);
+  if (mcp1)
+    return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
   const hp = HELPERS_PATH.exec(pathname);
   if (hp) return helpersRoute(req, res, hp, webDeps(deps.agents));
   const dp = DETAILS_PATH.exec(pathname);
@@ -566,6 +583,13 @@ export async function handleAgentRoutes(
     const hit = m.HUB_RENAME_ROUTE.exec(pathname);
     if (hit)
       return m.hubRenameRoute(req, res, hit[1], await m.defaultHubRenameDeps());
+  }
+  // Issue 271: ask Hub for a new project to link to (held for an owner).
+  if (pathname.endsWith("/hub-create")) {
+    const m = await import("./hub-create-routes.js");
+    const hit = m.HUB_CREATE_ROUTE.exec(pathname);
+    if (hit)
+      return m.hubCreateRoute(req, res, hit[1], await m.defaultHubCreateDeps());
   }
   // #68: link every project to Hub's suggestion in one confirm.
   if (pathname === "/api/hub/link-suggestions") {
@@ -1003,7 +1027,7 @@ export async function handleAgentRoutes(
         ? `; overrides ${s.rec.overrides.join(", ")}`
         : "";
       what = `start ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}${ov}) in ${ws}`;
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d, instruction ? { instruction: "pending" } : {});
       // AG-10.1: its first message, once it is ready: typed into its
       // session (the host's write path), never an argument. Its text is
@@ -1055,7 +1079,7 @@ export async function handleAgentRoutes(
     } else if (verb === "fresh") {
       const s = await startFresh(d, id!, ws);
       what = `start ${s.rec.id} fresh (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
     } else if (verb === "keep") {
       const body = await jsonBody(req);
@@ -1159,7 +1183,7 @@ export async function handleAgentRoutes(
     } else if (verb === "relaunch") {
       const s = await relaunchAgent(d, id!, ws);
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
     } else if (verb === "say") {
       // Issue 103: the composer's Send: typed into its session as one
@@ -1279,7 +1303,11 @@ export async function handleAgentRoutes(
         // It may wait for a long turn: answer now, audit when it's done.
         agentRecord(d, id!, ws);
         void change().then(
-          (s) => audit(what, s.early ? "exited at once" : undefined),
+          (s) =>
+            audit(
+              what + onSignIn(s.rec),
+              s.early ? "exited at once" : undefined,
+            ),
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
@@ -1287,7 +1315,7 @@ export async function handleAgentRoutes(
         return true;
       }
       const s = await change();
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       // Never prompted: nothing was resumed, so it says so (not "same
       // conversation").
       sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
@@ -1316,7 +1344,10 @@ export async function handleAgentRoutes(
           deps.personaWait ?? {},
         ).then(
           (s) =>
-            audit(restarted(what, s), s.early ? "exited at once" : undefined),
+            audit(
+              restarted(what, s) + onSignIn(s.rec),
+              s.early ? "exited at once" : undefined,
+            ),
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
@@ -1324,7 +1355,10 @@ export async function handleAgentRoutes(
         return true;
       }
       const s = await restartAgent(d, id!, ws, "now");
-      audit(restarted(what, s), s.early ? "exited at once" : undefined);
+      audit(
+        restarted(what, s) + onSignIn(s.rec),
+        s.early ? "exited at once" : undefined,
+      );
       sendStarted(
         res,
         s,
@@ -2019,6 +2053,11 @@ export function startAgentUpkeep(
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }
+    // Issue 369: bell waits kept from before the restart, against the
+    // agents now (their dialogs too).
+    await import("./notification-service.js")
+      .then((m) => m.reconcileKeptWaits())
+      .catch(() => undefined);
   };
   const prune = async () => {
     try {
@@ -2381,6 +2420,92 @@ async function mcpServersRoute(
     return true;
   }
   sendJson(res, { ok: true, ...projectMcpView(d, ws) });
+  return true;
+}
+
+/**
+ * Issue 352: Settings › Project › Agents' extra MCP servers, a row's
+ * actions. POST /api/workspaces/:ws/mcp-servers/:name { url?, bearer?,
+ * bearer?: name | null } changes its url or bearer reference (a secrets.refs name,
+ * never a value); DELETE removes it. Checked as the held writes are
+ * (agent-ops.ts); names and urls back. A person's only: their click is
+ * the decision. An agent asks with project_mcp_update or
+ * project_mcp_remove, which wait for the person's Allow.
+ */
+async function mcpServerRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  rawName: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "POST" && method !== "DELETE")
+    return methodNotAllowed(res, "POST, DELETE");
+  const ws = safeDecode(rawWs);
+  const name = safeDecode(rawName);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  const remove = method === "DELETE";
+  const actor = auditActorOf(req);
+  let what = remove
+    ? `remove MCP ${name} from project ${ws}'s agents`
+    : `change MCP ${name} in project ${ws}'s agents`;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError(
+        remove
+          ? "only a person can remove a project's MCP server here (an agent asks with project_mcp_remove)"
+          : "only a person can change a project's MCP server here (an agent asks with project_mcp_update)",
+        { status: 403 },
+      );
+    let ask: Record<string, unknown> = { project: ws, name };
+    if (!remove) {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "url" && k !== "bearer")
+          throw new AgentError(`${k}: unknown field (takes url and bearer)`, {
+            usage: true,
+          });
+      ask = { ...body, ...ask };
+    }
+    const c = remove
+      ? checkProjectMcpRemove(d, ask)
+      : checkProjectMcpUpdate(d, ask);
+    if (!c.ok)
+      throw new AgentError(c.error, {
+        status: c.error.startsWith(`project ${ws} has no MCP server`)
+          ? 404
+          : 400,
+        usage: true,
+      });
+    what = c.summary;
+    const r = remove
+      ? await runProjectMcpRemove(d, { ...c.args })
+      : await runProjectMcpUpdate(d, { ...c.args });
+    if (!r.ok) throw new AgentError(r.error, { usage: true });
+    audit(what);
+    sendJson(res, r);
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
   return true;
 }
 

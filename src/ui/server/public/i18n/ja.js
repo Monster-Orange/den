@@ -559,6 +559,9 @@
     "keep.s": "適用しました。__DEN_TITLE__ が再起動します。",
     "keep.needs": "管理者パスワードが必要です。",
     "keep.failed": "適用されませんでした。何も変わっていません。",
+    "busy.edgeW": "エッジを起動しています…",
+    "busy.edgeS": "エッジを起動しました",
+    "busy.edgeF": "エッジを起動できませんでした。",
     "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
     "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
     "keep.saved":
@@ -569,7 +572,7 @@
     "keep.offer":
       "まだ設定されていないため、ログアウトでエージェントは止まります。オンにして「適用」を押してください（管理者パスワードを一度だけ求めます）。",
     "keep.noToken":
-      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。claude setup-token で作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。トークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
     "keep.credKeychain":
       "ストアの認証情報がログインキーチェーンにあり、常時稼働のサービスからは届かないことがあります。file: か env: を使ってください（docs/always-on-gate.md を参照）。",
     "keep.setup":
@@ -595,7 +598,24 @@
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
     "keep.tokenOld":
-      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です: claude setup-token で新しく作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です。新しいトークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
+    "keep.docs": "サインインのドキュメント",
+    "keep.runtimeAny": "エージェントの CLI",
+    "acct.title": "{vendor} アカウント",
+    "acct.default": "{vendor} アカウント {letter}",
+    "acct.add": "{vendor} アカウントを追加",
+    "acct.none": "トークンなし。",
+    "acct.set": "トークンは {date} に保存されました。",
+    "acct.setUnknown": "トークンは保存されています。",
+    "acct.first": "エージェントはこれでサインインします。",
+    "acct.tokenLabel": "{name} のサインイン用トークン",
+    "acct.tokenSave": "サインイン用トークンを保存",
+    "acct.up": "上へ",
+    "acct.down": "下へ",
+    "acct.failed": "保存できませんでした: {error}",
+    "busy.askAllowW": "確認しています…",
+    "busy.askAllowS": "確認しました。ダイアログで許可してください。",
+    "busy.askAllowF": "確認できませんでした。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -830,6 +850,12 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "起動確認の待ち時間 (秒)",
+    "set.server.ready_probe.d":
+      "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "起動の待ち時間 (秒)",
+    "set.server.start_wait.d":
+      "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
       "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
@@ -978,6 +1004,29 @@
     "hubp.linkProject": "{project} を Hub プロジェクトにリンク",
     "hubp.scope":
       "リンクされるのはプロジェクト「{project}」だけです。ほかのプロジェクトは変わりません。",
+    // Issue 271: リンクの選択肢から Hub プロジェクトを作成。
+    "hubp.createOpt": "Hub プロジェクト「{name}」を作成",
+    "hubp.newName": "Hub での名前",
+    "hubp.create": "作成",
+    "hubp.nameEmpty": "Hub プロジェクトの名前を入力してください。",
+    "hubp.nameLong": "Hub プロジェクトの名前は 80 文字までです。",
+    "hubp.asked":
+      "Den は {project} のために Hub プロジェクト「{name}」の作成を Hub に依頼しました。",
+    "hubp.youAllow":
+      "あなたは Hub のオーナーです。Hub で許可すると、Den が {project} をリンクします。",
+    "hubp.allowBtn": "Hub で許可",
+    "hubp.ownerMust":
+      "Hub で {company} のオーナーが許可する必要があります。許可されると Den が {project} を自動でリンクします。",
+    "hubp.ownerMustAny":
+      "Hub であなたの会社のオーナーが許可する必要があります。許可されると Den が {project} を自動でリンクします。",
+    "hubp.declined":
+      "Hub のオーナーが Hub プロジェクト「{name}」を却下しました。Hub プロジェクトを選ぶか、もう一度依頼してください。",
+    "hubp.ended":
+      "「{name}」の Hub への依頼は変更なしで終わりました。もう一度依頼してください。",
+    "hubp.createW": "Hub に「{name}」の作成を依頼しています…",
+    "hubp.createS": "依頼しました。Hub でオーナーが許可します。",
+    "hubp.createF":
+      "Hub は依頼を受け付けませんでした。何も作成されていません。",
     "hub.legacy":
       "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
     "hub.reconnect": "再接続",
@@ -1032,6 +1081,9 @@
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",
     "set.embed.url_max": "リンクのコンテキストの最大長",
+    "set.embed.app_keys": "アプリキー",
+    "set.embed.app_key_audit":
+      "1 行のアクティビティにまとめるアプリキーの読み取り",
     "set.embed.origins": "エージェントを埋め込めるウェブアプリ",
     "set.embed.key_minutes": "埋め込みパネルの許可の有効時間",
     "set.embed.context_max_kb": "共有するページの最大サイズ",
@@ -1365,12 +1417,32 @@
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
+    "ap.do.embed_key_create":
+      "{origin} が {project} の {agent} にメッセージを送り、状態を読めるようにする",
+    "ap.do.embed_key_revoke":
+      "{project} の {agent} 用の {origin} のキーを取り消す",
+    "ap.det.embed_key_create.reach":
+      "{origin} 自身のバックエンド用のキーを作ります。届くのは {project} の {agent} だけです: その状態と、ターンが終わった後に入力されるメッセージ。",
+    "ap.det.embed_key_create.once":
+      "キーは許可した後に、ここで一度だけ表示されます。Den はハッシュだけを保存します。",
+    "ap.det.embed_key_create.revoke":
+      "設定 › 埋め込み でいつでも取り消せます。",
+    "ap.det.embed_key_revoke.reach":
+      "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
+    "ap.det.embed_key_revoke.held":
+      "送信済みでエージェントのターンを待っているメッセージは、そのまま入力されます。",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
     "ap.pm.warn":
       "これにより {project} のエージェントはあなたに確認せずに動作します。",
     "ap.pm.project": "プロジェクト: {project}",
+    "ap.do.hub_project_create":
+      "プロジェクト {project} のために Hub プロジェクト「{name}」の作成を Hub に依頼",
+    "ap.hc.project": "プロジェクト: {project}",
+    "ap.hc.name": "Hub での名前: {name}",
+    "ap.hc.owner":
+      "Hub のオーナーが Hub で許可します。許可されると Den がプロジェクトをリンクします。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
@@ -1456,10 +1528,26 @@
       "このプロジェクトのエージェントが動くモードで、Den 全体の既定より優先されます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。下に各エージェントのモードとその出どころを示します。変更は実行中のエージェントにもターンの後で自動的に届きます。",
     "set.workspace.mcp_servers": "エージェントの追加 MCP: このプロジェクト",
     "set.workspace.mcp_servers.d":
-      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。エージェントが project_mcp_add で追加を求め、あなたが許可します。",
+      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。ここで変更や削除もできます。エージェントは project_mcp_add、project_mcp_update、project_mcp_remove で求め、あなたが許可します。",
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "このプロジェクトの MCP を読み込めませんでした。",
+    "pmcp.edit": "変更",
+    "pmcp.editL": "{name} を変更",
+    "pmcp.remove": "外す",
+    "pmcp.removeL": "{name} を外す",
+    "pmcp.url": "アドレス",
+    "pmcp.bearer": "bearer",
+    "pmcp.bearerKeep": "secrets.refs の名前 (空欄なら今のまま)",
+    "pmcp.noBearer": "bearer なし",
+    "pmcp.save": "保存",
+    "pmcp.cancel": "キャンセル",
+    "pmcp.rmT": "MCP を外しますか?",
+    "pmcp.rmAsk":
+      "{name} をプロジェクト {project} のエージェントから外しますか? 次の起動または再開時にそのツールを使えなくなります。",
+    "pmcp.rmW": "MCP を外しています…",
+    "pmcp.rmS": "外しました。",
+    "pmcp.rmF": "MCP を外せませんでした。",
     "ap.do.project_mcp_add":
       "MCP {name} ({url}) をプロジェクト {project} のエージェントに追加",
     "ap.mcp.warn":
@@ -1471,6 +1559,13 @@
       "bearer なし: 呼び出しに Authorization ヘッダーは付きません。",
     "ap.mcp.next":
       "{project} のエージェントは次の起動または再開時にこれを使えます。",
+    "ap.do.project_mcp_remove":
+      "MCP {name} ({url}) をプロジェクト {project} のエージェントから外す",
+    "ap.do.project_mcp_update":
+      "プロジェクト {project} のエージェントの MCP {name} を変更 (変更後 {url})",
+    "ap.mcp.removeWarn":
+      "{project} のエージェントは次の起動または再開時に {name} のツールを使えなくなります。",
+    "ap.mcp.urlChange": "MCP {name}: {from} から {to} へ",
     "pmode.none": "Den 全体の既定を使う",
     "pmode.following": "Den 全体の既定に従っています: {m}",
     "pmode.setHere": "このプロジェクトで設定: {m} (Den 全体は {dw})",
@@ -1867,6 +1962,9 @@
       "サブエージェント（Explore も）は {model} で動きます: agents.subagents.model。",
     "ag.subagents.from.default":
       "サブエージェント（Explore も）は {model} で動きます: Den の既定値。agents.subagents.model かペルソナの subagent_model で変えられます。",
+    "ag.signIn": "{label} で実行",
+    "ag.signIn.tip":
+      "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
@@ -2272,6 +2370,21 @@
     "set.ui.devicesSignedIn":
       "デバイスの一覧はサインイン中にのみ表示されます。",
     "set.ui.asked": "{ago} に要求",
+    "set.ui.appKeyAllow": "ダイアログで許可してください。",
+    "set.ui.appKeyAgent": "エージェント",
+    "set.ui.appKeyOrigin": "ウェブアプリ",
+    "set.ui.appKeyLabel": "名前 (任意)",
+    "set.ui.appKeyMake": "キーを作成",
+    "set.ui.appKeyNoOrigin": "まず上のリストにウェブアプリを追加してください。",
+    "set.ui.appKeyNone": "アプリキーはまだありません。",
+    "set.ui.appKeyUsed": "最終使用 {when}",
+    "set.ui.appKeyUnused": "未使用",
+    "set.ui.appKeyRevoked": "取り消し済み {when}",
+    "set.ui.appKeyRevoke": "取り消す",
+    "set.ui.appKeyOnce":
+      "このキーを今すぐウェブアプリのバックエンドにコピーしてください。もう表示されません。",
+    "set.ui.appKeyNew": "新しいアプリキー",
+    "set.ui.copy": "コピー",
     "set.ui.saveOrigins": "リストを保存",
     "set.ui.approve": "承認",
     "set.ui.deny": "拒否",
@@ -2280,7 +2393,14 @@
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
     "set.ui.noPairHost":
-      "このサーバーに向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、{cmd} を実行してください。", // words-ok: the en string's own word, translated
+      "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
+    "set.ui.edgeStart": "エッジを起動",
+    "set.ui.edgeApply": "適用",
+    "set.ui.edgeStarted": "エッジを起動しました",
+    "set.ui.edgeCurrent": "エッジは最新です。何も再起動していません",
+    "set.ui.edgeRecreated":
+      "{why} のためエッジを作り直しました。約 {s} 秒間つながりませんでした",
+    "set.ui.edgeWhy": "設定が変わった",
     "set.ui.edgeHost": "エッジのホスト名",
     "set.ui.pairScan":
       "別のデバイスでスキャンするか、そちらでリンクを開いてください。期限 (下記) まで一度だけ使え、そのブラウザはずっとサインインしたままになります。",
@@ -2298,7 +2418,8 @@
     "set.ui.portUnset": "未設定: ディストリビューションの値を使用",
     "set.ui.signedIn": "サインイン済み",
     "set.ui.signOut": "サインアウト",
-    "set.ui.notSignedIn": "サインインしていません: {cmd} を実行してください",
+    "set.ui.notSignedIn": "サインインしていません",
+    "set.ui.signIn": "サインイン",
     "set.ui.savedIn": "{vault} に保存済み",
     "set.ui.theVault": "保管庫",
     "set.ui.savedMemory": "Den が再起動するまでメモリーに保持",
@@ -2579,6 +2700,33 @@
     "set.notifications.fold_days.o.7": "7日",
     "set.notifications.fold_days.o.14": "14日",
     "set.notifications.fold_days.o.30": "30日",
+    "set.notifications.phone": "このデバイスへのプッシュ通知",
+    "set.notifications.phone.d":
+      "スマートフォンで __DEN_TITLE__ を開き、そこでこれをオンにしてください。エージェントがあなたを必要とすると、__DEN_TITLE__ を閉じていてもスマートフォンに表示されます。このデバイスでは、タブをすべて閉じていても届きます。デバイスごとにオンにします。",
+    "set.notifications.phone.none":
+      "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
+    "set.notifications.phone.failed":
+      "ここではプッシュをオンにできませんでした。",
+    "set.notifications.quiet_from": "通知を止める時間の開始",
+    "set.notifications.quiet_from.d":
+      "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",
+    "set.notifications.quiet_to": "通知を止める時間の終了",
+    "set.notifications.quiet_to.d":
+      "この時刻から、ベル以外の通知が再び出ます。",
+    "set.notifications.quiet.off": "オフ",
+    "set.notifications.quiet.half": "開始と終了の両方を選んでください。",
+    "set.notifications.push_timeout": "プッシュの待ち時間",
+    "set.notifications.push_timeout.d":
+      "__DEN_TITLE__ がプッシュサービスに 1 件の通知を受け取ってもらうまで待つ時間です。これを過ぎるとその通知は見送り、次の通知で再び試します。__DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "プッシュの保持時間",
+    "set.notifications.push_ttl.d":
+      "電源が切れているかオフラインの端末向けに、プッシュサービスが通知を保持する時間 (秒) です。86400 で 1 日です。0 にすると、端末がいまオンでなければ破棄されます。__DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "デスクトップ通知",
+    "set.notifications.desktop.d":
+      "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
+    "set.notifications.desktop.denied":
+      "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
+    "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",
@@ -2593,7 +2741,7 @@
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。claude setup-token で一度作り、__DEN_CLI__ agents token set で保存してください。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
+      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。トークンはエージェントの CLI にサインインすると作られ、下の「サインイン用トークン」に貼り付けます。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
@@ -2614,6 +2762,10 @@
       "サインアウト中のページにコードが表示されているコンピューターです。承認すると、そのページは自動でサインインします。コードの有効期限は 10 分です。__DEN_CLI__ web approve <code> でもコマンドラインから同じことができます。",
     "set.embed.url_max.d":
       "エージェントへのリンクがメッセージ欄に渡せるウェブアドレスの最大長です。これより長いと、その旨を示すページが開きます。",
+    "set.embed.app_keys.d":
+      "このコンピューター上のウェブアプリ自身のバックエンド用のキーです: その人のメッセージを 1 つのエージェントに渡し (エージェントのターンの後に入力されます)、そのエージェントの状態を読めます。それ以外は何もできません。キーは一つずつ許可し、一度だけ表示され、ここで取り消せます。",
+    "set.embed.app_key_audit.d":
+      "アプリキーによる状態の読み取りは、この秒数ごとに 1 行として回数とともにアクティビティ記録に残ります。頻繁に確認するウェブアプリで記録があふれません。",
     "set.embed.origins.d":
       "各ウェブアプリのアドレスを正確に、1 行に 1 つずつ: https://app.example.com。これらだけが自分のページの中にエージェントのパネルを表示でき、それもあなたが許可した後だけです。ほかのサイトは、この Den のどのページも自分のページの中に表示できません。",
     "set.embed.key_minutes.d":
@@ -2705,6 +2857,68 @@
     "edge.cert.none": "なし: 証明書は取り込んだ設定にあります。",
     "edge.notConfigured": "未設定",
     "edge.unreachable": "接続できません",
+    // issue 171: values the pages show (value-words.js, log-history.ts).
+    "val.docker.created": "作成済み",
+    "val.docker.running": "実行中",
+    "val.docker.paused": "一時停止中",
+    "val.docker.restarting": "再起動中",
+    "val.docker.removing": "削除中",
+    "val.docker.exited": "停止",
+    "val.docker.dead": "停止不能（再起動できません）",
+    "val.docker.absent": "見つかりません",
+    "val.tls.none": "なし",
+    "val.tls.files": "ファイル",
+    "val.gh.success": "成功",
+    "val.gh.failure": "失敗",
+    "val.gh.error": "エラー",
+    "val.gh.cancelled": "キャンセル",
+    "val.gh.timed_out": "タイムアウト",
+    "val.gh.inactive": "無効",
+    "val.gh.in_progress": "実行中",
+    "val.gh.queued": "待機中",
+    "val.gh.pending": "保留中",
+    "val.gh.waiting": "待機中",
+    "val.gh.requested": "要求済み",
+    "val.gh.skipped": "スキップ",
+    "val.gh.action_required": "対応が必要",
+    "val.gh.neutral": "中立",
+    "val.gh.stale": "古い",
+    "val.gh.startup_failure": "起動失敗",
+    "val.perf.httpReqs": "HTTP リクエスト",
+    "val.perf.iterations": "イテレーション",
+    "val.perf.vus": "仮想クライアント (VU)",
+    "val.perf.httpAvg": "HTTP 平均",
+    "val.perf.httpP50": "HTTP p50",
+    "val.perf.httpP95": "HTTP p95",
+    "val.perf.httpP99": "HTTP p99",
+    "val.perf.httpMax": "HTTP 最大",
+    "val.perf.reqRate": "リクエスト/秒",
+    "val.perf.iterRate": "イテレーション/秒",
+    "val.perf.failRate": "失敗率",
+    "val.h.twice": "{why}（2 回続けて）",
+    "val.h.timeout": "タイムアウト",
+    "val.h.noAnswer": "{s} 秒以内に応答なし",
+    "val.h.dns": "名前が見つかりません (DNS)",
+    "val.h.noRoute": "ルートがありません (404)",
+    "val.h.fallback":
+      "このサービスではありません（localhost がエラーを返しました）",
+    "val.h.killed": "{signal} で停止",
+    "val.h.exit": "チェック失敗（終了コード {code}）",
+    "val.h.refused": "接続が拒否されました",
+    "val.h.reset": "接続が切れました",
+    "val.h.unreachable": "応答なし",
+    "val.h.tls": "証明書が受け入れられません",
+    "val.h.dockerUnknown": "Docker が応答しません",
+    "val.h.noContainer": "コンテナ {name} がありません",
+    "val.h.unhealthy": "{name}: ヘルスチェック失敗",
+    "val.h.starting": "{name}: 起動中",
+    "val.h.healthy": "{name}: 正常",
+    "val.h.container": "{name}: {state}",
+    "lg.why.badName": "リポジトリ名またはサービス名が無効です",
+    "lg.why.notLocal": "今は local のみで、{env} はまだです",
+    "lg.why.noProject": "{name} がどのプロジェクトにあるか分かりません",
+    "lg.why.noSource": "{name} には実行中のコンテナもログファイルもありません",
+    "lg.why.noSnapshot": "コンテナのログをコピーできませんでした",
     // issue 171: the Environments page.
     "env.recheck": "再チェック",
     "env.checking": "チェック中…",

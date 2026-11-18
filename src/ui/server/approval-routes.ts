@@ -185,6 +185,12 @@ export function approvalView(a: Approval): Record<string, unknown> {
   };
 }
 
+/** Issue 334: drop a run result's `once` part (shown to the Allow only). */
+export function forgetOnce(a: Pick<Approval, "result">): void {
+  const r = a.result as Record<string, unknown> | undefined;
+  if (r && typeof r === "object" && "once" in r) delete r.once;
+}
+
 async function jsonBody(
   req: http.IncomingMessage,
 ): Promise<Record<string, unknown> | null> {
@@ -238,6 +244,11 @@ export async function handleApprovalRoutes(
     ) => { kind: PolicyKind; from: string };
     /** Issue 160: a write the policy ran under notify, for the person's updates. */
     notify?: (a: Approval, project: string | undefined, from: string) => void;
+    /**
+     * Issue 172: an agent's write held for the person's Allow (not run by
+     * the policy or a setting): alert them outside the bell.
+     */
+    held?: (agent: string, project: string | undefined) => void;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -436,7 +447,12 @@ export async function handleApprovalRoutes(
         } catch {
           /* the bell is best effort: the trail has it */
         }
-    }
+    } else if (a.agent && a.state === "pending")
+      try {
+        deps.held?.(a.agent, project);
+      } catch {
+        /* an alert is best effort: the Allow dialog still asks */
+      }
     sendJson(
       res,
       {
@@ -587,8 +603,12 @@ export async function handleApprovalRoutes(
             },
         principalOf(req),
       );
-    if (r.ok) sendJson(res, { ok: true, ...approvalView(r.approval) });
-    else
+    if (r.ok) {
+      sendJson(res, { ok: true, ...approvalView(r.approval) });
+      // Issue 334: what a run shows once (a new app key) went to this
+      // Allow's browser only: never again, to anyone.
+      forgetOnce(r.approval);
+    } else
       refuse(
         res,
         r.code === "not_found" ? 404 : r.code === "expired" ? 410 : 409,

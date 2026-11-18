@@ -20,10 +20,19 @@ import {
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
+import { AlertFeed } from "./alert-feed.js";
+import { alertPrefs } from "./alerts.js";
+import { uiLanguage } from "./ui-language.js";
+import { timeZonePref } from "./time-zone-pref.js";
+import { product } from "../../shared/product.js";
+import { readWebUrl } from "../../shared/web-url.js";
+import { pushContact } from "../../shared/push-contact.js";
+import { PushSubscriptions, pushAll, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
+let alerts: AlertFeed | null = null;
 let timer: NodeJS.Timeout | null = null;
 const askLimit = new AskLimit();
 
@@ -115,6 +124,41 @@ async function endedAgents(
   return out;
 }
 
+/**
+ * Issue 369: whether agent `agent`'s screen ends with its runtime's
+ * permission dialog (the last 16 KB of its session). No record, no
+ * session, or exited: false. The session host not answering: null (look
+ * again). A runtime whose dialogs Den can't see: true (its output going
+ * on clears the wait).
+ */
+async function dialogOpen(agent: string): Promise<boolean | null> {
+  const rec = readRecord(getStateDir(), agent);
+  if (!rec) return false;
+  const [{ getRuntime }, { promptOnScreen }] = await Promise.all([
+    import("../../shared/agents/runtimes.js"),
+    import("../../shared/agents/trust-prompt.js"),
+  ]);
+  const p = getRuntime(rec.runtime)?.permissionPrompt;
+  if (!p) return true;
+  try {
+    const { webDeps } = await import("./agent-routes.js");
+    const c = await webDeps().connectExisting();
+    if (!c) return null;
+    try {
+      const s = (await c.list()).find((x) => x.ref.id === rec.session.id);
+      if (!s || s.exited) return false;
+      const out = (await c.scrollback(rec.session.id, 16 * 1024)).toString(
+        "utf-8",
+      );
+      return promptOnScreen(out, p);
+    } finally {
+      c.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
 /** The runtimes whose hooks say when they wait: their bells add nothing. */
 const HOOKED_RUNTIMES = new Set(["den-claude"]);
 
@@ -165,9 +209,65 @@ async function sessionBells(): Promise<
   }
 }
 
+/** An agent's name as the bell says it. */
+function nameOf(id: string): string {
+  const r = readRecord(getStateDir(), id);
+  return r?.displayName || r?.persona || id;
+}
+
+/**
+ * Issue 172: the alerts outside the bell (alert-feed.ts): the person's
+ * prefs, language and zone read each time from user.yml.
+ */
+/**
+ * Issue 172 S2: who the push services may contact about this install's
+ * pushes (VAPID's subject): its https address, else the mailto fallback
+ * (issue 367: shared/push-contact.ts; doctor warns about the fallback).
+ */
+function pushSubject(): string {
+  return pushContact(readWebUrl()?.url).subject;
+}
+
+let pushSubs: PushSubscriptions | null = null;
+/** Issue 172 S2: the person's devices that get alerts by push. */
+export function pushDeps(): {
+  subs: PushSubscriptions;
+  publicKey: () => string;
+} {
+  pushSubs ??= new PushSubscriptions(getStateDir());
+  return {
+    subs: pushSubs,
+    publicKey: () => vapidKeys(getStateDir()).publicKey,
+  };
+}
+
+export function alertFeed(): AlertFeed {
+  alerts ??= new AlertFeed({
+    prefs: () => alertPrefs(readUserConfig()),
+    lang: () => uiLanguage(readUserConfig().language),
+    zone: () => timeZonePref(readUserConfig().time_zone),
+    title: () => product().title,
+    nameOf,
+    push: (a, prefs) =>
+      pushAll(
+        { title: a.title, body: a.body, link: a.link, tag: a.id },
+        {
+          subs: pushDeps().subs,
+          keys: () => vapidKeys(getStateDir()),
+          subject: pushSubject(),
+          timeoutMs: prefs.pushTimeoutSeconds * 1000,
+          ttlSeconds: prefs.pushTtlSeconds,
+        },
+      ),
+  });
+  return alerts;
+}
+
 export function notificationDeps(): {
   store: NotificationStore;
   attention: Attention;
+  alerts: AlertFeed;
+  push: ReturnType<typeof pushDeps>;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
 } {
@@ -175,14 +275,13 @@ export function notificationDeps(): {
   attention ??= new Attention({
     store,
     outputMark,
-    nameOf: (id) => {
-      const r = readRecord(getStateDir(), id);
-      return r?.displayName || r?.persona || id;
-    },
+    nameOf,
     hooked: (id) =>
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
     endedAsking,
     ended: endedAgents,
+    alert: (n) => void alertFeed().needs(n),
+    dialogOpen,
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
@@ -203,6 +302,8 @@ export function notificationDeps(): {
   return {
     store,
     attention,
+    alerts: alertFeed(),
+    push: pushDeps(),
     asks: {
       limit: askLimit,
       // Read each time: a change to user.yml counts at once.
@@ -245,6 +346,19 @@ export function agentGone(id: string): void {
     attention?.gone(id);
   } catch {
     /* the bell is best effort: the tick clears it */
+  }
+}
+
+/**
+ * Issue 369: at server start, the waiting rows kept from before it are
+ * decided against the agents now (the check every 2 s goes on with any
+ * Den can't decide yet). Never throws.
+ */
+export async function reconcileKeptWaits(): Promise<void> {
+  try {
+    await notificationDeps().attention.reconcile();
+  } catch {
+    /* the bell is best effort: the tick looks again */
   }
 }
 

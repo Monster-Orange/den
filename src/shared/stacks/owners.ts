@@ -29,6 +29,7 @@
  */
 import { spawnSync } from "child_process";
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import * as path from "path";
 import { getReposRoot } from "../den-config.js";
 import { readCatalog } from "../environment-manager/catalog.js";
@@ -107,7 +108,7 @@ function writeRecord(
 ): void {
   const file = ownersFile(ctx, s);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(rec, null, 2) + "\n");
+  writeFileAtomic(file, JSON.stringify(rec, null, 2) + "\n");
 }
 
 /** Drop the record once the project is down. */
