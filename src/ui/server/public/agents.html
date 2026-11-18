@@ -1215,6 +1215,22 @@
       .pane .agc.agc-phone > .agc-msg {
         grid-row: 3;
       }
+      /* No page shared: the box and Send are the first row (no empty row
+         and its gap above them). */
+      .pane .agc.agc-phone:has(> .agc-chips[hidden]) > :is(.agc-in, .agc-acts) {
+        grid-row: 1;
+      }
+      .pane .agc.agc-phone:has(> .agc-chips[hidden]) > .agc-msg {
+        grid-row: 2;
+      }
+      /* Issue 170 with the box: the runs dock open on a phone (half the
+         window), an agent's pane open, the list gives way to about three
+         rows, so the pane's box and To line end above the dock. */
+      @media (max-width: 720px) {
+        body:has(.den-dock.open) #agx:has(.pane .agc-phone) .agl {
+          max-height: 20vh;
+        }
+      }
       .pane .agc.agc-phone .agc-send {
         min-height: 44px;
         min-width: 44px;

@@ -44,6 +44,8 @@ const sid: Record<string, string> = {};
 const pty: Record<string, ScriptedPty> = {};
 let hostServer: http.Server;
 let LISTED = "";
+/** Den's newest version: What's new seen, so it never opens over the page. */
+let latest = "";
 
 /** A host page: frames `target`, says hello to Den, logs what Den says. */
 function hostPage(target: string, den: string): string {
@@ -110,6 +112,12 @@ beforeAll(async () => {
   await new Promise<void>((r) => hostServer.listen(0, "::", r));
   LISTED = `http://127.0.0.1:${(hostServer.address() as AddressInfo).port}`;
   expect(await s.settings({ embed: { origins: [LISTED] } })).toBe(200);
+  latest =
+    (
+      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+        version: string;
+      }[]
+    )[0]?.version ?? "";
 }, 120_000);
 
 afterAll(async () => {
@@ -144,14 +152,14 @@ async function phone(engine: Engine): Promise<{ p: Page; errors: string[] }> {
     reducedMotion: "reduce",
   });
   await ctx.addInitScript(fakeViewport);
-  await ctx.addInitScript(() => {
+  await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
+        localStorage.setItem(k, v);
     } catch {
       /* none */
     }
-  });
+  }, latest);
   const p = await ctx.newPage();
   const errors: string[] = [];
   p.on("pageerror", (e) => errors.push(e.message));
