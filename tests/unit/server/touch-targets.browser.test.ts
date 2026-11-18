@@ -181,7 +181,10 @@ async function phone(
   // Only while the page is in use: WebKit reports a fetch the page had
   // open when its context closes as an error.
   p.on("pageerror", (e) => {
-    if (!done.has(p)) errors.push(`${engine} ${url}: ${e.message}`);
+    // WebKit words a fetch cut off by a navigation (the claim page going
+    // on to the page) "due to access control checks": not the page's.
+    if (done.has(p) || /due to access control checks/.test(e.message)) return;
+    errors.push(`${engine} ${url}: ${e.message}`);
   });
   await p.route("**/api/notifications/read", (r) =>
     r.fulfill({ json: { ok: true } }),
@@ -292,11 +295,14 @@ async function sweep(
         if (getComputedStyle(el).display !== "inline") return false;
         const p = el.parentElement;
         if (!p) return false;
+        // Words beside it: text, or an inline element's text.
         return Array.from(p.childNodes).some(
           (n) =>
             n !== el &&
-            n.nodeType === Node.TEXT_NODE &&
-            /\S/.test(n.textContent || ""),
+            /\S/.test(n.textContent || "") &&
+            (n.nodeType === Node.TEXT_NODE ||
+              (n instanceof Element &&
+                getComputedStyle(n).display === "inline")),
         );
       };
       const name = (el: Element) => {

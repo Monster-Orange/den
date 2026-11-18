@@ -929,6 +929,18 @@
           min-height: 44px;
           min-width: 44px;
         }
+        /* A choice's label (a radio's row, a checkbox's words) is its
+           tap, and a link that stands alone is a row of its own. */
+        #den-content
+          label:has(> input:is([type="radio"], [type="checkbox"])):not(
+            [hidden]
+          ),
+        #den-content [data-porder] > a {
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
+          min-width: 44px;
+        }
       }
       .set-save {
         margin-top: 6px;
