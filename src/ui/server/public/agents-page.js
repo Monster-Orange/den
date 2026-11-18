@@ -1757,19 +1757,21 @@ function paintTabs(strip) {
 const KIT_PHONE = "(pointer: coarse), (max-width: 767.98px)";
 
 /**
- * Issue 302, the mock's frame 2: on a phone, an agent open has no runs
- * dock (agents.html hides it under body[data-phone-agent]). It is shut
- * as it goes, so the list (frame 1) shows it shut again.
+ * Issue 302, the mock's frames 1 and 2: on a phone, an agent open has no
+ * runs dock (agents.html hides it under body[data-phone-agent]), and the
+ * list shows it shut. Both for this view only: the person's saved choice
+ * (open, say, on their desktop) is never changed.
  */
 function paintPhoneDock() {
-  const on =
-    !!window.matchMedia?.(KIT_PHONE).matches &&
-    st.open.some((id) => rowOf(id)?.kind === "agent");
-  if (on === "phoneAgent" in document.body.dataset) return;
-  if (on) {
-    document.body.dataset.phoneAgent = "";
-    if (window.denShell?.runs?.isOpen?.()) window.denShell.runs.hide();
-  } else delete document.body.dataset.phoneAgent;
+  const onPhone = !!window.matchMedia?.(KIT_PHONE).matches;
+  const agent = onPhone && st.open.some((id) => rowOf(id)?.kind === "agent");
+  if (agent) document.body.dataset.phoneAgent = "";
+  else delete document.body.dataset.phoneAgent;
+  // Only as the view becomes a phone's or stops being one: the person's
+  // own Show runs on the list then stays open.
+  if (paintPhoneDock.was === onPhone) return;
+  paintPhoneDock.was = onPhone;
+  window.denShell?.runs?.shutHere?.(onPhone);
 }
 
 function paintLayout() {
