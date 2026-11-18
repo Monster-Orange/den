@@ -13,14 +13,24 @@ const LEAD = "gate-101-lead";
 const ASK = "gate-101-ask";
 const IDS = [ASK, LEAD, WAIT];
 
+// A finished item (an ask the lead took) is in Updates, not the groups.
 const items = (n, id) =>
-  (n.groups || [])
+  [...(n.groups || []), ...(n.updates?.groups || [])]
     .flatMap((g) => g.subjects || [])
     .filter((s) => s.subject === `agent:${id}`)
     .flatMap((s) => s.items || []);
 
 export async function setup(ctx) {
   const s = {};
+  // Finished items are off in the bell by default: on for this check, the person's value back in teardown.
+  s.bellKindsWas = (await ctx.api("/api/settings"))?.bell_kinds ?? null;
+  await ctx.api("/api/settings", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      bell_kinds: { ...(s.bellKindsWas || {}), finished: true },
+    }),
+  });
   // A permission prompt always goes to the person (never to a lead).
   const w = ctx.agent(WAIT);
   w.start("tester");
@@ -142,6 +152,14 @@ export function expect(cells) {
   ];
 }
 
-export async function teardown(ctx) {
+export async function teardown(ctx, s) {
   for (const id of IDS) if (ctx.agent(id).state()) ctx.agent(id).remove();
+  if (s && "bellKindsWas" in s)
+    await ctx
+      .api("/api/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bell_kinds: s.bellKindsWas }),
+      })
+      .catch(() => {});
 }
