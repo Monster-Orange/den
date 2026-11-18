@@ -1910,7 +1910,7 @@
     "ag.session": "シェル",
     "ag.empty":
       "左のエージェントかシェルを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
-    "ag.none.scope": "{scope} にはまだエージェントもシェルもありません",
+    "ag.none.scope": "{scope} にはまだエージェントがありません",
     "ag.detach": "ペインを閉じる",
     "ag.to": "宛先: {name} · {ws}",
     "ag.toName": "宛先: {name}",

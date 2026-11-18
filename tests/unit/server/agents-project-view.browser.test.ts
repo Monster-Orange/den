@@ -165,7 +165,9 @@ async function open(next: string): Promise<Page> {
 
 /** The projects of the list's groups, and the tabs' ids. */
 const listed = (p: Page) =>
-  p.$$eval("#agl .wsg", (xs) => xs.map((x) => (x as HTMLElement).dataset.ws));
+  p.$$eval("#agl .wsg[data-ws], #agl .agst[data-ws]", (xs) => [
+    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
+  ]);
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),

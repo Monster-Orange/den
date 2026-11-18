@@ -1965,7 +1965,7 @@
     "ag.session": "shell",
     "ag.empty":
       "Elige un agente o un shell a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
-    "ag.none.scope": "Aún no hay agentes ni shells en {scope}",
+    "ag.none.scope": "Aún no hay agentes en {scope}",
     "ag.detach": "Cerrar panel",
     "ag.to": "Para {name} · {ws}",
     "ag.toName": "Para {name}",

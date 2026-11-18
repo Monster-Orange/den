@@ -1128,7 +1128,7 @@ function paintTerminals(el) {
       el,
       notes.join("") +
         `<div class="tm-state" data-state-card="empty">` +
-        `<b>${esc(t("tm.empty.h"))}</b><span>${esc(one ? t("tm.empty.one", { p }) : t("tm.empty.all"))}</span></div>`,
+        `<b>${esc(t("tm.empty.h"))}</b> <span>${esc(one ? t("tm.empty.one", { p }) : t("tm.empty.all"))}</span></div>`,
     );
     return;
   }
@@ -3995,6 +3995,25 @@ async function removeRow(r, button) {
  * Issue 482: Restart on an exited shell: a new shell in its project's
  * folder, in front; the ended one goes (it has nothing left to run).
  */
+/**
+ * A second write in one pop-up: the pop-up's headers with a request id of
+ * its own (the pop-up's, then "-<what>"), the same on Try again.
+ */
+function ownId(headers, what) {
+  return Object.fromEntries(
+    Object.entries(headers ?? {}).map(([k, v]) => [
+      k,
+      /request-id/i.test(k) ? `${v}-${what}` : v,
+    ]),
+  );
+}
+
+/** Close ended shell `id` (the host forgets it), under the pop-up's id. */
+const closeEnded = (id, headers) =>
+  api("POST", `/api/sessions/${encodeURIComponent(id)}/close`, undefined, {
+    headers,
+  });
+
 async function restartShell(r, button) {
   if (!r?.exited) return;
   // BUSY-1: the working pop-up while Den starts the new one.
@@ -4007,13 +4026,10 @@ async function restartShell(r, button) {
         undefined,
         { headers },
       );
-      // The ended one goes: it has nothing left to run.
-      await api(
-        "POST",
-        `/api/sessions/${encodeURIComponent(r.id)}/close`,
-        undefined,
-        { headers },
-      ).catch(() => {});
+      // The ended one goes: it has nothing left to run. Its own request
+      // id: Den answers a repeated id from its ledger (the start's
+      // answer), so with the start's this close would never run.
+      await closeEnded(r.id, ownId(headers, "close")).catch(() => {});
       return o;
     },
     {
@@ -5894,6 +5910,16 @@ export async function mountAgentsPage(root) {
     root.querySelector("#agr")?.addEventListener(ev, (e) => {
       if (e.target.closest?.(".tm-keys button")) e.preventDefault();
     });
+  // A touch on the keys row sends at once: with its pointerdown held (the
+  // terminal keeps the keyboard) some browsers send no click after it.
+  root.querySelector("#agr")?.addEventListener("pointerup", (e) => {
+    if (e.pointerType === "mouse") return;
+    const b = e.target.closest?.('.tm-keys button[data-act="tm-key"]');
+    const p = b && st.panes.get(b.closest(".pane")?.dataset.id);
+    if (!p) return;
+    b.dataset.sentAt = String(Date.now());
+    sendKey(p, b);
+  });
   root.querySelector("#agl").addEventListener("click", (e) => {
     // D37: a person's open or closed "Stopped (n)" is kept.
     const sum = e.target.closest("details[data-stopped] > summary");
@@ -6071,8 +6097,10 @@ export async function mountAgentsPage(root) {
       const r = rowOf(id);
       if (r) void removeShell(r, b);
     } else if (b.dataset.act === "tm-back") phoneShell(false);
-    else if (b.dataset.act === "tm-key") sendKey(p, b);
-    else if (b.dataset.act === "new-shell") {
+    else if (b.dataset.act === "tm-key") {
+      // The click after a touch's pointerup, which sent it already.
+      if (Date.now() - Number(b.dataset.sentAt || 0) > 700) sendKey(p, b);
+    } else if (b.dataset.act === "new-shell") {
       const r = rowOf(id);
       if (r?.kind === "session") void newShell(r, b);
     } else if (b.dataset.act === "tools-restart") {

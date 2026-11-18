@@ -227,11 +227,12 @@ describe("the Agents tab", () => {
   it("issue 482: lists agents only, by project (the shells are on Terminals), the count says agents, the revoked token marked; ?ws= narrows it", async () => {
     if (skip()) return;
     const p = await page("/agents");
+    // south has shells only: no group of its own here.
     expect(
       await p.$$eval(".wsg", (gs) =>
         gs.map((g) => (g as HTMLElement).dataset.ws),
       ),
-    ).toEqual(["north", "south"]);
+    ).toEqual(["north"]);
     expect(await p.locator(`#agl .agr[data-id="${id("shell")}"]`).count()).toBe(
       0,
     );
@@ -248,13 +249,12 @@ describe("the Agents tab", () => {
       "1 agent · 0 waiting · all projects",
     );
     await p.goto(`${s!.base}/agents?ws=south`);
-    // south has shells and no agent: its group, empty.
-    await p.waitForSelector('#agl:not([aria-busy]) .wsg[data-ws="south"]');
-    expect(
-      await p.$$eval(".wsg", (gs) =>
-        gs.map((g) => (g as HTMLElement).dataset.ws),
-      ),
-    ).toEqual(["south"]);
+    // south has shells and no agent: no agents there, said in one line.
+    await p.waitForSelector("#agl:not([aria-busy]) .none");
+    expect((await p.textContent("#agl .none"))?.trim()).toBe(
+      "No agents in south yet",
+    );
+    expect(await p.locator("#agl .wsg").count()).toBe(0);
     expect(await p.textContent("#ag-count")).toBe(
       "0 agents · 0 waiting · south",
     );
