@@ -1129,15 +1129,20 @@ describe("issue 169: >_ names the person's terminal app", () => {
         },
       });
     });
-  const setLang = async (language: string) =>
+  /** The person's language, set as the page's own Settings sets it. */
+  const setLang = async (p: Page, language: string) =>
     expect(
-      (
-        await fetch(api("/api/settings"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ language }),
-        })
-      ).status,
+      await p.evaluate(
+        async (l) =>
+          (
+            await fetch("/api/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ language: l }),
+            })
+          ).status,
+        language,
+      ),
     ).toBe(200);
   const btn = ".ws-item .ws-term-btn";
 
@@ -1147,9 +1152,11 @@ describe("issue 169: >_ names the person's terminal app", () => {
     ["ja", "Ghosttyで開く"],
   ])("%s: the project's >_ and a repo's ⋯ item say %s", async (lang, said) => {
     if (!browser) return;
-    await setLang(lang);
+    const p = await open("main", "/", undefined, ghostty);
     try {
-      const p = await open("main", "/", undefined, ghostty);
+      await setLang(p, lang);
+      await p.reload();
+      await p.waitForSelector("#repo-table tbody tr.repo", { timeout: 15_000 });
       await p.waitForFunction(
         ([sel, want]) =>
           document.querySelector(sel as string)?.getAttribute("title") === want,
@@ -1165,9 +1172,9 @@ describe("issue 169: >_ names the person's terminal app", () => {
       const item = "#svc-menu-queue [role=menuitem][data-open-term]";
       await p.waitForSelector(item, { timeout: 8_000 });
       expect((await p.textContent(item))?.trim()).toBe(`>_ ${said}`);
-      await p.context().close();
     } finally {
-      await setLang("en");
+      await setLang(p, "en");
+      await p.context().close();
     }
   }, 40_000);
 
