@@ -11,7 +11,8 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { GithubBudget } from "../../../src/shared/github-budget/budget.js";
-import { createGithubHttp } from "../../../src/shared/github-budget/client.js";
+import { createGhCliHttp } from "../../../src/shared/github-budget/client.js";
+import { fakeGh } from "./fake-gh.js";
 import { CiWatcher } from "../../../src/shared/github-budget/ci-watcher.js";
 import {
   GITHUB_BUDGET_LIMITS,
@@ -88,7 +89,10 @@ const snapshot = path.join(dir, "github-budget.json");
 beforeAll(async () => {
   await new Promise<void>((r) => fakeGh.listen(0, "127.0.0.1", r));
   ghBase = `http://127.0.0.1:${(fakeGh.address() as AddressInfo).port}`;
-  const api = createGithubHttp({ apiBase: ghBase, token: async () => "t" });
+  const api = createGhCliHttp({
+    env: fakeGh(dir, ghBase).env,
+    timeoutMs: () => 10_000,
+  });
   budget = new GithubBudget({
     reserve: () => 1000,
     readRateLimit: () => api.rateLimit(),

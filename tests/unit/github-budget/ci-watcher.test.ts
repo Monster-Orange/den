@@ -10,110 +10,15 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
-import * as http from "http";
-import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { GithubBudget } from "../../../src/shared/github-budget/budget.js";
-import { createGithubHttp } from "../../../src/shared/github-budget/client.js";
+import { createGhCliHttp } from "../../../src/shared/github-budget/client.js";
 import {
   CiWatcher,
   type Timers,
 } from "../../../src/shared/github-budget/ci-watcher.js";
-
-/** A fake GitHub: runs, PRs and check runs; ETags; a budget it spends. */
-class FakeGitHub {
-  requests: { path: string; status: number; inm: string | null }[] = [];
-  remaining = 5000;
-  readonly limit = 5000;
-  reset = Math.floor(Date.now() / 1000) + 1800;
-  runs = new Map<string, { status: string; conclusion: string | null }>();
-  prs = new Map<string, string>();
-  checks = new Map<string, { status: string; conclusion: string | null }[]>();
-  server = http.createServer((req, res) => this.handle(req, res));
-  base = "";
-
-  async start() {
-    await new Promise<void>((r) => this.server.listen(0, "127.0.0.1", r));
-    this.base = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
-  }
-  stop() {
-    this.server.close();
-  }
-  /** Calls that cost (not rate_limit, not a 304). */
-  get spent() {
-    return this.requests.filter(
-      (r) => r.path !== "/rate_limit" && r.status === 200,
-    ).length;
-  }
-  get polls() {
-    return this.requests.filter((r) => r.path !== "/rate_limit").length;
-  }
-
-  private body(p: string): unknown | null {
-    let m = /^\/repos\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(p);
-    if (m) {
-      const r = this.runs.get(`${m[1]}#${m[2]}`);
-      return r
-        ? { id: Number(m[2]), html_url: `https://x/${m[2]}`, ...r }
-        : null;
-    }
-    m = /^\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/.exec(p);
-    if (m) {
-      const sha = this.prs.get(`${m[1]}#${m[2]}`);
-      return sha ? { number: Number(m[2]), head: { sha } } : null;
-    }
-    m = /^\/repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-runs$/.exec(p);
-    if (m) {
-      const c = this.checks.get(m[2]) ?? [];
-      return {
-        total_count: c.length,
-        check_runs: c.map((x, i) => ({ name: `c${i}`, ...x })),
-      };
-    }
-    return null;
-  }
-
-  private handle(req: http.IncomingMessage, res: http.ServerResponse) {
-    const p = new URL(req.url ?? "/", this.base).pathname;
-    const inm = (req.headers["if-none-match"] as string | undefined) ?? null;
-    const rate = {
-      "x-ratelimit-limit": String(this.limit),
-      "x-ratelimit-reset": String(this.reset),
-    };
-    const send = (status: number, body?: unknown, etag?: string) => {
-      this.requests.push({ path: p, status, inm });
-      res.writeHead(status, {
-        "content-type": "application/json",
-        ...rate,
-        "x-ratelimit-remaining": String(this.remaining),
-        ...(etag ? { etag } : {}),
-      });
-      res.end(body === undefined ? "" : JSON.stringify(body));
-    };
-    if (req.headers.authorization !== "Bearer test-token")
-      return send(401, { message: "Bad credentials" });
-    if (p === "/rate_limit")
-      return send(200, {
-        resources: {
-          core: {
-            limit: this.limit,
-            remaining: this.remaining,
-            reset: this.reset,
-          },
-        },
-      });
-    const body = this.body(p);
-    if (body === null) {
-      this.remaining--;
-      return send(404, { message: "Not Found" });
-    }
-    const etag = `"${Buffer.from(JSON.stringify(body)).toString("base64url").slice(-24)}"`;
-    if (inm === etag) return send(304, undefined, etag);
-    this.remaining--;
-    send(200, body, etag);
-  }
-}
+import { FakeGitHub, fakeGh } from "./fake-gh.js";
 
 /** A manual clock: timers run only when the test moves time on. */
 class ManualTimers implements Timers {
@@ -148,7 +53,11 @@ class ManualTimers implements Timers {
 
 const gh = new FakeGitHub();
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-ghb-"));
-beforeAll(() => gh.start());
+let fake: ReturnType<typeof fakeGh>;
+beforeAll(async () => {
+  await gh.start();
+  fake = fakeGh(dir, gh.base);
+});
 afterAll(() => {
   gh.stop();
   fs.rmSync(dir, { recursive: true, force: true });
@@ -156,10 +65,7 @@ afterAll(() => {
 
 function setup(reserve = 1000) {
   const timers = new ManualTimers();
-  const api = createGithubHttp({
-    apiBase: gh.base,
-    token: async () => "test-token",
-  });
+  const api = createGhCliHttp({ env: fake.env, timeoutMs: () => 10_000 });
   const budget = new GithubBudget({
     reserve: () => reserve,
     readRateLimit: () => api.rateLimit(),
@@ -278,10 +184,7 @@ describe("the reserve keeps the last of the budget for releases and people", () 
     gh.remaining = 4321;
     gh.requests = [];
     const snap = path.join(dir, "snap.json");
-    const api = createGithubHttp({
-      apiBase: gh.base,
-      token: async () => "test-token",
-    });
+    const api = createGhCliHttp({ env: fake.env, timeoutMs: () => 10_000 });
     const b = new GithubBudget({
       reserve: () => 1000,
       readRateLimit: () => api.rateLimit(),
@@ -291,6 +194,8 @@ describe("the reserve keeps the last of the budget for releases and people", () 
     expect(gh.remaining).toBe(4321);
     const s = JSON.parse(fs.readFileSync(snap, "utf-8"));
     expect(s).toMatchObject({ remaining: 4321, limit: 5000, reserve: 1000 });
-    expect(JSON.stringify(s)).not.toMatch(/test-token/);
+    expect(Object.keys(s).sort()).toEqual(
+      ["limit", "readAt", "remaining", "reserve", "reset", "spend"].sort(),
+    );
   });
 });
