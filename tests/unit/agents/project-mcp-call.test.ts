@@ -6,16 +6,23 @@
  * Authorization header, read at call time (a rotation is picked up on the
  * next call), and appears in no file, env or log.
  *
- * The secrets store is fake: a file in a temp dir that the CLI's shim
- * hands the `env` backend for its own process only. Invented values only.
+ * Issue 473: the helper never reads a store, nor its own env: it asks Den's
+ * server, with the agent's token. Here that is a stand-in on a free port
+ * (web.port): the real route (project-mcp-routes.ts), the agent proven
+ * from its token as the request guard does, and a fake store (a file in a
+ * temp dir) the server side reads. Never port 7777. Invented values only.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
-import { spawnSync } from "child_process";
+import { spawn } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
 import * as path from "path";
+import { verifyActorToken } from "../../../src/shared/actor-token.js";
+import { parseProjectMcpServers } from "../../../src/shared/agents/project-mcp.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
+import { handleProjectMcpRoutes } from "../../../src/ui/server/project-mcp-routes.js";
+import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -23,9 +30,9 @@ const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
 const FIRST = "trk_TESTONLY_first_4c1d2e";
 const SECOND = "trk_TESTONLY_rotated_8a7b6c";
 
-const servers: http.Server[] = [];
+const servers_: http.Server[] = [];
 afterEach(async () => {
-  for (const s of servers.splice(0))
+  for (const s of servers_.splice(0))
     await new Promise<void>((res) => s.close(() => res()));
   await cleanupRigs();
 });
@@ -38,7 +45,7 @@ async function stub(): Promise<{ url: string; seen: (string | undefined)[] }> {
     res.writeHead(200, { "content-type": "application/json" });
     res.end('{"jsonrpc":"2.0","id":1,"result":{}}');
   });
-  servers.push(s);
+  servers_.push(s);
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", () => r()));
   return {
     url: `http://127.0.0.1:${(s.address() as AddressInfo).port}/mcp`,
@@ -57,9 +64,39 @@ function filesIn(dir: string): string[] {
 }
 
 /**
+ * Issue 473: Den's server, standing in: the mcp-headers route, its agent
+ * proven from the bearer token (verifyActorToken on the rig's state), the
+ * bearer read from the fake store's file at each call.
+ */
+async function denStandIn(
+  stateDir: string,
+  servers: () => unknown,
+  secretFile: string,
+): Promise<number> {
+  const s = http.createServer((req, res) => {
+    const t = /^Bearer (\S+)$/.exec(req.headers.authorization ?? "")?.[1];
+    const rec = t ? verifyActorToken(stateDir, t) : null;
+    setPrincipal(req, rec ? { kind: "agent", ...rec } : null);
+    const p = new URL(req.url ?? "/", "http://x").pathname;
+    void handleProjectMcpRoutes(req, res, p, {
+      projects: () => ["north", "south"],
+      servers: (ws) =>
+        ws === "north" ? parseProjectMcpServers(servers()).servers : [],
+      secret: async () => fs.readFileSync(secretFile, "utf-8"),
+    }).then((handled) => {
+      if (!handled) res.writeHead(404).end();
+    });
+  });
+  servers_.push(s);
+  await new Promise<void>((r) => s.listen(0, "127.0.0.1", () => r()));
+  return (s.address() as AddressInfo).port;
+}
+
+/**
  * A rig whose agents' CLI is the real one, on a temp distribution: its
  * secrets backend is env, and secrets.refs.tracker_token names
- * TRACKER_TOKEN, which the shim reads from the fake store's file.
+ * TRACKER_TOKEN. Only the stand-in Den reads the fake store; the CLI's
+ * shim (the agent's side) has no bearer in its env.
  */
 async function realCli(stubUrl: string) {
   const r = await rig();
@@ -93,12 +130,17 @@ async function realCli(stubUrl: string) {
   );
   const secretFile = path.join(store, "tracker_token");
   fs.writeFileSync(secretFile, FIRST, { mode: 0o600 });
+  const port = await denStandIn(r0.stateDir, () => servers, secretFile);
+  fs.appendFileSync(
+    path.join(dist, "config", "den.yml"),
+    `web:\n  port: ${port}\n`,
+  );
   const shim = path.join(r0.dir, "bin", "acme-cli");
   fs.writeFileSync(
     shim,
     [
       "#!/bin/sh",
-      `TRACKER_TOKEN="$(cat '${secretFile}')" exec '${TSX}' '${path.join(ENGINE, "src", "ui", "cli", "index.ts")}' "$@"`,
+      `exec '${TSX}' '${path.join(ENGINE, "src", "ui", "cli", "index.ts")}' "$@"`,
       "",
     ].join("\n"),
     { mode: 0o755 },
@@ -130,12 +172,24 @@ const helperOf = (r: Rig, id: string): string =>
     ) as { mcpServers: Record<string, { headersHelper?: string }> }
   ).mcpServers.tracker?.headersHelper ?? "";
 
-/** The helper as Claude Code runs it: a shell, with the agent's own env. */
-const runHelper = (helper: string, env: NodeJS.ProcessEnv | undefined) =>
-  spawnSync("/bin/sh", ["-c", helper], {
-    encoding: "utf8",
-    env: env as NodeJS.ProcessEnv,
-    timeout: 60_000,
+/**
+ * The helper as Claude Code runs it: a shell, with the agent's own env.
+ * Async: the stand-in Den answers from this process's event loop.
+ */
+const runHelper = (
+  helper: string,
+  env: NodeJS.ProcessEnv | undefined,
+): Promise<{ status: number | null; stdout: string; stderr: string }> =>
+  new Promise((resolve) => {
+    const c = spawn("/bin/sh", ["-c", helper], {
+      env: env as NodeJS.ProcessEnv,
+      timeout: 60_000,
+    });
+    let stdout = "";
+    let stderr = "";
+    c.stdout.on("data", (d) => (stdout += String(d)));
+    c.stderr.on("data", (d) => (stderr += String(d)));
+    c.on("close", (status) => resolve({ status, stdout, stderr }));
   });
 
 describe("issue 335: the bearer reaches the server at call time", () => {
@@ -153,7 +207,7 @@ describe("issue 335: the bearer reaches the server at call time", () => {
     const env = r.made[0].opts.env as NodeJS.ProcessEnv;
 
     const call = async () => {
-      const h = runHelper(helper, env);
+      const h = await runHelper(helper, env);
       expect([h.status, h.stderr]).toEqual([0, ""]);
       const headers = JSON.parse(h.stdout) as Record<string, string>;
       await fetch(s.url, { method: "POST", headers, body: "{}" });
@@ -165,7 +219,7 @@ describe("issue 335: the bearer reaches the server at call time", () => {
     expect(s.seen).toEqual([`Bearer ${FIRST}`, `Bearer ${SECOND}`]);
 
     // Project B's agent, running A's helper: refused, with no bearer.
-    const b = runHelper(helper, r.made[1].opts.env as NodeJS.ProcessEnv);
+    const b = await runHelper(helper, r.made[1].opts.env as NodeJS.ProcessEnv);
     expect(b.status).toBe(1);
     expect(b.stderr).toContain('project south has no MCP server "tracker"');
 
