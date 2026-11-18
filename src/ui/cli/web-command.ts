@@ -94,6 +94,7 @@ import {
   noticeLine,
   noticeOnce,
   upNoticeLines,
+  givenAddress,
   type AddressState,
   type CheckDeps,
 } from "../../shared/edge/address-check.js";
@@ -1548,7 +1549,7 @@ async function runWeb(args: string[]): Promise<void> {
         cli: product().cli,
       })
     : null;
-  const origin = proven?.address ?? addr?.url ?? null;
+  const origin = (proven ? givenAddress(proven) : null) ?? addr?.url ?? null;
   const shownNow = origin ?? shown;
   if (running && !svc.handled && !started)
     console.log(
@@ -1752,8 +1753,8 @@ export async function provenOrigin(
     cli: product().cli,
     ...deps,
   });
-  if (!state.address) return { origin: wanted, state };
-  if (state.address !== wanted && noticeOnce(stateDir, state)) {
+  const given = givenAddress(state) ?? wanted;
+  if (given !== wanted && noticeOnce(stateDir, state)) {
     const line = noticeLine(state, {
       lang: cliLanguage(),
       title: product().title,
@@ -1761,7 +1762,7 @@ export async function provenOrigin(
     });
     if (line) say(line);
   }
-  return { origin: state.address, state };
+  return { origin: given, state };
 }
 const stdIo: CliIo = {
   out: (s) => process.stdout.write(s),

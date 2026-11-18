@@ -3032,9 +3032,9 @@
     "edgeAddr.busy.takeF": "__DEN_TITLE__'s proxy didn't start.",
     "edgeAddr.banner.title": "__DEN_TITLE__ is at {address} for now.",
     "edgeAddr.banner.held":
-      "Port {port} is held by {owner} ({name}), so {host} goes to that server instead.", // words-ok: mock v3 (approved) word for word: another proxy is a server
+      "Port {port} is held by {owner} ({name}), so {host} goes to {owner} instead.",
     "edgeAddr.banner.heldBare":
-      "Port {port} is held by {owner}, so {host} goes to that server instead.", // words-ok: mock v3 (approved) word for word: another proxy is a server
+      "Port {port} is held by {owner}, so {host} goes to {owner} instead.",
     "edgeAddr.banner.unknown":
       "Port {port} is in use by something __DEN_TITLE__ cannot name, so {host} goes there instead.",
     "edgeAddr.banner.none": "Nothing answers at {host} yet.",
@@ -6972,7 +6972,7 @@
           !s ||
           !s.wanted ||
           !s.address ||
-          s.wantedAnswer === "den" ||
+          s.wantedAnswer !== "other" ||
           s.address === s.wanted ||
           seen === s.address
         )

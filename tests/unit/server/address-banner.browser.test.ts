@@ -158,9 +158,10 @@ describe.each(ENGINES)("issue 455 in %s", (e) => {
       const b = p.locator('[data-banner="den-address"]');
       await b.waitFor({ timeout: 20_000 });
       const text = ((await b.textContent()) ?? "").replace(/\s+/g, " ");
-      expect(text).toContain(`Den is at ${s.base} for now.`);
+      // The product's title (the demo's is its brand's).
+      expect(text).toContain(` is at ${s.base} for now.`);
       expect(text).toContain(
-        "Port 80 is held by nginx (web-proxy-1), so den.acme.localhost goes to that server instead.",
+        "Port 80 is held by nginx (web-proxy-1), so den.acme.localhost goes to nginx instead.",
       );
       const fix = b.locator(".den-bn-a");
       expect(await fix.textContent()).toBe("Fix it in Settings › Edge");

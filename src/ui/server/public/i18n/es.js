@@ -2975,9 +2975,9 @@
     "edgeAddr.busy.takeF": "El proxy de __DEN_TITLE__ no se inició.",
     "edgeAddr.banner.title": "__DEN_TITLE__ está en {address} por ahora.",
     "edgeAddr.banner.held":
-      "El puerto {port} lo ocupa {owner} ({name}), así que {host} va a ese servidor.", // words-ok: mock v3 (approved) word for word: another proxy is a server
+      "El puerto {port} lo ocupa {owner} ({name}), así que {host} va a {owner}.",
     "edgeAddr.banner.heldBare":
-      "El puerto {port} lo ocupa {owner}, así que {host} va a ese servidor.", // words-ok: mock v3 (approved) word for word: another proxy is a server
+      "El puerto {port} lo ocupa {owner}, así que {host} va a {owner}.",
     "edgeAddr.banner.unknown":
       "El puerto {port} lo usa algo que __DEN_TITLE__ no sabe nombrar, así que {host} va allí.",
     "edgeAddr.banner.none": "Todavía nada responde en {host}.",

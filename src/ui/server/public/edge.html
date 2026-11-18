@@ -301,7 +301,7 @@
       .addr-card .btn.primary {
         background: var(--accent);
         border-color: var(--accent);
-        color: var(--accent-contrast, #fff);
+        color: var(--on-accent);
         font-weight: 600;
       }
       .addr-snip {
@@ -316,17 +316,16 @@
         max-width: 100%;
         overflow: auto;
         border-radius: var(--radius);
-        background: #1f1d1a;
-        color: #f3efe7;
+        border: 1px solid var(--border-strong);
+        background: var(--bg);
+        color: var(--text);
         font: 13px/1.55 var(--mono);
       }
       .addr-copy {
         position: absolute;
         top: 8px;
         right: 8px;
-        background: #2b2925;
-        color: #f3efe7;
-        border-color: #4a463f;
+        background: var(--surface);
       }
       .addr-check-row {
         display: flex;

@@ -238,6 +238,18 @@ export async function checkAddress(d: CheckDeps): Promise<AddressState> {
   return base;
 }
 
+/**
+ * The address to give people. The wanted one (web.url) unless the check
+ * found another server answering it: then Den's own port, proven. When
+ * nothing answers the wanted address (or it can't be asked from here),
+ * it is still the one given (D80: web.url is the address, no fallback):
+ * no other server is reached, and doctor says it wasn't checked.
+ */
+export function givenAddress(s: AddressState): string | null {
+  if (s.wantedAnswer === "other" && s.address) return s.address;
+  return s.wanted ?? s.address;
+}
+
 /** A host port, and who holds it (issue 455: Settings › Edge's Ports row). */
 export async function portState(
   port: number,
@@ -260,6 +272,8 @@ export interface NoticeWords {
  */
 export function noticeLine(s: AddressState, w: NoticeWords): string | null {
   if (!s.address || s.address === s.wanted || !s.wanted) return null;
+  // Only another server answering moves the address (givenAddress).
+  if (s.wantedAnswer !== "other") return null;
   const v = {
     title: w.title,
     cli: w.cli,
@@ -272,13 +286,11 @@ export function noticeLine(s: AddressState, w: NoticeWords): string | null {
       ? addressWord(w.lang, `kind.${s.owner.kind}` as AddressWord)
       : "",
   };
-  if (s.wantedAnswer === "other")
-    return addressWord(
-      w.lang,
-      s.owner ? "held" : s.answeredAs ? "heldBare" : "unknown",
-      v,
-    );
-  return addressWord(w.lang, "none", v);
+  return addressWord(
+    w.lang,
+    s.owner ? "held" : s.answeredAs ? "heldBare" : "unknown",
+    v,
+  );
 }
 
 /** `den web up`'s lines when the address people are given isn't Den. */

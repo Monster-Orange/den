@@ -198,7 +198,7 @@ describe("the page banner's words (mock v3)", () => {
         host: "den.acme.localhost",
       }),
     ).toBe(
-      "Port 80 is held by nginx (web-proxy-1), so den.acme.localhost goes to that server instead.",
+      "Port 80 is held by nginx (web-proxy-1), so den.acme.localhost goes to nginx instead.",
     );
     expect(t("edgeAddr.banner.fix")).toBe("Fix it in Settings › Edge");
     expect(t("edgeAddr.banner.dismiss")).toBe("Dismiss");

@@ -2903,9 +2903,9 @@
     "edgeAddr.busy.takeF": "__DEN_TITLE__ のプロキシは起動しませんでした。",
     "edgeAddr.banner.title": "今は __DEN_TITLE__ は {address} にあります。",
     "edgeAddr.banner.held":
-      "ポート {port} は {owner}（{name}）が使っているため、{host} はそのサーバーに届きます。", // words-ok: mock v3 (approved) word for word: another proxy is a server
+      "ポート {port} は {owner}（{name}）が使っているため、{host} は {owner} に届きます。",
     "edgeAddr.banner.heldBare":
-      "ポート {port} は {owner} が使っているため、{host} はそのサーバーに届きます。", // words-ok: mock v3 (approved) word for word: another proxy is a server
+      "ポート {port} は {owner} が使っているため、{host} は {owner} に届きます。",
     "edgeAddr.banner.unknown":
       "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
     "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",

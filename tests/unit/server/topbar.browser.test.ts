@@ -1128,9 +1128,13 @@ describe("criterion 5: the overlays only read", () => {
     // Nothing reached a service, workspace, edge or restart route. The
     // shell's one read of /api/edge (GET, the rail's Edge page asks whether
     // an edge is configured, dev.30) is a page load's, and only reads.
-    expect(reqs.filter((r) => r.startsWith("GET /api/edge"))).toEqual([
-      "GET /api/edge",
-    ]);
+    // Issue 455: the address banner's one read (GET /api/edge/address) is
+    // a page load's too.
+    expect(
+      reqs.filter(
+        (r) => r.startsWith("GET /api/edge") && r !== "GET /api/edge/address",
+      ),
+    ).toEqual(["GET /api/edge"]);
     expect(
       reqs.filter(
         (r) =>

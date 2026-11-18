@@ -70,7 +70,7 @@ export function cardShown(s) {
     s.ok !== false &&
     s.wanted &&
     s.address &&
-    s.wantedAnswer !== "den" &&
+    s.wantedAnswer === "other" &&
     s.address !== s.wanted
   );
 }
