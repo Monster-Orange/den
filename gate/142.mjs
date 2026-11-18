@@ -130,6 +130,14 @@ async function turnEnd(a, answer) {
   });
 }
 
+/**
+ * Its counts are read: stop it, so the next stub's start stays under the
+ * bed's agents.max_concurrent (4 by default, other agents count too).
+ */
+async function done(a) {
+  await a.ctl.stop();
+}
+
 /** A stub agent under this check's own name, recorded for teardown. */
 async function stub(ctx, state, role) {
   const name = `gate142-${role}-${state.tag}`;
@@ -137,8 +145,14 @@ async function stub(ctx, state, role) {
   const a = { name, id: ctl?.id ?? name, ctl };
   state.made.push(a);
   // A handle creates nothing: start the agent and wait until it runs,
-  // so its session (and its file) exist before sessionStart.
-  ctl.start("tester");
+  // so its session (and its file) exist before sessionStart. A refused
+  // start (agents.max_concurrent reached) says so here, not later as a
+  // missing file.
+  const r = await ctl.start("tester");
+  if (r && typeof r.code === "number" && r.code !== 0)
+    throw new Error(
+      `${name}: the bed refused to start it (agents.max_concurrent?): ${String(r.all ?? r.err ?? r.out ?? "").slice(0, 200)}`,
+    );
   a.runMs = await ctl.running(20000);
   await ctl.sessionStart?.();
   return a;
@@ -174,6 +188,7 @@ export async function run(ctx, state) {
       badge: await pageBadge(ctx),
       apiUnread: (await bellFor(ctx, a)).unread,
     };
+    await done(a);
   }
 
   // 2a. ask_human: needs you, counted.
@@ -186,6 +201,7 @@ export async function run(ctx, state) {
       unreadNeeds: v.needs.filter((n) => !n.read).length,
       waiting: v.waiting.map((w) => w.why),
     };
+    await done(a);
   }
   // 2b. A turn that ends on a question, then Claude Code's idle notice:
   // still needs you (the idle notice doesn't undo it).
@@ -199,6 +215,7 @@ export async function run(ctx, state) {
       unreadNeeds: v.needs.filter((n) => !n.read).length,
       waiting: v.waiting.map((w) => w.why),
     };
+    await done(a);
   }
 
   // 3. A plain idle agent: its turn's end under Updates, nothing counted.
