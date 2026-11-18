@@ -1849,6 +1849,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
   },
   {
+    // Issue 415: Report says who can see a report: each destination's
+    // visibility on GitHub, kept and waited for (user.yml feedback.*).
+    id: "server.report_visibility_cache",
+    category: "server",
+    label: "Report: repository visibility kept for",
+    description:
+      "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    keywords: ["report", "feedback", "visibility", "private", "cache"],
+    scope: "user",
+    keys: ["feedback.visibility_cache_hours"],
+    control: { type: "number", min: 0, max: 720, step: 1, unit: "h" },
+    read: (ctx) => ctx.data.feedback?.visibility_cache_hours ?? 24,
+    write: (v, ctx) => ctx.post({ feedback: { visibility_cache_hours: v } }),
+  },
+  {
+    id: "server.report_visibility_wait",
+    category: "server",
+    label: "Report: repository visibility wait",
+    description:
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    keywords: ["report", "feedback", "visibility", "timeout", "wait"],
+    scope: "user",
+    keys: ["feedback.visibility_timeout_seconds"],
+    control: { type: "number", min: 0.5, max: 60, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.feedback?.visibility_timeout_seconds ?? 3,
+    write: (v, ctx) =>
+      ctx.post({ feedback: { visibility_timeout_seconds: v } }),
+  },
+  {
+    id: "server.report_visibility_retry",
+    category: "server",
+    label: "Report: repository visibility retry",
+    description:
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
+    keywords: ["report", "feedback", "visibility", "retry", "failure"],
+    scope: "user",
+    keys: ["feedback.visibility_retry_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.feedback?.visibility_retry_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",
