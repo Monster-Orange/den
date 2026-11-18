@@ -48,6 +48,11 @@ import { askConfirm, tell } from "@kit/dialog.js";
 import { formatTime, timeHtml } from "@kit/time.js";
 import { showUpdate } from "@kit/update-pill.js";
 import {
+  mountMarkdownEditor,
+  enterAction,
+  type MarkdownEditor,
+} from "@kit/markdown-editor.js";
+import {
   createSaveState,
   saveScheduler,
   SAVE_AFTER_MS,
@@ -212,6 +217,24 @@ showUpdate({
   onReload: () => {},
 }).hide();
 export { html, words, svg, view, pv, m, bw, when };
+
+// 0.7.5: the Markdown editor.
+const md: MarkdownEditor = mountMarkdownEditor(document.body, {
+  value: "**hi**",
+  onChange: (v: string) => void v.length,
+  mode: "lite",
+  label: "Notes",
+  onSubmit: () => undefined,
+});
+md.ready.then(() => md.setValue(""));
+md.update({ disabled: true });
+const act: "submit" | "newline" | "ime" | null = enterAction(
+  { key: "Enter", shiftKey: false, keyCode: 229 },
+  "full",
+);
+void act;
+md.destroy();
+
 // The save-state line: any field, the host's save and Copy text.
 const field = document.createElement("textarea");
 const line = createSaveState(document.createElement("p"), {

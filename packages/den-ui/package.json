@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.7.4",
+  "version": "0.7.6",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
   "repository": {
@@ -35,6 +35,8 @@
     "./report.css": "./src/report.css",
     "./busy.css": "./src/busy.css",
     "./dialog.css": "./src/dialog.css",
+    "./markdown-editor": "./src/markdown-editor.js",
+    "./markdown-editor.css": "./src/markdown-editor.css",
     "./savestate.css": "./src/savestate.css",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
@@ -58,5 +60,11 @@
   ],
   "bin": {
     "den-ui-parity": "bin/den-ui-parity.mjs"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
+    "@lezer/markdown": "1.7.2"
   }
 }

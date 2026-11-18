@@ -388,6 +388,60 @@ browser test, on the image (Den's real server on the demo distribution,
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## The Markdown editor (0.7.5)
+
+`src/markdown-editor.js` and `src/markdown-editor.css` (exports
+`./markdown-editor`, `./markdown-editor.css`): a Markdown field,
+ported from an existing editor. CodeMirror 6 on the Markdown text: the
+document is the string that is stored, character for character, and the
+live preview is drawn in place, as decoration only (no preview pane,
+never converted to HTML and back).
+
+    import { mountMarkdownEditor } from "@monster-orange/den-ui/markdown-editor";
+    // link markdown-editor.css after tokens.css
+    const ed = mountMarkdownEditor(el, {
+      value: "", onChange: (text) => save(text),
+      label: "Notes",          // or labelledBy; describedBy for help
+      mode: "full",            // "full": a toolbar, Enter is a new line,
+                               // ⌘/Ctrl+Enter submits; "lite": a chat box,
+                               // Enter sends, Shift+Enter is a new line
+      onSubmit, onEscape, onBlur, placeholder, maxLength, rows,
+      disabled, readOnly, required, invalid, lang, uiLang, nonce,
+    });
+    await ed.ready;            // CodeMirror has taken over
+    ed.setValue(""); ed.focus(); ed.run("bold");
+    ed.insertBlock(text); ed.insertLinkTo(label, url); ed.replaceEnd(n, text);
+    ed.update({ disabled: true }); ed.destroy();
+
+- **Lazy.** The module imports no CodeMirror. On mount it loads
+  `@codemirror/state`, `view`, `commands` and `@lezer/markdown` with
+  `import()`, so a bundler puts them in a chunk of their own, and a plain
+  textarea takes the typing until it arrives (its toolbar works too). The
+  editor then goes on from the textarea's text, focus, caret and
+  selection. `loadMarkdownEditor()` warms the chunk early. The packages
+  are the kit's `dependencies`, pinned exactly. Den's own pages don't
+  load it.
+- **The preview.** On a line the caret is not on, the markers hide and
+  the words show formatted; `- ` becomes a bullet. On the line being
+  edited every marker stays, muted. CommonMark without setext headings,
+  indented code, HTML, entities, reference links, images and autolinks,
+  plus strikethrough; only an http(s) link is drawn as a link.
+- **IME.** An Enter that belongs to a composition (`view.composing`,
+  `isComposing`, keyCode 229, or within 100 ms of `compositionend`, as
+  Safari sends it) never sends, submits or adds a line. The preview is
+  frozen while a composition is open, and `maxLength` never cuts one.
+- **Shortcuts.** ⌘/Ctrl+B, I, E (code), K (link), ⇧X (strike); Enter in
+  a list or quote continues it, and on an empty item ends it.
+- **Words.** The toolbar's are `kit.md.*` in strings.js (en, es, ja), in
+  `uiLang`, else `<html lang>`.
+- **Touch sizes.** On `(pointer: coarse)` or below 720px the toolbar's
+  buttons are `--tap` (44×44px) and the text is 16px (no zoom on focus);
+  elsewhere 28px and 15px.
+- **CSP.** CodeMirror writes its base styles into a `<style>`: under a
+  strict `style-src`, pass the page's `nonce`.
+- The content element has `data-md-dirty` while it holds unsaved text
+  (for an update pill's `askFirst`).
+
 ## The save-state line (`den-savestate`)
 
 - `src/savestate.js`, `src/savestate.css` (exports `./savestate`,
