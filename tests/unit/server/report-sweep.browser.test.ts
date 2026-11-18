@@ -70,8 +70,27 @@ function missing(p: Page): Promise<string[]> {
     const LAYER =
       'dialog, [role="dialog"], [role="alertdialog"], [role="menu"], .den-drawer';
     const MAY = ".fb-dlg, .bz-dlg, .den-bell-ask";
+    // A box with display: contents (the rail's drawer box) has no rect of
+    // its own: its children's.
+    const rectOf = (el: Element): DOMRect => {
+      if (getComputedStyle(el).display !== "contents")
+        return el.getBoundingClientRect();
+      const rs = [...el.children]
+        .map(rectOf)
+        .filter((r) => r.width && r.height);
+      if (!rs.length) return new DOMRect();
+      const l = Math.min(...rs.map((r) => r.left));
+      const t = Math.min(...rs.map((r) => r.top));
+      return new DOMRect(
+        l,
+        t,
+        Math.max(...rs.map((r) => r.right)) - l,
+        Math.max(...rs.map((r) => r.bottom)) - t,
+      );
+    };
     const seen = (el: Element) => {
-      const r = el.getBoundingClientRect();
+      if (el.closest("[inert]")) return false;
+      const r = rectOf(el);
       if (!r.width || !r.height) return false;
       if (r.bottom <= 0 || r.right <= 0) return false;
       if (r.top >= innerHeight || r.left >= innerWidth) return false;
