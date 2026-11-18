@@ -49,6 +49,8 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "agents_list",
     "refresh_timeout_seconds",
   ],
+  // Issue 403: how long a filed report's screenshot is kept here.
+  "reports.screenshot_keep_days": ["reports", "screenshot_keep_days"],
   // Issue 278: when an agent counts as stuck compacting; instruction size.
   "agent_context.compaction_loop_count": [
     "agent_context",

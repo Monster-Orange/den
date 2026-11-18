@@ -499,6 +499,13 @@ export interface UserConfig {
     refresh_timeout_seconds?: unknown;
   };
   /**
+   * Issue 403: a filed report's screenshot, kept on this install.
+   * `screenshot_keep_days` (30): how long, then the janitor deletes it.
+   */
+  reports?: {
+    screenshot_keep_days?: unknown;
+  };
+  /**
    * Issue 278: agents stuck compacting and instruction files that eat the
    * context (context-watch.ts): compaction_loop_count (3) automatic
    * compactions within compaction_loop_minutes (10) ring the bell;

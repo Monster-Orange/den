@@ -6750,6 +6750,8 @@ async function handleRequest(
         })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
+        // Issue 403: how long a filed report's screenshot is kept (reports.*).
+        reports: { screenshot_keep_days: shotKeepDays(user) },
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {
@@ -6796,6 +6798,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
+          reports?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -6827,6 +6830,7 @@ async function handleRequest(
             web_bridge: body.web_bridge,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
+            reports: body.reports,
           });
           if (!c.ok) return send400(res, c.error);
         }

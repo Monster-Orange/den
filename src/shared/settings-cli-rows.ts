@@ -19,11 +19,14 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
+ *   reports: { screenshot_keep_days? }
+ *                                     user.yml reports.* (issue 403)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
+import { SHOT_KEEP_DAYS_MAX, SHOT_KEEP_DAYS_MIN } from "./report-shots.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -39,6 +42,8 @@ export const PERSON_ONLY_SETTINGS = [
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
   "agents_list",
+  // Issue 403: how long a filed report's screenshot is kept here.
+  "reports",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
   // then holds its deliveries.
   "agent_context",
@@ -132,6 +137,16 @@ const CRASH: Record<string, Limit> = {
 
 const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
+};
+
+/** Issue 403: how long a filed report's kept screenshot stays (days). */
+const REPORTS: Record<string, Limit> = {
+  screenshot_keep_days: {
+    key: "screenshot_keep_days",
+    min: SHOT_KEEP_DAYS_MIN,
+    max: SHOT_KEEP_DAYS_MAX,
+    int: true,
+  },
 };
 
 const AGENTS_LIST: Record<string, Limit> = {
@@ -355,7 +370,8 @@ export function patchCliRows(
       AGENTS_LIST,
       body.agents_list,
       apply,
-    );
+    ) ??
+    patchBlock(user, "reports", "reports", REPORTS, body.reports, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

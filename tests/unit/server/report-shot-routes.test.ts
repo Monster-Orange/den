@@ -35,6 +35,10 @@ import {
 import { reportShotHub } from "../../../src/ui/server/report-shot-hub.js";
 import { feedbackSettings } from "../../../src/shared/report-store.js";
 import { shotKeepDays, shotStore } from "../../../src/shared/report-shots.js";
+import {
+  PERSON_ONLY_SETTINGS,
+  patchCliRows,
+} from "../../../src/shared/settings-cli-rows.js";
 import { DeviceFlows } from "../../../src/ui/server/device-flows.js";
 import type { GithubDeviceClient } from "../../../src/shared/github-device.js";
 
@@ -501,6 +505,27 @@ describe("issue 403: the janitor", () => {
     expect(shotKeepDays({ reports: { screenshot_keep_days: 7 } })).toBe(7);
     expect(shotKeepDays({ reports: { screenshot_keep_days: 0 } })).toBe(30);
     expect(shotKeepDays({ reports: { screenshot_keep_days: 1.5 } })).toBe(30);
+  });
+
+  it("Settings and `config` set it (whole days, 1 to 3650), null clears it; a person's only", () => {
+    const user: Record<string, unknown> = {};
+    expect(
+      patchCliRows(user, { reports: { screenshot_keep_days: 7 } }),
+    ).toEqual({ ok: true });
+    expect(user.reports).toEqual({ screenshot_keep_days: 7 });
+    expect(shotKeepDays(user)).toBe(7);
+    expect(
+      patchCliRows(user, { reports: { screenshot_keep_days: 0 } }).ok,
+    ).toBe(false);
+    expect(
+      patchCliRows(user, { reports: { screenshot_keep_days: 2.5 } }).ok,
+    ).toBe(false);
+    expect(user.reports).toEqual({ screenshot_keep_days: 7 });
+    expect(
+      patchCliRows(user, { reports: { screenshot_keep_days: null } }),
+    ).toEqual({ ok: true });
+    expect(user.reports).toBeUndefined();
+    expect(PERSON_ONLY_SETTINGS).toContain("reports");
   });
 
   it("a screenshot older than its days goes, with its record; a newer one stays", () => {

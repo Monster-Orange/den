@@ -1547,6 +1547,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
   },
   {
+    // Issue 403: a filed report's masked screenshot, kept on this install
+    // (user.yml reports.screenshot_keep_days). A person's only.
+    id: "server.report_screenshot_days",
+    category: "server",
+    label: "Report screenshots, kept for",
+    description:
+      "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and its server agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    keywords: ["report", "screenshot", "feedback", "keep", "days", "issue"],
+    scope: "user",
+    keys: ["reports.screenshot_keep_days"],
+    control: { type: "number", min: 1, max: 3650, step: 1, unit: "d" },
+    read: (ctx) => ctx.data.reports?.screenshot_keep_days ?? 30,
+    write: (v, ctx) => ctx.post({ reports: { screenshot_keep_days: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",
