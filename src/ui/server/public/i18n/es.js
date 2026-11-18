@@ -882,10 +882,9 @@
     "set.server.gate_browser": "Pruebas de navegador a la vez, en esta máquina",
     "set.server.gate_browser.d":
       "Cuántas pruebas de navegador (`gate run --kind browser`) pueden ocupar la máquina a la vez. Una empieza solo si la carga por núcleo es bastante baja y quedan suficientes PTY libres. Por defecto, 1 con menos de 8 núcleos; si no, 1 por cada 8 núcleos, como mucho 3. __DEN_CLI__ gate settings --browser-slots 1",
-    "set.server.gate_pty":
-      "PTY que se dejan libres para una prueba de navegador",
+    "set.server.gate_pty": "PTY libres reservados para pruebas de navegador",
     "set.server.gate_pty.d":
-      "Una prueba de navegador empieza solo si quedan más de estos PTY libres por debajo del límite del sistema, para que las shells y los agentes nuevos sigan arrancando. __DEN_CLI__ gate settings --pty-headroom 50",
+      "Una prueba de navegador empieza solo si quedan más de estos PTY libres por debajo del límite del sistema, para que los terminales y los agentes nuevos sigan arrancando. __DEN_CLI__ gate settings --pty-headroom 50",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
       "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Las pruebas de navegador usan en su lugar los turnos de navegador. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",

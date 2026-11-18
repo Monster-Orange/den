@@ -2003,10 +2003,10 @@ export const DEN_SETTINGS = [
   {
     id: "server.gate_pty",
     category: "gate",
-    label: "PTYs kept free for a browser test run",
+    label: "Free PTYs kept for browser test runs",
     description:
-      "A browser test run starts only while more than this many PTYs are free below the system's limit, so new shells and agents still start. __DEN_CLI__ gate settings --pty-headroom 50",
-    keywords: ["gate", "slot", "tests", "browser", "pty", "shell"],
+      "A browser test run starts only while more than this many PTYs are free below the system's limit, so new terminals and agents still start. __DEN_CLI__ gate settings --pty-headroom 50",
+    keywords: ["gate", "slot", "tests", "browser", "pty", "terminal"],
     scope: "user",
     keys: ["gate_slots.pty_headroom"],
     control: { type: "number", min: 0, max: 100000, step: 1 },

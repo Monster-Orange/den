@@ -69,6 +69,8 @@ describe("search", () => {
           "agents.list_host_wait",
         ],
       ],
+      // Issue 511: the free PTYs keep new terminals starting.
+      ["gate", ["server.gate_pty"]],
       ["cli", ["cli.cli_tabs"]],
     ]);
     // A description word: "stack.yml" is in Per-language IDE's.
