@@ -4,20 +4,20 @@
 # new commits' messages and the pushed commit's files go through the same
 # gates CI runs. Names come from DEN_ORG_NAMES, DEN_ORG_NAMES_FILE or the
 # per-user file ~/.config/den-dev/org-names.txt; with none the hook passes
-# quietly, so a machine without the list can still push. Git worktrees share
-# this hook. DEN_PREPUSH_FILES=0 skips the file check (messages only).
+# quietly, so a machine without the list can still push. A per-user file that
+# is there but broken (a dangling link, no patterns) fails, and says why
+# (issue 528). Git worktrees share this hook. DEN_PREPUSH_FILES=0 skips the
+# file check (messages only).
 root="${DEN_ROOT:-$(git rev-parse --show-toplevel)}"
 zero=0000000000000000000000000000000000000000
 
-node --input-type=module -e "
-  const { orgPatterns } = await import('$root/scripts/org-names.js');
-  process.exit(orgPatterns().length ? 0 : 3);
-" 2>/dev/null
+# --check-file prints the case and the count only, never a pattern.
+node "$root/scripts/org-name-gate.mjs" --check-file >/dev/null
 case $? in
   0) ;;
   3) exit 0 ;; # no names configured
   *)
-    echo "pre-push: the org-name list is set but can't be read; not pushing." >&2
+    echo "pre-push: the org-name list is set but can't be read (see above); not pushing." >&2
     exit 1
     ;;
 esac

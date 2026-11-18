@@ -19,7 +19,11 @@ messages and the pushed commit's files. They read the patterns from
 `DEN_ORG_NAMES`, `DEN_ORG_NAMES_FILE` or the per-user file
 `~/.config/den-dev/org-names.txt` (git hooks don't see an agent session's
 shell variables, so the file is the reliable one). Without any of them the
-hooks pass quietly. A file that is named but missing stops the push.
+hooks pass quietly. A file that is named but missing stops the push. So does
+a per-user file that is there but broken, a link whose target is gone or a
+file with no patterns: both hooks fail and say so.
+`node scripts/org-name-gate.mjs --check-file` tells you which case applies,
+with the pattern count only.
 
 ## Layout
 

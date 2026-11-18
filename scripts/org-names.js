@@ -9,7 +9,7 @@
  * by DEN_ORG_NAMES_FILE. Blank lines and `#` comments are skipped; each line
  * is a case-insensitive regex.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -23,20 +23,80 @@ export function userNamesFile(env = process.env) {
   return base ? join(base, "den-dev", "org-names.txt") : "";
 }
 
-/**
- * The patterns from `env` ([] when nothing is configured). A file named in
- * DEN_ORG_NAMES_FILE that is missing throws: a gate set up wrongly fails
- * closed rather than passing.
- */
-export function orgPatterns(env = process.env) {
-  const own = userNamesFile(env);
-  const file = env.DEN_ORG_NAMES_FILE || (own && existsSync(own) ? own : "");
-  const raw = env.DEN_ORG_NAMES ?? (file ? readFileSync(file, "utf-8") : "");
-  return raw
+const parse = (raw) =>
+  raw
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith("#"))
     .map((l) => new RegExp(l, "i"));
+
+/** The error a set-but-broken per-user names file throws (issue 528). */
+export const BROKEN_NAMES_FILE = "DEN_NAMES_FILE_BROKEN";
+
+/** What a set-but-broken names file says. It names the path, never a pattern. */
+export function brokenNamesMessage(file) {
+  return `the names file at ${file} is set but has no patterns (a broken link, or empty); fix it or remove it`;
+}
+
+/**
+ * The per-user names file's state (issue 528), with the pattern count only:
+ * "none" (nothing at the path: the hooks pass), "broken-link" (a symlink
+ * whose target is missing), "empty" (it loads 0 patterns) or "ok".
+ * { file, state, count, patterns }. The patterns are for the caller to
+ * match with, never to print.
+ */
+export function userNamesFileState(env = process.env) {
+  const file = userNamesFile(env);
+  let link;
+  try {
+    link = file ? lstatSync(file) : null;
+  } catch {
+    link = null;
+  }
+  if (!link) return { file, state: "none", count: 0, patterns: [] };
+  if (link.isSymbolicLink() && !existsSync(file))
+    return { file, state: "broken-link", count: 0, patterns: [] };
+  const patterns = parse(readFileSync(file, "utf-8"));
+  return {
+    file,
+    state: patterns.length ? "ok" : "empty",
+    count: patterns.length,
+    patterns,
+  };
+}
+
+/**
+ * The patterns from `env` ([] when nothing is configured). A file named in
+ * DEN_ORG_NAMES_FILE that is missing throws: a gate set up wrongly fails
+ * closed rather than passing. So does the per-user file when it is there but
+ * broken, a dangling link or no patterns (issue 528): set means meant, so it
+ * never passes quietly. The variables win over the per-user file, as before.
+ */
+export function orgPatterns(env = process.env) {
+  if (env.DEN_ORG_NAMES !== undefined) return parse(env.DEN_ORG_NAMES);
+  if (env.DEN_ORG_NAMES_FILE)
+    return parse(readFileSync(env.DEN_ORG_NAMES_FILE, "utf-8"));
+  const own = userNamesFileState(env);
+  if (own.state === "broken-link" || own.state === "empty") {
+    const err = new Error(brokenNamesMessage(own.file));
+    err.code = BROKEN_NAMES_FILE;
+    throw err;
+  }
+  return own.patterns;
+}
+
+/**
+ * orgPatterns for a gate script: a broken per-user file prints its message
+ * (`tag: ...`) and exits 1 instead of a stack trace. Other errors still throw.
+ */
+export function orgPatternsOrExit(tag, env = process.env) {
+  try {
+    return orgPatterns(env);
+  } catch (err) {
+    if (err?.code !== BROKEN_NAMES_FILE) throw err;
+    console.error(`${tag}: ${err.message}`);
+    process.exit(1);
+  }
 }
 
 /**
