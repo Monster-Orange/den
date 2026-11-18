@@ -89,7 +89,7 @@ beforeAll(async () => {
       }
       const p = new URL(req.url ?? "/", "http://x").pathname;
       if (p === "/connect/agent") {
-        if (asBound) return json(403, { error: "install token only" });
+        if (asBound) return json(403, { error: "install_token_required" });
         n += 1;
         const token = BOUND(n);
         hub.bound.set(token, String(body.agent_id));

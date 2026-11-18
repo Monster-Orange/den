@@ -16,10 +16,24 @@
  * agent on the install token, as before, and is asked again after
  * hub.agent_token_retry_seconds.
  *
- * Revoking: removing an agent revokes its token on Hub (unbind), and
- * Disconnect revokes them all (unbindAll) before the install's own. A
- * revoke Hub couldn't take is kept, marked, never used again, and tried
- * again at the next unbindAll.
+ * Rotation (Hub's rule): Den mints the agent a new token, keeps it, uses
+ * it from the next call, and drops the old one here. Den never revokes the
+ * old one: Hub ends it at the new one's first use or after its grace
+ * period, whichever comes first. A revoke by either token's id would end
+ * BOTH, the new one too.
+ *
+ * Revoking: removing an agent revokes its token on Hub by its id (unbind);
+ * Hub marking an agent gone in its agent list does not. Disconnect revokes
+ * them all (unbindAll) before the install's own. A revoke Hub couldn't
+ * take is kept, marked, never used again, and tried again at the next
+ * unbindAll.
+ *
+ * Mint refusals, by Hub's `error` value:
+ *   - 403 agents_not_covered: the install's grant doesn't cover agents (it
+ *     connected before them). Den posts its one reconnect item and asks
+ *     no more until the install connects again (hub-agent-grant.ts).
+ *   - 403 install_token_required: an agent's own token asked to mint. A
+ *     Den bug: logged once, and never asked again with that token.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -33,6 +47,13 @@ import {
   type HubConfig,
 } from "./hub.js";
 import { getStateDir } from "./paths.js";
+import { createHash } from "crypto";
+import {
+  AGENTS_NOT_COVERED,
+  INSTALL_TOKEN_REQUIRED,
+  agentsNotCovered,
+  markAgentsNotCovered,
+} from "./hub-agent-grant.js";
 
 /** One agent's Hub token, as the server keeps it. */
 export interface AgentHubToken {
@@ -48,8 +69,6 @@ export interface AgentHubToken {
   at: string;
   /** Removed here, but Hub couldn't revoke it yet: never used again. */
   revokePending?: true;
-  /** Ids of tokens it replaced (rotation) that Hub hasn't revoked yet. */
-  retire?: string[];
 }
 
 /** hub.agent_tokens, hub.agent_token_retry_seconds, hub.agent_token_max_age_days. */
@@ -150,6 +169,10 @@ export interface HubAgentTokensDeps {
   now?: () => number;
   mint?: typeof hubMintAgentToken;
   revoke?: typeof hubRevokeAgentToken;
+  /** Hub said 403 agents_not_covered for Hub `url`: post the reconnect item. */
+  onNotCovered?: (url: string) => void;
+  /** A line for the server's log (never a token). */
+  log?: (line: string) => void;
 }
 
 /** Hub as the caller has it now: its address and the install's token. */
@@ -164,6 +187,11 @@ export class HubAgentTokens {
   private notOffered: { url: string; until: number } | null = null;
   /** An agent whose mint (or revoke) failed: not asked again until then. */
   private readonly failedUntil = new Map<string, number>();
+  /**
+   * Hub said install_token_required to the token Den minted with (a Den
+   * bug): that token (its hash, per Hub) never mints again.
+   */
+  private readonly notInstall = new Set<string>();
 
   constructor(private readonly deps: HubAgentTokensDeps) {}
 
@@ -210,9 +238,22 @@ export class HubAgentTokens {
     return Number.isFinite(at) && this.now() - at > s.maxAgeDays * 86_400_000;
   }
 
+  private installKey(hub: HubInstall): string {
+    return `${hub.url} ${createHash("sha256").update(hub.token).digest("hex")}`;
+  }
+
+  /** Whether no mint may go out for `hub` until it connects again. */
+  private held(hub: HubInstall): boolean {
+    return (
+      agentsNotCovered(this.deps.stateDir(), hub.url) ||
+      this.notInstall.has(this.installKey(hub))
+    );
+  }
+
   private waiting(hub: HubInstall, id: string): boolean {
     const now = this.now();
     return (
+      this.held(hub) ||
       (this.notOffered?.url === hub.url && now < this.notOffered.until) ||
       (this.failedUntil.get(id) ?? 0) > now
     );
@@ -235,11 +276,7 @@ export class HubAgentTokens {
       cur = null;
     }
     const usable = cur && !cur.revokePending ? cur : null;
-    if (usable && !this.tooOld(usable, s)) {
-      if (usable.retire?.length && !this.waiting(hub, a.id))
-        await this.retire(hub, a.id, s);
-      return usable.token;
-    }
+    if (usable && !this.tooOld(usable, s)) return usable.token;
     if (this.waiting(hub, a.id)) return usable?.token ?? null;
     if (cur?.revokePending) {
       // A removed agent back (Undo): its old token goes first, never used.
@@ -264,14 +301,35 @@ export class HubAgentTokens {
       });
     } catch (e) {
       const until = this.now() + s.retrySeconds * 1000;
-      if (e instanceof HubCallError && (e.status === 404 || e.status === 405))
+      const code = e instanceof HubCallError ? e.code : undefined;
+      if (code === AGENTS_NOT_COVERED) {
+        // The install's grant doesn't cover agents: one reconnect item, and
+        // no more mints until the install connects again.
+        markAgentsNotCovered(stateDir, hub.url);
+        try {
+          this.deps.onNotCovered?.(hub.url);
+        } catch {
+          /* the item is best effort; the hold stands */
+        }
+      } else if (code === INSTALL_TOKEN_REQUIRED) {
+        // An agent's own token tried to mint: a Den bug. Logged once; that
+        // token never mints again (no loop).
+        this.notInstall.add(this.installKey(hub));
+        (this.deps.log ?? ((l: string) => console.error(`[hub] ${l}`)))(
+          `issue 249: Hub refused an agent-token mint for agent ${a.id} (install_token_required): Den sent an agent's token, not the install's. No more mints with that token.`,
+        );
+      } else if (
+        e instanceof HubCallError &&
+        (e.status === 404 || e.status === 405)
+      )
         this.notOffered = { url: hub.url, until };
       else this.failedUntil.set(a.id, until);
       return usable?.token ?? null;
     }
-    // Swap it in, then revoke the old one by its id: from here on only
-    // the new one goes out.
-    const retire = usable ? [usable.tokenId, ...(usable.retire ?? [])] : [];
+    // Swap it in: from the next call only the new one goes out. The old
+    // one is dropped here and never revoked by Den: Hub ends it at the new
+    // one's first use or after its grace period, and a revoke by either id
+    // would end both.
     writeAgentHubToken(stateDir, {
       agentId: a.id,
       agentName: name,
@@ -279,63 +337,33 @@ export class HubAgentTokens {
       tokenId: g.tokenId,
       token: g.token,
       at: new Date(this.now()).toISOString(),
-      ...(retire.length ? { retire } : {}),
     });
     this.failedUntil.delete(a.id);
-    if (retire.length) await this.retire(hub, a.id, s);
     return g.token;
-  }
-
-  /** Revoke agent `id`'s replaced tokens; the ones Hub couldn't stay listed. */
-  private async retire(
-    hub: HubInstall,
-    id: string,
-    s: AgentHubTokenSettings,
-  ): Promise<void> {
-    const stateDir = this.deps.stateDir();
-    const t = readAgentHubToken(stateDir, id);
-    if (!t?.retire?.length) return;
-    const left: string[] = [];
-    for (const old of t.retire)
-      await this.revokeOne(hub, old).catch(() => void left.push(old));
-    const next: AgentHubToken = { ...(readAgentHubToken(stateDir, id) ?? t) };
-    if (left.length) next.retire = left;
-    else delete next.retire;
-    writeAgentHubToken(stateDir, next);
-    if (left.length) this.wait(id, s);
   }
 
   /** Hub no longer takes agent `id`'s token (a 401): forget it here. */
   rejected(id: string): void {
     const stateDir = this.deps.stateDir();
     const t = readAgentHubToken(stateDir, id);
-    if (t && !t.revokePending && !t.retire?.length)
-      dropAgentHubToken(stateDir, id);
-    else if (t && !t.revokePending)
-      // Its replaced tokens still wait to be revoked: keep their ids.
-      writeAgentHubToken(stateDir, { ...t, revokePending: true });
+    if (t && !t.revokePending) dropAgentHubToken(stateDir, id);
   }
 
-  /** Revoke `t` and its replaced tokens; whether `t` itself was revoked now. */
+  /** Revoke `t` by its id: whether Hub revoked it now, or didn't answer. */
   private async revokeEvery(
     hub: HubInstall,
     t: AgentHubToken,
   ): Promise<{ revoked: boolean; failed: boolean }> {
-    let failed = false;
-    let revoked = false;
-    for (const old of t.retire ?? [])
-      await this.revokeOne(hub, old).catch(() => void (failed = true));
     try {
-      revoked = await this.revokeOne(hub, t.tokenId);
+      return { revoked: await this.revokeOne(hub, t.tokenId), failed: false };
     } catch {
-      failed = true;
+      return { revoked: false, failed: true };
     }
-    return { revoked, failed };
   }
 
   /**
-   * Agent `id` is removed: revoke its token (and any it replaced) on Hub
-   * and forget it here. `hub` null (not connected now) or Hub not
+   * Agent `id` is removed: revoke its token on Hub by its id and forget it
+   * here (Hub's agent list marking it gone doesn't revoke it). `hub` null (not connected now) or Hub not
    * answering: kept, marked, never used, and revoked at the agent's next
    * call (an Undo) or the next unbindAll.
    */
@@ -359,9 +387,11 @@ export class HubAgentTokens {
   }
 
   /**
-   * Disconnect: revoke every agent token this Hub minted and forget them
-   * here. One Hub couldn't revoke stays (marked) unless `force`; another
-   * Hub's are forgotten.
+   * Disconnect: revoke every agent token this Hub minted, each by its id,
+   * and forget them here. One Hub couldn't revoke stays (marked) unless
+   * `force`; another Hub's are forgotten. Hub 0.2.11 ends all of an
+   * install's agent tokens when the install disconnects; Den's own revoke
+   * per agent is still needed until then, and stays harmless after.
    */
   async unbindAll(
     hub: HubInstall,
@@ -385,6 +415,7 @@ export class HubAgentTokens {
     }
     this.failedUntil.clear();
     this.notOffered = null;
+    this.notInstall.clear();
     return { revoked, failed };
   }
 }
@@ -443,11 +474,20 @@ export function agentHubTokenSettings(): AgentHubTokenSettings {
 }
 
 let serverOne: HubAgentTokens | null = null;
+let serverNotCovered: ((url: string) => void) | null = null;
 
-/** The web server's one store of agent Hub tokens (its state dir). */
-export function serverHubAgentTokens(): HubAgentTokens {
+/**
+ * The web server's one store of agent Hub tokens (its state dir).
+ * `onNotCovered`: how the server posts its reconnect item when a mint says
+ * agents_not_covered (the latest given wins).
+ */
+export function serverHubAgentTokens(
+  onNotCovered?: (url: string) => void,
+): HubAgentTokens {
+  if (onNotCovered) serverNotCovered = onNotCovered;
   return (serverOne ??= new HubAgentTokens({
     stateDir: () => getStateDir(),
     settings: agentHubTokenSettings,
+    onNotCovered: (url) => serverNotCovered?.(url),
   }));
 }

@@ -1,62 +1,73 @@
 /**
- * Issue 249 (b, c): whether Hub takes agents=yes on /connect (from its
- * whoami features), and the one attention item an install connected
- * before that gets: "Reconnect to Hub so your agents sign their own
- * work", which opens Settings › Hub (Connect). Temp dirs only.
+ * Issue 249 (b, c): Den learns that the install's grant doesn't cover its
+ * agents only from Hub's mint answer (403 agents_not_covered), never from
+ * whoami's connect.agents feature (that only says Hub can do agent
+ * grants). Then: one attention item, "Reconnect to Hub so your agents sign
+ * their own work", which opens Settings › Hub (Connect), and no more mints
+ * until the install connects again. Temp dirs only.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { NotificationStore } from "../../../src/shared/notifications.js";
+import * as grant from "../../../src/shared/hub-agent-grant.js";
 import {
   AGENT_GRANT_NOTE_SUBJECT,
-  HUB_AGENT_GRANT_FEATURE,
-  forgetHubFeatures,
-  hubOffersAgentGrant,
-  noteHubFeatures,
+  agentsNotCovered,
+  clearAgentsNotCovered,
+  markAgentsNotCovered,
   syncAgentGrantNote,
 } from "../../../src/shared/hub-agent-grant.js";
 import { readHubConfig } from "../../../src/shared/hub.js";
 
 const dirs: string[] = [];
 afterEach(() => {
-  forgetHubFeatures();
   for (const d of dirs.splice(0))
     fs.rmSync(d, { recursive: true, force: true });
 });
-const store = () => {
+const tmp = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "den-249-grant-"));
   dirs.push(d);
-  return new NotificationStore(d);
+  return d;
 };
+const store = () => new NotificationStore(tmp());
 const HUB = "https://hub.example.test";
 
-describe("issue 249 (b): does Hub take agents=yes?", () => {
-  it("only when its whoami features name it, per Hub address; never by default", () => {
-    expect(hubOffersAgentGrant(HUB)).toBe(false);
-    noteHubFeatures(HUB, ["deliveries.all_comments"]);
-    expect(hubOffersAgentGrant(HUB)).toBe(false);
-    noteHubFeatures(HUB, ["deliveries.all_comments", HUB_AGENT_GRANT_FEATURE]);
-    expect(hubOffersAgentGrant(HUB)).toBe(true);
-    expect(hubOffersAgentGrant("https://other.example.test")).toBe(false);
-    noteHubFeatures(HUB, undefined);
-    expect(hubOffersAgentGrant(HUB)).toBe(false);
+describe("issue 249 (b): coverage comes from the mint, never from whoami's feature", () => {
+  it("connect.agents in whoami is a capability only: Den keeps no 'grant took' from it", () => {
+    // No helper reads the feature as coverage, and no config key records it.
+    expect(Object.keys(grant)).not.toEqual(
+      expect.arrayContaining(["noteHubFeatures"]),
+    );
+    expect(Object.keys(grant)).not.toEqual(
+      expect.arrayContaining(["hubOffersAgentGrant"]),
+    );
+    const c = readHubConfig(
+      { hub: { url: HUB } },
+      { hub: { agents_grant: true } },
+      () => ({}) as never,
+    ) as unknown as Record<string, unknown>;
+    expect(c.agentsGrant).toBeUndefined();
   });
 
-  it("hub.agents_grant (Connect writes it) is read as a boolean, false by default", () => {
-    const rd = (u: Record<string, unknown>) =>
-      readHubConfig({ hub: { url: HUB } }, { hub: u }, () => ({}) as never);
-    expect(rd({})?.agentsGrant).toBe(false);
-    expect(rd({ agents_grant: true })?.agentsGrant).toBe(true);
-    expect(() => rd({ agents_grant: "yes" })).toThrow("hub.agents_grant");
+  it("not covered: marked per Hub address by the mint's 403, kept across restarts, cleared by a new connect", () => {
+    const d = tmp();
+    expect(agentsNotCovered(d, HUB)).toBe(false);
+    markAgentsNotCovered(d, HUB);
+    expect(agentsNotCovered(d, HUB)).toBe(true);
+    expect(agentsNotCovered(d, "https://other.example.test")).toBe(false);
+    const f = fs.readdirSync(path.join(d, "hub"));
+    expect(f).toHaveLength(1);
+    clearAgentsNotCovered(d);
+    expect(agentsNotCovered(d, HUB)).toBe(false);
   });
 });
 
 describe("issue 249 (c): one attention item to reconnect", () => {
-  it("connected before agents=yes, and Hub takes it: ONE needs-you item that opens Settings › Hub; never a command", () => {
+  it("the mint said agents_not_covered: ONE needs-you item that opens Settings › Hub; never a command", () => {
     const s = store();
-    const st = { connected: true, offered: true, granted: false };
+    const st = { connected: true, notCovered: true };
     syncAgentGrantNote(s, st);
     syncAgentGrantNote(s, st);
     const items = s
@@ -78,14 +89,13 @@ describe("issue 249 (c): one attention item to reconnect", () => {
     expect(JSON.stringify(s.list())).not.toMatch(/`|\bden \w+ /);
   });
 
-  it("goes once the grant is in place, Hub doesn't take it, or Hub isn't connected; none is posted then", () => {
+  it("goes once the mint no longer says so (a new connect) or Hub isn't connected; none is posted then", () => {
     for (const st of [
-      { connected: true, offered: true, granted: true },
-      { connected: true, offered: false, granted: false },
-      { connected: false, offered: true, granted: false },
+      { connected: true, notCovered: false },
+      { connected: false, notCovered: true },
     ]) {
       const s = store();
-      syncAgentGrantNote(s, { connected: true, offered: true, granted: false });
+      syncAgentGrantNote(s, { connected: true, notCovered: true });
       syncAgentGrantNote(s, st);
       expect(
         s.list().filter((n) => n.subject === AGENT_GRANT_NOTE_SUBJECT),

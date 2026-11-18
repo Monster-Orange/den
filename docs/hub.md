@@ -92,12 +92,14 @@ anyway. Then the token still works in Hub until a Hub admin revokes this install
   never in the agent's environment or files, and uses it for that agent's Hub calls. Hub then knows
   the agent as itself, so its work and approvals count as its own. The agent's row says **Verified on
   Hub** or **Not verified on Hub**. The server agent and Den's own calls use the install's token.
-  Removing an agent revokes its token on Hub. Every 30 days Den swaps in a new token and revokes the
-  old one, with no click. A Hub that doesn't give agent tokens yet leaves every agent on the install's
-  token, as before.
-- **One reconnect, for installs connected earlier.** Once Hub takes the agents' grant, an install
-  that connected before it gets one item in Needs you: "Reconnect to Hub so your agents sign their own
-  work". It opens Settings › Hub. Press Connect there, once.
+  Removing an agent revokes its token on Hub. Every 30 days Den gets a new token and uses it from the
+  next call, with no click. Den never revokes the old one. Hub ends it when the new one is first used,
+  or after Hub's grace period, whichever comes first. A Hub that doesn't give agent tokens yet leaves
+  every agent on the install's token, as before.
+- **One reconnect, for installs connected earlier.** If Hub says this install's grant doesn't cover
+  agents (it connected before agent tokens), Den puts one item in Needs you: "Reconnect to Hub so your
+  agents sign their own work". It opens Settings › Hub. Press Connect there, once. Until then Den
+  doesn't ask Hub again, and agents use the install's token.
 - **No asking, by default.** "Agents use Hub's tools without asking" is on. Writes stay in your
   company, and Hub keeps every version. Turn it off and agents ask before each Hub tool runs, like any
   tool.
@@ -217,7 +219,7 @@ user file wins.
 | `hub.tools_restart`              | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.             |
 | `hub.agent_tokens`               | `true`             | Each agent calls Hub with its own token, bound to it on Hub. `false`: every agent uses the install's token.                               |
 | `hub.agent_token_retry_seconds`  | `600` (at least 5) | How long Den waits to ask again when Hub couldn't give an agent its own token.                                                            |
-| `hub.agent_token_max_age_days`   | `30` (`0`: never)  | An agent's token older than this is replaced at its next Hub call: Den gets a new one, then revokes the old one. No click.                |
+| `hub.agent_token_max_age_days`   | `30` (`0`: never)  | An agent's token older than this is replaced at its next Hub call: Den gets a new one. Hub ends the old one. No click.                    |
 
 Two more keys touch Hub:
 

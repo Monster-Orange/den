@@ -94,7 +94,7 @@ async function fakeHub() {
       if (bearer !== INSTALL && !asBound)
         return json(401, { error: "unauthorized" });
       if (req.url === "/connect/agent") {
-        if (asBound) return json(403, { error: "install token only" });
+        if (asBound) return json(403, { error: "install_token_required" });
         n += 1;
         const token = `hubi_TESTONLY_249_bound_${n}`;
         const tokenId = `00000000-0000-4000-8000-00000000000${n}`;

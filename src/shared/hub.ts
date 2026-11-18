@@ -153,15 +153,11 @@ export interface HubConfig {
   /**
    * Issue 249 hub.agent_token_max_age_days (default 30; 0: never): an
    * agent's token older than this is replaced at its next Hub call, with
-   * no person act: Den mints the new one, swaps it in, then revokes the
-   * old one by its id.
+   * no person act: Den mints the new one and uses it from then on. Den
+   * never revokes the old one: Hub ends it (the new one's first use, or
+   * Hub's grace period).
    */
   agentTokenMaxAgeDays: number;
-  /**
-   * Issue 249 hub.agents_grant (Connect writes it): this install's Connect
-   * sent agents=yes, so Hub's grant covers its agents.
-   */
-  agentsGrant: boolean;
 }
 
 type RawHub =
@@ -185,7 +181,6 @@ type RawHub =
       agent_tokens?: unknown;
       agent_token_retry_seconds?: unknown;
       agent_token_max_age_days?: unknown;
-      agents_grant?: unknown;
     }
   | undefined;
 
@@ -320,9 +315,6 @@ export function readHubConfig(
     throw new Error(
       "hub.agent_token_max_age_days must be a number, 0 or more (0: never)",
     );
-  const grant = h.agents_grant;
-  if (grant !== undefined && grant !== null && typeof grant !== "boolean")
-    throw new Error("hub.agents_grant must be true or false");
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -354,7 +346,6 @@ export function readHubConfig(
     agentTokens: agentTok !== false,
     agentTokenRetrySeconds: agentRetry,
     agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 30,
-    agentsGrant: grant === true,
   };
 }
 
@@ -1449,9 +1440,13 @@ export async function hubRevoke(
  * Issue 249: a token bound to one agent of this install, minted by Hub
  * with the install's own token (the install's one grant covers its
  * agents): POST <url>/connect/agent {agent_id, agent_name}. Hub answers
- * {token, token_id}. A Hub without the grant answers 404 or 405: a
- * HubCallError ("refused") with that status. The token never leaves Den's
- * server: the caller keeps it in the server's store.
+ * {token, token_id, agent}; an answer for another agent is refused. A Hub
+ * without agent tokens answers 404 or 405: a HubCallError ("refused") with
+ * that status. A 403 is a HubCallError ("forbidden") whose `code` is Hub's
+ * `error` value: agents_not_covered (the install's grant doesn't cover
+ * agents) or install_token_required (an agent's token tried to mint). The
+ * token never leaves Den's server: the caller keeps it in the server's
+ * store.
  */
 export async function hubMintAgentToken(
   url: string,
@@ -1476,6 +1471,12 @@ export async function hubMintAgentToken(
   const tokenId = str(b.token_id);
   if (!token || !/^\S{8,}$/.test(token) || !tokenId)
     throw new HubCallError("refused", "Hub's answer had no agent token");
+  const for_ = (b.agent as { id?: unknown } | null | undefined)?.id;
+  if (for_ !== undefined && for_ !== agent.id)
+    throw new HubCallError(
+      "refused",
+      "Hub's answer was a token for another agent",
+    );
   return { token, tokenId };
 }
 

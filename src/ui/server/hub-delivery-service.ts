@@ -66,20 +66,19 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   return token ? { url: cfg.url, token } : null;
 }
 
-/** Issue 249: note Hub's features; post or take back the reconnect item. */
-async function syncAgentGrant(
-  url: string,
-  features: readonly string[] | undefined,
-): Promise<void> {
+/**
+ * Issue 249: post or take back the reconnect item, from the mark the agent
+ * mint left (403 agents_not_covered) for Hub `url`. Whoami's features are
+ * not read for it: connect.agents only says Hub can do agent grants.
+ */
+async function syncAgentGrant(url: string): Promise<void> {
   try {
     const g = await import("../../shared/hub-agent-grant.js");
-    const hub = await import("../../shared/hub.js");
-    g.noteHubFeatures(url, features);
+    const { getStateDir } = await import("../../shared/paths.js");
     const { notificationDeps } = await import("./notification-service.js");
     g.syncAgentGrantNote(notificationDeps().store, {
       connected: true,
-      offered: g.hubOffersAgentGrant(url),
-      granted: hub.readHubConfig()?.agentsGrant === true,
+      notCovered: g.agentsNotCovered(getStateDir(), url),
     });
   } catch {
     /* a note that can't be kept never stops deliveries */
@@ -295,9 +294,9 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
       feedCarries = feedKinds(w.features);
-      // Issue 249: whether Hub takes agents=yes, and the one reconnect
-      // item for an install connected before it.
-      void syncAgentGrant(a.url, w.features);
+      // Issue 249: the one reconnect item, when the agent mint said this
+      // install's grant doesn't cover agents.
+      void syncAgentGrant(a.url);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {

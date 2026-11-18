@@ -34,7 +34,6 @@ import {
   HubCallError,
   hubRevoke,
   hubUrlProblem,
-  hubWhoami,
   newHubState,
   newPkce,
   readHubConfig,
@@ -47,8 +46,7 @@ import {
 import { recordAction } from "./audit.js";
 import {
   AGENT_GRANT_NOTE_SUBJECT,
-  hubOffersAgentGrant,
-  noteHubFeatures,
+  clearAgentsNotCovered,
 } from "../../shared/hub-agent-grant.js";
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
@@ -116,13 +114,10 @@ export interface HubConnectDeps {
     force: boolean,
   ) => Promise<{ revoked: number; failed: number }>;
   /**
-   * Issue 249: after the token, whether Hub's grant covers this install's
-   * agents (its whoami features name connect.agents). Absent: never kept.
-   */
-  confirmAgents?: (hubUrl: string, token: string) => Promise<boolean>;
-  /**
-   * Issue 249: the agents' grant is in place, or Hub is disconnected: the
-   * reconnect item goes (hub-agent-grant.ts). Absent: nothing.
+   * Issue 249: the install connected (its new grant carries agents=yes) or
+   * disconnected: the not-covered mark goes, so the next agent mint asks
+   * Hub again, and so does the reconnect item (hub-agent-grant.ts).
+   * Absent: nothing.
    */
   agentGrantSettled?: () => void;
 }
@@ -345,12 +340,12 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     },
     linkAfter: async () =>
       (await import("./hub-link-all-routes.js")).defaultLinkAfter(),
-    confirmAgents: async (url, token) => {
-      const w = await hubWhoami(url, token, { timeoutMs: 5000 });
-      noteHubFeatures(url, w.features);
-      return hubOffersAgentGrant(url);
-    },
     agentGrantSettled: () => {
+      try {
+        clearAgentsNotCovered(getStateDir());
+      } catch {
+        /* a mark that can't go: the next mint is held as before */
+      }
       void import("./notification-service.js")
         .then((m) =>
           m
@@ -458,8 +453,9 @@ export class HubConnect {
     const denUrl = denUrlOrigin(this.deps.denUrl?.() ?? "");
     if (denUrl) q.set("den_url", denUrl);
     // Issue 249: the one grant covers this install's agents. Always sent:
-    // a Hub that doesn't know the field ignores it, and whoami after the
-    // token says whether it took.
+    // a Hub that doesn't know the field ignores it. Whether it covers them
+    // Den learns only from the agent mint (403 agents_not_covered), never
+    // from whoami's connect.agents feature (a capability of Hub's).
     q.set("agents", "yes");
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }
@@ -560,14 +556,9 @@ export class HubConnect {
     if (grant.mcpUrl && !hubUrlProblem(grant.mcpUrl))
       hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
-    // Issue 249: kept only when Hub's whoami confirms the grant took.
-    const took = this.deps.confirmAgents
-      ? await this.deps.confirmAgents(hubUrl, grant.token).catch(() => false)
-      : false;
-    if (took) hub.agents_grant = true;
-    else delete hub.agents_grant;
     this.deps.writeUser({ ...user, hub });
-    if (took) this.deps.agentGrantSettled?.();
+    // Issue 249: a new grant (agents=yes): the next agent mint asks again.
+    this.deps.agentGrantSettled?.();
     // 0.4.47: the token Den keeps in memory is the old one: read anew.
     forgetHubToken(undefined, Date.now(), { now: true });
     return {
@@ -597,7 +588,10 @@ export class HubConnect {
     let note = "";
     let agents = 0;
     if (token && this.deps.unbindAgents) {
-      // Issue 249: the agents' own tokens first, while the install's works.
+      // Issue 249: the agents' own tokens first, each by its id, while the
+      // install's works. Hub doesn't yet end an install's agent tokens when
+      // the install disconnects; Hub 0.2.11 will, and this revoke per agent
+      // stays harmless after that.
       const a = await this.deps
         .unbindAgents({ url: cfg.url, token }, force)
         .catch(() => ({ revoked: 0, failed: 1 }));
@@ -632,7 +626,6 @@ export class HubConnect {
     };
     delete hub.token;
     delete hub.mcp_url;
-    delete hub.agents_grant;
     if (Object.keys(hub).length) user.hub = hub;
     else delete user.hub;
     this.deps.writeUser(user);

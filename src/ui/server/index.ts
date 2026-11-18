@@ -437,6 +437,7 @@ import {
   readHubConfig,
 } from "../../shared/hub.js";
 import { serverHubAgentTokens } from "../../shared/hub-agent-tokens.js";
+import { syncAgentGrantNote } from "../../shared/hub-agent-grant.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
@@ -6320,11 +6321,18 @@ async function handleRequest(
   // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
   if (
     await handleHubProxy(req, res, pathname, {
-      // Issue 249: each agent's own Hub token (bound to it on Hub).
+      // Issue 249: each agent's own Hub token (bound to it on Hub). A mint
+      // that says agents_not_covered posts the one reconnect item.
       upstream: (who) =>
         hubUpstream(
           agentWebDeps({
-            hubAgentToken: (h, a) => serverHubAgentTokens().tokenFor(h, a),
+            hubAgentToken: (h, a) =>
+              serverHubAgentTokens(() =>
+                syncAgentGrantNote(notificationDeps().store, {
+                  connected: true,
+                  notCovered: true,
+                }),
+              ).tokenFor(h, a),
           }),
           who,
         ),

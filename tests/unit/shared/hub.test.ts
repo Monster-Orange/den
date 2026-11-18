@@ -70,7 +70,6 @@ describe("readHubConfig", () => {
       agentTokens: true,
       agentTokenRetrySeconds: 600,
       agentTokenMaxAgeDays: 30,
-      agentsGrant: false,
     });
   });
 

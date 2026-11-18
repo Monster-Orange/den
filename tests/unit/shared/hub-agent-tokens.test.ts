@@ -27,6 +27,10 @@ import {
   type AgentHubTokenSettings,
 } from "../../../src/shared/hub-agent-tokens.js";
 import { agentFilesDir } from "../../../src/shared/agents/records.js";
+import {
+  agentsNotCovered,
+  clearAgentsNotCovered,
+} from "../../../src/shared/hub-agent-grant.js";
 
 const INSTALL = "hubi_TESTONLY_249_install";
 
@@ -55,15 +59,37 @@ interface Seen {
 }
 
 /**
- * A fake Hub with the agent grant: POST /connect/agent (install token)
- * mints a bound token; POST /connect/revoke {token_id} revokes one.
- * `mode`: "ok", "absent" (404 for /connect/agent, as Hub before it), or
- * "down" (500).
+ * A fake Hub with the agent grant, to Hub's contract: POST /connect/agent
+ * (install token) mints a bound token, {token, token_id, agent}; POST
+ * /connect/revoke {token_id} revokes one. Rotation, as Hub does it: a new
+ * mint for an agent with a live token keeps the old one live until the new
+ * one's first use (GET /connect/whoami with it) or the grace period
+ * (`expireGrace()`), and a revoke by EITHER id ends both.
+ * `mode`: "ok", "absent" (404 for /connect/agent, as Hub before it),
+ * "down" (500), "nomint"/"norevoke" (503), "notcovered" (403
+ * agents_not_covered: the install's grant doesn't cover agents), or
+ * "installreq" (403 install_token_required).
  */
-type Mode = "ok" | "absent" | "down" | "nomint" | "norevoke";
+type Mode =
+  | "ok"
+  | "absent"
+  | "down"
+  | "nomint"
+  | "norevoke"
+  | "notcovered"
+  | "installreq";
 async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
   const seen: Seen[] = [];
   const live = new Map<string, string>(); // token_id -> agent id
+  const tokens = new Map<string, string>(); // token -> token_id
+  /** token_id -> the ids in its rotation chain (one agent's tokens). */
+  const chainOf = new Map<string, Set<string>>();
+  /** new token_id -> the old one it ends at its first use. */
+  const replaces = new Map<string, string>();
+  const end = (id: string) => {
+    live.delete(id);
+    for (const [t, i] of tokens) if (i === id) tokens.delete(t);
+  };
   let n = 0;
   const s = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -87,16 +113,46 @@ async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
         res.end(JSON.stringify(v));
       };
       if (mode.v === "down") return json(500, { error: "down" });
-      if (req.headers.authorization !== `Bearer ${INSTALL}`)
+      if (req.url === "/connect/whoami" && req.method === "GET") {
+        // A bound token's first use ends the token it replaced.
+        const id = tokens.get(String(req.headers.authorization).slice(7));
+        if (!id) return json(401, { error: "unauthorized" });
+        const old = replaces.get(id);
+        if (old) {
+          end(old);
+          replaces.delete(id);
+        }
+        return json(200, { agent: live.get(id) });
+      }
+      if (req.headers.authorization !== `Bearer ${INSTALL}`) {
+        const asAgent = tokens.has(String(req.headers.authorization).slice(7));
+        if (asAgent && req.url === "/connect/agent")
+          return json(403, { error: "install_token_required" });
         return json(401, { error: "unauthorized" });
+      }
       if (req.url === "/connect/agent" && req.method === "POST") {
         if (mode.v === "absent") return json(404, { error: "not_found" });
         if (mode.v === "nomint") return json(503, { error: "busy" });
+        if (mode.v === "notcovered")
+          return json(403, {
+            error: "agents_not_covered",
+            error_description: "this install's grant doesn't cover agents",
+          });
+        if (mode.v === "installreq")
+          return json(403, { error: "install_token_required" });
         n += 1;
         const id = `00000000-0000-4000-8000-00000000000${n}`;
-        live.set(id, String(body.agent_id));
+        const agent = String(body.agent_id);
+        const prev = [...live].find(([, a]) => a === agent)?.[0];
+        const chain = (prev && chainOf.get(prev)) || new Set<string>();
+        chain.add(id);
+        chainOf.set(id, chain);
+        if (prev) replaces.set(id, prev);
+        live.set(id, agent);
+        const token = `hubi_TESTONLY_agent_${n}`;
+        tokens.set(token, id);
         return json(200, {
-          token: `hubi_TESTONLY_agent_${n}`,
+          token,
           token_id: id,
           agent: { id: body.agent_id, name: body.agent_name },
         });
@@ -105,7 +161,8 @@ async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
         if (mode.v === "norevoke") return json(503, { error: "busy" });
         const id = String(body.token_id ?? "");
         if (!live.has(id)) return json(404, { error: "no such token" });
-        live.delete(id);
+        // Hub's rule: a revoke by either id of a rotation ends both.
+        for (const c of chainOf.get(id) ?? [id]) end(c);
         return json(200, { revoked: true, token_id: id });
       }
       json(404, { error: "not_found" });
@@ -113,10 +170,23 @@ async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
   });
   servers.push(s);
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
   return {
     seen,
     live,
-    url: `http://127.0.0.1:${(s.address() as AddressInfo).port}`,
+    url,
+    /** An agent's call with `token`: Hub's first use of it. */
+    use: async (token: string) =>
+      (
+        await fetch(`${url}/connect/whoami`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ).status,
+    /** Hub's grace period runs out: every replaced token ends. */
+    expireGrace: () => {
+      for (const [, old] of replaces) end(old);
+      replaces.clear();
+    },
   };
 }
 
@@ -317,7 +387,7 @@ describe("issue 249: the server's store of agent tokens", () => {
     expect(readAgentHubToken(stateDir, "ada")?.hubUrl).toBe(two.url);
   });
 
-  it("rotation at the 30-day default: the new token is minted and swapped in before the old one is revoked; the old one is never used after", async () => {
+  it("rotation at the 30-day default: the new token is minted, kept and used from the next call; Den never revokes the old one (Hub ends it)", async () => {
     const hub = await fakeHub();
     const stateDir = tmp();
     let now = Date.parse("2026-11-01T00:00:00Z");
@@ -336,18 +406,40 @@ describe("issue 249: the server's store of agent tokens", () => {
     now += 2 * 86_400_000;
     const mark = hub.seen.length;
     expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
-    // Mint new first, then revoke the old one by its id: no person act.
-    expect(hub.seen.slice(mark).map((s) => s.url)).toEqual([
-      "/connect/agent",
-      "/connect/revoke",
-    ]);
-    expect(hub.seen[mark + 1].body).toEqual({ token_id: firstId });
-    expect([...hub.live.keys()]).toEqual([
-      readAgentHubToken(stateDir, "ada")!.tokenId,
-    ]);
-    // After the swap, only the new one goes out.
+    // A mint, and no revoke: a revoke by either id would end both.
+    expect(hub.seen.slice(mark).map((s) => s.url)).toEqual(["/connect/agent"]);
+    const kept = readAgentHubToken(stateDir, "ada")!;
+    expect(kept.token).toBe("hubi_TESTONLY_agent_2");
+    expect(kept.tokenId).not.toBe(firstId);
+    expect(JSON.stringify(kept)).not.toContain(firstId);
+    // Both live on Hub until the new one's first use.
+    expect(hub.live.has(firstId)).toBe(true);
+    expect(hub.live.has(kept.tokenId)).toBe(true);
+    // After the swap, only the new one goes out, and it works.
     for (let i = 0; i < 3; i++)
       expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
+    expect(await hub.use("hubi_TESTONLY_agent_2")).toBe(200);
+    expect([...hub.live.keys()]).toEqual([kept.tokenId]);
+    expect(hub.seen.filter((s) => s.url === "/connect/revoke")).toEqual([]);
+  });
+
+  it("rotation, then the grace period runs out before the new one's first use: the new one still works (nothing of Den's ended it)", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    let now = Date.parse("2026-11-01T00:00:00Z");
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ maxAgeDays: 30 }),
+      now: () => now,
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    await b.tokenFor(h, a);
+    now += 31 * 86_400_000;
+    const fresh = await b.tokenFor(h, a);
+    hub.expireGrace();
+    expect(await hub.use(fresh!)).toBe(200);
+    expect(hub.live.size).toBe(1);
   });
 
   it("rotation: a mint that fails keeps the old token in use, revokes nothing, and is tried again after the retry wait", async () => {
@@ -377,32 +469,31 @@ describe("issue 249: the server's store of agent tokens", () => {
     mode.v = "ok";
     now += 31_000;
     expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
+    // The old one stays live until Hub ends it (the new one's first use).
+    expect(hub.live.size).toBe(2);
+    await hub.use("hubi_TESTONLY_agent_2");
     expect(hub.live.size).toBe(1);
+    expect(hub.seen.filter((s) => s.url === "/connect/revoke")).toEqual([]);
   });
 
-  it("rotation: an old token Hub couldn't revoke after the swap is revoked at a later call; the new one is used meanwhile", async () => {
-    const mode = { v: "ok" as Mode };
-    const hub = await fakeHub(mode);
+  it("removing an agent soon after a rotation revokes its current token by its id; Hub's rule ends the replaced one with it", async () => {
+    const hub = await fakeHub();
     const stateDir = tmp();
     let now = Date.parse("2026-11-01T00:00:00Z");
     const b = new HubAgentTokens({
       stateDir: () => stateDir,
-      settings: settings({ maxAgeDays: 30, retrySeconds: 60 }),
+      settings: settings({ maxAgeDays: 30 }),
       now: () => now,
     });
     const h = { url: hub.url, token: INSTALL };
     const a = { id: "ada", name: "Ada", workspace: "north" };
     await b.tokenFor(h, a);
     now += 31 * 86_400_000;
-    mode.v = "norevoke";
-    expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
+    await b.tokenFor(h, a);
     expect(hub.live.size).toBe(2);
-    mode.v = "ok";
-    now += 61_000;
-    expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
-    expect(hub.live.size).toBe(1);
-    // Removing it later revokes what is left.
     expect(await b.unbind(h, "ada")).toEqual({ revoked: true });
+    const revokes = hub.seen.filter((s) => s.url === "/connect/revoke");
+    expect(revokes).toHaveLength(1);
     expect(hub.live.size).toBe(0);
   });
 
@@ -525,6 +616,124 @@ describe("issue 249: the server's store of agent tokens", () => {
       .map((s) => s.body.agent_name);
     expect(names[0]).toBe("ada");
     expect(names[1]).toBe("x".repeat(80));
+  });
+});
+
+describe("issue 249: Hub's mint refusals, by their error value", () => {
+  it("403 agents_not_covered: the install token, ONE reconnect item, and no more mints (any agent, any wait, a restart) until the install connects again", async () => {
+    const mode = { v: "notcovered" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    let now = 1_000_000;
+    const posted: string[] = [];
+    const make = () =>
+      new HubAgentTokens({
+        stateDir: () => stateDir,
+        settings: settings({ retrySeconds: 60 }),
+        now: () => now,
+        onNotCovered: (url) => void posted.push(url),
+      });
+    let b = make();
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    const mints = () =>
+      hub.seen.filter((s) => s.url === "/connect/agent").length;
+    expect(await b.tokenFor(h, a)).toBeNull();
+    expect(posted).toEqual([hub.url]);
+    expect(agentsNotCovered(stateDir, hub.url)).toBe(true);
+    // Long past the retry wait, other agents, and a server restart: no retry.
+    mode.v = "ok";
+    for (const id of ["ada", "bob", "cy"]) {
+      now += 86_400_000;
+      expect(await b.tokenFor(h, { ...a, id })).toBeNull();
+    }
+    b = make();
+    expect(await b.tokenFor(h, a)).toBeNull();
+    expect(mints()).toBe(1);
+    expect(posted).toHaveLength(1);
+    // The install connects again: Den asks once more.
+    clearAgentsNotCovered(stateDir);
+    expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_1");
+    expect(mints()).toBe(2);
+  });
+
+  it("403 agents_not_covered at a rotation keeps the old token in use and revokes nothing", async () => {
+    const mode = { v: "ok" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    let now = Date.parse("2026-11-01T00:00:00Z");
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ maxAgeDays: 30 }),
+      now: () => now,
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    const first = await b.tokenFor(h, a);
+    now += 31 * 86_400_000;
+    mode.v = "notcovered";
+    expect(await b.tokenFor(h, a)).toBe(first);
+    expect(await b.tokenFor(h, a)).toBe(first);
+    expect(hub.seen.filter((s) => s.url === "/connect/agent")).toHaveLength(2);
+    expect(hub.seen.filter((s) => s.url === "/connect/revoke")).toEqual([]);
+  });
+
+  it("403 install_token_required (an agent's own token tried to mint): logged once, never a loop", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    let now = 1_000_000;
+    const logged: string[] = [];
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ retrySeconds: 60 }),
+      now: () => now,
+      log: (l) => void logged.push(l),
+    });
+    const ok = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    const agentTok = await b.tokenFor(ok, a);
+    // Den's bug: an agent's token in the install's place.
+    const wrong = { url: hub.url, token: agentTok! };
+    const mints = () =>
+      hub.seen.filter((s) => s.url === "/connect/agent").length;
+    const before = mints();
+    for (const id of ["bob", "cy", "bob"]) {
+      now += 86_400_000;
+      expect(await b.tokenFor(wrong, { ...a, id })).toBeNull();
+    }
+    expect(mints()).toBe(before + 1);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("install_token_required");
+    expect(logged[0]).not.toContain(agentTok!);
+    // The install's own token still mints.
+    expect(await b.tokenFor(ok, { ...a, id: "bob" })).toMatch(/^hubi_/);
+  });
+
+  it("the mint's answer is {token, token_id, agent}: one for another agent is refused", async () => {
+    const answer = (agent: unknown) =>
+      hubMintAgentToken(
+        "https://hub.example.test",
+        INSTALL,
+        { id: "ada", name: "Ada" },
+        {
+          fetch: async () =>
+            new Response(
+              JSON.stringify({
+                token: "hubi_TESTONLY_agent_x",
+                token_id: "00000000-0000-4000-8000-0000000000aa",
+                agent,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+        },
+      );
+    expect(await answer({ id: "ada", name: "Ada" })).toEqual({
+      token: "hubi_TESTONLY_agent_x",
+      tokenId: "00000000-0000-4000-8000-0000000000aa",
+    });
+    await expect(answer({ id: "bob", name: "Bob" })).rejects.toThrow(
+      "another agent",
+    );
   });
 });
 

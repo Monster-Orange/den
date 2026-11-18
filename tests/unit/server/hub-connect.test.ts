@@ -188,29 +188,39 @@ describe("start: den_url, this Den's https edge address", () => {
 });
 
 // Issue 249 (b): agents=yes on every /connect (Hub ignores a field it
-// doesn't know); the grant is kept only once Hub's whoami confirms it.
+// doesn't know). Whether the grant covers agents is learnt only from the
+// mint (403 agents_not_covered), never from whoami's connect.agents
+// feature: a capability, not this install's coverage.
 describe("the agents' grant on Connect", () => {
   it("the first Connect sends agents=yes, with no whoami before it", () => {
-    const asked: string[] = [];
-    const h = harness({
-      confirmAgents: async (url) => {
-        asked.push(url);
-        return true;
-      },
-    });
+    const h = harness();
     expect(start(h).q.agents).toBe("yes");
-    expect(asked).toEqual([]);
   });
 
-  it("after the token, whoami says whether the grant took: kept as hub.agents_grant only then; Disconnect clears it", async () => {
-    const asked: string[] = [];
-    const settled: string[] = [];
-    let took = false;
+  it("whoami's connect.agents feature is never read as 'the grant took': nothing is kept from it", async () => {
+    let whoami = 0;
     const h = harness({
-      confirmAgents: async (url, token) => {
-        asked.push(`${url} ${token === TOKEN ? "TOKEN" : token}`);
-        return took;
-      },
+      // A dep the old code read whoami's features through; never asked now.
+      ...({
+        confirmAgents: async () => {
+          whoami += 1;
+          return true;
+        },
+      } as Partial<HubConnectDeps>),
+    });
+    const { q } = start(h);
+    expect((await h.hc.finish(back({ state: q.state, code: "c1" }))).ok).toBe(
+      true,
+    );
+    expect(whoami).toBe(0);
+    expect(
+      (h.user().hub as Record<string, unknown>).agents_grant,
+    ).toBeUndefined();
+  });
+
+  it("every Connect and every Disconnect clears the not-covered hold and the reconnect item, so the next mint asks again", async () => {
+    const settled: string[] = [];
+    const h = harness({
       agentGrantSettled: () => void settled.push("settled"),
       config: () =>
         ({
@@ -220,41 +230,14 @@ describe("the agents' grant on Connect", () => {
           tokenFrom: "hub.token",
         }) as unknown as HubConfig,
     });
-    // An older Hub: the grant didn't take; nothing kept, the item may stay.
-    h.setUser({ hub: { agents_grant: true } });
     let q = start(h).q;
-    expect((await h.hc.finish(back({ state: q.state, code: "c1" }))).ok).toBe(
-      true,
-    );
-    expect(asked).toEqual([`${HUB} TOKEN`]);
-    expect(
-      (h.user().hub as Record<string, unknown>).agents_grant,
-    ).toBeUndefined();
-    expect(settled).toEqual([]);
-    // Hub confirms: kept, and the reconnect item goes.
-    took = true;
+    await h.hc.finish(back({ state: q.state, code: "c1" }));
+    expect(settled).toEqual(["settled"]);
     q = start(h).q;
     await h.hc.finish(back({ state: q.state, code: "c2" }));
-    expect((h.user().hub as Record<string, unknown>).agents_grant).toBe(true);
-    expect(settled).toEqual(["settled"]);
+    expect(settled).toEqual(["settled", "settled"]);
     await h.hc.disconnect();
-    expect(
-      (h.user().hub as Record<string, unknown>).agents_grant,
-    ).toBeUndefined();
-  });
-
-  it("whoami failing after the connect: still connected, the grant not kept", async () => {
-    const h = harness({
-      confirmAgents: async () => {
-        throw new HubCallError("unreachable", "Hub did not answer in 5000 ms");
-      },
-    });
-    const { q } = start(h);
-    const r = await h.hc.finish(back({ state: q.state, code: "c1" }));
-    expect(r.ok).toBe(true);
-    expect(
-      (h.user().hub as Record<string, unknown>).agents_grant,
-    ).toBeUndefined();
+    expect(settled).toEqual(["settled", "settled", "settled"]);
   });
 });
 
