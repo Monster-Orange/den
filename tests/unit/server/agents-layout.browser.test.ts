@@ -955,7 +955,9 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     // Opening it saves the choice; the next page to load starts with it.
     const saved = p.waitForResponse(
       (r) =>
-        r.url().endsWith("/api/settings") && r.request().method() === "POST",
+        // Issue 394: the rail's own save (the dock is a rail pref).
+        r.url().endsWith("/api/settings/shell") &&
+        r.request().method() === "POST",
     );
     await p.click('.den-dock [data-act="dock"]');
     await p.waitForSelector("#den-dock-out");
