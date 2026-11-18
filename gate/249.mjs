@@ -1,18 +1,22 @@
 // Live check for issue 249: agents call Hub with their own bound token.
 // One bed stub agent, gate-249-bound, removed at the end (and in teardown).
-// Its turn end (Stop) asks Hub's inbox through Den's /hub proxy, as an
-// agent's Stop hook does: the first Hub call for it, so Den asks Hub for
-// its own token. Its row then says it is bound; the server agent's row
-// never does (the install's token). Removing it takes its token out of
-// the server's store. The check reads no token: only the row and the
-// store's file names. Skipped when the bed's Hub isn't connected.
+// Its turn end runs the settings' real Stop hooks (the driver's exit(),
+// "/stop"): the inbox check goes to Hub through Den's /hub proxy (with
+// hub.inbox_on_stop on, the default), the first Hub call for it, so Den
+// asks Hub for its own token. Its row then says it is bound and the
+// server's store holds <id>.json; the server agent's row never says bound
+// (the install's token). Then the CLI stop, then remove: its token file
+// goes (Den revokes it on Hub). The order matters: a.stop() kills the stub,
+// so no turn ends, and a.print() only writes text. The check reads no
+// token: only the row and the store's file names (ctx.listBed's "state:"
+// root is Den's state dir). Skipped when the bed's Hub isn't connected.
 export const issue = 249;
 export const clauses = [
   "with Hub connected, an agent's Hub calls go out with that agent's bound token, and the server agent's with the install token",
   "removing the agent revokes its token",
   "an agent approval made with the bound token is recorded on Hub as verified",
 ];
-export const timeoutMs = 120000;
+export const timeoutMs = 180000;
 const ID = "gate-249-bound";
 const SERVER = "server";
 
@@ -23,7 +27,7 @@ async function rows(ctx) {
 const rowOf = async (ctx, id) => (await rows(ctx)).find((x) => x.agent === id);
 /** Whether the server's store holds a token file for `id` (null: can't tell). */
 async function stored(ctx, id) {
-  const names = await ctx.listBed("hub/agents");
+  const names = await ctx.listBed("state:hub/agents");
   return Array.isArray(names) ? names.includes(`${id}.json`) : null;
 }
 
@@ -42,24 +46,28 @@ export async function run(ctx, s) {
   if (!s.connected) return s;
   const r = { ...s };
   const a = ctx.agent(ID);
-  // A turn end: the Stop hook's inbox check goes to Hub through Den.
-  await a.print?.("Done for now.");
-  await a.stop();
+  // A turn end: the real Stop hooks run (exit() is the stub's "/stop"),
+  // and their inbox check goes to Hub through Den. The stub's control
+  // channel takes ~17 s, so the wait is long.
+  await a.exit();
   r.boundMs = await ctx.until(
-    async () => (await rowOf(ctx, ID))?.hubBound === true,
-    20000,
+    async () =>
+      (await rowOf(ctx, ID))?.hubBound === true &&
+      (await stored(ctx, ID)) === true,
+    45000,
   );
   r.row = { hubBound: (await rowOf(ctx, ID))?.hubBound ?? null };
   const srv = await rowOf(ctx, SERVER);
   r.server = srv ? { listed: true, hubBound: srv.hubBound ?? null } : null;
   r.storedBefore = await stored(ctx, ID);
 
-  a.exit();
-  await ctx.until(() => a.state() !== "running", 10000);
+  // Then the CLI stop, then remove: the token file goes.
+  await a.stop();
+  await ctx.until(() => a.state() !== "running", 20000);
   r.remove = a.remove()?.code ?? null;
   r.goneMs = await ctx.until(
     async () => !(await rowOf(ctx, ID)) && (await stored(ctx, ID)) === false,
-    15000,
+    35000,
   );
   r.storedAfter = await stored(ctx, ID);
   return r;

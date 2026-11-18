@@ -23,6 +23,18 @@ import type { NotificationStore } from "./notifications.js";
 /** Hub's mint refusal (403): the install's grant doesn't cover agents. */
 export const AGENTS_NOT_COVERED = "agents_not_covered";
 
+/**
+ * Hub's mint refusal (403): the install's grant lacks the agents-manage
+ * permission. Handled as AGENTS_NOT_COVERED: the fix is the same Connect.
+ */
+export const AGENTS_MANAGE_MISSING = "agents_manage_missing";
+
+/** The refusals a new Connect fixes: one reconnect item, no retry. */
+export const RECONNECT_CODES: readonly string[] = [
+  AGENTS_NOT_COVERED,
+  AGENTS_MANAGE_MISSING,
+];
+
 /** Hub's mint refusal (403): an agent's own token asked to mint (a Den bug). */
 export const INSTALL_TOKEN_REQUIRED = "install_token_required";
 

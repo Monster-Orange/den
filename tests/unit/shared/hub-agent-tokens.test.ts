@@ -77,7 +77,8 @@ type Mode =
   | "nomint"
   | "norevoke"
   | "notcovered"
-  | "installreq";
+  | "installreq"
+  | "manage";
 async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
   const seen: Seen[] = [];
   const live = new Map<string, string>(); // token_id -> agent id
@@ -108,9 +109,19 @@ async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
         auth: String(req.headers.authorization ?? ""),
         body,
       });
+      // Hub 0.2.10's answers, field for field: JSON, no-store; a 401 has a
+      // request_id and www-authenticate.
       const json = (code: number, v: unknown) => {
-        res.writeHead(code, { "content-type": "application/json" });
-        res.end(JSON.stringify(v));
+        res.writeHead(code, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+          ...(code === 401 ? { "www-authenticate": "Bearer" } : {}),
+        });
+        res.end(
+          JSON.stringify(
+            code === 401 ? { ...(v as object), request_id: "req-test" } : v,
+          ),
+        );
       };
       if (mode.v === "down") return json(500, { error: "down" });
       if (req.url === "/connect/whoami" && req.method === "GET") {
@@ -140,6 +151,23 @@ async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
           });
         if (mode.v === "installreq")
           return json(403, { error: "install_token_required" });
+        if (mode.v === "manage")
+          return json(403, { error: "agents_manage_missing" });
+        // Flat body: agent_id (Den's id rule) and agent_name (printable,
+        // whitespace collapsed and trimmed); else 400 invalid_request.
+        const keys = Object.keys(body).sort().join(",");
+        const nm =
+          typeof body.agent_name === "string"
+            ? body.agent_name.replace(/\s+/g, " ").trim()
+            : "";
+        if (
+          keys !== "agent_id,agent_name" ||
+          typeof body.agent_id !== "string" ||
+          !/^[A-Za-z0-9._:-]{1,100}$/.test(body.agent_id) ||
+          !nm ||
+          !/^[\x20-\x7e]{1,80}$/.test(nm)
+        )
+          return json(400, { error: "invalid_request" });
         n += 1;
         const id = `00000000-0000-4000-8000-00000000000${n}`;
         const agent = String(body.agent_id);
@@ -154,7 +182,7 @@ async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
         return json(200, {
           token,
           token_id: id,
-          agent: { id: body.agent_id, name: body.agent_name },
+          agent: { id: body.agent_id, name: nm },
         });
       }
       if (req.url === "/connect/revoke" && req.method === "POST") {
@@ -619,7 +647,105 @@ describe("issue 249: the server's store of agent tokens", () => {
   });
 });
 
+describe("issue 249: one [hub] log line per mint, mint failure and revoke", () => {
+  it("a stored mint, a failed one (Hub's status and error code), a 401 drop and a revoke (with its reason) each log one line; never a token", async () => {
+    const mode = { v: "ok" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    let now = 1_000_000;
+    const logged: string[] = [];
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ retrySeconds: 60 }),
+      now: () => now,
+      log: (l) => void logged.push(l),
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    // Hub's real answer shape: {token, token_id, agent: {id, name}}.
+    const t = await b.tokenFor(h, a);
+    const id = readAgentHubToken(stateDir, "ada")!.tokenId;
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("ada");
+    expect(logged[0]).toContain(id);
+    expect(logged[0]).toMatch(/stored/);
+    mode.v = "nomint";
+    await b.tokenFor(h, { ...a, id: "bob" });
+    expect(logged).toHaveLength(2);
+    expect(logged[1]).toMatch(/bob.*503.*busy/);
+    b.rejected("ada");
+    expect(logged).toHaveLength(3);
+    expect(logged[2]).toMatch(/401.*ada/);
+    mode.v = "ok";
+    now += 61_000;
+    await b.tokenFor(h, a);
+    await b.unbind(h, "ada", "remove");
+    expect(logged.at(-1)).toMatch(/revoked.*ada.*remove/);
+    for (const l of logged) {
+      expect(l).not.toContain(t!);
+      expect(l).not.toContain(INSTALL);
+      expect(l).not.toMatch(/hubi_/);
+    }
+  });
+});
+
 describe("issue 249: Hub's mint refusals, by their error value", () => {
+  it("Hub 0.2.10's exact 200 (a normalized name, no other fields): stored, bound, and the agent's next call uses it", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings(),
+      log: () => undefined,
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = {
+      id: "gate-249-bound",
+      name: "Gate  249\tbound ",
+      workspace: "default",
+    };
+    const t = await b.tokenFor(h, a);
+    expect(t).toBe("hubi_TESTONLY_agent_1");
+    expect(hub.seen[0].body).toEqual({
+      agent_id: "gate-249-bound",
+      agent_name: "Gate 249 bound",
+    });
+    expect(b.bound("gate-249-bound")).toBe(true);
+    expect(
+      fs
+        .readdirSync(agentHubTokenDir(stateDir))
+        .filter((f) => f.endsWith(".json")),
+    ).toEqual(["gate-249-bound.json"]);
+    expect(await b.tokenFor(h, a)).toBe(t);
+    expect(hub.seen.filter((s) => s.url === "/connect/agent")).toHaveLength(1);
+  });
+
+  it("403 agents_manage_missing is handled as agents_not_covered: one reconnect item, no retry, and the log names the code", async () => {
+    const mode = { v: "manage" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    let now = 1_000_000;
+    const posted: string[] = [];
+    const logged: string[] = [];
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ retrySeconds: 60 }),
+      now: () => now,
+      onNotCovered: (url) => void posted.push(url),
+      log: (l) => void logged.push(l),
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    expect(await b.tokenFor(h, a)).toBeNull();
+    mode.v = "ok";
+    now += 86_400_000;
+    expect(await b.tokenFor(h, { ...a, id: "bob" })).toBeNull();
+    expect(hub.seen.filter((s) => s.url === "/connect/agent")).toHaveLength(1);
+    expect(posted).toEqual([hub.url]);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/status 403, error agents_manage_missing/);
+  });
+
   it("403 agents_not_covered: the install token, ONE reconnect item, and no more mints (any agent, any wait, a restart) until the install connects again", async () => {
     const mode = { v: "notcovered" as Mode };
     const hub = await fakeHub(mode);
@@ -702,9 +828,9 @@ describe("issue 249: Hub's mint refusals, by their error value", () => {
       expect(await b.tokenFor(wrong, { ...a, id })).toBeNull();
     }
     expect(mints()).toBe(before + 1);
-    expect(logged).toHaveLength(1);
-    expect(logged[0]).toContain("install_token_required");
-    expect(logged[0]).not.toContain(agentTok!);
+    const refused = logged.filter((l) => l.includes("install_token_required"));
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).not.toContain(agentTok!);
     // The install's own token still mints.
     expect(await b.tokenFor(ok, { ...a, id: "bob" })).toMatch(/^hubi_/);
   });

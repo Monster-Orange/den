@@ -49,7 +49,7 @@ import {
 import { getStateDir } from "./paths.js";
 import { createHash } from "crypto";
 import {
-  AGENTS_NOT_COVERED,
+  RECONNECT_CODES,
   INSTALL_TOKEN_REQUIRED,
   agentsNotCovered,
   markAgentsNotCovered,
@@ -199,6 +199,17 @@ export class HubAgentTokens {
     return (this.deps.now ?? Date.now)();
   }
 
+  /** One [hub] line for the server's log: never a token. */
+  private log(line: string): void {
+    try {
+      (this.deps.log ?? ((l: string) => console.error(`[hub] ${l}`)))(
+        `issue 249: ${line}`,
+      );
+    } catch {
+      /* a log line never stops a call */
+    }
+  }
+
   private revokeOne(hub: HubInstall, tokenId: string): Promise<boolean> {
     return (this.deps.revoke ?? hubRevokeAgentToken)(
       hub.url,
@@ -284,6 +295,9 @@ export class HubAgentTokens {
         () => true,
         () => false,
       );
+      this.log(
+        `${gone ? "revoked" : "couldn't revoke"} agent ${a.id}'s Hub token ${cur.tokenId} (reason: undo, removed while Hub didn't answer)`,
+      );
       if (!gone) {
         this.wait(a.id, s);
         return null;
@@ -302,7 +316,11 @@ export class HubAgentTokens {
     } catch (e) {
       const until = this.now() + s.retrySeconds * 1000;
       const code = e instanceof HubCallError ? e.code : undefined;
-      if (code === AGENTS_NOT_COVERED) {
+      if (code !== INSTALL_TOKEN_REQUIRED)
+        this.log(
+          `Hub didn't mint agent ${a.id}'s token (${mintFailure(e)})${usable ? ": it keeps its current token" : ": it uses the install's token"}`,
+        );
+      if (code && RECONNECT_CODES.includes(code)) {
         // The install's grant doesn't cover agents: one reconnect item, and
         // no more mints until the install connects again.
         markAgentsNotCovered(stateDir, hub.url);
@@ -315,8 +333,8 @@ export class HubAgentTokens {
         // An agent's own token tried to mint: a Den bug. Logged once; that
         // token never mints again (no loop).
         this.notInstall.add(this.installKey(hub));
-        (this.deps.log ?? ((l: string) => console.error(`[hub] ${l}`)))(
-          `issue 249: Hub refused an agent-token mint for agent ${a.id} (install_token_required): Den sent an agent's token, not the install's. No more mints with that token.`,
+        this.log(
+          `Hub refused an agent-token mint for agent ${a.id} (status 403, error install_token_required): Den sent an agent's token, not the install's. No more mints with that token.`,
         );
       } else if (
         e instanceof HubCallError &&
@@ -330,14 +348,25 @@ export class HubAgentTokens {
     // one is dropped here and never revoked by Den: Hub ends it at the new
     // one's first use or after its grace period, and a revoke by either id
     // would end both.
-    writeAgentHubToken(stateDir, {
-      agentId: a.id,
-      agentName: name,
-      hubUrl: hub.url,
-      tokenId: g.tokenId,
-      token: g.token,
-      at: new Date(this.now()).toISOString(),
-    });
+    try {
+      writeAgentHubToken(stateDir, {
+        agentId: a.id,
+        agentName: name,
+        hubUrl: hub.url,
+        tokenId: g.tokenId,
+        token: g.token,
+        at: new Date(this.now()).toISOString(),
+      });
+    } catch (e) {
+      this.log(
+        `Hub minted agent ${a.id}'s token ${g.tokenId}, but Den couldn't store it under ${agentHubTokenDir(stateDir)}: ${(e as Error)?.message ?? e}`,
+      );
+      this.failedUntil.set(a.id, this.now() + s.retrySeconds * 1000);
+      return usable?.token ?? null;
+    }
+    this.log(
+      `${usable ? "rotated" : "minted"} agent ${a.id}'s Hub token ${g.tokenId}: stored under ${agentHubTokenDir(stateDir)}`,
+    );
     this.failedUntil.delete(a.id);
     return g.token;
   }
@@ -346,7 +375,12 @@ export class HubAgentTokens {
   rejected(id: string): void {
     const stateDir = this.deps.stateDir();
     const t = readAgentHubToken(stateDir, id);
-    if (t && !t.revokePending) dropAgentHubToken(stateDir, id);
+    if (t && !t.revokePending) {
+      dropAgentHubToken(stateDir, id);
+      this.log(
+        `Hub answered 401 to agent ${id}'s token ${t.tokenId}: dropped here, the next call mints a new one`,
+      );
+    }
   }
 
   /** Revoke `t` by its id: whether Hub revoked it now, or didn't answer. */
@@ -370,6 +404,7 @@ export class HubAgentTokens {
   async unbind(
     hub: HubInstall | null,
     id: string,
+    reason = "agent removed",
   ): Promise<{ revoked: boolean; pending?: true }> {
     const stateDir = this.deps.stateDir();
     const t = readAgentHubToken(stateDir, id);
@@ -377,6 +412,9 @@ export class HubAgentTokens {
     if (!t) return { revoked: false };
     if (hub && t.hubUrl === hub.url) {
       const r = await this.revokeEvery(hub, t);
+      this.log(
+        `${r.failed ? "couldn't revoke" : "revoked"} agent ${id}'s Hub token ${t.tokenId} (reason: ${reason})${r.failed ? ": kept, never used, tried again later" : ""}`,
+      );
       if (!r.failed) {
         dropAgentHubToken(stateDir, id);
         return { revoked: r.revoked };
@@ -406,6 +444,9 @@ export class HubAgentTokens {
         continue;
       }
       const r = await this.revokeEvery(hub, t);
+      this.log(
+        `${r.failed ? "couldn't revoke" : "revoked"} agent ${t.agentId}'s Hub token ${t.tokenId} (reason: disconnect)`,
+      );
       if (r.revoked) revoked += 1;
       if (!r.failed || opts.force) dropAgentHubToken(stateDir, t.agentId);
       else {
@@ -418,6 +459,18 @@ export class HubAgentTokens {
     this.notInstall.clear();
     return { revoked, failed };
   }
+}
+
+/** Hub's answer to a failed mint, for a log line: status and error code. */
+function mintFailure(e: unknown): string {
+  if (!(e instanceof HubCallError))
+    return `error: ${(e as Error)?.message ?? String(e)}`;
+  const status =
+    e.status ??
+    (e.kind === "rejected" ? 401 : e.kind === "forbidden" ? 403 : undefined);
+  return status === undefined
+    ? `no answer: ${e.message}`
+    : `status ${status}, error ${e.code ?? "none"}`;
 }
 
 /**
