@@ -70,7 +70,6 @@ import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
 import { edgeImageCheck } from "../../shared/edge/render.js";
 import { edgeImageHint, edgeV2Rules } from "../../shared/edge/rule-syntax.js";
-import { uiLanguage, type UiLanguage } from "../server/ui-language.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -139,15 +138,6 @@ export interface DoctorRow {
 
 type Selector = (env: NodeJS.ProcessEnv) => DoctorRow;
 
-/** The person's language (user.yml `language`) for doctor's words. */
-function doctorLanguage(): UiLanguage {
-  try {
-    return uiLanguage(readUserConfig().language);
-  } catch {
-    return "en";
-  }
-}
-
 const SELECTORS: Record<string, Selector> = {
   secrets(env) {
     let cfg: SecretsConfig;
@@ -195,7 +185,7 @@ const SELECTORS: Record<string, Selector> = {
       const plain = edgeImageCheck(cfg);
       const image =
         plain.status === "warn"
-          ? edgeImageHint(cfg, edgeV2Rules(cfg), doctorLanguage())
+          ? edgeImageHint(cfg, edgeV2Rules(cfg))
           : { ...plain, lines: [plain.detail] };
       return {
         kind: "tls",

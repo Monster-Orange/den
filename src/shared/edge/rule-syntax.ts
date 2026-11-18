@@ -24,12 +24,12 @@ import {
   hostRule,
   traefikMajor,
 } from "./render.js";
-import { getReposRoot } from "../den-config.js";
+import { getReposRoot, readUserConfig } from "../den-config.js";
 import { readStacks } from "../stacks/config.js";
 import { ruleSyntaxWord, type RuleSyntaxWord } from "./rule-syntax-words.js";
 import type { EdgeConfig } from "./types.js";
 import type { StackConfig } from "../stacks/types.js";
-import type { UiLanguage } from "../../ui/server/ui-language.js";
+import { uiLanguage, type UiLanguage } from "../../ui/server/ui-language.js";
 
 /** The flag that has Traefik v3 read every rule in v2 syntax. */
 export const V2_COMPAT_ARG = "--core.defaultRuleSyntax=v2";
@@ -252,6 +252,15 @@ export function edgeV2Rules(
   return v2RuleSyntaxIn(edgeRules(cfg, deps));
 }
 
+/** The person's language (user.yml `language`), English when unset. */
+function personLanguage(): UiLanguage {
+  try {
+    return uiLanguage(readUserConfig().language);
+  } catch {
+    return "en";
+  }
+}
+
 /**
  * Doctor's edge.image lines: edgeImageCheck's, unless the image is older
  * than v3 (or unknown) and v2-only rules exist; then the rules, where they
@@ -260,7 +269,7 @@ export function edgeV2Rules(
 export function edgeImageHint(
   cfg: Pick<EdgeConfig, "image" | "args">,
   v2: readonly V2Rule[],
-  lang: UiLanguage,
+  lang: UiLanguage = personLanguage(),
 ): { status: "ok" | "warn"; detail: string; lines: string[] } {
   const base = edgeImageCheck(cfg);
   if (base.status === "ok" || !v2.length)
