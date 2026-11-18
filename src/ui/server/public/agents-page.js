@@ -94,6 +94,7 @@ import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
+import { latestShell } from "/shell-pick.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -336,28 +337,6 @@ function markShellUsed(id) {
   } catch {
     /* none: the newest shell instead */
   }
-}
-
-/**
- * Issue 448: project `ws`'s running plain shell used last (`used`: id to
- * ms; else its start), or null when none runs there. `ws` null: in any
- * project.
- */
-export function latestShell(rows, ws, used = {}) {
-  const at = (r) =>
-    Math.max(
-      typeof used[r.id] === "number" ? used[r.id] : 0,
-      Date.parse(r.startedAt ?? "") || 0,
-    );
-  let best = null;
-  for (const r of rows ?? [])
-    if (
-      r?.kind === "session" &&
-      !r.exited &&
-      (ws === null || r.workspace === ws)
-    )
-      if (!best || at(r) >= at(best)) best = r;
-  return best;
 }
 
 function writeUrl() {
