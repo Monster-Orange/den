@@ -404,6 +404,7 @@ export class SessionHost {
                   ...(rec.unread === true ? { unread: true } : {}),
                 }
               : { exitedAt: new Date().toISOString(), unread: true }),
+            ...(typeof rec.cwd === "string" ? { cwd: rec.cwd } : {}),
             ...(typeof rec.launchd === "string" &&
             /^[A-Za-z]{1,32}$/.test(rec.launchd)
               ? { launchd: rec.launchd }
@@ -725,6 +726,8 @@ export class SessionHost {
         pid: pty.pid,
         startedAt: new Date().toISOString(),
         ...(this.launchd ? { launchd: this.launchd } : {}),
+        // Issue 482: the folder it started in (Terminals' rows).
+        ...(cwd ? { cwd } : {}),
       },
       cwd,
       pty,

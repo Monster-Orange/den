@@ -94,7 +94,16 @@ import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
-import { latestShell } from "/shell-pick.js";
+import { latestShell, shellUsedAt } from "/shell-pick.js";
+import {
+  forPage,
+  isShell,
+  movedNote,
+  rowActions,
+  shellGroups,
+  shellMeta,
+  startProject,
+} from "/terminals-list.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -163,6 +172,25 @@ const api = (method, url, body, opts) =>
   window.denShell.api(method, url, body, opts);
 const CLI = "__DEN_CLI__";
 const TITLE = "__DEN_TITLE__";
+
+/**
+ * Issue 482: which page this is. /terminals (page id "terminal") lists
+ * plain shells only; /agents lists agents only. Read once, from the
+ * shell's page id the server set.
+ */
+let pageKind = null;
+function page() {
+  if (pageKind) return pageKind;
+  const id =
+    typeof document === "undefined"
+      ? ""
+      : document.getElementById("den-shell")?.dataset.page;
+  pageKind = id === "terminal" ? "terminals" : "agents";
+  return pageKind;
+}
+const onTerminals = () => page() === "terminals";
+/** Issue 482: whether row `r` is this page's (forPage's rule). */
+const onPage = (r) => forPage(page(), [r]).length === 1;
 /** ON-6: the server agent's scope (no workspace), shared/agents/server-agent.ts. */
 const SERVER_WS = "den-server";
 /** How long Remove's Undo stays offered (AG-14.1b). */
@@ -297,12 +325,19 @@ export function deepLinkOf(pathname, search) {
   return { ws, agent, context, href: `/agents?${q.toString()}` };
 }
 
-/** D73: the panes this browser has open, so a Terminal link adds a tab. */
-const OPEN_KEY = "den-agents-open";
+/**
+ * D73: the panes this browser has open, so a Terminal link adds a tab.
+ * Issue 482: each page keeps its own; Terminals starts from the panes
+ * Agents kept before this release (its shells among them).
+ */
+const AGENTS_OPEN_KEY = "den-agents-open";
+const openKey = () => (onTerminals() ? "den-terminals-open" : AGENTS_OPEN_KEY);
 
 function rememberedOpen() {
   try {
-    return openFromUrl(`?open=${localStorage.getItem(OPEN_KEY) ?? ""}`);
+    const own = localStorage.getItem(openKey());
+    const was = own ?? localStorage.getItem(AGENTS_OPEN_KEY) ?? "";
+    return openFromUrl(`?open=${was}`);
   } catch {
     return [];
   }
@@ -349,7 +384,7 @@ function writeUrl() {
     // leaves the others out (st.hiddenOpen), so a Terminal link brings
     // them back in All active.
     localStorage.setItem(
-      OPEN_KEY,
+      openKey(),
       [...new Set([...st.hiddenOpen, ...st.open])].join(","),
     );
   } catch {
@@ -368,6 +403,7 @@ function writeUrl() {
   u.searchParams.delete("service");
   u.searchParams.delete("agent");
   u.searchParams.delete("terminal");
+  u.searchParams.delete("new");
   const s = u.searchParams.toString().replace(/%2C/gi, ",");
   history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
   paintSub();
@@ -1038,8 +1074,178 @@ function setList(el, html) {
   if (had) focusBack(had, key);
 }
 
+/**
+ * Issue 482 (mock v3, A1/A2/A4/A7): the Terminals list. Running, then
+ * Exited, each newest used first; a row is one button (a click anywhere
+ * opens it); an exited row is dimmed, with Restart and Remove above its
+ * button. Loading, error (Try again), empty and none-running states.
+ */
+function paintTerminals(el) {
+  const newBtn = st.root.querySelector("#tm-new");
+  if (newBtn) newBtn.disabled = !st.data;
+  const view = viewWorkspaces();
+  const one = view.length === 1 ? view[0] : null;
+  const p = one ? projName(one) : "";
+  paintTerminalsSub(one);
+  if (st.signedOut || st.data?.io?.allowed === false) {
+    setList(
+      el,
+      `<div class="signin" data-note="signin">${esc(t("ag.signin", { cli: CLI }))}</div>`,
+    );
+    return;
+  }
+  if (!st.data && !st.listFailed) {
+    el.setAttribute("aria-busy", "true");
+    setList(
+      el,
+      `<div class="tm-state" data-state-card="loading" role="status" aria-label="${esc(t("tm.loading"))}">` +
+        `<div class="skel"></div><div class="skel"></div><div class="skel"></div></div>`,
+    );
+    return;
+  }
+  el.removeAttribute("aria-busy");
+  const shells = st.data ? visibleRows() : [];
+  if (!shells.length && (st.listFailed || st.data?.hostError || !st.data)) {
+    setList(
+      el,
+      `<div class="tm-state tm-err" data-state-card="error" role="alert">` +
+        `<b>${esc(t("tm.err.h"))}</b><span>${esc(t("tm.err.p"))}</span>` +
+        `<button type="button" class="den-btn" data-act="retry">${esc(t("tm.err.retry"))}</button></div>`,
+    );
+    return;
+  }
+  const notes = [];
+  if (st.data.backend?.available === false)
+    notes.push(
+      `<div class="agnote" data-note="backend">${esc(t("ag.noBackend", { cli: CLI }))}</div>`,
+    );
+  if (st.hostDown)
+    notes.push(
+      `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
+    );
+  if (!shells.length) {
+    setList(
+      el,
+      notes.join("") +
+        `<div class="tm-state" data-state-card="empty">` +
+        `<b>${esc(t("tm.empty.h"))}</b><span>${esc(one ? t("tm.empty.one", { p }) : t("tm.empty.all"))}</span></div>`,
+    );
+    return;
+  }
+  const g = shellGroups(shells, shellUsed());
+  const group = (key, rows) =>
+    rows.length
+      ? `<div class="tmg" data-group="${key}"><div class="wsh"><span>${esc(t(`tm.${key}`))}</span><span>${rows.length}</span></div>` +
+        rows.map((r) => terminalRowHtml(r, !one)).join("") +
+        `</div>`
+      : "";
+  setList(
+    el,
+    notes.join("") + group("running", g.running) + group("exited", g.exited),
+  );
+}
+
+/** Issue 482: one Terminals row (mock v3: "What the developers build"). */
+function terminalRowHtml(r, showProject) {
+  const sel = st.open.includes(r.id) && r.id === st.cur;
+  const kind = r.exited ? "exited" : "running";
+  const meta = shellMeta(r, { showProject, projName });
+  const used = shellUsedAtIso(r);
+  const acts = rowActions(r);
+  const label = r.label || r.name;
+  return (
+    `<div class="agst tmr${r.exited ? " dim" : ""}" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${sel ? ' aria-current="true"' : ""}>` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"` +
+    ` aria-pressed="${sel}" aria-label="${esc(t("ag.openName", { id: `${projName(r.workspace)} / ${label}` }))}">` +
+    `<span class="den-dot ${r.exited ? "off" : ""}" aria-hidden="true"></span>` +
+    `<span class="nm">${esc(label)}</span>` +
+    `<span class="stc ${kind}">${esc(t(`tm.state.${kind}`))}</span>` +
+    (meta ? `<span class="meta">${esc(meta)}</span>` : "") +
+    (used ? `<span class="meta when">${lastUsedHtml(used)}</span>` : "") +
+    `<span class="chev" aria-hidden="true">›</span>` +
+    `</button>` +
+    (acts.length
+      ? `<span class="tmacts">` +
+        `<button type="button" class="den-btn sm" data-act="restart-shell" aria-label="${esc(t("tm.restartName", { id: label }))}">${esc(t("tm.restart"))}</button>` +
+        `<button type="button" class="den-btn sm" data-act="remove-shell" aria-label="${esc(t("ag.removeShell", { id: label }))}">${esc(t("ag.remove"))}</button>` +
+        `</span>`
+      : "") +
+    `</div>`
+  );
+}
+
+/** Issue 482: when shell `r` was last used, as ISO (shellUsedAt), or "". */
+function shellUsedAtIso(r) {
+  const ms = shellUsedAt(r, shellUsed());
+  return ms > 0 ? new Date(ms).toISOString() : "";
+}
+
+/** "Last used 2 min ago" (the time is a <time>, the person's zone). */
+function lastUsedHtml(iso) {
+  const [a, b = ""] = t("tm.lastUsed", { when: "\u0000" }).split("\u0000");
+  return `${esc(a)}${agoText(iso)}${esc(b)}`;
+}
+
+/** Issue 482: the page's line under "Terminals" (mock v3, A1/A2). */
+function paintTerminalsSub(one) {
+  const sub = st.root.querySelector("#ag-sub");
+  if (!sub) return;
+  const html = one
+    ? `<span data-sub="one">${esc(t("tm.sub.one", { p: projName(one) }))}</span> <span class="tm-sub2">${esc(t("tm.sub.switch"))}</span>`
+    : `<span data-sub="all">${esc(t("tm.sub.all"))}</span>`;
+  if (sub.denHtml !== html) {
+    sub.denHtml = html;
+    sub.innerHTML = html;
+  }
+}
+
+/** Issue 482: this browser saw the "shells moved" note (once, ever). */
+const MOVED_SEEN_KEY = "den-shells-moved-seen";
+
+/**
+ * Issue 482 (mock v3, A3/A6): Agents' one-time note after the release that
+ * moved shells to Terminals: "N shells moved to Terminals. Nothing was
+ * closed.", with Open Terminals and Dismiss. Decided on the first list
+ * this page gets; it stays until Dismiss or the page is left.
+ */
+function paintMoved() {
+  const box = st.root.querySelector("#ag-moved");
+  if (!box || onTerminals() || !st.data) return;
+  if (st.movedShown === undefined) {
+    let seen = false;
+    try {
+      seen = localStorage.getItem(MOVED_SEEN_KEY) === "1";
+    } catch {
+      seen = true;
+    }
+    const n = (st.data.sessions ?? []).filter(isShell).length;
+    const m = movedNote({ seen, shells: n });
+    if (m.markSeen)
+      try {
+        localStorage.setItem(MOVED_SEEN_KEY, "1");
+      } catch {
+        /* none: shown on this page only */
+      }
+    st.movedShown = m.show ? m.n : null;
+  }
+  const n = st.movedShown;
+  const html = n
+    ? `<div class="note-bar" data-note="moved" role="status">` +
+      `<span><b>${esc(t(n === 1 ? "ag.moved.one" : "ag.moved.many", { n }))}</b> ${esc(t("ag.moved.closed"))}<span class="tm-sub2"> ${esc(t("ag.moved.here"))}</span></span>` +
+      `<span class="acts"><a class="den-btn sm" data-act="open-terminals" href="/terminals">${esc(t("ag.moved.open"))}</a>` +
+      `<button type="button" class="den-btn sm" data-act="dismiss-moved">${esc(t("ag.moved.dismiss"))}</button></span></div>`
+    : "";
+  if (box.denHtml !== html) {
+    box.denHtml = html;
+    box.innerHTML = html;
+  }
+  box.hidden = !html;
+}
+
 function paintList() {
   const el = st.root.querySelector("#agl");
+  if (onTerminals()) return paintTerminals(el);
+  paintMoved();
   el.removeAttribute("aria-busy");
   const notes = [];
   if (st.signedOut || st.data?.io?.allowed === false)
@@ -1215,6 +1421,8 @@ function stoppedGroupHtml(rows) {
  */
 function inView(s) {
   if (!s) return false;
+  // Issue 482: Terminals lists plain shells only, Agents agents only.
+  if (!onPage(s)) return false;
   if (s.server || s.workspace === SERVER_WS || s.orphan) return true;
   return viewWorkspaces().includes(s.workspace);
 }
@@ -1229,6 +1437,22 @@ function visibleRows() {
  */
 function hideOtherProjects() {
   if (!st.data) return;
+  // Issue 482: the other page's sessions (a shell on Agents, an agent on
+  // Terminals) leave the tabs for good: they are that page's.
+  const other = st.open.filter((id) => {
+    const r = rowOf(id);
+    return r && !onPage(r);
+  });
+  if (other.length) {
+    for (const id of other)
+      if (st.panes.has(id)) closePane(id, { quiet: true });
+      else st.open = st.open.filter((x) => x !== id);
+    writeUrl();
+  }
+  st.hiddenOpen = st.hiddenOpen.filter((id) => {
+    const r = rowOf(id);
+    return !r || onPage(r);
+  });
   const out = st.open.filter((id) => {
     const r = rowOf(id);
     return r && !inView(r);
@@ -1356,12 +1580,8 @@ function paintSub() {
   if (count) count.textContent = subText(rows, waiting, st.scopeLabel);
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;
-  // 0.4.45: the rail lights by the pane in front, not the address (which
-  // drops ?terminal= once used): a shell lights Terminal, else Agents.
-  const front = st.cur ? rowOf(st.cur) : null;
-  window.denShell?.setRailLit?.(
-    front && front.kind === "session" ? "terminal" : null,
-  );
+  // Issue 482: each page lights its own rail item, never both.
+  window.denShell?.setRailLit?.(onTerminals() ? "terminal" : null);
 }
 
 /**
@@ -1484,7 +1704,10 @@ async function refreshOnce() {
         st.listWaitS = st.data.refreshTimeoutSeconds;
       toastAutoRelaunches(st.data?.sessions ?? []);
     }
+    // Issue 482: Terminals says when no list could be had (Try again).
+    st.listFailed = r.status !== 401 && !r.ok;
   } catch {
+    st.listFailed = true;
     /* the last list stays; the next ask may answer */
   }
   followAgents();
@@ -1757,12 +1980,17 @@ function paintLayout() {
   const box = st.root.querySelector("#agr");
   const n = st.open.length;
   paintSwitch();
+  // Issue 482: a phone's full-screen shell lasts while a pane is open.
+  st.root.classList.toggle(
+    "tm-shell",
+    onTerminals() && !!st.phoneShell && n > 0,
+  );
   if (n === 0) {
     box.className = "agempty";
     delete box.dataset.layout;
     delete box.dataset.ws;
     const view = st.data ? viewWorkspaces() : [];
-    box.innerHTML = `<div>${esc(view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: view[0] }) : t("ag.empty"))}</div>`;
+    box.innerHTML = `<div>${esc(onTerminals() ? t("tm.pick") : view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: view[0] }) : t("ag.empty"))}</div>`;
     return;
   }
   const layout = shownLayout();
@@ -1890,6 +2118,8 @@ document.addEventListener("keydown", dropStalePick, true);
  * that pane is still in sight.
  */
 async function pick(id, add) {
+  // Issue 482: on a phone, a picked shell is the whole screen.
+  if (onTerminals()) st.phoneShell = true;
   const layout = shownLayout();
   if (layout === "focus" && !add) {
     st.side.clear();
@@ -2183,9 +2413,84 @@ function barFind(bar, k) {
   return bar.querySelectorAll("button, a, [tabindex]")[k.at] ?? null;
 }
 
+/**
+ * Issue 482 (mock v3, A1/A2/A5): a shell's pane bar on Terminals: on a
+ * phone, ‹ Terminals back to the list; its dot, name and folder; Stop on
+ * a running one (it stays listed, exited). An exited one's Restart and
+ * Remove are in the pane's body (endedHtml).
+ */
+function terminalBarHtml(p, r) {
+  const name = r ? paneName(r) : p.label || p.id;
+  const tone = r ? stateTone(r) : p.exited ? "off" : "pending";
+  const stop =
+    r && !r.exited && !p.exited
+      ? `<button type="button" class="den-btn sm" data-act="stop-shell" aria-label="${esc(t("ag.stopName", { id: name }))}" title="${esc(t("ag.closeShellTip"))}">${esc(t("ag.stop"))}</button>`
+      : "";
+  return (
+    `<button type="button" class="tm-back" data-act="tm-back" title="${esc(t("tm.backTip"))}"><span aria-hidden="true">‹ </span>${esc(t("tm.back"))}</button>` +
+    `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
+    `<span class="tm-title"><b>${esc(name)}</b><span class="where mono">${esc(r?.folder ?? "")}</span></span>` +
+    `<span class="x">${reconnectHtml(p)}${stop}</span>`
+  );
+}
+
+/** Issue 482 (mock v3, A2): an exited shell's pane: ended, Restart, Remove. */
+function endedHtml(r) {
+  const at = r.endedAt ? agoText(r.endedAt) : "";
+  const said =
+    r.exitCode !== undefined
+      ? t("tm.ended.code", { code: r.exitCode, when: "\u0000" })
+      : t("tm.ended.when", { when: "\u0000" });
+  const [a, b = ""] = said.split("\u0000");
+  return (
+    `<b>${esc(t("tm.ended.h"))}</b>` +
+    `<span>${esc(a)}${at}${esc(b)}</span>` +
+    `<span class="acts2"><button type="button" class="den-btn primary" data-act="restart-shell">${esc(t("tm.restart"))}</button>` +
+    `<button type="button" class="den-btn" data-act="remove-shell">${esc(t("ag.remove"))}</button></span>` +
+    (r.folder
+      ? `<small>${esc(t("tm.ended.hint", { folder: r.folder }))}</small>`
+      : "")
+  );
+}
+
+/** Issue 482: a pane's ended card, shown for an exited shell on Terminals. */
+function paintEnded(p, r) {
+  let card = p.el.querySelector(":scope > .tm-ended");
+  const ended = onTerminals() && !!r?.exited;
+  p.el.classList.toggle("tm-done", ended);
+  if (!ended) {
+    card?.remove();
+    return;
+  }
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "tm-ended";
+    card.setAttribute("role", "status");
+    p.el.querySelector(".term").after(card);
+  }
+  const html = endedHtml(r);
+  if (card.denHtml !== html) {
+    card.denHtml = html;
+    card.innerHTML = html;
+  }
+}
+
 function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
+  if (onTerminals()) {
+    const html = terminalBarHtml(p, r);
+    if (p.barHtml !== html) {
+      bar.innerHTML = html;
+      p.barHtml = html;
+    } else
+      for (const b of bar.querySelectorAll("button:disabled"))
+        b.disabled = false;
+    paintEnded(p, r);
+    const to = p.el.querySelector(".agto");
+    if (to) to.hidden = true;
+    return;
+  }
   const name = r ? paneName(r) : p.label || p.id;
   // AG-4b: the session's name last, when it says more. The workspace is a
   // link to it on Workspaces (0.4.17).
@@ -2862,7 +3167,18 @@ async function openPane(id, { front = true } = {}) {
   // xterm opens in .tbox, the .term's content box: the fit measures its
   // parent's height and width as they are, so the .term's padding must
   // not be in it (AG-4b: every terminal fits its pane).
-  el.innerHTML = `<div class="bar2"></div><div class="term"><div class="tbox"></div></div><div class="agto" data-to data-toast-clear></div>`;
+  el.innerHTML =
+    `<div class="bar2"></div><div class="term"><div class="tbox"></div></div><div class="agto" data-to data-toast-clear></div>` +
+    // Issue 482: a phone's keys row (Esc, Tab, Ctrl, arrows), Terminals only.
+    (onTerminals()
+      ? `<div class="tm-keys" role="group" aria-label="${esc(t("tm.keys"))}">` +
+        `<button type="button" data-act="tm-key" data-key="esc">Esc</button>` +
+        `<button type="button" data-act="tm-key" data-key="tab">Tab</button>` +
+        `<button type="button" data-act="tm-key" data-key="ctrl" aria-pressed="false" title="${esc(t("tm.key.ctrl"))}">Ctrl</button>` +
+        `<button type="button" data-act="tm-key" data-key="up" aria-label="↑">↑</button>` +
+        `<button type="button" data-act="tm-key" data-key="down" aria-label="↓">↓</button>` +
+        `</div>`
+      : "");
   const p = {
     id,
     el,
@@ -2929,6 +3245,14 @@ async function openPane(id, { front = true } = {}) {
     // kind, the cursor's place: a TUI asks on start, and a view that
     // opens replays them) come here too, and go to the agent as they are.
     if (personTyped(p) && (p.following || outOfStep(p))) claimSize(p);
+    // Issue 482: the keys row's Ctrl, then a key: its control character.
+    if (p.ctrlNext && d.length === 1) {
+      d = withCtrl(d);
+      p.ctrlNext = false;
+      p.el
+        .querySelector('.tm-keys [data-key="ctrl"]')
+        ?.setAttribute("aria-pressed", "false");
+    }
     p.sock.send(enc.encode(d));
   };
   // D54: what a person did in this pane (a key, a paste, IME), heard
@@ -3103,14 +3427,18 @@ async function stopAgentNow(r, button) {
  * Close a shell: the server ends it as closing its terminal does (HUP,
  * then KILL) and forgets it; its pane closes.
  */
-async function closeShell(p, button) {
+async function closeShell(p, button, keep = false) {
   const r = rowOf(p.id);
   if (!r || r.kind !== "session") return;
   button.disabled = true;
   try {
-    await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
+    // Issue 482: Terminals' Stop keeps the row (exited: Restart, Remove).
+    await api(
+      "POST",
+      `/api/sessions/${encodeURIComponent(r.id)}/close${keep ? "?keep=1" : ""}`,
+    );
     // Quiet: the pane's own "it keeps running" toast would be wrong here.
-    closePane(p.id, { quiet: true });
+    if (!keep) closePane(p.id, { quiet: true });
     window.denShell?.toast?.(t("ag.shellClosed", { id: r.label ?? r.name }));
   } catch (err) {
     button.disabled = false;
@@ -3654,6 +3982,84 @@ async function removeRow(r, button) {
  * 0.4.45: Remove on an exited shell: the host forgets it (the close route,
  * which never ends a running one: this is only offered once it exited).
  */
+/**
+ * Issue 482: Restart on an exited shell: a new shell in its project's
+ * folder, in front; the ended one goes (it has nothing left to run).
+ */
+async function restartShell(r, button) {
+  if (!r?.exited) return;
+  // BUSY-1: the working pop-up while Den starts the new one.
+  const out = await window.denShell.busyAction(
+    "start-agent",
+    async (headers) => {
+      const o = await api(
+        "POST",
+        `/api/workspaces/${encodeURIComponent(r.workspace)}/sessions`,
+        undefined,
+        { headers },
+      );
+      // The ended one goes: it has nothing left to run.
+      await api(
+        "POST",
+        `/api/sessions/${encodeURIComponent(r.id)}/close`,
+        undefined,
+        { headers },
+      ).catch(() => {});
+      return o;
+    },
+    {
+      button,
+      vars: { name: t("ag.session") },
+      success: () => t("ag.term.started", { w: projName(r.workspace) }),
+    },
+  );
+  if (!out) return;
+  if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
+  await refresh();
+  if (out?.session?.id) await bringShell(out.session.id);
+}
+
+/**
+ * Issue 482 (mock v3, A4/A5): on a phone, a shell is the whole screen
+ * (the list and the page header give way) until its ‹ Terminals.
+ */
+function phoneShell(on) {
+  st.phoneShell = !!on;
+  st.root?.classList.toggle(
+    "tm-shell",
+    onTerminals() && st.phoneShell && st.open.length > 0,
+  );
+  if (on) {
+    const p = st.panes.get(st.cur);
+    if (p) requestAnimationFrame(() => refit(p));
+  }
+}
+
+/** Issue 482: the keys row's sequences (the issue 302 mock's keys). */
+const TM_KEYS = { esc: "\u001b", tab: "\t", up: "\u001b[A", down: "\u001b[B" };
+
+/** A key of the phone's keys row, to pane `p`'s shell; Ctrl waits for one. */
+function sendKey(p, b) {
+  const k = b.dataset.key;
+  if (k === "ctrl") {
+    p.ctrlNext = !p.ctrlNext;
+    b.setAttribute("aria-pressed", String(p.ctrlNext));
+    return;
+  }
+  const seq = TM_KEYS[k];
+  if (!seq || !p.typeIn) return;
+  p.inputAt = performance.now();
+  markShellUsed(p.id);
+  p.typeIn(seq);
+}
+
+/** Ctrl from the keys row: the next letter as its control character. */
+export function withCtrl(d) {
+  if (typeof d !== "string" || d.length !== 1) return d;
+  const c = d.toUpperCase().charCodeAt(0);
+  return c >= 64 && c <= 95 ? String.fromCharCode(c - 64) : d;
+}
+
 async function removeShell(r, button) {
   if (!exitedShell(r)) return;
   if (button) button.disabled = true;
@@ -4740,6 +5146,11 @@ async function submitStart(form) {
   async function startedOk(r) {
     if (plain) {
       dlg.close?.();
+      // Issue 482: a plain shell is Terminals', never the Agents list's.
+      if (r?.session?.id && !onTerminals()) {
+        location.assign(`/terminals?open=${encodeURIComponent(r.session.id)}`);
+        return;
+      }
       await refresh();
       if (r?.session?.id) await openPane(r.session.id);
       return;
@@ -5084,6 +5495,22 @@ function translateStatic(root) {
   root
     .querySelector("[data-layouts]")
     ?.setAttribute("aria-label", t("ag.layout"));
+  // Issue 482: the page's own header: Terminals (New terminal only) or
+  // Agents (agents only).
+  const tm = onTerminals();
+  root.classList.toggle("tm-page", tm);
+  set("#tm-new", "tm.new");
+  root.querySelector("#tm-new")?.setAttribute("title", t("tm.newTip"));
+  for (const sel of ["[data-layouts]", "#ag-bring", "#ag-start"]) {
+    const el = root.querySelector(sel);
+    if (el && tm) el.hidden = true;
+  }
+  const nb = root.querySelector("#tm-new");
+  if (nb) nb.hidden = !tm;
+  if (tm) {
+    set("#ag-h", "tm.h");
+    document.title = document.title.replace(/[^·]*$/, ` ${t("tm.h")}`);
+  } else set("#ag-only", "ag.sub.only");
 }
 
 /**
@@ -5389,8 +5816,12 @@ export async function mountAgentsPage(root) {
   // every project (?ws= names only where the shell starts), so tabs from
   // other projects stay.
   const q0 = new URLSearchParams(location.search);
+  // Issue 482: ?new=1 (a project's New terminal) starts a new shell there.
+  const freshAsked = onTerminals() && q0.get("new") === "1";
   const termWs =
-    q0.get("terminal") === "1" ? q0.get("project") || q0.get("ws") || "" : null;
+    q0.get("terminal") === "1" || freshAsked
+      ? q0.get("project") || q0.get("ws") || ""
+      : null;
   // #80: read before the panes open (each writes the address).
   const frontAsked = q0.get("front");
   const wanted =
@@ -5435,6 +5866,25 @@ export async function mountAgentsPage(root) {
     () => refresh(),
   );
   wireOrder(root.querySelector("#agl"));
+  // Issue 482: New terminal (one click: a new shell in the project in
+  // view, else the one used last); Agents' one-time note's Dismiss; a
+  // phone's keys row keeps the keyboard in the terminal.
+  root.querySelector("#tm-new")?.addEventListener("click", (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    void openTerminal("", { fresh: true }).finally(() => {
+      b.disabled = !st.data;
+    });
+  });
+  root.querySelector("#ag-moved")?.addEventListener("click", (e) => {
+    if (!e.target.closest('[data-act="dismiss-moved"]')) return;
+    st.movedShown = null;
+    paintMoved();
+  });
+  for (const ev of ["pointerdown", "mousedown"])
+    root.querySelector("#agr")?.addEventListener(ev, (e) => {
+      if (e.target.closest?.(".tm-keys button")) e.preventDefault();
+    });
   root.querySelector("#agl").addEventListener("click", (e) => {
     // D37: a person's open or closed "Stopped (n)" is kept.
     const sum = e.target.closest("details[data-stopped] > summary");
@@ -5482,6 +5932,18 @@ export async function mountAgentsPage(root) {
           rowOf(act.closest(".agst")?.dataset.shell),
           act,
         );
+      // Issue 482: Terminals' Restart (never opens the row), Try again.
+      if (which === "restart-shell")
+        return void restartShell(
+          rowOf(act.closest(".agst")?.dataset.shell),
+          act,
+        );
+      if (which === "retry") {
+        st.listFailed = false;
+        st.data = null;
+        paintList();
+        return void refresh();
+      }
       const agent = act.closest(".agst")?.dataset.agent;
       const ws = act.closest(".agst")?.dataset.ws;
       const r = visibleRows().find(
@@ -5590,6 +6052,17 @@ export async function mountAgentsPage(root) {
       if (r) void openLink(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
     else if (b.dataset.act === "close-shell") void closeShell(p, b);
+    // Issue 482: Terminals' Stop (the row stays, exited), the ended
+    // card's Restart and Remove, a phone's back arrow and keys row.
+    else if (b.dataset.act === "stop-shell") void closeShell(p, b, true);
+    else if (b.dataset.act === "restart-shell") {
+      const r = rowOf(id);
+      if (r) void restartShell(r, b);
+    } else if (b.dataset.act === "remove-shell") {
+      const r = rowOf(id);
+      if (r) void removeShell(r, b);
+    } else if (b.dataset.act === "tm-back") phoneShell(false);
+    else if (b.dataset.act === "tm-key") sendKey(p, b);
     else if (b.dataset.act === "new-shell") {
       const r = rowOf(id);
       if (r?.kind === "session") void newShell(r, b);
@@ -5743,15 +6216,36 @@ export async function mountAgentsPage(root) {
       confirm: askConfirm,
       onChange: () => paintList(),
     });
+  // Issue 482: Terminals shows its loading state until the first list.
+  if (onTerminals()) paintList();
   const [, saved] = await Promise.all([loadScope(), savedLayout()]);
   // A link's &layout= wins for this page; else the person's.
   st.layout = linked ?? saved;
   await refresh();
+  // Issue 482: a link to a shell's pane on Agents (from before this
+  // release: a bookmark, the browser's history) opens it on Terminals.
+  if (!onTerminals()) {
+    const shells = openFromUrl(location.search).filter((id) =>
+      isShell(rowOf(id)),
+    );
+    if (shells.length) {
+      // The rest of the link (its project, layout, tab in front) comes too.
+      const q = new URLSearchParams(location.search);
+      q.set("open", shells.join(","));
+      if (!shells.includes(q.get("front") ?? "")) q.delete("front");
+      location.replace(
+        `/terminals?${q.toString().replace(/%2C/gi, ",")}${location.hash}`,
+      );
+      return;
+    }
+  }
   paintLayout();
   // An id the list no longer has (removed, another distribution's) is
   // dropped from the URL rather than opened onto a refusal.
   if (!st.signedOut && st.data?.io?.allowed !== false)
     for (const id of wanted) {
+      // Issue 482: the other page's (a remembered agent on Terminals).
+      if (st.data && rowOf(id) && !onPage(rowOf(id))) continue;
       // #80: another project's session stays out of this view's tabs.
       if (st.data && rowOf(id) && !inView(rowOf(id))) {
         if (!st.hiddenOpen.includes(id)) st.hiddenOpen.push(id);
@@ -5777,7 +6271,12 @@ export async function mountAgentsPage(root) {
   const linkedAgent = new URLSearchParams(location.search).get("agent");
   writeUrl();
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
-  if (termWs !== null) await openTerminal(termWs);
+  if (termWs !== null) await openTerminal(termWs, { fresh: freshAsked });
+  // Issue 482: a phone opened on a shell (a link, a reload) shows it whole.
+  else if (onTerminals() && st.open.length) {
+    st.phoneShell = true;
+    paintLayout();
+  }
   if (startAsked) void openStart();
 }
 
@@ -5806,7 +6305,8 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     (st.scope && st.scope !== "all" && all.includes(st.scope)
       ? st.scope
       : (fresh ? null : latestShell(visibleRows(), null, used)?.workspace) ||
-        all[0]);
+        // Issue 482: none running: the project used last, else the first.
+        startProject(st.data?.sessions ?? [], null, all, used));
   if (!ws) {
     window.denShell?.toast?.(t("ag.term.failed", { e: t("ag.term.noWs") }));
     return;
@@ -5839,6 +6339,7 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
  * open), with the keyboard once its terminal can take keys.
  */
 async function bringShell(id) {
+  st.phoneShell = true;
   if (st.panes.has(id)) {
     st.cur = id;
     paintLayout();

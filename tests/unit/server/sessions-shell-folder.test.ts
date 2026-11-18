@@ -15,7 +15,11 @@ const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-shfolder-"));
 afterAll(() => fs.rmSync(stateDir, { recursive: true, force: true }));
 
 const home = os.homedir();
-const live = (id: string, name: string, more: Record<string, unknown> = {}) => ({
+const live = (
+  id: string,
+  name: string,
+  more: Record<string, unknown> = {},
+) => ({
   ref: { backend: "den-pty", id },
   name,
   pid: 1,

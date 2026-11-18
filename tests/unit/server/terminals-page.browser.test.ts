@@ -140,7 +140,8 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     return p;
   }
 
-  const row = (p: Page, id: string) => p.locator(`#agl .tmr[data-shell="${id}"]`);
+  const row = (p: Page, id: string) =>
+    p.locator(`#agl .tmr[data-shell="${id}"]`);
 
   let n1 = "";
   let n2 = "";
@@ -191,9 +192,9 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     expect(await a.locator('#agl [data-kind="session"]').count()).toBe(0);
     expect(await a.locator("#agl .tmr").count()).toBe(0);
     expect(
-      await a.locator('#den-rail [data-nav="terminal"]').getAttribute(
-        "aria-current",
-      ),
+      await a
+        .locator('#den-rail [data-nav="terminal"]')
+        .getAttribute("aria-current"),
     ).toBeNull();
   }, 90_000);
 
@@ -202,7 +203,10 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     const p = await open("/terminals");
     await row(p, gone).waitFor();
     const ids = await p.$$eval("#agl .tmr", (els) =>
-      els.map((e) => [(e as HTMLElement).dataset.shell, e.closest("[data-group]")?.getAttribute("data-group")]),
+      els.map((e) => [
+        (e as HTMLElement).dataset.shell,
+        e.closest("[data-group]")?.getAttribute("data-group"),
+      ]),
     );
     expect(ids.map((x) => x[1])).toEqual([
       "running",
@@ -211,7 +215,8 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       "exited",
     ]);
     expect(ids.at(-1)![0]).toBe(gone);
-    const meta = (await row(p, s1).locator(".meta").first().textContent()) ?? "";
+    const meta =
+      (await row(p, s1).locator(".meta").first().textContent()) ?? "";
     expect(meta).toMatch(/^south · /);
     expect(meta).toContain(s!.wsDir("south"));
     expect(await row(p, s1).locator(".when").textContent()).toMatch(
@@ -237,7 +242,11 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     if (skip() || !n2) return;
     const p = await open("/terminals");
     await row(p, n2).waitFor();
-    expect(await row(p, n2).getByText(/^Open$/).count()).toBe(0);
+    expect(
+      await row(p, n2)
+        .getByText(/^Open$/)
+        .count(),
+    ).toBe(0);
     const box = (await row(p, n2).boundingBox())!;
     // Bottom right: the row's edge, not its name.
     await p.mouse.click(box.x + box.width - 6, box.y + box.height - 4);
@@ -256,8 +265,12 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     if (skip() || !gone) return;
     const p = await open("/terminals");
     await row(p, gone).waitFor();
-    expect(await row(p, n1).locator('[data-act="remove-shell"]').count()).toBe(0);
-    expect(await row(p, n1).locator('[data-act="restart-shell"]').count()).toBe(0);
+    expect(await row(p, n1).locator('[data-act="remove-shell"]').count()).toBe(
+      0,
+    );
+    expect(await row(p, n1).locator('[data-act="restart-shell"]').count()).toBe(
+      0,
+    );
     const op = await row(p, gone).evaluate((el) => [
       getComputedStyle(el.querySelector(".nm")!).opacity,
       getComputedStyle(el.querySelector(".meta")!).opacity,
@@ -315,7 +328,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
   it("clause 6: Agents says once that the shells moved; never again", async () => {
     if (skip() || !n1) return;
     const p = await open("/agents", { seen: false });
-    const note = p.locator('#agl [data-note="moved"]');
+    const note = p.locator('#ag-moved [data-note="moved"]');
     await note.waitFor();
     expect(await note.textContent()).toMatch(
       /^\d+ shells moved to Terminals\. Nothing was closed\./,
@@ -326,7 +339,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     await p.reload();
     await p.waitForSelector('#agl [data-agent="planner"]');
     await p.waitForTimeout(300);
-    expect(await p.locator('#agl [data-note="moved"]').count()).toBe(0);
+    expect(await p.locator('#ag-moved [data-note="moved"]').count()).toBe(0);
     // Dismiss hides it at once.
     const q = await open("/agents", { seen: false });
     await q.locator('[data-note="moved"] [data-act="dismiss-moved"]').click();
@@ -374,7 +387,10 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       if (x.kind === "session")
         await fetch(`${s!.base}/api/sessions/${x.id}/close`, {
           method: "POST",
-          headers: { ...denAuth(s!.stateDir), "content-type": "application/json" },
+          headers: {
+            ...denAuth(s!.stateDir),
+            "content-type": "application/json",
+          },
           body: "{}",
         });
     await scope("north");
@@ -415,7 +431,9 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       await row(p, sid).waitFor();
       const h = async (sel: string) =>
         (await p.locator(sel).first().boundingBox())!.height;
-      expect(await h(`#agl .tmr[data-shell="${sid}"]`)).toBeGreaterThanOrEqual(64);
+      expect(await h(`#agl .tmr[data-shell="${sid}"]`)).toBeGreaterThanOrEqual(
+        64,
+      );
       expect(await h("#tm-new")).toBeGreaterThanOrEqual(48);
       // No horizontal scroll at 390.
       expect(

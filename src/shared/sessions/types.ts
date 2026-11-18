@@ -54,6 +54,8 @@ export interface SessionInfo {
    * unread may leave the list by itself (agents.exited_shell_minutes).
    */
   unread?: boolean;
+  /** Issue 482: the folder it started in (list only; an older host: absent). */
+  cwd?: string;
 }
 
 /**
