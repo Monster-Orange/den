@@ -549,6 +549,10 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "busy.modeW": "{name} のモードを設定しています…",
+    "busy.modeS": "{name} のモードを設定しました。",
+    "busy.modeF":
+      "{name} のモードを設定できませんでした。何も変わっていません。",
     "keep.label": "ログアウト後もエージェントを動かす",
     "keep.warn":
       "そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。",
@@ -1532,6 +1536,17 @@
     "ag.mode.src.install": "Den 全体の既定",
     "ag.mode.src.persona": "ペルソナ",
     "ag.mode.src.default": "Den の組み込みの既定",
+    "ag.mode.item": "モード: {m}",
+    "ag.mode.menu": "{id} のモード",
+    "ag.mode.pick": "{id} のモードを変更",
+    "ag.mode.follow": "プロジェクトに従う",
+    "ag.mode.setS":
+      "{id}: {m} (独自の設定)。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.setStopped": "{id}: {m} (独自の設定)。次の起動時に適用されます。",
+    "ag.mode.followS":
+      "{id} はプロジェクトに従うようになりました: {m}。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.followStopped":
+      "{id} はプロジェクトに従うようになりました: {m}。次の起動時に適用されます。",
     "set.workspace.agents_mode":
       "エージェントのモード: このプロジェクト (Den 全体の既定を上書き)",
     "set.workspace.agents_mode.d":
