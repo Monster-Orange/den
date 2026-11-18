@@ -185,13 +185,21 @@ const until = async (p: Page, want: string[]) => {
 };
 
 /**
- * `act`, a move, and its save: resolves once the server has answered the
- * move's POST (it writes the person's user config before it answers).
- * The list shows a move before its save, so a test that checked the list
- * and ended could leave its save in flight, to land in the next test's
+ * `act`, a move, to its end: the server has answered its POST (it writes
+ * the person's user config first), and the page has shown the list from
+ * the server again and announced the move (then focus is back on a moved
+ * row). A slow save's working pop-up holds the page until then.
+ *
+ * The list shows a move before its save, so a test that checked only the
+ * list could end with the save in flight, to land in the next test's
  * reset order (issue 452).
  */
-async function saved(p: Page, act: () => Promise<unknown>): Promise<void> {
+async function moved(p: Page, act: () => Promise<unknown>): Promise<void> {
+  // Cleared, so this move's announcement is waited for, not the last one.
+  await p.evaluate(() => {
+    const el = document.querySelector("#ag-order-live");
+    if (el) el.textContent = "";
+  });
   const answer = p.waitForResponse(
     (r) =>
       r.request().method() === "POST" &&
@@ -200,8 +208,12 @@ async function saved(p: Page, act: () => Promise<unknown>): Promise<void> {
       ),
   );
   await act();
-  const r = await answer;
-  expect(r.status()).toBe(200);
+  expect((await answer).status()).toBe(200);
+  await p.waitForFunction(() =>
+    / moved to position \d+ of \d+/.test(
+      document.querySelector("#ag-order-live")?.textContent ?? "",
+    ),
+  );
 }
 
 /** A drag by the grip of `from` with the mouse, to the top quarter of `to`. */
@@ -263,7 +275,7 @@ describe.each(ENGINES)(
       resetOrder();
       const p = await open(engine);
       expect(await order(p)).toEqual(["ada", "bo", "cy"]);
-      await saved(p, () =>
+      await moved(p, () =>
         mouseDrag(p, sid.cy, sid.ada, engine === "chromium" ? SHOT : undefined),
       );
       await until(p, ["cy", "ada", "bo"]);
@@ -311,16 +323,14 @@ describe.each(ENGINES)(
       );
       expect(await p.getAttribute(grip(sid.cy), "role")).toBe("img");
       await p.locator(row(sid.cy)).focus();
-      await saved(p, () => p.keyboard.press("Alt+ArrowUp"));
+      await moved(p, () => p.keyboard.press("Alt+ArrowUp"));
       await until(p, ["ada", "cy", "bo"]);
+      expect(await p.textContent("#ag-order-live")).toMatch(
+        /planner moved to position 2 of 3/,
+      );
       expect(
         await p.evaluate(() => document.activeElement?.getAttribute("data-id")),
       ).toBe(sid.cy);
-      await p.waitForFunction(() =>
-        /planner moved to position 2 of 3/.test(
-          document.querySelector("#ag-order-live")?.textContent ?? "",
-        ),
-      );
       expect(await p.getAttribute("#ag-order-live", "aria-live")).toBe(
         "polite",
       );
@@ -339,10 +349,10 @@ describe.each(ENGINES)(
       resetOrder();
       const p = await open(engine, 375, true);
       expect(await order(p)).toEqual(["ada", "bo", "cy"]);
-      await saved(p, () => touchDrag(p, sid.bo, sid.ada));
+      await moved(p, () => touchDrag(p, sid.bo, sid.ada));
       await until(p, ["bo", "ada", "cy"]);
       await p.locator(row(sid.bo)).focus();
-      await saved(p, () => p.keyboard.press("Alt+ArrowDown"));
+      await moved(p, () => p.keyboard.press("Alt+ArrowDown"));
       await until(p, ["ada", "bo", "cy"]);
       await p.waitForFunction(() =>
         /planner moved to position 2 of 3/.test(
@@ -357,7 +367,7 @@ describe.each(ENGINES)(
       const box = (await up.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
-      await saved(p, () => up.click());
+      await moved(p, () => up.click());
       await until(p, ["ada", "cy", "bo"]);
       await p
         .locator('#agl .wsg[data-ws="north"] [data-act="reorder"]')
@@ -411,7 +421,7 @@ describe.each(ENGINES)(
         expect(box.height).toBeGreaterThanOrEqual(44);
       }
       expect(await down.getAttribute("aria-disabled")).toBe("true");
-      await saved(p, () => up.click());
+      await moved(p, () => up.click());
       await untilStopped(["eve", "dee"]);
       // Its save has been answered, so the file has it.
       const north = userYml().agents?.order?.north ?? [];
