@@ -119,6 +119,11 @@ describe("CI installs Playwright only through scripts/ci-pw-install.sh", () => {
         const key = String(steps[cache].with?.key);
         expect(key).toContain("${{ runner.os }}");
         expect(key).toContain("${{ steps.pw.outputs.version }}");
+        // actions/cache never overwrites a key: a key saved before the apt
+        // packages joined the cache would keep restoring a cache without
+        // them, on every branch that has it (main did). So the key names what
+        // is in it.
+        expect([file, name, /-apt\b/.test(key)]).toEqual([file, name, true]);
         const ver = steps.findIndex((s) => s.id === "pw");
         expect(ver).toBeGreaterThanOrEqual(0);
         expect(ver).toBeLessThan(cache);
