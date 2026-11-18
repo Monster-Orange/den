@@ -31,7 +31,6 @@ type Out = {
 
 interface Opts {
   refSet?: boolean;
-  noSh?: boolean;
   noSecretSeen?: boolean;
   noWorkspace?: boolean;
   leakToB?: boolean;
@@ -69,6 +68,7 @@ function onBed(o: Opts = {}): Out {
         const ws = (!o.noWorkspace && opts?.workspace) || "default";
         const h = {
           id,
+          ...(o.noWorkspace ? {} : { workspace: ws }),
           start() {
             if (o.refuse && ws !== "default") return { code: 1, all: "✗ agents.max_concurrent is 1" };
             records.set(id, ws); started.push(id + "@" + ws);
@@ -78,17 +78,17 @@ function onBed(o: Opts = {}): Out {
           stop: async () => ({ code: 0 }),
           remove: async () => { removed.push(id); records.delete(id); return { code: 0 }; },
         };
-        if (!o.noSh) h.sh = async (cmd) =>
-          /mcp headers gate-mcp$/.test(cmd) && ws === "default"
-            ? { status: 0, out: '{"Authorization":"Bearer <redacted>"}', err: "" }
-            : { status: 1, out: "", err: "no such server" };
+        h.sh = async () => ({ status: 0, out: '{"Authorization":"Bearer <redacted>"}', err: "" });
         return h;
       },
       goto: async () => {},
       shot: async () => {},
     };
+    // The harness's answer: how many files it read under paths, and the paths that held the value.
     if (!o.noSecretSeen) ctx.secretSeen = async (ref, paths) =>
-      o.searchNothing ? [] : paths.map((p, i) => ({ path: p, hit: !!o.hit && i === 0 }));
+      o.refSet === false ? { searched: 0, hits: [], error: "no test value for " + ref }
+      : o.searchNothing ? { searched: 0, hits: [] }
+      : { searched: paths.length * 3, hits: o.hit ? [paths[0] + "/mcp.json"] : [] };
     const page = {
       locator: () => ({ waitFor: async () => {}, scrollIntoViewIfNeeded: async () => {} }),
       waitForSelector: async () => {},
@@ -117,6 +117,7 @@ function onBed(o: Opts = {}): Out {
 const row = (o: Out, i: number) => o.rows?.[i];
 const PROJECTS = 2; // "an agent in project A gets the server …"
 const BEARER = 4; // "the bearer appears in no file, env or log"
+const HEADER = 5; // "the agent's call carries the bearer header …"
 
 describe("gate/335: an agent per project, and the bearer in no file or log", () => {
   it("passes on a bed with the server, a test bearer and the harness's pieces; removes both stubs", () => {
@@ -156,7 +157,14 @@ describe("gate/335: an agent per project, and the bearer in no file or log", () 
     expect(o.removed).toHaveLength(2);
   });
 
-  it("skips as needs-test-bearer only when the ref isn't set", () => {
+  it("the header clause skips as needs-issue-473 until that fix lands", () => {
+    expect(row(onBed(), HEADER)).toMatchObject({
+      ok: null,
+      skip: "needs-issue-473",
+    });
+  });
+
+  it("skips as needs-test-bearer only when the bed has no test value", () => {
     const o = onBed({ refSet: false });
     expect(row(o, BEARER)).toMatchObject({
       ok: null,
@@ -166,10 +174,6 @@ describe("gate/335: an agent per project, and the bearer in no file or log", () 
   });
 
   it("names the harness piece it lacks", () => {
-    expect(row(onBed({ noSh: true }), BEARER)).toMatchObject({
-      ok: null,
-      skip: "needs-harness-sh",
-    });
     expect(row(onBed({ noSecretSeen: true }), BEARER)).toMatchObject({
       ok: null,
       skip: "needs-harness-secretSeen",

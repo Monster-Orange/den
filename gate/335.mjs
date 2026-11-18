@@ -5,10 +5,11 @@
 // check uses the bed's own server (SERVER, bearer ref REF, in the bed's default project) and never adds one.
 //
 // Setup starts two stub agents under this check's own names (gate335-*): one in the server's project, one
-// in OTHER. It reads each one's MCP config, has the first fetch its headers (`<cli> mcp headers SERVER`,
-// inside its own session), and has the harness search the agents' files, sessions and Den's logs for the
-// bearer. The harness holds the test value: the check never sees, prints or writes it, and never reads a
-// process's environment. Teardown removes both stubs.
+// in OTHER (ctx.agent(id, { workspace })). It reads each one's record and MCP config, then has the harness
+// search the agents' files, the session files and Den's logs for the bearer (ctx.secretSeen). The harness
+// holds the test value and answers with paths only: the check never sees, prints or writes it, and never
+// reads a process's environment. That the value never reaches the agent's env is a Den unit test of what
+// the session is launched with (tests/unit/agents/project-mcp.test.ts). Teardown removes both stubs.
 export const issue = 335;
 export const clauses = [
   "the servers are listed in Settings (names and urls only)",
@@ -16,6 +17,7 @@ export const clauses = [
   "an agent in project A gets the server and an agent in project B doesn't",
   "adding one is a held write with Allow",
   "the bearer appears in no file, env or log",
+  "the agent's call carries the bearer header, through the headers helper",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 120000;
@@ -25,16 +27,13 @@ const SERVER_URL = "http://127.0.0.1:7898/mcp";
 const REF = "gate_mcp";
 const OTHER = "proj-gate";
 
-/** The doctor line for SERVER: its project, and whether its bearer ref is set. */
+/** The doctor line for SERVER: the project it is in. */
 function serverLine(lines) {
   const l = lines.find((x) =>
     new RegExp(`^mcp server\\s+\\S+\\s+[\\w.-]+: ${SERVER} `).test(x),
   );
   if (!l) return null;
-  return {
-    project: /^mcp server\s+\S+\s+([\w.-]+):/.exec(l)[1],
-    refSet: !l.includes(`secrets.refs.${REF} is not set`),
-  };
+  return { project: /^mcp server\s+\S+\s+([\w.-]+):/.exec(l)[1] };
 }
 
 /** A stub under this check's name, started (in `workspace` when given) and running; recorded for teardown. */
@@ -43,7 +42,8 @@ async function stub(ctx, state, role, workspace) {
   const ctl = workspace
     ? await ctx.agent(name, { workspace })
     : await ctx.agent(name);
-  const a = { name, id: ctl?.id ?? name, ctl };
+  // The handle says the project it acts in (unset: a harness with no project option).
+  const a = { name, id: ctl?.id ?? name, ctl, workspace: ctl?.workspace };
   state.made.push(a);
   // A refused start (agents.max_concurrent reached) says so here, not later as a missing file.
   const r = await ctl.start("tester");
@@ -90,26 +90,19 @@ async function seenBy(ctx, a) {
 }
 
 /** Clauses 3 and 5, both through the two stubs. Never throws: an error is the clause's own answer. */
-async function agents(ctx, state, line) {
-  const out = { a: null, b: null, error: null, headers: null, seen: null };
+async function agents(ctx, state) {
+  const out = { a: null, b: null, error: null, seen: null };
   if (typeof ctx.secretSeen !== "function") out.noSecretSeen = true;
   try {
     const a = await stub(ctx, state, "a");
-    if (typeof a.ctl.sh !== "function") out.noSh = true;
     const b = await stub(ctx, state, "b", OTHER);
+    out.bHandle = b.workspace ?? null;
     out.a = await seenBy(ctx, a);
     out.b = await seenBy(ctx, b);
-    if (!out.noSh && line.refSet) {
-      // Inside A's own session (its token); the harness redacts the value.
-      const r = await a.ctl.sh(`den-gate mcp headers ${SERVER}`);
-      out.headers = {
-        status: r?.status ?? null,
-        header: /"Authorization"\s*:\s*"Bearer \S/.test(String(r?.out ?? "")),
-        err: String(r?.err ?? "").slice(0, 200),
-      };
-    }
     for (const x of [a, b]) await x.ctl.stop();
-    if (!out.noSecretSeen && line.refSet) {
+    if (!out.noSecretSeen) {
+      // Each agent's files and record, every session's files, Den's logs. The runtime's
+      // transcript lives with the runtime, outside the bed's folder.
       const paths = [
         ...state.made.flatMap((x) => [
           `agent-files/${x.id}`,
@@ -118,11 +111,13 @@ async function agents(ctx, state, line) {
         "sessions",
         "logs",
       ];
-      const seen = await ctx.secretSeen(REF, paths);
-      out.seen = (Array.isArray(seen) ? seen : []).map((x) => ({
-        path: String(x?.path ?? ""),
-        hit: x?.hit === true,
-      }));
+      const r = await ctx.secretSeen(REF, paths);
+      out.seen = {
+        paths,
+        searched: Number(r?.searched) || 0,
+        hits: (Array.isArray(r?.hits) ? r.hits : []).map(String),
+        error: r?.error ? String(r.error).slice(0, 200) : null,
+      };
     }
   } catch (e) {
     out.error = String(e?.message ?? e).slice(0, 300);
@@ -144,7 +139,7 @@ export async function setup(ctx) {
   };
   const line = serverLine(lines);
   state.line = line;
-  if (line) state.agents = await agents(ctx, state, line);
+  if (line) state.agents = await agents(ctx, state);
   return state;
 }
 
@@ -205,19 +200,20 @@ function inA(r) {
   const g = r.agents;
   if (!r.line) return { clause: clauses[2], ...NO_SERVER };
   if (g.error) return { clause: clauses[2], ok: false, detail: g.error };
-  // The harness started B somewhere other than OTHER: it has no project option yet.
-  if (g.b.workspace !== OTHER)
+  // A handle with no .workspace: the harness has no project option.
+  if (g.bHandle === null)
     return {
       clause: clauses[2],
       ok: null,
       skip: "needs-harness-agent-workspace",
-      detail: `ctx.agent(id, { workspace: "${OTHER}" }) started the agent in ${g.b.workspace ?? "no project"}`,
+      detail: `ctx.agent(id, { workspace: "${OTHER}" }) gave a handle with no project`,
     };
   const a = g.a.server;
   return {
     clause: clauses[2],
     ok:
       g.a.workspace === r.line.project &&
+      g.b.workspace === OTHER &&
       !!a &&
       a.url === SERVER_URL &&
       a.helper &&
@@ -234,22 +230,7 @@ function noBearer(r) {
   const g = r.agents;
   const c = { clause: clauses[4] };
   if (!r.line) return { ...c, ...NO_SERVER };
-  if (!r.line.refSet)
-    return {
-      ...c,
-      ok: null,
-      skip: "needs-test-bearer",
-      detail: `secrets.refs.${REF} is not set on the bed`,
-    };
   if (g.error) return { ...c, ok: false, detail: g.error };
-  if (g.noSh)
-    return {
-      ...c,
-      ok: null,
-      skip: "needs-harness-sh",
-      detail:
-        "the stub's handle has no sh(cmd), to fetch the headers inside its session",
-    };
   if (g.noSecretSeen)
     return {
       ...c,
@@ -258,18 +239,24 @@ function noBearer(r) {
       detail:
         "ctx has no secretSeen(ref, paths), to search files for the bearer without reading it",
     };
-  const h = g.headers;
-  const hits = g.seen.filter((x) => x.hit).map((x) => x.path);
+  const x = g.seen;
+  // The only skip on a full harness: the bed holds no test value behind the ref.
+  if (x.error)
+    return {
+      ...c,
+      ok: null,
+      skip: "needs-test-bearer",
+      detail: `no test value behind secrets.refs.${REF}: ${x.error}`,
+    };
   return {
     ...c,
-    ok: h.status === 0 && h.header && g.seen.length > 0 && hits.length === 0,
+    ok: x.searched > 0 && x.hits.length === 0,
     detail:
-      `headers: ${h.status === 0 && h.header ? "the Authorization header came back" : `no Authorization header (status ${h.status}${h.err ? `: ${h.err}` : ""})`}; ` +
-      (g.seen.length === 0
-        ? "searched nothing"
-        : hits.length
-          ? `the bearer is in ${hits.join(", ")}`
-          : `in none of ${g.seen.length} paths (${g.seen.map((x) => x.path).join(", ")})`),
+      x.searched === 0
+        ? `searched nothing (${x.paths.join(", ")})`
+        : x.hits.length
+          ? `the bearer is in ${x.hits.join(", ")}`
+          : `in none of ${x.searched} files under ${x.paths.join(", ")}; the launch env is a Den unit test`,
   };
 }
 
@@ -322,5 +309,12 @@ export function expect(cells) {
       detail: "the add waits on the person's own Allow",
     },
     noBearer(r0),
+    {
+      clause: clauses[5],
+      ok: null,
+      skip: "needs-issue-473",
+      detail:
+        "under the env secrets provider the helper reads the agent's own env, not the install's store (issue 473)",
+    },
   ];
 }
