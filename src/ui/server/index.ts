@@ -757,8 +757,9 @@ const themeDeps: ThemeRouteDeps = {
 };
 // The pre-paint script in each page reads the user's mode and the theme's
 // default mode from these placeholders, so the first paint is right.
-// The UI language (R19): a page in another language than English loads
-// its catalog before shell.js, so the first paint is in it.
+// The UI language (R19): every page with the shell loads en's catalog
+// before shell.js (issue 409), and a page in another language its catalog
+// after en's, so the first paint is in it.
 setHtmlFill((html) => {
   let mode = "system";
   let def = "dark";

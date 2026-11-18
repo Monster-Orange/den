@@ -16,9 +16,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import * as vm from "vm";
 import type { Browser, Page } from "playwright";
 import { pageImport } from "./helpers/page-import.js";
+import { enCatalog } from "./helpers/en-catalog.js";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
@@ -41,23 +41,9 @@ afterAll(async () => {
   });
 });
 
-/** shell.js's en, every text wrapped in ⟦…⟧ (its placeholders kept). */
+/** en's words (i18n/en.js), every text wrapped in ⟦…⟧ (its placeholders kept). */
 function pseudo(): Record<string, string> {
-  const window: Record<string, unknown> = {};
-  const ctx = vm.createContext({
-    window,
-    document: { getElementById: () => null, documentElement: { lang: "en" } },
-    Intl,
-  });
-  try {
-    vm.runInContext(
-      fs.readFileSync(path.join(PUBLIC, "shell.js"), "utf-8"),
-      ctx,
-    );
-  } catch {
-    // shell.js stops at its first DOM use; its catalog is set before it.
-  }
-  const en = (window.denMessages as Record<string, Record<string, string>>).en;
+  const en = enCatalog();
   return Object.fromEntries(Object.entries(en).map(([k, v]) => [k, `⟦${v}⟧`]));
 }
 

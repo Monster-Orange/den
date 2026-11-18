@@ -4,7 +4,7 @@
  * Project › Agents' mode (settings-registry.js projectModeHtml): its
  * source in plain words, "runs as X until restarted" when its process
  * differs, and the offer for the N agents with their own setting. In
- * English (shell.js), and every key in Spanish and Japanese too.
+ * English (i18n/en.js), and every key in Spanish and Japanese too.
  */
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";

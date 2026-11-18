@@ -26,6 +26,7 @@ import {
   firstFocus,
 } from "../../../packages/den-ui/src/dialog.js";
 import { UI_MODULES, kitAssetFile } from "../../../src/ui/server/ui-assets.js";
+import { catalogSource } from "../server/helpers/en-catalog.js";
 
 const ROOT = path.join(__dirname, "../../..");
 const SRC = fs.readFileSync(
@@ -162,7 +163,7 @@ describe("den#133: Den serves it and its pages use it", () => {
   );
 
   it("every dlg.* key the pages use is in Den's en catalog", () => {
-    const shell = fs.readFileSync(path.join(PUBLIC, "shell.js"), "utf-8");
+    const en = catalogSource("en");
     const used = new Set<string>();
     for (const f of ["local-dev.html", "services.html", "dialog-den.js"])
       for (const m of fs
@@ -170,7 +171,7 @@ describe("den#133: Den serves it and its pages use it", () => {
         .matchAll(/["'](dlg\.[\w.]+)["']/g))
         used.add(m[1]!);
     expect(used.size).toBeGreaterThan(10);
-    const missing = [...used].filter((k) => !shell.includes(`"${k}":`));
+    const missing = [...used].filter((k) => !en.includes(`"${k}":`));
     expect(missing).toEqual([]);
   });
 });

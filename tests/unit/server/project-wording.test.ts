@@ -16,13 +16,16 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import * as vm from "vm";
 import ts from "typescript";
 import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
 import { EN_FALLBACK as TOPBAR_EN } from "../../../src/ui/server/public/topbar.js";
 import { EN_FALLBACK as APPEARANCE_EN } from "../../../src/ui/server/public/appearance.js";
 import { EN_FALLBACK as PICKER_EN } from "../../../src/ui/server/public/workspace-picker.js";
 import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
+import {
+  CATALOG_FILES,
+  allCatalogs as catalogs,
+} from "./helpers/en-catalog.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const PUBLIC = path.join(ENGINE, "src", "ui", "server", "public");
@@ -161,26 +164,6 @@ function hits(where: string, text: string, word: RegExp): string[] {
     .split("\n")
     .filter((l) => word.test(l))
     .map((l) => `${where}: ${l.trim().slice(0, 160)}`);
-}
-
-function catalogs(): Record<string, Record<string, string>> {
-  const window: Record<string, unknown> = {};
-  const document = {
-    getElementById: () => null,
-    documentElement: { lang: "en" },
-    addEventListener: () => {},
-  };
-  const ctx = vm.createContext({ window, document, Intl });
-  for (const f of [
-    ...UI_LANGUAGES.filter((l) => l !== "en").map((l) => `i18n/${l}.js`),
-    "shell.js",
-  ])
-    try {
-      vm.runInContext(read(f), ctx, { filename: f });
-    } catch {
-      // shell.js stops at its first DOM use; its catalog is set before it.
-    }
-  return window.denMessages as Record<string, Record<string, string>>;
 }
 
 /** A page's visible text: its text nodes and the attributes people read. */
@@ -482,6 +465,7 @@ describe("links say ?project=, never ?ws= (#80)", () => {
         .readdirSync(PUBLIC)
         .filter((f) => /\.(js|html)$/.test(f))
         .map((f) => path.join(PUBLIC, f)),
+      ...CATALOG_FILES.map((f) => path.join(PUBLIC, f)),
       ...fs
         .readdirSync(path.join(ENGINE, "src", "ui", "server"))
         .filter((f) => f.endsWith(".ts"))

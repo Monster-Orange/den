@@ -1,7 +1,7 @@
 /**
  * issue 133: Den on the kit's ask-and-tell dialogs (/kit/dialog.js), in place
  * of the browser's confirm(), prompt() and alert(). The kit's OK and Cancel
- * come from Den's catalogs (shell.js, i18n/es.js, i18n/ja.js), and the
+ * come from Den's catalogs (i18n/en.js, es.js, ja.js), and the
  * Report button sits in each dialog's footer (denShell.reportButton).
  *
  *   askConfirm(opts) → Promise<boolean>

@@ -2,7 +2,7 @@
  * Issue 199: the Agents page row of an agent with a mode of its own says
  * so, and which project mode it doesn't follow. Issue 225 words it as its
  * source: "mode: Auto, from its own setting (project: All)". An agent that follows says its mode as before.
- * persona-ui.js's words, in English (shell.js's catalog).
+ * persona-ui.js's words, in English (i18n/en.js).
  */
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { installEnShell } from "./helpers/en-catalog.js";

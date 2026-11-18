@@ -1,7 +1,7 @@
 /**
  * Issue 335: Settings › Project › Agents' extra MCP servers
  * (settings-registry.js projectMcpHtml): one row per server, its name and
- * url only; none, a line that says so. Every word in English (shell.js),
+ * url only; none, a line that says so. Every word in English (i18n/en.js),
  * Spanish and Japanese, and the Allow dialog's lines for project_mcp_add.
  */
 import { beforeAll, describe, expect, it } from "@jest/globals";

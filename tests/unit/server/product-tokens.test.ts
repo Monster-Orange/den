@@ -12,11 +12,16 @@ import {
   productTokens,
 } from "../../../src/shared/product.js";
 import { profileFrom } from "../../../src/shared/profile.js";
+import { CATALOG_FILES } from "./helpers/en-catalog.js";
 
 const PUBLIC = path.resolve("src/ui/server/public");
-const pages = fs
-  .readdirSync(PUBLIC)
-  .filter((f) => f.endsWith(".html") || f.endsWith(".js"));
+const pages = [
+  ...fs
+    .readdirSync(PUBLIC)
+    .filter((f) => f.endsWith(".html") || f.endsWith(".js")),
+  // The catalogs (issue 409: en's words left shell.js for i18n/en.js).
+  ...CATALOG_FILES,
+];
 
 const acme = {
   ...profileFrom({ name: "acme" }),

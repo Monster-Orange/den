@@ -1,6 +1,6 @@
 /**
- * The UI's catalogs (R19, 0.3.0-dev.39): en is shell.js's MESSAGES.en, the
- * fallback; ja and es are public/i18n/<lang>.js. A key missing from any
+ * The UI's catalogs (R19, 0.3.0-dev.39): public/i18n/<lang>.js, en the
+ * fallback (shell.js's MESSAGES.en until issue 409; shell.js is code only). A key missing from any
  * catalog fails here, as does a key the code looks up that en lacks, a
  * plural form the language never uses, or a placeholder a translation
  * drops. The node-side fallbacks of the pure modules (EN_FALLBACK) are held
@@ -12,11 +12,13 @@ import * as path from "path";
 import * as vm from "vm";
 import { UI_MODULES } from "../../../src/ui/server/ui-assets.js";
 import {
+  EN_CATALOG_PATH,
   UI_LANGUAGES,
   catalogPath,
   localizePage,
   uiLanguage,
 } from "../../../src/ui/server/ui-language.js";
+import { allCatalogs, catalogFile } from "./helpers/en-catalog.js";
 import { EN_FALLBACK as TOPBAR_EN } from "../../../src/ui/server/public/topbar.js";
 import { EN_FALLBACK as APPEARANCE_EN } from "../../../src/ui/server/public/appearance.js";
 import { EN_FALLBACK as PICKER_EN } from "../../../src/ui/server/public/workspace-picker.js";
@@ -29,29 +31,14 @@ type Table = Record<string, string>;
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
 
-/** window.denMessages after running these classic scripts, in order. */
-function catalogs(...files: string[]): {
+/** The catalogs, and the languages shell.js offers (its LANGUAGES). */
+function catalogs(): {
   messages: Record<string, Table>;
   languages: { id: string; name: string }[];
 } {
-  const window: Record<string, unknown> = {};
-  const document = {
-    getElementById: () => null,
-    documentElement: { lang: "en" },
-    addEventListener: () => {},
-  };
-  const ctx = vm.createContext({ window, document, Intl });
-  for (const f of files) {
-    try {
-      vm.runInContext(read(f), ctx, { filename: f });
-    } catch {
-      // shell.js stops at its first DOM use; its catalog is set before it.
-    }
-  }
-  const shell = read("shell.js");
-  const langs = /var LANGUAGES = (\[[\s\S]*?\]);/.exec(shell);
+  const langs = /var LANGUAGES = (\[[\s\S]*?\]);/.exec(read("shell.js"));
   return {
-    messages: window.denMessages as Record<string, Table>,
+    messages: allCatalogs(),
     languages: langs
       ? (vm.runInNewContext(`(${langs[1]})`) as { id: string; name: string }[])
       : [],
@@ -59,10 +46,7 @@ function catalogs(...files: string[]): {
 }
 
 const NON_EN = UI_LANGUAGES.filter((l) => l !== "en");
-const { messages, languages } = catalogs(
-  ...NON_EN.map((l) => `i18n/${l}.js`),
-  "shell.js",
-);
+const { messages, languages } = catalogs();
 const EN = messages.en;
 const vars = (s: string) =>
   [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
@@ -86,9 +70,16 @@ describe("the admin-password prompt (LK-0)", () => {
   );
 });
 describe("the catalogs", () => {
-  it("en is shell.js's, and has the shell's words", () => {
+  it("en is i18n/en.js's, and has the shell's words", () => {
     expect(Object.keys(EN).length).toBeGreaterThan(200);
     expect(EN["n.workspaces"]).toBe("Projects");
+  });
+
+  // Issue 409: shell.js is code. A word added to it, not to en.js, fails.
+  it("shell.js holds no catalog", () => {
+    const shell = read("shell.js");
+    expect(shell).not.toMatch(/^ {2}MESSAGES\.en = \{\s*\n\s*"/m);
+    expect(shell).not.toMatch(/^ {4}"[\w.-]+": /m);
   });
 
   it.each(NON_EN)("%s has every key en has", (lang) => {
@@ -157,7 +148,7 @@ describe("the catalogs", () => {
     };
     const twice: Record<string, string[]> = {};
     for (const [file, start] of [
-      ["shell.js", /^ {2}MESSAGES\.en = \{/],
+      ["i18n/en.js", /^ {2}m\.en = \{/],
       ["i18n/es.js", /^ {2}m\.es = \{/],
       ["i18n/ja.js", /^ {2}m\.ja = \{/],
     ] as const) {
@@ -339,8 +330,9 @@ describe("the languages", () => {
     expect(languages.find((l) => l.id === "ja")?.name).toBe("日本語");
   });
 
-  it.each(NON_EN)("%s's catalog is a served module on disk", (lang) => {
-    const src = catalogPath(lang)!;
+  it.each(UI_LANGUAGES)("%s's catalog is a served module on disk", (lang) => {
+    const src = catalogPath(lang) ?? EN_CATALOG_PATH;
+    expect(src).toBe(`/${catalogFile(lang)}`);
     expect(UI_MODULES).toContain(src);
     expect(fs.existsSync(path.join(PUBLIC, src.slice(1)))).toBe(true);
   });
@@ -356,15 +348,20 @@ describe("localizePage", () => {
   const page =
     '<!doctype html><html lang="en"><body><div id="den-shell"></div><script src="/shell.js"></script></body></html>';
 
-  it("serves English exactly as on disk", () => {
-    expect(localizePage(page, "en")).toBe(page);
+  it("serves English with en's catalog just before shell.js (issue 409)", () => {
+    expect(localizePage(page, "en")).toBe(
+      page.replace(
+        '<script src="/shell.js">',
+        '<script src="/i18n/en.js"></script><script src="/shell.js">',
+      ),
+    );
   });
 
-  it("sets <html lang> and loads the catalog just before shell.js", () => {
+  it("sets <html lang> and loads the catalog after en's, just before shell.js", () => {
     const out = localizePage(page, "ja");
     expect(out).toContain('<html lang="ja">');
     expect(out).toContain(
-      '<script src="/i18n/ja.js"></script><script src="/shell.js"></script>',
+      '<script src="/i18n/en.js"></script><script src="/i18n/ja.js"></script><script src="/shell.js"></script>',
     );
   });
 

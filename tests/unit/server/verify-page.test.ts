@@ -12,39 +12,20 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import * as vm from "vm";
 import {
   answerView,
   whyView,
   worstFirst,
 } from "../../../src/ui/server/public/verify-page.js";
-import { installEnShell } from "./helpers/en-catalog.js";
+import {
+  allCatalogs as catalogs,
+  installEnShell,
+} from "./helpers/en-catalog.js";
 
 installEnShell();
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
-
-function catalogs(): Record<string, Record<string, string>> {
-  const window: Record<string, unknown> = {};
-  const ctx = vm.createContext({
-    window,
-    document: {
-      getElementById: () => null,
-      documentElement: { lang: "en" },
-      addEventListener: () => {},
-    },
-    Intl,
-  });
-  for (const f of ["i18n/es.js", "i18n/ja.js", "shell.js"]) {
-    try {
-      vm.runInContext(read(f), ctx);
-    } catch {
-      // shell.js stops at its first DOM use; its catalog is set before it.
-    }
-  }
-  return window.denMessages as Record<string, Record<string, string>>;
-}
 
 const at = "2026-11-15T14:10:00Z";
 const ov = {

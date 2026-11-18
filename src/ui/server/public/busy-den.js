@@ -3,7 +3,7 @@
  *
  * Den's actions are named here once, each with the i18n keys of its own
  * words (working, success, failure; reconnect's bodies too), so every word
- * stays in Den's catalogs (shell.js, i18n/es.js, i18n/ja.js). The kit's
+ * stays in Den's catalogs (i18n/en.js, es.js, ja.js). The kit's
  * shared words (Try again, Check again, No answer…) are the kit's own.
  *
  *   busyAction(name, run, opts)   the kit's, with Den's words and hooks

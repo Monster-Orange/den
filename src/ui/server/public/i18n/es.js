@@ -2,7 +2,7 @@
  * The UI's Spanish catalog (R19, 0.3.0-dev.39). A classic script the
  * server loads before shell.js for a page in Spanish (ui-language.ts); it
  * adds its table to window.denMessages, and shell.js's t() reads it. Every
- * key of shell.js's en is here (tests/unit/server/i18n.test.ts). A `.one`
+ * key of en.js is here (tests/unit/server/i18n.test.ts). A `.one`
  * key is the form for n = 1 (Intl.PluralRules("es")).
  */
 (function (m) {

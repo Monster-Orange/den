@@ -63,7 +63,8 @@ export const UI_MODULES: readonly string[] = [
   "/embed-connect.js",
   // SEC-2a: Pair a device's QR code (a tiny encoder of Den's own).
   "/qr.js",
-  // The UI's catalogs other than English (R19; en is in shell.js).
+  // The UI's catalogs (R19; en moved out of shell.js in issue 409).
+  "/i18n/en.js",
   "/i18n/ja.js",
   "/i18n/es.js",
   // 0.4.17: one org and workspace rule for Environments and Releases.

@@ -5,37 +5,17 @@
  * config x=1" at the end of a description is fine).
  *
  * What is read: settings-registry.js (its own text: labels, descriptions,
- * the fallbacks it passes to L()), and in shell.js's en and in es and ja,
+ * the fallbacks it passes to L()), and in the en, es and ja catalogs,
  * every "set." key plus every key the registry looks up.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import * as vm from "vm";
+import { allCatalogs } from "./helpers/en-catalog.js";
 import { BUILTIN_CATALOG } from "../../../src/shared/agents/catalog.js";
 
-type Table = Record<string, string>;
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
-
-/** window.denMessages after running these classic scripts, in order. */
-function catalogs(...files: string[]): Record<string, Table> {
-  const window: Record<string, unknown> = {};
-  const document = {
-    getElementById: () => null,
-    documentElement: { lang: "en" },
-    addEventListener: () => {},
-  };
-  const ctx = vm.createContext({ window, document, Intl });
-  for (const f of files) {
-    try {
-      vm.runInContext(read(f), ctx, { filename: f });
-    } catch {
-      // shell.js stops at its first DOM use; its catalog is set before it.
-    }
-  }
-  return window.denMessages as Record<string, Table>;
-}
 
 /**
  * Issue 399: the commands a vendor's own CLI names for its sign-in (the
@@ -105,7 +85,7 @@ const chore = (lang: string, s: string) =>
   CHORE[lang].some((r) => r.test(withoutTail(s)));
 
 const REGISTRY = read("settings-registry.js");
-const messages = catalogs("i18n/es.js", "i18n/ja.js", "shell.js");
+const messages = allCatalogs();
 /** Keys the registry looks up: L("key", …) and t("key", …). */
 const LOOKED_UP = new Set(
   [...REGISTRY.matchAll(/\b(?:L|t)\(\s*"([\w.-]+)"/g)].map((m) => m[1]),

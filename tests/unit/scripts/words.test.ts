@@ -190,6 +190,39 @@ describe("lines only moved or re-indented (0.4.48)", () => {
   });
 });
 
+describe("lines moved to another file (issue 409)", () => {
+  // shell.js's catalog moved to i18n/en.js: removed from one file, added
+  // to the other. Only a line that is new anywhere is read.
+  const diff = [
+    "diff --git a/src/shell.js b/src/shell.js",
+    "--- a/src/shell.js",
+    "+++ b/src/shell.js",
+    "@@ -10,2 +10,0 @@",
+    '-    "a.k": "the session ended",',
+    '-    "b.k": "the session ended",',
+    "diff --git a/src/en.js b/src/en.js",
+    "--- /dev/null",
+    "+++ b/src/en.js",
+    "@@ -0,0 +1,4 @@",
+    '+    "a.k": "the session ended",',
+    '+    "b.k": "the session ended",',
+    '+    "b.k": "the session ended",',
+    '+    "c.k": "a new session word",',
+  ].join("\n");
+
+  it("a line removed from one file and added to another is not new", () => {
+    expect(movedLines(diff).has('src/en.js\0"a.k": "the session ended",')).toBe(
+      true,
+    );
+  });
+
+  it("a new line, or one added more times than it was removed, is new", () => {
+    const moved = movedLines(diff);
+    expect(moved.has('src/en.js\0"c.k": "a new session word",')).toBe(false);
+    expect(moved.has('src/en.js\0"b.k": "the session ended",')).toBe(false);
+  });
+});
+
 describe("the words-ok ratchet", () => {
   it(`src/ has at most ${WORDS_OK_MAX} words-ok markers`, () => {
     const out = execFileSync("git", ["grep", "-c", "words-ok:", "--", "src"], {

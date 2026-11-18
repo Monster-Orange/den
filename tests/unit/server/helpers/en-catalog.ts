@@ -1,37 +1,58 @@
 /**
- * shell.js's en catalog behind a window.denShell.t (den#171), for tests of
- * the pages' pure modules (edge-page.js, perf-report.js): they draw their
- * words through the shell, so a test sees en's, as a browser in English
- * does. shell.js is read as i18n.test.ts reads it.
+ * The UI's catalogs for tests (issue 409: one helper, so no test reads
+ * shell.js for words again). en is public/i18n/en.js, the fallback (it was
+ * shell.js's MESSAGES.en); es and ja are public/i18n/<lang>.js. Each is a
+ * classic script that adds its table to window.denMessages, read here as
+ * the page loads it. installEnShell / installShell put a window.denShell.t
+ * over them (den#171), for tests of the pages' pure modules (edge-page.js,
+ * perf-report.js): they draw their words through the shell, so a test sees
+ * the words a browser in that language does.
  */
 import * as fs from "fs";
 import * as path from "path";
 import * as vm from "vm";
+import { UI_LANGUAGES } from "../../../../src/ui/server/ui-language.js";
 
 type Vars = Record<string, unknown>;
+type Table = Record<string, string>;
 
-/** shell.js's MESSAGES.en. */
-export function enCatalog(): Record<string, string> {
+/** public/, where the pages, shell.js and i18n/ live. */
+export const PUBLIC_DIR = path.join(
+  process.cwd(),
+  "src",
+  "ui",
+  "server",
+  "public",
+);
+
+/** A language's catalog file, relative to public/ ("i18n/en.js"). */
+export const catalogFile = (lang: string): string => `i18n/${lang}.js`;
+
+/** Every catalog file, en first, relative to public/. */
+export const CATALOG_FILES: readonly string[] = UI_LANGUAGES.map(catalogFile);
+
+/** A catalog's source text (en.js by default), for tests that grep it. */
+export function catalogSource(lang = "en"): string {
+  return fs.readFileSync(path.join(PUBLIC_DIR, catalogFile(lang)), "utf-8");
+}
+
+/** A language's table (public/i18n/<lang>.js), as the page loads it. */
+export function langCatalog(lang: string): Table {
   const window: Record<string, unknown> = {};
-  const ctx = vm.createContext({
-    window,
-    document: {
-      getElementById: () => null,
-      documentElement: { lang: "en" },
-      addEventListener: () => {},
-    },
-    Intl,
+  vm.runInContext(catalogSource(lang), vm.createContext({ window }), {
+    filename: catalogFile(lang),
   });
-  const src = fs.readFileSync(
-    path.join(process.cwd(), "src", "ui", "server", "public", "shell.js"),
-    "utf-8",
-  );
-  try {
-    vm.runInContext(src, ctx);
-  } catch {
-    // shell.js stops at its first DOM use; its catalog is set before it.
-  }
-  return (window.denMessages as Record<string, Record<string, string>>).en;
+  return (window.denMessages as Record<string, Table>)[lang];
+}
+
+/** en's table (public/i18n/en.js). */
+export function enCatalog(): Table {
+  return langCatalog("en");
+}
+
+/** Every language's table, by language: window.denMessages on a page. */
+export function allCatalogs(): Record<string, Table> {
+  return Object.fromEntries(UI_LANGUAGES.map((l) => [l, langCatalog(l)]));
 }
 
 /** Sets globalThis.window.denShell.t to en's words (n = 1: the `.one` form). */
@@ -47,27 +68,6 @@ export function installEnShell(): void {
   (globalThis as Record<string, unknown>).window = {
     denShell: { t, lang: () => "en" },
   };
-}
-
-/** A catalog other than en (public/i18n/<lang>.js), as the page loads it. */
-export function langCatalog(lang: string): Record<string, string> {
-  const window: Record<string, unknown> = {};
-  vm.runInContext(
-    fs.readFileSync(
-      path.join(
-        process.cwd(),
-        "src",
-        "ui",
-        "server",
-        "public",
-        "i18n",
-        `${lang}.js`,
-      ),
-      "utf-8",
-    ),
-    vm.createContext({ window }),
-  );
-  return (window.denMessages as Record<string, Record<string, string>>)[lang];
 }
 
 /**
