@@ -4,6 +4,24 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.68] - unreleased
+
+### Fixed
+
+- **Issue 455: Den no longer gives an address that reaches another server.**
+  - When port 80 (the edge's http port) is held by something else, `den up`, `den open`, the sign-in link and `den doctor` use Den's own port. They name what holds port 80 and say so once.
+  - Every address is checked first with an identity challenge that only this Den can answer.
+  - The port check now covers IPv6 and the wildcard addresses, as Docker publishes them.
+  - `edge up` checks on every run.
+  - When nothing answers at the address Den gives, `den web up`, `den web open` and the sign-in link say "Not reachable yet: nothing answers at <address>." next to it, and name the next step when Den knows the edge is down.
+
+### Added
+
+- **The Edge page shows a status card when port 80 is held.** It names the owner and offers two choices: "Add Den to that proxy" (a route for nginx, Caddy or Traefik, with Copy) and "Free port 80". It also has Check again, and Take over for an old Den edge.
+- **Every page shows a one-time banner** with the working address.
+- **`den edge route --for nginx|caddy|traefik`** prints the route.
+- **Three new Settings** (Settings › Server, user.yml `web.`): `address_check_timeout_seconds` (default 5), `address_check_retries` (default 2), `address_check_cache_seconds` (default 60).
+
 ## [0.4.67] - 2026-11-18
 
 den-ui 0.7.6 ships with this release.

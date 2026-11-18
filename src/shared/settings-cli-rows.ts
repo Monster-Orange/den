@@ -24,6 +24,8 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
+ *   address_check: { timeout_seconds?, retries?, cache_seconds? }
+ *                                     user.yml web.address_check_* (issue 455)
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
@@ -35,6 +37,7 @@ import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { SHELL_SAVE_SKEW_RANGE } from "../ui/server/shell-prefs.js";
+import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -79,6 +82,8 @@ export const PERSON_ONLY_SETTINGS = [
   "alerts",
   // Issue 415: how long Report keeps, and waits for, a repo's visibility.
   "feedback",
+  // Issue 455: how long, and how often, Den checks its own address.
+  "address_check",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -190,6 +195,14 @@ const AGENTS_LIST: Record<string, Limit> = {
     int: false,
   },
 };
+
+/** Issue 455: the address check's limits (address-check.ts), in user.yml web. */
+const ADDRESS_CHECK: Record<string, Limit> = Object.fromEntries(
+  Object.entries(ADDRESS_CHECK_LIMITS).map(([k, l]) => [
+    k,
+    { key: `address_check_${k}`, min: l.min, max: l.max, int: k === "retries" },
+  ]),
+);
 
 /** Issue 415: user.yml feedback's visibility lookup (report-store.ts). */
 const FEEDBACK: Record<string, Limit> = Object.fromEntries(
@@ -408,7 +421,15 @@ export function patchCliRows(
       body.agents_list,
       apply,
     ) ??
-    patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply);
+    patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply) ??
+    patchBlock(
+      user,
+      "address_check",
+      "web",
+      ADDRESS_CHECK,
+      body.address_check,
+      apply,
+    );
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

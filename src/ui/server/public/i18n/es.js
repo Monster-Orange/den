@@ -865,6 +865,18 @@
     "set.server.crash_loop_minutes": "Ventana de la protección, en minutos",
     "set.server.crash_loop_minutes.d":
       "Los minutos en los que se cuentan los cierres no limpios de arriba. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.address_check_timeout":
+      "Espera de la comprobación de dirección",
+    "set.server.address_check_timeout.d":
+      "Cuánto espera __DEN_TITLE__ a que una dirección responda al comprobar que llega a este __DEN_TITLE__, antes de mostrarla o abrirla. __DEN_CLI__ config web.address_check_timeout_seconds=5",
+    "set.server.address_check_retries":
+      "Reintentos de la comprobación de dirección",
+    "set.server.address_check_retries.d":
+      "Cuántas veces más pregunta __DEN_TITLE__ a una dirección que no respondió a tiempo. __DEN_CLI__ config web.address_check_retries=2",
+    "set.server.address_check_cache":
+      "Comprobación de dirección guardada durante",
+    "set.server.address_check_cache.d":
+      "Cuánto tiempo reutilizan el aviso de la página y Edge la última comprobación de la dirección de __DEN_TITLE__. 0 comprueba en cada lectura. __DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.bridge_listen": "Puente de Docker, para el edge",
     "set.server.bridge_listen.d":
       "Solo en Linux, con un edge configurado aquí: __DEN_TITLE__ también escucha en la dirección del puente de Docker, por donde el edge llega a esta máquina. Desactivado: solo 127.0.0.1, y el edge no llega a __DEN_TITLE__. Se aplica en el siguiente arranque. __DEN_CLI__ config web.bridge_listen=off",
@@ -2958,6 +2970,76 @@
       "Ninguno: los certificados están en la configuración incluida.",
     "edge.notConfigured": "Sin configurar",
     "edge.unreachable": "inaccesible",
+    // Issue 455: Den's address when another server holds its port.
+    "edgeAddr.busy.checkW": "Comprobando la dirección de __DEN_TITLE__…",
+    "edgeAddr.busy.checkS": "Comprobado",
+    "edgeAddr.busy.checkF": "La comprobación no terminó.",
+    "edgeAddr.busy.takeW": "Tomando el puerto para el proxy de __DEN_TITLE__…",
+    "edgeAddr.busy.takeS": "Proxy de __DEN_TITLE__ iniciado",
+    "edgeAddr.busy.takeF": "El proxy de __DEN_TITLE__ no se inició.",
+    "edgeAddr.banner.title": "__DEN_TITLE__ está en {address} por ahora.",
+    "edgeAddr.banner.held":
+      "El puerto {port} lo ocupa {owner} ({name}), así que {host} va a {owner}.",
+    "edgeAddr.banner.heldBare":
+      "El puerto {port} lo ocupa {owner}, así que {host} va a {owner}.",
+    "edgeAddr.banner.unknown":
+      "El puerto {port} lo usa algo que __DEN_TITLE__ no sabe nombrar, así que {host} va allí.",
+    "edgeAddr.banner.none": "Todavía nada responde en {host}.",
+    "edgeAddr.banner.fix": "Arréglalo en Edge",
+    "edgeAddr.banner.dismiss": "Descartar",
+    "edgeAddr.card.title":
+      "El proxy de __DEN_TITLE__ no está en marcha: el puerto {port} está en uso",
+    "edgeAddr.card.titleNone":
+      "La dirección de __DEN_TITLE__ todavía no responde",
+    "edgeAddr.card.held":
+      "Lo ocupa {owner}, {kind} {name} (no __DEN_TITLE__). __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+    "edgeAddr.card.heldBare":
+      "Lo ocupa {owner} (no __DEN_TITLE__). __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+    "edgeAddr.card.unknown":
+      "Lo ocupa algo que __DEN_TITLE__ no sabe nombrar. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+    "edgeAddr.card.none":
+      "Todavía nada responde en {wanted}. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+    "edgeAddr.kind.container": "contenedor de Docker",
+    "edgeAddr.kind.process": "proceso",
+    "edgeAddr.what": "¿Qué quieres hacer?",
+    "edgeAddr.opt.proxy": "Añadir __DEN_TITLE__ a ese proxy",
+    "edgeAddr.opt.free": "Liberar el puerto {port}",
+    "edgeAddr.opt.takeOver": "Tomar el control",
+    "edgeAddr.proxy.body":
+      "Tu proxy sigue a cargo del puerto {port} y envía {host} a __DEN_TITLE__. __DEN_TITLE__ no cambia nada en tu otro proyecto; pegas esto donde está la configuración de tu proxy.",
+    "edgeAddr.proxy.kinds": "Proxy",
+    "edgeAddr.copy": "Copiar",
+    "edgeAddr.copied": "Copiado",
+    "edgeAddr.proxy.after":
+      "Cuando recargues ese proxy, __DEN_TITLE__ comprueba que {wanted} llega a __DEN_TITLE__ y cambia sus enlaces a esa dirección. El proxy propio de __DEN_TITLE__ queda apagado (edge.publish: false, ajustado por ti).",
+    "edgeAddr.check": "Comprobar de nuevo",
+    "edgeAddr.checking": "Comprobando…",
+    "edgeAddr.check.still": "Todavía no: sigue respondiendo como {owner}.",
+    "edgeAddr.check.stillUnknown": "Todavía no: sigue sin ser __DEN_TITLE__.",
+    "edgeAddr.check.done": "Hecho. __DEN_TITLE__ está ahora en {wanted}.",
+    "edgeAddr.check.failed": "La comprobación no terminó: {error}",
+    "edgeAddr.free.container":
+      "Detén el contenedor {name} en Docker, o sácalo del puerto {port}. Luego pulsa Comprobar de nuevo; __DEN_TITLE__ arranca su propio proxy.",
+    "edgeAddr.free.process":
+      "Detén {owner} (proceso {name}), o sácalo del puerto {port}. Luego pulsa Comprobar de nuevo; __DEN_TITLE__ arranca su propio proxy.",
+    "edgeAddr.free.unknown":
+      "Detén lo que usa el puerto {port}, o sácalo de ese puerto. Luego pulsa Comprobar de nuevo; __DEN_TITLE__ arranca su propio proxy.",
+    "edgeAddr.free.takeOver":
+      "Es un proxy antiguo de __DEN_TITLE__ ({name}). Tomar el control lo detiene y arranca el de __DEN_TITLE__.",
+    "edgeAddr.now": "Ahora",
+    "edgeAddr.k.container": "Contenedor",
+    "edgeAddr.k.ports": "Puertos",
+    "edgeAddr.k.address": "Dirección de __DEN_TITLE__",
+    "edgeAddr.k.wanted": "Dirección deseada",
+    "edgeAddr.container.notCreated": "no creado",
+    "edgeAddr.port.heldBy": "{port} ocupado por {owner}",
+    "edgeAddr.port.held": "{port} en uso",
+    "edgeAddr.port.free": "{port} libre",
+    "edgeAddr.checked.den": "comprobado: este __DEN_TITLE__",
+    "edgeAddr.checked.notDen": "no es __DEN_TITLE__",
+    "edgeAddr.answers.as": "responde como {owner}",
+    "edgeAddr.answers.notDen": "no es __DEN_TITLE__",
+    "edgeAddr.answers.nothing": "nada responde",
     // issue 171: values the pages show (value-words.js, log-history.ts).
     "val.docker.created": "creado",
     "val.docker.running": "en marcha",

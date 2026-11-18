@@ -846,6 +846,15 @@
     "set.server.crash_loop_minutes": "再起動ガードの時間枠(分)",
     "set.server.crash_loop_minutes.d":
       "上の、正常に終了しなかった回数を数える分数です。__DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.address_check_timeout": "アドレス確認の待ち時間",
+    "set.server.address_check_timeout.d":
+      "アドレスがこの __DEN_TITLE__ に届くか確認するとき、表示したり開いたりする前に __DEN_TITLE__ が応答を待つ時間。__DEN_CLI__ config web.address_check_timeout_seconds=5",
+    "set.server.address_check_retries": "アドレス確認の再試行",
+    "set.server.address_check_retries.d":
+      "時間内に応答しなかったアドレスに __DEN_TITLE__ がもう一度尋ねる回数。__DEN_CLI__ config web.address_check_retries=2",
+    "set.server.address_check_cache": "アドレス確認の保持時間",
+    "set.server.address_check_cache.d":
+      "ページのバナーと Edge が __DEN_TITLE__ のアドレスの前回の確認を使い回す時間。0 は読むたびに確認します。__DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.bridge_listen": "Docker ブリッジ (edge 用)",
     "set.server.bridge_listen.d":
       "Linux のみ。ここに edge がある場合、__DEN_TITLE__ は Docker ブリッジのアドレスでも待ち受けます。edge はそこからこのマシンに届きます。オフ: 127.0.0.1 のみで、edge から __DEN_TITLE__ に届きません。次の起動から反映されます。__DEN_CLI__ config web.bridge_listen=off",
@@ -2887,6 +2896,78 @@
     "edge.cert.none": "なし: 証明書は取り込んだ設定にあります。",
     "edge.notConfigured": "未設定",
     "edge.unreachable": "接続できません",
+    // Issue 455: Den's address when another server holds its port.
+    "edgeAddr.busy.checkW": "__DEN_TITLE__ のアドレスを確認しています…",
+    "edgeAddr.busy.checkS": "確認しました",
+    "edgeAddr.busy.checkF": "確認が終わりませんでした。",
+    "edgeAddr.busy.takeW":
+      "__DEN_TITLE__ のプロキシのためにポートを引き継いでいます…",
+    "edgeAddr.busy.takeS": "__DEN_TITLE__ のプロキシを起動しました",
+    "edgeAddr.busy.takeF": "__DEN_TITLE__ のプロキシは起動しませんでした。",
+    "edgeAddr.banner.title": "今は __DEN_TITLE__ は {address} にあります。",
+    "edgeAddr.banner.held":
+      "ポート {port} は {owner}（{name}）が使っているため、{host} は {owner} に届きます。",
+    "edgeAddr.banner.heldBare":
+      "ポート {port} は {owner} が使っているため、{host} は {owner} に届きます。",
+    "edgeAddr.banner.unknown":
+      "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
+    "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",
+    "edgeAddr.banner.fix": "Edge で直す",
+    "edgeAddr.banner.dismiss": "閉じる",
+    "edgeAddr.card.title":
+      "__DEN_TITLE__ のプロキシは動いていません: ポート {port} は使用中です",
+    "edgeAddr.card.titleNone": "__DEN_TITLE__ のアドレスはまだ応答しません",
+    "edgeAddr.card.held":
+      "{owner}、{kind} {name} が使っています（__DEN_TITLE__ ではありません）。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.card.heldBare":
+      "{owner} が使っています（__DEN_TITLE__ ではありません）。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.card.unknown":
+      "__DEN_TITLE__ が特定できない何かが使っています。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.card.none":
+      "{wanted} ではまだ何も応答しません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.kind.container": "Docker コンテナ",
+    "edgeAddr.kind.process": "プロセス",
+    "edgeAddr.what": "どうしますか？",
+    "edgeAddr.opt.proxy": "そのプロキシに __DEN_TITLE__ を追加",
+    "edgeAddr.opt.free": "ポート {port} を空ける",
+    "edgeAddr.opt.takeOver": "引き継ぐ",
+    "edgeAddr.proxy.body":
+      "お使いのプロキシがポート {port} を担当したまま、{host} を __DEN_TITLE__ に送ります。__DEN_TITLE__ は他のプロジェクトを何も変更しません。プロキシの設定がある場所にこれを貼り付けてください。",
+    "edgeAddr.proxy.kinds": "プロキシ",
+    "edgeAddr.copy": "コピー",
+    "edgeAddr.copied": "コピーしました",
+    "edgeAddr.proxy.after":
+      "そのプロキシを再読み込みすると、__DEN_TITLE__ は {wanted} が __DEN_TITLE__ に届くことを確認し、リンクをそのアドレスに切り替えます。__DEN_TITLE__ 自身のプロキシは止めたままです（edge.publish: false、設定済み）。",
+    "edgeAddr.check": "もう一度確認",
+    "edgeAddr.checking": "確認中…",
+    "edgeAddr.check.still": "まだです: まだ {owner} として応答しています。",
+    "edgeAddr.check.stillUnknown":
+      "まだです: まだ __DEN_TITLE__ ではありません。",
+    "edgeAddr.check.done":
+      "完了しました。__DEN_TITLE__ は今 {wanted} にあります。",
+    "edgeAddr.check.failed": "確認が終わりませんでした: {error}",
+    "edgeAddr.free.container":
+      "Docker でコンテナ {name} を止めるか、ポート {port} から移してください。それから「もう一度確認」を押すと、__DEN_TITLE__ が自身のプロキシを起動します。",
+    "edgeAddr.free.process":
+      "{owner}（プロセス {name}）を止めるか、ポート {port} から移してください。それから「もう一度確認」を押すと、__DEN_TITLE__ が自身のプロキシを起動します。",
+    "edgeAddr.free.unknown":
+      "ポート {port} を使っているものを止めるか、そのポートから移してください。それから「もう一度確認」を押すと、__DEN_TITLE__ が自身のプロキシを起動します。",
+    "edgeAddr.free.takeOver":
+      "古い __DEN_TITLE__ のプロキシ（{name}）です。「引き継ぐ」でそれを止め、__DEN_TITLE__ 自身のものを起動します。",
+    "edgeAddr.now": "現在",
+    "edgeAddr.k.container": "コンテナ",
+    "edgeAddr.k.ports": "ポート",
+    "edgeAddr.k.address": "__DEN_TITLE__ のアドレス",
+    "edgeAddr.k.wanted": "使いたいアドレス",
+    "edgeAddr.container.notCreated": "未作成",
+    "edgeAddr.port.heldBy": "{port} は {owner} が使用中",
+    "edgeAddr.port.held": "{port} は使用中",
+    "edgeAddr.port.free": "{port} は空き",
+    "edgeAddr.checked.den": "確認済み: この __DEN_TITLE__",
+    "edgeAddr.checked.notDen": "__DEN_TITLE__ ではありません",
+    "edgeAddr.answers.as": "{owner} として応答",
+    "edgeAddr.answers.notDen": "__DEN_TITLE__ ではありません",
+    "edgeAddr.answers.nothing": "応答なし",
     // issue 171: values the pages show (value-words.js, log-history.ts).
     "val.docker.created": "作成済み",
     "val.docker.running": "実行中",
