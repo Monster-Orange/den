@@ -3999,16 +3999,19 @@
    * 0.4.45: a toast never covers a line a page marks data-toast-clear
    * (the terminal's "To" line: who the keyboard types to). It moves up
    * until it sits above every such line it would cover. A page may draw
-   * that line just after the toast shows, so it looks again a moment later.
+   * that line after the toast shows (issue 448: a toast up before a
+   * terminal's pane opens), so it looks again every 250 ms while it shows.
    */
   function clearOfMarked(el, again) {
     if (!el || !el.getBoundingClientRect || !document.querySelectorAll) return;
-    if (!again)
-      [120, 500].forEach(function (ms) {
-        setTimeout(function () {
-          if (el.isConnected) clearOfMarked(el, true);
-        }, ms);
-      });
+    if (!again) {
+      var look = function () {
+        if (!el.isConnected) return;
+        clearOfMarked(el, true);
+        setTimeout(look, 250);
+      };
+      setTimeout(look, 120);
+    }
     var marks = document.querySelectorAll("[data-toast-clear]");
     for (var pass = 0; pass < 4; pass++) {
       var r = el.getBoundingClientRect();
