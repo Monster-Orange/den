@@ -70,7 +70,8 @@ function attrs(o) {
 }
 
 /** The fixed kinds a rail entry may name (issue 307). */
-export const NAV_KINDS = ["project", "den", "service", "hub"];
+// "preview" (issue 440): a page that isn't finished says so on its row.
+export const NAV_KINDS = ["project", "den", "service", "hub", "preview"];
 
 /**
  * A rail entry's kind (issue 307), from its data: one of NAV_KINDS (any

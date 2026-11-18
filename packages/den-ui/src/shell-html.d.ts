@@ -17,8 +17,11 @@ export interface Product {
    */
   mark?: Mark | null;
 }
-/** 0.7.3: the fixed kinds a rail entry's tag may name. */
-export type NavKindId = "project" | "den" | "service" | "hub";
+/**
+ * 0.7.3: the fixed kinds a rail entry's tag may name. 0.7.5: "preview",
+ * a page that isn't finished.
+ */
+export type NavKindId = "project" | "den" | "service" | "hub" | "preview";
 /**
  * 0.7.3: a rail entry's kind: a fixed one (any case), or an artifact pin's
  * own kind word (the host's, in its language). Never a machine's name.

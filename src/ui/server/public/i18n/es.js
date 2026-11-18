@@ -18,6 +18,10 @@
     "n.tests": "Pruebas",
     "n.verify": "Comprobaciones",
     "v.ov_t": "¿Podemos publicar?",
+    // Issue 440: the preview notice.
+    "v.pv_tag": "Vista previa",
+    "v.pv_line":
+      "Comprobaciones no está terminado: muestra las comprobaciones que un proyecto declara en su bloque verify:, y las de Den aún no aparecen.",
     "v.ov_s": "Una respuesta para cada entorno, en palabras sencillas.",
     "v.loading": "Leyendo los últimos resultados…",
     "v.env_local": "Local",

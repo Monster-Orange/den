@@ -36,7 +36,8 @@
  * The registries and the scope (window.denShell, the spec's NAV and GROUPS):
  *   registerGroup({ id, label, order, from? })
  *   registerNav({ id, label, icon, group, order, href, badge?(state),
- *                 when?(state) })   a non-number order warns
+ *                 when?(state), kind? })   kind: one of the kit's kinds
+ *                 ("preview", issue 440), its tag; a non-number order warns
  *                 (console.warn); a page whose group isn't registered
  *                 waits for it, and warns only if the group is still
  *                 missing a tick after the queue has drained
@@ -132,6 +133,10 @@
     // Issue 209: the Verify page (direction C, "Can we ship?").
     "n.verify": "Checks",
     "v.ov_t": "Can we ship?",
+    // Issue 440: the preview notice.
+    "v.pv_tag": "Preview",
+    "v.pv_line":
+      "Checks isn't finished: it shows the checks a project declares in its verify: block, and Den's own checks aren't on it yet.",
     "v.ov_s": "One answer for each environment, in plain words.",
     "v.loading": "Reading the latest results…",
     "v.env_local": "Local",
@@ -3583,6 +3588,8 @@
       href: n.href,
       badge: typeof n.badge === "function" ? n.badge : null,
       when: typeof n.when === "function" ? n.when : null,
+      // Issue 440: the kit's kind tag (one of its kinds, as data).
+      kind: typeof n.kind === "string" ? n.kind : null,
       // Other names the palette finds it by (R24a: "Local Dev").
       keywords: Array.isArray(n.keywords) ? n.keywords.map(String) : [],
       from: n.from || null,
@@ -4506,7 +4513,8 @@
       },
     },
     // Issue 209: Verify's page ("Checks"), and the older test kinds'
-    // page while they retire.
+    // page while they retire. Issue 440: tagged Preview until Den's own
+    // checks are on it (issue 441).
     {
       id: "verify",
       label: "n.verify",
@@ -4514,6 +4522,7 @@
       group: "verify",
       order: 10,
       href: "/verify",
+      kind: "preview",
     },
     {
       id: "tests",
@@ -4564,6 +4573,8 @@
       badge: n.badge || null,
       when: n.when || null,
       keywords: n.keywords || [],
+      // Issue 440: the kit's kind tag ("preview"), as data.
+      kind: n.kind || null,
       from: null,
     });
   });
@@ -5013,6 +5024,7 @@
             tip: n.tip ? t(n.tip) : "",
             current: n.id === railLit,
             badge: b,
+            kind: n.kind || null,
           });
         });
       });

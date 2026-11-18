@@ -69,6 +69,22 @@
       a {
         color: var(--accent-text);
       }
+      /* Issue 440: the preview notice, above the page's body. */
+      .vf-preview {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 8px;
+        margin: 0 24px 16px;
+        padding: 8px 12px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow-wrap: anywhere;
+      }
+      .vf-preview .den-k {
+        flex: none;
+      }
       /* The page's h1 and scope line are the shell's header (R20); this
          is the first heading in the body. */
       .vf-head {
@@ -388,6 +404,8 @@
 
     <!-- The page's one main landmark: everything after the shell. -->
     <main id="den-content">
+      <!-- Issue 440: Checks says it is a preview (verify-page.js fills it). -->
+      <p id="verify-preview" class="vf-preview" role="note" hidden></p>
       <div id="verify-body" aria-busy="true" aria-live="polite"></div>
 
       <script type="module">
