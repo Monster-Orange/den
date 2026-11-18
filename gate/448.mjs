@@ -79,7 +79,8 @@ async function typeAt(ctx, page, id, { exit = false } = {}) {
   if (exit) await page.keyboard.type("exit");
   await page.keyboard.press("Enter");
   await ctx.sleep(300);
-  if (exit) return ctx.until(() => ended(page, id), 15000);
+  // ctx.until gives the ms it took (0 counts) or null on timeout.
+  if (exit) return (await ctx.until(() => ended(page, id), 15000)) !== null;
   return true;
 }
 
@@ -289,7 +290,7 @@ export async function run(ctx) {
       out.steps.exited = {
         a: {
           ended: e,
-          endedOk: Boolean(endedA),
+          endedOk: endedA,
           keyed: keyedA,
           running: Boolean(keyedA) && (await shells(page, ws)).includes(keyedA),
           hadRunning: runningA.length,

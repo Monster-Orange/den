@@ -172,11 +172,9 @@ export function fakeBed({
       p.focused = null;
     },
     async until(f, _ms) {
-      for (let i = 0; i < 50; i++) {
-        const v = await f();
-        if (v) return { ms: i * 100, value: v };
-      }
-      return false;
+      // As the bed's: the ms it took (0 when already true), or null.
+      for (let i = 0; i < 50; i++) if (await f()) return i * 100;
+      return null;
     },
     async sleep() {},
     async shot() {},
