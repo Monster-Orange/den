@@ -11,6 +11,11 @@ gate.
 
 ### Added
 
+- den-ui 0.7.5: a shared Markdown editor (`./markdown-editor`,
+  `./markdown-editor.css`). CodeMirror 6 on the Markdown text, the live
+  preview drawn in place, IME-safe Enter, loaded lazily behind a plain
+  textarea; toolbar words in en, es and ja. Den's own pages don't load
+  it.
 - Agents: a runtime catalog entry can carry its sign-in data (`signIn`:
   the variable its CLI signs in from, the command that makes the
   credential, how long it lasts, and how the CLI words a usage limit).
