@@ -2154,8 +2154,11 @@
       "{name} no puede iniciarse: macOS puso esta copia en cuarentena, así que Den no la ejecutó y macOS no mostró ningún aviso:",
     "ag.rt.useOther": "Usar otra copia encontrada:",
     "ag.rt.clearSelf":
-      "O quítala tú: abre su carpeta, ejecútala una vez desde una terminal y permítela cuando macOS lo pregunte. Den nunca quita la cuarentena.",
-    "ag.rt.openFolder": "Abrir su carpeta",
+      "O quítala tú en la máquina de Den: ejecútala una vez desde una terminal allí y permítela cuando macOS lo pregunte. Den nunca quita la cuarentena.",
+    "ag.rt.copyPath": "Copiar ruta",
+    "ag.rt.copied": "Copiado",
+    "ag.rt.copyByHand": "Seleccionada: cópiala con ⌘C o Ctrl+C",
+    "ag.rt.openRuntimes": "Abrir Ajustes › Runtimes",
     "ag.rt.checkAgain": "Comprobar de nuevo",
     "ag.rt.notDone": "No funcionó",
     "pj.expand": "Expandir la lista de proyectos",

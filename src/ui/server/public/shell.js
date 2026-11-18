@@ -2978,8 +2978,11 @@
       "{name} can't start: macOS has quarantined this copy, so Den did not run it and macOS showed no warning:",
     "ag.rt.useOther": "Use another copy found:",
     "ag.rt.clearSelf":
-      "Or clear it yourself: open its folder, run it once from a terminal and allow it when macOS asks. Den never removes the quarantine.",
-    "ag.rt.openFolder": "Open its folder",
+      "Or clear it yourself on the Den machine: run it once from a terminal there and allow it when macOS asks. Den never removes the quarantine.",
+    "ag.rt.copyPath": "Copy path",
+    "ag.rt.copied": "Copied",
+    "ag.rt.copyByHand": "Selected: copy it with ⌘C or Ctrl+C",
+    "ag.rt.openRuntimes": "Open Settings › Runtimes",
     "ag.rt.checkAgain": "Check again",
     "ag.rt.notDone": "That didn't work",
     // issue 171: the Edge page.

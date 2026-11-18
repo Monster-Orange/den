@@ -220,9 +220,12 @@ const dirOf = (p) => {
  * Issue 479: why a quarantined runtime copy wasn't started, its path, and
  * the choices: "Use this" for each other copy found that isn't
  * quarantined (pins agents.runtimes.<id>.bin at `scope`, as Settings ›
- * Runtimes does), open its folder to clear it yourself, and check again.
- * `q` is the server's runtime_quarantined detail (or a runtime row's).
- * Den never clears the quarantine. wireQuarantine handles the buttons.
+ * Runtimes does), clear it yourself, and check again. The path is
+ * selectable text with Copy path: the page may be a browser on another
+ * machine, so nothing here opens a folder on the Den machine (a page
+ * can't tell reliably that it runs on that machine). `q` is the server's
+ * runtime_quarantined detail (or a runtime row's). Den never clears the
+ * quarantine. wireQuarantine handles the buttons.
  */
 export function quarantinedHtml(q, t) {
   const mono = (x) => `<span class="mono">${escHtml(x)}</span>`;
@@ -233,7 +236,8 @@ export function quarantinedHtml(q, t) {
     `<span data-quarantined="${escHtml(q.runtime)}">` +
     escHtml(t("ag.rt.quarantined", { name: q.name })) +
     " " +
-    mono(q.path) +
+    `<span class="mono ag-q-path" style="user-select:all;-webkit-user-select:all">${escHtml(q.path)}</span> ` +
+    btn(`data-q-copy="${escHtml(q.path)}"`, t("ag.rt.copyPath")) +
     (others.length
       ? ` <span class="ag-q-others" role="list">` +
         escHtml(t("ag.rt.useOther")) +
@@ -254,8 +258,6 @@ export function quarantinedHtml(q, t) {
     " " +
     escHtml(t("ag.rt.clearSelf")) +
     " " +
-    btn(`data-q-open="${escHtml(q.dir)}"`, t("ag.rt.openFolder")) +
-    " " +
     btn("data-q-again", t("ag.rt.checkAgain")) +
     `<span class="ag-q-err" role="alert" hidden></span>` +
     `</span>`
@@ -265,8 +267,9 @@ export function quarantinedHtml(q, t) {
 /**
  * Issue 479: the buttons quarantinedHtml draws, under `host` (bound once):
  * Use this pins that copy (POST /api/agents/runtimes/<id>/path, a
- * person's own change) then `reload()`; Open its folder opens a terminal
- * there (POST /api/terminal/open); Check again is `reload()`. A refusal
+ * person's own change, on the working pop-up) then `reload()`; Copy path puts the path on the
+ * clipboard, or, where the page has none (plain http from another
+ * machine), selects it to copy by hand; Check again is `reload()`. A refusal
  * shows in the line, never as a toast. `ws` (a value or a function): the
  * project shown, for a pin at project scope.
  */
@@ -275,7 +278,7 @@ export function wireQuarantine(host, { api, reload, ws, t }) {
   host.dataset.qWired = "1";
   host.addEventListener("click", async (e) => {
     const b = e.target?.closest?.(
-      "button[data-q-pin],button[data-q-open],button[data-q-again]",
+      "button[data-q-pin],button[data-q-copy],button[data-q-again]",
     );
     if (!b || !host.contains(b)) return;
     e.preventDefault();
@@ -287,18 +290,24 @@ export function wireQuarantine(host, { api, reload, ws, t }) {
         const w = typeof ws === "function" ? ws() : ws;
         const scope =
           b.dataset.qScope === "workspace" && w ? "workspace" : "global";
-        await api(
-          "POST",
-          `/api/agents/runtimes/${encodeURIComponent(b.dataset.qPin)}/path`,
-          {
-            scope,
-            ...(scope === "workspace" ? { workspace: w } : {}),
-            bin: b.dataset.bin,
-          },
+        // BUSY-1: a write goes through the working pop-up, which says
+        // why when it is refused.
+        const url = `/api/agents/runtimes/${encodeURIComponent(b.dataset.qPin)}/path`;
+        const body = {
+          scope,
+          ...(scope === "workspace" ? { workspace: w } : {}),
+          bin: b.dataset.bin,
+        };
+        const done = await globalThis.window?.denShell?.busyAction?.(
+          "save",
+          (headers) => api("POST", url, body, { headers }),
+          { button: b },
         );
-        await reload();
-      } else if (b.dataset.qOpen) {
-        await api("POST", "/api/terminal/open", { path: b.dataset.qOpen });
+        if (done) await reload();
+      } else if (b.dataset.qCopy) {
+        b.textContent = (await copyPath(b))
+          ? t("ag.rt.copied")
+          : t("ag.rt.copyByHand");
       } else await reload();
     } catch (x) {
       if (err) {
@@ -309,6 +318,46 @@ export function wireQuarantine(host, { api, reload, ws, t }) {
       b.disabled = false;
     }
   });
+}
+
+/** Copy path: the clipboard when the page has one, else the path selected. */
+async function copyPath(b) {
+  try {
+    await globalThis.navigator.clipboard.writeText(b.dataset.qCopy);
+    return true;
+  } catch {
+    const el = b.parentElement?.querySelector(".ag-q-path");
+    const sel = globalThis.getSelection?.();
+    if (el && sel && globalThis.document?.createRange) {
+      const r = globalThis.document.createRange();
+      r.selectNodeContents(el);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    return false;
+  }
+}
+
+/**
+ * Issue 479: Settings › Agents › Runtimes at runtime `q.runtime`'s row,
+ * where Use this lives; at project `ws` when a project's setting chose
+ * the copy.
+ */
+export function runtimeSettingsUrl(q, ws) {
+  const p = new URLSearchParams({ runtime: q.runtime });
+  if (q.scope === "workspace" && ws) p.set("project", ws);
+  return `/settings?${p.toString()}#agents.runtimes`;
+}
+
+/**
+ * Issue 479: the one way on from a refused start or resume of a
+ * quarantined runtime ({ label, href }: Settings at its row), or null
+ * for any other refusal. The working pop-up offers it (opts.next).
+ */
+export function quarantineNext(err, t, ws) {
+  const q = err?.data?.quarantined;
+  if (!q?.runtime) return null;
+  return { label: t("ag.rt.openRuntimes"), href: runtimeSettingsUrl(q, ws) };
 }
 
 /**

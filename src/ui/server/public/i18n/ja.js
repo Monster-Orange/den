@@ -2095,8 +2095,11 @@
       "{name} を開始できません: macOS がこのコピーを隔離しているため、Den は実行しておらず、macOS の警告も出ていません:",
     "ag.rt.useOther": "見つかった別のコピーを使う:",
     "ag.rt.clearSelf":
-      "または自分で解除: フォルダを開き、ターミナルから一度実行して、macOS に聞かれたら許可します。Den が隔離を外すことはありません。",
-    "ag.rt.openFolder": "フォルダを開く",
+      "または Den のマシンで自分で解除: そこでターミナルから一度実行し、macOS に聞かれたら許可します。Den が隔離を外すことはありません。",
+    "ag.rt.copyPath": "パスをコピー",
+    "ag.rt.copied": "コピーしました",
+    "ag.rt.copyByHand": "選択しました: ⌘C または Ctrl+C でコピーしてください",
+    "ag.rt.openRuntimes": "設定 › ランタイムを開く",
     "ag.rt.checkAgain": "もう一度確認",
     "ag.rt.notDone": "うまくいきませんでした",
     "pj.expand": "プロジェクト一覧を展開",

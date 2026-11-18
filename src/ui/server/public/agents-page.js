@@ -89,6 +89,7 @@
  */
 import {
   quarantinedHtml,
+  quarantineNext,
   readiness,
   runtimeName,
   runtimeOptions,
@@ -3490,6 +3491,9 @@ async function restartRowNow(r, verb, button) {
       // Its open pane follows it to the new session (followAgents, in
       // refresh); one that couldn't (not running yet) is closed for it.
       onDone: (o) => (opened = follow(o)),
+      // Issue 479: a quarantined runtime: Settings at its row, not a
+      // dead end (Try again would refuse the same way).
+      next: (err) => quarantineNext(err, t, r.workspace),
     },
   );
   await (out ? opened : refresh());
