@@ -1051,14 +1051,15 @@ function paintList() {
     notes.push(
       `<div class="agnote" data-note="backend">${esc(t("ag.noBackend", { cli: CLI }))}</div>`,
     );
-  // Issue 500: a stuck terminal host, or one on an older version, with
-  // a Restart; else den#156's "this list may be old".
+  // Issue 500: a stuck terminal host, with a Restart; else den#156's
+  // "this list may be old". One on an older version says so as well.
   const hn = hostNote(st.data);
-  if (hn) notes.push(hostNoteHtml(hn));
+  if (hn?.kind === "stuck") notes.push(hostNoteHtml(hn));
   else if (st.hostDown)
     notes.push(
       `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
     );
+  if (hn?.kind === "older") notes.push(hostNoteHtml(hn));
   if (!st.data) {
     setList(el, notes.join(""));
     return;
