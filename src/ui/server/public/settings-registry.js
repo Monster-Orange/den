@@ -37,9 +37,10 @@ import {
   upgradeTimes,
 } from "/kit/time.js";
 import { qrSvg } from "./qr.js";
-import { renderPersonasSettings } from "./persona-ui.js";
+import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -328,6 +329,7 @@ function bellRows() {
       read: (ctx) => on(ctx, k),
       write: (v, ctx) => ctx.post({ bell_kinds: { [k]: v === true } }),
     })),
+    ...alertRows(),
     {
       id: "notifications.fold_days",
       category: "notifications",
@@ -344,6 +346,201 @@ function bellRows() {
       write: (v, ctx) => ctx.post({ bell_fold_days: Number(v) }),
     },
   ];
+}
+
+/**
+ * Issue 172: alerts outside the bell (alerts.js). Desktop alerts is on
+ * when the person has it on (user.yml alerts.desktop, default on) and
+ * this browser lets the page notify; turning it on asks the browser.
+ */
+const notifyApi = () =>
+  typeof window !== "undefined" && typeof window.Notification === "function"
+    ? window.Notification
+    : null;
+
+function alertRows() {
+  return [
+    {
+      id: "notifications.desktop",
+      category: "notifications",
+      label: "Desktop alerts",
+      description:
+        "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+      keywords: ["notifications", "alerts", "desktop", "browser", "push"],
+      scope: "user",
+      control: {
+        type: "toggle",
+        notice: () => {
+          const N = notifyApi();
+          if (!N)
+            return L(
+              "set.notifications.desktop.none",
+              "This browser can't show notifications.",
+            );
+          return N.permission === "denied"
+            ? L(
+                "set.notifications.desktop.denied",
+                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+              )
+            : "";
+        },
+      },
+      keys: ["alerts.desktop"],
+      read: (ctx) =>
+        ctx.data.alerts?.desktop !== false &&
+        notifyApi()?.permission === "granted",
+      write: async (v, ctx) => {
+        const N = notifyApi();
+        if (v === true && N && N.permission === "default")
+          await N.requestPermission();
+        return ctx.post({ alerts: { desktop: v === true } });
+      },
+    },
+    {
+      // S2: push, to this device (a phone, or a computer with no tab open).
+      id: "notifications.phone",
+      category: "notifications",
+      label: "Alerts on this device by push",
+      description:
+        "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+      keywords: [
+        "notifications",
+        "alerts",
+        "phone",
+        "push",
+        "mobile",
+        "iphone",
+      ],
+      scope: "user",
+      control: { type: "custom", render: drawPush },
+      keys: ["alerts.phone"],
+      read: (ctx) => ctx.data.alerts?.phone !== false,
+      write: (v, ctx) => ctx.post({ alerts: { phone: v === true } }),
+    },
+    ...[
+      [
+        "quiet_from",
+        "Quiet hours start",
+        "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+      ],
+      [
+        "quiet_to",
+        "Quiet hours end",
+        "Alerts outside the bell start again at this time.",
+      ],
+    ].map(([k, label, description]) => ({
+      id: `notifications.${k}`,
+      category: "notifications",
+      label,
+      description,
+      keywords: ["notifications", "alerts", "quiet", "hours", "night"],
+      scope: "user",
+      control: {
+        type: "select",
+        options: () => [
+          { value: "", label: L("set.notifications.quiet.off", "Off") },
+          ...Array.from({ length: 24 }, (_, h) => {
+            const t = `${String(h).padStart(2, "0")}:00`;
+            return { value: t, label: t };
+          }),
+        ],
+        notice: (ctx) => {
+          const a = ctx.data.alerts ?? {};
+          return k === "quiet_from" && !a.quiet_from !== !a.quiet_to
+            ? L(
+                "set.notifications.quiet.half",
+                "Quiet hours need a start and an end.",
+              )
+            : "";
+        },
+      },
+      keys: [`alerts.${k}`],
+      read: (ctx) => ctx.data.alerts?.[k] ?? "",
+      write: (v, ctx) => ctx.post({ alerts: { [k]: v || null } }),
+    })),
+    {
+      // Issue 367: the push limits (user.yml alerts.push_*).
+      id: "notifications.push_timeout",
+      category: "notifications",
+      label: "Push wait",
+      description:
+        "How long __DEN_TITLE__ waits for a push service to take one alert for a device. After this, that alert is left; the next one tries again. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+      keywords: ["notifications", "alerts", "push", "timeout", "wait"],
+      scope: "user",
+      keys: ["alerts.push_timeout_seconds"],
+      control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.push_timeout_seconds ?? 30,
+      write: (v, ctx) => ctx.post({ alerts: { push_timeout_seconds: v } }),
+    },
+    {
+      id: "notifications.push_ttl",
+      category: "notifications",
+      label: "Push kept for",
+      description:
+        "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+      keywords: ["notifications", "alerts", "push", "ttl", "offline", "keep"],
+      scope: "user",
+      keys: ["alerts.push_ttl_seconds"],
+      control: { type: "number", min: 0, max: 2419200, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.push_ttl_seconds ?? 86400,
+      write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
+    },
+  ];
+}
+
+/**
+ * Issue 172 S2: this device's push switch. On: the browser's permission,
+ * the service worker, the subscription (alerts.js pushOn), and
+ * alerts.phone on. Off: this device only stops; others keep theirs.
+ */
+function drawPush(host, ctx, io) {
+  const api = (m, p, b) => ctx.shell.api(m, p, b);
+  // BUSY-1: the subscription's write goes through the working pop-up,
+  // the switch held while it runs; data, or null when it didn't succeed.
+  const send = (path, body) => {
+    const run = (headers) => ctx.shell.api("POST", path, body, { headers });
+    if (!ctx.shell.busyAction) return run({}).catch(() => null);
+    const button = host.querySelector("input") || undefined;
+    return ctx.shell.busyAction("save", run, { button, toastFast: false });
+  };
+  const draw = (on, note) => {
+    host.innerHTML =
+      `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
+      (note ? `<p class="set-warn" role="status">${escHtml(note)}</p>` : "");
+    host
+      .querySelector("input")
+      .addEventListener("change", (e) => void flip(e.target.checked));
+  };
+  const why = {
+    unsupported: () =>
+      L(
+        "set.notifications.phone.none",
+        "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+      ),
+    denied: () =>
+      L(
+        "set.notifications.desktop.denied",
+        "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+      ),
+    failed: () =>
+      L("set.notifications.phone.failed", "Couldn't turn on push here."),
+  };
+  const flip = async (on) => {
+    let got = "ok";
+    try {
+      if (on) got = await pushOn(api, send);
+      else await pushOff(send);
+    } catch {
+      got = "failed";
+    }
+    if (got === "ok" && on) await io.save(true);
+    const now = !!(await pushSubscription());
+    draw(now, got === "ok" ? "" : why[got]());
+  };
+  draw(false, pushSupported() ? "" : why.unsupported());
+  void pushSubscription().then((s) => {
+    if (s && ctx.data.alerts?.phone !== false) draw(true, "");
+  });
 }
 
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */
@@ -706,9 +903,10 @@ function drawPair(host, ctx) {
       if (!hosts.length) {
         host.innerHTML = `<output class="set-ro" id="set-pair">${L(
           "set.ui.noPairHost",
-          "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+          "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
           { cmd: "<code>__DEN_CLI__ edge up</code>" },
         )}</output>`;
+        drawEdgeUp(host, ctx);
         return;
       }
       host.innerHTML =
@@ -756,6 +954,66 @@ function drawPair(host, ctx) {
     .catch(() => {
       host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
     });
+}
+
+/**
+ * Issue 395: Start the edge (Apply, when it runs): what `edge up` runs, on
+ * the server (POST /api/edge/up, a person's only), with the working pop-up
+ * until it answers; then what it did: started, up to date (nothing
+ * restarted), or recreated and why, and about how long it was unreachable.
+ */
+function edgeUpText(o) {
+  if (o?.kind === "started") return L("set.ui.edgeStarted", "Edge started");
+  if (o?.kind === "current")
+    return L("set.ui.edgeCurrent", "Edge up to date, nothing restarted");
+  const why = (o?.changes || [])
+    .map((c) => `${c.field}: ${c.old} → ${c.new}`)
+    .join(", ");
+  return L(
+    "set.ui.edgeRecreated",
+    "Edge recreated because {why}; it was unreachable for about {s} s",
+    {
+      why: why || L("set.ui.edgeWhy", "its settings changed"),
+      s: o?.downSeconds ?? 1,
+    },
+  );
+}
+
+function drawEdgeUp(host, ctx) {
+  const box = document.createElement("div");
+  box.style.cssText = "flex-basis:100%;margin-top:8px";
+  box.innerHTML =
+    `<button type="button" class="btn sm" id="set-edge-up">${escHtml(L("set.ui.edgeStart", "Start the edge"))}</button>` +
+    '<p class="set-note" id="set-edge-up-out" aria-live="polite" hidden></p>';
+  host.appendChild(box);
+  const btn = box.querySelector("#set-edge-up");
+  const out = box.querySelector("#set-edge-up-out");
+  // Running already: the button applies the config to it.
+  fetch("/api/edge", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((b) => {
+      if (b?.up) btn.textContent = L("set.ui.edgeApply", "Apply");
+    })
+    .catch(() => {});
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    out.hidden = true;
+    try {
+      const r = await ctx.shell.busyAction(
+        "edge-up",
+        (headers) => ctx.shell.api("POST", "/api/edge/up", {}, { headers }),
+        { button: btn, success: (r) => edgeUpText(r?.outcome) },
+      );
+      if (r?.outcome) {
+        out.textContent = edgeUpText(r.outcome);
+        out.hidden = false;
+        if (r.outcome.kind !== "current")
+          btn.textContent = L("set.ui.edgeApply", "Apply");
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 /**
@@ -1108,32 +1366,207 @@ export function keepTokenLine(s, t) {
         ? t("keep.noStore")
         : s && s.mode !== "token"
           ? t("keep.noTokenNotNeeded")
-          : t("keep.noToken"),
+          : t("keep.noToken", { runtime: tokenRuntime(s, t) }),
+      // Issue 399: the line points at the Sign-in token field below.
+      ...(s?.no_store || (s && s.mode !== "token") ? {} : { go: true }),
     };
   // The store's own credential in the login keychain: the daemon may not
   // reach it, so the token can't be read either.
   if (s.cred_keychain) return { state: "cred", text: t("keep.credKeychain") };
   if (s.old)
-    return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
+    return {
+      state: "old",
+      text: t("keep.tokenOld", { n: s.age_days, runtime: tokenRuntime(s, t) }),
+      go: true,
+    };
   if (s.set_at) {
-    let date = String(s.set_at).slice(0, 10);
-    try {
-      const tz =
-        document.documentElement.getAttribute("data-den-tz") || undefined;
-      date = new Date(s.set_at).toLocaleDateString(
-        document.documentElement.lang || undefined,
-        { year: "numeric", month: "short", day: "numeric", timeZone: tz },
-      );
-    } catch {
-      /* the ISO date stays */
-    }
-    const set = t("keep.tokenSet", { date });
+    const set = t("keep.tokenSet", { date: localDay(s.set_at) });
     return {
       state: "set",
       text: s.process_local ? `${set} ${t("keep.processLocal")}` : set,
     };
   }
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
+}
+
+/** A set date in the reader's language and time zone (the ISO date if not). */
+function localDay(iso) {
+  let date = String(iso).slice(0, 10);
+  try {
+    const tz =
+      document.documentElement.getAttribute("data-den-tz") || undefined;
+    date = new Date(iso).toLocaleDateString(
+      document.documentElement.lang || undefined,
+      { year: "numeric", month: "short", day: "numeric", timeZone: tz },
+    );
+  } catch {
+    /* the ISO date stays */
+  }
+  return date;
+}
+
+/**
+ * Issue 339: what an account's row says (never a token): no token, or
+ * when it was set.
+ */
+export function accountLine(a, t) {
+  if (!a?.configured) return { state: "missing", text: t("acct.none") };
+  if (!a.set_at) return { state: "set", text: t("acct.setUnknown") };
+  return { state: "set", text: t("acct.set", { date: localDay(a.set_at) }) };
+}
+
+/**
+ * Issue 339: an account's name, or "<vendor> account A" in the reader's
+ * words (a vendor's own account, never a person: words.js, 2026-11-17).
+ */
+export function accountName(a, t, vendor) {
+  return (
+    a.name ||
+    t("acct.default", { vendor: vendor || "", letter: a.letter || a.id })
+  );
+}
+
+/**
+ * Issue 339: a vendor shows its rows once it has more than one account
+ * (or isn't Claude Code, whose account one is today's single field).
+ */
+function accountRows(v) {
+  return v.runtime !== "den-claude" || v.accounts.length > 1;
+}
+
+function renderAccountList(list, t) {
+  return (list || [])
+    .map((v) => {
+      const rows = accountRows(v)
+        ? v.accounts
+            .map((a, i) => {
+              const name = accountName(a, t, v.account || v.name);
+              const l = accountLine(a, t);
+              const last = i === v.accounts.length - 1;
+              return (
+                `<div class="set-note" data-acct="${escR(a.id)}" data-acct-state="${l.state}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">` +
+                `<strong>${escR(name)}</strong> <span data-acct-status>${escR(l.text)}${a.first ? ` ${escR(t("acct.first"))}` : ""}</span>` +
+                `<input type="password" autocomplete="off" spellcheck="false" data-acct-token aria-label="${escR(t("acct.tokenLabel", { name }))}">` +
+                `<button type="button" class="btn sm" data-acct-save>${escR(t("acct.tokenSave"))}</button>` +
+                `<button type="button" class="btn sm" data-acct-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` +
+                `<button type="button" class="btn sm" data-acct-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` +
+                `</div>`
+              );
+            })
+            .join("")
+        : "";
+      return (
+        `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
+        `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.account || v.name }))}</strong></p>` +
+        rows +
+        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.account || v.name }))}</button></div>` +
+        `<p class="set-note" data-acct-note hidden></p>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+/**
+ * Issue 339: Settings' sign-in accounts, per vendor: Add account, Set
+ * sign-in token (the same hidden field as today, cleared before the
+ * answer comes, never filled from the server) and Move up / down. Each
+ * answer is the new list, drawn again.
+ */
+function wireAccounts(host, ctx, t) {
+  const box = host.querySelector("[data-acct-list]");
+  if (!box) return;
+  const legacyRow = host.querySelector("[data-keep-token-row]");
+  const draw = (list) => {
+    ctx.data.agent_accounts = list;
+    box.innerHTML = renderAccountList(list, t);
+    // Claude Code with more than one account: each has its own field.
+    const claude = (list || []).find((v) => v.runtime === "den-claude");
+    // (Its inline display: flex would win over the hidden attribute.)
+    if (legacyRow)
+      legacyRow.style.display = claude && accountRows(claude) ? "none" : "flex";
+  };
+  draw(ctx.data.agent_accounts || []);
+  const post = (url, body, button) =>
+    ctx.shell.busyAction(
+      "save",
+      (headers) => ctx.shell.api("POST", url, body, { headers }),
+      { button },
+    );
+  box.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn || btn.disabled) return;
+    const vbox = btn.closest("[data-acct-runtime]");
+    if (!vbox) return;
+    const runtime = vbox.getAttribute("data-acct-runtime");
+    const note = vbox.querySelector("[data-acct-note]");
+    note.hidden = true;
+    const row = btn.closest("[data-acct]");
+    let url = "";
+    let body = null;
+    if (btn.hasAttribute("data-acct-add")) {
+      url = "/api/agents/accounts";
+      body = { runtime };
+    } else if (row && btn.hasAttribute("data-acct-save")) {
+      const input = row.querySelector("[data-acct-token]");
+      const token = input.value;
+      input.value = "";
+      if (!token.trim()) {
+        input.focus();
+        return;
+      }
+      url = "/api/agents/accounts/token";
+      body = { runtime, account: row.getAttribute("data-acct"), token };
+    } else if (
+      row &&
+      (btn.hasAttribute("data-acct-up") || btn.hasAttribute("data-acct-down"))
+    ) {
+      const ids = [...vbox.querySelectorAll("[data-acct]")].map((r) =>
+        r.getAttribute("data-acct"),
+      );
+      const i = ids.indexOf(row.getAttribute("data-acct"));
+      const j = btn.hasAttribute("data-acct-up") ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= ids.length) return;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      url = "/api/agents/accounts/order";
+      body = { runtime, order: ids };
+    } else return;
+    btn.disabled = true;
+    try {
+      const r = await post(url, body, btn);
+      if (r?.ok) return draw(r.accounts);
+      note.textContent = t("acct.failed", { error: r?.error || "" });
+      note.hidden = false;
+    } catch (e) {
+      note.textContent = t("acct.failed", {
+        error: String(e?.message || ""),
+      });
+      note.hidden = false;
+    }
+    btn.disabled = false;
+  });
+}
+
+/** Issue 399: the runtime that makes the token (the catalog's name). */
+function tokenRuntime(s, t) {
+  return s?.runtime || t("keep.runtimeAny");
+}
+
+/**
+ * Issue 399: the token line as HTML. A line that says where the token
+ * comes from links the vendor's own sign-in docs ({docs}, the runtime
+ * catalog's signIn.docs, never a URL of the page's own) and the Sign-in
+ * token field below ({field}, which focuses it): no command to run.
+ */
+export function keepTokenHtml(l, s, t) {
+  const html = escR(l.text);
+  if (!l.go) return html;
+  const docs =
+    typeof s?.docs === "string" && /^https:\/\//.test(s.docs)
+      ? `<a href="${escR(s.docs)}" target="_blank" rel="noopener noreferrer" data-keep-token-docs>${escR(t("keep.docs"))}</a>`
+      : escR(t("keep.docs"));
+  const field = `<a href="#" data-keep-token-go>${escR(t("keep.tokenLabel"))}</a>`;
+  return html.replace("{docs}", docs).replace("{field}", field);
 }
 
 /** Issue 299: the only terminal step for the agents' sign-in token. */
@@ -1164,10 +1597,26 @@ function wireTokenField(host, ctx, line, t) {
   // Issue 163: Clear removes it from the store, the way it was kept; the
   // kit's confirm dialog first. A person's only (the server refuses an agent).
   const clear = host.querySelector("[data-keep-token-clear]");
+  // Issue 399: "paste it into Sign-in token below" goes to the field; with
+  // more than one Claude Code account (issue 339), the first one's.
+  line.addEventListener("click", (e) => {
+    const go = e.target?.closest?.("[data-keep-token-go]");
+    if (!go) return;
+    e.preventDefault();
+    const row = host.querySelector("[data-keep-token-row]");
+    const to =
+      row && row.style.display === "none"
+        ? host.querySelector(
+            '[data-acct-runtime="den-claude"] [data-acct-token]',
+          ) || input
+        : input;
+    to.scrollIntoView({ block: "center" });
+    to.focus();
+  });
   const showLine = (signin) => {
     const l = keepTokenLine(signin, t);
     line.dataset.keepToken = l.state;
-    line.textContent = l.text;
+    line.innerHTML = keepTokenHtml(l, signin, t);
     line.hidden = false;
     clear.hidden = l.state === "missing";
   };
@@ -1259,13 +1708,15 @@ function renderKeepRunning(host, ctx) {
     `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
     `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
-    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
+    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${keepTokenHtml(signLine, ctx.data.agent_signin, t)}</p>` +
     // Issue 299: the token is pasted here; the one terminal step is named, with
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
     `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
-    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
+    `<label class="set-note" data-keep-token-row style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
     `<p class="set-note" data-keep-token-note hidden></p>` +
+    // Issue 339: the sign-in accounts, per vendor.
+    `<div data-acct-list style="display:grid;gap:10px"></div>` +
     `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
@@ -1286,6 +1737,7 @@ function renderKeepRunning(host, ctx) {
     signin.hidden = !box.checked;
   });
   wireTokenField(host, ctx, token, t);
+  wireAccounts(host, ctx, t);
   btn.addEventListener("click", async () => {
     const on = box.checked;
     btn.disabled = true;
@@ -1397,6 +1849,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
   },
   {
+    // Issue 415: Report says who can see a report: each destination's
+    // visibility on GitHub, kept and waited for (user.yml feedback.*).
+    id: "server.report_visibility_cache",
+    category: "server",
+    label: "Report: repository visibility kept for",
+    description:
+      "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    keywords: ["report", "feedback", "visibility", "private", "cache"],
+    scope: "user",
+    keys: ["feedback.visibility_cache_hours"],
+    control: { type: "number", min: 0, max: 720, step: 1, unit: "h" },
+    read: (ctx) => ctx.data.feedback?.visibility_cache_hours ?? 24,
+    write: (v, ctx) => ctx.post({ feedback: { visibility_cache_hours: v } }),
+  },
+  {
+    id: "server.report_visibility_wait",
+    category: "server",
+    label: "Report: repository visibility wait",
+    description:
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    keywords: ["report", "feedback", "visibility", "timeout", "wait"],
+    scope: "user",
+    keys: ["feedback.visibility_timeout_seconds"],
+    control: { type: "number", min: 0.5, max: 60, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.feedback?.visibility_timeout_seconds ?? 3,
+    write: (v, ctx) =>
+      ctx.post({ feedback: { visibility_timeout_seconds: v } }),
+  },
+  {
+    id: "server.report_visibility_retry",
+    category: "server",
+    label: "Report: repository visibility retry",
+    description:
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
+    keywords: ["report", "feedback", "visibility", "retry", "failure"],
+    scope: "user",
+    keys: ["feedback.visibility_retry_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.feedback?.visibility_retry_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",
@@ -1440,6 +1934,48 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
+    // den#143: how long `web up` waits for the server (user.yml
+    // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
+    id: "server.ready_probe",
+    category: "server",
+    label: "Readiness check, in seconds",
+    description:
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    keywords: [
+      "ready",
+      "probe",
+      "timeout",
+      "busy",
+      "web up",
+      "web.ready_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.probeSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ web_ready: { probe_seconds: v } }),
+  },
+  {
+    id: "server.start_wait",
+    category: "server",
+    label: "Start wait, in seconds",
+    description:
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    keywords: [
+      "start",
+      "ready",
+      "timeout",
+      "busy",
+      "web up",
+      "web.start_wait_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.start_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.startSeconds ?? 120,
+    write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
@@ -2415,7 +2951,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Keep agents running after logout",
     description:
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     keywords: [
       "logout",
       "log out",
@@ -2485,8 +3021,12 @@ export const DEN_SETTINGS = [
         : L("set.ui.portUnset", "Not set: the distribution's applies"),
   },
   {
-    // SEC-1b: whether this browser is signed in, and Sign out. Signing in
-    // is the CLI's (`web login` prints a one-time link): no form here.
+    // SEC-1b: whether this browser is signed in, and Sign out. Issue 393:
+    // signed out, a Sign in button opens Den's own sign-in page (GitHub,
+    // or a code another device approves). `again=1` shows that page even
+    // on loopback, where nothing asks (D67's approvals banner does the
+    // same); after it, back here. `web login` stays in the description,
+    // a bare equivalent.
     id: "cli.signin",
     category: "cli",
     label: "Browser sign-in",
@@ -2501,7 +3041,18 @@ export const DEN_SETTINGS = [
           host.innerHTML = signedIn
             ? `<output class="set-ro">${escR(L("set.ui.signedIn", "Signed in"))}</output> ` +
               `<button type="button" class="btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
-            : `<output class="set-ro">${L("set.ui.notSignedIn", "Not signed in: run {cmd}", { cmd: "<code>__DEN_CLI__ web login</code>" })}</output>`;
+            : `<output class="set-ro">${escR(L("set.ui.notSignedIn", "Not signed in"))}</output> ` +
+              `<button type="button" class="btn primary" id="set-signin">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
+          host
+            .querySelector("#set-signin")
+            ?.addEventListener("click", () =>
+              location.assign(
+                "/signin?again=1&next=" +
+                  encodeURIComponent(
+                    location.pathname + location.search + location.hash,
+                  ),
+              ),
+            );
           host.querySelector("#set-signout")?.addEventListener("click", () =>
             ctx.shell
               .api("POST", "/api/session/logout", {})
@@ -2509,6 +3060,11 @@ export const DEN_SETTINGS = [
               .catch(() => {}),
           );
         };
+        // Until /api/session answers, an unseen button holds the row at its
+        // drawn height: a row that grows later moves the sections below it,
+        // and a link to the last one (#distribution) would end short of the
+        // foot, with the category above it marked current.
+        host.innerHTML = `<button type="button" class="btn" style="visibility:hidden" aria-hidden="true" tabindex="-1">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
         fetch("/api/session", { cache: "no-store" })
           .then((r) => (r.ok ? r.json() : null))
           .then((b) => draw(b?.signedIn === true))
@@ -3461,13 +4017,16 @@ export function projectModeHtml(v, t) {
       const line = a.running
         ? t("pmode.runsAs", { ...vars, running: name(a.running) })
         : t("pmode.agent", vars);
+      // Issue 252: the whole row opens its mode (the choices and Follow
+      // project).
       return (
         `<li data-pmode-agent="${escR(a.agent)}" data-pmode-source="${escR(a.source)}"${a.running ? ` data-pmode-running="${escR(a.running)}"` : ""}>` +
+        `<button type="button" class="pmode-row" data-pmode-pick="${escR(a.agent)}" aria-haspopup="menu" aria-expanded="false" aria-label="${escR(`${line}. ${t("ag.mode.pick", { id: a.name || a.agent })}`)}">` +
         escR(line) +
         (a.stopped
           ? ` <span class="faint">${escR(t("pmode.stopped"))}</span>`
           : "") +
-        `</li>`
+        `</button></li>`
       );
     })
     .join("");
@@ -3530,6 +4089,28 @@ function renderProjectMode(host, ctx) {
               if (r !== undefined && r !== null)
                 return renderProjectMode(host, ctx);
             },
+          );
+        }),
+      );
+      host.querySelectorAll("[data-pmode-pick]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const a = (v?.agents ?? []).find(
+            (x) => x.agent === b.getAttribute("data-pmode-pick"),
+          );
+          if (!a) return;
+          openAgentModeMenu(
+            b,
+            {
+              workspace: ws,
+              agent: a.agent,
+              ...(a.name ? { name: a.name } : {}),
+              ...(a.source === "own" ? { own: a.mode } : {}),
+              ...((v?.mode ?? v?.install)
+                ? { project: v.mode ?? v.install }
+                : {}),
+              ...(a.stopped ? { stopped: true } : {}),
+            },
+            () => renderProjectMode(host, ctx),
           );
         }),
       );

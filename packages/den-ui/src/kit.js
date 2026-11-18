@@ -46,6 +46,9 @@
  *                               change saved so leaving the page can't
  *                               lose it: keepalive, then a beacon if the
  *                               page hides first (save-shell.js)
+ *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
+ *                               editor's save-state line (savestate.js),
+ *                               in the kit's language
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -97,6 +100,7 @@ import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy } from "./busy.js";
 import { saveShell } from "./save-shell.js";
+import { createSaveState } from "./savestate.js";
 
 const state = {
   lang: "en",
@@ -187,6 +191,11 @@ export const busy = {
   run: (action, run, opts) => busyAction(action, run, opts),
   configure: configureBusy,
 };
+
+/** An autosaving editor's save-state line, in the kit's language. */
+export function saveState(el, opts = {}) {
+  return createSaveState(el, { lang, ...opts });
+}
 
 /**
  * Binds the drawn shell, the chip and Report (see the top), and the 0.7.0
@@ -300,6 +309,7 @@ const DenUI = {
   report,
   busy,
   saveShell,
+  saveState,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;

@@ -24,14 +24,14 @@
  * - blog's `up` is a dev server that never exits (it serves blog's health
  *   port): after Start, "starting…" follows the health feed and Restart
  *   comes back; once it stops, the rail's ↗ greys out within a tick, as
- *   the panel says down, also with the top bar's View on another
- *   workspace;
+ *   the panel says down, also with the top bar's View on blog's own
+ *   project;
  * - Open in Graph, and a direct /graph#focus=<id>, focus the card, also
  *   with the View on one workspace (the Graph page's ?ws=);
- * - Open in Graph for a pin outside the View (View: north, blog in south)
- *   says "blog is in south, outside this View." with Show south, which
- *   switches the View and focuses the card; the View never switches by
- *   itself;
+ * - a pin outside the View (View: north, blog in south) is not in the rail
+ *   (issue 402), and /graph#focus=blog says "blog is in south, outside
+ *   this View." with Show south, which switches the View and focuses the
+ *   card; the View never switches by itself;
  * - blog's dev server listens 2 s after Start and answers a second late:
  *   the panel says starting… until up, never down, after Start and after
  *   Restart.
@@ -902,8 +902,9 @@ describe("a dev server whose up never exits (blog)", () => {
   it("once it stops, the rail's ↗ greys out within a tick of the panel saying down", async () => {
     if (skip()) return;
     const { p } = await page("/services");
-    // The View on north: blog (south) is out of view, still pinned.
-    await view(p, "north");
+    // The View on south, blog's own project: its pin shows under the
+    // filter (issue 402) and its ↗ follows the panel.
+    await view(p, "south");
     try {
       await p.reload();
       await p.waitForSelector(
@@ -998,15 +999,17 @@ describe("Open in Graph for a pin outside the View", () => {
     await view(p, "north");
     try {
       await p.reload();
-      await p.waitForSelector('.den-rail [data-pin="blog"]', {
+      // Issue 402: filtered to north, the rail shows north's pins only;
+      // blog (south) stays pinned but is not drawn.
+      await p.waitForSelector('.den-rail [data-pin="notes"]', {
         timeout: 20_000,
       });
-      await p.click('.den-rail [data-pin="blog"]');
-      await p.waitForSelector(panel);
-      await Promise.all([
-        p.waitForURL(/\/graph/),
-        p.click(`${panel} [data-svx="graph"]`),
-      ]);
+      await p.waitForSelector('.den-rail [data-pin="blog"]', {
+        state: "detached",
+        timeout: 20_000,
+      });
+      // A link to blog's card (#focus=) still says where it is.
+      await p.goto(`${s!.base}/graph#focus=blog`);
       await p.waitForSelector(out, { timeout: 20_000 });
       expect((await p.textContent(`${out} span`))?.trim()).toBe(
         "blog is in south, outside this View.",

@@ -572,6 +572,9 @@
     "busy.restartW": "Reiniciando {name}…",
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
+    "busy.modeW": "Cambiando el modo de {name}…",
+    "busy.modeS": "Modo de {name} cambiado.",
+    "busy.modeF": "No se pudo cambiar el modo de {name}. Nada cambió.",
     "keep.label": "Mantener los agentes al cerrar sesión",
     "keep.warn":
       "Allí los agentes inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio.",
@@ -581,6 +584,9 @@
     "keep.s": "Aplicado. __DEN_TITLE__ se reinicia.",
     "keep.needs": "Necesita tu contraseña de administrador.",
     "keep.failed": "No se aplicó. Nada cambió.",
+    "busy.edgeW": "Iniciando el edge…",
+    "busy.edgeS": "Edge iniciado",
+    "busy.edgeF": "El edge no se inició.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -590,7 +596,7 @@
     "keep.offer":
       "Aún sin configurar, así que los agentes se detienen al cerrar sesión. Actívalo y pulsa Aplicar (pide tu contraseña de administrador una vez).",
     "keep.noToken":
-      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. Crea uno con claude setup-token y luego __DEN_CLI__ agents token set.",
+      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. {runtime} crea uno cuando inicias sesión en él ({docs}); pégalo en {field}, abajo.",
     "keep.credKeychain":
       "La credencial del almacén está en el llavero de inicio, al que el servicio siempre activo puede no llegar; usa file: o env: (ver docs/always-on-gate.md).",
     "keep.setup":
@@ -617,7 +623,21 @@
       "Los agentes inician sesión con el token guardado el {date}.",
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
     "keep.tokenOld":
-      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
+      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año. {runtime} crea uno nuevo cuando inicias sesión en él ({docs}); pégalo en {field}, abajo.",
+    "keep.docs": "su documentación de inicio de sesión",
+    "keep.runtimeAny": "La CLI de tus agentes",
+    "acct.title": "Cuentas de {vendor}",
+    "acct.default": "Cuenta de {vendor} {letter}",
+    "acct.add": "Añadir cuenta de {vendor}",
+    "acct.none": "Sin token.",
+    "acct.set": "Token guardado el {date}.",
+    "acct.setUnknown": "Token guardado.",
+    "acct.first": "Los agentes inician sesión con esta.",
+    "acct.tokenLabel": "Token de inicio de sesión de {name}",
+    "acct.tokenSave": "Guardar token de inicio de sesión",
+    "acct.up": "Subir",
+    "acct.down": "Bajar",
+    "acct.failed": "No se guardó: {error}",
     "busy.askAllowW": "Preguntando…",
     "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
     "busy.askAllowF": "No se pudo preguntar.",
@@ -853,6 +873,12 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "Comprobación de que está listo, en segundos",
+    "set.server.ready_probe.d":
+      "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "Espera al arrancar, en segundos",
+    "set.server.start_wait.d":
+      "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
       "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
@@ -863,6 +889,18 @@
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "Informe: visibilidad del repositorio guardada durante",
+    "set.server.report_visibility_cache.d":
+      "Cuánto guarda __DEN_TITLE__ si cada repositorio de Informe es público o privado. Pasado este tiempo, vuelve a preguntar a GitHub. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait":
+      "Informe: espera de la visibilidad del repositorio",
+    "set.server.report_visibility_wait.d":
+      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice público, y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry":
+      "Informe: reintento de la visibilidad del repositorio",
+    "set.server.report_visibility_retry.d":
+      "Si GitHub no responde si un repositorio es público o privado, cuánto tarda Informe en volver a preguntar. 0 pregunta cada vez que se abre. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Intentos de reconexión de la terminal",
     "set.agents.pane_reconnect.d":
       "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Tras estos intentos fallidos dentro del tiempo de abajo, se detiene y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1124,6 +1162,8 @@
     "ag.stop": "Detener",
     "ag.closeShell": "Cerrar shell",
     "ag.closeShellTip": "Termina este shell y lo que se ejecuta en él",
+    "ag.newShell": "Nueva terminal",
+    "ag.newShellTip": "Inicia otro shell en la carpeta de este proyecto",
     "ag.shellClosed": "Se cerró {id}",
     "ag.resume": "Reanudar",
     "ag.stopName": "Detener {id}",
@@ -1536,6 +1576,18 @@
     "ag.mode.src.install": "el valor por defecto de todo Den",
     "ag.mode.src.persona": "su persona",
     "ag.mode.src.default": "el valor integrado de Den",
+    "ag.mode.item": "Modo: {m}",
+    "ag.mode.menu": "Modo de {id}",
+    "ag.mode.pick": "Cambiar el modo de {id}",
+    "ag.mode.follow": "Seguir el proyecto",
+    "ag.mode.setS":
+      "{id}: {m}, su propio ajuste. Den lo reinicia en su próxima pausa para aplicarlo.",
+    "ag.mode.setStopped":
+      "{id}: {m}, su propio ajuste. Lo aplica en su próximo inicio.",
+    "ag.mode.followS":
+      "{id} sigue el proyecto ahora: {m}. Den lo reinicia en su próxima pausa para aplicarlo.",
+    "ag.mode.followStopped":
+      "{id} sigue el proyecto ahora: {m}. Lo aplica en su próximo inicio.",
     "set.workspace.agents_mode":
       "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":
@@ -1996,6 +2048,9 @@
       "Sus subagentes (Explore también) usan {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Sus subagentes (Explore también) usan {model}: el valor por defecto de Den. Lo cambian agents.subagents.model o subagent_model de una persona.",
+    "ag.signIn": "con {label}",
+    "ag.signIn.tip":
+      "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
@@ -2427,7 +2482,14 @@
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
-      "Ningún nombre de host de edge apunta a este servidor, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y luego {cmd}.", // words-ok: the en string's own word, translated
+      "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
+    "set.ui.edgeStart": "Iniciar el edge",
+    "set.ui.edgeApply": "Aplicar",
+    "set.ui.edgeStarted": "Edge iniciado",
+    "set.ui.edgeCurrent": "Edge al día, no se reinició nada",
+    "set.ui.edgeRecreated":
+      "Edge recreado porque {why}; no se pudo alcanzar durante unos {s} s",
+    "set.ui.edgeWhy": "cambió su configuración",
     "set.ui.edgeHost": "Nombre de host de edge",
     "set.ui.pairScan":
       "Escanéalo con el otro dispositivo o abre allí el enlace. Funciona una vez, hasta que caduca (abajo), y deja ese navegador con la sesión iniciada para siempre.",
@@ -2445,7 +2507,8 @@
     "set.ui.portUnset": "Sin definir: se aplica el de la distribución",
     "set.ui.signedIn": "Sesión iniciada",
     "set.ui.signOut": "Cerrar sesión",
-    "set.ui.notSignedIn": "Sin sesión iniciada: ejecuta {cmd}",
+    "set.ui.notSignedIn": "Sin sesión iniciada",
+    "set.ui.signIn": "Iniciar sesión",
     "set.ui.savedIn": "Guardado en {vault}",
     "set.ui.theVault": "la bóveda",
     "set.ui.savedMemory": "Se guarda en memoria hasta que Den se reinicie",
@@ -2730,6 +2793,34 @@
     "set.notifications.fold_days.o.7": "7 días",
     "set.notifications.fold_days.o.14": "14 días",
     "set.notifications.fold_days.o.30": "30 días",
+    "set.notifications.phone": "Avisos en este dispositivo por push",
+    "set.notifications.phone.d":
+      "Abre __DEN_TITLE__ en tu teléfono y activa esto allí: cuando un agente te necesite, el teléfono lo mostrará, aunque __DEN_TITLE__ esté cerrado. Aquí funciona con todas las pestañas cerradas. Cada dispositivo lo activa para sí.",
+    "set.notifications.phone.none":
+      "Este navegador no puede recibir push. En un iPhone, añade __DEN_TITLE__ a la pantalla de inicio (Compartir y luego Añadir a pantalla de inicio) y ábrelo desde allí.",
+    "set.notifications.phone.failed": "No se pudo activar el push aquí.",
+    "set.notifications.quiet_from": "Inicio de las horas de silencio",
+    "set.notifications.quiet_from.d":
+      "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",
+    "set.notifications.quiet_to": "Fin de las horas de silencio",
+    "set.notifications.quiet_to.d":
+      "Los avisos fuera de la campana vuelven a esta hora.",
+    "set.notifications.quiet.off": "No",
+    "set.notifications.quiet.half":
+      "Las horas de silencio necesitan un inicio y un fin.",
+    "set.notifications.push_timeout": "Espera del push",
+    "set.notifications.push_timeout.d":
+      "Cuánto espera __DEN_TITLE__ a que un servicio de push acepte un aviso para un dispositivo. Pasado este tiempo, ese aviso se deja; el siguiente lo intenta de nuevo. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push guardado durante",
+    "set.notifications.push_ttl.d":
+      "Cuánto guarda un servicio de push un aviso para un dispositivo apagado o sin conexión, en segundos. 86400 es un día; 0 lo descarta si el dispositivo no está encendido ahora. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "Avisos en el escritorio",
+    "set.notifications.desktop.d":
+      "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
+    "set.notifications.desktop.denied":
+      "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
+    "set.notifications.desktop.none":
+      "Este navegador no puede mostrar notificaciones.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",
@@ -2744,7 +2835,7 @@
     "set.cli.local_dev.d":
       "Desactivado oculta Proyectos y las API de proyectos para ti. __DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: créalo una vez con claude setup-token y luego __DEN_CLI__ agents token set. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
+      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: la CLI de tus agentes lo crea cuando inicias sesión en ella, y tú lo pegas en Token de inicio de sesión, abajo. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "Si up y restart abren pestañas de terminal de forma predeterminada. __DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
@@ -2863,6 +2954,68 @@
       "Ninguno: los certificados están en la configuración incluida.",
     "edge.notConfigured": "Sin configurar",
     "edge.unreachable": "inaccesible",
+    // issue 171: values the pages show (value-words.js, log-history.ts).
+    "val.docker.created": "creado",
+    "val.docker.running": "en marcha",
+    "val.docker.paused": "en pausa",
+    "val.docker.restarting": "reiniciándose",
+    "val.docker.removing": "eliminándose",
+    "val.docker.exited": "detenido",
+    "val.docker.dead": "inservible (no se puede reiniciar)",
+    "val.docker.absent": "no existe",
+    "val.tls.none": "ninguno",
+    "val.tls.files": "archivos",
+    "val.gh.success": "correcto",
+    "val.gh.failure": "fallido",
+    "val.gh.error": "error",
+    "val.gh.cancelled": "cancelado",
+    "val.gh.timed_out": "tiempo agotado",
+    "val.gh.inactive": "inactivo",
+    "val.gh.in_progress": "en curso",
+    "val.gh.queued": "en cola",
+    "val.gh.pending": "pendiente",
+    "val.gh.waiting": "en espera",
+    "val.gh.requested": "solicitado",
+    "val.gh.skipped": "omitido",
+    "val.gh.action_required": "requiere acción",
+    "val.gh.neutral": "neutral",
+    "val.gh.stale": "obsoleto",
+    "val.gh.startup_failure": "no pudo iniciarse",
+    "val.perf.httpReqs": "Peticiones HTTP",
+    "val.perf.iterations": "Iteraciones",
+    "val.perf.vus": "Clientes virtuales (VU)",
+    "val.perf.httpAvg": "HTTP media",
+    "val.perf.httpP50": "HTTP p50",
+    "val.perf.httpP95": "HTTP p95",
+    "val.perf.httpP99": "HTTP p99",
+    "val.perf.httpMax": "HTTP máx.",
+    "val.perf.reqRate": "Peticiones / s",
+    "val.perf.iterRate": "Iteraciones / s",
+    "val.perf.failRate": "Tasa de fallos",
+    "val.h.twice": "{why}, dos veces seguidas",
+    "val.h.timeout": "tiempo agotado",
+    "val.h.noAnswer": "sin respuesta en {s} s",
+    "val.h.dns": "nombre no encontrado (DNS)",
+    "val.h.noRoute": "sin ruta (404)",
+    "val.h.fallback": "no es este servicio (localhost respondió con un error)",
+    "val.h.killed": "detenido por {signal}",
+    "val.h.exit": "la comprobación falló (código de salida {code})",
+    "val.h.refused": "conexión rechazada",
+    "val.h.reset": "conexión cortada",
+    "val.h.unreachable": "sin respuesta",
+    "val.h.tls": "certificado no aceptado",
+    "val.h.dockerUnknown": "Docker no respondió",
+    "val.h.noContainer": "no hay contenedor {name}",
+    "val.h.unhealthy": "{name}: no pasa su comprobación de estado",
+    "val.h.starting": "{name}: iniciándose",
+    "val.h.healthy": "{name}: en buen estado",
+    "val.h.container": "{name}: {state}",
+    "lg.why.badName": "no es un nombre válido de repo o servicio",
+    "lg.why.notLocal": "por ahora solo en local, no en {env}",
+    "lg.why.noProject": "no se sabe en qué proyecto está {name}",
+    "lg.why.noSource":
+      "{name} no tiene un contenedor en marcha ni un archivo de registro",
+    "lg.why.noSnapshot": "no se pudo copiar el registro del contenedor",
     // issue 171: the Environments page.
     "env.recheck": "Volver a comprobar",
     "env.checking": "comprobando…",

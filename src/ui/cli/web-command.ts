@@ -67,6 +67,7 @@ import {
   ownServer,
   processCwd,
   refuseForeignServer,
+  webReadyWaits,
   samePath,
 } from "./server-identity.js";
 
@@ -130,10 +131,6 @@ type BrowserOpenResult =
   | { status: "open-failed"; error: string }
   | { status: "skipped"; why: string };
 
-// Generous enough for a cold tsx start (the server now runs from live TS source
-// by default), so `den web` doesn't print a false "did not become ready" while
-// the server is in fact coming up.
-const WEB_START_TIMEOUT_MS = 45_000;
 const WEB_START_POLL_MS = 250;
 
 const BROWSER_APPS: Array<{
@@ -327,6 +324,7 @@ export { webProbeTarget };
 async function getHttpText(
   port: number,
   requestPath: string,
+  timeoutMs: number,
 ): Promise<{ statusCode: number; body: string } | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -344,7 +342,7 @@ async function getHttpText(
         host: to.host,
         port,
         path: requestPath,
-        timeout: 1_500,
+        timeout: timeoutMs,
         agent: false,
         setHost: false,
         // The CLI's bearer, as serverCall sends: an address beyond loopback
@@ -381,9 +379,12 @@ async function getHttpText(
  * `web up` reported a running server as not ready). A server too old for
  * server-info is asked /api/health, as before.
  */
-async function isDenWebApiRunning(port: number): Promise<boolean> {
+async function isDenWebApiRunning(
+  port: number,
+  probeMs: number,
+): Promise<boolean> {
   const json = async (p: string): Promise<unknown> => {
-    const response = await getHttpText(port, p);
+    const response = await getHttpText(port, p, probeMs);
     if (!response || response.statusCode !== 200) return undefined;
     try {
       return JSON.parse(response.body) as unknown;
@@ -401,8 +402,11 @@ async function isDenWebApiRunning(port: number): Promise<boolean> {
   return Array.isArray(await json("/api/health"));
 }
 
-async function isDenWebUiReady(port: number): Promise<boolean> {
-  const response = await getHttpText(port, "/index.html");
+async function isDenWebUiReady(
+  port: number,
+  probeMs: number,
+): Promise<boolean> {
+  const response = await getHttpText(port, "/index.html", probeMs);
   return (
     // 422: the "Config is invalid" page, the shell serving as it should.
     (response?.statusCode === 200 || response?.statusCode === 422) &&
@@ -411,8 +415,15 @@ async function isDenWebUiReady(port: number): Promise<boolean> {
   );
 }
 
-export async function isDenWebRunning(port: number): Promise<boolean> {
-  return (await isDenWebApiRunning(port)) && (await isDenWebUiReady(port));
+/** Den's web server answers on `port`; each probe waits `probeMs` (web.ready_probe_seconds). */
+export async function isDenWebRunning(
+  port: number,
+  probeMs = webReadyWaits().probeMs,
+): Promise<boolean> {
+  return (
+    (await isDenWebApiRunning(port, probeMs)) &&
+    (await isDenWebUiReady(port, probeMs))
+  );
 }
 
 function pidAlive(pid: number): boolean {
@@ -454,11 +465,13 @@ export function startupRefusal(logPath: string, offset = 0): string | null {
 }
 
 async function waitForDenWeb(port: number, pid?: number): Promise<boolean> {
-  const deadline = Date.now() + WEB_START_TIMEOUT_MS;
+  const { probeMs, startMs } = webReadyWaits();
+  const deadline = Date.now() + startMs;
   while (Date.now() < deadline) {
-    if (await isDenWebRunning(port)) return true;
+    if (await isDenWebRunning(port, probeMs)) return true;
     // A server that refused to start has exited: no point waiting it out.
-    if (pid !== undefined && !pidAlive(pid)) return isDenWebRunning(port);
+    if (pid !== undefined && !pidAlive(pid))
+      return isDenWebRunning(port, probeMs);
     await new Promise((resolve) => setTimeout(resolve, WEB_START_POLL_MS));
   }
   return false;
@@ -1455,9 +1468,12 @@ async function runWeb(args: string[]): Promise<void> {
   );
   if (ignored) console.log(chalk.yellow(`\n  ⚠ ${ignored}`));
 
-  const apiRunning = svc.handled || (await isDenWebApiRunning(options.port));
+  const { probeMs } = webReadyWaits();
+  const apiRunning =
+    svc.handled || (await isDenWebApiRunning(options.port, probeMs));
   let running =
-    svc.handled || (apiRunning && (await isDenWebUiReady(options.port)));
+    svc.handled ||
+    (apiRunning && (await isDenWebUiReady(options.port, probeMs)));
   let started: StartedServer | null = null;
 
   if (apiRunning && !running) {

@@ -116,6 +116,7 @@ import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
+import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -367,6 +368,8 @@ export interface ListedSession {
   persona?: string;
   runtime?: string;
   model?: string;
+  /** Issue 340: the label of the vendor account it runs on (never an email). */
+  signIn?: string;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -631,6 +634,7 @@ export function listedSessions(
             subagentModelFrom: r.subagentModelFrom,
           }
         : {}),
+      ...(rec.signIn ? { signIn: rec.signIn.label } : {}),
       ...(rec.version ? { version: rec.version } : {}),
       ...newerOf(rec),
       ...(rec.permission ? { permission: rec.permission } : {}),
@@ -727,6 +731,8 @@ export function listedSessions(
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
       ...(s.launchd ? { launchd: s.launchd } : {}),
       startedAt: s.startedAt,
+      // Issue 448: when a person last typed in it (the rail's Terminal).
+      ...(s.inputAt ? { inputAt: s.inputAt } : {}),
       attachable: true,
     });
   }
@@ -1407,7 +1413,8 @@ export async function handleSessionUpgrade(
     if (binary) {
       if (!exited && data.length) {
         client.write(s.ref.id, data);
-        d.typed(s.ref.id);
+        // Issue 142: the terminal's own answers aren't the person.
+        if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
       return;
     }
@@ -1425,8 +1432,9 @@ export async function handleSessionUpgrade(
         client.resize(s.ref.id, msg.cols, msg.rows);
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
-        client.write(s.ref.id, Buffer.from(msg.data, "utf-8"));
-        d.typed(s.ref.id);
+        const data = Buffer.from(msg.data, "utf-8");
+        client.write(s.ref.id, data);
+        if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
     }
   });

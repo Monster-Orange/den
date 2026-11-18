@@ -751,7 +751,14 @@
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
     "set.ui.noPairHost":
-      "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+      "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
+    "set.ui.edgeStart": "Start the edge",
+    "set.ui.edgeApply": "Apply",
+    "set.ui.edgeStarted": "Edge started",
+    "set.ui.edgeCurrent": "Edge up to date, nothing restarted",
+    "set.ui.edgeRecreated":
+      "Edge recreated because {why}; it was unreachable for about {s} s",
+    "set.ui.edgeWhy": "its settings changed",
     "set.ui.edgeHost": "Edge hostname",
     "set.ui.pairScan":
       "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good.",
@@ -768,7 +775,8 @@
     "set.ui.portUnset": "Not set: the distribution's applies",
     "set.ui.signedIn": "Signed in",
     "set.ui.signOut": "Sign out",
-    "set.ui.notSignedIn": "Not signed in: run {cmd}",
+    "set.ui.notSignedIn": "Not signed in",
+    "set.ui.signIn": "Sign in",
     "set.ui.savedIn": "Saved in {vault}",
     "set.ui.theVault": "the vault",
     "set.ui.savedMemory": "Held in memory until Den restarts",
@@ -1047,6 +1055,32 @@
     "set.notifications.fold_days.o.7": "7 days",
     "set.notifications.fold_days.o.14": "14 days",
     "set.notifications.fold_days.o.30": "30 days",
+    "set.notifications.phone": "Alerts on this device by push",
+    "set.notifications.phone.d":
+      "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+    "set.notifications.phone.none":
+      "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+    "set.notifications.phone.failed": "Couldn't turn on push here.",
+    "set.notifications.quiet_from": "Quiet hours start",
+    "set.notifications.quiet_from.d":
+      "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+    "set.notifications.quiet_to": "Quiet hours end",
+    "set.notifications.quiet_to.d":
+      "Alerts outside the bell start again at this time.",
+    "set.notifications.quiet.off": "Off",
+    "set.notifications.quiet.half": "Quiet hours need a start and an end.",
+    "set.notifications.push_timeout": "Push wait",
+    "set.notifications.push_timeout.d":
+      "How long __DEN_TITLE__ waits for a push service to take one alert for a device. After this, that alert is left; the next one tries again. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push kept for",
+    "set.notifications.push_ttl.d":
+      "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "Desktop alerts",
+    "set.notifications.desktop.d":
+      "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+    "set.notifications.desktop.denied":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+    "set.notifications.desktop.none": "This browser can't show notifications.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
@@ -1059,7 +1093,7 @@
     "set.agents.personas.d":
       "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
     "set.agents.keep_running.d":
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     "set.cli.local_dev.d":
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     "set.cli.cli_tabs.d":
@@ -1398,6 +1432,9 @@
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
+    "busy.modeW": "Setting {name}'s mode…",
+    "busy.modeS": "{name}'s mode is set.",
+    "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
     "keep.label": "Keep agents running after logout",
     "keep.warn":
       "Agents there sign in with a long-lived token from your secrets store, not the login keychain.",
@@ -1407,6 +1444,9 @@
     "keep.s": "Applied. __DEN_TITLE__ restarts.",
     "keep.needs": "Needs your admin password.",
     "keep.failed": "Not applied. Nothing changed.",
+    "busy.edgeW": "Starting the edge…",
+    "busy.edgeS": "Edge started",
+    "busy.edgeF": "The edge didn't start.",
     "keep.onNow": "On: agents keep running after you log out.",
     "keep.offNow": "Off: agents stop when you log out.",
     "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
@@ -1416,7 +1456,7 @@
     "keep.offer":
       "Not set yet, so agents stop when you log out. Turn it on and press Apply (it asks for your admin password once).",
     "keep.noToken":
-      "No sign-in token is set: agents will not be able to sign in after logout. Make one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "No sign-in token is set: agents will not be able to sign in after logout. {runtime} makes one when you sign in to it ({docs}); paste it into {field} below.",
     "keep.credKeychain":
       "The store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md).",
     "keep.setup":
@@ -1441,7 +1481,21 @@
     "keep.tokenSet": "Agents sign in with the token set {date}.",
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
-      "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "The sign-in token was set {n} days ago, and it lasts about a year. {runtime} makes a new one when you sign in to it ({docs}); paste it into {field} below.",
+    "keep.docs": "its sign-in docs",
+    "keep.runtimeAny": "Your agents' CLI",
+    "acct.title": "{vendor} accounts",
+    "acct.default": "{vendor} account {letter}",
+    "acct.add": "Add {vendor} account",
+    "acct.none": "No token.",
+    "acct.set": "Token set {date}.",
+    "acct.setUnknown": "Token set.",
+    "acct.first": "Agents sign in with this one.",
+    "acct.tokenLabel": "Sign-in token for {name}",
+    "acct.tokenSave": "Set sign-in token",
+    "acct.up": "Move up",
+    "acct.down": "Move down",
+    "acct.failed": "Not saved: {error}",
     "busy.askAllowW": "Asking…",
     "busy.askAllowS": "Asked. Allow it in the dialog.",
     "busy.askAllowF": "Couldn't ask.",
@@ -1788,6 +1842,12 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "Readiness check, in seconds",
+    "set.server.ready_probe.d":
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "Start wait, in seconds",
+    "set.server.start_wait.d":
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
@@ -1797,6 +1857,16 @@
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "Report: repository visibility kept for",
+    "set.server.report_visibility_cache.d":
+      "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait": "Report: repository visibility wait",
+    "set.server.report_visibility_wait.d":
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "Report: repository visibility retry",
+    "set.server.report_visibility_retry.d":
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Terminal reconnect tries",
     "set.agents.pane_reconnect.d":
       "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1936,6 +2006,8 @@
     "ag.stop": "Stop",
     "ag.closeShell": "Close shell",
     "ag.closeShellTip": "End this shell and anything running in it",
+    "ag.newShell": "New terminal",
+    "ag.newShellTip": "Start another shell in this project's folder",
     "ag.shellClosed": "Closed {id}",
     "ag.resume": "Resume",
     "ag.stopName": "Stop {id}",
@@ -2333,6 +2405,18 @@
     "ag.mode.src.install": "the Den-wide default",
     "ag.mode.src.persona": "its persona",
     "ag.mode.src.default": "Den's built-in default",
+    "ag.mode.item": "Mode: {m}",
+    "ag.mode.menu": "{id}'s mode",
+    "ag.mode.pick": "Change {id}'s mode",
+    "ag.mode.follow": "Follow project",
+    "ag.mode.setS":
+      "{id}: {m}, its own setting. Den restarts it at its next idle to take it.",
+    "ag.mode.setStopped":
+      "{id}: {m}, its own setting. It takes it at its next start.",
+    "ag.mode.followS":
+      "{id} follows the project now: {m}. Den restarts it at its next idle to take it.",
+    "ag.mode.followStopped":
+      "{id} follows the project now: {m}. It takes it at its next start.",
     "set.workspace.agents_mode":
       "Agents' mode: this project (overrides the Den-wide default)",
     "set.workspace.agents_mode.d":
@@ -2782,6 +2866,9 @@
       "Its subagents (Explore too) run on {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Its subagents (Explore too) run on {model}: Den's default. agents.subagents.model or a persona's subagent_model changes it.",
+    "ag.signIn": "on {label}",
+    "ag.signIn.tip":
+      "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
@@ -2927,6 +3014,67 @@
     "edge.cert.none": "None: the included config holds the certs.",
     "edge.notConfigured": "Not configured",
     "edge.unreachable": "unreachable",
+    // issue 171: values the pages show (value-words.js, log-history.ts).
+    "val.docker.created": "created",
+    "val.docker.running": "running",
+    "val.docker.paused": "paused",
+    "val.docker.restarting": "restarting",
+    "val.docker.removing": "removing",
+    "val.docker.exited": "stopped",
+    "val.docker.dead": "dead (can't restart)",
+    "val.docker.absent": "not found",
+    "val.tls.none": "none",
+    "val.tls.files": "files",
+    "val.gh.success": "succeeded",
+    "val.gh.failure": "failed",
+    "val.gh.error": "error",
+    "val.gh.cancelled": "cancelled",
+    "val.gh.timed_out": "timed out",
+    "val.gh.inactive": "inactive",
+    "val.gh.in_progress": "in progress",
+    "val.gh.queued": "queued",
+    "val.gh.pending": "pending",
+    "val.gh.waiting": "waiting",
+    "val.gh.requested": "requested",
+    "val.gh.skipped": "skipped",
+    "val.gh.action_required": "action required",
+    "val.gh.neutral": "neutral",
+    "val.gh.stale": "stale",
+    "val.gh.startup_failure": "failed to start",
+    "val.perf.httpReqs": "HTTP requests",
+    "val.perf.iterations": "Iterations",
+    "val.perf.vus": "Virtual clients (VUs)",
+    "val.perf.httpAvg": "HTTP avg",
+    "val.perf.httpP50": "HTTP p50",
+    "val.perf.httpP95": "HTTP p95",
+    "val.perf.httpP99": "HTTP p99",
+    "val.perf.httpMax": "HTTP max",
+    "val.perf.reqRate": "Requests / sec",
+    "val.perf.iterRate": "Iterations / sec",
+    "val.perf.failRate": "Failure rate",
+    "val.h.twice": "{why}, twice in a row",
+    "val.h.timeout": "timed out",
+    "val.h.noAnswer": "no answer in {s} s",
+    "val.h.dns": "name not found (DNS)",
+    "val.h.noRoute": "no route for it (404)",
+    "val.h.fallback": "not this service (localhost answered with an error)",
+    "val.h.killed": "stopped by {signal}",
+    "val.h.exit": "check failed (exit code {code})",
+    "val.h.refused": "connection refused",
+    "val.h.reset": "connection dropped",
+    "val.h.unreachable": "no answer",
+    "val.h.tls": "certificate not accepted",
+    "val.h.dockerUnknown": "Docker didn't answer",
+    "val.h.noContainer": "no container {name}",
+    "val.h.unhealthy": "{name}: failing its health check",
+    "val.h.starting": "{name}: starting",
+    "val.h.healthy": "{name}: healthy",
+    "val.h.container": "{name}: {state}",
+    "lg.why.badName": "not a valid repo or service name",
+    "lg.why.notLocal": "only on local for now, not on {env}",
+    "lg.why.noProject": "can't tell which project {name} is in",
+    "lg.why.noSource": "{name} has no running container or log file",
+    "lg.why.noSnapshot": "couldn't copy the container's log",
     // issue 171: the Environments page.
     "env.recheck": "Re-check",
     "env.checking": "checking…",
@@ -3698,6 +3846,10 @@
     pinUrls: {},
     pinOff: {},
     svpOpen: null,
+    // Issue 402: with the view filtered to one project, its repos (the
+    // Workspace menu's model, header.js); the rail shows only their pins.
+    // null: no filter, every pin. It never changes the pins themselves.
+    pinRepos: null,
   };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
@@ -3777,6 +3929,19 @@
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;
   }
+  /**
+   * Issue 402: the pins the rail shows. Filtered to one project, a pin
+   * ("repo" or "repo/service") shows when its repo is one of the
+   * project's (workspace-picker.js projectRepos); with no filter, every
+   * pin.
+   */
+  function pinsShown() {
+    var repos = state.pinRepos;
+    if (!Array.isArray(repos)) return state.pins.slice();
+    return state.pins.filter(function (p) {
+      return repos.indexOf(String(p).split("/")[0]) >= 0;
+    });
+  }
   function pin(id) {
     if (isPinned(id)) return;
     setState({ pins: state.pins.concat([id]) });
@@ -3847,16 +4012,19 @@
    * 0.4.45: a toast never covers a line a page marks data-toast-clear
    * (the terminal's "To" line: who the keyboard types to). It moves up
    * until it sits above every such line it would cover. A page may draw
-   * that line just after the toast shows, so it looks again a moment later.
+   * that line after the toast shows (issue 448: a toast up before a
+   * terminal's pane opens), so it looks again every 250 ms while it shows.
    */
   function clearOfMarked(el, again) {
     if (!el || !el.getBoundingClientRect || !document.querySelectorAll) return;
-    if (!again)
-      [120, 500].forEach(function (ms) {
-        setTimeout(function () {
-          if (el.isConnected) clearOfMarked(el, true);
-        }, ms);
-      });
+    if (!again) {
+      var look = function () {
+        if (!el.isConnected) return;
+        clearOfMarked(el, true);
+        setTimeout(look, 250);
+      };
+      setTimeout(look, 120);
+    }
     var marks = document.querySelectorAll("[data-toast-clear]");
     for (var pass = 0; pass < 4; pass++) {
       var r = el.getBoundingClientRect();
@@ -4718,6 +4886,11 @@
   function setWorkspaces(model) {
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
+    // Issue 402: the pins follow the project filter (a repaint only).
+    var pinRepos =
+      model && Array.isArray(model.pinRepos) ? model.pinRepos.slice() : null;
+    if (JSON.stringify(pinRepos) !== JSON.stringify(state.pinRepos))
+      setState({ pinRepos: pinRepos });
     var btn = document.getElementById("ws-pill");
     if (!btn) return;
     var sep = btn.nextElementSibling;
@@ -4835,9 +5008,10 @@
   function railModel() {
     var groups = [];
     var entries = [];
-    if (state.pins.length) {
+    var shown = pinsShown();
+    if (shown.length) {
       groups.push({ id: "pinned", label: t("g.pinned") });
-      state.pins.forEach(function (p) {
+      shown.forEach(function (p) {
         // 0.4.18: the row (named by the id alone) opens the service's
         // panel in place (svc-panel.js); it is still the link to
         // Services, so ⌘-click and middle-click open that in a new

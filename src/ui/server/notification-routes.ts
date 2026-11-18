@@ -2,7 +2,8 @@
  * NT-1 / NT-2 / NT-3: the bell's routes.
  *   POST /api/agents/self/attention  an agent (its actor token only) says it
  *        waits for its person, went on, or finished its turn:
- *        {event: waiting|resumed|finished, why?, from?, text?, hooked?}.
+ *        {event: waiting|resumed|finished, why?, from?, text?, question?,
+ *        hooked?}.
  *        Which agent comes from the token, never the body.
  *   GET  /api/notifications          the bell: {unread, groups, older,
  *                                     off, foldDays, mutes}. Bell v6: only
@@ -16,6 +17,13 @@
  *                                     unmutes.
  *   POST /api/notifications/looking  NT-2: a page shows these agents now,
  *                                     visible and focused: {agents: [...]}.
+ *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
+ *                                     for an open tab to show (alert-feed.ts),
+ *                                     {seq, alerts}; the person's only.
+ *   GET  /api/alerts/push-key        S2: this install's VAPID public key.
+ *   POST /api/alerts/subscribe       S2: {subscription} (a device's
+ *                                     PushSubscription.toJSON()).
+ *   POST /api/alerts/unsubscribe     S2: {endpoint}.
  * An agent reads the bell (notifications_list) but changes nothing in it
  * but its own attention.
  */
@@ -31,6 +39,8 @@ import {
   type Which,
 } from "../../shared/notifications.js";
 import type { Attention, WaitingWhy } from "./attention.js";
+import type { AlertFeed } from "./alert-feed.js";
+import { parseSubscription, type PushSubscriptions } from "./web-push.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf } from "./request-guard.js";
 
@@ -41,6 +51,10 @@ export const NOTIFICATION_PATHS = [
   "/api/notifications/clear",
   "/api/notifications/mute",
   "/api/notifications/looking",
+  "/api/alerts",
+  "/api/alerts/push-key",
+  "/api/alerts/subscribe",
+  "/api/alerts/unsubscribe",
 ] as const;
 
 export const isNotificationPath = (p: string) =>
@@ -53,6 +67,10 @@ export interface NotificationRouteDeps {
   asks?: { limit: AskLimit; perHour: () => number };
   /** Bell v6: the person's kinds and fold (absent: the defaults). */
   prefs?: () => BellPrefs;
+  /** Issue 172: the alerts an open tab shows (absent: none). */
+  alerts?: AlertFeed;
+  /** Issue 172 S2: the person's devices, and this install's public key. */
+  push?: { subs: PushSubscriptions; publicKey: () => string };
 }
 
 async function jsonBody(
@@ -170,13 +188,53 @@ export async function handleNotificationRoutes(
               from:
                 b?.from === "prompt" || b?.from === "session" ? b.from : "tool",
             }
-          : { event: "finished", text: str(b?.text) },
+          : {
+              event: "finished",
+              text: str(b?.text),
+              // Issue 142: the question its turn ended on (the hook's).
+              question: str(b?.question),
+            },
     );
     // Issue 101: the question went to the project's lead (its name).
     sendJson(res, {
       ok: true,
       ...(routed ? { lead: deps.attention.nameOf(routed.lead) } : {}),
     });
+    return true;
+  }
+
+  if (pathname === "/api/alerts") {
+    if (method !== "GET")
+      return (refuse(res, 405, "method", "GET only."), true);
+    if (agent) {
+      refuse(res, 403, "person_only", "Alerts are the person's.");
+      return true;
+    }
+    const raw = new URL(req.url ?? "/", "http://x").searchParams.get("after");
+    const after = raw !== null && /^\d{1,12}$/.test(raw) ? Number(raw) : null;
+    res.setHeader("Cache-Control", "no-store");
+    sendJson(res, {
+      ok: true,
+      ...(deps.alerts?.after(after) ?? { seq: 0, alerts: [] }),
+    });
+    return true;
+  }
+
+  if (pathname === "/api/alerts/push-key") {
+    if (method !== "GET")
+      return (refuse(res, 405, "method", "GET only."), true);
+    if (agent || !deps.push) {
+      refuse(res, 403, "person_only", "Alerts are the person's.");
+      return true;
+    }
+    let publicKey: string;
+    try {
+      publicKey = deps.push.publicKey();
+    } catch {
+      refuse(res, 500, "no_key", "This install has no push key.");
+      return true;
+    }
+    sendJson(res, { ok: true, publicKey });
     return true;
   }
 
@@ -219,6 +277,29 @@ export async function handleNotificationRoutes(
     return true;
   }
   const b = (await jsonBody(req)) ?? {};
+  if (pathname === "/api/alerts/subscribe") {
+    const sub = parseSubscription(b.subscription);
+    if (!sub || !deps.push) {
+      refuse(
+        res,
+        400,
+        "bad_subscription",
+        "subscription is a device's push subscription: an https endpoint and its keys.",
+      );
+      return true;
+    }
+    deps.push.subs.add(sub);
+    sendJson(res, { ok: true });
+    return true;
+  }
+  if (pathname === "/api/alerts/unsubscribe") {
+    const endpoint = str(b.endpoint, 2048);
+    sendJson(res, {
+      ok: true,
+      removed: !!endpoint && !!deps.push?.subs.remove(endpoint),
+    });
+    return true;
+  }
   if (pathname === "/api/notifications/looking") {
     const agents = Array.isArray(b.agents)
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)

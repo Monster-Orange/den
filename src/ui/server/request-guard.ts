@@ -790,6 +790,10 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/keep-running-after-logout",
   // #299: the agents' sign-in token, into the secrets store: a person's.
   "/api/agents/signin-token",
+  // Issue 339: the agents' sign-in accounts: a person's.
+  "/api/agents/accounts",
+  "/api/agents/accounts/token",
+  "/api/agents/accounts/order",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",
@@ -842,6 +846,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/notifications/clear",
   "/api/notifications/mute",
   "/api/notifications/looking",
+  // Issue 172: the person's devices for push alerts.
+  "/api/alerts/subscribe",
+  "/api/alerts/unsubscribe",
   // This install's Hub link.
   "/api/hub/connect",
   "/api/hub/disconnect",

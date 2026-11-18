@@ -120,6 +120,11 @@ export const en = {
   "kit.report.cancel": "Cancel",
   "kit.report.dest": "Goes to",
   "kit.report.pub": "Public repository",
+  "kit.report.priv": "Private repository",
+  "kit.report.int": "Internal repository",
+  "kit.report.privN": "Only people with access to this repository can see it.",
+  "kit.report.privW":
+    "Only people with access to this repository can see it: {who}.",
   "kit.report.pubW":
     "Screenshots and text are visible to everyone. Mask anything private.",
   "kit.report.incH": "What goes with your report",
@@ -182,6 +187,24 @@ export const en = {
   "kit.report.copyFailed":
     "Could not copy. Select the text and copy it yourself.",
   "kit.report.copyH": "Copy the report",
+  // The Markdown editor (markdown-editor.js, 0.7.5): its toolbar.
+  "kit.md.toolbar": "Formatting",
+  "kit.md.toolKey": "{name} ({key})",
+  "kit.md.bold": "Bold",
+  "kit.md.italic": "Italic",
+  "kit.md.code": "Code",
+  "kit.md.link": "Link",
+  "kit.md.heading": "Heading",
+  "kit.md.bulleted": "Bulleted list",
+  "kit.md.numbered": "Numbered list",
+  "kit.md.quote": "Quote",
+  "kit.md.linkText": "text",
+  // The save-state line (savestate.js). "Saved" has no closing stop.
+  "kit.savestate.saving": "Saving…",
+  "kit.savestate.saved": "Saved",
+  "kit.savestate.error": "Not saved. Retrying…",
+  "kit.savestate.copy": "Copy text",
+  "kit.savestate.savedAt": "Saved at {time}",
 };
 
 export const es = {
@@ -296,6 +319,11 @@ export const es = {
   "kit.report.cancel": "Cancelar",
   "kit.report.dest": "Va a",
   "kit.report.pub": "Repositorio público",
+  "kit.report.priv": "Repositorio privado",
+  "kit.report.int": "Repositorio interno",
+  "kit.report.privN": "Solo lo ve quien tiene acceso a este repositorio.",
+  "kit.report.privW":
+    "Solo lo ve quien tiene acceso a este repositorio: {who}.",
   "kit.report.pubW":
     "Las capturas y el texto los ve todo el mundo. Tapa lo que sea privado.",
   "kit.report.incH": "Qué va con tu informe",
@@ -362,6 +390,22 @@ export const es = {
   "kit.report.copyFailed":
     "No se pudo copiar. Selecciona el texto y cópialo tú.",
   "kit.report.copyH": "Copia el informe",
+  "kit.md.toolbar": "Formato",
+  "kit.md.toolKey": "{name} ({key})",
+  "kit.md.bold": "Negrita",
+  "kit.md.italic": "Cursiva",
+  "kit.md.code": "Código",
+  "kit.md.link": "Enlace",
+  "kit.md.heading": "Encabezado",
+  "kit.md.bulleted": "Lista con viñetas",
+  "kit.md.numbered": "Lista numerada",
+  "kit.md.quote": "Cita",
+  "kit.md.linkText": "texto",
+  "kit.savestate.saving": "Guardando…",
+  "kit.savestate.saved": "Guardado",
+  "kit.savestate.error": "No se guardó. Reintentando…",
+  "kit.savestate.copy": "Copiar texto",
+  "kit.savestate.savedAt": "Guardado a las {time}",
 };
 
 export const ja = {
@@ -471,6 +515,11 @@ export const ja = {
   "kit.report.cancel": "キャンセル",
   "kit.report.dest": "送り先",
   "kit.report.pub": "公開リポジトリ",
+  "kit.report.priv": "非公開リポジトリ",
+  "kit.report.int": "内部リポジトリ",
+  "kit.report.privN": "このリポジトリにアクセスできる人だけが見られます。",
+  "kit.report.privW":
+    "このリポジトリにアクセスできる人だけが見られます（{who}）。",
   "kit.report.pubW":
     "スクリーンショットとテキストは誰でも見られます。見せたくない部分は隠してください。",
   "kit.report.incH": "報告に添えるもの",
@@ -537,6 +586,22 @@ export const ja = {
   "kit.report.copyFailed":
     "コピーできませんでした。テキストを選んでコピーしてください。",
   "kit.report.copyH": "報告をコピー",
+  "kit.md.toolbar": "書式",
+  "kit.md.toolKey": "{name}（{key}）",
+  "kit.md.bold": "太字",
+  "kit.md.italic": "斜体",
+  "kit.md.code": "コード",
+  "kit.md.link": "リンク",
+  "kit.md.heading": "見出し",
+  "kit.md.bulleted": "箇条書き",
+  "kit.md.numbered": "番号付きリスト",
+  "kit.md.quote": "引用",
+  "kit.md.linkText": "テキスト",
+  "kit.savestate.saving": "保存しています…",
+  "kit.savestate.saved": "保存しました",
+  "kit.savestate.error": "保存できていません。再試行しています…",
+  "kit.savestate.copy": "テキストをコピー",
+  "kit.savestate.savedAt": "{time} に保存しました",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */

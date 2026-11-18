@@ -89,6 +89,12 @@ export interface AgentRecord {
    * config still allows (AG-14).
    */
   grants?: string[];
+  /**
+   * Issue 340: the sign-in its current session started on under the
+   * always-on service (pickAccount): its id and label, never an email or
+   * a token. Unset: none was picked (desktop sign-in, or no token).
+   */
+  signIn?: { id: string; label: string };
   /** When its session was seen to end on its own (AG-14: "Exited"). */
   endedAt?: string;
   /** That session's exit code, when the host said it. */
@@ -140,6 +146,12 @@ export interface AgentRecord {
   version?: string;
   /** The permission intent it was started with (AG-13), when one was set. */
   permission?: PermissionIntent;
+  /**
+   * Issue 252: the mode its running session was started in, when a mode
+   * set for it since (`permission`, its own setting) hasn't reached it
+   * yet. Cleared at its next launch.
+   */
+  startedIn?: PermissionIntent;
   /**
    * The extra allowed commands it was started with (AG-13.4: plain
    * prefixes; its role's preset comes on top), when set for it.

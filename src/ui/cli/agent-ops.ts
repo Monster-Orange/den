@@ -317,10 +317,16 @@ import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
   agentTokenRef,
-  agentTokenRefName,
   readAgentToken,
   tokenStatusLine,
 } from "../../shared/agents/signin-token.js";
+import {
+  accountRefName,
+  firstAccount,
+  pickAccount,
+  type AccountSource,
+  type PickDeps,
+} from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
@@ -411,6 +417,13 @@ export interface AgentsDeps extends SessionsDeps {
     provider: SecretsProvider;
     ref: SecretRef | null;
   };
+  /**
+   * Issue 340: the sign-in source (slice 6) that maps a folder to a
+   * sign-in and reports the active one (default: none is set).
+   */
+  signInSource?: () => AccountSource | null;
+  /** Issue 340: a sign-in that hit its usage cap (slice 4; default: none). */
+  signInCapped?: (runtimeId: string, accountId: string) => boolean;
   /** 0.4.48: this machine's processes (default: ps), for jobs an agent left running. */
   processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
@@ -480,6 +493,8 @@ export interface AgentsResolved extends Resolved {
     tokenEnv: string | undefined,
     /** Issue 338: whose token (the runtime's id; unset: Claude Code's). */
     runtimeId?: string,
+    /** Issue 340: the agent's folder, for the sign-in source's mapping. */
+    folder?: string,
   ) => Promise<AgentSignIn>;
 }
 
@@ -487,6 +502,8 @@ export interface AgentsResolved extends Resolved {
 export interface AgentSignIn {
   env: Record<string, string>;
   warning?: string;
+  /** Issue 340: the sign-in picked (its label; never an email). */
+  account?: { id: string; label: string };
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -769,7 +786,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
     processes: d.processes ?? readProcesses,
-    agentSignIn: (tokenEnv, runtimeId) =>
+    agentSignIn: (tokenEnv, runtimeId, folder) =>
       agentSignInEnv(
         tokenEnv,
         base.env,
@@ -777,6 +794,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
         base.cli,
         d.signInStore,
         runtimeId,
+        {
+          ...(folder !== undefined ? { folder } : {}),
+          source: d.signInSource?.() ?? null,
+          ...(d.signInCapped ? { capped: d.signInCapped } : {}),
+        },
       ),
   });
 }
@@ -801,27 +823,64 @@ export async function agentSignInEnv(
    * (agentTokenRefName), so a vendor's token reaches its agents only.
    */
   runtimeId = "den-claude",
+  /**
+   * Issue 340: the agent's folder, the sign-in source (slice 6) and the
+   * cap (slice 4), for pickAccount. None: Den's order, as before.
+   */
+  pick: Pick<PickDeps, "folder" | "source" | "capped"> = {},
 ): Promise<AgentSignIn> {
   if (!tokenEnv || agentSignInMode(env, stateDir) !== "token")
     return { env: {} };
-  const refName = agentTokenRefName(runtimeId);
-  const s = store?.(refName);
-  const r = await readAgentToken(
-    s
-      ? { provider: () => s.provider, ref: () => s.ref }
-      : { ref: () => agentTokenRef(undefined, undefined, refName) },
-  );
-  if (r.token) return { env: { [tokenEnv]: r.token } };
+  // Issue 340: the folder's sign-in, else the active one, else the first
+  // in the person's order that is not capped (account one, the token that
+  // exists today, unless they changed it).
+  const { picked, misses } = await pickAccount({
+    ...pick,
+    stateDir,
+    runtimeId,
+    read: (name) => {
+      const s = store?.(name);
+      return readAgentToken(
+        s
+          ? { provider: () => s.provider, ref: () => s.ref }
+          : { ref: () => agentTokenRef(undefined, undefined, name) },
+      );
+    },
+  });
+  if (picked)
+    return {
+      env: { [tokenEnv]: picked.token },
+      account: { id: picked.account.id, label: picked.label },
+    };
+  // None: what the start says is about the first in the order, as before.
+  const acct = firstAccount(stateDir, runtimeId);
+  const refName = accountRefName(runtimeId, acct.id);
+  const reason = misses.find((m) => m.id === acct.id)?.reason;
+  const r = { reason: reason ?? "not set" };
   // Not Claude Code's: made with its own command, kept under its own ref.
   const how =
     refName === AGENT_TOKEN_REF_NAME
       ? undefined
-      : {
-          make:
-            getRuntime(runtimeId)?.catalog?.signIn?.command ??
-            "its sign-in command",
-          set: `set secrets.refs.${refName} in your user.yml`,
-        };
+      : acct.id !== "1"
+        ? {
+            make:
+              getRuntime(runtimeId)?.catalog?.signIn?.command ??
+              "its sign-in command",
+            // One string, so the command reads as code (inline backticks).
+            set: "`{cli} agents accounts set-token {id}`"
+              .replace("{cli}", cli)
+              .replace(
+                "{id}",
+                acct.id +
+                  (runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`),
+              ),
+          }
+        : {
+            make:
+              getRuntime(runtimeId)?.catalog?.signIn?.command ??
+              "its sign-in command",
+            set: `set secrets.refs.${refName} in your user.yml`,
+          };
   return {
     env: {},
     warning: `⚠ ${tokenStatusLine({ mode: "token", configured: r.reason !== "not set", stored: false, setAt: null, ageDays: null, old: false, warnDays: 0, store: "", ...(r.reason ? { reason: r.reason } : {}) }, cli, undefined, how).text}`,
@@ -1030,6 +1089,8 @@ export interface AgentRow {
   resumeOnRestart?: boolean;
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
+  /** Issue 340: the label of the vendor account it runs on (never an email). */
+  signIn?: string;
   outcome?: AgentRecord["outcome"];
   usage?: AgentRecord["usage"];
   /**
@@ -1196,6 +1257,7 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
     ...(rec.resumeOnRestart !== undefined
       ? { resumeOnRestart: rec.resumeOnRestart }
       : {}),
+    ...(rec.signIn ? { signIn: rec.signIn.label } : {}),
     ...newerOf(rec),
     workspace: rec.workspace,
     cwd: rec.cwd,
@@ -2852,7 +2914,11 @@ async function startSession(
 ): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
-  const signIn = await d.agentSignIn(launch.tokenEnv, launch.rec.runtime);
+  const signIn = await d.agentSignIn(
+    launch.tokenEnv,
+    launch.rec.runtime,
+    launch.rec.cwd,
+  );
   const tty = d.stdout.isTTY;
   const minted = mintActorToken(d.stateDir(), {
     agentId: launch.rec.id,
@@ -2911,6 +2977,11 @@ async function startSession(
   delete rec.exitCode;
   delete rec.interruptedAt;
   delete rec.restartFailed;
+  // Issue 252: it runs in `permission` now.
+  delete rec.startedIn;
+  // Issue 340: the sign-in this session runs on (its label only).
+  if (signIn.account) rec.signIn = { ...signIn.account };
+  else delete rec.signIn;
   writeRecord(d.stateDir(), rec);
   return {
     rec,
@@ -5482,6 +5553,12 @@ export function setAgentPermission(
     next.overrides = [...rest, "permission"];
   } else if (rest.length) next.overrides = rest;
   else delete next.overrides;
+  // Issue 252: `permission` is also the mode its session was started in.
+  // A running agent keeps that one in startedIn until its next launch, so
+  // Den's mode check sees the change and restarts it at its next idle.
+  const ran = rec.startedIn ?? rec.permission;
+  if (!rec.stoppedAt && ran && ran !== next.permission) next.startedIn = ran;
+  else delete next.startedIn;
   writeRecord(d.stateDir(), next);
   return next;
 }
@@ -6701,6 +6778,8 @@ export async function modeDrift(
     id: string;
     workspace: string;
     want: PermissionIntent;
+    /** Issue 252: where `want` comes from. */
+    source: ModeSource;
     running?: PermissionIntent;
   }[]
 > {
@@ -6717,6 +6796,7 @@ export async function modeDrift(
     id: string;
     workspace: string;
     want: PermissionIntent;
+    source: ModeSource;
     running?: PermissionIntent;
   }[] = [];
   for (const rec of listRecords(d.stateDir())) {
@@ -6726,8 +6806,11 @@ export async function modeDrift(
     const p = find(rec);
     if (!rt?.permissions || !p) continue;
     let want: PermissionIntent | undefined;
+    let source: ModeSource = "default";
     try {
-      want = permissionNow(d, rec, p, rt);
+      const eff = effectiveMode(d, rec, p, rt);
+      want = eff?.mode;
+      if (eff) source = eff.source;
     } catch {
       continue; // a bad mode: its next start says so
     }
@@ -6737,12 +6820,13 @@ export async function modeDrift(
     // Only a mode Den knows the agent runs in can differ: none recorded
     // (an older record, one written by hand) and none on its command line
     // is not drift, and never restarts a running agent.
-    const ran = running ?? rec.permission;
+    const ran = running ?? rec.startedIn ?? rec.permission;
     if (want && ran && want !== ran)
       out.push({
         id: rec.id,
         workspace: rec.workspace,
         want,
+        source,
         ...(running ? { running } : {}),
       });
   }
@@ -6787,6 +6871,7 @@ export function modeResolver(
     if (!eff || !want) return undefined;
     const running =
       (pid ? runningIntent(pid, rec.resumeToken, commandLineOf) : undefined) ??
+      rec.startedIn ??
       rec.permission;
     const own = eff.source === "own";
     let followed: PermissionIntent | undefined;
@@ -6803,6 +6888,27 @@ export function modeResolver(
       ...(own ? { own: true as const, ...(followed ? { followed } : {}) } : {}),
     };
   };
+}
+
+/** Issue 252: a restart Den made on its own to apply an agent's mode. */
+export interface ModeRestarted {
+  agent: string;
+  project: string;
+  mode: PermissionIntent;
+  source: ModeSource;
+}
+
+const MODE_SOURCE_WORDS: Record<ModeSource, string> = {
+  own: "its own setting",
+  project: "its project",
+  install: "the Den-wide default",
+  persona: "its persona",
+  default: "Den's default",
+};
+
+/** Issue 252: the audit row's words for a restart for a mode. */
+export function modeRestartDetail(e: ModeRestarted): string {
+  return `restarted ${e.agent} in ${e.project} at idle to take mode ${e.mode}, from ${MODE_SOURCE_WORDS[e.source]}, by Den itself`;
 }
 
 export interface ModeCheck {
@@ -6823,6 +6929,8 @@ export function modeCheck(
     log?: (line: string) => void;
     /** Drill (b): a process's command line (default: ps). */
     commandLineOf?: CommandLineOf;
+    /** Issue 252: each restart it made (the web server's audit row). */
+    onRestarted?: (e: ModeRestarted) => void;
   } = {},
 ): ModeCheck {
   const running = new Map<string, Promise<void>>();
@@ -6835,9 +6943,17 @@ export function modeCheck(
         const p = restartAgent(d, m.id, m.workspace, "after-turn", {
           pollMs: opts.pollMs,
         })
-          .then(() =>
-            opts.log?.(`agent ${m.id}: restarted after its turn in ${m.want}`),
-          )
+          .then((done) => {
+            // Another request restarted it meanwhile: not Den's restart.
+            if (done.already) return;
+            opts.log?.(`agent ${m.id}: restarted after its turn in ${m.want}`);
+            opts.onRestarted?.({
+              agent: m.id,
+              project: m.workspace,
+              mode: m.want,
+              source: m.source,
+            });
+          })
           .catch((e: unknown) =>
             opts.log?.(
               `agent ${m.id}: not restarted for its mode: ${(e as Error)?.message ?? e}`,

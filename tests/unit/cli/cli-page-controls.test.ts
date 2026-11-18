@@ -74,7 +74,8 @@ const LISTING: Record<string, Entry> = {
   "workspace seed": script("seeds the default project"),
 
   "web token": script("prints a credential for scripts; never on a page"),
-  "web login": page("settings-registry.js", "/api/web/pair"),
+  // Issue 393: Settings › Browser sign-in's Sign in button.
+  "web login": page("settings-registry.js", 'id="set-signin"'),
   "web sessions": R,
   "web logout": page("settings-registry.js", "data-signout-all"),
   "web owner": page("settings-registry.js", "/api/web/owner"),
@@ -82,7 +83,8 @@ const LISTING: Record<string, Entry> = {
   "web claim-link": script("a setup link for a new device, from a shell"),
   "web url": page("settings-registry.js", "/api/web-url"),
 
-  "edge up": slot("0.4.47", "start the edge"),
+  // Issue 395: Settings › Access › Start the edge (Apply, when it runs).
+  "edge up": page("settings-registry.js", "/api/edge/up"),
   "edge down": slot("0.4.47", "stop the edge"),
   "edge trust": slot("0.4.47", "trust the local certificate"),
   "edge untrust": slot("0.4.47", "untrust the local certificate"),
@@ -167,6 +169,24 @@ const LISTING: Record<string, Entry> = {
   // pasted at a prompt there or piped in, never through a page.
   "agents token": script(
     "the agents' sign-in token, pasted at a terminal prompt or piped in",
+  ),
+  // Issue 339: each vendor's accounts, under Settings › Keep agents running
+  // after logout (one row per account). `agents accounts` lists them on the
+  // page; each subcommand has its control there, but remove.
+  "agents accounts": page("settings-registry.js", "data-acct-runtime"),
+  "agents accounts list": page("settings-registry.js", "data-acct-runtime"),
+  "agents accounts add": page("settings-registry.js", '"/api/agents/accounts"'),
+  "agents accounts set-token": page(
+    "settings-registry.js",
+    '"/api/agents/accounts/token"',
+  ),
+  "agents accounts order": page(
+    "settings-registry.js",
+    '"/api/agents/accounts/order"',
+  ),
+  "agents accounts remove": slot(
+    "0.4.67",
+    "remove a vendor's account and its token (the CLI only for now)",
   ),
   "agents permission": slot(
     "0.4.46",

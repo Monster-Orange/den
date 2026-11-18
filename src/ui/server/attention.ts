@@ -5,9 +5,12 @@
  *
  * - waiting (a permission prompt, or waiting for input): the agent is
  *   marked waiting (every list shows it) and a "waiting" notification is
- *   kept, unless its person is looking at it now (NT-2).
- * - finished (its turn ended): a "finished" notification, unless looked
- *   at; any waiting mark goes.
+ *   kept; it alerts unless its person is looking at it now (NT-2). Issue
+ *   142: kept even then, so a page closed within NT-2's window loses
+ *   nothing.
+ * - finished (its turn ended): a "finished" notification (the page's
+ *   next "looking" takes it out if it still shows the agent); any
+ *   waiting mark goes. A turn ending on a question is "asked".
  * - The mark clears when the agent goes on. For a runtime with hooks
  *   (Claude Code), its hooks say so: a tool ran, a new prompt, its turn
  *   ended ("resumed" / "finished"); its output is ignored, as it redraws
@@ -111,6 +114,16 @@ export interface AttentionDeps {
   leadOf?: (agent: string, workspace: string) => Promise<string | null>;
   /** Issue 101: type `text` to agent `lead`; false when Den couldn't. */
   tellLead?: (lead: string, text: string) => Promise<boolean>;
+  /**
+   * Issue 172: an agent began to need its person (a permission prompt or
+   * a question), and its person isn't looking at it: alert them outside
+   * the bell (alert-feed.ts). Once per wait, never for a repeat.
+   */
+  alert?: (n: {
+    agent: string;
+    workspace: string;
+    why: "permission" | "asked";
+  }) => void;
 }
 
 /** Output in this long after the event is the agent drawing it, not going on. */
@@ -201,7 +214,7 @@ export class Attention {
           idle?: boolean;
           hooked?: boolean;
         }
-      | { event: "finished"; text?: string }
+      | { event: "finished"; text?: string; question?: string }
       | { event: "resumed"; from: "tool" | "prompt" | "session" },
   ): Promise<{ lead: string } | void> {
     const subject = `agent:${agent}`;
@@ -228,10 +241,14 @@ export class Attention {
       // Asked, then ended its turn to wait for the answer: still waiting.
       if (this.waiting.get(agent)?.why === "asked") return;
       this.clear(agent);
-      // #142: a turn that ended on a question to its person needs them.
-      const q = this.d.endedAsking
-        ? await this.d.endedAsking(agent).catch(() => null)
-        : null;
+      // #142: a turn that ended on a question to its person needs them:
+      // the question the hook said (issue 142, Claude Code's last answer),
+      // else the one its transcript ends on.
+      const q =
+        ev.question ||
+        (this.d.endedAsking
+          ? await this.d.endedAsking(agent).catch(() => null)
+          : null);
       if (q)
         return this.event(agent, workspace, {
           event: "waiting",
@@ -239,17 +256,20 @@ export class Attention {
           text: q,
           hooked: true,
         });
-      if (!this.onScreen(agent))
-        this.d.store.add({
-          kind: "finished",
-          subject,
-          scope,
-          text: ev.text ? `${name}: ${ev.text}` : `${name} finished its turn`,
-          msg: ev.text
-            ? { key: "bell.m.said", vars: { name, text: ev.text } }
-            : { key: "bell.m.turn", vars: { name } },
-          link,
-        });
+      // Issue 142: kept even while a page shows the agent. That page's
+      // next "looking" takes it out (opening an agent clears its updates);
+      // a page that closed meanwhile (NT-2 keeps it 10 s) never does, and
+      // the turn's end would be lost.
+      this.d.store.add({
+        kind: "finished",
+        subject,
+        scope,
+        text: ev.text ? `${name}: ${ev.text}` : `${name} finished its turn`,
+        msg: ev.text
+          ? { key: "bell.m.said", vars: { name, text: ev.text } }
+          : { key: "bell.m.turn", vars: { name } },
+        link,
+      });
       return;
     }
     const prev = this.waiting.get(agent);
@@ -328,16 +348,30 @@ export class Attention {
         });
       return { lead };
     }
+    const looking = this.onScreen(agent);
+    // Issue 172: a new need (not the same wait said again) alerts.
+    if (
+      !looking &&
+      (ev.why === "permission" || ev.why === "asked") &&
+      prev?.why !== ev.why
+    )
+      try {
+        this.d.alert?.({ agent, workspace, why: ev.why });
+      } catch {
+        /* an alert is best effort: the bell has it */
+      }
     // #142: without hooks, a bell is all there is: an update, not a need.
-    if (!this.onScreen(agent))
-      this.d.store.add({
-        kind: ev.why === "input" ? "finished" : "waiting",
-        subject,
-        scope,
-        text,
-        msg,
-        link,
-      });
+    // Issue 142: kept even while a page shows the agent (only the alert
+    // waits for it to be off screen). A need counts until it is answered;
+    // an update goes on that page's next "looking".
+    this.d.store.add({
+      kind: ev.why === "input" ? "finished" : "waiting",
+      subject,
+      scope,
+      text,
+      msg,
+      link,
+    });
   }
 
   /**

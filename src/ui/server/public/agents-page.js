@@ -94,6 +94,7 @@ import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
+import { latestShell } from "/shell-pick.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -123,6 +124,7 @@ import {
   overrideTagsHtml,
   ownModeLabel,
   modeLabel,
+  openAgentModeMenu,
   permBlockHtml,
   personaDetail,
   personaDetailHtml,
@@ -303,6 +305,41 @@ function rememberedOpen() {
     return openFromUrl(`?open=${localStorage.getItem(OPEN_KEY) ?? ""}`);
   } catch {
     return [];
+  }
+}
+
+/**
+ * Issue 448: when this browser last used each shell (a person clicked or
+ * typed in its pane), so the rail's Terminal opens the one used last. The
+ * server keeps when each was last typed in from any browser (inputAt);
+ * this adds a click here. A shell never used counts from its start.
+ */
+const SHELL_USED_KEY = "den-shell-used";
+
+function shellUsed() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SHELL_USED_KEY) ?? "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function markShellUsed(id) {
+  const r = rowOf(id);
+  if (r?.kind !== "session") return;
+  const was = shellUsed();
+  // Every key calls here: once a second is enough.
+  if (typeof was[id] === "number" && Date.now() - was[id] < 1000) return;
+  const live = new Set((st.data?.sessions ?? []).map((x) => x.id));
+  const used = {};
+  for (const [k, v] of Object.entries(was))
+    if (live.has(k) && typeof v === "number") used[k] = v;
+  used[id] = Date.now();
+  try {
+    localStorage.setItem(SHELL_USED_KEY, JSON.stringify(used));
+  } catch {
+    /* none: the newest shell instead */
   }
 }
 
@@ -543,6 +580,15 @@ function subagentTag(r) {
     ? t(`ag.subagents.inheritFrom.${from === "persona" ? "persona" : "org"}`)
     : t(`ag.subagents.from.${from}`, { model });
   return `<span class="tagx" data-subagents="${esc(r.subagentModel)}" title="${esc(tip)}">${esc(t("ag.subagents", { model }))}</span>`;
+}
+
+/**
+ * Issue 340: the vendor account it runs on under the always-on service, by
+ * its label (never an email): the pane bar's tag. Nothing without one.
+ */
+function signInTag(r) {
+  if (r?.kind !== "agent" || !r.signIn) return "";
+  return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
 }
 
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
@@ -2167,6 +2213,11 @@ function paintBar(p) {
     r?.kind === "session" && !r.exited
       ? `<button type="button" class="den-btn sm" data-act="close-shell" title="${esc(t("ag.closeShellTip"))}">${esc(t("ag.closeShell"))}</button>`
       : "";
+  // Issue 448: a second shell on purpose (the rail's Terminal reopens this).
+  const newShell =
+    r?.kind === "session"
+      ? `<button type="button" class="den-btn sm" data-act="new-shell" title="${esc(t("ag.newShellTip"))}">${esc(t("ag.newShell"))}</button>`
+      : "";
   // The mock's pane bar: Resume (primary) on an ended agent that can.
   const resume =
     r && isStopped(r) && r.resumable
@@ -2199,7 +2250,8 @@ function paintBar(p) {
     modeTagHtml(r, true) +
     whereTag(r, true) +
     linkTag(r) +
-    subagentTag(r);
+    subagentTag(r) +
+    signInTag(r);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
@@ -2213,7 +2265,7 @@ function paintBar(p) {
     (r?.kind === "agent" && compactingHtml(r, t, { withStop: false })
       ? `<span class="agctx" data-compacting-bar>${compactingHtml(r, t, { withStop: false })}</span>`
       : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${newShell}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
   // changed, and never takes the keyboard off the bar: a button there that
   // had focus has it again after a redraw.
@@ -2891,7 +2943,9 @@ async function openPane(id, { front = true } = {}) {
     el.addEventListener(
       ev,
       (e) => {
-        if (e.isTrusted) p.inputAt = performance.now();
+        if (!e.isTrusted) return;
+        p.inputAt = performance.now();
+        markShellUsed(p.id);
       },
       true,
     );
@@ -2933,6 +2987,16 @@ async function openPane(id, { front = true } = {}) {
     if (!p.following) claimSize(p);
     st.keyPane = p.id;
   });
+  // Issue 448: used means a person's click or key here, never the focus
+  // the page gives a pane itself (a load puts the front tab's terminal in
+  // focus, which must not make it the one used last).
+  el.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.isTrusted) markShellUsed(p.id);
+    },
+    true,
+  );
   p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
   refit(p);
@@ -3053,6 +3117,16 @@ async function closeShell(p, button) {
     window.denShell?.errorToast?.(err);
   }
   await refresh();
+}
+
+/** Issue 448: the shell bar's New terminal: another shell in its project. */
+async function newShell(r, button) {
+  button.disabled = true;
+  try {
+    await openTerminal(r.workspace, { fresh: true });
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ── Stopped agents (AG-14) ──────────────────────────────────────────────
@@ -5012,6 +5086,31 @@ function translateStatic(root) {
     ?.setAttribute("aria-label", t("ag.layout"));
 }
 
+/**
+ * Issue 252: a running agent's Mode, in its ⋯: the four modes and Follow
+ * project, the one in effect checked. None for a runtime without modes.
+ */
+function modeItems(r, opener) {
+  if (r?.kind !== "agent" || !r.mode) return [];
+  return [
+    {
+      label: t("ag.mode.item", { m: t(`pm.name.${r.mode}`) }),
+      onSelect: () =>
+        openAgentModeMenu(
+          opener,
+          {
+            workspace: r.workspace,
+            agent: r.agent,
+            ...(r.displayName ? { name: r.displayName } : {}),
+            ...(r.modeOwn ? { own: r.mode } : {}),
+            project: r.modeOwn ? r.modeFollowed : r.mode,
+          },
+          () => void refresh(),
+        ),
+    },
+  ];
+}
+
 /** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
 function stoppedMenuItems(r, opener) {
   return [
@@ -5491,7 +5590,10 @@ export async function mountAgentsPage(root) {
       if (r) void openLink(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
     else if (b.dataset.act === "close-shell") void closeShell(p, b);
-    else if (b.dataset.act === "tools-restart") {
+    else if (b.dataset.act === "new-shell") {
+      const r = rowOf(id);
+      if (r?.kind === "session") void newShell(r, b);
+    } else if (b.dataset.act === "tools-restart") {
       const r = rowOf(id);
       if (r) void restartForTools(r, b);
     } else if (b.dataset.act === "mode-apply") {
@@ -5525,6 +5627,7 @@ export async function mountAgentsPage(root) {
             ? stoppedMenuItems(r, b)
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
+                ...modeItems(r, b),
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),
@@ -5684,17 +5787,34 @@ export async function mountAgentsPage(root) {
  * view), in a pane like an agent's. The pane is in ?open=, so a reload
  * keeps it, and the shell outlives a Den restart (the sessions host).
  * Used once: the URL drops ?terminal=.
+ *
+ * Issue 448: a shell already running in that project opens again (the
+ * one used last) and takes the keyboard; a new one starts only when none
+ * runs, or with `fresh` (the shell bar's New terminal).
  */
-async function openTerminal(asked = "") {
+async function openTerminal(asked = "", { fresh = false } = {}) {
+  // Issue 448: decide on the server's list as it is now (a shell may have
+  // ended since this page's last list), and on when each was last typed in.
+  if (!fresh) await refresh().catch(() => {});
   const all = st.data?.workspaces ?? [];
+  const used = shellUsed();
+  // Issue 448: no project named or in view (every project shows): the
+  // shell used last, in any of them, before the first project.
   const ws =
     asked ||
     urlWorkspace() ||
     (st.scope && st.scope !== "all" && all.includes(st.scope)
       ? st.scope
-      : all[0]);
+      : (fresh ? null : latestShell(visibleRows(), null, used)?.workspace) ||
+        all[0]);
   if (!ws) {
     window.denShell?.toast?.(t("ag.term.failed", { e: t("ag.term.noWs") }));
+    return;
+  }
+  const running = fresh ? null : latestShell(st.data?.sessions ?? [], ws, used);
+  if (running) {
+    await switchToProjectOf(running);
+    await bringShell(running.id);
     return;
   }
   try {
@@ -5706,12 +5826,26 @@ async function openTerminal(asked = "") {
     await refresh();
     // #80: a shell in another project: this page switches to it first.
     if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
-    if (r?.session?.id) await openPane(r.session.id);
+    if (r?.session?.id) await bringShell(r.session.id);
   } catch (err) {
     window.denShell?.toast?.(
       t("ag.term.failed", { e: err?.message || String(err) }),
     );
   }
+}
+
+/**
+ * Issue 448: shell `id`'s pane in front (opened as a tab when it is not
+ * open), with the keyboard once its terminal can take keys.
+ */
+async function bringShell(id) {
+  if (st.panes.has(id)) {
+    st.cur = id;
+    paintLayout();
+    paintList();
+    writeUrl();
+  } else await openPane(id);
+  focusTerm(id);
 }
 
 /**

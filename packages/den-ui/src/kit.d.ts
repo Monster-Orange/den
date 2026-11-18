@@ -54,6 +54,7 @@ import type {
 } from "./shell-html.js";
 import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
+import type { SaveState, SaveStateOptions } from "./savestate.js";
 
 /** Every call to the product goes through it; the kit names no URL. */
 export interface Adapter extends ReportAdapter {
@@ -159,6 +160,11 @@ export declare const busy: {
   ): Promise<T | null>;
   configure: typeof configureBusy;
 };
+/** An autosaving editor's save-state line, in the kit's language. */
+export declare function saveState(
+  el: HTMLElement,
+  opts: SaveStateOptions,
+): SaveState;
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
@@ -210,6 +216,7 @@ export interface DenUIKit {
   report: typeof report;
   busy: typeof busy;
   saveShell: typeof saveShell;
+  saveState: typeof saveState;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

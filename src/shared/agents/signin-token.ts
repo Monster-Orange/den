@@ -92,6 +92,14 @@ export const DEFAULT_TOKEN_WARN_DAYS = (CLAUDE_SIGN_IN.lastsDays ?? 365) - 35;
 /** How the person makes the token (den-claude's catalog sign-in data). */
 export const TOKEN_MAKE_HINT = CLAUDE_SIGN_IN.command ?? "claude setup-token";
 
+/**
+ * Issue 399: where the token comes from, for Settings: the runtime's name
+ * and the vendor's own page on its sign-in (catalog signIn.docs), linked
+ * instead of a command to run.
+ */
+export const TOKEN_RUNTIME = builtinEntry("den-claude")!.name;
+export const TOKEN_DOCS = CLAUDE_SIGN_IN.docs;
+
 export type SignInMode = "token" | "desktop";
 
 /**
@@ -241,6 +249,18 @@ export interface TokenStoreDeps {
    * else (the CLI) it is refused.
    */
   inDen?: boolean;
+  /**
+   * Issue 339: the named ref (default: agent_signin_token). Each account's
+   * token is its own ref, and so its own item (signin-accounts.ts).
+   */
+  refName?: string;
+  /** Issue 339: where a new item goes (default: newAgentTokenRef). */
+  fresh?: (backend: SecretsProviderName) => Partial<SecretRef> | null;
+  /**
+   * Issue 339: keep when it was set (default: the meta file, and the
+   * cleared mark removed). Never the token.
+   */
+  recordSet?: (meta: TokenMeta) => void;
 }
 
 /** `agents token set` (or any save outside Den's process) with env. */
@@ -296,23 +316,22 @@ export async function saveAgentToken(
   const st = (d.status ?? (() => secretsStatus()))();
   if (st.backend === "none") throw new NoSecretsStoreError();
   const provider = (d.provider ?? getSecretsProvider)();
-  let ref = (d.ref ?? (() => agentTokenRef()))();
+  const name = d.refName ?? AGENT_TOKEN_REF_NAME;
+  let ref = (d.ref ?? (() => agentTokenRef(undefined, undefined, name)))();
   let created: Partial<SecretRef> | null = null;
   if (!ref) {
     const fresh =
-      !st.implicit && st.detect.available ? newAgentTokenRef(st.backend) : null;
+      !st.implicit && st.detect.available
+        ? (d.fresh ?? newAgentTokenRef)(st.backend)
+        : null;
     ref = fresh
-      ? namedSecretRef(
-          AGENT_TOKEN_REF_NAME,
-          { refs: { [AGENT_TOKEN_REF_NAME]: fresh } },
-          st.backend,
-        )
+      ? namedSecretRef(name, { refs: { [name]: fresh } }, st.backend)
       : null;
     if (!fresh || !ref)
       throw new SecretsNotConfiguredError(
         st.backend === "env"
-          ? `the env secrets backend keeps nothing a daemon can read: choose 1password or doppler (secrets.provider), or set secrets.refs.${AGENT_TOKEN_REF_NAME} in ${product().configFile}`
-          : notConfiguredMessage(AGENT_TOKEN_REF_NAME),
+          ? `the env secrets backend keeps nothing a daemon can read: choose 1password or doppler (secrets.provider), or set secrets.refs.${name} in ${product().configFile}`
+          : notConfiguredMessage(name),
       );
     created = fresh;
   }
@@ -335,17 +354,21 @@ export async function saveAgentToken(
           ...user,
           secrets: {
             ...secrets,
-            refs: { ...secrets.refs, [AGENT_TOKEN_REF_NAME]: r },
+            refs: { ...secrets.refs, [name]: r },
           },
         });
       });
     save(created);
   }
-  writeTokenMeta(d.stateDir, {
+  const meta = {
     setAt: (d.now ?? (() => new Date()))().toISOString(),
     store: st.label,
-  });
-  fs.rmSync(path.join(d.stateDir, TOKEN_CLEARED_FILE), { force: true });
+  };
+  if (d.recordSet) d.recordSet(meta);
+  else {
+    writeTokenMeta(d.stateDir, meta);
+    fs.rmSync(path.join(d.stateDir, TOKEN_CLEARED_FILE), { force: true });
+  }
   return { ref: created ? "created" : "configured", store: st.label };
 }
 
@@ -359,6 +382,19 @@ export interface TokenClearDeps extends Omit<
   userRef?: () => Partial<SecretRef> | undefined;
   /** Remove it from user.yml (default: writeUserConfig). */
   dropRef?: () => void;
+  /** Issue 339: the named ref (default: agent_signin_token). */
+  refName?: string;
+  /** Issue 339: the item a set would have made (default: newAgentTokenRef). */
+  fresh?: (backend: SecretsProviderName) => Partial<SecretRef> | null;
+  /**
+   * Issue 339: Den's record of the set (default: the meta file, and the
+   * cleared mark when the ref stays).
+   */
+  record?: {
+    has: () => boolean;
+    forget: () => void;
+    markCleared: () => void;
+  };
 }
 
 export type TokenClearResult =
@@ -386,16 +422,21 @@ export async function clearAgentToken(
 ): Promise<TokenClearResult> {
   const st = (d.status ?? (() => secretsStatus()))();
   if (st.backend === "none") throw new NoSecretsStoreError();
-  const ref = (d.ref ?? (() => agentTokenRef()))();
-  const forget = () => {
-    fs.rmSync(path.join(d.stateDir, TOKEN_META_FILE), { force: true });
-  };
+  const name = d.refName ?? AGENT_TOKEN_REF_NAME;
+  const ref = (d.ref ?? (() => agentTokenRef(undefined, undefined, name)))();
+  const forget =
+    d.record?.forget ??
+    (() => {
+      fs.rmSync(path.join(d.stateDir, TOKEN_META_FILE), { force: true });
+    });
   if (st.backend === "env") {
     // Den's record (the meta file) and, in the web server, the value in its
     // process: a new CLI process has only the record.
     const env = d.env ?? process.env;
     const key = ref?.key;
-    const hadRecord = fs.existsSync(path.join(d.stateDir, TOKEN_META_FILE));
+    const hadRecord = d.record
+      ? d.record.has()
+      : fs.existsSync(path.join(d.stateDir, TOKEN_META_FILE));
     const inProcess = !!key && env[key] !== undefined;
     forget();
     if (inProcess) delete env[key!];
@@ -416,9 +457,9 @@ export async function clearAgentToken(
   if (!provider.delete)
     throw new Error(`${st.label} can't remove a secret from here`);
   const userRef = (
-    d.userRef ?? (() => readUserConfig().secrets?.refs?.[AGENT_TOKEN_REF_NAME])
+    d.userRef ?? (() => readUserConfig().secrets?.refs?.[name])
   )();
-  const fresh = newAgentTokenRef(st.backend);
+  const fresh = (d.fresh ?? newAgentTokenRef)(st.backend);
   const madeByDen =
     !!userRef &&
     !!fresh &&
@@ -445,10 +486,12 @@ export async function clearAgentToken(
       (() => {
         const user = readUserConfig();
         const refs = { ...(user.secrets?.refs ?? {}) };
-        delete refs[AGENT_TOKEN_REF_NAME];
+        delete refs[name];
         writeUserConfig({ ...user, secrets: { ...user.secrets, refs } });
       })
     )();
+  } else if (d.record) {
+    d.record.markCleared();
   } else {
     fs.mkdirSync(d.stateDir, { recursive: true, mode: 0o700 });
     writeFileAtomic(

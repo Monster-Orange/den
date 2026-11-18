@@ -144,6 +144,7 @@ import {
   listRuntimes,
   markInterrupted,
   modeCheck,
+  modeRestartDetail,
   cancelStalePersonaChanges,
   NOT_IN_WORKSPACE,
   pruneStopped,
@@ -376,6 +377,14 @@ function sessionTitleOf(
  * Issue 216: a restart's audit detail says when another request had
  * already restarted it (then this one didn't).
  */
+/**
+ * Issue 340: the audit line's words for the sign-in a start picked (its
+ * label: never an email, never a token); "" when none was.
+ */
+export function onSignIn(rec: { signIn?: { label: string } }): string {
+  return rec.signIn ? `; on ${rec.signIn.label}` : "";
+}
+
 function restarted(what: string, s: { already?: { at: string } }): string {
   return s.already
     ? `${what}: already restarted by another request at ${s.already.at}`
@@ -1019,7 +1028,7 @@ export async function handleAgentRoutes(
         ? `; overrides ${s.rec.overrides.join(", ")}`
         : "";
       what = `start ${s.rec.id} (${s.rec.persona}, ${s.rec.runtime}${ov}) in ${ws}`;
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d, instruction ? { instruction: "pending" } : {});
       // AG-10.1: its first message, once it is ready: typed into its
       // session (the host's write path), never an argument. Its text is
@@ -1071,7 +1080,7 @@ export async function handleAgentRoutes(
     } else if (verb === "fresh") {
       const s = await startFresh(d, id!, ws);
       what = `start ${s.rec.id} fresh (${s.rec.persona}, ${s.rec.runtime}) in ${ws}`;
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
     } else if (verb === "keep") {
       const body = await jsonBody(req);
@@ -1175,7 +1184,7 @@ export async function handleAgentRoutes(
     } else if (verb === "relaunch") {
       const s = await relaunchAgent(d, id!, ws);
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
     } else if (verb === "say") {
       // Issue 103: the composer's Send: typed into its session as one
@@ -1295,7 +1304,11 @@ export async function handleAgentRoutes(
         // It may wait for a long turn: answer now, audit when it's done.
         agentRecord(d, id!, ws);
         void change().then(
-          (s) => audit(what, s.early ? "exited at once" : undefined),
+          (s) =>
+            audit(
+              what + onSignIn(s.rec),
+              s.early ? "exited at once" : undefined,
+            ),
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
@@ -1303,7 +1316,7 @@ export async function handleAgentRoutes(
         return true;
       }
       const s = await change();
-      audit(what, s.early ? "exited at once" : undefined);
+      audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       // Never prompted: nothing was resumed, so it says so (not "same
       // conversation").
       sendStarted(res, s, d, s.fresh ? { note: FRESH_NOTE } : {});
@@ -1332,7 +1345,10 @@ export async function handleAgentRoutes(
           deps.personaWait ?? {},
         ).then(
           (s) =>
-            audit(restarted(what, s), s.early ? "exited at once" : undefined),
+            audit(
+              restarted(what, s) + onSignIn(s.rec),
+              s.early ? "exited at once" : undefined,
+            ),
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
@@ -1340,7 +1356,10 @@ export async function handleAgentRoutes(
         return true;
       }
       const s = await restartAgent(d, id!, ws, "now");
-      audit(restarted(what, s), s.early ? "exited at once" : undefined);
+      audit(
+        restarted(what, s) + onSignIn(s.rec),
+        s.early ? "exited at once" : undefined,
+      );
       sendStarted(
         res,
         s,
@@ -2077,7 +2096,12 @@ export function startAgentUpkeep(
     }
   };
   // 0.4.46 MODE-UI: a mode change applies on its own, after the turn.
-  const mc = modeCheck(d, { log });
+  // Issue 252: each restart it makes is an audit row, by Den itself.
+  const mc = modeCheck(d, {
+    log,
+    onRestarted: (e) =>
+      recordAction(null, { verb: "agents", detail: modeRestartDetail(e) }),
+  });
   let checking = false;
   const modes = async () => {
     if (checking) return;

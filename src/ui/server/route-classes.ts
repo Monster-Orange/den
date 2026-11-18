@@ -95,6 +95,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/favicon.ico",
+    // Issue 172: the app manifest (a phone's home screen, for push).
+    "/manifest.webmanifest",
     "/theme.css",
     "/theme/*",
     "/theme-favicon",
@@ -397,6 +399,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/pair",
     "mints a one-time sign-in link for another device (Pair a device)",
   ),
+  S(
+    ["POST"],
+    "/api/edge/up",
+    "issue 395: Settings' Start the edge runs `edge up` (docker); a person's only, never an agent's token",
+  ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
@@ -442,6 +449,18 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST", "DELETE"],
     "/api/agents/signin-token",
     "saves (or removes) the agents' sign-in token in the install's secrets store",
+  ),
+  // Issue 339: the agents' sign-in accounts (a person's only).
+  M(["POST"], "/api/agents/accounts", "adds a {vendor} account for agents"),
+  M(
+    ["POST"],
+    "/api/agents/accounts/token",
+    "saves a {vendor} account's token in the install's secrets store",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/accounts/order",
+    "changes the order agents use {vendor} accounts in",
   ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
@@ -641,6 +660,24 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/notifications/looking",
     "NT-2: a page shows these agents now, so they don't notify",
+  ),
+  R(
+    "/api/alerts",
+    "Issue 172: the person's new alerts (an agent needs them) for an open tab to show; never an agent's",
+  ),
+  R(
+    "/api/alerts/push-key",
+    "Issue 172: this install's push public key (VAPID), for a device to subscribe; never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/subscribe",
+    "Issue 172: a person adds this device to get alerts by push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/unsubscribe",
+    "Issue 172: a person stops push alerts to a device",
   ),
   R(
     "/api/hub/link-suggestions",

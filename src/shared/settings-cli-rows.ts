@@ -14,16 +14,24 @@
  *   web_bridge: { listen?: auto | off, probe_seconds? }
  *                                     user.yml web.bridge_listen,
  *                                     web.bridge_probe_seconds (0.4.48)
+ *   web_ready: { probe_seconds?, start_seconds? }
+ *                                     user.yml web.ready_probe_seconds,
+ *                                     web.start_wait_seconds (den#143)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
+ *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
+ *     visibility_retry_seconds? }
+ *                                     user.yml feedback.* (issue 415)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
+import { WEB_WAIT_RANGE } from "./web-session.js";
+import { VISIBILITY_LIMITS } from "./report-store.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -35,6 +43,8 @@ export const PERSON_ONLY_SETTINGS = [
   "crash_loop",
   // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
   "web_bridge",
+  // den#143: how long `web up` waits for the server, on a busy machine too.
+  "web_ready",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -60,6 +70,10 @@ export const PERSON_ONLY_SETTINGS = [
   "keep_running_after_logout",
   // Issue 103: deep links and the embedded agent pane (Settings › Embedding).
   "embed",
+  // Issue 172: whether, and when, the person is alerted outside the bell.
+  "alerts",
+  // Issue 415: how long Report keeps, and waits for, a repo's visibility.
+  "feedback",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -134,6 +148,20 @@ const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
 };
 
+/** den#143: `web up`'s waits (web-session.ts WEB_WAIT_RANGE). */
+const WEB_READY: Record<string, Limit> = {
+  probe_seconds: {
+    key: "ready_probe_seconds",
+    ...WEB_WAIT_RANGE,
+    int: false,
+  },
+  start_seconds: {
+    key: "start_wait_seconds",
+    ...WEB_WAIT_RANGE,
+    int: false,
+  },
+};
+
 const AGENTS_LIST: Record<string, Limit> = {
   host_timeout_seconds: {
     key: "host_timeout_seconds",
@@ -148,6 +176,14 @@ const AGENTS_LIST: Record<string, Limit> = {
     int: false,
   },
 };
+
+/** Issue 415: user.yml feedback's visibility lookup (report-store.ts). */
+const FEEDBACK: Record<string, Limit> = Object.fromEntries(
+  Object.entries(VISIBILITY_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: false },
+  ]),
+);
 
 /** Issue 278: user.yml agent_context's numbers (context-watch.ts). */
 const AGENT_CONTEXT: Record<string, Limit> = Object.fromEntries(
@@ -339,6 +375,7 @@ export function patchCliRows(
       apply,
     ) ??
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
+    patchBlock(user, "web_ready", "web", WEB_READY, body.web_ready, apply) ??
     patchBlock(
       user,
       "panes_reconnect",
@@ -355,7 +392,8 @@ export function patchCliRows(
       AGENTS_LIST,
       body.agents_list,
       apply,
-    );
+    ) ??
+    patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

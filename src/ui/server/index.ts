@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import {
+  alertFeed,
   attentionDetail,
   attentionWaiting,
   notificationDeps,
@@ -340,16 +341,29 @@ import {
 } from "../../shared/web-url.js";
 import { handleWebUrlRoutes } from "./web-url-routes.js";
 import {
+  handleAccountsRoute,
   handleKeepRunningRoutes,
   handleSignInTokenRoute,
   noteKeepRunningOffer,
 } from "./keep-running-routes.js";
+import { handleEdgeUpRoute } from "./edge-up-routes.js";
+import { runEdgeUp } from "../../shared/edge/up.js";
 import {
   agentTokenStatus,
   clearAgentToken,
   dropStaleEnvTokenRecord,
   saveAgentToken,
+  TOKEN_DOCS,
+  TOKEN_RUNTIME,
 } from "../../shared/agents/signin-token.js";
+import {
+  accountsView,
+  addAccount,
+  saveAccountToken,
+  setAccountOrder,
+} from "../../shared/agents/signin-accounts.js";
+import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
+import { accountNameOf } from "../../shared/agents/catalog.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -359,7 +373,10 @@ import {
   publicSearchOpen,
   runGh,
 } from "./report-routes.js";
-import { readFeedbackSettings } from "../../shared/report-store.js";
+import {
+  feedbackSettings,
+  readFeedbackSettings,
+} from "../../shared/report-store.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -944,6 +961,9 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/sudo-password/status",
   // The env picker on every page (falls back to local; a consumer's dev.40 finding).
   "/api/environments",
+  // Issue 395: the edge row on Settings reads its state. It reads only the
+  // edge's own config and docker, never org data (starting it stays gated).
+  "/api/edge",
 ]);
 
 /**
@@ -1040,6 +1060,7 @@ import {
   readPolicySetting,
   writeTargets,
 } from "../../shared/approval-policy.js";
+import { alertSettings, patchAlerts } from "./alerts.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
@@ -2374,6 +2395,7 @@ type ApprovalDeps = {
   autoAllow: (action: string, agent: string) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
+  held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -2750,6 +2772,9 @@ function approvalDeps(): ApprovalDeps {
       });
     },
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
+    // Issue 172: a write held for the person's Allow alerts them.
+    held: (agent, project) =>
+      void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
   };
   return approvals;
 }
@@ -3131,12 +3156,57 @@ async function agentSigninView(
       no_store: st.noStore === true,
       // The store's credential is a keychain: source (1Password).
       cred_keychain: st.credInKeychain === true,
+      // Issue 399: where the token comes from (the runtime catalog).
+      runtime: TOKEN_RUNTIME,
+      docs: TOKEN_DOCS ?? null,
     };
   } catch {
     view = null;
   }
   signinViewCache = { at: now, view };
   return view;
+}
+
+/**
+ * Issue 339: Settings' sign-in accounts, per vendor (a runtime with
+ * sign-in data), in the person's order. Never a token: from the config and
+ * the state dir only.
+ */
+function agentAccountsView(): {
+  runtime: string;
+  name: string;
+  account: string;
+  accounts: Record<string, unknown>[];
+}[] {
+  const out: {
+    runtime: string;
+    name: string;
+    account: string;
+    accounts: Record<string, unknown>[];
+  }[] = [];
+  for (const id of runtimeIds()) {
+    const rt = getRuntime(id);
+    if (!rt?.signInTokenEnv) continue;
+    try {
+      out.push({
+        runtime: id,
+        name: rt.catalog?.name ?? id,
+        // Whose account it is, in the vendor's words ("Claude").
+        account: rt.catalog ? accountNameOf(rt.catalog) : id,
+        accounts: accountsView(getStateDir(), id).map((a) => ({
+          id: a.id,
+          name: a.name,
+          letter: a.letter,
+          configured: a.configured,
+          set_at: a.setAt,
+          first: a.first,
+        })),
+      });
+    } catch {
+      /* a bad list: left out, as nothing is guessed */
+    }
+  }
+  return out;
 }
 
 /**
@@ -3676,6 +3746,43 @@ async function handleRequest(
     })
   )
     return;
+  // Issue 395: Settings › Access › Start the edge: what `edge up` runs.
+  if (
+    handleEdgeUpRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      run: async () =>
+        (await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") }))
+          .outcome,
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // Issue 339: Settings › the sign-in accounts, per vendor.
+  if (
+    handleAccountsRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      add: (runtime, name) => void addAccount(getStateDir(), runtime, name),
+      order: (runtime, ids) =>
+        void setAccountOrder(getStateDir(), runtime, ids),
+      saveToken: async (runtime, account, token) => {
+        const r = await saveAccountToken(token, {
+          runtimeId: runtime,
+          accountId: account,
+          stateDir: getStateDir(),
+          inDen: true,
+        });
+        // Account one of Claude Code is today's row: asked again at once.
+        await agentSigninView(true);
+        return r;
+      },
+      view: () => agentAccountsView(),
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
+      readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
   // Issue 163: Settings › Keep agents running after logout › Apply.
   if (
     handleKeepRunningRoutes(req, res, pathname, {
@@ -3769,6 +3876,25 @@ async function handleRequest(
 
   if (pathname === "/favicon.ico") {
     return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
+  }
+  // Issue 172 S2: the app manifest, so a phone can add Den to its home
+  // screen (an iPhone gets push only from there).
+  if (pathname === "/manifest.webmanifest") {
+    res.writeHead(200, {
+      "Content-Type": "application/manifest+json",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        name: product().title,
+        short_name: product().title,
+        start_url: "/agents",
+        scope: "/",
+        display: "standalone",
+        icons: [{ src: "/favicon.ico", sizes: "48x48" }],
+      }),
+    );
+    return;
   }
 
   // ── Playwright report ──────────────────────────────────────────────────────
@@ -5113,12 +5239,17 @@ async function handleRequest(
         url.searchParams.get("workspace"),
       );
       if (source.kind === "unsupported")
-        return sendJson(res, { unsupported: true, reason: source.reason });
+        return sendJson(res, {
+          unsupported: true,
+          reason: source.reason,
+          ...(source.t ? { t: source.t } : {}),
+        });
       const snapshot = await ensureSnapshot(source);
       if (!snapshot)
         return sendJson(res, {
           unsupported: true,
           reason: "could not snapshot the container log",
+          t: { key: "lg.why.noSnapshot" },
         });
       return sendJson(res, readPageBefore(snapshot, cursor, limit));
     } catch (e) {
@@ -6587,6 +6718,8 @@ async function handleRequest(
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
+        // Issue 172: alerts outside the bell (alerts.ts).
+        alerts: alertSettings(user),
         editor_open: editorOpen(user),
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
@@ -6634,6 +6767,18 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // den#143: how long `web up` waits for the server.
+        web_ready: (() => {
+          try {
+            const c = readWebAuthConfig(getDistRoot(), product().configFile);
+            return {
+              probeSeconds: c.readyProbeSeconds,
+              startSeconds: c.startWaitSeconds,
+            };
+          } catch {
+            return null;
+          }
+        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6657,6 +6802,8 @@ async function handleRequest(
         // service: never the token, only whether one is configured and
         // when it was set (nothing is read from the store on a page view).
         agent_signin: await agentSigninView(),
+        // Issue 339: the sign-in accounts per vendor (never a token).
+        agent_accounts: agentAccountsView(),
         // Issue 278: agents stuck compacting; instruction size (agent_context.*).
         agent_context: (() => {
           const c = contextWatchSettings(user.agent_context);
@@ -6675,6 +6822,16 @@ async function handleRequest(
           } catch {
             return null;
           }
+        })(),
+        // Issue 415: how long Report keeps, and waits for, a repo's
+        // visibility (feedback.*), their defaults when unset.
+        feedback: (() => {
+          const f = feedbackSettings(null, {}, user.feedback);
+          return {
+            visibility_cache_hours: f.visibilityCacheHours,
+            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+            visibility_retry_seconds: f.visibilityRetrySeconds,
+          };
         })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
@@ -6710,6 +6867,7 @@ async function handleRequest(
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
+          alerts?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           hub_url?: unknown;
@@ -6721,9 +6879,11 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          web_ready?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
+          feedback?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -6753,8 +6913,10 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            web_ready: body.web_ready,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
+            feedback: body.feedback,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -6849,6 +7011,11 @@ async function handleRequest(
         if (body.bell_fold_days !== undefined) {
           const f = patchBellFoldDays(user, body.bell_fold_days);
           if (!f.ok) return send400(res, f.error);
+        }
+        // Issue 172: alerts outside the bell, and quiet hours.
+        if (body.alerts !== undefined) {
+          const a = patchAlerts(user, body.alerts);
+          if (!a.ok) return send400(res, a.error);
         }
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
@@ -6988,6 +7155,7 @@ async function handleRequest(
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
+          alerts: alertSettings(user),
           editor_open: editorOpen(user),
           embed: embedSettings(user),
         });
@@ -7862,7 +8030,14 @@ async function serverBack(): Promise<void> {
   const m = takeRestartMarker(getStateDir());
   if (!m) return;
   const version = engineVersion() ?? "?";
-  const text = backMessage(m, version, process.pid);
+  // #384: the update's doctor results go in the line itself.
+  let update: import("./den-update.js").LastUpdate | null = null;
+  try {
+    update = (await import("./den-update.js")).lastUpdate(getStateDir());
+  } catch {
+    /* no update record: the line says none was kept */
+  }
+  const text = backMessage(m, version, process.pid, update);
   let told = "nobody to tell";
   if (m.agent === SERVER_AGENT_ID) {
     try {

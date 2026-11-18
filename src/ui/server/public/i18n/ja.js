@@ -549,6 +549,10 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "busy.modeW": "{name} のモードを設定しています…",
+    "busy.modeS": "{name} のモードを設定しました。",
+    "busy.modeF":
+      "{name} のモードを設定できませんでした。何も変わっていません。",
     "keep.label": "ログアウト後もエージェントを動かす",
     "keep.warn":
       "そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。",
@@ -559,6 +563,9 @@
     "keep.s": "適用しました。__DEN_TITLE__ が再起動します。",
     "keep.needs": "管理者パスワードが必要です。",
     "keep.failed": "適用されませんでした。何も変わっていません。",
+    "busy.edgeW": "エッジを起動しています…",
+    "busy.edgeS": "エッジを起動しました",
+    "busy.edgeF": "エッジを起動できませんでした。",
     "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
     "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
     "keep.saved":
@@ -569,7 +576,7 @@
     "keep.offer":
       "まだ設定されていないため、ログアウトでエージェントは止まります。オンにして「適用」を押してください（管理者パスワードを一度だけ求めます）。",
     "keep.noToken":
-      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。claude setup-token で作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。トークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
     "keep.credKeychain":
       "ストアの認証情報がログインキーチェーンにあり、常時稼働のサービスからは届かないことがあります。file: か env: を使ってください（docs/always-on-gate.md を参照）。",
     "keep.setup":
@@ -595,7 +602,21 @@
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
     "keep.tokenOld":
-      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です: claude setup-token で新しく作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です。新しいトークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
+    "keep.docs": "サインインのドキュメント",
+    "keep.runtimeAny": "エージェントの CLI",
+    "acct.title": "{vendor} アカウント",
+    "acct.default": "{vendor} アカウント {letter}",
+    "acct.add": "{vendor} アカウントを追加",
+    "acct.none": "トークンなし。",
+    "acct.set": "トークンは {date} に保存されました。",
+    "acct.setUnknown": "トークンは保存されています。",
+    "acct.first": "エージェントはこれでサインインします。",
+    "acct.tokenLabel": "{name} のサインイン用トークン",
+    "acct.tokenSave": "サインイン用トークンを保存",
+    "acct.up": "上へ",
+    "acct.down": "下へ",
+    "acct.failed": "保存できませんでした: {error}",
     "busy.askAllowW": "確認しています…",
     "busy.askAllowS": "確認しました。ダイアログで許可してください。",
     "busy.askAllowF": "確認できませんでした。",
@@ -833,6 +854,12 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "起動確認の待ち時間 (秒)",
+    "set.server.ready_probe.d":
+      "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "起動の待ち時間 (秒)",
+    "set.server.start_wait.d":
+      "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
       "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
@@ -842,6 +869,16 @@
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "報告：リポジトリの公開範囲を保持する時間",
+    "set.server.report_visibility_cache.d":
+      "各報告先リポジトリが公開か非公開かを __DEN_TITLE__ が覚えておく時間です。これを過ぎると、GitHub にもう一度確認します。__DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait": "報告：リポジトリの公開範囲の待ち時間",
+    "set.server.report_visibility_wait.d":
+      "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると公開として表示し、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "報告：リポジトリの公開範囲の再確認",
+    "set.server.report_visibility_retry.d":
+      "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
     "set.agents.pane_reconnect.d":
       "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1100,6 +1137,8 @@
     "ag.stop": "停止",
     "ag.closeShell": "シェルを閉じる",
     "ag.closeShellTip": "このシェルと、その中で動いているものを終了します",
+    "ag.newShell": "新しいターミナル",
+    "ag.newShellTip": "このプロジェクトのフォルダーで別のシェルを開始します",
     "ag.shellClosed": "{id} を閉じました",
     "ag.resume": "再開",
     "ag.stopName": "{id} を停止",
@@ -1499,6 +1538,17 @@
     "ag.mode.src.install": "Den 全体の既定",
     "ag.mode.src.persona": "ペルソナ",
     "ag.mode.src.default": "Den の組み込みの既定",
+    "ag.mode.item": "モード: {m}",
+    "ag.mode.menu": "{id} のモード",
+    "ag.mode.pick": "{id} のモードを変更",
+    "ag.mode.follow": "プロジェクトに従う",
+    "ag.mode.setS":
+      "{id}: {m} (独自の設定)。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.setStopped": "{id}: {m} (独自の設定)。次の起動時に適用されます。",
+    "ag.mode.followS":
+      "{id} はプロジェクトに従うようになりました: {m}。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.followStopped":
+      "{id} はプロジェクトに従うようになりました: {m}。次の起動時に適用されます。",
     "set.workspace.agents_mode":
       "エージェントのモード: このプロジェクト (Den 全体の既定を上書き)",
     "set.workspace.agents_mode.d":
@@ -1939,6 +1989,9 @@
       "サブエージェント（Explore も）は {model} で動きます: agents.subagents.model。",
     "ag.subagents.from.default":
       "サブエージェント（Explore も）は {model} で動きます: Den の既定値。agents.subagents.model かペルソナの subagent_model で変えられます。",
+    "ag.signIn": "{label} で実行",
+    "ag.signIn.tip":
+      "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
@@ -2367,7 +2420,14 @@
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
     "set.ui.noPairHost":
-      "このサーバーに向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、{cmd} を実行してください。", // words-ok: the en string's own word, translated
+      "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
+    "set.ui.edgeStart": "エッジを起動",
+    "set.ui.edgeApply": "適用",
+    "set.ui.edgeStarted": "エッジを起動しました",
+    "set.ui.edgeCurrent": "エッジは最新です。何も再起動していません",
+    "set.ui.edgeRecreated":
+      "{why} のためエッジを作り直しました。約 {s} 秒間つながりませんでした",
+    "set.ui.edgeWhy": "設定が変わった",
     "set.ui.edgeHost": "エッジのホスト名",
     "set.ui.pairScan":
       "別のデバイスでスキャンするか、そちらでリンクを開いてください。期限 (下記) まで一度だけ使え、そのブラウザはずっとサインインしたままになります。",
@@ -2385,7 +2445,8 @@
     "set.ui.portUnset": "未設定: ディストリビューションの値を使用",
     "set.ui.signedIn": "サインイン済み",
     "set.ui.signOut": "サインアウト",
-    "set.ui.notSignedIn": "サインインしていません: {cmd} を実行してください",
+    "set.ui.notSignedIn": "サインインしていません",
+    "set.ui.signIn": "サインイン",
     "set.ui.savedIn": "{vault} に保存済み",
     "set.ui.theVault": "保管庫",
     "set.ui.savedMemory": "Den が再起動するまでメモリーに保持",
@@ -2666,6 +2727,33 @@
     "set.notifications.fold_days.o.7": "7日",
     "set.notifications.fold_days.o.14": "14日",
     "set.notifications.fold_days.o.30": "30日",
+    "set.notifications.phone": "このデバイスへのプッシュ通知",
+    "set.notifications.phone.d":
+      "スマートフォンで __DEN_TITLE__ を開き、そこでこれをオンにしてください。エージェントがあなたを必要とすると、__DEN_TITLE__ を閉じていてもスマートフォンに表示されます。このデバイスでは、タブをすべて閉じていても届きます。デバイスごとにオンにします。",
+    "set.notifications.phone.none":
+      "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
+    "set.notifications.phone.failed":
+      "ここではプッシュをオンにできませんでした。",
+    "set.notifications.quiet_from": "通知を止める時間の開始",
+    "set.notifications.quiet_from.d":
+      "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",
+    "set.notifications.quiet_to": "通知を止める時間の終了",
+    "set.notifications.quiet_to.d":
+      "この時刻から、ベル以外の通知が再び出ます。",
+    "set.notifications.quiet.off": "オフ",
+    "set.notifications.quiet.half": "開始と終了の両方を選んでください。",
+    "set.notifications.push_timeout": "プッシュの待ち時間",
+    "set.notifications.push_timeout.d":
+      "__DEN_TITLE__ がプッシュサービスに 1 件の通知を受け取ってもらうまで待つ時間です。これを過ぎるとその通知は見送り、次の通知で再び試します。__DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "プッシュの保持時間",
+    "set.notifications.push_ttl.d":
+      "電源が切れているかオフラインの端末向けに、プッシュサービスが通知を保持する時間 (秒) です。86400 で 1 日です。0 にすると、端末がいまオンでなければ破棄されます。__DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "デスクトップ通知",
+    "set.notifications.desktop.d":
+      "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
+    "set.notifications.desktop.denied":
+      "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
+    "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",
@@ -2680,7 +2768,7 @@
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。claude setup-token で一度作り、__DEN_CLI__ agents token set で保存してください。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
+      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。トークンはエージェントの CLI にサインインすると作られ、下の「サインイン用トークン」に貼り付けます。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
@@ -2796,6 +2884,68 @@
     "edge.cert.none": "なし: 証明書は取り込んだ設定にあります。",
     "edge.notConfigured": "未設定",
     "edge.unreachable": "接続できません",
+    // issue 171: values the pages show (value-words.js, log-history.ts).
+    "val.docker.created": "作成済み",
+    "val.docker.running": "実行中",
+    "val.docker.paused": "一時停止中",
+    "val.docker.restarting": "再起動中",
+    "val.docker.removing": "削除中",
+    "val.docker.exited": "停止",
+    "val.docker.dead": "停止不能（再起動できません）",
+    "val.docker.absent": "見つかりません",
+    "val.tls.none": "なし",
+    "val.tls.files": "ファイル",
+    "val.gh.success": "成功",
+    "val.gh.failure": "失敗",
+    "val.gh.error": "エラー",
+    "val.gh.cancelled": "キャンセル",
+    "val.gh.timed_out": "タイムアウト",
+    "val.gh.inactive": "無効",
+    "val.gh.in_progress": "実行中",
+    "val.gh.queued": "待機中",
+    "val.gh.pending": "保留中",
+    "val.gh.waiting": "待機中",
+    "val.gh.requested": "要求済み",
+    "val.gh.skipped": "スキップ",
+    "val.gh.action_required": "対応が必要",
+    "val.gh.neutral": "中立",
+    "val.gh.stale": "古い",
+    "val.gh.startup_failure": "起動失敗",
+    "val.perf.httpReqs": "HTTP リクエスト",
+    "val.perf.iterations": "イテレーション",
+    "val.perf.vus": "仮想クライアント (VU)",
+    "val.perf.httpAvg": "HTTP 平均",
+    "val.perf.httpP50": "HTTP p50",
+    "val.perf.httpP95": "HTTP p95",
+    "val.perf.httpP99": "HTTP p99",
+    "val.perf.httpMax": "HTTP 最大",
+    "val.perf.reqRate": "リクエスト/秒",
+    "val.perf.iterRate": "イテレーション/秒",
+    "val.perf.failRate": "失敗率",
+    "val.h.twice": "{why}（2 回続けて）",
+    "val.h.timeout": "タイムアウト",
+    "val.h.noAnswer": "{s} 秒以内に応答なし",
+    "val.h.dns": "名前が見つかりません (DNS)",
+    "val.h.noRoute": "ルートがありません (404)",
+    "val.h.fallback":
+      "このサービスではありません（localhost がエラーを返しました）",
+    "val.h.killed": "{signal} で停止",
+    "val.h.exit": "チェック失敗（終了コード {code}）",
+    "val.h.refused": "接続が拒否されました",
+    "val.h.reset": "接続が切れました",
+    "val.h.unreachable": "応答なし",
+    "val.h.tls": "証明書が受け入れられません",
+    "val.h.dockerUnknown": "Docker が応答しません",
+    "val.h.noContainer": "コンテナ {name} がありません",
+    "val.h.unhealthy": "{name}: ヘルスチェック失敗",
+    "val.h.starting": "{name}: 起動中",
+    "val.h.healthy": "{name}: 正常",
+    "val.h.container": "{name}: {state}",
+    "lg.why.badName": "リポジトリ名またはサービス名が無効です",
+    "lg.why.notLocal": "今は local のみで、{env} はまだです",
+    "lg.why.noProject": "{name} がどのプロジェクトにあるか分かりません",
+    "lg.why.noSource": "{name} には実行中のコンテナもログファイルもありません",
+    "lg.why.noSnapshot": "コンテナのログをコピーできませんでした",
     // issue 171: the Environments page.
     "env.recheck": "再チェック",
     "env.checking": "チェック中…",

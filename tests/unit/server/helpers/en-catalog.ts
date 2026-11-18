@@ -44,5 +44,54 @@ export function installEnShell(): void {
       vars?.[k] == null ? m : String(vars[k]),
     );
   };
-  (globalThis as Record<string, unknown>).window = { denShell: { t } };
+  (globalThis as Record<string, unknown>).window = {
+    denShell: { t, lang: () => "en" },
+  };
+}
+
+/** A catalog other than en (public/i18n/<lang>.js), as the page loads it. */
+export function langCatalog(lang: string): Record<string, string> {
+  const window: Record<string, unknown> = {};
+  vm.runInContext(
+    fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "src",
+        "ui",
+        "server",
+        "public",
+        "i18n",
+        `${lang}.js`,
+      ),
+      "utf-8",
+    ),
+    vm.createContext({ window }),
+  );
+  return (window.denMessages as Record<string, Record<string, string>>)[lang];
+}
+
+/**
+ * Sets globalThis.window.denShell.t to `lang`'s words, as shell.js's t:
+ * the plural form Intl.PluralRules picks, else en's, else the key.
+ */
+export function installShell(lang: string): void {
+  const en = enCatalog();
+  const own = lang === "en" ? en : langCatalog(lang);
+  const rules = new Intl.PluralRules(lang);
+  const look = (table: Record<string, string>, key: string, vars?: Vars) => {
+    if (!(key in table)) return undefined;
+    if (typeof vars?.n === "number") {
+      const form = `${key}.${rules.select(vars.n)}`;
+      if (form in table) return table[form];
+    }
+    return table[key];
+  };
+  const t = (key: string, vars?: Vars) =>
+    String(look(own, key, vars) ?? look(en, key, vars) ?? key).replace(
+      /\{(\w+)\}/g,
+      (m, k: string) => (vars?.[k] == null ? m : String(vars[k])),
+    );
+  (globalThis as Record<string, unknown>).window = {
+    denShell: { t, lang: () => lang },
+  };
 }
