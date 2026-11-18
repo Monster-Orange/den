@@ -119,6 +119,11 @@ Reads (they change nothing):
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
   test commands, and give it back (your own only). For one command, run it
   as `<cli> gate run -- <command>` instead.
+- `ci_wait`: wait for a GitHub Actions run, or a PR's checks, to end. Den
+  watches each run once for every agent. Use it, never `gh run watch` or
+  gh in a sleep loop.
+- `github_budget`: what is left of the shared hourly GitHub budget, its
+  reset, the reserve, and who spent it in the last hour.
 
 Hub files (through Den, as you; when Hub is connected):
 

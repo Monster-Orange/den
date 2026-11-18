@@ -73,6 +73,13 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     visibility_timeout_seconds: true,
     visibility_retry_seconds: true,
   },
+  // Issue 487: the GitHub budget guard.
+  github_budget: {
+    poll_seconds: true,
+    reserve: true,
+    watch_min_seconds: true,
+    gh_timeout_seconds: true,
+  },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -166,6 +173,11 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
+        // Issue 487: the GitHub budget guard.
+        "github_budget.gh_timeout_seconds",
+        "github_budget.poll_seconds",
+        "github_budget.reserve",
+        "github_budget.watch_min_seconds",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",

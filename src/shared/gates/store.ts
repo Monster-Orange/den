@@ -9,6 +9,9 @@
  *   settings.json     cpu_slots, overrun_margin_minutes
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
  *                     back, overdue, ended early (Coach reads time lost)
+ *
+ * Coach reads spend per agent too: the GitHub budget's spend log
+ * (github-budget/budget.ts, github-spend.jsonl; issue 487).
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone, at once, and

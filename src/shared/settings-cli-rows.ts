@@ -25,6 +25,9 @@
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
+ *   github_budget: { poll_seconds?, reserve?, watch_min_seconds?,
+ *     gh_timeout_seconds? }
+ *                                     user.yml github_budget.* (issue 487)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -32,6 +35,7 @@
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
+import { GITHUB_BUDGET_LIMITS } from "./github-budget/settings.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -74,6 +78,8 @@ export const PERSON_ONLY_SETTINGS = [
   "alerts",
   // Issue 415: how long Report keeps, and waits for, a repo's visibility.
   "feedback",
+  // Issue 487: the GitHub budget guard (its reserve is for people).
+  "github_budget",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -182,6 +188,14 @@ const FEEDBACK: Record<string, Limit> = Object.fromEntries(
   Object.entries(VISIBILITY_LIMITS).map(([k, l]) => [
     k,
     { key: k, min: l.min, max: l.max, int: false },
+  ]),
+);
+
+/** Issue 487: user.yml github_budget (github-budget/settings.ts). */
+const GITHUB_BUDGET: Record<string, Limit> = Object.fromEntries(
+  Object.entries(GITHUB_BUDGET_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: true },
   ]),
 );
 
@@ -393,7 +407,15 @@ export function patchCliRows(
       body.agents_list,
       apply,
     ) ??
-    patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply);
+    patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply) ??
+    patchBlock(
+      user,
+      "github_budget",
+      "github_budget",
+      GITHUB_BUDGET,
+      body.github_budget,
+      apply,
+    );
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

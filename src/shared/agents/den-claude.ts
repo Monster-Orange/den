@@ -55,7 +55,15 @@ import { spawnSync } from "child_process";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
+import {
+  MCP_ACTIONS,
+  configuredRuntimeBin,
+  readUserConfig,
+} from "../den-config.js";
+import {
+  githubBudgetPaths,
+  githubBudgetSettings,
+} from "../github-budget/settings.js";
 import { rolePrompt } from "./personas.js";
 import { HUB_PROMPT_LINE } from "../hub.js";
 import {
@@ -65,6 +73,7 @@ import {
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  type GhHookArgs,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
@@ -527,6 +536,23 @@ export function strayMcpServers(
   return { user: keep(user), project: keep(project) };
 }
 
+/**
+ * Issue 487: the slow-watch minimum (github_budget.watch_min_seconds) and
+ * where the server writes the budget snapshot, for the PreToolUse hook.
+ */
+function ghHookArgs(): GhHookArgs {
+  let block: unknown;
+  try {
+    block = readUserConfig().github_budget;
+  } catch {
+    block = undefined;
+  }
+  return {
+    watchMinSeconds: githubBudgetSettings(block).watchMinSeconds,
+    snapshot: githubBudgetPaths().snapshot,
+  };
+}
+
 /** The settings file den-claude passes with --settings. */
 export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
   return path.join(input.filesDir, "settings.json");
@@ -561,6 +587,8 @@ function common(input: LaunchInput): {
           !isServerScope(input.workspace.name),
           input.apiOnly,
           inbox,
+          // Issue 487: the GitHub budget guard's setting and snapshot.
+          ghHookArgs(),
         ),
         !!input.apiOnly,
       )

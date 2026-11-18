@@ -127,6 +127,16 @@ export interface InboxHookArgs {
   base: string;
 }
 
+/**
+ * Issue 487: the GitHub budget guard's part of the PreToolUse hook: the
+ * least `gh run watch --interval` (github_budget.watch_min_seconds) and
+ * the snapshot of the budget the server writes (github-budget.json).
+ */
+export interface GhHookArgs {
+  watchMinSeconds: number;
+  snapshot: string;
+}
+
 /** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
 export const PRETOOL_MATCHER = "Bash|Read";
 export const PRETOOL_MATCHER_API_ONLY =
@@ -144,6 +154,8 @@ export function hookCommands(
   apiOnly?: ApiOnlyArgs,
   /** D41: Den's proxy to Hub, for the inbox check. */
   inbox?: InboxHookArgs,
+  /** Issue 487: the slow-watch minimum and the server's budget snapshot. */
+  gh?: GhHookArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -165,6 +177,14 @@ export function hookCommands(
         path.join(dir, "pretooluse.mjs"),
         ...(apiOnly
           ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
+          : []),
+        ...(gh
+          ? [
+              "--gh-watch-min",
+              String(gh.watchMinSeconds),
+              "--gh-budget",
+              gh.snapshot,
+            ]
           : []),
       ],
     }),

@@ -901,6 +901,21 @@
       "Informe: reintento de la visibilidad del repositorio",
     "set.server.report_visibility_retry.d":
       "Si GitHub no responde si un repositorio es público o privado, cuánto tarda Informe en volver a preguntar. 0 pregunta cada vez que se abre. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
+    "set.server.github_reserve": "Presupuesto de GitHub: reserva",
+    "set.server.github_reserve.d":
+      "Solicitudes del presupuesto por hora de GitHub que se guardan para las publicaciones y las personas. Por debajo de esta cifra, las llamadas de los agentes a través de __DEN_TITLE__ esperan al reinicio. __DEN_CLI__ config github_budget.reserve=1000",
+    "set.server.github_poll":
+      "Presupuesto de GitHub: intervalo de consulta de CI",
+    "set.server.github_poll.d":
+      "Cada cuánto pregunta __DEN_TITLE__ a GitHub por una ejecución que esperan los agentes (ci_wait). Una consulta sirve a todos los agentes que esperan esa ejecución, y una respuesta sin cambios no cuesta nada. __DEN_CLI__ config github_budget.poll_seconds=60",
+    "set.server.github_watch_min":
+      "Presupuesto de GitHub: vigilancia más lenta permitida",
+    "set.server.github_watch_min.d":
+      "El intervalo más corto que un agente puede dar a `gh run watch --interval`. Las vigilancias más rápidas se bloquean y se le indica al agente que use ci_wait. __DEN_CLI__ config github_budget.watch_min_seconds=120",
+    "set.server.github_gh_timeout":
+      "Presupuesto de GitHub: tiempo máximo de una llamada a gh",
+    "set.server.github_gh_timeout.d":
+      "Cuánto puede tardar una llamada a GitHub a través de gh, cuando __DEN_TITLE__ vigila una ejecución para los agentes. gh guarda tu inicio de sesión de GitHub; __DEN_TITLE__ nunca lo tiene. __DEN_CLI__ config github_budget.gh_timeout_seconds=30",
     "set.agents.pane_reconnect": "Intentos de reconexión de la terminal",
     "set.agents.pane_reconnect.d":
       "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Tras estos intentos fallidos dentro del tiempo de abajo, se detiene y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",

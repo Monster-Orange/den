@@ -12,7 +12,8 @@
  * permission flow decide. Any error here exits 0: a broken hook never
  * blocks anything.
  *
- * It blocks exactly two things, and nothing else:
+ * It blocks exactly three things, and nothing else (the third, polling
+ * GitHub, is gh-polling.mjs: issue 487):
  *
  *   1. Whole-file reads of a log or a large file into the conversation:
  *      - Read with no `limit`;
@@ -37,6 +38,7 @@ import {
   audit,
   loadRules,
 } from "./api-only.mjs";
+import { ghDecision } from "./gh-polling.mjs";
 
 /** Over this many bytes, a file is large (Claude Code's own Read cap). */
 export const LARGE_BYTES = 256 * 1024;
@@ -276,11 +278,13 @@ const PREFIX = new Set([
 function stage(raw) {
   let k = 0;
   const assigns = [];
+  const keywords = [];
   while (
     k < raw.length &&
     (PREFIX.has(raw[k]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(raw[k]))
   ) {
     if (!PREFIX.has(raw[k])) assigns.push(raw[k]);
+    else keywords.push(raw[k]);
     k++;
   }
   const words = [];
@@ -309,7 +313,14 @@ function stage(raw) {
     }
     words.push(w);
   }
-  return { words, inputs, stdoutRedirected, background: false, assigns };
+  return {
+    words,
+    inputs,
+    stdoutRedirected,
+    background: false,
+    assigns,
+    keywords,
+  };
 }
 
 const base = (w) => String(w).slice(String(w).lastIndexOf("/") + 1);
@@ -353,6 +364,20 @@ function fileArgs(cmd, args) {
   return out;
 }
 
+/** Whether the command has a while, until or for loop, and runs sleep. */
+function loopShape(pipelines) {
+  let loop = false;
+  let sleeps = false;
+  for (const stages of pipelines)
+    for (const st of stages) {
+      if (st.keywords.includes("while") || st.keywords.includes("until"))
+        loop = true;
+      if (st.words[0] === "for" || st.words[0] === "select") loop = true;
+      if (base(st.words[0] ?? "") === "sleep") sleeps = true;
+    }
+  return { loop, sleeps };
+}
+
 /** The reason to block this Bash command, or null. */
 export function bashDecision(command, opts = {}) {
   const { cwd, home, background } = opts;
@@ -362,6 +387,15 @@ export function bashDecision(command, opts = {}) {
   } catch {
     return null;
   }
+  // Issue 487: polling GitHub (gh run watch, gh pr checks --watch, gh in a
+  // sleep loop), in the background too: the budget is the account's.
+  const gh = ghDecision(pipelines, {
+    ...loopShape(pipelines),
+    watchMin: opts.watchMin,
+    budgetFile: opts.budgetFile,
+    agent: opts.agent,
+  });
+  if (gh) return gh;
   for (const stages of pipelines)
     for (let s = 0; s < stages.length; s++) {
       const st = stages[s];
@@ -383,7 +417,7 @@ export function bashDecision(command, opts = {}) {
 }
 
 /** The reason to block this tool call, or null. */
-export function decide(input, env = process.env) {
+export function decide(input, env = process.env, gh = {}) {
   if (!input || typeof input !== "object") return null;
   const ti =
     input.tool_input && typeof input.tool_input === "object"
@@ -404,6 +438,9 @@ export function decide(input, env = process.env) {
       cwd,
       home,
       background: ti.run_in_background === true,
+      watchMin: gh.watchMin,
+      budgetFile: gh.budgetFile,
+      agent: env.DEN_AGENT || null,
     });
   return null;
 }
@@ -438,7 +475,15 @@ async function main() {
         reason = apiOnlyMessage(r);
       }
     }
-    if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
+    const min = arg("--gh-watch-min");
+    if (!process.argv.includes("--no-guardrails"))
+      reason ??= decide(input, process.env, {
+        watchMin:
+          min !== null && Number.isFinite(Number(min))
+            ? Number(min)
+            : undefined,
+        budgetFile: arg("--gh-budget"),
+      });
   } catch {
     reason = null;
   }

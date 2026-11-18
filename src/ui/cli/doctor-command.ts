@@ -65,6 +65,8 @@ import {
 } from "../../shared/agents/context-watch.js";
 import { eventsFile } from "../../shared/dev-metrics/emit.js";
 import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
+import { githubBudgetLines } from "../../shared/github-budget/doctor.js";
+import { githubBudgetPaths } from "../../shared/github-budget/settings.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
@@ -405,6 +407,23 @@ export function pollingLines(file: string, title: string): string[] {
     chalk.bold(`${title} doctor: dev-metrics (local, never sent)`),
     "",
     ...warnings.map((w) => chalk.yellow(`  ⚠ ${w}`)),
+  ];
+}
+
+/**
+ * Issue 487: the shared GitHub budget, from the server's snapshot: what is
+ * left, the reset, the reserve (✗ below it), and the last hour's top
+ * spenders. A note, never a failure: the budget comes back at the reset.
+ */
+export function githubBudgetDoctorLines(
+  title: string,
+  file: string = githubBudgetPaths().snapshot,
+): string[] {
+  return [
+    "",
+    chalk.bold(`${title} doctor: GitHub budget`),
+    "",
+    ...githubBudgetLines(file).map((l) => (l.includes("✗") ? chalk.red(l) : l)),
   ];
 }
 
@@ -1420,6 +1439,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
+  for (const l of githubBudgetDoctorLines(readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
     for (const l of doctorNotes(

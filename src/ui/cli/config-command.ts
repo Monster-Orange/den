@@ -78,6 +78,11 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "visibility_timeout_seconds",
   ],
   "feedback.visibility_retry_seconds": ["feedback", "visibility_retry_seconds"],
+  // Issue 487: the GitHub budget guard.
+  "github_budget.poll_seconds": ["github_budget", "poll_seconds"],
+  "github_budget.reserve": ["github_budget", "reserve"],
+  "github_budget.watch_min_seconds": ["github_budget", "watch_min_seconds"],
+  "github_budget.gh_timeout_seconds": ["github_budget", "gh_timeout_seconds"],
 };
 
 /**
