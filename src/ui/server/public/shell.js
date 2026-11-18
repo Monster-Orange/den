@@ -1432,6 +1432,9 @@
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
+    "busy.modeW": "Setting {name}'s mode…",
+    "busy.modeS": "{name}'s mode is set.",
+    "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
     "keep.label": "Keep agents running after logout",
     "keep.warn":
       "Agents there sign in with a long-lived token from your secrets store, not the login keychain.",
@@ -2400,6 +2403,18 @@
     "ag.mode.src.install": "the Den-wide default",
     "ag.mode.src.persona": "its persona",
     "ag.mode.src.default": "Den's built-in default",
+    "ag.mode.item": "Mode: {m}",
+    "ag.mode.menu": "{id}'s mode",
+    "ag.mode.pick": "Change {id}'s mode",
+    "ag.mode.follow": "Follow project",
+    "ag.mode.setS":
+      "{id}: {m}, its own setting. Den restarts it at its next idle to take it.",
+    "ag.mode.setStopped":
+      "{id}: {m}, its own setting. It takes it at its next start.",
+    "ag.mode.followS":
+      "{id} follows the project now: {m}. Den restarts it at its next idle to take it.",
+    "ag.mode.followStopped":
+      "{id} follows the project now: {m}. It takes it at its next start.",
     "set.workspace.agents_mode":
       "Agents' mode: this project (overrides the Den-wide default)",
     "set.workspace.agents_mode.d":
