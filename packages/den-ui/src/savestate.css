@@ -1,0 +1,75 @@
+/* den-ui: the save-state line's look (savestate.js). Tokens only: no
+   colour of its own. Linked, never injected: clean under style-src 'self'.
+   The dot's colour is the only thing that moves (var(--dur-fast)). */
+.den-savestate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  min-height: 20px;
+  font-family: var(--sans);
+  font-size: var(--fs-s);
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--muted);
+}
+.den-savestate::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: transparent;
+  transition: background-color var(--dur-fast) ease;
+}
+/* idle: no words and no dot; the line keeps its height. */
+.den-savestate[data-state="idle"]::before {
+  visibility: hidden;
+}
+.den-savestate[data-state="saving"]::before {
+  background-color: var(--faint);
+}
+.den-savestate[data-state="saved"]::before {
+  background-color: var(--ok);
+}
+.den-savestate[data-state="error"] {
+  color: var(--bad);
+}
+.den-savestate[data-state="error"]::before {
+  background-color: var(--bad);
+}
+/* Copy text: a link-style button after the words. */
+.den-savestate-copy {
+  font: inherit;
+  margin: 0;
+  margin-inline-start: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.den-savestate-copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* The live region beside the line: heard, never seen. */
+.den-savestate-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-savestate::before {
+    transition: none;
+  }
+}

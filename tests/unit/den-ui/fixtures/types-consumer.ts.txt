@@ -47,6 +47,12 @@ import { BUSY_WORDS } from "@kit/busy-words.js";
 import { askConfirm, tell } from "@kit/dialog.js";
 import { formatTime, timeHtml } from "@kit/time.js";
 import { showUpdate } from "@kit/update-pill.js";
+import {
+  createSaveState,
+  saveScheduler,
+  SAVE_AFTER_MS,
+  type SaveStateChange,
+} from "@kit/savestate.js";
 
 const model: ShellModel = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -206,3 +212,23 @@ showUpdate({
   onReload: () => {},
 }).hide();
 export { html, words, svg, view, pv, m, bw, when };
+// The save-state line: any field, the host's save and Copy text.
+const field = document.createElement("textarea");
+const line = createSaveState(document.createElement("p"), {
+  save: () => fetch("/save", { method: "PUT", body: field.value }),
+  copyText: () => field.value,
+  watch: field,
+  words: { saved: "Kept" },
+});
+line.changed();
+void line.flush().then(() => line.state() === "saved");
+const sch = saveScheduler({
+  save: async () => undefined,
+  onChange: (c: SaveStateChange) => void (c.announce === "error" && c.at),
+});
+sch.destroy();
+const viaKit = DenUI.saveState(document.createElement("p"), {
+  save: async () => undefined,
+});
+viaKit.destroy();
+void (SAVE_AFTER_MS + 0);

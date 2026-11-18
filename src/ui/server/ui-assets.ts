@@ -150,6 +150,9 @@ export const KIT_FILES: readonly string[] = [
   "dialog.js",
   // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
   "dialog.css",
+  // The save-state line for autosaving editors, and its look.
+  "savestate.js",
+  "savestate.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.

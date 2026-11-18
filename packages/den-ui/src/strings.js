@@ -187,6 +187,12 @@ export const en = {
   "kit.report.copyFailed":
     "Could not copy. Select the text and copy it yourself.",
   "kit.report.copyH": "Copy the report",
+  // The save-state line (savestate.js). "Saved" has no closing stop.
+  "kit.savestate.saving": "Saving…",
+  "kit.savestate.saved": "Saved",
+  "kit.savestate.error": "Not saved. Retrying…",
+  "kit.savestate.copy": "Copy text",
+  "kit.savestate.savedAt": "Saved at {time}",
 };
 
 export const es = {
@@ -372,6 +378,11 @@ export const es = {
   "kit.report.copyFailed":
     "No se pudo copiar. Selecciona el texto y cópialo tú.",
   "kit.report.copyH": "Copia el informe",
+  "kit.savestate.saving": "Guardando…",
+  "kit.savestate.saved": "Guardado",
+  "kit.savestate.error": "No se guardó. Reintentando…",
+  "kit.savestate.copy": "Copiar texto",
+  "kit.savestate.savedAt": "Guardado a las {time}",
 };
 
 export const ja = {
@@ -552,6 +563,11 @@ export const ja = {
   "kit.report.copyFailed":
     "コピーできませんでした。テキストを選んでコピーしてください。",
   "kit.report.copyH": "報告をコピー",
+  "kit.savestate.saving": "保存しています…",
+  "kit.savestate.saved": "保存しました",
+  "kit.savestate.error": "保存できていません。再試行しています…",
+  "kit.savestate.copy": "テキストをコピー",
+  "kit.savestate.savedAt": "{time} に保存しました",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */

@@ -20,6 +20,7 @@
     "./busy": "./src/busy.js",
     "./busy-words": "./src/busy-words.js",
     "./dialog": "./src/dialog.js",
+    "./savestate": "./src/savestate.js",
     "./strings": "./src/strings.js",
     "./icons": "./src/icons.js",
     "./shell-html": "./src/shell-html.js",
@@ -34,6 +35,7 @@
     "./report.css": "./src/report.css",
     "./busy.css": "./src/busy.css",
     "./dialog.css": "./src/dialog.css",
+    "./savestate.css": "./src/savestate.css",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
       "default": "./inventory/nav-inventory.js"
