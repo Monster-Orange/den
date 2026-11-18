@@ -123,6 +123,7 @@ import {
   overrideTagsHtml,
   ownModeLabel,
   modeLabel,
+  openAgentModeMenu,
   permBlockHtml,
   personaDetail,
   personaDetailHtml,
@@ -5022,6 +5023,31 @@ function translateStatic(root) {
     ?.setAttribute("aria-label", t("ag.layout"));
 }
 
+/**
+ * Issue 252: a running agent's Mode, in its ⋯: the four modes and Follow
+ * project, the one in effect checked. None for a runtime without modes.
+ */
+function modeItems(r, opener) {
+  if (r?.kind !== "agent" || !r.mode) return [];
+  return [
+    {
+      label: t("ag.mode.item", { m: t(`pm.name.${r.mode}`) }),
+      onSelect: () =>
+        openAgentModeMenu(
+          opener,
+          {
+            workspace: r.workspace,
+            agent: r.agent,
+            ...(r.displayName ? { name: r.displayName } : {}),
+            ...(r.modeOwn ? { own: r.mode } : {}),
+            project: r.modeOwn ? r.modeFollowed : r.mode,
+          },
+          () => void refresh(),
+        ),
+    },
+  ];
+}
+
 /** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
 function stoppedMenuItems(r, opener) {
   return [
@@ -5535,6 +5561,7 @@ export async function mountAgentsPage(root) {
             ? stoppedMenuItems(r, b)
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
+                ...modeItems(r, b),
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),

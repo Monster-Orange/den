@@ -144,6 +144,7 @@ import {
   listRuntimes,
   markInterrupted,
   modeCheck,
+  modeRestartDetail,
   cancelStalePersonaChanges,
   NOT_IN_WORKSPACE,
   pruneStopped,
@@ -2095,7 +2096,12 @@ export function startAgentUpkeep(
     }
   };
   // 0.4.46 MODE-UI: a mode change applies on its own, after the turn.
-  const mc = modeCheck(d, { log });
+  // Issue 252: each restart it makes is an audit row, by Den itself.
+  const mc = modeCheck(d, {
+    log,
+    onRestarted: (e) =>
+      recordAction(null, { verb: "agents", detail: modeRestartDetail(e) }),
+  });
   let checking = false;
   const modes = async () => {
     if (checking) return;
