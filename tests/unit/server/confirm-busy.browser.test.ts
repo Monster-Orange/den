@@ -8,7 +8,8 @@
  *
  * The real server and pages; the DELETE itself is answered here, so
  * nothing is deleted. Invented names only. DEN_PW_WS uses Den's own
- * Playwright server; DEN_SKIP_BROWSER_TESTS=1 skips it.
+ * Playwright server; DEN_HELPERS_BROWSER=webkit runs it in WebKit (Safari);
+ * DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
@@ -25,12 +26,14 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
+    const pw = await import("playwright");
+    const engine =
+      process.env.DEN_HELPERS_BROWSER === "webkit" ? pw.webkit : pw.chromium;
     browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
+      ? await engine.connect(process.env.DEN_PW_WS, {
           exposeNetwork: "<loopback>",
         })
-      : await chromium.launch();
+      : await engine.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
