@@ -8,8 +8,7 @@
  *   remove <run> --project <p>                an imported run, gone
  *
  * The file is untrusted: verify/imports.ts checks it, with the size and
- * count caps in verify.import. A person's or the CLI's: inside an agent's
- * session it is refused. It writes the same records the page reads, so no
+ * count caps in verify.import. A person's: an agent is refused. It writes the same records the page reads, so no
  * server is needed.
  */
 import * as fs from "fs";
@@ -80,7 +79,7 @@ export async function cmdVerify(
   if (sub !== "import" && sub !== "remove") return usage();
   if (isAgentTokenEnv(deps.env ?? process.env)) {
     err(
-      `${cli} verify ${sub} is a person's or the CLI's: an agent's session can't change Verify's results.`,
+      `${cli} verify ${sub} is a person's: an agent can't change Verify's results.`,
     );
     return 1;
   }
@@ -127,7 +126,7 @@ export async function cmdVerify(
   const env = opt.env;
   if (!settings.environments.includes(env)) {
     err(
-      `"${env}" is not an imported environment: add it to verify.environments in the org config (now: ${settings.environments.join(", ") || "none"})`,
+      `"${env}" is not an imported environment: add it to verify.environments in Den's config (now: ${settings.environments.join(", ") || "none"})`,
     );
     return 1;
   }

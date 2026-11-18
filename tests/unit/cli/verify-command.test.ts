@@ -80,7 +80,7 @@ describe("verify import", () => {
     );
     expect([agent.code, agent.err]).toEqual([
       1,
-      expect.stringMatching(/a person's or the CLI's/),
+      expect.stringMatching(/a person's: an agent can't change/),
     ]);
     const env = await run([
       "import",
