@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.66] - unreleased
+## [0.4.66] - 2026-11-18
 
 den-ui 0.7.5 ships with this release (the shared Markdown editor). It
 did not publish on its own: the kit's publish rides Den's release (issue
