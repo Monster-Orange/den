@@ -1764,7 +1764,10 @@ const KIT_PHONE = "(pointer: coarse), (max-width: 767.98px)";
  */
 function paintPhoneDock() {
   const onPhone = !!window.matchMedia?.(KIT_PHONE).matches;
-  const agent = onPhone && st.open.some((id) => rowOf(id)?.kind === "agent");
+  // An agent open, or one the address names that is still opening (the
+  // shell hid the dock for it from the first paint).
+  const agent =
+    onPhone && (!!st.deep || st.open.some((id) => rowOf(id)?.kind === "agent"));
   if (agent) document.body.dataset.phoneAgent = "";
   else delete document.body.dataset.phoneAgent;
   // Only as the view becomes a phone's or stops being one: the person's
@@ -5805,6 +5808,8 @@ export async function mountAgentsPage(root) {
   const linkedAgent = new URLSearchParams(location.search).get("agent");
   writeUrl();
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
+  // Issue 302: the addressed agent opened, or not (stopped, gone).
+  paintPhoneDock();
   if (termWs !== null) await openTerminal(termWs);
   if (startAsked) void openStart();
 }

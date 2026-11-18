@@ -5679,8 +5679,21 @@
   var dockOpen = state.dock === true;
   // Issue 302: a page may show the dock shut for its own view (a phone's
   // list of agents), never saving it: the person's choice stays as it
-  // was. The person's own Show runs ends it.
-  var dockShutHere = false;
+  // was. The person's own Show runs ends it. The Agents page on a phone
+  // (the kit's breakpoint) starts so, from the first paint: the mock's
+  // frame 1 shows the dock shut, frame 2 (an agent open, by its address)
+  // shows none. The Agents page keeps both as panes open and close.
+  var PHONE_MQ = "(pointer: coarse), (max-width: 767.98px)";
+  var agentsPhone =
+    page === "agents" &&
+    !!(window.matchMedia && window.matchMedia(PHONE_MQ).matches);
+  var dockShutHere = agentsPhone;
+  if (agentsPhone && document.body && document.body.dataset) {
+    var openAddr =
+      /\/agents\/[^/]+\/?$/.test(location.pathname || "") ||
+      /[?&]open=/.test(location.search || "");
+    if (openAddr) document.body.dataset.phoneAgent = "";
+  }
   function dockShown() {
     return dockOpen && !dockShutHere;
   }
