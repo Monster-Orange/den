@@ -461,6 +461,7 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
+import { terminalsPageHtml, terminalsRedirect } from "./terminals-page.js";
 import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
@@ -3687,11 +3688,29 @@ async function handleRequest(
 
   // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
   if (pathname === "/agents" || pathname === "/agents.html") {
+    // Issue 482: an older Terminal link lands on Terminals.
+    const to = terminalsRedirect(url.searchParams);
+    if (to) {
+      res.writeHead(302, { Location: to });
+      res.end();
+      return;
+    }
     // A typo under agents: is the 422 config page here (only here: the
     // rest of the UI still works).
     const bad = sectionConfigError("agents");
     if (bad && wantsHtmlPage(req, pathname)) throw bad;
     return serveFile(res, path.join(PUBLIC_DIR, "agents.html"));
+  }
+
+  // Issue 482: Terminals, plain shells' own list (agents.html's panes).
+  if (pathname === "/terminals") {
+    const bad = sectionConfigError("agents");
+    if (bad && wantsHtmlPage(req, pathname)) throw bad;
+    return serveFile(
+      res,
+      path.join(PUBLIC_DIR, "agents.html"),
+      terminalsPageHtml,
+    );
   }
 
   // Issue 209: Verify's page. /tests moved here (people bookmarked it);

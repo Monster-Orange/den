@@ -20,6 +20,12 @@
  *   7. Stop-ship: what a person types reaches exactly the agent the To
  *      line names, after a project switch, a tab switch and a reload.
  *
+ * Issue 482: plain shells left the Agents list for Terminals (their own
+ * page, which follows the project filter too). 1. is Terminals' now: its
+ * rows, tabs and ?open= hold the project's own shells (Terminals has no
+ * "tabs hidden" line: the mock has none). 7.'s tab switch is between two
+ * of south's agents (a shell has no tab on Agents any more).
+ *
  * The demo distribution (acme; north and south active) with a session
  * host in this process and a scripted PTY: nothing really runs.
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -51,7 +57,11 @@ const shells: Record<string, string> = {};
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -60,7 +70,7 @@ beforeAll(async () => {
   host = await connectHost(sessionPaths(s.stateDir).socket);
   await run("ada", "north", "2026-11-13T09:00:00.000Z");
   for (const ws of ["north", "south"]) {
-    const p = await open(`/agents?terminal=1&ws=${ws}`);
+    const p = await open(`/terminals?terminal=1&project=${ws}`);
     await p.waitForFunction(() => !/terminal=1/.test(location.search));
     await p.waitForFunction(
       () => !!new URLSearchParams(location.search).get("open"),
@@ -143,6 +153,7 @@ async function open(next: string): Promise<Page> {
     });
     try {
       localStorage.removeItem("den-agents-open");
+      localStorage.removeItem("den-terminals-open");
     } catch {
       /* none */
     }
@@ -154,7 +165,9 @@ async function open(next: string): Promise<Page> {
 
 /** The projects of the list's groups, and the tabs' ids. */
 const listed = (p: Page) =>
-  p.$$eval("#agl .wsg", (xs) => xs.map((x) => (x as HTMLElement).dataset.ws));
+  p.$$eval("#agl .wsg[data-ws], #agl .agst[data-ws]", (xs) => [
+    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
+  ]);
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),
@@ -163,29 +176,21 @@ const openParam = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
 describe("#80: a project's view holds only its own", () => {
-  it("the list, the tabs and ?open= hold north's; south's tab is hidden, said in one line", async () => {
+  it("Terminals: the rows, the tabs and ?open= hold north's shells; south's tab leaves", async () => {
     if (!browser) return;
     expect(shells.north && shells.south).toBeTruthy();
     const p = await open(
-      `/agents?ws=north&layout=tabs&open=${shells.north},${shells.south}`,
+      `/terminals?ws=north&layout=tabs&open=${shells.north},${shells.south}`,
     );
-    await p.waitForSelector("#agl .wsg");
+    await p.waitForSelector("#agl .tmr");
     await p.waitForTimeout(500);
-    expect(await listed(p)).toEqual(["north"]);
+    expect(
+      await p.$$eval("#agl .tmr", (xs) =>
+        xs.map((x) => (x as HTMLElement).dataset.ws),
+      ),
+    ).toEqual(["north"]);
     expect(await tabs(p)).toEqual([shells.north]);
     expect(openParam(p)).toEqual([shells.north]);
-    const note = p.locator('#agl [data-note="other-tabs"]');
-    expect((await note.textContent())?.replace(/\s+/g, " ").trim()).toBe(
-      "1 tab from other projects hidden · Show in All active",
-    );
-    // Show in All active: every project, and both tabs.
-    await note.locator("button").click();
-    await p.waitForFunction(
-      () => !new URLSearchParams(location.search).get("ws"),
-    );
-    await p.waitForSelector(`.agtab[data-id="${shells.south}"]`);
-    expect((await tabs(p)).sort()).toEqual([shells.north, shells.south].sort());
-    expect((await listed(p)).sort()).toEqual(["north", "south"]);
     await p.context().close();
   }, 60_000);
 
@@ -299,15 +304,22 @@ describe("#80: scope wins", () => {
   it("stop-ship: typing reaches exactly the To line's agent after a project switch, a tab switch and a reload", async () => {
     if (!browser) return;
     if (!sid.bo) await run("bo", "south", "2026-11-13T09:05:00.000Z");
+    // Issue 482: a second south agent for the tab switch (a shell has no
+    // tab on Agents any more). It started last, so it may come in front.
+    if (!sid.cy) await run("cy", "south", "2026-11-13T09:01:00.000Z");
     const p = await open(`/agents?project=north&layout=tabs&open=${sid.ada}`);
     await p.waitForSelector(`.pane[data-id="${sid.ada}"]`);
     // A project switch …
     await chooseInTopBar(p, "south");
-    await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
-    // … a tab switch (south's shell, then bo again) …
-    await p.click(`#agl .agr[data-id="${shells.south}"]`);
-    await p.waitForSelector(`.pane[data-id="${shells.south}"]:not([hidden])`);
-    await p.click(`.agtab[data-id="${sid.bo}"]`);
+    await p.waitForSelector(
+      `.pane[data-id="${sid.bo}"]:not([hidden]), .pane[data-id="${sid.cy}"]:not([hidden])`,
+    );
+    // … a tab switch (cy, then bo) …
+    await p.click(`#agl .agr[data-id="${sid.cy}"]`);
+    await p.waitForSelector(`.pane[data-id="${sid.cy}"]:not([hidden])`);
+    const boTab = p.locator(`.agtab[data-id="${sid.bo}"]`);
+    if (await boTab.count()) await boTab.click();
+    else await p.click(`#agl .agr[data-id="${sid.bo}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
     // … and a reload.
     await p.reload();
@@ -320,12 +332,18 @@ describe("#80: scope wins", () => {
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
     await p.keyboard.type("zz-stop-ship");
+    const reached = () =>
+      s!.made.filter((x, i) =>
+        Buffer.concat(x.writes.slice(from[i]))
+          .toString()
+          .includes("zz-stop-ship"),
+      );
+    // A slow runner: wait for the typing to land, then a moment for any
+    // stray copy elsewhere.
+    for (let i = 0; i < 100 && !reached().length; i++)
+      await p.waitForTimeout(50);
     await p.waitForTimeout(500);
-    const got = s!.made.filter((x, i) =>
-      Buffer.concat(x.writes.slice(from[i]))
-        .toString()
-        .includes("zz-stop-ship"),
-    );
+    const got = reached();
     expect(got).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);

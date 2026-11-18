@@ -433,6 +433,7 @@ const KIND = [
   "service",
   "app",
   "agent",
+  "terminal",
   "workspace",
   "action",
   "setting",
@@ -821,6 +822,18 @@ function openLogs(svc) {
  * the Agents page (AG-4a-term).
  */
 let palSessions = [];
+
+/**
+ * Issue 482: where session `x` sits in the palette. A plain terminal is
+ * "Terminals › <ws> / <name>" and opens on Terminals; an agent is
+ * "Agents › …" on Agents.
+ */
+export function sessionPaletteSpot(x) {
+  const id = encodeURIComponent(x.id);
+  return x.kind === "agent"
+    ? { kind: "agent", key: "ag.pal", path: `/agents?open=${id}` }
+    : { kind: "terminal", key: "tm.pal", path: `/terminals?open=${id}` };
+}
 function askPaletteSessions(redraw) {
   if (sh()?.apiOff?.()) return;
   fetch("/api/sessions")
@@ -925,10 +938,11 @@ function paletteItems() {
     const extra =
       sn && sn !== base && sn !== x.persona && sn !== x.label ? sn : "";
     const name = extra ? `${base} · ${extra}` : base;
+    const spot = sessionPaletteSpot(x);
     items.push({
       key: `agent:${x.id}`,
-      kind: "agent",
-      label: t("ag.pal", { ws: x.workspace, name }),
+      kind: spot.kind,
+      label: t(spot.key, { ws: x.workspace, name }),
       sub:
         x.kind === "agent" && (x.displayName || x.persona !== x.label)
           ? x.label
@@ -943,7 +957,7 @@ function paletteItems() {
         "agents",
         "terminal",
       ],
-      ...page(`/agents?open=${encodeURIComponent(x.id)}`),
+      ...page(spot.path),
     });
   }
   // 0.4.17: Go to workspace <ws>, for every workspace, the front agent's

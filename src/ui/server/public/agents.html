@@ -1175,6 +1175,363 @@
           max-height: 50vh;
         }
       }
+      /* Issue 482 (mock v3, "What the developers build for A"): Terminals,
+         plain shells' own list. A row is one button (a click anywhere
+         opens it); an exited row's Restart and Remove sit above it. */
+      .tmr {
+        position: relative;
+        border-left: 2px solid transparent;
+      }
+      .tmr[aria-current="true"] {
+        border-left-color: var(--accent);
+        background: var(--sunken);
+      }
+      .tmr > .agr {
+        position: static;
+        border-left: 0;
+        padding: 8px 12px 9px 10px;
+        line-height: 1.4;
+      }
+      .tmr > .agr::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+      }
+      .tmr > .agr:hover,
+      .tmr > .agr[aria-pressed="true"] {
+        background: none;
+      }
+      .tmr:hover {
+        background: var(--sunken);
+      }
+      .tmr .chev {
+        display: none;
+      }
+      .tmr .meta {
+        grid-column: 2 / 4;
+      }
+      .tmr .stc {
+        font: 11px var(--mono);
+        border-radius: 999px;
+        padding: 0 7px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .tmr .stc.running {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+      }
+      .tmr .stc.exited {
+        color: var(--faint);
+        border-style: dashed;
+      }
+      .tmr.dim .nm,
+      .tmr.dim .meta {
+        opacity: 0.55;
+      }
+      .tmr .tmacts {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        gap: 6px;
+        padding: 0 12px 9px 31px;
+        margin-top: -5px;
+      }
+      .tm-state {
+        margin: 12px;
+        padding: 16px;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius);
+        display: grid;
+        gap: 6px;
+        justify-items: start;
+        color: var(--muted);
+      }
+      .tm-state b {
+        color: var(--text);
+      }
+      .tm-state.tm-err {
+        border-style: solid;
+        border-color: color-mix(in srgb, var(--bad) 50%, var(--border));
+      }
+      .tm-state[data-state-card="loading"] {
+        border: 0;
+        padding: 0;
+        margin: 6px 0;
+        justify-items: stretch;
+      }
+      .tm-state .skel {
+        height: 64px;
+        margin: 0 12px;
+        border-radius: var(--radius);
+        background: linear-gradient(
+          90deg,
+          var(--sunken),
+          var(--surface),
+          var(--sunken)
+        );
+      }
+      #ag-moved {
+        flex: none;
+      }
+      #ag-moved[hidden] {
+        display: none;
+      }
+      #ag-moved .note-bar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+        background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+        border-radius: var(--radius);
+        padding: 8px 12px;
+        margin: 0 0 12px;
+        font-size: 13px;
+      }
+      #ag-moved .acts {
+        display: flex;
+        gap: 6px;
+        flex: none;
+      }
+      .tm-back {
+        display: none;
+      }
+      .pane .tm-title {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        min-width: 0;
+      }
+      .pane .tm-title .where {
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pane.tm-done .term {
+        display: none;
+      }
+      .pane .tm-ended {
+        display: grid;
+        gap: 8px;
+        place-content: center;
+        justify-items: center;
+        text-align: center;
+        color: var(--muted);
+        padding: 20px;
+      }
+      .pane .tm-ended b {
+        color: var(--text);
+        font-size: 16px;
+      }
+      .pane .tm-ended .acts2 {
+        display: flex;
+        gap: 8px;
+      }
+      .pane .tm-ended small {
+        color: var(--faint);
+      }
+      .tm-keys {
+        display: none;
+      }
+      @media (max-width: 720px) {
+        /* A phone (mock v3, A4-A7): touch sizes; the list alone until a
+           shell opens, then the shell alone, with ‹ Terminals and keys. */
+        .tm-page .ph .act,
+        .tm-page #tm-new {
+          width: 100%;
+        }
+        .tm-page #tm-new {
+          min-height: 48px;
+          font-weight: 600;
+        }
+        .tm-page .tm-sub2 {
+          display: none;
+        }
+        .tm-page .agl {
+          max-height: none;
+        }
+        .tm-page:not(.tm-shell) .agx {
+          grid-template-rows: minmax(0, 1fr);
+        }
+        .tm-page:not(.tm-shell) #agr {
+          display: none;
+        }
+        .tm-page.tm-shell {
+          padding: 0 !important;
+        }
+        .tm-page.tm-shell > .ph,
+        .tm-page.tm-shell #agl {
+          display: none;
+        }
+        .tm-page.tm-shell .agx {
+          grid-template-rows: minmax(0, 1fr);
+          gap: 0;
+        }
+        .tm-page.tm-shell .pane {
+          border-radius: 0;
+          border-left: 0;
+          border-right: 0;
+        }
+        /* Mock A5 (Den Design, 11-18): an open terminal is the whole
+           screen under the top bar, its keys row pinned at the foot. The
+           runs dock is hidden for this view only (its saved choice is
+           untouched: the list shows it as before), as for an open agent. */
+        .tm-page.tm-shell {
+          position: fixed;
+          top: var(--tm-top, 56px);
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 5;
+          display: flex;
+          flex-direction: column;
+          background: var(--bg);
+        }
+        .tm-page.tm-shell .agx {
+          flex: 1;
+          min-height: 0;
+        }
+        /* One row for the pane in front: the tabs strip is hidden here, so
+           the tabs layout's auto row would size the pane to its content. */
+        .tm-page.tm-shell #agr {
+          height: 100%;
+          min-height: 0;
+          grid-template-rows: minmax(0, 1fr);
+          grid-auto-rows: minmax(0, 1fr);
+        }
+        .tm-page.tm-shell .pane:not([hidden]) {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-height: 0;
+        }
+        .tm-page.tm-shell .pane .term {
+          flex: 1;
+          min-height: 0;
+        }
+        .tm-page.tm-shell .pane .tm-keys {
+          flex: none;
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+        body:has(.tm-page.tm-shell) #den-dock {
+          display: none !important;
+        }
+        .tm-page .agp.tabs > .agtabs {
+          display: none;
+        }
+        .tm-page .tm-back {
+          display: inline-grid;
+          place-items: center;
+          min-height: 44px;
+          padding: 0 8px;
+          border: 0;
+          background: none;
+          color: var(--accent-text, var(--accent));
+          font: 500 14px var(--sans);
+          cursor: pointer;
+        }
+        .tm-page .pane .bar2 {
+          min-height: 52px;
+          flex-wrap: nowrap;
+        }
+        /* Name over path; the path is cut short (…) before Stop. */
+        .tm-page .pane .tm-title {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          line-height: 1.25;
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+        }
+        /* Not the agent bar's .where (min-content, inline-flex): here the
+           path gives way to Stop. */
+        .tm-page .pane .tm-title b,
+        .tm-page .pane .tm-title .where {
+          display: block;
+          min-width: 0;
+          max-width: none;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+        .tm-page .pane .bar2 .x {
+          flex: none;
+        }
+        .tm-page .pane .bar2 .x .den-btn {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        .tm-page .tm-keys {
+          display: flex;
+          gap: 6px;
+          padding: 8px 10px;
+          border-top: 1px solid var(--border);
+          background: var(--surface);
+        }
+        .tm-page .tm-keys button {
+          flex: 1;
+          min-height: 44px;
+          border: 1px solid var(--border);
+          border-radius: var(--radius-button);
+          background: var(--surface);
+          color: var(--text);
+          font: 13px var(--mono);
+        }
+        .tm-page .tm-keys button[aria-pressed="true"] {
+          background: color-mix(in srgb, var(--accent) 16%, transparent);
+        }
+        .tmr {
+          min-height: 64px;
+          border-top: 1px solid var(--border);
+        }
+        .tmr > .agr {
+          padding: 10px 40px 10px 16px;
+          gap: 2px 8px;
+        }
+        .tmr .meta {
+          font: 14px var(--sans);
+        }
+        .tmr .meta.when {
+          font-size: 12px;
+        }
+        .tmr .chev {
+          display: block;
+          position: absolute;
+          right: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--faint);
+          font-size: 20px;
+        }
+        .tmr.dim .chev {
+          display: none;
+        }
+        .tmr .tmacts {
+          gap: 8px;
+          padding: 0 16px 10px 16px;
+          margin-top: 0;
+        }
+        .tmr .tmacts .den-btn {
+          min-height: 44px;
+          min-width: 44px;
+          padding: 0 16px;
+          font-size: 14px;
+        }
+        #ag-moved .note-bar {
+          align-items: center;
+        }
+        #ag-moved .tm-sub2 {
+          display: none;
+        }
+        #ag-moved .acts .den-btn {
+          min-height: 44px;
+          display: inline-grid;
+          place-items: center;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1188,7 +1545,7 @@
         <div>
           <h1 id="ag-h">Agents</h1>
           <div class="sub" id="ag-sub">
-            <span id="ag-count"></span> ·
+            <span id="ag-only"></span> <span id="ag-count"></span> ·
             <span class="mono" id="ag-url">/agents</span>
             <button
               type="button"
@@ -1232,8 +1589,14 @@
           <button type="button" class="den-btn primary" id="ag-start">
             + Start agent
           </button>
+          <!-- Issue 482: Terminals' one header action. -->
+          <button type="button" class="den-btn primary" id="tm-new" hidden>
+            New terminal
+          </button>
         </div>
       </div>
+      <!-- Issue 482: Agents' one-time "N shells moved to Terminals" note. -->
+      <div id="ag-moved" hidden></div>
       <div class="agx" id="agx">
         <div
           class="agl"
