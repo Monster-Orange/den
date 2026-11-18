@@ -340,7 +340,10 @@ describe("issue 519: the v3 hint checks for Traefik v2 rule syntax first", () =>
   });
 
   it("a v2 rule in an included dynamic file is named by its file and router", () => {
-    const row = fixture("Host(`web.acme.localhost`)", "Headers(`X-Env`, `dev`)");
+    const row = fixture(
+      "Host(`web.acme.localhost`)",
+      "Headers(`X-Env`, `dev`)",
+    );
     const text = row.warnings.join("\n");
     expect(text).not.toContain(FIX);
     expect(text).toContain("extra.yml");

@@ -106,12 +106,14 @@ describe("labelRules: router rules in a compose file's labels", () => {
     };
     expect(labelRules(doc, "app/docker-compose.yml")).toEqual([
       {
-        where: "app/docker-compose.yml service api label traefik.http.routers.api.rule",
+        where:
+          "app/docker-compose.yml service api label traefik.http.routers.api.rule",
         rule: "Host(`api.x`)",
         ruleSyntax: "v2",
       },
       {
-        where: "app/docker-compose.yml service db label traefik.tcp.routers.db.rule",
+        where:
+          "app/docker-compose.yml service db label traefik.tcp.routers.db.rule",
         rule: "HostSNI(`db.x`)",
       },
     ]);
@@ -127,11 +129,11 @@ describe("edgeRules: Den's routes, included files, stack route files, labels", (
     fs.mkdirSync(path.join(state, "dynamic"), { recursive: true });
     fs.writeFileSync(
       path.join(inc, "a.yml"),
-      "http:\n  routers:\n    one:\n      rule: \"HostHeader(`a`)\"\n",
+      'http:\n  routers:\n    one:\n      rule: "HostHeader(`a`)"\n',
     );
     fs.writeFileSync(
       path.join(state, "dynamic", "stack-p.yml"),
-      "http:\n  routers:\n    two:\n      rule: \"Host(`b`)\"\n",
+      'http:\n  routers:\n    two:\n      rule: "Host(`b`)"\n',
     );
     const repo = path.join(root, "repo");
     fs.mkdirSync(repo);
@@ -161,8 +163,12 @@ describe("edgeRules: Den's routes, included files, stack route files, labels", (
       "a.yml router one",
       "repo/compose.yml service w label traefik.http.routers.w.rule",
     ]);
-    const calls = [child.spawnSync, child.execSync, child.execFileSync, child.spawn]
-      .map((f) => (f as unknown as jest.Mock).mock.calls.length);
+    const calls = [
+      child.spawnSync,
+      child.execSync,
+      child.execFileSync,
+      child.spawn,
+    ].map((f) => (f as unknown as jest.Mock).mock.calls.length);
     expect(calls).toEqual([0, 0, 0, 0]);
   });
 

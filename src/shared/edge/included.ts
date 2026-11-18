@@ -41,6 +41,8 @@ export interface IncludedRouter {
    * (0.3.0-dev.33).
    */
   upstream: string;
+  /** The router's own `ruleSyntax` (issue 519), when it sets one. */
+  ruleSyntax?: string;
 }
 
 /** A router's URLs: one per host, with its scheme; none without a Host(). */
@@ -93,6 +95,7 @@ export function routersOf(doc: unknown, file: string): IncludedRouter[] {
       tls,
       secure: tls || entryPoints.includes("websecure"),
       upstream: serverUrls(services[service]).join(", ") || service,
+      ...(str(o.ruleSyntax) ? { ruleSyntax: str(o.ruleSyntax) } : {}),
     };
   });
 }
