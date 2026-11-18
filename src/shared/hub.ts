@@ -812,6 +812,8 @@ async function hubCall(
   throw new HubCallError(
     "unreachable",
     `Hub answered ${res.status}${said ? `: ${said}` : ""}`,
+    str(body.error),
+    res.status,
   );
 }
 

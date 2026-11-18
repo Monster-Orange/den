@@ -24,8 +24,10 @@ import {
   agentHubTokenDir,
   readAgentHubToken,
   agentHubTokenSettingsOf,
+  readAgentTokenProblems,
   type AgentHubTokenSettings,
 } from "../../../src/shared/hub-agent-tokens.js";
+import { hubAgentTokenLines } from "../../../src/ui/cli/doctor-command.js";
 import { agentFilesDir } from "../../../src/shared/agents/records.js";
 import {
   agentsNotCovered,
@@ -686,6 +688,49 @@ describe("issue 249: one [hub] log line per mint, mint failure and revoke", () =
       expect(l).not.toContain(INSTALL);
       expect(l).not.toMatch(/hubi_/);
     }
+  });
+});
+
+describe("issue 249: den doctor shows a failed mint or an unexpected drop as ✗", () => {
+  it("a failed mint (Hub's status and code) and a 401 drop each show one ✗ row per agent; a stored mint clears its row; never a token", async () => {
+    const mode = { v: "nomint" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    let now = 1_000_000;
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings({ retrySeconds: 60 }),
+      now: () => now,
+      log: () => undefined,
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    await b.tokenFor(h, a);
+    let d = hubAgentTokenLines(readAgentTokenProblems(stateDir));
+    expect(d.lines).toHaveLength(1);
+    expect(d.lines[0]).toMatch(/✗.*ada.*status 503, error busy/);
+    expect(d.checks[0]).toMatchObject({
+      id: "hub:agent-token:ada",
+      status: "fail",
+    });
+    mode.v = "ok";
+    now += 61_000;
+    const t = await b.tokenFor(h, a);
+    expect(hubAgentTokenLines(readAgentTokenProblems(stateDir)).lines).toEqual(
+      [],
+    );
+    b.rejected("ada");
+    d = hubAgentTokenLines(readAgentTokenProblems(stateDir));
+    expect(d.lines[0]).toMatch(/✗.*ada.*401/);
+    mode.v = "notcovered";
+    await b.tokenFor(h, { ...a, id: "bob" });
+    d = hubAgentTokenLines(readAgentTokenProblems(stateDir));
+    expect(d.lines).toHaveLength(2);
+    expect(d.lines.join("\n")).toMatch(
+      /bob.*status 403, error agents_not_covered.*Reconnect/,
+    );
+    expect(JSON.stringify(d)).not.toContain(t!);
+    expect(JSON.stringify(d)).not.toMatch(/hubi_/);
   });
 });
 

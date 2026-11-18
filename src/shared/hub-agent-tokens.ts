@@ -135,6 +135,70 @@ function dropAgentHubToken(stateDir: string, id: string): void {
   if (f) fs.rmSync(f, { force: true });
 }
 
+/** What `den doctor` shows for one agent's Hub token (never a token). */
+export interface AgentTokenProblem {
+  agentId: string;
+  /** mint: Hub didn't mint; store: minted, not stored; revoke: Hub
+   * couldn't revoke; rejected: Hub answered 401 to it (not Den's revoke). */
+  what: "mint" | "store" | "revoke" | "rejected";
+  /** Hub's HTTP status, when it answered one. */
+  status?: number;
+  /** Hub's `error` code, when it gave one. */
+  code?: string;
+  /** In plain words, for the line. */
+  detail: string;
+  at: string;
+}
+
+const problemFile = (stateDir: string) =>
+  path.join(stateDir, "hub", "agent-token-problems.json");
+
+/** The latest Hub-token problem per agent, for `den doctor`. */
+export function readAgentTokenProblems(stateDir: string): AgentTokenProblem[] {
+  try {
+    const v = JSON.parse(
+      fs.readFileSync(problemFile(stateDir), "utf8"),
+    ) as Record<string, AgentTokenProblem> | null;
+    return v && typeof v === "object"
+      ? Object.values(v).filter(
+          (p): p is AgentTokenProblem =>
+            !!p &&
+            typeof p.agentId === "string" &&
+            typeof p.detail === "string",
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Keep (`p`) or clear (`p` null) agent `id`'s problem. Never throws. */
+function noteAgentTokenProblem(
+  stateDir: string,
+  id: string,
+  p: Omit<AgentTokenProblem, "agentId" | "at"> | null,
+  at: string,
+): void {
+  try {
+    const f = problemFile(stateDir);
+    let all: Record<string, AgentTokenProblem> = {};
+    try {
+      all = JSON.parse(fs.readFileSync(f, "utf8")) ?? {};
+    } catch {
+      if (!p) return;
+    }
+    if (p) all[id] = { agentId: id, at, ...p };
+    else if (id in all) delete all[id];
+    else return;
+    fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
+    const tmp = `${f}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(all) + "\n", { mode: 0o600 });
+    fs.renameSync(tmp, f);
+  } catch {
+    /* doctor's record is best effort */
+  }
+}
+
 /** Every kept agent token (any state). */
 export function listAgentHubTokens(stateDir: string): AgentHubToken[] {
   let names: string[];
@@ -208,6 +272,18 @@ export class HubAgentTokens {
     } catch {
       /* a log line never stops a call */
     }
+  }
+
+  private problem(
+    id: string,
+    p: Omit<AgentTokenProblem, "agentId" | "at"> | null,
+  ): void {
+    noteAgentTokenProblem(
+      this.deps.stateDir(),
+      id,
+      p,
+      new Date(this.now()).toISOString(),
+    );
   }
 
   private revokeOne(hub: HubInstall, tokenId: string): Promise<boolean> {
@@ -316,6 +392,12 @@ export class HubAgentTokens {
     } catch (e) {
       const until = this.now() + s.retrySeconds * 1000;
       const code = e instanceof HubCallError ? e.code : undefined;
+      this.problem(a.id, {
+        what: "mint",
+        ...(hubStatusOf(e) !== undefined ? { status: hubStatusOf(e) } : {}),
+        ...(code ? { code } : {}),
+        detail: `Hub didn't mint its token (${mintFailure(e)})`,
+      });
       if (code !== INSTALL_TOKEN_REQUIRED)
         this.log(
           `Hub didn't mint agent ${a.id}'s token (${mintFailure(e)})${usable ? ": it keeps its current token" : ": it uses the install's token"}`,
@@ -361,9 +443,14 @@ export class HubAgentTokens {
       this.log(
         `Hub minted agent ${a.id}'s token ${g.tokenId}, but Den couldn't store it under ${agentHubTokenDir(stateDir)}: ${(e as Error)?.message ?? e}`,
       );
+      this.problem(a.id, {
+        what: "store",
+        detail: `Hub minted its token ${g.tokenId}, but Den couldn't store it: ${(e as Error)?.message ?? e}`,
+      });
       this.failedUntil.set(a.id, this.now() + s.retrySeconds * 1000);
       return usable?.token ?? null;
     }
+    this.problem(a.id, null);
     this.log(
       `${usable ? "rotated" : "minted"} agent ${a.id}'s Hub token ${g.tokenId}: stored under ${agentHubTokenDir(stateDir)}`,
     );
@@ -380,6 +467,11 @@ export class HubAgentTokens {
       this.log(
         `Hub answered 401 to agent ${id}'s token ${t.tokenId}: dropped here, the next call mints a new one`,
       );
+      this.problem(id, {
+        what: "rejected",
+        status: 401,
+        detail: `Hub answered 401 to its token ${t.tokenId} (Den didn't revoke it): the next call mints a new one`,
+      });
     }
   }
 
@@ -414,6 +506,15 @@ export class HubAgentTokens {
       const r = await this.revokeEvery(hub, t);
       this.log(
         `${r.failed ? "couldn't revoke" : "revoked"} agent ${id}'s Hub token ${t.tokenId} (reason: ${reason})${r.failed ? ": kept, never used, tried again later" : ""}`,
+      );
+      this.problem(
+        id,
+        r.failed
+          ? {
+              what: "revoke",
+              detail: `Hub couldn't revoke its token ${t.tokenId} (${reason}): kept, never used, tried again later`,
+            }
+          : null,
       );
       if (!r.failed) {
         dropAgentHubToken(stateDir, id);
@@ -461,13 +562,20 @@ export class HubAgentTokens {
   }
 }
 
+/** Hub's HTTP status in a HubCallError, when it answered one. */
+function hubStatusOf(e: unknown): number | undefined {
+  if (!(e instanceof HubCallError)) return undefined;
+  return (
+    e.status ??
+    (e.kind === "rejected" ? 401 : e.kind === "forbidden" ? 403 : undefined)
+  );
+}
+
 /** Hub's answer to a failed mint, for a log line: status and error code. */
 function mintFailure(e: unknown): string {
   if (!(e instanceof HubCallError))
     return `error: ${(e as Error)?.message ?? String(e)}`;
-  const status =
-    e.status ??
-    (e.kind === "rejected" ? 401 : e.kind === "forbidden" ? 403 : undefined);
+  const status = hubStatusOf(e);
   return status === undefined
     ? `no answer: ${e.message}`
     : `status ${status}, error ${e.code ?? "none"}`;

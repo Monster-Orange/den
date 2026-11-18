@@ -100,6 +100,10 @@ anyway. Then the token still works in Hub until a Hub admin revokes this install
   agents (it connected before agent tokens), Den puts one item in Needs you: "Reconnect to Hub so your
   agents sign their own work". It opens Settings › Hub. Press Connect there, once. Until then Den
   doesn't ask Hub again, and agents use the install's token.
+- **When an agent's token goes wrong.** If Hub doesn't give an agent its token, Den can't keep it, Hub
+  can't revoke it, or Hub turns it down, `den doctor` shows a ✗ row for that agent with Hub's status
+  and error code. The server's log has one `[hub]` line for each token Den gets, each failure, and each
+  revoke with its reason. Neither ever shows a token.
 - **No asking, by default.** "Agents use Hub's tools without asking" is on. Writes stay in your
   company, and Hub keeps every version. Turn it off and agents ask before each Hub tool runs, like any
   tool.

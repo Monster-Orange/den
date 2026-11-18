@@ -654,6 +654,39 @@ export function hubLines(
 }
 
 /**
+ * Issue 249: an agent's own Hub token that Hub didn't mint, Den couldn't
+ * store or revoke, or Hub turned down (401): one ✗ row per agent, with
+ * Hub's status and error code. Never a token. Nothing kept: no rows.
+ */
+export function hubAgentTokenLines(
+  problems: readonly import("../../shared/hub-agent-tokens.js").AgentTokenProblem[],
+): { lines: string[]; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const p of problems) {
+    const when = Number.isFinite(Date.parse(p.at))
+      ? new Date(p.at).toLocaleString()
+      : p.at;
+    const reconnect =
+      p.code === "agents_not_covered" || p.code === "agents_manage_missing";
+    const fix = reconnect
+      ? "Settings › Hub: Reconnect"
+      : p.what === "mint"
+        ? "Den asks Hub again after hub.agent_token_retry_seconds; the agent uses the install's token meanwhile"
+        : undefined;
+    const detail = `agent ${p.agentId}: ${p.detail} (${when})`;
+    lines.push(`  hub agent  ✗  ${detail}${fix ? `. ${fix}` : ""}`);
+    checks.push({
+      id: `hub:agent-token:${p.agentId}`,
+      status: "fail",
+      detail,
+      ...(reconnect ? { ask: "Reconnect to Hub in Settings › Hub" } : {}),
+    });
+  }
+  return { lines, checks };
+}
+
+/**
  * H5: with Hub connected, each project's Hub project. Linked is ok; not
  * linked warns (Hub files that project's agents' work in Unfiled), with
  * the command that shows Hub's suggestions and links one; with two or
@@ -1325,6 +1358,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const st = await hubStatus();
       const h = hubLines(st, readBrand().name);
       if (h.check) r.checks.push(h.check);
+      if (st.configured) {
+        const { readAgentTokenProblems } =
+          await import("../../shared/hub-agent-tokens.js");
+        r.checks.push(
+          ...hubAgentTokenLines(readAgentTokenProblems(getStateDir())).checks,
+        );
+      }
       r.checks.push(
         ...hubProjectLines(
           st.configured && st.connected,
@@ -1388,6 +1428,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
+    if (st.configured) {
+      const { readAgentTokenProblems } =
+        await import("../../shared/hub-agent-tokens.js");
+      for (const l of hubAgentTokenLines(readAgentTokenProblems(getStateDir()))
+        .lines)
+        console.log(l);
+    }
     for (const l of hubProjectLines(
       st.configured && st.connected,
       await projectsWithHubProject(),
