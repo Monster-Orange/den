@@ -4,10 +4,14 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.65] - 2026-11-18
+## [0.4.65] - unreleased
 
 0.4.65-dev.1 was skipped: its commit failed CI and was never handed to a
 gate.
+
+The first 0.4.65 commit (115c3404) was not published: release.yml failed on
+a slow test (issue 424). 0.4.65 ships from 0.4.65-dev.5, which adds only that
+test's fix.
 
 ### Added
 
@@ -371,6 +375,9 @@ gate.
   killing the wrapper. (#451)
 - Tests: the agent-order test waits for each move's save and its own
   announcement, not a fixed time (issue 452). (#453)
+- Tests: the Report form's es/ja check is one test per language and width,
+  and every page in that file sets its own language, so a slow CI runner no
+  longer times it out or leaves the next test in Japanese (issue 424). (#470)
 
 ## [0.4.64] - 2026-11-17
 
