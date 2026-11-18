@@ -47,6 +47,21 @@ const SAYS_SHELL: Record<string, RegExp> = {
   ja: /シェル/,
 };
 
+describe("issue 482: Agents' empty pane is about agents only", () => {
+  const m = catalogs();
+  const NAMES_OTHERS: Record<string, RegExp> = {
+    en: /\b(shells?|terminals?)\b/i,
+    es: /\b(shells?|terminal(es)?)\b/i,
+    ja: /シェル|ターミナル/,
+  };
+  for (const lang of ["en", "es", "ja"])
+    it(`${lang}: ag.empty names no shell or terminal`, () => {
+      const v = m[lang]!["ag.empty"] ?? "";
+      expect(v).toBeTruthy();
+      expect(v).not.toMatch(NAMES_OTHERS[lang]!);
+    });
+});
+
 describe("issue 482: Terminals never says shell", () => {
   const m = catalogs();
   for (const lang of ["en", "es", "ja"])
