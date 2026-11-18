@@ -85,13 +85,14 @@ jobs:
           RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
 
-  # The whole unit suite on both Nodes, split in four parts that run side by
-  # side (jest --shard): every test runs once per Node, as before; the suite
-  # took 13–19 min (up to 30 with setup) in one job.
+  # The whole unit suite on both Nodes, split in six parts that run side by
+  # side (jest --shard): every test runs once per Node. In four parts a shard
+  # took 17–20 min against a 20-min limit and was cut off; six parts and a
+  # 30-min limit leave room.
   tests:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
     # jest's cores-minus-one the shared runner starved and the heaviest
     # files ran 2-8 times slower, past their budgets (issues 195-198).
@@ -103,7 +104,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ["22.13.0", "24.13.0"]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -128,10 +129,10 @@ jobs:
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the
       # rest, never beside the browser tests (tests/docker-suites.mjs).
-      - run: npm test -- --shard=${{ matrix.shard }}/4
+      - run: npm test -- --shard=${{ matrix.shard }}/6
         env:
           DEN_TEST_DOCKER: skip
-      - run: npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests
+      - run: npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only
 
@@ -261,7 +262,7 @@ jobs:
           n=$(grep -c . affected.txt)
           b=$(grep -c '\.browser\.test\.ts$' affected.txt || true)
           if [ "$(head -1 affected.txt)" = ALL ] || [ "$n" -gt 150 ] || [ "$b" -gt 30 ]; then
-            echo 'shards=[1,2,3,4]' >> "$GITHUB_OUTPUT"
+            echo 'shards=[1,2,3,4,5,6]' >> "$GITHUB_OUTPUT"
           else
             echo 'shards=[]' >> "$GITHUB_OUTPUT"
           fi
@@ -304,7 +305,7 @@ jobs:
     needs: [pr]
     if: needs.pr.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DEN_TEST_WORKERS: "2"
       DEN_TEST_QUARANTINE: exclude
@@ -340,13 +341,13 @@ jobs:
         run: bash scripts/ci-pw-install.sh
       - env:
           DEN_TEST_DOCKER: skip
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
+        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests "${files[@]}"
       - env:
           DEN_TEST_DOCKER: only
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/4 --passWithNoTests "${files[@]}"
+        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests "${files[@]}"
       - name: Quarantined tests (never blocks)
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           DEN_TEST_QUARANTINE: only
-        run: npx jest --forceExit --shard=${{ matrix.shard }}/4 --passWithNoTests
+        run: npx jest --forceExit --shard=${{ matrix.shard }}/6 --passWithNoTests
