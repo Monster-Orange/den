@@ -13,6 +13,7 @@
 import type * as http from "http";
 import {
   MCP_HEADERS_ROUTE,
+  PROJECT_MCP_NAME_RE,
   parseProjectMcpServers,
   projectMcpHeaderFor,
   projectMcpUnserved,
@@ -87,6 +88,7 @@ export async function handleProjectMcpRoutes(
     if (
       !body ||
       typeof body.name !== "string" ||
+      !PROJECT_MCP_NAME_RE.test(body.name) ||
       keys.some((k) => k !== "name")
     )
       return (
@@ -94,7 +96,7 @@ export async function handleProjectMcpRoutes(
           res,
           400,
           "bad_body",
-          "The body is {name}: the project is the one the agent's token was minted for.",
+          "The body is {name} (an MCP entry's name): the project is the one the agent's token was minted for.",
         ),
         true
       );

@@ -81,6 +81,10 @@ describe("issue 473: /api/agents/self/mcp-headers", () => {
     // The body never names the project.
     const named = await post(base, { name: "tracker", project: "north" });
     expect(named.status).toBe(400);
+    // A name that is no MCP entry's shape: refused, not echoed.
+    const odd = await post(base, { name: `x\n${"y".repeat(200)}` });
+    expect(odd.status).toBe(400);
+    expect(await odd.text()).not.toContain("yyyy");
     expect(await named.text()).not.toContain(BEARER);
   });
 
