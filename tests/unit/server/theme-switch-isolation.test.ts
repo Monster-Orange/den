@@ -557,11 +557,15 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
         'POST /api/settings {"appearance":{"mode":"light"}}',
         'POST /api/settings {"appearance":{"theme":"paper"}}',
       ]);
+      // Issue 455: the address banner's read (GET /api/edge/address) is the
+      // page load's, and only reads.
       expect(
-        reqs.filter((r) =>
-          /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
-            r,
-          ),
+        reqs.filter(
+          (r) =>
+            r !== "GET /api/edge/address" &&
+            /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
+              r,
+            ),
         ),
       ).toEqual([]);
 

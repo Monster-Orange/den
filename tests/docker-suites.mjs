@@ -15,6 +15,8 @@ export const DOCKER_SUITES = [
   "tests/unit/edge/access-log.integration.test.ts",
   "tests/unit/edge/edge-proof-traefik.integration.test.ts",
   "tests/unit/edge/upstream-idle.integration.test.ts",
+  // Issue 455: the routes for another proxy, each in its official image.
+  "tests/unit/edge/proxy-route.integration.test.ts",
 ];
 
 /** A regex for a path that is one of these files. */

@@ -896,6 +896,52 @@ export function addressLines(
 }
 
 /**
+ * Issue 455: whether the install's address reaches THIS Den right now (an
+ * identity probe, den-identity.ts), and when it doesn't, what holds its
+ * port, the address that does work, and the two ways out (mock v3's doctor
+ * lines). Always said here: doctor is one of the two quiet places the fact
+ * lives (Edge is the other).
+ */
+export async function addressCheckLines(
+  title: string,
+  cli: string,
+  deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
+): Promise<{ lines: string[]; check: OnboardCheck | null }> {
+  const { checkAddress, doctorAddressLines, localIdentityKey, cliLanguage } =
+    await import("../../shared/edge/address-check.js");
+  const { readWebPort } = await import("../../shared/edge/config.js");
+  const w = readWebUrl();
+  if (!w) return { lines: [], check: null };
+  let port: number;
+  try {
+    port = readWebPort();
+  } catch {
+    return { lines: [], check: null };
+  }
+  const st = await checkAddress({
+    webPort: port,
+    wanted: w.url,
+    key: localIdentityKey(getStateDir()),
+    cli,
+    ...deps,
+  });
+  const d = doctorAddressLines(st, { lang: cliLanguage(), title, cli });
+  const [head, ...rest] = d.lines;
+  return {
+    lines: [
+      `  ${d.status === "ok" ? "✓" : "!"} ${head}`,
+      ...rest.map((l) => `      ${l}`),
+    ],
+    check: {
+      id: "address_reaches",
+      status: d.status,
+      detail: d.lines.join(" "),
+      ...(st.address ? { url: st.address } : {}),
+    },
+  };
+}
+
+/**
  * Issue 367: the contact push alerts give the push services. With an
  * https address (web.url) they get it; without one, a mailto fallback
  * some refuse, so a phone may get no push: warn, and say what to set.
@@ -1347,6 +1393,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    {
+      const ac = await addressCheckLines(readBrand().name, product().cli);
+      if (ac.check) r.checks.push(ac.check);
+    }
     r.checks.push(
       pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
     );
@@ -1407,6 +1457,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
+  for (const l of (await addressCheckLines(readBrand().name, product().cli))
+    .lines)
+    console.log(l);
   for (const l of pushContactLines(
     readWebUrl(),
     readBrand().name,

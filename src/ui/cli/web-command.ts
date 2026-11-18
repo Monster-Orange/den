@@ -87,6 +87,17 @@ import {
   personGrantRefusal,
 } from "../../shared/claim-code.js";
 import { redactSecrets } from "../../shared/redact.js";
+import {
+  checkAddress,
+  cliLanguage,
+  localIdentityKey,
+  noticeLine,
+  noticeOnce,
+  upNoticeLines,
+  givenAddress,
+  type AddressState,
+  type CheckDeps,
+} from "../../shared/edge/address-check.js";
 import { localDateTime } from "../../shared/local-time.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
@@ -1495,7 +1506,12 @@ async function runWeb(args: string[]): Promise<void> {
     // D20: started from an ssh (Background) shell, it lives there.
     const where = webUpWarning(launchdSession(), product().cli);
     if (where) console.log(chalk.yellow(`\n  ⚠ ${where}`));
-    console.log(chalk.cyan(`\n  Starting ${product().cli} web on ${shown}...`));
+    // Issue 455: no address yet; it is said once it is proven.
+    console.log(
+      chalk.cyan(
+        `\n  Starting ${product().cli} web on port ${options.port}...`,
+      ),
+    );
     try {
       started = startDenWebServer(options);
       running = await waitForDenWeb(options.port, started.pid);
@@ -1520,18 +1536,45 @@ async function runWeb(args: string[]): Promise<void> {
     }
   } else if (!svc.handled) {
     recordRunningDenWebServer(options.port);
+  }
+
+  // Issue 455: only an address just proven to reach this Den is printed or
+  // opened. When the install's address isn't Den (another server holds its
+  // port), Den's own port here, said once per change with what holds it.
+  const proven = addr
+    ? await checkAddress({
+        webPort: options.port,
+        wanted: addr.url,
+        key: localIdentityKey(getStateDir()),
+        cli: product().cli,
+      })
+    : null;
+  const origin = (proven ? givenAddress(proven) : null) ?? addr?.url ?? null;
+  const shownNow = origin ?? shown;
+  if (running && !svc.handled && !started)
     console.log(
       chalk.green(
-        `\n  OK ${product().title} web is already running at ${shown}`,
+        `\n  OK ${product().title} web is already running at ${shownNow}`,
       ),
     );
+  if (proven?.address && addr && proven.address !== addr.url) {
+    const words = {
+      lang: cliLanguage(),
+      title: product().title,
+      cli: product().cli,
+    };
+    if (noticeOnce(getStateDir(), proven))
+      for (const [i, l] of upNoticeLines(proven, words, null).entries())
+        console.log(
+          i === 0 ? chalk.yellow(`  ! ${l}`) : chalk.gray(`    ${l}`),
+        );
   }
 
   if (!options.openBrowser) {
-    console.log(chalk.gray(`  Browser open skipped. Visit: ${shown}\n`));
+    console.log(chalk.gray(`  Browser open skipped. Visit: ${shownNow}\n`));
     return;
   }
-  if (!addr) {
+  if (!addr || !origin) {
     // D80: nothing to open until the install has its address.
     console.log(chalk.yellow(`  Nothing opened: ${shown.slice(1, -1)}\n`));
     return;
@@ -1542,8 +1585,8 @@ async function runWeb(args: string[]): Promise<void> {
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
-  let link: string | null = personGrantRefusal(process.env) ? addr.url : null;
-  const signIn = () => (link ??= freshLoginLink(options.port));
+  let link: string | null = personGrantRefusal(process.env) ? origin : null;
+  const signIn = () => (link ??= freshLoginLink(options.port, "/", origin));
   const browser = openOrFocusDenWebUrl(
     signIn,
     options.port,
@@ -1553,21 +1596,21 @@ async function runWeb(args: string[]): Promise<void> {
     // Its origin (never the link): which run tried to open what.
     console.log(
       chalk.gray(
-        `  Browser open skipped (${browser.why}): ${addr.url.replace(/\/+$/, "")}\n`,
+        `  Browser open skipped (${browser.why}): ${origin.replace(/\/+$/, "")}\n`,
       ),
     );
     return;
   }
   if (browser.status === "focused") {
     console.log(chalk.green(`  OK Focused existing ${browser.app} tab`));
-    console.log(chalk.gray(`  ${shown}\n`));
+    console.log(chalk.gray(`  ${shownNow}\n`));
     return;
   }
   if (browser.status === "opened") {
     console.log(
       chalk.green(`  OK Opened ${product().cli} web in your browser`),
     );
-    console.log(chalk.gray(`  ${shown}\n`));
+    console.log(chalk.gray(`  ${shownNow}\n`));
     return;
   }
 
@@ -1685,6 +1728,41 @@ interface CliIo {
   stateDir?: string;
   /** D80: the install's address (web.url); readWebUrl by default. */
   webUrl?: () => WebUrl | null;
+  /** Issue 455: the address check's parts (tests swap the owner lookup). */
+  addressDeps?: Partial<CheckDeps>;
+}
+
+/**
+ * Issue 455: the origin a link may carry. The install's address (web.url)
+ * when it was just proven to reach this Den; else Den's own port here
+ * when that was, with the one sentence that says why (once per change).
+ * When nothing answers as this Den (its server isn't running), `wanted`
+ * as before: nothing was proven either way.
+ */
+export async function provenOrigin(
+  port: number,
+  wanted: string,
+  stateDir: string,
+  say: (line: string) => void,
+  deps: Partial<CheckDeps> = {},
+): Promise<{ origin: string; state: AddressState }> {
+  const state = await checkAddress({
+    webPort: port,
+    wanted,
+    key: localIdentityKey(stateDir),
+    cli: product().cli,
+    ...deps,
+  });
+  const given = givenAddress(state) ?? wanted;
+  if (given !== wanted && noticeOnce(stateDir, state)) {
+    const line = noticeLine(state, {
+      lang: cliLanguage(),
+      title: product().title,
+      cli: product().cli,
+    });
+    if (line) say(line);
+  }
+  return { origin: given, state };
 }
 const stdIo: CliIo = {
   out: (s) => process.stdout.write(s),
@@ -1794,7 +1872,10 @@ const LOGIN_HELP = () =>
  * allowed origin (a LAN name), where the cookie must be set (the
  * signed-out page there says which). The link signs in when opened.
  */
-export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
+export async function cmdWebLogin(
+  args: string[],
+  io: CliIo = stdIo,
+): Promise<number> {
   if (isHelp(args)) {
     io.out(LOGIN_HELP());
     return 0;
@@ -1814,12 +1895,18 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
     io.err(`${product().cli}: ${(e as Error).message}\n`);
     return 1;
   }
-  const link = freshLoginLink(
-    a.port,
-    a.next,
-    origin,
-    io.stateDir ?? getStateDir(),
-  );
+  const stateDir = io.stateDir ?? getStateDir();
+  // Issue 455: an origin the person named (--origin, --host) is theirs;
+  // the install's address is checked first.
+  if (!a.origin)
+    ({ origin } = await provenOrigin(
+      a.port,
+      origin,
+      stateDir,
+      (l) => io.err(`${product().cli}: ${l}\n`),
+      io.addressDeps,
+    ));
+  const link = freshLoginLink(a.port, a.next, origin, stateDir);
   io.err(
     `${product().cli}: open this link within ${ttlText(loginLinkTtl())}; it signs in one browser, once.\n`,
   );
@@ -1898,6 +1985,15 @@ export async function cmdWebLoginWait(
     return 1;
   }
   const stateDir = io.stateDir ?? getStateDir();
+  // Issue 455: the install's address only when it reaches this Den.
+  if (!a.origin)
+    ({ origin } = await provenOrigin(
+      a.port,
+      origin,
+      stateDir,
+      (l) => io.err(`${product().cli}: ${l}\n`),
+      io.addressDeps,
+    ));
   const secret = ensureWebSecret(stateDir);
   const now = Date.now();
   const ttl = loginLinkTtl();
