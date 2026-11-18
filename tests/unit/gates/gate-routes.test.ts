@@ -86,9 +86,43 @@ describe("gate-slot routes", () => {
     });
     const r = await call("GET", "/api/gate-slots");
     expect(r.status).toBe(200);
-    expect(r.json.settings).toEqual({ cpuSlots: 2, overrunMarginMinutes: 15 });
+    expect(r.json.settings).toEqual({
+      cpuSlots: 2,
+      overrunMarginMinutes: 15,
+      leftWaitingMinutes: 60,
+    });
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),
+    ]);
+    expect(r.json.left).toEqual([]);
+  });
+
+  it("issue 524: GET carries who left the queue, with why, for the page", async () => {
+    const { store, call } = await serve();
+    store.ask({
+      kind: "browser",
+      who: "A",
+      label: "e2e",
+      pid: 1,
+      estimateMin: 6,
+    });
+    const w = store.ask({
+      kind: "cpu",
+      who: "B",
+      label: "unit",
+      pid: 2,
+      estimateMin: 6,
+    });
+    store.giveBack(w.id, "SIGTERM");
+    const r = await call("GET", "/api/gate-slots");
+    expect(r.json.left).toEqual([
+      expect.objectContaining({
+        id: w.id,
+        who: "B",
+        label: "unit",
+        signal: "SIGTERM",
+        place: 1,
+      }),
     ]);
   });
 

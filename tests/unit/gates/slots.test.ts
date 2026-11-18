@@ -19,6 +19,7 @@ import {
   checkGatePatch,
   gateDir,
 } from "../../../src/shared/gates/store.js";
+import { gateView } from "../../../src/shared/gates/view.js";
 import { PERSON_ONLY_SETTINGS } from "../../../src/shared/settings-cli-rows.js";
 
 const tmps: string[] = [];
@@ -208,6 +209,99 @@ describe("the store", () => {
     expect(s.list().map((e) => e.id)).toEqual([a.id]);
   });
 
+  it("issue 524: a waiter that leaves records left-waiting (signal, minutes, place), not released", () => {
+    let now = T0;
+    const s = new GateStore({ dir: tmp(), now: () => now });
+    const holder = ask(s, "browser");
+    const first = ask(s, "cpu");
+    const second = ask(s, "cpu");
+    now += 107 * 60_000;
+    expect(s.giveBack(second.id, "SIGTERM")).toMatchObject({
+      event: "left-waiting",
+      id: second.id,
+      signal: "SIGTERM",
+      minutes: 107,
+      place: 2,
+    });
+    // Its asker's own code gave it back: no signal, "asked".
+    expect(s.release(first.id)).toBe(true);
+    expect(s.events().at(-1)).toMatchObject({
+      event: "left-waiting",
+      id: first.id,
+      signal: "asked",
+      place: 1,
+    });
+    // A holder's end is still "released", with the minutes held.
+    expect(s.release(holder.id)).toBe(true);
+    expect(s.events().at(-1)).toMatchObject({
+      event: "released",
+      id: holder.id,
+      minutes: 107,
+    });
+    expect(s.events().at(-1)!.signal).toBeUndefined();
+    expect(s.giveBack(holder.id)).toBeNull();
+  });
+
+  it("issue 524: the gate never drops a live waiter; only taken-back-gone once its pids are gone", () => {
+    let now = T0;
+    const pids = new Set([100, 200, 300]);
+    const s = new GateStore({
+      dir: tmp(),
+      now: () => now,
+      alive: (p) => pids.has(p),
+    });
+    ask(s, "browser", 100);
+    const w = ask(s, "cpu", 200);
+    s.setRunPid(w.id, 300);
+    // Ten hours of reads, past every estimate and margin: the waiter stays.
+    for (let i = 0; i < 60; i++) {
+      now += 10 * 60_000;
+      expect(s.list().map((e) => e.id)).toContain(w.id);
+    }
+    pids.delete(200);
+    expect(s.get(w.id)).not.toBeNull();
+    expect(s.events().map((e) => e.event)).toEqual([
+      "asked",
+      "granted",
+      "asked",
+      "waits",
+      "overdue",
+    ]);
+    pids.delete(300);
+    expect(s.get(w.id)).toBeNull();
+    expect(
+      s
+        .events()
+        .filter((e) => e.id === w.id)
+        .map((e) => e.event),
+    ).toEqual(["asked", "waits", "taken-back-gone"]);
+  });
+
+  it("issue 524: the view shows the last left_waiting_minutes of left-waiting rows (a Setting, default 60)", () => {
+    let now = T0;
+    const s = new GateStore({ dir: tmp(), now: () => now });
+    expect(s.settings().leftWaitingMinutes).toBe(60);
+    ask(s, "browser");
+    const old = ask(s, "cpu");
+    const recent = ask(s, "cpu");
+    s.giveBack(old.id, "SIGHUP");
+    now += 50 * 60_000;
+    s.giveBack(recent.id, "SIGINT");
+    now += 20 * 60_000;
+    expect(gateView(s, now).left).toEqual([
+      expect.objectContaining({
+        id: recent.id,
+        kind: "cpu",
+        signal: "SIGINT",
+        minutes: 50,
+        place: 1,
+      }),
+    ]);
+    s.writeSettings({ left_waiting_minutes: 120 });
+    expect(gateView(s, now).left.map((r) => r.id)).toEqual([recent.id, old.id]);
+    expect(gateView(s, now).settings.leftWaitingMinutes).toBe(120);
+  });
+
   it("an overdue slot is flagged once, recorded, never removed", () => {
     let now = T0;
     const s = new GateStore({ dir: tmp(), now: () => now });
@@ -239,11 +333,17 @@ describe("the store", () => {
 
   it("settings: permissive defaults, null clears, nonsense ignored", () => {
     const s = new GateStore({ dir: tmp() });
-    expect(s.settings()).toEqual(GATE_DEFAULTS);
+    expect(s.settings()).toEqual({
+      ...GATE_DEFAULTS,
+      leftWaitingMinutes: 60,
+    });
     s.writeSettings({ cpu_slots: 4 });
     expect(s.settings().cpuSlots).toBe(4);
     s.writeSettings({ cpu_slots: null, overrun_margin_minutes: -3 });
-    expect(s.settings()).toEqual(GATE_DEFAULTS);
+    expect(s.settings()).toEqual({
+      ...GATE_DEFAULTS,
+      leftWaitingMinutes: 60,
+    });
   });
 
   it("the grant waits for the lock; a stale lock (30 s) is taken back", () => {
@@ -323,6 +423,13 @@ describe("Settings › Server: the machine's gate settings (POST gate_slots)", (
     });
     expect(checkGatePatch({ lease_minutes: 5 })).toMatchObject({ ok: false });
     expect(checkGatePatch([])).toMatchObject({ ok: false });
+    expect(checkGatePatch({ left_waiting_minutes: 90 })).toEqual({
+      ok: true,
+      patch: { left_waiting_minutes: 90 },
+    });
+    expect(checkGatePatch({ left_waiting_minutes: -1 })).toMatchObject({
+      ok: false,
+    });
   });
 
   it("is a person's only", () => {
