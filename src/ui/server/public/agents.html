@@ -218,11 +218,12 @@
           transform: translate(-50%, -50%);
           background: transparent;
         }
-        /* The page header's 44px buttons and the open runs dock's bar
-           take room; with the dock open the list gives way (30vh, from
-           50vh), so a pane's To line stays above the dock (issue 170). */
-        body:has(.den-dock.open) .agl {
-          max-height: 30vh;
+        /* The page header's buttons, a pane's tabs and the open runs
+           dock's bar are 44px here, about 40px more in all: with the dock
+           open a pane gives way (132px, from 180px), so its To line stays
+           above the dock (issue 170). */
+        body:has(.den-dock.open) #agr .pane {
+          min-height: 132px;
         }
       }
       .agl .aghint {
