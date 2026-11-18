@@ -328,6 +328,61 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
   }, 120_000);
 });
 
+describe.each(ENGINES)(
+  "issue 302: the person's dock choice, in %s",
+  (engine) => {
+    it("a phone hides the dock with an agent open and shows it shut on the list, never saving: back at 1440 it is still open", async () => {
+      if (!browsers[engine]) return;
+      expect(await s.settings({ shell: { dock: true } })).toBe(200);
+      try {
+        const { p, errors } = await phone(engine);
+        await openAgent(p, "scout");
+        // Frame 2: no dock with an agent open.
+        expect(await p.locator("#den-dock").isVisible()).toBe(false);
+        await new Promise((r) => setTimeout(r, 500));
+        // Frame 1: the list, no agent open: the dock is there, shut.
+        await p.goto(`${s.base}/agents`);
+        await p.locator("#den-dock").waitFor({ timeout: 20_000 });
+        await p.waitForFunction(
+          () => !document.querySelector("#agr .pane"),
+          undefined,
+          { timeout: 10_000 },
+        );
+        expect(await p.locator("#den-dock").isVisible()).toBe(true);
+        expect(
+          await p
+            .locator("#den-dock")
+            .evaluate((d) => d.classList.contains("open")),
+        ).toBe(false);
+        expect(errors).toEqual([]);
+        await p.context().close();
+        // The saved choice is the person's, as it was.
+        const saved = (await s.settingsGet()) as { shell?: { dock?: unknown } };
+        expect(saved.shell?.dock).toBe(true);
+        // A desktop window: the dock is open, as the person left it.
+        const ctx = await browsers[engine]!.newContext({
+          viewport: { width: 1440, height: 900 },
+          reducedMotion: "reduce",
+        });
+        await ctx.addInitScript((v) => {
+          try {
+            for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+              localStorage.setItem(k, v);
+          } catch {
+            /* none */
+          }
+        }, latest);
+        const d = await ctx.newPage();
+        await d.goto(`${s.base}/p/north/agents/scout`);
+        await d.locator("#den-dock.open").waitFor({ timeout: 20_000 });
+        await ctx.close();
+      } finally {
+        await s.settings({ shell: { dock: null } });
+      }
+    }, 120_000);
+  },
+);
+
 /** The frame Den's embedded pane is in, once its composer is there. */
 async function embFrame(p: Page): Promise<Frame> {
   const t0 = Date.now();
