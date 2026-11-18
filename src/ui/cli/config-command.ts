@@ -49,6 +49,7 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
   // Issue 394: how far ahead of this clock a rail save's time may be.
   "web.shell_save_skew_seconds": ["shell_save", "skew_seconds"],
+  "web.shell_save_max_kb": ["shell_save", "max_kb"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   "agents_list.refresh_timeout_seconds": [

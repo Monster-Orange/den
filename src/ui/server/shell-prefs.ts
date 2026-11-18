@@ -247,10 +247,13 @@ const isStamp = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v >= 0;
 
 /**
- * POST /api/settings/shell's body cap. The largest valid shell block (24
- * pins, 64 page ids twice, 1,000 project names) is under 100 KB.
+ * POST /api/settings/shell's body cap, in KB (web.shell_save_max_kb). The
+ * largest valid shell block (24 pins, 64 page ids twice, 1,000 project
+ * names) is under 100 KB.
  */
-export const SHELL_SAVE_MAX_BYTES = 256 * 1024;
+export const SHELL_SAVE_MAX_KB = 256;
+/** web.shell_save_max_kb's range, in KB. */
+export const SHELL_SAVE_MAX_KB_RANGE = { min: 16, max: 4096 } as const;
 
 /** How far ahead of the server's clock a save's changedAt may be (5 min). */
 export const SHELL_SAVE_SKEW_SECONDS = 300;

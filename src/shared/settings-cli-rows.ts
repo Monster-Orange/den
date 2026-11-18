@@ -17,8 +17,9 @@
  *   web_ready: { probe_seconds?, start_seconds? }
  *                                     user.yml web.ready_probe_seconds,
  *                                     web.start_wait_seconds (den#143)
- *   shell_save: { skew_seconds? }     user.yml web.shell_save_skew_seconds
- *                                     (issue 394)
+ *   shell_save: { skew_seconds?, max_kb? }
+ *                                     user.yml web.shell_save_skew_seconds,
+ *                                     web.shell_save_max_kb (issue 394)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
@@ -36,7 +37,10 @@
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
-import { SHELL_SAVE_SKEW_RANGE } from "../ui/server/shell-prefs.js";
+import {
+  SHELL_SAVE_MAX_KB_RANGE,
+  SHELL_SAVE_SKEW_RANGE,
+} from "../ui/server/shell-prefs.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 
 /** The settings a person changes and an agent never does. */
@@ -179,6 +183,7 @@ const SHELL_SAVE: Record<string, Limit> = {
     ...SHELL_SAVE_SKEW_RANGE,
     int: true,
   },
+  max_kb: { key: "shell_save_max_kb", ...SHELL_SAVE_MAX_KB_RANGE, int: true },
 };
 
 const AGENTS_LIST: Record<string, Limit> = {

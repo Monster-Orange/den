@@ -2041,6 +2041,28 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ shell_save: { skew_seconds: v } }),
   },
   {
+    // Issue 394: the rail save's largest body (user.yml
+    // web.shell_save_max_kb). A person's only.
+    id: "server.shell_save_max",
+    category: "server",
+    label: "Largest rail save, in KB",
+    description:
+      "How large one rail save may be. A larger one is refused and nothing is saved. __DEN_CLI__ config web.shell_save_max_kb=256",
+    keywords: [
+      "rail",
+      "pins",
+      "save",
+      "size",
+      "limit",
+      "web.shell_save_max_kb",
+    ],
+    scope: "user",
+    keys: ["shell_save.max_kb"],
+    control: { type: "number", min: 16, max: 4096, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.shell_save?.maxKb ?? 256,
+    write: (v, ctx) => ctx.post({ shell_save: { max_kb: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",

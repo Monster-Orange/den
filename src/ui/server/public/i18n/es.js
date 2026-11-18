@@ -895,6 +895,10 @@
       "Margen del reloj al guardar la barra lateral, en segundos",
     "set.server.shell_save_skew.d":
       "Cuánto puede adelantarse al reloj de esta máquina la hora de un cambio en la barra lateral. Si el reloj de un dispositivo va más adelantado, su cambio se toma como hecho ahora, así que no puede bloquear cambios posteriores. __DEN_CLI__ config web.shell_save_skew_seconds=300",
+    "set.server.shell_save_max":
+      "Tamaño máximo al guardar la barra lateral, en KB",
+    "set.server.shell_save_max.d":
+      "Qué tamaño puede tener un guardado de la barra lateral. Uno más grande se rechaza y no se guarda nada. __DEN_CLI__ config web.shell_save_max_kb=256",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
       "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",

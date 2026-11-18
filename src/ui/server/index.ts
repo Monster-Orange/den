@@ -463,7 +463,8 @@ import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
 import {
   applyShellSave,
-  SHELL_SAVE_MAX_BYTES,
+  SHELL_SAVE_MAX_KB,
+  SHELL_SAVE_MAX_KB_RANGE,
   SHELL_SAVE_SKEW_SECONDS,
   type ShellSaveClock,
   shellPrefs,
@@ -948,6 +949,18 @@ function shellSaveClock(user: { web?: unknown }): ShellSaveClock {
       ? s
       : SHELL_SAVE_SKEW_SECONDS;
   return { skewMs: seconds * 1000 };
+}
+
+/** Issue 394: POST /api/settings/shell's body cap, in KB (web.shell_save_max_kb). */
+function shellSaveMaxKb(user: { web?: unknown }): number {
+  const w = (user.web ?? {}) as Record<string, unknown>;
+  const kb = w.shell_save_max_kb;
+  return typeof kb === "number" &&
+    Number.isInteger(kb) &&
+    kb >= SHELL_SAVE_MAX_KB_RANGE.min &&
+    kb <= SHELL_SAVE_MAX_KB_RANGE.max
+    ? kb
+    : SHELL_SAVE_MAX_KB;
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
@@ -6780,9 +6793,10 @@ async function handleRequest(
   // takes { shell } only: nothing else can be changed this way. A key's
   // save older than the stored one is ignored, answering ok.
   if (pathname === "/api/settings/shell" && req.method === "POST") {
+    const maxKb = shellSaveMaxKb(readUserConfig());
     let body: unknown;
     try {
-      body = JSON.parse(await readBody(req, SHELL_SAVE_MAX_BYTES));
+      body = JSON.parse(await readBody(req, maxKb * 1024));
     } catch (e) {
       if (e instanceof BodyTooLarge)
         return sendJson(res, { ok: false, error: e.message }, 413);
@@ -6878,7 +6892,10 @@ async function handleRequest(
           };
         })(),
         // Issue 394: how far ahead of this clock a rail save's time may be.
-        shell_save: { skewSeconds: (shellSaveClock(user).skewMs ?? 0) / 1000 },
+        shell_save: {
+          skewSeconds: (shellSaveClock(user).skewMs ?? 0) / 1000,
+          maxKb: shellSaveMaxKb(user),
+        },
         // den#143: how long `web up` waits for the server.
         web_ready: (() => {
           try {

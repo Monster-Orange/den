@@ -1857,6 +1857,9 @@
     "set.server.shell_save_skew": "Rail save clock allowance, in seconds",
     "set.server.shell_save_skew.d":
       "How far ahead of this machine's clock a rail change's time may be. A device whose clock runs further ahead has its change counted as made now, so it can't block later changes. __DEN_CLI__ config web.shell_save_skew_seconds=300",
+    "set.server.shell_save_max": "Largest rail save, in KB",
+    "set.server.shell_save_max.d":
+      "How large one rail save may be. A larger one is refused and nothing is saved. __DEN_CLI__ config web.shell_save_max_kb=256",
     "set.server.start_wait": "Start wait, in seconds",
     "set.server.start_wait.d":
       "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
