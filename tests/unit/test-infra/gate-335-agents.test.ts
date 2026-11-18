@@ -90,7 +90,8 @@ function onBed(o: Opts = {}): Out {
             records.set(id, ws); started.push(id + "@" + ws);
             return { code: 0, all: "started" };
           },
-          running: async () => 10,
+          // As the bed: the ms it took (0: already running), or null.
+          running: async () => 0,
           stop: async () => ({ code: 0 }),
           remove: async () => { removed.push(id); records.delete(id); return { code: 0 }; },
         };

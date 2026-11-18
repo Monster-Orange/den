@@ -32,14 +32,18 @@ type Row = {
   detail?: string;
 };
 
-function runGate(right: boolean, xattr: string | null = XATTR) {
+function runGate(
+  right: boolean,
+  xattr: string | null = XATTR,
+  stopsFirst = false,
+) {
   const evidence = path.join(TMP, right ? "right" : "wrong");
   const js = `
     const { spawnSync } = await import("child_process");
     const fs = await import("fs");
     const path = await import("path");
     const g = await import("./gate/479.mjs");
-    const RIGHT = ${right};
+    const RIGHT = ${right}, STOPS_FIRST = ${stopsFirst};
     const WS = "proj-a", RT = "den-claude";
     const agents = new Map(); // id -> { running }
     const pins = new Map(); // ws -> bin
@@ -70,7 +74,8 @@ function runGate(right: boolean, xattr: string | null = XATTR) {
       }
       if ((m = /\\/agents\\/([^/]+)\\/restart$/.exec(p))) {
         const id = decodeURIComponent(m[1]);
-        if (RIGHT && quarantinedCopy()) return launch(id);
+        // STOPS_FIRST: refuses, but only after stopping the agent.
+        if (RIGHT && quarantinedCopy()) { if (STOPS_FIRST) agents.get(id).running = false; return launch(id); }
         agents.get(id).running = false;
         const r = launch(id);
         return ok(r.body, r.status);
@@ -98,7 +103,8 @@ function runGate(right: boolean, xattr: string | null = XATTR) {
         return {
           id: name,
           start: async () => { agents.get(name).running = true; return { code: 0 }; },
-          running: async () => (agents.get(name)?.running ? 10 : null),
+          // As the bed: the ms it took (0: it already ran), or null on a timeout.
+          running: async () => (agents.get(name)?.running ? 0 : null),
           state: async () => (agents.get(name)?.running ? "running" : "stopped"),
           stop: async () => { if (agents.has(name)) agents.get(name).running = false; },
           remove: async () => { agents.delete(name); },
@@ -209,6 +215,18 @@ describe("gate/479.mjs on a fake bed", () => {
     // The quarantined stub lived under ctx.evidenceDir, and is deleted.
     expect(r.stubs.length).toBeGreaterThan(0);
     expect(r.stubs.every((x) => x.under && !x.there)).toBe(true);
+  }, 120_000);
+
+  it("running() answers 0 ms for an agent already running: that is a pass", () => {
+    const r = runGate(true);
+    expect(r.rows[3]).toMatchObject({ ok: true });
+    expect(r.rows[3].detail).toMatch(/still runs/);
+  }, 120_000);
+
+  it("a restart that refuses only after stopping the agent: clause 4 fails", () => {
+    const r = runGate(true, XATTR, true);
+    expect(r.rows[3]).toMatchObject({ ok: false });
+    expect(r.rows[3].detail).toMatch(/HTTP 409 .*isn't running/);
   }, 120_000);
 
   it("a Den that runs the quarantined copy: red on every clause", () => {

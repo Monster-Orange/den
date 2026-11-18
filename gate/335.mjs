@@ -78,8 +78,8 @@ async function seenBy(ctx, a) {
   const s = servers?.[SERVER];
   return {
     workspace,
-    record: rec !== null,
-    config: cfg !== null,
+    record: typeof rec === "string",
+    config: typeof cfg === "string",
     names: servers ? Object.keys(servers) : [],
     server: s
       ? {

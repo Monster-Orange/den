@@ -55,6 +55,13 @@ function stubFolder(ctx, prefix) {
   return fs.mkdtempSync(path.join(base, prefix));
 }
 
+/**
+ * A harness wait held: running(ms) and until() answer the ms it took (0
+ * when it already held, which is a success) or null on a timeout, as every
+ * gate on main reads them. Never truthiness, never `=== true`.
+ */
+const held = (v) => v !== null;
+
 /** A runtimes answer, as a list (the route answers a list or { runtimes }). */
 const listOf = (v) =>
   Array.isArray(v) ? v : Array.isArray(v?.runtimes) ? v.runtimes : [];
@@ -204,7 +211,7 @@ export async function setup(ctx) {
       code: body.code ?? null,
       path: body.quarantined?.path ?? null,
       said: String(body.error ?? "").slice(0, 300),
-      running: (await a.ctl.running(5000)) !== null,
+      running: held(await a.ctl.running(5000)),
       state: (await a.ctl.state?.()) ?? null,
     };
   } catch (e) {
@@ -233,7 +240,7 @@ async function startDialog(ctx, page, s) {
   out.shown = true;
   out.text = ((await q.textContent()) ?? "").trim().slice(0, 300);
   out.path = ((await q.locator(".ag-q-path").textContent()) ?? "").trim();
-  out.goOff = await page.locator("#ag-go").isDisabled();
+  out.goOff = Boolean(await page.locator("#ag-go").isDisabled());
   const copy = q.locator("button[data-q-copy]");
   out.copy = await copy.count();
   if (out.copy) {
