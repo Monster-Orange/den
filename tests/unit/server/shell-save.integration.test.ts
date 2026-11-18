@@ -263,16 +263,44 @@ describe("issue 394 review: the shell save's edges", () => {
             headers: denAuth(path.join(tmp, "home", ".den")),
           })
         ).json()) as { shell_save: { skewSeconds: number } }
-      ).shell_save;
-    expect(await got()).toEqual({ skewSeconds: 300 });
+      ).shell_save.skewSeconds;
+    expect(await got()).toBe(300);
     expect(await postSettings({ shell_save: { skew_seconds: 60 } })).toBe(200);
-    expect(await got()).toEqual({ skewSeconds: 60 });
+    expect(await got()).toBe(60);
     expect(yml()).toContain("shell_save_skew_seconds: 60");
     expect(await postSettings({ shell_save: { skew_seconds: -1 } })).toBe(400);
     expect(await postSettings({ shell_save: { skew_seconds: null } })).toBe(
       200,
     );
-    expect(await got()).toEqual({ skewSeconds: 300 });
+    expect(await got()).toBe(300);
+  });
+
+  it("the body cap is a Setting (web.shell_save_max_kb, default 256, 16 to 4096): at 16, a 20 KB body gets 413", async () => {
+    const got = async () =>
+      (
+        (await (
+          await fetch(`http://localhost:${port}/api/settings`, {
+            headers: denAuth(path.join(tmp, "home", ".den")),
+          })
+        ).json()) as { shell_save: { maxKb: number } }
+      ).shell_save.maxKb;
+    expect(await got()).toBe(256);
+    for (const bad of [15, 4097, 1.5])
+      expect(await postSettings({ shell_save: { max_kb: bad } })).toBe(400);
+    expect(await postSettings({ shell_save: { max_kb: 16 } })).toBe(200);
+    expect(await got()).toBe(16);
+    expect(yml()).toContain("shell_save_max_kb: 16");
+    const before = yml();
+    const body = (kb: number) =>
+      JSON.stringify({
+        shell: { pins: [], changedAt: Date.now(), pad: "x".repeat(kb * 1024) },
+      });
+    expect((await beacon(body(20), { origin: own() })).status).toBe(413);
+    expect(yml()).toBe(before);
+    // Under the cap, the same (bad) body reaches the shell check: 400.
+    expect((await beacon(body(8), { origin: own() })).status).toBe(400);
+    expect(await postSettings({ shell_save: { max_kb: null } })).toBe(200);
+    expect(await got()).toBe(256);
   });
 
   it("a body over the size cap is refused (413), and nothing is written", async () => {
