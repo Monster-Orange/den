@@ -1432,6 +1432,9 @@
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
+    "busy.modeW": "Setting {name}'s mode…",
+    "busy.modeS": "{name}'s mode is set.",
+    "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
     "keep.label": "Keep agents running after logout",
     "keep.warn":
       "Agents there sign in with a long-lived token from your secrets store, not the login keychain.",
@@ -1857,6 +1860,16 @@
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "Report: repository visibility kept for",
+    "set.server.report_visibility_cache.d":
+      "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait": "Report: repository visibility wait",
+    "set.server.report_visibility_wait.d":
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "Report: repository visibility retry",
+    "set.server.report_visibility_retry.d":
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Terminal reconnect tries",
     "set.agents.pane_reconnect.d":
       "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1996,6 +2009,8 @@
     "ag.stop": "Stop",
     "ag.closeShell": "Close shell",
     "ag.closeShellTip": "End this shell and anything running in it",
+    "ag.newShell": "New terminal",
+    "ag.newShellTip": "Start another shell in this project's folder",
     "ag.shellClosed": "Closed {id}",
     "ag.resume": "Resume",
     "ag.stopName": "Stop {id}",
@@ -2393,6 +2408,18 @@
     "ag.mode.src.install": "the Den-wide default",
     "ag.mode.src.persona": "its persona",
     "ag.mode.src.default": "Den's built-in default",
+    "ag.mode.item": "Mode: {m}",
+    "ag.mode.menu": "{id}'s mode",
+    "ag.mode.pick": "Change {id}'s mode",
+    "ag.mode.follow": "Follow project",
+    "ag.mode.setS":
+      "{id}: {m}, its own setting. Den restarts it at its next idle to take it.",
+    "ag.mode.setStopped":
+      "{id}: {m}, its own setting. It takes it at its next start.",
+    "ag.mode.followS":
+      "{id} follows the project now: {m}. Den restarts it at its next idle to take it.",
+    "ag.mode.followStopped":
+      "{id} follows the project now: {m}. It takes it at its next start.",
     "set.workspace.agents_mode":
       "Agents' mode: this project (overrides the Den-wide default)",
     "set.workspace.agents_mode.d":
@@ -3822,6 +3849,10 @@
     pinUrls: {},
     pinOff: {},
     svpOpen: null,
+    // Issue 402: with the view filtered to one project, its repos (the
+    // Workspace menu's model, header.js); the rail shows only their pins.
+    // null: no filter, every pin. It never changes the pins themselves.
+    pinRepos: null,
   };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
@@ -3905,6 +3936,19 @@
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;
   }
+  /**
+   * Issue 402: the pins the rail shows. Filtered to one project, a pin
+   * ("repo" or "repo/service") shows when its repo is one of the
+   * project's (workspace-picker.js projectRepos); with no filter, every
+   * pin.
+   */
+  function pinsShown() {
+    var repos = state.pinRepos;
+    if (!Array.isArray(repos)) return state.pins.slice();
+    return state.pins.filter(function (p) {
+      return repos.indexOf(String(p).split("/")[0]) >= 0;
+    });
+  }
   function pin(id) {
     if (isPinned(id)) return;
     setState({ pins: state.pins.concat([id]) });
@@ -3975,16 +4019,19 @@
    * 0.4.45: a toast never covers a line a page marks data-toast-clear
    * (the terminal's "To" line: who the keyboard types to). It moves up
    * until it sits above every such line it would cover. A page may draw
-   * that line just after the toast shows, so it looks again a moment later.
+   * that line after the toast shows (issue 448: a toast up before a
+   * terminal's pane opens), so it looks again every 250 ms while it shows.
    */
   function clearOfMarked(el, again) {
     if (!el || !el.getBoundingClientRect || !document.querySelectorAll) return;
-    if (!again)
-      [120, 500].forEach(function (ms) {
-        setTimeout(function () {
-          if (el.isConnected) clearOfMarked(el, true);
-        }, ms);
-      });
+    if (!again) {
+      var look = function () {
+        if (!el.isConnected) return;
+        clearOfMarked(el, true);
+        setTimeout(look, 250);
+      };
+      setTimeout(look, 120);
+    }
     var marks = document.querySelectorAll("[data-toast-clear]");
     for (var pass = 0; pass < 4; pass++) {
       var r = el.getBoundingClientRect();
@@ -4846,6 +4893,11 @@
   function setWorkspaces(model) {
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
+    // Issue 402: the pins follow the project filter (a repaint only).
+    var pinRepos =
+      model && Array.isArray(model.pinRepos) ? model.pinRepos.slice() : null;
+    if (JSON.stringify(pinRepos) !== JSON.stringify(state.pinRepos))
+      setState({ pinRepos: pinRepos });
     var btn = document.getElementById("ws-pill");
     if (!btn) return;
     var sep = btn.nextElementSibling;
@@ -4963,9 +5015,10 @@
   function railModel() {
     var groups = [];
     var entries = [];
-    if (state.pins.length) {
+    var shown = pinsShown();
+    if (shown.length) {
       groups.push({ id: "pinned", label: t("g.pinned") });
-      state.pins.forEach(function (p) {
+      shown.forEach(function (p) {
         // 0.4.18: the row (named by the id alone) opens the service's
         // panel in place (svc-panel.js); it is still the link to
         // Services, so ⌘-click and middle-click open that in a new

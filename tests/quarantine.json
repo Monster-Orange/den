@@ -33,21 +33,6 @@
       }
     },
     {
-      "file": "tests/unit/server/bell-v6.browser.test.ts",
-      "test": "bell v6: a quieter bell ⊘ asks once; Esc cancels; yes stops showing the kind, with Undo and the settings link",
-      "issue": 143,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44165163073,
-        "failed_job": 134329142838,
-        "job": "tests (22.13.0, 4)",
-        "sha": "9503f7f2e9d6839383d54ca5587faa8a8384313d",
-        "passed_run": 44165163073,
-        "passed_job": 134329142809,
-        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 4) (job 134329142809), same sha, other Node"
-      }
-    },
-    {
       "file": "tests/unit/server/report-dialog.browser.test.ts",
       "test": "FB: Report an issue, the dialog in es and ja (1440 and 390)",
       "issue": 143,

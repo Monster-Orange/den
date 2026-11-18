@@ -572,6 +572,9 @@
     "busy.restartW": "Reiniciando {name}…",
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
+    "busy.modeW": "Cambiando el modo de {name}…",
+    "busy.modeS": "Modo de {name} cambiado.",
+    "busy.modeF": "No se pudo cambiar el modo de {name}. Nada cambió.",
     "keep.label": "Mantener los agentes al cerrar sesión",
     "keep.warn":
       "Allí los agentes inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio.",
@@ -890,6 +893,18 @@
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "Informe: visibilidad del repositorio guardada durante",
+    "set.server.report_visibility_cache.d":
+      "Cuánto guarda __DEN_TITLE__ si cada repositorio de Informe es público o privado. Pasado este tiempo, vuelve a preguntar a GitHub. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait":
+      "Informe: espera de la visibilidad del repositorio",
+    "set.server.report_visibility_wait.d":
+      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice público, y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry":
+      "Informe: reintento de la visibilidad del repositorio",
+    "set.server.report_visibility_retry.d":
+      "Si GitHub no responde si un repositorio es público o privado, cuánto tarda Informe en volver a preguntar. 0 pregunta cada vez que se abre. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Intentos de reconexión de la terminal",
     "set.agents.pane_reconnect.d":
       "Una terminal que pierde la conexión vuelve a intentarlo sola, esperando más cada vez. Tras estos intentos fallidos dentro del tiempo de abajo, se detiene y muestra Reconectar. __DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1151,6 +1166,8 @@
     "ag.stop": "Detener",
     "ag.closeShell": "Cerrar shell",
     "ag.closeShellTip": "Termina este shell y lo que se ejecuta en él",
+    "ag.newShell": "Nueva terminal",
+    "ag.newShellTip": "Inicia otro shell en la carpeta de este proyecto",
     "ag.shellClosed": "Se cerró {id}",
     "ag.resume": "Reanudar",
     "ag.stopName": "Detener {id}",
@@ -1563,6 +1580,18 @@
     "ag.mode.src.install": "el valor por defecto de todo Den",
     "ag.mode.src.persona": "su persona",
     "ag.mode.src.default": "el valor integrado de Den",
+    "ag.mode.item": "Modo: {m}",
+    "ag.mode.menu": "Modo de {id}",
+    "ag.mode.pick": "Cambiar el modo de {id}",
+    "ag.mode.follow": "Seguir el proyecto",
+    "ag.mode.setS":
+      "{id}: {m}, su propio ajuste. Den lo reinicia en su próxima pausa para aplicarlo.",
+    "ag.mode.setStopped":
+      "{id}: {m}, su propio ajuste. Lo aplica en su próximo inicio.",
+    "ag.mode.followS":
+      "{id} sigue el proyecto ahora: {m}. Den lo reinicia en su próxima pausa para aplicarlo.",
+    "ag.mode.followStopped":
+      "{id} sigue el proyecto ahora: {m}. Lo aplica en su próximo inicio.",
     "set.workspace.agents_mode":
       "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":

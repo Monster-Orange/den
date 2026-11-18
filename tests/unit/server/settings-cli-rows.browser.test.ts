@@ -22,8 +22,15 @@ let s: AgentsPageServer | null = null;
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    // DEN_HELPERS_BROWSER=webkit runs it there; DEN_PW_WS connects to a
+    // Playwright server instead of launching one here.
+    const pw = await import("playwright");
+    const engine =
+      process.env.DEN_HELPERS_BROWSER === "webkit" ? "webkit" : "chromium";
+    const ws = process.env.DEN_PW_WS;
+    browser = ws
+      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -58,10 +65,22 @@ async function settings(): Promise<Page> {
   return p;
 }
 
-/** Settings' category `cat` on the same page. */
+/**
+ * Settings' category `cat` on the same page. Every category is drawn, so
+ * the row is there before the hash's redraw: wait for that redraw (a row
+ * marked before it is gone), or the next step types into an input it is
+ * about to replace (issue 424).
+ */
 async function show(p: Page, cat: string, first: string) {
-  await p.evaluate((c) => (location.hash = c), cat);
-  await p.waitForSelector(`[data-focus-key="${key(first)}"]`);
+  const sel = `[data-focus-key="${key(first)}"]`;
+  await p.evaluate(
+    ([c, q]) => {
+      document.querySelector(q)?.setAttribute("data-before-hash", "");
+      location.hash = c;
+    },
+    [cat, sel] as const,
+  );
+  await p.waitForSelector(`${sel}:not([data-before-hash])`);
 }
 
 /** A row's control: the page's id for it is the row id with dots as dashes. */
@@ -78,10 +97,15 @@ async function savedMark(p: Page, id: string) {
   await p.waitForSelector(`#s-${key(id)}.set-saved.ok`);
 }
 
-/** Changes a number row and waits for its save and the page's redraw. */
+/**
+ * Changes a number row as a person does (types, then leaves the field) and
+ * waits for its save and the page's redraw. One change, so one save: a
+ * dispatched change on top of the typed one saved the row twice, and the
+ * second save's redraw could land while the next row was being typed into,
+ * putting that row back to its old value before its change (issue 424).
+ * The wait is armed before the change and matches this row's own value.
+ */
 async function setNumber(p: Page, id: string, v: number) {
-  // This row's own save (its value in the body): under load, the save of
-  // the row before can land after this wait starts (seen in a full run).
   const saved = p.waitForResponse(
     (r) =>
       r.url().endsWith("/api/settings") &&
@@ -89,7 +113,7 @@ async function setNumber(p: Page, id: string, v: number) {
       JSON.stringify(r.request().postDataJSON() ?? {}).includes(`:${v}`),
   );
   await ctl(p, id).fill(String(v));
-  await ctl(p, id).dispatchEvent("change");
+  await ctl(p, id).blur();
   const body = (await saved).request().postDataJSON();
   await savedMark(p, id);
   return body;
@@ -99,6 +123,12 @@ describe("MODE-5: Settings rows that were the command line's", () => {
   it("switches and numbers, saved, and shown again after a reload", async () => {
     if (skip()) return;
     const p = await settings();
+    // Every save the page sends: one per change (issue 424).
+    const posts: unknown[] = [];
+    p.on("request", (r) => {
+      if (r.url().endsWith("/api/settings") && r.method() === "POST")
+        posts.push(r.postDataJSON());
+    });
     // Terminal tabs: off by default; on saves true.
     expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(false);
     const tabs = p.waitForResponse(
@@ -119,6 +149,12 @@ describe("MODE-5: Settings rows that were the command line's", () => {
     expect(await setNumber(p, "server.crash_loop_wait", 600)).toEqual({
       crash_loop: { max_wait_seconds: 600 },
     });
+    expect(posts).toEqual([
+      { cli_tabs: true },
+      { log_window_lines: 50000 },
+      { panes_reconnect: { max_failures: 20 } },
+      { crash_loop: { max_wait_seconds: 600 } },
+    ]);
     await p.reload();
     await p.waitForSelector('[data-focus-key="server-crash_loop_wait"]');
     expect(await ctl(p, "server.crash_loop_wait").inputValue()).toBe("600");

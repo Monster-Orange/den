@@ -10,11 +10,10 @@
  *
  * Auto-close (a fast success says so in a toast, a slow one closes after
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, create-hub,
- * start-agent, restart-agent, fresh-start, report-preview, save-report-draft,
- * discard-draft, follow-project, keep-running, edge-up, send-message,
- * allow-web-app,
- * ask-allow,
- * agent-order, delete-project, remove-service, remove-mcp, gate-end. Waits for
+ * start-agent, restart-agent, agent-mode, fresh-start, report-preview,
+ * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
+ * send-message, allow-web-app, ask-allow, agent-order, delete-project,
+ * remove-service, remove-mcp, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -161,6 +160,16 @@ export const DEN_ACTIONS = {
       working: "busy.restartW",
       success: "busy.restartS",
       failure: "busy.restartF",
+    },
+  },
+  // Issue 252: one agent's mode, from its ⋯ or its Settings row.
+  "agent-mode": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.modeW",
+      success: "busy.modeS",
+      failure: "busy.modeF",
     },
   },
   "fresh-start": {

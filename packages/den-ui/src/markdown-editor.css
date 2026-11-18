@@ -1,0 +1,230 @@
+/* den-ui: the Markdown editor's look (markdown-editor.js). Tokens only, both
+   modes: no colour of its own. Linked, never injected. The box looks like a
+   text input (border, radius, the accent focus ring), so it sits in a form
+   unchanged. Safari: no flex gap on the editor itself, explicit
+   min-heights, -webkit-user-modify left to CodeMirror. Knobs, set on
+   .md-field: --md-min-height (full: from `rows`; lite: 48px) and
+   --md-max-height (full 360px, lite 200px). */
+.md-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.md-field:hover {
+  border-color: var(--faint);
+}
+.md-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.md-field[data-invalid="true"] {
+  border-color: var(--bad);
+}
+.md-field[data-disabled="true"] {
+  background: var(--sunken);
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+.md-toolbar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.md-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.md-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.md-tool:hover {
+  background: var(--sunken);
+  color: var(--text);
+}
+.md-tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.md-tool[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The editor and its plain-textarea stand-in share one metric, so the swap does not jump. */
+.md-editor-host,
+.md-fallback {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.md-fallback {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  resize: vertical;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.md-fallback:focus {
+  outline: none;
+}
+.md-fallback::placeholder {
+  color: var(--faint);
+}
+.md-field .md-fallback,
+.md-field .md-editor-host .cm-content {
+  min-height: var(--md-min-height, 88px);
+}
+
+.md-editor-host .cm-editor {
+  background: transparent;
+  color: inherit;
+}
+.md-editor-host .cm-editor.cm-focused {
+  outline: none;
+}
+.md-editor-host .cm-scroller {
+  font-family: inherit;
+  line-height: inherit;
+  max-height: var(--md-max-height, 360px);
+  overflow: auto;
+}
+.md-editor-host .cm-content {
+  padding: 10px 12px;
+  caret-color: var(--text);
+  box-sizing: border-box;
+}
+.md-editor-host .cm-line {
+  padding: 0;
+}
+/* readable: the muted text passes contrast (faint is for marks) */
+.md-editor-host .cm-placeholder {
+  color: var(--muted);
+}
+.md-editor-host .cm-cursor {
+  border-left-color: var(--text);
+}
+.md-editor-host .cm-selectionBackground,
+.md-editor-host .cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.md-editor-host .cm-content[aria-disabled="true"] {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+/* The live preview (livePreview in markdown-editor.js). */
+.md-strong {
+  font-weight: 700;
+}
+.md-em {
+  font-style: italic;
+}
+.md-del {
+  text-decoration: line-through;
+}
+.md-code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  padding: 0 0.2em;
+  border-radius: var(--radius-button);
+  background: var(--sunken);
+}
+.md-link {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-marker {
+  color: var(--faint);
+}
+.md-listmark {
+  color: var(--muted);
+}
+.md-bullet {
+  display: inline-block;
+  min-width: 0.8em;
+  color: var(--muted);
+}
+.md-h {
+  font-weight: 700;
+}
+.md-h1 {
+  font-size: 1.2em;
+}
+.md-h2 {
+  font-size: 1.1em;
+}
+.md-quote {
+  border-left: 3px solid var(--border-strong);
+  padding-left: 10px !important;
+  color: var(--muted);
+}
+.md-fence {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: var(--sunken);
+}
+.md-hr {
+  color: var(--faint);
+}
+
+/* The chat (mode "lite"): the composer row's own box. */
+.md-lite {
+  min-width: 0;
+}
+.md-lite .md-editor-host .cm-content,
+.md-lite .md-fallback {
+  min-height: var(--md-min-height, 48px);
+}
+/* the stand-in is the editor's height from its first frame: one row, no resize handle, a long placeholder clipped, never wrapped taller */
+.md-lite .md-fallback {
+  resize: none;
+  overflow: hidden;
+}
+.md-lite .md-editor-host .cm-scroller {
+  max-height: var(--md-max-height, 200px);
+}
+
+/* Touch sizes: on a touch screen or a narrow one (the kit's own
+   breakpoints), each toolbar button is the kit's tap (--tap, 44×44px) and
+   the text is 16px, so iOS does not zoom in on focus. Desktop keeps the
+   sizes above. */
+@media (pointer: coarse), (max-width: 720px) {
+  .md-tool {
+    min-width: var(--tap);
+    min-height: var(--tap);
+  }
+  .md-editor-host,
+  .md-fallback,
+  .md-field .md-fallback {
+    font-size: 16px;
+  }
+}

@@ -66,8 +66,25 @@ jobs:
             [ -f "$f" ] || { echo "no such file: $f"; exit 1; }
           done
       - run: npm ci
+      # Issue 398: the install goes through scripts/ci-pw-install.sh (a time
+      # limit and one retry per part; the browsers come from the cache).
       - if: ${{ inputs.browsers != 'none' }}
-        run: npx playwright install --with-deps $BROWSERS
+        id: pw
+        run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
+      - if: ${{ inputs.browsers != 'none' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+      - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
+        if: ${{ inputs.browsers != 'none' }}
+        timeout-minutes: 15
+        # $BROWSERS unquoted on purpose: one argument per browser; the
+        # script refuses any name that is not a browser.
+        run: bash scripts/ci-pw-install.sh $BROWSERS
       - name: Run the files ${{ inputs.count }} times
         run: |
           fails=0

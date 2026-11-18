@@ -3111,8 +3111,12 @@ agent and kind.
   on Hub. New activity on an item makes it unread again. An agent can't
   mark them read: Den's proxy refuses Hub's read routes.
 - **Not while you look** (NT-2). The Agents page says which agents are on
-  screen, in a visible, focused tab. Those don't notify; they are still
-  marked waiting.
+  screen, in a visible, focused tab. Those don't alert you. Their bell
+  items are still kept (issue 142): a permission prompt or a question
+  counts until you answer it, and a finished turn leaves Updates as soon
+  as the page says it shows that agent again. Opening a pane is not an
+  answer: the terminal's own replies (focus, cursor place) don't clear a
+  question.
 - **Kinds and folds** (0.4.45). Settings › Notifications has one switch
   per kind, the person's own (user.yml `notifications.kinds`, a map of
   `waiting`, `finished`, `hub`, `pr`, `release`, `pick` and `shared` to
