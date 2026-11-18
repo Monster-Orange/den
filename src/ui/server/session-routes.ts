@@ -116,6 +116,7 @@ import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
+import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -1410,7 +1411,8 @@ export async function handleSessionUpgrade(
     if (binary) {
       if (!exited && data.length) {
         client.write(s.ref.id, data);
-        d.typed(s.ref.id);
+        // Issue 142: the terminal's own answers aren't the person.
+        if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
       return;
     }
@@ -1428,8 +1430,9 @@ export async function handleSessionUpgrade(
         client.resize(s.ref.id, msg.cols, msg.rows);
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
-        client.write(s.ref.id, Buffer.from(msg.data, "utf-8"));
-        d.typed(s.ref.id);
+        const data = Buffer.from(msg.data, "utf-8");
+        client.write(s.ref.id, data);
+        if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
     }
   });

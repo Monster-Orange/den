@@ -2,7 +2,8 @@
  * NT-1 / NT-2 / NT-3: the bell's routes.
  *   POST /api/agents/self/attention  an agent (its actor token only) says it
  *        waits for its person, went on, or finished its turn:
- *        {event: waiting|resumed|finished, why?, from?, text?, hooked?}.
+ *        {event: waiting|resumed|finished, why?, from?, text?, question?,
+ *        hooked?}.
  *        Which agent comes from the token, never the body.
  *   GET  /api/notifications          the bell: {unread, groups, older,
  *                                     off, foldDays, mutes}. Bell v6: only
@@ -187,7 +188,12 @@ export async function handleNotificationRoutes(
               from:
                 b?.from === "prompt" || b?.from === "session" ? b.from : "tool",
             }
-          : { event: "finished", text: str(b?.text) },
+          : {
+              event: "finished",
+              text: str(b?.text),
+              // Issue 142: the question its turn ended on (the hook's).
+              question: str(b?.question),
+            },
     );
     // Issue 101: the question went to the project's lead (its name).
     sendJson(res, {

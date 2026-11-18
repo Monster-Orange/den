@@ -4,7 +4,8 @@
  * agents (ctx.agent: their real hook events into Den), read back through
  * GET /api/notifications and the page's badge.
  *
- * Unit tests for the same paths: tests/unit/server/bell-needs-you.test.ts.
+ * Unit tests for the same paths: tests/unit/server/bell-needs-you.test.ts,
+ * bell-142-turn-end.test.ts and bell-142.integration.test.ts.
  * Names are this check's own (gate142-*); teardown marks their items read,
  * removes the agents, and puts the one setting it turns on back.
  */
@@ -116,6 +117,27 @@ async function pageBadge(ctx) {
   });
 }
 
+/**
+ * A turn's end as Claude Code sends it: the answer on screen, then its
+ * Stop hook with the answer as `last_assistant_message` (the hook tells
+ * Den the question it ended on). Not `ctl.stop()`: that stops the agent.
+ */
+async function turnEnd(a, answer) {
+  await a.ctl.print(answer);
+  await a.ctl.hook("Stop", {
+    stop_hook_active: false,
+    last_assistant_message: answer,
+  });
+}
+
+/**
+ * Its counts are read: stop it, so the next stub's start stays under the
+ * bed's agents.max_concurrent (4 by default, other agents count too).
+ */
+async function done(a) {
+  await a.ctl.stop();
+}
+
 /** A stub agent under this check's own name, recorded for teardown. */
 async function stub(ctx, state, role) {
   const name = `gate142-${role}-${state.tag}`;
@@ -123,8 +145,14 @@ async function stub(ctx, state, role) {
   const a = { name, id: ctl?.id ?? name, ctl };
   state.made.push(a);
   // A handle creates nothing: start the agent and wait until it runs,
-  // so its session (and its file) exist before sessionStart.
-  ctl.start("tester");
+  // so its session (and its file) exist before sessionStart. A refused
+  // start (agents.max_concurrent reached) says so here, not later as a
+  // missing file.
+  const r = await ctl.start("tester");
+  if (r && typeof r.code === "number" && r.code !== 0)
+    throw new Error(
+      `${name}: the bed refused to start it (agents.max_concurrent?): ${String(r.all ?? r.err ?? r.out ?? "").slice(0, 200)}`,
+    );
   a.runMs = await ctl.running(20000);
   await ctl.sessionStart?.();
   return a;
@@ -160,6 +188,7 @@ export async function run(ctx, state) {
       badge: await pageBadge(ctx),
       apiUnread: (await bellFor(ctx, a)).unread,
     };
+    await done(a);
   }
 
   // 2a. ask_human: needs you, counted.
@@ -172,13 +201,13 @@ export async function run(ctx, state) {
       unreadNeeds: v.needs.filter((n) => !n.read).length,
       waiting: v.waiting.map((w) => w.why),
     };
+    await done(a);
   }
   // 2b. A turn that ends on a question, then Claude Code's idle notice:
   // still needs you (the idle notice doesn't undo it).
   {
     const a = await stub(ctx, state, "turnq");
-    await a.ctl.print(`Built it.\n\n${QUESTION}`);
-    await a.ctl.stop();
+    await turnEnd(a, `Built it.\n\n${QUESTION}`);
     await a.ctl.idlePrompt();
     const v = await until(ctx, a, (v) => v.needs.some((n) => !n.read));
     seen.endedAsking = {
@@ -186,6 +215,7 @@ export async function run(ctx, state) {
       unreadNeeds: v.needs.filter((n) => !n.read).length,
       waiting: v.waiting.map((w) => w.why),
     };
+    await done(a);
   }
 
   // 3. A plain idle agent: its turn's end under Updates, nothing counted.
@@ -193,8 +223,7 @@ export async function run(ctx, state) {
     const a = await stub(ctx, state, "idle");
     state.idle = a;
     const before = (await bellFor(ctx, a)).unread;
-    await a.ctl.print("Built it. All checks pass.");
-    await a.ctl.stop();
+    await turnEnd(a, "Built it. All checks pass.");
     await a.ctl.idlePrompt();
     const v = await until(ctx, a, (v) => v.updates.length > 0);
     // The idle notice comes after the turn's end; give it time to land.
