@@ -109,6 +109,9 @@ Reads (they change nothing):
 - `repos_detect`, `manifest_draft`, `manifest_validate`: find repos,
   draft and check a side-car manifest.
 - `agent_helpers`: an agent's helpers.
+- `report_screenshot`: the masked screenshot of a report filed from this
+  Den, by the report id its issue names. Only you and your person may read
+  it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
 - `notifications_list`: your person's bell.
 - `approval_check`: where one of your held asks stands.
