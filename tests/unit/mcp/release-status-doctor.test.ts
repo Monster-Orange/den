@@ -293,7 +293,15 @@ describe("#384: Den's line when it is back says the doctor results itself", () =
     );
     expect(t).not.toMatch(/\n/);
     expect(t).not.toMatch(/release_status|with doctor/);
-    expect(t).toMatch(/restarts you from Den/);
+    expect(t).toMatch(/Den restarts you at your next idle to load 0\.4\.42/);
+  });
+
+  it("#390: with server_agent.refresh_agents off, the line says the tools are old and asks nothing", () => {
+    const t = backMessage(marker(), "0.4.42", 222, update([]), {
+      refresh: false,
+    });
+    expect(t).toMatch(/Your Den tools still run the Den they started on\.$/);
+    expect(t).not.toMatch(/restarts you|person/);
   });
 
   it("updated, doctor clean or not kept, and a long list cut short", () => {
@@ -331,7 +339,7 @@ describe("#384: Den's line when it is back says the doctor results itself", () =
       rolled,
     );
     expect(den).toContain("The new Den's doctor found: fail edge: down.");
-    expect(den).not.toMatch(/release_status|restarts you from Den/);
+    expect(den).not.toMatch(/release_status|restarts you/);
     const asked = backMessage(
       marker({ by: undefined, rolledBack: true, fromVersion: "0.4.42" }),
       "0.4.41",
@@ -346,7 +354,7 @@ describe("#384: Den's line when it is back says the doctor results itself", () =
       update(["warn hub: x"]),
     );
     expect(good).toMatch(
-      /You restarted it: update Den 0\.4\.41 → 0\.4\.42\. The new Den's doctor found: warn hub: x\. Your Den tools .* Carry on from where you were\.$/,
+      /You restarted it: update Den 0\.4\.41 → 0\.4\.42\. The new Den's doctor found: warn hub: x\. Den restarts you at your next idle .* Carry on from where you were\.$/,
     );
   });
 

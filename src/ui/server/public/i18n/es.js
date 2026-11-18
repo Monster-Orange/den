@@ -835,6 +835,11 @@
       "Cuando sale un __DEN_TITLE__ nuevo. Preguntar: la actualización espera tu permiso en la campana. Automático: __DEN_TITLE__ se actualiza en un momento tranquilo y vuelve atrás por sí mismo si la versión nueva no arranca.",
     "set.server.self_update.o.ask": "Preguntar",
     "set.server.self_update.o.auto": "Automático",
+    "set.server.refresh_agents": "Agentes tras una actualización",
+    "set.server.refresh_agents.d":
+      "Cuando __DEN_TITLE__ se actualiza, cada agente que sigue con las herramientas de la versión anterior. Reiniciar: __DEN_TITLE__ lo reinicia en su próxima pausa, en la misma conversación, para que use la versión nueva. Dejar: conserva las herramientas anteriores hasta que vuelva a arrancar.",
+    "set.server.refresh_agents.o.on": "Reiniciar",
+    "set.server.refresh_agents.o.off": "Dejar",
     "set.server.update_check": "Comprobaciones de versión",
     "set.server.update_check.d":
       "De dónde viene la opción Versiones nuevas, y cuándo __DEN_TITLE__ buscó una versión nueva por última vez y cuándo vuelve a buscar.",
@@ -1814,6 +1819,8 @@
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
+    "bell.m.agentsRefreshed":
+      "__DEN_TITLE__ {v}: reinició {ids} en su próxima pausa para cargar las herramientas nuevas (mismas conversaciones)",
     "bell.m.turn": "{name} terminó su turno",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} terminó {n} comentarios de Hub",

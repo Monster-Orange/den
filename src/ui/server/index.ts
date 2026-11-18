@@ -6703,6 +6703,8 @@ async function handleRequest(
         // Issue 268: the projects that override it (Settings › Agents).
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
+        // #390: restart agents on the old tools after an update.
+        server_agent_refresh_agents: refreshAgentsOn(),
         // Issue 160: the install's approval policy (user.yml approvals).
         ...approvalsSettings(user.approvals),
         // SRV-P6: where it came from, and the update checks' last and next.
@@ -6830,6 +6832,7 @@ async function handleRequest(
           hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
+          server_agent_refresh_agents?: unknown;
           local_dev?: unknown;
           cli_tabs?: unknown;
           log_window_lines?: unknown;
@@ -6914,6 +6917,20 @@ async function handleRequest(
           const sa = { ...(user.server_agent ?? {}) };
           delete sa.self_update_from;
           sa.self_update = v;
+          user.server_agent = sa;
+        }
+        // #390: server_agent.refresh_agents, the person's (user.yml); null
+        // is the default (on), unset.
+        if (body.server_agent_refresh_agents !== undefined) {
+          const v = body.server_agent_refresh_agents;
+          if (v !== null && typeof v !== "boolean")
+            return send400(
+              res,
+              "server_agent_refresh_agents is true, false or null",
+            );
+          const sa = { ...(user.server_agent ?? {}) };
+          if (v === null) delete sa.refresh_agents;
+          else sa.refresh_agents = v;
           user.server_agent = sa;
         }
         // Issue 160: the install's approval policy (user.yml approvals), a
@@ -7096,6 +7113,8 @@ async function handleRequest(
           ok: true,
           agents_default_mode: user.agents?.default_mode ?? null,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
+          // #390: restart agents on the old tools after an update.
+          server_agent_refresh_agents: refreshAgentsOn(),
           ...approvalsSettings(user.approvals),
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
@@ -7875,6 +7894,9 @@ void CRASH_GATE.then(() =>
     printBanner(ADDRESS ?? readWebUrl());
     // SRV-1a: back from a restart the server agent asked for: tell it.
     void serverBack();
+    // #390: after an update to this version, agents on the old tools are
+    // restarted at their next idle (server_agent.refresh_agents).
+    startRefreshAfterUpdate();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
     // 0.4.48: on Linux, the Docker bridge too, for the edge.
@@ -7992,7 +8014,9 @@ async function serverBack(): Promise<void> {
   } catch {
     /* no update record: the line says none was kept */
   }
-  const text = backMessage(m, version, process.pid, update);
+  const text = backMessage(m, version, process.pid, update, {
+    refresh: refreshAgentsOn(),
+  });
   let told = "nobody to tell";
   if (m.agent === SERVER_AGENT_ID) {
     try {
@@ -8034,6 +8058,110 @@ async function serverBack(): Promise<void> {
     } catch {
       /* the bell is best effort */
     }
+}
+
+/** #390: server_agent.refresh_agents (a bad block: the default, on). */
+function refreshAgentsOn(): boolean {
+  try {
+    return readServerAgentConfig().refreshAgents;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * #390: once the update to this version is verified ("good"), restart each
+ * agent whose tools started on the old engine at its next idle, on the
+ * same conversation (update-refresh.ts), through restartForTools, the
+ * restart /api/agents/restart-stale uses. Den's own action: an audit row
+ * per agent, and the bell names them. Bounded by the watch's wait.
+ */
+function startRefreshAfterUpdate(): void {
+  void (async () => {
+    const u = await import("./den-update.js");
+    const have = engineVersion();
+    const first = u.readUpdateState(getStateDir());
+    if (!have || !first || first.to !== have) return;
+    if (first.state !== "watching" && first.state !== "good") return;
+    let waitMs = UPDATE_WAIT_SECONDS_DEFAULT * 1000;
+    try {
+      waitMs = readServerAgentConfig().updateWaitMs;
+    } catch {
+      /* the default */
+    }
+    const { UpdateRefresh, refreshAfterUpdate } =
+      await import("./update-refresh.js");
+    const ops = await import("../cli/agent-ops.js");
+    const { webDeps, restartForTools } = await import("./agent-routes.js");
+    const { listRecords } = await import("../../shared/agents/records.js");
+    const d = webDeps();
+    const t = product().title;
+    const refresh = new UpdateRefresh({
+      on: refreshAgentsOn,
+      agents: () =>
+        listRecords(getStateDir()).map((r) => ({
+          id: r.id,
+          workspace: r.workspace,
+          launchedAt: r.resumedAt ?? r.startedAt,
+        })),
+      installedAt: () => {
+        try {
+          return fs.statSync(path.join(getEngineRoot(), "package.json"))
+            .mtimeMs;
+        } catch {
+          return null;
+        }
+      },
+      state: (a) =>
+        a.id === SERVER_AGENT_ID
+          ? ops.serverAgentInputState(d)
+          : ops.agentInputState(d, a.id, typingHeldIds()),
+      restart: (a) =>
+        restartForTools(
+          d,
+          a,
+          `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, to load ${t} ${have}'s tools, by ${t} itself`,
+          (detail, reason) =>
+            recordAction(null, {
+              verb: "agents",
+              detail,
+              ...(reason ? { outcome: "refused" as const, reason } : {}),
+            }),
+        ),
+      bell: (done, version) => {
+        try {
+          const ids = done.map((a) => a.id).join(", ");
+          const store = notificationDeps().store;
+          store.add({
+            kind: "service",
+            subject: `record:den-refresh-${version}`,
+            scope: "workspace/den-server",
+            text: `${t} ${version}: restarted ${ids} at their next idle to load the new tools (same conversations)`,
+            msg: { key: "bell.m.agentsRefreshed", vars: { v: version, ids } },
+            link: "/agents",
+          });
+        } catch {
+          /* the bell is best effort */
+        }
+      },
+      file: path.join(u.updateDir(getStateDir()), "refresh.json"),
+      log: (l) => serverLog(`  ${l}`, "warn"),
+    });
+    await refreshAfterUpdate({
+      version: have,
+      readState: () => u.readUpdateState(getStateDir()),
+      // The watch's own wait, and a minute for its verdict to land.
+      waitMs: waitMs + 60_000,
+      refresh,
+      onBegin: (list) =>
+        serverLog(
+          `  Restarting ${list.map((a) => a.id).join(", ")} at their next idle to load ${have}'s tools`,
+          "lifecycle",
+        ),
+    });
+  })().catch((e: unknown) =>
+    serverLog(`  ⚠ refresh after update: ${(e as Error).message}`, "warn"),
+  );
 }
 
 /** SRV-P6: GET /api/settings' self_update source and update checks. */

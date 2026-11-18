@@ -205,7 +205,7 @@ describe("the restart marker", () => {
         222,
       ),
     ).toBe(
-      "Den is back on 0.4.42 (pid 222) (it was 0.4.41). Den updated itself: Den 0.4.42 is out. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. No doctor results were kept for this update. Your Den tools keep running the Den they started on until the person restarts you from Den (Restart keeps this conversation).",
+      "Den is back on 0.4.42 (pid 222) (it was 0.4.41). Den updated itself: Den 0.4.42 is out. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off. No doctor results were kept for this update. Den restarts you at your next idle to load 0.4.42's tools (this conversation stays).",
     );
     expect(
       backMessage(

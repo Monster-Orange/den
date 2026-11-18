@@ -425,3 +425,56 @@ describe("#384: a named tool gives what the text says, as the server agent calls
     );
   });
 });
+
+/**
+ * #390: no text asks the person to restart an agent: after Den updates
+ * itself it restarts them (server_agent.refresh_agents), and a chore for
+ * the person is not a fix. Every source file and pack text is read.
+ */
+const PERSON_RESTARTS =
+  /\b(?:ask|tell)s?\s+(?:the|your)\s+person\s+to\s+restart\b|\bthe person restarts you\b|\bperson can (?:also )?restart you\b|\brestart you from Den\b/i;
+
+function filesUnder(dir: string, out: string[] = []): string[] {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) filesUnder(p, out);
+    else if (/\.(?:ts|mjs|js|md)$/.test(e.name)) out.push(p);
+  }
+  return out;
+}
+
+describe("#390: no text tells the person to restart an agent", () => {
+  it("the finder sees it", () => {
+    expect(
+      PERSON_RESTARTS.test(
+        "Ask the person to restart you from Den (Restart keeps this conversation).",
+      ),
+    ).toBe(true);
+    expect(PERSON_RESTARTS.test("until the person restarts you from Den")).toBe(
+      true,
+    );
+    expect(
+      PERSON_RESTARTS.test(
+        "Den restarts you at your next idle to load 0.4.65.",
+      ),
+    ).toBe(false);
+  });
+
+  it("not in the lines Den types, the tool texts or the instructions", () => {
+    const bad: string[] = [];
+    for (const [k, t] of Object.entries(BACK_LINES))
+      if (PERSON_RESTARTS.test(t)) bad.push(`back line: ${k}`);
+    for (const [k, t] of Object.entries(instructions()))
+      if (PERSON_RESTARTS.test(t)) bad.push(`instructions: ${k}`);
+    for (const t of TOOLS)
+      if (PERSON_RESTARTS.test(t.description)) bad.push(`tool: ${t.name}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("not anywhere in src/", () => {
+    const bad = filesUnder(path.join(ROOT, "src"))
+      .filter((f) => PERSON_RESTARTS.test(fs.readFileSync(f, "utf8")))
+      .map((f) => path.relative(ROOT, f));
+    expect(bad).toEqual([]);
+  });
+});

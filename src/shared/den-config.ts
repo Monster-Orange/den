@@ -353,6 +353,12 @@ export interface UserConfig {
      * follower (it applies the pin, never bumps it). The person's.
      */
     role?: unknown;
+    /**
+     * #390: after Den updates itself, restart each agent whose tools
+     * started on the old Den at its next idle, same conversation (default
+     * true). The person's.
+     */
+    refresh_agents?: unknown;
   };
   /**
    * Issue 160: the approval policy, the person's: `{ policy, writes }`,
@@ -1296,6 +1302,8 @@ export interface ResolvedServerAgentConfig {
   updateWaitChecks: number;
   /** #176: server_agent.pin_commit: push (default), pr or off. */
   pinCommit: "push" | "pr" | "off";
+  /** #390: server_agent.refresh_agents (user.yml): default true. */
+  refreshAgents: boolean;
 }
 
 /** #251: server_agent.update_wait_checks when unset. */
@@ -1370,6 +1378,11 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.pin_commit: push, pr or off, not ${JSON.stringify(pcm)}`,
     );
+  const ra = user.server_agent?.refresh_agents;
+  if (ra !== undefined && typeof ra !== "boolean")
+    throw new Error(
+      `server_agent.refresh_agents (user.yml): true or false, not ${JSON.stringify(ra)}`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1391,6 +1404,7 @@ export function readServerAgentConfig(
     role: role ?? "lead",
     updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
     pinCommit: pcm ?? "push",
+    refreshAgents: ra ?? true,
   };
 }
 

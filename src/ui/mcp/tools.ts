@@ -331,7 +331,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "whoami",
     "Who you are to Den, and your tools",
-    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (your session started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
+    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (you started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, Den restarts you at your next idle to load them (this conversation stays), unless the project's hub.tools_restart is off; there is no token for you or anyone to make. Reads only.",
     {},
     async (_a, { api, scope }) => {
       const id = scope?.actor.startsWith("agent:")

@@ -82,9 +82,11 @@ The same goes when Den updated itself (its own check, not your ask): its
 line starts "Den is back on <version>".
 
 Your Den tools keep running the Den they started on: an update restarts
-Den, not you. Until the person restarts you from Den (Restart keeps this
-conversation), a tool's answer ends with a note saying so, and anything
-the new Den added is missing from it. Ask the person for that restart.
+Den, not you. Den then restarts you at your next idle, on this
+conversation, to load the new Den (`server_agent.refresh_agents`, on by
+default), and every agent whose tools are old the same way. Until then, a
+tool's answer ends with a note saying so, and anything the new Den added
+is missing from it.
 
 Den also looks at npm by itself (every 30 minutes by default): with
 `self_update: ask` the person gets "update Den to X" to Allow, and with

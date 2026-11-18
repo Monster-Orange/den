@@ -63,7 +63,7 @@ describe("whoami after a Hub connection that failed at start", () => {
     const t = await agentTools(d, "planner", "north");
     expect(t.hub).toEqual({ connected: true, loaded: false, restart: true });
     expect(t.note).toContain("hub (502): Bad Gateway");
-    expect(t.note).toMatch(/restart you from Den/);
+    expect(t.note).toMatch(/Den restarts you/);
   });
 
   it("a later connect that worked (the runtime reconnected): loaded again", async () => {

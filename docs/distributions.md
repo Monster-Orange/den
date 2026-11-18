@@ -3456,6 +3456,19 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   Server › Update checks say its value, where it came from (`user.yml`,
   the org config not yet copied, or the default), and the last and next
   check (`server-agent/update/check.json` in the state folder).
+- **Agents after an update.** An agent's Den tools (its MCP server) start
+  with its session, and a self-update restarts Den, not the agents. So
+  once the update is verified, Den restarts each agent whose session
+  started before the new version was installed, at its next idle, in the
+  same conversation (the restart Settings › Hub offers when Hub's tools
+  change). A busy agent is restarted when its turn ends; one that isn't
+  running starts on the new tools anyway. Each agent is restarted once
+  per update, an audit row says so, and the bell names them. Until then,
+  each answer of an old tools process ends with "Den was updated to X
+  after these tools started on Y; Den restarts you at your next idle to
+  load X." `server_agent.refresh_agents: false` in `user.yml` (Settings ›
+  Server › Agents after an update: Leave) turns this off; the line then
+  gives only the versions.
 - **Where it lives.** On a fresh Den (no repo in any project yet), the
   first page, `/`, is that agent in a terminal framed as the page, with
   Open in Agents as the way out. After setup Agents lists it first, under

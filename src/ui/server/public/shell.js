@@ -1804,6 +1804,11 @@
       "When a new __DEN_TITLE__ is out. Ask: an update waits in the bell for your Allow. Auto: __DEN_TITLE__ updates at a quiet moment, and goes back by itself if the new version doesn't come up.",
     "set.server.self_update.o.ask": "Ask",
     "set.server.self_update.o.auto": "Auto",
+    "set.server.refresh_agents": "Agents after an update",
+    "set.server.refresh_agents.d":
+      "After __DEN_TITLE__ updates itself, each agent still on the old version's tools. Restart: __DEN_TITLE__ restarts it at its next idle, in the same conversation, so it uses the new version. Leave: it keeps the old tools until it next starts.",
+    "set.server.refresh_agents.o.on": "Restart",
+    "set.server.refresh_agents.o.off": "Leave",
     "set.server.update_check": "Update checks",
     "set.server.update_check.d":
       "Where the New versions choice comes from, and when __DEN_TITLE__ last looked for a new version and looks next.",
@@ -2640,6 +2645,8 @@
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed: the __DEN_TITLE__ agent is waiting on your Allow",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
+    "bell.m.agentsRefreshed":
+      "__DEN_TITLE__ {v}: restarted {ids} at their next idle to load the new tools (same conversations)",
     "bell.m.turn": "{name} finished its turn",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} finished {n} Hub comments",

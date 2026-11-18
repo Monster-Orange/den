@@ -14,6 +14,7 @@ import { agentAuditHeaders } from "../../shared/agent-actor.js";
 import {
   readAgentsConfig,
   readMcpConfig,
+  readServerAgentConfig,
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
 import { readWebPort } from "../../shared/edge/config.js";
@@ -69,6 +70,8 @@ export interface DenMcpOptions {
    * engineWatch on the engine root, read now).
    */
   engine?: { check(): EngineCheck };
+  /** #390: server_agent.refresh_agents now (default: read the config). */
+  refreshOn?: () => boolean;
 }
 
 /**
@@ -101,8 +104,8 @@ export function mcpInstructions(
           "every project and repo (names and status counts), the graph, the " +
           "edge and the environments: start there for the whole picture. " +
           "whoami says whether Hub's tools are yours: if Hub is connected but " +
-          "they are missing, ask the person to restart you from Den (it keeps " +
-          "this conversation); never ask them to make a token."
+          "they are missing, Den restarts you at your next idle to load them " +
+          "(this conversation stays); there is no token to make."
         : ` org_summary has the whole ${p.title} at a glance: start there.`)
   );
 }
@@ -121,6 +124,15 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   // its tools are the old Den's, and how to load the new ones.
   const engine = opts.engine ?? engineWatch(getEngineRoot);
   const isAgent = opts.scope?.actor.startsWith("agent:") === true;
+  const refreshOn =
+    opts.refreshOn ??
+    (() => {
+      try {
+        return readServerAgentConfig().refreshAgents;
+      } catch {
+        return true; // a bad server_agent block: doctor says so; the default
+      }
+    });
   const server = new McpServer(
     { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
@@ -199,7 +211,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
               ? [
                   {
                     type: "text" as const,
-                    text: toolsStaleMessage(e, isAgent),
+                    text: toolsStaleMessage(e, isAgent, refreshOn()),
                   },
                 ]
               : []),

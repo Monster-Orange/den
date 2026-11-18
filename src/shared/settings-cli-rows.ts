@@ -62,6 +62,8 @@ export const PERSON_ONLY_SETTINGS = [
   "machine_name",
   // SRV-P6 (0.4.48): whether Den updates itself without asking.
   "server_agent_self_update",
+  // #390: whether Den restarts agents on old tools after it updates itself.
+  "server_agent_refresh_agents",
   // Issue 163: whether Den runs as LaunchDaemons that outlive a logout.
   "keep_running_after_logout",
   // Issue 103: deep links and the embedded agent pane (Settings › Embedding).

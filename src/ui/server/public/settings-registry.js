@@ -1982,6 +1982,25 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ server_agent_self_update: v }),
   },
   {
+    // Issue 390: after an update, agents on the old tools are restarted at
+    // their next idle (user.yml server_agent.refresh_agents). A person's.
+    id: "server.refresh_agents",
+    category: "server",
+    label: "Agents after an update",
+    description:
+      "After __DEN_TITLE__ updates itself, each agent still on the old version's tools. Restart: __DEN_TITLE__ restarts it at its next idle, in the same conversation, so it uses the new version. Leave: it keeps the old tools until it next starts.",
+    keywords: ["update", "version", "agents", "restart", "tools", "refresh"],
+    scope: "user",
+    keys: ["server_agent_refresh_agents"],
+    control: seg([
+      { value: "on", label: "Restart" },
+      { value: "off", label: "Leave" },
+    ]),
+    read: (ctx) =>
+      ctx.data.server_agent_refresh_agents === false ? "off" : "on",
+    write: (v, ctx) => ctx.post({ server_agent_refresh_agents: v === "on" }),
+  },
+  {
     // SRV-P6: where that choice came from, and the checks' last and next
     // pass (the running Den writes them; doctor says the same).
     id: "server.update_check",
