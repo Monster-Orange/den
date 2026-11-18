@@ -140,6 +140,8 @@ const READ_ROUTES = new Set([
   "/api/onboard/manifest",
   // NT (MCP notifications_list): the bell, read as the agent sees it.
   "/api/notifications",
+  // Issue 487 (MCP github_budget): the shared GitHub budget and its spend.
+  "/api/github/budget",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
@@ -157,6 +159,8 @@ const ACTION_ROUTES: Record<string, string> = {
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",
   "/api/verify/run": "POST",
+  // Issue 487 (MCP ci_wait): wait on Den's one CI watcher; changes nothing.
+  "/api/ci/wait": "POST",
 };
 
 /**

@@ -1,5 +1,5 @@
 /**
- * The GitHub budget guard in Den's PreToolUse hook (issue TBD,
+ * The GitHub budget guard in Den's PreToolUse hook (issue 487,
  * guardrails/pretooluse.mjs): an agent that polls GitHub (gh run watch at
  * its 3 s default, gh pr checks --watch, gh in a sleep loop) is blocked,
  * and the message names Den's ci_wait tool. A slow `gh run watch

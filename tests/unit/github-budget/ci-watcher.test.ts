@@ -1,5 +1,5 @@
 /**
- * Issue TBD: Den's one CI watcher and the GitHub budget's reserve, against
+ * Issue 487: Den's one CI watcher and the GitHub budget's reserve, against
  * a fake GitHub on 127.0.0.1 (never the real API, never the real gh).
  *
  *   - Ten agents waiting on one run share one poll: one conditional
@@ -54,7 +54,9 @@ class FakeGitHub {
     let m = /^\/repos\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(p);
     if (m) {
       const r = this.runs.get(`${m[1]}#${m[2]}`);
-      return r ? { id: Number(m[2]), html_url: `https://x/${m[2]}`, ...r } : null;
+      return r
+        ? { id: Number(m[2]), html_url: `https://x/${m[2]}`, ...r }
+        : null;
     }
     m = /^\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/.exec(p);
     if (m) {
@@ -226,8 +228,8 @@ describe("ten agents waiting on one run share one poll", () => {
   });
 
   it("a PR waits for all its check runs, and fails when one fails", async () => {
-    gh.prs.set("o/r#7", "abc123");
-    gh.checks.set("abc123", [
+    gh.prs.set("o/r#7", "abc1234");
+    gh.checks.set("abc1234", [
       { status: "completed", conclusion: "success" },
       { status: "in_progress", conclusion: null },
     ]);
@@ -239,7 +241,7 @@ describe("ten agents waiting on one run share one poll", () => {
       actor: "agent:a1",
     });
     await timers.advance(60_000, watcher);
-    gh.checks.set("abc123", [
+    gh.checks.set("abc1234", [
       { status: "completed", conclusion: "success" },
       { status: "completed", conclusion: "failure" },
     ]);

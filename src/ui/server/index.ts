@@ -258,6 +258,15 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import { handleGateRoutes, isGatePath } from "./gate-routes.js";
+import {
+  handleGithubBudgetRoutes,
+  isGithubBudgetPath,
+} from "./github-budget-routes.js";
+import {
+  createGithubBudgetService,
+  type GithubBudgetService,
+} from "./github-budget-service.js";
+import { githubBudgetSettings } from "../../shared/github-budget/settings.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
@@ -3098,6 +3107,11 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 let gateStore: GateStore | undefined;
 const gates = () => (gateStore ??= new GateStore());
 
+/** Issue 487: the one GitHub budget and CI watcher, opened on first use. */
+let githubBudget: GithubBudgetService | undefined;
+const githubBudgetService = () =>
+  (githubBudget ??= createGithubBudgetService());
+
 /**
  * Issue 163 (b): the Settings row's view of the agents' sign-in token:
  * whether one is configured, when it was set, the store's credential in
@@ -3434,6 +3448,11 @@ async function handleRequest(
       store: gates,
       title: product().title,
     });
+    return;
+  }
+  // Issue 487: the shared GitHub budget, and waiting on Den's CI watcher.
+  if (guard.ok && isGithubBudgetPath(pathname)) {
+    await handleGithubBudgetRoutes(req, res, pathname, githubBudgetService());
     return;
   }
   // NT: the bell, and agents saying they wait for their person.
@@ -6803,6 +6822,16 @@ async function handleRequest(
             visibility_retry_seconds: f.visibilityRetrySeconds,
           };
         })(),
+        // Issue 487: the GitHub budget guard (github_budget.*), defaults
+        // when unset.
+        github_budget: (() => {
+          const g = githubBudgetSettings(user.github_budget);
+          return {
+            poll_seconds: g.pollSeconds,
+            reserve: g.reserve,
+            watch_min_seconds: g.watchMinSeconds,
+          };
+        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
@@ -6854,6 +6883,7 @@ async function handleRequest(
           agents_list?: unknown;
           agent_context?: unknown;
           feedback?: unknown;
+          github_budget?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -6887,6 +6917,7 @@ async function handleRequest(
             agents_list: body.agents_list,
             agent_context: body.agent_context,
             feedback: body.feedback,
+            github_budget: body.github_budget,
           });
           if (!c.ok) return send400(res, c.error);
         }

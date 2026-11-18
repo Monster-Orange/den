@@ -1891,6 +1891,46 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
   },
   {
+    // Issue 487: the GitHub budget guard (user.yml github_budget.*).
+    id: "server.github_reserve",
+    category: "server",
+    label: "GitHub budget: reserve",
+    description:
+      "Requests of the hourly GitHub budget kept for releases and people. Below this, agents' calls through __DEN_TITLE__ wait for the reset. __DEN_CLI__ config github_budget.reserve=1000",
+    keywords: ["github", "budget", "rate limit", "reserve", "ci", "agents"],
+    scope: "user",
+    keys: ["github_budget.reserve"],
+    control: { type: "number", min: 0, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.github_budget?.reserve ?? 1000,
+    write: (v, ctx) => ctx.post({ github_budget: { reserve: v } }),
+  },
+  {
+    id: "server.github_poll",
+    category: "server",
+    label: "GitHub budget: CI poll interval",
+    description:
+      "How often __DEN_TITLE__ asks GitHub about a run agents wait on (ci_wait). One poll serves every agent waiting on that run, and an unchanged answer costs nothing. __DEN_CLI__ config github_budget.poll_seconds=60",
+    keywords: ["github", "budget", "ci", "poll", "wait", "ci_wait"],
+    scope: "user",
+    keys: ["github_budget.poll_seconds"],
+    control: { type: "number", min: 5, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github_budget?.poll_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ github_budget: { poll_seconds: v } }),
+  },
+  {
+    id: "server.github_watch_min",
+    category: "server",
+    label: "GitHub budget: slowest watch allowed",
+    description:
+      "The shortest interval an agent may give `gh run watch --interval`. Faster watches are blocked, and the agent is told to use ci_wait. __DEN_CLI__ config github_budget.watch_min_seconds=120",
+    keywords: ["github", "budget", "gh run watch", "interval", "agents"],
+    scope: "user",
+    keys: ["github_budget.watch_min_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github_budget?.watch_min_seconds ?? 120,
+    write: (v, ctx) => ctx.post({ github_budget: { watch_min_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",

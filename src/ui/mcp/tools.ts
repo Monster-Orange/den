@@ -452,6 +452,69 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "ci_wait",
+    "Wait for CI",
+    "Issue 487: wait for a GitHub Actions run, or all of a PR's checks, to end, through Den's one CI watcher: Den polls each run once for every agent waiting on it, with conditional requests, so waiting costs the shared GitHub budget almost nothing. Use this instead of `gh run watch`, `gh pr checks --watch` or gh in a sleep loop (the hook blocks those). Give repo (owner/repo) and run (a run id) or pr (a number), and how many minutes to wait at most (default 30). Returns done, status, conclusion (success, failure, …), url, a PR's checks, and waitedSeconds; done false when your timeout came first. Below the budget's reserve it returns `refused` with the reason and the reset time: wait for the reset. Changes nothing.",
+    {
+      repo: z.string().describe("owner/repo"),
+      run: z.number().int().positive().optional().describe("A workflow run id"),
+      pr: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("A pull request number: waits for all its check runs"),
+      timeout_minutes: z
+        .number()
+        .positive()
+        .max(1440)
+        .optional()
+        .describe("How long to wait at most (default 30)"),
+    },
+    async (a, { api }) => {
+      const repo = str(a.repo) ?? "";
+      if (!/^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/.test(repo))
+        throw new Refusal('ci_wait: repo is "owner/repo"');
+      const run = typeof a.run === "number" ? a.run : undefined;
+      const pr = typeof a.pr === "number" ? a.pr : undefined;
+      if ((run === undefined) === (pr === undefined))
+        throw new Refusal("ci_wait: give one of run (a run id) or pr");
+      const minutes =
+        typeof a.timeout_minutes === "number" ? a.timeout_minutes : 30;
+      const deadline = Date.now() + minutes * 60_000;
+      for (;;) {
+        const left = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
+        let r: Record<string, unknown> | null;
+        try {
+          r = (await api.get("/api/ci/wait", {}, "POST", {
+            repo,
+            ...(run !== undefined ? { run } : { pr }),
+            timeout_seconds: left,
+          })) as Record<string, unknown> | null;
+        } catch (e) {
+          // Below the reserve: the reason and the reset, as an answer.
+          if (e instanceof DenHttpError && e.status === 429) {
+            try {
+              return JSON.parse(e.body) as unknown;
+            } catch {
+              throw e;
+            }
+          }
+          throw e;
+        }
+        if (!r || r.done || r.refused || r.error || Date.now() >= deadline)
+          return r;
+      }
+    },
+  ),
+  read(
+    "github_budget",
+    "The GitHub budget",
+    "Issue 487: the shared hourly GitHub budget as Den last read it (remaining, limit, reset), the reserve kept for releases and people (below it, agents' calls through Den are refused until the reset), the CI poll interval, the least `gh run watch --interval` allowed, the last hour's spend per caller, and what Den's CI watcher watches now. Reads only.",
+    {},
+    async (_a, { api }) => api.get("/api/github/budget"),
+  ),
+  read(
     "approval_check",
     "Check an approval",
     "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
@@ -2570,6 +2633,9 @@ export const ROUTE_SINCE: Readonly<Record<string, string>> = {
   "/api/verify/plan": "0.4.51",
   "/api/verify/run": "0.4.51",
   "/api/server-agent/update": "0.4.64",
+  // Issue 487: ci_wait and github_budget.
+  "/api/ci/wait": "0.4.67",
+  "/api/github/budget": "0.4.67",
 };
 
 /** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */

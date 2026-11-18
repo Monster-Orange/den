@@ -28,6 +28,7 @@ import {
   type LaunchInput,
 } from "../../../src/shared/agents/runtimes.js";
 import { readAgentsConfig } from "../../../src/shared/den-config.js";
+import { githubBudgetPaths } from "../../../src/shared/github-budget/settings.js";
 
 const root = fs.realpathSync(
   fs.mkdtempSync(path.join(os.tmpdir(), "den-guard-")),
@@ -60,10 +61,20 @@ function input(persona: Persona, stateDir?: string): LaunchInput {
 const agentHooks = (id: string) =>
   guardrailHooks(
     GUARDRAILS_DIR,
-    hookCommands(GUARDRAILS_DIR, process.execPath, {
-      files: path.join(root, "files", id),
-      after: 3,
-    }),
+    hookCommands(
+      GUARDRAILS_DIR,
+      process.execPath,
+      {
+        files: path.join(root, "files", id),
+        after: 3,
+      },
+      [],
+      true,
+      undefined,
+      undefined,
+      // Issue 487: the slow-watch minimum and the budget snapshot.
+      { watchMinSeconds: 120, snapshot: githubBudgetPaths().snapshot },
+    ),
   );
 
 function launch(persona: Persona, stateDir?: string) {

@@ -642,6 +642,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
+  R(
+    "/api/github/budget",
+    "Issue 487: the shared GitHub budget as Den last read it, the reserve, and spend per caller",
+  ),
+  M(
+    ["POST"],
+    "/api/ci/wait",
+    "Issue 487: wait on Den's one CI watcher (polls GitHub, held; changes nothing here)",
+  ),
   M(
     ["POST"],
     "/api/agents/self/attention",

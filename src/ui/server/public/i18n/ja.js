@@ -879,6 +879,15 @@
     "set.server.report_visibility_retry": "報告：リポジトリの公開範囲の再確認",
     "set.server.report_visibility_retry.d":
       "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
+    "set.server.github_reserve": "GitHub の予算：予備",
+    "set.server.github_reserve.d":
+      "GitHub の 1 時間ごとの予算のうち、リリースと人のために残しておくリクエスト数です。これを下回ると、__DEN_TITLE__ を通したエージェントの呼び出しはリセットまで待ちます。__DEN_CLI__ config github_budget.reserve=1000",
+    "set.server.github_poll": "GitHub の予算：CI の確認間隔",
+    "set.server.github_poll.d":
+      "エージェントが待っている実行（ci_wait）について、__DEN_TITLE__ が GitHub に確認する間隔です。1 回の確認で、その実行を待つすべてのエージェントに答えます。変わっていない答えは予算を使いません。__DEN_CLI__ config github_budget.poll_seconds=60",
+    "set.server.github_watch_min": "GitHub の予算：許可する最も遅い監視",
+    "set.server.github_watch_min.d":
+      "エージェントが `gh run watch --interval` に指定できる最短の間隔です。これより速い監視はブロックされ、ci_wait を使うよう伝えます。__DEN_CLI__ config github_budget.watch_min_seconds=120",
     "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
     "set.agents.pane_reconnect.d":
       "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",

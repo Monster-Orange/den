@@ -1867,6 +1867,15 @@
     "set.server.report_visibility_retry": "Report: repository visibility retry",
     "set.server.report_visibility_retry.d":
       "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
+    "set.server.github_reserve": "GitHub budget: reserve",
+    "set.server.github_reserve.d":
+      "Requests of the hourly GitHub budget kept for releases and people. Below this, agents' calls through __DEN_TITLE__ wait for the reset. __DEN_CLI__ config github_budget.reserve=1000",
+    "set.server.github_poll": "GitHub budget: CI poll interval",
+    "set.server.github_poll.d":
+      "How often __DEN_TITLE__ asks GitHub about a run agents wait on (ci_wait). One poll serves every agent waiting on that run, and an unchanged answer costs nothing. __DEN_CLI__ config github_budget.poll_seconds=60",
+    "set.server.github_watch_min": "GitHub budget: slowest watch allowed",
+    "set.server.github_watch_min.d":
+      "The shortest interval an agent may give `gh run watch --interval`. Faster watches are blocked, and the agent is told to use ci_wait. __DEN_CLI__ config github_budget.watch_min_seconds=120",
     "set.agents.pane_reconnect": "Terminal reconnect tries",
     "set.agents.pane_reconnect.d":
       "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",

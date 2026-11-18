@@ -1,5 +1,5 @@
 /**
- * Issue TBD: where the GitHub budget shows and is used: the web routes
+ * Issue 487: where the GitHub budget shows and is used: the web routes
  * (GET /api/github/budget, POST /api/ci/wait), the MCP tools ci_wait and
  * github_budget, doctor's lines, the github_budget settings, and the
  * hook's arguments. A fake GitHub on 127.0.0.1; never the real API or gh.
@@ -54,7 +54,9 @@ const fakeGh = http.createServer((req, res) => {
   if (p === "/rate_limit") {
     res.writeHead(200, head);
     return res.end(
-      JSON.stringify({ resources: { core: { limit: 5000, remaining, reset } } }),
+      JSON.stringify({
+        resources: { core: { limit: 5000, remaining, reset } },
+      }),
     );
   }
   if (p === "/repos/o/r/actions/runs/5") {
@@ -123,7 +125,10 @@ async function post(p: string, body: unknown, actor = "agent:a1") {
     headers: { "content-type": "application/json", "x-test-actor": actor },
     body: JSON.stringify(body),
   });
-  return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+  return {
+    status: r.status,
+    body: (await r.json()) as Record<string, unknown>,
+  };
 }
 
 describe("the web routes", () => {
@@ -207,7 +212,12 @@ function fakeApi(answers: unknown[]) {
 }
 const ctx = (api: DenApi): ToolContext => ({
   api,
-  cfg: { actions: [], runTestsEnvs: ["local"], logsRemote: false, approvals: true },
+  cfg: {
+    actions: [],
+    runTestsEnvs: ["local"],
+    logsRemote: false,
+    approvals: true,
+  },
   cli: "acme",
   scope: { workspace: "north", actor: "agent:planner" },
 });
@@ -216,7 +226,9 @@ describe("the MCP tools", () => {
   it("ci_wait and github_budget are read tools agents always have", () => {
     expect(READ_TOOL_NAMES).toContain("ci_wait");
     expect(READ_TOOL_NAMES).toContain("github_budget");
-    expect(() => assertAllowedRequest("POST", "/api/ci/wait", {})).not.toThrow();
+    expect(() =>
+      assertAllowedRequest("POST", "/api/ci/wait", {}),
+    ).not.toThrow();
     expect(() =>
       assertAllowedRequest("GET", "/api/github/budget", {}),
     ).not.toThrow();
@@ -240,7 +252,7 @@ describe("the MCP tools", () => {
       method: "POST",
       body: { repo: "o/r", run: 9 },
     });
-    expect(JSON.stringify(r.content)).toMatch(/failure/);
+    expect(r.text).toMatch(/failure/);
   });
 
   it("ci_wait needs owner/repo and a run or a PR", async () => {
@@ -305,9 +317,9 @@ describe("settings", () => {
       patchCliRows(user, { github_budget: { reserve: 500, poll_seconds: 30 } }),
     ).toEqual({ ok: true });
     expect(user.github_budget).toEqual({ reserve: 500, poll_seconds: 30 });
-    expect(
-      patchCliRows(user, { github_budget: { poll_seconds: 1 } }).ok,
-    ).toBe(false);
+    expect(patchCliRows(user, { github_budget: { poll_seconds: 1 } }).ok).toBe(
+      false,
+    );
   });
   it("the hook gets the slow-watch minimum and the snapshot", () => {
     const c = hookCommands(
