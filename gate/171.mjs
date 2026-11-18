@@ -62,16 +62,29 @@ export async function run(ctx, s) {
   const lang = {};
   try {
     for (const l of LANGS) {
-      await setLanguage(ctx, l);
+      // A refused switch leaves every page in English: say that, not the few words matched below.
+      const set = await setLanguage(ctx, l);
+      if (set && (set.ok === false || (set.status && set.status >= 400)))
+        throw new Error(
+          `the language switch to ${l} was refused (${set.status})`,
+        );
       for (const p of PAGES) {
         await ctx.goto(ctx.page, p).catch(() => {});
         await ctx.page
           .waitForSelector("main", { timeout: 10000 })
           .catch(() => {});
         await ctx.sleep(1500);
-        lang[l] = await ctx.page.evaluate(() => document.documentElement.lang);
-        const hits = await ctx.page.evaluate(english);
-        if (hits.length) found[`${l} ${p}`] = hits;
+        const now = await ctx.page.evaluate(
+          () => document.documentElement.lang,
+        );
+        // One page left in another language fails the clause, whatever the others say.
+        if (lang[l] === undefined || lang[l] === l) lang[l] = now;
+        if (now !== l)
+          found[`${l} ${p}`] = [`the page is in "${now}", not "${l}"`];
+        else {
+          const hits = await ctx.page.evaluate(english);
+          if (hits.length) found[`${l} ${p}`] = hits;
+        }
         await ctx.shot(
           `${l}${p.replace(/\//g, "-")}-${ctx.browser}-${ctx.width}`,
         );
