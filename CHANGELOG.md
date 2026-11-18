@@ -298,8 +298,8 @@ config and manifest changes a distribution must make to move to it under
   "Edge up to date, nothing restarted", or "Edge recreated because
   <field>: <old> → <new>; it was unreachable for about N s". en, es, ja.
   (#395) (#400)
-- Settings › Keep agents running after logout no longer says "make one
-  with claude setup-token, then <cli> agents token set". With no sign-in
+- Settings › Keep agents running after logout no longer sends you to two
+  terminal commands to make the agents' sign-in token. With no sign-in
   token, or an old one, the row says the agents' CLI makes it when you
   sign in to it. It links the vendor's sign-in docs, from the runtime
   catalog's new signIn.docs. "Sign-in token" in "paste it into Sign-in
