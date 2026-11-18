@@ -889,7 +889,7 @@
     "set.server.gate_beside":
       "Pruebas unitarias junto a una prueba de navegador",
     "set.server.gate_beside.d":
-      "Cuántas pruebas unitarias pueden empezar mientras una prueba de navegador ocupa la máquina, si se espera que cada una termine antes de la siguiente prueba de navegador en espera. 0: una prueba de navegador siempre se ejecuta sola. __DEN_CLI__ gate settings --cpu-beside-browser 1",
+      "Cuántas pruebas unitarias pueden empezar mientras una prueba de navegador ocupa la máquina, si se espera que cada una termine antes de la siguiente prueba de navegador en espera. 0: una prueba de navegador siempre se ejecuta sola. Por defecto, 1 en una máquina con 8 núcleos o más; si no, 0. __DEN_CLI__ gate settings --cpu-beside-browser 1",
     "set.server.gate_load":
       "Carga máxima para una prueba junto a una de navegador, por núcleo",
     "set.server.gate_load.d":

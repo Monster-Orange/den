@@ -5346,7 +5346,8 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - A `browser` run holds the machine alone. `cpu` runs share it, up to
   `cpu_slots` (default 2). First come, first served: a waiting browser
   run stops new cpu grants, so it can't starve.
-- Beside a browser run's hold, up to `cpu_beside_browser` (default 1)
+- Beside a browser run's hold, up to `cpu_beside_browser` (default 1 on
+  a machine with 8 or more cores, else 0)
   `cpu` runs may start, within `cpu_slots`, even past a waiting browser
   run, but only one expected to end (now plus its estimate) by the hold's
   expected end plus `overrun_margin_minutes`, so the waiting browser run

@@ -22,9 +22,9 @@ import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
-  GATE_DEFAULTS,
   byAsked,
   expectedStart,
+  gateDefaults,
   gone,
   grants,
   overrun,
@@ -150,6 +150,8 @@ export interface GateStoreOpts {
   lockWaitMs?: number;
   /** The 1-min load average per core (issue 462); the machine's by default. */
   loadPerCore?: () => number;
+  /** The machine's cpu count, for the defaults (issue 462). */
+  cores?: () => number;
 }
 
 const machineLoadPerCore = (): number =>
@@ -161,6 +163,7 @@ export class GateStore {
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
   private readonly loadPerCore: () => number;
+  private readonly cores: () => number;
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
@@ -168,6 +171,7 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.loadPerCore = o.loadPerCore ?? machineLoadPerCore;
+    this.cores = o.cores ?? (() => os.cpus().length);
   }
 
   private get slots() {
@@ -175,6 +179,7 @@ export class GateStore {
   }
 
   settings(): GateSettings {
+    const defaults = gateDefaults(this.cores());
     try {
       const v = JSON.parse(
         fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
@@ -190,18 +195,18 @@ export class GateStore {
           : d;
       };
       return {
-        cpuSlots: Math.floor(num("cpu_slots", GATE_DEFAULTS.cpuSlots)),
+        cpuSlots: Math.floor(num("cpu_slots", defaults.cpuSlots)),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
-          GATE_DEFAULTS.overrunMarginMinutes,
+          defaults.overrunMarginMinutes,
         ),
         cpuBesideBrowser: Math.floor(
-          num("cpu_beside_browser", GATE_DEFAULTS.cpuBesideBrowser),
+          num("cpu_beside_browser", defaults.cpuBesideBrowser),
         ),
-        maxLoadPerCore: num("max_load_per_core", GATE_DEFAULTS.maxLoadPerCore),
+        maxLoadPerCore: num("max_load_per_core", defaults.maxLoadPerCore),
       };
     } catch {
-      return { ...GATE_DEFAULTS };
+      return { ...defaults };
     }
   }
 

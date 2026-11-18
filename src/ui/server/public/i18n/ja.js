@@ -868,7 +868,7 @@
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.gate_beside": "ブラウザーテストの横で動かす単体テスト",
     "set.server.gate_beside.d":
-      "ブラウザーテストがマシンを使っている間に始めてよい単体テスト実行の数です。次に待っているブラウザーテストより前に終わる見込みのものだけが始まります。0 にするとブラウザーテストは常に単独で動きます。__DEN_CLI__ gate settings --cpu-beside-browser 1",
+      "ブラウザーテストがマシンを使っている間に始めてよい単体テスト実行の数です。次に待っているブラウザーテストより前に終わる見込みのものだけが始まります。0 にするとブラウザーテストは常に単独で動きます。既定値は、コアが 8 個以上のマシンでは 1、それ以外では 0 です。__DEN_CLI__ gate settings --cpu-beside-browser 1",
     "set.server.gate_load":
       "ブラウザーテストの横で動かすときの、コアあたりの負荷の上限",
     "set.server.gate_load.d":

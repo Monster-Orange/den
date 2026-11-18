@@ -36,7 +36,7 @@ export const GATE_HELP = {
   usage: "gate <run|status|end|settings> ...",
   lines: [
     "Heavy test runs on this machine, taken in turn: a browser suite runs",
-    "alone but for one unit suite beside it that ends in time; unit suites",
+    "alone but for one unit suite beside it that ends in time (8+ cores); unit suites",
     "share (2 at a time by default). Every repo and install",
     "on the machine shares the same queue. A run is never stopped by another.",
     "",

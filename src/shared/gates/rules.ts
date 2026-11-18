@@ -53,18 +53,27 @@ export interface GateSettings {
   cpuSlots: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
-  /** cpu runs that may start beside one browser hold; 0: none (issue 462). */
+  /**
+   * cpu runs that may start beside one browser hold; 0: none (issue 462).
+   * Default 1 on 8 or more cores, else 0.
+   */
   cpuBesideBrowser: number;
   /** No cpu run starts beside a browser hold above this 1-min load per core. */
   maxLoadPerCore: number;
 }
 
-export const GATE_DEFAULTS: GateSettings = {
-  cpuSlots: 2,
-  overrunMarginMinutes: 15,
-  cpuBesideBrowser: 1,
-  maxLoadPerCore: 2,
-};
+/**
+ * The defaults on a machine with `cores` cpus. The one place they are set:
+ * a cpu run beside a browser hold only on 8 or more cores (issue 462).
+ */
+export function gateDefaults(cores: number): GateSettings {
+  return {
+    cpuSlots: 2,
+    overrunMarginMinutes: 15,
+    cpuBesideBrowser: cores >= 8 ? 1 : 0,
+    maxLoadPerCore: 2,
+  };
+}
 
 /** What `grants` needs from outside: the time, and the machine's load. */
 export interface GateNow {

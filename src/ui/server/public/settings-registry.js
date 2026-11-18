@@ -2011,12 +2011,13 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Unit test runs beside a browser test run",
     description:
-      "How many unit-test runs may start while a browser test run holds the machine, if each is expected to end before the browser run that waits next. 0: a browser test run always runs alone. __DEN_CLI__ gate settings --cpu-beside-browser 1",
+      "How many unit-test runs may start while a browser test run holds the machine, if each is expected to end before the browser run that waits next. 0: a browser test run always runs alone. By default 1 on a machine with 8 or more cores, else 0. __DEN_CLI__ gate settings --cpu-beside-browser 1",
     keywords: ["gate", "slot", "tests", "queue", "cpu", "browser", "backfill"],
     scope: "user",
     keys: ["gate_slots.cpu_beside_browser"],
     control: { type: "number", min: 0, max: 64, step: 1 },
-    read: (ctx) => ctx.data.gate_slots?.cpuBesideBrowser ?? 1,
+    // The server sends the machine's value (its default follows its cores).
+    read: (ctx) => ctx.data.gate_slots?.cpuBesideBrowser ?? 0,
     write: (v, ctx) => ctx.post({ gate_slots: { cpu_beside_browser: v } }),
   },
   {

@@ -1856,7 +1856,7 @@
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.gate_beside": "Unit test runs beside a browser test run",
     "set.server.gate_beside.d":
-      "How many unit-test runs may start while a browser test run holds the machine, if each is expected to end before the browser run that waits next. 0: a browser test run always runs alone. __DEN_CLI__ gate settings --cpu-beside-browser 1",
+      "How many unit-test runs may start while a browser test run holds the machine, if each is expected to end before the browser run that waits next. 0: a browser test run always runs alone. By default 1 on a machine with 8 or more cores, else 0. __DEN_CLI__ gate settings --cpu-beside-browser 1",
     "set.server.gate_load":
       "Busiest load for a run beside a browser test run, per core",
     "set.server.gate_load.d":

@@ -60,7 +60,13 @@ function deps(over: Partial<GateDeps> = {}) {
   const beats: (() => void)[] = [];
   let handler: ((s: NodeJS.Signals) => void) | undefined;
   const d: GateDeps = {
-    store: new GateStore({ dir, alive: () => true, loadPerCore: () => 0 }),
+    // 8 cores: one cpu run may start beside a browser run (issue 462).
+    store: new GateStore({
+      dir,
+      alive: () => true,
+      loadPerCore: () => 0,
+      cores: () => 8,
+    }),
     env: {},
     out: (l) => out.push(l),
     err: (l) => err.push(l),
