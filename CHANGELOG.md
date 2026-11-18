@@ -6,6 +6,9 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.65] - unreleased
 
+0.4.65-dev.1 was skipped: its commit failed CI and was never handed to a
+gate. 0.4.65-dev.2 is the first candidate.
+
 ### Added
 
 - Agents: a runtime catalog entry can carry its sign-in data (`signIn`:
