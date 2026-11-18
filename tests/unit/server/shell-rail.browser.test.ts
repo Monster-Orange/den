@@ -86,6 +86,21 @@ async function mount(
   return { p, posts, warnings };
 }
 
+/**
+ * Waits until `posts` holds `n` saves (each is a request the page sends on
+ * its own time), or `ms` pass. A fixed short wait raced them on a busy
+ * runner (issue 424).
+ */
+async function postsAtLeast(
+  p: Page,
+  posts: unknown[],
+  n: number,
+  ms = 5000,
+): Promise<void> {
+  const until = Date.now() + ms;
+  while (posts.length < n && Date.now() < until) await p.waitForTimeout(25);
+}
+
 const rail = (p: Page) =>
   p.evaluate(() =>
     [...document.querySelectorAll(".den-rail > *")].map((g) =>
@@ -324,7 +339,7 @@ describe("the rail", () => {
     expect(
       await p.$eval(".den-rail", (e) => e.getBoundingClientRect().width),
     ).toBeGreaterThanOrEqual(72);
-    await p.waitForTimeout(50);
+    await postsAtLeast(p, posts, 1);
     expect(posts).toContainEqual({ shell: { collapsed: true } });
     await p.context().close();
   });
@@ -343,7 +358,7 @@ describe("the rail", () => {
     await p.focus('[data-pin="shop"]');
     await p.keyboard.press("Delete");
     expect(await p.$$('[data-pin="shop"]')).toHaveLength(0);
-    await p.waitForTimeout(50);
+    await postsAtLeast(p, posts, 2);
     expect(posts).toEqual([
       { shell: { pins: ["shop"] } },
       { shell: { pins: [] } },
@@ -1081,7 +1096,7 @@ describe("Navigation prefs (R21)", () => {
     expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(0);
     await shell(p, "setNavPrefs", { hidden: [], order: ["environments"] });
     await shell(p, "setPins", ["shop", "billing/api"]);
-    await p.waitForTimeout(50);
+    await postsAtLeast(p, posts, 3);
     expect(posts).toEqual(
       expect.arrayContaining([
         { shell: { hidden: ["release"] } },
