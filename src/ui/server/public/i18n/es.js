@@ -2349,6 +2349,7 @@
     "pj.delete": "Eliminar",
     "pj.activeTag": "(activo)",
     "pj.openTerm": "Abrir en la terminal",
+    "pj.openTermIn": "Abrir en {app}",
     "pj.openEditor": "Abrir en el editor",
     "pj.moreActions": "Más acciones",
     "pj.moreFor": "Más para {ws}",
