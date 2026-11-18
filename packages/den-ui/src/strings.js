@@ -120,6 +120,11 @@ export const en = {
   "kit.report.cancel": "Cancel",
   "kit.report.dest": "Goes to",
   "kit.report.pub": "Public repository",
+  "kit.report.priv": "Private repository",
+  "kit.report.int": "Internal repository",
+  "kit.report.privN": "Only people with access to this repository can see it.",
+  "kit.report.privW":
+    "Only people with access to this repository can see it: {who}.",
   "kit.report.pubW":
     "Screenshots and text are visible to everyone. Mask anything private.",
   "kit.report.incH": "What goes with your report",
@@ -296,6 +301,11 @@ export const es = {
   "kit.report.cancel": "Cancelar",
   "kit.report.dest": "Va a",
   "kit.report.pub": "Repositorio público",
+  "kit.report.priv": "Repositorio privado",
+  "kit.report.int": "Repositorio interno",
+  "kit.report.privN": "Solo lo ve quien tiene acceso a este repositorio.",
+  "kit.report.privW":
+    "Solo lo ve quien tiene acceso a este repositorio: {who}.",
   "kit.report.pubW":
     "Las capturas y el texto los ve todo el mundo. Tapa lo que sea privado.",
   "kit.report.incH": "Qué va con tu informe",
@@ -471,6 +481,11 @@ export const ja = {
   "kit.report.cancel": "キャンセル",
   "kit.report.dest": "送り先",
   "kit.report.pub": "公開リポジトリ",
+  "kit.report.priv": "非公開リポジトリ",
+  "kit.report.int": "内部リポジトリ",
+  "kit.report.privN": "このリポジトリにアクセスできる人だけが見られます。",
+  "kit.report.privW":
+    "このリポジトリにアクセスできる人だけが見られます（{who}）。",
   "kit.report.pubW":
     "スクリーンショットとテキストは誰でも見られます。見せたくない部分は隠してください。",
   "kit.report.incH": "報告に添えるもの",
