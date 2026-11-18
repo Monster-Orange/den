@@ -1753,10 +1753,30 @@ function paintTabs(strip) {
     .join("");
 }
 
+/** The kit's phone (phone.css): a touch screen, or 767.98px and under. */
+const KIT_PHONE = "(pointer: coarse), (max-width: 767.98px)";
+
+/**
+ * Issue 302, the mock's frame 2: on a phone, an agent open has no runs
+ * dock (agents.html hides it under body[data-phone-agent]). It is shut
+ * as it goes, so the list (frame 1) shows it shut again.
+ */
+function paintPhoneDock() {
+  const on =
+    !!window.matchMedia?.(KIT_PHONE).matches &&
+    st.open.some((id) => rowOf(id)?.kind === "agent");
+  if (on === "phoneAgent" in document.body.dataset) return;
+  if (on) {
+    document.body.dataset.phoneAgent = "";
+    if (window.denShell?.runs?.isOpen?.()) window.denShell.runs.hide();
+  } else delete document.body.dataset.phoneAgent;
+}
+
 function paintLayout() {
   const box = st.root.querySelector("#agr");
   const n = st.open.length;
   paintSwitch();
+  paintPhoneDock();
   if (n === 0) {
     box.className = "agempty";
     delete box.dataset.layout;
@@ -5719,6 +5739,7 @@ export async function mountAgentsPage(root) {
     paintLayout();
     paintList();
   });
+  window.matchMedia?.(KIT_PHONE).addEventListener?.("change", paintPhoneDock);
 
   // NT-2: while this tab is visible and focused, the agents in its panes
   // don't notify (the bell); Den forgets it 10 s after the last word.

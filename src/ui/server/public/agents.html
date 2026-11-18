@@ -1223,13 +1223,11 @@
       .pane .agc.agc-phone:has(> .agc-chips[hidden]) > .agc-msg {
         grid-row: 2;
       }
-      /* Issue 170 with the box: the runs dock open on a phone (half the
-         window), an agent's pane open, the list gives way to about three
-         rows, so the pane's box and To line end above the dock. */
-      @media (max-width: 720px) {
-        body:has(.den-dock.open) #agx:has(.pane .agc-phone) .agl {
-          max-height: 20vh;
-        }
+      /* Issue 302, the mock's frame 2 ("An agent opened"): on a phone an
+         agent open is the whole screen, with no runs dock. Back on the
+         list (no agent open) the dock is there again, shut (frame 1). */
+      body[data-phone-agent] #den-dock {
+        display: none !important;
       }
       .pane .agc.agc-phone .agc-send {
         min-height: 44px;
