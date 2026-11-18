@@ -95,18 +95,29 @@ function scrollPlan(skip) {
     }
     return m;
   };
+  // What is left out is left out with all inside it (the open form).
+  const out = [];
+  const inOut = (el) => out.some((o) => o.contains(el));
   for (const el of document.body ? document.body.querySelectorAll("*") : []) {
-    if (el === se || skip(el)) continue;
+    if (el === se || inOut(el)) continue;
+    if (skip(el)) {
+      out.push(el);
+      continue;
+    }
     if (getComputedStyle(el).position === "sticky") {
       // Where sticky put it, against where it would be without: read with
       // position static for one synchronous moment (nothing is painted).
       const before = el.getBoundingClientRect();
+      const had = el.hasAttribute("style");
       const v = el.style.getPropertyValue("position");
       const pr = el.style.getPropertyPriority("position");
       el.style.setProperty("position", "static", "important");
       const flat = el.getBoundingClientRect();
+      // Back as it was (through the CSSOM: a strict CSP allows it), and no
+      // empty style="" left behind.
       if (v) el.style.setProperty("position", v, pr);
       else el.style.removeProperty("position");
+      if (!had) el.removeAttribute("style");
       const m = step(el);
       m.sticky = true;
       m.dx += before.left - flat.left;
