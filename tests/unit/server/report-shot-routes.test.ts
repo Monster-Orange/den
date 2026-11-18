@@ -488,7 +488,7 @@ describe("issue 403: reading a kept screenshot", () => {
     });
     expect(r.status).toBe(403);
     expect(r.body.error).toMatch(/person who runs this install/);
-    expect(r.body.error).toMatch(/server agent/);
+    expect(r.body.error).toMatch(/this install's own agent/);
     expect(r.body.base64).toBeUndefined();
   });
 

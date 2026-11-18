@@ -81,7 +81,7 @@ describe("issue 403: report_screenshot", () => {
     );
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/person who runs this install/);
-    expect(r.text).toMatch(/server agent/);
+    expect(r.text).toMatch(/this install's own agent/);
     expect(paths).toEqual([]);
   });
 

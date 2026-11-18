@@ -760,7 +760,7 @@ export function handleReportRoutes(
           res,
           {
             ok: false,
-            error: `a report's screenshot is read by the person who runs this install, or by this install's own server agent; ${who.who} is neither. Ask the server agent for report_screenshot(${sm[1]}).`,
+            error: `a report's screenshot is read by the person who runs this install, or by this install's own agent; ${who.who} is neither. Ask that agent for report_screenshot(${sm[1]}).`,
           },
           403,
         );

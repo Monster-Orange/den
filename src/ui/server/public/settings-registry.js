@@ -1553,7 +1553,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Report screenshots, kept for",
     description:
-      "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and its server agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+      "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
     keywords: ["report", "screenshot", "feedback", "keep", "days", "issue"],
     scope: "user",
     keys: ["reports.screenshot_keep_days"],
