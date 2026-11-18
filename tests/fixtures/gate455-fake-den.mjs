@@ -44,6 +44,10 @@ export function fakeBed({ broken = null } = {}) {
             }[kind];
       return { code: 0, out, err: "" };
     },
+    notes: [],
+    log(...a) {
+      this.notes.push(a.join(" "));
+    },
     async goto() {},
     async sleep() {},
     async shot() {},

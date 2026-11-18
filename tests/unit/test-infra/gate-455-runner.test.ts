@@ -26,7 +26,7 @@ function runGate(broken: string | null) {
     const { fakeBed } = await import("./tests/fixtures/gate455-fake-den.mjs");
     const { ctx } = fakeBed({ broken: ${JSON.stringify(broken)} });
     const out = await runLikeBed("455.mjs", g, ctx);
-    console.log(JSON.stringify({ clauses: g.clauses, ...out }));`;
+    console.log(JSON.stringify({ clauses: g.clauses, notes: ctx.notes, ...out }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
     cwd: ROOT,
     encoding: "utf-8",
@@ -35,6 +35,7 @@ function runGate(broken: string | null) {
   if (r.status !== 0) throw new Error(r.stderr || `exit ${r.status}`);
   return JSON.parse(r.stdout.trim().split("\n").pop()!) as {
     clauses: string[];
+    notes: string[];
     rows?: Row[];
     error?: string;
   };
@@ -47,6 +48,14 @@ describe("gate/455.mjs as the bed runs it", () => {
     const judged = (r.rows ?? []).filter((x) => x.ok !== null);
     expect(judged.length).toBeGreaterThanOrEqual(4);
     expect(judged.every((x) => x.ok === true)).toBe(true);
+  });
+
+  it("logs what each route command printed, for the evidence", () => {
+    const r = runGate("routes");
+    for (const kind of ["nginx", "caddy", "traefik"])
+      expect(
+        r.notes.some((n) => n.startsWith(`edge route --for ${kind}: exit 0`)),
+      ).toBe(true);
   });
 
   it.each([

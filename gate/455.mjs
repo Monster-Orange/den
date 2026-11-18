@@ -64,6 +64,10 @@ export async function setup(ctx) {
       out: r.out || "",
       err: (r.err || "").trim(),
     };
+    // Into <module>-log.txt, so a failing clause shows what the CLI said.
+    ctx.log?.(
+      `edge route --for ${kind}: exit ${r.code}\n${r.out || ""}\n${(r.err || "").trim()}`,
+    );
   }
   return s;
 }
