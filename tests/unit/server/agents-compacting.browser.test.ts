@@ -127,6 +127,14 @@ async function open(url: string) {
       /* none */
     }
   }, latest);
+  // den#143: a page showing scout's pane says so every 4 s (NT-2), and
+  // that takes scout's updates off the bell (ATTN-5), this one included.
+  // On a busy machine a "looking" landed between the ring and the count
+  // (0 bells, both clauses). The bell is what's tested here: the page's
+  // looking is answered without reaching Den.
+  await ctx.route("**/api/notifications/looking", (r) =>
+    r.fulfill({ json: { ok: true } }),
+  );
   const p: Page = await ctx.newPage();
   const errors: string[] = [];
   p.on("pageerror", (e) => errors.push(e.message));

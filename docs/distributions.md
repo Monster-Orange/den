@@ -297,13 +297,22 @@ agent's held write into one of two groups.
   agent may do. No setting lowers it. The list is data in one place,
   `HELD_WRITE_RISK` in `src/shared/approval-policy.ts`:
 
-  | Held write                         | Critical when                                                          |
-  | ---------------------------------- | ---------------------------------------------------------------------- |
-  | `project_mode`, `agent_mode`       | the mode gets looser (toward auto or all, or clearing it widens)       |
-  | `persona_create`, `persona_update` | always: a persona carries a mode and commands it may run               |
-  | `den_update`, `den_restart`        | always (`server_agent.self_update: auto` still covers Den's own agent) |
-  | `repo_add`                         | always: the project's agents get a repo they couldn't reach            |
-  | any write not on the list          | always, until someone places it                                        |
+  | Held write                                                   | Critical when                                                          |
+  | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
+  | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
+  | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
+  | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
+  | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
+  | `verify_run`                                                 | always: it runs checks against a shared environment                    |
+  | `approval_policy`                                            | always: only a person changes the policy without an Allow (0.4.65)     |
+  | any write that touches secrets, deletes data or spends money | always (0.4.65), whatever its placement                                |
+  | any write not on the list                                    | always, until someone places it                                        |
+
+  From 0.4.65 secrets, deletes of data and money are critical by name,
+  not only through the fallback: a write named for one (`secret_*`,
+  `*_token*`, `*_delete`, `*_remove`, `*_purge`, `pay*`, `billing_*`, …)
+  or whose check says it touches one (`areas`) always asks. The
+  approval's line says which (`critical: deletes`).
 
 - **Routine: the policy.** Everything else, and a mode that gets
   stricter. The policy is one of `auto` (runs at once; the activity
@@ -319,12 +328,56 @@ agent's held write into one of two groups.
     policy: notify # auto | notify | ask, for every routine write
     writes: # one write's own, over policy
       repo_clone: ask
+    watch: # 0.4.65: a write on any of these asks
+      - project:north
+      - repo:api
+    critical: # 0.4.65: kinds of write that always ask here
+      - service_try
   ```
 
   A project's own `writes` entry wins, then its `policy`, then the
-  install's `writes` entry, then its `policy`, then `notify`. A value
-  that isn't auto, notify or ask holds the write for the person (never
-  runs it on a typo).
+  install's `writes` entry, then its `policy`, then the write's own
+  kind, then `notify`. A value that isn't auto, notify or ask holds the
+  write for the person (never runs it on a typo).
+
+- **Settings (0.4.65).** Settings › Agents has the install's rows
+  (Agent writes, Watched, Critical); Settings › Project setup has the
+  project's (Agents' writes here, Watched here, Critical here). They
+  write the same keys. Defaults are permissive: `notify`, nothing
+  watched, nothing on the critical list. Only a person changes them:
+  `POST /api/settings` (`approvals_policy`, `approvals_watch`,
+  `approvals_critical`) and `POST /api/workspaces/settings` (the same
+  keys, with `workspace`) refuse an agent's claim with 403.
+- **Watched and favorites ask (0.4.65).** A routine write asks when it is
+  on something in a `watch` list (the project's or the install's) or on
+  a repo or service the person pinned to the rail (`shell.pins`, their
+  favorites). An item is `project:<name>`, `repo:<name>`,
+  `service:<repo>/<name>`, `persona:<id>`, `agent:<id>`, or a bare name
+  (any of them). What a write is on: its project, and the repo,
+  service, persona or agent its arguments name. The answer to the agent
+  says why it waits (`askedBecause: "watched repo:api"`, `"favorited
+service:api/web"`).
+- **A project's own critical list (0.4.65).** `critical` names kinds of
+  write that always ask in that project (or, in `user.yml`, everywhere).
+  No `writes` entry lowers them.
+- **The policy itself is a person's (0.4.65).** An agent asks to change it
+  with the held write `approval_policy` (`{ project?, approvals }`, the
+  whole setting or `null`). It is critical: it always waits for the
+  person's own Allow. A project's agent asks for its own project only;
+  the install's policy is Den's own agent's or a person's.
+- **A write's own kind (0.4.65).** Some writes carry a kind of their own,
+  used when no setting names them:
+
+  | Kind of write  | Own kind | What it is                                                                                          |
+  | -------------- | -------- | --------------------------------------------------------------------------------------------------- |
+  | `agent_import` | ask      | bring in a conversation as an agent; only `writes.agent_import` lowers it                           |
+  | `pr_close`     | auto     | close a stale or superseded PR after a Hub note; a stricter `policy` or a watched repo makes it ask |
+
+  `pr_close` is a held write (`{ repo, pr, comment, project? }`): Den
+  runs `gh pr close <pr> --repo <owner/name> --comment <comment>` as the
+  person running Den. Nothing is merged and no branch is deleted. It is
+  watched by either name, `repo:<owner/name>` or the repo's own name
+  (`repo:api`), and a repo pinned to the rail counts too.
 
 - **An agent may still ask.** `ask: true` on any held write (with a
   `note` saying why) waits for the Allow whatever the policy says.
@@ -2962,10 +3015,15 @@ only agent route an agent's token reaches.
 
 `agent_import` (AG-17.1) brings in a conversation started outside Den as an
 agent: with no `session` it lists them, with `session` and `persona` it
-brings one in (see [Bring in a conversation](#bring-in-a-conversation)). It
-is off unless `mcp.actions` names it, and a scoped server reaches its own
-project or a granted one. Without it, an agent's token gets 403 on both
-the list and the import.
+asks to bring one in (see [Bring in a conversation](#bring-in-a-conversation)).
+From 0.4.65 (issue 160) the bring-in is a held write: it waits for the
+person's Allow by default (see
+[The approval policy](#the-approval-policy-0452-issue-160)), and the tool
+is registered with the held writes. The list is still off unless
+`mcp.actions` names `agent_import`; without it, an agent's token gets 403
+on the list. An agent's token always gets 403 on the import route itself.
+A scoped server reaches its own project or a granted one; the held write
+takes the agent's own project only.
 
 ### Guards
 
@@ -3029,6 +3087,15 @@ agent and kind.
   token. Any agent can call the MCP tool `ask_human` with a question; its
   prompt says to, when it needs a decision. The agent is marked waiting
   in every list, and the item clears itself when its output moves again.
+- **A question goes to the project's lead** (issue 101). When the asking
+  agent's project has a running lead (an agent whose persona's role is
+  `lead` or `orchestrator`; the longest running one), Den types the
+  question to the lead instead of putting it under the person's "Needs
+  you". The bell lists it under Earlier as "<agent> asked the lead,
+  <lead>: …", with the agent's turn updates. The lead decides it, or asks
+  the person with `ask_human`. A permission prompt, a lead's own
+  question, a project with no lead, and a lead that is itself waiting on
+  its person or that Den can't type to: the person, as before.
 - **The terminal's bell.** An agent whose runtime has no such hook (not
   Claude Code) counts as waiting for input when its output rings: a bare
   BEL, OSC 9 (not OSC 9;4, a progress bar) or OSC 777;notify. A BEL that
@@ -3613,8 +3680,9 @@ import -w <ws>` lists them too.
   can't bring in a conversation yet".
 - Routes: `GET /api/workspaces/<ws>/conversations[?runtime=<r>]` and `POST
 /api/workspaces/<ws>/conversations/<id>/import` `{ persona, runtime?, id?,
-model?, version?, outside? }`. A person's only, unless MCP `agent_import` is opted
-  in.
+model?, version?, outside? }`. The list: a person's, or an agent's opted
+  in through `mcp.actions`. The import: a person's; an agent asks with the
+  held write `agent_import` (0.4.65).
 
 #### Change an agent's persona
 
@@ -5010,7 +5078,25 @@ agents:
       softNewline: esc-cr # what Shift+Enter sends: esc-cr (default), lf, none
       titleFromOsc: false # its terminal title (OSC 0/2) names the session
       # sessionName: official | unofficial  (built-in adapters only)
+      # Optional, how its agents sign in after logout (issue 338):
+      signIn:
+        env: AIDER_TOKEN # the variable its CLI signs in from
+        command: aider auth token # the one command that makes it (shown in Setup)
+        lastsDays: 90 # how long it lasts
+        limitPattern: "rate limit reached" # how it words a usage limit
 ```
+
+**Sign-in after logout (`signIn`).** Under Keep agents running after
+logout, an agent signs in with a long-lived credential its CLI reads from
+one environment variable. Claude Code's entry carries it
+(`CLAUDE_CODE_OAUTH_TOKEN`, made with `claude setup-token`, kept under
+`secrets.refs.agent_signin_token`). An added entry with `signIn` gets its
+own token, from `secrets.refs.agent_signin_token_<id>` (`-` as `_`), in
+its own agents' environment only. `env` can't be a variable Den sets
+itself (`PATH`, `HOME`, `DEN_*` and the rest of the allowlist). An entry
+with no `signIn` is allowed: its agents can't sign in after logout and
+will stop, and `doctor` says so. Codex CLI, Gemini CLI and Grok Build ship
+with none until their vendors' options are checked.
 
 **Where a runtime's CLI is found.** As your terminal would find it, not
 only on the web server's own PATH (a launchd service's PATH leaves out

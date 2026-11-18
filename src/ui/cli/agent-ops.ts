@@ -127,7 +127,16 @@ import {
   workspaceAgentPermission,
   setWorkspaceAgentPermission,
   workspacePermissionKey,
+  workspaceMcpServersRaw,
+  setWorkspaceMcpServers,
 } from "../../shared/environment-manager/workspaces.js";
+import { namedSecretRef } from "../../shared/secrets/index.js";
+import {
+  checkProjectMcpServer,
+  parseProjectMcpServers,
+  projectMcpHeadersHelper,
+  type ProjectMcpServer,
+} from "../../shared/agents/project-mcp.js";
 import {
   BUILTIN_CATALOG,
   type CatalogEntry,
@@ -305,10 +314,19 @@ import {
 import { denWebBase } from "../../shared/web-dial.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
+  AGENT_TOKEN_REF_NAME,
   agentSignInMode,
+  agentTokenRef,
   readAgentToken,
   tokenStatusLine,
 } from "../../shared/agents/signin-token.js";
+import {
+  accountRefName,
+  firstAccount,
+  pickAccount,
+  type AccountSource,
+  type PickDeps,
+} from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
@@ -392,13 +410,33 @@ export interface AgentsDeps extends SessionsDeps {
   /**
    * Issue 163 (b): the secrets store and ref the agents' sign-in token is
    * read from under the always-on service (default: the install's
-   * configured backend and secrets.refs.agent_signin_token).
+   * configured backend and secrets.refs.agent_signin_token). Issue 338:
+   * asked with the runtime's ref name (agentTokenRefName).
    */
-  signInStore?: () => { provider: SecretsProvider; ref: SecretRef | null };
+  signInStore?: (refName: string) => {
+    provider: SecretsProvider;
+    ref: SecretRef | null;
+  };
+  /**
+   * Issue 340: the sign-in source (slice 6) that maps a folder to a
+   * sign-in and reports the active one (default: none is set).
+   */
+  signInSource?: () => AccountSource | null;
+  /** Issue 340: a sign-in that hit its usage cap (slice 4; default: none). */
+  signInCapped?: (runtimeId: string, accountId: string) => boolean;
   /** 0.4.48: this machine's processes (default: ps), for jobs an agent left running. */
   processes?: () => ProcessRow[];
   /** HUB-1.5: workspace `ws`'s repos as owner/repo (X-Den-Repos). */
   workspaceRepos?: (ws: string) => string[];
+  /**
+   * Issue 335: project `ws`'s `agents.mcp_servers` as written (default:
+   * workspaces.yml's; undefined: unset). Checked where it is used.
+   */
+  workspaceMcpServers?: (ws: string) => unknown;
+  /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
+  saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
+  /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
+  secretRefSet?: (name: string) => boolean;
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
   workspaceHubProject?: (ws: string) => HubProjectLink | null;
   /**
@@ -439,6 +477,9 @@ export interface AgentsResolved extends Resolved {
     inboxOnStop?: "nudge" | "off";
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  workspaceMcpServers: (ws: string) => unknown;
+  saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
+  secretRefSet: (name: string) => boolean;
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
   /**
@@ -448,13 +489,21 @@ export interface AgentsResolved extends Resolved {
   hubProblem: () => string | null;
   processes: () => ProcessRow[];
   /** Issue 163 (b): the env a start signs in with, and what to say. */
-  agentSignIn: (tokenEnv: string | undefined) => Promise<AgentSignIn>;
+  agentSignIn: (
+    tokenEnv: string | undefined,
+    /** Issue 338: whose token (the runtime's id; unset: Claude Code's). */
+    runtimeId?: string,
+    /** Issue 340: the agent's folder, for the sign-in source's mapping. */
+    folder?: string,
+  ) => Promise<AgentSignIn>;
 }
 
 /** Issue 163 (b): a start's sign-in env, and a warning when it has none. */
 export interface AgentSignIn {
   env: Record<string, string>;
   warning?: string;
+  /** Issue 340: the sign-in picked (its label; never an email). */
+  account?: { id: string; label: string };
 }
 
 /** The early-exit watch: at most this long, polling the host. */
@@ -727,17 +776,29 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    workspaceMcpServers:
+      d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
+    saveWorkspaceMcpServers:
+      d.saveWorkspaceMcpServers ??
+      ((ws, servers) => setWorkspaceMcpServers(ws, servers)),
+    secretRefSet: d.secretRefSet ?? ((name) => namedSecretRef(name) !== null),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
     processes: d.processes ?? readProcesses,
-    agentSignIn: (tokenEnv) =>
+    agentSignIn: (tokenEnv, runtimeId, folder) =>
       agentSignInEnv(
         tokenEnv,
         base.env,
         base.stateDir(),
         base.cli,
         d.signInStore,
+        runtimeId,
+        {
+          ...(folder !== undefined ? { folder } : {}),
+          source: d.signInSource?.() ?? null,
+          ...(d.signInCapped ? { capped: d.signInCapped } : {}),
+        },
       ),
   });
 }
@@ -753,18 +814,76 @@ export async function agentSignInEnv(
   env: NodeJS.ProcessEnv,
   stateDir: string,
   cli: string,
-  store?: () => { provider: SecretsProvider; ref: SecretRef | null },
+  store?: (refName: string) => {
+    provider: SecretsProvider;
+    ref: SecretRef | null;
+  },
+  /**
+   * Issue 338: the runtime whose token it is, each under its own ref
+   * (agentTokenRefName), so a vendor's token reaches its agents only.
+   */
+  runtimeId = "den-claude",
+  /**
+   * Issue 340: the agent's folder, the sign-in source (slice 6) and the
+   * cap (slice 4), for pickAccount. None: Den's order, as before.
+   */
+  pick: Pick<PickDeps, "folder" | "source" | "capped"> = {},
 ): Promise<AgentSignIn> {
   if (!tokenEnv || agentSignInMode(env, stateDir) !== "token")
     return { env: {} };
-  const s = store?.();
-  const r = await readAgentToken(
-    s ? { provider: () => s.provider, ref: () => s.ref } : {},
-  );
-  if (r.token) return { env: { [tokenEnv]: r.token } };
+  // Issue 340: the folder's sign-in, else the active one, else the first
+  // in the person's order that is not capped (account one, the token that
+  // exists today, unless they changed it).
+  const { picked, misses } = await pickAccount({
+    ...pick,
+    stateDir,
+    runtimeId,
+    read: (name) => {
+      const s = store?.(name);
+      return readAgentToken(
+        s
+          ? { provider: () => s.provider, ref: () => s.ref }
+          : { ref: () => agentTokenRef(undefined, undefined, name) },
+      );
+    },
+  });
+  if (picked)
+    return {
+      env: { [tokenEnv]: picked.token },
+      account: { id: picked.account.id, label: picked.label },
+    };
+  // None: what the start says is about the first in the order, as before.
+  const acct = firstAccount(stateDir, runtimeId);
+  const refName = accountRefName(runtimeId, acct.id);
+  const reason = misses.find((m) => m.id === acct.id)?.reason;
+  const r = { reason: reason ?? "not set" };
+  // Not Claude Code's: made with its own command, kept under its own ref.
+  const how =
+    refName === AGENT_TOKEN_REF_NAME
+      ? undefined
+      : acct.id !== "1"
+        ? {
+            make:
+              getRuntime(runtimeId)?.catalog?.signIn?.command ??
+              "its sign-in command",
+            // One string, so the command reads as code (inline backticks).
+            set: "`{cli} agents accounts set-token {id}`"
+              .replace("{cli}", cli)
+              .replace(
+                "{id}",
+                acct.id +
+                  (runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`),
+              ),
+          }
+        : {
+            make:
+              getRuntime(runtimeId)?.catalog?.signIn?.command ??
+              "its sign-in command",
+            set: `set secrets.refs.${refName} in your user.yml`,
+          };
   return {
     env: {},
-    warning: `⚠ ${tokenStatusLine({ mode: "token", configured: r.reason !== "not set", stored: false, setAt: null, ageDays: null, old: false, warnDays: 0, store: "", ...(r.reason ? { reason: r.reason } : {}) }, cli).text}`,
+    warning: `⚠ ${tokenStatusLine({ mode: "token", configured: r.reason !== "not set", stored: false, setAt: null, ageDays: null, old: false, warnDays: 0, store: "", ...(r.reason ? { reason: r.reason } : {}) }, cli, undefined, how).text}`,
   };
 }
 
@@ -859,7 +978,43 @@ export function agentMcp(
     ],
     env: { ...distLocationEnv(d.env), ...server.env },
     scope: ws,
+    ...(() => {
+      // Issue 335: the project's own HTTP servers; a bearer is read at
+      // each connect by `<cli> mcp headers <name>`, never written here.
+      const extra = projectMcpServers(d, ws).map((s) => ({
+        name: s.name,
+        url: s.url,
+        ...(s.bearer
+          ? {
+              headersHelper: projectMcpHeadersHelper(
+                bin,
+                { ...distLocationEnv(d.env), ...server.env },
+                s.name,
+              ),
+            }
+          : {}),
+      }));
+      return extra.length ? { extra } : {};
+    })(),
   };
+}
+
+/**
+ * Issue 335: project `ws`'s extra MCP servers, checked (a bad entry is
+ * left out; doctor names it). Never Den's own server's name nor Hub's.
+ */
+export function projectMcpServers(
+  d: Pick<AgentsResolved, "workspaceMcpServers" | "cli">,
+  ws: string,
+): ProjectMcpServer[] {
+  if (isServerScope(ws)) return [];
+  let raw: unknown;
+  try {
+    raw = d.workspaceMcpServers(ws);
+  } catch {
+    return [];
+  }
+  return parseProjectMcpServers(raw, [d.cli, HUB_SERVER]).servers;
 }
 
 // ── rows ────────────────────────────────────────────────────────────────────
@@ -934,6 +1089,8 @@ export interface AgentRow {
   resumeOnRestart?: boolean;
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
+  /** Issue 340: the label of the vendor account it runs on (never an email). */
+  signIn?: string;
   outcome?: AgentRecord["outcome"];
   usage?: AgentRecord["usage"];
   /**
@@ -1100,6 +1257,7 @@ function recordFields(rec: AgentRecord): Partial<AgentRow> {
     ...(rec.resumeOnRestart !== undefined
       ? { resumeOnRestart: rec.resumeOnRestart }
       : {}),
+    ...(rec.signIn ? { signIn: rec.signIn.label } : {}),
     ...newerOf(rec),
     workspace: rec.workspace,
     cwd: rec.cwd,
@@ -2756,7 +2914,11 @@ async function startSession(
 ): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
-  const signIn = await d.agentSignIn(launch.tokenEnv);
+  const signIn = await d.agentSignIn(
+    launch.tokenEnv,
+    launch.rec.runtime,
+    launch.rec.cwd,
+  );
   const tty = d.stdout.isTTY;
   const minted = mintActorToken(d.stateDir(), {
     agentId: launch.rec.id,
@@ -2817,6 +2979,9 @@ async function startSession(
   delete rec.restartFailed;
   // Issue 252: it runs in `permission` now.
   delete rec.startedIn;
+  // Issue 340: the sign-in this session runs on (its label only).
+  if (signIn.account) rec.signIn = { ...signIn.account };
+  else delete rec.signIn;
   writeRecord(d.stateDir(), rec);
   return {
     rec,
@@ -3865,6 +4030,38 @@ function freeId(d: AgentsResolved, persona: string): string {
 }
 
 /**
+ * Issue 160: agent_import as a held write runs it (after the person's
+ * Allow, or the approval policy's): importAgent, answered like the CLI's
+ * --json ({ ok, … }), never thrown.
+ */
+export async function runAgentImport(
+  d: AgentsResolved,
+  a: { project: string; session: string; persona: string; runtime?: string },
+): Promise<
+  | { ok: true; id: string; project: string; persona: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const s = await importAgent(d, {
+      workspace: a.project,
+      session: a.session,
+      persona: a.persona,
+      ...(a.runtime ? { runtime: a.runtime } : {}),
+    });
+    if (s.early)
+      return { ok: false, error: `agent ${s.rec.id} exited at once` };
+    return {
+      ok: true,
+      id: s.rec.id,
+      project: a.project,
+      persona: s.rec.persona,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
  * Bring a conversation in (AG-17.1): the runtime's resume of it, under Den
  * (its token, hooks, guards, the folder it ran in, the audit trail), as a
  * new agent with the persona given. Afterwards it is an agent like any
@@ -4681,6 +4878,379 @@ export async function runProjectMode(
     mode: c.args.mode,
     ...(now.following.length || now.ownMode.length ? now : {}),
   };
+}
+
+/**
+ * Issue 335: project `ws`'s extra MCP servers as Settings shows them:
+ * names and urls only, never a bearer or its ref.
+ */
+export function projectMcpView(
+  d: AgentsResolved,
+  ws: string,
+): { project: string; servers: { name: string; url: string }[] } {
+  return {
+    project: ws,
+    servers: projectMcpServers(d, ws).map((s) => ({
+      name: s.name,
+      url: s.url,
+    })),
+  };
+}
+
+/**
+ * Issues 335, 352: the project a project_mcp_* ask is for, checked: a
+ * project (never Den's own agent's place) that exists, and, when a
+ * project's agent asks, its own.
+ */
+function projectMcpTarget(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string },
+  action: string,
+  verb: string,
+): { ok: true; ws: string } | { ok: false; error: string } {
+  const p = raw.project;
+  if (p !== undefined && p !== null && typeof p !== "string")
+    return { ok: false, error: "project must be text" };
+  const ws = typeof p === "string" ? p.trim() : "";
+  if (isServerScope(ws))
+    return {
+      ok: false,
+      error: `${ws} is Den's own agent's place, not a project`,
+    };
+  checkWorkspaceName(action, ws);
+  if (!d.workspaceExists(ws)) return { ok: false, error: `no project "${ws}"` };
+  if (who.project && !isServerScope(who.project) && who.project !== ws)
+    return {
+      ok: false,
+      error: `${who.agent ?? "this agent"} works in project ${who.project}: it can ${verb} that project only, not project ${ws}`,
+    };
+  return { ok: true, ws };
+}
+
+/**
+ * Issue 352: a project_mcp_add or _update ask as its check reads it. The
+ * queue checks a request again on Allow with the args the first check
+ * gave (`{ project, server }`); an agent asks with them flat.
+ */
+function flatMcpArgs(raw: Record<string, unknown>): Record<string, unknown> {
+  const sv = raw.server;
+  if (!sv || typeof sv !== "object" || Array.isArray(sv)) return raw;
+  const s = sv as Record<string, unknown>;
+  return {
+    project: raw.project,
+    name: s.name,
+    url: s.url,
+    bearer: s.bearer ? s.bearer : null,
+  };
+}
+
+/** Issue 352: project `ws`'s server `name`, or why not. */
+function projectMcpServerOf(
+  d: AgentsResolved,
+  ws: string,
+  rawName: unknown,
+): { ok: true; server: ProjectMcpServer } | { ok: false; error: string } {
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  if (!name) return { ok: false, error: "name: give the MCP's name" };
+  const server = projectMcpServers(d, ws).find((s) => s.name === name);
+  return server
+    ? { ok: true, server }
+    : { ok: false, error: `project ${ws} has no MCP server "${name}"` };
+}
+
+export interface ProjectMcpAddArgs {
+  project: string;
+  server: ProjectMcpServer;
+}
+
+/**
+ * Issue 335: checks a project_mcp_add ask: one more HTTP MCP server for a
+ * project's agents, its bearer the name of a secrets.refs entry that is
+ * set. Always the person's own Allow: it gives agents new tools and sends
+ * a bearer somewhere new. A project's agent asks for its own project;
+ * Den's agent for any.
+ */
+export function checkProjectMcpAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<ProjectMcpAddArgs> {
+  const no = (error: string): HeldOpCheck<ProjectMcpAddArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const a = flatMcpArgs(raw);
+    const t = projectMcpTarget(d, a, who, "project_mcp_add", "add to");
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const c = checkProjectMcpServer(
+      { name: a.name, url: a.url, bearer: a.bearer },
+      [d.cli, HUB_SERVER],
+    );
+    if (!c.ok) return no(c.error);
+    const server = c.server;
+    if (projectMcpServers(d, ws).some((s) => s.name === server.name))
+      return no(`project ${ws} already has an MCP server "${server.name}"`);
+    if (server.bearer && !d.secretRefSet(server.bearer))
+      return no(
+        `secrets.refs.${server.bearer} is not set: a person adds it to the install's config first`,
+      );
+    const lines: [string, DetailKey][] = [
+      [
+        `This gives agents in ${ws} new tools, and sends their calls to ${server.url}.`,
+        { key: "ap.mcp.warn", vars: { project: ws, url: server.url } },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [
+        `MCP: ${server.name} at ${server.url}`,
+        { key: "ap.mcp.server", vars: { name: server.name, url: server.url } },
+      ],
+      server.bearer
+        ? [
+            `Bearer: read from secrets.refs.${server.bearer} at each call; never written to the agent's files or env.`,
+            { key: "ap.mcp.bearer", vars: { ref: server.bearer } },
+          ]
+        : [
+            "No bearer: its calls carry no Authorization header.",
+            { key: "ap.mcp.noBearer" },
+          ],
+      [
+        `Agents in ${ws} get it at their next start or resume.`,
+        { key: "ap.mcp.next", vars: { project: ws } },
+      ],
+    ];
+    return {
+      ok: true,
+      personOnly: true,
+      summary: `add MCP ${server.name} (${server.url}) to project ${ws}'s agents`,
+      params: { project: ws, name: server.name, url: server.url },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, server },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** Issue 335: on Allow, adds it (checked again); names and urls back. */
+export async function runProjectMcpAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; project: string; servers: { name: string; url: string }[] }
+  | { ok: false; error: string }
+> {
+  const c = checkProjectMcpAdd(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  d.saveWorkspaceMcpServers(ws, [...projectMcpServers(d, ws), c.args.server]);
+  return { ok: true, ...projectMcpView(d, ws) };
+}
+
+export interface ProjectMcpRemoveArgs {
+  project: string;
+  name: string;
+}
+
+/**
+ * Issue 352: checks a project_mcp_remove ask: take one of a project's
+ * extra MCP servers away from its agents. Always the person's own Allow,
+ * as adding one is. A project's agent asks for its own project; Den's
+ * agent for any.
+ */
+export function checkProjectMcpRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<ProjectMcpRemoveArgs> {
+  try {
+    const t = projectMcpTarget(
+      d,
+      raw,
+      who,
+      "project_mcp_remove",
+      "remove from",
+    );
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const f = projectMcpServerOf(d, ws, raw.name);
+    if (!f.ok) return f;
+    const { name, url } = f.server;
+    const lines: [string, DetailKey][] = [
+      [
+        `Agents in ${ws} lose the tools of ${name} at their next start or resume.`,
+        { key: "ap.mcp.removeWarn", vars: { project: ws, name } },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [`MCP: ${name} at ${url}`, { key: "ap.mcp.server", vars: { name, url } }],
+    ];
+    return {
+      ok: true,
+      personOnly: true,
+      summary: `remove MCP ${name} (${url}) from project ${ws}'s agents`,
+      params: { project: ws, name, url },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, name },
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Issue 352: on Allow, removes it (checked again); names and urls back. */
+export async function runProjectMcpRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; project: string; servers: { name: string; url: string }[] }
+  | { ok: false; error: string }
+> {
+  const c = checkProjectMcpRemove(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  d.saveWorkspaceMcpServers(
+    ws,
+    projectMcpServers(d, ws).filter((s) => s.name !== c.args.name),
+  );
+  return { ok: true, ...projectMcpView(d, ws) };
+}
+
+export interface ProjectMcpUpdateArgs {
+  project: string;
+  /** The server as it will be: same name, its new url and bearer. */
+  server: ProjectMcpServer;
+}
+
+/**
+ * Issue 352: checks a project_mcp_update ask: a new url, a new bearer
+ * reference (a secrets.refs name that is set, never a value), or no
+ * bearer (`bearer: null`) for one of a project's extra MCP servers.
+ * Always the person's own Allow: it sends the agents' calls, and maybe a
+ * bearer, somewhere else.
+ */
+export function checkProjectMcpUpdate(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<ProjectMcpUpdateArgs> {
+  const no = (error: string): HeldOpCheck<ProjectMcpUpdateArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const a = flatMcpArgs(raw);
+    const t = projectMcpTarget(d, a, who, "project_mcp_update", "change");
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const f = projectMcpServerOf(d, ws, a.name);
+    if (!f.ok) return f;
+    const cur = f.server;
+    // `bearer: null` drops it; a name sets it; left out, it stays.
+    const noBearer = a.bearer === null;
+    const hasUrl = a.url !== undefined && a.url !== null && a.url !== "";
+    const hasBearer = a.bearer !== undefined && !noBearer && a.bearer !== "";
+    if (!hasUrl && !hasBearer && !noBearer)
+      return no("nothing to change: give url, or bearer (null for none)");
+    const c = checkProjectMcpServer(
+      {
+        name: cur.name,
+        url: hasUrl ? a.url : cur.url,
+        bearer: noBearer ? undefined : hasBearer ? a.bearer : cur.bearer,
+      },
+      [d.cli, HUB_SERVER],
+    );
+    if (!c.ok) return no(c.error);
+    const next = c.server;
+    const urlChanged = next.url !== cur.url;
+    const bearerChanged = next.bearer !== cur.bearer;
+    if (!urlChanged && !bearerChanged)
+      return no(`project ${ws}'s MCP server "${cur.name}" is already so`);
+    if (bearerChanged && next.bearer && !d.secretRefSet(next.bearer))
+      return no(
+        `secrets.refs.${next.bearer} is not set: a person adds it to the install's config first`,
+      );
+    const lines: [string, DetailKey][] = [];
+    if (urlChanged)
+      lines.push([
+        `This gives agents in ${ws} new tools, and sends their calls to ${next.url}.`,
+        { key: "ap.mcp.warn", vars: { project: ws, url: next.url } },
+      ]);
+    lines.push([
+      `Project: ${ws}`,
+      { key: "ap.pm.project", vars: { project: ws } },
+    ]);
+    if (urlChanged)
+      lines.push([
+        `MCP ${cur.name}: ${cur.url} → ${next.url}`,
+        {
+          key: "ap.mcp.urlChange",
+          vars: { name: cur.name, from: cur.url, to: next.url },
+        },
+      ]);
+    if (bearerChanged)
+      lines.push(
+        next.bearer
+          ? [
+              `Bearer: read from secrets.refs.${next.bearer} at each call; never written to the agent's files or env.`,
+              { key: "ap.mcp.bearer", vars: { ref: next.bearer } },
+            ]
+          : [
+              "No bearer: its calls carry no Authorization header.",
+              { key: "ap.mcp.noBearer" },
+            ],
+      );
+    lines.push([
+      `Agents in ${ws} get it at their next start or resume.`,
+      { key: "ap.mcp.next", vars: { project: ws } },
+    ]);
+    const what = [
+      urlChanged ? `url ${cur.url} → ${next.url}` : "",
+      bearerChanged
+        ? next.bearer
+          ? `bearer secrets.refs.${next.bearer}`
+          : "no bearer"
+        : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return {
+      ok: true,
+      personOnly: true,
+      summary: `change MCP ${cur.name} in project ${ws}'s agents: ${what}`,
+      params: { project: ws, name: cur.name, url: next.url },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, server: next },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/**
+ * Issue 352: on Allow, saves the server as checked (checked again), in
+ * its place in the list; names and urls back.
+ */
+export async function runProjectMcpUpdate(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; project: string; servers: { name: string; url: string }[] }
+  | { ok: false; error: string }
+> {
+  const c = checkProjectMcpUpdate(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  const next = c.args.server;
+  d.saveWorkspaceMcpServers(
+    ws,
+    projectMcpServers(d, ws).map((s) => (s.name === next.name ? next : s)),
+  );
+  return { ok: true, ...projectMcpView(d, ws) };
 }
 
 export interface AgentFolderArgs {

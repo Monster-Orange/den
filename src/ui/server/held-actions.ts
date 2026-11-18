@@ -17,6 +17,9 @@
  *                     an inactive workspace is activated first, on the
  *                     same Allow, and the Review says so
  *   hub_connect       #267: set, change or clear Hub's address
+ *   hub_project_create issue 271: ask Hub for a new project to link a
+ *                     project to (hub-create-routes.ts, the code Settings
+ *                     runs); an owner decides it in Hub, Den links it
  *   den_restart       SRV-1a: restart this Den's web server, in place
  *                     (server-restart.ts); the agent that asked is told
  *                     when it is back
@@ -46,10 +49,30 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
+ *   embed_key_create  issue 334: an app key for a web app's own server,
+ *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
+ *                     person's own ask and Allow only; the key is shown
+ *                     once, to the Allow's browser
+ *   project_mcp_add   issue 335: one more HTTP MCP server for a project's
+ *                     agents, its bearer a secrets.refs name (agent-ops.ts
+ *                     checkProjectMcpAdd); always the person's own Allow
+ *   project_mcp_remove issue 352: take one away, or change its url or
+ *   project_mcp_update bearer reference (agent-ops.ts checkProjectMcpRemove,
+ *                     checkProjectMcpUpdate); always the person's own Allow
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
  *                     always asks the person (CRITICAL_HELD_ACTIONS)
+ *   agent_import      issue 160: bring a conversation started outside Den
+ *                     in as an agent of the asker's project (agent-ops.ts
+ *                     importAgent). It asks by default (approval-policy.ts)
+ *   approval_policy   issue 160: change the approval policy, the install's
+ *                     (user.yml) or a project's (workspaces.yml). Always
+ *                     the person's own Allow: only a person in the page
+ *                     changes it without one
+ *   pr_close          issue 160: close a stale or superseded pull request
+ *                     after a Hub note, with a comment saying why (gh
+ *                     pr close). Auto unless the repo is watched or pinned
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -58,6 +81,10 @@ import {
   type GitRunner,
 } from "../../shared/repo-clone.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import {
+  readPolicySetting,
+  type PolicySetting,
+} from "../../shared/approval-policy.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
@@ -126,12 +153,49 @@ export interface HeldActionDeps {
   projectMode?: HeldOp;
   /** #267: hub_connect's check and write (hub-address.ts). */
   hubAddress?: HeldOp;
+  /** Issue 271: ask Hub for a new project to link a project to. */
+  hubCreate?: HeldOp;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
+  /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
+  projectMcp?: HeldOp;
+  /** Issue 352: project_mcp_remove's check and save (agent-ops.ts). */
+  projectMcpRemove?: HeldOp;
+  /** Issue 352: project_mcp_update's check and save (agent-ops.ts). */
+  projectMcpUpdate?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
+  /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
+  appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
   verifyRun?: HeldOp;
+  /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
+  agentImport?: (args: {
+    project: string;
+    session: string;
+    persona: string;
+    runtime?: string;
+  }) => Promise<unknown>;
+  /**
+   * Issue 160: the approval policy as set (`approvals:`), the install's or
+   * a project's, and its write. read throws on a project Den doesn't have.
+   */
+  approvalPolicy?: {
+    read: (project?: string) => Record<string, unknown> | undefined;
+    write: (
+      project: string | undefined,
+      setting: Record<string, unknown> | undefined,
+    ) => void;
+  };
+  /**
+   * Issue 160: pr_close's close (gh pr close <pr> --repo <repo> --comment
+   * <comment>, as the person running Den; tests pass a fake).
+   */
+  prClose?: (args: {
+    repo: string;
+    pr: number;
+    comment: string;
+  }) => Promise<unknown>;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
@@ -157,10 +221,14 @@ export interface HeldActionDeps {
  * Issue 208: held writes that always ask the person. No setting and no
  * approval policy lets one run without their own Allow: a Verify run on
  * a shared environment sends requests to an environment others use.
- * Each one's check also says personOnly, for today's auto-allow.
+ * Each one's check also says personOnly, for today's auto-allow. Issue
+ * 334: an app key hands a web app access to an agent, so making and
+ * revoking one are the person's own too.
  */
 export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "verify_run",
+  "embed_key_create",
+  "embed_key_revoke",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -189,6 +257,10 @@ function shown(p: string, home: string): string {
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** A GitHub repo, owner/name. */
+const GH_REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+/** A runtime's conversation id (Claude Code: a uuid). */
+const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 /** A refusal from a dry run, with its question and choices when it asks. */
 function draftError(r: RepoAddResult): string {
@@ -467,13 +539,34 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.projectMode,
     "this Den can't set a project's mode here",
   );
+  const projectMcp = op(
+    d.projectMcp,
+    "this Den can't add a project's MCP servers here",
+  );
+  const projectMcpRemove = op(
+    d.projectMcpRemove,
+    "this Den can't remove a project's MCP servers here",
+  );
+  const projectMcpUpdate = op(
+    d.projectMcpUpdate,
+    "this Den can't change a project's MCP servers here",
+  );
   const hubConnect = op(d.hubAddress, "this Den can't set Hub's address here");
+  const hubCreate = op(d.hubCreate, "this Den can't ask Hub for projects here");
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
     d.agentMode,
     "this Den can't change an agent's mode here",
   );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
+  const appKeyCreate = op(
+    d.appKeys?.create,
+    "this Den can't make app keys here",
+  );
+  const appKeyRevoke = op(
+    d.appKeys?.revoke,
+    "this Den can't revoke app keys here",
+  );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
 
   const repoClone: HeldAction = {
@@ -533,6 +626,202 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const agentImport: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.agentImport)
+        return {
+          ok: false,
+          error: "this Den can't bring in conversations here",
+        };
+      const project = wsArg(a.project ?? a.workspace) ?? who?.project;
+      if (!project || !NAME_RE.test(project))
+        return { ok: false, error: "name the project" };
+      if (
+        who?.project &&
+        !isServerScope(who.project) &&
+        project !== who.project
+      )
+        return {
+          ok: false,
+          error: `a project's agent brings conversations into its own project (${who.project}), not ${project}`,
+        };
+      if (!d.workspaceExists(project))
+        return { ok: false, error: `there is no project "${project}"` };
+      const session = str(a.session);
+      if (!session || !SESSION_RE.test(session))
+        return { ok: false, error: "`session` must be a conversation id" };
+      const persona = str(a.persona);
+      if (!persona || !NAME_RE.test(persona))
+        return { ok: false, error: "name the persona to run it as" };
+      const runtime = str(a.runtime);
+      if (runtime !== undefined && !NAME_RE.test(runtime))
+        return { ok: false, error: "runtime must be a runtime id" };
+      return {
+        ok: true,
+        args: { project, session, persona, ...(runtime ? { runtime } : {}) },
+        summary: `bring in conversation ${session} as a ${persona} agent of project "${project}"`,
+        params: { session, persona, project },
+        details: [
+          `Project: ${project}. Persona: ${persona}${runtime ? `. Runtime: ${runtime}` : ""}.`,
+          "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
+          "Refused if it is still open in another terminal, or an agent already continues it.",
+        ],
+      };
+    },
+    async run(a) {
+      return d.agentImport!({
+        project: String(a.project),
+        session: String(a.session),
+        persona: String(a.persona),
+        ...(str(a.runtime) ? { runtime: str(a.runtime) } : {}),
+      });
+    },
+  };
+
+  const approvalPolicy: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.approvalPolicy)
+        return {
+          ok: false,
+          error: "this Den can't change the approval policy here",
+        };
+      const project = wsArg(a.project);
+      if (project !== undefined) {
+        if (!NAME_RE.test(project) || !d.workspaceExists(project))
+          return { ok: false, error: `there is no project "${project}"` };
+        if (
+          who?.project &&
+          !isServerScope(who.project) &&
+          project !== who.project
+        )
+          return {
+            ok: false,
+            error: `a project's agent asks about its own project (${who.project}), not ${project}`,
+          };
+      } else if (who?.project && !isServerScope(who.project))
+        return {
+          ok: false,
+          error:
+            "the install's policy is every project's: Den's own agent or a person asks to change it; name your project to change its own",
+        };
+      const raw = a.approvals;
+      if (raw !== null && (typeof raw !== "object" || Array.isArray(raw)))
+        return {
+          ok: false,
+          error:
+            "approvals: { policy, writes, watch, critical }, or null to clear it",
+        };
+      let next: PolicySetting | undefined;
+      try {
+        next =
+          raw === null
+            ? undefined
+            : readPolicySetting(
+                raw,
+                project ? `${project}.approvals` : "approvals",
+              );
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+      const where = project ? `project ${project}'s` : "the install's";
+      const shown = next ? JSON.stringify(next) : "none";
+      let now = "none";
+      try {
+        const cur = d.approvalPolicy.read(project);
+        if (cur) now = JSON.stringify(cur);
+      } catch {
+        /* shown as none */
+      }
+      return {
+        ok: true,
+        args: {
+          ...(project ? { project } : {}),
+          approvals: next ? { ...next } : null,
+        },
+        summary: `change ${where} approval policy to ${shown}`,
+        params: project
+          ? { inProject: "1", where: project, to: shown }
+          : { to: shown },
+        details: [
+          `Now: ${now}.`,
+          `Then: ${shown}.`,
+          "Only a person changes the approval policy without an Allow: an agent always asks.",
+        ],
+        personOnly: true,
+      };
+    },
+    async run(a) {
+      const project = str(a.project);
+      const next =
+        a.approvals && typeof a.approvals === "object"
+          ? (a.approvals as Record<string, unknown>)
+          : undefined;
+      d.approvalPolicy!.write(project, next);
+      return {
+        ok: true,
+        ...(project ? { project } : {}),
+        approvals: next ?? null,
+      };
+    },
+  };
+
+  const prClose: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.prClose)
+        return { ok: false, error: "this Den can't close pull requests here" };
+      const project = wsArg(a.project) ?? who?.project;
+      if (project !== undefined) {
+        if (!NAME_RE.test(project) || !d.workspaceExists(project))
+          return { ok: false, error: `there is no project "${project}"` };
+        if (
+          who?.project &&
+          !isServerScope(who.project) &&
+          project !== who.project
+        )
+          return {
+            ok: false,
+            error: `a project's agent closes pull requests for its own project (${who.project}), not ${project}`,
+          };
+      }
+      const repo = str(a.repo);
+      if (!repo || !GH_REPO_RE.test(repo))
+        return { ok: false, error: "repo: a GitHub repo, owner/name" };
+      const pr =
+        typeof a.pr === "number"
+          ? a.pr
+          : typeof a.pr === "string" && /^\d+$/.test(a.pr.trim())
+            ? Number(a.pr.trim())
+            : NaN;
+      if (!Number.isSafeInteger(pr) || pr < 1)
+        return { ok: false, error: "pr: the pull request number" };
+      const comment = str(a.comment);
+      if (!comment)
+        return {
+          ok: false,
+          error:
+            "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
+        };
+      return {
+        ok: true,
+        args: { ...(project ? { project } : {}), repo, pr, comment },
+        summary: `close pull request ${pr} on ${repo}: ${comment}`,
+        params: { repo, pr: String(pr), comment },
+        details: [
+          `Repo: ${repo}. Pull request: ${pr}.`,
+          `Den closes it with this comment: ${comment}`,
+          "Nothing is merged and no branch is deleted.",
+        ],
+      };
+    },
+    async run(a) {
+      return d.prClose!({
+        repo: String(a.repo),
+        pr: Number(a.pr),
+        comment: String(a.comment),
+      });
+    },
+  };
+
   return {
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
@@ -544,10 +833,19 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     persona_update: personaUpdate,
     repo_clone: repoClone,
     project_mode: projectMode,
+    project_mcp_add: projectMcp,
+    project_mcp_remove: projectMcpRemove,
+    project_mcp_update: projectMcpUpdate,
     hub_connect: hubConnect,
+    hub_project_create: hubCreate,
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,
+    agent_import: agentImport,
+    approval_policy: approvalPolicy,
+    pr_close: prClose,
     den_pin_commit: pinCommit,
+    embed_key_create: appKeyCreate,
+    embed_key_revoke: appKeyRevoke,
   };
 }

@@ -89,6 +89,12 @@ export interface AgentRecord {
    * config still allows (AG-14).
    */
   grants?: string[];
+  /**
+   * Issue 340: the sign-in its current session started on under the
+   * always-on service (pickAccount): its id and label, never an email or
+   * a token. Unset: none was picked (desktop sign-in, or no token).
+   */
+  signIn?: { id: string; label: string };
   /** When its session was seen to end on its own (AG-14: "Exited"). */
   endedAt?: string;
   /** That session's exit code, when the host said it. */

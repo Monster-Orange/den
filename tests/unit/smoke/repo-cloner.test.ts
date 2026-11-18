@@ -88,9 +88,15 @@ describe("ensureRepoAtSha", () => {
     expect(result).toMatch(/app[/\\]staging$/);
     const cmds = mockExecSync.mock.calls.map(([c]) => String(c));
     expect(cmds.some((c) => c.includes("git clone"))).toBe(true);
+    // Written whole (#380): a temp file beside it, renamed over the stamp.
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-      expect.stringContaining(".deployed-sha"),
+      expect.stringContaining(".deployed-sha."),
       REF.sha,
+      expect.anything(),
+    );
+    expect(mockFs.renameSync).toHaveBeenCalledWith(
+      expect.stringMatching(/\.deployed-sha\.\d+\.[0-9a-f]+\.tmp$/),
+      expect.stringMatching(/\.deployed-sha$/),
     );
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("cloning"));
   });
@@ -114,9 +120,15 @@ describe("ensureRepoAtSha", () => {
     const cmds = mockExecSync.mock.calls.map(([c]) => String(c));
     expect(cmds.some((c) => c.includes("fetch"))).toBe(true);
     expect(cmds.some((c) => c.includes("checkout"))).toBe(true);
+    // Written whole (#380): a temp file beside it, renamed over the stamp.
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-      expect.stringContaining(".deployed-sha"),
+      expect.stringContaining(".deployed-sha."),
       REF.sha,
+      expect.anything(),
+    );
+    expect(mockFs.renameSync).toHaveBeenCalledWith(
+      expect.stringMatching(/\.deployed-sha\.\d+\.[0-9a-f]+\.tmp$/),
+      expect.stringMatching(/\.deployed-sha$/),
     );
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("updating"));
   });

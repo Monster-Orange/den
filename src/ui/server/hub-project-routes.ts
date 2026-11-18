@@ -8,6 +8,10 @@
  *         project of this install's company, from Hub; nothing is written.
  *         pick (issue 167): not linked, and Den can't tell which Hub
  *         project fits (hubMatchOf), so it waits for a person's pick.
+ *         Issue 271: name (the project's), owner (true/false: whether
+ *         this install's person is an owner in Hub; null: Hub didn't
+ *         say), company, create (a new Hub project asked for it, read
+ *         from Hub first: an allowed one is linked by then).
  *   PUT { hub: "<id | slug | name>" | null } → links it to one of the
  *         company's Hub projects (checked against Hub's list), or unlinks.
  *         A person's only: an agent's token or an MCP caller is refused.
@@ -21,6 +25,7 @@ import {
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
 import type { Uncovered } from "../../shared/hub-project-sync.js";
+import type { HubCreate } from "../../shared/hub-project-create.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { hubMatchOf } from "./hub-link-all-routes.js";
 import {
@@ -51,6 +56,56 @@ export interface HubProjectRouteDeps {
    * bell's "N projects need your pick" counts down (pickDone).
    */
   picked?: (n: number) => void;
+  /** Issue 271: the name project `ws` shows (the Create option's default). */
+  name?: (ws: string) => string;
+  /**
+   * Issue 271: this install's person in Hub: their role (an owner allows
+   * Hub's held changes) and the company's name; null when Hub didn't say.
+   */
+  whoami?: () => Promise<{ role?: string; company?: string } | null>;
+  /**
+   * Issue 271: the new Hub project asked for `ws`, after reading what
+   * became of it (an allowed one is linked by then); null: none.
+   */
+  create?: (ws: string) => Promise<HubCreate | null>;
+}
+
+async function defaultName(ws: string): Promise<string> {
+  const [w, n] = await Promise.all([
+    import("../../shared/environment-manager/workspaces.js"),
+    import("../../shared/workspace-name.js"),
+  ]);
+  try {
+    return n.workspaceDisplayName(ws, w.readWorkspacesFile().workspaces[ws]);
+  } catch {
+    return ws;
+  }
+}
+
+async function defaultWhoami(): Promise<{
+  role?: string;
+  company?: string;
+} | null> {
+  const { hubAndToken } = await import("./hub-sync-service.js");
+  const at = await hubAndToken();
+  if (!at) return null;
+  const hub = await import("../../shared/hub.js");
+  const w = await hub.hubWhoami(at.url, at.token);
+  return {
+    ...(w.role ? { role: w.role } : {}),
+    ...(w.company?.name ? { company: w.company.name } : {}),
+  };
+}
+
+async function defaultCreate(ws: string): Promise<HubCreate | null> {
+  const [{ defaultHubCreateDeps }, c] = await Promise.all([
+    import("./hub-create-routes.js"),
+    import("../../shared/hub-project-create.js"),
+  ]);
+  const d = await defaultHubCreateDeps();
+  if (!d.asked(ws)) return null;
+  await c.settleHubCreate(d, ws);
+  return d.asked(ws);
 }
 
 function defaultPicked(n: number): void {
@@ -125,8 +180,21 @@ export async function hubProjectRoute(
     : defaultUncovered;
 
   if (method === "GET" || method === "HEAD") {
+    // Issue 271: first what became of a new Hub project asked for it (an
+    // allowed one is linked here), then the rest as before.
+    const create = await (over.create ?? defaultCreate)(ws).catch(() => null);
     const hub = read(ws);
     const unseen = await uncovered(ws).catch(() => []);
+    const shown = over.name
+      ? over.name(ws)
+      : await defaultName(ws).catch(() => ws);
+    const who = await (over.whoami ?? defaultWhoami)().catch(() => null);
+    const more = {
+      name: shown,
+      owner: who?.role ? who.role === "owner" : null,
+      company: who?.company ?? null,
+      create,
+    };
     try {
       const c = await choicesOf(ws);
       sendJson(res, {
@@ -138,6 +206,7 @@ export async function hubProjectRoute(
         projects: c?.projects ?? [],
         uncovered: unseen,
         pick: !hub && !!c && "unclear" in hubMatchOf(c.suggestions),
+        ...more,
       });
     } catch (e) {
       sendJson(res, {
@@ -149,6 +218,7 @@ export async function hubProjectRoute(
         projects: [],
         uncovered: unseen,
         pick: false,
+        ...more,
         error: `Hub didn't list its projects: ${(e as Error).message}`,
       });
     }

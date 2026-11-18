@@ -16,6 +16,7 @@ import {
   workspaceSlug,
 } from "../workspace-name.js";
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import { reservedWorkspaceError } from "../agents/server-agent.js";
 import * as path from "path";
 import * as yaml from "yaml";
@@ -1037,11 +1038,7 @@ export function generateVSCodeWorkspace(
   }
 
   const outPath = path.join(wsDir, `${workspaceName}.code-workspace`);
-  fs.writeFileSync(
-    outPath,
-    JSON.stringify({ folders }, null, 2) + "\n",
-    "utf-8",
-  );
+  writeFileAtomic(outPath, JSON.stringify({ folders }, null, 2) + "\n");
   return outPath;
 }
 
@@ -1154,6 +1151,42 @@ export function workspaceHubToolsRestart(
   } catch {
     return install;
   }
+}
+
+/**
+ * Issue 335: workspace `ws`'s `agents.mcp_servers` as written (checked
+ * where it is used); undefined when unset or the file can't be read.
+ */
+export function workspaceMcpServersRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws]?.agents?.mcp_servers ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Issue 335: set workspace `ws`'s `agents.mcp_servers` (the caller checks
+ * each one); an empty list clears it.
+ */
+export function setWorkspaceMcpServers(
+  ws: string,
+  servers: { name: string; url: string; bearer?: string }[],
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
+  const agents = { ...(cfg.agents ?? {}) };
+  if (servers.length) agents.mcp_servers = servers;
+  else delete agents.mcp_servers;
+  const next = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file);
 }
 
 /**

@@ -247,7 +247,11 @@ const sectionIds = (p: Page) =>
 describe("the Settings page writes only what you change (R21)", () => {
   it("loading, searching, categories, hash, query, reload and back/forward write nothing", async () => {
     if (!browser) return;
-    await new Promise((r) => setTimeout(r, 500)); // start-up writes settle
+    // No wait for start-up writes (den#143): the server writes nothing
+    // after it answers server-info (0 files changed in 8 s, Den's own
+    // state included), and changedSince leaves Den's state aside. The
+    // 500 ms sleep here predates that filter. A late start-up write to a
+    // config file would show as a change, never be hidden.
     const before = snapshot();
     const { p, posts } = await open();
 
@@ -627,16 +631,39 @@ describe("the current category (SA's dev.20 run)", () => {
             .querySelector('#set-nav [aria-current="true"]')
             ?.getAttribute("data-cat") ?? null,
       );
+    // den#143: wait for the condition, never a fixed time (a loaded
+    // machine scrolled later than 600/900 ms): `id` is marked and the
+    // scroll has stood still for 6 polls.
+    const settledOn = async (p: Page, id: string) => {
+      await p
+        .waitForFunction(
+          (want) => {
+            const w = window as unknown as { y?: number; still?: number };
+            const y = document.getElementById("den-content")!.scrollTop;
+            w.still = w.y === y ? (w.still ?? 0) + 1 : 0;
+            w.y = y;
+            const cur = document
+              .querySelector('#set-nav [aria-current="true"]')
+              ?.getAttribute("data-cat");
+            return cur === want && w.still > 6;
+          },
+          id,
+          // Only how long before it reports what was marked (3 waits
+          // within the test's 30 s); passing never waits for it.
+          { polling: 100, timeout: 8000 },
+        )
+        .catch(() => undefined);
+      return { id, current: await current(p) };
+    };
     const last = async (p: Page) => (await sectionIds(p)).at(-1)!;
     const { p } = await open("/settings#distribution");
-    await p.waitForTimeout(600);
-    expect(await current(p)).toBe(await last(p));
+    const end = await last(p);
+    expect(await settledOn(p, end)).toEqual({ id: end, current: end });
     // A click on the one before, then the last: each wins over the spy.
     const ids = await sectionIds(p);
     for (const id of [ids.at(-2)!, ids.at(-1)!]) {
       await p.click(`#set-nav [data-cat="${id}"]`);
-      await p.waitForTimeout(900);
-      expect({ id, current: await current(p) }).toEqual({ id, current: id });
+      expect(await settledOn(p, id)).toEqual({ id, current: id });
     }
     await p.context().close();
   }, 30_000);

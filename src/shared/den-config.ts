@@ -19,6 +19,7 @@ import * as path from "path";
 import * as yaml from "yaml";
 import type { Environment, ReleaseSourceConfig } from "./types/index.js";
 import { getDistRoot } from "./paths.js";
+import { writeFileAtomic } from "./atomic-write.js";
 import type { SecretsConfig } from "./secrets/index.js";
 import type { OrgConfig } from "./org.js";
 import { validateOrgSources, type WorkOrgsConfig } from "./org-sources.js";
@@ -863,14 +864,17 @@ export function readUserConfig(): UserConfig {
   }
 }
 
-/** Write the per-engineer user config to config/local/user.yml. */
+/**
+ * Write the per-engineer user config to config/local/user.yml, whole (#380):
+ * Den's server, a CLI and an agent's start read it while it is written.
+ */
 export function writeUserConfig(cfg: UserConfig): void {
   fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
   const lines = [
     "# Per-engineer preferences — gitignored, never committed",
     yaml.stringify(cfg).trimEnd(),
   ];
-  fs.writeFileSync(USER_CONFIG_PATH, lines.join("\n") + "\n", "utf-8");
+  writeFileAtomic(USER_CONFIG_PATH, lines.join("\n") + "\n");
 }
 
 /** Merge a partial patch into config/local/user.yml without clobbering fields. */

@@ -8,6 +8,7 @@
  * anything else under it are not. Read from `ps` once per look.
  */
 import { execFileSync } from "child_process";
+import { PS_MAX_BUFFER } from "./ps-buffer.js";
 
 export interface ProcessRow {
   pid: number;
@@ -29,7 +30,7 @@ export function readProcesses(): ProcessRow[] {
   try {
     const out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,etime=,command="], {
       encoding: "utf-8",
-      maxBuffer: 32 * 1024 * 1024,
+      maxBuffer: PS_MAX_BUFFER,
       timeout: 5_000,
     });
     const rows: ProcessRow[] = [];

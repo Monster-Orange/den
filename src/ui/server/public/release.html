@@ -720,7 +720,14 @@
       </div>
 
       <div class="page-main">
-        <div class="table-pane">
+        <!-- It scrolls, so a keyboard can reach it (issue 297). -->
+        <div
+          class="table-pane"
+          tabindex="0"
+          role="region"
+          aria-label="Releases"
+          data-t-attr="aria-label:n.releases"
+        >
           <table id="rel-table">
             <thead>
               <tr id="rel-head"></tr>
@@ -774,6 +781,7 @@
         } from "/header.js";
         import { viewNoteHtml, viewRepos, viewScope } from "/view-scope.js";
         import { formatTime, timeHtml } from "/kit/time.js";
+        import { statusVars } from "/value-words.js";
         // The page's words (issue 171): shell.js's catalog, "rel.*". A deploy's
         // own log lines (the server's) are output, not translated.
         const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
@@ -1212,7 +1220,8 @@
         function statusWords(st, text) {
           if (!st?.key) return text;
           // issue 206: a date-time in the words reads in the person's zone.
-          const vars = { ...(st.vars ?? {}) };
+          // issue 171: a GitHub state in the words reads in the page's language.
+          const vars = { ...(statusVars(st.vars) ?? {}) };
           for (const [k, v] of Object.entries(vars))
             if (typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(v))
               vars[k] = formatTime(v) || v;

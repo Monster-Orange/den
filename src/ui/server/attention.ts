@@ -20,14 +20,39 @@
  *   Code's idle notice (no dialog is open) clear a permission wait too.
  *   Each wait keeps what it saw (the tool, or the notice, trimmed) and
  *   since when; the bell row and the update check say both.
+ * - Issue 369: a waiting row kept across a restart has no wait in memory.
+ *   At start and on the checks after it (until each is decided), its
+ *   agent stopped, removed or exited, or no dialog on its screen: the row
+ *   goes; still showing it: the row stays and is a live wait again.
  * Texts are kept in English and as a key with values (`msg`), for the
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
  */
-import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
+import type {
+  NoteMsg,
+  Notification,
+  NotificationStore,
+} from "../../shared/notifications.js";
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
+import { leadAskText } from "./lead-routing.js";
 
 export type WaitingWhy = "permission" | "input" | "asked";
+
+/**
+ * Issue 369: what a kept waiting row waits on, from its text's key (or,
+ * a row from before keys, its English): a permission dialog or an ask.
+ * Null: another waiting row (an agent not back after a restart).
+ */
+export function rowWhy(n: Notification): "permission" | "asked" | null {
+  const k = n.msg?.key;
+  if (k === "bell.m.permission" || k === "bell.m.permissionWhat")
+    return "permission";
+  if (k === "bell.m.asked") return "asked";
+  if (k) return null;
+  if (/ needs your permission(:|$)/.test(n.text)) return "permission";
+  if (/ asked: /.test(n.text)) return "asked";
+  return null;
+}
 
 /**
  * The agents Den won't type into (a Hub delivery, a tools note): a held
@@ -72,6 +97,30 @@ export interface AttentionDeps {
   ended?: (
     agents: readonly string[],
   ) => Promise<ReadonlyMap<string, "stopped" | "exited">>;
+  /**
+   * Issue 369: whether the agent's screen shows its permission dialog
+   * now: true, false (no dialog, or no session), or null when Den can't
+   * tell yet (the session host didn't answer). A runtime whose dialogs
+   * Den can't see answers true: its output going on clears it.
+   */
+  dialogOpen?: (agent: string) => Promise<boolean | null>;
+  /**
+   * Issue 101: the lead of `agent`'s project for its question, or null
+   * (lead-routing.ts pickLead).
+   */
+  leadOf?: (agent: string, workspace: string) => Promise<string | null>;
+  /** Issue 101: type `text` to agent `lead`; false when Den couldn't. */
+  tellLead?: (lead: string, text: string) => Promise<boolean>;
+  /**
+   * Issue 172: an agent began to need its person (a permission prompt or
+   * a question), and its person isn't looking at it: alert them outside
+   * the bell (alert-feed.ts). Once per wait, never for a repeat.
+   */
+  alert?: (n: {
+    agent: string;
+    workspace: string;
+    why: "permission" | "asked";
+  }) => void;
 }
 
 /** Output in this long after the event is the agent drawing it, not going on. */
@@ -99,6 +148,8 @@ interface Waiting {
   workspace: string;
   /** Cleared by the runtime's hooks, not by its output. */
   byHook: boolean;
+  /** Issue 101: the lead its question went to, instead of its person. */
+  lead?: string;
 }
 
 export class Attention {
@@ -108,9 +159,16 @@ export class Attention {
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
+  /** Issue 369: rows from before this server still to decide. */
+  private orphansLeft = true;
 
   constructor(private readonly d: AttentionDeps) {
     this.now = d.now ?? Date.now;
+  }
+
+  /** An agent's display name (issue 101: the lead a question went to). */
+  nameOf(agent: string): string {
+    return this.d.nameOf(agent);
   }
 
   /** The agents waiting now, and why (the sessions list, the bell). */
@@ -155,7 +213,7 @@ export class Attention {
         }
       | { event: "finished"; text?: string }
       | { event: "resumed"; from: "tool" | "prompt" | "session" },
-  ): Promise<void> {
+  ): Promise<{ lead: string } | void> {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
@@ -184,15 +242,13 @@ export class Attention {
       const q = this.d.endedAsking
         ? await this.d.endedAsking(agent).catch(() => null)
         : null;
-      if (q) {
-        await this.event(agent, workspace, {
+      if (q)
+        return this.event(agent, workspace, {
           event: "waiting",
           why: "asked",
           text: q,
           hooked: true,
         });
-        return;
-      }
       if (!this.onScreen(agent))
         this.d.store.add({
           kind: "finished",
@@ -248,6 +304,15 @@ export class Attention {
     // turn's end already said so (finished, in Updates; a question there
     // is "asked"): the idle notice adds nothing.
     if (ev.why === "input" && hooked) return;
+    // Issue 101: a question goes to the project's lead, when it has one
+    // Den can type to; the same question again isn't told twice.
+    const q = ev.text ?? "";
+    const lead =
+      ev.why !== "asked"
+        ? undefined
+        : prev?.why === "asked" && prev.lead && prev.text === text
+          ? prev.lead
+          : await this.toLead(agent, workspace, name, q);
     this.waiting.set(agent, {
       why: ev.why,
       text,
@@ -256,9 +321,37 @@ export class Attention {
       mark: await this.d.outputMark(agent),
       workspace,
       byHook: hooked,
+      ...(lead ? { lead } : {}),
     });
+    if (lead) {
+      if (prev?.lead !== lead || prev.text !== text)
+        this.d.store.add({
+          kind: "finished",
+          subject,
+          scope,
+          text: `${name} asked the lead, ${this.d.nameOf(lead)}: ${q}`,
+          msg: {
+            key: "bell.m.toLead",
+            vars: { name, lead: this.d.nameOf(lead), text: q },
+          },
+          link,
+        });
+      return { lead };
+    }
+    const looking = this.onScreen(agent);
+    // Issue 172: a new need (not the same wait said again) alerts.
+    if (
+      !looking &&
+      (ev.why === "permission" || ev.why === "asked") &&
+      prev?.why !== ev.why
+    )
+      try {
+        this.d.alert?.({ agent, workspace, why: ev.why });
+      } catch {
+        /* an alert is best effort: the bell has it */
+      }
     // #142: without hooks, a bell is all there is: an update, not a need.
-    if (!this.onScreen(agent))
+    if (!looking)
       this.d.store.add({
         kind: ev.why === "input" ? "finished" : "waiting",
         subject,
@@ -267,6 +360,28 @@ export class Attention {
         msg,
         link,
       });
+  }
+
+  /**
+   * Issue 101: tell the lead of `agent`'s project its question; the lead,
+   * or undefined when there is none, the asker leads, or the lead can't
+   * take it now (it waits on its own person, or Den couldn't type).
+   */
+  private async toLead(
+    agent: string,
+    workspace: string,
+    name: string,
+    question: string,
+  ): Promise<string | undefined> {
+    if (!this.d.leadOf || !this.d.tellLead) return undefined;
+    const lead = await this.d.leadOf(agent, workspace).catch(() => null);
+    if (!lead || lead === agent) return undefined;
+    const busy = this.waiting.get(lead);
+    if (busy && busy.why !== "input") return undefined;
+    const told = await this.d
+      .tellLead(lead, leadAskText(name, agent, question))
+      .catch(() => false);
+    return told ? lead : undefined;
   }
 
   /** Its person typed into its terminal: answered, whatever it waited on. */
@@ -340,6 +455,7 @@ export class Attention {
    * waiting. In its first SETTLE_MS, output only moves the mark.
    */
   async check(): Promise<void> {
+    await this.reconcile();
     await this.sweepEnded();
     for (const [agent, w] of [...this.waiting]) {
       if (w.byHook) continue;
@@ -351,6 +467,83 @@ export class Attention {
       }
       this.clear(agent);
     }
+  }
+
+  /**
+   * Issue 369: the unread waiting rows (a permission dialog, an ask) with
+   * no wait in memory: kept from before this server started. Each is
+   * withdrawn or adopted as a live wait; one Den can't decide yet stays
+   * for the next check. Other waiting rows (an agent that didn't come
+   * back after a restart) are left alone. Never throws.
+   */
+  async reconcile(): Promise<void> {
+    if (!this.orphansLeft) return;
+    let undecided = false;
+    try {
+      const rows = this.d.store
+        .list()
+        .filter(
+          (n) =>
+            !n.read &&
+            n.kind === "waiting" &&
+            n.source === "den" &&
+            n.subject.startsWith("agent:") &&
+            !this.waiting.has(n.subject.slice("agent:".length)),
+        )
+        .flatMap((n) => {
+          const why = rowWhy(n);
+          return why ? [{ n, why }] : [];
+        });
+      if (!rows.length) {
+        this.orphansLeft = false;
+        return;
+      }
+      const agents = [
+        ...new Set(rows.map((x) => x.n.subject.slice("agent:".length))),
+      ];
+      const ended = this.d.ended ? await this.d.ended(agents) : new Map();
+      for (const { n, why } of rows) {
+        const agent = n.subject.slice("agent:".length);
+        if (this.waiting.has(agent)) continue;
+        const how = ended.get(agent);
+        const drop = () => this.d.store.remove((x) => x.id === n.id);
+        // An ask ends with its agent stopped or removed; Den holds it
+        // across its session ending by itself (as sweepEnded).
+        if (how === "stopped" || (how === "exited" && why !== "asked")) {
+          drop();
+          continue;
+        }
+        if (why === "permission") {
+          const open = this.d.dialogOpen
+            ? await this.d.dialogOpen(agent).catch(() => null)
+            : true;
+          if (open === null) {
+            undecided = true;
+            continue;
+          }
+          if (!open) {
+            drop();
+            continue;
+          }
+        }
+        const at = Date.parse(n.at);
+        const what = n.msg?.vars.what;
+        this.waiting.set(agent, {
+          why,
+          text: n.text,
+          what: typeof what === "string" ? what : "",
+          at: Number.isFinite(at) ? at : this.now(),
+          mark: await this.d.outputMark(agent),
+          workspace: n.scope.startsWith("workspace/")
+            ? n.scope.slice("workspace/".length)
+            : n.scope,
+          byHook: !!this.d.hooked?.(agent),
+        });
+      }
+    } catch {
+      undecided = true;
+    }
+    this.orphansLeft = undecided;
   }
 
   /** The agent stopped or was removed: nothing waits on it. */

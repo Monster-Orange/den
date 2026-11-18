@@ -21,9 +21,11 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
+import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
   agentsKeepRunningAfterLogout,
@@ -66,6 +68,7 @@ import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
+import { edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -177,6 +180,7 @@ const SELECTORS: Record<string, Selector> = {
     try {
       const cfg = readEdgeConfig();
       const d = tlsStrategyFor(cfg).detect(env);
+      const image = edgeImageCheck(cfg);
       return {
         kind: "tls",
         selected: cfg.tls.strategy,
@@ -184,8 +188,15 @@ const SELECTORS: Record<string, Selector> = {
         available: d.available,
         reason: d.reason,
         problem: !d.available,
-        warnings: [...edgeTlsWarnings(cfg), ...edgeAccessWarnings(cfg)],
-        notes: [edgeAccessHealthy(cfg)].filter((n): n is string => !!n),
+        warnings: [
+          ...edgeTlsWarnings(cfg),
+          ...edgeAccessWarnings(cfg),
+          ...(image.status === "warn" ? [image.detail] : []),
+        ],
+        notes: [
+          image.status === "ok" ? image.detail : null,
+          edgeAccessHealthy(cfg),
+        ].filter((n): n is string => !!n),
       };
     } catch (err) {
       return {
@@ -441,11 +452,21 @@ export async function doctorJson(
   return { ok: !checks.some((c) => c.status === "fail"), checks };
 }
 
+type CatalogEntry = import("../../shared/agents/catalog.js").CatalogEntry;
+
 /** D18/D20: the real probes for doctor's "where it runs" rows. */
 export async function defaultWhereDeps(): Promise<WhereDeps> {
   const os = await import("os");
-  const { readDenConfig: cfg, readWebServiceConfig } =
-    await import("../../shared/den-config.js");
+  const {
+    readDenConfig: cfg,
+    readWebServiceConfig,
+    readAgentsConfig,
+    configuredRuntimeCatalog,
+  } = await import("../../shared/den-config.js");
+  const { BUILTIN_CATALOG } = await import("../../shared/agents/catalog.js");
+  const { listRecords } = await import("../../shared/agents/records.js");
+  const { agentsWithoutSignIn } =
+    await import("../../shared/agents/signin-token.js");
   const { readWebPort } = await import("../../shared/edge/config.js");
   const { getDistRoot } = await import("../../shared/paths.js");
   const { connectHost } = await import("../../shared/sessions/client.js");
@@ -533,6 +554,47 @@ export async function defaultWhereDeps(): Promise<WhereDeps> {
         stateDir: getStateDir(),
         probe: true,
       });
+    },
+    // Issue 340: each vendor's pick, read from the store as a start would.
+    signInPicks: async () => {
+      const [
+        { signInPicks },
+        { agentTokenRef, readAgentToken },
+        { runtimeIds },
+      ] = await Promise.all([
+        import("../../shared/agents/signin-accounts.js"),
+        import("../../shared/agents/signin-token.js"),
+        import("../../shared/agents/runtimes.js"),
+      ]);
+      return signInPicks({
+        stateDir: getStateDir(),
+        runtimeIds: runtimeIds(),
+        read: (name) =>
+          readAgentToken({
+            ref: () => agentTokenRef(undefined, undefined, name),
+          }),
+      });
+    },
+    // Issue 338: agents on a runtime with no sign-in data (built-in,
+    // the distribution's or user.yml's catalog entries).
+    noSignIn: () => {
+      let extra: CatalogEntry[] = [];
+      try {
+        const dist = readAgentsConfig(cfg()).runtimeCatalog;
+        extra = [
+          ...dist,
+          ...configuredRuntimeCatalog([
+            ...BUILTIN_CATALOG.map((e) => e.id),
+            ...dist.map((e) => e.id),
+          ]),
+        ];
+      } catch {
+        extra = []; // a bad entry is the catalog's own check to say
+      }
+      return agentsWithoutSignIn(listRecords(getStateDir()), [
+        ...BUILTIN_CATALOG,
+        ...extra,
+      ]);
     },
     // Issue 163 (a): unset over a login install is offered.
     keepSetting: () => agentsKeepRunningAfterLogout(),
@@ -647,6 +709,68 @@ export function hubProjectLines(
       `  hub project  ⚠  ${unlinked} projects aren't linked. See what Hub suggests for each, and link them in one go: \`${cli} hub link --suggested\``,
     );
   return { lines, checks };
+}
+
+/**
+ * Issue 335: each project's extra MCP servers, by name and url only
+ * (never a bearer or its value). A bad entry, or a bearer whose
+ * secrets.refs entry isn't set, warns: agents start without that one.
+ */
+export function projectMcpLines(
+  projects: { ws: string; raw: unknown }[],
+  refSet: (name: string) => boolean,
+  taken: readonly string[] = [],
+): { lines: string[]; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const { ws, raw } of projects) {
+    const { servers, problems } = parseProjectMcpServers(raw, taken);
+    for (const sv of servers) {
+      const unset = sv.bearer && !refSet(sv.bearer);
+      const detail = unset
+        ? `${ws}: ${sv.name} ${sv.url}: secrets.refs.${sv.bearer} is not set, so its calls carry no bearer`
+        : `${ws}: ${sv.name} ${sv.url}`;
+      lines.push(`  mcp server  ${unset ? "⚠" : "✓"}  ${detail}`);
+      checks.push({
+        id: `mcp:server:${ws}:${sv.name}`,
+        status: unset ? "warn" : "ok",
+        detail,
+      });
+    }
+    problems.forEach((pr, i) => {
+      const detail = `${ws}: ${pr}`;
+      lines.push(`  mcp server  ⚠  ${detail}`);
+      checks.push({ id: `mcp:server:${ws}:bad:${i}`, status: "warn", detail });
+    });
+  }
+  return { lines, checks };
+}
+
+/** Issue 335: every project's agents.mcp_servers, as written. */
+async function projectsMcpRaw(): Promise<{ ws: string; raw: unknown }[]> {
+  const { readWorkspacesFile } =
+    await import("../../shared/environment-manager/workspaces.js");
+  try {
+    return Object.entries(readWorkspacesFile().workspaces ?? {})
+      .map(([ws, c]) => ({ ws, raw: c?.agents?.mcp_servers }))
+      .filter((p) => p.raw !== undefined && p.raw !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** Issue 335: doctor's lines and checks for the projects' MCP servers. */
+async function projectMcpDoctor(): Promise<{
+  lines: string[];
+  checks: OnboardCheck[];
+}> {
+  const { namedSecretRef } = await import("../../shared/secrets/index.js");
+  const { HUB_SERVER } = await import("../../shared/hub.js");
+  return projectMcpLines(
+    await projectsMcpRaw(),
+    (n) => namedSecretRef(n) !== null,
+    [product().cli, HUB_SERVER],
+  );
 }
 
 /**
@@ -768,6 +892,36 @@ export function addressLines(
     ],
     problem: false,
     check: { id: "address", status: w.confirmed ? "ok" : "warn", detail },
+  };
+}
+
+/**
+ * Issue 367: the contact push alerts give the push services. With an
+ * https address (web.url) they get it; without one, a mailto fallback
+ * some refuse, so a phone may get no push: warn, and say what to set.
+ */
+export function pushContactLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  title: string,
+  cli: string,
+): { lines: string[]; check: OnboardCheck } {
+  const c = pushContact(w?.url);
+  const detail = c.accepted
+    ? `push services are given ${c.subject} as the contact`
+    : `push alerts may not reach phones: with no https address, push services are given ${c.subject} as the contact, and some refuse it. Set one in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Push alerts`,
+      "",
+      `  push  ${c.accepted ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: {
+      id: "push_contact",
+      status: c.accepted ? "ok" : "warn",
+      detail,
+      ...(c.accepted ? {} : { settings: ADDRESS_SETTINGS_LINK }),
+    },
   };
 }
 
@@ -1183,6 +1337,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         r.checks.push(...hubGithubLines(await githubCoverage()).checks);
       }
     }
+    r.checks.push(...(await projectMcpDoctor()).checks);
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
     if (cfg.problem) r.ok = false;
@@ -1192,6 +1347,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    r.checks.push(
+      pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
+    );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
       const rk = requestKeepLines(readBrand().name);
@@ -1242,12 +1400,19 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         console.log(l);
     }
   }
+  for (const l of (await projectMcpDoctor()).lines) console.log(l);
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
+  for (const l of pushContactLines(
+    readWebUrl(),
+    readBrand().name,
+    product().cli,
+  ).lines)
+    console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)

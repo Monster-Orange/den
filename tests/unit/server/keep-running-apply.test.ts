@@ -76,7 +76,10 @@ describe("Apply: the page", () => {
 });
 
 // @ts-expect-error plain browser module
-import { keepTokenLine } from "../../../src/ui/server/public/settings-registry.js";
+import {
+  keepTokenHtml,
+  keepTokenLine,
+} from "../../../src/ui/server/public/settings-registry.js";
 
 /** Issue 163 (b): the row's sign-in token line (never the token). */
 describe("Keep agents running after logout: the sign-in token line", () => {
@@ -84,11 +87,21 @@ describe("Keep agents running after logout: the sign-in token line", () => {
     `${k}${v ? ` ${JSON.stringify(v)}` : ""}`;
 
   it("none configured in mode always: agents will not be able to sign in after logout", () => {
-    expect(keepTokenLine({ configured: false, mode: "token" }, t)).toEqual({
+    expect(
+      keepTokenLine(
+        { configured: false, mode: "token", runtime: "Claude Code" },
+        t,
+      ),
+    ).toEqual({
       state: "missing",
-      text: "keep.noToken",
+      text: 'keep.noToken {"runtime":"Claude Code"}',
+      go: true,
     });
-    expect(keepTokenLine(null, t).state).toBe("missing");
+    expect(keepTokenLine(null, t)).toEqual({
+      state: "missing",
+      text: 'keep.noToken {"runtime":"keep.runtimeAny"}',
+      go: true,
+    });
   });
 
   it("none configured, not in mode always: says nothing about logout failing", () => {
@@ -97,6 +110,9 @@ describe("Keep agents running after logout: the sign-in token line", () => {
       text: "keep.noTokenNotNeeded",
     });
     expect(
+      keepTokenLine({ configured: false, mode: "token", no_store: true }, t),
+    ).toEqual({ state: "missing", text: "keep.noStore" });
+    expect(
       keepTokenLine({ configured: false, mode: "desktop", no_store: true }, t)
         .text,
     ).toBe("keep.noStore");
@@ -104,8 +120,48 @@ describe("Keep agents running after logout: the sign-in token line", () => {
 
   it("old: says how many days, to make a new one", () => {
     expect(
-      keepTokenLine({ configured: true, old: true, age_days: 340 }, t),
-    ).toEqual({ state: "old", text: 'keep.tokenOld {"n":340}' });
+      keepTokenLine(
+        { configured: true, old: true, age_days: 340, runtime: "Claude Code" },
+        t,
+      ),
+    ).toEqual({
+      state: "old",
+      text: 'keep.tokenOld {"n":340,"runtime":"Claude Code"}',
+      go: true,
+    });
+  });
+
+  it("issue 399: the line links the vendor's docs and the Sign-in token field, never a command", () => {
+    const en: Record<string, string> = {
+      "keep.noToken":
+        "No sign-in token is set. {runtime} makes one ({docs}); paste it into {field} below.",
+      "keep.docs": "its sign-in docs",
+      "keep.tokenLabel": "Sign-in token",
+    };
+    const tt = (k: string, v?: Record<string, unknown>) =>
+      (en[k] ?? k).replace(/\{(\w+)\}/g, (m, x) =>
+        v && v[x] != null ? String(v[x]) : m,
+      );
+    const s = {
+      configured: false,
+      mode: "token",
+      runtime: "Claude <Code>",
+      docs: "https://vendor.example.com/docs/auth",
+    };
+    const html = keepTokenHtml(keepTokenLine(s, tt), s, tt);
+    expect(html).toBe(
+      "No sign-in token is set. Claude &lt;Code&gt; makes one (" +
+        '<a href="https://vendor.example.com/docs/auth" target="_blank" rel="noopener noreferrer" data-keep-token-docs>its sign-in docs</a>' +
+        '); paste it into <a href="#" data-keep-token-go>Sign-in token</a> below.',
+    );
+    // Not https: no link, the words only.
+    expect(
+      keepTokenHtml(keepTokenLine(s, tt), { ...s, docs: "javascript:x" }, tt),
+    ).not.toContain("javascript:");
+    // A line with nothing to point at stays text.
+    expect(keepTokenHtml({ state: "set", text: "set <b>" }, s, tt)).toBe(
+      "set &lt;b&gt;",
+    );
   });
 
   it("set: says when; unknown when: names the store", () => {

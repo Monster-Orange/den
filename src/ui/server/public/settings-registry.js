@@ -40,6 +40,7 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -328,6 +329,7 @@ function bellRows() {
       read: (ctx) => on(ctx, k),
       write: (v, ctx) => ctx.post({ bell_kinds: { [k]: v === true } }),
     })),
+    ...alertRows(),
     {
       id: "notifications.fold_days",
       category: "notifications",
@@ -344,6 +346,201 @@ function bellRows() {
       write: (v, ctx) => ctx.post({ bell_fold_days: Number(v) }),
     },
   ];
+}
+
+/**
+ * Issue 172: alerts outside the bell (alerts.js). Desktop alerts is on
+ * when the person has it on (user.yml alerts.desktop, default on) and
+ * this browser lets the page notify; turning it on asks the browser.
+ */
+const notifyApi = () =>
+  typeof window !== "undefined" && typeof window.Notification === "function"
+    ? window.Notification
+    : null;
+
+function alertRows() {
+  return [
+    {
+      id: "notifications.desktop",
+      category: "notifications",
+      label: "Desktop alerts",
+      description:
+        "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+      keywords: ["notifications", "alerts", "desktop", "browser", "push"],
+      scope: "user",
+      control: {
+        type: "toggle",
+        notice: () => {
+          const N = notifyApi();
+          if (!N)
+            return L(
+              "set.notifications.desktop.none",
+              "This browser can't show notifications.",
+            );
+          return N.permission === "denied"
+            ? L(
+                "set.notifications.desktop.denied",
+                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+              )
+            : "";
+        },
+      },
+      keys: ["alerts.desktop"],
+      read: (ctx) =>
+        ctx.data.alerts?.desktop !== false &&
+        notifyApi()?.permission === "granted",
+      write: async (v, ctx) => {
+        const N = notifyApi();
+        if (v === true && N && N.permission === "default")
+          await N.requestPermission();
+        return ctx.post({ alerts: { desktop: v === true } });
+      },
+    },
+    {
+      // S2: push, to this device (a phone, or a computer with no tab open).
+      id: "notifications.phone",
+      category: "notifications",
+      label: "Alerts on this device by push",
+      description:
+        "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+      keywords: [
+        "notifications",
+        "alerts",
+        "phone",
+        "push",
+        "mobile",
+        "iphone",
+      ],
+      scope: "user",
+      control: { type: "custom", render: drawPush },
+      keys: ["alerts.phone"],
+      read: (ctx) => ctx.data.alerts?.phone !== false,
+      write: (v, ctx) => ctx.post({ alerts: { phone: v === true } }),
+    },
+    ...[
+      [
+        "quiet_from",
+        "Quiet hours start",
+        "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+      ],
+      [
+        "quiet_to",
+        "Quiet hours end",
+        "Alerts outside the bell start again at this time.",
+      ],
+    ].map(([k, label, description]) => ({
+      id: `notifications.${k}`,
+      category: "notifications",
+      label,
+      description,
+      keywords: ["notifications", "alerts", "quiet", "hours", "night"],
+      scope: "user",
+      control: {
+        type: "select",
+        options: () => [
+          { value: "", label: L("set.notifications.quiet.off", "Off") },
+          ...Array.from({ length: 24 }, (_, h) => {
+            const t = `${String(h).padStart(2, "0")}:00`;
+            return { value: t, label: t };
+          }),
+        ],
+        notice: (ctx) => {
+          const a = ctx.data.alerts ?? {};
+          return k === "quiet_from" && !a.quiet_from !== !a.quiet_to
+            ? L(
+                "set.notifications.quiet.half",
+                "Quiet hours need a start and an end.",
+              )
+            : "";
+        },
+      },
+      keys: [`alerts.${k}`],
+      read: (ctx) => ctx.data.alerts?.[k] ?? "",
+      write: (v, ctx) => ctx.post({ alerts: { [k]: v || null } }),
+    })),
+    {
+      // Issue 367: the push limits (user.yml alerts.push_*).
+      id: "notifications.push_timeout",
+      category: "notifications",
+      label: "Push wait",
+      description:
+        "How long __DEN_TITLE__ waits for a push service to take one alert for a device. After this, that alert is left; the next one tries again. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+      keywords: ["notifications", "alerts", "push", "timeout", "wait"],
+      scope: "user",
+      keys: ["alerts.push_timeout_seconds"],
+      control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.push_timeout_seconds ?? 30,
+      write: (v, ctx) => ctx.post({ alerts: { push_timeout_seconds: v } }),
+    },
+    {
+      id: "notifications.push_ttl",
+      category: "notifications",
+      label: "Push kept for",
+      description:
+        "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+      keywords: ["notifications", "alerts", "push", "ttl", "offline", "keep"],
+      scope: "user",
+      keys: ["alerts.push_ttl_seconds"],
+      control: { type: "number", min: 0, max: 2419200, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.push_ttl_seconds ?? 86400,
+      write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
+    },
+  ];
+}
+
+/**
+ * Issue 172 S2: this device's push switch. On: the browser's permission,
+ * the service worker, the subscription (alerts.js pushOn), and
+ * alerts.phone on. Off: this device only stops; others keep theirs.
+ */
+function drawPush(host, ctx, io) {
+  const api = (m, p, b) => ctx.shell.api(m, p, b);
+  // BUSY-1: the subscription's write goes through the working pop-up,
+  // the switch held while it runs; data, or null when it didn't succeed.
+  const send = (path, body) => {
+    const run = (headers) => ctx.shell.api("POST", path, body, { headers });
+    if (!ctx.shell.busyAction) return run({}).catch(() => null);
+    const button = host.querySelector("input") || undefined;
+    return ctx.shell.busyAction("save", run, { button, toastFast: false });
+  };
+  const draw = (on, note) => {
+    host.innerHTML =
+      `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
+      (note ? `<p class="set-warn" role="status">${escHtml(note)}</p>` : "");
+    host
+      .querySelector("input")
+      .addEventListener("change", (e) => void flip(e.target.checked));
+  };
+  const why = {
+    unsupported: () =>
+      L(
+        "set.notifications.phone.none",
+        "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+      ),
+    denied: () =>
+      L(
+        "set.notifications.desktop.denied",
+        "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+      ),
+    failed: () =>
+      L("set.notifications.phone.failed", "Couldn't turn on push here."),
+  };
+  const flip = async (on) => {
+    let got = "ok";
+    try {
+      if (on) got = await pushOn(api, send);
+      else await pushOff(send);
+    } catch {
+      got = "failed";
+    }
+    if (got === "ok" && on) await io.save(true);
+    const now = !!(await pushSubscription());
+    draw(now, got === "ok" ? "" : why[got]());
+  };
+  draw(false, pushSupported() ? "" : why.unsupported());
+  void pushSubscription().then((s) => {
+    if (s && ctx.data.alerts?.phone !== false) draw(true, "");
+  });
 }
 
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */
@@ -706,9 +903,10 @@ function drawPair(host, ctx) {
       if (!hosts.length) {
         host.innerHTML = `<output class="set-ro" id="set-pair">${L(
           "set.ui.noPairHost",
-          "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+          "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
           { cmd: "<code>__DEN_CLI__ edge up</code>" },
         )}</output>`;
+        drawEdgeUp(host, ctx);
         return;
       }
       host.innerHTML =
@@ -759,6 +957,66 @@ function drawPair(host, ctx) {
 }
 
 /**
+ * Issue 395: Start the edge (Apply, when it runs): what `edge up` runs, on
+ * the server (POST /api/edge/up, a person's only), with the working pop-up
+ * until it answers; then what it did: started, up to date (nothing
+ * restarted), or recreated and why, and about how long it was unreachable.
+ */
+function edgeUpText(o) {
+  if (o?.kind === "started") return L("set.ui.edgeStarted", "Edge started");
+  if (o?.kind === "current")
+    return L("set.ui.edgeCurrent", "Edge up to date, nothing restarted");
+  const why = (o?.changes || [])
+    .map((c) => `${c.field}: ${c.old} → ${c.new}`)
+    .join(", ");
+  return L(
+    "set.ui.edgeRecreated",
+    "Edge recreated because {why}; it was unreachable for about {s} s",
+    {
+      why: why || L("set.ui.edgeWhy", "its settings changed"),
+      s: o?.downSeconds ?? 1,
+    },
+  );
+}
+
+function drawEdgeUp(host, ctx) {
+  const box = document.createElement("div");
+  box.style.cssText = "flex-basis:100%;margin-top:8px";
+  box.innerHTML =
+    `<button type="button" class="btn sm" id="set-edge-up">${escHtml(L("set.ui.edgeStart", "Start the edge"))}</button>` +
+    '<p class="set-note" id="set-edge-up-out" aria-live="polite" hidden></p>';
+  host.appendChild(box);
+  const btn = box.querySelector("#set-edge-up");
+  const out = box.querySelector("#set-edge-up-out");
+  // Running already: the button applies the config to it.
+  fetch("/api/edge", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((b) => {
+      if (b?.up) btn.textContent = L("set.ui.edgeApply", "Apply");
+    })
+    .catch(() => {});
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    out.hidden = true;
+    try {
+      const r = await ctx.shell.busyAction(
+        "edge-up",
+        (headers) => ctx.shell.api("POST", "/api/edge/up", {}, { headers }),
+        { button: btn, success: (r) => edgeUpText(r?.outcome) },
+      );
+      if (r?.outcome) {
+        out.textContent = edgeUpText(r.outcome);
+        out.hidden = false;
+        if (r.outcome.kind !== "current")
+          btn.textContent = L("set.ui.edgeApply", "Apply");
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+/**
  * Issue 103: the web apps that may frame the embedded agent pane: one
  * origin a line, saved as a list (the server checks each, exactly).
  */
@@ -783,8 +1041,167 @@ function drawOrigins(host, ctx, api) {
     });
 }
 
+/**
+ * Issue 334: app keys, for a web app's own server: it relays its person's
+ * messages to one agent (typed after the agent's turn) and reads that
+ * agent's state. Make and Revoke are held writes: Den's Allow dialog asks
+ * the person, and the new key is shown here once, after the Allow.
+ */
+function drawAppKeys(host, ctx) {
+  // Under an invalid config the agents and the keys answer 422: ask nothing.
+  if (ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return;
+  }
+  const shell = ctx.shell;
+  const origins = Array.isArray(ctx.data?.embed?.origins)
+    ? ctx.data.embed.origins
+    : [];
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+  let asked = null;
+  const ask = (action, args, button) =>
+    shell
+      .busyAction(
+        "ask-allow",
+        (headers) =>
+          shell.api("POST", "/api/approvals", { action, args }, { headers }),
+        { button },
+      )
+      .then((b) => {
+        asked = b && b.id;
+        out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyAllow", "Allow it in the dialog."))}</span>`;
+        window.dispatchEvent(new CustomEvent("den:approvals-poll"));
+      });
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex-basis:100%">` +
+    `<select id="set-appkey-agent" aria-label="${escHtml(L("set.ui.appKeyAgent", "Agent"))}"></select>` +
+    `<select id="set-appkey-origin" aria-label="${escHtml(L("set.ui.appKeyOrigin", "Web app"))}">` +
+    origins
+      .map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`)
+      .join("") +
+    `</select>` +
+    `<input id="set-appkey-label" type="text" maxlength="80" aria-label="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}" placeholder="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}">` +
+    `<button type="button" class="btn sm" id="set-appkey-make">${escHtml(L("set.ui.appKeyMake", "Make key"))}</button>` +
+    `</div>` +
+    `<div id="set-appkey-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-appkey-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-appkey-out");
+  const list = host.querySelector("#set-appkey-list");
+  const make = host.querySelector("#set-appkey-make");
+  if (!origins.length) {
+    make.disabled = true;
+    out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyNoOrigin", "Add the web app to the list above first."))}</span>`;
+  }
+  shell
+    .api("GET", "/api/sessions")
+    .then((b) => {
+      const agents = ((b && b.sessions) || []).filter(
+        (r) => r.kind === "agent" && !r.server,
+      );
+      host.querySelector("#set-appkey-agent").innerHTML = agents
+        .map(
+          (r) =>
+            `<option value="${escHtml(r.workspace + "/" + r.agent)}">${escHtml(r.workspace + " / " + (r.displayName || r.agent))}</option>`,
+        )
+        .join("");
+      if (!agents.length) make.disabled = true;
+    })
+    .catch(() => {});
+  const draw = () =>
+    shell
+      .api("GET", "/api/embed/app-keys")
+      .then((b) => {
+        const keys = (b && b.keys) || [];
+        if (!keys.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.appKeyNone", "No app keys yet."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          keys
+            .map(
+              (k) =>
+                `<li data-key="${escHtml(k.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span>${escHtml(k.label || k.id)}: ${escHtml(k.project + " / " + k.agent)} · ${escHtml(k.origin)}</span>` +
+                `<span class="set-note">${escHtml(
+                  k.lastUsedAt
+                    ? L("set.ui.appKeyUsed", "last used {when}", {
+                        when: when(k.lastUsedAt),
+                      })
+                    : L("set.ui.appKeyUnused", "never used"),
+                )}</span>` +
+                (k.revokedAt
+                  ? `<span class="set-note">${escHtml(L("set.ui.appKeyRevoked", "revoked {when}", { when: when(k.revokedAt) }))}</span>`
+                  : `<button type="button" class="btn sm" data-revoke="${escHtml(k.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-revoke]"))
+          btn.addEventListener(
+            "click",
+            () =>
+              void ask(
+                "embed_key_revoke",
+                { id: btn.getAttribute("data-revoke") },
+                btn,
+              ).catch((e) => {
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+              }),
+          );
+      })
+      .catch(() => {});
+  make.addEventListener("click", () => {
+    const pick = host.querySelector("#set-appkey-agent").value.split("/");
+    void ask(
+      "embed_key_create",
+      {
+        project: pick[0],
+        agent: pick[1],
+        origin: host.querySelector("#set-appkey-origin").value,
+        label: host.querySelector("#set-appkey-label").value.trim(),
+      },
+      make,
+    ).catch((e) => {
+      out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+    });
+  });
+  // The shell's Allow says what ran; a new key is in it once (never again).
+  window.addEventListener("den:approval-done", (ev) => {
+    const d = ev.detail || {};
+    if (!asked || d.id !== asked || !host.isConnected) return;
+    asked = null;
+    const key = d.result && d.result.once && d.result.once.key;
+    if (key) {
+      out.innerHTML =
+        `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's server now. It is not shown again."))}</p>` +
+        `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:var(--mono)" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
+        `<button type="button" class="btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
+      const box = out.querySelector("#set-appkey-new");
+      box.value = key;
+      out.querySelector("#set-appkey-copy").addEventListener("click", () => {
+        box.select();
+        if (navigator.clipboard) void navigator.clipboard.writeText(box.value);
+      });
+    } else out.innerHTML = "";
+    draw();
+  });
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
+  {
+    id: "embed.app_keys",
+    category: "embed",
+    label: "App keys",
+    description:
+      "A key for a web app's own backend on this computer: it can pass on its person's messages to one agent, typed after the agent's turn, and read that agent's state. Nothing else. You allow each key, it is shown once, and you can revoke it here.",
+    keywords: ["embed", "key", "app key", "web app", "message", "revoke"],
+    scope: "user",
+    control: { type: "custom", render: drawAppKeys },
+    read: () => null,
+  },
   {
     id: "embed.origins",
     category: "embed",
@@ -823,6 +1240,19 @@ const EMBED_ROWS = [
     control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
     read: (ctx) => ctx.data.embed?.key_minutes ?? 15,
     write: (v, ctx) => ctx.post({ embed: { key_minutes: v } }),
+  },
+  {
+    id: "embed.app_key_audit",
+    category: "embed",
+    label: "App key reads in one activity line",
+    description:
+      "An app key's state reads go into the activity trail as one line per this many seconds, with how many there were, so a web app that checks often doesn't flood it.",
+    keywords: ["embed", "app key", "audit", "activity", "window", "seconds"],
+    scope: "user",
+    keys: ["embed.app_key_audit_window_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.embed?.app_key_audit_window_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ embed: { app_key_audit_window_seconds: v } }),
   },
   {
     id: "embed.url_max",
@@ -936,32 +1366,207 @@ export function keepTokenLine(s, t) {
         ? t("keep.noStore")
         : s && s.mode !== "token"
           ? t("keep.noTokenNotNeeded")
-          : t("keep.noToken"),
+          : t("keep.noToken", { runtime: tokenRuntime(s, t) }),
+      // Issue 399: the line points at the Sign-in token field below.
+      ...(s?.no_store || (s && s.mode !== "token") ? {} : { go: true }),
     };
   // The store's own credential in the login keychain: the daemon may not
   // reach it, so the token can't be read either.
   if (s.cred_keychain) return { state: "cred", text: t("keep.credKeychain") };
   if (s.old)
-    return { state: "old", text: t("keep.tokenOld", { n: s.age_days }) };
+    return {
+      state: "old",
+      text: t("keep.tokenOld", { n: s.age_days, runtime: tokenRuntime(s, t) }),
+      go: true,
+    };
   if (s.set_at) {
-    let date = String(s.set_at).slice(0, 10);
-    try {
-      const tz =
-        document.documentElement.getAttribute("data-den-tz") || undefined;
-      date = new Date(s.set_at).toLocaleDateString(
-        document.documentElement.lang || undefined,
-        { year: "numeric", month: "short", day: "numeric", timeZone: tz },
-      );
-    } catch {
-      /* the ISO date stays */
-    }
-    const set = t("keep.tokenSet", { date });
+    const set = t("keep.tokenSet", { date: localDay(s.set_at) });
     return {
       state: "set",
       text: s.process_local ? `${set} ${t("keep.processLocal")}` : set,
     };
   }
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
+}
+
+/** A set date in the reader's language and time zone (the ISO date if not). */
+function localDay(iso) {
+  let date = String(iso).slice(0, 10);
+  try {
+    const tz =
+      document.documentElement.getAttribute("data-den-tz") || undefined;
+    date = new Date(iso).toLocaleDateString(
+      document.documentElement.lang || undefined,
+      { year: "numeric", month: "short", day: "numeric", timeZone: tz },
+    );
+  } catch {
+    /* the ISO date stays */
+  }
+  return date;
+}
+
+/**
+ * Issue 339: what an account's row says (never a token): no token, or
+ * when it was set.
+ */
+export function accountLine(a, t) {
+  if (!a?.configured) return { state: "missing", text: t("acct.none") };
+  if (!a.set_at) return { state: "set", text: t("acct.setUnknown") };
+  return { state: "set", text: t("acct.set", { date: localDay(a.set_at) }) };
+}
+
+/**
+ * Issue 339: an account's name, or "<vendor> account A" in the reader's
+ * words (a vendor's own account, never a person: words.js, 2026-11-17).
+ */
+export function accountName(a, t, vendor) {
+  return (
+    a.name ||
+    t("acct.default", { vendor: vendor || "", letter: a.letter || a.id })
+  );
+}
+
+/**
+ * Issue 339: a vendor shows its rows once it has more than one account
+ * (or isn't Claude Code, whose account one is today's single field).
+ */
+function accountRows(v) {
+  return v.runtime !== "den-claude" || v.accounts.length > 1;
+}
+
+function renderAccountList(list, t) {
+  return (list || [])
+    .map((v) => {
+      const rows = accountRows(v)
+        ? v.accounts
+            .map((a, i) => {
+              const name = accountName(a, t, v.account || v.name);
+              const l = accountLine(a, t);
+              const last = i === v.accounts.length - 1;
+              return (
+                `<div class="set-note" data-acct="${escR(a.id)}" data-acct-state="${l.state}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">` +
+                `<strong>${escR(name)}</strong> <span data-acct-status>${escR(l.text)}${a.first ? ` ${escR(t("acct.first"))}` : ""}</span>` +
+                `<input type="password" autocomplete="off" spellcheck="false" data-acct-token aria-label="${escR(t("acct.tokenLabel", { name }))}">` +
+                `<button type="button" class="btn sm" data-acct-save>${escR(t("acct.tokenSave"))}</button>` +
+                `<button type="button" class="btn sm" data-acct-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` +
+                `<button type="button" class="btn sm" data-acct-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` +
+                `</div>`
+              );
+            })
+            .join("")
+        : "";
+      return (
+        `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
+        `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.account || v.name }))}</strong></p>` +
+        rows +
+        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.account || v.name }))}</button></div>` +
+        `<p class="set-note" data-acct-note hidden></p>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+/**
+ * Issue 339: Settings' sign-in accounts, per vendor: Add account, Set
+ * sign-in token (the same hidden field as today, cleared before the
+ * answer comes, never filled from the server) and Move up / down. Each
+ * answer is the new list, drawn again.
+ */
+function wireAccounts(host, ctx, t) {
+  const box = host.querySelector("[data-acct-list]");
+  if (!box) return;
+  const legacyRow = host.querySelector("[data-keep-token-row]");
+  const draw = (list) => {
+    ctx.data.agent_accounts = list;
+    box.innerHTML = renderAccountList(list, t);
+    // Claude Code with more than one account: each has its own field.
+    const claude = (list || []).find((v) => v.runtime === "den-claude");
+    // (Its inline display: flex would win over the hidden attribute.)
+    if (legacyRow)
+      legacyRow.style.display = claude && accountRows(claude) ? "none" : "flex";
+  };
+  draw(ctx.data.agent_accounts || []);
+  const post = (url, body, button) =>
+    ctx.shell.busyAction(
+      "save",
+      (headers) => ctx.shell.api("POST", url, body, { headers }),
+      { button },
+    );
+  box.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn || btn.disabled) return;
+    const vbox = btn.closest("[data-acct-runtime]");
+    if (!vbox) return;
+    const runtime = vbox.getAttribute("data-acct-runtime");
+    const note = vbox.querySelector("[data-acct-note]");
+    note.hidden = true;
+    const row = btn.closest("[data-acct]");
+    let url = "";
+    let body = null;
+    if (btn.hasAttribute("data-acct-add")) {
+      url = "/api/agents/accounts";
+      body = { runtime };
+    } else if (row && btn.hasAttribute("data-acct-save")) {
+      const input = row.querySelector("[data-acct-token]");
+      const token = input.value;
+      input.value = "";
+      if (!token.trim()) {
+        input.focus();
+        return;
+      }
+      url = "/api/agents/accounts/token";
+      body = { runtime, account: row.getAttribute("data-acct"), token };
+    } else if (
+      row &&
+      (btn.hasAttribute("data-acct-up") || btn.hasAttribute("data-acct-down"))
+    ) {
+      const ids = [...vbox.querySelectorAll("[data-acct]")].map((r) =>
+        r.getAttribute("data-acct"),
+      );
+      const i = ids.indexOf(row.getAttribute("data-acct"));
+      const j = btn.hasAttribute("data-acct-up") ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= ids.length) return;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      url = "/api/agents/accounts/order";
+      body = { runtime, order: ids };
+    } else return;
+    btn.disabled = true;
+    try {
+      const r = await post(url, body, btn);
+      if (r?.ok) return draw(r.accounts);
+      note.textContent = t("acct.failed", { error: r?.error || "" });
+      note.hidden = false;
+    } catch (e) {
+      note.textContent = t("acct.failed", {
+        error: String(e?.message || ""),
+      });
+      note.hidden = false;
+    }
+    btn.disabled = false;
+  });
+}
+
+/** Issue 399: the runtime that makes the token (the catalog's name). */
+function tokenRuntime(s, t) {
+  return s?.runtime || t("keep.runtimeAny");
+}
+
+/**
+ * Issue 399: the token line as HTML. A line that says where the token
+ * comes from links the vendor's own sign-in docs ({docs}, the runtime
+ * catalog's signIn.docs, never a URL of the page's own) and the Sign-in
+ * token field below ({field}, which focuses it): no command to run.
+ */
+export function keepTokenHtml(l, s, t) {
+  const html = escR(l.text);
+  if (!l.go) return html;
+  const docs =
+    typeof s?.docs === "string" && /^https:\/\//.test(s.docs)
+      ? `<a href="${escR(s.docs)}" target="_blank" rel="noopener noreferrer" data-keep-token-docs>${escR(t("keep.docs"))}</a>`
+      : escR(t("keep.docs"));
+  const field = `<a href="#" data-keep-token-go>${escR(t("keep.tokenLabel"))}</a>`;
+  return html.replace("{docs}", docs).replace("{field}", field);
 }
 
 /** Issue 299: the only terminal step for the agents' sign-in token. */
@@ -992,10 +1597,26 @@ function wireTokenField(host, ctx, line, t) {
   // Issue 163: Clear removes it from the store, the way it was kept; the
   // kit's confirm dialog first. A person's only (the server refuses an agent).
   const clear = host.querySelector("[data-keep-token-clear]");
+  // Issue 399: "paste it into Sign-in token below" goes to the field; with
+  // more than one Claude Code account (issue 339), the first one's.
+  line.addEventListener("click", (e) => {
+    const go = e.target?.closest?.("[data-keep-token-go]");
+    if (!go) return;
+    e.preventDefault();
+    const row = host.querySelector("[data-keep-token-row]");
+    const to =
+      row && row.style.display === "none"
+        ? host.querySelector(
+            '[data-acct-runtime="den-claude"] [data-acct-token]',
+          ) || input
+        : input;
+    to.scrollIntoView({ block: "center" });
+    to.focus();
+  });
   const showLine = (signin) => {
     const l = keepTokenLine(signin, t);
     line.dataset.keepToken = l.state;
-    line.textContent = l.text;
+    line.innerHTML = keepTokenHtml(l, signin, t);
     line.hidden = false;
     clear.hidden = l.state === "missing";
   };
@@ -1087,13 +1708,15 @@ function renderKeepRunning(host, ctx) {
     `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
     `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
-    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${escR(signLine.text)}</p>` +
+    `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${keepTokenHtml(signLine, ctx.data.agent_signin, t)}</p>` +
     // Issue 299: the token is pasted here; the one terminal step is named, with
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
     `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
-    `<label class="set-note" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
+    `<label class="set-note" data-keep-token-row style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
     `<p class="set-note" data-keep-token-note hidden></p>` +
+    // Issue 339: the sign-in accounts, per vendor.
+    `<div data-acct-list style="display:grid;gap:10px"></div>` +
     `</div>` +
     `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
@@ -1114,6 +1737,7 @@ function renderKeepRunning(host, ctx) {
     signin.hidden = !box.checked;
   });
   wireTokenField(host, ctx, token, t);
+  wireAccounts(host, ctx, t);
   btn.addEventListener("click", async () => {
     const on = box.checked;
     btn.disabled = true;
@@ -1268,6 +1892,48 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
+    // den#143: how long `web up` waits for the server (user.yml
+    // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
+    id: "server.ready_probe",
+    category: "server",
+    label: "Readiness check, in seconds",
+    description:
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    keywords: [
+      "ready",
+      "probe",
+      "timeout",
+      "busy",
+      "web up",
+      "web.ready_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.probeSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ web_ready: { probe_seconds: v } }),
+  },
+  {
+    id: "server.start_wait",
+    category: "server",
+    label: "Start wait, in seconds",
+    description:
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    keywords: [
+      "start",
+      "ready",
+      "timeout",
+      "busy",
+      "web up",
+      "web.start_wait_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.start_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.startSeconds ?? 120,
+    write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
@@ -1809,7 +2475,117 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
 
+  {
+    // Issue 160: this project's approval policy (workspaces.yml
+    // <project>.approvals), over the install's. A person's only.
+    id: "workspace.approvals_policy",
+    category: "workspace",
+    label: "Agents' writes here",
+    description:
+      "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
+    keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
+    scope: "workspace",
+    control: seg([
+      { value: "install", label: "As everywhere" },
+      { value: "auto", label: "Run, no note" },
+      { value: "notify", label: "Run and tell me" },
+      { value: "ask", label: "Ask me" },
+    ]),
+    read: (ctx) => ctx.wsSettings?.approvals_policy ?? "install",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({ approvals_policy: v === "install" ? null : v }),
+  },
+  {
+    id: "workspace.approvals_watch",
+    category: "workspace",
+    label: "Watched here",
+    description:
+      "An agent's write on any of these asks you first, whatever its kind. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    keywords: ["watch", "watched", "favorite", "approval", "allow", "ask"],
+    scope: "workspace",
+    control: { type: "text" },
+    read: (ctx) => (ctx.wsSettings?.approvals_watch ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.saveWorkspace({ approvals_watch: String(v ?? "").trim() || null }),
+  },
+  {
+    id: "workspace.approvals_critical",
+    category: "workspace",
+    label: "Critical here",
+    description:
+      "Kinds of agent write that always ask you in this project. Comma-separated, for example repo_clone, service_try.",
+    keywords: ["critical", "approval", "allow", "ask", "policy"],
+    scope: "workspace",
+    control: { type: "text" },
+    read: (ctx) => (ctx.wsSettings?.approvals_critical ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        approvals_critical: String(v ?? "").trim() || null,
+      }),
+  },
+  {
+    // Issue 335: the project's extra HTTP MCP servers, names and
+    // addresses only. An agent adds one with a held write; the person
+    // Allows it.
+    id: "workspace.mcp_servers",
+    category: "workspace",
+    label: "Agents' extra MCP servers: this project",
+    description:
+      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
+    keywords: ["agents", "mcp", "mcp server", "tools", "bearer", "http"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectMcp },
+    read: () => null,
+  },
+
   // ── Agents ─────────────────────────────────────────────────────────────
+  {
+    // Issue 160: the install's approval policy (user.yml approvals). A
+    // person's only: an agent asks with approval_policy.
+    id: "agents.approvals_policy",
+    category: "agents",
+    label: "Agent writes",
+    description:
+      "What an agent may do without your Allow. Run and tell me: it runs, and your updates say so. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks, as does one on something you watch or pinned.",
+    keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
+    scope: "user",
+    keys: ["approvals_policy"],
+    control: seg([
+      { value: "auto", label: "Run, no note" },
+      { value: "notify", label: "Run and tell me" },
+      { value: "ask", label: "Ask me" },
+    ]),
+    read: (ctx) => ctx.data.approvals_policy ?? "notify",
+    write: (v, ctx) => ctx.post({ approvals_policy: v }),
+  },
+  {
+    id: "agents.approvals_watch",
+    category: "agents",
+    label: "Watched",
+    description:
+      "An agent's write on any of these asks you first, whatever its kind; so does one on a repo or service you pinned. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+    keywords: ["watch", "watched", "favorite", "pinned", "approval", "ask"],
+    scope: "user",
+    keys: ["approvals_watch"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.approvals_watch ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({ approvals_watch: String(v ?? "").trim() || null }),
+  },
+  {
+    id: "agents.approvals_critical",
+    category: "agents",
+    label: "Critical",
+    description:
+      "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    keywords: ["critical", "approval", "allow", "ask", "policy"],
+    scope: "user",
+    keys: ["approvals_critical"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.approvals_critical ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
+  },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the
@@ -2133,7 +2909,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Keep agents running after logout",
     description:
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     keywords: [
       "logout",
       "log out",
@@ -2203,8 +2979,12 @@ export const DEN_SETTINGS = [
         : L("set.ui.portUnset", "Not set: the distribution's applies"),
   },
   {
-    // SEC-1b: whether this browser is signed in, and Sign out. Signing in
-    // is the CLI's (`web login` prints a one-time link): no form here.
+    // SEC-1b: whether this browser is signed in, and Sign out. Issue 393:
+    // signed out, a Sign in button opens Den's own sign-in page (GitHub,
+    // or a code another device approves). `again=1` shows that page even
+    // on loopback, where nothing asks (D67's approvals banner does the
+    // same); after it, back here. `web login` stays in the description,
+    // a bare equivalent.
     id: "cli.signin",
     category: "cli",
     label: "Browser sign-in",
@@ -2219,7 +2999,18 @@ export const DEN_SETTINGS = [
           host.innerHTML = signedIn
             ? `<output class="set-ro">${escR(L("set.ui.signedIn", "Signed in"))}</output> ` +
               `<button type="button" class="btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
-            : `<output class="set-ro">${L("set.ui.notSignedIn", "Not signed in: run {cmd}", { cmd: "<code>__DEN_CLI__ web login</code>" })}</output>`;
+            : `<output class="set-ro">${escR(L("set.ui.notSignedIn", "Not signed in"))}</output> ` +
+              `<button type="button" class="btn primary" id="set-signin">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
+          host
+            .querySelector("#set-signin")
+            ?.addEventListener("click", () =>
+              location.assign(
+                "/signin?again=1&next=" +
+                  encodeURIComponent(
+                    location.pathname + location.search + location.hash,
+                  ),
+              ),
+            );
           host.querySelector("#set-signout")?.addEventListener("click", () =>
             ctx.shell
               .api("POST", "/api/session/logout", {})
@@ -2227,6 +3018,11 @@ export const DEN_SETTINGS = [
               .catch(() => {}),
           );
         };
+        // Until /api/session answers, an unseen button holds the row at its
+        // drawn height: a row that grows later moves the sections below it,
+        // and a link to the last one (#distribution) would end short of the
+        // foot, with the category above it marked current.
+        host.innerHTML = `<button type="button" class="btn" style="visibility:hidden" aria-hidden="true" tabindex="-1">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
         fetch("/api/session", { cache: "no-store" })
           .then((r) => (r.ok ? r.json() : null))
           .then((b) => draw(b?.signedIn === true))
@@ -2433,7 +3229,7 @@ export function runtimeRowHtml(r, scopeWs) {
   // A path set at the scope shown can be cleared from here.
   const mine = scopeWs ? r.source === "workspace" : r.source === "setting";
   return (
-    `<div class="rt" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
+    `<div class="rt" role="listitem" data-runtime="${id}" data-available="${r.available ? "true" : "false"}">` +
     `<div class="rt-n">${name}</div>` +
     `<div class="rt-s">${status}</div>` +
     `<div class="rt-w">${where}</div>` +
@@ -2713,7 +3509,7 @@ export function rotationHtml(b) {
       ]),
     ) +
     `</div>` +
-    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col" aria-label="${escR(L("set.ui.rot.thActions", "Actions"))}"></th></tr></thead><tbody>` +
+    `<div class="tablewrap"><table class="svc rot-ov"><caption>${escR(L("set.ui.rot.caption", "Overrides (the most specific wins)"))}</caption><thead><tr><th scope="col">${escR(L("set.ui.rot.thScope", "Scope"))}</th><th scope="col">${escR(L("set.ui.rot.thFor", "For"))}</th><th scope="col">${escR(L("set.ui.rot.thSetting", "Setting"))}</th><th scope="col">${escR(L("set.ui.rot.thValue", "Value"))}</th><th scope="col"><span class="den-sr">${escR(L("set.ui.rot.thActions", "Actions"))}</span></th></tr></thead><tbody>` +
     (rows.length
       ? rows.join("")
       : `<tr><td colspan="5" class="set-note">${escR(L("set.ui.rot.none", "No overrides: every agent uses this install's values."))}</td></tr>`) +
@@ -3289,6 +4085,134 @@ function renderProjectMode(host, ctx) {
     });
 }
 
+/**
+ * Issue 335: Settings › Project › Agents' extra MCP servers. `v` is GET
+ * /api/workspaces/:ws/mcp-servers: { servers: [{ name, url }] }. Issue
+ * 352: each row has Change (its url, or its bearer's secrets.refs name)
+ * and Remove; a bearer's name is never shown, and a value never asked.
+ */
+export function projectMcpHtml(v, t) {
+  const servers = Array.isArray(v?.servers) ? v.servers : [];
+  if (!servers.length)
+    return `<p class="set-note" data-pmcp-none>${escR(t("pmcp.none"))}</p>`;
+  return (
+    `<ul class="set-note" data-pmcp-list>` +
+    servers
+      .map((sv) => {
+        const n = escR(sv.name);
+        return (
+          `<li data-pmcp="${n}"><span data-pmcp-text>${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</span> ` +
+          `<button type="button" class="btn sm" data-pmcp-edit="${n}" aria-label="${escR(t("pmcp.editL", { name: sv.name }))}">${escR(t("pmcp.edit"))}</button> ` +
+          `<button type="button" class="btn sm" data-pmcp-remove="${n}" aria-label="${escR(t("pmcp.removeL", { name: sv.name }))}">${escR(t("pmcp.remove"))}</button>` +
+          `<div data-pmcp-form="${n}" hidden><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">` +
+          `<label>${escR(t("pmcp.url"))} <input type="url" spellcheck="false" autocomplete="off" data-pmcp-url value="${escR(sv.url)}"></label>` +
+          `<label>${escR(t("pmcp.bearer"))} <input type="text" spellcheck="false" autocomplete="off" data-pmcp-bearer placeholder="${escR(t("pmcp.bearerKeep"))}"></label>` +
+          `<label><input type="checkbox" data-pmcp-nobearer> ${escR(t("pmcp.noBearer"))}</label>` +
+          `<button type="button" class="btn sm primary" data-pmcp-save>${escR(t("pmcp.save"))}</button>` +
+          `<button type="button" class="btn sm" data-pmcp-cancel>${escR(t("pmcp.cancel"))}</button>` +
+          `</div></div></li>`
+        );
+      })
+      .join("") +
+    `</ul>` +
+    `<div class="rt-err" role="alert" hidden></div>`
+  );
+}
+
+function renderProjectMcp(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  const base = `/api/workspaces/${encodeURIComponent(ws)}/mcp-servers`;
+  const fail = (e, fallback) => {
+    const err = host.querySelector(".rt-err");
+    if (!err) return;
+    err.hidden = false;
+    err.textContent = e?.message || fallback;
+  };
+  // Issue 352: a person's own click is the decision; the server checks
+  // it as the held writes are, and answers the list as it is now.
+  const send = (kind, method, name, body, button) =>
+    ctx.shell
+      .busyAction(
+        kind,
+        (headers) =>
+          ctx.shell.api(method, `${base}/${encodeURIComponent(name)}`, body, {
+            headers,
+          }),
+        {
+          button,
+          onFail: (e) =>
+            fail(e, t(kind === "save" ? "busy.saveF" : "pmcp.rmF")),
+        },
+      )
+      .then((r) => {
+        if (r !== undefined && r !== null) return renderProjectMcp(host, ctx);
+      });
+  return ctx.shell
+    .api("GET", base)
+    .then((v) => {
+      host.innerHTML = projectMcpHtml(v, t);
+      host.querySelectorAll("[data-pmcp-edit]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const name = b.getAttribute("data-pmcp-edit");
+          const form = host.querySelector(
+            `[data-pmcp-form="${CSS.escape(name)}"]`,
+          );
+          if (!form) return;
+          form.hidden = !form.hidden;
+          if (!form.hidden) form.querySelector("[data-pmcp-url]")?.focus();
+        }),
+      );
+      host.querySelectorAll("[data-pmcp-form]").forEach((form) => {
+        const name = form.getAttribute("data-pmcp-form");
+        const cur = (Array.isArray(v?.servers) ? v.servers : []).find(
+          (s) => s.name === name,
+        );
+        form
+          .querySelector("[data-pmcp-cancel]")
+          ?.addEventListener("click", () => {
+            form.hidden = true;
+          });
+        const save = form.querySelector("[data-pmcp-save]");
+        save?.addEventListener("click", () => {
+          const url = form.querySelector("[data-pmcp-url]").value.trim();
+          const bearer = form.querySelector("[data-pmcp-bearer]").value.trim();
+          const none = form.querySelector("[data-pmcp-nobearer]").checked;
+          const body = {
+            ...(url && url !== cur?.url ? { url } : {}),
+            ...(none ? { bearer: null } : bearer ? { bearer } : {}),
+          };
+          if (!Object.keys(body).length) {
+            form.hidden = true;
+            return;
+          }
+          return send("save", "POST", name, body, save);
+        });
+      });
+      host.querySelectorAll("[data-pmcp-remove]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const name = b.getAttribute("data-pmcp-remove");
+          const { askConfirm } = await import("/dialog-den.js");
+          const ok = await askConfirm({
+            title: t("pmcp.rmT"),
+            message: t("pmcp.rmAsk", { name, project: ws }),
+            okLabel: t("pmcp.remove"),
+            danger: true,
+          });
+          if (!ok) return;
+          return send("remove-mcp", "DELETE", name, undefined, b);
+        }),
+      );
+    })
+    .catch((e) => {
+      host.innerHTML = `<p class="set-note" data-pmcp-error>${escR(e?.message || t("pmcp.failed"))}</p>`;
+    });
+}
+
 function renderHubProject(host, ctx) {
   const ws = ctx.workspace;
   if (!ws || ctx.shell?.configInvalid?.() === true) {
@@ -3699,6 +4623,12 @@ export function hubUncoveredHtml(list, t) {
   );
 }
 
+/** Issue 271: the picker's Create option, and the longest name Hub takes. */
+export const HUBP_CREATE = "__create";
+const HUBP_NAME_MAX = 80;
+/** Issue 271: how often a waiting create is read again while it shows. */
+const HUBP_POLL_MS = 5000;
+
 /** Where a person picks a Hub project for an unclear one (issue 167). */
 export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
 
@@ -3710,6 +4640,13 @@ export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
  * command) sit behind More. Waiting for a pick (b.pick): a button to
  * Unclear matches. Not linked: a select (Hub's suggestion first, picked)
  * and Link. Not connected to Hub: Connect.
+ *
+ * Issue 271: not linked, the picker's first option is "Create a Hub
+ * project named <b.name>" (picked when Hub suggests nothing), with the
+ * name editable below it. A create asked of Hub and waiting (b.create, no
+ * outcome): "creating", with Hub's Allow in the row for an owner
+ * (b.owner), else who must allow it. Declined or ended: said, and Create
+ * is offered again.
  */
 export function hubProjectHtml(b, t, name) {
   const ws = String(b?.project ?? "");
@@ -3741,14 +4678,29 @@ export function hubProjectHtml(b, t, name) {
           .map((p) => `<option value="${escR(p.id)}">${name(p)}</option>`)
           .join("")}</optgroup>`
       : "");
+  const own = String(b?.name || ws).slice(0, HUBP_NAME_MAX);
+  // Issue 271: unlinked, Create comes first; picked when nothing is suggested.
+  const createOpt = (on) =>
+    `<option value="${HUBP_CREATE}"${on ? " selected" : ""}>${escR(t("hubp.createOpt", { name: own }))}</option>`;
+  const newName = (on) =>
+    `<div class="hubp-new" data-hubp-newrow${on ? "" : " hidden"}>` +
+    `<label for="hubp-new">${escR(t("hubp.newName"))}</label> ` +
+    `<input id="hubp-new" type="text" value="${escR(own)}" maxlength="${HUBP_NAME_MAX}" autocomplete="off"></div>`;
   const picker = (label, btn, primary) =>
-    opts
+    !linked
       ? `<form class="hubp-pick" data-hubp-form>` +
         `<label for="hubp-sel">${escR(label)}</label> ` +
-        `<select id="hubp-sel">${opts}</select> ` +
-        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+        `<select id="hubp-sel">${createOpt(!sugg.length)}${opts}</select> ` +
+        newName(!sugg.length) +
+        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(sugg.length ? btn : t("hubp.create"))}</button>` +
         `</form>`
-      : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
+      : opts
+        ? `<form class="hubp-pick" data-hubp-form>` +
+          `<label for="hubp-sel">${escR(label)}</label> ` +
+          `<select id="hubp-sel">${opts}</select> ` +
+          `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+          `</form>`
+        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
   const tail =
     hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
@@ -3774,6 +4726,38 @@ export function hubProjectHtml(b, t, name) {
       tail
     );
   }
+  const ask = b.create && typeof b.create === "object" ? b.create : null;
+  if (ask && !ask.outcome) {
+    const url =
+      typeof ask.url === "string" && /^https?:\/\//.test(ask.url)
+        ? ask.url
+        : "";
+    const who =
+      b.owner === true
+        ? `<p class="set-note">${escR(t("hubp.youAllow", { project: ws }))}</p>` +
+          (url
+            ? `<a class="btn sm primary" href="${escR(url)}" target="_blank" rel="noopener noreferrer" data-hubp-allow>${escR(t("hubp.allowBtn"))}</a>`
+            : "")
+        : `<p class="set-note">${escR(
+            b.company
+              ? t("hubp.ownerMust", { company: b.company, project: ws })
+              : t("hubp.ownerMustAny", { project: ws }),
+          )}</p>`;
+    return (
+      `<div data-hubp data-hubp-state="creating">` +
+      st("warn", t("hubp.asked", { name: ask.name, project: ws })) +
+      who +
+      tail
+    );
+  }
+  const ended =
+    ask?.outcome === "declined" || ask?.outcome === "superseded"
+      ? `<p class="set-note" data-hubp-ended>${escR(
+          t(ask.outcome === "declined" ? "hubp.declined" : "hubp.ended", {
+            name: ask.name,
+          }),
+        )}</p>`
+      : "";
   if (b.pick)
     return (
       `<div data-hubp data-hubp-state="pick">` +
@@ -3784,6 +4768,7 @@ export function hubProjectHtml(b, t, name) {
   return (
     `<div data-hubp data-hubp-state="unlinked">` +
     st("warn", t("hubp.notLinked", { project: ws })) +
+    ended +
     picker(t("hubp.linkProject", { project: ws }), t("hubp.link"), true) +
     `<p class="set-note">${escR(t("hubp.scope", { project: ws }))}</p>` +
     tail
@@ -3849,11 +4834,71 @@ function wireHubProject(host, ctx, url, t, b) {
         err(e?.message || t("hubp.failed"));
       });
   };
+  const sel = host.querySelector("#hubp-sel");
+  const nameIn = host.querySelector("#hubp-new");
+  const newRow = host.querySelector("[data-hubp-newrow]");
+  const go = host.querySelector('[data-hubp-form] [data-hubp-action="link"]');
+  const createOpt = sel?.querySelector(`option[value="${HUBP_CREATE}"]`);
+  // Issue 271: Create shows the name, and the button says Create.
+  const sync = () => {
+    const on = sel?.value === HUBP_CREATE;
+    if (newRow) newRow.hidden = !on;
+    if (go && createOpt) go.textContent = t(on ? "hubp.create" : "hubp.link");
+  };
+  sel?.addEventListener("change", () => {
+    err("");
+    sync();
+  });
+  nameIn?.addEventListener("input", () => {
+    if (createOpt)
+      createOpt.textContent = t("hubp.createOpt", {
+        name: nameIn.value.replace(/\s+/g, " ").trim() || b?.name || "",
+      });
+  });
   host.querySelector("[data-hubp-form]")?.addEventListener("submit", (ev) => {
     ev.preventDefault();
-    const v = host.querySelector("#hubp-sel")?.value;
+    const v = sel?.value;
+    if (v === HUBP_CREATE) {
+      const nm = String(nameIn?.value ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!nm) return err(t("hubp.nameEmpty"));
+      if (nm.length > HUBP_NAME_MAX) return err(t("hubp.nameLong"));
+      err("");
+      return ctx.shell
+        .busyAction(
+          "create-hub",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              url.replace(/\/hub-project$/, "/hub-create"),
+              { name: nm },
+              { headers },
+            ),
+          {
+            button: go,
+            vars: { name: nm },
+            onFail: (x) => err(x?.message || t("hubp.createF")),
+          },
+        )
+        .then((r) => {
+          if (r !== undefined && r !== null) return renderHubProject(host, ctx);
+        });
+    }
     if (v) put(v);
   });
+  // Issue 271: a create waiting in Hub: read again while it shows, so the
+  // row links on its own once an owner allows it.
+  if (host.querySelector('[data-hubp-state="creating"]')) {
+    clearTimeout(host._hubpPoll);
+    host._hubpPoll = setTimeout(() => {
+      if (
+        host.isConnected &&
+        host.querySelector('[data-hubp-state="creating"]')
+      )
+        renderHubProject(host, ctx);
+    }, HUBP_POLL_MS);
+  }
   host
     .querySelector('[data-hubp-action="unlink"]')
     ?.addEventListener("click", () =>

@@ -40,6 +40,7 @@
 import { hydrateSearch } from "/kit/shell-client.js";
 import { isMac } from "./term-input.js";
 import { formatTime } from "/kit/time.js";
+import { healthReason } from "./value-words.js";
 
 // ── pure parts ──────────────────────────────────────────────────────────────
 
@@ -209,8 +210,10 @@ export function checkLine(i) {
     return i.pending
       ? tr("chk.pending", { what: what ?? tr("chk.check") })
       : tr("chk.unchecked");
-  if (!what) return i.ok ? tr("chk.healthy") : (i.error ?? tr("chk.down"));
-  if (i.error) return `${what} — ${i.error}`;
+  // Issue 171: the check's reason in the page's language.
+  const why = i.error ? (healthReason(i.error, i.ms) ?? i.error) : null;
+  if (!what) return i.ok ? tr("chk.healthy") : (why ?? tr("chk.down"));
+  if (why) return `${what} — ${why}`;
   return i.status != null ? `${what} → ${i.status}` : what;
 }
 

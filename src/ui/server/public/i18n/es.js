@@ -584,6 +584,9 @@
     "keep.s": "Aplicado. __DEN_TITLE__ se reinicia.",
     "keep.needs": "Necesita tu contraseña de administrador.",
     "keep.failed": "No se aplicó. Nada cambió.",
+    "busy.edgeW": "Iniciando el edge…",
+    "busy.edgeS": "Edge iniciado",
+    "busy.edgeF": "El edge no se inició.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -593,7 +596,7 @@
     "keep.offer":
       "Aún sin configurar, así que los agentes se detienen al cerrar sesión. Actívalo y pulsa Aplicar (pide tu contraseña de administrador una vez).",
     "keep.noToken":
-      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. Crea uno con claude setup-token y luego __DEN_CLI__ agents token set.",
+      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión tras cerrar sesión. {runtime} crea uno cuando inicias sesión en él ({docs}); pégalo en {field}, abajo.",
     "keep.credKeychain":
       "La credencial del almacén está en el llavero de inicio, al que el servicio siempre activo puede no llegar; usa file: o env: (ver docs/always-on-gate.md).",
     "keep.setup":
@@ -620,7 +623,24 @@
       "Los agentes inician sesión con el token guardado el {date}.",
     "keep.tokenStore": "Los agentes inician sesión con el token de {store}.",
     "keep.tokenOld":
-      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año: crea uno nuevo con claude setup-token y luego __DEN_CLI__ agents token set.",
+      "El token de inicio de sesión se guardó hace {n} días y dura alrededor de un año. {runtime} crea uno nuevo cuando inicias sesión en él ({docs}); pégalo en {field}, abajo.",
+    "keep.docs": "su documentación de inicio de sesión",
+    "keep.runtimeAny": "La CLI de tus agentes",
+    "acct.title": "Cuentas de {vendor}",
+    "acct.default": "Cuenta de {vendor} {letter}",
+    "acct.add": "Añadir cuenta de {vendor}",
+    "acct.none": "Sin token.",
+    "acct.set": "Token guardado el {date}.",
+    "acct.setUnknown": "Token guardado.",
+    "acct.first": "Los agentes inician sesión con esta.",
+    "acct.tokenLabel": "Token de inicio de sesión de {name}",
+    "acct.tokenSave": "Guardar token de inicio de sesión",
+    "acct.up": "Subir",
+    "acct.down": "Bajar",
+    "acct.failed": "No se guardó: {error}",
+    "busy.askAllowW": "Preguntando…",
+    "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
+    "busy.askAllowF": "No se pudo preguntar.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -853,6 +873,12 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "Comprobación de que está listo, en segundos",
+    "set.server.ready_probe.d":
+      "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "Espera al arrancar, en segundos",
+    "set.server.start_wait.d":
+      "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
       "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
@@ -907,6 +933,38 @@
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
     "addr.empty": "Escribe primero una dirección.",
+    "set.workspace.approvals_policy": "Escrituras de los agentes aquí",
+    "set.workspace.approvals_policy.d":
+      "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
+    "set.workspace.approvals_policy.o.install": "Como en todas partes",
+    "set.workspace.approvals_policy.o.auto": "Ejecutar sin aviso",
+    "set.workspace.approvals_policy.o.notify": "Ejecutar y avisarme",
+    "set.workspace.approvals_policy.o.ask": "Preguntarme",
+    "set.workspace.approvals_watch": "Vigilado aquí",
+    "set.workspace.approvals_watch.d":
+      "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
+    "set.workspace.approvals_critical": "Crítico aquí",
+    "set.workspace.approvals_critical.d":
+      "Tipos de escritura de agentes que siempre te preguntan en este proyecto. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.agents.approvals_policy": "Escrituras de agentes",
+    "set.agents.approvals_policy.d":
+      "Lo que un agente puede hacer sin tu Permitir. Ejecutar y avisarme: se ejecuta y tus novedades lo dicen. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta, igual que una sobre algo que vigilas o fijaste.",
+    "set.agents.approvals_policy.o.auto": "Ejecutar sin aviso",
+    "set.agents.approvals_policy.o.notify": "Ejecutar y avisarme",
+    "set.agents.approvals_policy.o.ask": "Preguntarme",
+    "set.agents.approvals_watch": "Vigilado",
+    "set.agents.approvals_watch.d":
+      "Una escritura de un agente sobre cualquiera de estos te pregunta primero, sea del tipo que sea; también una sobre un repo o servicio que fijaste. Separados por comas: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, o un nombre solo.",
+    "set.agents.approvals_critical": "Crítico",
+    "set.agents.approvals_critical.d":
+      "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "ap.do.agent_import":
+      'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
+    "ap.do.approval_policy":
+      "Cambiar la política de aprobación de todos los proyectos a {to}",
+    "ap.do.approval_policy.project":
+      "Cambiar la política de aprobación del proyecto {where} a {to}",
+    "ap.do.pr_close": "Cerrar la pull request {pr} de {repo}: {comment}",
     "set.agents.default_mode":
       "Modo de los agentes: valor por defecto de todo Den",
     "set.agents.default_mode.d":
@@ -973,6 +1031,29 @@
     "hubp.linkProject": "Vincular {project} a un proyecto de Hub",
     "hubp.scope":
       "Vincular solo afecta al proyecto {project}. Tus otros proyectos no cambian.",
+    // Issue 271: Crear un proyecto de Hub desde el selector.
+    "hubp.createOpt": "Crear un proyecto de Hub llamado {name}",
+    "hubp.newName": "Nombre en Hub",
+    "hubp.create": "Crear",
+    "hubp.nameEmpty": "Escribe un nombre para el proyecto de Hub.",
+    "hubp.nameLong":
+      "El nombre de un proyecto de Hub tiene hasta 80 caracteres.",
+    "hubp.asked":
+      "Den pidió a Hub crear el proyecto de Hub {name} para {project}.",
+    "hubp.youAllow":
+      "Eres propietario en Hub. Permítelo allí y Den vincula {project} con él.",
+    "hubp.allowBtn": "Permitir en Hub",
+    "hubp.ownerMust":
+      "Un propietario de {company} en Hub debe permitirlo. Den vincula {project} por sí solo cuando lo haga.",
+    "hubp.ownerMustAny":
+      "Un propietario de tu empresa en Hub debe permitirlo. Den vincula {project} por sí solo cuando lo haga.",
+    "hubp.declined":
+      "Un propietario en Hub rechazó el proyecto de Hub {name}. Elige un proyecto de Hub o vuelve a pedirlo.",
+    "hubp.ended":
+      "La petición a Hub de {name} terminó sin cambios. Vuelve a pedirlo.",
+    "hubp.createW": "Pidiendo a Hub que cree {name}…",
+    "hubp.createS": "Pedido. Un propietario lo permite en Hub.",
+    "hubp.createF": "Hub no aceptó la petición. No se creó nada.",
     "hub.legacy":
       "Esta instalación usa un token antiguo de Hub, guardado donde Den no puede reemplazarlo. Vuelve a conectar para pasar a uno nuevo.",
     "hub.reconnect": "Volver a conectar",
@@ -1025,6 +1106,9 @@
     "set.access.devices": "Dispositivos vinculados",
     "set.access.waiting": "Dispositivos en espera",
     "set.embed.url_max": "Contexto de enlace más largo",
+    "set.embed.app_keys": "Claves de aplicación",
+    "set.embed.app_key_audit":
+      "Lecturas de clave de aplicación en una línea de actividad",
     "set.embed.origins": "Aplicaciones web que pueden incrustar agentes",
     "set.embed.key_minutes": "Duración del permiso del panel incrustado",
     "set.embed.context_max_kb": "Página compartida más grande",
@@ -1369,12 +1453,32 @@
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_folder": "Mover el agente {agent} a {where}",
+    "ap.do.embed_key_create":
+      "Permitir que {origin} envíe mensajes a {agent} en {project} y lea su estado",
+    "ap.do.embed_key_revoke":
+      "Revocar la clave de {origin} para {agent} en {project}",
+    "ap.det.embed_key_create.reach":
+      "Crea una clave para el backend propio de {origin}. Solo llega a {agent} en {project}: su estado y los mensajes que se escriben cuando termina su turno.",
+    "ap.det.embed_key_create.once":
+      "La clave se muestra una vez, aquí, después de que lo permitas. Den guarda solo su hash.",
+    "ap.det.embed_key_create.revoke":
+      "Puedes revocarla cuando quieras en Ajustes › Incrustación.",
+    "ap.det.embed_key_revoke.reach":
+      "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
+    "ap.det.embed_key_revoke.held":
+      "Los mensajes que envió y que esperan el turno del agente se escriben igualmente.",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
     "ap.pm.warn":
       "Esto permite que los agentes de {project} actúen sin preguntarte.",
     "ap.pm.project": "Proyecto: {project}",
+    "ap.do.hub_project_create":
+      "Pedir a Hub que cree el proyecto de Hub {name} para el proyecto {project}",
+    "ap.hc.project": "Proyecto: {project}",
+    "ap.hc.name": "Nombre en Hub: {name}",
+    "ap.hc.owner":
+      "Un propietario en Hub lo permite allí; Den vincula el proyecto en cuanto lo haga.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":
@@ -1474,6 +1578,47 @@
       "Modo de los agentes: este proyecto (reemplaza el valor por defecto de todo Den)",
     "set.workspace.agents_mode.d":
       "El modo en que funcionan los agentes de este proyecto, por encima del valor por defecto de todo Den. Cuál gana: el propio ajuste de un agente, luego el proyecto, luego el valor por defecto de todo Den, luego su persona. Cada agente dice abajo su modo y de dónde viene. Un cambio llega a los agentes en marcha después de su turno, solo.",
+    "set.workspace.mcp_servers":
+      "MCP adicionales de los agentes: este proyecto",
+    "set.workspace.mcp_servers.d":
+      "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Cambia o quita uno aquí. Un agente lo pide con project_mcp_add, project_mcp_update o project_mcp_remove, y tú lo permites.",
+    "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
+    "pmcp.row": "{name}: {url}",
+    "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
+    "pmcp.edit": "Cambiar",
+    "pmcp.editL": "Cambiar {name}",
+    "pmcp.remove": "Quitar",
+    "pmcp.removeL": "Quitar {name}",
+    "pmcp.url": "Dirección",
+    "pmcp.bearer": "Bearer",
+    "pmcp.bearerKeep": "un nombre de secrets.refs; en blanco lo mantiene",
+    "pmcp.noBearer": "Sin bearer",
+    "pmcp.save": "Guardar",
+    "pmcp.cancel": "Cancelar",
+    "pmcp.rmT": "¿Quitar el MCP?",
+    "pmcp.rmAsk":
+      "¿Quitar {name} de los agentes del proyecto {project}? Pierden sus herramientas en su próximo inicio o reanudación.",
+    "pmcp.rmW": "Quitando el MCP…",
+    "pmcp.rmS": "Quitado.",
+    "pmcp.rmF": "No se pudo quitar el MCP.",
+    "ap.do.project_mcp_add":
+      "Añadir el MCP {name} ({url}) a los agentes del proyecto {project}",
+    "ap.mcp.warn":
+      "Esto da a los agentes de {project} herramientas nuevas y envía sus llamadas a {url}.",
+    "ap.mcp.server": "MCP: {name} en {url}",
+    "ap.mcp.bearer":
+      "Bearer: se lee de secrets.refs.{ref} en cada llamada; nunca se escribe en los archivos ni en el entorno del agente.",
+    "ap.mcp.noBearer":
+      "Sin bearer: sus llamadas no llevan cabecera Authorization.",
+    "ap.mcp.next":
+      "Los agentes de {project} lo reciben en su próximo inicio o reanudación.",
+    "ap.do.project_mcp_remove":
+      "Quitar el MCP {name} ({url}) de los agentes del proyecto {project}",
+    "ap.do.project_mcp_update":
+      "Cambiar el MCP {name} de los agentes del proyecto {project} (ahora {url})",
+    "ap.mcp.removeWarn":
+      "Los agentes de {project} pierden las herramientas de {name} en su próximo inicio o reanudación.",
+    "ap.mcp.urlChange": "MCP {name}: de {from} a {to}",
     "pmode.none": "Usar el de todo Den",
     "pmode.following": "Sigue el de todo Den: {m}",
     "pmode.setHere": "Fijado para este proyecto: {m} (el de todo Den es {dw})",
@@ -1637,6 +1782,7 @@
     "bell.m.permissionWhat": "{name} necesita tu permiso: {what}",
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
+    "bell.m.toLead": "{name} preguntó al líder, {lead}: {text}",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",
@@ -1888,6 +2034,9 @@
       "Sus subagentes (Explore también) usan {model}: agents.subagents.model.",
     "ag.subagents.from.default":
       "Sus subagentes (Explore también) usan {model}: el valor por defecto de Den. Lo cambian agents.subagents.model o subagent_model de una persona.",
+    "ag.signIn": "con {label}",
+    "ag.signIn.tip":
+      "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
@@ -2295,6 +2444,22 @@
     "set.ui.devicesSignedIn":
       "Los dispositivos solo se listan con la sesión iniciada.",
     "set.ui.asked": "lo pidió {ago}",
+    "set.ui.appKeyAllow": "Permítelo en el cuadro de diálogo.",
+    "set.ui.appKeyAgent": "Agente",
+    "set.ui.appKeyOrigin": "Aplicación web",
+    "set.ui.appKeyLabel": "Nombre (opcional)",
+    "set.ui.appKeyMake": "Crear clave",
+    "set.ui.appKeyNoOrigin":
+      "Primero añade la aplicación web a la lista de arriba.",
+    "set.ui.appKeyNone": "Aún no hay claves de aplicación.",
+    "set.ui.appKeyUsed": "último uso {when}",
+    "set.ui.appKeyUnused": "nunca usada",
+    "set.ui.appKeyRevoked": "revocada {when}",
+    "set.ui.appKeyRevoke": "Revocar",
+    "set.ui.appKeyOnce":
+      "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
+    "set.ui.appKeyNew": "Nueva clave de aplicación",
+    "set.ui.copy": "Copiar",
     "set.ui.saveOrigins": "Guardar lista",
     "set.ui.approve": "Aprobar",
     "set.ui.deny": "Denegar",
@@ -2303,7 +2468,14 @@
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
-      "Ningún nombre de host de edge apunta a este servidor, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y luego {cmd}.", // words-ok: the en string's own word, translated
+      "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
+    "set.ui.edgeStart": "Iniciar el edge",
+    "set.ui.edgeApply": "Aplicar",
+    "set.ui.edgeStarted": "Edge iniciado",
+    "set.ui.edgeCurrent": "Edge al día, no se reinició nada",
+    "set.ui.edgeRecreated":
+      "Edge recreado porque {why}; no se pudo alcanzar durante unos {s} s",
+    "set.ui.edgeWhy": "cambió su configuración",
     "set.ui.edgeHost": "Nombre de host de edge",
     "set.ui.pairScan":
       "Escanéalo con el otro dispositivo o abre allí el enlace. Funciona una vez, hasta que caduca (abajo), y deja ese navegador con la sesión iniciada para siempre.",
@@ -2321,7 +2493,8 @@
     "set.ui.portUnset": "Sin definir: se aplica el de la distribución",
     "set.ui.signedIn": "Sesión iniciada",
     "set.ui.signOut": "Cerrar sesión",
-    "set.ui.notSignedIn": "Sin sesión iniciada: ejecuta {cmd}",
+    "set.ui.notSignedIn": "Sin sesión iniciada",
+    "set.ui.signIn": "Iniciar sesión",
     "set.ui.savedIn": "Guardado en {vault}",
     "set.ui.theVault": "la bóveda",
     "set.ui.savedMemory": "Se guarda en memoria hasta que Den se reinicie",
@@ -2606,6 +2779,34 @@
     "set.notifications.fold_days.o.7": "7 días",
     "set.notifications.fold_days.o.14": "14 días",
     "set.notifications.fold_days.o.30": "30 días",
+    "set.notifications.phone": "Avisos en este dispositivo por push",
+    "set.notifications.phone.d":
+      "Abre __DEN_TITLE__ en tu teléfono y activa esto allí: cuando un agente te necesite, el teléfono lo mostrará, aunque __DEN_TITLE__ esté cerrado. Aquí funciona con todas las pestañas cerradas. Cada dispositivo lo activa para sí.",
+    "set.notifications.phone.none":
+      "Este navegador no puede recibir push. En un iPhone, añade __DEN_TITLE__ a la pantalla de inicio (Compartir y luego Añadir a pantalla de inicio) y ábrelo desde allí.",
+    "set.notifications.phone.failed": "No se pudo activar el push aquí.",
+    "set.notifications.quiet_from": "Inicio de las horas de silencio",
+    "set.notifications.quiet_from.d":
+      "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",
+    "set.notifications.quiet_to": "Fin de las horas de silencio",
+    "set.notifications.quiet_to.d":
+      "Los avisos fuera de la campana vuelven a esta hora.",
+    "set.notifications.quiet.off": "No",
+    "set.notifications.quiet.half":
+      "Las horas de silencio necesitan un inicio y un fin.",
+    "set.notifications.push_timeout": "Espera del push",
+    "set.notifications.push_timeout.d":
+      "Cuánto espera __DEN_TITLE__ a que un servicio de push acepte un aviso para un dispositivo. Pasado este tiempo, ese aviso se deja; el siguiente lo intenta de nuevo. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push guardado durante",
+    "set.notifications.push_ttl.d":
+      "Cuánto guarda un servicio de push un aviso para un dispositivo apagado o sin conexión, en segundos. 86400 es un día; 0 lo descarta si el dispositivo no está encendido ahora. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "Avisos en el escritorio",
+    "set.notifications.desktop.d":
+      "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
+    "set.notifications.desktop.denied":
+      "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
+    "set.notifications.desktop.none":
+      "Este navegador no puede mostrar notificaciones.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",
@@ -2620,7 +2821,7 @@
     "set.cli.local_dev.d":
       "Desactivado oculta Proyectos y las API de proyectos para ti. __DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: créalo una vez con claude setup-token y luego __DEN_CLI__ agents token set. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
+      "Activado (por defecto en una instalación nueva): __DEN_TITLE__ funciona como LaunchDaemon, así que los agentes siguen al cerrar sesión. Allí inician sesión con un token de larga duración de tu almacén de secretos, no con el llavero de inicio: la CLI de tus agentes lo crea cuando inicias sesión en ella, y tú lo pegas en Token de inicio de sesión, abajo. Desactivado: los agentes se detienen al cerrar sesión. __DEN_CLI__ config agents.keep_running_after_logout=true, luego __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "Si up y restart abren pestañas de terminal de forma predeterminada. __DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
@@ -2641,6 +2842,10 @@
       "Ordenadores cuya página sin iniciar sesión muestra un código. Aprueba uno y su página inicia sesión sola; el código dura 10 minutos. __DEN_CLI__ web approve <code> hace lo mismo desde la línea de comandos.",
     "set.embed.url_max.d":
       "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
+    "set.embed.app_keys.d":
+      "Una clave para el backend propio de una aplicación web en esta computadora: puede pasar los mensajes de su persona a un agente, que se escriben cuando termina su turno, y leer el estado de ese agente. Nada más. Permites cada clave, se muestra una vez y puedes revocarla aquí.",
+    "set.embed.app_key_audit.d":
+      "Las lecturas de estado de una clave de aplicación se anotan en el registro de actividad como una línea cada tantos segundos, con cuántas hubo, para que una aplicación web que consulta a menudo no lo llene.",
     "set.embed.origins.d":
       "La dirección de cada aplicación web, exacta, una por línea: https://app.example.com. Solo estas pueden mostrar un panel de agente dentro de sus páginas, y solo después de que lo permitas. Ningún otro sitio puede mostrar una página de este Den dentro de la suya.",
     "set.embed.key_minutes.d":
@@ -2735,6 +2940,68 @@
       "Ninguno: los certificados están en la configuración incluida.",
     "edge.notConfigured": "Sin configurar",
     "edge.unreachable": "inaccesible",
+    // issue 171: values the pages show (value-words.js, log-history.ts).
+    "val.docker.created": "creado",
+    "val.docker.running": "en marcha",
+    "val.docker.paused": "en pausa",
+    "val.docker.restarting": "reiniciándose",
+    "val.docker.removing": "eliminándose",
+    "val.docker.exited": "detenido",
+    "val.docker.dead": "inservible (no se puede reiniciar)",
+    "val.docker.absent": "no existe",
+    "val.tls.none": "ninguno",
+    "val.tls.files": "archivos",
+    "val.gh.success": "correcto",
+    "val.gh.failure": "fallido",
+    "val.gh.error": "error",
+    "val.gh.cancelled": "cancelado",
+    "val.gh.timed_out": "tiempo agotado",
+    "val.gh.inactive": "inactivo",
+    "val.gh.in_progress": "en curso",
+    "val.gh.queued": "en cola",
+    "val.gh.pending": "pendiente",
+    "val.gh.waiting": "en espera",
+    "val.gh.requested": "solicitado",
+    "val.gh.skipped": "omitido",
+    "val.gh.action_required": "requiere acción",
+    "val.gh.neutral": "neutral",
+    "val.gh.stale": "obsoleto",
+    "val.gh.startup_failure": "no pudo iniciarse",
+    "val.perf.httpReqs": "Peticiones HTTP",
+    "val.perf.iterations": "Iteraciones",
+    "val.perf.vus": "Clientes virtuales (VU)",
+    "val.perf.httpAvg": "HTTP media",
+    "val.perf.httpP50": "HTTP p50",
+    "val.perf.httpP95": "HTTP p95",
+    "val.perf.httpP99": "HTTP p99",
+    "val.perf.httpMax": "HTTP máx.",
+    "val.perf.reqRate": "Peticiones / s",
+    "val.perf.iterRate": "Iteraciones / s",
+    "val.perf.failRate": "Tasa de fallos",
+    "val.h.twice": "{why}, dos veces seguidas",
+    "val.h.timeout": "tiempo agotado",
+    "val.h.noAnswer": "sin respuesta en {s} s",
+    "val.h.dns": "nombre no encontrado (DNS)",
+    "val.h.noRoute": "sin ruta (404)",
+    "val.h.fallback": "no es este servicio (localhost respondió con un error)",
+    "val.h.killed": "detenido por {signal}",
+    "val.h.exit": "la comprobación falló (código de salida {code})",
+    "val.h.refused": "conexión rechazada",
+    "val.h.reset": "conexión cortada",
+    "val.h.unreachable": "sin respuesta",
+    "val.h.tls": "certificado no aceptado",
+    "val.h.dockerUnknown": "Docker no respondió",
+    "val.h.noContainer": "no hay contenedor {name}",
+    "val.h.unhealthy": "{name}: no pasa su comprobación de estado",
+    "val.h.starting": "{name}: iniciándose",
+    "val.h.healthy": "{name}: en buen estado",
+    "val.h.container": "{name}: {state}",
+    "lg.why.badName": "no es un nombre válido de repo o servicio",
+    "lg.why.notLocal": "por ahora solo en local, no en {env}",
+    "lg.why.noProject": "no se sabe en qué proyecto está {name}",
+    "lg.why.noSource":
+      "{name} no tiene un contenedor en marcha ni un archivo de registro",
+    "lg.why.noSnapshot": "no se pudo copiar el registro del contenedor",
     // issue 171: the Environments page.
     "env.recheck": "Volver a comprobar",
     "env.checking": "comprobando…",

@@ -626,8 +626,10 @@ function card(s, x, y, w, h) {
   const el = document.createElement("div");
   el.className = `dg-card ${st.density === "compact" ? "compact" : ""} ${s.runs === "remote" ? "remote" : ""} ${s.health.ok === false ? "down" : ""}`;
   el.dataset.id = s.id;
+  // A group, not a button (issue 297): the card holds its own buttons, and
+  // a button can't hold another. Enter or Space on it still opens details.
   el.tabIndex = 0;
-  el.setAttribute("role", "button");
+  el.setAttribute("role", "group");
   el.setAttribute(
     "aria-label",
     gT(
@@ -657,8 +659,9 @@ function repoCard(r, x, y, w, h) {
   const roll = repoRollup(M, r);
   el.className = `dg-card ${st.density === "compact" ? "compact" : ""} ${repoPlacement(M, r) === "remote" ? "remote" : ""} ${roll.state === "down" ? "down" : roll.state === "degraded" ? "degraded" : ""}`;
   el.dataset.repo = r;
+  // A group, like a service's card: it holds the Expand button.
   el.tabIndex = 0;
-  el.setAttribute("role", "button");
+  el.setAttribute("role", "group");
   el.setAttribute(
     "aria-label",
     gT(

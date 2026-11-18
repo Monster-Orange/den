@@ -105,6 +105,9 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
     },
     approvals: "terminal",
     scrubEnv: [],
+    // Issue 338: its sign-in data's variable, set from the install's
+    // secrets store under the always-on service, for its agents only.
+    ...(e.signIn ? { signInTokenEnv: e.signIn.env } : {}),
   };
 }
 

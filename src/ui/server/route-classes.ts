@@ -95,6 +95,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/favicon.ico",
+    // Issue 172: the app manifest (a phone's home screen, for push).
+    "/manifest.webmanifest",
     "/theme.css",
     "/theme/*",
     "/theme-favicon",
@@ -397,6 +399,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/pair",
     "mints a one-time sign-in link for another device (Pair a device)",
   ),
+  S(
+    ["POST"],
+    "/api/edge/up",
+    "issue 395: Settings' Start the edge runs `edge up` (docker); a person's only, never an agent's token",
+  ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
@@ -440,6 +447,18 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST", "DELETE"],
     "/api/agents/signin-token",
     "saves (or removes) the agents' sign-in token in the install's secrets store",
+  ),
+  // Issue 339: the agents' sign-in accounts (a person's only).
+  M(["POST"], "/api/agents/accounts", "adds a {vendor} account for agents"),
+  M(
+    ["POST"],
+    "/api/agents/accounts/token",
+    "saves a {vendor} account's token in the install's secrets store",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/accounts/order",
+    "changes the order agents use {vendor} accounts in",
   ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
@@ -509,6 +528,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "issue 199 an agent's own mode, or null to follow its project's; a person's only (an agent asks with agent_mode)",
   ),
   R(
+    "/api/workspaces/:ws/mcp-servers",
+    "issue 335: a project's extra MCP servers, names and urls only (an agent adds one with project_mcp_add)",
+  ),
+  M(
+    ["POST", "DELETE"],
+    "/api/workspaces/:ws/mcp-servers/:name",
+    "issue 352: a person changes one's url or bearer reference, or removes it; a person's only (an agent asks with project_mcp_update or project_mcp_remove)",
+  ),
+  R(
     "/api/workspaces/:ws/agent-modes",
     "issue 225: a project's mode and each agent's actual mode with where it comes from",
   ),
@@ -521,6 +549,14 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/embed/keys",
     "issue 103: a short-lived key for an embedded pane, for a listed origin; a person's only",
+  ),
+  R(
+    "/api/embed/app-keys",
+    "issue 334: the app keys a person made (agent, origin, name, last used); never a key; a person's only",
+  ),
+  R(
+    "/api/embed/p/:project/agents/:id/state",
+    "issue 334: one agent's state for a web app, its app key the proof (X-Den-Embed-Key)",
   ),
   S(
     ["POST"],
@@ -580,6 +616,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/hub-rename",
     "issue 167: ask Hub to rename a linked project's Hub project, as a held change a person decides in Hub; a person's only",
   ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/hub-create",
+    "issue 271: ask Hub for a new project to link a project to, as a held change an owner decides in Hub; linked once allowed; a person's only (an agent asks with hub_project_create)",
+  ),
   R(
     "/api/hub",
     "HUB-1.5: Den Hub: its URL, connected or not, the team and the install's label (never the token)",
@@ -617,6 +658,24 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/notifications/looking",
     "NT-2: a page shows these agents now, so they don't notify",
+  ),
+  R(
+    "/api/alerts",
+    "Issue 172: the person's new alerts (an agent needs them) for an open tab to show; never an agent's",
+  ),
+  R(
+    "/api/alerts/push-key",
+    "Issue 172: this install's push public key (VAPID), for a device to subscribe; never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/subscribe",
+    "Issue 172: a person adds this device to get alerts by push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/unsubscribe",
+    "Issue 172: a person stops push alerts to a device",
   ),
   R(
     "/api/hub/link-suggestions",
@@ -802,6 +861,19 @@ export const SIGNIN_FREE: readonly string[] = [
   // and its Send carries its own key (embed-keys.ts).
   "/embed/p/:project/agents/:id",
   "/api/embed/say",
+  // Issue 334: a web app's server reads its agent's state with its key.
+  "/api/embed/p/:project/agents/:id/state",
+];
+
+/**
+ * Issue 334: the only routes an embed key (X-Den-Embed-Key: a pane's or a
+ * server's) reaches. A request carrying one anywhere else is refused
+ * (request-guard.ts), whatever else it carries: the key never rides along
+ * to a route loopback would let through.
+ */
+export const EMBED_KEY_ROUTES: readonly string[] = [
+  "/api/embed/say",
+  "/api/embed/p/:project/agents/:id/state",
 ];
 
 /**
@@ -855,6 +927,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
   "agent-link-routes.ts:LINK_PATH": ["/p/:project/agents/:id"],
   "embed-routes.ts:EMBED_PATH": ["/embed/p/:project/agents/:id"],
+  "embed-routes.ts:STATE_PATH": ["/api/embed/p/:project/agents/:id/state"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
   "agent-routes.ts:AGENTS_PATH": [
@@ -886,10 +959,13 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:PLAIN_PATH": ["/api/workspaces/:ws/sessions"],
   "agent-routes.ts:DETAILS_PATH": ["/api/workspaces/:ws/agents/:id/details"],
   "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
+  "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
+  "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],
   "hub-rename-routes.ts:HUB_RENAME_ROUTE": ["/api/workspaces/:ws/hub-rename"],
+  "hub-create-routes.ts:HUB_CREATE_ROUTE": ["/api/workspaces/:ws/hub-create"],
   "agent-routes.ts:HELPERS_PATH": [
     "/api/workspaces/:ws/agents/:id/helpers",
     "/api/workspaces/:ws/agents/:id/helpers/:helper",

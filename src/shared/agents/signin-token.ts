@@ -27,6 +27,7 @@
  * gets it too: the agent runs in the daemon's host either way.
  */
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 import * as path from "path";
 import {
   getSecretsProvider,
@@ -47,9 +48,25 @@ import {
   type UserConfig,
 } from "../den-config.js";
 import { envKey, product } from "../product.js";
+import { builtinEntry, type CatalogEntry } from "./catalog.js";
 
-/** The named ref under `secrets.refs`. */
+/** Claude Code's sign-in data (catalog.ts, issue 338). */
+const CLAUDE_SIGN_IN = builtinEntry("den-claude")!.signIn!;
+
+/** The named ref under `secrets.refs` (Claude Code's token). */
 export const AGENT_TOKEN_REF_NAME = "agent_signin_token";
+
+/**
+ * Issue 338: the named ref a runtime's token is kept under. Claude Code's
+ * keeps its name; any other runtime with sign-in data has its own
+ * (`agent_signin_token_<id>`, "-" as "_"), so one vendor's token never
+ * reaches another's agents.
+ */
+export function agentTokenRefName(runtimeId: string): string {
+  return runtimeId === "den-claude"
+    ? AGENT_TOKEN_REF_NAME
+    : `${AGENT_TOKEN_REF_NAME}_${runtimeId.replace(/-/g, "_")}`;
+}
 
 /** Set in the always-on jobs' env (install.sh): agents sign in with the token. */
 export const SIGNIN_ENV = "DEN_AGENT_SIGNIN";
@@ -66,11 +83,22 @@ export const TOKEN_META_FILE = "agent-signin-token.json";
  */
 export const TOKEN_CLEARED_FILE = "agent-signin-token-cleared.json";
 
-/** agents.signin_token_warn_days: how old a token is before doctor warns. */
-export const DEFAULT_TOKEN_WARN_DAYS = 330;
+/**
+ * agents.signin_token_warn_days: how old a token is before doctor warns.
+ * Five weeks before Claude Code's token ends (its catalog lastsDays).
+ */
+export const DEFAULT_TOKEN_WARN_DAYS = (CLAUDE_SIGN_IN.lastsDays ?? 365) - 35;
 
-/** How the person makes the token (den-claude's CLI). */
-export const TOKEN_MAKE_HINT = "claude setup-token";
+/** How the person makes the token (den-claude's catalog sign-in data). */
+export const TOKEN_MAKE_HINT = CLAUDE_SIGN_IN.command ?? "claude setup-token";
+
+/**
+ * Issue 399: where the token comes from, for Settings: the runtime's name
+ * and the vendor's own page on its sign-in (catalog signIn.docs), linked
+ * instead of a command to run.
+ */
+export const TOKEN_RUNTIME = builtinEntry("den-claude")!.name;
+export const TOKEN_DOCS = CLAUDE_SIGN_IN.docs;
 
 export type SignInMode = "token" | "desktop";
 
@@ -103,6 +131,8 @@ export function agentSignInMode(
 export function agentTokenRef(
   cfg: () => SecretsConfig = readSecretsConfig,
   team: () => SecretsConfig["refs"] = () => readDenConfig().secrets?.refs,
+  /** Issue 338: the runtime's ref name (agentTokenRefName). */
+  name: string = AGENT_TOKEN_REF_NAME,
 ): SecretRef | null {
   try {
     const c = cfg();
@@ -112,13 +142,13 @@ export function agentTokenRef(
     } catch {
       t = undefined;
     }
-    const fromTeam = t?.[AGENT_TOKEN_REF_NAME]
-      ? namedSecretRef(AGENT_TOKEN_REF_NAME, {
+    const fromTeam = t?.[name]
+      ? namedSecretRef(name, {
           ...c,
-          refs: { [AGENT_TOKEN_REF_NAME]: t[AGENT_TOKEN_REF_NAME] },
+          refs: { [name]: t[name] },
         })
       : null;
-    return fromTeam ?? namedSecretRef(AGENT_TOKEN_REF_NAME, c);
+    return fromTeam ?? namedSecretRef(name, c);
   } catch {
     return null;
   }
@@ -185,7 +215,7 @@ export function readTokenMeta(stateDir: string): TokenMeta | null {
 
 function writeTokenMeta(stateDir: string, meta: TokenMeta): void {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(
+  writeFileAtomic(
     path.join(stateDir, TOKEN_META_FILE),
     JSON.stringify(meta) + "\n",
     { mode: 0o600 },
@@ -219,6 +249,18 @@ export interface TokenStoreDeps {
    * else (the CLI) it is refused.
    */
   inDen?: boolean;
+  /**
+   * Issue 339: the named ref (default: agent_signin_token). Each account's
+   * token is its own ref, and so its own item (signin-accounts.ts).
+   */
+  refName?: string;
+  /** Issue 339: where a new item goes (default: newAgentTokenRef). */
+  fresh?: (backend: SecretsProviderName) => Partial<SecretRef> | null;
+  /**
+   * Issue 339: keep when it was set (default: the meta file, and the
+   * cleared mark removed). Never the token.
+   */
+  recordSet?: (meta: TokenMeta) => void;
 }
 
 /** `agents token set` (or any save outside Den's process) with env. */
@@ -274,23 +316,22 @@ export async function saveAgentToken(
   const st = (d.status ?? (() => secretsStatus()))();
   if (st.backend === "none") throw new NoSecretsStoreError();
   const provider = (d.provider ?? getSecretsProvider)();
-  let ref = (d.ref ?? (() => agentTokenRef()))();
+  const name = d.refName ?? AGENT_TOKEN_REF_NAME;
+  let ref = (d.ref ?? (() => agentTokenRef(undefined, undefined, name)))();
   let created: Partial<SecretRef> | null = null;
   if (!ref) {
     const fresh =
-      !st.implicit && st.detect.available ? newAgentTokenRef(st.backend) : null;
+      !st.implicit && st.detect.available
+        ? (d.fresh ?? newAgentTokenRef)(st.backend)
+        : null;
     ref = fresh
-      ? namedSecretRef(
-          AGENT_TOKEN_REF_NAME,
-          { refs: { [AGENT_TOKEN_REF_NAME]: fresh } },
-          st.backend,
-        )
+      ? namedSecretRef(name, { refs: { [name]: fresh } }, st.backend)
       : null;
     if (!fresh || !ref)
       throw new SecretsNotConfiguredError(
         st.backend === "env"
-          ? `the env secrets backend keeps nothing a daemon can read: choose 1password or doppler (secrets.provider), or set secrets.refs.${AGENT_TOKEN_REF_NAME} in ${product().configFile}`
-          : notConfiguredMessage(AGENT_TOKEN_REF_NAME),
+          ? `the env secrets backend keeps nothing a daemon can read: choose 1password or doppler (secrets.provider), or set secrets.refs.${name} in ${product().configFile}`
+          : notConfiguredMessage(name),
       );
     created = fresh;
   }
@@ -313,17 +354,21 @@ export async function saveAgentToken(
           ...user,
           secrets: {
             ...secrets,
-            refs: { ...secrets.refs, [AGENT_TOKEN_REF_NAME]: r },
+            refs: { ...secrets.refs, [name]: r },
           },
         });
       });
     save(created);
   }
-  writeTokenMeta(d.stateDir, {
+  const meta = {
     setAt: (d.now ?? (() => new Date()))().toISOString(),
     store: st.label,
-  });
-  fs.rmSync(path.join(d.stateDir, TOKEN_CLEARED_FILE), { force: true });
+  };
+  if (d.recordSet) d.recordSet(meta);
+  else {
+    writeTokenMeta(d.stateDir, meta);
+    fs.rmSync(path.join(d.stateDir, TOKEN_CLEARED_FILE), { force: true });
+  }
   return { ref: created ? "created" : "configured", store: st.label };
 }
 
@@ -337,6 +382,19 @@ export interface TokenClearDeps extends Omit<
   userRef?: () => Partial<SecretRef> | undefined;
   /** Remove it from user.yml (default: writeUserConfig). */
   dropRef?: () => void;
+  /** Issue 339: the named ref (default: agent_signin_token). */
+  refName?: string;
+  /** Issue 339: the item a set would have made (default: newAgentTokenRef). */
+  fresh?: (backend: SecretsProviderName) => Partial<SecretRef> | null;
+  /**
+   * Issue 339: Den's record of the set (default: the meta file, and the
+   * cleared mark when the ref stays).
+   */
+  record?: {
+    has: () => boolean;
+    forget: () => void;
+    markCleared: () => void;
+  };
 }
 
 export type TokenClearResult =
@@ -364,16 +422,21 @@ export async function clearAgentToken(
 ): Promise<TokenClearResult> {
   const st = (d.status ?? (() => secretsStatus()))();
   if (st.backend === "none") throw new NoSecretsStoreError();
-  const ref = (d.ref ?? (() => agentTokenRef()))();
-  const forget = () => {
-    fs.rmSync(path.join(d.stateDir, TOKEN_META_FILE), { force: true });
-  };
+  const name = d.refName ?? AGENT_TOKEN_REF_NAME;
+  const ref = (d.ref ?? (() => agentTokenRef(undefined, undefined, name)))();
+  const forget =
+    d.record?.forget ??
+    (() => {
+      fs.rmSync(path.join(d.stateDir, TOKEN_META_FILE), { force: true });
+    });
   if (st.backend === "env") {
     // Den's record (the meta file) and, in the web server, the value in its
     // process: a new CLI process has only the record.
     const env = d.env ?? process.env;
     const key = ref?.key;
-    const hadRecord = fs.existsSync(path.join(d.stateDir, TOKEN_META_FILE));
+    const hadRecord = d.record
+      ? d.record.has()
+      : fs.existsSync(path.join(d.stateDir, TOKEN_META_FILE));
     const inProcess = !!key && env[key] !== undefined;
     forget();
     if (inProcess) delete env[key!];
@@ -394,9 +457,9 @@ export async function clearAgentToken(
   if (!provider.delete)
     throw new Error(`${st.label} can't remove a secret from here`);
   const userRef = (
-    d.userRef ?? (() => readUserConfig().secrets?.refs?.[AGENT_TOKEN_REF_NAME])
+    d.userRef ?? (() => readUserConfig().secrets?.refs?.[name])
   )();
-  const fresh = newAgentTokenRef(st.backend);
+  const fresh = (d.fresh ?? newAgentTokenRef)(st.backend);
   const madeByDen =
     !!userRef &&
     !!fresh &&
@@ -423,13 +486,15 @@ export async function clearAgentToken(
       (() => {
         const user = readUserConfig();
         const refs = { ...(user.secrets?.refs ?? {}) };
-        delete refs[AGENT_TOKEN_REF_NAME];
+        delete refs[name];
         writeUserConfig({ ...user, secrets: { ...user.secrets, refs } });
       })
     )();
+  } else if (d.record) {
+    d.record.markCleared();
   } else {
     fs.mkdirSync(d.stateDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(
+    writeFileAtomic(
       path.join(d.stateDir, TOKEN_CLEARED_FILE),
       JSON.stringify({ clearedAt: new Date().toISOString() }) + "\n",
       { mode: 0o600 },
@@ -623,8 +688,13 @@ export function tokenStatusLine(
   st: TokenStatus,
   cli: string,
   localDate: (iso: string) => string = (iso) => iso.slice(0, 10),
+  /**
+   * Issue 338: how this runtime's token is made and kept, when it isn't
+   * Claude Code's (`claude setup-token`, then `<cli> agents token set`).
+   */
+  how?: { make: string; set: string },
 ): { status: "ok" | "warn"; text: string } {
-  const l = tokenLine(st, cli, localDate);
+  const l = tokenLine(st, cli, localDate, how);
   return st.credInKeychain
     ? { status: "warn", text: `${l.text}. Also, ${CRED_KEYCHAIN_WARNING}` }
     : l;
@@ -634,8 +704,9 @@ function tokenLine(
   st: TokenStatus,
   cli: string,
   localDate: (iso: string) => string,
+  how?: { make: string; set: string },
 ): { status: "ok" | "warn"; text: string } {
-  const fix = `make one with ${TOKEN_MAKE_HINT}, then ${cli} agents token set`;
+  const fix = `make one with ${how?.make ?? TOKEN_MAKE_HINT}, then ${how?.set ?? `${cli} agents token set`}`;
   // Not under the always-on service: agents sign in from the desktop login,
   // so no token is nothing to warn about.
   if ((!st.configured || st.stored === false) && st.mode !== "token")
@@ -665,4 +736,42 @@ function tokenLine(
       ? `agents sign in with the token set ${localDate(st.setAt)}${st.store ? ` (in ${st.store})` : ""}${st.processLocal ? ` (${PROCESS_LOCAL_NOTE})` : ""}`
       : `agents sign in with the token in ${st.store || "the secrets store"} (when it was set is not known)`,
   };
+}
+
+/** Issue 338: a runtime with no sign-in data, and its agents. */
+export interface NoSignIn {
+  /** The runtime's name for people ("Codex CLI"). */
+  name: string;
+  /** Its agents' ids. */
+  agents: string[];
+}
+
+/**
+ * Issue 338: the agents whose runtime's catalog entry has no sign-in data,
+ * by runtime, in catalog order. An id that is no catalog entry (generic,
+ * or an entry taken out of the config) is left out: nothing is guessed.
+ */
+export function agentsWithoutSignIn(
+  records: readonly { id: string; runtime?: string }[],
+  entries: readonly Pick<CatalogEntry, "id" | "name" | "signIn">[],
+): NoSignIn[] {
+  const out: NoSignIn[] = [];
+  for (const e of entries) {
+    if (e.signIn) continue;
+    const agents = records
+      .filter((r) => (r.runtime ?? "den-claude") === e.id)
+      .map((r) => r.id);
+    if (agents.length) out.push({ name: e.name, agents });
+  }
+  return out;
+}
+
+/** Doctor's words for them: plain, one sentence per runtime. */
+export function noSignInText(list: readonly NoSignIn[]): string {
+  return list
+    .map(
+      (x) =>
+        `${x.name} (agent${x.agents.length === 1 ? "" : "s"} ${x.agents.join(", ")}): this agent cannot sign in after logout; it will stop. Its runtime has no sign-in data (agents.runtime_catalog, signIn)`,
+    )
+    .join(". ");
 }

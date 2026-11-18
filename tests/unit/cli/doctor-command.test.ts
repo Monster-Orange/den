@@ -29,6 +29,7 @@ import {
   formatDoctor,
   hubProjectLines,
   hubGithubLines,
+  strategyCheck,
 } from "../../../src/ui/cli/doctor-command.js";
 // D9: the usage sources register on import, as in the CLI.
 import "../../../src/shared/usage/sources.js";
@@ -229,6 +230,49 @@ describe("doctor", () => {
       "    ✓ access log on: masked into /x/edge-access.log, and kept up with",
       "    ⚠ edge.tls is not set; …",
     ]);
+  });
+});
+
+describe("#331: doctor's line for the edge image", () => {
+  const FIX = "Set edge.image to traefik:v3.7.17, Den's default.";
+  const tlsRow = (image: string) =>
+    doctorRows(
+      dist(
+        `environments: [local]\nedge:\n  org: acme\n  domain: acme.localhost\n  tls: none\n  image: "${image}"\n`,
+      ),
+    ).find((r) => r.kind === "tls")!;
+  const imageLines = (image: string) =>
+    formatDoctor([tlsRow(image)], "Acme").filter((l) => l.includes(image));
+
+  it("Traefik v2.11: a warning naming what's missing, and the fix", () => {
+    const row = tlsRow("traefik:v2.11");
+    expect(row.warnings).toContain(
+      `edge.image traefik:v2.11 is Traefik v2: the access log has no request ids (OTLP tracing needs v3). ${FIX}`,
+    );
+    expect(imageLines("traefik:v2.11")).toEqual([
+      `    ⚠ edge.image traefik:v2.11 is Traefik v2: the access log has no request ids (OTLP tracing needs v3). ${FIX}`,
+    ]);
+    expect(strategyCheck(row).status).toBe("warn");
+  });
+
+  it("Traefik v3.7.17: OK, no warning", () => {
+    const row = tlsRow("traefik:v3.7.17");
+    expect(row.warnings).toEqual([]);
+    expect(imageLines("traefik:v3.7.17")).toEqual([
+      "    ✓ edge.image traefik:v3.7.17 is Traefik v3: every flag Den sets works",
+    ]);
+    expect(strategyCheck(row).status).toBe("ok");
+  });
+
+  it.each([
+    "traefik:latest",
+    "traefik@sha256:4f1c2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9",
+  ])("%s: Den can't tell, so it leaves out version-only flags", (image) => {
+    const row = tlsRow(image);
+    const want = `edge.image ${image}: Den can't tell which Traefik version it is, so it leaves out the flags only some versions take (request ids in the access log). ${FIX}`;
+    expect(row.warnings).toContain(want);
+    expect(imageLines(image)).toEqual([`    ⚠ ${want}`]);
+    expect(strategyCheck(row).status).toBe("warn");
   });
 });
 
