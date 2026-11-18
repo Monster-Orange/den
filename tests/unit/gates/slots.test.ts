@@ -62,11 +62,12 @@ describe("the queue rules", () => {
         GATE_DEFAULTS,
       ),
     ).toEqual([]);
+    // With cpu_beside_browser 0 (issue 462), no cpu run starts beside it.
     expect(
-      grants(
-        [entry("a", "browser", 0, 0), entry("c", "cpu", 1)],
-        GATE_DEFAULTS,
-      ),
+      grants([entry("a", "browser", 0, 0), entry("c", "cpu", 1)], {
+        ...GATE_DEFAULTS,
+        cpuBesideBrowser: 0,
+      }),
     ).toEqual([]);
   });
 
@@ -91,7 +92,109 @@ describe("the queue rules", () => {
       entry("c", "cpu", 2),
     ];
     expect(grants(q, GATE_DEFAULTS)).toEqual([]);
-    expect(grants(q.slice(1), GATE_DEFAULTS)).toEqual(["b"]);
+    expect(
+      grants(q.slice(1), { ...GATE_DEFAULTS, cpuBesideBrowser: 0 }),
+    ).toEqual(["b"]);
+    // Issue 462: once b starts, c may start beside it (it fits).
+    const now = Date.parse(iso(2));
+    expect(grants(q.slice(1), GATE_DEFAULTS, { now, loadPerCore: 0 })).toEqual([
+      "b",
+      "c",
+    ]);
+  });
+
+  describe("issue 462: cpu runs beside a browser hold (backfill)", () => {
+    // The browser "a" holds from minute 0 for 30 min; now is minute 5, so
+    // it is expected to end at minute 30, and the margin (15) makes 45.
+    const now = T0 + 5 * 60_000;
+    const at = { now, loadPerCore: 0.5 };
+
+    it("(a) one browser holding, one cpu waiting: the cpu starts", () => {
+      const q = [entry("a", "browser", 0, 0, 30), entry("c", "cpu", 1)];
+      expect(grants(q, GATE_DEFAULTS, at)).toEqual(["c"]);
+    });
+
+    it("only cpu_beside_browser of them, and within cpu_slots", () => {
+      const q = [
+        entry("a", "browser", 0, 0, 30),
+        entry("c", "cpu", 1),
+        entry("d", "cpu", 2),
+      ];
+      expect(grants(q, GATE_DEFAULTS, at)).toEqual(["c"]);
+      expect(grants(q, { ...GATE_DEFAULTS, cpuBesideBrowser: 2 }, at)).toEqual([
+        "c",
+        "d",
+      ]);
+      expect(
+        grants(q, { ...GATE_DEFAULTS, cpuBesideBrowser: 4, cpuSlots: 1 }, at),
+      ).toEqual(["c"]);
+      // One already beside it: no more.
+      const held = [entry("a", "browser", 0, 0, 30), entry("c", "cpu", 1, 1)];
+      expect(
+        grants([...held, entry("d", "cpu", 2)], GATE_DEFAULTS, at),
+      ).toEqual([]);
+    });
+
+    it("(b) a browser waits too: a cpu that fits before the hold ends starts", () => {
+      const q = [
+        entry("a", "browser", 0, 0, 30),
+        entry("b", "browser", 1),
+        entry("c", "cpu", 2, undefined, 40), // ends at 45: fits exactly
+      ];
+      expect(grants(q, GATE_DEFAULTS, at)).toEqual(["c"]);
+    });
+
+    it("(c) the same with an estimate that doesn't fit: it waits", () => {
+      const q = [
+        entry("a", "browser", 0, 0, 30),
+        entry("b", "browser", 1),
+        entry("c", "cpu", 2, undefined, 41), // ends at 46: would delay b
+      ];
+      expect(grants(q, GATE_DEFAULTS, at)).toEqual([]);
+      // A shorter one behind it may still fit.
+      expect(
+        grants([...q, entry("d", "cpu", 3, undefined, 5)], GATE_DEFAULTS, at),
+      ).toEqual(["d"]);
+    });
+
+    it("(d) load above max_load_per_core: it waits", () => {
+      const q = [entry("a", "browser", 0, 0, 30), entry("c", "cpu", 1)];
+      expect(grants(q, GATE_DEFAULTS, { now, loadPerCore: 2.5 })).toEqual([]);
+      expect(
+        grants(
+          q,
+          { ...GATE_DEFAULTS, maxLoadPerCore: 3 },
+          { now, loadPerCore: 2.5 },
+        ),
+      ).toEqual(["c"]);
+    });
+
+    it("(e) cpu_beside_browser 0: today's behaviour", () => {
+      const off = { ...GATE_DEFAULTS, cpuBesideBrowser: 0 };
+      expect(
+        grants(
+          [entry("a", "browser", 0, 0, 30), entry("c", "cpu", 1)],
+          off,
+          at,
+        ),
+      ).toEqual([]);
+      expect(
+        grants(
+          [
+            entry("a", "browser", 0, 0, 30),
+            entry("b", "browser", 1),
+            entry("c", "cpu", 2, undefined, 5),
+          ],
+          off,
+          at,
+        ),
+      ).toEqual([]);
+    });
+
+    it("a held cpu still blocks a browser waiter; nothing is pre-empted", () => {
+      const q = [entry("c", "cpu", 1, 1), entry("b", "browser", 2)];
+      expect(grants(q, GATE_DEFAULTS, at)).toEqual([]);
+    });
   });
 
   it("a waiter sees when it may start; an overrun is flagged past the margin", () => {
@@ -237,12 +340,35 @@ describe("the store", () => {
     expect(s.endEarly(a.id, "again")).toBeNull();
   });
 
+  it("issue 462: a cpu run starts beside a browser hold, marked beside; not under load", () => {
+    let load = 0.5;
+    const s = new GateStore({ dir: tmp(), loadPerCore: () => load });
+    const a = ask(s, "browser", process.pid, 30);
+    const c = ask(s, "cpu", process.pid, 5);
+    expect(c.grantedAt).toBeDefined();
+    expect(c.beside).toBe(true);
+    expect(s.get(a.id)?.beside).toBeUndefined();
+    s.release(c.id);
+    load = 9;
+    expect(ask(s, "cpu", process.pid, 5).grantedAt).toBeUndefined();
+  });
+
   it("settings: permissive defaults, null clears, nonsense ignored", () => {
     const s = new GateStore({ dir: tmp() });
     expect(s.settings()).toEqual(GATE_DEFAULTS);
     s.writeSettings({ cpu_slots: 4 });
     expect(s.settings().cpuSlots).toBe(4);
-    s.writeSettings({ cpu_slots: null, overrun_margin_minutes: -3 });
+    s.writeSettings({ cpu_beside_browser: 0, max_load_per_core: 4.5 });
+    expect(s.settings()).toMatchObject({
+      cpuBesideBrowser: 0,
+      maxLoadPerCore: 4.5,
+    });
+    s.writeSettings({
+      cpu_slots: null,
+      overrun_margin_minutes: -3,
+      cpu_beside_browser: null,
+      max_load_per_core: null,
+    });
     expect(s.settings()).toEqual(GATE_DEFAULTS);
   });
 
@@ -318,6 +444,12 @@ describe("Settings › Server: the machine's gate settings (POST gate_slots)", (
       error: "gate_slots.cpu_slots is a whole number from 1 to 64, or null",
     });
     expect(checkGatePatch({ cpu_slots: 2.5 })).toMatchObject({ ok: false });
+    expect(
+      checkGatePatch({ cpu_beside_browser: 0, max_load_per_core: 1.5 }),
+    ).toMatchObject({ ok: true });
+    expect(checkGatePatch({ cpu_beside_browser: 1.5 })).toMatchObject({
+      ok: false,
+    });
     expect(checkGatePatch({ overrun_margin_minutes: "30" })).toMatchObject({
       ok: false,
     });

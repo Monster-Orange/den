@@ -881,11 +881,19 @@
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
-      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador se ejecuta sola, salvo las pruebas unitarias permitidas a su lado. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
       "Una prueba que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página Agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_beside":
+      "Pruebas unitarias junto a una prueba de navegador",
+    "set.server.gate_beside.d":
+      "Cuántas pruebas unitarias pueden empezar mientras una prueba de navegador ocupa la máquina, si se espera que cada una termine antes de la siguiente prueba de navegador en espera. 0: una prueba de navegador siempre se ejecuta sola. __DEN_CLI__ gate settings --cpu-beside-browser 1",
+    "set.server.gate_load":
+      "Carga máxima para una prueba junto a una de navegador, por núcleo",
+    "set.server.gate_load.d":
+      "Ninguna prueba unitaria empieza junto a una prueba de navegador mientras la carga media de 1 minuto por núcleo de la máquina supere esta cifra. __DEN_CLI__ gate settings --max-load-per-core 2",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

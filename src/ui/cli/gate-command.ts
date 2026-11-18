@@ -36,7 +36,8 @@ export const GATE_HELP = {
   usage: "gate <run|status|end|settings> ...",
   lines: [
     "Heavy test runs on this machine, taken in turn: a browser suite runs",
-    "alone; unit suites share (2 at a time by default). Every repo and install",
+    "alone but for one unit suite beside it that ends in time; unit suites",
+    "share (2 at a time by default). Every repo and install",
     "on the machine shares the same queue. A run is never stopped by another.",
     "",
     "{cli} gate run [--kind browser|cpu] [--estimate 6m] [--label <l>] -- <cmd>",
@@ -44,6 +45,7 @@ export const GATE_HELP = {
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
+    "                    [--cpu-beside-browser N] [--max-load-per-core N]",
   ],
 };
 
@@ -161,7 +163,8 @@ export function slotLine(
 ): string {
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
-    return `${e.id}  holds ${e.kind}  ${e.who}  "${e.label}"  until about ${hm(expectedEnd(e))}${late}`;
+    const beside = e.beside ? " beside a browser run" : "";
+    return `${e.id}  holds ${e.kind}${beside}  ${e.who}  "${e.label}"  until about ${hm(expectedEnd(e))}${late}`;
   }
   return `${e.id}  waits for ${e.kind}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now))}`;
 }
@@ -308,11 +311,15 @@ function settings(args: string[], d: GateDeps): number {
   const { f } = flags(args, {
     "--cpu-slots": true,
     "--overrun-margin-minutes": true,
+    "--cpu-beside-browser": true,
+    "--max-load-per-core": true,
   });
   const raw: Record<string, number> = {};
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
+    ["--cpu-beside-browser", "cpu_beside_browser"],
+    ["--max-load-per-core", "max_load_per_core"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);
@@ -328,7 +335,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate`,
+    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · ${s.cpuBesideBrowser} cpu beside a browser run, under load ${s.maxLoadPerCore} per core`,
   );
   return 0;
 }

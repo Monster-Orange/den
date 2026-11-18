@@ -14,6 +14,7 @@ import {
   type ToolContext,
 } from "../../../src/ui/mcp/tools.js";
 import type { DenApi } from "../../../src/ui/mcp/api.js";
+import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
 
 const tmps: string[] = [];
@@ -131,7 +132,7 @@ describe("gate slots over MCP", () => {
       other.id,
       mine.id,
     ]);
-    expect(status.settings).toEqual({ cpuSlots: 2, overrunMarginMinutes: 15 });
+    expect(status.settings).toEqual(GATE_DEFAULTS);
   });
 
   it("an agent can't wait on or give back a slot that isn't its own", async () => {

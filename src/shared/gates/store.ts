@@ -6,7 +6,8 @@
  * ~/Library/Application Support/den/gate-slots (macOS), else
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
- *   settings.json     cpu_slots, overrun_margin_minutes
+ *   settings.json     cpu_slots, overrun_margin_minutes, cpu_beside_browser,
+ *                     max_load_per_core
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
  *                     back, overdue, ended early (Coach reads time lost)
  *   lock/             held while the grant decision is made
@@ -55,6 +56,8 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
 export type GateSettingsPatch = {
   cpu_slots?: number | null;
   overrun_margin_minutes?: number | null;
+  cpu_beside_browser?: number | null;
+  max_load_per_core?: number | null;
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -64,11 +67,14 @@ export const GATE_LIMITS: Record<
 > = {
   cpu_slots: { min: 1, max: 64, int: true },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  cpu_beside_browser: { min: 0, max: 64, int: true },
+  max_load_per_core: { min: 0, max: 1024, int: false },
 };
 
 /**
  * A settings change as the web sends it ({cpu_slots,
- * overrun_margin_minutes}, null clears), checked; or what is wrong.
+ * overrun_margin_minutes, cpu_beside_browser, max_load_per_core}, null
+ * clears), checked; or what is wrong.
  */
 export function checkGatePatch(
   v: unknown,
@@ -142,19 +148,26 @@ export interface GateStoreOpts {
   alive?: (pid: number) => boolean;
   /** How long to wait for the lock before giving up, ms. */
   lockWaitMs?: number;
+  /** The 1-min load average per core (issue 462); the machine's by default. */
+  loadPerCore?: () => number;
 }
+
+const machineLoadPerCore = (): number =>
+  (os.loadavg()[0] ?? 0) / Math.max(1, os.cpus().length);
 
 export class GateStore {
   readonly dir: string;
   private readonly now: () => number;
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
+  private readonly loadPerCore: () => number;
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
+    this.loadPerCore = o.loadPerCore ?? machineLoadPerCore;
   }
 
   private get slots() {
@@ -182,6 +195,10 @@ export class GateStore {
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
         ),
+        cpuBesideBrowser: Math.floor(
+          num("cpu_beside_browser", GATE_DEFAULTS.cpuBesideBrowser),
+        ),
+        maxLoadPerCore: num("max_load_per_core", GATE_DEFAULTS.maxLoadPerCore),
       };
     } catch {
       return { ...GATE_DEFAULTS };
@@ -358,9 +375,19 @@ export class GateStore {
       this.remove(e.id);
       this.record(e, { event: "taken-back-gone", ...this.heldFor(e, now) });
     }
-    for (const id of grants(entries, s)) {
+    // Only waiters may start, so the load is read only when one waits.
+    const waiting = entries.some((e) => !e.grantedAt);
+    const ids = waiting
+      ? grants(entries, s, { now, loadPerCore: this.loadPerCore() })
+      : [];
+    for (const id of ids) {
       const e = entries.find((x) => x.id === id)!;
       e.grantedAt = at;
+      if (
+        e.kind === "cpu" &&
+        entries.some((x) => x.kind === "browser" && x.grantedAt)
+      )
+        e.beside = true;
       this.write(e);
       this.record(e, {
         event: "granted",

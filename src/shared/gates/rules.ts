@@ -9,6 +9,12 @@
  * holder keeps its slot however long it runs (past its estimate it is
  * flagged, never stopped).
  *
+ * Issue 462 backfill: while a browser run holds, up to `cpuBesideBrowser`
+ * cpu runs may start beside it (within `cpuSlots`), even past a browser
+ * waiter, if each is expected to end by the hold's expected end plus the
+ * overrun margin, so the waiting browser run is not delayed; and never
+ * while the machine's load per core is above `maxLoadPerCore`.
+ *
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
@@ -38,6 +44,8 @@ export interface GateEntry {
   agent?: boolean;
   /** Which agent (`agent:<id>`), when it said; its row on Agents shows it. */
   actor?: string;
+  /** Issue 462: a cpu run granted beside a browser run's hold. */
+  beside?: boolean;
 }
 
 export interface GateSettings {
@@ -45,12 +53,25 @@ export interface GateSettings {
   cpuSlots: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
+  /** cpu runs that may start beside one browser hold; 0: none (issue 462). */
+  cpuBesideBrowser: number;
+  /** No cpu run starts beside a browser hold above this 1-min load per core. */
+  maxLoadPerCore: number;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
   cpuSlots: 2,
   overrunMarginMinutes: 15,
+  cpuBesideBrowser: 1,
+  maxLoadPerCore: 2,
 };
+
+/** What `grants` needs from outside: the time, and the machine's load. */
+export interface GateNow {
+  now: number;
+  /** os.loadavg()[0] / cpu count; the store reads it. */
+  loadPerCore: number;
+}
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
 
@@ -60,20 +81,47 @@ export function byAsked(a: GateEntry, b: GateEntry): number {
 }
 
 /** Which waiters may start now, in order. */
-export function grants(entries: GateEntry[], s: GateSettings): string[] {
+export function grants(
+  entries: GateEntry[],
+  s: GateSettings,
+  at: GateNow = { now: Date.now(), loadPerCore: 0 },
+): string[] {
   const holders = entries.filter((e) => e.grantedAt);
   const waiters = entries.filter((e) => !e.grantedAt).sort(byAsked);
   const out: string[] = [];
-  let browserHeld = holders.some((e) => e.kind === "browser");
+  const browser = holders.find((e) => e.kind === "browser");
   let cpuHeld = holders.filter((e) => e.kind === "cpu").length;
+  const cpuMax = Math.max(1, s.cpuSlots);
+  if (browser) {
+    // Every cpu holder beside a browser hold started beside it: a browser
+    // run never starts while a cpu run holds.
+    const beside = Math.min(cpuMax, Math.max(0, s.cpuBesideBrowser));
+    if (cpuHeld >= beside || at.loadPerCore > s.maxLoadPerCore) return out;
+    const by = expectedEnd(browser) + s.overrunMarginMinutes * 60_000;
+    let browserAhead = false;
+    for (const w of waiters) {
+      if (cpuHeld >= beside) break;
+      if (w.kind === "browser") {
+        browserAhead = true;
+        continue;
+      }
+      if (browserAhead && at.now + w.estimateMin * 60_000 > by) continue;
+      out.push(w.id);
+      cpuHeld++;
+    }
+    return out;
+  }
   for (const w of waiters) {
     if (w.kind === "browser") {
-      if (browserHeld || cpuHeld > 0) break;
-      out.push(w.id);
-      browserHeld = true;
-      continue;
+      if (cpuHeld > 0) break;
+      // It starts now; who may start beside it is the backfill above.
+      const started = new Date(at.now).toISOString();
+      const next = entries.map((e) =>
+        e.id === w.id ? { ...e, grantedAt: started } : e,
+      );
+      return [w.id, ...grants(next, s, at)];
     }
-    if (browserHeld || cpuHeld >= Math.max(1, s.cpuSlots)) break;
+    if (cpuHeld >= cpuMax) break;
     out.push(w.id);
     cpuHeld++;
   }

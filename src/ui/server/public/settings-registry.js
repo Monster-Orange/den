@@ -1984,7 +1984,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Unit test runs at once, on this machine",
     description:
-      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run runs alone, apart from the unit-test runs allowed beside it. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
     keywords: ["gate", "slot", "tests", "queue", "cpu", "parallel"],
     scope: "user",
     keys: ["gate_slots.cpu_slots"],
@@ -2004,6 +2004,33 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
     read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
+  },
+  {
+    // Issue 462: unit-test runs that may start beside a browser hold.
+    id: "server.gate_beside",
+    category: "server",
+    label: "Unit test runs beside a browser test run",
+    description:
+      "How many unit-test runs may start while a browser test run holds the machine, if each is expected to end before the browser run that waits next. 0: a browser test run always runs alone. __DEN_CLI__ gate settings --cpu-beside-browser 1",
+    keywords: ["gate", "slot", "tests", "queue", "cpu", "browser", "backfill"],
+    scope: "user",
+    keys: ["gate_slots.cpu_beside_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuBesideBrowser ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_beside_browser: v } }),
+  },
+  {
+    id: "server.gate_load",
+    category: "server",
+    label: "Busiest load for a run beside a browser test run, per core",
+    description:
+      "No unit-test run starts beside a browser test run while the machine's 1-minute load average per core is above this. __DEN_CLI__ gate settings --max-load-per-core 2",
+    keywords: ["gate", "slot", "tests", "load", "cpu", "browser", "backfill"],
+    scope: "user",
+    keys: ["gate_slots.max_load_per_core"],
+    control: { type: "number", min: 0, max: 1024, step: 0.1 },
+    read: (ctx) => ctx.data.gate_slots?.maxLoadPerCore ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { max_load_per_core: v } }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

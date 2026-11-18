@@ -5344,8 +5344,15 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 ```
 
 - A `browser` run holds the machine alone. `cpu` runs share it, up to
-  `cpu_slots` (default 2), never beside a browser run. First come, first
-  served: a waiting browser run stops new cpu grants, so it can't starve.
+  `cpu_slots` (default 2). First come, first served: a waiting browser
+  run stops new cpu grants, so it can't starve.
+- Beside a browser run's hold, up to `cpu_beside_browser` (default 1)
+  `cpu` runs may start, within `cpu_slots`, even past a waiting browser
+  run, but only one expected to end (now plus its estimate) by the hold's
+  expected end plus `overrun_margin_minutes`, so the waiting browser run
+  is not delayed; and none while the machine's 1-minute load average per
+  core is above `max_load_per_core` (default 2). `gate status` says
+  "beside a browser run" for them. 0 keeps a browser run alone.
 - Nothing is pre-empted. A later run only waits, and says each minute who
   holds the slot and when it should end. A live holder keeps its slot
   however long it runs.

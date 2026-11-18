@@ -862,10 +862,17 @@
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
-      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
+      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは、その横で許された単体テストを除き、単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_beside": "ブラウザーテストの横で動かす単体テスト",
+    "set.server.gate_beside.d":
+      "ブラウザーテストがマシンを使っている間に始めてよい単体テスト実行の数です。次に待っているブラウザーテストより前に終わる見込みのものだけが始まります。0 にするとブラウザーテストは常に単独で動きます。__DEN_CLI__ gate settings --cpu-beside-browser 1",
+    "set.server.gate_load":
+      "ブラウザーテストの横で動かすときの、コアあたりの負荷の上限",
+    "set.server.gate_load.d":
+      "マシンの 1 分間の平均負荷をコア数で割った値がこれを超えている間は、ブラウザーテストの横で単体テストを始めません。__DEN_CLI__ gate settings --max-load-per-core 2",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

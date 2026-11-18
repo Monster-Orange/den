@@ -9,6 +9,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
 import { handleGateRoutes } from "../../../src/ui/server/gate-routes.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
@@ -86,7 +87,7 @@ describe("gate-slot routes", () => {
     });
     const r = await call("GET", "/api/gate-slots");
     expect(r.status).toBe(200);
-    expect(r.json.settings).toEqual({ cpuSlots: 2, overrunMarginMinutes: 15 });
+    expect(r.json.settings).toEqual(GATE_DEFAULTS);
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),
     ]);
