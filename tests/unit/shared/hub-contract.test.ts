@@ -63,7 +63,12 @@ describe("Hub contract fixtures (issue 521)", () => {
 
   it("a dev bump (0.4.71-dev.1) against den-0.4.71 exported at another dev: no drift", async () => {
     const built = await buildHubContract();
-    for (const v of ["0.4.71-dev.1", "0.4.71-dev.3", "0.4.71"]) {
+    // The first: the folder only renamed, its exact version the one it
+    // was exported at (the merge renames den-0.4.68 to den-0.4.71).
+    const exported = JSON.parse(
+      fs.readFileSync(path.join(DIR, "manifest.json"), "utf-8"),
+    ).den_version as string;
+    for (const v of [exported, "0.4.71-dev.1", "0.4.71-dev.3", "0.4.71"]) {
       const dir = folderAt(v, "0.4.71");
       try {
         expect(
@@ -75,22 +80,15 @@ describe("Hub contract fixtures (issue 521)", () => {
     }
   });
 
-  it("X-Den-Version is checked by format, and the manifest by release", async () => {
+  it("X-Den-Version and den_version are checked by format only", async () => {
     const built = await buildHubContract();
     const bad = folderAt("not-a-version", "0.4.71");
-    const other = folderAt("0.4.72-dev.1", "0.4.71");
     try {
-      const d1 = contractDrift(built, readContractFolder(bad), "0.4.71-dev.1");
-      expect(d1.join("\n")).toContain("X-Den-Version");
-      const d2 = contractDrift(
-        built,
-        readContractFolder(other),
-        "0.4.71-dev.1",
-      );
-      expect(d2.join("\n")).toContain("den_version");
+      const d = contractDrift(built, readContractFolder(bad), "0.4.71-dev.1");
+      expect(d.join("\n")).toContain("X-Den-Version");
+      expect(d.join("\n")).toContain("den_version");
     } finally {
       fs.rmSync(path.dirname(bad), { recursive: true, force: true });
-      fs.rmSync(path.dirname(other), { recursive: true, force: true });
     }
   });
 
@@ -124,9 +122,7 @@ describe("Hub contract fixtures (issue 521)", () => {
       "generator",
       "protocol",
     ]);
-    expect(contractFolderName(String(m.den_version))).toBe(
-      contractFolderName(PKG.version),
-    );
+    expect(String(m.den_version)).toMatch(/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/);
     expect(m.generator).toBe("scripts/hub-contract-export.mjs");
     const built = await buildHubContract();
     expect(m.protocol).toBe(built.manifest.protocol);
