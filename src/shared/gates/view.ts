@@ -13,6 +13,8 @@ export interface GateSlotView {
   granted: boolean;
   agent: boolean;
   actor?: string;
+  /** Issue 462: a cpu run started beside a browser run's hold. */
+  beside?: boolean;
   grantedAt?: string;
   expectedEnd?: string;
   overrun?: boolean;
@@ -31,6 +33,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     granted: !!e.grantedAt,
     agent: e.agent === true,
     ...(e.actor ? { actor: e.actor } : {}),
+    ...(e.beside ? { beside: true } : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,
