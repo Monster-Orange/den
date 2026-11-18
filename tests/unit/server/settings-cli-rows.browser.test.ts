@@ -177,13 +177,11 @@ describe("MODE-5: Settings rows that were the command line's", () => {
   /**
    * Issue 424: one click saved twice. A redraw while the save was out (a
    * plugin's rows arriving, any `den:settings`) drew the switch from the
-   * old value, off and free again; check() then saw it off and clicked a
-   * second time, and so would a person. The save is held here so the
-   * redraw lands in it every time.
+   * old value, off again; check() then saw it off and clicked a second
+   * time, and so would a person. Each save is held here so the redraw
+   * lands in it every time.
    */
-  it("one click saves once, even when the page redraws mid-save", async () => {
-    if (skip()) return;
-    const p = await settings();
+  async function slowSaves(p: Page) {
     const posts: unknown[] = [];
     p.on("request", (r) => {
       if (r.url().endsWith("/api/settings") && r.method() === "POST")
@@ -198,23 +196,62 @@ describe("MODE-5: Settings rows that were the command line's", () => {
     const sent = p.waitForRequest(
       (r) => r.url().endsWith("/api/settings") && r.method() === "POST",
     );
+    // On, then the redraw, mid-save.
     await ctl(p, "cli.cli_tabs").click();
     await sent;
-    // The redraw, mid-save.
     await p.evaluate(() =>
       window.dispatchEvent(new CustomEvent("den:settings")),
     );
-    // The switch shows the value being saved and is held until it lands.
+    return { posts, release };
+  }
+
+  it("one click saves once, even when the page redraws mid-save", async () => {
+    if (skip()) return;
+    const p = await settings();
+    const { posts, release } = await slowSaves(p);
+    // The switch shows the value being saved.
     expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(true);
-    expect(await ctl(p, "cli.cli_tabs").isDisabled()).toBe(true);
-    // check() (and a person's second look) finds it on: no second click.
+    // check() (a person's second look) finds it on, and a stray change
+    // with the same value sends nothing.
     await ctl(p, "cli.cli_tabs").check({ timeout: 5_000 });
+    await ctl(p, "cli.cli_tabs").dispatchEvent("change");
     release();
     await savedMark(p, "cli.cli_tabs");
     expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(true);
-    expect(await ctl(p, "cli.cli_tabs").isDisabled()).toBe(false);
     expect(posts).toEqual([{ cli_tabs: true }]);
     await p.unroute("**/api/settings");
+    await s!.settings({ cli_tabs: null });
+    await p.context().close();
+  });
+
+  it("on then off while the first save is out saves both, in order", async () => {
+    if (skip()) return;
+    const p = await settings();
+    const { posts, release } = await slowSaves(p);
+    // Off before the first save returns (a quick second click; set
+    // directly, since a save out past OPEN_MS puts the modal working
+    // pop-up over the page): the row keeps the latest.
+    await ctl(p, "cli.cli_tabs").evaluate((e) => {
+      (e as HTMLInputElement).checked = false;
+      e.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(false);
+    const second = p.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/settings") &&
+        r.request().method() === "POST" &&
+        (r.request().postDataJSON() as { cli_tabs?: boolean }).cli_tabs ===
+          false,
+    );
+    release();
+    await second;
+    await savedMark(p, "cli.cli_tabs");
+    expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(false);
+    expect(posts).toEqual([{ cli_tabs: true }, { cli_tabs: false }]);
+    await p.unroute("**/api/settings");
+    await p.reload();
+    await p.waitForSelector('[data-focus-key="cli-cli_tabs"]');
+    expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(false);
     await s!.settings({ cli_tabs: null });
     await p.context().close();
   });
