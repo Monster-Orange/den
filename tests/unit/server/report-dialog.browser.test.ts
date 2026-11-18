@@ -711,9 +711,10 @@ describe("FB: the screenshot and its mask", () => {
     await p.context().close();
   });
 
-  it("drag to black out; Undo; Review shows the masked image; sending saves nothing here", async () => {
+  it("drag to black out; Undo; Review shows the masked image; the send carries it masked and saves nothing here", async () => {
     if (skip()) return;
-    const p = await page(fresh());
+    const f = fresh();
+    const p = await page(f);
     const mark = await drawerWithMark(p);
     const vw = await p.evaluate(() => innerWidth);
     const vh = await p.evaluate(() => innerHeight);
@@ -762,6 +763,35 @@ describe("FB: the screenshot and its mask", () => {
     await p.waitForTimeout(300);
     expect(downloads).toBe(0);
     expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
+    // Issue 403: the PNG the send carries has the mask in its pixels
+    // (drawn in, not laid over); what is outside it is the page.
+    const shot = String(f.sent[0]!.shot);
+    expect(shot).toMatch(/^data:image\/png;base64,/);
+    const inShot = (x: number, y: number) =>
+      p.evaluate(
+        ([src, px, py]) =>
+          new Promise<number[]>((ok) => {
+            const img = new Image();
+            img.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = img.naturalWidth;
+              c.height = img.naturalHeight;
+              const g = c.getContext("2d")!;
+              g.drawImage(img, 0, 0);
+              ok([
+                ...g
+                  .getImageData(px as number, py as number, 1, 1)
+                  .data.slice(0, 3),
+              ]);
+            };
+            img.src = src as string;
+          }),
+        [shot, Math.round(x), Math.round(y)],
+      );
+    expect(near(await inShot(mark.x, mark.y), [0, 0, 0])).toBe(true);
+    expect(near(await inShot(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
+      true,
+    );
     await p.context().close();
   });
 

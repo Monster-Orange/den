@@ -30,6 +30,13 @@ export interface ReportAdapter {
   githubSend?: (form: ReportForm, h: Headers) => Promise<Answer>;
   githubPoll?: (id: string) => Promise<Answer>;
   saveDraft?: (form: ReportForm, h: Headers) => Promise<Answer>;
+  /**
+   * Issue 403: whether the masked screenshot would go on to someone for
+   * this destination; null or a failure: text only.
+   */
+  shotShare?: (
+    repo: string,
+  ) => Promise<{ share: boolean; recipient?: string } | null>;
 }
 export interface ReportOptions {
   lang?: string | (() => string);

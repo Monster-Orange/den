@@ -23,6 +23,13 @@
  *       githubSend(form, headers), githubPoll(id)   a device-flow sign-in
  *       saveDraft(form, headers) → { status, data: { draft: { id } } }
  *                 Finish later (hidden without it)
+ *       shotShare(repo) → { share, recipient } | null   issue 403: whether
+ *                 the masked screenshot would go on to someone (Review
+ *                 shows "goes to <recipient>" with a checkbox, else "text
+ *                 only"). send/githubSend then carry `shot` (the masked
+ *                 PNG as a data URL) and `shareShot` (the box, ticked);
+ *                 their answer's `shot`: { where: "hub", recipient } or
+ *                 { where: "local", why? }, said once it is sent
  *     busy(action, run, opts)   the working pop-up (busy.js's busyAction
  *               with the product's words), for the slow calls
  *     mine()    opens "My reports" (the link is hidden without it)
@@ -237,6 +244,10 @@ export async function openReport(opts = {}) {
     masks: [],
     noShot: false,
     drag: null,
+    // Issue 403: whether the screenshot would go on (shotShare), and the
+    // person's box for this report (ticked by default).
+    share: null,
+    shareShot: true,
   };
   const self = { dlg, st, close };
   const sends = () => !!(ad.send || ad.fileReport);
@@ -299,6 +310,49 @@ export async function openReport(opts = {}) {
   }
   function maskedShot() {
     return shots.masked(st.shot, st.masks);
+  }
+  /**
+   * Issue 403: where the screenshot goes, on Review, before sending: to
+   * the recipient (with the person's box), or nowhere ("text only").
+   */
+  function shareHtml() {
+    if (!ad.shotShare || !sends() || !st.share) return "";
+    return st.share.share
+      ? `<label class="fb-tools" data-share><input type="checkbox" data-f="shareshot"${st.shareShot ? " checked" : ""}> ${esc(t("kit.report.shareTo", { recipient: st.share.recipient }))}</label>`
+      : `<p class="fb-fine" data-share>${esc(t("kit.report.shareNo"))}</p>`;
+  }
+  /** Issue 403: where the screenshot went, once sent (and why not Hub). */
+  function shotOutcomeHtml() {
+    const o = st.sent?.shot;
+    if (!o || typeof o !== "object") return "";
+    if (o.where === "hub" && o.recipient)
+      return `<p class="fb-fine" data-shot-outcome>${esc(t("kit.report.shotWent", { recipient: o.recipient }))}</p>`;
+    if (o.where === "local" && o.why) {
+      const k = `kit.report.why.${o.why}`;
+      const why = t(k) === k ? t("kit.report.why.refused") : t(k);
+      return `<p class="fb-fine" data-shot-outcome>${esc(t("kit.report.shotStayed", { why }))}</p>`;
+    }
+    return "";
+  }
+  /** What a send carries for the screenshot (issue 403). */
+  function shotPayload() {
+    if (!shotOn()) return {};
+    return {
+      shot: maskedShot().toDataURL("image/png"),
+      shareShot: !!(st.share?.share && st.shareShot),
+    };
+  }
+  /** Asks the product whether the screenshot would go on (issue 403). */
+  async function loadShare() {
+    if (!ad.shotShare || !sends() || !shotOn()) return;
+    const repo = st.repo;
+    const r = await Promise.resolve(ad.shotShare(repo)).catch(() => null);
+    if (st.repo !== repo) return;
+    st.share =
+      r && typeof r.share === "boolean"
+        ? { share: r.share, recipient: String(r.recipient || "") }
+        : { share: false, recipient: "" };
+    if (st.share.share && !st.share.recipient) st.share.share = false;
   }
   const pct = (v) => Math.round(v * 100);
   /** Draws the screenshot with its masks (and one being dragged). */
@@ -451,7 +505,7 @@ ${
 }
 <pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${
         shotOn()
-          ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`
+          ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>${shareHtml()}`
           : ""
       }
 ${sends() ? `<div class="fb-warn" role="note"><b>${esc(t("kit.report.pub"))}.</b> ${esc(t("kit.report.pubW"))}</div>` : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
@@ -488,7 +542,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         st.sent.filed
           ? `<p>${esc(t("kit.report.filed", { n: st.sent.number }))}${st.sent.url ? ` ${linkBtn(st.sent.url, `#${st.sent.number}`)}` : ""}</p>`
           : `<p>${esc(t(st.sent.added ? "kit.report.addedB" : "kit.report.sentB", { title: st.title }))}</p>`
-      }
+      }${shotOutcomeHtml()}
 <div class="fb-btns">${st.sent.url ? linkBtn(st.sent.url, t("kit.report.openIssue"), true) : ""}${btn("done", t("kit.report.done"), !st.sent.url)}</div>`;
     } else if (st.step === "limit") {
       role = "alertdialog";
@@ -534,11 +588,14 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
   }
 
   async function preview() {
+    const shared = loadShare();
     if (!ad.preview) {
+      await shared;
       st.preview = localPreview({ ...form(), diag: st.diag });
       return render();
     }
     const r = await write((h) => ad.preview(form(), h), "report-preview");
+    await shared;
     if (!r) return render();
     if (r.status !== 200) {
       st.error = r.data.error || `${r.status}`;
@@ -612,6 +669,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         ad.send(
           {
             ...form(),
+            ...shotPayload(),
             ...(st.addTo !== null ? { addTo: st.addTo } : {}),
             ...(st.fileNew ? { fileNew: true } : {}),
           },
@@ -634,6 +692,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         ad.githubSend(
           {
             ...form(),
+            ...shotPayload(),
             ...(st.addTo !== null ? { addTo: st.addTo } : {}),
             ...(st.fileNew ? { fileNew: true } : {}),
           },
@@ -768,6 +827,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     if (sec) st.sections[sec] = el.checked;
     const f = el.getAttribute?.("data-f");
     if (f === "redact") st.redact = el.checked;
+    if (f === "shareshot") st.shareShot = el.checked;
     if (f === "remember") st.remember = el.checked;
     if (f === "noshot") {
       st.noShot = el.checked;
@@ -775,6 +835,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
     if (f === "repo") {
       st.repo = el.value;
+      st.share = null;
       void preview();
     }
   });

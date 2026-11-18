@@ -369,6 +369,9 @@ import {
   runGh,
 } from "./report-routes.js";
 import { readFeedbackSettings } from "../../shared/report-store.js";
+import { reportShotHub } from "./report-shot-hub.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
+import { shotKeepDays, shotStore } from "../../shared/report-shots.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -1694,6 +1697,10 @@ function reportOrSignin(signin: Decide): Decide {
 }
 const GITHUB_CLIENT_ID = githubClientId(WEB_AUTH.githubClientId);
 const GITHUB = githubEndpoints();
+/** Issue 403: Hub, for a report's screenshot (every Hub call is in there). */
+const REPORT_SHOT_HUB = reportShotHub({
+  hub: async () => (await import("./hub-sync-service.js")).hubAndToken(),
+});
 const DEVICE_FLOWS = new DeviceFlows({
   client: githubDeviceClient(GITHUB),
   clientId: () => GITHUB_CLIENT_ID,
@@ -3823,6 +3830,18 @@ async function handleRequest(
       personOf: () => "person",
       flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
       searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+      // Issue 403: a report's screenshot to Hub, with the install's Bearer.
+      shotHub: REPORT_SHOT_HUB,
+      // Issue 403: a kept screenshot is the person's or the server agent's.
+      shotReader: (r) => {
+        const p = agentPrincipalOf(r);
+        if (p)
+          return isServerScope(p.workspace)
+            ? { ok: true }
+            : { ok: false, who: p.actor };
+        const a = auditActorOf(r);
+        return a ? { ok: false, who: "an unverified agent" } : { ok: true };
+      },
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -7670,7 +7689,22 @@ function sweepServiceLogs(): void {
   }
 }
 sweepServiceLogs();
-setInterval(sweepServiceLogs, LOG_SWEEP_INTERVAL_MS).unref();
+
+// Issue 403: a filed report's kept screenshot is deleted after
+// reports.screenshot_keep_days (30), on the log sweep's beat.
+function sweepReportShots(): void {
+  try {
+    const n = shotStore(getStateDir()).sweep(shotKeepDays(readUserConfig()));
+    if (n) serverLog(`Report screenshots: deleted ${n} past their days`);
+  } catch (e) {
+    serverLog(`Report screenshot sweep failed: ${(e as Error).message}`);
+  }
+}
+sweepReportShots();
+setInterval(() => {
+  sweepServiceLogs();
+  sweepReportShots();
+}, LOG_SWEEP_INTERVAL_MS).unref();
 
 // Last-resort guards: an uncaught throw in an async callback (spawn handlers,
 // timers — code the per-request catch can't see) would kill the whole

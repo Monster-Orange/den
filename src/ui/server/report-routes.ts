@@ -30,6 +30,18 @@
  *                                    write) ends it refused: the page keeps
  *                                    the filled-in new-issue link
  *   GET    /api/report/github-send/<id>  that flow, for the page's poll
+ *   GET    /api/report/shot-share?repo=  issue 403: whether a screenshot
+ *                                    for that destination goes on to Hub
+ *                                    ({ share, recipient }), for Review
+ *   GET    /api/report/shots/<id>   issue 403: a filed report's kept
+ *                                    screenshot (base64 PNG): the person
+ *                                    or this install's server agent only
+ *
+ * Issue 403: a send (either way) may carry `shot`, the masked PNG as a
+ * data URL, and `shareShot`. The PNG is kept here, keyed by the report id
+ * (report-shots.ts); ticked and Hub-connected, it goes to Hub first
+ * (report-shot-hub.ts). Hub saying no never stops the filing. The issue
+ * body then names the tool that reads it, never a URL or a path.
  *
  * `gh` runs through `deps.gh` (tests pass a fake: never the real one).
  */
@@ -49,6 +61,13 @@ import {
   sentLog,
   type FeedbackSettings,
 } from "../../shared/report-store.js";
+import {
+  REPORT_ID,
+  newReportId,
+  pngOfDataUrl,
+  shotStore,
+} from "../../shared/report-shots.js";
+import type { ReportShotHub, UploadWhy } from "./report-shot-hub.js";
 
 export interface GhResult {
   code: number;
@@ -79,6 +98,19 @@ export interface ReportRouteDeps {
     ): Promise<FlowView | { error: "busy" | "no_client_id" }>;
     get(id: string, purpose: "report"): FlowView | null;
   };
+  /**
+   * Issue 403: Hub, for a report's screenshot (report-shot-hub.ts); absent,
+   * every screenshot stays here.
+   */
+  shotHub?: Pick<ReportShotHub, "preflight" | "upload">;
+  /**
+   * Issue 403: whether this caller may read a kept screenshot: the person
+   * or this install's own server agent; else who it is, for the refusal.
+   * Absent: the person only.
+   */
+  shotReader?: (
+    req: http.IncomingMessage,
+  ) => { ok: true } | { ok: false; who: string };
   /** An open issue with this title, read without a token (F5), or null. */
   searchOpen?: (
     repo: string,
@@ -106,6 +138,8 @@ interface Held {
   addTo: number | null;
   who: string;
   draftId?: string;
+  /** Issue 403: where the screenshot went, for the page once filed. */
+  shot?: ShotOutcome;
   stateDir: string;
   maxPerHour: number;
   at: number;
@@ -171,12 +205,92 @@ export async function decideReport(
       url: typeof r.body.html_url === "string" ? r.body.html_url : "",
       repo: h.repo,
       added: h.addTo !== null,
+      ...(h.shot ? { shot: pageOutcome(h.shot) } : {}),
     },
   };
 }
 
+/** Where a report's screenshot went (issue 403). */
+type ShotOutcome =
+  | { where: "hub"; id: string; recipient: string }
+  | { where: "local"; id: string; why?: UploadWhy };
+
+/** The page's view of it: Hub's recipient, or why it stayed here. */
+function pageOutcome(o: ShotOutcome): Record<string, unknown> {
+  return o.where === "hub"
+    ? { where: "hub", recipient: o.recipient }
+    : { where: "local", id: o.id, ...(o.why ? { why: o.why } : {}) };
+}
+
+/**
+ * A name for the issue body: letters, digits, spaces and a few marks only,
+ * so nothing Hub says can put a link or a path in a public issue.
+ */
+function plainName(v: string): string {
+  return (
+    v
+      .replace(/[^\p{L}\p{N} ,'&_-]/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80) || "Hub"
+  );
+}
+
+/** The issue body's screenshot line (issue 403): the tool, never a URL. */
+export function shotLine(o: ShotOutcome): string {
+  return o.where === "hub"
+    ? `Screenshot: hub_report_screenshot ${o.id} (Hub, ${plainName(o.recipient)})`
+    : `Screenshot: kept on the reporting install; its agent can read it with report_screenshot(${o.id})`;
+}
+
+/**
+ * Issue 403: a send's screenshot, before the issue is filed. Kept here
+ * always (keyed by the report id: the draft's, else a new one); ticked
+ * and Hub-connected, sent to Hub first. Hub saying no is an outcome, not
+ * a failure. null when the send has no screenshot; a string when what it
+ * sent isn't one.
+ */
+async function keepShot(
+  b: Record<string, unknown>,
+  repo: string,
+  d: ReportRouteDeps,
+  now: number,
+): Promise<ShotOutcome | null | string> {
+  if (b.shot === undefined || b.shot === null) return null;
+  const png = pngOfDataUrl(b.shot);
+  if (!png) return "the screenshot must be a PNG data URL of at most 8 MB";
+  const id =
+    typeof b.draftId === "string" && REPORT_ID.test(b.draftId)
+      ? b.draftId
+      : newReportId();
+  const store = shotStore(d.stateDir());
+  store.save(id, png, repo, now);
+  if (b.shareShot !== true) return { where: "local", id };
+  if (!d.shotHub) return { where: "local", id, why: "not-connected" };
+  const up = await d.shotHub
+    .upload(png, { draftId: id, targetRepo: repo })
+    .catch(() => ({ ok: false as const, why: "unreachable" as const }));
+  if (!up.ok) return { where: "local", id, why: up.why };
+  // Hub's id goes in a public issue: its own shape only.
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(up.id))
+    return { where: "local", id, why: "refused" };
+  store.recordHub(id, {
+    id: up.id,
+    sha256: up.sha256,
+    expires: up.expires,
+    recipient: up.recipient,
+  });
+  return { where: "hub", id: up.id, recipient: up.recipient };
+}
+
+/** The body with its screenshot line, when there is one. */
+const withShot = (body: string, o: ShotOutcome | null) =>
+  o ? `${body}\n\n${shotLine(o)}` : body;
+
 /** GET /api/report/github-send/<id>. */
 const FLOW_PATH = /^\/api\/report\/github-send\/([A-Za-z0-9_-]{16,64})$/;
+/** GET /api/report/shots/<id> (issue 403). */
+const SHOT_PATH = /^\/api\/report\/shots\/([a-f0-9]{16})$/;
 /** GET and DELETE /api/report/drafts/<id>. */
 const DRAFT_PATH = /^\/api\/report\/drafts\/([a-f0-9]{16})$/;
 
@@ -476,6 +590,10 @@ export function handleReportRoutes(
         const dup = await sameTitle(d, c.repo, c.title);
         if (dup) return d.sendJson(res, { ok: false, duplicate: dup }, 409);
       }
+      const shot = await keepShot(b, c.repo, d, now());
+      if (typeof shot === "string")
+        return d.sendJson(res, { ok: false, error: shot }, 400);
+      const body = withShot(c.body, shot);
       const r =
         addTo !== null
           ? await d.gh(
@@ -488,7 +606,7 @@ export function handleReportRoutes(
                 "--body-file",
                 "-",
               ],
-              c.body,
+              body,
             )
           : await d.gh(
               [
@@ -504,7 +622,7 @@ export function handleReportRoutes(
                 "--body-file",
                 "-",
               ],
-              c.body,
+              body,
             );
       if (r.code !== 0)
         return d.sendJson(
@@ -512,7 +630,7 @@ export function handleReportRoutes(
           {
             ok: false,
             error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
-            newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
+            newIssueUrl: newIssueUrl(c.repo, c.title, body),
           },
           502,
         );
@@ -520,7 +638,13 @@ export function handleReportRoutes(
       if (typeof b.draftId === "string")
         draftStore(d.stateDir()).remove(b.draftId);
       const url = r.stdout.trim().split("\n").pop() ?? "";
-      d.sendJson(res, { ok: true, url, repo: c.repo, added: addTo !== null });
+      d.sendJson(res, {
+        ok: true,
+        url,
+        repo: c.repo,
+        added: addTo !== null,
+        ...(shot ? { shot: pageOutcome(shot) } : {}),
+      });
     });
 
   if (pathname === "/api/report/github-send" && req.method === "POST")
@@ -570,11 +694,15 @@ export function handleReportRoutes(
           },
           v?.error === "busy" ? 503 : 409,
         );
+      const shot = await keepShot(b, c.repo, d, now());
+      if (typeof shot === "string")
+        return d.sendJson(res, { ok: false, error: shot }, 400);
       sweepHeld(now());
       HELD.set(v.id, {
         repo: c.repo,
         title: c.title,
-        body: c.body,
+        body: withShot(c.body, shot),
+        ...(shot ? { shot } : {}),
         label: c.label,
         addTo,
         who,
@@ -595,6 +723,67 @@ export function handleReportRoutes(
         v ? { ok: true, flow: v } : { ok: false, error: "no such sign-in" },
         v ? 200 : 404,
       );
+    });
+
+  if (pathname === "/api/report/shot-share" && req.method === "GET")
+    return run(async () => {
+      if (!d.settings().enabled) return off();
+      const repo =
+        new URL(req.url ?? "/", "http://den.invalid").searchParams.get(
+          "repo",
+        ) ?? "";
+      if (!d.settings().repos.includes(repo))
+        return d.sendJson(
+          res,
+          { ok: false, error: "no such destination" },
+          400,
+        );
+      const p = d.shotHub ? await d.shotHub.preflight(repo) : null;
+      d.sendJson(
+        res,
+        p?.ok && p.share
+          ? { ok: true, share: true, recipient: p.recipient }
+          : { ok: true, share: false },
+      );
+    });
+
+  const sm = SHOT_PATH.exec(pathname);
+  if (sm && req.method === "GET")
+    return run(async () => {
+      const who = d.shotReader
+        ? d.shotReader(req)
+        : d.agentOf(req)
+          ? { ok: false as const, who: `agent:${d.agentOf(req)}` }
+          : { ok: true as const };
+      if (!who.ok)
+        return d.sendJson(
+          res,
+          {
+            ok: false,
+            error: `a report's screenshot is read by the person who runs this install, or by this install's own server agent; ${who.who} is neither. Ask the server agent for report_screenshot(${sm[1]}).`,
+          },
+          403,
+        );
+      const got = shotStore(d.stateDir()).get(sm[1]!);
+      if (!got)
+        return d.sendJson(
+          res,
+          {
+            ok: false,
+            error:
+              "no screenshot is kept for that report (none, or past its days)",
+          },
+          404,
+        );
+      d.sendJson(res, {
+        ok: true,
+        id: got.record.id,
+        repo: got.record.repo,
+        savedAt: got.record.savedAt,
+        ...(got.record.hub ? { hub: got.record.hub } : {}),
+        mime: "image/png",
+        base64: got.png.toString("base64"),
+      });
     });
 
   if (pathname === "/api/report/drafts" && req.method === "GET")
