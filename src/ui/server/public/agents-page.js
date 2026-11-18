@@ -98,7 +98,7 @@ import { latestShell } from "/shell-pick.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
-import { makeComposer } from "/agent-composer.js";
+import { draftKey, makeComposer, readDraft } from "/agent-composer.js";
 import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
 import {
   attachFiles,
@@ -2999,6 +2999,11 @@ async function openPane(id, { front = true } = {}) {
   );
   p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
+  // Issue 302: an agent's message box: always there on a phone, and
+  // wherever an unsent draft was kept for it (a reload brings it back).
+  const row = rowOf(id);
+  if (row?.kind === "agent" && (phone() || readDraft(composerDraft(row))))
+    ensureComposer(row);
   refit(p);
   // The theme's font may still be loading: measure again once it has.
   document.fonts?.ready?.then(() => {
@@ -5901,13 +5906,38 @@ async function openLinkedAgent(agent, ws) {
  * Nothing is sent until the person presses Send (POST …/say).
  */
 function openComposer(r, text) {
-  const p = st.panes.get(r.id);
+  const p = ensureComposer(r);
   if (!p) return;
+  p.composer.setText(text);
+  // The keyboard is the composer's now, not the terminal's once it opens.
+  if (st.focusOnOpen === r.id) st.focusOnOpen = null;
+  p.composer.focus();
+}
+
+/** Issue 302: where agent `r`'s unsent draft is kept. */
+function composerDraft(r) {
+  return draftKey({
+    install: location.host,
+    project: r.workspace,
+    agent: r.agent,
+  });
+}
+
+/**
+ * The composer under agent `r`'s terminal, made once (issue 103), with
+ * its draft kept (issue 302). On a phone it is the pane's foot, always
+ * there, with no Close. Returns the pane, or null.
+ */
+function ensureComposer(r) {
+  const p = st.panes.get(r.id);
+  if (!p) return null;
   if (!p.composer) {
     const name = displayName(r);
+    const onPhone = phone();
     const c = makeComposer({
       t,
       name,
+      draft: composerDraft(r),
       // BUSY-1: Send goes through the working pop-up. A quick refusal
       // comes back to the composer, which says it; the pop-up closed
       // after a failure resolves null, and the text stays in the box.
@@ -5930,19 +5960,33 @@ function openComposer(r, text) {
         );
         if (!out) throw new Error(t("agc.kept"));
       },
-      onClose: () => {
-        c.el.remove();
-        p.composer = null;
-        refit(p);
-        p.term?.focus();
-      },
+      onClose: onPhone
+        ? undefined
+        : () => {
+            c.el.remove();
+            p.composer = null;
+            refit(p);
+            p.term?.focus();
+          },
     });
+    // A phone: the foot clears the home indicator (the kit's phone.css).
+    if (onPhone) {
+      c.el.classList.add("den-phone-foot", "agc-phone");
+      // One line to start; it grows with the words, to a quarter of the
+      // visible height (agents.html), then scrolls in place.
+      const box = c.el.querySelector(".agc-in");
+      box.rows = 1;
+      const grow = () => {
+        box.style.height = "auto";
+        // border-box: the words' height and the box's own borders.
+        box.style.height = `${box.scrollHeight + box.offsetHeight - box.clientHeight}px`;
+      };
+      box.addEventListener("input", grow);
+      requestAnimationFrame(grow);
+    }
     p.composer = c;
     p.el.insertBefore(c.el, p.el.querySelector(".agto"));
     refit(p);
   }
-  p.composer.setText(text);
-  // The keyboard is the composer's now, not the terminal's once it opens.
-  if (st.focusOnOpen === r.id) st.focusOnOpen = null;
-  p.composer.focus();
+  return p;
 }

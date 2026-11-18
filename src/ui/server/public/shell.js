@@ -3539,6 +3539,10 @@
   // (window.DenUIShell): the top bar, the rail, the version chip and the
   // Report button are drawn by it, from Den's registries as data.
   var DUI = window.DenUIShell;
+  // Issue 302: a phone's on-screen keyboard, once, on every page: the
+  // root gets data-kbd-up and --vv-h while it is up (the kit's phone.js;
+  // phone.css steps the top bar aside).
+  if (DUI && DUI.initKeyboardUp) DUI.initKeyboardUp(window);
   /** An icon's <svg> (the kit's line drawings; a product's own markup). */
   function icon(name) {
     return DUI.icon(name);
@@ -5686,6 +5690,8 @@
   if (dock.setAttribute) {
     dock.setAttribute("role", "region");
     dock.setAttribute("aria-label", t("runs.title"));
+    // Issue 302: it steps aside while a phone's keyboard is up.
+    dock.setAttribute("data-kbd-hide", "");
   }
   function placeDock() {
     if (document.body && document.body.appendChild)

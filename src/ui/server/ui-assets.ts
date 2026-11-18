@@ -175,6 +175,9 @@ export const KIT_FILES: readonly string[] = [
   "report.css",
   "report-shot.js",
   "kit.js",
+  // Issue 302: a phone: the keyboard watcher, the safe area, 44px targets.
+  "phone.js",
+  "phone.css",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
   "fonts/rubik-latin-500-normal.woff2",
@@ -220,6 +223,8 @@ const KIT_SHELL_PARTS = [
  */
 const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
   { file: "dialog.js", names: ["openerOf", "focusBack"] },
+  // Issue 302: the phone's keyboard watcher, started once by shell.js.
+  { file: "phone.js", names: ["initKeyboardUp"] },
 ];
 const KIT_SHELL_NAMES = [
   "shellHtml",
@@ -260,6 +265,8 @@ const KIT_SHELL_NAMES = [
   "attachMenuFilter",
   "hydrateAppearance",
   "setWaiting",
+  // Issue 302: a phone's on-screen keyboard (data-kbd-up, --vv-h).
+  "initKeyboardUp",
 ];
 
 /**
@@ -341,6 +348,8 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/busy.css",
   // den-ui 0.6.2: the ask-and-tell dialogs' look, likewise.
   "/kit/dialog.css",
+  // Issue 302: a phone: the safe area, the keyboard up, 44px targets.
+  "/kit/phone.css",
 ];
 
 /**

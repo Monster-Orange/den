@@ -16,13 +16,60 @@
  *
  * Every word is the page's catalog (`t`). Text is only ever set as text
  * (textContent, value), never as HTML.
+ *
+ * Issue 302: with `draft` (draftKey(...)), what is written is kept, unsent,
+ * in this tab's own storage (sessionStorage; localStorage only where that
+ * is unavailable) under that key, and comes back when the page reloads.
+ * Send clears it, and so does the person's own clear (an empty box). It is
+ * never sent anywhere.
  */
 
 /** The most pages one message carries (shared-page.ts MAX_SHARED). */
 export const MAX_SHARED = 5;
 
+/** Issue 302: an unsent draft's key: one per install, project and agent. */
+export function draftKey({ install, project, agent }) {
+  return `den-draft:${install}:${project}:${agent}`;
+}
+
+/** The tab's own storage for drafts, or null where there is none. */
+export function draftStore(win = window) {
+  for (const k of ["sessionStorage", "localStorage"]) {
+    try {
+      const s = win[k];
+      const probe = "den-draft-probe";
+      s.setItem(probe, "1");
+      s.removeItem(probe);
+      return s;
+    } catch {
+      /* the next, or none */
+    }
+  }
+  return null;
+}
+
+/** The draft kept under `key`, or "". */
+export function readDraft(key, store = draftStore()) {
+  try {
+    return (key && store?.getItem(key)) || "";
+  } catch {
+    return "";
+  }
+}
+
+function keepDraft(key, text, store) {
+  if (!key || !store) return;
+  try {
+    if (text) store.setItem(key, text);
+    else store.removeItem(key);
+  } catch {
+    /* full or blocked: the box still has it */
+  }
+}
+
 /** The composer's element and its controls. */
-export function makeComposer({ t, name, send, onClose }) {
+export function makeComposer({ t, name, send, onClose, draft }) {
+  const store = draft ? draftStore() : null;
   const el = document.createElement("form");
   el.className = "agc";
   el.noValidate = true;
@@ -68,6 +115,8 @@ export function makeComposer({ t, name, send, onClose }) {
   ta.rows = 3;
   ta.setAttribute("aria-label", label);
   ta.placeholder = label;
+  if (draft) ta.value = readDraft(draft, store);
+  ta.addEventListener("input", () => keepDraft(draft, ta.value, store));
   const hint = document.createElement("p");
   hint.className = "agc-hint";
   hint.textContent = t("agc.hint");
@@ -117,7 +166,10 @@ export function makeComposer({ t, name, send, onClose }) {
         ...(words ? { text: words } : {}),
       }));
       await send(context.length ? { text, context } : { text });
-      ta.value = "";
+      // What was sent, not what was typed since: a draft written while it
+      // went stays.
+      if (ta.value.trim() === text) ta.value = "";
+      keepDraft(draft, ta.value, store);
       shared = [];
       paintChips();
       say(t("agc.sent", { name }), "ok");
@@ -140,6 +192,7 @@ export function makeComposer({ t, name, send, onClose }) {
     el,
     setText(v) {
       ta.value = String(v ?? "");
+      keepDraft(draft, ta.value, store);
     },
     text: () => ta.value,
     addContext(p) {

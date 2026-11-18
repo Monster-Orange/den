@@ -38,6 +38,8 @@
     "./markdown-editor": "./src/markdown-editor.js",
     "./markdown-editor.css": "./src/markdown-editor.css",
     "./savestate.css": "./src/savestate.css",
+    "./phone": "./src/phone.js",
+    "./phone.css": "./src/phone.css",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
       "default": "./inventory/nav-inventory.js"
