@@ -2322,6 +2322,29 @@ async function toolsRoute(
 }
 
 /**
+ * D44 / #390: restart one agent at its next idle, on the same conversation,
+ * so its tools load again; one audit row says what came of it. The
+ * restart-stale route and Den's own refresh after it updated itself
+ * (update-refresh.ts) both restart through here. True: it restarted.
+ */
+export async function restartForTools(
+  d: AgentsResolved,
+  a: { id: string; workspace: string },
+  what: string,
+  audit: (detail: string, reason?: string) => void,
+  wait: { pollMs?: number; maxMs?: number } = {},
+): Promise<boolean> {
+  try {
+    const s = await restartAgent(d, a.id, a.workspace, "after-turn", wait);
+    audit(restarted(what, s), s.early ? "exited at once" : undefined);
+    return !s.early;
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    return false;
+  }
+}
+
+/**
  * D44: GET /api/agents/stale: the running agents whose MCP servers are out
  * of date (`?fresh=1` asks Hub's config again, after Connect or
  * Disconnect). POST /api/agents/restart-stale: restarts each at its next
@@ -2375,19 +2398,14 @@ async function staleRoute(
     const list = await staleAgents(d, { fresh: true });
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
-    for (const a of list) {
-      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
-      void restartAgent(
+    for (const a of list)
+      void restartForTools(
         d,
-        a.id,
-        a.workspace,
-        "after-turn",
+        a,
+        `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`,
+        audit,
         deps.personaWait ?? {},
-      ).then(
-        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
-        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
       );
-    }
     sendJson(res, { ok: true, pending: list }, 202);
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));

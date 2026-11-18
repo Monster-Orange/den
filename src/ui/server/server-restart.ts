@@ -138,9 +138,16 @@ function doctorNews(
   );
 }
 
-/** #384: an update leaves the agent's Den tools on the Den they started on. */
-const TOOLS_LINE =
-  " Your Den tools keep running the Den they started on until the person restarts you from Den (Restart keeps this conversation).";
+/**
+ * #384: an update leaves the agent's Den tools on the Den they started on.
+ * #390: Den restarts it at its next idle to load the new one, unless
+ * server_agent.refresh_agents is off.
+ */
+function toolsLine(version: string, refresh: boolean): string {
+  return refresh
+    ? ` Den restarts you at your next idle to load ${version}'s tools (this conversation stays).`
+    : " Your Den tools still run the Den they started on.";
+}
 
 /**
  * What Den types into the agent's session when the new server is up.
@@ -152,7 +159,10 @@ export function backMessage(
   version: string,
   pid: number,
   update?: LastUpdate | null,
+  /** #390: server_agent.refresh_agents (default on). */
+  opts: { refresh?: boolean } = {},
 ): string {
+  const refresh = opts.refresh ?? true;
   if (m.by === "den")
     return m.rolledBack
       ? `Den is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` +
@@ -161,7 +171,7 @@ export function backMessage(
       : `Den is back on ${version} (pid ${pid}) (it was ${m.fromVersion}). ` +
           `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off.` +
           doctorNews(m, version, update) +
-          TOOLS_LINE;
+          toolsLine(version, refresh);
   if (m.rolledBack)
     return (
       `Server is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
@@ -175,7 +185,7 @@ export function backMessage(
     m.fromVersion !== version &&
     update?.from === m.fromVersion &&
     update.to === version
-      ? doctorNews(m, version, update) + TOOLS_LINE
+      ? doctorNews(m, version, update) + toolsLine(version, refresh)
       : "";
   return (
     `Server is back on ${version} (pid ${pid})${was}. ` + // words-ok: SRV-1 spec's own line, typed to the agent

@@ -133,6 +133,8 @@ describe("the settings inventory (R21)", () => {
         "machine_name",
         // SRV-P6: whether Den updates itself without asking.
         "server_agent_self_update",
+        // #390: whether Den restarts agents on old tools after an update.
+        "server_agent_refresh_agents",
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",

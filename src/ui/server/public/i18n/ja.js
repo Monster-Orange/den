@@ -815,6 +815,11 @@
       "新しい __DEN_TITLE__ が出たとき。確認: 更新はベルで許可を待ちます。自動: __DEN_TITLE__ は落ち着いたときに更新し、新しいバージョンが起動しなければ自分で元に戻します。",
     "set.server.self_update.o.ask": "確認",
     "set.server.self_update.o.auto": "自動",
+    "set.server.refresh_agents": "更新後のエージェント",
+    "set.server.refresh_agents.d":
+      "__DEN_TITLE__ が自分を更新したあと、古いバージョンのツールのままのエージェント。再起動: __DEN_TITLE__ が次の待機時に同じ会話のまま再起動し、新しいバージョンを使えるようにします。そのまま: 次に起動するまで古いツールのままです。",
+    "set.server.refresh_agents.o.on": "再起動",
+    "set.server.refresh_agents.o.off": "そのまま",
     "set.server.update_check": "更新の確認",
     "set.server.update_check.d":
       "「新しいバージョン」の設定の出どころと、__DEN_TITLE__ が最後に新しいバージョンを確認した時刻と次の確認の時刻。",
@@ -1767,6 +1772,8 @@
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
+    "bell.m.agentsRefreshed":
+      "__DEN_TITLE__ {v}: 新しいツールを読み込むため、{ids} を次の待機時に再起動しました (同じ会話のまま)",
     "bell.m.turn": "{name} のターンが終わりました",
     "bell.m.said": "{name}: {text}",
     "bell.m.hub": "{name} が Hub のコメント {n} 件を終えました",

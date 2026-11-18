@@ -377,7 +377,7 @@ describe("D44: Den knows which agents have out-of-date tools", () => {
     await hubNow(d, true);
     const t = await agentTools(d, "planner", "north");
     expect(t.hub).toEqual({ connected: true, loaded: false, restart: true });
-    expect(t.note).toMatch(/restart you from Den/);
+    expect(t.note).toMatch(/Den restarts you/);
     expect(t.note).toMatch(/no token step/);
   });
 });

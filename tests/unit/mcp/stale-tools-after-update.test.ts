@@ -7,9 +7,10 @@
  *
  * The MCP server compares the engine it loaded with the one on disk (MD-2's
  * engineWatch, the web server's own check). When they differ, every answer
- * says so in one more line, with how to load the new tools: an agent asks
- * the person to restart it from Den (Restart keeps the conversation); any
- * other client reconnects the server.
+ * says so in one more line. #390: an agent is told Den restarts it at its
+ * next idle to load the new Den (server_agent.refresh_agents, default on);
+ * with that off, or for any other client, the line gives the versions only.
+ * It never asks the person to do anything.
  *
  * The engine here is a temp folder (DEN_ENGINE_ROOT); the web server is a
  * fake API; the server agent's real scope (--workspace den-server --actor
@@ -78,6 +79,7 @@ afterEach(() => {
 async function call(
   scope: { workspace: string; actor: string } | undefined,
   after: () => void,
+  refreshOn = true,
 ): Promise<{ isError?: boolean; content: { text: string }[] }> {
   const server = createDenMcpServer({
     cfg,
@@ -86,6 +88,7 @@ async function call(
     api,
     ...(scope ? { scope } : {}),
     log: () => {},
+    refreshOn: () => refreshOn,
   });
   const [a, b] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "acme-test", version: "1" });
@@ -104,14 +107,14 @@ async function call(
 const SERVER_AGENT = { workspace: SERVER_SCOPE, actor: "agent:server" };
 
 describe("#384: tools that started before Den updated itself say so", () => {
-  it("the server agent, after Den updated itself under its tools: the answer says its tools are the old Den's, and how to load the new", async () => {
+  it("the server agent, after Den updated itself under its tools: the answer says its tools are the old Den's, and that Den restarts it at its next idle", async () => {
     const r = await call(SERVER_AGENT, () => install("0.4.64"));
     expect(r.isError).toBeFalsy();
     const all = r.content.map((c) => c.text).join("\n");
-    expect(all).toMatch(/0\.4\.63/);
-    expect(all).toMatch(/0\.4\.64/);
-    expect(all).toMatch(/restart you from Den/);
-    expect(all).toMatch(/keeps this conversation/);
+    expect(all).toContain(
+      "Den was updated to 0.4.64 after these tools started on 0.4.63; Den restarts you at your next idle to load 0.4.64.",
+    );
+    expect(all).not.toMatch(/person/i);
     // The answer itself is still the tools' JSON, first and whole.
     expect(JSON.parse(r.content[0].text)).toHaveProperty("denUpdate");
   });
@@ -122,11 +125,18 @@ describe("#384: tools that started before Den updated itself say so", () => {
     expect(JSON.parse(r.content[0].text).denUpdate).toEqual(UPDATE);
   });
 
-  it("a person's own MCP client (no agent): reconnect the server, not a restart from Den", async () => {
+  it("server_agent.refresh_agents off: the versions only, and no one is asked to do anything", async () => {
+    const r = await call(SERVER_AGENT, () => install("0.4.64"), false);
+    expect(r.content).toHaveLength(2);
+    expect(r.content[1].text).toBe(
+      "Den was updated to 0.4.64 after these tools started on 0.4.63.",
+    );
+  });
+
+  it("a person's own MCP client (no agent): the versions only", async () => {
     const r = await call(undefined, () => install("0.4.64"));
-    const all = r.content.map((c) => c.text).join("\n");
-    expect(all).toMatch(/0\.4\.63/);
-    expect(all).toMatch(/reconnect/i);
-    expect(all).not.toMatch(/restart you from Den/);
+    expect(r.content[1].text).toBe(
+      "Den was updated to 0.4.64 after these tools started on 0.4.63.",
+    );
   });
 });
