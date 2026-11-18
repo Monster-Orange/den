@@ -1526,14 +1526,14 @@ describe("the persona routes (AG-10.6, AG-10.7)", () => {
 });
 
 describe("POST /api/workspaces/<ws>/sessions (Plain session, AG-10.1)", () => {
-  it("starts the person's login shell in the workspace's folder, named shell, then shell-2", async () => {
+  it("starts the person's login shell in the workspace's folder, named terminal-1, then terminal-2 (issue 169)", async () => {
     const a = await api();
     a.r.deps.maxSessions = () => 4;
     a.r.deps.env = { ...a.r.deps.env, SHELL: "/bin/sh" };
     const one = await a.call("POST", "/api/workspaces/north/sessions");
     expect(one.status).toBe(200);
     expect(one.json.session).toMatchObject({
-      name: "acme-north:shell",
+      name: "acme-north:terminal-1",
       workspace: "north",
     });
     const p = a.r.made[0];
@@ -1542,12 +1542,12 @@ describe("POST /api/workspaces/<ws>/sessions (Plain session, AG-10.1)", () => {
     expect(p.opts.env).not.toHaveProperty("SOME_TOKEN");
     const two = await a.call("POST", "/api/workspaces/north/sessions");
     expect((two.json.session as { name: string }).name).toBe(
-      "acme-north:shell-2",
+      "acme-north:terminal-2",
     );
     expect(recentActions().at(-1)).toMatchObject({
       actor: "user",
       verb: "sessions",
-      detail: "plain session acme-north:shell-2 in north",
+      detail: "plain session acme-north:terminal-2 in north",
     });
     expect(
       (await a.call("POST", "/api/workspaces/nowhere/sessions")).status,
