@@ -125,7 +125,8 @@ jobs:
           path: |
             ~/.cache/ms-playwright
             ~/.cache/den-apt
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
@@ -280,7 +281,8 @@ jobs:
           path: |
             ~/.cache/ms-playwright
             ~/.cache/den-apt
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         if: steps.select.outputs.shards == '[]'
         timeout-minutes: 15
@@ -341,7 +343,8 @@ jobs:
           path: |
             ~/.cache/ms-playwright
             ~/.cache/den-apt
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
