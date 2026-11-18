@@ -77,7 +77,8 @@ jobs:
           path: |
             ~/.cache/ms-playwright
             ~/.cache/den-apt
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         if: ${{ inputs.browsers != 'none' }}
         timeout-minutes: 15
