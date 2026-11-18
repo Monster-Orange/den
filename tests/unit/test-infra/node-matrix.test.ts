@@ -19,6 +19,7 @@ interface Job {
     "fail-fast"?: boolean;
   };
   "continue-on-error"?: boolean;
+  "timeout-minutes"?: number;
   steps?: { run?: string; with?: Record<string, unknown> }[];
 }
 
@@ -56,10 +57,17 @@ function everyShard(t: Job | undefined): void {
   const shards = [...(t!.strategy?.matrix?.shard ?? [])].sort((a, b) => a - b);
   expect(shards.length).toBeGreaterThan(0);
   expect(shards).toEqual(shards.map((_, i) => i + 1));
-  const run = (t!.steps ?? []).find((s) =>
-    /\bnpm test\b/.test(s.run ?? ""),
-  )?.run;
-  expect(run).toContain(`--shard=\${{ matrix.shard }}/${shards.length}`);
+  // Every step that shards (the docker step and the quarantine step too)
+  // splits the same number of ways as the matrix.
+  const sharded = (t!.steps ?? [])
+    .map((s) => s.run ?? "")
+    .filter((r) => r.includes("--shard="));
+  expect(sharded.length).toBeGreaterThan(0);
+  for (const r of sharded)
+    expect(r).toContain(`--shard=\${{ matrix.shard }}/${shards.length}`);
+  // A shard took 17-20 min against a 20-min limit and was cut off: leave
+  // room (setup plus the slowest shard, with headroom).
+  expect(t!["timeout-minutes"] ?? 360).toBeGreaterThanOrEqual(30);
 }
 
 function checksAndTests(j: Record<string, Job>): void {

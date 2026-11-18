@@ -231,12 +231,21 @@ describe("in CI", () => {
     env?: Record<string, string>;
     "continue-on-error"?: unknown;
     if?: string;
+    id?: string;
   };
   const wf = (f: string) =>
     yaml.parse(
       fs.readFileSync(path.join(ROOT, ".github", "workflows", f), "utf-8"),
     ) as {
-      jobs: Record<string, { env?: Record<string, string>; steps: Step[] }>;
+      jobs: Record<
+        string,
+        {
+          env?: Record<string, string>;
+          steps: Step[];
+          strategy?: { matrix: { shard: number[] } };
+          "timeout-minutes"?: number;
+        }
+      >;
     };
   it("only a pull request turns it on, and the quarantined step can't block", () => {
     // Issue 398: pull requests run in the pr job (a small subset) or
@@ -254,7 +263,19 @@ describe("in CI", () => {
     const shardStep = jobs["pr-shards"].steps.find(
       (s) => s.env?.DEN_TEST_QUARANTINE === "only",
     );
-    expect(shardStep?.run).toContain("--shard=${{ matrix.shard }}/4");
+    // The big pull-request run splits as many ways as main's tests job, and
+    // has the same room: in four parts a shard ran past a 20-min limit.
+    const pick = (
+      jobs.pr.steps.find((s) => s.id === "select")?.run ?? ""
+    ).match(/shards=\[([\d,]+)\]/);
+    const n = pick ? pick[1].split(",").length : 0;
+    expect(n).toBe(wf("ci.yml").jobs.tests.strategy!.matrix.shard.length);
+    for (const st of jobs["pr-shards"].steps.filter((s) =>
+      (s.run ?? "").includes("--shard="),
+    ))
+      expect(st.run).toContain(`--shard=\${{ matrix.shard }}/${n}`);
+    expect(shardStep?.run).toContain(`--shard=\${{ matrix.shard }}/${n}`);
+    expect(jobs["pr-shards"]["timeout-minutes"]).toBeGreaterThanOrEqual(30);
   });
   it("the release never sets it", () => {
     expect(
