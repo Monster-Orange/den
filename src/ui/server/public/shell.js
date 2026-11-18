@@ -2003,6 +2003,8 @@
     "ag.stop": "Stop",
     "ag.closeShell": "Close shell",
     "ag.closeShellTip": "End this shell and anything running in it",
+    "ag.newShell": "New terminal",
+    "ag.newShellTip": "Start another shell in this project's folder",
     "ag.shellClosed": "Closed {id}",
     "ag.resume": "Resume",
     "ag.stopName": "Stop {id}",

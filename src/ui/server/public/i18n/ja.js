@@ -1133,6 +1133,8 @@
     "ag.stop": "停止",
     "ag.closeShell": "シェルを閉じる",
     "ag.closeShellTip": "このシェルと、その中で動いているものを終了します",
+    "ag.newShell": "新しいターミナル",
+    "ag.newShellTip": "このプロジェクトのフォルダーで別のシェルを開始します",
     "ag.shellClosed": "{id} を閉じました",
     "ag.resume": "再開",
     "ag.stopName": "{id} を停止",

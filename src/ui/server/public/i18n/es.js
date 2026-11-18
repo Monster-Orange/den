@@ -1159,6 +1159,8 @@
     "ag.stop": "Detener",
     "ag.closeShell": "Cerrar shell",
     "ag.closeShellTip": "Termina este shell y lo que se ejecuta en él",
+    "ag.newShell": "Nueva terminal",
+    "ag.newShellTip": "Inicia otro shell en la carpeta de este proyecto",
     "ag.shellClosed": "Se cerró {id}",
     "ag.resume": "Reanudar",
     "ag.stopName": "Detener {id}",
