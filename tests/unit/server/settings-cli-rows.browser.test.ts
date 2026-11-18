@@ -240,14 +240,15 @@ describe("MODE-5: Settings rows that were the command line's", () => {
       (r) =>
         r.url().endsWith("/api/settings") &&
         r.request().method() === "POST" &&
-        (r.request().postDataJSON() as { cli_tabs?: boolean }).cli_tabs ===
-          false,
+        (r.request().postDataJSON() as { cli_tabs?: boolean | null })
+          .cli_tabs === null,
     );
     release();
     await second;
     await savedMark(p, "cli.cli_tabs");
     expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(false);
-    expect(posts).toEqual([{ cli_tabs: true }, { cli_tabs: false }]);
+    // Off clears the key (back to its default, off).
+    expect(posts).toEqual([{ cli_tabs: true }, { cli_tabs: null }]);
     await p.unroute("**/api/settings");
     await p.reload();
     await p.waitForSelector('[data-focus-key="cli-cli_tabs"]');
