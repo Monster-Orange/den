@@ -176,6 +176,8 @@ describe("issue 469: Report opens at once, the screenshot after", () => {
     const p = await page([]);
     const first = await timedOpen(p);
     note("open1", first);
+    // Red first: before issue 469 the form waited for the whole shot.
+    expect(first).toBeLessThan(BUDGET_MS);
     // The screenshot arrives in the form that is already open.
     await dlg(p).locator("canvas[data-shot]").waitFor({ timeout: 20_000 });
     expect(await dlg(p).locator('[data-f="title"]').inputValue()).toBe("x");
@@ -189,21 +191,15 @@ describe("issue 469: Report opens at once, the screenshot after", () => {
     });
     note("shot1", after.shotAt);
     note("busiest1", after.gap);
-    // The lean copy took it: html-to-image was never needed.
-    expect(after.lib).toBe(false);
     await p.keyboard.press("Escape");
     await dlg(p).locator('[data-act="discard"]').click();
     await dlg(p).waitFor({ state: "detached" });
     const second = await timedOpen(p);
     note("open2", second);
     await dlg(p).locator("canvas[data-shot]").waitFor({ timeout: 20_000 });
-    expect({ first, second, budget: BUDGET_MS }).toEqual({
-      first: expect.any(Number),
-      second: expect.any(Number),
-      budget: BUDGET_MS,
-    });
-    expect(first).toBeLessThan(BUDGET_MS);
     expect(second).toBeLessThan(BUDGET_MS);
+    // The lean copy took it: html-to-image was never needed.
+    expect(after.lib).toBe(false);
     await p.context().close();
   });
 
