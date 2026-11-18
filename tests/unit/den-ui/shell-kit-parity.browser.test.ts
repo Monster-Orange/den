@@ -440,6 +440,13 @@ async function show(p: Page, area: Area): Promise<void> {
       state: "visible",
       timeout: 20_000,
     });
+    // Issue 469: the form opens first and the screenshot fills in after;
+    // the reference is the form with its screenshot in.
+    await p.waitForFunction(
+      () => !document.querySelector("dialog.fb-dlg .fb-taking"),
+      undefined,
+      { timeout: 20_000 },
+    );
   } else if (area === "working") {
     await p.evaluate(`${pageImport("/busy-den.js")}.then(() => true)`);
     await p.evaluate(() => {

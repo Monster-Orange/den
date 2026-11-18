@@ -862,7 +862,9 @@ describe("FB: the screenshot and its mask", () => {
     if (skip()) return;
     const f = fresh();
     const p = await page(f);
-    await p.route("**/vendor/html-to-image.js?v=*", (r) =>
+    // No screenshot module at all (issue 469: the shot no longer needs
+    // html-to-image, so a missing library alone still gives one).
+    await p.route("**/kit/report-shot.js*", (r) =>
       r.fulfill({ status: 404, body: "" }),
     );
     await p.keyboard.press("ControlOrMeta+Shift+F");
