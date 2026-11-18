@@ -554,6 +554,19 @@ function signInTag(r) {
   return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
 }
 
+/**
+ * Issue 249: whether Hub knows the agent by its own token (its work and
+ * approvals count as its own there), or by the install's. Nothing when
+ * Hub isn't connected, and for the server agent.
+ */
+function hubBoundTag(r) {
+  if (r?.kind !== "agent" || typeof r.hubBound !== "boolean") return "";
+  const [word, tip] = r.hubBound
+    ? [t("ag.hub.bound"), t("ag.hub.bound.tip")]
+    : [t("ag.hub.unbound"), t("ag.hub.unbound.tip")];
+  return `<span class="tagx" data-hub-bound="${r.hubBound}" title="${esc(tip)}">${esc(word)}</span>`;
+}
+
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
   // D28: on_due off: nothing will happen, so nothing is shown.
@@ -2209,7 +2222,8 @@ function paintBar(p) {
     whereTag(r, true) +
     linkTag(r) +
     subagentTag(r) +
-    signInTag(r);
+    signInTag(r) +
+    hubBoundTag(r);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +

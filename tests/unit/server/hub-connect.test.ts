@@ -413,6 +413,44 @@ describe("disconnect", () => {
     });
   });
 
+  // Issue 249: Disconnect revokes every agent's own Hub token first.
+  it("revokes every agent's Hub token, then the install's; one Hub can't revoke stops it unless forced", async () => {
+    const calls: string[] = [];
+    let fail = 1;
+    const h = harness({
+      config: () => cfg,
+      revoke: async (url, t) => {
+        calls.push(`install ${url} ${t === TOKEN ? "TOKEN" : t}`);
+        return true;
+      },
+      unbindAgents: async (hub, force) => {
+        calls.push(
+          `agents ${hub.url} ${hub.token === TOKEN ? "TOKEN" : hub.token} ${force}`,
+        );
+        return { revoked: 2, failed: force ? 0 : fail };
+      },
+    });
+    h.setUser({ hub: { url: HUB, token: "file:/state/hub/token" } });
+    expect(await h.hc.disconnect()).toMatchObject({
+      ok: false,
+      error: /1 agent's Hub token.*Nothing was removed/,
+    });
+    expect(calls).toEqual([`agents ${HUB} TOKEN false`]);
+    expect(h.forgot).toEqual([]);
+    fail = 0;
+    calls.length = 0;
+    expect(await h.hc.disconnect()).toEqual({
+      ok: true,
+      revoked: true,
+      message:
+        "Disconnected. Hub revoked this install's token and 2 agents' tokens.",
+    });
+    expect(calls).toEqual([
+      `agents ${HUB} TOKEN false`,
+      `install ${HUB} TOKEN`,
+    ]);
+  });
+
   it("not connected: nothing to do", async () => {
     expect(await harness().hc.disconnect()).toEqual({
       ok: true,

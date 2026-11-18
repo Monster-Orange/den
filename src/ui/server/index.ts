@@ -433,6 +433,7 @@ import {
   patchHubUrl,
   readHubConfig,
 } from "../../shared/hub.js";
+import { serverHubAgentTokens } from "../../shared/hub-agent-tokens.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
@@ -6316,13 +6317,24 @@ async function handleRequest(
   // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
   if (
     await handleHubProxy(req, res, pathname, {
-      upstream: (who) => hubUpstream(agentWebDeps(), who),
+      // Issue 249: each agent's own Hub token (bound to it on Hub).
+      upstream: (who) =>
+        hubUpstream(
+          agentWebDeps({
+            hubAgentToken: (h, a) => serverHubAgentTokens().tokenFor(h, a),
+          }),
+          who,
+        ),
       onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
       // 0.4.48: Hub turned the token down through an agent's call: let the
       // next call read it again (at most once a minute), as Den's own
       // status check does; and the agent's note says how its calls go.
       onHubAnswer: (agentId, o) => {
-        if (o.status === 401) forgetHubToken();
+        if (o.status === 401) {
+          forgetHubToken();
+          // Issue 249: its own token, if it had one, is minted anew.
+          serverHubAgentTokens().rejected(agentId);
+        }
         if (o.sub === "/mcp")
           noteHubMcpCall(getStateDir(), agentId, {
             ok: o.status !== null && o.status >= 200 && o.status < 300,

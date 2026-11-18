@@ -75,8 +75,8 @@ press Connect after.
 Press **Disconnect**. Den asks first: "This revokes this Den's Hub key on Hub. Agents lose Hub until
 you Connect again." Then:
 
-1. Hub revokes this install's token.
-2. Den removes the token here.
+1. Hub revokes each agent's own token, then this install's token.
+2. Den removes the tokens here.
 3. The address stays, so Connect is one click.
 
 If Hub can't be reached, nothing is removed and you can try again. You can also remove it here
@@ -87,6 +87,13 @@ anyway. Then the token still works in Hub until a Hub admin revokes this install
 - **Hub's tools.** Every agent Den launches gets Hub's tools, the `hub_*` tools. Agents reach Hub
   through Den, never directly, and never see the token. Hub knows the company from the token and the
   project from the project link.
+- **Their own Hub token.** Under the install's one Connect, Den asks Hub for a token bound to each
+  agent, the first time the agent calls Hub. No click per agent. Den keeps that token on its server,
+  never in the agent's environment or files, and uses it for that agent's Hub calls. Hub then knows
+  the agent as itself, so its work and approvals count as its own. The agent's row says **Verified on
+  Hub** or **Not verified on Hub**. The server agent and Den's own calls use the install's token.
+  Removing an agent revokes its token on Hub. A Hub that doesn't give agent tokens yet leaves every
+  agent on the install's token, as before.
 - **No asking, by default.** "Agents use Hub's tools without asking" is on. Writes stay in your
   company, and Hub keeps every version. Turn it off and agents ask before each Hub tool runs, like any
   tool.
@@ -204,6 +211,9 @@ user file wins.
 | `hub.mcp_retry_attempts`         | `0` (no limit)     | How many times Den restarts one agent for Hub's tools before it leaves it to you.                                                         |
 | `hub.tools_check_seconds`        | `300` (at least 5) | How often Den reads Hub's tool list, to tell agents what changed.                                                                         |
 | `hub.tools_restart`              | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.             |
+| `hub.agent_tokens`               | `true`             | Each agent calls Hub with its own token, bound to it on Hub. `false`: every agent uses the install's token.                               |
+| `hub.agent_token_retry_seconds`  | `600` (at least 5) | How long Den waits to ask again when Hub couldn't give an agent its own token.                                                            |
+| `hub.agent_token_max_age_days`   | `0` (never)        | An agent's token older than this is revoked and replaced at its next Hub call.                                                            |
 
 Two more keys touch Hub:
 

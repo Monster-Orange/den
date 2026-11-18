@@ -14,8 +14,9 @@
  *      /connect/token), stores the token and points hub.token at it, then
  *      answers a page that moves on to Settings by script, a same-site
  *      navigation that carries the cookie again.
- *   4. POST /api/hub/disconnect revokes the token on Hub, then removes it
- *      here and clears hub.token.
+ *   4. POST /api/hub/disconnect revokes the agents' own Hub tokens (issue
+ *      249), then the install's token on Hub, then removes it here and
+ *      clears hub.token.
  *
  * Where the token goes (SEC-0: the install's, never Den's): the install's
  * own secrets store when it keeps secrets (1Password, Doppler: a new item
@@ -99,6 +100,15 @@ export interface HubConnectDeps {
   linkAfter?: () => Promise<
     { linked: string[]; unclear: string[] } | { cannot: true }
   >;
+  /**
+   * Issue 249: revoke every agent's own Hub token (hub-agent-tokens.ts)
+   * with the install's token, before the install's own is revoked.
+   * `force`: forget the ones Hub couldn't revoke anyway. Absent: none.
+   */
+  unbindAgents?: (
+    hub: { url: string; token: string },
+    force: boolean,
+  ) => Promise<{ revoked: number; failed: number }>;
 }
 
 /** A `<name>.localhost` host: this machine (RFC 6761). */
@@ -319,6 +329,10 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     },
     linkAfter: async () =>
       (await import("./hub-link-all-routes.js")).defaultLinkAfter(),
+    unbindAgents: async (hub, force) =>
+      (await import("../../shared/hub-agent-tokens.js"))
+        .serverHubAgentTokens()
+        .unbindAll(hub, { force }),
   };
 }
 
@@ -540,6 +554,21 @@ export class HubConnect {
     const token = await this.deps.readToken(cfg);
     let revoked = false;
     let note = "";
+    let agents = 0;
+    if (token && this.deps.unbindAgents) {
+      // Issue 249: the agents' own tokens first, while the install's works.
+      const a = await this.deps
+        .unbindAgents({ url: cfg.url, token }, force)
+        .catch(() => ({ revoked: 0, failed: 1 }));
+      if (a.failed && !force)
+        return {
+          ok: false,
+          error: `Hub couldn't revoke ${a.failed === 1 ? "1 agent's Hub token" : `${a.failed} agents' Hub tokens`}. Nothing was removed. Try again, or remove it here anyway.`,
+        };
+      if (a.failed)
+        note += ` Hub couldn't revoke ${a.failed === 1 ? "1 agent's token" : `${a.failed} agents' tokens`}: ${a.failed === 1 ? "it works" : "they work"} there until an admin revokes this install.`;
+      agents = a.revoked;
+    }
     if (token) {
       try {
         revoked = await this.deps.revoke(cfg.url, token);
@@ -568,7 +597,7 @@ export class HubConnect {
     return {
       ok: true,
       revoked,
-      message: `Disconnected.${revoked ? " Hub revoked this install's token." : ""}${note}`,
+      message: `Disconnected.${revoked ? ` Hub revoked this install's token${agents ? ` and ${agents === 1 ? "1 agent's token" : `${agents} agents' tokens`}` : ""}.` : ""}${note}`,
     };
   }
 }
