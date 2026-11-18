@@ -1156,7 +1156,7 @@ function terminalRowHtml(r, showProject) {
   return (
     `<div class="agst tmr${r.exited ? " dim" : ""}" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${sel ? ' aria-current="true"' : ""}>` +
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"` +
-    ` aria-pressed="${sel}" aria-label="${esc(t("ag.openName", { id: `${projName(r.workspace)} / ${label}` }))}">` +
+    ` aria-pressed="${sel}" aria-label="${esc(t("tm.openName", { id: `${projName(r.workspace)} / ${label}` }))}">` +
     `<span class="den-dot ${r.exited ? "off" : ""}" aria-hidden="true"></span>` +
     `<span class="nm">${esc(label)}</span>` +
     `<span class="stc ${kind}">${esc(t(`tm.state.${kind}`))}</span>` +

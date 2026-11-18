@@ -83,7 +83,7 @@ describe("D73: Terminal", () => {
     const p = await open("/services?ws=north");
     const link = p.locator('#den-rail [data-nav="terminal"]');
     expect(await link.getAttribute("title")).toBe(
-      "Your shells, each in a project's folder",
+      "Your terminals, each in a project's folder",
     );
     const before = s!.made.length;
     await p.goto(
@@ -217,7 +217,7 @@ describe("D73: Terminal", () => {
       const p = await open("/services?ws=north");
       const link = p.locator('#den-rail [data-nav="terminal"]');
       expect(await link.getAttribute("title")).toBe(
-        "Tus shells, cada una en la carpeta de un proyecto",
+        "Tus terminales, cada una en la carpeta de un proyecto",
       );
     } finally {
       await s!.settings({ language: null });

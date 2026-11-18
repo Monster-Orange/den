@@ -2,7 +2,7 @@
  * Issue 482 (model A, mock v3): terminals get their own list.
  *
  *   1. /terminals lists plain shells only; /agents lists agents only, with
- *      a one-time "N shells moved to Terminals. Nothing was closed." note.
+ *      a one-time "N terminals moved to Terminals. Nothing was closed." note.
  *   2. The list follows the project filter; each row shows its project
  *      (All projects only), folder, running or exited, and last used.
  *   3. A click anywhere on a row opens that shell. Exited rows are dimmed
@@ -205,7 +205,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     expect((await rail.textContent())?.trim()).toBe("Terminals");
     expect(await rail.getAttribute("aria-current")).toBe("page");
     expect(await rail.getAttribute("title")).toBe(
-      "Your shells, each in a project's folder",
+      "Your terminals, each in a project's folder",
     );
     expect(await p.locator('#agl [data-kind="agent"]').count()).toBe(0);
     const a = await open("/agents");
@@ -252,7 +252,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       const m = (await row(q, n1).locator(".meta").first().textContent()) ?? "";
       expect(m).not.toMatch(/^north · /);
       expect((await q.locator("#ag-sub").textContent())?.trim()).toBe(
-        "Shells in north. Switch the project at the top to see others.",
+        "Terminals in north. Switch the project at the top to see others.",
       );
     } finally {
       await scope("all");
@@ -352,7 +352,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     const note = p.locator('#ag-moved [data-note="moved"]');
     await note.waitFor();
     expect(await note.textContent()).toMatch(
-      /^\d+ shells moved to Terminals\. Nothing was closed\./,
+      /^\d+ terminals moved to Terminals\. Nothing was closed\./,
     );
     expect(
       await note.locator('[data-act="open-terminals"]').getAttribute("href"),
@@ -437,7 +437,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       const empty = p.locator('[data-state-card="empty"]');
       await waitOr(p, empty.waitFor());
       expect((await empty.textContent())?.replace(/\s+/g, " ").trim()).toBe(
-        "No terminals yet Press New terminal to open a shell in north.",
+        "No terminals yet Press New terminal to open one in north.",
       );
       // None running: only an exited one.
       const x = await startShell("north");

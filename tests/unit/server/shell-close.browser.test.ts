@@ -8,7 +8,7 @@
  * Issue 482 (mock v3): a shell's pane is on Terminals now, and its bar's
  * button is Stop (POST …/close?keep=1): the shell ends as closing a
  * terminal does, its row stays under Exited (Restart, Remove), and its
- * pane shows "This shell ended". An agent's pane (on Agents) has neither.
+ * pane shows "This terminal ended". An agent's pane (on Agents) has neither.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
@@ -132,7 +132,7 @@ describe("Stop on a shell (was Close shell)", () => {
     await btn.click();
     await pane.locator(".tm-ended").waitFor({ timeout: 15_000 });
     expect(await pane.locator(".tm-ended b").textContent()).toBe(
-      "This shell ended",
+      "This terminal ended",
     );
     expect(pty.signals).toEqual(["SIGHUP"]);
     await p
