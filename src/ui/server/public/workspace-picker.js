@@ -131,6 +131,19 @@ export function moveProject(list, slug, by) {
   return out;
 }
 
+/**
+ * Issue 402: the repos of project `slug`, from its services ("shop",
+ * "shop/api") and its managed clones: the rail's pins in view are those of
+ * these repos. A project Den doesn't know has none.
+ */
+export function projectRepos(data, slug) {
+  const ws = data?.workspaces?.[slug];
+  const out = new Set();
+  for (const k of Object.keys(ws?.services ?? {})) out.add(k.split("/")[0]);
+  for (const k of Object.keys(ws?.repos ?? {})) out.add(k);
+  return [...out];
+}
+
 export function buildScopeMenuModel(scope, data, t = enT, locale) {
   const active = orderProjects(
     activeNames(data),
@@ -176,6 +189,9 @@ export function buildScopeMenuModel(scope, data, t = enT, locale) {
     items,
     // Every workspace, active or not: ⌘K's Go to workspace (0.4.17).
     names: Object.keys(data?.workspaces ?? {}),
+    // Issue 402: filtered to one project (of two or more), the repos whose
+    // pins the rail shows; null: no filter, every pin.
+    pinRepos: multi && one ? projectRepos(data, one) : null,
     focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
       ws:

@@ -3846,6 +3846,10 @@
     pinUrls: {},
     pinOff: {},
     svpOpen: null,
+    // Issue 402: with the view filtered to one project, its repos (the
+    // Workspace menu's model, header.js); the rail shows only their pins.
+    // null: no filter, every pin. It never changes the pins themselves.
+    pinRepos: null,
   };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
@@ -3928,6 +3932,19 @@
   }
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;
+  }
+  /**
+   * Issue 402: the pins the rail shows. Filtered to one project, a pin
+   * ("repo" or "repo/service") shows when its repo is one of the
+   * project's (workspace-picker.js projectRepos); with no filter, every
+   * pin.
+   */
+  function pinsShown() {
+    var repos = state.pinRepos;
+    if (!Array.isArray(repos)) return state.pins.slice();
+    return state.pins.filter(function (p) {
+      return repos.indexOf(String(p).split("/")[0]) >= 0;
+    });
   }
   function pin(id) {
     if (isPinned(id)) return;
@@ -4873,6 +4890,11 @@
   function setWorkspaces(model) {
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
+    // Issue 402: the pins follow the project filter (a repaint only).
+    var pinRepos =
+      model && Array.isArray(model.pinRepos) ? model.pinRepos.slice() : null;
+    if (JSON.stringify(pinRepos) !== JSON.stringify(state.pinRepos))
+      setState({ pinRepos: pinRepos });
     var btn = document.getElementById("ws-pill");
     if (!btn) return;
     var sep = btn.nextElementSibling;
@@ -4990,9 +5012,10 @@
   function railModel() {
     var groups = [];
     var entries = [];
-    if (state.pins.length) {
+    var shown = pinsShown();
+    if (shown.length) {
       groups.push({ id: "pinned", label: t("g.pinned") });
-      state.pins.forEach(function (p) {
+      shown.forEach(function (p) {
         // 0.4.18: the row (named by the id alone) opens the service's
         // panel in place (svc-panel.js); it is still the link to
         // Services, so ⌘-click and middle-click open that in a new
