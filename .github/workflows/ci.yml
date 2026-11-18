@@ -122,10 +122,12 @@ jobs:
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the
       # rest, never beside the browser tests (tests/docker-suites.mjs).
@@ -275,11 +277,13 @@ jobs:
       - if: steps.select.outputs.shards == '[]'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         if: steps.select.outputs.shards == '[]'
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the rest.
       - if: steps.select.outputs.shards == '[]'
@@ -334,10 +338,12 @@ jobs:
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
       - env:
           DEN_TEST_DOCKER: skip

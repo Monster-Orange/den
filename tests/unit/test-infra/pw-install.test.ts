@@ -44,6 +44,15 @@ const WORKFLOWS = fs
   .readdirSync(path.join(ROOT, ".github", "workflows"))
   .filter((f) => /\.ya?ml$/.test(f));
 
+const DEFAULT_S = (name: string) =>
+  Number(
+    new RegExp(`\\$\\{${name}:-(\\d+)\\}`).exec(
+      fs.readFileSync(path.join(ROOT, "scripts", "ci-pw-install.sh"), "utf-8"),
+    )?.[1],
+  );
+const WORST_CASE_S =
+  3 * DEFAULT_S("CI_PW_DEPS_SECONDS") + 2 * DEFAULT_S("CI_PW_INSTALL_SECONDS");
+
 describe("CI installs Playwright only through scripts/ci-pw-install.sh", () => {
   it("no workflow step runs playwright install itself", () => {
     for (const file of WORKFLOWS)
@@ -78,13 +87,29 @@ describe("CI installs Playwright only through scripts/ci-pw-install.sh", () => {
         const at = steps.findIndex(installs);
         if (at < 0) continue;
         const t = steps[at]["timeout-minutes"];
-        expect([file, name, typeof t === "number" && t > 0 && t <= 10]).toEqual(
+        // The step's limit covers the script's worst case: two apt tries,
+        // the wait for a cut-off apt run between them, two browser tries.
+        expect([file, name, typeof t === "number" && t > 0 && t <= 15]).toEqual(
           [file, name, true],
         );
+        expect([file, name, (t as number) * 60 >= WORST_CASE_S]).toEqual([
+          file,
+          name,
+          true,
+        ]);
         const cache = steps.findIndex(
           (s) =>
             s.uses?.startsWith("actions/cache@") &&
-            s.with?.path === "~/.cache/ms-playwright",
+            String(s.with?.path ?? "")
+              .split("\n")
+              .map((l) => l.trim())
+              .includes("~/.cache/ms-playwright") &&
+            // apt's packages too: a stuck mirror is skipped once one job
+            // has them (2026-11-17).
+            String(s.with?.path ?? "")
+              .split("\n")
+              .map((l) => l.trim())
+              .includes("~/.cache/den-apt"),
         );
         expect([file, name, cache >= 0 && cache < at]).toEqual([
           file,
@@ -111,14 +136,39 @@ part=$2
 n=$(( $(cat "$FAKE_DIR/$part" 2>/dev/null || echo 0) + 1 ))
 echo $n > "$FAKE_DIR/$part"
 echo "fake npx $* (attempt $n)"
+# apt run as root outlives the cut-off and holds dpkg's lock: while the
+# leftover runs, the next install-deps fails at once (exit 100).
+if [ "$part" = install-deps ] && [ -e "$FAKE_DIR/lock" ]; then
+  echo "E: Could not get lock (fake)"; exit 100
+fi
+if [ "$part" = install-deps ] && [ -n "\${FAKE_ARCHIVES:-}" ]; then
+  ls "$FAKE_ARCHIVES" > "$FAKE_DIR/archives-at-install" 2>/dev/null
+  touch "$FAKE_ARCHIVES/fetched_1.0_amd64.deb"
+fi
 var="FAKE_HANG_\${part//-/_}"
-case " \${!var} " in *" $n "*) exec sleep 30 ;; esac
+case " \${!var} " in *" $n "*)
+  if [ "$part" = install-deps ] && [ -n "\${FAKE_LEFTOVER:-}" ]; then
+    touch "$FAKE_DIR/lock"
+    bash "$FAKE_BIN/fake-apt-leftover" "$FAKE_DIR" "$FAKE_LEFTOVER" &
+  fi
+  exec sleep 30 ;;
+esac
 exit 0
+`;
+  // The leftover ignores TERM (as root's apt does a non-root timeout),
+  // finishes after its seconds, and frees the lock.
+  const LEFTOVER = `#!/bin/bash
+trap '' TERM
+sleep "$2"
+rm -f "$1/lock"
 `;
   beforeAll(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pw-install-"));
     fs.mkdirSync(path.join(tmp, "bin"));
     fs.writeFileSync(path.join(tmp, "bin", "npx"), FAKE, { mode: 0o755 });
+    fs.writeFileSync(path.join(tmp, "bin", "fake-apt-leftover"), LEFTOVER, {
+      mode: 0o755,
+    });
   });
   afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
@@ -138,6 +188,11 @@ exit 0
         env: {
           PATH: `${path.join(tmp, "bin")}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
           FAKE_DIR: dir,
+          FAKE_BIN: path.join(tmp, "bin"),
+          CI_PW_BUSY_PATTERN: `fake-apt-leftover ${dir}`,
+          CI_PW_APT_CACHE: path.join(dir, "apt-cache"),
+          CI_PW_APT_ARCHIVES: path.join(dir, "apt-archives"),
+          CI_PW_SUDO: "",
           CI_PW_DEPS_SECONDS: "2",
           CI_PW_INSTALL_SECONDS: "2",
           ...env,
@@ -172,6 +227,44 @@ exit 0
     expect([r.deps, r.install]).toEqual([2, 1]);
     expect(r.out).toMatch(/::warning::.*install-deps.*2 s.*retrying/);
   }, 30_000);
+
+  it("apt cut off but still running: the retry waits for it to finish, then passes", () => {
+    // CI, 2026-11-17: the first try was cut off at its limit, its apt-get
+    // (root) went on holding dpkg's lock, and the retry failed at once.
+    const r = run("deps-leftover", {
+      FAKE_HANG_install_deps: "1",
+      FAKE_LEFTOVER: "4",
+    });
+    expect(r.out).toMatch(/waiting for the cut-off apt run to finish/);
+    expect(r.code).toBe(0);
+    expect([r.deps, r.install]).toEqual([2, 1]);
+  }, 30_000);
+
+  it("apt's packages come from the cache, and go back to it after a good install", () => {
+    const cache = path.join(tmp, "apt-cache");
+    const archives = path.join(tmp, "apt-archives");
+    fs.mkdirSync(cache);
+    fs.mkdirSync(archives);
+    fs.writeFileSync(path.join(cache, "cached_1.0_amd64.deb"), "");
+    const r = run("apt-cache-run", {
+      CI_PW_APT_CACHE: cache,
+      CI_PW_APT_ARCHIVES: archives,
+      CI_PW_SUDO: "",
+      FAKE_ARCHIVES: archives,
+    });
+    expect(r.code).toBe(0);
+    // The cached package was in apt's folder when install-deps ran.
+    expect(
+      fs.readFileSync(
+        path.join(tmp, "apt-cache-run", "archives-at-install"),
+        "utf-8",
+      ),
+    ).toContain("cached_1.0_amd64.deb");
+    expect(fs.readdirSync(cache).sort()).toEqual([
+      "cached_1.0_amd64.deb",
+      "fetched_1.0_amd64.deb",
+    ]);
+  });
 
   it("the browsers hang once: retried, and passes", () => {
     const r = run("install-once", { FAKE_HANG_install: "1" });
