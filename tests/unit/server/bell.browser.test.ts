@@ -285,7 +285,10 @@ describe("NT-3: the bell", () => {
 
   it("(k) the 0.4.41 gate: the item's own words are in the page's language", async () => {
     if (skip()) return;
-    // As the server keeps it (attention.ts): the English, and the key.
+    // As the server keeps it (attention.ts): the English, and the key. Its
+    // agent is a real one: an unread permission row of an agent with no
+    // record is withdrawn as a leftover (issues 369 and 424).
+    s!.seed({ id: "k-gate", workspace: "north" });
     new NotificationStore(s!.stateDir).add({
       kind: "waiting",
       subject: "agent:k-gate",
