@@ -17,6 +17,14 @@
 # get lock", exit 100). Before the retry, the script waits (up to the same
 # limit) until no apt or dpkg process is left.
 #
+# apt's downloaded packages are kept between runs (the cache step saves
+# ~/.cache/den-apt with the browsers): before install-deps they go into
+# apt's own folder, so a stuck mirror is skipped once one job has them; after
+# a good install, what apt fetched goes back.
+#   CI_PW_APT_CACHE     default ~/.cache/den-apt
+#   CI_PW_APT_ARCHIVES  default /var/cache/apt/archives
+#   CI_PW_SUDO          default sudo (apt's folder is root's)
+#
 # The limits are settings (seconds per attempt):
 #   CI_PW_DEPS_SECONDS     the system packages, default 240
 #   CI_PW_INSTALL_SECONDS  the browsers, default 90
@@ -93,5 +101,15 @@ attempt() {
   return 1
 }
 
+apt_cache=${CI_PW_APT_CACHE:-$HOME/.cache/den-apt}
+apt_archives=${CI_PW_APT_ARCHIVES:-/var/cache/apt/archives}
+sudo_=${CI_PW_SUDO-sudo}
+mkdir -p "$apt_cache"
+n_cached=$(find "$apt_cache" -maxdepth 1 -name '*.deb' | wc -l | tr -d ' ')
+if [ "$n_cached" -gt 0 ]; then
+  echo "ci-pw-install: $n_cached cached apt packages into $apt_archives"
+  $sudo_ cp "$apt_cache"/*.deb "$apt_archives"/ || echo "::warning::could not copy the cached apt packages; apt fetches them"
+fi
 attempt install-deps "$deps_s" CI_PW_DEPS_SECONDS || exit 1
+cp "$apt_archives"/*.deb "$apt_cache"/ 2>/dev/null || true
 attempt install "$install_s" CI_PW_INSTALL_SECONDS || exit 1
