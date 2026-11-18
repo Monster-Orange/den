@@ -8367,6 +8367,9 @@
     // shell.css (den-ui 0.7.0).
     "@media (pointer: coarse), (max-width: 767.98px) {",
     "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 44px; min-width: 44px; }",
+    // The bar stays its height: the 44px buttons are its row, without the
+    // 6px above and below that framed the 32px ones.
+    "  .den-dock .den-bar { padding-top: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }",
     "}",
   ].join("\n");
   document.head.appendChild(style);
