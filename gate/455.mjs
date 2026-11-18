@@ -14,7 +14,8 @@ export const clauses = [
   "the route for nginx, Caddy and Traefik is ready to paste (doctor and Edge)",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1440, 390] };
-export const timeoutMs = 120000;
+// Quiet, a cell took ~9 s (the /edge page 0.8–2.5 s on the remote browser, the 1.5 s settle, the CLI calls ~4 s): 4× that is under the 300 s floor.
+export const timeoutMs = 300000;
 
 const hex = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
