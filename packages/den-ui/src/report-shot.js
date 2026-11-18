@@ -360,12 +360,15 @@ function frame() {
  */
 function defaultsOf(b, el) {
   const svg = el.namespaceURI === SVG_NS;
-  const key = (svg ? "svg:" : "") + el.localName;
+  // An input's defaults depend on its type (a checkbox is no text field).
+  const type = el.localName === "input" ? el.type || "text" : "";
+  const key = (svg ? "svg:" : "") + el.localName + (type ? `:${type}` : "");
   let d = b.tags.get(key);
   if (d) return d;
   const probe = svg
     ? b.doc.createElementNS(SVG_NS, el.localName)
     : b.doc.createElement(el.localName);
+  if (type) probe.setAttribute("type", type);
   b.doc.body.append(probe);
   const cs = b.win.getComputedStyle(probe);
   const body = b.win.getComputedStyle(b.doc.body);
@@ -513,6 +516,9 @@ async function lean(skip) {
           // display decides, already written: these would hide the copy.
           n === "hidden" ||
           n === "popover" ||
+          // A link's own colour is written: the copy is no link (the
+          // defaults are read without one).
+          n === "href" ||
           n === TAG ||
           n.startsWith("on")
         )
