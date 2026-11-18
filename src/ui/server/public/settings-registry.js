@@ -1982,7 +1982,7 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ server_agent_self_update: v }),
   },
   {
-    // #390: after an update, agents on the old tools are restarted at
+    // Issue 390: after an update, agents on the old tools are restarted at
     // their next idle (user.yml server_agent.refresh_agents). A person's.
     id: "server.refresh_agents",
     category: "server",
