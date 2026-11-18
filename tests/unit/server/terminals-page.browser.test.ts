@@ -143,6 +143,27 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
   const row = (p: Page, id: string) =>
     p.locator(`#agl .tmr[data-shell="${id}"]`);
 
+  /** On a failed wait: what the page and the server showed then. */
+  async function waitOr(p: Page, wait: Promise<unknown>) {
+    try {
+      await wait;
+    } catch (err) {
+      const page = await p
+        .evaluate(() =>
+          [
+            `list: ${document.querySelector("#agl")?.innerHTML.slice(0, 1500)}`,
+            `pop-up: ${document.querySelector("dialog[open]")?.textContent?.trim()}`,
+            `toasts: ${Array.from(document.querySelectorAll('[class*="toast"]'), (e) => e.textContent?.trim()).join(" | ")}`,
+          ].join("\n"),
+        )
+        .catch((e) => String(e));
+      const listed = await sessions().catch((e) => String(e));
+      throw new Error(
+        `${(err as Error).message}\n${page}\nserver: ${JSON.stringify(listed).slice(0, 1500)}`,
+      );
+    }
+  }
+
   let n1 = "";
   let n2 = "";
   let s1 = "";
@@ -281,7 +302,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     // row's pane never opened for it.
     const before = s!.made.length;
     await row(p, gone).locator('[data-act="restart-shell"]').click();
-    await row(p, gone).waitFor({ state: "detached" });
+    await waitOr(p, row(p, gone).waitFor({ state: "detached" }));
     expect(s!.made.length).toBe(before + 1);
     expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
     expect(await p.locator(`.pane[data-id="${gone}"]`).count()).toBe(0);
@@ -306,7 +327,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     expect((await btn.textContent())?.trim()).toBe("New terminal");
     let before = s!.made.length;
     await btn.click();
-    await p.waitForSelector(".pane[data-id] .xterm-rows");
+    await p.waitForSelector(".pane[data-id] .xterm-rows:visible");
     for (let i = 0; i < 100 && s!.made.length === before; i++)
       await p.waitForTimeout(50);
     expect(s!.made.length).toBe(before + 1);
@@ -320,7 +341,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     before = s!.made.length;
     await here.click();
     await q.waitForURL(/\/terminals/);
-    await q.waitForSelector(".pane[data-id] .xterm-rows");
+    await q.waitForSelector(".pane[data-id] .xterm-rows:visible");
     expect(s!.made.length).toBe(before + 1);
     expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("north"));
   }, 120_000);
@@ -392,21 +413,29 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     for (const x of await sessions())
       if (x.kind === "session" && ptys.has(x.id) && !x.exited)
         await endShell(x.id);
-    for (const x of await sessions())
-      if (x.kind === "session")
-        await fetch(`${s!.base}/api/sessions/${x.id}/close`, {
-          method: "POST",
-          headers: {
-            ...denAuth(s!.stateDir),
-            "content-type": "application/json",
-          },
-          body: "{}",
-        });
+    const closeAll = async () => {
+      for (const x of await sessions())
+        if (x.kind === "session")
+          await fetch(`${s!.base}/api/sessions/${x.id}/close`, {
+            method: "POST",
+            headers: {
+              ...denAuth(s!.stateDir),
+              "content-type": "application/json",
+            },
+            body: "{}",
+          });
+    };
+    await closeAll();
+    // The shells the page started (New terminal, the rail): a scripted PTY
+    // only records the close's signal, so it ends here, and goes.
+    for (const pty of s!.made)
+      if (pty.signals.length && ![...ptys.values()].includes(pty)) pty.exit(0);
+    await closeAll();
     await scope("north");
     try {
       const p = await open("/terminals?project=north");
       const empty = p.locator('[data-state-card="empty"]');
-      await empty.waitFor();
+      await waitOr(p, empty.waitFor());
       expect((await empty.textContent())?.replace(/\s+/g, " ").trim()).toBe(
         "No terminals yet Press New terminal to open a shell in north.",
       );
@@ -418,7 +447,7 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       expect(await q.locator('[data-group="running"]').count()).toBe(0);
       const before = s!.made.length;
       await q.locator('#den-rail [data-nav="terminal"]').click();
-      await q.waitForSelector(".pane[data-id] .xterm-rows");
+      await q.waitForSelector(".pane[data-id] .xterm-rows:visible");
       for (let i = 0; i < 100 && s!.made.length === before; i++)
         await q.waitForTimeout(50);
       expect(s!.made.length).toBe(before + 1);
@@ -457,9 +486,14 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
       const back = pane.locator(".tm-back");
       expect((await back.textContent())?.trim()).toBe("‹ Terminals");
       expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      const keys = await pane.$$eval(".tm-keys button", (b) =>
-        b.map((x) => [x.textContent?.trim(), x.getBoundingClientRect().height]),
-      );
+      const keys = await pane
+        .locator(".tm-keys button")
+        .evaluateAll((b) =>
+          b.map((x) => [
+            x.textContent?.trim(),
+            x.getBoundingClientRect().height,
+          ]),
+        );
       expect(keys.map((k) => k[0])).toEqual(["Esc", "Tab", "Ctrl", "↑", "↓"]);
       for (const k of keys) expect(k[1]).toBeGreaterThanOrEqual(44);
       const pty = ptys.get(sid)!;

@@ -302,18 +302,22 @@ describe("#80: scope wins", () => {
   it("stop-ship: typing reaches exactly the To line's agent after a project switch, a tab switch and a reload", async () => {
     if (!browser) return;
     if (!sid.bo) await run("bo", "south", "2026-11-13T09:05:00.000Z");
-    // Issue 482: a second south agent for the tab switch (older than bo,
-    // so bo stays the most recent).
-    await run("cy", "south", "2026-11-13T09:01:00.000Z");
+    // Issue 482: a second south agent for the tab switch (a shell has no
+    // tab on Agents any more). It started last, so it may come in front.
+    if (!sid.cy) await run("cy", "south", "2026-11-13T09:01:00.000Z");
     const p = await open(`/agents?project=north&layout=tabs&open=${sid.ada}`);
     await p.waitForSelector(`.pane[data-id="${sid.ada}"]`);
     // A project switch …
     await chooseInTopBar(p, "south");
-    await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
-    // … a tab switch (cy, then bo again) …
+    await p.waitForSelector(
+      `.pane[data-id="${sid.bo}"]:not([hidden]), .pane[data-id="${sid.cy}"]:not([hidden])`,
+    );
+    // … a tab switch (cy, then bo) …
     await p.click(`#agl .agr[data-id="${sid.cy}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.cy}"]:not([hidden])`);
-    await p.click(`.agtab[data-id="${sid.bo}"]`);
+    const boTab = p.locator(`.agtab[data-id="${sid.bo}"]`);
+    if (await boTab.count()) await boTab.click();
+    else await p.click(`#agl .agr[data-id="${sid.bo}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
     // … and a reload.
     await p.reload();

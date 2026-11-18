@@ -1182,8 +1182,16 @@ function shellUsedAtIso(r) {
 
 /** "Last used 2 min ago" (the time is a <time>, the person's zone). */
 function lastUsedHtml(iso) {
-  const [a, b = ""] = t("tm.lastUsed", { when: "\u0000" }).split("\u0000");
-  return `${esc(a)}${agoText(iso)}${esc(b)}`;
+  // One whole string (a translation may put {when} anywhere): plain text.
+  const when = agoPlain(iso);
+  return when ? esc(t("tm.lastUsed", { when })) : "";
+}
+
+/** agoText's words, as plain text: for inside a sentence. */
+function agoPlain(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  return formatTime(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
 }
 
 /** Issue 482: the page's line under "Terminals" (mock v3, A1/A2). */
@@ -1330,8 +1338,9 @@ function paintList() {
     );
   // D37: running ones (and plain sessions) under their workspace; the
   // agents that aren't running in one "Stopped (n)" group at the bottom.
+  // Issue 482: agents only; the plain shells are on Terminals.
   const inView = shown.flatMap((ws) =>
-    st.data.sessions.filter((s) => s.workspace === ws),
+    st.data.sessions.filter((s) => s.workspace === ws && onPage(s)),
   );
   const stopped = inView.filter(inStopped);
   const groups = shown
@@ -2436,15 +2445,15 @@ function terminalBarHtml(p, r) {
 
 /** Issue 482 (mock v3, A2): an exited shell's pane: ended, Restart, Remove. */
 function endedHtml(r) {
-  const at = r.endedAt ? agoText(r.endedAt) : "";
+  // One whole string (a translation may put {when} anywhere): plain text.
+  const when = r.endedAt ? agoPlain(r.endedAt) : "";
   const said =
     r.exitCode !== undefined
-      ? t("tm.ended.code", { code: r.exitCode, when: "\u0000" })
-      : t("tm.ended.when", { when: "\u0000" });
-  const [a, b = ""] = said.split("\u0000");
+      ? t("tm.ended.code", { code: r.exitCode, when })
+      : t("tm.ended.when", { when });
   return (
     `<b>${esc(t("tm.ended.h"))}</b>` +
-    `<span>${esc(a)}${at}${esc(b)}</span>` +
+    `<span>${esc(said)}</span>` +
     `<span class="acts2"><button type="button" class="den-btn primary" data-act="restart-shell">${esc(t("tm.restart"))}</button>` +
     `<button type="button" class="den-btn" data-act="remove-shell">${esc(t("ag.remove"))}</button></span>` +
     (r.folder

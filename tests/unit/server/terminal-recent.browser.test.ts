@@ -167,7 +167,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     await p.locator('#den-rail [data-nav="terminal"]').click();
     await p.waitForURL(/terminal=1/).catch(() => {});
     await p.waitForFunction(() => !location.search.includes("terminal="));
-    await p.waitForSelector(".pane[data-id] .xterm-rows");
+    await p.waitForSelector(".pane[data-id] .xterm-rows:visible");
     await p
       .waitForFunction(
         () => Boolean(document.activeElement?.closest(".pane[data-id]")),
