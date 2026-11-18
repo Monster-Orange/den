@@ -1990,10 +1990,10 @@ function paintLayout() {
   const n = st.open.length;
   paintSwitch();
   // Issue 482: a phone's full-screen shell lasts while a pane is open.
-  st.root.classList.toggle(
-    "tm-shell",
-    onTerminals() && !!st.phoneShell && n > 0,
-  );
+  const full = onTerminals() && !!st.phoneShell && n > 0;
+  if (full && !st.root.classList.contains("tm-shell"))
+    st.root.style.setProperty("--tm-top", `${topBarBottom()}px`);
+  st.root.classList.toggle("tm-shell", full);
   if (n === 0) {
     box.className = "agempty";
     delete box.dataset.layout;
@@ -4050,14 +4050,24 @@ async function restartShell(r, button) {
  */
 function phoneShell(on) {
   st.phoneShell = !!on;
-  st.root?.classList.toggle(
-    "tm-shell",
-    onTerminals() && st.phoneShell && st.open.length > 0,
-  );
+  const full = onTerminals() && st.phoneShell && st.open.length > 0;
+  // Mock A5: the open terminal starts under the top bar (and any banner).
+  if (full) st.root?.style.setProperty("--tm-top", `${topBarBottom()}px`);
+  st.root?.classList.toggle("tm-shell", full);
   if (on) {
     const p = st.panes.get(st.cur);
     if (p) requestAnimationFrame(() => refit(p));
   }
+}
+
+/** Where the page's own content starts: under the top bar and banners. */
+function topBarBottom() {
+  let y = 0;
+  for (const el of document.querySelectorAll(".den-top, #den-banners")) {
+    const r = el.getBoundingClientRect();
+    if (r.height > 0) y = Math.max(y, r.bottom);
+  }
+  return Math.max(0, Math.round(y));
 }
 
 /** Issue 482: the keys row's sequences (the issue 302 mock's keys). */

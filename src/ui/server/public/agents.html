@@ -1375,6 +1375,47 @@
           border-left: 0;
           border-right: 0;
         }
+        /* Mock A5 (Den Design, 11-18): an open terminal is the whole
+           screen under the top bar, its keys row pinned at the foot. The
+           runs dock is hidden for this view only (its saved choice is
+           untouched: the list shows it as before), as for an open agent. */
+        .tm-page.tm-shell {
+          position: fixed;
+          top: var(--tm-top, 56px);
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 5;
+          display: flex;
+          flex-direction: column;
+          background: var(--bg);
+        }
+        .tm-page.tm-shell .agx {
+          flex: 1;
+          min-height: 0;
+        }
+        .tm-page.tm-shell #agr,
+        .tm-page.tm-shell .agp {
+          height: 100%;
+          min-height: 0;
+        }
+        .tm-page.tm-shell .pane:not([hidden]) {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-height: 0;
+        }
+        .tm-page.tm-shell .pane .term {
+          flex: 1;
+          min-height: 0;
+        }
+        .tm-page.tm-shell .pane .tm-keys {
+          flex: none;
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+        body:has(.tm-page.tm-shell) #den-dock {
+          display: none !important;
+        }
         .tm-page .agp.tabs > .agtabs {
           display: none;
         }
@@ -1393,10 +1434,23 @@
           min-height: 52px;
           flex-wrap: nowrap;
         }
+        /* Name over path; the path is cut short (…) before Stop. */
         .tm-page .pane .tm-title {
           display: grid;
+          grid-template-columns: minmax(0, 1fr);
           line-height: 1.25;
           flex: 1;
+          min-width: 0;
+          overflow: hidden;
+        }
+        .tm-page .pane .tm-title b,
+        .tm-page .pane .tm-title .where {
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+        .tm-page .pane .bar2 .x {
+          flex: none;
         }
         .tm-page .pane .bar2 .x .den-btn {
           min-height: 44px;
