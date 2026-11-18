@@ -10,6 +10,7 @@ import * as path from "path";
 import {
   expectedStart,
   gateDefaults,
+  waitReason,
   grants,
   overrun,
   type GateEntry,
@@ -19,6 +20,7 @@ import {
   checkGatePatch,
   gateDir,
 } from "../../../src/shared/gates/store.js";
+import { FAKE_MACHINE } from "./fake-machine.js";
 import { PERSON_ONLY_SETTINGS } from "../../../src/shared/settings-cli-rows.js";
 
 const tmps: string[] = [];
@@ -179,6 +181,74 @@ describe("the queue rules", () => {
     });
   });
 
+  describe("issue 511: browser slots", () => {
+    const now = T0 + 5 * 60_000;
+    const quiet = { now, loadPerCore: 0.5, ptys: { used: 100, max: 511 } };
+    const two = { ...S8, browserSlots: 2 };
+    const q = () => [entry("a", "browser", 0, 0, 30), entry("b", "browser", 1)];
+
+    it("defaults: 1 below 8 cores; floor(cores / 8) from 8, at most 3", () => {
+      expect(gateDefaults(4).browserSlots).toBe(1);
+      expect(gateDefaults(7).browserSlots).toBe(1);
+      expect(gateDefaults(8).browserSlots).toBe(1);
+      expect(gateDefaults(16).browserSlots).toBe(2);
+      expect(gateDefaults(18).browserSlots).toBe(2);
+      expect(gateDefaults(24).browserSlots).toBe(3);
+      expect(gateDefaults(64).browserSlots).toBe(3);
+      expect(gateDefaults(8).ptyHeadroom).toBe(50);
+    });
+
+    it("browser_slots 2: a second browser run starts at once while load and PTYs are low", () => {
+      expect(grants(q(), two, quiet)).toEqual(["b"]);
+      expect(grants(q(), S8, quiet)).toEqual([]);
+      expect(waitReason(q(), S8, quiet, "b")).toBe(
+        "all 1 browser slots are held",
+      );
+    });
+
+    it("waits while the load per core is above max_load_per_core, and says so", () => {
+      const busy = { ...quiet, loadPerCore: 2.5 };
+      expect(grants(q(), two, busy)).toEqual([]);
+      expect(waitReason(q(), two, busy, "b")).toBe(
+        "the load is 2.50 per core, above 2",
+      );
+      // The first browser run too.
+      expect(grants([entry("b", "browser", 1)], two, busy)).toEqual([]);
+    });
+
+    it("waits while the PTYs in use are not more than 50 below the limit, and says so", () => {
+      const ptys = { ...quiet, ptys: { used: 461, max: 511 } };
+      expect(grants(q(), two, ptys)).toEqual([]);
+      expect(waitReason(q(), two, ptys, "b")).toBe(
+        "461 of 511 PTYs are in use; a browser run needs more than 50 free",
+      );
+      expect(
+        grants(q(), two, { ...quiet, ptys: { used: 460, max: 511 } }),
+      ).toEqual(["b"]);
+      expect(grants(q(), { ...two, ptyHeadroom: 0 }, ptys)).toEqual(["b"]);
+    });
+
+    it("a browser run still waits for a cpu run to end", () => {
+      const held = [entry("c", "cpu", 0, 0), entry("b", "browser", 1)];
+      expect(grants(held, two, quiet)).toEqual([]);
+      expect(waitReason(held, two, quiet, "b")).toBe("a cpu run holds");
+    });
+
+    it("the release slot is counted apart; it never takes nor blocks an ordinary slot", () => {
+      const r = { ...entry("r", "browser", 2), kind: "release" as const };
+      const r2 = { ...entry("r2", "browser", 3), kind: "release" as const };
+      // Both browser slots are full; the release slot is free.
+      expect(grants([...q(), r, r2], S8, quiet)).toEqual(["r"]);
+      const rHeld = { ...r, grantedAt: iso(2) };
+      expect(grants([rHeld, entry("b", "browser", 3)], S8, quiet)).toEqual([
+        "b",
+      ]);
+      expect(waitReason([rHeld, r2], S8, quiet, "r2")).toBe(
+        "the release slot is held",
+      );
+    });
+  });
+
   it("a waiter sees when it may start; an overrun is flagged past the margin", () => {
     const q = [
       entry("a", "browser", 0, 0, 6),
@@ -206,7 +276,7 @@ describe("the store", () => {
   });
 
   it("grants, queues (a wait is recorded), and grants the next on release", () => {
-    const s = new GateStore({ dir: tmp() });
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp() });
     const a = ask(s, "browser");
     const b = ask(s, "browser");
     expect(a.grantedAt).toBeDefined();
@@ -230,7 +300,7 @@ describe("the store", () => {
 
   it("two browser asks at once: the second waits and sees the first's expected end; neither is stopped", () => {
     let now = T0;
-    const s = new GateStore({ dir: tmp(), now: () => now });
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp(), now: () => now });
     const first = ask(s, "browser", process.pid, 6);
     const second = ask(s, "browser", process.pid, 4);
     expect(first.grantedAt).toBe(iso(0));
@@ -248,7 +318,11 @@ describe("the store", () => {
 
   it("an exited holder is released at once, and the next one granted", () => {
     const pids = new Set([100, 200]);
-    const s = new GateStore({ dir: tmp(), alive: (p) => pids.has(p) });
+    const s = new GateStore({
+      ...FAKE_MACHINE,
+      dir: tmp(),
+      alive: (p) => pids.has(p),
+    });
     const a = ask(s, "browser", 100);
     const b = ask(s, "browser", 200);
     expect(a.grantedAt).toBeDefined();
@@ -268,7 +342,7 @@ describe("the store", () => {
 
   it("a real process that has exited holds nothing", () => {
     const exited = spawnSync(process.execPath, ["-e", "0"]).pid!;
-    const s = new GateStore({ dir: tmp() });
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp() });
     ask(s, "browser", exited);
     expect(s.list()).toEqual([]);
     expect(s.events().map((e) => e.event)).toContain("taken-back-gone");
@@ -276,7 +350,11 @@ describe("the store", () => {
 
   it("a holder whose wrapper died keeps the slot while its run goes on", () => {
     const pids = new Set([100, 200]);
-    const s = new GateStore({ dir: tmp(), alive: (p) => pids.has(p) });
+    const s = new GateStore({
+      ...FAKE_MACHINE,
+      dir: tmp(),
+      alive: (p) => pids.has(p),
+    });
     const a = ask(s, "browser", 100);
     s.setRunPid(a.id, 200);
     pids.delete(100);
@@ -287,7 +365,7 @@ describe("the store", () => {
 
   it("a live holder is never taken back, however long it is quiet", () => {
     let now = T0;
-    const s = new GateStore({ dir: tmp(), now: () => now });
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp(), now: () => now });
     const a = ask(s, "cpu");
     now += 24 * 60 * 60_000;
     expect(s.list().map((e) => e.id)).toEqual([a.id]);
@@ -295,7 +373,7 @@ describe("the store", () => {
 
   it("an overdue slot is flagged once, recorded, never removed", () => {
     let now = T0;
-    const s = new GateStore({ dir: tmp(), now: () => now });
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp(), now: () => now });
     const a = ask(s, "browser");
     now += 19 * 60_000;
     expect(s.get(a.id)?.flaggedAt).toBeUndefined();
@@ -310,7 +388,7 @@ describe("the store", () => {
   });
 
   it("ending early is recorded with who", () => {
-    const s = new GateStore({ dir: tmp() });
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp() });
     const a = ask(s, "browser");
     expect(s.endEarly(a.id, "a person at the terminal")).toMatchObject({
       event: "ended-early",
@@ -325,6 +403,7 @@ describe("the store", () => {
   it("issue 462: a cpu run starts beside a browser hold, marked beside; not under load", () => {
     let load = 0.5;
     const s = new GateStore({
+      ...FAKE_MACHINE,
       dir: tmp(),
       loadPerCore: () => load,
       cores: () => 8,
@@ -344,6 +423,7 @@ describe("the store", () => {
     expect(gateDefaults(8).cpuBesideBrowser).toBe(1);
     expect(gateDefaults(32).cpuBesideBrowser).toBe(1);
     const small = new GateStore({
+      ...FAKE_MACHINE,
       dir: tmp(),
       loadPerCore: () => 0,
       cores: () => 7,
@@ -354,15 +434,56 @@ describe("the store", () => {
     // Still a Setting: a person may turn it on there.
     small.writeSettings({ cpu_beside_browser: 1 });
     expect(small.list().filter((e) => e.grantedAt)).toHaveLength(2);
-    const big = new GateStore({ dir: tmp(), cores: () => 8 });
+    const big = new GateStore({ ...FAKE_MACHINE, dir: tmp(), cores: () => 8 });
     expect(big.settings().cpuBesideBrowser).toBe(1);
   });
 
+  it("issue 511: an ordinary ask can't take the release slot; askRelease can", () => {
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp() });
+    expect(() =>
+      s.ask({
+        kind: "release" as "browser",
+        who: "me",
+        label: "x",
+        pid: process.pid,
+        estimateMin: 5,
+      }),
+    ).toThrow("release slot");
+    ask(s, "browser");
+    const r = s.askRelease({
+      who: "me",
+      label: "release check",
+      pid: process.pid,
+      estimateMin: 5,
+    });
+    expect(r.kind).toBe("release");
+    expect(r.grantedAt).toBeDefined();
+  });
+
+  it("issue 511: two browser slots on a quiet machine; the PTY count is read", () => {
+    let used = 10;
+    const s = new GateStore({
+      ...FAKE_MACHINE,
+      dir: tmp(),
+      ptys: () => ({ used, max: 511 }),
+    });
+    s.writeSettings({ browser_slots: 2 });
+    expect(ask(s, "browser").grantedAt).toBeDefined();
+    used = 470;
+    const b = ask(s, "browser");
+    expect(b.grantedAt).toBeUndefined();
+    used = 10;
+    expect(s.get(b.id)?.grantedAt).toBeDefined();
+  });
+
   it("settings: permissive defaults, null clears, nonsense ignored", () => {
-    const s = new GateStore({ dir: tmp(), cores: () => 8 });
+    const s = new GateStore({ ...FAKE_MACHINE, dir: tmp(), cores: () => 8 });
     expect(s.settings()).toEqual(S8);
     s.writeSettings({ cpu_slots: 4 });
     expect(s.settings().cpuSlots).toBe(4);
+    s.writeSettings({ browser_slots: 3, pty_headroom: 80 });
+    expect(s.settings()).toMatchObject({ browserSlots: 3, ptyHeadroom: 80 });
+    s.writeSettings({ browser_slots: null, pty_headroom: null });
     s.writeSettings({ cpu_beside_browser: 0, max_load_per_core: 4.5 });
     expect(s.settings()).toMatchObject({
       cpuBesideBrowser: 0,
@@ -379,7 +500,7 @@ describe("the store", () => {
 
   it("the grant waits for the lock; a stale lock (30 s) is taken back", () => {
     const dir = tmp();
-    const s = new GateStore({ dir, lockWaitMs: 200 });
+    const s = new GateStore({ ...FAKE_MACHINE, dir, lockWaitMs: 200 });
     fs.mkdirSync(path.join(dir, "lock"));
     expect(() => ask(s, "cpu")).toThrow("the gate-slot lock");
     const old = new Date(Date.now() - 31_000);
@@ -391,6 +512,7 @@ describe("the store", () => {
     const dir = tmp();
     const lock = path.join(dir, "lock");
     const dead = new GateStore({
+      ...FAKE_MACHINE,
       dir,
       lockWaitMs: 200,
       alive: (pid) => pid !== 999999,
@@ -400,7 +522,12 @@ describe("the store", () => {
     // A killed process left a fresh lock: no 30 s wait for it.
     expect(ask(dead, "cpu").grantedAt).toBeDefined();
     expect(fs.existsSync(lock)).toBe(false);
-    const live = new GateStore({ dir, lockWaitMs: 200, alive: () => true });
+    const live = new GateStore({
+      ...FAKE_MACHINE,
+      dir,
+      lockWaitMs: 200,
+      alive: () => true,
+    });
     fs.mkdirSync(lock);
     fs.writeFileSync(path.join(lock, "pid"), "999999");
     expect(() => ask(live, "browser")).toThrow("the gate-slot lock");
@@ -452,6 +579,10 @@ describe("Settings › Server: the machine's gate settings (POST gate_slots)", (
     expect(
       checkGatePatch({ cpu_beside_browser: 0, max_load_per_core: 1.5 }),
     ).toMatchObject({ ok: true });
+    expect(
+      checkGatePatch({ browser_slots: 2, pty_headroom: 50 }),
+    ).toMatchObject({ ok: true });
+    expect(checkGatePatch({ browser_slots: 0 })).toMatchObject({ ok: false });
     expect(checkGatePatch({ cpu_beside_browser: 1.5 })).toMatchObject({
       ok: false,
     });

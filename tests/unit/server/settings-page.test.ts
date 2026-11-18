@@ -44,6 +44,8 @@ describe("search", () => {
       "embed",
       "secrets",
       "server",
+      // Issue 511: Settings › Gate.
+      "gate",
       "cli",
       "distribution",
     ]);
