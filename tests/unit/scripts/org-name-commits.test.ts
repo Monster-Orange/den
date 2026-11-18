@@ -206,6 +206,139 @@ describe("pre-push hook", () => {
   });
 });
 
+describe("issue 528: a per-user names file set but broken fails (never passes quietly)", () => {
+  const hookMsg = path.join(ROOT, ".husky", "commit-msg");
+  const hookPush = path.join(ROOT, ".husky", "pre-push");
+  const GATE = path.join(ROOT, "scripts", "org-name-gate.mjs");
+  const BROKEN =
+    /is set but has no patterns \(a broken link, or empty\); fix it or remove it/;
+  let n = 0;
+  // A temp HOME whose ~/.config/den-dev/org-names.txt is what `make` leaves.
+  const homeWith = (make: (file: string) => void) => {
+    const h = path.join(dir, `h528-${n++}`);
+    const d = path.join(h, ".config", "den-dev");
+    fs.mkdirSync(d, { recursive: true });
+    make(path.join(d, "org-names.txt"));
+    return h;
+  };
+  const dangling = () =>
+    homeWith((f) => fs.symlinkSync(path.join(dir, "gone-528.txt"), f));
+  const empty = () =>
+    homeWith((f) => fs.writeFileSync(f, "# only a comment\n\n"));
+  const none = () => homeWith(() => {});
+  const good = () => homeWith((f) => fs.writeFileSync(f, "acme-secret\n"));
+  const env = (h: string, more: Record<string, string> = {}) => ({
+    PATH: process.env.PATH ?? "",
+    HOME: h,
+    XDG_CONFIG_HOME: path.join(h, ".config"),
+    ...more,
+  });
+  const msg = (h: string) => {
+    const f = path.join(dir, "MSG528");
+    fs.writeFileSync(f, "A plain change\n");
+    return spawnSync("sh", [hookMsg, f], {
+      cwd: ROOT,
+      encoding: "utf-8",
+      env: env(h),
+    });
+  };
+  const push = (h: string) =>
+    spawnSync("sh", [hookPush, "origin", "git@example.com:x/y.git"], {
+      cwd: repo,
+      input: `refs/heads/x ${clean} refs/heads/x ${base}\n`,
+      encoding: "utf-8",
+      env: env(h, { DEN_ROOT: ROOT, DEN_PREPUSH_FILES: "0" }),
+    });
+  const gate = (args: string[], h: string, more: Record<string, string> = {}) =>
+    spawnSync("node", [GATE, ...args], {
+      cwd: ROOT,
+      encoding: "utf-8",
+      env: env(h, more),
+    });
+
+  it("commit-msg: a dangling link fails with the broken-file message", () => {
+    const r = msg(dangling());
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(BROKEN);
+  });
+
+  it("commit-msg: a file with no patterns fails", () => {
+    const r = msg(empty());
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(BROKEN);
+  });
+
+  it("commit-msg: no file still passes quietly", () => {
+    const r = msg(none());
+    expect(r.status).toBe(0);
+    expect(r.stdout + r.stderr).toBe("");
+  });
+
+  it("pre-push: a dangling link fails with the broken-file message", () => {
+    const r = push(dangling());
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(BROKEN);
+  });
+
+  it("pre-push: a file with no patterns fails", () => {
+    const r = push(empty());
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(BROKEN);
+  });
+
+  it("pre-push: no file still passes quietly", () => {
+    const r = push(none());
+    expect(r.status).toBe(0);
+    expect(r.stdout + r.stderr).toBe("");
+  });
+
+  it("the file gate fails on a broken file with the message, naming the path", () => {
+    const h = empty();
+    const r = gate([], h);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(BROKEN);
+    expect(r.stderr).toContain(
+      path.join(h, ".config", "den-dev", "org-names.txt"),
+    );
+  });
+
+  it("CI's path is unchanged: the variables win over a broken user file, and no patterns exit 2", () => {
+    const h = dangling();
+    const emptyFile = path.join(dir, "empty-528.txt");
+    fs.writeFileSync(emptyFile, "\n");
+    const viaVar = check([`${base}..${clean}`], {
+      ...env(h),
+      DEN_ORG_NAMES: "acme-secret",
+    });
+    expect(viaVar.status).toBe(0);
+    const r1 = check([`${base}..${clean}`], {
+      ...env(h),
+      DEN_ORG_NAMES_FILE: emptyFile,
+    });
+    expect(r1.status).toBe(2);
+    expect(r1.stderr).not.toMatch(BROKEN);
+    const r2 = gate([], h, { DEN_ORG_NAMES: "" });
+    expect(r2.status).toBe(2);
+    expect(r2.stderr).not.toMatch(BROKEN);
+  });
+
+  it("--check-file names the case and the count, never the patterns", () => {
+    const ok = gate(["--check-file"], good());
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/\b1 pattern\b/);
+    expect(ok.stdout + ok.stderr).not.toContain("acme");
+    const d = gate(["--check-file"], dangling());
+    expect(d.status).toBe(1);
+    expect(d.stdout + d.stderr).toMatch(/broken link/);
+    const e = gate(["--check-file"], empty());
+    expect(e.status).toBe(1);
+    expect(e.stdout + e.stderr).toMatch(/0 patterns/);
+    const z = gate(["--check-file"], none());
+    expect(z.status).toBe(3);
+    expect(z.stdout).toMatch(/no names file/);
+  });
+});
+
 describe("ci.yml", () => {
   it("runs the commit check on the PR range and the push range, with full history", () => {
     const ci = fs.readFileSync(
