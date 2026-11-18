@@ -13,6 +13,7 @@ config and manifest changes a distribution must make to move to it under
   - Every address is checked first with an identity challenge that only this Den can answer.
   - The port check now covers IPv6 and the wildcard addresses, as Docker publishes them.
   - `edge up` checks on every run.
+  - When nothing answers at the address Den gives, `den web up`, `den web open` and the sign-in link say "Not reachable yet: nothing answers at <address>." next to it, and name the next step when Den knows the edge is down.
 
 ### Added
 

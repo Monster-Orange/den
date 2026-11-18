@@ -140,6 +140,12 @@ export interface CheckDeps {
   /** The product's command ("den"), for the Traefik route's name. */
   cli?: string;
   now?: () => Date;
+  /**
+   * Whether this install's edge, which serves the wanted address, is down:
+   * true or false when Den knows, null when it doesn't (the CLI's lines,
+   * upAddressLines). Not used by the check itself.
+   */
+  edgeDown?: () => boolean | null;
 }
 
 /** The person's language (user.yml `language`, R19) for the CLI's words. */
@@ -248,6 +254,25 @@ export async function checkAddress(d: CheckDeps): Promise<AddressState> {
 export function givenAddress(s: AddressState): string | null {
   if (s.wantedAnswer === "other" && s.address) return s.address;
   return s.wanted ?? s.address;
+}
+
+/**
+ * Next to the address Den gives, when nothing answers it (issue 455,
+ * Vision): it is still the one given (D80), and the CLI says so plainly.
+ * "The edge isn't running." and its next step only when Den knows the
+ * edge is down (`edgeDown` true); otherwise nothing more.
+ */
+export function upAddressLines(
+  s: AddressState,
+  w: NoticeWords,
+  edgeDown: boolean | null,
+): string[] {
+  if (!s.wanted || s.wantedAnswer !== "nothing") return [];
+  if (givenAddress(s) !== s.wanted) return [];
+  const out = [addressWord(w.lang, "unreachable", { address: s.wanted })];
+  if (edgeDown === true)
+    out.push(addressWord(w.lang, "edgeDown", { cli: w.cli }));
+  return out;
 }
 
 /** A host port, and who holds it (issue 455: Edge's Ports row). */
