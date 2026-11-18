@@ -16,6 +16,7 @@ import {
 import type { DenApi } from "../../../src/ui/mcp/api.js";
 import { gateDefaults } from "../../../src/shared/gates/rules.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { FAKE_MACHINE } from "./fake-machine.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -48,7 +49,7 @@ function ctx(dir?: string, actor = "agent:coder"): ToolContext {
     } as unknown as ToolContext["cfg"],
     cli: "acme",
     scope: { workspace: "north", actor },
-    gates: new GateStore({ dir: d, alive: () => true }),
+    gates: new GateStore({ ...FAKE_MACHINE, dir: d, alive: () => true }),
   };
 }
 
@@ -132,7 +133,7 @@ describe("gate slots over MCP", () => {
       other.id,
       mine.id,
     ]);
-    expect(status.settings).toEqual(gateDefaults(os.cpus().length));
+    expect(status.settings).toEqual(gateDefaults(8));
   });
 
   it("an agent can't wait on or give back a slot that isn't its own", async () => {

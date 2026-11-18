@@ -11,6 +11,7 @@ import * as os from "os";
 import * as path from "path";
 import { gateDefaults } from "../../../src/shared/gates/rules.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { FAKE_MACHINE } from "./fake-machine.js";
 import { handleGateRoutes } from "../../../src/ui/server/gate-routes.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 
@@ -26,7 +27,7 @@ afterEach(async () => {
 async function serve() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-gateroute-"));
   tmps.push(dir);
-  const store = new GateStore({ dir, alive: () => true });
+  const store = new GateStore({ ...FAKE_MACHINE, dir, alive: () => true });
   const audited: {
     actor: unknown;
     action: { verb: string; detail: string };
@@ -87,7 +88,7 @@ describe("gate-slot routes", () => {
     });
     const r = await call("GET", "/api/gate-slots");
     expect(r.status).toBe(200);
-    expect(r.json.settings).toEqual(gateDefaults(os.cpus().length));
+    expect(r.json.settings).toEqual(gateDefaults(8));
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),
     ]);

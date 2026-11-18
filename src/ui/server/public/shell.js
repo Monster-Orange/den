@@ -939,6 +939,9 @@
     "setc.server": "Server",
     "setc.server.d":
       "The Den web server this page talks to. A restart keeps agents and services running.", // words-ok: the Settings row's text, moved word for word
+    "setc.gate": "Gate",
+    "setc.gate.d":
+      "Heavy test runs on this machine (`gate run`), taken in turn. Every install and repo here shares the same queue.",
     "setc.cli": "Command line",
     "setc.cli.d":
       "Also yours (config/local/user.yml), set from the command line: __DEN_CLI__ config <key>=<value>.",
@@ -1848,19 +1851,24 @@
     "set.server.start_wait": "Start wait, in seconds",
     "set.server.start_wait.d":
       "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    "set.server.gate_browser": "Browser test runs at once, on this machine",
+    "set.server.gate_browser.d":
+      "How many browser test runs (`gate run --kind browser`) may hold the machine at once. One starts only while the load per core is low enough and enough PTYs are free. By default 1 below 8 cores, else 1 for every 8 cores, at most 3. __DEN_CLI__ gate settings --browser-slots 1",
+    "set.server.gate_pty": "Free PTYs kept for browser test runs",
+    "set.server.gate_pty.d":
+      "A browser test run starts only while more than this many PTYs are free below the system's limit, so new terminals and agents still start. __DEN_CLI__ gate settings --pty-headroom 50",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
-      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run runs alone, apart from the unit-test runs allowed beside it. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. Browser test runs take the browser slots instead. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
     "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
     "set.server.gate_overrun.d":
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
     "set.server.gate_beside": "Unit test runs beside a browser test run",
     "set.server.gate_beside.d":
       "How many unit-test runs may start while a browser test run holds the machine, if each is expected to end before the browser run that waits next. 0: a browser test run always runs alone. By default 1 on a machine with 8 or more cores, else 0. __DEN_CLI__ gate settings --cpu-beside-browser 1",
-    "set.server.gate_load":
-      "Busiest load for a run beside a browser test run, per core",
+    "set.server.gate_load": "Busiest load for a browser test run, per core",
     "set.server.gate_load.d":
-      "No unit-test run starts beside a browser test run while the machine's 1-minute load average per core is above this. __DEN_CLI__ gate settings --max-load-per-core 2",
+      "No browser test run, and no unit-test run beside one, starts while the machine's 1-minute load average per core is above this. __DEN_CLI__ gate settings --max-load-per-core 2",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

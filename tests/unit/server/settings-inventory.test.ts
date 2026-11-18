@@ -49,6 +49,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     overrun_margin_minutes: true,
     cpu_beside_browser: true,
     max_load_per_core: true,
+    browser_slots: true,
+    pty_headroom: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -173,6 +175,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.overrun_margin_minutes",
         "gate_slots.cpu_beside_browser",
         "gate_slots.max_load_per_core",
+        "gate_slots.browser_slots",
+        "gate_slots.pty_headroom",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",

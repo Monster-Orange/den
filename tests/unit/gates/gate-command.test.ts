@@ -14,6 +14,7 @@ import {
   type GateRun,
 } from "../../../src/ui/cli/gate-command.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { FAKE_MACHINE } from "./fake-machine.js";
 
 const tmps: string[] = [];
 const kids: ChildProcess[] = [];
@@ -61,12 +62,7 @@ function deps(over: Partial<GateDeps> = {}) {
   let handler: ((s: NodeJS.Signals) => void) | undefined;
   const d: GateDeps = {
     // 8 cores: one cpu run may start beside a browser run (issue 462).
-    store: new GateStore({
-      dir,
-      alive: () => true,
-      loadPerCore: () => 0,
-      cores: () => 8,
-    }),
+    store: new GateStore({ ...FAKE_MACHINE, dir, alive: () => true }),
     env: {},
     out: (l) => out.push(l),
     err: (l) => err.push(l),
@@ -219,7 +215,7 @@ describe("gate run", () => {
 
   it("a real run killed with SIGTERM stops its command and gives its slot back", async () => {
     const dir = tmp();
-    const store = new GateStore({ dir });
+    const store = new GateStore({ ...FAKE_MACHINE, dir });
     const k = spawn(
       process.execPath,
       ["--import", "tsx", path.join(__dirname, "run-child.ts")],
@@ -257,7 +253,7 @@ describe("gate run", () => {
 
   it("a real wrapper killed with SIGKILL: the slot stays while its run goes on, then frees at once", async () => {
     const dir = tmp();
-    const store = new GateStore({ dir });
+    const store = new GateStore({ ...FAKE_MACHINE, dir });
     const k = spawn(
       process.execPath,
       ["--import", "tsx", path.join(__dirname, "run-child.ts")],
@@ -303,6 +299,7 @@ describe("gate run", () => {
     const r = fakeRun();
     const t = deps({ now: () => now, exec: () => r.run });
     t.d.store = new GateStore({
+      ...FAKE_MACHINE,
       dir: t.d.store.dir,
       alive: () => true,
       now: () => now,
@@ -377,7 +374,7 @@ describe("gate end and settings: a person's only", () => {
     expect(t.d.store.settings().cpuSlots).toBe(2);
     expect(await cmdGate(["settings", "--cpu-slots", "4"], t.d)).toBe(0);
     expect(t.out.at(-1)).toBe(
-      "cpu slots 4 · flagged 15 min past its estimate · 1 cpu beside a browser run, under load 2 per core",
+      "browser slots 1 · cpu slots 4 · flagged 15 min past its estimate · 1 cpu beside a browser run, under load 2 per core · 50 PTYs kept free",
     );
     expect(
       await cmdGate(
@@ -389,6 +386,18 @@ describe("gate end and settings: a person's only", () => {
       cpuBesideBrowser: 0,
       maxLoadPerCore: 1.5,
     });
+    // Issue 511.
+    expect(
+      await cmdGate(
+        ["settings", "--browser-slots", "2", "--pty-headroom", "80"],
+        t.d,
+      ),
+    ).toBe(0);
+    expect(t.d.store.settings()).toMatchObject({
+      browserSlots: 2,
+      ptyHeadroom: 80,
+    });
+    expect(t.out.at(-1)).toMatch(/^browser slots 2 · cpu slots 4 · .* · 80 PTYs kept free$/);
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });
 });
@@ -397,7 +406,12 @@ describe("gate status", () => {
   it("lists holders then waiters; --json carries overrun", async () => {
     const t = deps();
     expect(await cmdGate(["status"], t.d)).toBe(0);
-    expect(t.out).toEqual(["No gate runs hold or wait."]);
+    expect(t.out).toEqual([
+      "browser slots 1: all free",
+      "No gate runs hold or wait.",
+    ]);
+    // Issue 511: two browser slots, and who holds each.
+    t.d.store.writeSettings({ browser_slots: 2 });
     const a = t.d.store.ask({
       kind: "browser",
       who: "A",
@@ -420,13 +434,31 @@ describe("gate status", () => {
       pid: 3,
       estimateMin: 5,
     });
+    const d = t.d.store.ask({
+      kind: "browser",
+      who: "D",
+      label: "d",
+      pid: 4,
+      estimateMin: 5,
+    });
     t.out.length = 0;
     await cmdGate(["status"], t.d);
-    expect(t.out[0]).toMatch(new RegExp(`^${a.id}  holds browser  A`));
+    expect(t.out[0]).toBe("browser slots 2: 1 held, 1 free");
     expect(t.out[1]).toMatch(
+      new RegExp(`^  slot 1: ${a.id}  A  "a"  until about `),
+    );
+    expect(t.out[2]).toBe("  slot 2: free");
+    expect(t.out[3]).toMatch(new RegExp(`^${a.id}  holds browser  A`));
+    expect(t.out[4]).toMatch(
       new RegExp(`^${b.id}  holds cpu beside a browser run  B`),
     );
-    expect(t.out[2]).toMatch(new RegExp(`^${c.id}  waits for cpu  C`));
+    // A waiter says why it waits.
+    expect(t.out[5]).toMatch(new RegExp(`^${c.id}  waits for cpu  C`));
+    expect(t.out[5]).toMatch(
+      / · waits: 1 cpu run already runs beside a browser run$/,
+    );
+    expect(t.out[6]).toMatch(new RegExp(`^${d.id}  waits for browser  D`));
+    expect(t.out[6]).toMatch(/ · waits: a cpu run holds$/);
     t.out.length = 0;
     await cmdGate(["status", "--json"], t.d);
     const j = JSON.parse(t.out[0]!) as {
@@ -438,7 +470,12 @@ describe("gate status", () => {
       overrun: false,
     });
     expect(j.slots[1]).toMatchObject({ id: b.id, granted: true, beside: true });
-    expect(j.slots[2]).toMatchObject({ id: c.id, granted: false });
+    expect(j.slots[2]).toMatchObject({
+      id: c.id,
+      granted: false,
+      waits: "1 cpu run already runs beside a browser run",
+    });
+    expect(j).toMatchObject({ settings: { browserSlots: 2 } });
     expect(typeof j.slots[2]!.expectedStart).toBe("string");
   });
 });
