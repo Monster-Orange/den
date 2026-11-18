@@ -1,15 +1,21 @@
 // gate/448.mjs: the rail's Terminal reuses the project's running shell
 // (issue 448). In a project of the bed, through the page as a person uses
 // it: the rail's Terminal twice, then the shell bar's New terminal, then
-// the rail's Terminal after using the older shell. Every shell this check
-// starts is closed again through the page; a shell the bed had already
-// is only opened, never closed. The project in view is put back.
+// the rail's Terminal after using the older shell. Then under All
+// projects, a shell of its own in two projects, each used last in turn
+// (Enter at its prompt), and the rail's Terminal after each. Then it ends
+// shells of its own (`exit`, typed in the page that still shows them) and
+// the rail's Terminal must never open one. Every shell this check starts
+// is closed again through the page; a shell the bed had already is only
+// opened, never typed in or closed. The view is put back.
 export const issue = 448;
 export const clauses = [
   "Terminal opens and focuses the shell already running in that project, no new session",
   "with no running shell in that project, Terminal starts one",
   "New terminal in the shell's bar starts a second shell in one click",
   "with several shells running, Terminal opens the one used most recently",
+  "under All projects, Terminal opens the running shell used most recently, across projects",
+  "Terminal never opens an exited shell; with none running in scope, it starts one",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 180000;
@@ -44,6 +50,37 @@ async function shells(page, ws) {
   return (d?.sessions ?? [])
     .filter((s) => s.kind === "session" && s.workspace === ws && !s.exited)
     .map((s) => s.id);
+}
+
+/** Every running plain shell, in any project, by id. */
+async function allShells(page) {
+  const d = await getJson(page, "/api/sessions");
+  return (d?.sessions ?? [])
+    .filter((s) => s.kind === "session" && !s.exited)
+    .map((s) => s.id);
+}
+
+/** Whether shell `id` has ended (exited, or no longer listed). */
+async function ended(page, id) {
+  const d = await getJson(page, "/api/sessions");
+  const s = (d?.sessions ?? []).find((x) => x.id === id);
+  return !s || s.exited === true;
+}
+
+/**
+ * A person at shell `id`'s pane (already open on this page): a click,
+ * then Enter at its prompt (runs nothing), or `exit` and Enter.
+ */
+async function typeAt(ctx, page, id, { exit = false } = {}) {
+  const screen = page.locator(`.pane[data-id="${id}"] .xterm-screen`);
+  await screen.waitFor({ timeout: 30000 }).catch(() => {});
+  await screen.click().catch(() => {});
+  await ctx.sleep(200);
+  if (exit) await page.keyboard.type("exit");
+  await page.keyboard.press("Enter");
+  await ctx.sleep(300);
+  if (exit) return ctx.until(() => ended(page, id), 15000);
+  return true;
 }
 
 /** The pane with the keyboard: its session id, or null. */
@@ -110,10 +147,16 @@ export async function run(ctx) {
       break;
     }
   out.ws = ws;
+  out.projects = projects.length;
   const before = await shells(page, ws);
   out.before = before.length;
   const made = () =>
     shells(page, ws).then((ids) => ids.filter((x) => !before.includes(x)));
+  // Every project's shells the bed had: never typed in, never closed.
+  const beforeAll = await allShells(page);
+  const own = (id) => Boolean(id) && !beforeAll.includes(id);
+  const madeAll = () =>
+    allShells(page).then((ids) => ids.filter((x) => own(x)));
   try {
     // First click.
     await visit(ctx, page, `/agents?project=${encodeURIComponent(ws)}`);
@@ -170,10 +213,126 @@ export async function run(ctx) {
       };
       await ctx.shot(`most-recent-${cell}`);
     }
+    // Clause 5: All projects. A shell of the check's own in this project
+    // and another one; each used last in turn (Enter at its prompt), then
+    // the rail's Terminal with no project named.
+    const other = projects.find((w) => w !== ws);
+    if (other) {
+      await post(page, "/api/scope", { scope: "all" });
+      const mine = {};
+      for (const w of [ws, other]) {
+        await visit(ctx, page, `/agents?project=${encodeURIComponent(w)}`);
+        await railTerminal(ctx, page);
+        let id = await keyed(page);
+        // The bed's own shell opened: one of the check's own beside it.
+        if (id && !own(id)) {
+          const nb = page.locator(
+            `.pane[data-id="${id}"] [data-act="new-shell"]`,
+          );
+          if ((await nb.count()) > 0) {
+            const was = await shells(page, w);
+            await nb.first().click();
+            await ctx.until(
+              async () => (await shells(page, w)).length > was.length,
+              30000,
+            );
+            await ctx.sleep(500);
+            id = (await shells(page, w)).find((x) => !was.includes(x)) ?? null;
+          } else id = null;
+        }
+        for (const x of await madeAll()) started.add(x);
+        mine[w] = own(id) ? id : null;
+      }
+      out.steps.all = { ws, other, mine, rounds: [] };
+      // The other project's first (it is listed after or before this
+      // one: the first one listed loses one round either way), then this.
+      for (const w of [other, ws]) {
+        const target = mine[w];
+        if (!target) continue;
+        await visit(ctx, page, `/agents?open=${encodeURIComponent(target)}`);
+        await typeAt(ctx, page, target);
+        const count = (await allShells(page)).length;
+        await visit(ctx, page, "/agents");
+        await railTerminal(ctx, page);
+        for (const x of await madeAll()) started.add(x);
+        out.steps.all.rounds.push({
+          used: target,
+          keyed: await keyed(page),
+          before: count,
+          after: (await allShells(page)).length,
+        });
+        await ctx.shot(`all-projects-${w}-${cell}`);
+      }
+      if (scope?.scope && scope.scope !== "all")
+        await post(page, "/api/scope", { scope: scope.scope });
+    }
+    // Clause 6: exited shells. (a) A shell of the check's own, used last,
+    // ends in the page that still shows it running: the rail's Terminal
+    // opens a running one instead. (b) With every shell in this project
+    // the check's own, all of them end: the rail's Terminal starts one.
+    const ownHere = (await shells(page, ws)).filter((x) => own(x));
+    const gone = [];
+    if (ownHere.length) {
+      const e = ownHere.at(-1);
+      await visit(
+        ctx,
+        page,
+        `/agents?project=${encodeURIComponent(ws)}&open=${encodeURIComponent(e)}`,
+      );
+      await typeAt(ctx, page, e);
+      const endedA = await typeAt(ctx, page, e, { exit: true });
+      if (endedA) gone.push(e);
+      const runningA = await shells(page, ws);
+      await railTerminal(ctx, page);
+      for (const x of await madeAll()) started.add(x);
+      const keyedA = await keyed(page);
+      out.steps.exited = {
+        a: {
+          ended: e,
+          endedOk: endedA,
+          keyed: keyedA,
+          running: Boolean(keyedA) && (await shells(page, ws)).includes(keyedA),
+          hadRunning: runningA.length,
+        },
+      };
+      await ctx.shot(`exited-${cell}`);
+      if (before.length === 0) {
+        for (const x of (await shells(page, ws)).filter((y) => own(y))) {
+          await visit(
+            ctx,
+            page,
+            `/agents?project=${encodeURIComponent(ws)}&open=${encodeURIComponent(x)}`,
+          );
+          if (await typeAt(ctx, page, x, { exit: true })) gone.push(x);
+        }
+        const left = await shells(page, ws);
+        await railTerminal(ctx, page);
+        for (const x of await madeAll()) started.add(x);
+        const keyedB = await keyed(page);
+        const now = await shells(page, ws);
+        out.steps.exited.b = {
+          ended: [...gone],
+          left: left.length,
+          keyed: keyedB,
+          fresh:
+            Boolean(keyedB) &&
+            own(keyedB) &&
+            !gone.includes(keyedB) &&
+            now.includes(keyedB) &&
+            !left.includes(keyedB),
+          count: now.length,
+        };
+        await ctx.shot(`none-running-${cell}`);
+      }
+    }
   } finally {
     for (const id of await made().catch(() => [])) started.add(id);
+    for (const id of await madeAll().catch(() => [])) started.add(id);
     for (const id of [...started])
-      if (await post(page, `/api/sessions/${encodeURIComponent(id)}/close`))
+      if (
+        (await post(page, `/api/sessions/${encodeURIComponent(id)}/close`)) ||
+        (await ended(page, id).catch(() => false))
+      )
         started.delete(id);
     const now = await getJson(page, "/api/scope").catch(() => null);
     if (scope?.scope && now?.scope !== scope.scope)
@@ -189,7 +348,10 @@ export async function teardown(ctx) {
   const page = ctx.page;
   if (!page || !started.size) return;
   for (const id of [...started])
-    if (await post(page, `/api/sessions/${encodeURIComponent(id)}/close`))
+    if (
+      (await post(page, `/api/sessions/${encodeURIComponent(id)}/close`)) ||
+      (await ended(page, id).catch(() => false))
+    )
       started.delete(id);
 }
 
@@ -261,5 +423,76 @@ export function expect(cells) {
       ),
       evidence: ev("most-recent"),
     },
+    allProjects(rows),
+    exitedShells(rows, ev),
   ];
+}
+
+/** Clause 5: under All projects, each round's Terminal opened the shell used last. */
+function allProjects(rows) {
+  // A cell that threw has no steps: it counts, and fails.
+  const two = rows.filter((r) => !(r.projects < 2));
+  if (!two.length)
+    return { clause: clauses[4], ok: null, skip: "needs-two-projects" };
+  return {
+    clause: clauses[4],
+    ok: two.every(
+      (r) =>
+        r.steps.all?.rounds?.length === 2 &&
+        r.steps.all.rounds.every(
+          (x) => x.keyed === x.used && x.after === x.before,
+        ),
+    ),
+    detail: two
+      .map(
+        (r) =>
+          `${r.cell}: ` +
+          (r.steps.all?.rounds ?? [])
+            .map(
+              (x) =>
+                `used ${x.used}, Terminal opened ${x.keyed}, shells ${x.before} → ${x.after}`,
+            )
+            .join("; "),
+      )
+      .join(" | "),
+    evidence: two.flatMap((r) =>
+      [r.steps.all?.other, r.steps.all?.ws]
+        .filter(Boolean)
+        .map((w) => `all-projects-${w}-${r.cell}`),
+    ),
+  };
+}
+
+/** Clause 6: an exited shell never opened; with none running, a new one started. */
+function exitedShells(rows, ev) {
+  return {
+    clause: clauses[5],
+    ok: rows.every((r) => {
+      const a = r.steps.exited?.a;
+      const b = r.steps.exited?.b;
+      return (
+        Boolean(a) &&
+        a.endedOk === true &&
+        a.keyed !== a.ended &&
+        a.running === true &&
+        (r.before > 0 || (Boolean(b) && b.left === 0 && b.fresh === true))
+      );
+    }),
+    detail: rows
+      .map((r) => {
+        const a = r.steps.exited?.a;
+        const b = r.steps.exited?.b;
+        return (
+          `${r.cell}: ${a?.ended} ended (${a?.endedOk ? "listed as ended" : "never ended"}), ` +
+          `Terminal opened ${a?.keyed} (${a?.running ? "running" : "not running"})` +
+          (b
+            ? `; all ${b.ended.length} ended, ${b.left} running, Terminal opened ${b.keyed} (${b.fresh ? "a new one" : "not a new one"})`
+            : r.before > 0
+              ? "; the bed's own shell runs here: the none-running half is not tried"
+              : "; the none-running half never ran")
+        );
+      })
+      .join(" | "),
+    evidence: [...ev("exited"), ...ev("none-running")],
+  };
 }
