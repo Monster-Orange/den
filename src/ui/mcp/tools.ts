@@ -381,6 +381,66 @@ const READ_TOOLS: DenTool[] = [
     async (_a, { api }) => api.get("/api/notifications"),
   ),
   read(
+    "feedback_diagnostics",
+    "What a report would include",
+    "FB-6 (issue 81): the diagnostics sections a Report an issue would include (the Den version, the machine), redacted as the issue would show them: secrets, emails, IPs, this install's hosts, paths and names removed. Reads only.",
+    {},
+    async (_a, { api }) => {
+      const r = (await api.get("/api/report/diagnostics", {
+        redact: "1",
+      })) as { redacted?: unknown; sections?: unknown } | null;
+      // An older web server sends the exact text: never pass it on.
+      if (r?.redacted !== true)
+        throw new Refusal(
+          "feedback_diagnostics: Den didn't redact the diagnostics (it still runs code older than this tool), so nothing is shown. Ask your person to restart Den, then ask again.",
+        );
+      return { sections: r.sections };
+    },
+  ),
+  read(
+    "feedback_report",
+    "Report an issue, as a draft",
+    "FB-6 (issue 81): report an issue with Den (a bug, an idea or a question). It is saved as a draft that names you and stays a draft: your person sees it in My reports, can change it, and sends it as themselves, or discards it. Nothing reaches GitHub from you. The diagnostics (feedback_diagnostics) are included, redacted.",
+    {
+      kind: z
+        .enum(["bug", "idea", "question"])
+        .describe("bug, idea or question"),
+      title: z.string().describe("A short title, at most 200 characters"),
+      description: z
+        .string()
+        .optional()
+        .describe(
+          "What happened and how to see it again, at most 20,000 characters",
+        ),
+    },
+    async (a, { api }) => {
+      const kind = str(a.kind);
+      if (!kind || !["bug", "idea", "question"].includes(kind))
+        throw new Refusal("feedback_report: kind is bug, idea or question.");
+      const title = (str(a.title) ?? "").replace(/\s+/g, " ").trim();
+      if (!title) throw new Refusal("feedback_report: a title is needed.");
+      if (title.length > 200)
+        throw new Refusal(
+          "feedback_report: the title is at most 200 characters; put the rest in the description.",
+        );
+      const description = str(a.description) ?? "";
+      if (description.length > 20_000)
+        throw new Refusal(
+          "feedback_report: the description is at most 20,000 characters.",
+        );
+      const r = (await api.get("/api/report/drafts", {}, "POST", {
+        kind,
+        title,
+        description,
+        sections: { Den: true, Machine: true },
+        redact: true,
+        asAgent: true,
+      })) as { draft?: { id?: unknown } } | null;
+      const id = typeof r?.draft?.id === "string" ? r.draft.id : "";
+      return `Saved as draft ${id}, under your name. It is not sent: your person finds it in My reports (Drafts from agents), and sends it as themselves or discards it. End your turn or carry on; nothing more is needed from you.`;
+    },
+  ),
+  read(
     "gate_slot_status",
     "Gate slots on this machine",
     "Issue 144: who holds a heavy-test slot on this machine and who waits, across every repo and install here: each slot's id, kind (browser runs alone; cpu shares), who, label, grantedAt and expectedEnd (overrun when past it by the margin), or its expectedStart in the queue, and the machine's settings. Read this instead of messaging other agents. Reads only.",

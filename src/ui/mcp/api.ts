@@ -140,6 +140,8 @@ const READ_ROUTES = new Set([
   "/api/onboard/manifest",
   // NT (MCP notifications_list): the bell, read as the agent sees it.
   "/api/notifications",
+  // FB-6 (MCP feedback_diagnostics): what a report would include, redacted.
+  "/api/report/diagnostics",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
@@ -153,6 +155,9 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/approvals": "POST",
   // NT-1 (MCP ask_human): the agent's own waiting mark, nothing more.
   "/api/agents/self/attention": "POST",
+  // FB-6 (MCP feedback_report): a draft that names the agent, for the
+  // person to send. Sending (/api/report/send) is never reached.
+  "/api/report/drafts": "POST",
   // Issue 208 (MCP verify_run): the plan (runs nothing), and a run on
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",

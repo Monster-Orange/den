@@ -109,6 +109,21 @@ const render = (v: unknown): string => {
   return "\n```json\n" + JSON.stringify(v, null, 2) + "\n```";
 };
 
+/**
+ * FB-6 (issue 81): the diagnostics sections as an agent reads them, each
+ * as the issue body would show it, with Redact names on. A host the
+ * install knows keeps its number in every section.
+ */
+export function redactedSections(
+  diagnostics: Record<string, unknown>,
+  names: RedactNames,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, v] of Object.entries(diagnostics))
+    out[name] = redactReport(render(v).trim(), names, { names: true });
+  return out;
+}
+
 /** The issue's title, redacted as its body is. */
 export function issueTitle(
   form: Pick<ReportForm, "title">,
