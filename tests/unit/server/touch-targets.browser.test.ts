@@ -9,14 +9,15 @@
  *   - /agents with four agents in the list;
  *   - the rail (at phone size, the drawer: ☰ opens it);
  *   - /services;
- *   - /settings, with its tabs;
+ *   - /settings, with its categories;
  *   - the bell's notifications, open;
  *   - a kit menu (the top bar's ◐ ▾: mode, theme, language), open.
  *
  * An element's tap is its box, or the kit's transparent 44px hit area
- * (.den-hit, a ::after centred on it) when it has one, or its <label>.
- * Anything under 44 fails, with its selector, size and text, unless it
- * matches EXCEPTIONS (each with its reason).
+ * (.den-hit's, a ::after centred on it) when it has one, or a <label>
+ * that holds or names it. Anything under 44 fails, with its selector,
+ * size and text, unless it matches EXCEPTIONS (each with its reason) or
+ * is a link inside a sentence (WCAG 2.5.8's inline exception).
  *
  * The held-write ask (the approval dialog on every page): Allow, Deny,
  * Review and Later one under the other, Allow first, each the dialog's
@@ -203,7 +204,7 @@ async function phone(
 const done = new WeakSet<Page>();
 async function close(p: Page): Promise<void> {
   done.add(p);
-  await close(p);
+  await p.context().close();
 }
 
 type Small = { what: string; w: number; h: number };
@@ -250,7 +251,11 @@ async function sweep(
         }
         return true;
       };
-      /** The tap: the box, the kit's ::after hit area, or the label. */
+      /**
+       * The tap: the box, or the kit's ::after hit area, or a <label> that
+       * holds it or names it (a tap on the label is a tap on the field).
+       * The largest of these.
+       */
       const tap = (el: Element) => {
         const r = el.getBoundingClientRect();
         let w = r.width;
@@ -260,13 +265,39 @@ async function sweep(
           w = Math.max(w, parseFloat(a.minWidth) || 0);
           h = Math.max(h, parseFloat(a.minHeight) || 0);
         }
-        const lab = el.closest("label");
-        if (lab) {
+        const labels = [
+          el.closest("label"),
+          ...(el.id
+            ? Array.from(
+                document.querySelectorAll(`label[for="${CSS.escape(el.id)}"]`),
+              )
+            : []),
+        ];
+        for (const lab of labels) {
+          if (!lab) continue;
           const l = lab.getBoundingClientRect();
-          w = Math.max(w, l.width);
-          h = Math.max(h, l.height);
+          if (Math.min(l.width, l.height) > Math.min(w, h)) {
+            w = l.width;
+            h = l.height;
+          }
         }
         return { w, h };
+      };
+      /**
+       * A link inside a sentence (WCAG 2.5.8's inline exception): drawn
+       * inline, with words of the sentence beside it.
+       */
+      const inSentence = (el: Element) => {
+        if (el.tagName !== "A") return false;
+        if (getComputedStyle(el).display !== "inline") return false;
+        const p = el.parentElement;
+        if (!p) return false;
+        return Array.from(p.childNodes).some(
+          (n) =>
+            n !== el &&
+            n.nodeType === Node.TEXT_NODE &&
+            /\S/.test(n.textContent || ""),
+        );
       };
       const name = (el: Element) => {
         let s = el.tagName.toLowerCase();
@@ -291,7 +322,7 @@ async function sweep(
       const small: { what: string; w: number; h: number }[] = [];
       let n = 0;
       els.forEach((el) => {
-        if (excepted(el) || !shown(el)) return;
+        if (excepted(el) || inSentence(el) || !shown(el)) return;
         n++;
         const { w, h } = tap(el);
         // Half a pixel for rounding (a 43.5px box is drawn at 44).

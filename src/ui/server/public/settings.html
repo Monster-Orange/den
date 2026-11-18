@@ -905,6 +905,31 @@
         padding: 2px 9px;
         font-size: 12.5px;
       }
+      /* Issue 302: on a touch screen or a phone, every category, button,
+         field and choice here is a 44px target each way; a switch's tap
+         is its row's label (label for=), 44px tall. */
+      @media (pointer: coarse), (max-width: 767.98px) {
+        .set-ni,
+        #den-content button,
+        #den-content select,
+        #den-content a.btn,
+        #den-content
+          input:not([type="checkbox"]):not([type="radio"]):not(
+            [type="hidden"]
+          ) {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        #den-content a.btn:not([hidden]),
+        #den-content label.l:not([hidden]) {
+          display: inline-flex;
+          align-items: center;
+        }
+        #den-content label.l {
+          min-height: 44px;
+          min-width: 44px;
+        }
+      }
       .set-save {
         margin-top: 6px;
       }

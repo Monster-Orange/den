@@ -187,18 +187,36 @@
         color: var(--text);
         font-weight: 500;
       }
-      /* Issue 302: on a touch screen or a phone, the layout switch and a
-         project's link in the list are 44px targets each way. */
+      /* Issue 302: on a touch screen or a phone, the layout switch is a
+         44px target each way. A project's heading in the list keeps its
+         height (the panes need the room above the runs dock): its link
+         and Reorder take the kit's 44px tap (.den-hit's), a transparent
+         area centred on each, with no change to the layout. */
       @media (pointer: coarse), (max-width: 767.98px) {
         .seg button {
           min-height: 44px;
           min-width: 44px;
         }
-        .agl .wslink {
-          display: inline-flex;
-          align-items: center;
-          min-height: 44px;
+        .agl .wslink,
+        .agl .agord-t {
+          position: relative;
+        }
+        .agl .agord-t {
+          min-height: 0;
+          min-width: 0;
+        }
+        .agl .wslink::after,
+        .agl .agord-t::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 100%;
+          height: 100%;
           min-width: 44px;
+          min-height: 44px;
+          transform: translate(-50%, -50%);
+          background: transparent;
         }
       }
       .agl .aghint {
