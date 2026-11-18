@@ -1566,9 +1566,9 @@ export interface AgentsConfig {
    */
   turn_read_max_mb?: unknown;
   /**
-   * 0.4.45: minutes an exited shell with nothing unread stays listed
-   * before it leaves by itself (default 10; 0: never, it stays until
-   * removed).
+   * 0.4.45: minutes an exited terminal with nothing unread stays on
+   * Terminals before it leaves by itself (default 10080, 7 days; 0:
+   * never, it stays until removed). The key keeps its old name.
    */
   exited_shell_minutes?: unknown;
   /**
@@ -1838,8 +1838,12 @@ function guardrailsBlock(
  * The effective agents config. Anything malformed throws, naming the key:
  * a typo must not lift the cap, drop a pack or widen a grant.
  */
-/** How long an exited shell with nothing unread stays listed (0.4.45). */
-export const DEFAULT_EXITED_SHELL_MINUTES = 10;
+/**
+ * How long an exited terminal with nothing unread stays on Terminals, in
+ * minutes (0.4.45; 7 days since issue 482, was 10). An install that set
+ * agents.exited_shell_minutes keeps its value; 0: it stays until removed.
+ */
+export const DEFAULT_EXITED_SHELL_MINUTES = 7 * 24 * 60;
 
 export function readAgentsConfig(
   config?: DenConfig,
@@ -1954,7 +1958,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       exitedMin < 0
     )
       throw new Error(
-        `agents.exited_shell_minutes: must be a number of minutes, 0 or more (0: never) (got ${JSON.stringify(exitedMin)})`,
+        `agents.exited_shell_minutes: must be a number of minutes an exited terminal stays on Terminals, 0 or more (0: until removed) (got ${JSON.stringify(exitedMin)})`,
       );
     out.exitedShellMinutes = exitedMin;
   }

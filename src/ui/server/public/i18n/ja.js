@@ -1755,6 +1755,7 @@
     "ag.moved.open": "ターミナル一覧を開く",
     "ag.moved.dismiss": "閉じる",
     "kind.agent": "エージェント",
+    "kind.terminal": "ターミナル",
     "ag.sub.agents": "エージェント {n}",
     "ag.sub.agent": "エージェント {n}",
     "ag.sub.shells": "シェル {n}",
@@ -1964,6 +1965,7 @@
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
     "ag.ws": "プロジェクト",
     "ag.pal": "エージェント › {ws} / {name}",
+    "tm.pal": "ターミナル一覧 › {ws} / {name}",
     "ag.palStart": "エージェントを開始…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ エージェント",

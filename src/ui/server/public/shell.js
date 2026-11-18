@@ -2620,6 +2620,7 @@
     "ag.moved.open": "Open Terminals",
     "ag.moved.dismiss": "Dismiss",
     "kind.agent": "Agent",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agents",
     "ag.sub.agent": "{n} agent",
     "ag.sub.shells": "{n} shells",
@@ -2840,6 +2841,7 @@
     "ag.noHost": "No session host is running: nothing has started yet",
     "ag.ws": "Project",
     "ag.pal": "Agents › {ws} / {name}",
+    "tm.pal": "Terminals › {ws} / {name}",
     "ag.palStart": "Start agent…",
     // ON-6: the __DEN_TITLE__ agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ agent",

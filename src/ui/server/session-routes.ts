@@ -173,7 +173,7 @@ export interface SessionRouteDeps {
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
-  /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
+  /** 0.4.45: agents.exited_shell_minutes (0: an exited terminal stays). */
   exitedShellMinutes?: () => number;
   /** D44: the Hub server URL an agent would get now (null: none). */
   hubNow?: () => Promise<string | null>;
@@ -489,8 +489,9 @@ export function contextFields(
 }
 
 /**
- * 0.4.45: a plain shell that exited agents.exited_shell_minutes ago, with
- * nothing unread, leaves by itself: the host forgets it (as Remove does).
+ * 0.4.45: a plain terminal that exited agents.exited_shell_minutes ago
+ * (default 7 days), with nothing unread, leaves by itself: the host
+ * forgets it (as Remove does).
  * An agent's session never: its record keeps it. 0: none leaves.
  */
 export async function leaveExitedShells(

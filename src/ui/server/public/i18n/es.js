@@ -1797,6 +1797,7 @@
     "ag.moved.open": "Abrir Terminales",
     "ag.moved.dismiss": "Descartar",
     "kind.agent": "Agente",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agentes",
     "ag.sub.agent": "{n} agente",
     "ag.sub.shells": "{n} shells",
@@ -2022,6 +2023,7 @@
       "No hay ningún host de sesiones en marcha: aún no se ha iniciado nada",
     "ag.ws": "Proyecto",
     "ag.pal": "Agentes › {ws} / {name}",
+    "tm.pal": "Terminales › {ws} / {name}",
     "ag.palStart": "Iniciar agente…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "Agente de __DEN_TITLE__",

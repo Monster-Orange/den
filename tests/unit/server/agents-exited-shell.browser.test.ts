@@ -8,7 +8,7 @@
  *      stopped agents together.
  *   3. A running shell never shows Remove; its pane shows Close.
  *   4. An exited shell with nothing unread leaves by itself after
- *      agents.exited_shell_minutes (default 10); one with unread output
+ *      agents.exited_shell_minutes (default 7 days); one with unread output
  *      stays until removed.
  *
  * Issue 482 (mock v3): plain shells live on Terminals now, never in the
