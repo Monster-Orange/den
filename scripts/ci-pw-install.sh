@@ -12,9 +12,16 @@
 #      from a cache (~/.cache/ms-playwright, keyed by the OS and
 #      Playwright's version), so this part is usually instant.
 #
+# The apt part runs as root, so a cut-off attempt can't kill it: it goes
+# on holding dpkg's lock, and a retry right away fails at once ("Could not
+# get lock", exit 100). Before the retry, the script waits (up to the same
+# limit) until no apt or dpkg process is left.
+#
 # The limits are settings (seconds per attempt):
-#   CI_PW_DEPS_SECONDS     the system packages, default 180
+#   CI_PW_DEPS_SECONDS     the system packages, default 240
 #   CI_PW_INSTALL_SECONDS  the browsers, default 90
+#   CI_PW_BUSY_PATTERN     what a leftover apt run looks like (pgrep -f),
+#                          default "apt-get|dpkg"
 #
 #   bash scripts/ci-pw-install.sh [browser ...]  install (default: chromium webkit)
 #   bash scripts/ci-pw-install.sh version        print version=<Playwright's version> (the cache key)
@@ -38,7 +45,7 @@ for b in "${browsers[@]}"; do
   esac
 done
 
-deps_s=${CI_PW_DEPS_SECONDS:-180}
+deps_s=${CI_PW_DEPS_SECONDS:-240}
 install_s=${CI_PW_INSTALL_SECONDS:-90}
 for pair in "CI_PW_DEPS_SECONDS=$deps_s" "CI_PW_INSTALL_SECONDS=$install_s"; do
   case "${pair#*=}" in
@@ -48,6 +55,18 @@ for pair in "CI_PW_DEPS_SECONDS=$deps_s" "CI_PW_INSTALL_SECONDS=$install_s"; do
       ;;
   esac
 done
+
+# A cut-off apt run (root) lives on and holds dpkg's lock: wait for it.
+wait_apt() {
+  local limit=$1 pattern=${CI_PW_BUSY_PATTERN:-apt-get|dpkg} until
+  pgrep -f "$pattern" >/dev/null 2>&1 || return 0
+  echo "ci-pw-install: waiting for the cut-off apt run to finish (up to $limit s)"
+  until=$(($(date +%s) + limit))
+  while pgrep -f "$pattern" >/dev/null 2>&1; do
+    [ "$(date +%s)" -lt "$until" ] || break
+    sleep 2
+  done
+}
 
 # One part: up to two attempts, each cut off at its limit.
 attempt() {
@@ -67,6 +86,7 @@ attempt() {
       else
         echo "::warning::playwright $what failed (exit $code); retrying once"
       fi
+      [ "$what" = install-deps ] && wait_apt "$limit"
     fi
   done
   echo "::error::playwright $what failed twice (limit $limit s each; exit $code). The mirror or the download is stuck: re-run the job, or raise $setting."
