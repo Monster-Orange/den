@@ -459,14 +459,31 @@ ${
    * text being typed, the caret and focus stay where they are.
    */
   function shotArrived() {
-    const area = dlg.querySelector("[data-shot-area]");
-    if (!area) return;
-    const had = area.contains(document.activeElement)
-      ? document.activeElement.getAttribute("data-f")
-      : null;
-    area.innerHTML = st.step === "write" ? writeShotHtml() : reviewShotHtml();
+    const a = document.activeElement;
+    if (st.step === "review") {
+      // A send waiting for it goes on by itself (redrawn when it lands).
+      if (st.waitingShot) return;
+      // Nothing is typed on Review: drawn again, focus kept.
+      const k = a && dlg.contains(a) && a.getAttribute("data-act");
+      return render(k ? `[data-act="${k}"]` : undefined);
+    }
+    if (st.step !== "write") return;
+    // Write: the part after the screenshot's heading, up to the error or
+    // the buttons, is replaced; the fields around it are left alone.
+    const head = [...dlg.querySelectorAll(".fb-h")].find(
+      (h) => h.textContent === t("kit.report.shot"),
+    );
+    if (!head) return;
+    const had = a?.getAttribute?.("data-f") === "noshot";
+    let n = head.nextElementSibling;
+    while (n && !n.matches(".fb-err, .fb-btns")) {
+      const next = n.nextElementSibling;
+      n.remove();
+      n = next;
+    }
+    head.insertAdjacentHTML("afterend", writeShotHtml());
     paintShot();
-    if (had) area.querySelector(`[data-f="${had}"]`)?.focus();
+    if (had) dlg.querySelector('[data-f="noshot"]')?.focus();
   }
   /**
    * Before a send or Finish later: a screenshot still being drawn is
@@ -479,7 +496,9 @@ ${
       button.disabled = true;
       button.textContent = t("kit.report.waitShot");
     }
+    st.waitingShot = true;
     await shotDone;
+    st.waitingShot = false;
     if (button?.isConnected) {
       button.disabled = false;
       button.textContent = label;
@@ -505,7 +524,7 @@ ${
 <label class="fb-f">${esc(t("kit.report.titleL"))}<input type="text" data-f="title" maxlength="200" value="${esc(st.title)}"></label>
 <label class="fb-f">${esc(t("kit.report.desc"))}<textarea data-f="description" maxlength="20000">${esc(st.description)}</textarea></label>
 <div class="fb-h">${esc(t("kit.report.shot"))}</div>
-<div data-shot-area>${writeShotHtml()}</div>${err}
+${writeShotHtml()}${err}
 <div class="fb-btns">${btn("next", t("kit.report.next"), true)}${laterBtn(t("kit.report.later"))}${btn("cancel", t("kit.report.cancel"))}</div>`;
     } else if (st.step === "include") {
       label = t("kit.report.incH");
@@ -545,7 +564,7 @@ ${
       }${visPill(repos)}</div>`
     : ""
 }
-<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre><div data-shot-area>${reviewShotHtml()}</div>
+<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${reviewShotHtml()}
 ${sends() ? visNote(repos) : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
 <div class="fb-btns">${sends() ? btn("send", t("kit.report.send"), true) : btn("copy", t("kit.report.copy"), true)}${laterBtn(t("kit.report.later"))}${btn("back-include", t("kit.report.back"))}</div>`;
     } else if (st.step === "signin") {
