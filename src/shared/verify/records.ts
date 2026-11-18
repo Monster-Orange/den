@@ -11,11 +11,13 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import type { ClauseRecord } from "./imports.js";
 import type { ModuleRun, RunResult } from "./run.js";
 
 /** Who did something to a run. */
 export interface RunActor {
-  kind: "agent" | "person" | "den";
+  /** Issue 441: "runner", an outside runner whose results were imported. */
+  kind: "agent" | "person" | "den" | "runner";
   /** An agent's name; a person's is never stored here. */
   name?: string;
 }
@@ -23,6 +25,8 @@ export interface RunActor {
 export interface ModuleRecord extends ModuleRun {
   /** The last lines of its command's output (its report). */
   tail?: string[];
+  /** Issue 441: an imported gate check's clauses, in the runner's order. */
+  clauses?: ClauseRecord[];
 }
 
 export interface RunRecord {
@@ -38,6 +42,8 @@ export interface RunRecord {
   endedAt: string;
   startedBy?: RunActor;
   allowedBy?: RunActor;
+  /** Issue 441: "import", a run an outside runner's results made. */
+  source?: "import";
   /** The commit the run checked (the first repo's), when known. */
   commit?: string | null;
   modules: ModuleRecord[];
@@ -84,6 +90,19 @@ export function readRunRecord(
   } catch {
     return null;
   }
+}
+
+/** Issue 441: removes a run's record and its folder; false when there is none. */
+export function removeRunRecord(
+  stateDir: string,
+  project: string,
+  runId: string,
+): boolean {
+  if (!RUN_RE.test(runId)) return false;
+  const dir = path.join(runsDir(stateDir, project), runId);
+  if (!fs.existsSync(path.join(dir, "run.json"))) return false;
+  fs.rmSync(dir, { recursive: true, force: true });
+  return true;
 }
 
 /** The project's runs, newest first (at most `limit`). */

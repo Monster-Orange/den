@@ -274,6 +274,12 @@ export interface DenConfig {
    */
   server_agent?: ServerAgentConfig;
   /**
+   * Verify's `verify:` block. Issue 441: `environments` and `import`
+   * (shared/verify/imports.ts readImportSettings). Issue 212's run settings
+   * read `run`, `flaky`, `history` and `security` from the same block.
+   */
+  verify?: unknown;
+  /**
    * Agents: `max_concurrent` caps the agents running at once in this
    * distribution (default 4); plain sessions never count. See
    * readAgentsConfig.
@@ -1071,6 +1077,8 @@ export function readDenConfig(): DenConfig {
       security: parsed?.security,
       mcp: parsed?.mcp,
       server_agent: parsed?.server_agent,
+      // Issue 441: Verify reads its own keys (imports.ts, settings.ts).
+      verify: parsed?.verify,
       agents: parsed?.agents,
       sessions: parsed?.sessions,
       web: parsed?.web,

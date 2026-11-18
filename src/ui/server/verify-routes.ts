@@ -48,6 +48,7 @@ import {
   type RunResult,
 } from "../../shared/verify/run.js";
 import { verifyOverview } from "../../shared/verify/overview.js";
+import { readImportSettings } from "../../shared/verify/imports.js";
 import {
   listRunRecords,
   readRunRecord,
@@ -79,7 +80,13 @@ export interface VerifyServerDeps {
   git?: GitProbe;
   runCmd?: RunDeps["runCmd"];
   probe?: RunDeps["probe"];
+  /** Issue 441: the org config's `verify:` block (read per request). */
+  verifyConfig?: () => unknown;
 }
+
+/** Issue 441: the environments whose results are imported; a bad block throws. */
+const importedEnvs = (d: VerifyServerDeps): string[] =>
+  readImportSettings(d.verifyConfig?.()).environments;
 
 export interface VerifyRunArgs {
   project: string;
@@ -154,6 +161,17 @@ export function verifyPlanOf(
   const env = raw.env === undefined ? "local" : raw.env;
   if (typeof env !== "string" || !NAME_RE.test(env))
     return no("env is an environment's name, like local or staging");
+  // Issue 441: Den runs nothing on an imported environment.
+  let imported: string[] = [];
+  try {
+    imported = importedEnvs(d);
+  } catch (e) {
+    return no((e as Error).message);
+  }
+  if (imported.includes(env))
+    return no(
+      `"${env}" is an imported environment: Den runs nothing there; its results come from \`verify import\``,
+    );
   const envs = d.environments?.();
   if (envs && !envs.includes(env))
     return no(
@@ -357,12 +375,26 @@ function handleVerifyReads(
       sendJson(res, { ok: false, error: mods.error }, 400);
       return true;
     }
-    const envs = deps.environments?.() ?? ["local"];
+    let imported: string[];
+    try {
+      imported = importedEnvs(deps);
+    } catch (e) {
+      sendJson(
+        res,
+        { ok: false, code: "config_invalid", error: (e as Error).message },
+        422,
+      );
+      return true;
+    }
+    const org = deps.environments?.() ?? ["local"];
+    // Issue 441: the imported environments after the org's own.
+    const envs = [...org, ...imported.filter((e) => !org.includes(e))];
     sendJson(res, {
       ok: true,
       ...verifyOverview({
         project: p.project,
         envs,
+        imported,
         modules: mods.modules,
         layers: mods.layers,
         latest: readLatest(stateDir, p.project),

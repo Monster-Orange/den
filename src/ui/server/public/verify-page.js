@@ -11,6 +11,10 @@
  *   S7  empty: no checks declared yet, with the three lines to add one
  *   S8  nothing ran, or no check runs on an environment: never a pass
  *   S9  an agent's run says the agent started it and a person allowed it
+ *   441 an imported environment (an outside runner's gate results, such
+ *       as "bed"): the tag's answer and its clause counts; failed, couldn't
+ *       run and needs you; each check as one row; ?why=<env> adds a
+ *       clauses table per check. A runner's text is untrusted: esc() only
  *
  * Reads GET /api/verify/overview (verify-routes.ts). The views are pure
  * (HTML from that JSON), so tests need no server. Words come from the
@@ -132,6 +136,7 @@ export function metaLine(run) {
   if (!run) return "";
   const parts = [];
   const by = run.startedBy;
+  if (by?.kind === "runner") return runnerMeta(run);
   if (by?.kind === "agent") parts.push(t("v.m_agent", { a: by.name ?? "" }));
   else if (by?.kind === "person") parts.push(t("v.m_person"));
   if (run.allowedBy?.kind === "person") parts.push(t("v.m_allowed"));
@@ -143,7 +148,231 @@ export function metaLine(run) {
   return parts.join(" ");
 }
 
+/** A time of day alone (the end of an imported run's span). */
+function clock(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    return d.toLocaleTimeString(
+      globalThis.document?.documentElement?.lang || undefined,
+      { timeStyle: "short" },
+    );
+  } catch {
+    return d.toISOString().slice(11, 16);
+  }
+}
+
+/** Issue 441: an import's line: its commit, when it ran, where it came from. */
+function runnerMeta(run) {
+  const parts = [];
+  if (run.commit)
+    parts.push(t("v.m_commit", { c: String(run.commit).slice(0, 7) }));
+  const from = run.startedAt ? when(run.startedAt) : "";
+  const to = run.startedAt ? clock(run.endedAt) : when(run.endedAt);
+  if (from && to) parts.push(t("v.m_ran", { a: from, b: to }));
+  else if (to) parts.push(t("v.m_when", { t: to }));
+  parts.push(t("v.m_runner"));
+  return parts.join(" ");
+}
+
+/** An imported environment's answer: the tag, bold; the rest plain text. */
+function importedSentence(e) {
+  const env = envName(e.env);
+  const c = e.clauses ?? {};
+  const bad = (c.failed ?? 0) + (c.error ?? 0);
+  const key =
+    e.answer === "failed"
+      ? "v.i_fail"
+      : e.answer === "ready"
+        ? "v.i_pass"
+        : e.answer === "nothing"
+          ? "v.i_nothing"
+          : null;
+  if (!key || !e.run) return esc(t("v.a_notrun", { e: env }));
+  const MARK = "\u0000";
+  return esc(t(key, { t: MARK, e: env, n: bad })).replace(
+    MARK,
+    `<b>${esc(e.run.tag ?? e.run.runId)}</b>`,
+  );
+}
+
+const CLAUSE = {
+  passed: { word: "v.c_passed", tone: "ok", mark: "✓" },
+  failed: { word: "v.c_failed", tone: "bad", mark: "✕" },
+  error: { word: "v.c_error", tone: "bad", mark: "!" },
+  "needs-person": { word: "v.c_needs", tone: "warn", mark: "●" },
+  "cant-run": { word: "v.c_cantrun", tone: "neutral", mark: "‖" },
+};
+
+/** The issue a gate check is for ("gate/327" → "issue 327"). */
+function issueOf(check) {
+  const m = /^gate\/(\d+)$/.exec(String(check ?? ""));
+  return m ? t("v.i_issue", { n: m[1] }) : String(check ?? "");
+}
+
+/** Failed, couldn't run or needs you: each clause with its note. */
+function clauseList(title, items, lede) {
+  if (!items?.length) return "";
+  const rows = items
+    .map((x) => {
+      const c = CLAUSE[x.result] ?? CLAUSE["cant-run"];
+      return (
+        `<li><span class="vf-mk vf-${c.tone}" aria-hidden="true">${c.mark}</span>` +
+        `<span class="vf-grow">${esc(x.clause)} <span class="vf-muted">· ${esc(issueOf(x.check))}</span>` +
+        (x.note ? `<br><span class="vf-muted">${esc(x.note)}</span>` : "") +
+        `</span></li>`
+      );
+    })
+    .join("");
+  return (
+    `<div class="vf-clist"><h3>${esc(t(title, { n: items.length }))}</h3>` +
+    (lede ? `<p class="vf-meta">${esc(lede)}</p>` : "") +
+    `<ul class="vf-rows">${rows}</ul></div>`
+  );
+}
+
+/** The clause counts: passed, failed, needs you, couldn't run. */
+function clauseCounts(c) {
+  const item = (k, n, tone, word) =>
+    `<li data-count="${k}"><b class="vf-${tone}">${esc(n ?? 0)}</b>${esc(t(word))}</li>`;
+  return (
+    `<ul class="vf-counts">` +
+    item("passed", c.passed, "ok", "v.n_passed") +
+    item("failed", (c.failed ?? 0) + (c.error ?? 0), "bad", "v.n_failed") +
+    item("needs-person", c.needsPerson, "warn", "v.n_needs") +
+    item("cant-run", c.cantRun, "neutral", "v.n_cantrun") +
+    `</ul>`
+  );
+}
+
+/** The three lists, failed first. */
+function clauseLists(e) {
+  return (
+    clauseList("v.i_failed_h", e.clauseFailures) +
+    clauseList("v.i_cantrun_h", e.cantRun) +
+    clauseList(
+      "v.i_needs_h",
+      e.needsPerson,
+      t("v.i_needs_p", { e: envName(e.env) }),
+    )
+  );
+}
+
+/** A check's DOM id on the why view ("gate/327" → "gate-327"). */
+function checkId(module) {
+  return String(module).replace(/[^A-Za-z0-9_-]+/g, "-");
+}
+
+/** One row a check: the whole row opens its clauses. */
+function checkRows(e) {
+  if (!e.gateChecks?.length) return "";
+  const rows = e.gateChecks
+    .map((g) => {
+      const n = g.clauses.length;
+      const p = g.clauses.filter((c) => c.result === "passed").length;
+      const need = g.clauses.filter((c) => c.result === "needs-person").length;
+      const say =
+        t("v.i_chk", { p, n }) + (need ? t("v.i_chk_needs", { n: need }) : "");
+      const s = STATE[g.state] ?? STATE.none;
+      return (
+        `<li><a class="vf-row" href="?why=${encodeURIComponent(e.env)}#${esc(checkId(g.module))}" data-why="${esc(e.env)}">` +
+        `<span class="vf-mk vf-${s.tone}" aria-hidden="true">${s.mark}</span>` +
+        `<span class="vf-grow"><code>${esc(g.module)}</code> · ${esc(say)}</span></a></li>`
+      );
+    })
+    .join("");
+  return `<div class="vf-clist"><h3>${esc(t("v.i_checks_h"))}</h3><ul class="vf-rows">${rows}</ul></div>`;
+}
+
+/** The badge on an imported environment: what the tag did. */
+function importedBadge(e) {
+  if (e.answer === "failed") return badge("failed", "v.i_b_failed");
+  if (e.answer === "ready") return badge("ready", "v.i_b_passed");
+  return badge(e.answer);
+}
+
+/** The card's top: the answer, the meta line, the counts. */
+function importedTop(e) {
+  if (!e.run) return `<p class="vf-say">${importedSentence(e)}</p>`;
+  const c = e.clauses ?? {};
+  return (
+    `<p class="vf-say">${importedSentence(e)}</p>` +
+    `<p class="vf-meta">${esc(metaLine(e.run))} ${esc(t("v.i_sizes", { a: t("v.i_nchecks", { n: e.run.checks ?? 0 }), b: t("v.i_nclauses", { n: c.total ?? 0 }) }))}</p>` +
+    clauseCounts(c)
+  );
+}
+
+/** Issue 441: an imported environment's card. */
+function importedCard(e) {
+  const a = ANSWER[e.answer] ?? ANSWER.notrun;
+  return (
+    `<section class="vf-ans vf-${a.tone}" data-env="${esc(e.env)}" data-answer="${esc(e.answer)}" data-imported aria-label="${esc(envName(e.env))}">` +
+    `<div class="vf-env"><b>${esc(envName(e.env))}</b>${importedBadge(e)}</div>` +
+    importedTop(e) +
+    (e.run ? clauseLists(e) + checkRows(e) : "") +
+    `</section>`
+  );
+}
+
+/** A clause's time: ms under a second, else seconds. */
+function took(ms) {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "—";
+  if (ms < 1000) return t("v.t_ms", { n: Math.round(ms) });
+  // Under ten seconds, one decimal (1.3 s); after that, whole seconds.
+  const sec = ms / 1000;
+  let n = String(Math.round(sec));
+  try {
+    n = new Intl.NumberFormat(
+      globalThis.document?.documentElement?.lang || undefined,
+      { maximumFractionDigits: sec < 10 ? 1 : 0 },
+    ).format(sec);
+  } catch {
+    // An unknown language: whole seconds, as above.
+  }
+  return t("v.t_s", { n });
+}
+
+/** Issue 441: one check's clauses on the why view. */
+function clauseTable(e, g) {
+  const rows = g.clauses
+    .map((c) => {
+      const r = CLAUSE[c.result] ?? CLAUSE["cant-run"];
+      const tag =
+        c.result === "needs-person"
+          ? ` <b class="vf-warn">${esc(t("v.c_needs"))}</b>`
+          : "";
+      return (
+        `<tr data-result="${esc(c.result)}"><td class="vf-${r.tone}" data-l="${esc(t("v.ct_result"))}"><span aria-hidden="true">${r.mark}</span> <span class="vf-sr">${esc(t(r.word))}</span></td>` +
+        `<td data-l="${esc(t("v.ct_clause"))}">${esc(c.clause)}${tag}</td>` +
+        `<td class="vf-muted" data-l="${esc(t("v.ct_note"))}">${esc(c.note ?? "")}</td>` +
+        `<td class="vf-muted" data-l="${esc(t("v.ct_time"))}">${esc(took(c.ms))}</td></tr>`
+      );
+    })
+    .join("");
+  return (
+    `<section class="vf-card vf-gate" id="${esc(checkId(g.module))}" tabindex="-1">` +
+    `<div class="vf-head"><h3><code>${esc(g.module)}</code> ${esc(t("v.i_on", { t: e.run?.tag ?? e.run?.runId ?? "" }))}</h3>${stateTag(g.state)}</div>` +
+    `<div class="vf-tablewrap"><table class="vf-checks vf-clauses"><thead><tr><th scope="col">${esc(t("v.ct_result"))}</th><th scope="col">${esc(t("v.ct_clause"))}</th><th scope="col">${esc(t("v.ct_note"))}</th><th scope="col">${esc(t("v.ct_time"))}</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table></div></section>`
+  );
+}
+
+/** Issue 441: why an imported environment says what it says. */
+function importedWhy(e) {
+  const back = `<p class="vf-back"><a href="?">${esc(t("v.back"))}</a></p>`;
+  return (
+    back +
+    `<div class="vf-head"><div><h2 tabindex="-1">${esc(envName(e.env))}</h2></div>${importedBadge(e)}</div>` +
+    `<section class="vf-ans vf-${(ANSWER[e.answer] ?? ANSWER.notrun).tone}" data-imported>${importedTop(e)}</section>` +
+    (e.run
+      ? `<section class="vf-card vf-why-card"${e.answer === "failed" ? ' role="alert"' : ""}>${clauseLists(e) || `<p class="vf-muted">${esc(t("v.i_allran"))}</p>`}</section>` +
+        (e.gateChecks ?? []).map((g) => clauseTable(e, g)).join("")
+      : "")
+  );
+}
+
 function card(e) {
+  if (e.imported) return importedCard(e);
   const a = ANSWER[e.answer] ?? ANSWER.notrun;
   const why =
     e.answer === "failed"
@@ -159,26 +388,27 @@ function card(e) {
   );
 }
 
+function actorKind(a) {
+  return a?.kind === "agent" || a?.kind === "den" || a?.kind === "runner"
+    ? a.kind
+    : "person";
+}
+
 function actorName(a) {
+  if (a?.kind === "runner") return t("v.who_runner");
   if (a?.kind === "agent") return a.name ?? t("v.actor_agent");
   if (a?.kind === "den") return "Den";
   return t("v.who_person");
 }
 
 function avatar(a) {
-  const kind =
-    a?.kind === "agent" ? "agent" : a?.kind === "den" ? "den" : "person";
+  const kind = actorKind(a);
   const letter = actorName(a).trim().charAt(0).toUpperCase() || "?";
   return `<span class="vf-av vf-av-${kind}" aria-hidden="true">${esc(letter)}</span>`;
 }
 
 function feedItem(actor, text, at) {
-  const kind =
-    actor?.kind === "agent"
-      ? "agent"
-      : actor?.kind === "den"
-        ? "den"
-        : "person";
+  const kind = actorKind(actor);
   return (
     `<li>${avatar(actor)}<div class="vf-tx"><b>${esc(actorName(actor))}</b>` +
     `<span class="vf-role">${esc(t(`v.actor_${kind}`))}</span> ${esc(text)}` +
@@ -212,7 +442,15 @@ export function feedView(activity) {
       items.push(
         feedItem(r.allowedBy, t("v.fd_allowed", { e: env }), r.endedAt),
       );
-    if (r.startedBy)
+    if (r.startedBy?.kind === "runner")
+      items.push(
+        feedItem(
+          r.startedBy,
+          t("v.fd_imported", { t: r.runId, e: env }),
+          r.endedAt,
+        ),
+      );
+    else if (r.startedBy)
       items.push(
         feedItem(
           r.startedBy,
@@ -284,7 +522,7 @@ export function answerView(ov, { wide = true } = {}) {
   const head =
     `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.ov_t"))}</h2>` +
     `<p class="vf-lede">${esc(t("v.ov_s"))}</p></div></div>`;
-  if (!ov.modules)
+  if (!ov.modules && !(ov.envs ?? []).some((e) => e.imported))
     return `${head}<div class="vf-cols"><div class="vf-main">${emptyView()}${oldKinds()}</div>${feedView(ov.activity)}</div>`;
   const cards = worstFirst(ov.envs).map(card).join("");
   return (
@@ -302,6 +540,7 @@ export function whyView(ov, env) {
   const e = (ov.envs ?? []).find((x) => x.env === env);
   const back = `<p class="vf-back"><a href="?">${esc(t("v.back"))}</a></p>`;
   if (!e) return back;
+  if (e.imported) return importedWhy(e);
   const fails = (e.failures ?? [])
     .map((f) => {
       const line = f.message
@@ -403,8 +642,20 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
     ev.preventDefault();
     globalThis.history?.pushState(null, "", a.getAttribute("href"));
     draw();
-    root.querySelector(".vf-head h2")?.focus?.();
+    focusTarget();
   });
+  // A check's row opens the why view at that check's clauses.
+  const focusTarget = () => {
+    const id = decodeURIComponent(
+      String(globalThis.location?.hash ?? "").slice(1),
+    );
+    const at = id ? globalThis.document?.getElementById(id) : null;
+    if (at && root.contains(at)) {
+      at.scrollIntoView?.({ block: "start" });
+      at.focus?.({ preventScroll: true });
+    } else root.querySelector(".vf-head h2")?.focus?.();
+  };
   globalThis.addEventListener?.("popstate", draw);
   await load();
+  if (globalThis.location?.hash) focusTarget();
 }
