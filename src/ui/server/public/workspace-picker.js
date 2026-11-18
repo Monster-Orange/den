@@ -176,10 +176,12 @@ export function buildScopeMenuModel(scope, data, t = enT, locale) {
     items,
     // Every workspace, active or not: ⌘K's Go to workspace (0.4.17).
     names: Object.keys(data?.workspaces ?? {}),
-    // Issue 402: the project picked (the only active one counts), whose
-    // pins the rail and every ☆/★ show and a new pin is made for; null
-    // under All active.
+    // Issue 402: the project in view, whose pins the rail and every ☆/★
+    // show; null under All active. pinImplicit: the person didn't pick it
+    // (the only active project): no project is selected, so the pins of
+    // no project show too, and a new pin is of no project.
     pinProject: one ?? null,
+    pinImplicit: !!one && !multi && scope?.scope !== one,
     focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
       ws:

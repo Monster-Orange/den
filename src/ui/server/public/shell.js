@@ -3861,6 +3861,9 @@
     // server's copy has arrived.
     pinList: [],
     pinProject: null,
+    // Issue 402: pinProject is only the one active project, never picked
+    // by the person: no project selected, so pins of none show too.
+    pinImplicit: false,
     pinsLoaded: false,
     // Whether the Workspace menu's model has said which project is picked.
     pinViewKnown: false,
@@ -3900,7 +3903,11 @@
     }
   }
   function setState(partial) {
-    var before = JSON.stringify([state.pins, state.pinProject]);
+    var before = JSON.stringify([
+      state.pins,
+      state.pinProject,
+      state.pinImplicit,
+    ]);
     for (var k in partial)
       if (Object.prototype.hasOwnProperty.call(partial, k))
         state[k] = partial[k];
@@ -3911,7 +3918,10 @@
     state.pins = pinsInView();
     applyState();
     renderRail();
-    if (JSON.stringify([state.pins, state.pinProject]) !== before)
+    if (
+      JSON.stringify([state.pins, state.pinProject, state.pinImplicit]) !==
+      before
+    )
       pinsChanged();
   }
   /**
@@ -3979,7 +3989,15 @@
   }
   /** Whether pin `p` is one of the view's: the project picked's, or any under All. */
   function inView(p) {
-    return state.pinProject === null || p.project === state.pinProject;
+    return (
+      state.pinProject === null ||
+      p.project === state.pinProject ||
+      (state.pinImplicit && p.project === null)
+    );
+  }
+  /** The project a pin made now is for: none unless the person picked one. */
+  function pinFor() {
+    return state.pinImplicit ? null : state.pinProject;
   }
   /** The items in view, each once, in pin order (issue 402, clauses 3 and 4). */
   function pinsInView() {
@@ -4003,7 +4021,7 @@
         return inView(p) && p.item === item;
       });
       view = view.concat(
-        mine.length ? mine : [{ item: item, project: state.pinProject }],
+        mine.length ? mine : [{ item: item, project: pinFor() }],
       );
     });
     var out = [];
@@ -4020,7 +4038,7 @@
   function placePins() {
     var made = unplacedPins;
     unplacedPins = [];
-    if (state.pinProject === null || !made.length) return;
+    if (pinFor() === null || !made.length) return;
     var moved = false;
     var list = state.pinList.map(function (p) {
       var mine = made.some(function (m) {
@@ -4028,7 +4046,7 @@
       });
       if (!mine) return p;
       moved = true;
-      return { item: p.item, project: state.pinProject };
+      return { item: p.item, project: pinFor() };
     });
     if (!moved) return;
     setState({ pinList: pinTuples(list) });
@@ -4040,7 +4058,7 @@
   /** Issue 402, clause 2: a pin made now is for the project in view, none under All. */
   function pin(id) {
     if (isPinned(id)) return;
-    var made = { item: id, project: state.pinProject };
+    var made = { item: id, project: pinFor() };
     if (!state.pinViewKnown) unplacedPins.push(made);
     setState({ pinList: state.pinList.concat([made]) });
     savePins();
@@ -4064,7 +4082,7 @@
       }),
     });
     savePins();
-    if (state.pinProject !== null) {
+    if (pinFor() !== null) {
       toast(t("toast.unpinned", { s: id }));
       return;
     }
@@ -5020,10 +5038,16 @@
     // ☆/★ read its pins, and a pin made now is for it (a repaint only).
     var pinProject =
       model && typeof model.pinProject === "string" ? model.pinProject : null;
+    var pinImplicit = !!(model && model.pinImplicit === true && pinProject);
     var first = model && !state.pinViewKnown;
-    if (first || pinProject !== state.pinProject)
+    if (
+      first ||
+      pinProject !== state.pinProject ||
+      pinImplicit !== state.pinImplicit
+    )
       setState({
         pinProject: pinProject,
+        pinImplicit: pinImplicit,
         pinViewKnown: !!model || state.pinViewKnown,
       });
     if (first) placePins();
