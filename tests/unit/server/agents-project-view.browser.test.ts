@@ -332,12 +332,18 @@ describe("#80: scope wins", () => {
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
     await p.keyboard.type("zz-stop-ship");
+    const reached = () =>
+      s!.made.filter((x, i) =>
+        Buffer.concat(x.writes.slice(from[i]))
+          .toString()
+          .includes("zz-stop-ship"),
+      );
+    // A slow runner: wait for the typing to land, then a moment for any
+    // stray copy elsewhere.
+    for (let i = 0; i < 100 && !reached().length; i++)
+      await p.waitForTimeout(50);
     await p.waitForTimeout(500);
-    const got = s!.made.filter((x, i) =>
-      Buffer.concat(x.writes.slice(from[i]))
-        .toString()
-        .includes("zz-stop-ship"),
-    );
+    const got = reached();
     expect(got).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
