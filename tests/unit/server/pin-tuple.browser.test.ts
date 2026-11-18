@@ -220,6 +220,12 @@ async function star(p: Page, want: string): Promise<string | null> {
   );
 }
 const last = (m: Mounted) => m.saves[m.saves.length - 1]?.shell?.pins;
+/** Waits until the page has sent `n` saves (each is the page's own time). */
+async function saved(m: Mounted, n: number) {
+  for (let i = 0; i < 50 && m.saves.length < n; i++)
+    await m.p.waitForTimeout(100);
+  return last(m);
+}
 
 for (const name of ["chromium", "webkit"]) {
   describe(`issue 402: pins are (project or none, item) (${name})`, () => {
@@ -271,7 +277,10 @@ for (const name of ["chromium", "webkit"]) {
       expect(await pinsAre(m.p, ["billing/api", "common/web", "shop"])).toEqual(
         ["billing/api", "common/web", "shop"],
       );
-      expect(last(m)).toEqual([...PINS, { item: "shop", project: "beta" }]);
+      expect(await saved(m, 1)).toEqual([
+        ...PINS,
+        { item: "shop", project: "beta" },
+      ]);
       await m.view("all");
       await pinsAre(m.p, [
         "shop",
@@ -281,7 +290,7 @@ for (const name of ["chromium", "webkit"]) {
         "loose",
       ]);
       await pin(m.p, "new/svc");
-      expect(last(m)).toEqual([
+      expect(await saved(m, 2)).toEqual([
         ...PINS,
         { item: "shop", project: "beta" },
         { item: "new/svc", project: null },
@@ -300,7 +309,7 @@ for (const name of ["chromium", "webkit"]) {
         "shop",
         "shop/db",
       ]);
-      expect(last(m)).toEqual(
+      expect(await saved(m, 1)).toEqual(
         PINS.filter((x) => !(x.item === "common/web" && x.project === "alpha")),
       );
       expect(await star(m.p, "false")).toBe("false");
@@ -334,12 +343,14 @@ for (const name of ["chromium", "webkit"]) {
       expect(
         await pinsAre(m.p, ["shop", "shop/db", "billing/api", "loose"]),
       ).toEqual(["shop", "shop/db", "billing/api", "loose"]);
-      expect(last(m)).toEqual(PINS.filter((x) => x.item !== "common/web"));
+      expect(await saved(m, 1)).toEqual(
+        PINS.filter((x) => x.item !== "common/web"),
+      );
       expect(await star(m.p, "false")).toBe("false");
       const undo = m.p.locator(".den-toast .den-tbtn");
       await undo.waitFor({ timeout: 5000 });
       await undo.click();
-      expect(last(m)).toEqual(PINS);
+      expect(await saved(m, 2)).toEqual(PINS);
       expect(await star(m.p, "true")).toBe("true");
       await m.view("beta");
       expect(await pinsAre(m.p, ["billing/api", "common/web"])).toEqual([

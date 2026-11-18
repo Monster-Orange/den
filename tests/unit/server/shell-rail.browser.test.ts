@@ -1102,7 +1102,15 @@ describe("Navigation prefs (R21)", () => {
       expect.arrayContaining([
         { shell: { hidden: ["release"] } },
         { shell: { hidden: [], order: ["environments"] } },
-        { shell: { pins: ["shop", "billing/api"] } },
+        {
+          shell: {
+            // Issue 402: no project picked here, so pins of none.
+            pins: [
+              { item: "shop", project: null },
+              { item: "billing/api", project: null },
+            ],
+          },
+        },
       ]),
     );
     expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(1);

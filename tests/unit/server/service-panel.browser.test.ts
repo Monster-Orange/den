@@ -811,11 +811,9 @@ describe("the panel", () => {
         () => document.activeElement?.closest(".den-rail") !== null,
       ),
     ).toBe(true);
-    await p.evaluate(() =>
-      (
-        window as unknown as { denShell: { pin(id: string): void } }
-      ).denShell.pin("notes"),
-    );
+    // Put the pins back as they were: notes pinned in north (issue 402:
+    // pinning again under All would make it a pin of no project).
+    expect(await s!.settings({ shell: { pins: ["notes", "blog"] } })).toBe(200);
     await p.context().close();
   }, 60_000);
 });
