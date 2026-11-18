@@ -16,7 +16,10 @@
  * - clause 5: one item pinned in two projects is two pins: unpinning in
  *   one leaves the other; ☆/★ follows the project in view, any pin under
  *   All; unpinning under All removes every pin of the item, and its Undo
- *   puts back exactly those.
+ *   puts back exactly those;
+ * - no project selected by the person (one active project, never picked):
+ *   that project's pins and the pins of no project. A pin made under All
+ *   stays on the rail and ★ after the other project is archived.
  *
  * Chromium and WebKit. DEN_PW_WS: Den's own Playwright server instead of a
  * local browser. DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -80,6 +83,8 @@ interface Mounted {
   saves: { shell: { pins: Pin[] } }[];
   /** What GET /api/scope answers from now on, and the pill repainted. */
   view: (s: string) => Promise<void>;
+  /** Archive a project (no longer active), and the pill repainted. */
+  archive: (name: string) => Promise<void>;
 }
 
 async function mount(
@@ -93,6 +98,7 @@ async function mount(
   const p = await ctx.newPage();
   const saves: Mounted["saves"] = [];
   let view = scope;
+  let active = [...WORKSPACES.active];
   await p.route("http://den.test/**", async (r) => {
     const url = new URL(r.request().url());
     const method = r.request().method();
@@ -113,12 +119,12 @@ async function mount(
         }
         return json({ shell: { pins: PINS, collapsed: false } });
       case "/api/workspaces":
-        return json(WORKSPACES);
+        return json({ ...WORKSPACES, active });
       case "/api/scope":
         return json({
           scope: view,
           focus: "alpha",
-          inView: view === "all" ? ["alpha", "beta"] : [view],
+          inView: view === "all" ? active : [view],
         });
       case "/api/session":
         return json({ csrf: "stub-csrf", actor: null });
@@ -151,18 +157,24 @@ async function mount(
   await p.waitForFunction(
     () => (window as unknown as { __hdr?: object }).__hdr,
   );
+  const repaint = () =>
+    p.evaluate(() =>
+      (
+        window as unknown as {
+          __hdr: { refreshWorkspacePill(): Promise<void> };
+        }
+      ).__hdr.refreshWorkspacePill(),
+    );
   return {
     p,
     saves,
     view: async (s) => {
       view = s;
-      await p.evaluate(() =>
-        (
-          window as unknown as {
-            __hdr: { refreshWorkspacePill(): Promise<void> };
-          }
-        ).__hdr.refreshWorkspacePill(),
-      );
+      await repaint();
+    },
+    archive: async (name) => {
+      active = active.filter((a) => a !== name);
+      await repaint();
     },
   };
 }
@@ -357,6 +369,49 @@ for (const name of ["chromium", "webkit"]) {
         "billing/api",
         "common/web",
       ]);
+      await m.p.context().close();
+    });
+
+    it("no project selected: one active project never picked shows its pins and the pins of no project", async () => {
+      const b = browsers[name];
+      if (!b) return;
+      const m = await mount(b, "all");
+      await pinsAre(m.p, [
+        "shop",
+        "shop/db",
+        "billing/api",
+        "common/web",
+        "loose",
+      ]);
+      // X pinned under All, while two projects are active.
+      await pin(m.p, "new/svc");
+      expect(await saved(m, 1)).toEqual([
+        ...PINS,
+        { item: "new/svc", project: null },
+      ]);
+      // beta archived: alpha is the only project, and the person never
+      // picked it. X (no project) and the old pin of none stay.
+      await m.archive("beta");
+      expect(
+        await pinsAre(m.p, [
+          "shop",
+          "shop/db",
+          "common/web",
+          "loose",
+          "new/svc",
+        ]),
+      ).toEqual(["shop", "shop/db", "common/web", "loose", "new/svc"]);
+      expect(await isPinned(m.p, "new/svc")).toBe(true);
+      // The person picks alpha: only alpha's pins.
+      await m.view("alpha");
+      expect(await pinsAre(m.p, ["shop", "shop/db", "common/web"])).toEqual([
+        "shop",
+        "shop/db",
+        "common/web",
+      ]);
+      expect(await isPinned(m.p, "new/svc")).toBe(false);
+      // Archiving never wrote the pins.
+      expect(m.saves).toHaveLength(1);
       await m.p.context().close();
     });
   });

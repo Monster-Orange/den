@@ -127,11 +127,23 @@ describe("issue 402: the project the pins are made for", () => {
         .pinProject,
     ).toBeNull();
   });
-  it("one active project is the project picked", () => {
+  it("one active project the person never picked: implicit, so pins of no project show too", () => {
+    const m = buildScopeMenuModel(
+      { scope: "all" },
+      { ...data, active: ["alpha"] },
+    );
+    expect(m.pinProject).toBe("alpha");
+    expect(m.pinImplicit).toBe(true);
+  });
+  it("a project the person picked is explicit, also when it is the only one active", () => {
+    expect(buildScopeMenuModel({ scope: "beta" }, data).pinImplicit).toBe(
+      false,
+    );
     expect(
-      buildScopeMenuModel({ scope: "all" }, { ...data, active: ["alpha"] })
-        .pinProject,
-    ).toBe("alpha");
+      buildScopeMenuModel({ scope: "alpha" }, { ...data, active: ["alpha"] })
+        .pinImplicit,
+    ).toBe(false);
+    expect(buildScopeMenuModel({ scope: "all" }, data).pinImplicit).toBe(false);
   });
   it("the 0.4.66 repo filter is gone", () => {
     expect("pinRepos" in buildScopeMenuModel({ scope: "beta" }, data)).toBe(
