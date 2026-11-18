@@ -1,6 +1,7 @@
 /* eslint-env browser */
 // Live check for #393: Settings › Browser sign-in has a Sign in button (never "run a command"), and no
-// Settings row tells the person to run, type or paste a command. Read only.
+// Settings row tells the person to run, type or paste a command, in en, es or ja. Run switches the bed's
+// language (the person's setting) for es and ja and puts the value it found back, even when a read throws.
 export const issue = 393;
 export const clauses = [
   "not signed in, the row shows a Sign in button that opens Den's own sign-in page",
@@ -10,10 +11,12 @@ export const clauses = [
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 120000;
+const LANGS = ["en", "es", "ja"];
 
 // A code element right after "run", "type", "paste" or "enter" in a row's words is a chore.
-const chores = () =>
-  [...document.querySelectorAll(".set-row")].flatMap((row) =>
+const chores = () => ({
+  lang: document.documentElement.lang,
+  chores: [...document.querySelectorAll(".set-row")].flatMap((row) =>
     [...row.querySelectorAll("code")]
       .filter((c) => {
         const before = c.previousSibling?.textContent ?? "";
@@ -25,16 +28,30 @@ const chores = () =>
         (c) =>
           `${row.getAttribute("data-setting")}: …${(c.previousSibling?.textContent ?? "").slice(-30)}${c.textContent}`,
       ),
-  );
+  ),
+});
+
+async function setLanguage(ctx, language) {
+  return ctx.api("/api/settings", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ language }),
+  });
+}
+
+async function language(ctx) {
+  const r = await ctx.api("/api/settings");
+  if (!r.ok) throw new Error(`/api/settings: HTTP ${r.status}`);
+  return (await r.json())?.language ?? null;
+}
 
 export async function setup() {
   return {};
 }
 
-export async function run(ctx) {
-  const tag = `${ctx.browser}-${ctx.width}`;
+/** The signed-in Settings page (the cell's own page) in the bed's current language. */
+async function read(ctx, shot) {
   const r = {};
-  // Signed in (the cell's own page).
   await ctx.goto(ctx.page, "/settings#cli");
   await ctx.page
     .locator("#set-signout, #set-signin")
@@ -46,11 +63,36 @@ export async function run(ctx) {
   await ctx.page
     .waitForSelector(".set-row[data-setting]", { timeout: 15000 })
     .catch(() => {});
-  r.chores = await ctx.page.evaluate(chores);
+  const seen = await ctx.page.evaluate(chores);
+  r.lang = seen.lang;
+  r.chores = seen.chores;
   r.rows = await ctx.page.locator(".set-row[data-setting]").count();
-  await ctx.shot(`signed-in-${tag}`);
-
+  await ctx.shot(shot);
   return r;
+}
+
+const shotName = (l, browser, width) =>
+  l === "en"
+    ? `signed-in-${browser}-${width}`
+    : `signed-in-${l}-${browser}-${width}`;
+
+export async function run(ctx) {
+  const was = await language(ctx);
+  const by = {};
+  try {
+    for (const l of LANGS) {
+      // A refused switch leaves the page in the bed's language: say that, not what the rows say.
+      const set = await setLanguage(ctx, l);
+      if (set && (set.ok === false || (set.status && set.status >= 400)))
+        throw new Error(
+          `the language switch to ${l} was refused (${set.status})`,
+        );
+      by[l] = await read(ctx, shotName(l, ctx.browser, ctx.width));
+    }
+  } finally {
+    await setLanguage(ctx, was);
+  }
+  return { ...by.en, by };
 }
 
 export function expect(cells) {
@@ -59,6 +101,8 @@ export function expect(cells) {
     cells.map(({ cell, result }) => `${cell.browser}: ${f(result)}`).join("; ");
   const shots = (p) =>
     cells.map(({ cell }) => `${p}-${cell.browser}-${cell.width}.png`);
+  const inLang = (r, l) => r.by[l].lang === l;
+  const clean = (r) => r.rows > 0 && r.chores.length === 0;
   return [
     {
       clause: clauses[0],
@@ -75,7 +119,7 @@ export function expect(cells) {
     },
     {
       clause: clauses[2],
-      ok: all((r) => r.rows > 0 && r.chores.length === 0),
+      ok: all(clean),
       detail: d(
         (r) =>
           `${r.rows} rows; ${r.chores.length ? r.chores.join(" | ") : "none tells the person to run a command"}`,
@@ -84,9 +128,17 @@ export function expect(cells) {
     },
     {
       clause: clauses[3],
-      ok: null,
-      skip: "needs-language-switch",
-      detail: "reading es and ja means changing the bed's language setting",
+      ok: all((r) => LANGS.every((l) => inLang(r, l) && clean(r.by[l]))),
+      detail: d((r) =>
+        LANGS.map((l) => {
+          const x = r.by[l];
+          if (!inLang(r, l)) return `${l} the page is in "${x.lang}"`;
+          return `${l} ${x.rows} rows, ${x.chores.length ? x.chores.join(" | ") : "no command to run"}`;
+        }).join("; "),
+      ),
+      evidence: cells.flatMap(({ cell }) =>
+        LANGS.map((l) => `${shotName(l, cell.browser, cell.width)}.png`),
+      ),
     },
   ];
 }
