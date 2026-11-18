@@ -21,6 +21,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName } from "./transcript-follow.js";
+import { endingQuestion } from "./guardrails/attention-hook.js";
 
 /** One of a runtime's conversations, as Bring in lists it. */
 export interface RuntimeConversation {
@@ -435,13 +436,7 @@ export function lastAnswerQuestion(
         )
         .join("\n")
         .trim();
-      const last =
-        text
-          .split(/\r?\n/)
-          .filter((l) => l.trim())
-          .pop() ?? "";
-      const bare = last.trim().replace(/[\s*_`"'”’)\]]+$/u, "");
-      return /[?？]$/u.test(bare) ? last.trim().slice(0, 300) : null;
+      return endingQuestion(text);
     }
     if (whole || want >= maxBytes) return null;
   }

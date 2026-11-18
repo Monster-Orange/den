@@ -203,12 +203,14 @@ describe("attention", () => {
     ]);
   });
 
-  it("NT-2: on screen, no notification (still marked); off screen after 10 s, one", async () => {
+  it("NT-2 / issue 142: on screen, still kept (the page's next 'looking' takes an update out); marked", async () => {
     const { store, a } = mk();
     a.lookingAt(["ag-1"]);
     await a.event("ag-1", "web", { event: "waiting", why: "input" });
     expect(a.waitingNow().size).toBe(1);
-    expect(store.list()).toEqual([]);
+    // A page that closed within NT-2's 10 s would never take it out:
+    // kept, so the turn's end isn't lost.
+    expect(store.list().map((n) => n.kind)).toEqual(["finished"]);
     clock += 11_000;
     await a.event("ag-1", "web", { event: "finished" });
     expect(store.list().map((n) => n.kind)).toEqual(["finished"]);

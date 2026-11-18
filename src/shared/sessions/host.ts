@@ -182,6 +182,20 @@ function printableActor(v: unknown): string {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Issue 448: what a terminal sends on its own, never a person: replies to
+ * the program's queries (device attributes, a cursor or status report, a
+ * mode report), focus in and out, and OSC or DCS answers (a colour query).
+ * A key that starts with ESC (an arrow, F1) is none of these.
+ */
+const TERMINAL_REPLY =
+  // eslint-disable-next-line no-control-regex
+  /^(?:\x1b\[[?>=]?[\d;]*[cRn]|\x1b\[\??[\d;]*\$y|\x1b\[[IO]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[^\x1b]*\x1b\\)+$/;
+
+function terminalReply(bytes: Buffer): boolean {
+  return TERMINAL_REPLY.test(bytes.toString("latin1"));
+}
+
+/**
  * D18: Full Disk Access, as macOS grants it to this executable: only such
  * a process may list ~/Library/Application Support/com.apple.TCC. null off
  * macOS, or when the folder is not there to ask.
@@ -535,6 +549,9 @@ export class SessionHost {
         if (s.pty && !s.info.exited && typeof req.data === "string") {
           const bytes = Buffer.from(req.data, "base64");
           s.pty.write(bytes);
+          // Issue 448: a person used it (the rail's Terminal opens the
+          // shell used last, whichever browser typed).
+          if (!terminalReply(bytes)) s.info.inputAt = new Date().toISOString();
           // A line end is a prompt sent; a terminal's own replies to the
           // program's queries (escape sequences) carry none.
           if (

@@ -25,6 +25,7 @@ import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
+import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
   agentsKeepRunningAfterLogout,
@@ -895,6 +896,82 @@ export function addressLines(
 }
 
 /**
+ * Issue 455: whether the install's address reaches THIS Den right now (an
+ * identity probe, den-identity.ts), and when it doesn't, what holds its
+ * port, the address that does work, and the two ways out (mock v3's doctor
+ * lines). Always said here: doctor is one of the two quiet places the fact
+ * lives (Edge is the other).
+ */
+export async function addressCheckLines(
+  title: string,
+  cli: string,
+  deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
+): Promise<{ lines: string[]; check: OnboardCheck | null }> {
+  const { checkAddress, doctorAddressLines, localIdentityKey, cliLanguage } =
+    await import("../../shared/edge/address-check.js");
+  const { readWebPort } = await import("../../shared/edge/config.js");
+  const w = readWebUrl();
+  if (!w) return { lines: [], check: null };
+  let port: number;
+  try {
+    port = readWebPort();
+  } catch {
+    return { lines: [], check: null };
+  }
+  const st = await checkAddress({
+    webPort: port,
+    wanted: w.url,
+    key: localIdentityKey(getStateDir()),
+    cli,
+    ...deps,
+  });
+  const d = doctorAddressLines(st, { lang: cliLanguage(), title, cli });
+  const [head, ...rest] = d.lines;
+  return {
+    lines: [
+      `  ${d.status === "ok" ? "✓" : "!"} ${head}`,
+      ...rest.map((l) => `      ${l}`),
+    ],
+    check: {
+      id: "address_reaches",
+      status: d.status,
+      detail: d.lines.join(" "),
+      ...(st.address ? { url: st.address } : {}),
+    },
+  };
+}
+
+/**
+ * Issue 367: the contact push alerts give the push services. With an
+ * https address (web.url) they get it; without one, a mailto fallback
+ * some refuse, so a phone may get no push: warn, and say what to set.
+ */
+export function pushContactLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  title: string,
+  cli: string,
+): { lines: string[]; check: OnboardCheck } {
+  const c = pushContact(w?.url);
+  const detail = c.accepted
+    ? `push services are given ${c.subject} as the contact`
+    : `push alerts may not reach phones: with no https address, push services are given ${c.subject} as the contact, and some refuse it. Set one in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Push alerts`,
+      "",
+      `  push  ${c.accepted ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: {
+      id: "push_contact",
+      status: c.accepted ? "ok" : "warn",
+      detail,
+      ...(c.accepted ? {} : { settings: ADDRESS_SETTINGS_LINK }),
+    },
+  };
+}
+
+/**
  * H1 (0.4.48): whether the edge set up here carries Den's proof (the
  * generated edge.yml has the current one). Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
@@ -1316,6 +1393,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    {
+      const ac = await addressCheckLines(readBrand().name, product().cli);
+      if (ac.check) r.checks.push(ac.check);
+    }
+    r.checks.push(
+      pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
+    );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
       const rk = requestKeepLines(readBrand().name);
@@ -1373,6 +1457,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
+  for (const l of (await addressCheckLines(readBrand().name, product().cli))
+    .lines)
+    console.log(l);
+  for (const l of pushContactLines(
+    readWebUrl(),
+    readBrand().name,
+    product().cli,
+  ).lines)
+    console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)

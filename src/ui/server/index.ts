@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import {
+  alertFeed,
   attentionDetail,
   attentionWaiting,
   notificationDeps,
@@ -182,6 +183,7 @@ import {
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
+  mergeUserConfig,
   type UserConfig,
   writeUserConfig,
   panesReconnect,
@@ -345,11 +347,24 @@ import {
   handleSignInTokenRoute,
   noteKeepRunningOffer,
 } from "./keep-running-routes.js";
+import { handleEdgeUpRoute } from "./edge-up-routes.js";
+import { handleAddressRoutes } from "./address-routes.js";
+import { identityKey } from "../../shared/den-identity.js";
+import {
+  addressCheckSettings,
+  checkAddress,
+  portState,
+} from "../../shared/edge/address-check.js";
+import { containerState } from "../../shared/edge/runtime.js";
+import { sh as edgeSh } from "../../shared/edge/exec.js";
+import { runEdgeUp } from "../../shared/edge/up.js";
 import {
   agentTokenStatus,
   clearAgentToken,
   dropStaleEnvTokenRecord,
   saveAgentToken,
+  TOKEN_DOCS,
+  TOKEN_RUNTIME,
 } from "../../shared/agents/signin-token.js";
 import {
   accountsView,
@@ -368,7 +383,10 @@ import {
   publicSearchOpen,
   runGh,
 } from "./report-routes.js";
-import { readFeedbackSettings } from "../../shared/report-store.js";
+import {
+  feedbackSettings,
+  readFeedbackSettings,
+} from "../../shared/report-store.js";
 import { reportShotHub } from "./report-shot-hub.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { shotKeepDays, shotStore } from "../../shared/report-shots.js";
@@ -954,6 +972,15 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/sudo-password/status",
   // The env picker on every page (falls back to local; a consumer's dev.40 finding).
   "/api/environments",
+  // Issue 395: the edge row on Settings reads its state. It reads only the
+  // edge's own config and docker, never org data (starting it stays gated).
+  "/api/edge",
+  // Issue 455: the identity probe, and the address check (the banner and
+  // Edge): web.secret, web.url and the edge's own config only.
+  "/api/den-identity",
+  "/api/edge/address",
+  "/api/edge/address/check",
+  "/api/edge/address/take-over",
 ]);
 
 /**
@@ -1050,6 +1077,7 @@ import {
   readPolicySetting,
   writeTargets,
 } from "../../shared/approval-policy.js";
+import { alertSettings, patchAlerts } from "./alerts.js";
 import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
@@ -2388,6 +2416,7 @@ type ApprovalDeps = {
   autoAllow: (action: string, agent: string) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
+  held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -2764,6 +2793,9 @@ function approvalDeps(): ApprovalDeps {
       });
     },
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
+    // Issue 172: a write held for the person's Allow alerts them.
+    held: (agent, project) =>
+      void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
   };
   return approvals;
 }
@@ -3145,6 +3177,9 @@ async function agentSigninView(
       no_store: st.noStore === true,
       // The store's credential is a keychain: source (1Password).
       cred_keychain: st.credInKeychain === true,
+      // Issue 399: where the token comes from (the runtime catalog).
+      runtime: TOKEN_RUNTIME,
+      docs: TOKEN_DOCS ?? null,
     };
   } catch {
     view = null;
@@ -3718,6 +3753,72 @@ async function handleRequest(
     })
   )
     return;
+  // Issue 455: the identity probe's other end, and the address check.
+  if (
+    await handleAddressRoutes(req, res, pathname, {
+      key: () => {
+        const s = webSecret.current();
+        return s ? identityKey(s) : null;
+      },
+      check: () => {
+        const s = webSecret.current();
+        return checkAddress({
+          webPort: PORT,
+          wanted: readWebUrl()?.url ?? null,
+          key: s ? identityKey(s) : null,
+          cli: product().cli,
+          settings: addressCheckSettings(),
+        });
+      },
+      edge: async () => {
+        let cfg: ReturnType<typeof readEdgeConfig>;
+        try {
+          cfg = readEdgeConfig();
+        } catch {
+          return null;
+        }
+        const container = edgeNames(cfg.org).container;
+        let state = "absent";
+        try {
+          state = containerState(container);
+        } catch {
+          state = "absent"; // no docker here
+        }
+        return {
+          container,
+          state,
+          publish: !!cfg.ports,
+          ports: cfg.ports
+            ? await Promise.all([
+                portState(cfg.ports.http),
+                portState(cfg.ports.https),
+              ])
+            : null,
+        };
+      },
+      cacheMs: () => addressCheckSettings().cacheMs,
+      setPublishOff: () => {
+        const user = readUserConfig() as Record<string, unknown>;
+        const edge =
+          user.edge &&
+          typeof user.edge === "object" &&
+          !Array.isArray(user.edge)
+            ? (user.edge as Record<string, unknown>)
+            : {};
+        mergeUserConfig({ edge: { ...edge, publish: false } } as never);
+      },
+      takeOver: async (container) => {
+        const r = edgeSh("docker", ["stop", container]);
+        if (r.code !== 0)
+          throw new Error(r.err || `docker stop ${container} failed`);
+        await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") });
+      },
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
   // #299: Settings › Keep agents running after logout › Sign-in token.
   if (
     handleSignInTokenRoute(req, res, pathname, {
@@ -3728,6 +3829,18 @@ async function handleRequest(
       status: () => agentSigninView(true),
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // Issue 395: Settings › Access › Start the edge: what `edge up` runs.
+  if (
+    handleEdgeUpRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      run: async () =>
+        (await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") }))
+          .outcome,
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
   )
@@ -3862,6 +3975,25 @@ async function handleRequest(
 
   if (pathname === "/favicon.ico") {
     return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
+  }
+  // Issue 172 S2: the app manifest, so a phone can add Den to its home
+  // screen (an iPhone gets push only from there).
+  if (pathname === "/manifest.webmanifest") {
+    res.writeHead(200, {
+      "Content-Type": "application/manifest+json",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        name: product().title,
+        short_name: product().title,
+        start_url: "/agents",
+        scope: "/",
+        display: "standalone",
+        icons: [{ src: "/favicon.ico", sizes: "48x48" }],
+      }),
+    );
+    return;
   }
 
   // ── Playwright report ──────────────────────────────────────────────────────
@@ -6657,6 +6789,8 @@ async function handleRequest(
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
+        // Issue 172: alerts outside the bell (alerts.ts).
+        alerts: alertSettings(user),
         editor_open: editorOpen(user),
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
@@ -6704,6 +6838,18 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // den#143: how long `web up` waits for the server.
+        web_ready: (() => {
+          try {
+            const c = readWebAuthConfig(getDistRoot(), product().configFile);
+            return {
+              probeSeconds: c.readyProbeSeconds,
+              startSeconds: c.startWaitSeconds,
+            };
+          } catch {
+            return null;
+          }
+        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6748,6 +6894,25 @@ async function handleRequest(
             return null;
           }
         })(),
+        // Issue 415: how long Report keeps, and waits for, a repo's
+        // visibility (feedback.*), their defaults when unset.
+        feedback: (() => {
+          const f = feedbackSettings(null, {}, user.feedback);
+          return {
+            visibility_cache_hours: f.visibilityCacheHours,
+            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+            visibility_retry_seconds: f.visibilityRetrySeconds,
+          };
+        })(),
+        // Issue 455: the address check's limits (web.address_check_*).
+        address_check: (() => {
+          const a = addressCheckSettings(() => user);
+          return {
+            timeout_seconds: a.timeoutMs / 1000,
+            retries: a.retries,
+            cache_seconds: a.cacheMs / 1000,
+          };
+        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
         // Issue 403: how long a filed report's screenshot is kept (reports.*).
@@ -6784,6 +6949,7 @@ async function handleRequest(
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
+          alerts?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           hub_url?: unknown;
@@ -6795,10 +6961,13 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          web_ready?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
           reports?: unknown;
+          feedback?: unknown;
+          address_check?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -6828,9 +6997,12 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            web_ready: body.web_ready,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
             reports: body.reports,
+            feedback: body.feedback,
+            address_check: body.address_check,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -6925,6 +7097,11 @@ async function handleRequest(
         if (body.bell_fold_days !== undefined) {
           const f = patchBellFoldDays(user, body.bell_fold_days);
           if (!f.ok) return send400(res, f.error);
+        }
+        // Issue 172: alerts outside the bell, and quiet hours.
+        if (body.alerts !== undefined) {
+          const a = patchAlerts(user, body.alerts);
+          if (!a.ok) return send400(res, a.error);
         }
         // AG-4b: where a path link in an agent's pane opens.
         if (body.editor_open !== undefined) {
@@ -7064,6 +7241,7 @@ async function handleRequest(
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
+          alerts: alertSettings(user),
           editor_open: editorOpen(user),
           embed: embedSettings(user),
         });
@@ -7953,7 +8131,14 @@ async function serverBack(): Promise<void> {
   const m = takeRestartMarker(getStateDir());
   if (!m) return;
   const version = engineVersion() ?? "?";
-  const text = backMessage(m, version, process.pid);
+  // #384: the update's doctor results go in the line itself.
+  let update: import("./den-update.js").LastUpdate | null = null;
+  try {
+    update = (await import("./den-update.js")).lastUpdate(getStateDir());
+  } catch {
+    /* no update record: the line says none was kept */
+  }
+  const text = backMessage(m, version, process.pid, update);
   let told = "nobody to tell";
   if (m.agent === SERVER_AGENT_ID) {
     try {

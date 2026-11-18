@@ -74,7 +74,8 @@ const LISTING: Record<string, Entry> = {
   "workspace seed": script("seeds the default project"),
 
   "web token": script("prints a credential for scripts; never on a page"),
-  "web login": page("settings-registry.js", "/api/web/pair"),
+  // Issue 393: Settings › Browser sign-in's Sign in button.
+  "web login": page("settings-registry.js", 'id="set-signin"'),
   "web sessions": R,
   "web logout": page("settings-registry.js", "data-signout-all"),
   "web owner": page("settings-registry.js", "/api/web/owner"),
@@ -82,12 +83,15 @@ const LISTING: Record<string, Entry> = {
   "web claim-link": script("a setup link for a new device, from a shell"),
   "web url": page("settings-registry.js", "/api/web-url"),
 
-  "edge up": slot("0.4.47", "start the edge"),
+  // Issue 395: Settings › Access › Start the edge (Apply, when it runs).
+  "edge up": page("settings-registry.js", "/api/edge/up"),
   "edge down": slot("0.4.47", "stop the edge"),
   "edge trust": slot("0.4.47", "trust the local certificate"),
   "edge untrust": slot("0.4.47", "untrust the local certificate"),
   "edge status": R,
   "edge routes": R,
+  // Issue 455: prints a route; the Edge page shows the same (it reads).
+  "edge route": R,
 
   "service install": slot("0.4.47", "start at login (launchd)"),
   "service uninstall": slot("0.4.47", "stop starting at login"),

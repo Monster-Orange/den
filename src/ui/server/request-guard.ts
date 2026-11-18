@@ -836,6 +836,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/notifications/clear",
   "/api/notifications/mute",
   "/api/notifications/looking",
+  // Issue 172: the person's devices for push alerts.
+  "/api/alerts/subscribe",
+  "/api/alerts/unsubscribe",
   // This install's Hub link.
   "/api/hub/connect",
   "/api/hub/disconnect",

@@ -27,13 +27,16 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
+    // DEN_HELPERS_BROWSER=webkit runs it there; DEN_PW_WS connects to a
+    // Linux browser (the Playwright image), as on CI.
+    const pw = await import("playwright");
+    const engine =
+      process.env.DEN_HELPERS_BROWSER === "webkit" ? "webkit" : "chromium";
     browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
+      ? await pw[engine].connect(process.env.DEN_PW_WS, {
           exposeNetwork: "<loopback>",
         })
-      : await chromium.launch();
+      : await pw[engine].launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -81,7 +84,20 @@ const PREVIEW = {
   repo: "acme-eng/engine",
 };
 
-async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
+/**
+ * A page in `lang` (English unless named). The language is the server's
+ * setting, shared by every test in the file, so each page sets its own
+ * just before it loads and checks the page came in it: a test never runs
+ * in a language a test before it left behind (issue 424: a timed-out
+ * test's loop set ja after it, and the next test read 報告).
+ */
+async function page(
+  fake: Fake,
+  width = 1440,
+  whatsNew = false,
+  lang: "en" | "es" | "ja" = "en",
+): Promise<Page> {
+  expect(await s!.settings({ language: lang })).toBe(200);
   const ctx = await browser!.newContext({
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
@@ -151,6 +167,7 @@ async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
     });
   await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
+  expect(await p.evaluate(() => document.documentElement.lang)).toBe(lang);
   return p;
 }
 
@@ -557,36 +574,31 @@ describe("FB: Report an issue, the dialog", () => {
     await p.context().close();
   });
 
-  it("in es and ja (1440 and 390)", async () => {
+  // One test per language and width (issue 424): each opens the form
+  // once, and each open takes the page's screenshot first, so four in one
+  // test came near the 30 s limit on a busy CI runner.
+  it.each([
+    ["es", 1440, "Informar de un problema", "Siguiente: Incluir"],
+    ["es", 390, "Informar de un problema", "Siguiente: Incluir"],
+    ["ja", 1440, "問題を報告", "次へ: 含める"],
+    ["ja", 390, "問題を報告", "次へ: 含める"],
+  ] as const)("in %s at %i px", async (lang, w, title, send) => {
     if (skip()) return;
-    for (const [lang, title, send] of [
-      ["es", "Informar de un problema", "Siguiente: Incluir"],
-      ["ja", "問題を報告", "次へ: 含める"],
-    ] as const) {
-      await s!.settings({ language: lang });
-      for (const w of [1440, 390]) {
-        const p = await page(fresh(), w);
-        await p.waitForFunction(
-          (l) => document.documentElement.lang === l,
-          lang,
-        );
-        await p.evaluate(() =>
-          (
-            window as unknown as { denShell: { report(): Promise<unknown> } }
-          ).denShell.report(),
-        );
-        await dlg(p).waitFor();
-        expect(await dlg(p).getAttribute("aria-label")).toBe(title);
-        expect(
-          (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
-        ).toBe(send);
-        expect(
-          await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
-        ).toBe(true);
-        await p.context().close();
-      }
-    }
-    await s!.settings({ language: "en" });
+    const p = await page(fresh(), w, false, lang);
+    await p.evaluate(() =>
+      (
+        window as unknown as { denShell: { report(): Promise<unknown> } }
+      ).denShell.report(),
+    );
+    await dlg(p).waitFor();
+    expect(await dlg(p).getAttribute("aria-label")).toBe(title);
+    expect(
+      (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
+    ).toBe(send);
+    expect(
+      await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
+    ).toBe(true);
+    await p.context().close();
   });
 
   it("What's new on a first visit carries its own Report; Report opens over it and keeps it; Esc closes What's new", async () => {

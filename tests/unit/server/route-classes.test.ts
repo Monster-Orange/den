@@ -171,6 +171,8 @@ describe("the classes", () => {
         "/api/signin/code/:id/withdraw",
         // MODE-5: the address check's other end: 204 or 404, nothing else.
         "/api/web-url/probe",
+        // Issue 455: the identity probe's other end (a challenge's answer).
+        "/api/den-identity",
         "/attest",
         "/auth",
         "/hub/callback",

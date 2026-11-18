@@ -41,6 +41,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
   // 0.4.48: Den on the Docker bridge for the edge.
   web_bridge: { listen: true, probe_seconds: true },
+  // den#143: how long `web up` waits for the server.
+  web_ready: { probe_seconds: true, start_seconds: true },
   // Issue 144: the machine's gate slots.
   gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
   // den#156: the Agents list's waits.
@@ -57,6 +59,28 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 103: Settings › Embedding.
   embed: EMBED_DEFAULTS as unknown as Record<string, unknown>,
+  // Issue 172: alerts outside the bell, and quiet hours.
+  // Issue 367: the push limits.
+  alerts: {
+    desktop: true,
+    phone: true,
+    quiet_from: true,
+    quiet_to: true,
+    push_timeout_seconds: true,
+    push_ttl_seconds: true,
+  },
+  // Issue 415: how long a Report destination's visibility is kept, waited for.
+  feedback: {
+    visibility_cache_hours: true,
+    visibility_timeout_seconds: true,
+    visibility_retry_seconds: true,
+  },
+  // Issue 455: how long, and how often, Den checks its own address.
+  address_check: {
+    timeout_seconds: true,
+    retries: true,
+    cache_seconds: true,
+  },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -145,6 +169,9 @@ describe("the settings inventory (R21)", () => {
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         "web_bridge.listen",
         "web_bridge.probe_seconds",
+        // den#143: how long `web up` waits for the server.
+        "web_ready.probe_seconds",
+        "web_ready.start_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
         // den#156: the Agents list's waits.
@@ -163,12 +190,28 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        // Issue 172: alerts outside the bell.
+        "alerts.desktop",
+        "alerts.phone",
+        "alerts.quiet_from",
+        "alerts.quiet_to",
+        // Issue 367: how long a push may take, and a push service keeps it.
+        "alerts.push_timeout_seconds",
+        "alerts.push_ttl_seconds",
         // Issue 334: an app key's reads, one audit line per window.
         "embed.app_key_audit_window_seconds",
         // Issue 160: the install's approval policy.
         "approvals_policy",
         "approvals_watch",
         "approvals_critical",
+        // Issue 415: a Report destination's visibility, kept and waited for.
+        "feedback.visibility_cache_hours",
+        "feedback.visibility_timeout_seconds",
+        "feedback.visibility_retry_seconds",
+        // Issue 455: the address check's limits.
+        "address_check.timeout_seconds",
+        "address_check.retries",
+        "address_check.cache_seconds",
       ].sort(),
     );
   });

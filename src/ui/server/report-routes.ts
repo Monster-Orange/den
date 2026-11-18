@@ -4,7 +4,9 @@
  * files nothing by itself. Nothing is sent without the person's click
  * after a preview of exactly what will be posted.
  *
- *   GET    /api/report              destinations, GitHub sign-in, the limit
+ *   GET    /api/report              destinations (each with its visibility
+ *                                    on GitHub, issue 415), GitHub sign-in,
+ *                                    the limit
  *   GET    /api/report/diagnostics  the server's sections, as exact text
  *   POST   /api/report/preview      {form, sections, redact, repo} → the
  *                                    exact title and body (redacted)
@@ -56,6 +58,7 @@ import {
   type ReportKind,
 } from "../../shared/feedback.js";
 import type { Decision, FlowView } from "./device-flows.js";
+import { repoVisibilities } from "./report-visibility.js";
 import {
   draftStore,
   sentLog,
@@ -517,11 +520,27 @@ export function handleReportRoutes(
     return run(async () => {
       const s = d.settings();
       const who = d.personOf(req);
+      const signedIn = await ghSignedIn(d);
+      // Issue 415: each destination's visibility, so the form says who can
+      // see it, read with the person's `gh` (none signed in: no access, so
+      // no lookup). Unknown reads as public; the wait is short and bounded.
+      const vis = signedIn
+        ? await repoVisibilities(d.stateDir(), s.repos, {
+            gh: (a) => d.gh(a),
+            ttlMs: s.visibilityCacheHours * 3_600_000,
+            timeoutMs: s.visibilityTimeoutSeconds * 1000,
+            retryMs: s.visibilityRetrySeconds * 1000,
+            now,
+          })
+        : {};
       d.sendJson(res, {
         ok: true,
         enabled: s.enabled,
-        repos: s.repos.map((repo) => ({ repo })),
-        github: { signedIn: await ghSignedIn(d), deviceFlow: !!d.flows },
+        repos: s.repos.map((repo) => ({
+          repo,
+          visibility: vis[repo] ?? "public",
+        })),
+        github: { signedIn, deviceFlow: !!d.flows },
         maxPerHour: s.maxPerHour,
         captureSeconds: s.captureSeconds,
         sentThisHour: sentLog(d.stateDir()).recent(who, now()),

@@ -4,11 +4,23 @@
  */
 import { prepareAccessRaw } from "./access-sweep.js";
 import * as fs from "fs";
-import * as net from "net";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import { must, sh } from "./exec.js";
 import { readWebPort } from "./config.js";
+import { probeIdentity } from "../den-identity.js";
+import { getStateDir } from "../paths.js";
+import { portInUse as portInUseAnywhere } from "../port-pick.js";
+import { product } from "../product.js";
+import { localhostOrigin } from "../web-session.js";
+import {
+  addressCheckSettings,
+  cliLanguage,
+  localIdentityKey,
+  serverName,
+} from "./address-check.js";
+import { addressWord } from "./address-words.js";
+import { portOwner, type PortOwner } from "./port-owner.js";
 import { ensureEdgeProof, readEdgeProof, rotateEdgeProof } from "./proof.js";
 import {
   droppedEdgeArgs,
@@ -19,6 +31,7 @@ import {
   edgeNames,
   renderEdgeCompose,
   renderEdgeDynamic,
+  webRouteHosts,
 } from "./render.js";
 import {
   assertCaUsable,
@@ -30,6 +43,16 @@ import {
   tlsStrategyFor,
   warnImplicitTlsOnce,
 } from "./tls.js";
+import {
+  edgeChangesText,
+  edgeSpecChanges,
+  edgeUpLine,
+  edgeUpOutcome,
+  parseEdgeInspect,
+  renderedEdgeSpec,
+  type EdgeUpOutcome,
+  type RunningEdge,
+} from "./spec.js";
 import type { EdgeConfig } from "./types.js";
 
 export { assertCaUsable, caDir, caTrusted, sharedCa };
@@ -81,15 +104,13 @@ export function containerState(name: string): string {
   return r.code === 0 ? r.out : "absent";
 }
 
-/** True when something on 127.0.0.1 accepts connections on `port`. */
-export function portInUse(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const s = net.connect({ host: "127.0.0.1", port });
-    s.once("connect", () => (s.destroy(), resolve(true)));
-    s.once("error", () => resolve(false));
-    s.setTimeout(500, () => (s.destroy(), resolve(false)));
-  });
-}
+/**
+ * Whether something holds `port` here, in any address family (issue 455:
+ * port-pick.ts's one check; the edge's own 127.0.0.1-only copy missed an
+ * IPv6-only or one-interface listener).
+ */
+export const portInUse = (port: number): Promise<boolean> =>
+  portInUseAnywhere(port);
 
 // ── Certificates (the edge.tls strategy, see tls.ts) ────────────────────────
 
@@ -266,25 +287,16 @@ export function assertEdgeOwnedHere(
   );
 }
 
-/** A container's command (`docker inspect .Config.Cmd`), or null. */
-export function runningEdgeCommand(name: string): string[] | null {
-  const r = sh("docker", [
-    "inspect",
-    "--type",
-    "container",
-    "-f",
-    "{{json .Config.Cmd}}",
-    name,
-  ]);
-  if (r.code !== 0) return null;
-  try {
-    const v: unknown = JSON.parse(r.out);
-    return Array.isArray(v) && v.every((x) => typeof x === "string")
-      ? (v as string[])
-      : null;
-  } catch {
-    return null;
-  }
+/** The edge container as `docker inspect` gives it, or null (#385). */
+export function inspectEdge(name: string): RunningEdge | null {
+  const r = sh("docker", ["inspect", "--type", "container", name]);
+  return r.code === 0 ? parseEdgeInspect(r.out) : null;
+}
+
+/** The id the image reference resolves to here, or null (not pulled). */
+function localImageId(ref: string): string | null {
+  const r = sh("docker", ["image", "inspect", "-f", "{{.Id}}", ref]);
+  return r.code === 0 && r.out ? r.out : null;
 }
 
 /**
@@ -292,6 +304,8 @@ export function runningEdgeCommand(name: string): string[] | null {
  * it drops (Den owns the entrypoints' trust), and, when the running edge's
  * command differs from the new one, that it recreates the edge once and
  * why. Pure: `running` is the running container's command, or null.
+ * edgeUp passes null: its #385 line (spec.ts) names every field that
+ * changed, the command's flags among them.
  */
 export function edgeUpNotices(
   cfg: EdgeConfig,
@@ -317,6 +331,98 @@ export function edgeUpNotices(
   return out;
 }
 
+/** What edgeUp's port check needs; each part has a default (tests swap them). */
+export interface EdgePortCheck {
+  /** The identity key (identityKey(web.secret)); null: nothing proves. */
+  key?: Buffer | null;
+  /** Den's web port here. */
+  webPort?: number;
+  probe?: typeof probeIdentity;
+  owner?: (port: number) => PortOwner | null;
+  inUse?: (port: number) => Promise<boolean>;
+  state?: (container: string) => string;
+  log?: (line: string) => void;
+}
+
+function heldText(port: number, o: PortOwner | null, title: string): string {
+  const lang = cliLanguage();
+  return o
+    ? addressWord(lang, "edgeHeld", {
+        port,
+        owner: o.owner,
+        kind: addressWord(
+          lang,
+          o.kind === "container" ? "kind.container" : "kind.process",
+        ),
+        name: o.name,
+        title,
+      })
+    : addressWord(lang, "edgeHeldUnknown", { port, title });
+}
+
+/**
+ * Issue 455: the edge's host ports, on every `up`. The edge down: each
+ * port must be free in every address family (port-pick.ts), and what
+ * holds one is named. The edge running: its http port must answer as
+ * this Den through Den's own route (the identity probe); when something
+ * else answers, and it isn't this edge's container, `up` stops and says
+ * what answered. With Den's web server not answering, nothing can be
+ * proven: that is said, and `up` goes on.
+ */
+export async function assertEdgePorts(
+  cfg: EdgeConfig,
+  c: EdgePortCheck = {},
+): Promise<void> {
+  if (!cfg.ports) return;
+  const n = edgeNames(cfg.org);
+  const title = product().title;
+  const owner = c.owner ?? portOwner;
+  const inUse = c.inUse ?? portInUse;
+  const running = (c.state ?? containerState)(n.container) === "running";
+  if (!running) {
+    for (const p of [cfg.ports.http, cfg.ports.https])
+      if (await inUse(p))
+        throw new Error(
+          `${heldText(p, owner(p), title)} ` +
+            `port ${p} is already in use. Free it, pick other ports ` +
+            `(edge.http_port / edge.https_port in config/local/user.yml), or ` +
+            `set edge.publish: false if another proxy forwards to ${n.container}.`,
+        );
+    return;
+  }
+  const webPort = c.webPort ?? readWebPort();
+  const key = c.key === undefined ? localIdentityKey(getStateDir()) : c.key;
+  const host = webRouteHosts(cfg, new Set([webPort]))[0]?.host;
+  if (!key || !host) return;
+  const probe = c.probe ?? probeIdentity;
+  const s = addressCheckSettings();
+  const opts = { key, timeoutMs: s.timeoutMs, retries: s.retries };
+  const lang = cliLanguage();
+  const own = await probe(localhostOrigin(webPort), opts);
+  if (!own.ok) {
+    (c.log ?? ((l: string) => console.log(l)))(
+      addressWord(lang, "doctor.unchecked", { title }),
+    );
+    return;
+  }
+  const p = cfg.ports.http;
+  const via = await probe(`http://${host}${p === 80 ? "" : `:${p}`}`, opts);
+  if (via.ok || !via.other) return;
+  const o = owner(p);
+  // This edge's own container answering (its route not written yet): up
+  // writes it.
+  if (o?.kind === "container" && o.name === n.container) return;
+  throw new Error(
+    addressWord(lang, "edgeNotDen", {
+      port: p,
+      title,
+      what: o
+        ? `${o.owner} (${addressWord(lang, o.kind === "container" ? "kind.container" : "kind.process")} ${o.name})`
+        : (serverName(via.other.server) ?? `HTTP ${via.other.status}`),
+    }),
+  );
+}
+
 export async function edgeUp(
   cfg: EdgeConfig,
   opts: {
@@ -324,21 +430,16 @@ export async function edgeUp(
     log?: (line: string) => void;
     /** H1: a new edge proof; the old one stops working at once. */
     rotateProof?: boolean;
+    /** Issue 455: the port check's parts (tests). */
+    check?: EdgePortCheck;
   } = {},
 ) {
   // Before anything is written or started: an edge of this name that
   // another state dir owns is never replaced.
   assertEdgeOwnedHere(cfg, opts);
   const n = edgeNames(cfg.org);
-  if (cfg.ports && containerState(n.container) !== "running") {
-    for (const p of [cfg.ports.http, cfg.ports.https])
-      if (await portInUse(p))
-        throw new Error(
-          `port ${p} is already in use. Free it, pick other ports ` +
-            `(edge.http_port / edge.https_port in config/local/user.yml), or ` +
-            `set edge.publish: false if another proxy forwards to ${n.container}.`,
-        );
-  }
+  // Issue 455: on every up, not only when the edge is down.
+  if (cfg.ports) await assertEdgePorts(cfg, opts.check);
   assertCaUsable(cfg);
   warnImplicitTlsOnce(cfg);
   ensureNetwork(n.network);
@@ -368,11 +469,35 @@ export async function edgeUp(
   const compose = path.join(cfg.stateDir, "compose.yml");
   // SEC-2a: say what changed before compose recreates the edge for it.
   const log = opts.log ?? ((l: string) => console.log(l));
-  for (const line of edgeUpNotices(cfg, runningEdgeCommand(n.container)))
-    log(line);
-  write(compose, renderEdgeCompose(cfg, realOrSelf(cfg.stateDir)));
+  // #385: the running container's spec against the one rendered now
+  // (image, ports, command flags, mounts, networks), said before compose
+  // recreates it, and what happened after.
+  const root = realOrSelf(cfg.stateDir);
+  const before = inspectEdge(n.container);
+  const changes = before
+    ? edgeSpecChanges(
+        before.spec,
+        renderedEdgeSpec(cfg, root, localImageId(cfg.image)),
+        realOrSelf,
+      )
+    : [];
+  for (const line of edgeUpNotices(cfg, null)) log(line);
+  if (before?.running && changes.length)
+    log(
+      `Recreating ${n.container} because ${edgeChangesText(changes)}: ` +
+        "routes drop while it restarts.",
+    );
+  write(compose, renderEdgeCompose(cfg, root));
+  const began = Date.now();
   must("docker", ["compose", "-f", compose, "up", "-d", "--remove-orphans"]);
-  return { certs, included };
+  const outcome: EdgeUpOutcome = edgeUpOutcome(
+    before,
+    inspectEdge(n.container),
+    changes,
+    { began, ended: Date.now() },
+  );
+  log(edgeUpLine(outcome));
+  return { certs, included, outcome };
 }
 
 export function edgeDown(cfg: EdgeConfig): void {

@@ -31,7 +31,13 @@ export const UI_MODULES: readonly string[] = [
   "/topbar.js",
   // NT-3: the bell in the top bar.
   "/bell.js",
+  // Issue 172: alerts outside the bell (desktop notifications).
+  "/alerts.js",
+  // Issue 172 S2: the service worker that shows push alerts.
+  "/den-sw.js",
   "/edge-page.js",
+  // Issue 455: Edge's card when another server holds the port.
+  "/address-card.js",
   // Issue 171: values the server sends, in the page's language.
   "/value-words.js",
   // Issue 209: the Verify page.
@@ -79,6 +85,8 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
+  // Issue 448: which shell the rail's Terminal opens.
+  "/shell-pick.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
@@ -146,6 +154,9 @@ export const KIT_FILES: readonly string[] = [
   "dialog.js",
   // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
   "dialog.css",
+  // The save-state line for autosaving editors, and its look.
+  "savestate.js",
+  "savestate.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.

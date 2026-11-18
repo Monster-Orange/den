@@ -747,7 +747,14 @@
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
     "set.ui.noPairHost":
-      "No edge hostname routes to this server, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then {cmd}.", // words-ok: moved word for word into the catalog (0.4.45)
+      "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
+    "set.ui.edgeStart": "Start the edge",
+    "set.ui.edgeApply": "Apply",
+    "set.ui.edgeStarted": "Edge started",
+    "set.ui.edgeCurrent": "Edge up to date, nothing restarted",
+    "set.ui.edgeRecreated":
+      "Edge recreated because {why}; it was unreachable for about {s} s",
+    "set.ui.edgeWhy": "its settings changed",
     "set.ui.edgeHost": "Edge hostname",
     "set.ui.pairScan":
       "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good.",
@@ -764,7 +771,8 @@
     "set.ui.portUnset": "Not set: the distribution's applies",
     "set.ui.signedIn": "Signed in",
     "set.ui.signOut": "Sign out",
-    "set.ui.notSignedIn": "Not signed in: run {cmd}",
+    "set.ui.notSignedIn": "Not signed in",
+    "set.ui.signIn": "Sign in",
     "set.ui.savedIn": "Saved in {vault}",
     "set.ui.theVault": "the vault",
     "set.ui.savedMemory": "Held in memory until Den restarts",
@@ -1043,6 +1051,32 @@
     "set.notifications.fold_days.o.7": "7 days",
     "set.notifications.fold_days.o.14": "14 days",
     "set.notifications.fold_days.o.30": "30 days",
+    "set.notifications.phone": "Alerts on this device by push",
+    "set.notifications.phone.d":
+      "Open __DEN_TITLE__ on your phone and turn this on there: when an agent needs you, the phone shows it, even with __DEN_TITLE__ closed. Here it works with every tab closed. Each device turns it on for itself.",
+    "set.notifications.phone.none":
+      "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
+    "set.notifications.phone.failed": "Couldn't turn on push here.",
+    "set.notifications.quiet_from": "Quiet hours start",
+    "set.notifications.quiet_from.d":
+      "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
+    "set.notifications.quiet_to": "Quiet hours end",
+    "set.notifications.quiet_to.d":
+      "Alerts outside the bell start again at this time.",
+    "set.notifications.quiet.off": "Off",
+    "set.notifications.quiet.half": "Quiet hours need a start and an end.",
+    "set.notifications.push_timeout": "Push wait",
+    "set.notifications.push_timeout.d":
+      "How long __DEN_TITLE__ waits for a push service to take one alert for a device. After this, that alert is left; the next one tries again. __DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "Push kept for",
+    "set.notifications.push_ttl.d":
+      "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "Desktop alerts",
+    "set.notifications.desktop.d":
+      "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
+    "set.notifications.desktop.denied":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+    "set.notifications.desktop.none": "This browser can't show notifications.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
@@ -1055,7 +1089,7 @@
     "set.agents.personas.d":
       "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
     "set.agents.keep_running.d":
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: make it once with claude setup-token, then __DEN_CLI__ agents token set. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     "set.cli.local_dev.d":
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     "set.cli.cli_tabs.d":
@@ -1394,6 +1428,9 @@
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
+    "busy.modeW": "Setting {name}'s mode…",
+    "busy.modeS": "{name}'s mode is set.",
+    "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
     "keep.label": "Keep agents running after logout",
     "keep.warn":
       "Agents there sign in with a long-lived token from your secrets store, not the login keychain.",
@@ -1403,6 +1440,9 @@
     "keep.s": "Applied. __DEN_TITLE__ restarts.",
     "keep.needs": "Needs your admin password.",
     "keep.failed": "Not applied. Nothing changed.",
+    "busy.edgeW": "Starting the edge…",
+    "busy.edgeS": "Edge started",
+    "busy.edgeF": "The edge didn't start.",
     "keep.onNow": "On: agents keep running after you log out.",
     "keep.offNow": "Off: agents stop when you log out.",
     "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
@@ -1412,7 +1452,7 @@
     "keep.offer":
       "Not set yet, so agents stop when you log out. Turn it on and press Apply (it asks for your admin password once).",
     "keep.noToken":
-      "No sign-in token is set: agents will not be able to sign in after logout. Make one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "No sign-in token is set: agents will not be able to sign in after logout. {runtime} makes one when you sign in to it ({docs}); paste it into {field} below.",
     "keep.credKeychain":
       "The store's credential is in the login keychain, which the always-on service may not reach; use file: or env: (see docs/always-on-gate.md).",
     "keep.setup":
@@ -1437,7 +1477,9 @@
     "keep.tokenSet": "Agents sign in with the token set {date}.",
     "keep.tokenStore": "Agents sign in with the token in {store}.",
     "keep.tokenOld":
-      "The sign-in token was set {n} days ago, and it lasts about a year: make a new one with claude setup-token, then __DEN_CLI__ agents token set.",
+      "The sign-in token was set {n} days ago, and it lasts about a year. {runtime} makes a new one when you sign in to it ({docs}); paste it into {field} below.",
+    "keep.docs": "its sign-in docs",
+    "keep.runtimeAny": "Your agents' CLI",
     "acct.title": "{vendor} accounts",
     "acct.default": "{vendor} account {letter}",
     "acct.add": "Add {vendor} account",
@@ -1788,6 +1830,15 @@
     "set.server.crash_loop_minutes": "Restart guard window, in minutes",
     "set.server.crash_loop_minutes.d":
       "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.address_check_timeout": "Address check wait",
+    "set.server.address_check_timeout.d":
+      "How long __DEN_TITLE__ waits for an address to answer when it checks that the address reaches this __DEN_TITLE__, before it prints or opens it. __DEN_CLI__ config web.address_check_timeout_seconds=5",
+    "set.server.address_check_retries": "Address check retries",
+    "set.server.address_check_retries.d":
+      "How many more times __DEN_TITLE__ asks an address that didn't answer in time. __DEN_CLI__ config web.address_check_retries=2",
+    "set.server.address_check_cache": "Address check kept for",
+    "set.server.address_check_cache.d":
+      "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.bridge_listen": "Docker bridge, for the edge",
     "set.server.bridge_listen.d":
       "Linux only, with an edge set up here: __DEN_TITLE__ also listens on the Docker bridge's address, where the edge reaches this machine. Off: only 127.0.0.1, and the edge can't reach __DEN_TITLE__. Applies at the next start. __DEN_CLI__ config web.bridge_listen=off",
@@ -1796,6 +1847,12 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "Readiness check, in seconds",
+    "set.server.ready_probe.d":
+      "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "Start wait, in seconds",
+    "set.server.start_wait.d":
+      "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
@@ -1808,6 +1865,16 @@
     "set.server.report_screenshot_days": "Report screenshots, kept for",
     "set.server.report_screenshot_days.d":
       "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_visibility_cache":
+      "Report: repository visibility kept for",
+    "set.server.report_visibility_cache.d":
+      "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait": "Report: repository visibility wait",
+    "set.server.report_visibility_wait.d":
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "Report: repository visibility retry",
+    "set.server.report_visibility_retry.d":
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Terminal reconnect tries",
     "set.agents.pane_reconnect.d":
       "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1947,6 +2014,8 @@
     "ag.stop": "Stop",
     "ag.closeShell": "Close shell",
     "ag.closeShellTip": "End this shell and anything running in it",
+    "ag.newShell": "New terminal",
+    "ag.newShellTip": "Start another shell in this project's folder",
     "ag.shellClosed": "Closed {id}",
     "ag.resume": "Resume",
     "ag.stopName": "Stop {id}",
@@ -2344,6 +2413,18 @@
     "ag.mode.src.install": "the Den-wide default",
     "ag.mode.src.persona": "its persona",
     "ag.mode.src.default": "Den's built-in default",
+    "ag.mode.item": "Mode: {m}",
+    "ag.mode.menu": "{id}'s mode",
+    "ag.mode.pick": "Change {id}'s mode",
+    "ag.mode.follow": "Follow project",
+    "ag.mode.setS":
+      "{id}: {m}, its own setting. Den restarts it at its next idle to take it.",
+    "ag.mode.setStopped":
+      "{id}: {m}, its own setting. It takes it at its next start.",
+    "ag.mode.followS":
+      "{id} follows the project now: {m}. Den restarts it at its next idle to take it.",
+    "ag.mode.followStopped":
+      "{id} follows the project now: {m}. It takes it at its next start.",
     "set.workspace.agents_mode":
       "Agents' mode: this project (overrides the Den-wide default)",
     "set.workspace.agents_mode.d":
@@ -2941,6 +3022,76 @@
     "edge.cert.none": "None: the included config holds the certs.",
     "edge.notConfigured": "Not configured",
     "edge.unreachable": "unreachable",
+    // Issue 455: Den's address when another server holds its port.
+    "edgeAddr.busy.checkW": "Checking __DEN_TITLE__'s address…",
+    "edgeAddr.busy.checkS": "Checked",
+    "edgeAddr.busy.checkF": "The check didn't finish.",
+    "edgeAddr.busy.takeW": "Taking the port over for __DEN_TITLE__'s proxy…",
+    "edgeAddr.busy.takeS": "__DEN_TITLE__'s proxy started",
+    "edgeAddr.busy.takeF": "__DEN_TITLE__'s proxy didn't start.",
+    "edgeAddr.banner.title": "__DEN_TITLE__ is at {address} for now.",
+    "edgeAddr.banner.held":
+      "Port {port} is held by {owner} ({name}), so {host} goes to {owner} instead.",
+    "edgeAddr.banner.heldBare":
+      "Port {port} is held by {owner}, so {host} goes to {owner} instead.",
+    "edgeAddr.banner.unknown":
+      "Port {port} is in use by something __DEN_TITLE__ cannot name, so {host} goes there instead.",
+    "edgeAddr.banner.none": "Nothing answers at {host} yet.",
+    "edgeAddr.banner.fix": "Fix it in Edge",
+    "edgeAddr.banner.dismiss": "Dismiss",
+    "edgeAddr.card.title":
+      "__DEN_TITLE__'s proxy is not running: port {port} is in use",
+    "edgeAddr.card.titleNone": "__DEN_TITLE__'s address doesn't answer yet",
+    "edgeAddr.card.held":
+      "Held by {owner}, {kind} {name} (not __DEN_TITLE__). __DEN_TITLE__ is serving at {address} instead. Checked {time}.",
+    "edgeAddr.card.heldBare":
+      "Held by {owner} (not __DEN_TITLE__). __DEN_TITLE__ is serving at {address} instead. Checked {time}.",
+    "edgeAddr.card.unknown":
+      "Held by something __DEN_TITLE__ cannot name. __DEN_TITLE__ is serving at {address} instead. Checked {time}.",
+    "edgeAddr.card.none":
+      "Nothing answers at {wanted} yet. __DEN_TITLE__ is serving at {address} instead. Checked {time}.",
+    "edgeAddr.kind.container": "Docker container",
+    "edgeAddr.kind.process": "process",
+    "edgeAddr.what": "What would you like to do?",
+    "edgeAddr.opt.proxy": "Add __DEN_TITLE__ to that proxy",
+    "edgeAddr.opt.free": "Free port {port}",
+    "edgeAddr.opt.takeOver": "Take over",
+    "edgeAddr.proxy.body":
+      "Your proxy stays in charge of port {port} and sends {host} to __DEN_TITLE__. __DEN_TITLE__ changes nothing in your other project; you paste this where your proxy's config lives.",
+    "edgeAddr.proxy.kinds": "Proxy",
+    "edgeAddr.copy": "Copy",
+    "edgeAddr.copied": "Copied",
+    "edgeAddr.proxy.after":
+      "After you reload that proxy, __DEN_TITLE__ checks {wanted} reaches __DEN_TITLE__ and switches its links to it. __DEN_TITLE__'s own proxy stays off (edge.publish: false, set for you).",
+    "edgeAddr.check": "Check again",
+    "edgeAddr.checking": "Checking…",
+    "edgeAddr.check.still": "Not there yet: still answers as {owner}.",
+    "edgeAddr.check.stillUnknown":
+      "Not there yet: it still isn't __DEN_TITLE__.",
+    "edgeAddr.check.done": "Done. __DEN_TITLE__ is now at {wanted}.",
+    "edgeAddr.check.failed": "The check didn't finish: {error}",
+    "edgeAddr.free.container":
+      "Stop the container {name} in Docker, or move it off port {port}. Then press Check again; __DEN_TITLE__ starts its own proxy.",
+    "edgeAddr.free.process":
+      "Stop {owner} (process {name}), or move it off port {port}. Then press Check again; __DEN_TITLE__ starts its own proxy.",
+    "edgeAddr.free.unknown":
+      "Stop what uses port {port}, or move it off that port. Then press Check again; __DEN_TITLE__ starts its own proxy.",
+    "edgeAddr.free.takeOver":
+      "It is an old __DEN_TITLE__ proxy ({name}). Take over stops it and starts __DEN_TITLE__'s own.",
+    "edgeAddr.now": "Now",
+    "edgeAddr.k.container": "Container",
+    "edgeAddr.k.ports": "Ports",
+    "edgeAddr.k.address": "__DEN_TITLE__'s address",
+    "edgeAddr.k.wanted": "Wanted address",
+    "edgeAddr.container.notCreated": "not created",
+    "edgeAddr.port.heldBy": "{port} held by {owner}",
+    "edgeAddr.port.held": "{port} in use",
+    "edgeAddr.port.free": "{port} free",
+    "edgeAddr.checked.den": "checked: this __DEN_TITLE__",
+    "edgeAddr.checked.notDen": "not __DEN_TITLE__",
+    "edgeAddr.answers.as": "answers as {owner}",
+    "edgeAddr.answers.notDen": "isn't __DEN_TITLE__",
+    "edgeAddr.answers.nothing": "nothing answers",
     // issue 171: values the pages show (value-words.js, log-history.ts).
     "val.docker.created": "created",
     "val.docker.running": "running",
@@ -3773,6 +3924,10 @@
     pinUrls: {},
     pinOff: {},
     svpOpen: null,
+    // Issue 402: with the view filtered to one project, its repos (the
+    // Workspace menu's model, header.js); the rail shows only their pins.
+    // null: no filter, every pin. It never changes the pins themselves.
+    pinRepos: null,
   };
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
@@ -3856,6 +4011,19 @@
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;
   }
+  /**
+   * Issue 402: the pins the rail shows. Filtered to one project, a pin
+   * ("repo" or "repo/service") shows when its repo is one of the
+   * project's (workspace-picker.js projectRepos); with no filter, every
+   * pin.
+   */
+  function pinsShown() {
+    var repos = state.pinRepos;
+    if (!Array.isArray(repos)) return state.pins.slice();
+    return state.pins.filter(function (p) {
+      return repos.indexOf(String(p).split("/")[0]) >= 0;
+    });
+  }
   function pin(id) {
     if (isPinned(id)) return;
     setState({ pins: state.pins.concat([id]) });
@@ -3926,16 +4094,19 @@
    * 0.4.45: a toast never covers a line a page marks data-toast-clear
    * (the terminal's "To" line: who the keyboard types to). It moves up
    * until it sits above every such line it would cover. A page may draw
-   * that line just after the toast shows, so it looks again a moment later.
+   * that line after the toast shows (issue 448: a toast up before a
+   * terminal's pane opens), so it looks again every 250 ms while it shows.
    */
   function clearOfMarked(el, again) {
     if (!el || !el.getBoundingClientRect || !document.querySelectorAll) return;
-    if (!again)
-      [120, 500].forEach(function (ms) {
-        setTimeout(function () {
-          if (el.isConnected) clearOfMarked(el, true);
-        }, ms);
-      });
+    if (!again) {
+      var look = function () {
+        if (!el.isConnected) return;
+        clearOfMarked(el, true);
+        setTimeout(look, 250);
+      };
+      setTimeout(look, 120);
+    }
     var marks = document.querySelectorAll("[data-toast-clear]");
     for (var pass = 0; pass < 4; pass++) {
       var r = el.getBoundingClientRect();
@@ -4797,6 +4968,11 @@
   function setWorkspaces(model) {
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
+    // Issue 402: the pins follow the project filter (a repaint only).
+    var pinRepos =
+      model && Array.isArray(model.pinRepos) ? model.pinRepos.slice() : null;
+    if (JSON.stringify(pinRepos) !== JSON.stringify(state.pinRepos))
+      setState({ pinRepos: pinRepos });
     var btn = document.getElementById("ws-pill");
     if (!btn) return;
     var sep = btn.nextElementSibling;
@@ -4914,9 +5090,10 @@
   function railModel() {
     var groups = [];
     var entries = [];
-    if (state.pins.length) {
+    var shown = pinsShown();
+    if (shown.length) {
       groups.push({ id: "pinned", label: t("g.pinned") });
-      state.pins.forEach(function (p) {
+      shown.forEach(function (p) {
         // 0.4.18: the row (named by the id alone) opens the service's
         // panel in place (svc-panel.js); it is still the link to
         // Services, so ⌘-click and middle-click open that in a new
@@ -6574,12 +6751,30 @@
         return (
           '<div class="den-banner warn" data-banner="' +
           esc(id) +
-          '" role="status"><span class="den-bn-ic" aria-hidden="true">⚠</span>' +
+          '" role="status"><span class="den-bn-ic" aria-hidden="true">' +
+          (b.tone === "addr" ? "●" : "⚠") +
+          "</span>" +
+          (b.tone === "addr" ? '<span class="den-bn-body">' : "") +
           (b.title ? "<b>" + esc(b.title) + "</b>" : "") +
           '<span class="den-bn-t">' +
           esc(b.text) +
           "</span>" +
           (b.note ? '<span class="den-bn-n">' + esc(b.note) + "</span>" : "") +
+          (b.link
+            ? '<a class="den-bn-a" href="' +
+              esc(b.link.href) +
+              '">' +
+              esc(b.link.label) +
+              "</a>"
+            : "") +
+          (b.tone === "addr" ? "</span>" : "") +
+          (b.dismiss
+            ? '<button type="button" class="den-bn-x" data-bn-x="' +
+              esc(id) +
+              '" aria-label="' +
+              esc(b.dismiss.label) +
+              '">×</button>'
+            : "") +
           (b.action
             ? '<button type="button" class="den-tbtn" data-bn-act="' +
               esc(id) +
@@ -6593,6 +6788,12 @@
       .join("");
   }
   document.addEventListener("click", function (e) {
+    var x = e.target && e.target.closest && e.target.closest("[data-bn-x]");
+    if (x) {
+      var bx = BANNERS[x.getAttribute("data-bn-x")];
+      if (bx && bx.dismiss) bx.dismiss.run();
+      return;
+    }
     var b = e.target && e.target.closest && e.target.closest("[data-bn-act]");
     if (!b) return;
     var ban = BANNERS[b.getAttribute("data-bn-act")];
@@ -6740,6 +6941,91 @@
       },
     });
 
+  // Issue 455 (mock v3): Den's address is answered by another server (its
+  // port is held), so Den serves at its own port for now. Once per browser
+  // and working address: shown on the first page, and again only when the
+  // working address changes; × dismisses it for good for that address. It
+  // never comes back on every page while the port stays held: the fact
+  // lives in Edge and `doctor`.
+  var ADDR_LS = "den.address.banner";
+  /** A page's href, from its NAV registry entry (R11a). */
+  function navHref(id) {
+    for (var i = 0; i < NAV.length; i++)
+      if (NAV[i].id === id) return NAV[i].href;
+    return "/";
+  }
+  function addressBannerText(s) {
+    var host = "";
+    try {
+      host = new URL(s.wanted).hostname;
+    } catch (e) {
+      host = String(s.wanted || "");
+    }
+    if (s.wantedAnswer !== "other")
+      return t("edgeAddr.banner.none", { host: host });
+    if (s.owner)
+      return t("edgeAddr.banner.held", {
+        port: s.port,
+        owner: s.owner.owner,
+        name: s.owner.name,
+        host: host,
+      });
+    if (s.answeredAs)
+      return t("edgeAddr.banner.heldBare", {
+        port: s.port,
+        owner: s.answeredAs,
+        host: host,
+      });
+    return t("edgeAddr.banner.unknown", { port: s.port, host: host });
+  }
+  function addressBanner() {
+    var seen = null;
+    try {
+      seen = localStorage.getItem(ADDR_LS);
+    } catch (e) {
+      seen = null;
+    }
+    fetch("/api/edge/address", { cache: "no-store" })
+      .then(function (r) {
+        return r.ok ? r.json() : null;
+      })
+      .then(function (s) {
+        if (
+          !s ||
+          !s.wanted ||
+          !s.address ||
+          s.wantedAnswer !== "other" ||
+          s.address === s.wanted ||
+          seen === s.address
+        )
+          return;
+        // Shown once for this address: a later page shows nothing.
+        try {
+          localStorage.setItem(ADDR_LS, s.address);
+        } catch (e) {
+          /* no storage: shown on this page only */
+        }
+        showBanner("den-address", {
+          tone: "addr",
+          title: t("edgeAddr.banner.title", { address: s.address }),
+          text: addressBannerText(s),
+          link: { href: navHref("edge"), label: t("edgeAddr.banner.fix") },
+          dismiss: {
+            label: t("edgeAddr.banner.dismiss"),
+            run: function () {
+              hideBanner("den-address");
+            },
+          },
+        });
+      })
+      .catch(function () {
+        /* no answer: nothing to say */
+      });
+  }
+  window.addEventListener("den:address-changed", function () {
+    hideBanner("den-address");
+  });
+
   // The config fails validation (0.4.1): the server marks every page it
   // serves while it does (data-config-invalid on #den-shell), and the first
   // /api answer of 422 config_invalid marks it too. From then on the shell
@@ -6758,6 +7044,9 @@
   function configInvalid() {
     return configBad || apiOffPage;
   }
+  // Issue 455: the address banner reads web.secret, web.url and the edge
+  // config only (config-free), so only a refusal page skips it.
+  if (!apiOffPage) addressBanner();
   function markConfigInvalid() {
     if (configBad) return;
     configBad = true;
@@ -8212,6 +8501,14 @@
     ".den-banner .den-bn-t { color: var(--text); }",
     ".den-banner .den-bn-n { font: 11px var(--mono); color: var(--faint); }",
     ".den-banner .den-tbtn { margin-left: auto; align-self: center; }",
+    // Issue 455: the address banner: a title line, then why and the fix
+    // link; × sits top-right beside the title in a 44px box, at every width.
+    ".den-banner .den-bn-body { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }",
+    ".den-banner .den-bn-body b { display: block; font-size: 14px; }",
+    ".den-banner .den-bn-body .den-bn-t { margin-right: 6px; }",
+    ".den-banner .den-bn-a { color: var(--accent-text); text-decoration: underline; }",
+    ".den-banner .den-bn-x { flex: 0 0 44px; margin: -12px -10px -12px auto; align-self: flex-start; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; border-radius: var(--radius-button, 8px); }",
+    ".den-banner .den-bn-x:hover { color: var(--text); background: var(--surface-2, transparent); }",
     // The runs dock (.dock, .bar, .runs, .rtab, pre: R16), at the foot of
     // the content column; content-box as in the prototype.
     ".den-dock { flex: none; order: 99; position: sticky; bottom: 0; z-index: 14; min-width: 0;",

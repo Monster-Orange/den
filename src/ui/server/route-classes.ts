@@ -95,6 +95,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/favicon.ico",
+    // Issue 172: the app manifest (a phone's home screen, for push).
+    "/manifest.webmanifest",
     "/theme.css",
     "/theme/*",
     "/theme-favicon",
@@ -131,6 +133,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/security/plan",
     "/api/stacks",
     "/api/edge",
+    // Issue 455: the address check (banner, Edge) and the
+    // identity probe's other end.
+    "/api/edge/address",
+    "/api/den-identity",
     "/api/activity",
     "/api/server-log",
     "/api/perf-report/current",
@@ -397,6 +403,21 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/pair",
     "mints a one-time sign-in link for another device (Pair a device)",
   ),
+  S(
+    ["POST"],
+    "/api/edge/up",
+    "issue 395: Settings' Start the edge runs `edge up` (docker); a person's only, never an agent's token",
+  ),
+  S(
+    ["POST"],
+    "/api/edge/address/check",
+    "issue 455: Check again; may set edge.publish: false for the person (user.yml); a person's only",
+  ),
+  S(
+    ["POST"],
+    "/api/edge/address/take-over",
+    "issue 455: Take over stops an old Den edge holding the port and starts Den's own (docker); a person's only",
+  ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
@@ -653,6 +674,24 @@ export const ROUTES: readonly RouteEntry[] = [
     "NT-2: a page shows these agents now, so they don't notify",
   ),
   R(
+    "/api/alerts",
+    "Issue 172: the person's new alerts (an agent needs them) for an open tab to show; never an agent's",
+  ),
+  R(
+    "/api/alerts/push-key",
+    "Issue 172: this install's push public key (VAPID), for a device to subscribe; never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/subscribe",
+    "Issue 172: a person adds this device to get alerts by push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/unsubscribe",
+    "Issue 172: a person stops push alerts to a device",
+  ),
+  R(
     "/api/hub/link-suggestions",
     "#68: each project, its Hub project, and Hub's first suggestion for an unlinked one (names only)",
   ),
@@ -832,6 +871,9 @@ export const SIGNIN_FREE: readonly string[] = [
   // MODE-5: the address check comes back in through the edge with no
   // cookie; it answers 204 or 404 for a one-time token, nothing else.
   "/api/web-url/probe",
+  // Issue 455: the identity probe comes in through another proxy with no
+  // cookie; it answers a challenge with this Den's proof, nothing else.
+  "/api/den-identity",
   // Issue 103: the embedded pane has no cookie. Its page holds no data,
   // and its Send carries its own key (embed-keys.ts).
   "/embed/p/:project/agents/:id",

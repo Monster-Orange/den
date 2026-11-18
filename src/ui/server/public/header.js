@@ -17,6 +17,7 @@ import { copyText, ensureWhatsNew } from "/kit/whatsnew.js";
 import { buildRow, healthCycle, paintGate, shellHealth } from "./health-fit.js";
 import { initTopbar, paintChecking, paintStatus } from "./topbar.js";
 import { initBell } from "./bell.js";
+import { initAlerts } from "./alerts.js";
 import { registerDenSettings } from "./settings-registry.js";
 import { initServicePanel } from "./svc-panel.js";
 import { restartDen } from "./restart-den.js";
@@ -48,6 +49,20 @@ if (typeof window !== "undefined")
   });
 // NT-3: the bell.
 if (typeof document !== "undefined") initBell();
+// Issue 172: an agent's need, also outside the bell (desktop).
+if (typeof document !== "undefined") initAlerts();
+// Issue 172 S2: the app manifest, so a phone can add this to its home
+// screen (an iPhone gets push only from there).
+if (
+  typeof document !== "undefined" &&
+  document.head &&
+  !document.querySelector('link[rel="manifest"]')
+) {
+  const l = document.createElement("link");
+  l.rel = "manifest";
+  l.href = "/manifest.webmanifest";
+  document.head.appendChild(l);
+}
 if (typeof document !== "undefined")
   initTopbar({
     refreshHealth: (env, opts) => refreshHealth(env, opts),

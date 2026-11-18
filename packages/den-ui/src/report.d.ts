@@ -20,7 +20,13 @@ export interface ReportAdapter {
     },
   ) => Promise<{ number: number; url?: string } | { error: string }>;
   info?: () => Promise<{
-    repos?: { repo: string }[];
+    repos?: {
+      repo: string;
+      /** Who can see it; missing or anything else reads as "public". */
+      visibility?: "public" | "private" | "internal";
+      /** Who can see it, as words (shown after a private or internal pill). */
+      audience?: string;
+    }[];
     maxPerHour?: number;
     captureSeconds?: number;
   }>;

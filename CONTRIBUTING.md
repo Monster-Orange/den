@@ -73,6 +73,167 @@ docker stop pw
 The browser's `localhost` and `*.localhost` are this machine's
 (`exposeNetwork`), so the test runs as it would locally.
 
+### Quarantined tests
+
+`tests/quarantine.json` lists flaky tests. On a pull request, CI leaves
+them out of the blocking test steps and runs them in a last step that
+can't block. Each step's job summary has a table of them, passed or
+failed, with their age. On a push to main and in `release.yml` the list
+is ignored: every test blocks.
+
+The switch is `DEN_TEST_QUARANTINE`: unset runs everything (the default),
+`exclude` skips the listed tests, `only` runs just them.
+
+To add an entry, you need evidence: the same sha failed, then passed.
+
+```bash
+node scripts/flake-evidence.mjs <red run id>
+```
+
+It reads the Actions API (read-only) and prints an entry per failing test.
+If no other run on that sha passed, it says so in `evidence.note`; it
+never makes one up. Paste the entries for the flaky tests, not the ones
+that are really broken. Each entry has `file`, `test` (the full name
+jest prints, or the test's own title, exactly; `/regex/` matches the full
+name), `issue`, `added` (YYYY-MM-DD) and `evidence`.
+
+To remove an entry, delete it in the PR that fixes the test.
+
+The weekly rule: each entry is fixed or deleted within `max_age_days`
+(14 by default; `DEN_QUARANTINE_MAX_AGE_DAYS` overrides it).
+`tests/unit/test-infra/quarantine.test.ts` fails on an older entry, or on
+one with no issue or no evidence.
+
+### The tests a pull request runs
+
+A push to `main` and a release run every test on both Nodes. A pull
+request runs the same checks, then the tests the change affects, on
+both Nodes. To see the list and the reason for each:
+
+```bash
+node scripts/affected-tests.mjs origin/main HEAD
+```
+
+- **related**: the tests that import a changed file (`jest --findRelatedTests`);
+- **mapped**: from `tests/affected-map.json`: the browser specs of a changed
+  page (a spec opens pages by URL, so imports never reach it), and tests
+  that read files by path (docs, the changelog, `examples/`, `public/`);
+  a change to a UI catalog (`public/i18n/*.js`) also runs the tests that
+  import the English-catalog helper, and the specs that name a changed key
+  or its English text;
+- **smoke**: a few fast, broad tests, every time;
+- **everything**: a change to a shared file (the shell, the kit, the request
+  guard, `package.json`, jest or test setup, CI) runs them all.
+
+`node scripts/affected-map.mjs` rewrites the map's page rules from the code
+(CI also adds them fresh, so a new spec is never left out).
+`scripts/ci-replay.mjs` replays the last 30 days of red CI runs and fails if
+the subset would have missed a real failure;
+`tests/fixtures/ci-replay-cases.json` keeps those failures, and
+`tests/unit/test-infra/affected-tests.test.ts` fails if the map stops
+catching one.
+
+### Playwright in CI
+
+Every job that runs browser tests installs Playwright through
+`scripts/ci-pw-install.sh`, never `playwright install` directly (a test keeps
+it so). The script splits the install in two, each with a time limit and one
+retry:
+
+- the system packages (`playwright install-deps`, apt). They run as root, so a
+  cut-off try can't be killed and goes on holding dpkg's lock; the retry
+  waits for it to finish first;
+- the browsers (`playwright install`).
+
+One cache step, keyed by the OS and Playwright's version, keeps both the
+browsers (`~/.cache/ms-playwright`) and apt's downloaded packages
+(`~/.cache/den-apt`). Once one job has them, later runs skip the Ubuntu mirror.
+The limits are settings: `CI_PW_DEPS_SECONDS` (default 240) and
+`CI_PW_INSTALL_SECONDS` (default 90).
+
+## Merging
+
+A pull request merges once its own run is green. When only main moved
+under it, it merges **without another run**, if:
+
+- it still merges cleanly into main, and
+- none of the files it changes were changed on main since the commit its
+  green run tested (no overlap with what landed).
+
+Otherwise main is merged into the branch and it runs again. Main's own
+full run (every test, every Node version, quarantine ignored) is the
+backstop: if main goes red after such a merge, fix it forward within 30
+minutes or revert that merge. A red main blocks other merges until then.
+
+## Live checks
+
+Each pull request that closes a clause of an issue also ships a live
+check, `gate/<issue>.mjs`, written next to its red-first test (reuse the
+end-to-end spec where it fits). A harness runs every file in `gate/`
+against a bed (a running Den, by its URL and its CLI) on each dev tag,
+with no one in the loop, and reports PASS or FAIL per clause.
+
+```js
+// gate/406.mjs
+export const issue = 406;
+export const clauses = [
+  "two lines when the person has a name",
+  "the person signs in on a second device",
+];
+// Optional: run once per cell; expect then gets [{ cell, result }].
+export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
+export const timeoutMs = 120000; // optional; a cell over it is ok: false
+export async function setup(ctx) {} // prepare the bed; returns state
+export async function run(ctx, state) {} // act; returns what it saw
+export async function teardown(ctx, state) {} // optional; always called
+export function expect(cells) {
+  return [
+    { clause: clauses[0], ok: true, evidence: ["entry-1280"] },
+    { clause: clauses[1], ok: null, skip: "person" }, // not run, and why
+  ];
+}
+```
+
+- `issue` matches the file name. `clauses` names each clause the check
+  proves, as the issue words it, and `expect` answers each one once.
+- `ok` is `true`, `false`, or `null` for "not run". `null` always comes
+  with `skip`: `"person"` for a person's own act (an Allow, an answer, an
+  approval), or `"needs-<thing>"` for what the bed lacks (for example
+  `"needs-signed-in-cli"`). A check never presses a person's decision.
+- `teardown` runs even when `run` throws. A check only reads, or makes
+  what it needs under its own names and removes them; it never changes
+  the bed's settings for good, and never touches a live install.
+- Names stay neutral (the one rule above applies here too).
+
+What the harness passes in `ctx`:
+
+|                                         |                                                                                                                                                                                                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.url`                               | the bed's address                                                                                                                                                                                                                                  |
+| `ctx.cli(args)`                         | runs the bed's CLI: `{ code, out, err }`, one-time codes already masked                                                                                                                                                                            |
+| `ctx.api(path, init?)`                  | a signed-in `fetch` against the bed                                                                                                                                                                                                                |
+| `ctx.page`, `ctx.browser`, `ctx.width`  | with a `matrix`: a signed-in page in this cell                                                                                                                                                                                                     |
+| `ctx.shot(name, { mask? })`             | a screenshot into the evidence folder; pairing and device codes masked by default                                                                                                                                                                  |
+| `ctx.evidence(name)`                    | an absolute path in this tag's evidence folder, for logs and files                                                                                                                                                                                 |
+| `ctx.agent(id)`                         | the bed's stub agent: `start(persona)`, `running(ms)`, `stop()`, `restart()`, `remove()`, `state()`, `waiting(why)`, `askHuman(q)`, `permissionRequest(tool)`, `idlePrompt()`, `sessionStart(kind)`, `print(text)`, `hook(event, input)`, `exit()` |
+| `ctx.fetch(path, init?)`                | like `api`, keeping the status: `{ status, headers, body }` (refusals are judged by status)                                                                                                                                                        |
+| `ctx.readBed(rel)`                      | a file under the bed's folder or its state folder, read only: its text (codes masked), or null                                                                                                                                                     |
+| `ctx.listBed(rel = '.')`                | the names in a folder under the bed's folder or its state folder, sorted, read only; or null                                                                                                                                                       |
+| `ctx.goto(page, path)`, `ctx.sleep(ms)` | open a bed page; wait                                                                                                                                                                                                                              |
+| `ctx.until(fn, ms)`                     | waits for `fn` to be true: the ms it took, or null                                                                                                                                                                                                 |
+| `ctx.bell(page)`                        | `{ badge, unread, waiting[] }`                                                                                                                                                                                                                     |
+| `ctx.edge`                              | the bed's own edge: `inspect()`, `swap({ image, accessLog })`, `restore()`, `status(path)`                                                                                                                                                         |
+| `ctx.signedOut(browser, width)`         | a page with no session: `{ ctx, page }`                                                                                                                                                                                                            |
+| `ctx.shotOf(page, name, { mask? })`     | `shot` for another page                                                                                                                                                                                                                            |
+
+Names in a row's `evidence` are written into the verdict next to it.
+Anything else on `ctx` is the harness's internals and may change: never
+use it. Setup's state reaches `expect` only through what `run` returns.
+
+`node scripts/gate-shape.mjs` checks every file has this shape, and
+`tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with
+the rules for `expect`'s rows (`checkRows`).
+
 ## Adding a strategy
 
 - **Secrets backend:** implement `SecretsProvider`

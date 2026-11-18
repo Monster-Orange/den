@@ -545,6 +545,10 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "busy.modeW": "{name} のモードを設定しています…",
+    "busy.modeS": "{name} のモードを設定しました。",
+    "busy.modeF":
+      "{name} のモードを設定できませんでした。何も変わっていません。",
     "keep.label": "ログアウト後もエージェントを動かす",
     "keep.warn":
       "そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。",
@@ -555,6 +559,9 @@
     "keep.s": "適用しました。__DEN_TITLE__ が再起動します。",
     "keep.needs": "管理者パスワードが必要です。",
     "keep.failed": "適用されませんでした。何も変わっていません。",
+    "busy.edgeW": "エッジを起動しています…",
+    "busy.edgeS": "エッジを起動しました",
+    "busy.edgeF": "エッジを起動できませんでした。",
     "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
     "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
     "keep.saved":
@@ -565,7 +572,7 @@
     "keep.offer":
       "まだ設定されていないため、ログアウトでエージェントは止まります。オンにして「適用」を押してください（管理者パスワードを一度だけ求めます）。",
     "keep.noToken":
-      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。claude setup-token で作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンがありません: ログアウト後、エージェントはサインインできません。トークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
     "keep.credKeychain":
       "ストアの認証情報がログインキーチェーンにあり、常時稼働のサービスからは届かないことがあります。file: か env: を使ってください（docs/always-on-gate.md を参照）。",
     "keep.setup":
@@ -591,7 +598,9 @@
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
     "keep.tokenOld":
-      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です: claude setup-token で新しく作り、__DEN_CLI__ agents token set で保存してください。",
+      "サインイン用トークンは {n} 日前に保存され、有効期間はおよそ1年です。新しいトークンは {runtime} にサインインすると作られます ({docs})。下の {field} に貼り付けてください。",
+    "keep.docs": "サインインのドキュメント",
+    "keep.runtimeAny": "エージェントの CLI",
     "acct.title": "{vendor} アカウント",
     "acct.default": "{vendor} アカウント {letter}",
     "acct.add": "{vendor} アカウントを追加",
@@ -833,6 +842,15 @@
     "set.server.crash_loop_minutes": "再起動ガードの時間枠(分)",
     "set.server.crash_loop_minutes.d":
       "上の、正常に終了しなかった回数を数える分数です。__DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.address_check_timeout": "アドレス確認の待ち時間",
+    "set.server.address_check_timeout.d":
+      "アドレスがこの __DEN_TITLE__ に届くか確認するとき、表示したり開いたりする前に __DEN_TITLE__ が応答を待つ時間。__DEN_CLI__ config web.address_check_timeout_seconds=5",
+    "set.server.address_check_retries": "アドレス確認の再試行",
+    "set.server.address_check_retries.d":
+      "時間内に応答しなかったアドレスに __DEN_TITLE__ がもう一度尋ねる回数。__DEN_CLI__ config web.address_check_retries=2",
+    "set.server.address_check_cache": "アドレス確認の保持時間",
+    "set.server.address_check_cache.d":
+      "ページのバナーと Edge が __DEN_TITLE__ のアドレスの前回の確認を使い回す時間。0 は読むたびに確認します。__DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.bridge_listen": "Docker ブリッジ (edge 用)",
     "set.server.bridge_listen.d":
       "Linux のみ。ここに edge がある場合、__DEN_TITLE__ は Docker ブリッジのアドレスでも待ち受けます。edge はそこからこのマシンに届きます。オフ: 127.0.0.1 のみで、edge から __DEN_TITLE__ に届きません。次の起動から反映されます。__DEN_CLI__ config web.bridge_listen=off",
@@ -841,6 +859,12 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.ready_probe": "起動確認の待ち時間 (秒)",
+    "set.server.ready_probe.d":
+      "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.start_wait": "起動の待ち時間 (秒)",
+    "set.server.start_wait.d":
+      "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
       "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
@@ -853,6 +877,16 @@
     "set.server.report_screenshot_days": "報告のスクリーンショットの保存期間",
     "set.server.report_screenshot_days.d":
       "ここから送った報告のマスク済みスクリーンショットを __DEN_TITLE__ が保存する日数です。あなたとこのインストール自身のエージェントが読めます(report_screenshot)。過ぎると削除されます。__DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_visibility_cache":
+      "報告：リポジトリの公開範囲を保持する時間",
+    "set.server.report_visibility_cache.d":
+      "各報告先リポジトリが公開か非公開かを __DEN_TITLE__ が覚えておく時間です。これを過ぎると、GitHub にもう一度確認します。__DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait": "報告：リポジトリの公開範囲の待ち時間",
+    "set.server.report_visibility_wait.d":
+      "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると公開として表示し、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "報告：リポジトリの公開範囲の再確認",
+    "set.server.report_visibility_retry.d":
+      "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
     "set.agents.pane_reconnect.d":
       "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1111,6 +1145,8 @@
     "ag.stop": "停止",
     "ag.closeShell": "シェルを閉じる",
     "ag.closeShellTip": "このシェルと、その中で動いているものを終了します",
+    "ag.newShell": "新しいターミナル",
+    "ag.newShellTip": "このプロジェクトのフォルダーで別のシェルを開始します",
     "ag.shellClosed": "{id} を閉じました",
     "ag.resume": "再開",
     "ag.stopName": "{id} を停止",
@@ -1510,6 +1546,17 @@
     "ag.mode.src.install": "Den 全体の既定",
     "ag.mode.src.persona": "ペルソナ",
     "ag.mode.src.default": "Den の組み込みの既定",
+    "ag.mode.item": "モード: {m}",
+    "ag.mode.menu": "{id} のモード",
+    "ag.mode.pick": "{id} のモードを変更",
+    "ag.mode.follow": "プロジェクトに従う",
+    "ag.mode.setS":
+      "{id}: {m} (独自の設定)。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.setStopped": "{id}: {m} (独自の設定)。次の起動時に適用されます。",
+    "ag.mode.followS":
+      "{id} はプロジェクトに従うようになりました: {m}。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.followStopped":
+      "{id} はプロジェクトに従うようになりました: {m}。次の起動時に適用されます。",
     "set.workspace.agents_mode":
       "エージェントのモード: このプロジェクト (Den 全体の既定を上書き)",
     "set.workspace.agents_mode.d":
@@ -2381,7 +2428,14 @@
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
     "set.ui.noPairHost":
-      "このサーバーに向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、{cmd} を実行してください。", // words-ok: the en string's own word, translated
+      "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
+    "set.ui.edgeStart": "エッジを起動",
+    "set.ui.edgeApply": "適用",
+    "set.ui.edgeStarted": "エッジを起動しました",
+    "set.ui.edgeCurrent": "エッジは最新です。何も再起動していません",
+    "set.ui.edgeRecreated":
+      "{why} のためエッジを作り直しました。約 {s} 秒間つながりませんでした",
+    "set.ui.edgeWhy": "設定が変わった",
     "set.ui.edgeHost": "エッジのホスト名",
     "set.ui.pairScan":
       "別のデバイスでスキャンするか、そちらでリンクを開いてください。期限 (下記) まで一度だけ使え、そのブラウザはずっとサインインしたままになります。",
@@ -2399,7 +2453,8 @@
     "set.ui.portUnset": "未設定: ディストリビューションの値を使用",
     "set.ui.signedIn": "サインイン済み",
     "set.ui.signOut": "サインアウト",
-    "set.ui.notSignedIn": "サインインしていません: {cmd} を実行してください",
+    "set.ui.notSignedIn": "サインインしていません",
+    "set.ui.signIn": "サインイン",
     "set.ui.savedIn": "{vault} に保存済み",
     "set.ui.theVault": "保管庫",
     "set.ui.savedMemory": "Den が再起動するまでメモリーに保持",
@@ -2680,6 +2735,33 @@
     "set.notifications.fold_days.o.7": "7日",
     "set.notifications.fold_days.o.14": "14日",
     "set.notifications.fold_days.o.30": "30日",
+    "set.notifications.phone": "このデバイスへのプッシュ通知",
+    "set.notifications.phone.d":
+      "スマートフォンで __DEN_TITLE__ を開き、そこでこれをオンにしてください。エージェントがあなたを必要とすると、__DEN_TITLE__ を閉じていてもスマートフォンに表示されます。このデバイスでは、タブをすべて閉じていても届きます。デバイスごとにオンにします。",
+    "set.notifications.phone.none":
+      "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
+    "set.notifications.phone.failed":
+      "ここではプッシュをオンにできませんでした。",
+    "set.notifications.quiet_from": "通知を止める時間の開始",
+    "set.notifications.quiet_from.d":
+      "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",
+    "set.notifications.quiet_to": "通知を止める時間の終了",
+    "set.notifications.quiet_to.d":
+      "この時刻から、ベル以外の通知が再び出ます。",
+    "set.notifications.quiet.off": "オフ",
+    "set.notifications.quiet.half": "開始と終了の両方を選んでください。",
+    "set.notifications.push_timeout": "プッシュの待ち時間",
+    "set.notifications.push_timeout.d":
+      "__DEN_TITLE__ がプッシュサービスに 1 件の通知を受け取ってもらうまで待つ時間です。これを過ぎるとその通知は見送り、次の通知で再び試します。__DEN_CLI__ config alerts.push_timeout_seconds=30",
+    "set.notifications.push_ttl": "プッシュの保持時間",
+    "set.notifications.push_ttl.d":
+      "電源が切れているかオフラインの端末向けに、プッシュサービスが通知を保持する時間 (秒) です。86400 で 1 日です。0 にすると、端末がいまオンでなければ破棄されます。__DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.desktop": "デスクトップ通知",
+    "set.notifications.desktop.d":
+      "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
+    "set.notifications.desktop.denied":
+      "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
+    "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",
@@ -2694,7 +2776,7 @@
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。claude setup-token で一度作り、__DEN_CLI__ agents token set で保存してください。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
+      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。トークンはエージェントの CLI にサインインすると作られ、下の「サインイン用トークン」に貼り付けます。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
@@ -2810,6 +2892,78 @@
     "edge.cert.none": "なし: 証明書は取り込んだ設定にあります。",
     "edge.notConfigured": "未設定",
     "edge.unreachable": "接続できません",
+    // Issue 455: Den's address when another server holds its port.
+    "edgeAddr.busy.checkW": "__DEN_TITLE__ のアドレスを確認しています…",
+    "edgeAddr.busy.checkS": "確認しました",
+    "edgeAddr.busy.checkF": "確認が終わりませんでした。",
+    "edgeAddr.busy.takeW":
+      "__DEN_TITLE__ のプロキシのためにポートを引き継いでいます…",
+    "edgeAddr.busy.takeS": "__DEN_TITLE__ のプロキシを起動しました",
+    "edgeAddr.busy.takeF": "__DEN_TITLE__ のプロキシは起動しませんでした。",
+    "edgeAddr.banner.title": "今は __DEN_TITLE__ は {address} にあります。",
+    "edgeAddr.banner.held":
+      "ポート {port} は {owner}（{name}）が使っているため、{host} は {owner} に届きます。",
+    "edgeAddr.banner.heldBare":
+      "ポート {port} は {owner} が使っているため、{host} は {owner} に届きます。",
+    "edgeAddr.banner.unknown":
+      "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
+    "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",
+    "edgeAddr.banner.fix": "Edge で直す",
+    "edgeAddr.banner.dismiss": "閉じる",
+    "edgeAddr.card.title":
+      "__DEN_TITLE__ のプロキシは動いていません: ポート {port} は使用中です",
+    "edgeAddr.card.titleNone": "__DEN_TITLE__ のアドレスはまだ応答しません",
+    "edgeAddr.card.held":
+      "{owner}、{kind} {name} が使っています（__DEN_TITLE__ ではありません）。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.card.heldBare":
+      "{owner} が使っています（__DEN_TITLE__ ではありません）。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.card.unknown":
+      "__DEN_TITLE__ が特定できない何かが使っています。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.card.none":
+      "{wanted} ではまだ何も応答しません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.kind.container": "Docker コンテナ",
+    "edgeAddr.kind.process": "プロセス",
+    "edgeAddr.what": "どうしますか？",
+    "edgeAddr.opt.proxy": "そのプロキシに __DEN_TITLE__ を追加",
+    "edgeAddr.opt.free": "ポート {port} を空ける",
+    "edgeAddr.opt.takeOver": "引き継ぐ",
+    "edgeAddr.proxy.body":
+      "お使いのプロキシがポート {port} を担当したまま、{host} を __DEN_TITLE__ に送ります。__DEN_TITLE__ は他のプロジェクトを何も変更しません。プロキシの設定がある場所にこれを貼り付けてください。",
+    "edgeAddr.proxy.kinds": "プロキシ",
+    "edgeAddr.copy": "コピー",
+    "edgeAddr.copied": "コピーしました",
+    "edgeAddr.proxy.after":
+      "そのプロキシを再読み込みすると、__DEN_TITLE__ は {wanted} が __DEN_TITLE__ に届くことを確認し、リンクをそのアドレスに切り替えます。__DEN_TITLE__ 自身のプロキシは止めたままです（edge.publish: false、設定済み）。",
+    "edgeAddr.check": "もう一度確認",
+    "edgeAddr.checking": "確認中…",
+    "edgeAddr.check.still": "まだです: まだ {owner} として応答しています。",
+    "edgeAddr.check.stillUnknown":
+      "まだです: まだ __DEN_TITLE__ ではありません。",
+    "edgeAddr.check.done":
+      "完了しました。__DEN_TITLE__ は今 {wanted} にあります。",
+    "edgeAddr.check.failed": "確認が終わりませんでした: {error}",
+    "edgeAddr.free.container":
+      "Docker でコンテナ {name} を止めるか、ポート {port} から移してください。それから「もう一度確認」を押すと、__DEN_TITLE__ が自身のプロキシを起動します。",
+    "edgeAddr.free.process":
+      "{owner}（プロセス {name}）を止めるか、ポート {port} から移してください。それから「もう一度確認」を押すと、__DEN_TITLE__ が自身のプロキシを起動します。",
+    "edgeAddr.free.unknown":
+      "ポート {port} を使っているものを止めるか、そのポートから移してください。それから「もう一度確認」を押すと、__DEN_TITLE__ が自身のプロキシを起動します。",
+    "edgeAddr.free.takeOver":
+      "古い __DEN_TITLE__ のプロキシ（{name}）です。「引き継ぐ」でそれを止め、__DEN_TITLE__ 自身のものを起動します。",
+    "edgeAddr.now": "現在",
+    "edgeAddr.k.container": "コンテナ",
+    "edgeAddr.k.ports": "ポート",
+    "edgeAddr.k.address": "__DEN_TITLE__ のアドレス",
+    "edgeAddr.k.wanted": "使いたいアドレス",
+    "edgeAddr.container.notCreated": "未作成",
+    "edgeAddr.port.heldBy": "{port} は {owner} が使用中",
+    "edgeAddr.port.held": "{port} は使用中",
+    "edgeAddr.port.free": "{port} は空き",
+    "edgeAddr.checked.den": "確認済み: この __DEN_TITLE__",
+    "edgeAddr.checked.notDen": "__DEN_TITLE__ ではありません",
+    "edgeAddr.answers.as": "{owner} として応答",
+    "edgeAddr.answers.notDen": "__DEN_TITLE__ ではありません",
+    "edgeAddr.answers.nothing": "応答なし",
     // issue 171: values the pages show (value-words.js, log-history.ts).
     "val.docker.created": "作成済み",
     "val.docker.running": "実行中",

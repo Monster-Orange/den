@@ -439,10 +439,16 @@ describe("the package ships every kit file", () => {
   });
 
   it("Den serves each one at /kit/ (KIT_FILES)", () => {
+    // den-ui 0.7.5: the Markdown editor is for a host's bundler only (it
+    // imports CodeMirror by package name), and Den's own pages never load
+    // it: never served (markdown-editor-kit.test.ts checks it is not).
+    const bundlerOnly = ["markdown-editor.js", "markdown-editor.css"];
     const src = fs
       .readdirSync(path.join(PKG, "src"))
-      .filter((f) => /\.(js|css)$/.test(f));
+      .filter((f) => /\.(js|css)$/.test(f) && !bundlerOnly.includes(f));
     for (const f of src) expect([f, KIT_FILES.includes(f)]).toEqual([f, true]);
+    for (const f of bundlerOnly)
+      expect(fs.existsSync(path.join(PKG, "src", f))).toBe(true);
   });
   it("packs src/ and bin/, with den-ui-parity as its bin", () => {
     expect(pkg.version).toMatch(/^0\.7\.\d+$/);
