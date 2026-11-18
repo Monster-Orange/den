@@ -185,7 +185,8 @@ export function mergeShellPrefs(
   for (const key of Object.keys(patch)) {
     // null clears a pref back to its default (0.3.0-dev.32): the stored
     // block drops it, so set-then-clear leaves user.yml as it was.
-    if (patch[key] === null && key in SHELL_DEFAULTS) {
+    // Own keys only: `in` is true for inherited names (constructor, toString).
+    if (patch[key] === null && Object.hasOwn(SHELL_DEFAULTS, key)) {
       const d = SHELL_DEFAULTS[key as keyof ShellPrefs];
       (out as unknown as Record<string, unknown>)[key] = Array.isArray(d)
         ? []
@@ -245,11 +246,38 @@ export type ShellStamps = Partial<Record<keyof ShellPrefs, number>>;
 const isStamp = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v >= 0;
 
-function storedStamps(stored: unknown): ShellStamps {
+/**
+ * POST /api/settings/shell's body cap. The largest valid shell block (24
+ * pins, 64 page ids twice, 1,000 project names) is under 100 KB.
+ */
+export const SHELL_SAVE_MAX_BYTES = 256 * 1024;
+
+/** How far ahead of the server's clock a save's changedAt may be (5 min). */
+export const SHELL_SAVE_SKEW_SECONDS = 300;
+/** web.shell_save_skew_seconds' range, in seconds. */
+export const SHELL_SAVE_SKEW_RANGE = { min: 0, max: 86_400 } as const;
+
+/** When the save is judged: the server's now, and the allowance ahead of it. */
+export interface ShellSaveClock {
+  now?: number;
+  skewMs?: number;
+}
+
+/**
+ * The stored stamps, own known keys only. A stamp later than the latest a
+ * save may carry (a clock far ahead, or a hand-made save) counts as now,
+ * so it can't hold a key against every later save.
+ */
+function storedStamps(
+  stored: unknown,
+  latest: number,
+  now: number,
+): ShellStamps {
   const out: ShellStamps = {};
   if (!isObject(stored) || !isObject(stored.changedAt)) return out;
   for (const [k, v] of Object.entries(stored.changedAt))
-    if (k in SHELL_DEFAULTS && isStamp(v)) out[k as keyof ShellPrefs] = v;
+    if (Object.hasOwn(SHELL_DEFAULTS, k) && isStamp(v))
+      out[k as keyof ShellPrefs] = v > latest ? now : v;
   return out;
 }
 
@@ -260,10 +288,15 @@ function storedStamps(stored: unknown): ShellStamps {
  * they are (`ignored`); the rest merge as mergeShellPrefs does and take
  * the save's stamp. A save with no changedAt (a page from before) applies
  * and clears the stamps of its keys. Any bad field fails the whole save.
+ *
+ * A changedAt later than the server's now plus the allowance (clock.skewMs,
+ * web.shell_save_skew_seconds) is taken as now: a far-future stamp would
+ * otherwise make every later save "ignored" while answering ok.
  */
 export function applyShellSave(
   stored: unknown,
   patch: unknown,
+  clock: ShellSaveClock = {},
 ):
   | {
       ok: true;
@@ -278,22 +311,26 @@ export function applyShellSave(
       ok: false,
       error: "shell.changedAt must be a time in ms (a number, 0 or more)",
     };
+  const now = clock.now ?? Date.now();
+  const latest = now + (clock.skewMs ?? SHELL_SAVE_SKEW_SECONDS * 1000);
+  const at =
+    changedAt === undefined ? undefined : changedAt > latest ? now : changedAt;
   const current = shellPrefs(stored);
   // Every field is checked, the ignored ones too.
   const all = mergeShellPrefs(current, fields);
   if (!all.ok) return all;
-  const stamps = storedStamps(stored);
+  const stamps = storedStamps(stored, latest, now);
   const kept: Record<string, unknown> = {};
   const ignored: string[] = [];
   for (const k of Object.keys(fields)) {
     const key = k as keyof ShellPrefs;
     const was = stamps[key];
-    if (changedAt === undefined) {
+    if (at === undefined) {
       delete stamps[key];
       kept[k] = fields[k];
-    } else if (was !== undefined && was > changedAt) ignored.push(k);
+    } else if (was !== undefined && was > at) ignored.push(k);
     else {
-      stamps[key] = changedAt;
+      stamps[key] = at;
       kept[k] = fields[k];
     }
   }

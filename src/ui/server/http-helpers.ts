@@ -41,13 +41,39 @@ function mime(filePath: string): string {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-export function readBody(req: http.IncomingMessage): Promise<string> {
+/** readBody's error when a body is over its maxBytes. */
+export class BodyTooLarge extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`the body is over ${maxBytes} bytes`);
+  }
+}
+
+/**
+ * The request's body as text. With maxBytes, a longer body stops being
+ * kept at that size (the rest is read and dropped, so the answer still
+ * reaches the client) and the promise rejects with BodyTooLarge.
+ */
+export function readBody(
+  req: http.IncomingMessage,
+  maxBytes?: number,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
+    let bytes = 0;
+    let over = false;
     req.on("data", (chunk: Buffer) => {
+      if (over) return;
+      bytes += chunk.length;
+      if (maxBytes !== undefined && bytes > maxBytes) {
+        over = true;
+        body = "";
+        return;
+      }
       body += chunk.toString();
     });
-    req.on("end", () => resolve(body));
+    req.on("end", () =>
+      over ? reject(new BodyTooLarge(maxBytes!)) : resolve(body),
+    );
     req.on("error", reject);
   });
 }

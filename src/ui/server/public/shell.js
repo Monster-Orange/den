@@ -1845,6 +1845,9 @@
     "set.server.ready_probe": "Readiness check, in seconds",
     "set.server.ready_probe.d":
       "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.shell_save_skew": "Rail save clock allowance, in seconds",
+    "set.server.shell_save_skew.d":
+      "How far ahead of this machine's clock a rail change's time may be. A device whose clock runs further ahead has its change counted as made now, so it can't block later changes. __DEN_CLI__ config web.shell_save_skew_seconds=300",
     "set.server.start_wait": "Start wait, in seconds",
     "set.server.start_wait.d":
       "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",

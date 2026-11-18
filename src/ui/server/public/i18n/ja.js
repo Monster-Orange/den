@@ -860,6 +860,9 @@
     "set.server.start_wait": "起動の待ち時間 (秒)",
     "set.server.start_wait.d":
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
+    "set.server.shell_save_skew": "サイドバー保存の時計のずれの許容 (秒)",
+    "set.server.shell_save_skew.d":
+      "サイドバーの変更の時刻が、このマシンの時計よりどこまで先でもよいかです。時計がそれ以上進んでいるデバイスの変更は今行われたものとして数えるので、後の変更を妨げることはありません。__DEN_CLI__ config web.shell_save_skew_seconds=300",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
       "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",

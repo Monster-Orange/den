@@ -451,7 +451,13 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
-import { applyShellSave, shellPrefs } from "./shell-prefs.js";
+import {
+  applyShellSave,
+  SHELL_SAVE_MAX_BYTES,
+  SHELL_SAVE_SKEW_SECONDS,
+  type ShellSaveClock,
+  shellPrefs,
+} from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
   appearancePrefs,
@@ -919,6 +925,21 @@ const STATIC_EXTS = new Set([
   ".woff2",
 ]);
 
+/**
+ * Issue 394: the clock a shell save is checked against. The setting
+ * web.shell_save_skew_seconds (default 300) is how far ahead of this
+ * clock a save's changedAt may be.
+ */
+function shellSaveClock(user: { web?: unknown }): ShellSaveClock {
+  const w = (user.web ?? {}) as Record<string, unknown>;
+  const s = w.shell_save_skew_seconds;
+  const seconds =
+    typeof s === "number" && Number.isFinite(s) && s >= 0
+      ? s
+      : SHELL_SAVE_SKEW_SECONDS;
+  return { skewMs: seconds * 1000 };
+}
+
 /** Every workspace's checkouts (active or not), for repoAtPath. */
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
@@ -1000,6 +1021,7 @@ let sudoInVault = false;
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
+  BodyTooLarge,
   readBody,
   sendJson,
   serveFile,
@@ -6678,8 +6700,10 @@ async function handleRequest(
   if (pathname === "/api/settings/shell" && req.method === "POST") {
     let body: unknown;
     try {
-      body = JSON.parse(await readBody(req));
-    } catch {
+      body = JSON.parse(await readBody(req, SHELL_SAVE_MAX_BYTES));
+    } catch (e) {
+      if (e instanceof BodyTooLarge)
+        return sendJson(res, { ok: false, error: e.message }, 413);
       return send400(res, "the body must be JSON: { shell: { ... } }");
     }
     if (
@@ -6690,7 +6714,11 @@ async function handleRequest(
     )
       return send400(res, "only { shell: { ... } } is saved here");
     const user = readUserConfig();
-    const sh = applyShellSave(user.shell, (body as { shell: unknown }).shell);
+    const sh = applyShellSave(
+      user.shell,
+      (body as { shell: unknown }).shell,
+      shellSaveClock(user),
+    );
     if (!sh.ok) return send400(res, sh.error);
     if (sh.value) user.shell = sh.value;
     else delete user.shell;
@@ -6767,6 +6795,8 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // Issue 394: how far ahead of this clock a rail save's time may be.
+        shell_save: { skewSeconds: (shellSaveClock(user).skewMs ?? 0) / 1000 },
         // den#143: how long `web up` waits for the server.
         web_ready: (() => {
           try {
@@ -6880,6 +6910,7 @@ async function handleRequest(
           crash_loop?: unknown;
           web_bridge?: unknown;
           web_ready?: unknown;
+          shell_save?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
@@ -6914,6 +6945,7 @@ async function handleRequest(
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
             web_ready: body.web_ready,
+            shell_save: body.shell_save,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
             feedback: body.feedback,
@@ -7049,7 +7081,11 @@ async function handleRequest(
         if (body.shell === null) delete user.shell;
         else if (body.shell !== undefined) {
           // Issue 394: the newer save of each key is kept (changedAt).
-          const sh = applyShellSave(user.shell, body.shell);
+          const sh = applyShellSave(
+            user.shell,
+            body.shell,
+            shellSaveClock(user),
+          );
           if (!sh.ok) return send400(res, sh.error);
           if (sh.value) user.shell = sh.value;
           else delete user.shell;
