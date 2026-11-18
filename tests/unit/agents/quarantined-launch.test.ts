@@ -10,8 +10,11 @@
  *      the attribute itself.
  *   2. An agent's start (the CLI, or MCP through the routes) gets the same
  *      refusal as a clear error, with no retry.
- *   3. The Start dialog says so before Start: the path, "Use this" for
- *      each other copy that can run, and open its folder.
+ *   3. The Start dialog says so before Start: the path (selectable, and
+ *      Copy path, for a browser on another machine), "Use this" for each
+ *      other copy that can run. Nothing opens a folder on the Den machine.
+ *   4. A row's resume that is refused offers one way on: Settings ›
+ *      Agents › Runtimes, at that runtime's row.
  *
  * The quarantine is read by a fake reader (setQuarantineReader): no test
  * runs this machine's xattr or a vendor's CLI.
@@ -44,8 +47,11 @@ import { callTool } from "../../../src/ui/mcp/tools.js";
 import { DenHttpError, type DenApi } from "../../../src/ui/mcp/api.js";
 import {
   quarantinedHtml,
+  quarantineNext,
   readiness,
+  runtimeSettingsUrl,
 } from "../../../src/ui/server/public/agent-start.js";
+import { runtimeFocusFrom } from "../../../src/ui/server/public/settings-registry.js";
 import {
   CLAUDE_SHIM,
   cleanupRigs,
@@ -334,7 +340,7 @@ describe("issue 479 (1): the Start dialog says so before Start", () => {
       { path: "/opt/c/claude", source: "well-known", quarantined: true },
     ],
   };
-  it("quarantinedHtml: why, the path, Use this for a copy that runs, and open its folder", () => {
+  it("quarantinedHtml: why, the path (selectable, Copy path), Use this for a copy that runs; no Open its folder", () => {
     const html = quarantinedHtml(q, t);
     expect(html).toContain("ag.rt.quarantined Claude Code");
     expect(html).toContain("/opt/a/claude");
@@ -343,8 +349,14 @@ describe("issue 479 (1): the Start dialog says so before Start", () => {
     expect(html).toContain('data-q-scope="global"');
     expect(html).not.toContain('data-bin="/opt/c/claude"');
     expect(html).toContain("set.ui.rt.useThis");
-    expect(html).toContain('data-q-open="/opt/a"');
-    expect(html).toContain("ag.rt.openFolder");
+    // A browser on another machine: the path to copy, never a folder
+    // opened on the Den machine.
+    expect(html).toContain('data-q-copy="/opt/a/claude"');
+    expect(html).toContain("ag.rt.copyPath");
+    expect(html).toMatch(/class="[^"]*ag-q-path[^"]*"[^>]*>\/opt\/a\/claude</);
+    expect(html).toContain("user-select:all");
+    expect(html).not.toContain("data-q-open");
+    expect(html).not.toContain("ag.rt.openFolder");
     expect(html).toContain("ag.rt.clearSelf");
     expect(html).toContain("data-q-again");
   });
@@ -371,6 +383,55 @@ describe("issue 479 (1): the Start dialog says so before Start", () => {
     expect(r.tone).toBe("warn");
     expect(r.html).toContain("/opt/a/claude");
     expect(r.html).toContain('data-bin="/opt/b/claude"');
-    expect(r.html).toContain('data-q-open="/opt/a"');
+    expect(r.html).toContain('data-q-copy="/opt/a/claude"');
+    expect(r.html).not.toContain("data-q-open");
+  });
+});
+
+describe("issue 479 (1): a refused resume is not a dead end", () => {
+  const q = {
+    runtime: "den-claude",
+    name: "Claude Code",
+    path: "/opt/a/claude",
+    dir: "/opt/a",
+    scope: "global",
+    setting: "agents.runtimes.den-claude.bin",
+    others: [],
+  };
+  it("runtimeSettingsUrl: Settings › Agents › Runtimes at that runtime's row (and its project, for a project's pin)", () => {
+    expect(runtimeSettingsUrl(q)).toBe(
+      "/settings?runtime=den-claude#agents.runtimes",
+    );
+    expect(runtimeSettingsUrl({ ...q, scope: "workspace" }, "north")).toBe(
+      "/settings?runtime=den-claude&project=north#agents.runtimes",
+    );
+  });
+
+  it("quarantineNext: the one action a refused row resume offers; none for another refusal", () => {
+    const err = Object.assign(new Error("den-claude can't start"), {
+      code: "runtime_quarantined",
+      data: { code: "runtime_quarantined", quarantined: q },
+    });
+    expect(quarantineNext(err, t)).toEqual({
+      label: "ag.rt.openRuntimes",
+      href: "/settings?runtime=den-claude#agents.runtimes",
+    });
+    expect(quarantineNext(new Error("other"), t)).toBeNull();
+  });
+
+  it("runtimeFocusFrom: Settings reads the row (and the project, when it is one) from its URL", () => {
+    expect(runtimeFocusFrom("?runtime=den-claude", ["north"])).toEqual({
+      runtime: "den-claude",
+      ws: "",
+    });
+    expect(runtimeFocusFrom("?runtime=codex&project=north", ["north"])).toEqual(
+      { runtime: "codex", ws: "north" },
+    );
+    // A project that isn't one: every project.
+    expect(runtimeFocusFrom("?runtime=codex&project=gone", ["north"])).toEqual({
+      runtime: "codex",
+      ws: "",
+    });
+    expect(runtimeFocusFrom("", ["north"])).toEqual({ runtime: "", ws: "" });
   });
 });
