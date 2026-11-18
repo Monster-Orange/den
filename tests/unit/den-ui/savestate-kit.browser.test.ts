@@ -80,7 +80,10 @@ async function open(
     locale: o.lang ?? "en",
   });
   const p = await ctx.newPage();
+  // Installed and paused: the page's time moves only by runFor, never with the runner's own time,
+  // so a loaded CI machine can't push a timer past its threshold (issue 467, CI run 44380749538).
   await p.clock.install({ time: new Date("2026-11-18T10:42:00Z") });
+  await p.clock.pauseAt(new Date("2026-11-18T10:42:00Z"));
   await p.route(`${ORIGIN}/**`, async (r: Route) => {
     const u = new URL(r.request().url());
     if (u.pathname === "/")
@@ -183,6 +186,8 @@ describe("savestate in a browser", () => {
     const p = await open();
     await setPlan(p, [{ ms: 1000, ok: true }]);
     await type(p, "a");
+    // Real time passing (a loaded runner) must not move the page's paused clock.
+    await new Promise((r) => setTimeout(r, 150));
     await p.clock.runFor(800 + 399);
     expect(await state(p)).toBe("idle");
     await p.clock.runFor(1);
