@@ -142,6 +142,7 @@ syncPinToggles }`.
     DenUI.update.set({ version });    // the update pill; .hide()
     DenUI.report.open({ prefill });   // ⌘⇧F and any [data-den-report] too
     DenUI.busy.run(action, run, opts) // the working pop-up (busy.js)
+    DenUI.saveState(el, { save, copyText, watch }) // save-state line
 
 ### The adapter
 
@@ -440,6 +441,38 @@ never converted to HTML and back).
   strict `style-src`, pass the page's `nonce`.
 - The content element has `data-md-dirty` while it holds unsaved text
   (for an update pill's `askFirst`).
+
+## The save-state line (`den-savestate`)
+
+- `src/savestate.js`, `src/savestate.css` (exports `./savestate`,
+  `./savestate.css`): what an autosaving editor says about its text. It
+  works with any input, textarea or editor; the host gives the save.
+
+      const line = createSaveState(document.querySelector("#save-line"), {
+        save: () => api.saveDraft(field.value),   // rejects on failure
+        copyText: () => `${title.value}\n\n${field.value}`,
+        watch: field,     // input → changed(), focusout → flush()
+      });
+      // line.changed(), line.flush(), line.retry(), line.state(), line.destroy()
+
+- The element becomes `<p class="den-savestate">` with `role="status"`,
+  `aria-live="off"` and `data-state` (`idle`, `saving`, `saved`,
+  `error`): a 6 px dot, then the words, 13 px on a 20 px line (idle is
+  empty and keeps its height).
+- It saves 800 ms after the last change, and at once on blur and when the
+  page goes hidden. "Saving…" shows only when a save takes more than
+  400 ms; "Saved" (title "Saved at {time}", from `time.js`) stays until the
+  next save. A failure shows "Not saved. Retrying…" with Copy text (what
+  `copyText()` returns), retries at 2 s, 4 s and 8 s, then every 30 s, and
+  at once when the browser is back online.
+- A visually hidden polite region beside the line says only the error and
+  its recovery; `aria-live="off"` keeps the routine "Saved" quiet.
+- Only the dot's colour moves, over `--dur-fast`; none under reduced
+  motion. Its words are `kit.savestate.*` in `strings.js` (en, es, ja).
+- `saveScheduler({ save, onChange })` is the same timing with no DOM.
+- Link `savestate.css` in the page's `<head>`. Without that, savestate.js
+  links it from `opts.css`, else from beside another kit stylesheet on the
+  page.
 
 ## 0.7.1
 
