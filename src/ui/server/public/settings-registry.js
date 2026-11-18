@@ -2715,7 +2715,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Shell PATH wait",
     description:
-      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH your terminal has, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     keywords: ["timeout", "shell", "path", "zshrc", "cli", "runtime", "wait"],
     scope: "user",
     keys: ["agents_shell.path_timeout_seconds"],
