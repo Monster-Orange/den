@@ -29,7 +29,7 @@ Hub answers with `X-Hub-Version`, `X-Hub-Protocol` and `X-Hub-Compat` (`ok`, `de
 ```
 docs/hub-contract/
   README.md
-  den-<exact semver>/
+  den-<major.minor.patch>/
     manifest.json
     <call>.request.json
   hub-<exact semver>/      Hub's response fixtures, by pull request
@@ -60,9 +60,11 @@ docs/hub-contract/
 ```
 
 - `path` is the path and query on Hub. A `:name` segment stands for a value, such as `:id`.
-- `headers` holds every header Den sets, sorted by name. The three handshake headers carry the exact values for that version.
+- `headers` holds every header Den sets, sorted by name. The three handshake headers carry the values from the export, the exact version included.
 - `body` is the JSON body, or `null` when there is none.
 - `body_schema` is optional. When present, it is a JSON Schema (2020-12) for the body.
+
+A Den folder is named for the version without its pre-release or build part. Versions `0.4.71-dev.1`, `0.4.71-dev.3` and `0.4.71` all use `den-0.4.71/`, so a dev bump needs no new export. Inside the folder, `manifest.den_version` and the `X-Den-Version` header keep the exact version the export ran at.
 
 ## Placeholders
 
@@ -101,12 +103,12 @@ Connect's first step (`/connect/authorize`) is a browser navigation to Hub, so D
 
 ## How the folder is made
 
-`npm run hub-contract:export` runs `scripts/hub-contract-export.mjs`. The script builds each request with the same code that sends it: it calls Den's real functions with placeholder inputs and a fetch that records the request instead of sending it. Then it writes `den-<version>/`. Nobody writes these files by hand.
+`npm run hub-contract:export` runs `scripts/hub-contract-export.mjs`. The script builds each request with the same code that sends it: it calls Den's real functions with placeholder inputs and a fetch that records the request instead of sending it. Then it writes `den-<major.minor.patch>/`. Nobody writes these files by hand.
 
 - The export keeps three versions per side: the newest three `den-*` folders. It removes older ones.
-- `tests/unit/shared/hub-contract.test.ts` builds the requests again and compares them with the folder for the version in `package.json`. The test fails when a request changes without a new export. Run the export and commit the folder with the change.
-- A release changes the version in `package.json`, so the release commit runs the export.
+- `tests/unit/shared/hub-contract.test.ts` builds the requests again and compares their shapes with the folder for the version in `package.json`. It compares methods, paths, bodies and header names and values. It checks `X-Den-Version` and `manifest.den_version` only by their format, so a folder exported at one dev version still holds after the next dev bump. The test fails when a request changes without a new export. Run the export and commit the folder with the change.
+- A dev bump keeps the same folder. A new patch, minor or major version needs a new folder, so the release commit runs the export.
 
 ## Hub's folders
 
-Hub's response fixtures arrive by pull request to this repository, in `hub-<exact semver>/` folders. They follow the same rules: shapes only, the same placeholders, and three versions kept.
+Hub's response fixtures arrive by pull request to this repository, in `hub-<major.minor.patch>/` folders. They follow the same rules: shapes only, the same placeholders, and three versions kept.

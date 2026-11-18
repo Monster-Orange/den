@@ -16,6 +16,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildHubContract,
+  contractFolderName,
   writeHubContract,
 } from "../src/shared/hub-contract.ts";
 
@@ -28,6 +29,6 @@ const root = path.join(
 const c = await buildHubContract();
 const gone = writeHubContract(root, c);
 console.log(
-  `hub-contract: wrote den-${c.manifest.den_version} (${Object.keys(c.requests).length} requests)` +
+  `hub-contract: wrote ${contractFolderName(c.manifest.den_version)} for ${c.manifest.den_version} (${Object.keys(c.requests).length} requests)` +
     (gone.length ? `; removed ${gone.join(", ")}` : ""),
 );

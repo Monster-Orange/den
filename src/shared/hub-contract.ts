@@ -265,6 +265,18 @@ export function readContractFolder(dir: string): {
   return { manifest, requests };
 }
 
+/** A semver, pre-release and build parts allowed. */
+const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+/**
+ * The folder for Den version `v`: den-<major.minor.patch>, with any
+ * pre-release or build part dropped (0.4.71-dev.3 → den-0.4.71), so a
+ * dev bump compares against the same folder.
+ */
+export function contractFolderName(v: string): string {
+  return `den-${v.split("+")[0].split("-")[0]}`;
+}
+
 /** JSON with object keys sorted, for an order-free compare. */
 function canon(v: unknown): string {
   return JSON.stringify(v, (_k, x: unknown) =>
@@ -279,8 +291,30 @@ function canon(v: unknown): string {
 }
 
 /**
+ * How a folder's headers differ from the code's, or null: by name, and by
+ * value except X-Den-Version, which is checked by format only.
+ */
+function headerProblem(f: unknown, b: Record<string, string>): string | null {
+  if (!f || typeof f !== "object" || Array.isArray(f)) return "not an object";
+  const fh = f as Record<string, unknown>;
+  const names = Object.keys(fh).sort();
+  if (canon(names) !== canon(Object.keys(b).sort()))
+    return "header names differ from the code";
+  for (const n of names) {
+    if (n.toLowerCase() === "x-den-version") {
+      if (typeof fh[n] !== "string" || !SEMVER.test(fh[n] as string))
+        return "X-Den-Version is not a version";
+    } else if (fh[n] !== b[n]) return `${n} differs from the code`;
+  }
+  return null;
+}
+
+/**
  * Where the code and a folder disagree, one line each; empty when they
- * match. exported_at is the only field not compared.
+ * match. Shapes only: the exact Den version (X-Den-Version, the
+ * manifest's den_version) is checked by format, never by value, so a
+ * folder exported at one dev version holds for the next (the caller picks
+ * the folder: contractFolderName), and exported_at not at all.
  */
 export function contractDrift(
   built: HubContract,
@@ -288,17 +322,16 @@ export function contractDrift(
 ): string[] {
   const out: string[] = [];
   if (!folder.manifest) out.push("manifest.json: missing");
-  else
-    for (const k of [
-      "den_version",
-      "protocol",
-      "capabilities",
-      "generator",
-    ] as const)
+  else {
+    const dv = folder.manifest.den_version;
+    if (typeof dv !== "string" || !SEMVER.test(dv))
+      out.push(`manifest.json: den_version is ${canon(dv)}, not a version`);
+    for (const k of ["protocol", "capabilities", "generator"] as const)
       if (canon(folder.manifest[k]) !== canon(built.manifest[k]))
         out.push(
           `manifest.json: ${k} is ${canon(folder.manifest[k])}, the code says ${canon(built.manifest[k])}`,
         );
+  }
   const names = new Set([
     ...Object.keys(built.requests),
     ...Object.keys(folder.requests),
@@ -319,7 +352,10 @@ export function contractDrift(
       ] as const) {
         const fv = (f as Record<string, unknown>)[k];
         const bv = (b as unknown as Record<string, unknown>)[k];
-        if (canon(fv) !== canon(bv))
+        if (k === "headers") {
+          const why = headerProblem(fv, bv as Record<string, string>);
+          if (why) out.push(`${n}: headers: ${why}`);
+        } else if (canon(fv) !== canon(bv))
           out.push(`${n}: ${k} differs from the code`);
       }
   }
@@ -358,11 +394,12 @@ export function compareSemver(a: string, b: string): number {
 const json = (v: unknown) => `${JSON.stringify(v, null, 2)}\n`;
 
 /**
- * Write `c` to <root>/den-<version>/ (its old files replaced), then keep
+ * Write `c` to <root>/den-<release>/ (contractFolderName; its old files
+ * replaced, its den_version the exact one), then keep
  * only the newest HUB_CONTRACT_KEEP den-* folders. The folders it removed.
  */
 export function writeHubContract(root: string, c: HubContract): string[] {
-  const dir = path.join(root, `den-${c.manifest.den_version}`);
+  const dir = path.join(root, contractFolderName(c.manifest.den_version));
   fs.mkdirSync(dir, { recursive: true });
   for (const f of fs.readdirSync(dir))
     if (f.endsWith(".json")) fs.rmSync(path.join(dir, f));

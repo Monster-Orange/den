@@ -70,10 +70,10 @@ describe("Hub contract fixtures (issue 521)", () => {
     ).den_version as string;
     for (const v of [exported, "0.4.71-dev.1", "0.4.71-dev.3", "0.4.71"]) {
       const dir = folderAt(v, "0.4.71");
+      // Den at 0.4.71-dev.1 reads this folder.
+      expect(path.basename(dir)).toBe(contractFolderName("0.4.71-dev.1"));
       try {
-        expect(
-          contractDrift(built, readContractFolder(dir), "0.4.71-dev.1"),
-        ).toEqual([]);
+        expect(contractDrift(built, readContractFolder(dir))).toEqual([]);
       } finally {
         fs.rmSync(path.dirname(dir), { recursive: true, force: true });
       }
@@ -84,7 +84,7 @@ describe("Hub contract fixtures (issue 521)", () => {
     const built = await buildHubContract();
     const bad = folderAt("not-a-version", "0.4.71");
     try {
-      const d = contractDrift(built, readContractFolder(bad), "0.4.71-dev.1");
+      const d = contractDrift(built, readContractFolder(bad));
       expect(d.join("\n")).toContain("X-Den-Version");
       expect(d.join("\n")).toContain("den_version");
     } finally {
