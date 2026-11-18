@@ -71,12 +71,24 @@ async function api(p, init) {
   return response(200, {});
 }
 
-/** What a Settings page in the bed's language shows, as the check reads it. */
+/**
+ * The cell's loaded document: its address and the language the server drew it
+ * in. As in Chromium, a goto to the address already loaded (a #fragment only)
+ * keeps the document: the page stays in the language it was drawn in until a
+ * reload or a different address.
+ */
+let doc = { url: null, lang: null };
+function load(url) {
+  if (url !== doc.url) doc = { url, lang: language };
+}
+
+/** What the loaded Settings page shows, as the check reads it. */
 function snapshot(arg) {
   if (sc.throwIn && language === sc.throwIn)
     throw new Error(`page read failed in ${language}`);
+  const shown = doc.lang ?? language;
   const labels =
-    sc.englishIn === language ? LABELS.en : (LABELS[language] ?? LABELS.en);
+    sc.englishIn === shown ? LABELS.en : (LABELS[shown] ?? LABELS.en);
   const rows = Object.keys(BOUNDS).map((id) => ({
     id,
     shown: true,
@@ -86,12 +98,12 @@ function snapshot(arg) {
     label: labels[id],
   }));
   const chores =
-    sc.choresIn === language ? ["cli.signin: …ejecuta den login"] : [];
+    sc.choresIn === shown ? ["cli.signin: …ejecuta den login"] : [];
   // One answer for either check's read: 367 passes the row ids and reads
   // rows, 393 passes nothing and reads chores; both read lang. (A check
   // from before the language clause read the bare array.)
   const base = Array.isArray(arg) ? [...rows] : [...chores];
-  return Object.assign(base, { lang: language, rows, chores });
+  return Object.assign(base, { lang: shown, rows, chores });
 }
 
 const locator = (sel) => ({
@@ -113,6 +125,19 @@ const page = {
   async evaluate(_fn, arg) {
     return snapshot(arg);
   },
+  async goto(url) {
+    load(String(url));
+  },
+  async reload() {
+    doc = { ...doc, lang: language };
+  },
+  // Only the wait a check does for the page's language: (l) => document.documentElement.lang === l.
+  async waitForFunction(_fn, arg) {
+    if ((doc.lang ?? language) !== arg)
+      throw new Error(
+        `waitForFunction: timed out (the page is in ${doc.lang})`,
+      );
+  },
   locator,
 };
 
@@ -126,7 +151,7 @@ const base = {
     out: "  push ✓ push services are given https://bed.invalid as the contact\n",
     err: "",
   }),
-  goto: async () => {},
+  goto: async (_page, p) => load(String(p)),
   sleep: async () => {},
   shot: async () => {},
   evidence: (n) => n,
@@ -136,6 +161,8 @@ try {
   state = await mod.setup({ ...base });
   for (const browser of mod.matrix?.browsers ?? ["chromium"])
     for (const width of mod.matrix?.widths ?? [1280]) {
+      // Each cell has its own page: nothing loaded yet.
+      doc = { url: null, lang: null };
       const ctx = { ...base, page, browser, width };
       cells.push({
         cell: { browser, width },

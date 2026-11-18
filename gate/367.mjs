@@ -42,9 +42,23 @@ export async function setup(ctx) {
   return { push: line };
 }
 
-/** The push rows as the page draws them: each row's label and number, and the page's language. */
-async function readRows(ctx) {
+/**
+ * The page drawn again in language `l`, as a person's switch does (it reloads after its POST). A goto
+ * to the address already loaded (only the #fragment) keeps the old document in Chromium.
+ */
+async function drawnIn(ctx, l) {
+  await ctx.page.reload();
+  await ctx.page
+    .waitForFunction((want) => document.documentElement.lang === want, l, {
+      timeout: 15000,
+    })
+    .catch(() => {});
+}
+
+/** The push rows as the page draws them in `l`: each row's label and number, and the page's language. */
+async function readRows(ctx, l) {
   await ctx.goto(ctx.page, "/settings#notifications");
+  await drawnIn(ctx, l);
   await ctx.page
     .waitForSelector(".set-row[data-setting]", { timeout: 15000 })
     .catch(() => {});
@@ -84,7 +98,7 @@ export async function run(ctx, s) {
         throw new Error(
           `the language switch to ${l} was refused (${set.status})`,
         );
-      const seen = await readRows(ctx);
+      const seen = await readRows(ctx, l);
       by[l] = { lang: seen.lang, rows: seen.rows };
       await ctx.page
         .locator('.set-row[data-setting="notifications.push_timeout"]')

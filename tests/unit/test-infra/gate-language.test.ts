@@ -59,6 +59,17 @@ describe("live checks: the en/es/ja clause", () => {
         expect(o.final).toBe("es");
       });
 
+      // The bed run at 292ccf42, Chromium: a goto to the same address (only the
+      // #fragment) keeps the en document, so es and ja read "en".
+      it("reads es and ja from a page drawn in that language, not the en one still loaded", () => {
+        const o = onBed(gate, { start: "en" });
+        expect(o.error).toBeNull();
+        expect(langRow(o)).toMatchObject({ ok: true });
+        expect(JSON.stringify(langRow(o))).not.toContain(
+          'the page is in \\"en\\"',
+        );
+      });
+
       it("puts the language back when a read throws", () => {
         const o = onBed(gate, { start: "ja", throwIn: "es" });
         expect(o.error).toMatch(/page read failed in es/);

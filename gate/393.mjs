@@ -49,10 +49,24 @@ export async function setup() {
   return {};
 }
 
-/** The signed-in Settings page (the cell's own page) in the bed's current language. */
-async function read(ctx, shot) {
+/**
+ * The page drawn again in language `l`, as a person's switch does (it reloads after its POST). A goto
+ * to the address already loaded (only the #fragment) keeps the old document in Chromium.
+ */
+async function drawnIn(ctx, l) {
+  await ctx.page.reload();
+  await ctx.page
+    .waitForFunction((want) => document.documentElement.lang === want, l, {
+      timeout: 15000,
+    })
+    .catch(() => {});
+}
+
+/** The signed-in Settings page (the cell's own page), drawn in language `l`. */
+async function read(ctx, l, shot) {
   const r = {};
   await ctx.goto(ctx.page, "/settings#cli");
+  await drawnIn(ctx, l);
   await ctx.page
     .locator("#set-signout, #set-signin")
     .first()
@@ -87,7 +101,7 @@ export async function run(ctx) {
         throw new Error(
           `the language switch to ${l} was refused (${set.status})`,
         );
-      by[l] = await read(ctx, shotName(l, ctx.browser, ctx.width));
+      by[l] = await read(ctx, l, shotName(l, ctx.browser, ctx.width));
     }
   } finally {
     await setLanguage(ctx, was);
