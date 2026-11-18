@@ -4060,13 +4060,15 @@ function phoneShell(on) {
   }
 }
 
-/** Where the page's own content starts: under the top bar and banners. */
+/**
+ * Where the page's own content starts, under the shell's top bar and any
+ * banner: the content area's offset in the document (the bar stays put
+ * at the top as the page scrolls).
+ */
 function topBarBottom() {
-  let y = 0;
-  for (const el of document.querySelectorAll(".den-top, #den-banners")) {
-    const r = el.getBoundingClientRect();
-    if (r.height > 0) y = Math.max(y, r.bottom);
-  }
+  const main = document.getElementById("den-content");
+  if (!main) return 0;
+  const y = main.getBoundingClientRect().top + window.scrollY;
   return Math.max(0, Math.round(y));
 }
 
