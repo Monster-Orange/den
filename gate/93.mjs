@@ -179,6 +179,56 @@ async function leftWithin(p, ms = 5000) {
   return left(p);
 }
 
+/** How long an element may take to show after the bell draws again. */
+const BOX_WAIT_MS = 10000;
+
+/**
+ * An element's box, once it is visible: the bell may draw its rows again
+ * between finding one and measuring it. Never throws: no box gives
+ * `detail` (the row's HTML, trimmed, the bell's row count, a screenshot),
+ * and that cell's clause fails with it.
+ */
+async function boxOf(ctx, row, el, tag) {
+  try {
+    await el.waitFor({ state: "visible", timeout: BOX_WAIT_MS });
+  } catch {
+    /* measured below all the same */
+  }
+  let box = await el.boundingBox().catch(() => null);
+  if (!box) {
+    // Drawn again since the wait: wait once more, then measure again.
+    try {
+      await el.waitFor({ state: "visible", timeout: BOX_WAIT_MS });
+    } catch {
+      /* measured below all the same */
+    }
+    box = await el.boundingBox().catch(() => null);
+  }
+  if (box) return { box };
+  const html = await row
+    .first()
+    .evaluate((e) => e.outerHTML)
+    .catch(() => null);
+  const rows = await ctx.page
+    .locator("#den-bell-pop .den-bell-row")
+    .count()
+    .catch(() => null);
+  const shot = `nobox-${tag}-${browserName(ctx)}-${ctx.width}`;
+  try {
+    await ctx.shot?.(shot);
+  } catch {
+    /* the detail says what it can */
+  }
+  return {
+    box: null,
+    detail: {
+      html: html === null ? null : String(html).slice(0, 500),
+      rows,
+      shot,
+    },
+  };
+}
+
 export async function run(ctx, state) {
   const p = ctx.page;
   const seen = { width: ctx.width };
@@ -195,13 +245,17 @@ export async function run(ctx, state) {
     const r = rowOf(p, link);
     const n = await r.count();
     let opened = false;
+    let noBox;
     if (n === 1) {
       // The question's text: its two-line span, or the link that holds it.
-      const box = await r.locator(".den-bell-t, a").first().boundingBox();
-      await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-      opened = (await leftWithin(p)) && p.url().includes(link);
+      const m = await boxOf(ctx, r, r.locator(".den-bell-t, a").first(), k);
+      if (m.box) {
+        const { box } = m;
+        await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        opened = (await leftWithin(p)) && p.url().includes(link);
+      } else noBox = m.detail;
     }
-    seen.click[k] = { link, rows: n, opened };
+    seen.click[k] = { link, rows: n, opened, ...(noBox ? { noBox } : {}) };
   }
   await ctx.shot?.(`bell-${browserName(ctx)}-${ctx.width}`);
 

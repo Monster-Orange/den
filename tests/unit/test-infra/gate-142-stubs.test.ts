@@ -180,3 +180,98 @@ describe("gate/93.mjs: its turns stub ends turns, it doesn't stop", () => {
     expect(r.ms).toBeLessThan(15_000);
   }, 120_000);
 });
+
+/**
+ * Gate 93's run on a fake page whose rows' text has no box when first
+ * measured (the bell drew its rows again: the 11-18 dev.1 bed run threw
+ * on `box.x` and the whole module errored). The long row never gets a
+ * box: its clause fails with detail. The short row gets one when measured
+ * again: it is clicked. Nothing throws.
+ */
+function runGate93Page() {
+  const js = `
+    const g = await import("./gate/93.mjs");
+    const links = { long: "/agents?agent=l", short: "/agents?agent=s", turns: "/agents?agent=t" };
+    const measured = { long: 0, short: 0 };
+    let url = "http://bed.invalid/services";
+    const which = (opts) => {
+      const h = String(opts?.has?.sel ?? "");
+      return h.includes(links.long) ? "long" : h.includes(links.short) ? "short" : null;
+    };
+    const loc = (sel, row = null) => ({
+      sel,
+      count: async () => 1,
+      first() { return loc(sel, row); },
+      nth() { return loc(sel, row); },
+      locator(s) { return loc(s, row); },
+      getByRole() { return loc(sel, row); },
+      waitFor: async () => {},
+      getAttribute: async () => null,
+      click: async () => {},
+      focus: async () => {},
+      evaluate: async (fn) => (String(fn).includes("outerHTML") ? '<div class="den-bell-row"><a href="' + (links[row] ?? "") + '">row</a></div>' : ""),
+      boundingBox: async () => {
+        if (!row) return { x: 1, y: 1, width: 10, height: 10 };
+        measured[row]++;
+        if (row === "long") return null;
+        return measured[row] === 1 ? null : { x: 1, y: 1, width: 10, height: 10 };
+      },
+    });
+    const page = {
+      goto: async (u) => { url = u; },
+      url: () => url,
+      waitForSelector: async () => {},
+      click: async () => {},
+      focus: async () => {},
+      keyboard: { press: async () => {} },
+      mouse: { click: async () => {} },
+      evaluate: async () => "",
+      $$eval: async () => [],
+      locator(sel, opts) { return loc(sel, which(opts)); },
+    };
+    const shots = [];
+    const ctx = {
+      page, url: "http://bed.invalid", width: 1280, browser: "chromium",
+      api: async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }),
+      shot: async (n) => { shots.push(n); },
+    };
+    let error = null, rows = null, seen = null;
+    try {
+      seen = await g.run(ctx, { links, language: null });
+      rows = g.expect([{ result: seen, cell: { browser: "chromium", width: 1280 } }]);
+    } catch (e) { error = String(e?.stack ?? e); }
+    console.log(JSON.stringify({ error, click: seen?.click ?? null, first: rows?.[0] ?? null, measured, shots }));`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    timeout: 120_000,
+  });
+  if (r.status !== 0) throw new Error(r.stderr || `exit ${r.status}`);
+  return JSON.parse(r.stdout.trim().split("\n").pop()!) as {
+    error: string | null;
+    click: Record<
+      string,
+      { opened: boolean; noBox?: Record<string, unknown> }
+    > | null;
+    first: { ok: boolean; detail: string } | null;
+    measured: Record<string, number>;
+    shots: string[];
+  };
+}
+
+describe("gate/93.mjs: a row with no box yet", () => {
+  it("waits, measures again, and fails that clause with detail instead of throwing", () => {
+    const r = runGate93Page();
+    expect(r.error).toBeNull();
+    expect(r.measured.short).toBe(2);
+    expect(r.click?.short.noBox).toBeUndefined();
+    expect(r.click?.long.noBox).toMatchObject({
+      html: expect.stringContaining("den-bell-row"),
+      rows: 1,
+      shot: expect.stringMatching(/^nobox-long-/),
+    });
+    expect(r.shots).toContain(r.click?.long.noBox?.shot);
+    expect(r.first?.ok).toBe(false);
+    expect(r.first?.detail).toContain("noBox");
+  }, 120_000);
+});
