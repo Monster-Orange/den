@@ -1967,7 +1967,7 @@
       "La dirección de Hub no es https, así que Den no la abre. Mira Ajustes › Hub.",
     "ag.session": "terminal",
     "ag.empty":
-      "Elige un agente o un shell a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
+      "Elige un agente a la izquierda para abrirlo. Abre más para verlos en mosaico (hasta 4).",
     "ag.none.scope": "Aún no hay agentes en {scope}",
     "ag.detach": "Cerrar panel",
     "ag.to": "Para {name} · {ws}",

@@ -2787,7 +2787,7 @@
       "Hub's address isn't https, so Den won't open it. See Settings › Hub.",
     "ag.session": "terminal",
     "ag.empty":
-      "Pick an agent or shell on the left to open its terminal. Open more to tile them (up to 4).",
+      "Pick an agent on the left to open it. Open more to tile them (up to 4).",
     "ag.none.scope": "No agents in {scope} yet",
     "ag.detach": "Close pane",
     "ag.to": "To {name} · {ws}",
