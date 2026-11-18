@@ -342,18 +342,24 @@ describe.each(ENGINES)(
         await new Promise((r) => setTimeout(r, 500));
         // Frame 1: the list, no agent open: the dock is there, shut.
         await p.goto(`${s.base}/agents`);
-        await p.locator("#den-dock").waitFor({ timeout: 20_000 });
-        await p.waitForFunction(
-          () => !document.querySelector("#agr .pane"),
-          undefined,
-          { timeout: 10_000 },
-        );
+        // The Agents page is up (its list drawn), not only the shell.
+        await p.waitForSelector("#agl:not([aria-busy]) .agr", {
+          timeout: 20_000,
+        });
+        expect(await p.locator("#agr .pane").count()).toBe(0);
+        const shut = await p
+          .waitForFunction(
+            () => {
+              const d = document.getElementById("den-dock");
+              return !!d && !d.classList.contains("open");
+            },
+            undefined,
+            { timeout: 10_000 },
+          )
+          .then(() => true)
+          .catch(() => false);
+        expect(shut).toBe(true);
         expect(await p.locator("#den-dock").isVisible()).toBe(true);
-        expect(
-          await p
-            .locator("#den-dock")
-            .evaluate((d) => d.classList.contains("open")),
-        ).toBe(false);
         expect(errors).toEqual([]);
         await p.context().close();
         // The saved choice is the person's, as it was.
