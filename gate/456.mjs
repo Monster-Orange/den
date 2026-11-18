@@ -1,12 +1,13 @@
 /* eslint-env browser */
 // gate/456.mjs: Den picks the copy of an agent CLI that a new shell gets
 // (issue 456). Setup makes stub copies of one catalog runtime in a folder
-// of its own (gate456-*, next to this tag's evidence), and a stub shell
+// of its own (gate456-*, under ctx.evidenceDir, else the OS temp dir), and a stub shell
 // that puts them on the PATH it says: the interactive shell (-ilc) gets
 // the newer copy first, the login shell (-lc) gets the older one first,
 // as on the install the issue came from. It runs the bed's
 // `agents doctor --json` with DEN_LOGIN_SHELL naming that stub shell (and
-// DEN_RUNTIME_DIRS empty, so no install folder decides). Each stub only
+// DEN_RUNTIME_DIRS empty, so no install folder decides), set for that CLI
+// run only: ctx.cli(args, { env, timeout }). Each stub only
 // writes its own path to a log in that folder and prints a version: no
 // vendor CLI is ever run by this check. On macOS a third copy carries
 // com.apple.quarantine (set with xattr on that stub file only), and must
@@ -17,6 +18,7 @@
 // server found). Teardown removes the folder. No setting is changed.
 import { execFileSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 export const issue = 456;
@@ -91,6 +93,26 @@ function writeShell(file, { ilc, lc, wait, log }) {
   );
 }
 
+/** How long one `agents doctor` run may take (a 4 s shell, asked twice). */
+const CLI_TIMEOUT_MS = 60000;
+
+/**
+ * A folder of this check's own for its stubs: under the harness's evidence
+ * folder (ctx.evidenceDir), else the OS temp dir. Never the bed's folder
+ * or Den's state folder.
+ */
+function stubFolder(ctx, prefix) {
+  const e = ctx.evidenceDir;
+  const base =
+    typeof e === "string" && path.isAbsolute(e)
+      ? e
+      : typeof e === "function"
+        ? e()
+        : os.tmpdir();
+  fs.mkdirSync(base, { recursive: true });
+  return fs.mkdtempSync(path.join(base, prefix));
+}
+
 /** Whether xattr can mark a file here (macOS only). */
 const canQuarantine = () =>
   !!process.env.DEN_GATE_XATTR ||
@@ -107,21 +129,14 @@ function lines(file) {
 
 /** `agents doctor --json` with the stub shell, its row for runtime `id`. */
 async function doctorWith(ctx, shell, id) {
-  const keep = {
-    DEN_LOGIN_SHELL: process.env.DEN_LOGIN_SHELL,
-    DEN_RUNTIME_DIRS: process.env.DEN_RUNTIME_DIRS,
-  };
-  process.env.DEN_LOGIN_SHELL = shell;
-  process.env.DEN_RUNTIME_DIRS = "";
   const t0 = Date.now();
-  let d;
-  try {
-    d = await ctx.cli(["agents", "doctor", "--json"]);
-  } finally {
-    for (const [k, v] of Object.entries(keep))
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-  }
+  // The harness sets these for that one CLI run only (DEN_* names, string
+  // values). An older harness ignores the option: the stub shell's own log
+  // then shows it was never asked (needs-harness-cli-env).
+  const d = await ctx.cli(["agents", "doctor", "--json"], {
+    env: { DEN_LOGIN_SHELL: shell, DEN_RUNTIME_DIRS: "" },
+    timeout: CLI_TIMEOUT_MS,
+  });
   const ms = Date.now() - t0;
   const out = String(d?.out ?? "");
   let row = null;
@@ -163,10 +178,7 @@ export async function setup(ctx) {
   try {
     state.runtime = await pickRuntime(ctx);
     if (!state.runtime) return state;
-    const evidence = ctx.evidence(`gate456-${tag}`);
-    const base = path.dirname(evidence);
-    fs.mkdirSync(base, { recursive: true });
-    const dir = fs.mkdtempSync(path.join(base, "gate456-"));
+    const dir = stubFolder(ctx, "gate456-");
     state.dir = dir;
     const { id, bin } = state.runtime;
     const runs = path.join(dir, "runs.log");
@@ -273,7 +285,7 @@ export async function run(ctx, s) {
 
 export async function teardown(ctx, state) {
   const dir = state?.dir;
-  // Only the folder this check made: named gate456-, next to the evidence.
+  // Only the folder this check made (named gate456-): its stubs and logs.
   if (dir && path.basename(dir).startsWith("gate456-") && fs.existsSync(dir))
     fs.rmSync(dir, { recursive: true, force: true });
 }

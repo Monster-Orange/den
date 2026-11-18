@@ -43,6 +43,7 @@ function runGate(right: boolean, xattr: string | null = XATTR) {
     const WS = "proj-a", RT = "den-claude";
     const agents = new Map(); // id -> { running }
     const pins = new Map(); // ws -> bin
+    const pinnedTo = [];
     let calls = [];
     const isQ = (f) => !!process.env.DEN_GATE_XATTR &&
       spawnSync(process.env.DEN_GATE_XATTR, ["-p", "com.apple.quarantine", f]).status === 0;
@@ -64,7 +65,7 @@ function runGate(right: boolean, xattr: string | null = XATTR) {
       let m;
       if ((m = /^\\/api\\/agents\\/runtimes\\/([^/]+)\\/path$/.exec(p))) {
         if (body.bin === null) pins.delete(body.workspace);
-        else { spawnSync(body.bin, ["--version"]); pins.set(body.workspace, body.bin); }
+        else { spawnSync(body.bin, ["--version"]); pins.set(body.workspace, body.bin); pinnedTo.push(body.bin); }
         return ok({ ok: true });
       }
       if ((m = /\\/agents\\/([^/]+)\\/restart$/.exec(p))) {
@@ -79,6 +80,7 @@ function runGate(right: boolean, xattr: string | null = XATTR) {
     const ctx = {
       url: "http://bed.invalid",
       evidence: (n) => path.join(${JSON.stringify(evidence)}, n),
+      evidenceDir: ${JSON.stringify(evidence)},
       sleep: async () => {},
       shot: async () => {},
       goto: async (page, p) => page._go(p),
@@ -172,7 +174,8 @@ function runGate(right: boolean, xattr: string | null = XATTR) {
     } catch (e) { error = String(e?.stack ?? e); }
     finally { await g.teardown(ctx, state); }
     const left = fs.existsSync(${JSON.stringify(evidence)}) ? fs.readdirSync(${JSON.stringify(evidence)}) : [];
-    console.log(JSON.stringify({ rows, error, left, agents: agents.size, pins: [...pins] }));`;
+    console.log(JSON.stringify({ rows, error, left, agents: agents.size, pins: [...pins],
+      stubs: pinnedTo.map((f) => ({ f, under: f.startsWith(${JSON.stringify(evidence)} + path.sep), there: fs.existsSync(f) })) }));`;
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (xattr) env.DEN_GATE_XATTR = xattr;
   else delete env.DEN_GATE_XATTR;
@@ -189,6 +192,7 @@ function runGate(right: boolean, xattr: string | null = XATTR) {
     left: string[];
     agents: number;
     pins: [string, string][];
+    stubs: { f: string; under: boolean; there: boolean }[];
   };
 }
 
@@ -202,6 +206,9 @@ describe("gate/479.mjs on a fake bed", () => {
     expect(r.left).toEqual([]);
     expect(r.agents).toBe(0);
     expect(r.pins).toEqual([]);
+    // The quarantined stub lived under ctx.evidenceDir, and is deleted.
+    expect(r.stubs.length).toBeGreaterThan(0);
+    expect(r.stubs.every((x) => x.under && !x.there)).toBe(true);
   }, 120_000);
 
   it("a Den that runs the quarantined copy: red on every clause", () => {

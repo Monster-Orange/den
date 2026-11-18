@@ -2,7 +2,8 @@
 // gate/479.mjs: no start path runs a quarantined runtime copy (issue 479).
 // Setup starts two stub agents under this check's own names (gate479-*):
 // one left running, one stopped. It writes a stub CLI in a folder of its
-// own (gate479-*, next to this tag's evidence) that only logs that it ran
+// own (gate479-*, under ctx.evidenceDir, else the OS temp dir; never the
+// bed's folder or Den's state folder) that only logs that it ran
 // and prints a version, pins the agents' runtime to it for their project
 // (POST /api/agents/runtimes/<id>/path, as Settings' Use this does), then
 // marks that one file with com.apple.quarantine (xattr -w, on nothing
@@ -15,6 +16,7 @@
 // project's pin back, removes the agents and the folder. macOS only.
 import { execFileSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 export const issue = 479;
@@ -35,6 +37,23 @@ const XATTR = process.env.DEN_GATE_XATTR || "/usr/bin/xattr";
 const canQuarantine = () =>
   !!process.env.DEN_GATE_XATTR ||
   (process.platform === "darwin" && fs.existsSync(XATTR));
+
+/**
+ * A folder of this check's own for its stub: under the harness's evidence
+ * folder (ctx.evidenceDir), else the OS temp dir. Never the bed's folder
+ * or Den's state folder.
+ */
+function stubFolder(ctx, prefix) {
+  const e = ctx.evidenceDir;
+  const base =
+    typeof e === "string" && path.isAbsolute(e)
+      ? e
+      : typeof e === "function"
+        ? e()
+        : os.tmpdir();
+  fs.mkdirSync(base, { recursive: true });
+  return fs.mkdtempSync(path.join(base, prefix));
+}
 
 /** A runtimes answer, as a list (the route answers a list or { runtimes }). */
 const listOf = (v) =>
@@ -134,9 +153,7 @@ export async function setup(ctx) {
     // The project's own pin, to put back (null: none, the search decided).
     const prev = before?.source === "workspace" ? (before.path ?? null) : null;
     const bin = before?.path ? path.basename(before.path) : rt;
-    const base = path.dirname(ctx.evidence(`gate479-${state.tag}`));
-    fs.mkdirSync(base, { recursive: true });
-    const dir = fs.mkdtempSync(path.join(base, "gate479-"));
+    const dir = stubFolder(ctx, "gate479-");
     state.dir = dir;
     const file = path.join(dir, bin);
     const log = path.join(dir, "runs.log");
@@ -301,9 +318,13 @@ export async function teardown(ctx, state) {
     }
   }
   const dir = state?.dir;
-  // Only the folder this check made: named gate479-, next to the evidence.
-  if (dir && path.basename(dir).startsWith("gate479-") && fs.existsSync(dir))
+  // Only the folder this check made (named gate479-): the quarantined stub
+  // first, then the folder with its log.
+  if (dir && path.basename(dir).startsWith("gate479-") && fs.existsSync(dir)) {
+    if (state.file && path.dirname(state.file) === dir)
+      fs.rmSync(state.file, { force: true });
     fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** One cell's rows. */

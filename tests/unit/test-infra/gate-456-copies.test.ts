@@ -5,6 +5,9 @@
  * waits 10 s, never runs a quarantined copy and runs only the chosen copy's
  * version command. The wrong one (before the fix) takes the login shell's
  * PATH first, waits 3 s and asks every copy its version.
+ * The fake harness's ctx.cli(args, { env, timeout }) sets env for that one
+ * run only (DEN_* names, string values, else it throws), as the bed's does;
+ * an older harness ignores the option, and the gate must say so.
  * A fake ctx (no bed, no browser), in a child node: the gate file is ESM.
  * The only files touched are the gate's own, under a temp folder.
  */
@@ -32,14 +35,19 @@ type Row = {
   detail?: string;
 };
 
-function runGate(right: boolean) {
-  const evidence = path.join(TMP, right ? "right" : "wrong");
+function runGate(right: boolean, oldHarness = false) {
+  const evidence = path.join(
+    TMP,
+    `${right ? "right" : "wrong"}${oldHarness ? "-old" : ""}`,
+  );
   const js = `
     const { spawnSync } = await import("child_process");
     const fs = await import("fs");
     const path = await import("path");
     const g = await import("./gate/456.mjs");
-    const RIGHT = ${right};
+    const RIGHT = ${right}, OLD = ${oldHarness};
+    const shellBefore = process.env.DEN_LOGIN_SHELL;
+    const calls = [];
     const B = "__DEN_PATH_BEGIN__", E = "__DEN_PATH_END__";
     const ask = (shell, flags, ms) => {
       const r = spawnSync(shell, [flags, "printf '" + B + "%s" + E + "' \\"$PATH\\""], { encoding: "utf-8", timeout: ms });
@@ -48,8 +56,9 @@ function runGate(right: boolean) {
     };
     const quarantined = (f) =>
       spawnSync(process.env.DEN_GATE_XATTR, ["-p", "com.apple.quarantine", f]).status === 0;
-    const doctor = () => {
-      const shell = process.env.DEN_LOGIN_SHELL;
+    const doctor = (env) => {
+      const shell = env.DEN_LOGIN_SHELL;
+      if (!shell) return JSON.stringify({ runtimes: [{ id: "codex", available: false }] });
       const ms = RIGHT ? 10000 : 3000;
       const ilc = ask(shell, "-ilc", ms), lc = ask(shell, "-lc", ms);
       const dirs = [];
@@ -77,11 +86,22 @@ function runGate(right: boolean) {
       page: null,
       url: "http://bed.invalid",
       evidence: (n) => path.join(${JSON.stringify(evidence)}, n),
+      evidenceDir: ${JSON.stringify(evidence)},
       api: async (p) => ok(
         p.startsWith("/api/agents/runtimes") ? [{ id: "codex", source: "PATH" }]
         : p === "/api/settings" ? (RIGHT ? { agents_shell: {} } : {}) : {}),
-      cli: (args) => args.join(" ") === "agents doctor --json"
-        ? { code: 0, out: doctor(), err: "" } : { code: 2, out: "", err: "no" },
+      cli: (args, opts) => {
+        let env = {};
+        if (!OLD && opts?.env !== undefined) {
+          for (const [k, v] of Object.entries(opts.env))
+            if (!/^DEN_[A-Z0-9_]+$/.test(k) || typeof v !== "string")
+              throw new Error("ctx.cli env: " + k + " refused");
+          env = { ...opts.env };
+        }
+        calls.push({ args, keys: Object.keys(opts?.env ?? {}).sort(), timeout: opts?.timeout ?? null, under: String(opts?.env?.DEN_LOGIN_SHELL ?? "").startsWith(${JSON.stringify(evidence)} + path.sep) });
+        return args.join(" ") === "agents doctor --json"
+          ? { code: 0, out: doctor(env), err: "" } : { code: 2, out: "", err: "no" };
+      },
       goto: async () => {}, shot: async () => {},
     };
     let state, rows, error = null;
@@ -93,7 +113,8 @@ function runGate(right: boolean) {
     finally { await g.teardown(ctx, state); }
     const left = fs.existsSync(${JSON.stringify(evidence)})
       ? fs.readdirSync(${JSON.stringify(evidence)}) : [];
-    console.log(JSON.stringify({ rows, error, left }));`;
+    const leaked = process.env.DEN_LOGIN_SHELL !== shellBefore;
+    console.log(JSON.stringify({ rows, error, left, calls, leaked }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
     cwd: ROOT,
     encoding: "utf-8",
@@ -105,6 +126,13 @@ function runGate(right: boolean) {
     rows: Row[];
     error: string | null;
     left: string[];
+    calls: {
+      args: string[];
+      keys: string[];
+      timeout: number | null;
+      under: boolean;
+    }[];
+    leaked: boolean;
   };
 }
 
@@ -114,6 +142,28 @@ describe("gate/456.mjs on a fake bed", () => {
     expect(r.error).toBeNull();
     const ok = r.rows.map((x) => x.ok);
     expect(ok).toEqual([true, true, true, true, true]);
+    expect(r.left).toEqual([]);
+  }, 120_000);
+
+  it("calls ctx.cli(args, { env, timeout }) with DEN_* string values, and never sets its own env", () => {
+    const r = runGate(true);
+    const call = {
+      args: ["agents", "doctor", "--json"],
+      keys: ["DEN_LOGIN_SHELL", "DEN_RUNTIME_DIRS"],
+      timeout: expect.any(Number),
+      // The stub shell is in the gate's folder under ctx.evidenceDir.
+      under: true,
+    };
+    expect(r.calls).toEqual([call, call]);
+    expect(r.leaked).toBe(false);
+  }, 120_000);
+
+  it("an older harness that ignores env: clauses 1-4 skip as needs-harness-cli-env", () => {
+    const r = runGate(true, true);
+    expect(r.error).toBeNull();
+    expect(r.rows.slice(0, 4).map((x) => x.skip)).toEqual(
+      Array(4).fill("needs-harness-cli-env"),
+    );
     expect(r.left).toEqual([]);
   }, 120_000);
 
