@@ -1446,8 +1446,13 @@
           min-width: 0;
           overflow: hidden;
         }
+        /* Not the agent bar's .where (min-content, inline-flex): here the
+           path gives way to Stop. */
         .tm-page .pane .tm-title b,
         .tm-page .pane .tm-title .where {
+          display: block;
+          min-width: 0;
+          max-width: none;
           overflow: hidden;
           white-space: nowrap;
           text-overflow: ellipsis;
