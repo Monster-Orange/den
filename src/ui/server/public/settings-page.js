@@ -313,6 +313,18 @@ export async function mountSettings(deps) {
   await loadWorkspaceSettings();
 
   let state = readLocation(location);
+  // Row id → the latest value the person set while its save is out
+  // (issue 424).
+  const saving = new Map();
+  const SAVES_WHAT_IT_READS = [
+    "toggle",
+    "number",
+    "select",
+    "text",
+    "radio",
+    "seg",
+    "theme",
+  ];
   search.value = state.q;
 
   // ── drawing ─────────────────────────────────────────────────────────
@@ -414,8 +426,13 @@ export async function mountSettings(deps) {
     const lid = `l-${id}`;
     const cid = `c-${id}`;
     const did = `d-${id}`;
-    const v = value(r);
     const t = r.control?.type || "readonly";
+    // The latest value set while a save is out, for a control that saves
+    // what it reads.
+    const v =
+      saving.has(r.id) && SAVES_WHAT_IT_READS.includes(t)
+        ? saving.get(r.id)
+        : value(r);
     const ro = !r.write && !drawsItself(r);
     const single = ["number", "select", "toggle", "text"].includes(t);
     const label = single
@@ -610,13 +627,31 @@ export async function mountSettings(deps) {
   }
 
   // ── writing: only on an explicit change ────────────────────────────────
+  // Issue 424: one action, one save. While a row's save is out, a
+  // redraw (a plugin's rows, the appearance) drew it from the old value,
+  // so a second look or click saved the same change twice. Now the row
+  // holds the latest value set: a redraw shows it, the same value again
+  // sends nothing, and a different one is saved once the save that is out
+  // returns (through the working pop-up, as every save).
   async function save(r, v) {
+    if (saving.has(r.id)) {
+      saving.set(r.id, v);
+      return;
+    }
+    saving.set(r.id, v);
     const el = $(`s-${slug(r.id)}`);
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     let ok = false;
     try {
-      ok = (await r.write(v, ctx)) !== false;
+      let sent;
+      do {
+        sent = saving.get(r.id);
+        ok = (await r.write(sent, ctx)) !== false;
+      } while (ok && !same(sent, saving.get(r.id)));
     } catch {
       ok = false;
+    } finally {
+      saving.delete(r.id);
     }
     draw();
     const again = $(`s-${slug(r.id)}`) || el;

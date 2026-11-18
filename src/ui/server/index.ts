@@ -3228,6 +3228,163 @@ function installedServiceMode(): "login" | "always" | null {
   }
 }
 
+/**
+ * GET /api/settings, and the reply to every POST (issue 424): one source,
+ * so a save's reply carries every key the Settings page reads and the
+ * page never redraws a row from the old value.
+ */
+async function settingsPayload(): Promise<Record<string, unknown>> {
+  const user = readUserConfig();
+  const editorList = editors.listEditors();
+  const terminalList = editors.listTerminals();
+  return {
+    editor: user.editor ?? null,
+    editors: editorList,
+    terminal: user.terminal ?? null,
+    terminals: terminalList,
+    editor_overrides: user.editor_overrides ?? {},
+    languages: SUPPORTED_LANGUAGES,
+    log_window_lines: user.log_window_lines ?? 20_000,
+    graph: graphPrefs(user.graph),
+    appearance: appearancePrefs(user.appearance),
+    shell: shellPrefs(user.shell),
+    agents_layout: agentsLayout(user),
+    agents_helpers_shown: helpersShown(user),
+    bell_kinds: bellKinds(user),
+    bell_fold_days: bellFoldDays(user),
+    // Issue 172: alerts outside the bell (alerts.ts).
+    alerts: alertSettings(user),
+    editor_open: editorOpen(user),
+    distribution: distributionSettings(getDistRoot()),
+    // Set from the command line (`<cli> config`), shown read-only.
+    user_web_port: userWebPort(user as Record<string, unknown>),
+    local_dev: user.local_dev !== false,
+    cli_tabs: user.cli_tabs === true,
+    // The UI's language (R19), and the ones it has catalogs for.
+    language: uiLanguage(user.language),
+    ui_languages: UI_LANGUAGES,
+    // issue 206: the person's time zone (null: the browser's).
+    time_zone: timeZonePref(user.time_zone),
+    // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
+    agents_default_mode: user.agents?.default_mode ?? null,
+    // Issue 268: the projects that override it (Settings › Agents).
+    agents_mode_overrides: workspacesOverridingAgentMode(),
+    server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
+    // Issue 160: the install's approval policy (user.yml approvals).
+    ...approvalsSettings(user.approvals),
+    // SRV-P6: where it came from, and the update checks' last and next.
+    ...updateCheckSettings(),
+    // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
+    feedback_enabled: (() => {
+      try {
+        return readFeedbackSettings(
+          getEngineRoot(),
+          path.join(getDistRoot(), product().configFile),
+          user.feedback,
+        ).enabled;
+      } catch {
+        return true;
+      }
+    })(),
+    // den#85: the crash-loop guard's settings (web.crash_loop_*).
+    crash_loop: crashLoopSettings(user.web),
+    // Issue 144: the machine's gate slots, not this install's.
+    gate_slots: gates().settings(),
+    // 0.4.48: Den on the Docker bridge for the edge (Linux).
+    web_bridge: (() => {
+      const w = (user.web ?? {}) as Record<string, unknown>;
+      return {
+        listen: w.bridge_listen === "off" ? "off" : "auto",
+        probeSeconds:
+          typeof w.bridge_probe_seconds === "number"
+            ? w.bridge_probe_seconds
+            : 10,
+      };
+    })(),
+    // den#143: how long `web up` waits for the server.
+    web_ready: (() => {
+      try {
+        const c = readWebAuthConfig(getDistRoot(), product().configFile);
+        return {
+          probeSeconds: c.readyProbeSeconds,
+          startSeconds: c.startWaitSeconds,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 163: the launchd job's mode now (null: not a service).
+    service_mode: installedServiceMode(),
+    // Issue 163: Keep agents running after logout. Unset: on for a new
+    // install (no service yet), off over an existing login install,
+    // which the page then offers to turn on (keep_running_unset).
+    ...(() => {
+      let keep: boolean | undefined;
+      try {
+        keep = agentsKeepRunningAfterLogout(() => user);
+      } catch {
+        keep = false;
+      }
+      const mode = installedServiceMode();
+      return {
+        keep_running_after_logout: keep ?? (mode === null || mode === "always"),
+        keep_running_unset: keep === undefined && mode === "login",
+      };
+    })(),
+    // Issue 163 (b): the agents' sign-in token under the always-on
+    // service: never the token, only whether one is configured and
+    // when it was set (nothing is read from the store on a page view).
+    agent_signin: await agentSigninView(),
+    // Issue 339: the sign-in accounts per vendor (never a token).
+    agent_accounts: agentAccountsView(),
+    // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+    agent_context: (() => {
+      const c = contextWatchSettings(user.agent_context);
+      return {
+        compaction_loop_count: c.loopCount,
+        compaction_loop_minutes: c.loopMinutes,
+        pause_after_loop: c.pause,
+        instruction_share_percent: c.sharePercent,
+        context_tokens: c.contextTokens,
+      };
+    })(),
+    // den#156: the Agents list's waits (agents_list.*).
+    agents_list: (() => {
+      try {
+        return agentsListWaits(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 415: how long Report keeps, and waits for, a repo's
+    // visibility (feedback.*), their defaults when unset.
+    feedback: (() => {
+      const f = feedbackSettings(null, {}, user.feedback);
+      return {
+        visibility_cache_hours: f.visibilityCacheHours,
+        visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+        visibility_retry_seconds: f.visibilityRetrySeconds,
+      };
+    })(),
+    // Issue 103: Settings › Embedding (embed.*).
+    embed: embedSettings(user),
+    // 0.4.46: how a terminal pane reconnects on its own (panes.*).
+    panes_reconnect: (() => {
+      try {
+        return panesReconnect(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // SEC-2a: the name the signed-out page gives this machine, and
+    // what it is when unset (the short hostname).
+    machine_name: machineNameSetting(user),
+    machine_name_default: machineLabel(null, os.hostname()),
+    // Where the 1Password token comes from (the source, never the token).
+    op_token_source: opTokenSourceSetting(),
+  };
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -6669,158 +6826,7 @@ async function handleRequest(
   }
 
   if (pathname === "/api/settings") {
-    if (req.method === "GET") {
-      const user = readUserConfig();
-      const editorList = editors.listEditors();
-      const terminalList = editors.listTerminals();
-      return sendJson(res, {
-        editor: user.editor ?? null,
-        editors: editorList,
-        terminal: user.terminal ?? null,
-        terminals: terminalList,
-        editor_overrides: user.editor_overrides ?? {},
-        languages: SUPPORTED_LANGUAGES,
-        log_window_lines: user.log_window_lines ?? 20_000,
-        graph: graphPrefs(user.graph),
-        appearance: appearancePrefs(user.appearance),
-        shell: shellPrefs(user.shell),
-        agents_layout: agentsLayout(user),
-        agents_helpers_shown: helpersShown(user),
-        bell_kinds: bellKinds(user),
-        bell_fold_days: bellFoldDays(user),
-        // Issue 172: alerts outside the bell (alerts.ts).
-        alerts: alertSettings(user),
-        editor_open: editorOpen(user),
-        distribution: distributionSettings(getDistRoot()),
-        // Set from the command line (`<cli> config`), shown read-only.
-        user_web_port: userWebPort(user as Record<string, unknown>),
-        local_dev: user.local_dev !== false,
-        cli_tabs: user.cli_tabs === true,
-        // The UI's language (R19), and the ones it has catalogs for.
-        language: uiLanguage(user.language),
-        ui_languages: UI_LANGUAGES,
-        // issue 206: the person's time zone (null: the browser's).
-        time_zone: timeZonePref(user.time_zone),
-        // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
-        agents_default_mode: user.agents?.default_mode ?? null,
-        // Issue 268: the projects that override it (Settings › Agents).
-        agents_mode_overrides: workspacesOverridingAgentMode(),
-        server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
-        // Issue 160: the install's approval policy (user.yml approvals).
-        ...approvalsSettings(user.approvals),
-        // SRV-P6: where it came from, and the update checks' last and next.
-        ...updateCheckSettings(),
-        // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
-        feedback_enabled: (() => {
-          try {
-            return readFeedbackSettings(
-              getEngineRoot(),
-              path.join(getDistRoot(), product().configFile),
-              user.feedback,
-            ).enabled;
-          } catch {
-            return true;
-          }
-        })(),
-        // den#85: the crash-loop guard's settings (web.crash_loop_*).
-        crash_loop: crashLoopSettings(user.web),
-        // Issue 144: the machine's gate slots, not this install's.
-        gate_slots: gates().settings(),
-        // 0.4.48: Den on the Docker bridge for the edge (Linux).
-        web_bridge: (() => {
-          const w = (user.web ?? {}) as Record<string, unknown>;
-          return {
-            listen: w.bridge_listen === "off" ? "off" : "auto",
-            probeSeconds:
-              typeof w.bridge_probe_seconds === "number"
-                ? w.bridge_probe_seconds
-                : 10,
-          };
-        })(),
-        // den#143: how long `web up` waits for the server.
-        web_ready: (() => {
-          try {
-            const c = readWebAuthConfig(getDistRoot(), product().configFile);
-            return {
-              probeSeconds: c.readyProbeSeconds,
-              startSeconds: c.startWaitSeconds,
-            };
-          } catch {
-            return null;
-          }
-        })(),
-        // Issue 163: the launchd job's mode now (null: not a service).
-        service_mode: installedServiceMode(),
-        // Issue 163: Keep agents running after logout. Unset: on for a new
-        // install (no service yet), off over an existing login install,
-        // which the page then offers to turn on (keep_running_unset).
-        ...(() => {
-          let keep: boolean | undefined;
-          try {
-            keep = agentsKeepRunningAfterLogout(() => user);
-          } catch {
-            keep = false;
-          }
-          const mode = installedServiceMode();
-          return {
-            keep_running_after_logout:
-              keep ?? (mode === null || mode === "always"),
-            keep_running_unset: keep === undefined && mode === "login",
-          };
-        })(),
-        // Issue 163 (b): the agents' sign-in token under the always-on
-        // service: never the token, only whether one is configured and
-        // when it was set (nothing is read from the store on a page view).
-        agent_signin: await agentSigninView(),
-        // Issue 339: the sign-in accounts per vendor (never a token).
-        agent_accounts: agentAccountsView(),
-        // Issue 278: agents stuck compacting; instruction size (agent_context.*).
-        agent_context: (() => {
-          const c = contextWatchSettings(user.agent_context);
-          return {
-            compaction_loop_count: c.loopCount,
-            compaction_loop_minutes: c.loopMinutes,
-            pause_after_loop: c.pause,
-            instruction_share_percent: c.sharePercent,
-            context_tokens: c.contextTokens,
-          };
-        })(),
-        // den#156: the Agents list's waits (agents_list.*).
-        agents_list: (() => {
-          try {
-            return agentsListWaits(() => user);
-          } catch {
-            return null;
-          }
-        })(),
-        // Issue 415: how long Report keeps, and waits for, a repo's
-        // visibility (feedback.*), their defaults when unset.
-        feedback: (() => {
-          const f = feedbackSettings(null, {}, user.feedback);
-          return {
-            visibility_cache_hours: f.visibilityCacheHours,
-            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
-            visibility_retry_seconds: f.visibilityRetrySeconds,
-          };
-        })(),
-        // Issue 103: Settings › Embedding (embed.*).
-        embed: embedSettings(user),
-        // 0.4.46: how a terminal pane reconnects on its own (panes.*).
-        panes_reconnect: (() => {
-          try {
-            return panesReconnect(() => user);
-          } catch {
-            return null;
-          }
-        })(),
-        // SEC-2a: the name the signed-out page gives this machine, and
-        // what it is when unset (the short hostname).
-        machine_name: machineNameSetting(user),
-        machine_name_default: machineLabel(null, os.hostname()),
-        // Where the 1Password token comes from (the source, never the token).
-        op_token_source: opTokenSourceSetting(),
-      });
-    }
+    if (req.method === "GET") return sendJson(res, await settingsPayload());
     if (req.method === "POST") {
       try {
         const body = JSON.parse(await readBody(req)) as {
@@ -7107,28 +7113,9 @@ async function handleRequest(
         if (gatePatch) gates().writeSettings(gatePatch);
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
-        return sendJson(res, {
-          ok: true,
-          agents_default_mode: user.agents?.default_mode ?? null,
-          server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
-          ...approvalsSettings(user.approvals),
-          editor: user.editor ?? null,
-          terminal: user.terminal ?? null,
-          editor_overrides: user.editor_overrides ?? {},
-          graph: graphPrefs(user.graph),
-          appearance: appearancePrefs(user.appearance),
-          shell: shellPrefs(user.shell),
-          language: uiLanguage(user.language),
-          time_zone: timeZonePref(user.time_zone),
-          machine_name: machineNameSetting(user),
-          agents_layout: agentsLayout(user),
-          agents_helpers_shown: helpersShown(user),
-          bell_kinds: bellKinds(user),
-          bell_fold_days: bellFoldDays(user),
-          alerts: alertSettings(user),
-          editor_open: editorOpen(user),
-          embed: embedSettings(user),
-        });
+        // Issue 424: every key GET has, from the same source, so a save's
+        // reply never leaves the page on an old value.
+        return sendJson(res, { ok: true, ...(await settingsPayload()) });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);
       }

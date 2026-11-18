@@ -176,3 +176,53 @@ describe("MODE-5: Settings rows that were the command line's", () => {
     expect(JSON.stringify(user())).toBe(before);
   });
 });
+
+/**
+ * Issue 424: a save's reply is what GET says, every key. It left
+ * cli_tabs out (and the other rows that were the command line's), so the
+ * page redrew Terminal tabs from the old value after saving it, and a
+ * second look turned it on and saved it again.
+ */
+describe("issue 424: the reply to a save carries every key GET has", () => {
+  const asPerson = async (method: "GET" | "POST", body?: unknown) => {
+    const r = await fetch(`${s.base}/api/settings`, {
+      method,
+      headers: {
+        ...denAuth(s.stateDir),
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    expect(r.status).toBe(200);
+    return (await r.json()) as Record<string, unknown>;
+  };
+
+  it("POST cli_tabs true answers cli_tabs true, and off answers false", async () => {
+    expect((await asPerson("POST", { cli_tabs: true })).cli_tabs).toBe(true);
+    expect((await asPerson("POST", { cli_tabs: null })).cli_tabs).toBe(false);
+  });
+
+  it("the reply's keys are GET's keys, and their values match", async () => {
+    const reply = await asPerson("POST", {
+      log_window_lines: 40_000,
+      panes_reconnect: { max_failures: 12 },
+    });
+    const got = await asPerson("GET");
+    const { ok, ...fields } = reply;
+    expect(ok).toBe(true);
+    expect(Object.keys(fields).sort()).toEqual(Object.keys(got).sort());
+    for (const k of [
+      "local_dev",
+      "cli_tabs",
+      "log_window_lines",
+      "panes_reconnect",
+      "crash_loop",
+    ])
+      expect([k, fields[k]]).toEqual([k, got[k]]);
+    expect(fields.log_window_lines).toBe(40_000);
+    await asPerson("POST", {
+      log_window_lines: null,
+      panes_reconnect: { max_failures: null },
+    });
+  });
+});
