@@ -418,6 +418,16 @@ export function sessionPath(
   return [...before, ...(own ? [own] : []), ...after].join(path.delimiter);
 }
 
+// ── macOS quarantine (issue 456) ────────────────────────────────────────────
+
+/** Whether a file carries com.apple.quarantine, read without running it. */
+export type QuarantineReader = (file: string) => boolean;
+
+/** Replace (or, with undefined, restore) the quarantine reader (tests). */
+export function setQuarantineReader(_r: QuarantineReader | undefined): void {
+  /* issue 456: not wired yet */
+}
+
 // ── the version ─────────────────────────────────────────────────────────────
 
 const VERSION_TIMEOUT_MS = 3000;
