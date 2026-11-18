@@ -39,6 +39,8 @@ interface Opts {
   /** ctx.transcriptPath: "file" (each stub has one), "none" (null), "missing" (no method). */
   transcript?: "file" | "none" | "missing";
   hitTranscript?: boolean;
+  /** The harness reads nothing under Den's state folder (only the transcripts). */
+  stateUnsearched?: boolean;
   refuse?: boolean;
 }
 
@@ -60,7 +62,10 @@ function onBed(o: Opts = {}): Out {
       cli: () => ({ code: 0, err: "", out:
         "  mcp server  " + (o.refSet === false ? "⚠" : "✓") + "  default: gate-mcp http://127.0.0.1:7898/mcp" +
         (o.refSet === false ? ": secrets.refs.gate_mcp is not set, so its calls carry no bearer" : "") + "\\n" }),
+      // As the bed's driver: Den's state files only under "state:"; the bed's own folder has none.
       readBed: async (rel) => {
+        if (!rel.startsWith("state:")) return null;
+        rel = rel.slice("state:".length);
         let m = /^agents\\/(.+)\\.json$/.exec(rel);
         if (m) return records.has(m[1]) ? JSON.stringify({ id: m[1], workspace: records.get(m[1]) }) : null;
         m = /^agent-files\\/(.+)\\/mcp\\.json$/.exec(rel);
@@ -88,10 +93,19 @@ function onBed(o: Opts = {}): Out {
       shot: async () => {},
     };
     // The harness's answer: how many files it read under paths, and the paths that held the value.
+    // A path in Den's state folder needs "state:"; without it (or with stateUnsearched) it reads nothing.
+    const filesIn = (p) => {
+      if (p.endsWith(".jsonl")) return 1;
+      if (!p.startsWith("state:") || o.stateUnsearched) return 0;
+      const rel = p.slice("state:".length);
+      if (rel === "sessions" || rel === "logs") return 2;
+      const m = /^(?:agent-files\\/|agents\\/)([^/]+?)(?:\\.json)?$/.exec(rel);
+      return m && records.has(m[1]) ? 1 : 0;
+    };
     if (!o.noSecretSeen) ctx.secretSeen = async (ref, paths) =>
       o.refSet === false ? { searched: 0, hits: [], error: "no test value for " + ref }
       : o.searchNothing ? { searched: 0, hits: [] }
-      : { searched: paths.length * 3, hits: [
+      : { searched: paths.reduce((n, p) => n + filesIn(p), 0), hits: [
           ...(o.hit ? [paths[0] + "/mcp.json"] : []),
           ...(o.hitTranscript ? paths.filter((p) => p.endsWith(".jsonl")) : []),
         ] };
@@ -150,7 +164,23 @@ describe("gate/335: an agent per project, and the bearer in no file or log", () 
   it("fails when a searched path holds the bearer, naming the path", () => {
     const r = row(onBed({ hit: true }), BEARER);
     expect(r).toMatchObject({ ok: false });
-    expect(r?.detail).toMatch(/the bearer is in agent-files\//);
+    expect(r?.detail).toMatch(/the bearer is in state:agent-files\//);
+  });
+
+  it("reads each agent's record and MCP config from Den's state folder (state:)", () => {
+    const r = row(onBed(), PROJECTS);
+    expect(r).toMatchObject({ ok: true });
+    expect(r?.detail).toMatch(
+      /^A \(default\): gate-mcp .*; B \(proj-gate\): no gate-mcp/,
+    );
+  });
+
+  it("fails when the state files it read were not searched (only the transcripts were)", () => {
+    const r = row(onBed({ stateUnsearched: true }), BEARER);
+    expect(r).toMatchObject({ ok: false });
+    expect(r?.detail).toMatch(
+      /searched 2 files, fewer than the 6 this check read or found/,
+    );
   });
 
   it("searches each stub's transcript; a hit there fails, naming the path", () => {

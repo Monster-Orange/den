@@ -58,8 +58,9 @@ async function stub(ctx, state, role, workspace) {
 
 /** What the agent's record and MCP config say: its project, and its MCP servers by name. */
 async function seenBy(ctx, a) {
-  const rec = await ctx.readBed(`agents/${a.id}.json`);
-  const cfg = await ctx.readBed(`agent-files/${a.id}/mcp.json`);
+  // Den's state folder, not the bed's own: "state:" (ctx.readBed).
+  const rec = await ctx.readBed(`state:agents/${a.id}.json`);
+  const cfg = await ctx.readBed(`state:agent-files/${a.id}/mcp.json`);
   let servers = null;
   try {
     servers = cfg ? (JSON.parse(cfg).mcpServers ?? {}) : null;
@@ -75,6 +76,7 @@ async function seenBy(ctx, a) {
   const s = servers?.[SERVER];
   return {
     workspace,
+    record: rec !== null,
     config: cfg !== null,
     names: servers ? Object.keys(servers) : [],
     server: s
@@ -102,15 +104,15 @@ async function agents(ctx, state) {
     out.b = await seenBy(ctx, b);
     for (const x of [a, b]) await x.ctl.stop();
     if (!out.noSecretSeen) {
-      // Each agent's files and record, every session's files, Den's logs, and each
-      // stub's transcript (the runtime's own file, outside the bed's folder).
+      // Each agent's files and record, every session's files, Den's logs (all in Den's
+      // state folder: "state:"), and each stub's transcript (the runtime's own file).
       const dirs = [
         ...state.made.flatMap((x) => [
-          `agent-files/${x.id}`,
-          `agents/${x.id}.json`,
+          `state:agent-files/${x.id}`,
+          `state:agents/${x.id}.json`,
         ]),
-        "sessions",
-        "logs",
+        "state:sessions",
+        "state:logs",
       ];
       const noTranscriptPath = typeof ctx.transcriptPath !== "function";
       const transcripts = noTranscriptPath
@@ -128,6 +130,12 @@ async function agents(ctx, state) {
       const r = await ctx.secretSeen(REF, paths);
       out.seen = {
         paths,
+        // Files this check read or was pointed at: a search that read fewer missed them.
+        known:
+          [out.a, out.b].reduce(
+            (n, s) => n + (s?.record ? 1 : 0) + (s?.config ? 1 : 0),
+            0,
+          ) + transcripts.filter((t) => t.path).length,
         noTranscriptPath,
         noTranscript: transcripts.filter((t) => !t.path).map((t) => t.id),
         searched: Number(r?.searched) || 0,
@@ -270,15 +278,19 @@ function noBearer(r) {
     : x.noTranscript?.length
       ? `; transcript not found: ${x.noTranscript.join(", ")}`
       : "";
+  // Fewer files searched than this check itself read: some paths resolved to nothing.
+  const short = x.searched > 0 && x.searched < (x.known ?? 0);
   return {
     ...c,
-    ok: x.searched > 0 && x.hits.length === 0,
+    ok: x.searched > 0 && !short && x.hits.length === 0,
     detail:
       (x.searched === 0
         ? `searched nothing (${x.paths.join(", ")})`
         : x.hits.length
           ? `the bearer is in ${x.hits.join(", ")}`
-          : `in none of ${x.searched} files under ${x.paths.join(", ")}; the launch env is a Den unit test`) +
+          : short
+            ? `searched ${x.searched} files, fewer than the ${x.known} this check read or found (${x.paths.join(", ")})`
+            : `in none of ${x.searched} files under ${x.paths.join(", ")}; the launch env is a Den unit test`) +
       gaps,
   };
 }
