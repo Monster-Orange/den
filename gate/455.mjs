@@ -68,7 +68,7 @@ export async function setup(ctx) {
   return s;
 }
 
-export async function run(ctx) {
+export async function run(ctx, state) {
   const tag = `${ctx.browser}-${ctx.width}`;
   await ctx.goto(ctx.page, "/edge");
   await ctx.page
@@ -83,11 +83,14 @@ export async function run(ctx) {
       document.documentElement.clientWidth + 1,
   }));
   await ctx.shot(`edge-${tag}`);
-  return r;
+  // The harness calls expect(result) alone, so each cell carries what
+  // setup saw (identity, address, doctor, routes).
+  return { ...r, setup: state };
 }
 
-export function expect(cells, s) {
-  const st = s?.address ?? {};
+export function expect(cells) {
+  const s = cells.find((c) => c.result?.setup)?.result.setup ?? {};
+  const st = s.address ?? {};
   const held = st.wantedAnswer && st.wantedAnswer !== "den";
   const d = (f) =>
     cells

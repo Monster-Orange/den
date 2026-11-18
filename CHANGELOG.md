@@ -22,6 +22,10 @@ config and manifest changes a distribution must make to move to it under
 - **`den edge route --for nginx|caddy|traefik`** prints the route.
 - **Three new Settings** (Settings › Server, user.yml `web.`): `address_check_timeout_seconds` (default 5), `address_check_retries` (default 2), `address_check_cache_seconds` (default 60).
 
+### Changed
+
+- **Live checks: `scripts/gate-shape.mjs` refuses an `expect` that declares more than one parameter.** The harness calls `expect(result)` alone, so a second parameter is always undefined there.
+
 ## [0.4.67] - 2026-11-18
 
 den-ui 0.7.6 ships with this release.
