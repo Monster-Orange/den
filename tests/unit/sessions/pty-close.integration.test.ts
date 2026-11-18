@@ -152,4 +152,34 @@ maybe("issue 503: PTY masters of exited sessions", () => {
     expect(replay).toMatch(/marker-503-3/);
     att.detach();
   }, 90_000);
+
+  it("a terminal still reads, writes, resizes and exits cleanly, then gives its PTY back", async () => {
+    const host = c!;
+    const baseline = openMasters(hostPid);
+    const info = await host.start({
+      name: "pty-503-live",
+      cwd: dir,
+      argv: ["/bin/sh", "-c", "read x; echo got:$x; stty size; exit 3"],
+      env: { PATH: "/usr/bin:/bin", TERM: "xterm-256color" },
+      cols: 80,
+      rows: 24,
+    });
+    expect(openMasters(hostPid)).toBe(baseline + 1);
+    let out = "";
+    let code: number | undefined | null = null;
+    const att = host.attach(info.ref.id, {
+      onData: (d) => (out += Buffer.from(d).toString()),
+      onExit: (x) => (code = x),
+    });
+    await att.ready;
+    host.resize(info.ref.id, 100, 30);
+    await new Promise((r) => setTimeout(r, 200));
+    host.write(info.ref.id, Buffer.from("hi\r"));
+    expect(await until(() => code !== null, 10_000)).toBe(true);
+    expect(out).toMatch(/got:hi/);
+    expect(out).toMatch(/30 100/);
+    expect(code).toBe(3);
+    await until(() => openMasters(hostPid) <= baseline, 5_000);
+    expect(openMasters(hostPid)).toBe(baseline);
+  }, 60_000);
 });

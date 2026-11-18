@@ -125,6 +125,6 @@
     "url": "https://github.com/Monster-Orange/den/issues"
   },
   "optionalDependencies": {
-    "@lydell/node-pty": "1.1.0"
+    "@lydell/node-pty": "1.2.0-beta.18"
   }
 }

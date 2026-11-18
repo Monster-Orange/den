@@ -29,7 +29,7 @@ import {
   type HostErrorCode,
   type Request,
 } from "./protocol.js";
-import type { PtyLoad, PtyProcess } from "./pty.js";
+import { countPtyMasters, type PtyLoad, type PtyProcess } from "./pty.js";
 import { launchdSession } from "../launchd-session.js";
 import {
   SESSION_POOLS,
@@ -64,6 +64,14 @@ export interface SessionHostOptions {
    * What it starts inherits it, so the agents have it too.
    */
   fullDiskAccess?: () => boolean | null;
+  /**
+   * Issue 503: how long after a session's process exits its PTY master is
+   * closed, in ms (sessions.pty_close_seconds; default 0: at once). The
+   * scrollback stays, in memory and in its log.
+   */
+  ptyCloseMs?: number;
+  /** Issue 503: the PTY masters this process holds (default: counted). */
+  openPtys?: () => number | null;
 }
 
 interface Session {
@@ -609,6 +617,9 @@ export class SessionHost {
         this.forget(s);
         return {};
       }
+      case "ptys":
+        // Issue 503: the PTY masters it holds (doctor shows them).
+        return { open: (this.opts.openPtys ?? countPtyMasters)() };
       case "access":
         // D18: what this host (and every agent in it) may reach.
         return {
@@ -708,10 +719,12 @@ export class SessionHost {
         rows,
       });
     } catch (e) {
-      throw new Refusal(
-        "spawn",
-        `could not start ${argv[0]}: ${(e as Error).message}`,
+      // Issue 503: never silent: the reason goes back and into the log.
+      const why = String((e as Error)?.message ?? e).split("\n")[0];
+      this.log(
+        `terminal ${printableActor(name)} could not open a PTY for ${printableActor(argv[0])}: ${why}`,
       );
+      throw new Refusal("spawn", `could not open a PTY for ${argv[0]}: ${why}`);
     }
     for (const s of same) this.forget(s);
 
@@ -758,6 +771,10 @@ export class SessionHost {
         s.info.exitCode = signal ? 128 + signal : exitCode;
         s.info.exitedAt = new Date().toISOString();
         s.pty = null;
+        // Issue 503: its master closes (after sessions.pty_close_seconds),
+        // or a long-running host holds one per exited session until the
+        // machine has none left.
+        this.closePty(pty);
         s.log.flush();
         if (this.sessions.get(id) === s) this.persist(s);
         for (const [aid, c] of s.attachments)
@@ -774,6 +791,20 @@ export class SessionHost {
         `session ${id} (${name}) --keep-env ${kept} · by ${printableActor(req.actor)}`,
       );
     return s.info;
+  }
+
+  /** Issue 503: close an exited session's master, after the delay. */
+  private closePty(pty: PtyProcess): void {
+    const close = () => {
+      try {
+        pty.close?.();
+      } catch (e) {
+        this.log(`could not close a PTY: ${(e as Error).message}`);
+      }
+    };
+    const ms = this.opts.ptyCloseMs ?? 0;
+    if (ms > 0) setTimeout(close, ms).unref();
+    else close();
   }
 
   private attach(conn: Conn, req: Request): SessionInfo {

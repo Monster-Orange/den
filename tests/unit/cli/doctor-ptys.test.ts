@@ -17,7 +17,7 @@ describe("doctor: PTYs (issue 503)", () => {
       machine: roomy,
     });
     expect(r.problem).toBe(false);
-    expect(r.check).toMatchObject({ id: "session_host_ptys", status: "ok" });
+    expect(r.check).toMatchObject({ id: "terminal_host_ptys", status: "ok" });
     expect(r.lines.join("\n")).toMatch(/✓.*12 PTY/);
     expect(r.lines.join("\n")).toMatch(/40 of 511/);
   });
