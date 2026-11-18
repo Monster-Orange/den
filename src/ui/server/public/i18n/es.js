@@ -542,6 +542,11 @@
       "No se pudo abrir Terminal.app automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "No se pudo abrir la terminal automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
+    // Issue 133: Turn off auto-start on the Projects page, when others depend on it.
+    "dlg.autoOffT": "¿Desactivar el inicio automático de {svc}?",
+    "dlg.autoOff":
+      "Es una dependencia obligatoria de: {deps}. El Up de su proyecto puede no quedar listo mientras esté desactivado.",
+    "dlg.autoOffGo": "Desactivar",
     "rd.keepsHead": "Sigue en marcha:",
     "rd.keepsAgents": "Los agentes y sus terminales",
     "rd.keepsServices": "Los servicios y los despliegues en GitHub",
@@ -2113,6 +2118,13 @@
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",
+    // Issue 133: the auto-start toggle, on the working pop-up.
+    "busy.autoOnW": "Activando el inicio automático de {name}…",
+    "busy.autoOnS": "El inicio automático de {name} está activado.",
+    "busy.autoOnF": "No se pudo activar el inicio automático de {name}.",
+    "busy.autoOffW": "Desactivando el inicio automático de {name}…",
+    "busy.autoOffS": "El inicio automático de {name} está desactivado.",
+    "busy.autoOffF": "No se pudo desactivar el inicio automático de {name}.",
     "ag.orphan.one":
       "{names} no tiene proyecto: se eliminó. Asígnale uno con ⋯ › Mover a otro proyecto….",
     "ag.orphan.many":
@@ -2395,6 +2407,7 @@
     "pj.validate.go": "Validar",
     "pj.validate.paste": "…o pega aquí el contenido de {file}",
     "pj.checking": "comprobando…",
+    "pj.valNeedInput": "Escribe una ruta o pega contenido YAML",
     "pj.noRuntime": "sin ejecución",
     "pj.noRuntimeTip":
       "Este repositorio no ejecuta nada: nada que iniciar ni comprobar. Los agentes pueden trabajar en él.",

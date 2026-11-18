@@ -520,6 +520,11 @@
       "Terminal.app を自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "ターミナルを自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
+    // Issue 133: Turn off auto-start on the Projects page, when others depend on it.
+    "dlg.autoOffT": "{svc} の自動起動をオフにしますか?",
+    "dlg.autoOff":
+      "{deps} が必ず必要とするサービスです。オフの間は、そのプロジェクトの Up が準備完了にならないことがあります。",
+    "dlg.autoOffGo": "オフにする",
     "rd.keepsHead": "動き続けるもの:",
     "rd.keepsAgents": "エージェントとそのターミナル",
     "rd.keepsServices": "サービスと GitHub 上のデプロイ",
@@ -2054,6 +2059,13 @@
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",
+    // Issue 133: the auto-start toggle, on the working pop-up.
+    "busy.autoOnW": "{name} の自動起動をオンにしています…",
+    "busy.autoOnS": "{name} の自動起動はオンです。",
+    "busy.autoOnF": "{name} の自動起動をオンにできませんでした。",
+    "busy.autoOffW": "{name} の自動起動をオフにしています…",
+    "busy.autoOffS": "{name} の自動起動はオフです。",
+    "busy.autoOffF": "{name} の自動起動をオフにできませんでした。",
     "ag.orphan.one":
       "{names} にはプロジェクトがありません (削除されました)。⋯ › 別のプロジェクトへ移動… で割り当ててください。",
     "ag.orphan.many":
@@ -2335,6 +2347,7 @@
     "pj.validate.go": "検証",
     "pj.validate.paste": "…または {file} の内容をここに貼り付け",
     "pj.checking": "確認中…",
+    "pj.valNeedInput": "パスを入力するか、YAML の内容を貼り付けてください",
     "pj.noRuntime": "実行環境なし",
     "pj.noRuntimeTip":
       "このリポジトリは何も実行しません。起動やヘルスチェックの対象はありません。エージェントはここで作業できます。",

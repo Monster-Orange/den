@@ -343,8 +343,8 @@ describe("issue 133: Turn off auto-start asks with Den's dialog, in the page's l
       } catch (err) {
         const shown = await p.evaluate(
           () =>
-            document.getElementById("autostart-confirm-overlay")
-              ?.textContent ?? "",
+            document.getElementById("autostart-confirm-overlay")?.textContent ??
+            "",
         );
         throw new Error(
           `no kit dialog; shown instead: ${JSON.stringify(shown)}; natives: ${JSON.stringify(natives)} (${String(err)})`,
