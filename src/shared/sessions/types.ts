@@ -40,6 +40,12 @@ export interface SessionInfo {
    * bare BEL, OSC 9, OSC 777;notify), ISO 8601. Since this host started.
    */
   bellAt?: string;
+  /**
+   * Issue 448: when a person's input last reached it (a key, a paste),
+   * ISO 8601, from any browser; a terminal's own replies to the program's
+   * queries don't count. Since this host started. Never what was typed.
+   */
+  inputAt?: string;
   /** 0.4.45: when it exited, ISO 8601 (absent for one from before 0.4.45). */
   exitedAt?: string;
   /**
