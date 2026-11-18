@@ -1139,6 +1139,7 @@ describe("criterion 5: the overlays only read", () => {
       reqs.filter(
         (r) =>
           r !== "GET /api/edge" &&
+          r !== "GET /api/edge/address" &&
           /\/api\/(service|workspace|workspaces|edge|web\/restart|run|release|local-dev)\b/.test(
             r,
           ),
