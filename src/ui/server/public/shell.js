@@ -3763,20 +3763,16 @@
   function pinToggles(root) {
     DUI.syncPinToggles(root, isPinned, lang);
   }
+  /**
+   * A rail change (pins, collapse, order, the dock): kept here first, then
+   * saved by the kit's saveShell (issue 394), which outlives the page: a
+   * person who unpins and clicks a link at once keeps the unpin. The save
+   * carries when it was made, and the server keeps the newer one.
+   */
   function saveShell(patch) {
     remember();
     if (typeof fetch !== "function") return Promise.resolve();
-    return fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shell: patch }),
-    })
-      .then(function (r) {
-        return r && r.ok !== false;
-      })
-      .catch(function () {
-        return false;
-      });
+    return DUI.saveShell("/api/settings/shell", patch);
   }
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;
