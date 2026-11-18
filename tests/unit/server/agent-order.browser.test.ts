@@ -184,6 +184,26 @@ const until = async (p: Page, want: string[]) => {
   expect(await order(p)).toEqual(want);
 };
 
+/**
+ * `act`, a move, and its save: resolves once the server has answered the
+ * move's POST (it writes the person's user config before it answers).
+ * The list shows a move before its save, so a test that checked the list
+ * and ended could leave its save in flight, to land in the next test's
+ * reset order (issue 452).
+ */
+async function saved(p: Page, act: () => Promise<unknown>): Promise<void> {
+  const answer = p.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/order$/.test(
+        new URL(r.url()).pathname,
+      ),
+  );
+  await act();
+  const r = await answer;
+  expect(r.status()).toBe(200);
+}
+
 /** A drag by the grip of `from` with the mouse, to the top quarter of `to`. */
 async function mouseDrag(p: Page, from: string, to: string, shot?: string) {
   const g = (await p.locator(grip(from)).boundingBox())!;
@@ -243,17 +263,12 @@ describe.each(ENGINES)(
       resetOrder();
       const p = await open(engine);
       expect(await order(p)).toEqual(["ada", "bo", "cy"]);
-      await mouseDrag(
-        p,
-        sid.cy,
-        sid.ada,
-        engine === "chromium" ? SHOT : undefined,
+      await saved(p, () =>
+        mouseDrag(p, sid.cy, sid.ada, engine === "chromium" ? SHOT : undefined),
       );
       await until(p, ["cy", "ada", "bo"]);
       expect(await p.locator("#agl [data-drop], #agl .lift").count()).toBe(0);
       // Stored in the person's user config, by agent id.
-      for (let i = 0; i < 50 && !userYml().agents?.order?.north; i++)
-        await p.waitForTimeout(100);
       // (Issue 226's stopped dee and eve are saved in it too.)
       expect(
         userYml().agents?.order?.north?.filter((x) => sid[x] !== undefined),
@@ -296,7 +311,7 @@ describe.each(ENGINES)(
       );
       expect(await p.getAttribute(grip(sid.cy), "role")).toBe("img");
       await p.locator(row(sid.cy)).focus();
-      await p.keyboard.press("Alt+ArrowUp");
+      await saved(p, () => p.keyboard.press("Alt+ArrowUp"));
       await until(p, ["ada", "cy", "bo"]);
       expect(
         await p.evaluate(() => document.activeElement?.getAttribute("data-id")),
@@ -324,10 +339,10 @@ describe.each(ENGINES)(
       resetOrder();
       const p = await open(engine, 375, true);
       expect(await order(p)).toEqual(["ada", "bo", "cy"]);
-      await touchDrag(p, sid.bo, sid.ada);
+      await saved(p, () => touchDrag(p, sid.bo, sid.ada));
       await until(p, ["bo", "ada", "cy"]);
       await p.locator(row(sid.bo)).focus();
-      await p.keyboard.press("Alt+ArrowDown");
+      await saved(p, () => p.keyboard.press("Alt+ArrowDown"));
       await until(p, ["ada", "bo", "cy"]);
       await p.waitForFunction(() =>
         /planner moved to position 2 of 3/.test(
@@ -342,7 +357,7 @@ describe.each(ENGINES)(
       const box = (await up.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
-      await up.click();
+      await saved(p, () => up.click());
       await until(p, ["ada", "cy", "bo"]);
       await p
         .locator('#agl .wsg[data-ws="north"] [data-act="reorder"]')
@@ -396,17 +411,12 @@ describe.each(ENGINES)(
         expect(box.height).toBeGreaterThanOrEqual(44);
       }
       expect(await down.getAttribute("aria-disabled")).toBe("true");
-      await up.click();
+      await saved(p, () => up.click());
       await untilStopped(["eve", "dee"]);
-      // Wait for this move's save. dee and eve may already be in the file
-      // from before, so wait for the new order, not for eve to appear.
-      const eveFirst = () => {
-        const o = userYml().agents?.order?.north ?? [];
-        return o.includes("eve") && o.indexOf("eve") < o.indexOf("dee");
-      };
-      for (let i = 0; i < 100 && !eveFirst(); i++) await p.waitForTimeout(100);
-      const saved = userYml().agents?.order?.north ?? [];
-      expect(saved.indexOf("eve")).toBeLessThan(saved.indexOf("dee"));
+      // Its save has been answered, so the file has it.
+      const north = userYml().agents?.order?.north ?? [];
+      expect(north).toContain("eve");
+      expect(north.indexOf("eve")).toBeLessThan(north.indexOf("dee"));
       // The running ones keep theirs.
       expect(await order(p)).toEqual(["ada", "bo", "cy"]);
       await reorder.click();
