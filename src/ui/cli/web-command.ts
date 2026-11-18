@@ -44,7 +44,8 @@ import {
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
-import { webRouteHosts } from "../../shared/edge/render.js";
+import { edgeNames, webRouteHosts } from "../../shared/edge/render.js";
+import { containerState } from "../../shared/edge/runtime.js";
 import {
   expiringTokenWarning,
   GITHUB_DEVICE_PAGE,
@@ -94,6 +95,7 @@ import {
   noticeLine,
   noticeOnce,
   upNoticeLines,
+  upAddressLines,
   givenAddress,
   type AddressState,
   type CheckDeps,
@@ -1557,6 +1559,14 @@ async function runWeb(args: string[]): Promise<void> {
         `\n  OK ${product().title} web is already running at ${shownNow}`,
       ),
     );
+  // Nothing answers the address: still the one given (D80), said plainly.
+  if (proven && addr)
+    for (const l of upAddressLines(
+      proven,
+      { lang: cliLanguage(), title: product().title, cli: product().cli },
+      edgeDownFor(addr.url),
+    ))
+      console.log(chalk.yellow(`  ! ${l}`));
   if (proven?.address && addr && proven.address !== addr.url) {
     const words = {
       lang: cliLanguage(),
@@ -1754,6 +1764,13 @@ export async function provenOrigin(
     ...deps,
   });
   const given = givenAddress(state) ?? wanted;
+  // Nothing answers it: still given (D80), said plainly next to it.
+  for (const l of upAddressLines(
+    state,
+    { lang: cliLanguage(), title: product().title, cli: product().cli },
+    (deps.edgeDown ?? (() => edgeDownFor(wanted)))(),
+  ))
+    say(l);
   if (given !== wanted && noticeOnce(stateDir, state)) {
     const line = noticeLine(state, {
       lang: cliLanguage(),
@@ -1764,6 +1781,34 @@ export async function provenOrigin(
   }
   return { origin: given, state };
 }
+/**
+ * Whether the edge that serves `wanted` is down, when Den can tell: the
+ * install has an edge publishing the address's port, and its container
+ * isn't running. null when Den can't tell (no edge config, another port).
+ */
+export function edgeDownFor(wanted: string): boolean | null {
+  let cfg: ReturnType<typeof readEdgeConfig>;
+  try {
+    cfg = readEdgeConfig();
+  } catch {
+    return null;
+  }
+  if (!cfg.ports) return null;
+  let port: number;
+  try {
+    const u = new URL(wanted);
+    port = Number(u.port) || (u.protocol === "https:" ? 443 : 80);
+  } catch {
+    return null;
+  }
+  if (port !== cfg.ports.http && port !== cfg.ports.https) return null;
+  try {
+    return containerState(edgeNames(cfg.org).container) !== "running";
+  } catch {
+    return null;
+  }
+}
+
 const stdIo: CliIo = {
   out: (s) => process.stdout.write(s),
   err: (s) => process.stderr.write(s),

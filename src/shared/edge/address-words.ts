@@ -29,6 +29,8 @@ export type AddressWord =
   | "doctor.route"
   | "doctor.ok"
   | "doctor.unchecked"
+  | "unreachable"
+  | "edgeDown"
   | "edgeNotDen"
   | "edgeHeld"
   | "edgeHeldUnknown"
@@ -64,6 +66,8 @@ export const ADDRESS_WORDS: Readonly<
     "doctor.ok": "{address}: checked just now: it is this {title}.",
     "doctor.unchecked":
       "{title} is not running here, so no address was checked.",
+    unreachable: "Not reachable yet: nothing answers at {address}.",
+    edgeDown: "The edge isn't running. Start it with: {cli} edge up",
     edgeNotDen: "Port {port} answers, but it isn't {title}: {what}.",
     edgeHeld:
       "Port {port} is held by {owner} ({kind} {name}), not {title}'s proxy.",
@@ -99,6 +103,8 @@ export const ADDRESS_WORDS: Readonly<
     "doctor.ok": "{address}: comprobada ahora mismo: es este {title}.",
     "doctor.unchecked":
       "{title} no está en marcha aquí, así que no se comprobó ninguna dirección.",
+    unreachable: "Aún no se puede llegar: nada responde en {address}.",
+    edgeDown: "El edge no está en marcha. Arráncalo con: {cli} edge up",
     edgeNotDen: "El puerto {port} responde, pero no es {title}: {what}.",
     edgeHeld:
       "El puerto {port} lo ocupa {owner} ({kind} {name}), no el proxy de {title}.",
@@ -135,6 +141,8 @@ export const ADDRESS_WORDS: Readonly<
     "doctor.ok": "{address}: たった今確認しました: この {title} です。",
     "doctor.unchecked":
       "{title} がここで動いていないため、アドレスは確認していません。",
+    unreachable: "まだ届きません: {address} では何も応答していません。",
+    edgeDown: "edge が動いていません。起動するには: {cli} edge up",
     edgeNotDen:
       "ポート {port} は応答しますが、{title} ではありません: {what}。",
     edgeHeld:
