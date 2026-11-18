@@ -32,7 +32,7 @@ export function edgeDomains(cfg: EdgeConfig): string[] {
 }
 
 /** `Host()` rule matching `<name>` under every edge domain. */
-function hostRule(name: string, cfg: EdgeConfig): string {
+export function hostRule(name: string, cfg: EdgeConfig): string {
   return edgeDomains(cfg)
     .map((d) => `Host(\`${routeHost(name, d)}\`)`)
     .join(" || ");

@@ -69,6 +69,7 @@ import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
 import { edgeImageCheck } from "../../shared/edge/render.js";
+import { edgeImageHint, edgeV2Rules } from "../../shared/edge/rule-syntax.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -180,7 +181,12 @@ const SELECTORS: Record<string, Selector> = {
     try {
       const cfg = readEdgeConfig();
       const d = tlsStrategyFor(cfg).detect(env);
-      const image = edgeImageCheck(cfg);
+      // Issue 519: before suggesting v3, the rules v3 reads differently.
+      const plain = edgeImageCheck(cfg);
+      const image =
+        plain.status === "warn"
+          ? edgeImageHint(cfg, edgeV2Rules(cfg))
+          : { ...plain, lines: [plain.detail] };
       return {
         kind: "tls",
         selected: cfg.tls.strategy,
@@ -191,7 +197,7 @@ const SELECTORS: Record<string, Selector> = {
         warnings: [
           ...edgeTlsWarnings(cfg),
           ...edgeAccessWarnings(cfg),
-          ...(image.status === "warn" ? [image.detail] : []),
+          ...(image.status === "warn" ? image.lines : []),
         ],
         notes: [
           image.status === "ok" ? image.detail : null,

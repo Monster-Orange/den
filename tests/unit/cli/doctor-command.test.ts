@@ -276,6 +276,93 @@ describe("#331: doctor's line for the edge image", () => {
   });
 });
 
+describe("issue 519: the v3 hint checks for Traefik v2 rule syntax first", () => {
+  const FIX = "Set edge.image to traefik:v3.7.17, Den's default.";
+  const V2_RULE = "HostRegexp(`{sub:[a-z]+}.acme.localhost`)";
+  // A stack whose compose file carries Traefik labels, and an included
+  // dynamic file: both read from disk, never from docker.
+  const fixture = (labelRule: string, fileRule?: string) => {
+    const repo = path.join(ROOT, "repos", "app");
+    fs.mkdirSync(repo, { recursive: true });
+    fs.writeFileSync(
+      path.join(repo, "docker-compose.yml"),
+      [
+        "services:",
+        "  web:",
+        "    image: nginx",
+        "    labels:",
+        `      - "traefik.http.routers.web.rule=${labelRule}"`,
+        "",
+      ].join("\n"),
+    );
+    const inc = path.join(ROOT, "edge-dynamic");
+    fs.rmSync(inc, { recursive: true, force: true });
+    fs.mkdirSync(inc, { recursive: true });
+    if (fileRule)
+      fs.writeFileSync(
+        path.join(inc, "extra.yml"),
+        `http:\n  routers:\n    extra:\n      rule: "${fileRule}"\n      service: x\n`,
+      );
+    return doctorRows(
+      dist(
+        [
+          "repos_root: repos",
+          "environments: [local]",
+          "stacks:",
+          "  app:",
+          "    repo: app",
+          "edge:",
+          "  org: acme",
+          "  domain: acme.localhost",
+          "  tls: none",
+          '  image: "traefik:v2.11"',
+          "  include: edge-dynamic",
+          "",
+        ].join("\n"),
+      ),
+    ).find((r) => r.kind === "tls")!;
+  };
+
+  it("a v2 named-group HostRegexp label: not the bare hint; names where, and both ways", () => {
+    const before = spawned();
+    const row = fixture(V2_RULE);
+    const text = row.warnings.join("\n");
+    expect(text).not.toContain(FIX);
+    expect(text).toContain("v2 syntax");
+    expect(text).toContain("app/docker-compose.yml");
+    expect(text).toContain("service web");
+    expect(text).toContain(V2_RULE);
+    expect(text).toContain("--core.defaultRuleSyntax=v2");
+    expect(text).toContain("edge.args");
+    expect(text).toMatch(/rewrite/i);
+    expect(strategyCheck(row).status).toBe("warn");
+    expect(spawned()).toEqual(before);
+  });
+
+  it("a v2 rule in an included dynamic file is named by its file and router", () => {
+    const row = fixture(
+      "Host(`web.acme.localhost`)",
+      "Headers(`X-Env`, `dev`)",
+    );
+    const text = row.warnings.join("\n");
+    expect(text).not.toContain(FIX);
+    expect(text).toContain("extra.yml");
+    expect(text).toContain("router extra");
+    expect(text).toContain("Headers(`X-Env`, `dev`)");
+  });
+
+  it("no v2 rules anywhere: the plain hint stays", () => {
+    const row = fixture(
+      "Host(`web.acme.localhost`)",
+      "HostRegexp(`^[a-z]+\\\\.acme\\\\.localhost$`)",
+    );
+    expect(row.warnings).toContain(
+      `edge.image traefik:v2.11 is Traefik v2: the access log has no request ids (OTLP tracing needs v3). ${FIX}`,
+    );
+    expect(row.warnings.join("\n")).not.toContain("defaultRuleSyntax");
+  });
+});
+
 describe("doctor's agents note", () => {
   const NOTE =
     "  ℹ agents are configured or have run here: run `acme doctor --probe` to verify agent env isolation";
