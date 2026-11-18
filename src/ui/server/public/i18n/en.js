@@ -1746,6 +1746,16 @@
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "Report: repository visibility kept for",
+    "set.server.report_visibility_cache.d":
+      "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait": "Report: repository visibility wait",
+    "set.server.report_visibility_wait.d":
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "Report: repository visibility retry",
+    "set.server.report_visibility_retry.d":
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Terminal reconnect tries",
     "set.agents.pane_reconnect.d":
       "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
