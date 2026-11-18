@@ -36,6 +36,8 @@ export const UI_MODULES: readonly string[] = [
   // Issue 172 S2: the service worker that shows push alerts.
   "/den-sw.js",
   "/edge-page.js",
+  // Issue 455: Settings › Edge's card when another server holds the port.
+  "/address-card.js",
   // Issue 171: values the server sends, in the page's language.
   "/value-words.js",
   // Issue 209: the Verify page.

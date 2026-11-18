@@ -183,6 +183,7 @@ import {
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
+  mergeUserConfig,
   type UserConfig,
   writeUserConfig,
   panesReconnect,
@@ -347,6 +348,15 @@ import {
   noteKeepRunningOffer,
 } from "./keep-running-routes.js";
 import { handleEdgeUpRoute } from "./edge-up-routes.js";
+import { handleAddressRoutes } from "./address-routes.js";
+import { identityKey } from "../../shared/den-identity.js";
+import {
+  addressCheckSettings,
+  checkAddress,
+  portState,
+} from "../../shared/edge/address-check.js";
+import { containerState } from "../../shared/edge/runtime.js";
+import { sh as edgeSh } from "../../shared/edge/exec.js";
 import { runEdgeUp } from "../../shared/edge/up.js";
 import {
   agentTokenStatus,
@@ -962,6 +972,12 @@ const CONFIG_FREE_ROUTES = new Set([
   // Issue 395: the edge row on Settings reads its state. It reads only the
   // edge's own config and docker, never org data (starting it stays gated).
   "/api/edge",
+  // Issue 455: the identity probe, and the address check (the banner and
+  // Settings › Edge): web.secret, web.url and the edge's own config only.
+  "/api/den-identity",
+  "/api/edge/address",
+  "/api/edge/address/check",
+  "/api/edge/address/take-over",
 ]);
 
 /**
@@ -3726,6 +3742,72 @@ async function handleRequest(
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
       readBody,
+      sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // Issue 455: the identity probe's other end, and the address check.
+  if (
+    await handleAddressRoutes(req, res, pathname, {
+      key: () => {
+        const s = webSecret.current();
+        return s ? identityKey(s) : null;
+      },
+      check: () => {
+        const s = webSecret.current();
+        return checkAddress({
+          webPort: PORT,
+          wanted: readWebUrl()?.url ?? null,
+          key: s ? identityKey(s) : null,
+          cli: product().cli,
+          settings: addressCheckSettings(),
+        });
+      },
+      edge: async () => {
+        let cfg: ReturnType<typeof readEdgeConfig>;
+        try {
+          cfg = readEdgeConfig();
+        } catch {
+          return null;
+        }
+        const container = edgeNames(cfg.org).container;
+        let state = "absent";
+        try {
+          state = containerState(container);
+        } catch {
+          state = "absent"; // no docker here
+        }
+        return {
+          container,
+          state,
+          publish: !!cfg.ports,
+          ports: cfg.ports
+            ? await Promise.all([
+                portState(cfg.ports.http),
+                portState(cfg.ports.https),
+              ])
+            : null,
+        };
+      },
+      cacheMs: () => addressCheckSettings().cacheMs,
+      setPublishOff: () => {
+        const user = readUserConfig() as Record<string, unknown>;
+        const edge =
+          user.edge &&
+          typeof user.edge === "object" &&
+          !Array.isArray(user.edge)
+            ? (user.edge as Record<string, unknown>)
+            : {};
+        mergeUserConfig({ edge: { ...edge, publish: false } } as never);
+      },
+      takeOver: async (container) => {
+        const r = edgeSh("docker", ["stop", container]);
+        if (r.code !== 0)
+          throw new Error(r.err || `docker stop ${container} failed`);
+        await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") });
+      },
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
   )
@@ -6803,6 +6885,15 @@ async function handleRequest(
             visibility_retry_seconds: f.visibilityRetrySeconds,
           };
         })(),
+        // Issue 455: the address check's limits (web.address_check_*).
+        address_check: (() => {
+          const a = addressCheckSettings(() => user);
+          return {
+            timeout_seconds: a.timeoutMs / 1000,
+            retries: a.retries,
+            cache_seconds: a.cacheMs / 1000,
+          };
+        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
@@ -6854,6 +6945,7 @@ async function handleRequest(
           agents_list?: unknown;
           agent_context?: unknown;
           feedback?: unknown;
+          address_check?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -6887,6 +6979,7 @@ async function handleRequest(
             agents_list: body.agents_list,
             agent_context: body.agent_context,
             feedback: body.feedback,
+            address_check: body.address_check,
           });
           if (!c.ok) return send400(res, c.error);
         }

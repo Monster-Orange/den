@@ -12,6 +12,7 @@
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, create-hub,
  * start-agent, restart-agent, agent-mode, fresh-start, report-preview,
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
+ * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
  * remove-service, remove-mcp, gate-end. Waits for
  * Done: sign-out-all, send-report.
@@ -237,6 +238,26 @@ export const DEN_ACTIONS = {
       working: "pmode.followW",
       success: "pmode.followS",
       failure: "pmode.followF",
+    },
+  },
+  // Issue 455: Settings › Edge › Check again (the address check).
+  "check-edge-address": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "edgeAddr.busy.checkW",
+      success: "edgeAddr.busy.checkS",
+      failure: "edgeAddr.busy.checkF",
+    },
+  },
+  // Issue 455: Settings › Edge › Take over (an old Den edge holds the port).
+  "edge-take-over": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "edgeAddr.busy.takeW",
+      success: "edgeAddr.busy.takeS",
+      failure: "edgeAddr.busy.takeF",
     },
   },
   // Issue 395: Settings › Access › Start the edge (Apply): `edge up`.
