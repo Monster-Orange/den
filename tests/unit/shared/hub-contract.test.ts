@@ -1,10 +1,13 @@
 /**
- * Issue 521: docs/hub-contract/den-<version>/ holds the shape of each
+ * Issue 521: docs/hub-contract/den-<release>/ holds the shape of each
  * request Den makes to Hub, written by scripts/hub-contract-export.mjs
- * from the same code that builds the requests. This test builds them
- * again and compares them with the folder for the version in
- * package.json: a request whose shape changed without a new export fails
- * here. (A release changes the version; its commit runs the export.)
+ * from the same code that builds the requests. The folder is named for
+ * the version without its pre-release part (0.4.71-dev.3 → den-0.4.71),
+ * so a dev bump doesn't need a new export. This test builds the requests
+ * again and compares their shapes with that folder: a request whose shape
+ * changed without a new export fails here. X-Den-Version and the
+ * manifest's den_version keep the exact version; the compare checks
+ * their format and release, not the value.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -14,6 +17,7 @@ import {
   HUB_CONTRACT_CALLS,
   buildHubContract,
   contractDrift,
+  contractFolderName,
   readContractFolder,
 } from "../../../src/shared/hub-contract.js";
 
@@ -21,7 +25,7 @@ const ROOT = path.join(process.cwd(), "docs", "hub-contract");
 const PKG = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"),
 ) as { version: string };
-const DIR = path.join(ROOT, `den-${PKG.version}`);
+const DIR = path.join(ROOT, contractFolderName(PKG.version));
 const EXPORT = "npm run hub-contract:export";
 
 describe("Hub contract fixtures (issue 521)", () => {
@@ -32,6 +36,62 @@ describe("Hub contract fixtures (issue 521)", () => {
       readContractFolder(DIR),
     );
     expect(drift).toEqual([]);
+  });
+
+  it("the folder is named for the release: the pre-release part is dropped", () => {
+    expect(contractFolderName("0.4.71-dev.1")).toBe("den-0.4.71");
+    expect(contractFolderName("0.4.71-dev.3")).toBe("den-0.4.71");
+    expect(contractFolderName("0.4.71")).toBe("den-0.4.71");
+    expect(contractFolderName("1.2.3-rc.1+build.5")).toBe("den-1.2.3");
+  });
+
+  /** A copy of the folder with every exact version replaced by `v`. */
+  function folderAt(v: string, rel: string): string {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-521-at-"));
+    const dir = path.join(tmp, `den-${rel}`);
+    fs.mkdirSync(dir);
+    const exact = JSON.parse(
+      fs.readFileSync(path.join(DIR, "manifest.json"), "utf-8"),
+    ).den_version as string;
+    for (const f of fs.readdirSync(DIR))
+      fs.writeFileSync(
+        path.join(dir, f),
+        fs.readFileSync(path.join(DIR, f), "utf-8").split(exact).join(v),
+      );
+    return dir;
+  }
+
+  it("a dev bump (0.4.71-dev.1) against den-0.4.71 exported at another dev: no drift", async () => {
+    const built = await buildHubContract();
+    for (const v of ["0.4.71-dev.1", "0.4.71-dev.3", "0.4.71"]) {
+      const dir = folderAt(v, "0.4.71");
+      try {
+        expect(
+          contractDrift(built, readContractFolder(dir), "0.4.71-dev.1"),
+        ).toEqual([]);
+      } finally {
+        fs.rmSync(path.dirname(dir), { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("X-Den-Version is checked by format, and the manifest by release", async () => {
+    const built = await buildHubContract();
+    const bad = folderAt("not-a-version", "0.4.71");
+    const other = folderAt("0.4.72-dev.1", "0.4.71");
+    try {
+      const d1 = contractDrift(built, readContractFolder(bad), "0.4.71-dev.1");
+      expect(d1.join("\n")).toContain("X-Den-Version");
+      const d2 = contractDrift(
+        built,
+        readContractFolder(other),
+        "0.4.71-dev.1",
+      );
+      expect(d2.join("\n")).toContain("den_version");
+    } finally {
+      fs.rmSync(path.dirname(bad), { recursive: true, force: true });
+      fs.rmSync(path.dirname(other), { recursive: true, force: true });
+    }
   });
 
   it("one request's shape changed without re-exporting: drift names it", async () => {
@@ -64,7 +124,9 @@ describe("Hub contract fixtures (issue 521)", () => {
       "generator",
       "protocol",
     ]);
-    expect(m.den_version).toBe(PKG.version);
+    expect(contractFolderName(String(m.den_version))).toBe(
+      contractFolderName(PKG.version),
+    );
     expect(m.generator).toBe("scripts/hub-contract-export.mjs");
     const built = await buildHubContract();
     expect(m.protocol).toBe(built.manifest.protocol);
