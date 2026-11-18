@@ -359,8 +359,9 @@ describe("the rail", () => {
     await p.keyboard.press("Delete");
     expect(await p.$$('[data-pin="shop"]')).toHaveLength(0);
     await postsAtLeast(p, posts, 2);
+    // Issue 402: a pin is { item, project }; no project picked here: none.
     expect(posts).toEqual([
-      { shell: { pins: ["shop"] } },
+      { shell: { pins: [{ item: "shop", project: null }] } },
       { shell: { pins: [] } },
     ]);
     await p.context().close();
