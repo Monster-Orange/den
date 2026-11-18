@@ -1015,7 +1015,7 @@ describe("0.4.17: menus in the top layer, Visit ↗, the favourite star", () => 
       p.waitForResponse(
         (r) =>
           r.request().method() === "POST" &&
-          new URL(r.url()).pathname === "/api/settings",
+          new URL(r.url()).pathname === "/api/settings/shell",
       ),
       p.click(star),
     ]);
@@ -1049,7 +1049,7 @@ describe("0.4.17: menus in the top layer, Visit ↗, the favourite star", () => 
       p.waitForResponse(
         (r) =>
           r.request().method() === "POST" &&
-          new URL(r.url()).pathname === "/api/settings",
+          new URL(r.url()).pathname === "/api/settings/shell",
       ),
       p.click(star),
     ]);

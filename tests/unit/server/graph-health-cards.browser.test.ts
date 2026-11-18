@@ -227,7 +227,7 @@ describe("graph cards and health", () => {
       p.waitForResponse(
         (r) =>
           r.request().method() === "POST" &&
-          new URL(r.url()).pathname === "/api/settings",
+          new URL(r.url()).pathname === "/api/settings/shell",
       ),
       p.click(star),
     ]);
@@ -245,7 +245,7 @@ describe("graph cards and health", () => {
       p.waitForResponse(
         (r) =>
           r.request().method() === "POST" &&
-          new URL(r.url()).pathname === "/api/settings",
+          new URL(r.url()).pathname === "/api/settings/shell",
       ),
       p.click(star),
     ]);

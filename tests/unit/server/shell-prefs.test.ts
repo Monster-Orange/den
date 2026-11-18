@@ -7,6 +7,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   MAX_NAV_IDS,
   MAX_PINS,
+  applyShellSave,
   mergeShellPrefs,
   shellPrefs,
   storedShell,
@@ -156,5 +157,153 @@ describe("mergeShellPrefs", () => {
         dockHeight: 300,
       }),
     ).toEqual({ dock: true, dockHeight: 300 });
+  });
+});
+
+describe("issue 394: applyShellSave keeps the newer save of each key", () => {
+  it("a save stamps its keys with changedAt; the stamps are stored, not served", () => {
+    const r = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
+    expect(r).toEqual({
+      ok: true,
+      value: { pins: ["a"], changedAt: { pins: 100 } },
+      ignored: [],
+    });
+    expect(shellPrefs(r.ok ? r.value : null).pins).toEqual(["a"]);
+    expect(shellPrefs(r.ok ? r.value : null)).not.toHaveProperty("changedAt");
+  });
+
+  it("an older save of a key doesn't overwrite a newer one; other keys still apply", () => {
+    const first = applyShellSave(undefined, { pins: [], changedAt: 200 });
+    const stored = first.ok ? first.value : undefined;
+    const late = applyShellSave(stored, {
+      pins: ["a"],
+      collapsed: true,
+      changedAt: 100,
+    });
+    expect(late).toEqual({
+      ok: true,
+      value: { collapsed: true, changedAt: { pins: 200, collapsed: 100 } },
+      ignored: ["pins"],
+    });
+  });
+
+  it("the same save twice (the fetch and the beacon) is stored once, the same", () => {
+    const a = applyShellSave(undefined, { pins: ["a"], changedAt: 300 });
+    const b = applyShellSave(a.ok ? a.value : undefined, {
+      pins: ["a"],
+      changedAt: 300,
+    });
+    expect(b.ok && b.value).toEqual(a.ok && a.value);
+  });
+
+  it("a newer save wins; a key cleared to its default keeps its stamp", () => {
+    const a = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
+    const b = applyShellSave(a.ok ? a.value : undefined, {
+      pins: [],
+      changedAt: 200,
+    });
+    expect(b.ok && b.value).toEqual({ changedAt: { pins: 200 } });
+    const c = applyShellSave(b.ok ? b.value : undefined, {
+      pins: ["a"],
+      changedAt: 150,
+    });
+    expect(c.ok && c.value).toEqual({ changedAt: { pins: 200 } });
+  });
+
+  it("a save with no changedAt (an older page) applies and clears that key's stamp", () => {
+    const a = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
+    const b = applyShellSave(a.ok ? a.value : undefined, { pins: ["b"] });
+    expect(b.ok && b.value).toEqual({ pins: ["b"] });
+  });
+
+  it("a bad changedAt or a bad field is refused", () => {
+    for (const changedAt of ["1", -1, Number.NaN, null, {}])
+      expect(applyShellSave(undefined, { pins: [], changedAt }).ok).toBe(false);
+    expect(applyShellSave(undefined, { pins: "x", changedAt: 1 }).ok).toBe(
+      false,
+    );
+    expect(applyShellSave(undefined, { nope: 1, changedAt: 1 }).ok).toBe(false);
+    expect(applyShellSave(undefined, "x").ok).toBe(false);
+  });
+
+  it("a hand-broken stamp block is ignored", () => {
+    const r = applyShellSave(
+      { pins: ["a"], changedAt: { pins: "soon", order: 5 } },
+      { pins: ["b"], changedAt: 1 },
+    );
+    expect(r.ok && r.value).toEqual({
+      pins: ["b"],
+      changedAt: { pins: 1, order: 5 },
+    });
+  });
+});
+
+describe("issue 394 review: inherited names and far-future stamps", () => {
+  it("an inherited name (constructor, toString, __proto__) is not a key, even set to null", () => {
+    for (const k of [
+      "constructor",
+      "toString",
+      "hasOwnProperty",
+      "__proto__",
+    ]) {
+      const patch = JSON.parse(`{"${k}":null,"changedAt":1}`);
+      expect(applyShellSave(undefined, patch).ok).toBe(false);
+      expect(
+        mergeShellPrefs(shellPrefs(undefined), JSON.parse(`{"${k}":null}`)).ok,
+      ).toBe(false);
+    }
+  });
+
+  it("a stored stamp under an inherited name is dropped", () => {
+    const r = applyShellSave(
+      { pins: ["a"], changedAt: JSON.parse('{"constructor":5,"toString":6}') },
+      { pins: ["b"], changedAt: 1 },
+    );
+    expect(r.ok && r.value).toEqual({ pins: ["b"], changedAt: { pins: 1 } });
+  });
+
+  it("a changedAt later than now plus the allowance is stored as now; the next real save wins", () => {
+    const now = 1_000_000;
+    const at = { now, skewMs: 300_000 };
+    const far = applyShellSave(
+      undefined,
+      { collapsed: true, changedAt: 8.64e15 },
+      at,
+    );
+    expect(far.ok && far.value).toEqual({
+      collapsed: true,
+      changedAt: { collapsed: now },
+    });
+    const next = applyShellSave(
+      far.ok ? far.value : undefined,
+      { collapsed: false, changedAt: now + 1 },
+      { now: now + 1, skewMs: 300_000 },
+    );
+    expect(next.ok && next.ignored).toEqual([]);
+    expect(next.ok && next.value).toEqual({
+      changedAt: { collapsed: now + 1 },
+    });
+  });
+
+  it("within the allowance a changedAt is kept as given (a clock a little ahead)", () => {
+    const r = applyShellSave(
+      undefined,
+      { pins: ["a"], changedAt: 1_000_000 + 299_000 },
+      { now: 1_000_000, skewMs: 300_000 },
+    );
+    expect(r.ok && r.value).toEqual({
+      pins: ["a"],
+      changedAt: { pins: 1_299_000 },
+    });
+  });
+
+  it("a far-future stamp already stored counts as now, so a real save still wins", () => {
+    const r = applyShellSave(
+      { collapsed: true, changedAt: { collapsed: 8.64e15 } },
+      { collapsed: false, changedAt: 2_000_000 },
+      { now: 2_000_000, skewMs: 300_000 },
+    );
+    expect(r.ok && r.ignored).toEqual([]);
+    expect(r.ok && r.value).toEqual({ changedAt: { collapsed: 2_000_000 } });
   });
 });

@@ -17,6 +17,9 @@
  *   web_ready: { probe_seconds?, start_seconds? }
  *                                     user.yml web.ready_probe_seconds,
  *                                     web.start_wait_seconds (den#143)
+ *   shell_save: { skew_seconds?, max_kb? }
+ *                                     user.yml web.shell_save_skew_seconds,
+ *                                     web.shell_save_max_kb (issue 394)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
@@ -34,6 +37,10 @@
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
+import {
+  SHELL_SAVE_MAX_KB_RANGE,
+  SHELL_SAVE_SKEW_RANGE,
+} from "../ui/server/shell-prefs.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 
 /** The settings a person changes and an agent never does. */
@@ -48,6 +55,8 @@ export const PERSON_ONLY_SETTINGS = [
   "web_bridge",
   // den#143: how long `web up` waits for the server, on a busy machine too.
   "web_ready",
+  // Issue 394: how far ahead of this clock a rail save's time may be.
+  "shell_save",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -165,6 +174,16 @@ const WEB_READY: Record<string, Limit> = {
     ...WEB_WAIT_RANGE,
     int: false,
   },
+};
+
+/** Issue 394: a rail save's changedAt allowance (shell-prefs.ts). */
+const SHELL_SAVE: Record<string, Limit> = {
+  skew_seconds: {
+    key: "shell_save_skew_seconds",
+    ...SHELL_SAVE_SKEW_RANGE,
+    int: true,
+  },
+  max_kb: { key: "shell_save_max_kb", ...SHELL_SAVE_MAX_KB_RANGE, int: true },
 };
 
 const AGENTS_LIST: Record<string, Limit> = {
@@ -389,6 +408,7 @@ export function patchCliRows(
     ) ??
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
     patchBlock(user, "web_ready", "web", WEB_READY, body.web_ready, apply) ??
+    patchBlock(user, "shell_save", "web", SHELL_SAVE, body.shell_save, apply) ??
     patchBlock(
       user,
       "panes_reconnect",

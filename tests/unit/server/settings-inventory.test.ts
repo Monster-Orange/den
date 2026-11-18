@@ -43,6 +43,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   web_bridge: { listen: true, probe_seconds: true },
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
+  // Issue 394: a rail save's clock allowance (web.shell_save_skew_seconds).
+  shell_save: { skew_seconds: true, max_kb: true },
   // Issue 144: the machine's gate slots.
   gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
   // den#156: the Agents list's waits.
@@ -153,6 +155,8 @@ describe("the settings inventory (R21)", () => {
         "shell.pins",
         // 0.4.45: this person's project order.
         "shell.projectOrder",
+        "shell_save.max_kb",
+        "shell_save.skew_seconds",
         "terminal",
         // MODE-5: what only `config` could change.
         "cli_tabs",

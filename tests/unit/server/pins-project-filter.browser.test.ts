@@ -91,6 +91,15 @@ async function mount(
         body: fs.readFileSync(path.join(PUBLIC, file[1]), "utf-8"),
       });
     switch (url.pathname) {
+      // Issue 394: the rail's save, at its own route, with when it was made.
+      case "/api/settings/shell": {
+        const b = JSON.parse(r.request().postData() ?? "null");
+        const { changedAt, ...shell } = b.shell;
+        saves.push(
+          typeof changedAt === "number" ? { shell } : { unstamped: b },
+        );
+        return json({ ok: true });
+      }
       case "/api/settings":
         if (method === "POST") {
           saves.push(JSON.parse(r.request().postData() ?? "null"));

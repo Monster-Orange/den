@@ -69,6 +69,14 @@ async function mount(
         contentType: "text/javascript; charset=utf-8",
         body: SHELL,
       });
+    // Issue 394: the rail's save, at its own route, stamped with when the
+    // change was made; recorded here without the stamp.
+    if (url.pathname === "/api/settings/shell") {
+      const b = JSON.parse(r.request().postData() ?? "null");
+      const { changedAt, ...shell } = b.shell;
+      posts.push(typeof changedAt === "number" ? { shell } : { unstamped: b });
+      return r.fulfill({ json: { ok: true } });
+    }
     if (url.pathname === "/api/settings") {
       if (r.request().method() === "POST")
         posts.push(JSON.parse(r.request().postData() ?? "null"));

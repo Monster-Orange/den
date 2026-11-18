@@ -379,8 +379,12 @@ describe("the Settings page writes only what you change (R21)", () => {
     const pages = p.locator('[data-setting="shell.pages"]');
     await pages.getByRole("button", { name: "Hide Tests" }).click();
     await pages.locator(".set-saved", { hasText: "✓ Saved" }).waitFor();
+    // Issue 394: the rail's own save, stamped with when it was made.
     expect(posts).toEqual([
-      { url: "/api/settings", body: { shell: { hidden: ["tests"] } } },
+      {
+        url: "/api/settings/shell",
+        body: { shell: { hidden: ["tests"], changedAt: expect.any(Number) } },
+      },
     ]);
     expect(await p.$$('.den-rail [data-nav="tests"]')).toHaveLength(0);
     expect(changedSince(before)).toEqual([USER_YML]);

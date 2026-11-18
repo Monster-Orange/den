@@ -189,6 +189,8 @@ async function mount(o: Opts = {}): Promise<{
         return json(["local"]);
       case "/api/applications":
         return json({ applications: [] });
+      // Issue 394: the rail's save, at its own route.
+      case "/api/settings/shell":
       case "/api/settings":
         if (method === "POST" && (body as { shell?: object }).shell)
           prefs = {
@@ -499,8 +501,10 @@ describe("the status drawer (R15)", () => {
       "Unpin",
     );
     expect(posts).toContainEqual({
-      path: "/api/settings",
-      body: { shell: { pins: ["billing/billing"] } },
+      path: "/api/settings/shell",
+      body: {
+        shell: { pins: ["billing/billing"], changedAt: expect.any(Number) },
+      },
     });
     await p.click('.den-prob-card [data-start="billing/billing"]');
     expect(await p.$(".den-drawer")).toBeNull();

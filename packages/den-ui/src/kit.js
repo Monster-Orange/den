@@ -42,6 +42,10 @@
  *                               focus goes back to opener (else the
  *                               control that opened it) on close
  *   DenUI.busy.run(action, run, opts)   the working pop-up (busy.js)
+ *   DenUI.saveShell(url, patch, { headers?, changedAt? })  (0.7.7) a rail
+ *                               change saved so leaving the page can't
+ *                               lose it: keepalive, then a beacon if the
+ *                               page hides first (save-shell.js)
  *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
  *                               editor's save-state line (savestate.js),
  *                               in the kit's language
@@ -95,6 +99,7 @@ import {
 import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy } from "./busy.js";
+import { saveShell } from "./save-shell.js";
 import { createSaveState } from "./savestate.js";
 
 const state = {
@@ -303,6 +308,7 @@ const DenUI = {
   update,
   report,
   busy,
+  saveShell,
   saveState,
 };
 

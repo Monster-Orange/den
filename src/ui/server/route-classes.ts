@@ -448,6 +448,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // Issue 394: the rail's save, also as the page's beacon (SHELL_SAVE_BEACONS).
+  M(["POST"], "/api/settings/shell"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
   // Issue 163: Keep agents running after logout › Apply (a person's only).
@@ -937,6 +939,17 @@ export const SIGNIN_ID_DELETES: readonly string[] = ["/api/signin/code/:id"];
 export const SIGNIN_ID_BEACONS: readonly string[] = [
   "/api/signin/code/:id/withdraw",
 ];
+
+/**
+ * Issue 394: the rail's save (pins, collapse, order, the dock) as the page
+ * goes. The kit's saveShell sends it with keepalive, then with
+ * `navigator.sendBeacon` if the page hides first; a beacon carries the
+ * cookies but no custom header, so no CSRF token. A POST here needs the
+ * install's own Origin (originAllowed) and no CSRF token; sign-in stays
+ * as it is (a session beyond loopback). The route takes the shell block
+ * only, so nothing else can be changed this way.
+ */
+export const SHELL_SAVE_BEACONS: readonly string[] = ["/api/settings/shell"];
 
 /** The dispatchers' route regexes, by `<file>:<const>`, and their entries. */
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {

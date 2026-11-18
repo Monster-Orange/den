@@ -176,6 +176,8 @@ export const KIT_FILES: readonly string[] = [
   "report.js",
   "report.css",
   "report-shot.js",
+  // den-ui 0.7.7 (issue 394): a rail change saved as the page goes.
+  "save-shell.js",
   "kit.js",
   "fonts/rubik-latin-400-normal.woff2",
   "fonts/rubik-latin-ext-400-normal.woff2",
@@ -214,6 +216,8 @@ const KIT_SHELL_PARTS = [
   "icons.js",
   "shell-html.js",
   "shell-client.js",
+  // den-ui 0.7.7 (issue 394): shell.js saves the rail with it.
+  "save-shell.js",
 ];
 /**
  * den-ui 0.7.0: shell-client.js imports focusBack from dialog.js. dialog.js
@@ -262,6 +266,8 @@ const KIT_SHELL_NAMES = [
   "attachMenuFilter",
   "hydrateAppearance",
   "setWaiting",
+  // den-ui 0.7.7 (issue 394): a rail change saved as the page goes.
+  "saveShell",
 ];
 
 /**

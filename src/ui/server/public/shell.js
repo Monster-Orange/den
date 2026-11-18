@@ -1854,6 +1854,12 @@
     "set.server.ready_probe": "Readiness check, in seconds",
     "set.server.ready_probe.d":
       "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.shell_save_skew": "Rail save clock allowance, in seconds",
+    "set.server.shell_save_skew.d":
+      "How far ahead of this machine's clock a rail change's time may be. A device whose clock runs further ahead has its change counted as made now, so it can't block later changes. __DEN_CLI__ config web.shell_save_skew_seconds=300",
+    "set.server.shell_save_max": "Largest rail save, in KB",
+    "set.server.shell_save_max.d":
+      "How large one rail save may be. A larger one is refused and nothing is saved. __DEN_CLI__ config web.shell_save_max_kb=256",
     "set.server.start_wait": "Start wait, in seconds",
     "set.server.start_wait.d":
       "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
@@ -3994,20 +4000,16 @@
   function pinToggles(root) {
     DUI.syncPinToggles(root, isPinned, lang);
   }
+  /**
+   * A rail change (pins, collapse, order, the dock): kept here first, then
+   * saved by the kit's saveShell (issue 394), which outlives the page: a
+   * person who unpins and clicks a link at once keeps the unpin. The save
+   * carries when it was made, and the server keeps the newer one.
+   */
   function saveShell(patch) {
     remember();
     if (typeof fetch !== "function") return Promise.resolve();
-    return fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shell: patch }),
-    })
-      .then(function (r) {
-        return r && r.ok !== false;
-      })
-      .catch(function () {
-        return false;
-      });
+    return DUI.saveShell("/api/settings/shell", patch);
   }
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;

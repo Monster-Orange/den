@@ -461,7 +461,14 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
-import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
+import {
+  applyShellSave,
+  SHELL_SAVE_MAX_KB,
+  SHELL_SAVE_MAX_KB_RANGE,
+  SHELL_SAVE_SKEW_SECONDS,
+  type ShellSaveClock,
+  shellPrefs,
+} from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
   appearancePrefs,
@@ -929,6 +936,33 @@ const STATIC_EXTS = new Set([
   ".woff2",
 ]);
 
+/**
+ * Issue 394: the clock a shell save is checked against. The setting
+ * web.shell_save_skew_seconds (default 300) is how far ahead of this
+ * clock a save's changedAt may be.
+ */
+function shellSaveClock(user: { web?: unknown }): ShellSaveClock {
+  const w = (user.web ?? {}) as Record<string, unknown>;
+  const s = w.shell_save_skew_seconds;
+  const seconds =
+    typeof s === "number" && Number.isFinite(s) && s >= 0
+      ? s
+      : SHELL_SAVE_SKEW_SECONDS;
+  return { skewMs: seconds * 1000 };
+}
+
+/** Issue 394: POST /api/settings/shell's body cap, in KB (web.shell_save_max_kb). */
+function shellSaveMaxKb(user: { web?: unknown }): number {
+  const w = (user.web ?? {}) as Record<string, unknown>;
+  const kb = w.shell_save_max_kb;
+  return typeof kb === "number" &&
+    Number.isInteger(kb) &&
+    kb >= SHELL_SAVE_MAX_KB_RANGE.min &&
+    kb <= SHELL_SAVE_MAX_KB_RANGE.max
+    ? kb
+    : SHELL_SAVE_MAX_KB;
+}
+
 /** Every workspace's checkouts (active or not), for repoAtPath. */
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
@@ -960,6 +994,8 @@ const CONFIG_FREE_ROUTES = new Set([
   "/api/changelog",
   "/api/web/restart",
   "/api/settings",
+  // Issue 394: the rail's save, as /api/settings saves it.
+  "/api/settings/shell",
   // MODE-5: the address row fixes what the config holds.
   "/api/web-url",
   "/api/web-url/probe",
@@ -1014,6 +1050,7 @@ let sudoInVault = false;
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
+  BodyTooLarge,
   readBody,
   sendJson,
   serveFile,
@@ -6750,6 +6787,41 @@ async function handleRequest(
     }
   }
 
+  // Issue 394: the rail's save (pins, collapse, order, the dock), also as
+  // the page's beacon as it goes. The guard lets it through with the
+  // install's own Origin and no CSRF token (SHELL_SAVE_BEACONS), so it
+  // takes { shell } only: nothing else can be changed this way. A key's
+  // save older than the stored one is ignored, answering ok.
+  if (pathname === "/api/settings/shell" && req.method === "POST") {
+    const maxKb = shellSaveMaxKb(readUserConfig());
+    let body: unknown;
+    try {
+      body = JSON.parse(await readBody(req, maxKb * 1024));
+    } catch (e) {
+      if (e instanceof BodyTooLarge)
+        return sendJson(res, { ok: false, error: e.message }, 413);
+      return send400(res, "the body must be JSON: { shell: { ... } }");
+    }
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body) ||
+      Object.keys(body).join() !== "shell"
+    )
+      return send400(res, "only { shell: { ... } } is saved here");
+    const user = readUserConfig();
+    const sh = applyShellSave(
+      user.shell,
+      (body as { shell: unknown }).shell,
+      shellSaveClock(user),
+    );
+    if (!sh.ok) return send400(res, sh.error);
+    if (sh.value) user.shell = sh.value;
+    else delete user.shell;
+    writeUserConfig(user);
+    return sendJson(res, { ok: true, ignored: sh.ignored });
+  }
+
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
@@ -6819,6 +6891,11 @@ async function handleRequest(
                 : 10,
           };
         })(),
+        // Issue 394: how far ahead of this clock a rail save's time may be.
+        shell_save: {
+          skewSeconds: (shellSaveClock(user).skewMs ?? 0) / 1000,
+          maxKb: shellSaveMaxKb(user),
+        },
         // den#143: how long `web up` waits for the server.
         web_ready: (() => {
           try {
@@ -6941,6 +7018,7 @@ async function handleRequest(
           crash_loop?: unknown;
           web_bridge?: unknown;
           web_ready?: unknown;
+          shell_save?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agent_context?: unknown;
@@ -6976,6 +7054,7 @@ async function handleRequest(
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
             web_ready: body.web_ready,
+            shell_save: body.shell_save,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
             feedback: body.feedback,
@@ -7111,10 +7190,14 @@ async function handleRequest(
         // The rail's pins and collapse (R14): a view preference only.
         if (body.shell === null) delete user.shell;
         else if (body.shell !== undefined) {
-          const sh = mergeShellPrefs(shellPrefs(user.shell), body.shell);
+          // Issue 394: the newer save of each key is kept (changedAt).
+          const sh = applyShellSave(
+            user.shell,
+            body.shell,
+            shellSaveClock(user),
+          );
           if (!sh.ok) return send400(res, sh.error);
-          const stored = storedShell(sh.value);
-          if (stored) user.shell = stored;
+          if (sh.value) user.shell = sh.value;
           else delete user.shell;
         }
         if (body.graph === null) delete user.graph;

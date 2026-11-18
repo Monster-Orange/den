@@ -185,7 +185,8 @@ export function mergeShellPrefs(
   for (const key of Object.keys(patch)) {
     // null clears a pref back to its default (0.3.0-dev.32): the stored
     // block drops it, so set-then-clear leaves user.yml as it was.
-    if (patch[key] === null && key in SHELL_DEFAULTS) {
+    // Own keys only: `in` is true for inherited names (constructor, toString).
+    if (patch[key] === null && Object.hasOwn(SHELL_DEFAULTS, key)) {
       const d = SHELL_DEFAULTS[key as keyof ShellPrefs];
       (out as unknown as Record<string, unknown>)[key] = Array.isArray(d)
         ? []
@@ -232,4 +233,119 @@ export function storedShell(p: ShellPrefs): Partial<ShellPrefs> | undefined {
   if (p.dockHeight) out.dockHeight = p.dockHeight;
   if (p.projectOrder?.length) out.projectOrder = p.projectOrder;
   return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * Issue 394: when each key was last saved, in ms (a save's changedAt). A
+ * save as the page goes may arrive late, or twice (the fetch and the
+ * beacon): a save of a key older than its stamp is ignored. Stored in the
+ * shell block as `changedAt`, never served (shellPrefs leaves it out).
+ */
+export type ShellStamps = Partial<Record<keyof ShellPrefs, number>>;
+
+const isStamp = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+/**
+ * POST /api/settings/shell's body cap, in KB (web.shell_save_max_kb). The
+ * largest valid shell block (24 pins, 64 page ids twice, 1,000 project
+ * names) is under 100 KB.
+ */
+export const SHELL_SAVE_MAX_KB = 256;
+/** web.shell_save_max_kb's range, in KB. */
+export const SHELL_SAVE_MAX_KB_RANGE = { min: 16, max: 4096 } as const;
+
+/** How far ahead of the server's clock a save's changedAt may be (5 min). */
+export const SHELL_SAVE_SKEW_SECONDS = 300;
+/** web.shell_save_skew_seconds' range, in seconds. */
+export const SHELL_SAVE_SKEW_RANGE = { min: 0, max: 86_400 } as const;
+
+/** When the save is judged: the server's now, and the allowance ahead of it. */
+export interface ShellSaveClock {
+  now?: number;
+  skewMs?: number;
+}
+
+/**
+ * The stored stamps, own known keys only. A stamp later than the latest a
+ * save may carry (a clock far ahead, or a hand-made save) counts as now,
+ * so it can't hold a key against every later save.
+ */
+function storedStamps(
+  stored: unknown,
+  latest: number,
+  now: number,
+): ShellStamps {
+  const out: ShellStamps = {};
+  if (!isObject(stored) || !isObject(stored.changedAt)) return out;
+  for (const [k, v] of Object.entries(stored.changedAt))
+    if (Object.hasOwn(SHELL_DEFAULTS, k) && isStamp(v))
+      out[k as keyof ShellPrefs] = v > latest ? now : v;
+  return out;
+}
+
+/**
+ * A shell save over the stored block, the newer of each key kept. The
+ * patch is the POSTed shell block; its `changedAt` (ms, optional) is when
+ * the change was made. Keys the stored stamps say are newer are left as
+ * they are (`ignored`); the rest merge as mergeShellPrefs does and take
+ * the save's stamp. A save with no changedAt (a page from before) applies
+ * and clears the stamps of its keys. Any bad field fails the whole save.
+ *
+ * A changedAt later than the server's now plus the allowance (clock.skewMs,
+ * web.shell_save_skew_seconds) is taken as now: a far-future stamp would
+ * otherwise make every later save "ignored" while answering ok.
+ */
+export function applyShellSave(
+  stored: unknown,
+  patch: unknown,
+  clock: ShellSaveClock = {},
+):
+  | {
+      ok: true;
+      value: (Partial<ShellPrefs> & { changedAt?: ShellStamps }) | undefined;
+      ignored: string[];
+    }
+  | { ok: false; error: string } {
+  if (!isObject(patch)) return { ok: false, error: "shell must be an object" };
+  const { changedAt, ...fields } = patch;
+  if (changedAt !== undefined && !isStamp(changedAt))
+    return {
+      ok: false,
+      error: "shell.changedAt must be a time in ms (a number, 0 or more)",
+    };
+  const now = clock.now ?? Date.now();
+  const latest = now + (clock.skewMs ?? SHELL_SAVE_SKEW_SECONDS * 1000);
+  const at =
+    changedAt === undefined ? undefined : changedAt > latest ? now : changedAt;
+  const current = shellPrefs(stored);
+  // Every field is checked, the ignored ones too.
+  const all = mergeShellPrefs(current, fields);
+  if (!all.ok) return all;
+  const stamps = storedStamps(stored, latest, now);
+  const kept: Record<string, unknown> = {};
+  const ignored: string[] = [];
+  for (const k of Object.keys(fields)) {
+    const key = k as keyof ShellPrefs;
+    const was = stamps[key];
+    if (at === undefined) {
+      delete stamps[key];
+      kept[k] = fields[k];
+    } else if (was !== undefined && was > at) ignored.push(k);
+    else {
+      stamps[key] = at;
+      kept[k] = fields[k];
+    }
+  }
+  const merged = mergeShellPrefs(current, kept);
+  if (!merged.ok) return merged;
+  const out: Partial<ShellPrefs> & { changedAt?: ShellStamps } = {
+    ...(storedShell(merged.value) ?? {}),
+  };
+  if (Object.keys(stamps).length) out.changedAt = stamps;
+  return {
+    ok: true,
+    value: Object.keys(out).length ? out : undefined,
+    ignored,
+  };
 }

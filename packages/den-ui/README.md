@@ -142,6 +142,7 @@ syncPinToggles }`.
     DenUI.update.set({ version });    // the update pill; .hide()
     DenUI.report.open({ prefill });   // ⌘⇧F and any [data-den-report] too
     DenUI.busy.run(action, run, opts) // the working pop-up (busy.js)
+    DenUI.saveShell(url, patch, opts) // a rail change, kept as the page goes
     DenUI.saveState(el, { save, copyText, watch }) // save-state line
 
 ### The adapter
@@ -357,6 +358,35 @@ colour, a font-family; a host slot's new contents must pass.
 reference again, on purpose only: `DEN_UI_NAV_CAPTURE=1` with the
 browser test, on the image (Den's real server on the demo distribution,
 `/settings`).
+
+## Saving a rail change as the page goes (0.7.7)
+
+- `src/save-shell.js` (export `./save-shell`; also `DenUI.saveShell`):
+  a pin, an unpin, collapse, an order or the dock, saved so that leaving
+  the page at once can't lose it (issue 394). A plain `fetch` is
+  cancelled when the page unloads, and the next page then shows the
+  server's older copy.
+
+      saveShell("/api/settings/shell", { pins }, { headers, changedAt })
+        // → Promise<boolean>: true when the server said ok
+
+  It POSTs `{ shell: { ...patch, changedAt } }` as JSON with
+  `keepalive: true`. If the page hides or unloads (`pagehide`, or
+  `visibilitychange` to hidden) before the save is confirmed, it sends
+  the same JSON again with `navigator.sendBeacon`, as a Blob of type
+  `application/json`. `changedAt` is when the change was made (ms; now
+  unless given). It never throws.
+
+  What the host's server does:
+  - Accept the beacon form for this one route. A beacon carries cookies
+    but no custom header, so a CSRF header can't be the check: check the
+    request's `Origin` against the host's own origins instead, and refuse
+    a missing or other `Origin` (403, nothing stored). Keep the sign-in
+    the route needs today.
+  - Accept only the shell block on that route.
+  - Keep the newer save: store a `changedAt` per key, and ignore a key
+    whose save is older than the stored one (answering ok). The same save
+    can arrive twice (the fetch and the beacon) with the same `changedAt`.
 
 ## The working pop-up and types (0.6.1)
 
