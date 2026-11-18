@@ -65,6 +65,8 @@ describe("search", () => {
           "agents.pane_reconnect_wait",
           // den#156: the Agents list's wait for the terminal host.
           "agents.list_host_wait",
+          // Issue 456: the shell PATH wait (the PATH your terminal has).
+          "agents.shell_path_wait",
         ],
       ],
       ["cli", ["cli.cli_tabs"]],

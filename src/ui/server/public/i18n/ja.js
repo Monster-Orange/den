@@ -888,6 +888,9 @@
     "set.agents.pane_reconnect_wait": "試行の間の最長の待ち時間",
     "set.agents.pane_reconnect_wait.d":
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.shell_path_wait": "シェルの PATH の待ち時間",
+    "set.agents.shell_path_wait.d":
+      "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH の応答を待つ時間です。起動ファイルも含め、ターミナルと同じ PATH です。これを過ぎると、通常の場所を探します。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",

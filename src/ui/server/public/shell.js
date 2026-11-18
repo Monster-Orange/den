@@ -1881,6 +1881,9 @@
     "set.agents.pane_reconnect_wait": "Longest wait between tries",
     "set.agents.pane_reconnect_wait.d":
       "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.shell_path_wait": "Shell PATH wait",
+    "set.agents.shell_path_wait.d":
+      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH your terminal has, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",

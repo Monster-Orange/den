@@ -19,6 +19,9 @@
  *                                     web.start_wait_seconds (den#143)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
+ *   agents_shell: { path_timeout_seconds? }
+ *                                     user.yml agents.shell_path_timeout_seconds
+ *                                     (issue 456)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
@@ -32,6 +35,7 @@
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
+import { SHELL_PATH_TIMEOUT } from "./den-config.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -49,6 +53,8 @@ export const PERSON_ONLY_SETTINGS = [
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
   "agents_list",
+  // Issue 456: how long Den waits for the shell's PATH.
+  "agents_shell",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
   // then holds its deliveries.
   "agent_context",
@@ -173,6 +179,16 @@ const AGENTS_LIST: Record<string, Limit> = {
     key: "refresh_timeout_seconds",
     min: 1,
     max: 600,
+    int: false,
+  },
+};
+
+/** Issue 456: user.yml agents.shell_path_timeout_seconds (den-config.ts). */
+const AGENTS_SHELL: Record<string, Limit> = {
+  path_timeout_seconds: {
+    key: "shell_path_timeout_seconds",
+    min: SHELL_PATH_TIMEOUT.min,
+    max: SHELL_PATH_TIMEOUT.max,
     int: false,
   },
 };
@@ -391,6 +407,14 @@ export function patchCliRows(
       "agents_list",
       AGENTS_LIST,
       body.agents_list,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agents_shell",
+      "agents",
+      AGENTS_SHELL,
+      body.agents_shell,
       apply,
     ) ??
     patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply);
