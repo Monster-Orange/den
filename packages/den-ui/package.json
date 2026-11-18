@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
   "repository": {
@@ -20,6 +20,7 @@
     "./busy": "./src/busy.js",
     "./busy-words": "./src/busy-words.js",
     "./dialog": "./src/dialog.js",
+    "./savestate": "./src/savestate.js",
     "./strings": "./src/strings.js",
     "./icons": "./src/icons.js",
     "./shell-html": "./src/shell-html.js",
@@ -36,6 +37,7 @@
     "./dialog.css": "./src/dialog.css",
     "./markdown-editor": "./src/markdown-editor.js",
     "./markdown-editor.css": "./src/markdown-editor.css",
+    "./savestate.css": "./src/savestate.css",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
       "default": "./inventory/nav-inventory.js"

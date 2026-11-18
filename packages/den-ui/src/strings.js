@@ -199,6 +199,12 @@ export const en = {
   "kit.md.numbered": "Numbered list",
   "kit.md.quote": "Quote",
   "kit.md.linkText": "text",
+  // The save-state line (savestate.js). "Saved" has no closing stop.
+  "kit.savestate.saving": "Saving…",
+  "kit.savestate.saved": "Saved",
+  "kit.savestate.error": "Not saved. Retrying…",
+  "kit.savestate.copy": "Copy text",
+  "kit.savestate.savedAt": "Saved at {time}",
 };
 
 export const es = {
@@ -395,6 +401,11 @@ export const es = {
   "kit.md.numbered": "Lista numerada",
   "kit.md.quote": "Cita",
   "kit.md.linkText": "texto",
+  "kit.savestate.saving": "Guardando…",
+  "kit.savestate.saved": "Guardado",
+  "kit.savestate.error": "No se guardó. Reintentando…",
+  "kit.savestate.copy": "Copiar texto",
+  "kit.savestate.savedAt": "Guardado a las {time}",
 };
 
 export const ja = {
@@ -586,6 +597,11 @@ export const ja = {
   "kit.md.numbered": "番号付きリスト",
   "kit.md.quote": "引用",
   "kit.md.linkText": "テキスト",
+  "kit.savestate.saving": "保存しています…",
+  "kit.savestate.saved": "保存しました",
+  "kit.savestate.error": "保存できていません。再試行しています…",
+  "kit.savestate.copy": "テキストをコピー",
+  "kit.savestate.savedAt": "{time} に保存しました",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */
