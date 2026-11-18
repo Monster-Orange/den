@@ -4,6 +4,26 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.67] - unreleased
+
+### Fixed
+
+- Bell: a question an agent ends its turn on now always counts on the
+  badge, even if its page was open when the turn ended. A finished turn
+  always shows under Updates. Opening the agent clears it there (issue
+  142, #468).
+- Bell: just opening an agent's pane no longer counts as answering its
+  question (#468).
+- The rail's Terminal opens the shell used most recently. With All
+  projects selected, that is across every project, not the first one
+  listed; with one project, that project's (issue 448, #484).
+- "Used" means a person typed in it, from any browser or machine: Den now
+  remembers when each shell last had input, so a reload or another
+  computer gets the same answer (#484).
+- The rail's Terminal never opens a shell that has exited, even one that
+  ended while the page was open. With no running shell, it starts a new
+  one (#484).
+
 ## [0.4.66] - 2026-11-18
 
 den-ui 0.7.5 ships with this release (the shared Markdown editor). It
