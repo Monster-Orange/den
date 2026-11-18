@@ -474,7 +474,9 @@ async function lean(skip) {
   let pn = 0;
   const setStyle = (copy, css) => {
     if (css.includes("url(")) late.push([copy, css]);
-    else if (css) copy.setAttribute("style", css);
+    // Through the CSSOM, never the attribute: a page whose CSP has no
+    // 'unsafe-inline' for styles allows it.
+    else if (css) copy.style.cssText = css;
   };
 
   /** One element's copy (not its children), or null when it draws nothing. */
@@ -577,10 +579,7 @@ async function lean(skip) {
       const t = document.createTextNode(node.nodeValue);
       if (into.step?.text && node.nodeValue.trim()) {
         const span = document.createElement("span");
-        span.setAttribute(
-          "style",
-          `position:relative;top:${into.step.text.dy}px;left:${into.step.text.dx}px;`,
-        );
+        span.style.cssText = `position:relative;top:${into.step.text.dy}px;left:${into.step.text.dx}px;`;
         span.append(t);
         into.copy.append(span);
       } else into.copy.append(t);
@@ -604,8 +603,8 @@ async function lean(skip) {
     top.copy.append(st);
   }
   await Promise.all([
-    ...late.map(async ([copy, css]) =>
-      copy.setAttribute("style", await inlineUrls(css)),
+    ...late.map(
+      async ([copy, css]) => (copy.style.cssText = await inlineUrls(css)),
     ),
     ...imgs.map(async ([copy, src]) => {
       const u = await dataUrlOf(src);
