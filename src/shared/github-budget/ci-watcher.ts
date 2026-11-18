@@ -332,7 +332,7 @@ export class CiWatcher {
       done: true,
       error:
         status === 404
-          ? `GitHub has no ${what} (or this account can't see it)`
+          ? `GitHub has no ${what} (or Den's GitHub sign-in can't see it)`
           : `GitHub answered ${status} for ${what}`,
     };
   }

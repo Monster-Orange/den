@@ -30,7 +30,7 @@ export function githubBudgetLines(
   const s = readBudgetSnapshot(file);
   if (!s)
     return [
-      "  ℹ GitHub budget: not read yet (the Den server reads it when an agent waits for CI)",
+      "  ℹ GitHub budget: not read yet (Den reads it when an agent waits for CI)",
     ];
   const resetPassed = s.reset * 1000 <= now;
   const below = !resetPassed && s.remaining < s.reserve;

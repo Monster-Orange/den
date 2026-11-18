@@ -147,7 +147,7 @@ export class GithubBudget {
       ok: false,
       reset: r.reset,
       resetAt,
-      reason: `the account's GitHub budget is at ${r.remaining} of ${r.limit} requests, below the reserve of ${reserve} kept for releases and people; agents' calls through Den wait until it resets at ${resetAt}`,
+      reason: `the shared GitHub budget is at ${r.remaining} of ${r.limit} requests, below the reserve of ${reserve} kept for releases and people; agents' calls through Den wait until it resets at ${resetAt}`,
     };
   }
 

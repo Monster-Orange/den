@@ -120,7 +120,7 @@ export function budgetRefusal(file, now = Date.now()) {
     return null;
   if (reset * 1000 <= now) return null;
   if (remaining >= reserve) return null;
-  return `the account's GitHub budget is at ${remaining} requests, below the reserve of ${reserve} kept for releases and people; it resets at ${clock(reset)}`;
+  return `the shared GitHub budget is at ${remaining} requests, below the reserve of ${reserve} kept for releases and people; it resets at ${clock(reset)}`;
 }
 
 /** The command lines of live processes, or [] when they can't be read. */
@@ -221,12 +221,12 @@ export function ghDecision(pipelines, opts = {}) {
       if (!k) continue;
       const typed = st.words.join(" ");
       if (loop && sleeps)
-        return `Den blocked \`${typed}\` in a loop that sleeps: polling GitHub spends the account's hourly budget for every agent and person on it. ${CI_WAIT_HINT}`;
+        return `Den blocked \`${typed}\` in a loop that sleeps: polling GitHub spends the shared hourly GitHub budget for every agent and person on it. ${CI_WAIT_HINT}`;
       if (k.prWatch)
-        return `Den blocked \`${typed}\`: it polls GitHub until the checks end, spending the account's hourly budget for every agent and person on it. ${CI_WAIT_HINT}`;
+        return `Den blocked \`${typed}\`: it polls GitHub until the checks end, spending the shared hourly GitHub budget for every agent and person on it. ${CI_WAIT_HINT}`;
       if (!k.watch) continue;
       if (k.watch.interval === null || k.watch.interval < min)
-        return `Den blocked \`${typed}\`: it polls GitHub every ${k.watch.interval ?? 3} s, spending the account's hourly budget for every agent and person on it. ${CI_WAIT_HINT} If you must watch, use --interval ${min} or more.`;
+        return `Den blocked \`${typed}\`: it polls GitHub every ${k.watch.interval ?? 3} s, spending the shared hourly GitHub budget for every agent and person on it. ${CI_WAIT_HINT} If you must watch, use --interval ${min} or more.`;
       const why = budgetRefusal(opts.budgetFile);
       if (why)
         return `Den refused \`${typed}\`: ${why}. Wait for the reset, or use ci_wait, which tells you the same.`;
