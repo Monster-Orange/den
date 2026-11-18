@@ -37,7 +37,7 @@ import {
   upgradeTimes,
 } from "/kit/time.js";
 import { qrSvg } from "./qr.js";
-import { renderPersonasSettings } from "./persona-ui.js";
+import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
@@ -1847,6 +1847,48 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
     read: (ctx) => ctx.data.crash_loop?.maxWaitSeconds ?? 300,
     write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
+  },
+  {
+    // Issue 415: Report says who can see a report: each destination's
+    // visibility on GitHub, kept and waited for (user.yml feedback.*).
+    id: "server.report_visibility_cache",
+    category: "server",
+    label: "Report: repository visibility kept for",
+    description:
+      "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
+    keywords: ["report", "feedback", "visibility", "private", "cache"],
+    scope: "user",
+    keys: ["feedback.visibility_cache_hours"],
+    control: { type: "number", min: 0, max: 720, step: 1, unit: "h" },
+    read: (ctx) => ctx.data.feedback?.visibility_cache_hours ?? 24,
+    write: (v, ctx) => ctx.post({ feedback: { visibility_cache_hours: v } }),
+  },
+  {
+    id: "server.report_visibility_wait",
+    category: "server",
+    label: "Report: repository visibility wait",
+    description:
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    keywords: ["report", "feedback", "visibility", "timeout", "wait"],
+    scope: "user",
+    keys: ["feedback.visibility_timeout_seconds"],
+    control: { type: "number", min: 0.5, max: 60, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.feedback?.visibility_timeout_seconds ?? 3,
+    write: (v, ctx) =>
+      ctx.post({ feedback: { visibility_timeout_seconds: v } }),
+  },
+  {
+    id: "server.report_visibility_retry",
+    category: "server",
+    label: "Report: repository visibility retry",
+    description:
+      "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
+    keywords: ["report", "feedback", "visibility", "retry", "failure"],
+    scope: "user",
+    keys: ["feedback.visibility_retry_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.feedback?.visibility_retry_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
   },
   {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
@@ -3975,13 +4017,16 @@ export function projectModeHtml(v, t) {
       const line = a.running
         ? t("pmode.runsAs", { ...vars, running: name(a.running) })
         : t("pmode.agent", vars);
+      // Issue 252: the whole row opens its mode (the choices and Follow
+      // project).
       return (
         `<li data-pmode-agent="${escR(a.agent)}" data-pmode-source="${escR(a.source)}"${a.running ? ` data-pmode-running="${escR(a.running)}"` : ""}>` +
+        `<button type="button" class="pmode-row" data-pmode-pick="${escR(a.agent)}" aria-haspopup="menu" aria-expanded="false" aria-label="${escR(`${line}. ${t("ag.mode.pick", { id: a.name || a.agent })}`)}">` +
         escR(line) +
         (a.stopped
           ? ` <span class="faint">${escR(t("pmode.stopped"))}</span>`
           : "") +
-        `</li>`
+        `</button></li>`
       );
     })
     .join("");
@@ -4044,6 +4089,28 @@ function renderProjectMode(host, ctx) {
               if (r !== undefined && r !== null)
                 return renderProjectMode(host, ctx);
             },
+          );
+        }),
+      );
+      host.querySelectorAll("[data-pmode-pick]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const a = (v?.agents ?? []).find(
+            (x) => x.agent === b.getAttribute("data-pmode-pick"),
+          );
+          if (!a) return;
+          openAgentModeMenu(
+            b,
+            {
+              workspace: ws,
+              agent: a.agent,
+              ...(a.name ? { name: a.name } : {}),
+              ...(a.source === "own" ? { own: a.mode } : {}),
+              ...((v?.mode ?? v?.install)
+                ? { project: v.mode ?? v.install }
+                : {}),
+              ...(a.stopped ? { stopped: true } : {}),
+            },
+            () => renderProjectMode(host, ctx),
           );
         }),
       );

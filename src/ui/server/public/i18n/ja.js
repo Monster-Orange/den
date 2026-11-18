@@ -549,6 +549,10 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "busy.modeW": "{name} のモードを設定しています…",
+    "busy.modeS": "{name} のモードを設定しました。",
+    "busy.modeF":
+      "{name} のモードを設定できませんでした。何も変わっていません。",
     "keep.label": "ログアウト後もエージェントを動かす",
     "keep.warn":
       "そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。",
@@ -865,6 +869,16 @@
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_visibility_cache":
+      "報告：リポジトリの公開範囲を保持する時間",
+    "set.server.report_visibility_cache.d":
+      "各報告先リポジトリが公開か非公開かを __DEN_TITLE__ が覚えておく時間です。これを過ぎると、GitHub にもう一度確認します。__DEN_CLI__ config feedback.visibility_cache_hours=24",
+    "set.server.report_visibility_wait": "報告：リポジトリの公開範囲の待ち時間",
+    "set.server.report_visibility_wait.d":
+      "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると公開として表示し、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+    "set.server.report_visibility_retry": "報告：リポジトリの公開範囲の再確認",
+    "set.server.report_visibility_retry.d":
+      "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
     "set.agents.pane_reconnect.d":
       "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
@@ -1522,6 +1536,17 @@
     "ag.mode.src.install": "Den 全体の既定",
     "ag.mode.src.persona": "ペルソナ",
     "ag.mode.src.default": "Den の組み込みの既定",
+    "ag.mode.item": "モード: {m}",
+    "ag.mode.menu": "{id} のモード",
+    "ag.mode.pick": "{id} のモードを変更",
+    "ag.mode.follow": "プロジェクトに従う",
+    "ag.mode.setS":
+      "{id}: {m} (独自の設定)。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.setStopped": "{id}: {m} (独自の設定)。次の起動時に適用されます。",
+    "ag.mode.followS":
+      "{id} はプロジェクトに従うようになりました: {m}。次のアイドル時に Den が再起動して適用します。",
+    "ag.mode.followStopped":
+      "{id} はプロジェクトに従うようになりました: {m}。次の起動時に適用されます。",
     "set.workspace.agents_mode":
       "エージェントのモード: このプロジェクト (Den 全体の既定を上書き)",
     "set.workspace.agents_mode.d":

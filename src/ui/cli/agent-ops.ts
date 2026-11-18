@@ -3007,6 +3007,8 @@ async function startSession(
   delete rec.exitCode;
   delete rec.interruptedAt;
   delete rec.restartFailed;
+  // Issue 252: it runs in `permission` now.
+  delete rec.startedIn;
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
   else delete rec.signIn;
@@ -5581,6 +5583,12 @@ export function setAgentPermission(
     next.overrides = [...rest, "permission"];
   } else if (rest.length) next.overrides = rest;
   else delete next.overrides;
+  // Issue 252: `permission` is also the mode its session was started in.
+  // A running agent keeps that one in startedIn until its next launch, so
+  // Den's mode check sees the change and restarts it at its next idle.
+  const ran = rec.startedIn ?? rec.permission;
+  if (!rec.stoppedAt && ran && ran !== next.permission) next.startedIn = ran;
+  else delete next.startedIn;
   writeRecord(d.stateDir(), next);
   return next;
 }
@@ -6800,6 +6808,8 @@ export async function modeDrift(
     id: string;
     workspace: string;
     want: PermissionIntent;
+    /** Issue 252: where `want` comes from. */
+    source: ModeSource;
     running?: PermissionIntent;
   }[]
 > {
@@ -6816,6 +6826,7 @@ export async function modeDrift(
     id: string;
     workspace: string;
     want: PermissionIntent;
+    source: ModeSource;
     running?: PermissionIntent;
   }[] = [];
   for (const rec of listRecords(d.stateDir())) {
@@ -6825,8 +6836,11 @@ export async function modeDrift(
     const p = find(rec);
     if (!rt?.permissions || !p) continue;
     let want: PermissionIntent | undefined;
+    let source: ModeSource = "default";
     try {
-      want = permissionNow(d, rec, p, rt);
+      const eff = effectiveMode(d, rec, p, rt);
+      want = eff?.mode;
+      if (eff) source = eff.source;
     } catch {
       continue; // a bad mode: its next start says so
     }
@@ -6836,12 +6850,13 @@ export async function modeDrift(
     // Only a mode Den knows the agent runs in can differ: none recorded
     // (an older record, one written by hand) and none on its command line
     // is not drift, and never restarts a running agent.
-    const ran = running ?? rec.permission;
+    const ran = running ?? rec.startedIn ?? rec.permission;
     if (want && ran && want !== ran)
       out.push({
         id: rec.id,
         workspace: rec.workspace,
         want,
+        source,
         ...(running ? { running } : {}),
       });
   }
@@ -6886,6 +6901,7 @@ export function modeResolver(
     if (!eff || !want) return undefined;
     const running =
       (pid ? runningIntent(pid, rec.resumeToken, commandLineOf) : undefined) ??
+      rec.startedIn ??
       rec.permission;
     const own = eff.source === "own";
     let followed: PermissionIntent | undefined;
@@ -6902,6 +6918,27 @@ export function modeResolver(
       ...(own ? { own: true as const, ...(followed ? { followed } : {}) } : {}),
     };
   };
+}
+
+/** Issue 252: a restart Den made on its own to apply an agent's mode. */
+export interface ModeRestarted {
+  agent: string;
+  project: string;
+  mode: PermissionIntent;
+  source: ModeSource;
+}
+
+const MODE_SOURCE_WORDS: Record<ModeSource, string> = {
+  own: "its own setting",
+  project: "its project",
+  install: "the Den-wide default",
+  persona: "its persona",
+  default: "Den's default",
+};
+
+/** Issue 252: the audit row's words for a restart for a mode. */
+export function modeRestartDetail(e: ModeRestarted): string {
+  return `restarted ${e.agent} in ${e.project} at idle to take mode ${e.mode}, from ${MODE_SOURCE_WORDS[e.source]}, by Den itself`;
 }
 
 export interface ModeCheck {
@@ -6922,6 +6959,8 @@ export function modeCheck(
     log?: (line: string) => void;
     /** Drill (b): a process's command line (default: ps). */
     commandLineOf?: CommandLineOf;
+    /** Issue 252: each restart it made (the web server's audit row). */
+    onRestarted?: (e: ModeRestarted) => void;
   } = {},
 ): ModeCheck {
   const running = new Map<string, Promise<void>>();
@@ -6934,9 +6973,17 @@ export function modeCheck(
         const p = restartAgent(d, m.id, m.workspace, "after-turn", {
           pollMs: opts.pollMs,
         })
-          .then(() =>
-            opts.log?.(`agent ${m.id}: restarted after its turn in ${m.want}`),
-          )
+          .then((done) => {
+            // Another request restarted it meanwhile: not Den's restart.
+            if (done.already) return;
+            opts.log?.(`agent ${m.id}: restarted after its turn in ${m.want}`);
+            opts.onRestarted?.({
+              agent: m.id,
+              project: m.workspace,
+              mode: m.want,
+              source: m.source,
+            });
+          })
           .catch((e: unknown) =>
             opts.log?.(
               `agent ${m.id}: not restarted for its mode: ${(e as Error)?.message ?? e}`,

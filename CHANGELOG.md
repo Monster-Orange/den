@@ -4,6 +4,362 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.65] - unreleased
+
+0.4.65-dev.1 was skipped: its commit failed CI and was never handed to a
+gate. 0.4.65-dev.2 is the first candidate.
+
+### Added
+
+- Agents: a runtime catalog entry can carry its sign-in data (`signIn`:
+  the variable its CLI signs in from, the command that makes the
+  credential, how long it lasts, and how the CLI words a usage limit).
+  Claude Code moves onto it with no change. A vendor added in
+  `agents.runtime_catalog` (user.yml or the distribution's config) with
+  `signIn` gets its own token under the always-on service, from
+  `secrets.refs.agent_signin_token_<id>`, in its own agents' environment
+  only. An entry with none is allowed; `doctor` says its agents cannot
+  sign in after logout and will stop. Codex CLI, Gemini CLI and Grok
+  Build ship with none (issue 338). (#347)
+- An agent's write on something you watch asks you first, whatever its
+  kind (issue 160). So does one on a repo or service you pinned. Set
+  what you watch in Settings, for every project or for one. (#348)
+- Secrets, deletes of data and money always ask you, by name. The
+  approval says which, for example "critical: deletes". (#348)
+- A project can set its own critical list: those kinds of write always
+  ask there. (#348)
+- Settings has rows for the approval policy, for every project and for
+  one: what runs without asking, what you watch, what is critical. In
+  English, Spanish and Japanese. The defaults stay permissive. (#348)
+- Only you change the approval policy without an Allow. An agent asks
+  with `approval_policy`, and it always waits for you. (#348)
+- Agents can close a stale or superseded pull request after a Hub note
+  (`pr_close`), with a comment saying why. It runs at once unless you
+  watch or pinned the repo. (#348)
+- A project's agents can use extra HTTP MCP servers. List them in the
+  project's `agents.mcp_servers` (workspaces.yml) as `{ name, url,
+  bearer }`. The bearer is optional and names a `secrets.refs` entry,
+  never a value. Den adds each server to the MCP config it writes for
+  that project's agents only. Like Hub's entry, a server with a bearer
+  gets a headers helper, `<cli> mcp headers <name>`, which reads the
+  bearer from the install's store at each connect. The helper takes the
+  project from the agent's own token, so another project's agent can't
+  read it. The bearer is never in the MCP file, the agent's env or a log
+  (issue 335). (#350)
+- Settings › Project lists a project's extra MCP servers by name and
+  address, and doctor has a line for each (a bad entry, or a bearer
+  whose `secrets.refs` entry isn't set, warns). An agent adds one with
+  the held write `project_mcp_add`, which always waits for the person's
+  own Allow (issue 335). (#350)
+- A web app on this computer can read one project agent's state from its
+  own server, with a server key: `GET
+  /api/embed/p/<project>/agents/<id>/state` answers running or not, and
+  stopped, busy, idle or waiting (with what it waits on). Only the key's
+  hash is kept; a revoked key gets 401 at once. An embed key reaches
+  only its agent's embed routes: anywhere else it is refused (issue
+  334). (#351)
+- A web app's server can relay its person's message to that agent with
+  the same key: `POST /api/embed/say` holds it in the delivery loop
+  Hub's inbox uses. It is typed after the agent's turn, at its next
+  start when it's stopped, and held while it waits on its person; never
+  mid-turn. The audit keeps its length, never its text (issue 334).
+  (#351)
+- Settings › Embedding › App keys: pick an agent and a listed web app,
+  press Make key, and allow it in Den's dialog. The key is shown once,
+  then only its hash is kept. The list shows each key's agent, web app
+  and last use; Revoke asks the same way. An agent can't ask for a key.
+  In English, Spanish and Japanese. docs/embedding.md says how a web
+  app's backend relays its person's messages (issue 334). (#351)
+- An app key's state reads are in the activity trail: the key's id, the
+  route, when, and whether it was refused, as one line per key and route
+  per window with the count of reads, so a polling web app doesn't flood
+  it. The window is Settings › Embedding › App key reads in one activity
+  line (`embed.app_key_audit_window_seconds`, 60 by default) (issue
+  334). (#351)
+- The bell opens on "Needs you": an agent waiting on you, a pick or a
+  mention, with no Mark read (a row stays while the agent waits). Below
+  it, "Earlier" holds Updates and Older, as before. den-ui draws both
+  headings in English, Spanish and Japanese; Den passes only the rows
+  (`bellPanelHtml({ sections })`, issue 101). (#364)
+- An agent's question goes to its project's lead (a running agent of
+  role lead or orchestrator) instead of to you; the lead asks you only
+  what needs you. `ask_human` tells the agent so, and the bell lists it
+  under Earlier. Permission prompts, and projects with no lead, still
+  come to you (issue 101). (#364)
+- When an agent needs you (a permission prompt, a question, or a write
+  held for your Allow), an open Den tab in the background shows a
+  desktop notification, in the bell's words: who, and what it waits on,
+  never the details. A click opens the agent. Settings › Notifications ›
+  Desktop alerts asks the browser once; quiet hours (a start and an end,
+  in your time zone) hold alerts back. The bell still has everything
+  (issue 172). (#366)
+- A phone, or a computer with every Den tab closed, gets the same alerts
+  by Web Push: open Den there and turn on Settings › Notifications ›
+  Alerts on this device by push. On an iPhone, add Den to the Home
+  Screen first. The push is encrypted for the device and signed with
+  this install's own key, made on first use in its state folder (issue
+  172). (#366)
+- An agent's mode can be set in the page (issue 252). A running agent's
+  ⋯ has Mode: the four modes and Follow project, with the one in effect
+  checked. In Settings › Project › Agents' mode, a click anywhere on an
+  agent's row opens the same choices. The working pop-up shows while it
+  applies, then the result: Den restarts the agent at its next idle, on
+  the same conversation, in that mode. No CLI needed. (#368)
+- Each restart Den makes on its own to apply a mode is an audit row, by
+  Den itself: "restarted lead in north at idle to take mode edits, from
+  its own setting, by Den itself". (#368)
+- Settings › Project › Hub project can create the Hub project to link
+  to. The link picker's first option is "Create a Hub project named
+  <this project's name>", and the name can be changed. Den asks Hub with
+  its project plan path, which an owner decides in Hub. Den proposes the
+  short name from the name and picks another when Hub says one is taken,
+  before anyone is asked. Den keeps the ask next to the project and
+  links it, by the new Hub project's hidden id, once an owner allows it.
+  One Hub project per project: a linked project, or one with an ask
+  waiting, isn't asked again (issue 271). (#370)
+- While Hub holds the ask, an owner sees Hub's Allow in the row; anyone
+  else is told an owner of the company must allow it. Den links the
+  project by itself once it is allowed: when Settings reads it again, on
+  the project sync's beat, and when Hub pushes the decision. A declined
+  ask is said, and Create is offered again. English, Spanish, Japanese
+  (issue 271). (#370)
+- Den's own agent can ask the same with the held write
+  `hub_project_create` (routine under the approval policy: Hub's owner
+  still decides). Hub's push about a held change it asked for now has
+  its own words for the agent (issue 271). (#370)
+- Agents' sign-in: each vendor (a runtime with sign-in data) has a list
+  of accounts for Keep agents running after logout. Each account has a
+  name ("Claude Code account A", "B" and so on unless you name it), its
+  own sign-in token, and an order you can change. Each token is its own
+  item in your install's secrets store and is never shown again once
+  set. Settings › Agents lists them per vendor, with Add {vendor}
+  account, Set sign-in token (the same hidden field as before) and Move
+  up / Move down, in English, Spanish and Japanese. On the command line:
+  `agents accounts list | add [--name] | set-token <n> | order <n>... |
+  remove <n> [--yes]`, with `--runtime <id>` (default Claude Code).
+  Issue 339. (#374)
+- The token you have today becomes Claude Code account A, so an install
+  with one account works exactly as before. Until each agent picks its
+  own account (issue 340), agents sign in with the first account in your
+  order. No email appears in an item name, a log or the page, and a name
+  with "@" is refused. (#374)
+- Under the always-on service, each agent's start picks the vendor
+  account whose token it gets: the one a sign-in source maps to the
+  agent's folder (if Den has its token), else the one the source reports
+  active, else the first in your order that is not capped. The token
+  goes into that agent's environment only. With no source and no cap,
+  the first account in your order is used, as before. (#379)
+- The agent's pane shows the account it runs on ("on Claude account B"),
+  by its label, never an email. `agents list --json` carries it too, and
+  the agent's start, resume and restart audit lines end "; on <label>".
+  (#379)
+- When no account has a token, the agent starts as today, with the same
+  warning, and `doctor` says why for each account ("not set", "capped",
+  or the store's reason) and how to set one (`agents accounts set-token
+  <id>`). With more than one account, doctor's sign-in row follows the
+  account agents start on, not account one alone. (#379)
+- An agent can ask to remove one of a project's extra MCP servers
+  (project_mcp_remove), or to change its url or bearer reference
+  (project_mcp_update; the bearer is a secrets.refs name, or no_bearer).
+  Both are critical held writes: only the person's own Allow runs them.
+  Agents get the change at their next start or resume. (#352) (#381)
+- Settings › Project › Agents' extra MCP servers: each row has Change
+  (new address, bearer reference, or No bearer) and Remove (confirm
+  first). Only a person can use these; an agent's token is refused.
+  (#352) (#381)
+- Doctor has a line for `edge.image` (#331). Traefik v3 or later is OK.
+  An older Traefik is a warning that names what's missing: the access
+  log has no request ids, since OTLP tracing needs v3. A tag Den can't
+  read a version from (`latest`, a bare digest) is a warning too: Den
+  leaves out the flags only some versions take. Each warning says to set
+  `edge.image` to `traefik:v3.7.17`, Den's default. (#388)
+- After Den updates itself, the line it types to its own agent now says
+  what the new Den's doctor found (each failing or warning check), or
+  that no results were kept. It used to send the agent to
+  release_status, but the agent's Den tools still run the code they
+  started on, and before 0.4.64 that code had no `denUpdate` (#384).
+  (#389)
+- Den's tools say when they're out of date. An agent keeps its tools
+  from when it started, and an update doesn't restart them. Once Den is
+  updated on disk, each tool answer adds one line: which version the
+  tools run, which version is installed, and how to load the new tools.
+  An agent asks the person to restart it from Den, which keeps the
+  conversation. Any other client reconnects the MCP server (#384).
+  (#389)
+- `edge up` says the same line, and before a recreate it names why: the
+  image (a tag, a digest, or a new image behind the same tag), a command
+  flag, a port, a mount or the networks. (#385) (#400)
+- The Settings guard now also catches a command named inline (a vendor
+  sign-in command, a backtick span, or the CLI after "then", make, use
+  and the like) in en, es and ja. A bare CLI-equivalent note at the end
+  of a description is still allowed. (issue 399) (#404)
+- Contributing: pull requests merge without a re-run when only main
+  moved under them, and each closed issue clause ships a live check in
+  `gate/`. (#412)
+- A pull request runs on both Nodes (22 and 24), as main does: the
+  checks and the install smoke, then only the tests its change affects
+  (the tests that import a changed file, the browser specs of a changed
+  page, and a small smoke set), with the reason for each test in the job
+  summary. A change to a shared file (the shell, the kit, the request
+  guard, package.json, jest or test setup, CI) still runs every test,
+  four ways in parallel. Quarantined tests (issue 397) run apart and
+  never block. (#413)
+- Pushes to main and releases still run every test on both Nodes. (#413)
+- scripts/ci-replay.mjs replays 30 days of red CI runs and fails if the
+  pull-request subset would have missed a real failure, per Node: 91
+  real failures, all 91 caught. (#413)
+
+### Changed
+
+- Bringing in a conversation as an agent (`agent_import`) now asks you
+  first. It is a held write, on with the other held writes. Listing the
+  conversations still needs `mcp.actions`. (#348)
+- Settings › Notifications has two new rows for push alerts: **Push
+  wait** (how long Den waits for a push service, default 30 s) and
+  **Push kept for** (how long a push service keeps an alert for a device
+  that is off, default 1 day). Before, these could only be set from the
+  command line. (#367) (#382)
+- Push alerts give the push services this install's https address as the
+  contact. Without an https address, `doctor` now warns that push alerts
+  may not reach phones, and says how to set one. (#367) (#382)
+
+### Fixed
+
+- Setting one agent's own mode (`agents permission <id> <mode>` or the
+  page) while it ran never reached it: the record lost the mode its
+  session was started in, so Den's mode check saw no change. Den now
+  restarts it at its next idle. (#368)
+- `agents permission <id>` says the agent restarts at its next idle to
+  take the mode, not "from its next start". (#368)
+- A "needs your permission" bell row from before a server restart no
+  longer stays for good (#369). At start, and on the attention check
+  after it, Den looks at each kept waiting row's agent: stopped, removed
+  or exited, or no permission dialog on its screen, and the row goes;
+  still showing the dialog, the row stays and is a live wait again. A
+  stopped agent's question goes too; an agent that didn't come back
+  after a restart keeps its row. (#371)
+- A push to main right after a release no longer publishes that version
+  again. npm takes 20-60 minutes to show a new version, so the release
+  check used to read "not on npm" for any later commit still carrying
+  it. Now only the commit that set the version releases: its parent has
+  another version, and no tag v<version> names another commit. (#373)
+- Edge, Environments, Tests, Release and Logs no longer show English
+  values in Spanish and Japanese (issue 171). The container's state
+  ("running"), the TLS strategy ("none"), a down service's reason
+  ("fetch failed", "connection refused", a timeout), a GitHub deploy
+  state ("failure"), a perf report's status and metric labels, and why a
+  service has no log history now read in the page's language. The same
+  health reasons read in the page's language on Services, Graph and the
+  top bar's status drawer. Names, ports, paths and versions stay as they
+  are. (#375)
+- den#143: `web up` no longer calls a running server "not ready" on a
+  busy machine. Each readiness check waits `web.ready_probe_seconds`
+  (default 10, was a fixed 1.5 s), and `web up` waits
+  `web.start_wait_seconds` for the server to start (default 120, was a
+  fixed 45 s). Both are rows in Settings › Server and `config` keys.
+  (#376)
+- Accessibility test covers every page the rail leads to (issue 297). It
+  reads the list from the running shell (new `denShell.pages()`: the nav
+  registry, hidden and conditional pages too, then Settings), in light
+  and dark, desktop and phone. A registry page without a clean axe run
+  fails, and a page added to the registry is checked with no test
+  change. (#377)
+- Settings: category headings are h2 under the page's h1 (they skipped
+  to h3); each Runtimes row is a list item; the Personas list is a
+  labelled group (category headings sit among its rows); the overrides
+  table's Actions header has visually hidden text. (#377)
+- Graph: a card is a group, not a button, since it holds its own
+  buttons. Enter or Space on it still opens details. (#377)
+- Local Dev and Releases: the agents table and the releases table
+  scroll, so each is now a labelled region the keyboard can reach.
+  (#377)
+- Terminal tabs: the tab strip holds only tabs. × is for the pointer;
+  Delete on a tab closes it. (#377)
+- An allowed project_mcp_add now runs. Before, the Allow checked the
+  stored request again in a form the add check could not read, so it
+  failed. (#352) (#381)
+- Config and state files are now written whole (#380): a temp file
+  beside the file, flushed, then renamed over it. A reader (Den's
+  server, a CLI, an agent's start, a test) could get half of
+  config/local/user.yml while it was written; it now sees the old file
+  or the new one. One shared helper (src/shared/atomic-write.ts)
+  replaces the gate store's private one, and 20 files' writers of config
+  and state (user.yml, the services catalog, service secrets, stack
+  env/override/routes, edge files, sign-in token state, report drafts,
+  the web secret, gate slots and more) go through it. The web secret and
+  gate slots are created whole and only once. (#386)
+- Settings › Browser sign-in: when this browser isn't signed in, the row
+  says "Not signed in" and has a Sign in button. It opens Den's own
+  sign-in page (Sign in with GitHub, or a code another device approves)
+  and comes back to Settings after. The page no longer tells you to run
+  `web login`; that stays in the description as the command-line
+  equivalent. (issue 393) (#396)
+- Settings › Access, with no edge hostname, no longer says "then `edge
+  up`". It has a **Start the edge** button (**Apply** when the edge
+  runs) that runs what `edge up` runs on the server, with Den's working
+  pop-up until it answers, then says what happened: "Edge started",
+  "Edge up to date, nothing restarted", or "Edge recreated because
+  <field>: <old> → <new>; it was unreachable for about N s". en, es, ja.
+  (#395) (#400)
+- Settings › Keep agents running after logout no longer sends you to two
+  terminal commands to make the agents' sign-in token. With no sign-in
+  token, or an old one, the row says the agents' CLI makes it when you
+  sign in to it. It links the vendor's sign-in docs, from the runtime
+  catalog's new signIn.docs. "Sign-in token" in "paste it into Sign-in
+  token below" goes to that field and focuses it. In en, es and ja.
+  (issue 399) (#404)
+- Report: Review says who can see a report. A private or internal
+  destination no longer shows "Public repository" or the "visible to
+  everyone" warning (issue 415). Den's own destinations still read as
+  public: Den doesn't know their visibility without asking GitHub.
+  den-ui (kit) (#416)
+- Report: info().repos entries may carry `visibility` ("public" |
+  "private" | "internal"; missing or unknown = public) and `audience`.
+  Private and internal get their own pill, the audience, and a quiet
+  "Only people with access to this repository can see it." line instead
+  of the public warning; both follow the select. New words
+  kit.report.priv, .int, .privN, .privW in en/es/ja (issue 415). (#416)
+- Gate slots: a slot lock left by a process that was killed is taken
+  back at once, instead of blocking the next gate run for up to 30 s
+  (issue 275). (#437)
+
+### Tests and CI
+
+- CI: a newer push to a pull request cancels its older run. (#365)
+- CI: a self-hosted runner for this repo's own pushes and pull requests,
+  never for forks. (#372)
+- Tests: a flake quarantine. A quarantined test runs in its own step
+  that never blocks; entries need evidence and expire. (#401)
+- Tests: the kit CSP browser suite blocks pull requests again (its flake
+  was fixed). (#408)
+- Tests: live checks for 21 merged issues run on each dev tag's bed.
+  (#417)
+- Tests: the bell's whole-row open and its Updates items are tested in
+  both browsers and checked live on each dev tag. (#419)
+- Tests: the agent-order test waits for the new order to be saved (it
+  could read the old one on a busy runner). (#423)
+- CI: two day jobs on the self-hosted runners, and a repeat workflow for
+  night runs. (#426)
+- Tests: the bell-row test no longer reads a row's position mid-redraw.
+  (#427)
+- CI: the Playwright system-package install has a time limit and one
+  retry, and browsers are cached, so a slow mirror can't hold a job for
+  20 minutes. (#428)
+- CI: the unit suite runs in six shards with a 30-minute limit, so a
+  slow shard is no longer cut off. (#429)
+- Tests: the bell's "⊘ asks once" test seeds the agent its question
+  belongs to (since issue 369, the server withdraws a question from an
+  agent with no record), and waits for Undo's save in WebKit. The bell
+  test leaves quarantine. (#432)
+- Tests: the MODE-5 Settings test saves each number row once, as a
+  person does, and waits for the category's redraw. (#432)
+- CI: the Playwright cache key names its apt part, so every branch saves
+  apt's packages once and stops fetching them from the mirror. (#447)
+- Tests: the rail's tests wait for its settings saves instead of a fixed
+  50 ms. (#449)
+- Tests: the SIGKILL gate test waits until the slot names its run before
+  killing the wrapper. (#451)
+
 ## [0.4.64] - 2026-11-17
 
 den-ui 0.7.4 ships with this release (the rail's plain counts and greyed-entry reasons). den-ui 0.7.2 and 0.7.3 were never published to npm: 0.7.4 supersedes both.

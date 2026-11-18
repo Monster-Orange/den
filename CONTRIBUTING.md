@@ -133,6 +133,24 @@ the subset would have missed a real failure;
 `tests/unit/test-infra/affected-tests.test.ts` fails if the map stops
 catching one.
 
+### Playwright in CI
+
+Every job that runs browser tests installs Playwright through
+`scripts/ci-pw-install.sh`, never `playwright install` directly (a test keeps
+it so). The script splits the install in two, each with a time limit and one
+retry:
+
+- the system packages (`playwright install-deps`, apt). They run as root, so a
+  cut-off try can't be killed and goes on holding dpkg's lock; the retry
+  waits for it to finish first;
+- the browsers (`playwright install`).
+
+One cache step, keyed by the OS and Playwright's version, keeps both the
+browsers (`~/.cache/ms-playwright`) and apt's downloaded packages
+(`~/.cache/den-apt`). Once one job has them, later runs skip the Ubuntu mirror.
+The limits are settings: `CI_PW_DEPS_SECONDS` (default 240) and
+`CI_PW_INSTALL_SECONDS` (default 90).
+
 ## Merging
 
 A pull request merges once its own run is green. When only main moved
