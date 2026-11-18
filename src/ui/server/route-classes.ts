@@ -644,6 +644,15 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/agents/self/mcp-headers",
+    "Issue 473: an agent (its own token only) gets the headers for one of its project's MCP entries, the bearer read from this install's store; the project is its token's",
+  ),
+  R(
+    "/api/mcp-servers/bearers",
+    "Issue 473: doctor's check: which projects' MCP bearers this install can't serve, and why; never a value; an agent's token sees its own project's only",
+  ),
+  M(
+    ["POST"],
     "/api/agents/self/attention",
     "NT-1: an agent (its own token only) says it waits for its person or finished its turn",
   ),

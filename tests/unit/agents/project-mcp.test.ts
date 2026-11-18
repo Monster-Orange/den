@@ -15,7 +15,9 @@ import * as path from "path";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import {
   parseProjectMcpServers,
+  projectMcpHeaderFor,
   projectMcpHeaders,
+  type McpHeadersDeps,
 } from "../../../src/shared/agents/project-mcp.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
@@ -119,42 +121,29 @@ describe("issue 335: a project's extra MCP server in its agents' --mcp-config", 
     expect([...r.out, ...r.err].join("\n")).not.toContain(BEARER);
   });
 
-  it("the headers helper's output carries the bearer, for the agent's own project only", async () => {
-    const r = await twoProjects();
+  it("the server's headers carry the bearer, for the project the token was minted for only", async () => {
     const store = fakeStore({ tracker_token: `${BEARER}\n` });
-    const deps = (env: NodeJS.ProcessEnv | undefined) => ({
-      env: env ?? {},
-      stateDir: r.stateDir,
+    const src = {
       servers: (ws: string) => parseProjectMcpServers(CONFIG[ws]).servers,
       secret: store.secret,
+    };
+    const a = await projectMcpHeaderFor("north", "tracker", src);
+    expect(a).toEqual({
+      ok: true,
+      headers: { Authorization: `Bearer ${BEARER}` },
     });
-    const a = await projectMcpHeaders(
-      "tracker",
-      deps(r.made[0].opts.env as NodeJS.ProcessEnv),
-    );
-    expect(a.ok && JSON.parse(a.json)).toEqual({
-      Authorization: `Bearer ${BEARER}`,
-    });
-    // Project B's agent can't name A's server: its token says south.
-    const b = await projectMcpHeaders(
-      "tracker",
-      deps(r.made[1].opts.env as NodeJS.ProcessEnv),
-    );
+    // Project B's token can't name A's server: its token says south.
+    const b = await projectMcpHeaderFor("south", "tracker", src);
     expect(b).toEqual({
       ok: false,
+      status: 404,
+      code: "no_server",
       error: 'project south has no MCP server "tracker"',
     });
-    // Not an agent: nothing.
-    const none = await projectMcpHeaders("tracker", deps({}));
-    expect(none.ok).toBe(false);
-    expect(JSON.stringify(none)).not.toContain(BEARER);
   });
 
-  it("a store error never carries a secret-shaped value into the helper's stderr", async () => {
-    const r = await twoProjects();
-    const a = await projectMcpHeaders("tracker", {
-      env: r.made[0].opts.env as NodeJS.ProcessEnv,
-      stateDir: r.stateDir,
+  it("a store error never carries a secret-shaped value into the server's answer", async () => {
+    const a = await projectMcpHeaderFor("north", "tracker", {
       servers: (ws: string) => parseProjectMcpServers(CONFIG[ws]).servers,
       secret: async () => {
         throw new Error(`store said: Authorization: Bearer ${BEARER}`);
@@ -163,6 +152,75 @@ describe("issue 335: a project's extra MCP server in its agents' --mcp-config", 
     expect(a.ok).toBe(false);
     expect(JSON.stringify(a)).not.toContain(BEARER);
     expect(JSON.stringify(a)).toContain("secrets.refs.tracker_token");
+  });
+
+  it("issue 473: the helper asks Den's server with the agent's token, and prints only the header", async () => {
+    const r = await twoProjects();
+    const env = r.made[0].opts.env as NodeJS.ProcessEnv;
+    const calls: { url: string; init: RequestInit }[] = [];
+    const answer =
+      (status: number, body: unknown) =>
+      async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        return new Response(JSON.stringify(body), { status });
+      };
+    const deps = (fetch: McpHeadersDeps["fetch"]) => ({
+      env,
+      base: "http://127.0.0.1:1",
+      cli: "acme",
+      fetch,
+    });
+    const ok = await projectMcpHeaders(
+      "tracker",
+      deps(
+        answer(200, {
+          ok: true,
+          headers: { Authorization: `Bearer ${BEARER}`, "X-Other": "no" },
+        }),
+      ),
+    );
+    expect(ok).toEqual({
+      ok: true,
+      json: JSON.stringify({ Authorization: `Bearer ${BEARER}` }),
+    });
+    expect(calls[0].url).toBe("http://127.0.0.1:1/api/agents/self/mcp-headers");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ name: "tracker" });
+    expect(
+      (calls[0].init.headers as Record<string, string>).Authorization,
+    ).toMatch(/^Bearer /);
+    // The server's error, even one holding a secret-shaped value, is
+    // scrubbed before the helper prints it.
+    const bad = await projectMcpHeaders(
+      "tracker",
+      deps(
+        answer(503, {
+          ok: false,
+          error: `store said: Authorization: Bearer ${BEARER}`,
+        }),
+      ),
+    );
+    expect(bad.ok).toBe(false);
+    expect(JSON.stringify(bad)).not.toContain(BEARER);
+    // Den not running: a clear failure; it reads no env of its own.
+    const down = await projectMcpHeaders("tracker", {
+      ...deps(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+      env: { ...env, TRACKER_TOKEN: BEARER },
+    });
+    expect(down).toEqual({
+      ok: false,
+      error: expect.stringContaining("Den isn't running"),
+    });
+    expect(JSON.stringify(down)).not.toContain(BEARER);
+    // Not an agent: nothing asked.
+    const n = calls.length;
+    const none = await projectMcpHeaders("tracker", {
+      ...deps(answer(200, {})),
+      env: {},
+    });
+    expect(none.ok).toBe(false);
+    expect(calls.length).toBe(n);
   });
 
   it("a server without a bearer has no headers helper; a bad entry and Den's own names are left out", async () => {

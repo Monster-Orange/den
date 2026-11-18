@@ -12,14 +12,17 @@
  *
  * Den adds each one to the --mcp-config it writes for that project's
  * agents, as Hub's entry is (runtime.ts): an HTTP entry whose headersHelper
- * runs `<cli> mcp headers <name>` at each connect. That command proves the
- * caller with the agent's own token (its file), takes the project from
- * what the token was minted for (never from an argument), and reads the
- * bearer from the install's secrets store then. The bearer is never in
- * the MCP file, the agent's env, a record, a page or a log: Settings and
- * doctor show a server's name and url only.
+ * runs `<cli> mcp headers <name>` at each connect. That command runs in the
+ * agent's own process, so it never reads a store itself (issue 473: the
+ * env provider would read the agent's env). It asks the running Den
+ * server (POST /api/agents/self/mcp-headers), proving itself with the
+ * agent's own token (its file). The server takes the project from what
+ * the token was minted for (never from an argument), and reads the bearer
+ * from its own secrets store then. The bearer is never in the MCP file,
+ * the agent's env, a record, a page or a log: Settings and doctor show a
+ * server's name and url only.
  */
-import { actorTokenOf, verifyActorToken } from "../actor-token.js";
+import { actorTokenOf } from "../actor-token.js";
 import { shellQuote } from "../cli-command.js";
 import { redactSecrets } from "../redact.js";
 
@@ -131,37 +134,37 @@ export function projectMcpHeadersHelper(
     .trim();
 }
 
-export interface McpHeadersDeps {
-  env: NodeJS.ProcessEnv;
-  stateDir: string;
+/** The server's side: what it reads, for a project it already proved. */
+export interface McpHeaderSource {
   /** Project `ws`'s servers (checked). */
   servers: (ws: string) => ProjectMcpServer[];
   /** The value of secrets.refs entry `ref`, from the install's store. */
   secret: (ref: string) => Promise<string>;
 }
 
+export type McpHeaderResult =
+  | { ok: true; headers: Record<string, string> }
+  | { ok: false; status: number; code: string; error: string };
+
 /**
- * `<cli> mcp headers <name>`: the headers JSON for the calling agent's
- * project's server `name`, or why not. The project is the one the agent's
+ * Issue 473, on Den's server: the headers for project `ws`'s server
+ * `name`, read from the server's own store. `ws` is the one the caller's
  * token was minted for. An error never holds the bearer.
  */
-export async function projectMcpHeaders(
+export async function projectMcpHeaderFor(
+  ws: string,
   name: string,
-  d: McpHeadersDeps,
-): Promise<{ ok: true; json: string } | { ok: false; error: string }> {
-  const token = actorTokenOf(d.env);
-  if (!token) return { ok: false, error: "no agent token: not an agent" };
-  const rec = verifyActorToken(d.stateDir, token);
-  if (!rec)
-    return {
-      ok: false,
-      error: "the agent's token isn't live: restart or resume the agent",
-    };
-  const ws = rec.workspace;
+  d: McpHeaderSource,
+): Promise<McpHeaderResult> {
   const server = d.servers(ws).find((s) => s.name === name);
   if (!server)
-    return { ok: false, error: `project ${ws} has no MCP server "${name}"` };
-  if (!server.bearer) return { ok: true, json: "{}" };
+    return {
+      ok: false,
+      status: 404,
+      code: "no_server",
+      error: `project ${ws} has no MCP server "${name}"`,
+    };
+  if (!server.bearer) return { ok: true, headers: {} };
   let value: string;
   try {
     value = (await d.secret(server.bearer)).trim();
@@ -170,13 +173,114 @@ export async function projectMcpHeaders(
     const why = redactSecrets(String((e as Error)?.message ?? e));
     return {
       ok: false,
+      status: 503,
+      code: "unserved",
       error: `secrets.refs.${server.bearer} can't be read: ${why.slice(0, 200)}`,
     };
   }
   if (!value)
-    return { ok: false, error: `secrets.refs.${server.bearer} is empty` };
-  return {
-    ok: true,
-    json: JSON.stringify({ Authorization: `Bearer ${value}` }),
-  };
+    return {
+      ok: false,
+      status: 503,
+      code: "unserved",
+      error: `secrets.refs.${server.bearer} is empty`,
+    };
+  return { ok: true, headers: { Authorization: `Bearer ${value}` } };
+}
+
+/**
+ * Issue 473, doctor's question to the server: why server `sv`'s bearer
+ * can't be served, or null when it can. The value is read and dropped.
+ */
+export async function projectMcpUnserved(
+  ws: string,
+  sv: ProjectMcpServer,
+  d: McpHeaderSource,
+): Promise<string | null> {
+  const r = await projectMcpHeaderFor(ws, sv.name, {
+    ...d,
+    servers: () => [sv],
+  });
+  return r.ok ? null : r.error;
+}
+
+/** The route the helper asks (Den's local API). */
+export const MCP_HEADERS_ROUTE = "/api/agents/self/mcp-headers";
+
+type FetchFn = (url: string, init: RequestInit) => Promise<Response>;
+
+export interface McpHeadersDeps {
+  env: NodeJS.ProcessEnv;
+  /** Den's web server on this machine (denWebBase). */
+  base: string;
+  cli: string;
+  fetch?: FetchFn;
+  timeoutMs?: number;
+}
+
+/** An answer's error, as the helper may print it: scrubbed, one line, short. */
+const said = (v: unknown) =>
+  redactSecrets(typeof v === "string" ? v : "")
+    .replace(/[\r\n]+/g, " ")
+    .slice(0, 300);
+
+/**
+ * `<cli> mcp headers <name>`: the headers JSON for the calling agent's
+ * project's server `name`, or why not. It asks the running Den server,
+ * with the agent's own token; it never reads a store, nor its own env for
+ * a bearer. An error never holds the bearer.
+ */
+export async function projectMcpHeaders(
+  name: string,
+  d: McpHeadersDeps,
+): Promise<{ ok: true; json: string } | { ok: false; error: string }> {
+  const token = actorTokenOf(d.env);
+  if (!token || !/^[\x21-\x7e]+$/.test(token))
+    return { ok: false, error: "no agent token: not an agent" };
+  let r: Response;
+  try {
+    r = await (d.fetch ?? fetch)(
+      `${d.base.replace(/\/+$/, "")}${MCP_HEADERS_ROUTE}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ name }),
+        redirect: "error",
+        signal: AbortSignal.timeout(d.timeoutMs ?? 10_000),
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      error: `Den isn't running at ${d.base} (or isn't answering), and only Den serves the bearer: start it with \`${d.cli} web up\`, then reconnect`,
+    };
+  }
+  let body: Record<string, unknown> = {};
+  try {
+    const v: unknown = await r.json();
+    if (v && typeof v === "object" && !Array.isArray(v))
+      body = v as Record<string, unknown>;
+  } catch {
+    /* not JSON: the status says it */
+  }
+  if (!r.ok || body.ok !== true) {
+    const why = said(body.error) || `Den answered ${r.status}`;
+    return {
+      ok: false,
+      error:
+        r.status === 401
+          ? `${why} (the agent's token isn't live: restart or resume the agent)`
+          : why,
+    };
+  }
+  const h = body.headers;
+  const headers: Record<string, string> = {};
+  if (h && typeof h === "object" && !Array.isArray(h))
+    for (const [k, v] of Object.entries(h as Record<string, unknown>))
+      if (k === "Authorization" && typeof v === "string") headers[k] = v;
+  return { ok: true, json: JSON.stringify(headers) };
 }

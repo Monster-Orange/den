@@ -753,17 +753,59 @@ export function projectMcpLines(
 
 /**
  * Issue 473: why bearer ref `ref` can't be served to an agent, or null.
- * Unset: it can't. The env provider: the headers helper reads the agent's
- * own env, where the bearer never is, so it can't either.
+ * Agents get a bearer from Den's running server, read from its own store:
+ *  - the ref unset: it can't;
+ *  - `served` null: the server didn't answer, so it can't now;
+ *  - the server's own why (the env provider without the value in the
+ *    server's env, a store that can't read it): it can't.
  */
 export function mcpBearerProblem(
   ref: string,
-  d: { refSet: (ref: string) => boolean; provider: () => string },
+  d: {
+    refSet: (ref: string) => boolean;
+    /** The server's answer for this server: why not, or null (it can). */
+    served: { why: string | null } | null;
+    cli: string;
+  },
 ): string | null {
   if (!d.refSet(ref)) return `secrets.refs.${ref} is not set`;
-  if (d.provider() === "env")
-    return "secrets.provider is env, and the headers helper reads the agent's own env, where the bearer never is";
-  return null;
+  if (!d.served)
+    return `Den isn't running, and only Den serves the bearer: start it with \`${d.cli} web up\``;
+  return d.served.why;
+}
+
+/**
+ * Issue 473: the running server's answer: why each project server's bearer
+ * can't be served, by `<project>/<name>` (null: the server didn't answer).
+ */
+async function servedBearers(): Promise<Map<string, string | null> | null> {
+  const { readWebPort } = await import("../../shared/edge/config.js");
+  const { getDistRoot } = await import("../../shared/paths.js");
+  const { cliAuthHeaders } = await import("../../shared/web-secret.js");
+  try {
+    const res = await fetch(
+      `${denWebBase(readWebPort(getDistRoot()))}/api/mcp-servers/bearers`,
+      {
+        headers: { ...cliAuthHeaders(), Accept: "application/json" },
+        redirect: "error",
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      servers?: { project?: unknown; name?: unknown; why?: unknown }[];
+    };
+    const out = new Map<string, string | null>();
+    for (const sv of body.servers ?? [])
+      if (typeof sv.project === "string" && typeof sv.name === "string")
+        out.set(
+          `${sv.project}/${sv.name}`,
+          typeof sv.why === "string" && sv.why ? sv.why : null,
+        );
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 /** Issue 335: every project's agents.mcp_servers, as written. */
@@ -784,20 +826,15 @@ async function projectMcpDoctor(): Promise<{
   lines: string[];
   checks: OnboardCheck[];
 }> {
-  const { namedSecretRef, readSecretsConfig, resolveProviderName } =
-    await import("../../shared/secrets/index.js");
+  const { namedSecretRef } = await import("../../shared/secrets/index.js");
   const { HUB_SERVER } = await import("../../shared/hub.js");
-  const provider = () => {
-    try {
-      return resolveProviderName(readSecretsConfig());
-    } catch {
-      return "";
-    }
-  };
+  const projects = await projectsMcpRaw();
+  const served = projects.length ? await servedBearers() : null;
   return projectMcpLines(
-    await projectsMcpRaw(),
-    (_ws, sv) =>
-      mcpBearerProblem(sv.bearer!, {
+    projects,
+    (ws, sv) => {
+      const key = `${ws}/${sv.name}`;
+      return mcpBearerProblem(sv.bearer!, {
         refSet: (n) => {
           try {
             return namedSecretRef(n) !== null;
@@ -805,8 +842,14 @@ async function projectMcpDoctor(): Promise<{
             return false;
           }
         },
-        provider,
-      }),
+        served: !served
+          ? null
+          : served.has(key)
+            ? { why: served.get(key) ?? null }
+            : { why: "Den didn't list it" },
+        cli: product().cli,
+      });
+    },
     [product().cli, HUB_SERVER],
   );
 }

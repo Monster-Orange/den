@@ -211,19 +211,22 @@ describe("issue 335: Settings and doctor show names and urls only", () => {
     expect(JSON.stringify(out)).not.toContain("tracker_token");
   });
 
-  it("issue 473, doctor: an unset ref, or the env provider (the helper's own env), can't be served", () => {
+  it("issue 473, doctor: an unset ref, Den not running, or the server's own why: can't be served", () => {
     const set = (n: string) => n === "tracker_token";
+    const d = { refSet: set, cli: "acme" };
+    expect(mcpBearerProblem("w", { ...d, served: { why: null } })).toBe(
+      "secrets.refs.w is not set",
+    );
+    expect(mcpBearerProblem("tracker_token", { ...d, served: null })).toBe(
+      "Den isn't running, and only Den serves the bearer: start it with `acme web up`",
+    );
+    const why =
+      "secrets.refs.tracker_token can't be read: Secret TRACKER_TOKEN is not set in the environment";
+    expect(mcpBearerProblem("tracker_token", { ...d, served: { why } })).toBe(
+      why,
+    );
     expect(
-      mcpBearerProblem("w", { refSet: set, provider: () => "1password" }),
-    ).toBe("secrets.refs.w is not set");
-    expect(
-      mcpBearerProblem("tracker_token", { refSet: set, provider: () => "env" }),
-    ).toMatch(/^secrets\.provider is env/);
-    expect(
-      mcpBearerProblem("tracker_token", {
-        refSet: set,
-        provider: () => "1password",
-      }),
+      mcpBearerProblem("tracker_token", { ...d, served: { why: null } }),
     ).toBeNull();
   });
 });

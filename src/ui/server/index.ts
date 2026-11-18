@@ -22,6 +22,11 @@ import {
   notificationDeps,
 } from "./notification-service.js";
 import type { UpdateWait } from "./update-check.js";
+import {
+  defaultProjectMcpDeps,
+  handleProjectMcpRoutes,
+  isProjectMcpPath,
+} from "./project-mcp-routes.js";
 
 import {
   isUpdateAsk,
@@ -3434,6 +3439,11 @@ async function handleRequest(
       store: gates,
       title: product().title,
     });
+    return;
+  }
+  // Issue 473: a project MCP server's bearer, from this server's store.
+  if (guard.ok && isProjectMcpPath(pathname)) {
+    await handleProjectMcpRoutes(req, res, pathname, defaultProjectMcpDeps());
     return;
   }
   // NT: the bell, and agents saying they wait for their person.
