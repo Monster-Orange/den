@@ -756,6 +756,8 @@
     "set.ui.edgeApply": "Apply",
     "set.ui.edgeStarted": "Edge started",
     "set.ui.edgeCurrent": "Edge up to date, nothing restarted",
+    "set.ui.edgeDrift":
+      "The edge runs {runs}; the config says {says}. Apply recreates it on the config's.",
     "set.ui.edgeRecreated":
       "Edge recreated because {why}; it was unreachable for about {s} s",
     "set.ui.edgeWhy": "its settings changed",
@@ -1950,6 +1952,12 @@
     "ap.do.approval_policy.project":
       "Change project {where}'s approval policy to {to}",
     "ap.do.pr_close": "Close pull request {pr} on {repo}: {comment}",
+    "ap.do.edge_up": "Start the edge, or apply the config to it ({image})",
+    "ap.det.edge_up.drift": "Now the edge runs {runs}; the config says {says}.",
+    "ap.det.edge_up.runs":
+      "Den runs what edge up runs: the edge on the config's image ({image}) and args, then the running stacks rejoin its networks.",
+    "ap.det.edge_up.drops":
+      "When the edge must be recreated, its routes drop for a few seconds while it restarts. Once it is done, Den says whether it was recreated, and why.",
     "set.agents.default_mode": "Agents' mode: Den-wide default",
     "set.agents.default_mode.d":
       "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",

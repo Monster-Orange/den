@@ -950,6 +950,8 @@ function drawPair(host, ctx) {
           });
       };
       host.querySelector("#set-pair-go").addEventListener("click", go);
+      // Issue 395: the config changed under the running edge: Apply here too.
+      drawEdgeUp(host, ctx, { onlyOnDrift: true });
     })
     .catch(() => {
       host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
@@ -979,20 +981,41 @@ function edgeUpText(o) {
   );
 }
 
-function drawEdgeUp(host, ctx) {
+/**
+ * Issue 395: the config changed under the running edge (edge.image or
+ * edge.args, /api/edge's drift): what it runs, and what the config says.
+ */
+function edgeDriftText(d) {
+  return L(
+    "set.ui.edgeDrift",
+    "The edge runs {runs}; the config says {says}. Apply recreates it on the config's.",
+    { runs: d?.runs ?? "", says: d?.says ?? "" },
+  );
+}
+
+function drawEdgeUp(host, ctx, opts = {}) {
   const box = document.createElement("div");
   box.style.cssText = "flex-basis:100%;margin-top:8px";
   box.innerHTML =
+    '<p class="set-note set-warn" id="set-edge-drift" style="margin:0 0 8px" hidden></p>' +
     `<button type="button" class="btn sm" id="set-edge-up">${escHtml(L("set.ui.edgeStart", "Start the edge"))}</button>` +
     '<p class="set-note" id="set-edge-up-out" aria-live="polite" hidden></p>';
+  // With an edge hostname, the box shows only when the config drifted.
+  if (opts.onlyOnDrift) box.hidden = true;
   host.appendChild(box);
   const btn = box.querySelector("#set-edge-up");
   const out = box.querySelector("#set-edge-up-out");
+  const drift = box.querySelector("#set-edge-drift");
   // Running already: the button applies the config to it.
   fetch("/api/edge", { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
     .then((b) => {
       if (b?.up) btn.textContent = L("set.ui.edgeApply", "Apply");
+      if (b?.drift) {
+        drift.textContent = edgeDriftText(b.drift);
+        drift.hidden = false;
+        box.hidden = false;
+      }
     })
     .catch(() => {});
   btn.addEventListener("click", async () => {
@@ -1007,6 +1030,8 @@ function drawEdgeUp(host, ctx) {
       if (r?.outcome) {
         out.textContent = edgeUpText(r.outcome);
         out.hidden = false;
+        // Applied: the edge runs the config now.
+        drift.hidden = true;
         if (r.outcome.kind !== "current")
           btn.textContent = L("set.ui.edgeApply", "Apply");
       }

@@ -187,6 +187,10 @@ export const HELD_WRITE_RISK: Readonly<
     kind: "ask",
     why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it",
   },
+  edge_up: {
+    risk: "critical",
+    why: "recreates the edge every project's routes go through: they drop while it restarts",
+  },
   pr_close: {
     risk: "routine",
     kind: "auto",

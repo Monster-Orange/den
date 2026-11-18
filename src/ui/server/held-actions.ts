@@ -73,6 +73,11 @@
  *   pr_close          issue 160: close a stale or superseded pull request
  *                     after a Hub note, with a comment saying why (gh
  *                     pr close). Auto unless the repo is watched or pinned
+ *   edge_up           issue 395: recreate the edge on the config's image
+ *                     and args (edge-offer.ts edgeUpHeld; its run is
+ *                     applyEdgeConfig, Settings' Start the edge path).
+ *                     Den holds one itself when a config change moves
+ *                     edge.image or edge.args away from the running edge
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -100,6 +105,7 @@ import type {
   HeldCheck,
 } from "./approval-routes.js";
 import type { AskedBy } from "./approvals.js";
+import { edgeUpHeld, type EdgeUpHeldDeps } from "./edge-offer.js";
 import type {
   AgentCreateCheck,
   HeldOpCheck,
@@ -198,6 +204,8 @@ export interface HeldActionDeps {
   }) => Promise<unknown>;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  /** Issue 395: edge_up's image, drift and run (applyEdgeConfig). */
+  edgeUp?: EdgeUpHeldDeps;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -845,6 +853,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     approval_policy: approvalPolicy,
     pr_close: prClose,
     den_pin_commit: pinCommit,
+    edge_up: edgeUpHeld(d.edgeUp),
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
   };

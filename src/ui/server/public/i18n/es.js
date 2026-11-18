@@ -989,6 +989,13 @@
     "ap.do.approval_policy.project":
       "Cambiar la política de aprobación del proyecto {where} a {to}",
     "ap.do.pr_close": "Cerrar la pull request {pr} de {repo}: {comment}",
+    "ap.do.edge_up": "Iniciar el edge, o aplicarle la configuración ({image})",
+    "ap.det.edge_up.drift":
+      "Ahora el edge ejecuta {runs}; la configuración dice {says}.",
+    "ap.det.edge_up.runs":
+      "Den hace lo que hace edge up: el edge con la imagen ({image}) y los argumentos de la configuración; luego los stacks en marcha vuelven a unirse a sus redes.",
+    "ap.det.edge_up.drops":
+      "Si hay que recrear el edge, sus rutas se caen unos segundos mientras se reinicia. Den dice después si se recreó y por qué.",
     "set.agents.default_mode":
       "Modo de los agentes: valor por defecto de todo Den",
     "set.agents.default_mode.d":
@@ -2499,6 +2506,8 @@
     "set.ui.edgeApply": "Aplicar",
     "set.ui.edgeStarted": "Edge iniciado",
     "set.ui.edgeCurrent": "Edge al día, no se reinició nada",
+    "set.ui.edgeDrift":
+      "El edge ejecuta {runs}; la configuración dice {says}. Aplicar lo recrea con la de la configuración.",
     "set.ui.edgeRecreated":
       "Edge recreado porque {why}; no se pudo alcanzar durante unos {s} s",
     "set.ui.edgeWhy": "cambió su configuración",

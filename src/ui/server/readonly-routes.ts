@@ -20,6 +20,7 @@
  */
 import * as http from "http";
 import { readEdgeConfig } from "../../shared/edge/config.js";
+import { edgeDrift } from "../../shared/edge/apply.js";
 import {
   edgeStatus,
   withHttpsServing,
@@ -92,7 +93,8 @@ export const defaultReadonlyRouteDeps: ReadonlyRouteDeps = {
   },
   edge: () => {
     const cfg = readEdgeConfig();
-    return withHttpsServing(edgeStatus(cfg), cfg);
+    // Issue 395: what the edge runs against what the config says.
+    return withHttpsServing({ ...edgeStatus(cfg), drift: edgeDrift(cfg) }, cfg);
   },
   edgeConfig: () => void readEdgeConfig(),
   actions: recentActions,
