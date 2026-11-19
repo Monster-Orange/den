@@ -12,6 +12,7 @@
  * The host only ever sees PtyFactory, so tests run a scripted or piped
  * stand-in and never need the module.
  */
+import { createHash } from "crypto";
 import * as fs from "fs";
 import { createRequire } from "module";
 import * as path from "path";
@@ -168,6 +169,86 @@ export function countPtyMasters(
 let memo: PtyLoad | null = null;
 
 /**
+ * Issue 563: the native module file a process loaded (or would load): its
+ * path, the module's version, and the file's identity: a hash of its
+ * contents. npm replaces a package by moving its folder aside and deleting
+ * it, so the file at the same path may since be another one.
+ */
+export interface PtyModuleInfo {
+  path: string;
+  version: string | null;
+  id: string | null;
+}
+
+/** The identity of `file`: "sha256:<hex>" of its contents, or null (gone). */
+export function fileIdentity(file: string): string | null {
+  try {
+    return `sha256:${createHash("sha256").update(fs.readFileSync(file)).digest("hex")}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Issue 563: the native module file of the PTY module installed under
+ * `root` now (its platform package's pty.node, else its own build), or
+ * null when it isn't installed. Read only.
+ */
+export function installedPtyModule(
+  root: string = getEngineRoot(),
+  platform: string = process.platform,
+  arch: string = process.arch,
+): PtyModuleInfo | null {
+  let pkgFile: string;
+  try {
+    pkgFile = createRequire(path.join(root, "package.json")).resolve(
+      `${PTY_MODULE}/package.json`,
+    );
+  } catch {
+    return null;
+  }
+  let version: string | null = null;
+  try {
+    const v = (
+      JSON.parse(fs.readFileSync(pkgFile, "utf-8")) as { version?: unknown }
+    ).version;
+    version = typeof v === "string" ? v : null;
+  } catch {
+    /* unreadable: no version */
+  }
+  const dir = path.dirname(pkgFile);
+  const candidates: string[] = [];
+  try {
+    candidates.push(
+      path.join(
+        path.dirname(
+          createRequire(pkgFile).resolve(
+            `${PTY_MODULE}-${platform}-${arch}/package.json`,
+          ),
+        ),
+        "pty.node",
+      ),
+    );
+  } catch {
+    /* no platform package: a build of its own */
+  }
+  candidates.push(path.join(dir, "build", "Release", "pty.node"));
+  for (const c of candidates) {
+    const id = fileIdentity(c);
+    if (id) return { path: c, version, id };
+  }
+  return null;
+}
+
+/** What this process loaded, at the moment it loaded it (issue 563). */
+let loaded: PtyModuleInfo | null = null;
+
+/** Issue 563: the native module this process loaded, or null (none yet). */
+export function loadedPtyModule(): PtyModuleInfo | null {
+  return loaded;
+}
+
+/**
  * The PTY module, or why it can't be used. `req` is for tests; the default
  * resolves from Den's package and is remembered.
  */
@@ -196,6 +277,14 @@ export function loadPty(req?: (id: string) => unknown): PtyLoad {
         : String(err.message).split("\n")[0].trim(),
     };
   }
-  if (!req) memo = result;
+  if (!req) {
+    memo = result;
+    if (result.available)
+      try {
+        loaded = installedPtyModule();
+      } catch {
+        /* not known: the host says none */
+      }
+  }
   return result;
 }

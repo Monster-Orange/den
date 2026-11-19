@@ -1767,6 +1767,8 @@
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
+    "bell.m.hostRestarted":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント ({n}): {names}。終了した開いていたターミナル: {terminals}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
