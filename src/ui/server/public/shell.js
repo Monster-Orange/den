@@ -1887,6 +1887,21 @@
     "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
     "set.server.gate_overrun.d":
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_release_slots":
+      "Release candidate runs at once, on this machine",
+    "set.server.gate_release_slots.d":
+      "Slots kept for a release candidate's test run. It goes ahead of every other run, and other runs never take it. __DEN_CLI__ gate settings --release-slots 1",
+    "set.server.gate_release_quiet":
+      "Release run waits for a quiet machine, in minutes",
+    "set.server.gate_release_quiet.d":
+      "While a release candidate's run waits or runs, no new test run starts. It waits this long for the runs already going to finish, then starts anyway and records the load. __DEN_CLI__ gate settings --release-quiet-wait-minutes 10",
+    "set.server.gate_release_tag_age":
+      "Release candidate tag counts for, in hours",
+    "set.server.gate_release_tag_age.d":
+      "A release run proves itself with its tag. A tag older than this no longer counts. __DEN_CLI__ gate settings --release-tag-max-age-hours 168",
+    "set.server.gate_cancel_grace": "Stopped test run's grace before KILL",
+    "set.server.gate_cancel_grace.d":
+      "When a test run is stopped (Stop on the Agents page), it gets TERM and this long to end, then KILL. Its slot frees once it has ended. __DEN_CLI__ gate settings --cancel-grace-seconds 60",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2967,6 +2982,8 @@
     "gate.chipWaiting": " · {n} waiting",
     "gate.kind.browser": "browser tests",
     "gate.kind.cpu": "unit tests",
+    // Issue 498: a release candidate's run, in its reserved slot.
+    "gate.kind.release": "release candidate tests {tag}",
     "gate.popH": "Test runs on this machine",
     "gate.holds": "Runs {kind}, until about {at}",
     "gate.waits": "Waits to run {kind}, from about {at}",
@@ -2982,6 +2999,16 @@
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
+    // Issue 585: Stop withdraws a slot and stops its run.
+    "gate.cancel": "Stop",
+    "gate.cancelT": "Stop this test run?",
+    "gate.cancelQ":
+      "Stop {label} and withdraw its slot? If it waits, it never starts. If it runs, it gets TERM, then KILL after the grace, and its slot frees once it has ended.",
+    "gate.cancelGo": "Stop run",
+    "gate.stopping": "stopping",
+    "busy.gateCancelW": "Stopping {name}…",
+    "busy.gateCancelS": "{name} was cancelled.",
+    "busy.gateCancelF": "Couldn't stop {name}.",
     "busy.rmSvcW": "Removing {name}…",
     "busy.rmSvcS": "Removed {name}.",
     "busy.rmSvcF": "Couldn't remove {name}.",

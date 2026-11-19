@@ -365,9 +365,9 @@ function deps(over: Partial<GateDeps> = {}) {
 describe("issue 498: gate run --kind release", () => {
   it("needs --tag, and refuses a tag that isn't a candidate before it asks", async () => {
     const t = deps();
-    expect(
-      await cmdGate(["run", "--kind", "release", "--", "bed"], t.d),
-    ).toBe(2);
+    expect(await cmdGate(["run", "--kind", "release", "--", "bed"], t.d)).toBe(
+      2,
+    );
     expect(t.err.join("\n")).toMatch(/--tag/);
     const d = repo("1.2.3-dev.1", "v1.2.3-dev.1");
     expect(

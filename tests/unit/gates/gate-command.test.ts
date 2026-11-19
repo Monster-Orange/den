@@ -326,7 +326,7 @@ describe("gate run", () => {
     expect(await cmdGate(["run", "--kind", "gpu", "--", "x"], t.d)).toBe(2);
     expect(t.err).toEqual([
       "gate: gate run needs -- <command> [args]",
-      "gate: --kind is browser or cpu",
+      "gate: --kind is browser, cpu or release",
     ]);
     expect(parseEstimate("90s")).toBe(1.5);
     expect(parseEstimate("1h")).toBe(60);

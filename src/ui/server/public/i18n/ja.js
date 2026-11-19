@@ -895,6 +895,19 @@
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_release_slots": "このマシンで同時に動くリリース候補の実行",
+    "set.server.gate_release_slots.d":
+      "リリース候補のテスト実行のために取っておく順番です。ほかのどの実行よりも先に進み、ほかの実行がこれを使うことはありません。__DEN_CLI__ gate settings --release-slots 1",
+    "set.server.gate_release_quiet":
+      "リリース実行がマシンが静かになるのを待つ時間 (分)",
+    "set.server.gate_release_quiet.d":
+      "リリース候補の実行が待っている間と動いている間は、新しいテスト実行は始まりません。すでに動いている実行が終わるのをこの時間だけ待ち、そのあとは負荷を記録して始めます。__DEN_CLI__ gate settings --release-quiet-wait-minutes 10",
+    "set.server.gate_release_tag_age": "リリース候補のタグが有効な時間 (時間)",
+    "set.server.gate_release_tag_age.d":
+      "リリース実行はタグで自分を証明します。これより古いタグは数えません。__DEN_CLI__ gate settings --release-tag-max-age-hours 168",
+    "set.server.gate_cancel_grace": "止めたテスト実行の KILL までの猶予",
+    "set.server.gate_cancel_grace.d":
+      "テスト実行を止めると (エージェント画面の「止める」)、TERM を送り、この時間だけ待ってから KILL します。終わってから順番が空きます。__DEN_CLI__ gate settings --cancel-grace-seconds 60",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2089,6 +2102,7 @@
     "gate.chipWaiting": " · {n} 件待ち",
     "gate.kind.browser": "ブラウザーテスト",
     "gate.kind.cpu": "単体テスト",
+    "gate.kind.release": "リリース候補のテスト {tag}",
     "gate.popH": "このマシンのテスト実行",
     "gate.holds": "{kind} を実行中、{at} ごろまで",
     "gate.waits": "{kind} の実行待ち、{at} ごろから",
@@ -2104,6 +2118,15 @@
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
+    "gate.cancel": "止める",
+    "gate.cancelT": "このテスト実行を止めますか?",
+    "gate.cancelQ":
+      "{label} を止めて順番を取り下げますか?待機中なら始まりません。実行中なら TERM を送り、猶予のあと KILL します。終わってから順番が空きます。",
+    "gate.cancelGo": "実行を止める",
+    "gate.stopping": "停止中",
+    "busy.gateCancelW": "{name} を止めています…",
+    "busy.gateCancelS": "{name} を取り消しました。",
+    "busy.gateCancelF": "{name} を止められませんでした。",
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",

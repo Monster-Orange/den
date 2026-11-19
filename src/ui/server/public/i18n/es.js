@@ -920,6 +920,22 @@
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
       "Una prueba que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página Agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_release_slots":
+      "Pruebas de versión candidata a la vez, en esta máquina",
+    "set.server.gate_release_slots.d":
+      "Turnos reservados para la prueba de una versión candidata. Pasa delante de las demás pruebas, y ninguna otra prueba lo toma. __DEN_CLI__ gate settings --release-slots 1",
+    "set.server.gate_release_quiet":
+      "Espera de la prueba de versión a una máquina tranquila, en minutos",
+    "set.server.gate_release_quiet.d":
+      "Mientras la prueba de una versión candidata espera o se ejecuta, no empieza ninguna prueba nueva. Espera este tiempo a que terminen las que ya corren; luego empieza igualmente y registra la carga. __DEN_CLI__ gate settings --release-quiet-wait-minutes 10",
+    "set.server.gate_release_tag_age":
+      "La etiqueta de una versión candidata vale durante, en horas",
+    "set.server.gate_release_tag_age.d":
+      "Una prueba de versión se acredita con su etiqueta. Una etiqueta más antigua que esto ya no vale. __DEN_CLI__ gate settings --release-tag-max-age-hours 168",
+    "set.server.gate_cancel_grace":
+      "Margen de una prueba detenida antes de KILL",
+    "set.server.gate_cancel_grace.d":
+      "Cuando se detiene una prueba (Detener en la página Agentes), recibe TERM y este tiempo para terminar; luego KILL. Su turno queda libre cuando ha terminado. __DEN_CLI__ gate settings --cancel-grace-seconds 60",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2153,6 +2169,7 @@
     "gate.chipWaiting": " · {n} en espera",
     "gate.kind.browser": "pruebas de navegador",
     "gate.kind.cpu": "pruebas unitarias",
+    "gate.kind.release": "pruebas de la versión candidata {tag}",
     "gate.popH": "Pruebas en esta máquina",
     "gate.holds": "Ejecuta {kind}, hasta las {at} más o menos",
     "gate.waits": "Espera para ejecutar {kind}, desde las {at} más o menos",
@@ -2168,6 +2185,15 @@
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
+    "gate.cancel": "Detener",
+    "gate.cancelT": "¿Detener esta prueba?",
+    "gate.cancelQ":
+      "¿Detener {label} y retirar su turno? Si espera, nunca empieza. Si se ejecuta, recibe TERM y, tras el margen, KILL; su turno queda libre cuando ha terminado.",
+    "gate.cancelGo": "Detener prueba",
+    "gate.stopping": "deteniéndose",
+    "busy.gateCancelW": "Deteniendo {name}…",
+    "busy.gateCancelS": "{name} se canceló.",
+    "busy.gateCancelF": "No se pudo detener {name}.",
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",

@@ -104,7 +104,7 @@ describe("issue 585: who may cancel", () => {
     expect(mayCancel(e, { agent: "agent:other" })).toBe(false);
     expect(mayCancel(e, { agent: "" })).toBe(false);
     // A person's own ask: only a person.
-    const { actor: _a, agent: _b, ...person } = e;
+    const person = { ...e, agent: undefined, actor: undefined };
     expect(mayCancel(person, { agent: "agent:coder" })).toBe(false);
     expect(mayCancel(person, { person: true })).toBe(true);
   });
@@ -133,10 +133,7 @@ describe("issue 585: gate cancel, queued", () => {
       canceller.d.store = t.d.store;
       expect(await cmdGate(["cancel", mine.id], canceller.d)).toBe(0);
     };
-    const code = await cmdGate(
-      ["run", "--kind", "browser", "--", "e2e"],
-      t.d,
-    );
+    const code = await cmdGate(["run", "--kind", "browser", "--", "e2e"], t.d);
     expect(code).not.toBe(0);
     expect(t.ran).toEqual([]);
     expect(t.err.join("\n")).toMatch(/cancelled by .*agent:coder/);
@@ -266,9 +263,7 @@ describe("issue 585: stopping a running slot", () => {
     );
     kids.push(k);
     let err = "";
-    const exited = new Promise<number | null>((r) =>
-      k.on("exit", (c) => r(c)),
-    );
+    const exited = new Promise<number | null>((r) => k.on("exit", (c) => r(c)));
     await new Promise<void>((resolve) =>
       k.stderr.on("data", (d: Buffer) => {
         err += String(d);
@@ -328,9 +323,9 @@ describe("issue 585: stopping a running slot", () => {
       expect(ev.indexOf(`released:${mine!.id}`)).toBeLessThan(
         ev.indexOf(`granted:${next.id}`),
       );
-      expect(
-        store.events().find((x) => x.event === "cancelled"),
-      ).toMatchObject({ was: "running" });
+      expect(store.events().find((x) => x.event === "cancelled")).toMatchObject(
+        { was: "running" },
+      );
       store.release(next.id);
     }, 30_000);
 });
@@ -463,7 +458,9 @@ describe("issue 585: an agent cancels over MCP", () => {
     const calls: unknown[] = [];
     const api = {
       baseUrl: "http://localhost:47003",
-      async get(p: string, q: unknown, m: string, body: unknown) {
+      async get(p: string, _q: unknown, m: string, body: unknown) {
+        if (p === "/api/workspaces")
+          return { active: ["north"], workspaces: { north: {} } };
         calls.push([p, m, body]);
         return { ok: true, was: "queued" };
       },
@@ -484,6 +481,7 @@ describe("issue 585: an agent cancels over MCP", () => {
     } as unknown as ToolContext;
     const r = await callTool("gate_slot_cancel", { id: "cpu-abc" }, ctx);
     expect(r.isError).toBeFalsy();
+    expect(JSON.parse(r.text)).toEqual({ ok: true, was: "queued" });
     expect(calls).toEqual([
       ["/api/gate-slots/cancel", "POST", { id: "cpu-abc" }],
     ]);

@@ -678,6 +678,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/gate-slots/end",
     "Issue 144: a person ends a gate slot early (never an agent); the run is not stopped",
   ),
+  M(
+    ["POST"],
+    "/api/gate-slots/cancel",
+    "Issue 585: the slot's owner agent or a person withdraws a gate slot; a running one's run is stopped and the slot frees when it is gone",
+  ),
   R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",

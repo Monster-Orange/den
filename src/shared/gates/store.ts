@@ -6,14 +6,18 @@
  * ~/Library/Application Support/den/gate-slots (macOS), else
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
- *   settings.json     cpu_slots, overrun_margin_minutes
+ *   settings.json     cpu_slots, overrun_margin_minutes, release_slots,
+ *                     release_quiet_wait_minutes, release_tag_max_age_hours,
+ *                     cancel_grace_seconds
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
- *                     back, overdue, ended early (Coach reads time lost)
+ *                     back, overdue, ended early, cancelled (Coach reads
+ *                     time lost)
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone, at once, and
  * records it; it flags (once) a holder past its estimate plus the margin.
- * Nothing here kills a process or takes a live holder's slot.
+ * Nothing here kills a process or takes a live holder's slot: stopping a
+ * cancelled run is cancel.ts's, and the slot is freed only after it.
  */
 import { randomBytes } from "crypto";
 import * as fs from "fs";
@@ -22,7 +26,7 @@ import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
   GATE_DEFAULTS,
-  byAsked,
+  byQueue,
   expectedStart,
   gone,
   grants,
@@ -55,20 +59,48 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
 export type GateSettingsPatch = {
   cpu_slots?: number | null;
   overrun_margin_minutes?: number | null;
+  release_slots?: number | null;
+  release_quiet_wait_minutes?: number | null;
+  release_tag_max_age_hours?: number | null;
+  cancel_grace_seconds?: number | null;
 };
 
-/** Each setting: its least and most, and whether it is whole. */
+/** Each setting: its least and most, whether it is whole, and its field. */
 export const GATE_LIMITS: Record<
   keyof GateSettingsPatch,
-  { min: number; max: number; int: boolean }
+  { min: number; max: number; int: boolean; field: keyof GateSettings }
 > = {
-  cpu_slots: { min: 1, max: 64, int: true },
-  overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  cpu_slots: { min: 1, max: 64, int: true, field: "cpuSlots" },
+  overrun_margin_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "overrunMarginMinutes",
+  },
+  release_slots: { min: 1, max: 16, int: true, field: "releaseSlots" },
+  release_quiet_wait_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "releaseQuietWaitMinutes",
+  },
+  release_tag_max_age_hours: {
+    min: 1,
+    max: 24 * 366,
+    int: false,
+    field: "releaseTagMaxAgeHours",
+  },
+  cancel_grace_seconds: {
+    min: 0,
+    max: 3600,
+    int: false,
+    field: "cancelGraceSeconds",
+  },
 };
 
 /**
- * A settings change as the web sends it ({cpu_slots,
- * overrun_margin_minutes}, null clears), checked; or what is wrong.
+ * A settings change as the web sends it ({cpu_slots, …}, null clears),
+ * checked; or what is wrong.
  */
 export function checkGatePatch(
   v: unknown,
@@ -108,7 +140,15 @@ export type GateEvent =
   | "released"
   | "taken-back-gone"
   | "overdue"
-  | "ended-early";
+  | "ended-early"
+  | "cancelled";
+
+/** Issue 498: another holder, as a release run's record names it. */
+export interface GateAlongside {
+  id: string;
+  kind: GateKind;
+  label: string;
+}
 
 export interface GateEventRow {
   at: string;
@@ -123,9 +163,32 @@ export interface GateEventRow {
   behind?: string[];
   /** waits: when it may expect to start (ISO). */
   expectedStart?: string;
-  /** ended-early: who ended it. */
+  /** ended-early, cancelled: who did it. */
   by?: string;
+  /** cancelled: whether it was waiting or running. */
+  was?: "queued" | "running";
+  /** Issue 498, a release run: its candidate tag and commit. */
+  tag?: string;
+  commit?: string;
+  /** Issue 498, a release run's start and end: the machine's load (1, 5, 15 min). */
+  load?: number[];
+  /** Issue 498, a release run's start and end: the other runs holding. */
+  alongside?: GateAlongside[];
+  /** Issue 498: it started past the quiet wait, beside ordinary runs. */
+  ranAnyway?: boolean;
 }
+
+/** What `cancel` did (issue 585). */
+export type GateCancel =
+  | { was: "queued"; row: GateEventRow }
+  | {
+      was: "running";
+      row: GateEventRow;
+      /** The run to stop before the slot frees, when gate run started one. */
+      runPid?: number;
+      /** runPid leads its own process group. */
+      group: boolean;
+    };
 
 const isAlive = (pid: number): boolean => {
   try {
@@ -139,22 +202,35 @@ const isAlive = (pid: number): boolean => {
 export interface GateStoreOpts {
   dir?: string;
   now?: () => number;
+  /** Whether a pid is alive; a negative pid asks for a process group. */
   alive?: (pid: number) => boolean;
   /** How long to wait for the lock before giving up, ms. */
   lockWaitMs?: number;
+  /** Issue 498: the machine's load average (os.loadavg). */
+  load?: () => number[];
 }
+
+/** How far back cancelledBy reads the slot log. */
+const LOG_TAIL_BYTES = 256 * 1024;
 
 export class GateStore {
   readonly dir: string;
   private readonly now: () => number;
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
+  private readonly load: () => number[];
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
+    this.load = o.load ?? (() => os.loadavg());
+  }
+
+  /** Whether a pid (or, negative, a process group) is still running. */
+  isAlive(pid: number): boolean {
+    return this.alive(pid);
   }
 
   private get slots() {
@@ -162,30 +238,26 @@ export class GateStore {
   }
 
   settings(): GateSettings {
+    let v: Record<string, unknown> = {};
     try {
-      const v = JSON.parse(
+      v = JSON.parse(
         fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
       ) as Record<string, unknown>;
-      const num = (k: keyof GateSettingsPatch, d: number) => {
-        const n = v[k];
-        const l = GATE_LIMITS[k];
-        return typeof n === "number" &&
-          Number.isFinite(n) &&
-          n >= l.min &&
-          n <= l.max
-          ? n
-          : d;
-      };
-      return {
-        cpuSlots: Math.floor(num("cpu_slots", GATE_DEFAULTS.cpuSlots)),
-        overrunMarginMinutes: num(
-          "overrun_margin_minutes",
-          GATE_DEFAULTS.overrunMarginMinutes,
-        ),
-      };
     } catch {
       return { ...GATE_DEFAULTS };
     }
+    const out: GateSettings = { ...GATE_DEFAULTS };
+    for (const [k, l] of Object.entries(GATE_LIMITS)) {
+      const n = v[k];
+      if (
+        typeof n === "number" &&
+        Number.isFinite(n) &&
+        n >= l.min &&
+        n <= l.max
+      )
+        out[l.field] = l.int ? Math.floor(n) : n;
+    }
+    return out;
   }
 
   /** Writes the machine's settings; null clears a key (default again). */
@@ -238,6 +310,40 @@ export class GateStore {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Issue 585: who cancelled a slot that is gone, from the slot log's
+   * recent rows; null when it wasn't cancelled.
+   */
+  cancelledBy(id: string): string | null {
+    let text = "";
+    try {
+      const fd = fs.openSync(this.eventsFile, "r");
+      try {
+        const size = fs.fstatSync(fd).size;
+        const len = Math.min(size, LOG_TAIL_BYTES);
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, size - len);
+        text = buf.toString("utf-8");
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return null;
+    }
+    const lines = text.split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const l = lines[i]!;
+      if (!l.includes(id) || !l.includes('"cancelled"')) continue;
+      try {
+        const r = JSON.parse(l) as GateEventRow;
+        if (r.id === id && r.event === "cancelled") return r.by ?? "someone";
+      } catch {
+        /* a cut line at the tail's start */
+      }
+    }
+    return null;
   }
 
   /**
@@ -341,6 +447,24 @@ export class GateStore {
       : {};
   }
 
+  /** Issue 498: a release run's record: the load and the runs beside it. */
+  private loadNow(e: GateEntry, all: GateEntry[]): Partial<GateEventRow> {
+    if (e.kind !== "release") return {};
+    let load: number[] = [];
+    try {
+      load = this.load().map((n) => Math.round(n * 100) / 100);
+    } catch {
+      /* no load on this platform */
+    }
+    return {
+      tag: e.tag,
+      load,
+      alongside: all
+        .filter((x) => x.id !== e.id && x.grantedAt)
+        .map((x) => ({ id: x.id, kind: x.kind, label: x.label })),
+    };
+  }
+
   /**
    * Takes back the gone, grants who may start, flags the overdue, and
    * returns the queue as it now stands. Call under the lock.
@@ -358,13 +482,18 @@ export class GateStore {
       this.remove(e.id);
       this.record(e, { event: "taken-back-gone", ...this.heldFor(e, now) });
     }
-    for (const id of grants(entries, s)) {
+    const ordinaryHeld = entries.some(
+      (e) => e.grantedAt && e.kind !== "release",
+    );
+    for (const id of grants(entries, s, now)) {
       const e = entries.find((x) => x.id === id)!;
       e.grantedAt = at;
       this.write(e);
       this.record(e, {
         event: "granted",
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
+        ...this.loadNow(e, entries),
+        ...(e.kind === "release" && ordinaryHeld ? { ranAnyway: true } : {}),
       });
     }
     for (const e of entries) {
@@ -374,11 +503,11 @@ export class GateStore {
       this.record(e, { event: "overdue", ...this.heldFor(e, now) });
     }
     return entries.sort(
-      (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt) || byAsked(a, b),
+      (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt) || byQueue(a, b),
     );
   }
 
-  /** The queue now: holders first, then the waiters in the order they asked. */
+  /** The queue now: holders first, then the waiters in the order they go. */
   list(): GateEntry[] {
     return this.locked(() => this.settle());
   }
@@ -388,7 +517,11 @@ export class GateStore {
     return this.list().find((e) => e.id === id) ?? null;
   }
 
-  /** Asks for a slot; returns the entry (granted at once if it may start). */
+  /**
+   * Asks for a slot; returns the entry (granted at once if it may start).
+   * Issue 498: a release ask names its candidate tag, proven by the caller
+   * (release-proof.ts), and one tag asks once at a time.
+   */
   ask(o: {
     kind: GateKind;
     who: string;
@@ -397,8 +530,17 @@ export class GateStore {
     estimateMin: number;
     agent?: boolean;
     actor?: string;
+    tag?: string;
+    commit?: string;
   }): GateEntry {
+    if (o.kind === "release" && (!o.tag || !o.commit))
+      throw new Error("a release slot needs its candidate's proven tag");
     return this.locked(() => {
+      if (
+        o.kind === "release" &&
+        this.readAll().some((x) => x.kind === "release" && x.tag === o.tag)
+      )
+        throw new Error(`a release run for ${o.tag} already holds or waits`);
       const e: GateEntry = {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
@@ -411,11 +553,17 @@ export class GateStore {
         ...(o.actor && /^agent:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(o.actor)
           ? { actor: o.actor }
           : {}),
+        ...(o.kind === "release"
+          ? { tag: o.tag!.slice(0, 80), commit: o.commit!.slice(0, 64) }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
       writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
-      this.record(e, { event: "asked" });
+      this.record(e, {
+        event: "asked",
+        ...(e.tag ? { tag: e.tag, commit: e.commit } : {}),
+      });
       const all = this.settle();
       const now = all.find((x) => x.id === e.id) ?? e;
       if (!now.grantedAt)
@@ -430,23 +578,34 @@ export class GateStore {
     });
   }
 
-  /** gate run's command: the slot stays while it runs. */
-  setRunPid(id: string, runPid: number): void {
-    this.locked(() => {
+  /**
+   * gate run's command: the slot stays while it runs. `group`: it leads
+   * its own process group. Returns the slot as it now stands, or null when
+   * it is gone (cancelled while it started: the caller stops its run).
+   */
+  setRunPid(id: string, runPid: number, group = false): GateEntry | null {
+    return this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
-      if (!e) return;
+      if (!e) return null;
       e.runPid = runPid;
+      if (group) e.runGroup = true;
       this.write(e);
+      return e;
     });
   }
 
   /** The holder is done (or the waiter gives up). */
   release(id: string): boolean {
     return this.locked(() => {
-      const e = this.readAll().find((x) => x.id === id);
+      const all = this.readAll();
+      const e = all.find((x) => x.id === id);
       if (!e) return false;
       this.remove(id);
-      this.record(e, { event: "released", ...this.heldFor(e, this.now()) });
+      this.record(e, {
+        event: "released",
+        ...this.heldFor(e, this.now()),
+        ...this.loadNow(e, all),
+      });
       this.settle();
       return true;
     });
@@ -474,5 +633,61 @@ export class GateStore {
       this.settle();
       return { at, ...row };
     });
+  }
+
+  /** The slot as stored, without settling (a cancel checks it first). */
+  peek(id: string): GateEntry | null {
+    if (!/^[a-z0-9-]{1,64}$/.test(id)) return null;
+    return this.locked(() => this.readAll().find((x) => x.id === id) ?? null);
+  }
+
+  /**
+   * Issue 585: withdraws a slot; recorded `cancelled` with who and whether
+   * it was queued or running. A queued ask, or a holder with no run of its
+   * own (an MCP hold), is gone at once. A running `gate run` slot is
+   * marked cancelled and stays held: the caller stops its run (cancel.ts)
+   * and frees it with releaseCancelled once the run's group is gone.
+   * Who may cancel is the caller's to check (rules.ts mayCancel).
+   */
+  cancel(id: string, by: string): GateCancel | null {
+    return this.locked(() => {
+      const e = this.readAll().find((x) => x.id === id);
+      if (!e) return null;
+      const was = e.grantedAt ? ("running" as const) : ("queued" as const);
+      const base = {
+        event: "cancelled" as const,
+        id,
+        kind: e.kind,
+        who: e.who,
+        label: e.label,
+        by: (e.cancelled?.by ?? by).slice(0, 200),
+        was,
+      };
+      if (was === "running" && e.runPid !== undefined) {
+        let at = e.cancelled?.at;
+        if (!at) {
+          at = this.record(e, base);
+          e.cancelled = { by: base.by, at };
+          this.write(e);
+        }
+        return {
+          was,
+          row: { at, ...base },
+          runPid: e.runPid,
+          group: e.runGroup === true,
+        };
+      }
+      this.remove(id);
+      const at = this.record(e, base);
+      this.settle();
+      return was === "queued"
+        ? { was, row: { at, ...base } }
+        : { was, row: { at, ...base }, runPid: undefined, group: false };
+    });
+  }
+
+  /** Issue 585: frees a cancelled slot once its run is gone (once). */
+  releaseCancelled(id: string): boolean {
+    return this.release(id);
   }
 }

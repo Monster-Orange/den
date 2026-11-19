@@ -7,6 +7,9 @@
  * an agent). End early asks first (the kit's dialog), then goes through
  * the working pop-up. Ending a slot frees it; the run itself is not
  * stopped. The queue is a dialog on the body, so Report finds it.
+ * Issue 585: Stop withdraws a slot: a waiting run never starts, a running
+ * one is stopped (its whole process group) and its slot frees once it is
+ * gone. Issue 498: a release candidate's run shows its tag.
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -29,8 +32,10 @@ const hm = (iso) =>
 
 export function startGateChip(o) {
   const { button, t } = o;
-  const kind = (k) =>
-    t(k === "browser" ? "gate.kind.browser" : "gate.kind.cpu");
+  const kind = (k, tag) =>
+    k === "release"
+      ? t("gate.kind.release", { tag: tag ?? "" })
+      : t(k === "browser" ? "gate.kind.browser" : "gate.kind.cpu");
   let slots = [];
   let pop = null;
   let release = null;
@@ -43,7 +48,7 @@ export function startGateChip(o) {
     if (!first) return "";
     return (
       t("gate.chip", {
-        kind: kind(first.kind),
+        kind: kind(first.kind, first.tag),
         who: first.who,
         at: hm(first.expectedEnd),
       }) + (waiting ? t("gate.chipWaiting", { n: waiting }) : "")
@@ -60,9 +65,16 @@ export function startGateChip(o) {
 
   function lineHtml(s) {
     const when = s.granted
-      ? t("gate.holds", { kind: kind(s.kind), at: hm(s.expectedEnd) }) +
-        (s.overrun ? " · " + t("gate.over") : "")
-      : t("gate.waits", { kind: kind(s.kind), at: hm(s.expectedStart) });
+      ? t("gate.holds", {
+          kind: kind(s.kind, s.tag),
+          at: hm(s.expectedEnd),
+        }) +
+        (s.overrun ? " · " + t("gate.over") : "") +
+        (s.cancelled ? " · " + t("gate.stopping") : "")
+      : t("gate.waits", {
+          kind: kind(s.kind, s.tag),
+          at: hm(s.expectedStart),
+        });
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -72,9 +84,11 @@ export function startGateChip(o) {
       esc(s.label) +
       '</span></div><div class="gate-when">' +
       esc(when) +
-      '</div><button type="button" class="den-btn sm" data-gate-end>' +
+      '</div><div class="gate-acts"><button type="button" class="den-btn sm" data-gate-cancel>' +
+      esc(t("gate.cancel")) +
+      '</button><button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
-      "</button></li>"
+      "</button></div></li>"
     );
   }
 
@@ -107,6 +121,25 @@ export function startGateChip(o) {
     await refresh();
   }
 
+  async function cancelIt(li, btn) {
+    const s = slots.find((x) => x.id === li.dataset.gateId);
+    if (!s) return;
+    const sure = await o.confirm({
+      title: t("gate.cancelT"),
+      message: t("gate.cancelQ", { label: s.label }),
+      okLabel: t("gate.cancelGo"),
+      danger: true,
+    });
+    if (!sure) return;
+    await o.busyAction(
+      "gate-cancel",
+      (headers) =>
+        o.api("POST", "/api/gate-slots/cancel", { id: s.id }, { headers }),
+      { button: btn, vars: { name: s.label } },
+    );
+    await refresh();
+  }
+
   function close(refocus) {
     if (!pop) return;
     release?.();
@@ -132,6 +165,12 @@ export function startGateChip(o) {
     document.body.append(pop);
     button.setAttribute("aria-expanded", "true");
     pop.addEventListener("click", (e) => {
+      const stop = e.target.closest?.("[data-gate-cancel]");
+      if (stop) {
+        const li = stop.closest(".gate-li");
+        if (li) void cancelIt(li, stop);
+        return;
+      }
       const btn = e.target.closest?.("[data-gate-end]");
       const li = btn?.closest(".gate-li");
       if (li) void endIt(li, btn);
@@ -169,7 +208,7 @@ export function startGateChip(o) {
       const s = slots.find((x) => x.actor && x.actor === actor);
       if (!s) return "";
       return t(s.granted ? "gate.rowHolds" : "gate.rowWaits", {
-        kind: kind(s.kind),
+        kind: kind(s.kind, s.tag),
       });
     },
   };

@@ -129,6 +129,8 @@ Reads (they change nothing):
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
   test commands, and give it back (your own only). For one command, run it
   as `<cli> gate run -- <command>` instead.
+- `gate_slot_cancel`: withdraw your own slot. A waiting run never starts;
+  a running one is stopped, and its slot frees once it has ended.
 
 Hub files (through Den, as you; when Hub is connected):
 

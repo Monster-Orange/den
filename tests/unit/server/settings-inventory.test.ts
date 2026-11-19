@@ -46,7 +46,15 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
   // Issue 144: the machine's gate slots.
-  gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
+  gate_slots: {
+    cpu_slots: true,
+    overrun_margin_minutes: true,
+    // Issues 498 and 585: the release slot and the cancel grace.
+    release_slots: true,
+    release_quiet_wait_minutes: true,
+    release_tag_max_age_hours: true,
+    cancel_grace_seconds: true,
+  },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
   // Issue 278: agents stuck compacting; instruction size.
@@ -180,6 +188,10 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
+        "gate_slots.release_slots",
+        "gate_slots.release_quiet_wait_minutes",
+        "gate_slots.release_tag_max_age_hours",
+        "gate_slots.cancel_grace_seconds",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",

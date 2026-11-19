@@ -157,6 +157,9 @@ const ACTION_ROUTES: Record<string, string> = {
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",
   "/api/verify/run": "POST",
+  // Issue 585 (MCP gate_slot_cancel): withdraws a gate slot; the route
+  // lets only its owner agent (or a person) do it.
+  "/api/gate-slots/cancel": "POST",
 };
 
 /**

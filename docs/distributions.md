@@ -5477,7 +5477,9 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 <cli> gate run --kind cpu --estimate 20m -- npm test
 <cli> gate status            # who holds a slot, who waits, until when
 <cli> gate end <id>          # a person ends a slot early (never an agent)
+<cli> gate cancel <id>       # its owner or a person withdraws it, stopping its run
 <cli> gate settings --cpu-slots 3
+<cli> gate run --kind release --tag v1.4.0-dev.2 --estimate 30m -- <bed run>
 ```
 
 - A `browser` run holds the machine alone. `cpu` runs share it, up to
@@ -5501,6 +5503,35 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   `gate end`; the run is not stopped. An agent can't: the web route
   refuses an agent's token, `gate end` refuses in an agent's terminal, and
   the MCP tools give back only the agent's own slot.
+- `gate cancel <id>` withdraws a slot: the agent that asked for it (its
+  `DEN_AGENT` in a terminal, its token over the web route
+  `POST /api/gate-slots/cancel` or the MCP tool `gate_slot_cancel`) or a
+  person (also Stop in the gate chip). Anyone else is refused (403). A
+  waiting ask is removed and its command never starts. A running one:
+  `gate run` started its command in its own process group, which gets
+  TERM, then KILL after `cancel_grace_seconds` (default 60); the slot
+  frees only once the whole group is gone, so the next run never starts
+  beside a half-stopped one. Either way that `gate run` exits non-zero,
+  saying "cancelled by <who>". The slot log records `cancelled` (who, and
+  whether it was queued or running); the web route and the MCP tool also
+  write this install's audit. `gate run` prints the id when it has to
+  wait, and `gate status` shows it. `gate end` keeps its meaning: the slot
+  frees and the run goes on.
+- A release candidate's run takes the `release` slot:
+  `gate run --kind release --tag <tag> [--repo <dir>]`. Its tag is the
+  proof, read from the repo's git (`--repo`, default the current folder):
+  a release or dev tag (`vX.Y.Z`, `vX.Y.Z-dev.N`), annotated, on the
+  commit that sets that version in `package.json`, and tagged within
+  `release_tag_max_age_hours` (default 168). Anything else is refused
+  before it asks, and one tag asks once at a time. The release slot has
+  its own capacity, `release_slots` (default 1): ordinary runs never take
+  it, and a release run never waits behind an ordinary waiter. While one
+  waits or runs, no new ordinary run starts. The runs already going
+  finish first; the release run waits for them up to
+  `release_quiet_wait_minutes` (default 10), then starts anyway. Nothing
+  is stopped. Its grant and its release in the slot log carry the load
+  average and the runs beside it, and `gate run` prints them at its start
+  and end. `gate status` shows the release slot and who holds it.
 - The slots are the machine user's, shared by every install and repo, and
   need no running Den: `DEN_GATE_DIR`, else `~/Library/Application
 Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`
