@@ -498,13 +498,14 @@ function paneName(r) {
 }
 
 /**
- * Pane `id`'s name when its row may not be known yet: its row's
- * (paneName), else the name its session said (issue 169: an older
- * "shell-2" still reads "Terminal 2"), else its id.
+ * Pane `id`'s name in a toast or label, when its row may not be known yet:
+ * an agent's id (as before), a terminal's title; else the name its
+ * session said (issue 169: an older "shell-2" still reads "Terminal 2"),
+ * else its id.
  */
 function nameOfPane(id) {
   const r = rowOf(id);
-  if (r) return paneName(r);
+  if (r) return r.kind === "agent" ? r.label || id : terminalTitle(r, t);
   const label = st.panes.get(id)?.label;
   return (label && terminalTitle({ label }, t)) || id;
 }
@@ -1834,7 +1835,10 @@ function retarget(p, row) {
   if (st.side.delete(old)) st.side.add(row.id);
   if (st.cur === old) st.cur = row.id;
   p.el.dataset.id = row.id;
-  p.el.setAttribute("aria-label", paneName(row) || row.id);
+  p.el.setAttribute(
+    "aria-label",
+    (row.kind === "agent" ? row.label : terminalTitle(row, t)) || row.id,
+  );
   p.exited = false;
   p.lost = false;
   p.term?.write(
