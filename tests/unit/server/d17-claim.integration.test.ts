@@ -23,6 +23,7 @@ import * as path from "path";
 import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { signInUrl } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -37,6 +38,8 @@ let serverLog: () => string = () => "";
 let gh: FakeGithub;
 /** Every cookie and link this suite saw: none may reach the server's log. */
 const secrets: string[] = [];
+/** A browser on localhost signed in with the one-time link (0.4.71). */
+let localCookie = "";
 
 interface Reply {
   status: number;
@@ -169,6 +172,15 @@ beforeAll(async () => {
   server = started.server;
   port = started.port;
   serverLog = started.out;
+  // 0.4.71: "This is my computer" needs this machine's browser signed in.
+  const link = new URL(signInUrl(stateDir, `http://localhost:${port}`));
+  secrets.push(link.searchParams.get("c") ?? "");
+  localCookie = cookieOf(
+    await call("GET", link.pathname + link.search, {
+      "sec-fetch-site": "none",
+    }),
+  );
+  expect(localCookie).not.toBe("");
 }, 60_000);
 
 afterAll(async () => {
@@ -183,6 +195,7 @@ const RET = `http://${EDGE}/settings`;
 /** "This is my computer": the code /attest hands back in the fragment. */
 async function attest(ret = RET): Promise<string> {
   const r = await call("GET", `/attest?return=${encodeURIComponent(ret)}`, {
+    cookie: localCookie,
     "sec-fetch-site": "cross-site",
     "sec-fetch-mode": "navigate",
   });
@@ -215,8 +228,20 @@ async function signin(
 }
 
 describe("This is my computer (/attest)", () => {
-  it("on localhost: a 303 to its own edge URL, the code in the fragment, no cookie", async () => {
+  it("on localhost with no sign-in: the sign-in page, no code", async () => {
     const r = await call("GET", `/attest?return=${encodeURIComponent(RET)}`, {
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": "navigate",
+      accept: "text/html",
+    });
+    expect(r.status).toBe(401);
+    expect(String(r.headers.location ?? "")).toBe("");
+    expect(r.body).not.toContain("den-attest=");
+  });
+
+  it("on localhost, signed in: a 303 to its own edge URL, the code in the fragment, no new cookie", async () => {
+    const r = await call("GET", `/attest?return=${encodeURIComponent(RET)}`, {
+      cookie: localCookie,
       "sec-fetch-site": "cross-site",
     });
     expect(r.status).toBe(303);
@@ -249,6 +274,7 @@ describe("This is my computer (/attest)", () => {
     "a return that isn't one of its own edge hosts (%s): 400, no code",
     async (ret) => {
       const r = await call("GET", `/attest?return=${encodeURIComponent(ret)}`, {
+        cookie: localCookie,
         accept: "text/html",
       });
       expect(r.status).toBe(400);

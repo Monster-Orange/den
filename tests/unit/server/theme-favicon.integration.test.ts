@@ -25,6 +25,7 @@ import * as yaml from "yaml";
 import type { Browser, Page } from "playwright";
 import { png } from "../../fixtures/images.js";
 import { spawnServer, stopServer } from "../../child-servers.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = process.cwd();
 const PORT = 25876 + Math.floor(Math.random() * 1000);
@@ -158,6 +159,8 @@ async function open(
     viewport: { width, height: 900 },
     colorScheme,
   });
+  // The person's browser, signed in as `web up` does (0.4.71).
+  await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
   const p = await ctx.newPage();
   await p.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
   await p.goto(BASE + url);

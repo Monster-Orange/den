@@ -1103,7 +1103,7 @@
     "set.cli.web_port.d":
       "web.port in config/local/user.yml overrides the distribution's. It applies when the web server next starts.", // words-ok: the Settings row's text, moved word for word
     "set.cli.signin.d":
-      "On localhost nothing asks for a sign-in. Through the edge, a browser signs in unless the edge shows it is this machine (web.edge_unattested: local counts one it can't place as local), and from another machine it always does: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
+      "Every browser signs in once, on this machine too, and stays signed in. Here, __DEN_CLI__ web up opens a one-time sign-in link; a browser that isn't signed in can look but change nothing. From another machine: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
     "set.cli.sudo.d":
       "Used only when a command Den runs needs sudo, and asked for only then. It is no sign-in: nothing else needs it.",
     "set.cli.op_token.d":
@@ -1641,6 +1641,14 @@
     "err.signin.other": "Other ways (the one-time link with {cmd})",
     "err.signin.otherStep":
       "On {host} (not this computer), run this, then open the link it prints in this browser:",
+    "err.signin.whereLocal":
+      "{name} runs on this computer. Sign in once so it knows this browser is you. You stay signed in.",
+    "err.signin.step1Local": "In a terminal on this computer, run:",
+    "err.signin.otherLocal": "Other ways ({cmd} opens a one-time sign-in link)",
+    "err.signin.otherStepLocal":
+      "In a terminal on this computer, run this. It opens this page signed in:",
+    "shell.signin.line": "Sign in to make changes here.",
+    "shell.signin.btn": "Sign in",
     "err.signin.codeExpired": "This code expired.",
     "err.signin.codeDenied": "This computer was denied on {host}.",
     "err.signin.codeFailed": "{name} didn't give this page a code. Try again.",
@@ -2290,6 +2298,7 @@
     "pair.title": "Allow this computer?",
     "pair.what": "{device} {client} wants to sign in to Den.",
     "pair.aDevice": "A browser",
+    "pair.local": "on this computer, via localhost",
     "pair.help": "Allow it only if this code is on that computer's screen.",
     "pair.allow": "Allow",
     "pair.allowed": "That computer is signed in.",
@@ -2592,6 +2601,9 @@
     "n.terminalTip": "Open a shell in this project's folder, in Den",
     "ag.term.started": "Terminal opened in {w}",
     "ag.term.failed": "Den couldn't open a terminal: {e}",
+    // Issue 503: the machine gave no PTY (the reason in {e}).
+    "ag.term.ptyFailed":
+      "Den couldn't open a terminal: this machine gave it no PTY ({e}). Close terminals you no longer need, or run doctor.",
     "ag.term.noWs": "no project is active. Activate one first.",
     "ws.termHere": "Terminal here",
     "kind.agent": "Agent",
@@ -2641,6 +2653,14 @@
     "bell.pickBody.one":
       "Den can't tell which Hub project fits it. Click to choose. Nothing is filed for it until then.",
     "bell.m.pick.one": "{n} project needs your pick",
+    "bell.m.hostRestarted":
+      "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. Terminals that ended: {terminals}.",
+    "bell.m.hostRestartedAgents":
+      "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running.",
+    "bell.m.hostRestartedTerminals":
+      "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. No agent was running. Terminals that ended: {terminals}.",
+    "bell.m.hostRestartedNone":
+      "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. No agent or terminal was running.",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
@@ -2661,6 +2681,10 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
     "bell.m.updateWaitsWhat":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
+    "bell.m.updatedSecurity":
+      "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.restartedWhileWorking":
+      "__DEN_TITLE__ restarted to finish an update while {agent} was working",
     "bell.m.updateWaitsAskedWhat":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question: {what} (since {since})",
     "bell.m.pinNotCommitted":
@@ -6573,6 +6597,11 @@
                 ? t("err.signin.agents")
                 : t("err.signin.terminal")) +
               (cmd ? ". " + t("err.signin.lead", { cmd: cmd[1] }) : "");
+          } else if (data && data.code === "signin_required") {
+            // 0.4.71: a write from a page with no session: the one line
+            // (and the banner's Sign in), never a silent failure.
+            msg = t("shell.signin.line");
+            signinBanner({ signedIn: false, csrf: null });
           }
           throw apiError(msg, {
             status: r.status,
@@ -7192,6 +7221,7 @@
             csrf.pending = null;
             csrf.token = b && typeof b.csrf === "string" ? b.csrf : null;
             applyIdentity(b);
+            signinBanner(b);
             return csrf.token;
           },
           function () {
@@ -7200,6 +7230,30 @@
           },
         );
     return csrf.pending;
+  }
+  /**
+   * 0.4.71: a page read on this machine with no session (a bookmark, a
+   * tab opened before, an agent's plain page) changes nothing until it
+   * signs in. One line and a Sign in button, to Den's own sign-in page,
+   * then back here. `web up` signs in by itself (its one-time link).
+   */
+  function signinBanner(b) {
+    if (b && b.signedIn === false && !b.actor && b.csrf == null)
+      showBanner("signin", {
+        text: t("shell.signin.line"),
+        action: {
+          label: t("shell.signin.btn"),
+          run: function () {
+            location.assign(
+              "/signin?next=" +
+                encodeURIComponent(
+                  location.pathname + location.search + location.hash,
+                ),
+            );
+          },
+        },
+      });
+    else hideBanner("signin");
   }
   function isRequest(input) {
     return typeof Request !== "undefined" && input instanceof Request;
@@ -7744,7 +7798,11 @@
     $("den-pair-h").textContent = t("pair.title");
     $("den-pair-what").textContent = t("pair.what", {
       device: w.device || t("pair.aDevice"),
-      client: w.client || "",
+      // 0.4.71: a code asked from this machine says so, never a bare
+      // 127.0.0.1: a person sees where it came from before Allow.
+      client: /^(127\.|::1$|::ffff:127\.)/.test(String(w.client || ""))
+        ? t("pair.local")
+        : w.client || "",
     });
     $("den-pair-dlg-code").textContent = w.code;
     $("den-pair-help").textContent = t("pair.help");

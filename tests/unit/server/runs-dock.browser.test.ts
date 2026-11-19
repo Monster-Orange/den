@@ -27,6 +27,7 @@ import type { Browser, Page } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -140,6 +141,11 @@ async function open(
     viewport: { width, height: 800 },
     permissions: ["clipboard-read", "clipboard-write"],
   });
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("acme-changelog-seen", v);
