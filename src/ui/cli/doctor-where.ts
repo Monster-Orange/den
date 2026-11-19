@@ -390,7 +390,7 @@ export function logoutRow(d: {
   if (!d.svc)
     return no(
       "no service",
-      `this install stops its agents at logout: it doesn't run as a service, so the server and its agents run in your login. ${d.cli} service install keeps them running (one admin password).`,
+      `this install stops its agents at logout: it doesn't run as a service, so Den and its agents run in your login. ${d.cli} service install keeps them running (one admin password).`,
     );
   if (d.svc.mode === "login") {
     let keep: boolean | undefined;
@@ -418,12 +418,12 @@ export function logoutRow(d: {
   if (endsAtLogout(d.host?.launchd))
     return no(
       "host in the desktop login",
-      `the host running the agents now (pid ${d.host?.pid ?? "?"}) was started in your login, not by the service: it and its agents stop at logout (see the session host row).`,
+      `the host running the agents now (pid ${d.host?.pid ?? "?"}) was started in your login, not by the service: it and its agents stop at logout (see the row above).`,
     );
   if (endsAtLogout(d.server))
     return no(
-      "server in the desktop login",
-      "the web server answering now runs in your login, not as the service: it stops at logout (see the server row).",
+      "Den in the desktop login",
+      "the Den answering now runs in your login, not as the service: it stops at logout (see the first row).",
     );
   return {
     what: "survives logout",
