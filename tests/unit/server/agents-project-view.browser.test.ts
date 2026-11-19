@@ -334,13 +334,11 @@ describe("#80: scope wins", () => {
       });
     await p.reload();
     await p.waitForSelector(".pane:not([hidden]) .agto:not(:empty)");
-    // The reload keeps bo in front, and the To line names it and south.
-    expect(await frontId(p)).toBe(sid.bo);
-    expect(param(p, "project")).toBe("south");
-    expect(await toLine(p)).toBe("To bo · south");
-    // The To line paints before the terminal loads and connects: a key
-    // typed before then has no terminal to go to. Type once bo's terminal
-    // is live: its screen came back over its connection.
+    // After a reload the panes open one by one, each once the terminal's
+    // code has loaded, and the To line paints before its terminal is live:
+    // a key typed then has no terminal to go to. So wait until bo's
+    // terminal is live (its screen came back over its connection), then
+    // look and type, as a person would.
     await p.waitForFunction(
       (id) =>
         document
@@ -349,6 +347,10 @@ describe("#80: scope wins", () => {
       sid.bo,
       { timeout: 20_000 },
     );
+    // The reload keeps bo in front, and the To line names it and south.
+    expect(await frontId(p)).toBe(sid.bo);
+    expect(param(p, "project")).toBe("south");
+    expect(await toLine(p)).toBe("To bo · south");
     await p.click(".pane:not([hidden]) .term");
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
