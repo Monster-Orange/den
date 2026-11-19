@@ -741,7 +741,8 @@ export function hubDeliveryLines(
   minutes: number,
   /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
   journal:
-    import("../../shared/hub-delivery-journal.js").JournalSummary | null = null,
+    | import("../../shared/hub-delivery-journal.js").JournalSummary
+    | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
   const alert = deliveryAlert(h, now, minutes);
