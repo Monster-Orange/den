@@ -41,6 +41,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
   // 0.4.48: Den on the Docker bridge for the edge.
   web_bridge: { listen: true, probe_seconds: true },
+  // Issue 406: how long the start waits for the owner's GitHub name.
+  web_github: { owner_name_timeout_seconds: true },
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
   // Issue 144: the machine's gate slots.
@@ -74,6 +76,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     visibility_cache_hours: true,
     visibility_timeout_seconds: true,
     visibility_retry_seconds: true,
+  },
+  // Issue 455: how long, and how often, Den checks its own address.
+  address_check: {
+    timeout_seconds: true,
+    retries: true,
+    cache_seconds: true,
   },
 };
 
@@ -163,6 +171,8 @@ describe("the settings inventory (R21)", () => {
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         "web_bridge.listen",
         "web_bridge.probe_seconds",
+        // Issue 406: the owner's GitHub name at start, its wait.
+        "web_github.owner_name_timeout_seconds",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
@@ -202,6 +212,10 @@ describe("the settings inventory (R21)", () => {
         "feedback.visibility_cache_hours",
         "feedback.visibility_timeout_seconds",
         "feedback.visibility_retry_seconds",
+        // Issue 455: the address check's limits.
+        "address_check.timeout_seconds",
+        "address_check.retries",
+        "address_check.cache_seconds",
       ].sort(),
     );
   });

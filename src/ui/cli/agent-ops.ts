@@ -7325,6 +7325,52 @@ export async function markInterrupted(
   return found;
 }
 
+/** Issue 563: the agents whose session runs now (ids). */
+export async function runningAgentIds(d: AgentsResolved): Promise<string[]> {
+  const sessions = await hostSessions(d);
+  return listRecords(d.stateDir())
+    .filter((rec) => rowState(rec, sessionOf(sessions, rec)) === "running")
+    .map((rec) => rec.id);
+}
+
+/** Issue 563: of `ids`, the agents mid-turn now (in doubt: mid-turn). */
+export async function busyAgentIds(
+  d: AgentsResolved,
+  ids: readonly string[],
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of ids) {
+    const rec = readRecord(d.stateDir(), id);
+    if (!rec) continue;
+    if ((await inputState(d, rec, new Set(), 3000)) === "busy") out.push(id);
+  }
+  return out;
+}
+
+/**
+ * Issue 563: resume agent `id` after its terminal host restarted (a
+ * rotated one relaunches from its handoff, as after a restart).
+ * Issue 597: `note` (an agent the restart cut mid-turn) is typed in as its
+ * next input once it is ready, the way a first instruction is; a relaunch
+ * has its handoff as its first prompt instead. Not waited for.
+ */
+export async function resumeAfterHostRestart(
+  d: AgentsResolved,
+  id: string,
+  note: string | null = null,
+  send: typeof sendFirstInstruction = sendFirstInstruction,
+): Promise<void> {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec) throw new Error(`no agent "${id}"`);
+  const rotated = Boolean(rotationOf(d, rec)?.ready);
+  const r = rotated
+    ? await relaunchAgent(d, rec.id)
+    : await resumeAgent(d, rec.id);
+  if (r.early) throw new Error("exited at once");
+  if (note && !rotated)
+    void send(d, r.info.ref.id, r.rec.runtime, note).catch(() => false);
+}
+
 /**
  * Resume every interrupted agent of `workspaces` that can resume
  * (AG-14.3 "Resume all", `agents resume --all-interrupted`).

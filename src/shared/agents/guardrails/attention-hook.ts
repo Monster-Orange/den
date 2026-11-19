@@ -34,7 +34,16 @@ export type AttentionEvent =
       hooked: true;
     }
   | { event: "resumed"; from: "tool" | "prompt" | "session"; hooked: true }
-  | { event: "finished"; text: string; hooked: true };
+  | {
+      event: "finished";
+      text: string;
+      /**
+       * Issue 142: the question the turn ended on (its answer's last
+       * line), from Claude Code's `last_assistant_message`.
+       */
+      question?: string;
+      hooked: true;
+    };
 
 /** The hook events Den listens to (guardrails.ts registers these). */
 export const ATTENTION_EVENTS = [
@@ -55,6 +64,20 @@ export function trimWhat(s: string): string {
   return one.length > WHAT_MAX ? `${one.slice(0, WHAT_MAX - 1)}…` : one;
 }
 
+/**
+ * Issue 142: an answer's last line when it asks the person something (it
+ * ends with "?", markup and quotes aside), ≤ 300 chars; else null.
+ */
+export function endingQuestion(text: string): string | null {
+  const last =
+    text
+      .split(/\r?\n/)
+      .filter((l) => l.trim())
+      .pop() ?? "";
+  const bare = last.trim().replace(/[\s*_`"'”’)\]]+$/u, "");
+  return /[?？]$/u.test(bare) ? last.trim().slice(0, 300) : null;
+}
+
 /** What Den is told for one hook input, or null for nothing. */
 export function attentionOf(input: unknown): AttentionEvent | null {
   if (!input || typeof input !== "object") return null;
@@ -65,6 +88,7 @@ export function attentionOf(input: unknown): AttentionEvent | null {
     tool_name?: unknown;
     notification_type?: unknown;
     source?: unknown;
+    last_assistant_message?: unknown;
   };
   const msg = typeof i.message === "string" ? i.message.slice(0, 300) : "";
   if (i.hook_event_name === "PermissionRequest") {
@@ -96,8 +120,20 @@ export function attentionOf(input: unknown): AttentionEvent | null {
   if (i.hook_event_name === "UserPromptSubmit")
     return { event: "resumed", from: "prompt", hooked: true };
   // A Stop a Stop hook kept going (D41's nudge) isn't the turn's end yet.
-  if (i.hook_event_name === "Stop" && i.stop_hook_active !== true)
-    return { event: "finished", text: "", hooked: true };
+  // Issue 142: the turn's last answer comes with it; a question there
+  // needs the person.
+  if (i.hook_event_name === "Stop" && i.stop_hook_active !== true) {
+    const q =
+      typeof i.last_assistant_message === "string"
+        ? endingQuestion(i.last_assistant_message)
+        : null;
+    return {
+      event: "finished",
+      text: "",
+      ...(q ? { question: q } : {}),
+      hooked: true,
+    };
+  }
   return null;
 }
 

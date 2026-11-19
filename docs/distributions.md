@@ -2131,12 +2131,16 @@ outside a service manager.
 
 ## Signing in
 
-On localhost nothing asks you to sign in: every page, the agents and the
-terminal work as they are, and the admin password (R8) is the only prompt,
-asked only when a command Den runs needs sudo. Through the edge, a browser
-the edge shows is on this machine asks for nothing either. Signing in is
-for everything else: the edge for a client it can't place here (0.4.5), a
-LAN address, or a bind that isn't loopback (`DEN_BIND_HOST`). From another
+Every browser signs in once, on this machine too (0.4.71), and stays
+signed in. On this machine `web up` and `web open` open a one-time sign-in
+link, so you do nothing more. A browser there that isn't signed in (a
+bookmark, a tab from before) can look at every page but change nothing:
+each page says so in one line, with a Sign in button. Through the edge, a
+browser the edge shows is on this machine is treated the same way. The
+admin password (R8) is no sign-in: it is asked only when a command Den
+runs needs sudo. Beyond this machine (the edge for a client it can't place
+here (0.4.5), a LAN address, or a bind that isn't loopback,
+`DEN_BIND_HOST`) every page needs a sign-in, reads included. From another
 device, sign in with GitHub as the Den's owner, approve the computer with
 the code its page shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
@@ -2260,8 +2264,9 @@ user, and the CLI does that for you:
   device".
 - **The edge counts as local only when it shows the client is.** A
   request for the edge hostname from the edge (an edge peer, below) is
-  treated as loopback (no sign-in on any route, the agents and the
-  terminal included) when the client the edge reports is this machine.
+  treated as loopback (reads need no sign-in; a change, an agent or a
+  terminal does, as on localhost) when the client the edge reports is
+  this machine.
   Host, Origin, CSRF and the agent-token rules still apply. Who the client
   is comes from the right-most `X-Forwarded-For` entry, the one the edge
   itself appended (anything left of it came from the client, and is never
@@ -3111,8 +3116,12 @@ agent and kind.
   on Hub. New activity on an item makes it unread again. An agent can't
   mark them read: Den's proxy refuses Hub's read routes.
 - **Not while you look** (NT-2). The Agents page says which agents are on
-  screen, in a visible, focused tab. Those don't notify; they are still
-  marked waiting.
+  screen, in a visible, focused tab. Those don't alert you. Their bell
+  items are still kept (issue 142): a permission prompt or a question
+  counts until you answer it, and a finished turn leaves Updates as soon
+  as the page says it shows that agent again. Opening a pane is not an
+  answer: the terminal's own replies (focus, cursor place) don't clear a
+  question.
 - **Kinds and folds** (0.4.45). Settings › Notifications has one switch
   per kind, the person's own (user.yml `notifications.kinds`, a map of
   `waiting`, `finished`, `hub`, `pr`, `release`, `pick` and `shared` to
@@ -3259,6 +3268,53 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
     close_grace_seconds: 5
   agents:
     max_concurrent: 4
+  ```
+
+- Issue 503: each terminal holds one PTY, and a machine has a fixed
+  number of them (macOS: `kern.tty.ptmx_max`, 511 by default). An exited
+  session gives its PTY back `sessions.pty_close_seconds` after its
+  process ends (default 0: at once); it stays listed as exited and its
+  scrollback still replays. A start the machine can't give a PTY to is
+  refused with the reason, which the terminal host logs and the Agents
+  page shows. `<cli> doctor` shows how many PTYs the terminal host holds
+  and how many the machine uses of its limit, and fails above
+  `sessions.pty_warn_above` (default 400) or at
+  `sessions.pty_machine_warn_percent` of the limit (default 90).
+
+  ```yaml
+  sessions:
+    pty_close_seconds: 0
+    pty_warn_above: 400
+    pty_machine_warn_percent: 90
+  ```
+
+- Issue 563: the terminal host is a process of its own, so a web
+  restart (and a self-update's) leaves it running the version it
+  started on. When the web server starts, it asks the host which code it
+  runs (a hash of its own files: `src/shared/sessions/host.ts` and what
+  it imports) and which native terminal module it loaded. A host whose
+  code differs from the installed one, holding a module that is no
+  longer the installed one (npm deletes the old one's folder at an
+  update, and new terminals then fail with `posix_spawnp failed`), or
+  too old to say, is restarted the way `<cli> sessions host --stop`
+  does. Issue 597: another Den version alone is no reason: when the code
+  and the module are the same, the host is told the new version and
+  kept, with its agents, and the audit says "host kept: code
+  unchanged". Agents mid-turn are waited for, up to
+  `sessions.host_restart_wait_seconds` (default 900); then it restarts
+  anyway. The agents that were running resume; open terminals end. An
+  agent the restart cut mid-turn gets one line as its next input, "Den
+  restarted while you were working; check your last step and carry on."
+  (`sessions.host_restart_note`, default true). The bell names the
+  agents resumed and the ones cut; the audit row has the counts first
+  and every agent in its `agents` field. `<cli> doctor`'s Host row says
+  "current", or "restart needed: host code changed" / "terminal module
+  changed" with the restart command.
+
+  ```yaml
+  sessions:
+    host_restart_wait_seconds: 900
+    host_restart_note: true
   ```
 
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
@@ -3419,6 +3475,31 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   your Allow", linked to that agent. After
   `server_agent.update_wait_checks` passes in a row (default 2) it counts
   as needing you. The update never goes past a pending Allow.
+- **A security release doesn't wait on an open question** (issue 562). A
+  release whose package.json has `"den": {"security": true}` is a
+  security release. Den reads the mark only from npm's version data for
+  that version (`npm view <package>@<version> den`), never from a tag
+  name or the changelog; no mark, or npm can't say, is an ordinary
+  release. With `self_update: auto`, a security release updates while
+  the server agent waits on its person's question or permission prompt.
+  That conversation resumes after the restart, as on any restart. It
+  still never goes past a pending Allow, and never restarts while a turn
+  is working. The bell then says "Den updated for a security fix while
+  the server agent was waiting on you; its question is still open".
+  `server_agent.security_update_skips_questions` (org config, default
+  `true`): `false` makes a security release wait like any other.
+- **The restart looks again after the install** (issue 562). The install
+  takes a while, and a turn may start meanwhile (the person answers the
+  question). Once an auto update is installed and its doctor has run,
+  Den reads the wait again before it restarts: a security release goes
+  past the server agent's question or prompt, any other release doesn't.
+  A working turn or a pending Allow holds the restart, read again every
+  few seconds, for at most `server_agent.update_restart_wait_seconds`
+  (org config, default 900). Then Den restarts anyway, since the new
+  version is installed and the old one is still running. The log says
+  why, and the bell says "Den restarted to finish an update while the
+  server agent was working". An update the person or an agent asked for
+  restarts as before.
 - **Den commits and pushes the new pin itself** (#176). Once an update
   is verified (the watch saw the new version answer, `state: good`) and
   this Den runs it, the lead install's update check commits the pin and
@@ -4033,10 +4114,10 @@ agent of the projects in view, and their terminals in the browser.
   one's to change it.
 - Terminals need the optional PTY module (`<cli> doctor`); without it the
   page lists what there is and says so.
-- **Who can open one.** The terminal is shell-grade: on localhost the
-  page's own Origin and CSRF token, beyond loopback a signed-in browser
-  (the list says "Sign in to open terminals" otherwise), and an agent's
-  token only its own session's. Each attach and detach is in the server
+- **Who can open one.** The terminal is shell-grade: a signed-in browser,
+  on localhost too (0.4.71), with the page's own Origin and CSRF token
+  (the list says "Sign in to open terminals" otherwise); the person's
+  token from the CLI; and an agent's token only its own session's. Each attach and detach is in the server
   log's activity, with its actor.
 
 The routes: `GET /api/sessions` (`{ sessions, projects, host, backend,

@@ -44,7 +44,12 @@ import {
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
-import { webRouteHosts } from "../../shared/edge/render.js";
+import {
+  edgeDomains,
+  edgeNames,
+  webRouteHosts,
+} from "../../shared/edge/render.js";
+import { containerState } from "../../shared/edge/runtime.js";
 import {
   expiringTokenWarning,
   GITHUB_DEVICE_PAGE,
@@ -87,6 +92,21 @@ import {
   personGrantRefusal,
 } from "../../shared/claim-code.js";
 import { redactSecrets } from "../../shared/redact.js";
+import {
+  checkAddress,
+  cliLanguage,
+  localIdentityKey,
+  noticeLine,
+  noticeOnce,
+  upNoticeLines,
+  upAddressLines,
+  givenAddress,
+  edgeUncheckedLine,
+  isEdgeAddress,
+  statedAddress,
+  type AddressState,
+  type CheckDeps,
+} from "../../shared/edge/address-check.js";
 import { localDateTime } from "../../shared/local-time.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
@@ -120,7 +140,12 @@ interface StopServerResult {
 }
 
 type BrowserFocusResult =
-  | { status: "focused"; app: string }
+  | {
+      status: "focused";
+      app: string;
+      /** The focused tab's URL (0.4.71: where its sign-in link goes back to). */
+      url?: string;
+    }
   | { status: "not-found" }
   | { status: "unsupported" }
   | { status: "error"; apps: string[]; error: string };
@@ -947,7 +972,7 @@ if application ${appleScriptString(appName)} is running then
           set active tab index of w to tabIndex
           set index of w to 1
           activate
-          return "focused"
+          return "focused " & u
         end if
       end repeat
     end repeat
@@ -970,7 +995,7 @@ if application "Safari" is running then
           set current tab of w to t
           set index of w to 1
           activate
-          return "focused"
+          return "focused " & u
         end if
       end repeat
     end repeat
@@ -1015,7 +1040,12 @@ function focusExistingBrowserTab(port: number): BrowserFocusResult {
       continue;
     }
 
-    if (result === "focused") return { status: "focused", app: app.name };
+    if (result === "focused" || result.startsWith("focused "))
+      return {
+        status: "focused",
+        app: app.name,
+        ...(result.length > 8 ? { url: result.slice(8) } : {}),
+      };
     if (result === "not-found") inspectedBrowser = true;
   }
 
@@ -1024,6 +1054,41 @@ function focusExistingBrowserTab(port: number): BrowserFocusResult {
   }
 
   return { status: "not-found" };
+}
+
+/**
+ * 0.4.71: send the tab focusTab just brought forward to `url` (its sign-in
+ * link). False when it can't (the browser said no, or isn't scriptable).
+ */
+function navigateFocusedTab(app: string, url: string): boolean {
+  if (process.platform !== "darwin") return false;
+  const kind = BROWSER_APPS.find((a) => a.name === app)?.kind;
+  if (!kind) return false;
+  const tab =
+    kind === "safari"
+      ? "current tab of front window"
+      : "active tab of front window";
+  try {
+    runAppleScript(
+      `tell application ${appleScriptString(app)} to set URL of ${tab} to ${appleScriptString(url)}`,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The path, query and hash of a tab's URL, for its sign-in's `next`. */
+function tabNext(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url);
+    // An open sign-in or auth page goes home after, not back to itself.
+    if (u.pathname === "/auth" || u.pathname === "/signin") return "/";
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return undefined;
+  }
 }
 
 function openUrl(url: string): BrowserOpenResult {
@@ -1048,15 +1113,18 @@ function openUrl(url: string): BrowserOpenResult {
 /**
  * Focus a tab already on this server, else open `url()` (SEC-1b: the
  * sign-in link, minted only when it is opened). `focus: false` (`web
- * open`) always opens.
+ * open`) always opens. 0.4.71: a focused tab is sent to a fresh link too,
+ * back to the page it was on, so it is signed in whatever it held; when
+ * it can't be, the link opens in a new tab.
  */
 export function openOrFocusDenWebUrl(
-  url: () => string,
+  url: (next?: string) => string,
   port: number,
   focus = true,
   /** A test's stubs; the env says whether it may open at all. */
   deps: {
     focus?: (port: number) => BrowserFocusResult;
+    navigate?: (app: string, url: string) => boolean;
     open?: (url: string) => BrowserOpenResult;
     env?: NodeJS.ProcessEnv;
   } = {},
@@ -1067,7 +1135,16 @@ export function openOrFocusDenWebUrl(
   if (why) return { status: "skipped", why };
   if (focus) {
     const focusResult = (deps.focus ?? focusExistingBrowserTab)(port);
-    if (focusResult.status === "focused") return focusResult;
+    if (focusResult.status === "focused") {
+      const link = url(tabNext(focusResult.url));
+      // Inside an agent's session the "link" is the plain page: the
+      // focused tab stays as it is.
+      if (!/\/auth\?/.test(link))
+        return { status: "focused", app: focusResult.app };
+      if ((deps.navigate ?? navigateFocusedTab)(focusResult.app, link))
+        return { status: "focused", app: focusResult.app };
+      return (deps.open ?? openUrl)(link);
+    }
 
     if (focusResult.status === "error" && process.platform === "darwin") {
       return focusResult;
@@ -1495,7 +1572,12 @@ async function runWeb(args: string[]): Promise<void> {
     // D20: started from an ssh (Background) shell, it lives there.
     const where = webUpWarning(launchdSession(), product().cli);
     if (where) console.log(chalk.yellow(`\n  ⚠ ${where}`));
-    console.log(chalk.cyan(`\n  Starting ${product().cli} web on ${shown}...`));
+    // Issue 455: no address yet; it is said once it is proven.
+    console.log(
+      chalk.cyan(
+        `\n  Starting ${product().cli} web on port ${options.port}...`,
+      ),
+    );
     try {
       started = startDenWebServer(options);
       running = await waitForDenWeb(options.port, started.pid);
@@ -1520,18 +1602,74 @@ async function runWeb(args: string[]): Promise<void> {
     }
   } else if (!svc.handled) {
     recordRunningDenWebServer(options.port);
+  }
+
+  // Issue 455: only an address just proven to reach this Den is printed or
+  // opened. When the install's address isn't Den (another server holds its
+  // port), Den's own port here, said once per change with what holds it.
+  const proven = addr
+    ? await checkAddress({
+        webPort: options.port,
+        wanted: addr.url,
+        key: localIdentityKey(getStateDir()),
+        cli: product().cli,
+      })
+    : null;
+  // When web.url is the edge address and it hasn't answered as this Den
+  // (nothing answers, another server does, or no answer in time), Visit
+  // and what opens are the checked address, as doctor and web.log give it,
+  // and one line names the edge address as not checked yet. Once it is
+  // proven, it is the address (D80).
+  const said =
+    proven && addr ? statedAddress(proven, isEdgeAddressHere(addr.url)) : null;
+  const origin =
+    (said?.unchecked ? said.address : null) ??
+    (proven ? givenAddress(proven) : null) ??
+    addr?.url ??
+    null;
+  const shownNow = origin ?? shown;
+  if (running && !svc.handled && !started)
     console.log(
       chalk.green(
-        `\n  OK ${product().title} web is already running at ${shown}`,
+        `\n  OK ${product().title} web is already running at ${shownNow}`,
       ),
     );
+  // Nothing answers the address: said plainly, next to the checked one.
+  if (proven && addr)
+    for (const l of upAddressLines(
+      proven,
+      { lang: cliLanguage(), title: product().title, cli: product().cli },
+      edgeDownFor(addr.url),
+    ))
+      console.log(chalk.yellow(`  ! ${l}`));
+  if (said?.unchecked)
+    console.log(
+      chalk.gray(
+        `  ${edgeUncheckedLine(said.unchecked, {
+          lang: cliLanguage(),
+          title: product().title,
+          cli: product().cli,
+        })}`,
+      ),
+    );
+  if (proven?.address && addr && proven.address !== addr.url) {
+    const words = {
+      lang: cliLanguage(),
+      title: product().title,
+      cli: product().cli,
+    };
+    if (noticeOnce(getStateDir(), proven))
+      for (const [i, l] of upNoticeLines(proven, words, null).entries())
+        console.log(
+          i === 0 ? chalk.yellow(`  ! ${l}`) : chalk.gray(`    ${l}`),
+        );
   }
 
   if (!options.openBrowser) {
-    console.log(chalk.gray(`  Browser open skipped. Visit: ${shown}\n`));
+    console.log(chalk.gray(`  Browser open skipped. Visit: ${shownNow}\n`));
     return;
   }
-  if (!addr) {
+  if (!addr || !origin) {
     // D80: nothing to open until the install has its address.
     console.log(chalk.yellow(`  Nothing opened: ${shown.slice(1, -1)}\n`));
     return;
@@ -1542,8 +1680,9 @@ async function runWeb(args: string[]): Promise<void> {
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
-  let link: string | null = personGrantRefusal(process.env) ? addr.url : null;
-  const signIn = () => (link ??= freshLoginLink(options.port));
+  let link: string | null = personGrantRefusal(process.env) ? origin : null;
+  const signIn = (next?: string) =>
+    (link ??= freshLoginLink(options.port, next ?? "/", origin));
   const browser = openOrFocusDenWebUrl(
     signIn,
     options.port,
@@ -1553,21 +1692,21 @@ async function runWeb(args: string[]): Promise<void> {
     // Its origin (never the link): which run tried to open what.
     console.log(
       chalk.gray(
-        `  Browser open skipped (${browser.why}): ${addr.url.replace(/\/+$/, "")}\n`,
+        `  Browser open skipped (${browser.why}): ${origin.replace(/\/+$/, "")}\n`,
       ),
     );
     return;
   }
   if (browser.status === "focused") {
     console.log(chalk.green(`  OK Focused existing ${browser.app} tab`));
-    console.log(chalk.gray(`  ${shown}\n`));
+    console.log(chalk.gray(`  ${shownNow}\n`));
     return;
   }
   if (browser.status === "opened") {
     console.log(
       chalk.green(`  OK Opened ${product().cli} web in your browser`),
     );
-    console.log(chalk.gray(`  ${shown}\n`));
+    console.log(chalk.gray(`  ${shownNow}\n`));
     return;
   }
 
@@ -1685,7 +1824,88 @@ interface CliIo {
   stateDir?: string;
   /** D80: the install's address (web.url); readWebUrl by default. */
   webUrl?: () => WebUrl | null;
+  /** Issue 455: the address check's parts (tests swap the owner lookup). */
+  addressDeps?: Partial<CheckDeps>;
 }
+
+/**
+ * Issue 455: the origin a link may carry. The install's address (web.url)
+ * when it was just proven to reach this Den; else Den's own port here
+ * when that was, with the one sentence that says why (once per change).
+ * When nothing answers as this Den (its server isn't running), `wanted`
+ * as before: nothing was proven either way.
+ */
+export async function provenOrigin(
+  port: number,
+  wanted: string,
+  stateDir: string,
+  say: (line: string) => void,
+  deps: Partial<CheckDeps> = {},
+): Promise<{ origin: string; state: AddressState }> {
+  const state = await checkAddress({
+    webPort: port,
+    wanted,
+    key: localIdentityKey(stateDir),
+    cli: product().cli,
+    ...deps,
+  });
+  const given = givenAddress(state) ?? wanted;
+  // Nothing answers it: still given (D80), said plainly next to it.
+  for (const l of upAddressLines(
+    state,
+    { lang: cliLanguage(), title: product().title, cli: product().cli },
+    (deps.edgeDown ?? (() => edgeDownFor(wanted)))(),
+  ))
+    say(l);
+  if (given !== wanted && noticeOnce(stateDir, state)) {
+    const line = noticeLine(state, {
+      lang: cliLanguage(),
+      title: product().title,
+      cli: product().cli,
+    });
+    if (line) say(line);
+  }
+  return { origin: given, state };
+}
+/** Whether `url` is the edge address here (issue 455: isEdgeAddress). */
+function isEdgeAddressHere(url: string): boolean {
+  let domains: string[] = [];
+  try {
+    domains = edgeDomains(readEdgeConfig());
+  } catch {
+    domains = []; // no edge configured: only a loopback name counts
+  }
+  return isEdgeAddress(url, domains);
+}
+
+/**
+ * Whether the edge that serves `wanted` is down, when Den can tell: the
+ * install has an edge publishing the address's port, and its container
+ * isn't running. null when Den can't tell (no edge config, another port).
+ */
+export function edgeDownFor(wanted: string): boolean | null {
+  let cfg: ReturnType<typeof readEdgeConfig>;
+  try {
+    cfg = readEdgeConfig();
+  } catch {
+    return null;
+  }
+  if (!cfg.ports) return null;
+  let port: number;
+  try {
+    const u = new URL(wanted);
+    port = Number(u.port) || (u.protocol === "https:" ? 443 : 80);
+  } catch {
+    return null;
+  }
+  if (port !== cfg.ports.http && port !== cfg.ports.https) return null;
+  try {
+    return containerState(edgeNames(cfg.org).container) !== "running";
+  } catch {
+    return null;
+  }
+}
+
 const stdIo: CliIo = {
   out: (s) => process.stdout.write(s),
   err: (s) => process.stderr.write(s),
@@ -1777,9 +1997,9 @@ const LOGIN_HELP = () =>
   "  unless set) for one browser, and a\n" +
   "  code the page behind the link asks for, then waits until the link is used:\n" +
   '  "Signed in: <browser> (<address>) at <time>", or "Expired: nobody used the\n' +
-  '  link" (exit 1). On localhost nothing asks for a sign-in; it is needed when\n' +
-  "  this server is reached from another machine (pass the edge hostname as\n" +
-  "  --host, or a LAN address as --origin).\n" +
+  '  link" (exit 1). On this machine `web up` opens such a link by itself.\n' +
+  "  From another machine, pass the edge hostname as --host, or a LAN address\n" +
+  "  as --origin.\n" +
   "  --next <path>   where the browser lands after signing in (same origin only)\n" +
   "  --host <name>   an edge hostname that routes here (an edge domain or alias,\n" +
   "                  a VPN name among them): the link uses its edge URL\n" +
@@ -1794,7 +2014,10 @@ const LOGIN_HELP = () =>
  * allowed origin (a LAN name), where the cookie must be set (the
  * signed-out page there says which). The link signs in when opened.
  */
-export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
+export async function cmdWebLogin(
+  args: string[],
+  io: CliIo = stdIo,
+): Promise<number> {
   if (isHelp(args)) {
     io.out(LOGIN_HELP());
     return 0;
@@ -1814,12 +2037,18 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
     io.err(`${product().cli}: ${(e as Error).message}\n`);
     return 1;
   }
-  const link = freshLoginLink(
-    a.port,
-    a.next,
-    origin,
-    io.stateDir ?? getStateDir(),
-  );
+  const stateDir = io.stateDir ?? getStateDir();
+  // Issue 455: an origin the person named (--origin, --host) is theirs;
+  // the install's address is checked first.
+  if (!a.origin)
+    ({ origin } = await provenOrigin(
+      a.port,
+      origin,
+      stateDir,
+      (l) => io.err(`${product().cli}: ${l}\n`),
+      io.addressDeps,
+    ));
+  const link = freshLoginLink(a.port, a.next, origin, stateDir);
   io.err(
     `${product().cli}: open this link within ${ttlText(loginLinkTtl())}; it signs in one browser, once.\n`,
   );
@@ -1898,6 +2127,15 @@ export async function cmdWebLoginWait(
     return 1;
   }
   const stateDir = io.stateDir ?? getStateDir();
+  // Issue 455: the install's address only when it reaches this Den.
+  if (!a.origin)
+    ({ origin } = await provenOrigin(
+      a.port,
+      origin,
+      stateDir,
+      (l) => io.err(`${product().cli}: ${l}\n`),
+      io.addressDeps,
+    ));
   const secret = ensureWebSecret(stateDir);
   const now = Date.now();
   const ttl = loginLinkTtl();

@@ -67,8 +67,14 @@ import { eventsFile } from "../../shared/dev-metrics/emit.js";
 import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
+import {
+  cliLanguage,
+  edgeUncheckedLine,
+  isEdgeAddress,
+  statedAddress,
+} from "../../shared/edge/address-check.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
-import { edgeImageCheck } from "../../shared/edge/render.js";
+import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -800,20 +806,36 @@ export function hubGithubLines(
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
   for (const o of cov.orgs) {
+    // Issue 526: Hub couldn't ask GitHub. Access may be fine: say so, and
+    // never a link, even when Hub sends one.
+    if (o.access === "error") {
+      const detail = o.error
+        ? `Den Hub couldn't check ${o.org} on GitHub: ${o.error}. Try again later.`
+        : `Den Hub couldn't check ${o.org} on GitHub. Try again later.`;
+      lines.push(`  hub github   ⚠  ${detail}`);
+      checks.push({ id: `hub:github:${o.org}`, status: "warn", detail });
+      continue;
+    }
     const what =
       o.access === "all"
         ? "all repos"
         : o.access === "some"
           ? `${o.covered} of ${o.total} repos`
           : "no repos (no access)";
+    // some: change repos (manage, else install). none: give access when
+    // there's no installation; one that leaves these repos out sends only
+    // manage_url, and that's Change repos.
+    const give = o.access === "none" && !!o.installUrl;
     const url =
       o.access === "all"
         ? undefined
-        : ((o.access === "some" ? o.manageUrl : undefined) ?? o.installUrl);
+        : o.access === "some"
+          ? (o.manageUrl ?? o.installUrl)
+          : (o.installUrl ?? o.manageUrl);
     const detail = `${o.org}: Den Hub can read ${what}`;
     const ok = o.access === "all";
     lines.push(
-      `  hub github   ${ok ? "✓" : "⚠"}  ${detail}${url ? `. ${o.access === "none" ? "Give Den Hub access" : "Change repos"}: ${url}` : ""}`,
+      `  hub github   ${ok ? "✓" : "⚠"}  ${detail}${url ? `. ${give ? "Give Den Hub access" : "Change repos"}: ${url}` : ""}`,
     );
     checks.push({
       id: `hub:github:${o.org}`,
@@ -854,16 +876,29 @@ async function projectsWithHubProject(): Promise<
   }
 }
 
+/** What doctor's two address sections read: one check, done once. */
+export interface DoctorAddress {
+  state: import("../../shared/edge/address-check.js").AddressState;
+  /** Whether web.url is the edge address (served here by Den's edge). */
+  edge: boolean;
+}
+
 /**
  * D80: doctor's Address row. The install's address (web.url) is the one
  * people are given; unset fails doctor with its one-line fix. One a
  * migration took from what the install had is shown for the person to
  * confirm.
+ *
+ * Issue 455 (after 0.4.68): no address is shown before it is checked. When
+ * web.url is the edge address and it hasn't answered as this Den, the row
+ * gives the address that was checked (Den's own port), and says the edge
+ * one isn't checked yet. It is never offered to confirm.
  */
 export function addressLines(
   w: import("../../shared/web-url.js").WebUrl | null,
   title: string,
   cli: string,
+  checked: DoctorAddress | null = null,
 ): { lines: string[]; problem: boolean; check: OnboardCheck } {
   if (!w) {
     const detail = `not set: set it in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url <address>\` (for example https://${cli}.local.example.com)`;
@@ -880,6 +915,24 @@ export function addressLines(
       },
     };
   }
+  if (checked && checked.state.wanted === w.url) {
+    const said = statedAddress(checked.state, checked.edge);
+    if (said.unchecked) {
+      const words = { lang: cliLanguage(), title, cli };
+      const why = edgeUncheckedLine(said.unchecked, words);
+      const detail = said.address ? `${said.address}. ${why}` : why;
+      return {
+        lines: ["", `${title} doctor: Address`, "", `  address  ⚠  ${detail}`],
+        problem: false,
+        check: {
+          id: "address",
+          status: "warn",
+          detail,
+          ...(said.address ? { url: said.address } : {}),
+        },
+      };
+    }
+  }
   const detail = w.confirmed
     ? w.url
     : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\``;
@@ -893,6 +946,74 @@ export function addressLines(
     problem: false,
     check: { id: "address", status: w.confirmed ? "ok" : "warn", detail },
   };
+}
+
+/**
+ * Issue 455: whether the install's address reaches THIS Den right now (an
+ * identity probe, den-identity.ts), and when it doesn't, what holds its
+ * port, the address that does work, and the two ways out (mock v3's doctor
+ * lines). Always said here: doctor is one of the two quiet places the fact
+ * lives (Edge is the other).
+ */
+export async function addressCheckLines(
+  title: string,
+  cli: string,
+  deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
+  checked?: DoctorAddress | null,
+): Promise<{ lines: string[]; check: OnboardCheck | null }> {
+  const { doctorAddressLines } =
+    await import("../../shared/edge/address-check.js");
+  const st = (checked ?? (await doctorAddress(cli, deps)))?.state;
+  if (!st) return { lines: [], check: null };
+  const d = doctorAddressLines(st, { lang: cliLanguage(), title, cli });
+  const [head, ...rest] = d.lines;
+  return {
+    lines: [
+      `  ${d.status === "ok" ? "✓" : "!"} ${head}`,
+      ...rest.map((l) => `      ${l}`),
+    ],
+    check: {
+      id: "address_reaches",
+      status: d.status,
+      detail: d.lines.join(" "),
+      ...(st.address ? { url: st.address } : {}),
+    },
+  };
+}
+
+/**
+ * The address check doctor's Address sections share (issue 455): null when
+ * web.url isn't set or the web port can't be read.
+ */
+export async function doctorAddress(
+  cli: string,
+  deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
+): Promise<DoctorAddress | null> {
+  const { checkAddress, localIdentityKey } =
+    await import("../../shared/edge/address-check.js");
+  const { readWebPort } = await import("../../shared/edge/config.js");
+  const w = readWebUrl();
+  if (!w) return null;
+  let port: number;
+  try {
+    port = readWebPort();
+  } catch {
+    return null;
+  }
+  const state = await checkAddress({
+    webPort: port,
+    wanted: w.url,
+    key: localIdentityKey(getStateDir()),
+    cli,
+    ...deps,
+  });
+  let domains: string[] = [];
+  try {
+    domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+  } catch {
+    domains = [];
+  }
+  return { state, edge: isEdgeAddress(w.url, domains) };
 }
 
 /**
@@ -1321,6 +1442,25 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ...(await whereRows(await defaultWhereDeps())).map(whereCheck),
     );
     {
+      // Issue 503: the terminal host's PTYs, and the machine's.
+      const { ptyLines, defaultPtyDeps } = await import("./doctor-ptys.js");
+      const pt = await ptyLines(
+        readBrand().name,
+        defaultPtyDeps(getStateDir()),
+      );
+      r.checks.push(pt.check);
+      if (pt.problem) r.ok = false;
+      // Issue 563: the terminal host runs what is installed.
+      const { hostModuleLines, defaultHostModuleDeps } =
+        await import("./doctor-ptys.js");
+      const hm = await hostModuleLines(
+        product().cli,
+        defaultHostModuleDeps(getStateDir()),
+      );
+      r.checks.push(hm.check);
+      if (hm.problem) r.ok = false;
+    }
+    {
       const { hubStatus } = await import("../../shared/hub.js");
       const st = await hubStatus();
       const h = hubLines(st, readBrand().name);
@@ -1344,9 +1484,24 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const sign = signingLines(readBrand().name);
     r.checks.push(...sign.checks);
     if (sign.problem) r.ok = false;
-    const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
+    const checked = await doctorAddress(product().cli);
+    const addr = addressLines(
+      readWebUrl(),
+      readBrand().name,
+      product().cli,
+      checked,
+    );
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    {
+      const ac = await addressCheckLines(
+        readBrand().name,
+        product().cli,
+        {},
+        checked,
+      );
+      if (ac.check) r.checks.push(ac.check);
+    }
     r.checks.push(
       pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
     );
@@ -1383,6 +1538,18 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     readBrand().name,
   ))
     console.log(l);
+  // Issue 503: the terminal host's PTYs, and the machine's.
+  const { ptyLines, defaultPtyDeps } = await import("./doctor-ptys.js");
+  const pty = await ptyLines(readBrand().name, defaultPtyDeps(getStateDir()));
+  for (const l of pty.lines) console.log(l);
+  // Issue 563: the terminal host runs what is installed.
+  const { hostModuleLines, defaultHostModuleDeps } =
+    await import("./doctor-ptys.js");
+  const hm = await hostModuleLines(
+    product().cli,
+    defaultHostModuleDeps(getStateDir()),
+  );
+  for (const l of hm.lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
@@ -1405,8 +1572,18 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
-  const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
+  const checked = await doctorAddress(product().cli);
+  const addr = addressLines(
+    readWebUrl(),
+    readBrand().name,
+    product().cli,
+    checked,
+  );
   for (const l of addr.lines) console.log(l);
+  for (const l of (
+    await addressCheckLines(readBrand().name, product().cli, {}, checked)
+  ).lines)
+    console.log(l);
   for (const l of pushContactLines(
     readWebUrl(),
     readBrand().name,
@@ -1430,6 +1607,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     return rows.some((r) => r.problem) ||
       held.problem ||
       ownerProblem ||
+      pty.problem ||
+      hm.problem ||
       cfg.problem ||
       sign.problem ||
       addr.problem
@@ -1456,6 +1635,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   return rows.some((r) => r.problem) ||
     held.problem ||
     ownerProblem ||
+    pty.problem ||
+    hm.problem ||
     cfg.problem ||
     found
     ? 1

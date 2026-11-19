@@ -38,6 +38,12 @@ export function checkGateModule(file, mod) {
   for (const fn of ["setup", "run", "expect"])
     if (typeof mod[fn] !== "function")
       out.push(`${file}: ${fn} is not a function`);
+  // The harness calls expect(result) alone: a second parameter is always
+  // undefined there, so whatever reads it fails on the bed (issue 455).
+  if (typeof mod.expect === "function" && mod.expect.length > 1)
+    out.push(
+      `${file}: expect takes one argument, the result (the harness calls expect(result)); it declares ${mod.expect.length}`,
+    );
   if ("teardown" in mod && typeof mod.teardown !== "function")
     out.push(`${file}: teardown is not a function`);
   if ("matrix" in mod) {

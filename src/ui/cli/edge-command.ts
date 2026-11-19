@@ -1,5 +1,9 @@
 /**
- * `edge up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes`
+ * `edge up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes | route --for <proxy>`
+ *
+ * `route --for nginx|caddy|traefik` (issue 455): the block another proxy
+ * that already owns port 80 needs so Den's name reaches Den. Printed for
+ * the person to paste; Den never edits another project's files.
  *
  * This org's edge: routes at `<name>.<edge.domain>`, TLS as `edge.tls` says
  * (none, mkcert or files). `trust` / `untrust` exist only under mkcert.
@@ -9,8 +13,13 @@
  */
 import chalk from "chalk";
 import { readBrand } from "../../shared/brand.js";
-import { readEdgeConfig } from "../../shared/edge/config.js";
-import { edgeDomains, edgeNames, routeUrl } from "../../shared/edge/render.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import {
+  edgeDomains,
+  edgeNames,
+  routeUrl,
+  webRouteHosts,
+} from "../../shared/edge/render.js";
 import {
   caDir,
   caTrusted,
@@ -31,6 +40,27 @@ import {
 } from "../../shared/edge/status.js";
 import { tlsYaml } from "../../shared/edge/tls.js";
 import { runEdgeUp } from "../../shared/edge/up.js";
+import {
+  PROXIES,
+  isProxyKind,
+  proxyRoute,
+  upstreamHostFor,
+} from "../../shared/edge/proxy-route.js";
+import { portOwner } from "../../shared/edge/port-owner.js";
+import { addressWord } from "../../shared/edge/address-words.js";
+import { cliLanguage } from "../../shared/edge/address-check.js";
+import { readWebUrl } from "../../shared/web-url.js";
+import { isLoopbackName } from "../../shared/web-url-check.js";
+import { product } from "../../shared/product.js";
+
+/** `edge route --for <proxy>`'s proxy, from `--for x` or `--for=x`. */
+export function routeFor(args: readonly string[]): string | null {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--for") return args[i + 1] ?? null;
+    if (args[i].startsWith("--for=")) return args[i].slice(6);
+  }
+  return null;
+}
 
 /** An included router's URLs (the hosts its rule names), else its name. */
 function includedUrl(r: IncludedRouter): string {
@@ -93,6 +123,46 @@ export async function cmdEdge(args: string[]): Promise<void> {
     case "untrust":
       process.exitCode = untrustCa(cfg);
       return;
+    case "route": {
+      const kind = (routeFor(args.slice(1)) ?? "").toLowerCase();
+      const lang = cliLanguage();
+      if (!isProxyKind(kind))
+        throw new Error(
+          addressWord(lang, "routeUnknown", { cli: product().cli }),
+        );
+      const webPort = readWebPort();
+      // Den's name: the install's address when it names this machine, else
+      // Den's own route on the edge's domain.
+      const w = readWebUrl();
+      const wanted = w ? new URL(w.url) : null;
+      const host =
+        wanted && isLoopbackName(wanted.hostname)
+          ? wanted.hostname
+          : (webRouteHosts(cfg, new Set([webPort]))[0]?.host ??
+            `${product().cli}.${cfg.domain}`);
+      const listen =
+        wanted && isLoopbackName(wanted.hostname)
+          ? Number(wanted.port) || (wanted.protocol === "https:" ? 443 : 80)
+          : (cfg.ports?.http ?? 80);
+      const owner = portOwner(listen);
+      process.stderr.write(
+        addressWord(lang, "routeHelp", {
+          host,
+          port: webPort,
+          title: readBrand().name,
+        }) + "\n",
+      );
+      console.log(
+        proxyRoute(kind, {
+          host,
+          listen,
+          upstreamHost: upstreamHostFor(owner?.kind ?? null),
+          upstreamPort: webPort,
+          name: product().cli,
+        }),
+      );
+      return;
+    }
     case "routes": {
       for (const r of edgeRoutes(cfg))
         console.log(`${r.url.padEnd(52)} → ${r.upstream}`);
@@ -147,7 +217,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
     }
     default:
       throw new Error(
-        `Unknown edge command "${sub}". Use: up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes`,
+        `Unknown edge command "${sub}". Use: up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes | route --for ${PROXIES.join("|")}`,
       );
   }
 }
