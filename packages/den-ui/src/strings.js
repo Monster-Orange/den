@@ -205,6 +205,11 @@ export const en = {
   "kit.savestate.error": "Not saved. Retrying…",
   "kit.savestate.copy": "Copy text",
   "kit.savestate.savedAt": "Saved at {time}",
+  // The panel fold toggle and its edge strip (panel-fold.js). The strip's
+  // count is worded by kit.badge.*.
+  "kit.fold.panel": "Panel",
+  "kit.fold.show": "Show panel",
+  "kit.fold.hidden": "Panel, hidden",
   // The filter bar (filter-bar.js). A facet's and an option's labels are
   // the host's; {facet} and {value} are those.
   "kit.filter.button": "Filters",
@@ -421,6 +426,9 @@ export const es = {
   "kit.savestate.error": "No se guardó. Reintentando…",
   "kit.savestate.copy": "Copiar texto",
   "kit.savestate.savedAt": "Guardado a las {time}",
+  "kit.fold.panel": "Panel",
+  "kit.fold.show": "Mostrar panel",
+  "kit.fold.hidden": "Panel, oculto",
   "kit.filter.button": "Filtros",
   "kit.filter.buttonN": "Filtros ({n})",
   "kit.filter.chosen": "Filtros elegidos",
@@ -630,6 +638,9 @@ export const ja = {
   "kit.savestate.error": "保存できていません。再試行しています…",
   "kit.savestate.copy": "テキストをコピー",
   "kit.savestate.savedAt": "{time} に保存しました",
+  "kit.fold.panel": "パネル",
+  "kit.fold.show": "パネルを表示",
+  "kit.fold.hidden": "パネル（非表示）",
   "kit.filter.button": "絞り込み",
   "kit.filter.buttonN": "絞り込み（{n}）",
   "kit.filter.chosen": "選んだ条件",

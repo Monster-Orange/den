@@ -159,6 +159,12 @@ export const KIT_FILES: readonly string[] = [
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",
+  // Issues 548, 549, 551: the panel fold toggle and its edge strip, and the
+  // switch, with their looks.
+  "panel-fold.js",
+  "panel-fold.css",
+  "switch.js",
+  "switch.css",
   // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
   "filter-bar.js",
   "filter-bar.css",

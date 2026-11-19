@@ -1,8 +1,9 @@
 /**
- * den-ui icons: the shell's 24px line drawings (the rail, the Report
- * button). icon(name) gives an <svg> string; a name it doesn't know, or
- * markup starting with "<" (a product's own drawing), is used as given,
- * else the page icon. Pure: it runs in Node too.
+ * den-ui icons: the kit's 24px line drawings (the rail, the Report
+ * button, the panel fold toggle and its edge strip). icon(name) gives an
+ * <svg> string; a name it doesn't know, or markup starting with "<" (a
+ * product's own drawing), is used as given, else the page icon. Pure: it
+ * runs in Node too.
  */
 export const ICONS = {
   // FB (den#81): the flat speech bubble with "!" (the Report button).
@@ -34,6 +35,11 @@ export const ICONS = {
   // SEC-2a: who this browser is (the rail footer's identity chip).
   person:
     '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
+  // Issue 548: a window with its side column (the panel fold toggle).
+  panel:
+    '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14"/>',
+  // Issue 549: an arrow out of the edge (the folded panel's Show panel).
+  panelShow: '<path d="M10 6l-6 6 6 6M4 12h11M19 5v14"/>',
 };
 
 /** An icon's <svg>, aria-hidden (the label is beside it). */
