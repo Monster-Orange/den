@@ -6,9 +6,10 @@
  *   route, with no Access-Control header, credential or not; nothing runs.
  *   Every command the routes could start (the service's own commands,
  *   git, docker, aws, gh, tail, npx) is a shim that leaves a marker file.
- * - GET /api/manifest/validate?path= needs a session or a bearer, reads
- *   only inside a project's repo (a symlink out of it counts as out), and
- *   an error never quotes the file.
+ * - GET /api/manifest/validate?path= runs only for this server's own page
+ *   or a token (it is checked as a change), reads only inside a project's
+ *   repo (a symlink out of it counts as out), and an error never quotes
+ *   the file.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { ChildProcess } from "child_process";
@@ -246,13 +247,27 @@ describe("GET /api/manifest/validate?path=", () => {
   const v = (p: string, h: Record<string, string> = {}) =>
     call("GET", `/api/manifest/validate?path=${encodeURIComponent(p)}`, h);
 
-  it("needs a session or a bearer", async () => {
-    const r = await v(path.join(repos, "shop"));
-    expect(r.status).toBe(401);
-    expect(JSON.parse(r.body)).toMatchObject({ code: "signin_required" });
-    const out = await v(path.join(tmp, "outside", "creds.txt"));
-    expect(out.status).toBe(401);
-    expect(out.body).not.toContain(OUTSIDE_TEXT);
+  // This server's own page: same-origin, as the Local Dev page's fetch.
+  const page = () => ({
+    origin: `http://localhost:${port}`,
+    "sec-fetch-site": "same-origin",
+  });
+
+  it("runs only for this server's page or a token: bare or from another site, 403, nothing quoted", async () => {
+    for (const h of [
+      {},
+      { "sec-fetch-site": "cross-site" },
+      { origin: "https://elsewhere.example" },
+    ]) {
+      for (const p of [
+        path.join(repos, "shop"),
+        path.join(tmp, "outside", "creds.txt"),
+      ]) {
+        const r = await v(p, h);
+        expect([JSON.stringify(h), r.status]).toEqual([JSON.stringify(h), 403]);
+        expect(r.body).not.toContain(OUTSIDE_TEXT);
+      }
+    }
   });
 
   it("a file outside every repo, a link out of one, or a path that isn't there: refused alike, nothing quoted", async () => {
@@ -264,18 +279,22 @@ describe("GET /api/manifest/validate?path=", () => {
       path.join(repos, "shop", "..", "..", "outside", "creds.txt"),
       "/etc/hosts",
     ]) {
-      const r = await v(p, bearer());
-      answers.push(r.status);
-      expect(r.body).not.toContain(OUTSIDE_TEXT);
-      expect(r.body).not.toContain("localhost");
+      for (const h of [bearer(), page()]) {
+        const r = await v(p, h);
+        answers.push(r.status);
+        expect(r.body).not.toContain(OUTSIDE_TEXT);
+        expect(r.body).not.toContain("localhost");
+      }
     }
-    expect(answers).toEqual([403, 403, 403, 403, 403]);
+    expect(answers).toEqual(Array(10).fill(403));
   });
 
   it("inside a repo it validates; a file that won't parse is named by line, its text never quoted", async () => {
-    const ok = await v(path.join(repos, "shop"), bearer());
-    expect(ok.status).toBe(200);
-    expect(JSON.parse(ok.body)).toMatchObject({ valid: true });
+    for (const h of [bearer(), page()]) {
+      const ok = await v(path.join(repos, "shop"), h);
+      expect(ok.status).toBe(200);
+      expect(JSON.parse(ok.body)).toMatchObject({ valid: true });
+    }
     const bad = await v(path.join(repos, "shop", "broken.yml"), bearer());
     expect(bad.status).toBe(200);
     expect(JSON.parse(bad.body)).toMatchObject({ valid: false });
