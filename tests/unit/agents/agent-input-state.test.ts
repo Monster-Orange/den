@@ -193,6 +193,8 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
   it("no session start it can read: the agent record's start", async () => {
     const r = await rig();
     await started(r, null);
+    const recAt = Date.parse(record(r, "planner").startedAt as string);
+    write(r, cutAt(new Date(recAt - 60_000)));
     const d = resolveAgentsDeps(r.deps);
     // A session list whose entries carry no start.
     const blank = <C extends { list: () => Promise<SessionInfo[]> }>(c: C) =>
@@ -208,8 +210,6 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
         return c ? blank(c) : c;
       },
     };
-    const recAt = Date.parse(record(r, "planner").startedAt as string);
-    write(r, cutAt(new Date(recAt - 60_000)));
     expect(await agentInputState(noStart, "planner")).toBe("idle");
     write(r, cutAt(new Date(recAt + 60_000)));
     expect(await agentInputState(noStart, "planner")).toBe("busy");
