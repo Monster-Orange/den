@@ -678,8 +678,15 @@ describe("the CLI: web login, web sessions, web logout", () => {
     const u = new URL(link);
     // D80: on the install's address. This one had none: the server took
     // its edge route's once at start (the migration), never localhost.
+    // Issue 455: unless another server answers that address (something on
+    // this machine's port 80): then Den's own port, which it proved.
+    const held = await new Promise<boolean>((done) => {
+      const c = net.connect(80, "127.0.0.1");
+      c.once("connect", () => (c.destroy(), done(true)));
+      c.once("error", () => done(false));
+    });
     expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
-      "http://den.acme.localhost",
+      held ? `http://localhost:${port}` : "http://den.acme.localhost",
       "/auth",
       "/settings",
     ]);

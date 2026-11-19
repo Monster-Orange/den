@@ -95,6 +95,7 @@ import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell, shellUsedAt } from "/shell-pick.js";
+import { startFailText, terminalFailText } from "/pty-refusal.js";
 import {
   forPage,
   isShell,
@@ -5046,7 +5047,7 @@ function startBody() {
 
 function showStartError(err) {
   const el = $d("#ag-err");
-  el.textContent = err?.message || String(err);
+  el.textContent = startFailText(err, t);
   // AG-10.10: that agent is running: offer to open it.
   const running = err?.data?.running;
   if (running?.sessionId) {
@@ -6398,9 +6399,8 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
     if (r?.session?.id) await bringShell(r.session.id);
   } catch (err) {
-    window.denShell?.toast?.(
-      t("ag.term.failed", { e: err?.message || String(err) }),
-    );
+    // Issue 503: never silent; no PTY has its own words.
+    window.denShell?.toast?.(terminalFailText(err, t));
   }
 }
 

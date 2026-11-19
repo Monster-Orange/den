@@ -65,9 +65,9 @@ describe.each(AGENT_ENVS)("inside an agent's session (%s set)", (k, v) => {
     expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   };
 
-  it("web login --no-wait refuses", () => {
+  it("web login --no-wait refuses", async () => {
     const { o, io: i } = io();
-    expectRefused(cmdWebLogin(["--no-wait"], i), o);
+    expectRefused(await cmdWebLogin(["--no-wait"], i), o);
   });
 
   it("web login (waits) refuses", async () => {
@@ -102,9 +102,9 @@ describe("in the person's own terminal", () => {
     delete process.env.DEN_AGENT;
     delete process.env.DEN_ACTOR_TOKEN;
   });
-  it("web login --no-wait prints a link", () => {
+  it("web login --no-wait prints a link", async () => {
     const { o, io: i } = io();
-    expect(cmdWebLogin(["--no-wait"], i)).toBe(0);
+    expect(await cmdWebLogin(["--no-wait"], i)).toBe(0);
     expect(o.out).toMatch(/^https:\/\/den\.acme\.example\.com\/auth\?c=/);
   });
   it("web claim-link prints one link to the page with ?claim=", () => {
