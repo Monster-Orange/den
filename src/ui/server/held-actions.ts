@@ -102,6 +102,7 @@ import {
   runClone,
   type GitRunner,
 } from "../../shared/repo-clone.js";
+import type { AgentGitSettings } from "../../shared/agents/git-signing.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
   readPolicySetting,
@@ -239,6 +240,11 @@ export interface HeldActionDeps {
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
   gitRun?: GitRunner;
+  /**
+   * Issue 523: agents.git (the agents' signing key), which a clone gets as
+   * its own config. Unset or undefined: the clone's config is left alone.
+   */
+  agentsGit?: () => AgentGitSettings | undefined;
   /** SRV-P2: persona_create's and persona_update's checks and writes. */
   personas?: {
     checkCreate: (
@@ -720,6 +726,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             "ap.det.repo_clone.into",
             { path: t.dest },
           ),
+          ...(d.agentsGit?.()
+            ? [
+                line(
+                  "Its own git config gets the agents' signing key (gpg.format ssh), so commits there never use your key.",
+                  "ap.det.repo_clone.sign",
+                ),
+              ]
+            : []),
           line(
             "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
             "ap.det.repo_clone.then",
@@ -737,7 +751,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         d.reposRoot!(),
       );
       if (!t.ok) return t;
-      const out = await runClone(t, d.gitRun);
+      const signing = d.agentsGit?.();
+      const out = await runClone(t, d.gitRun, signing ? { signing } : {});
       return out.ok
         ? {
             ...out,

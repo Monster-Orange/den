@@ -2805,6 +2805,8 @@
       "With git and your own credentials (not gh: it isn't GitHub).",
     "ap.det.repo_clone.into":
       "Into: {path} (a new folder; nothing there changes).",
+    "ap.det.repo_clone.sign":
+      "Its own git config gets the agents' signing key (gpg.format ssh), so commits there never use your key.",
     "ap.det.repo_clone.then":
       "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
     "ap.det.agent_import.what": "Project: {project}. Persona: {persona}.",

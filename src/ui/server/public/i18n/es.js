@@ -1937,6 +1937,8 @@
       "Con git y tus propias credenciales (no gh: no es GitHub).",
     "ap.det.repo_clone.into":
       "En: {path} (una carpeta nueva; nada de lo que ya hay cambia).",
+    "ap.det.repo_clone.sign":
+      "Su propia configuración de git recibe la clave de firma de los agentes (gpg.format ssh), así que los commits de ahí nunca usan tu clave.",
     "ap.det.repo_clone.then":
       "Después el agente redacta su manifiesto (manifest_draft) y pide añadirlo (repo_add): cada paso te lo vuelve a preguntar.",
     "ap.det.agent_import.what": "Proyecto: {project}. Persona: {persona}.",

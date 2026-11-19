@@ -1877,6 +1877,8 @@
       "git とあなた自身の認証情報で行います（GitHub ではないので gh は使いません）。",
     "ap.det.repo_clone.into":
       "先: {path}（新しいフォルダーです。既にあるものは何も変わりません）。",
+    "ap.det.repo_clone.sign":
+      "このフォルダー独自の git 設定にエージェントの署名鍵（gpg.format ssh）が入るので、そこでのコミットにあなたの鍵が使われることはありません。",
     "ap.det.repo_clone.then":
       "その後、エージェントがマニフェストを下書きし（manifest_draft）、追加を頼みます（repo_add）。どちらも改めてあなたに確認します。",
     "ap.det.agent_import.what":
