@@ -2,17 +2,19 @@
 // sign-in session lives only there, as a host-only Secure cookie, and a
 // loopback name gets none (its sign-in page sends the browser to the
 // address). With no working https address, sign-in where the browser is
-// still works: no lockout. After the address stops answering, loopback
-// sign-in comes back once web.address_unknown_keep_seconds passes. Its
+// still works: no lockout, proven by a whole sign-in (a fresh link from
+// `web login --no-wait`, opened with no cookie, its session cookie, then a
+// signed-in request). After the address stops answering, the same whole
+// sign-in works again once web.address_unknown_keep_seconds passes. Its
 // first four clauses only read; the last runs after them, through the
 // harness's ctx.addressDead (the address down, the window set short).
 export const issue = 601;
 export const clauses = [
   "a real browser signed in through the address holds a host-only Secure __Host- session cookie, and the session answers signed in",
   "once the address is proven, a loopback sign-in page sends the browser to the address (303) and sets no cookie",
-  "with no working https address, the loopback sign-in page is served, not sent away: no lockout",
+  "with no working https address, a person signs in on loopback from start to finish (link, session cookie, a signed-in request): no lockout",
   "doctor's Sign-in row says where the sign-in lives",
-  "after the address stops answering, loopback sign-in works again once the window passes",
+  "after the address stops answering and the window passes, a person signs in on loopback from start to finish",
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 300000;
@@ -82,12 +84,16 @@ export async function run(ctx) {
     /* no port: the loopback clauses can't run */
   }
   const signin = port ? await loopback(port, "/signin") : null;
+  // No https address: a whole sign-in where the browser is (clause 3).
+  const whole = port && !proven ? await signInOnLoopback(ctx, port) : null;
 
   // Last: the address is down after this.
   let afterDead;
   if (proven && origin.startsWith("https:") && typeof ctx.addressDead === "function") {
     try {
       afterDead = await ctx.addressDead({ keepSeconds: 30, maxMs: 180000 });
+      if (port && !afterDead.timedOut && !afterDead.windowTimedOut)
+        afterDead.whole = await signInOnLoopback(ctx, port);
     } catch (e) {
       afterDead = { error: String(e?.message ?? e).slice(0, 80) };
     }
@@ -109,23 +115,55 @@ export async function run(ctx) {
     row: row ? { status: row.status, detail: row.detail } : null,
     port,
     signin,
+    ...(whole ? { whole } : {}),
     ...(afterDead ? { afterDead } : {}),
   };
   ctx.log?.(`601: ${JSON.stringify(seen)}`);
   return seen;
 }
 
-/** Signed out, the sign-in page answers 401 with the page (since 0.4.71),
- * or 200: either is the page served where the browser is, not sent away. */
-function served(x) {
-  return (
-    !!x &&
-    !x.error &&
-    (x.status === 200 || x.status === 401) &&
-    !x.location &&
-    x.page !== false
-  );
+/** A whole loopback sign-in, as a person does it with no https address: a
+ * fresh one-time link from the CLI, opened with no cookie (it answers 303
+ * with the session cookie), then /api/session with that cookie only. */
+async function signInOnLoopback(ctx, port) {
+  const base = `http://127.0.0.1:${port}`;
+  const out = { step: "link", ok: false };
+  try {
+    const r = await ctx.cli(["web", "login", "--no-wait", "--origin", base]);
+    const link = /https?:\/\/\S+\/auth\?\S+/.exec(String(r?.out ?? ""))?.[0];
+    if (!link) return { ...out, note: String(r?.err ?? "").slice(0, 120) };
+    out.step = "auth";
+    const a = await fetch(link, { redirect: "manual" });
+    out.authStatus = a.status;
+    const to = a.headers.get("location");
+    out.authTo = !to
+      ? ""
+      : new URL(to, base).origin === base
+        ? "loopback"
+        : "elsewhere";
+    const jar = /(den_session[^=;]*)=([^;]+)/i.exec(
+      a.headers.get("set-cookie") ?? "",
+    );
+    if (!jar) return out;
+    out.cookie = jar[1].replace(/\d+$/, "…");
+    out.step = "session";
+    const s = await fetch(`${base}/api/session`, {
+      headers: { cookie: `${jar[1]}=${jar[2]}` },
+    });
+    const b = await s.json().catch(() => ({}));
+    out.status = s.status;
+    out.signedIn = !!b.signedIn;
+    out.ok = s.status === 200 && out.signedIn;
+    return out;
+  } catch (e) {
+    return { ...out, error: String(e?.message ?? e).slice(0, 80) };
+  }
 }
+
+const said = (x) =>
+  x
+    ? `stopped at ${x.step}${x.authStatus ? `; /auth → ${x.authStatus}${x.authTo ? " to " + x.authTo : ""}` : ""}${x.cookie ? `; cookie ${x.cookie}` : ""}${x.status ? `; /api/session → ${x.status} signedIn ${x.signedIn}` : ""}${x.error ? `; ${x.error}` : ""}${x.note ? `; ${x.note}` : ""}`
+    : "not run";
 
 export function expect(cells) {
   const r = (Array.isArray(cells) ? cells[0]?.result : cells) ?? {};
@@ -167,8 +205,8 @@ export function expect(cells) {
         }
       : {
           clause: clauses[2],
-          ok: served(r.signin),
-          note: `loopback /signin → ${r.signin?.status}${r.signin?.location ? " to " + r.signin.location : ""}${r.signin?.page ? ", the page" : ""}`,
+          ok: !!r.whole?.ok,
+          note: `${r.whole?.ok ? "signed in" : "not signed in"}: ${said(r.whole)} (loopback /signin → ${r.signin?.status})`,
         },
     {
       clause: clauses[3],
@@ -180,18 +218,20 @@ export function expect(cells) {
     },
     !r.afterDead
       ? { clause: clauses[4], ok: null, skip: "needs-dead-address" }
-      : r.afterDead.timedOut
+      : r.afterDead.timedOut || r.afterDead.windowTimedOut
         ? {
             clause: clauses[4],
             ok: false,
-            note: `the address never stopped counting (waited ${r.afterDead.waitedMs} ms)`,
+            note: r.afterDead.timedOut
+              ? `the address never stopped counting (waited ${r.afterDead.waitedMs} ms)`
+              : `loopback still sent to the address after ${r.afterDead.windowMs} ms`,
           }
         : {
             clause: clauses[4],
-            ok: served(r.afterDead),
+            ok: !!r.afterDead.whole?.ok,
             note: r.afterDead.error
               ? `addressDead failed: ${r.afterDead.error}`
-              : `loopback /signin → ${r.afterDead.status} after ${r.afterDead.waitedMs} ms`,
+              : `${r.afterDead.whole?.ok ? "signed in" : "not signed in"} ${r.afterDead.windowMs ?? "?"} ms after the address left: ${said(r.afterDead.whole)}`,
           },
   ];
 }
