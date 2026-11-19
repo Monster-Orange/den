@@ -198,3 +198,12 @@ export function expectedStart(
   for (const w of ahead) free += w.estimateMin * 60_000;
   return free;
 }
+
+/** Idle flag: whether a flagged slot may be cancelled for a release run (red-first stub). */
+export function idleCancellable(
+  _e: GateEntry,
+  _s: Pick<GateSettings, "idleCancelGraceMinutes">,
+  _now: number,
+): boolean {
+  return false;
+}

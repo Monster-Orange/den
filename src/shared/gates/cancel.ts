@@ -100,3 +100,12 @@ export function cancelSlot(
   }
   return { ...c, ok: true, done: Promise.resolve(true) };
 }
+
+/** Idle flag: a release run cancels flagged slots (red-first stub). */
+export function cancelIdleFor(
+  _store: GateStore,
+  _releaseId: string,
+  _d?: StopDeps,
+): { id: string; done: Promise<boolean> }[] {
+  return [];
+}

@@ -691,3 +691,13 @@ export class GateStore {
     return this.release(id);
   }
 }
+
+/** Idle flag: CPU time as ps prints it, in seconds (red-first stub). */
+export function parseCpuTime(_s: string): number | null {
+  return null;
+}
+
+/** Idle flag: a process group's summed CPU seconds (red-first stub). */
+export function groupCpuSeconds(_pgid: number): number | null {
+  return null;
+}
