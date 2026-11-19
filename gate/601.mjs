@@ -123,15 +123,14 @@ export async function run(ctx) {
 }
 
 /** A whole loopback sign-in, as a person does it with no https address: a
- * fresh one-time link from the CLI, opened with no cookie (it answers 303
+ * fresh one-time link (ctx.loginLink, never logged), opened with no cookie (it answers 303
  * with the session cookie), then /api/session with that cookie only. */
 async function signInOnLoopback(ctx, port) {
   const base = `http://127.0.0.1:${port}`;
   const out = { step: "link", ok: false };
   try {
-    const r = await ctx.cli(["web", "login", "--no-wait", "--origin", base]);
-    const link = /https?:\/\/\S+\/auth\?\S+/.exec(String(r?.out ?? ""))?.[0];
-    if (!link) return { ...out, note: String(r?.err ?? "").slice(0, 120) };
+    // The harness's raw link, in memory only: never in a result, note or log.
+    const link = await ctx.loginLink({ origin: base });
     out.step = "auth";
     const a = await fetch(link, { redirect: "manual" });
     out.authStatus = a.status;
