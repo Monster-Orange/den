@@ -1599,7 +1599,13 @@ describe("POST /api/agents/terminal-host/restart (issue 500)", () => {
     const a = await api({
       restartHost: async () => {
         asked++;
-        return { from: 4242, to: 4343, forced: true, ended: null, fromVersion: "0.4.70" };
+        return {
+          from: 4242,
+          to: 4343,
+          forced: true,
+          ended: null,
+          fromVersion: "0.4.70",
+        };
       },
     });
     const r = await a.call("POST", "/api/agents/terminal-host/restart", {});
@@ -1622,7 +1628,9 @@ describe("POST /api/agents/terminal-host/restart (issue 500)", () => {
   it("a restart that fails says why (503), audited as refused", async () => {
     const a = await api({
       restartHost: async () => {
-        throw new Error("pid 4242 from sessions.host.json is not that host any more");
+        throw new Error(
+          "pid 4242 from sessions.host.json is not that host any more",
+        );
       },
     });
     const r = await a.call("POST", "/api/agents/terminal-host/restart", {});

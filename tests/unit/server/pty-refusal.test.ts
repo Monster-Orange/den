@@ -72,16 +72,19 @@ describe("issue 500: a terminal host that doesn't answer says so, with Restart",
     ["en", "shell.js", /doesn't answer/, "Restart"],
     ["es", "i18n/es.js", /no responde/, "Reiniciar"],
     ["ja", "i18n/ja.js", /応答しません/, "再起動"],
-  ])("%s: the toast names the reason and offers Restart", (_l, file, word, button) => {
-    const t = tOf(file);
-    const toast = terminalFailText(stuck, t);
-    expect(toast).toMatch(word);
-    expect(toast).toContain("did not answer within 15 s");
-    expect(startFailText(stuck, t)).toBe(toast);
-    expect(offersHostRestart(stuck)).toBe(true);
-    expect(t("ag.term.restartHost")).toBe(button);
-    // The working pop-up's words for the Restart.
-    for (const k of ["busy.hostW", "busy.hostS", "busy.hostF"])
-      expect(t(k)).toBeTruthy();
-  });
+  ])(
+    "%s: the toast names the reason and offers Restart",
+    (_l, file, word, button) => {
+      const t = tOf(file);
+      const toast = terminalFailText(stuck, t);
+      expect(toast).toMatch(word);
+      expect(toast).toContain("did not answer within 15 s");
+      expect(startFailText(stuck, t)).toBe(toast);
+      expect(offersHostRestart(stuck)).toBe(true);
+      expect(t("ag.term.restartHost")).toBe(button);
+      // The working pop-up's words for the Restart.
+      for (const k of ["busy.hostW", "busy.hostS", "busy.hostF"])
+        expect(t(k)).toBeTruthy();
+    },
+  );
 });

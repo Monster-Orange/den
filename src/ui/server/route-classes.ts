@@ -790,6 +790,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/agents/terminal-host/restart",
+    "issue 500: restarts the terminal host (by signal when it doesn't answer); its agents and terminals end; a person's only",
+  ),
+  S(
+    ["POST"],
     "/api/agents/restart-stale",
     "D44: restarts every agent with out-of-date tools at its next idle, same conversation: runtimes in PTYs; a person's only",
   ),

@@ -65,6 +65,11 @@ export interface OnboardCheck {
     code?: string | null;
     pty: { path: string; version: string | null; id: string | null } | null;
   };
+  /**
+   * Issue 500: the terminal host doesn't answer; `host` is then what it
+   * wrote to sessions.host.json as it began to serve.
+   */
+  stuck?: boolean;
 }
 
 /** The web row's words when the sign-in lives on a host other local apps share. */

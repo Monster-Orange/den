@@ -342,6 +342,7 @@ export class SessionHost {
       }
       this.load();
       await this.bind(socket);
+      this.writeInfo();
       return "listening";
     } finally {
       try {
@@ -349,6 +350,45 @@ export class SessionHost {
       } catch {
         /* gone */
       }
+    }
+  }
+
+  /**
+   * Issue 500: what this host runs, in sessions.host.json, so a host that
+   * stops answering can still be named (its pid, version, start) by doctor
+   * and restarted. Written as it begins to serve; best effort.
+   */
+  private writeInfo(): void {
+    const file = this.paths.info;
+    const tmp = `${file}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(
+        tmp,
+        JSON.stringify({
+          pid: process.pid,
+          startedAt: this.startedAt,
+          den: this.denVersion,
+          code: this.codeId,
+        }) + "\n",
+        { mode: 0o600 },
+      );
+      fs.renameSync(tmp, file);
+    } catch {
+      /* best effort: doctor says the version isn't known */
+    }
+  }
+
+  /** Issue 500: its sessions.host.json goes with it (only its own). */
+  private dropInfo(): void {
+    try {
+      const rec = JSON.parse(fs.readFileSync(this.paths.info, "utf-8")) as {
+        pid?: unknown;
+        startedAt?: unknown;
+      };
+      if (rec.pid === process.pid && rec.startedAt === this.startedAt)
+        fs.unlinkSync(this.paths.info);
+    } catch {
+      /* none, or another host's */
     }
   }
 
@@ -678,6 +718,7 @@ export class SessionHost {
         if (typeof den !== "string" || !den || den.length > 64)
           throw new Refusal("bad-request", "adopt needs den: a version");
         this.denVersion = den;
+        this.writeInfo();
         return { den };
       }
       case "ptys":
@@ -925,7 +966,10 @@ export class SessionHost {
     }
     for (const c of this.conns) c.socket.destroy();
     const server = this.server;
-    if (server) await new Promise<void>((r) => server.close(() => r()));
+    if (server) {
+      this.dropInfo();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
   }
 }
 

@@ -4,6 +4,8 @@
  *
  *   sessions.sock         the host's unix socket (0600)
  *   sessions.lock         held only while a host starts
+ *   sessions.host.json    the serving host's pid, version and start (issue
+ *                         500: names a host that doesn't answer)
  *   sessions/<id>.json    a session's record (no argv, no env)
  *   sessions/<id>.log     its scrollback (0600)
  */
@@ -12,6 +14,8 @@ import * as path from "path";
 export interface SessionPaths {
   socket: string;
   lock: string;
+  /** Issue 500: what the serving host wrote as it began to serve. */
+  info: string;
   dir: string;
 }
 
@@ -19,6 +23,7 @@ export function sessionPaths(stateDir: string): SessionPaths {
   return {
     socket: path.join(stateDir, "sessions.sock"),
     lock: path.join(stateDir, "sessions.lock"),
+    info: path.join(stateDir, "sessions.host.json"),
     dir: path.join(stateDir, "sessions"),
   };
 }

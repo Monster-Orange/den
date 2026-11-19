@@ -2,8 +2,9 @@
  * Issue 500: a terminal host that doesn't answer says so, and a person can
  * restart it.
  *
- * - A hello waits at most sessions.host_answer_timeout_seconds, then fails
- *   "timeout" (before: it waited as long as the connection lasted, so
+ * - A hello waits at most Settings › Terminal host wait (user.yml
+ *   agents_list.host_timeout_seconds), then fails "timeout" (before: it
+ *   waited as long as the connection lasted, so
  *   Terminal's click and doctor waited for good, or said nothing).
  * - doctor's Host row is ✗ with the reason and the version the host wrote
  *   to sessions.host.json as it began to serve.
@@ -24,6 +25,7 @@ import {
   connectHost,
   ensureHost,
   HostError,
+  hostAnswerMs,
   noHost,
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
@@ -54,9 +56,12 @@ afterEach(async () => {
   for (const h of hosts.splice(0)) await h.close();
   if (tmp)
     try {
-      const c = await connectHost(sessionPaths(path.join(tmp, "state")).socket, {
-        timeoutMs: 500,
-      });
+      const c = await connectHost(
+        sessionPaths(path.join(tmp, "state")).socket,
+        {
+          timeoutMs: 500,
+        },
+      );
       await c.shutdown();
       c.close();
     } catch {
@@ -132,6 +137,15 @@ const existing =
   };
 
 describe("issue 500: a hello waits at most the host-answer timeout", () => {
+  it("the wait is Settings › Terminal host wait, in ms; 10 s when user.yml can't be read", () => {
+    expect(hostAnswerMs(() => ({ host_timeout_seconds: 42 }))).toBe(42_000);
+    expect(
+      hostAnswerMs(() => {
+        throw new Error("agents_list.host_timeout_seconds must be a number");
+      }),
+    ).toBe(10_000);
+  });
+
   it("a host that holds its socket and answers nothing fails 'timeout' in time", async () => {
     const { socket } = setup();
     const server = net.createServer(() => undefined); // answers nothing
@@ -206,8 +220,7 @@ describe("issue 500: Restart ends a stuck host and starts a new one", () => {
       socket,
       infoFile: info,
       connectExisting: existing(socket),
-      connect: () =>
-        ensureHost({ socket, spawnHost: () => startReal(state) }),
+      connect: () => ensureHost({ socket, spawnHost: () => startReal(state) }),
       termWaitMs: 2000,
     });
     expect(r.forced).toBe(true);
@@ -243,7 +256,11 @@ describe("issue 500: Restart ends a stuck host and starts a new one", () => {
       }),
     );
     await expect(
-      stopAnyHost({ socket, infoFile: info, connectExisting: existing(socket) }),
+      stopAnyHost({
+        socket,
+        infoFile: info,
+        connectExisting: existing(socket),
+      }),
     ).rejects.toThrow(/is not that host any more/);
     expect(alive(other.pid!)).toBe(true);
   }, 15_000);
@@ -263,7 +280,11 @@ describe("issue 500: Restart ends a stuck host and starts a new one", () => {
       }),
     );
     await expect(
-      stopAnyHost({ socket, infoFile: info, connectExisting: existing(socket) }),
+      stopAnyHost({
+        socket,
+        infoFile: info,
+        connectExisting: existing(socket),
+      }),
     ).rejects.toThrow(/is not that host any more/);
   }, 10_000);
 
@@ -278,8 +299,7 @@ describe("issue 500: Restart ends a stuck host and starts a new one", () => {
       socket,
       infoFile: info,
       connectExisting: existing(socket, 5000),
-      connect: () =>
-        ensureHost({ socket, spawnHost: () => startReal(state) }),
+      connect: () => ensureHost({ socket, spawnHost: () => startReal(state) }),
       kill: (_p, sig) => void sent.push(sig),
     });
     expect(r).toMatchObject({ forced: false, from: pid, ended: 0 });

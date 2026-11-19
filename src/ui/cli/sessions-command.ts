@@ -45,7 +45,6 @@ import {
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../../shared/sessions/env.js";
 import { runSessionHost } from "../../shared/sessions/host.js";
-import { stopHost } from "../../shared/sessions/host-refresh.js";
 import {
   inWorkspace,
   resolveSession,
@@ -770,21 +769,25 @@ async function host(args: string[], d: Resolved): Promise<number> {
       standBy: Boolean(p.flags["--stand-by"]),
     });
   }
-  const c = await d.connectExisting();
-  if (!c) {
+  // Issue 563: the same stop the web server uses after an update. Issue
+  // 500: a host that doesn't answer is ended by signal (only the process
+  // its sessions.host.json names).
+  const { stopAnyHost } = await import("../../shared/sessions/host-stuck.js");
+  const sp = sessionPaths(d.stateDir());
+  const r = await stopAnyHost({
+    socket: sp.socket,
+    infoFile: sp.info,
+    connectExisting: () => d.connectExisting(),
+  });
+  if (!r.from) {
     d.out("no session host is running");
     return 0;
   }
-  // Issue 563: the same stop the web server uses after an update.
-  const { pid, ended: running } = await stopHost(
-    c,
-    sessionPaths(d.stateDir()).socket,
-  );
+  const running = r.ended ?? 0;
   d.out(
-    `stopped the session host (pid ${pid})` +
-      (running
-        ? `; ${running} running session${running === 1 ? "" : "s"} ended`
-        : ""),
+    `stopped the terminal host (pid ${r.from})` +
+      (r.forced ? ": it didn't answer, so it was ended by signal" : "") +
+      (running ? `; agents and terminals that ended: ${running}` : ""),
   );
   return 0;
 }

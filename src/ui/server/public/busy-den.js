@@ -10,7 +10,7 @@
  *
  * Auto-close (a fast success says so in a toast, a slow one closes after
  * 1.2 s): save, link, connect, check-address, check-hub, ask-hub, create-hub,
- * start-agent, restart-agent, agent-mode, fresh-start, report-preview,
+ * start-agent, restart-agent, restart-host, agent-mode, fresh-start, report-preview,
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
@@ -152,6 +152,16 @@ export const DEN_ACTIONS = {
       working: "busy.startW",
       success: "busy.startS",
       failure: "busy.startF",
+    },
+  },
+  // Issue 500: Terminal's Restart for a terminal host that doesn't answer.
+  "restart-host": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.hostW",
+      success: "busy.hostS",
+      failure: "busy.hostF",
     },
   },
   "restart-agent": {

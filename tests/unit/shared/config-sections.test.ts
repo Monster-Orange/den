@@ -132,21 +132,4 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
       } as unknown as DenConfig),
     ).toThrow(/sessions.host_restart_note/);
   });
-
-  it("issue 500: sessions.host_answer_timeout_seconds, 15 by default, 1 to 600", () => {
-    expect(readSessionsConfig({} as DenConfig).hostAnswerTimeoutSeconds).toBe(
-      15,
-    );
-    expect(
-      readSessionsConfig({
-        sessions: { host_answer_timeout_seconds: 120 },
-      } as unknown as DenConfig).hostAnswerTimeoutSeconds,
-    ).toBe(120);
-    for (const bad of [0, 601, "15", -1])
-      expect(() =>
-        readSessionsConfig({
-          sessions: { host_answer_timeout_seconds: bad },
-        } as unknown as DenConfig),
-      ).toThrow(/sessions.host_answer_timeout_seconds/);
-  });
 });

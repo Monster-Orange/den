@@ -7700,7 +7700,10 @@ export async function startPlainSession(
     }
   const { plainSessionEnv } = await import("./sessions-command.js");
   return withClient(d, async (c) => {
-    const names = new Set((await c.list()).map((s) => s.name));
+    // Issue 500: a host that doesn't answer fails in time ("timeout").
+    const names = new Set(
+      (await c.list({ timeoutMs: c.answerMs })).map((s) => s.name),
+    );
     let n = 1;
     let name = sessionName(d.dist, ws, "shell");
     while (names.has(name)) name = sessionName(d.dist, ws, `shell-${++n}`);

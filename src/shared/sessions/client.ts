@@ -5,6 +5,7 @@
  */
 import { EventEmitter } from "events";
 import * as net from "net";
+import { agentsListWaits } from "../den-config.js";
 import {
   frame,
   LineReader,
@@ -60,6 +61,11 @@ export class HostClient extends EventEmitter {
   /** Issue 563: the native PTY module the host loaded (null: none yet). */
   hostPty: { path: string; version: string | null; id: string | null } | null =
     null;
+  /**
+   * Issue 500: how long a hello, a start or a shutdown waits for the host
+   * (Settings › Terminal host wait); then it fails ("timeout").
+   */
+  answerMs: number | undefined = undefined;
 
   constructor(private readonly socket: net.Socket) {
     super();
@@ -211,7 +217,7 @@ export class HostClient extends EventEmitter {
   }
 
   async hello(): Promise<void> {
-    const r = await this.request("hello");
+    const r = await this.request("hello", {}, this.answerMs);
     this.hostPid = Number(r.pid);
     this.hostStartedAt = String(r.startedAt ?? "");
     this.hostLaunchd = typeof r.launchd === "string" ? r.launchd : null;
@@ -250,16 +256,20 @@ export class HostClient extends EventEmitter {
       refusedEnv?: string[];
     } = {},
   ): Promise<SessionInfo> {
-    const r = await this.request("start", {
-      spec,
-      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-      ...(opts.pool !== undefined ? { pool: opts.pool } : {}),
-      ...(opts.keptEnv?.length || opts.refusedEnv?.length
-        ? { actor: opts.actor ?? "unknown" }
-        : {}),
-      ...(opts.keptEnv?.length ? { keptEnv: opts.keptEnv } : {}),
-      ...(opts.refusedEnv?.length ? { refusedEnv: opts.refusedEnv } : {}),
-    });
+    const r = await this.request(
+      "start",
+      {
+        spec,
+        ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+        ...(opts.pool !== undefined ? { pool: opts.pool } : {}),
+        ...(opts.keptEnv?.length || opts.refusedEnv?.length
+          ? { actor: opts.actor ?? "unknown" }
+          : {}),
+        ...(opts.keptEnv?.length ? { keptEnv: opts.keptEnv } : {}),
+        ...(opts.refusedEnv?.length ? { refusedEnv: opts.refusedEnv } : {}),
+      },
+      this.answerMs,
+    );
     return r.info as SessionInfo;
   }
 
@@ -334,7 +344,7 @@ export class HostClient extends EventEmitter {
 
   /** Stop the host: every running session ends. */
   async shutdown(): Promise<void> {
-    await this.request("shutdown");
+    await this.request("shutdown", {}, this.answerMs);
   }
 
   close(): void {
@@ -349,8 +359,36 @@ export function noHost(e: unknown): boolean {
   return code === "ENOENT" || code === "ECONNREFUSED";
 }
 
-/** Connect to the host on `socket` and say hello (checks the protocol). */
-export function connectHost(socket: string): Promise<HostClient> {
+/** Issue 500: the host wait when user.yml can't be read (Settings' default). */
+export const DEFAULT_HOST_WAIT_SECONDS = 10;
+
+/**
+ * Issue 500: Settings › "Terminal host wait" (user.yml
+ * agents_list.host_timeout_seconds, 1 to 600, default 10) in ms: how long
+ * Den waits for the terminal host's hello, a start or a stop. Its default
+ * when it can't be read (Settings names a bad value).
+ */
+export function hostAnswerMs(
+  waits: () => { host_timeout_seconds: number } = () => agentsListWaits(),
+): number {
+  try {
+    return waits().host_timeout_seconds * 1000;
+  } catch {
+    return DEFAULT_HOST_WAIT_SECONDS * 1000;
+  }
+}
+
+/**
+ * Connect to the host on `socket` and say hello (checks the protocol).
+ * Issue 500: a host that doesn't answer within `timeoutMs` (default
+ * Settings › Terminal host wait) fails with HostError "timeout";
+ * the client's starts and shutdown wait as long.
+ */
+export function connectHost(
+  socket: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<HostClient> {
+  const answerMs = opts.timeoutMs ?? hostAnswerMs();
   return new Promise((resolve, reject) => {
     const s = net.connect(socket);
     const fail = (e: Error) => reject(e);
@@ -358,6 +396,7 @@ export function connectHost(socket: string): Promise<HostClient> {
     s.once("connect", () => {
       s.off("error", fail);
       const c = new HostClient(s);
+      c.answerMs = answerMs;
       c.hello().then(
         () => resolve(c),
         (e: Error) => {

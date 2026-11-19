@@ -549,6 +549,9 @@
     "busy.restartW": "{name} を再起動しています…",
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
+    "busy.hostW": "ターミナルホストを再起動しています…",
+    "busy.hostS": "ターミナルホストを再起動しました。",
+    "busy.hostF": "ターミナルホストを再起動できませんでした。",
     "busy.modeW": "{name} のモードを設定しています…",
     "busy.modeS": "{name} のモードを設定しました。",
     "busy.modeF":
@@ -919,7 +922,7 @@
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
-      "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "__DEN_TITLE__ がターミナルホストを待つ時間です (エージェント一覧、ターミナルを開くとき、doctor)。これを過ぎると、ホストが応答しないことを表示します。ターミナルでは再起動を選べ、一覧は再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.agents.compaction_loop": "圧縮の繰り返し: 回数",
     "set.agents.compaction_loop.d":
       "下の分数のうちにエージェントが自動圧縮をこの回数より多く行うと、ベルが圧縮を繰り返していると知らせます。1 回の繰り返しにつきベルは 1 回です。__DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -1749,6 +1752,9 @@
     "ag.term.ptyFailed":
       "Den はターミナルを開けませんでした: このマシンが PTY を割り当てませんでした ({e})。不要なターミナルを閉じるか、doctor を実行してください。",
     "ag.term.noWs": "有効なプロジェクトがありません。先に有効にしてください。",
+    "ag.term.stuck":
+      "Den はターミナルを開けませんでした: ターミナルホストが応答しません ({e})。再起動すると、ターミナルとエージェントが再び起動できます。開いているターミナルは終了します。",
+    "ag.term.restartHost": "再起動",
     "ws.termHere": "ここでターミナル",
     "kind.agent": "エージェント",
     "ag.sub.agents": "エージェント {n}",
