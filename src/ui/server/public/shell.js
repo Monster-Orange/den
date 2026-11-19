@@ -3040,7 +3040,7 @@
       "Port {port} is held by {owner}, so {host} goes to {owner} instead.",
     "edgeAddr.banner.unknown":
       "Port {port} is in use by something __DEN_TITLE__ cannot name, so {host} goes there instead.",
-    "edgeAddr.banner.none": "Nothing answers at {host} yet.",
+    "edgeAddr.banner.none": "Not reachable yet: nothing answers at {host}.",
     "edgeAddr.banner.fix": "Fix it in Edge",
     "edgeAddr.banner.dismiss": "Dismiss",
     "edgeAddr.card.title":
@@ -3053,7 +3053,9 @@
     "edgeAddr.card.unknown":
       "Held by something __DEN_TITLE__ cannot name. __DEN_TITLE__ is serving at {address} instead. Checked {time}.",
     "edgeAddr.card.none":
-      "Nothing answers at {wanted} yet. __DEN_TITLE__ is serving at {address} instead. Checked {time}.",
+      "Not reachable yet: nothing answers at {wanted}. __DEN_TITLE__ is serving at {address} instead. Checked {time}.",
+    "edgeAddr.sub.held": "not running: port {port} is in use",
+    "edgeAddr.sub.none": "not reachable yet",
     "edgeAddr.kind.container": "Docker container",
     "edgeAddr.kind.process": "process",
     "edgeAddr.what": "What would you like to do?",

@@ -289,7 +289,9 @@ describe("something holds the edge port and never answers", () => {
     expect(up.code).toBe(0);
     expect(up.out).toMatch(/OK Den web started/);
     const lines = up.out.match(/Not reachable yet: [^\n]*/g) ?? [];
-    expect(lines).toEqual([`Not reachable yet: nothing answers at ${i.wanted}.`]);
+    expect(lines).toEqual([
+      `Not reachable yet: nothing answers at ${i.wanted}.`,
+    ]);
     // It returns within the probe's limits (1 s, no retry, two targets).
     expect(up.ms).toBeLessThan(60_000);
   }, 150_000);

@@ -2910,7 +2910,7 @@
       "ポート {port} は {owner} が使っているため、{host} は {owner} に届きます。",
     "edgeAddr.banner.unknown":
       "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
-    "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",
+    "edgeAddr.banner.none": "まだ届きません: {host} では何も応答していません。",
     "edgeAddr.banner.fix": "Edge で直す",
     "edgeAddr.banner.dismiss": "閉じる",
     "edgeAddr.card.title":
@@ -2923,7 +2923,9 @@
     "edgeAddr.card.unknown":
       "__DEN_TITLE__ が特定できない何かが使っています。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
     "edgeAddr.card.none":
-      "{wanted} ではまだ何も応答しません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+      "まだ届きません: {wanted} では何も応答していません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.sub.held": "停止中: ポート {port} は使用中です",
+    "edgeAddr.sub.none": "まだ届きません",
     "edgeAddr.kind.container": "Docker コンテナ",
     "edgeAddr.kind.process": "プロセス",
     "edgeAddr.what": "どうしますか？",

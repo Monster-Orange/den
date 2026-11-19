@@ -353,7 +353,11 @@ import { identityKey } from "../../shared/den-identity.js";
 import {
   addressCheckSettings,
   checkAddress,
+  cliLanguage,
+  edgeUncheckedLine,
+  isEdgeAddress,
   portState,
+  statedAddress,
 } from "../../shared/edge/address-check.js";
 import { containerState } from "../../shared/edge/runtime.js";
 import { sh as edgeSh } from "../../shared/edge/exec.js";
@@ -1187,6 +1191,7 @@ import { sweepAccessLog } from "../../shared/edge/access-sweep.js";
 /** #63: how often the edge's raw access log is masked and emptied. */
 const EDGE_ACCESS_SWEEP_MS = 1000;
 import {
+  edgeDomains,
   edgeHttps,
   edgeNames,
   webRouteHosts,
@@ -7980,7 +7985,7 @@ void CRASH_GATE.then(() =>
 );
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
-    printBanner(ADDRESS ?? readWebUrl());
+    void printBanner(ADDRESS ?? readWebUrl());
     // SRV-1a: back from a restart the server agent asked for: tell it.
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
@@ -8453,8 +8458,58 @@ function startUpdateCheck(): void {
   });
 }
 
+/**
+ * The start line's address (issue 455, after 0.4.68: no address is shown
+ * before it is checked). web.url (D80), once it answers as this Den. When
+ * it is the edge address and it doesn't yet, the address that was checked
+ * (Den's own port), and a line that says the edge one isn't checked yet.
+ * An address that isn't the edge's is given as it is (D80).
+ */
+async function bannerAddressLines(
+  address: { url: string } | null,
+): Promise<string[]> {
+  if (!address) return [`  Web UI  →  ${notSetLine(product().cli)}`];
+  let domains: string[] = [];
+  try {
+    domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+  } catch {
+    domains = [];
+  }
+  if (!isEdgeAddress(address.url, domains))
+    return [`  Web UI  →  ${address.url}`];
+  const words = {
+    lang: cliLanguage(),
+    title: readBrand().name,
+    cli: product().cli,
+  };
+  let said: ReturnType<typeof statedAddress> = {
+    address: null,
+    unchecked: address.url,
+  };
+  try {
+    const secret = webSecret.current();
+    said = statedAddress(
+      await checkAddress({
+        webPort: PORT,
+        wanted: address.url,
+        key: secret ? identityKey(secret) : null,
+        cli: product().cli,
+        settings: addressCheckSettings(),
+      }),
+      true,
+    );
+  } catch {
+    /* not checked: said so below */
+  }
+  if (!said.unchecked) return [`  Web UI  →  ${said.address ?? address.url}`];
+  const why = edgeUncheckedLine(said.unchecked, words);
+  return said.address
+    ? [`  Web UI  →  ${said.address}`, `  ${why}`]
+    : [`  Web UI  →  ${why}`];
+}
+
 /** The start banner: the install's address (D80), never localhost. */
-function printBanner(address: { url: string } | null): void {
+async function printBanner(address: { url: string } | null): Promise<void> {
   const pkgVersion = engineVersion() ?? "?";
 
   console.log();
@@ -8465,9 +8520,7 @@ function printBanner(address: { url: string } | null): void {
   console.log(`  ${DEN_SUBTITLE.trim()}`);
   console.log(`  v${pkgVersion}`);
   console.log();
-  console.log(
-    `  Web UI  →  ${address ? address.url : notSetLine(product().cli)}`,
-  );
+  for (const line of await bannerAddressLines(address)) console.log(line);
   console.log();
   // Once per start: a secrets config that leaves Den's own features off.
   for (const w of secretsConfigWarnings()) serverLog(`  ⚠ ${w}`);

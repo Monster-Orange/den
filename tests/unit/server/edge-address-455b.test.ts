@@ -10,10 +10,7 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import {
-  edgeSub,
-  mountEdge,
-} from "../../../src/ui/server/public/edge-page.js";
+import { edgeSub, mountEdge } from "../../../src/ui/server/public/edge-page.js";
 import {
   addressCardView,
   cardShown,
@@ -116,7 +113,7 @@ describe("nothing answers at Den's address: the page says it isn't reachable yet
   it("its line says what the command line says", () => {
     const html = addressCardView(NOTHING);
     expect(html).toContain(
-      "Not reachable yet: nothing answers at <code>http://den.acme.localhost</code>.",
+      'Not reachable yet: nothing answers at <code translate="no">http://den.acme.localhost</code>.',
     );
   });
 
