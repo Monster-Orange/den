@@ -143,7 +143,7 @@ function rowHtml(n, fold) {
   const long = n.msg?.key === "bell.m.asked" && text.length > LONG;
   const sw = switchOf(n.kind);
   return (
-    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
+    `<div class="den-bell-row${link ? " den-bell-go" : ""}${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
