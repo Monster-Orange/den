@@ -61,6 +61,9 @@ const NOT_TOOLS: Readonly<Record<string, string>> = {
   // A parameter of repo_add and manifest_draft, and a folder.
   no_run: "repo_add's and manifest_draft's parameter",
   node_modules: "npm's folder",
+  // Issue 565: report's parameters.
+  add_to: "report's parameter",
+  file_new: "report's parameter",
   // A value of Den's update state (release_status's denUpdate.state).
   rolled_back: "an update's state",
 };
