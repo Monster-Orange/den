@@ -62,6 +62,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   alerts: {
     desktop: true,
     phone: true,
+    // Issue 160: what counts.
+    counts: true,
     quiet_from: true,
     quiet_to: true,
     push_timeout_seconds: true,
@@ -189,6 +191,7 @@ describe("the settings inventory (R21)", () => {
         // Issue 172: alerts outside the bell.
         "alerts.desktop",
         "alerts.phone",
+        "alerts.counts",
         "alerts.quiet_from",
         "alerts.quiet_to",
         // Issue 367: how long a push may take, and a push service keeps it.

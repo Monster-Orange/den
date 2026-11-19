@@ -37,6 +37,8 @@ function feed(user: unknown = null, pushed: Alert[] = []) {
     title: () => "Acme",
     nameOf: (id) => (id === "ag-1" ? "Planner" : id),
     now: () => clock,
+    // Issue 160: alerts follow what counts; this project is watched.
+    watched: () => ["project:north"],
     push: async (a) => {
       pushed.push(a);
     },

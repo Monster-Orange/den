@@ -1081,6 +1081,12 @@
     "set.notifications.desktop.denied":
       "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
     "set.notifications.desktop.none": "This browser can't show notifications.",
+    "set.notifications.counts": "What counts",
+    "set.notifications.counts.d":
+      "Which needs alert you outside the bell. What you watch or what's critical: an agent's question, its own ask for your Allow, a write that is critical, or anything on a project, agent, repo or service you watch or pinned. The bell still has everything.",
+    "set.notifications.counts.o.needs_you": "Everything that needs you",
+    "set.notifications.counts.o.watched_or_critical":
+      "What I watch or what's critical",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",

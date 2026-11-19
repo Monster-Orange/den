@@ -2767,6 +2767,12 @@
     "set.notifications.desktop.denied":
       "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
     "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
+    "set.notifications.counts": "通知の対象",
+    "set.notifications.counts.d":
+      "ベルの外で通知するもの。ウォッチ中または重要なもの：エージェントからの質問、エージェント自身が求めた「許可」、重要な書き込み、またはウォッチ中・ピン留めしたプロジェクト、エージェント、リポジトリ、サービスに関するもの。ベルにはすべて残ります。",
+    "set.notifications.counts.o.needs_you": "あなたが必要なものすべて",
+    "set.notifications.counts.o.watched_or_critical":
+      "ウォッチ中または重要なもの",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",

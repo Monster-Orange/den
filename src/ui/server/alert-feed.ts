@@ -1,7 +1,9 @@
 /**
  * Issue 172: the server's one place an alert is decided (alerts.ts says
  * what one says). A new need comes in (Attention's wait, a held write);
- * the person's switches and quiet hours decide; then it goes two ways:
+ * what counts (the approval policy: what the person watches or what is
+ * critical, alert-rules.js), their switches and quiet hours decide; then
+ * it goes two ways:
  *
  *   - the feed: the last 50 alerts, numbered, that an open Den tab reads
  *     with GET /api/alerts?after=<seq> and shows as a browser
@@ -16,11 +18,14 @@
 import { randomUUID } from "node:crypto";
 import {
   agentLink,
-  alertBody,
+  alertCounts,
+  alertLevel,
+  alertText,
   type AlertPrefs,
   type AlertWhy,
   inQuietHours,
 } from "./alerts.js";
+import { watchedTarget } from "../../shared/approval-policy.js";
 import type { UiLanguage } from "./ui-language.js";
 
 export interface Alert {
@@ -44,6 +49,12 @@ export interface AlertFeedDeps {
   title: () => string;
   nameOf: (agent: string) => string;
   now?: () => number;
+  /**
+   * Issue 160: what the person watches in project `workspace`, as watched
+   * items (approvals.watch, the project's and the install's, and the rail
+   * pins); absent, nothing. Throws on a bad setting: the need alerts.
+   */
+  watched?: (workspace: string) => readonly string[];
   /** Web Push to the person's devices (S2); absent, none. */
   push?: (a: Alert, prefs: AlertPrefs) => Promise<unknown>;
 }
@@ -62,9 +73,20 @@ export class AlertFeed {
 
   /**
    * Agent `agent` in `workspace` began to need its person. The alert, or
-   * null when the person's quiet hours hold it back.
+   * null when it doesn't count (alert-rules.js: what the person watches
+   * or what is critical) or quiet hours hold it back. `critical`: a held
+   * write the policy calls critical; `escalated`: the agent's own ask;
+   * `targets`: what a held write is on (writeTargets), besides the agent
+   * and its project.
    */
-  needs(n: { agent: string; workspace: string; why: AlertWhy }): Alert | null {
+  needs(n: {
+    agent: string;
+    workspace: string;
+    why: AlertWhy;
+    critical?: boolean;
+    escalated?: boolean;
+    targets?: readonly string[];
+  }): Alert | null {
     let prefs: AlertPrefs;
     try {
       prefs = this.d.prefs();
@@ -78,6 +100,7 @@ export class AlertFeed {
     } catch {
       zone = null;
     }
+    if (!alertCounts(prefs.counts, this.level(n))) return null;
     if (inQuietHours(prefs, at, zone)) return null;
     let lang: UiLanguage = "en";
     let name = n.agent;
@@ -95,8 +118,7 @@ export class AlertFeed {
       at: at.toISOString(),
       why: n.why,
       agent: n.agent,
-      title,
-      body: alertBody(lang, n.why, name),
+      ...alertText(lang, title, n.why, name),
       link: agentLink(n.workspace, n.agent),
     };
     this.items.push(a);
@@ -105,6 +127,31 @@ export class AlertFeed {
     if (prefs.phone && this.d.push)
       void this.d.push(a, prefs).catch(() => undefined);
     return a;
+  }
+
+  /** How much need `n` matters (alert-rules.js alertLevel). */
+  private level(n: {
+    agent: string;
+    workspace: string;
+    why: AlertWhy;
+    critical?: boolean;
+    escalated?: boolean;
+    targets?: readonly string[];
+  }) {
+    let watched = false;
+    if (!n.critical && !n.escalated && n.why !== "asked")
+      try {
+        const list = this.d.watched?.(n.workspace) ?? [];
+        const targets = [
+          `agent:${n.agent}`,
+          ...(n.workspace ? [`project:${n.workspace}`] : []),
+          ...(n.targets ?? []),
+        ];
+        watched = list.length > 0 && !!watchedTarget(targets, list);
+      } catch {
+        watched = true; // a setting it can't read: alert, never drop one
+      }
+    return alertLevel({ ...n, watched });
   }
 
   /**

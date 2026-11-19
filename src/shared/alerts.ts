@@ -10,12 +10,14 @@
  * - The words are the bell's own and never the details: who, and what it
  *   waits on. Never the tool line, the question's text or the write's
  *   summary (any of them can hold a secret or a code).
- * - The person's switches (user.yml `alerts:`) and quiet hours decide
- *   before anything goes out.
+ * - The person's switches (user.yml `alerts:`), what counts and quiet
+ *   hours decide before anything goes out. The rules and words are one
+ *   module, public/alert-rules.js, which the page runs too.
  *
  *   alerts:
  *     desktop: true          # an open tab shows them (default on)
  *     phone: true            # push to subscribed devices (default on)
+ *     counts: watched_or_critical  # or needs_you: what counts (issue 160)
  *     quiet: { from: "22:00", to: "07:00" }   # none by default
  *     push_timeout_seconds: 30     # how long one push may take (1..3600)
  *     push_ttl_seconds: 86400      # how long a push service keeps it
@@ -23,61 +25,65 @@
  */
 import type { UserConfig } from "./den-config.js";
 import type { UiLanguage } from "../ui/server/ui-language.js";
+// The rules and words live in one plain module the page runs too.
+import * as rules from "../ui/server/public/alert-rules.js";
 
 /** What the agent waits on. */
 export type AlertWhy = "permission" | "asked" | "allow";
 
+/** What counts (alerts.counts): every need, or what's watched or critical. */
+export type AlertCounts = "needs_you" | "watched_or_critical";
+/** How much a need matters, by the approval policy (alert-rules.js). */
+export type AlertLevel = "critical" | "escalated" | "watched" | "routine";
+
 /** The words, in each language the UI ships (a test keeps them even). */
-export const ALERT_WORDS: Readonly<
+export const ALERT_WORDS = rules.ALERT_WORDS as Readonly<
   Record<UiLanguage, Readonly<Record<AlertWhy, string>>>
-> = {
-  en: {
-    permission: "{name} needs your permission",
-    asked: "{name} asked you",
-    allow: "{name} needs your Allow",
-  },
-  es: {
-    permission: "{name} necesita tu permiso",
-    asked: "{name} te preguntó",
-    allow: "{name} necesita tu Permitir",
-  },
-  ja: {
-    permission: "{name} があなたの許可を待っています",
-    asked: "{name} から質問があります",
-    allow: "{name} が「許可」を待っています",
-  },
-};
+>;
 
 /** An agent's name as an alert says it: plain, one line, short. */
-export function alertName(name: string): string {
-  const s = String(name ?? "")
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f<>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return (s || "An agent").slice(0, 64);
-}
+export const alertName = rules.alertName as (name: string) => string;
 
 /** The alert's line in `lang`. */
-export function alertBody(
+export const alertBody = rules.alertBody as (
   lang: UiLanguage,
   why: AlertWhy,
   name: string,
-): string {
-  const words = (ALERT_WORDS[lang] ?? ALERT_WORDS.en)[why];
-  return words.replace("{name}", alertName(name));
-}
+) => string;
+
+/** A notification's title (the product's) and body (the bell's words). */
+export const alertText = rules.alertText as (
+  lang: UiLanguage,
+  title: string,
+  why: AlertWhy,
+  name: string,
+) => { title: string; body: string };
 
 /** The agent's page, as the bell's row links it. */
-export function agentLink(workspace: string, agent: string): string {
-  return workspace
-    ? `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`
-    : "/agents";
-}
+export const agentLink = rules.agentLink as (
+  workspace: string,
+  agent: string,
+) => string;
+
+export const ALERT_COUNTS = rules.ALERT_COUNTS as readonly AlertCounts[];
+export const ALERT_COUNTS_DEFAULT = rules.ALERT_COUNTS_DEFAULT as AlertCounts;
+export const countsOf = rules.countsOf as (v: unknown) => AlertCounts;
+export const alertLevel = rules.alertLevel as (n: {
+  why: AlertWhy;
+  critical?: boolean;
+  escalated?: boolean;
+  watched?: boolean;
+}) => AlertLevel;
+export const alertCounts = rules.alertCounts as (
+  counts: unknown,
+  level: AlertLevel,
+) => boolean;
 
 export interface AlertPrefs {
   desktop: boolean;
   phone: boolean;
+  /** Issue 160: what counts (alert-rules.js). */
+  counts: AlertCounts;
   /** "HH:MM" each, or null (no quiet hours). */
   quiet: { from: string; to: string } | null;
   pushTimeoutSeconds: number;
@@ -88,6 +94,7 @@ export interface AlertPrefs {
 export const ALERT_DEFAULTS: AlertPrefs = {
   desktop: true,
   phone: true,
+  counts: rules.ALERT_COUNTS_DEFAULT as AlertCounts,
   quiet: null,
   pushTimeoutSeconds: 30,
   pushTtlSeconds: 86_400,
@@ -105,6 +112,7 @@ export function alertPrefs(user: unknown): AlertPrefs {
   return {
     desktop: typeof a.desktop === "boolean" ? a.desktop : true,
     phone: typeof a.phone === "boolean" ? a.phone : true,
+    counts: countsOf(a.counts),
     quiet:
       q &&
       typeof q.from === "string" &&
@@ -145,6 +153,7 @@ export function alertSettings(user: UserConfig): Record<string, unknown> {
   return {
     desktop: p.desktop,
     phone: p.phone,
+    counts: p.counts,
     quiet_from: side(q.from),
     quiet_to: side(q.to),
     // Issue 367: the push limits, their defaults when unset.
@@ -173,6 +182,14 @@ export function patchAlerts(
       if (x === null) delete a[k];
       else if (typeof x === "boolean") a[k] = x;
       else return { ok: false, error: `alerts.${k} must be true or false` };
+    } else if (k === "counts") {
+      if (x === null) delete a[k];
+      else if ((rules.ALERT_COUNTS as readonly unknown[]).includes(x)) a[k] = x;
+      else
+        return {
+          ok: false,
+          error: `alerts.counts must be ${rules.ALERT_COUNTS.join(" or ")}`,
+        };
     } else if (k === "quiet_from" || k === "quiet_to") {
       const side = k === "quiet_from" ? "from" : "to";
       const q = { ...((a.quiet as Record<string, unknown>) ?? {}) };
@@ -202,32 +219,9 @@ export function patchAlerts(
   return { ok: true };
 }
 
-/** "HH:MM" now in `zone` (the person's), else this machine's. */
-function clockOf(at: Date, zone: string | null): string {
-  try {
-    const f = new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-      ...(zone ? { timeZone: zone } : {}),
-    });
-    return f.format(at);
-  } catch {
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${p(at.getHours())}:${p(at.getMinutes())}`;
-  }
-}
-
 /** Whether `at` is inside the person's quiet hours (from inclusive, to not). */
-export function inQuietHours(
+export const inQuietHours = rules.inQuietHours as (
   prefs: Pick<AlertPrefs, "quiet">,
   at: Date,
-  zone: string | null = null,
-): boolean {
-  const q = prefs.quiet;
-  if (!q) return false;
-  const now = clockOf(at, zone);
-  return q.from < q.to
-    ? now >= q.from && now < q.to
-    : now >= q.from || now < q.to;
-}
+  zone?: string | null,
+) => boolean;

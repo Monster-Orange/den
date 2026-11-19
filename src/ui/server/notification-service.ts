@@ -29,6 +29,12 @@ import { readWebUrl } from "../../shared/web-url.js";
 import { pushContact } from "../../shared/push-contact.js";
 import { PushSubscriptions, pushAll, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
+import {
+  pinsAsWatched,
+  readPolicySetting,
+} from "../../shared/approval-policy.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import { shellPrefs } from "./shell-prefs.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -241,6 +247,25 @@ export function pushDeps(): {
   };
 }
 
+/**
+ * Issue 160: what the person watches, for alerts in project `ws`: the
+ * project's approvals.watch, the install's, and the rail pins. A bad
+ * setting throws (the feed then alerts, never drops one on a typo).
+ */
+function alertWatched(ws: string): string[] {
+  const user = readUserConfig();
+  const all = readWorkspacesFile().workspaces ?? {};
+  const project =
+    ws && Object.hasOwn(all, ws)
+      ? readPolicySetting(all[ws].approvals, `workspaces.${ws}.approvals`)
+      : undefined;
+  return [
+    ...(project?.watch ?? []),
+    ...(readPolicySetting(user.approvals)?.watch ?? []),
+    ...pinsAsWatched(shellPrefs(user.shell).pins),
+  ];
+}
+
 export function alertFeed(): AlertFeed {
   alerts ??= new AlertFeed({
     prefs: () => alertPrefs(readUserConfig()),
@@ -248,6 +273,7 @@ export function alertFeed(): AlertFeed {
     zone: () => timeZonePref(readUserConfig().time_zone),
     title: () => product().title,
     nameOf,
+    watched: alertWatched,
     push: (a, prefs) =>
       pushAll(
         { title: a.title, body: a.body, link: a.link, tag: a.id },

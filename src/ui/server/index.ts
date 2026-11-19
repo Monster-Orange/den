@@ -2837,8 +2837,13 @@ function approvalDeps(): ApprovalDeps {
     },
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
     // Issue 172: a write held for the person's Allow alerts them.
-    held: (agent, project) =>
-      void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
+    held: (agent, project, why) =>
+      void alertFeed().needs({
+        agent,
+        workspace: project ?? "",
+        why: "allow",
+        ...why,
+      }),
   };
   return approvals;
 }

@@ -36,6 +36,7 @@ import {
   isCriticalWrite,
   type CriticalArea,
   type PolicyKind,
+  writeTargets,
 } from "../../shared/approval-policy.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { recordAction } from "./audit.js";
@@ -246,9 +247,16 @@ export async function handleApprovalRoutes(
     notify?: (a: Approval, project: string | undefined, from: string) => void;
     /**
      * Issue 172: an agent's write held for the person's Allow (not run by
-     * the policy or a setting): alert them outside the bell.
+     * the policy or a setting): alert them outside the bell, when it
+     * counts (alert-rules.js): `critical` (the policy calls it critical,
+     * or a critical list names it), `escalated` (the agent's own ask),
+     * `targets` (what it is on, for what the person watches).
      */
-    held?: (agent: string, project: string | undefined) => void;
+    held?: (
+      agent: string,
+      project: string | undefined,
+      why?: { critical: boolean; escalated: boolean; targets: string[] },
+    ) => void;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -449,7 +457,16 @@ export async function handleApprovalRoutes(
         }
     } else if (a.agent && a.state === "pending")
       try {
-        deps.held?.(a.agent, project);
+        deps.held?.(a.agent, project, {
+          critical:
+            isCriticalWrite(
+              action,
+              checked.personOnly === true,
+              checked.areas,
+            ) || /(^|\s)approvals\.critical$/.test(heldBy ?? ""),
+          escalated: askAnyway,
+          targets: writeTargets(action, stored, project),
+        });
       } catch {
         /* an alert is best effort: the Allow dialog still asks */
       }
