@@ -382,13 +382,13 @@ import {
   machineSection,
   publicSearchOpen,
   runGh,
+  shotReaderOf,
 } from "./report-routes.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
 } from "../../shared/report-store.js";
 import { reportShotHub } from "./report-shot-hub.js";
-import { isServerScope } from "../../shared/agents/server-agent.js";
 import { shotKeepDays, shotStore } from "../../shared/report-shots.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
@@ -3945,16 +3945,9 @@ async function handleRequest(
       searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
       // Issue 403: a report's screenshot to Hub, with the install's Bearer.
       shotHub: REPORT_SHOT_HUB,
-      // Issue 403: a kept screenshot is the person's or the server agent's.
-      shotReader: (r) => {
-        const p = agentPrincipalOf(r);
-        if (p)
-          return isServerScope(p.workspace)
-            ? { ok: true }
-            : { ok: false, who: p.actor };
-        const a = auditActorOf(r);
-        return a ? { ok: false, who: "an unverified agent" } : { ok: true };
-      },
+      // Issue 403: a kept screenshot is the person's (proved, as approvals
+      // ask) or this install's own agent's; never an anonymous request.
+      shotReader: (r) => shotReaderOf(r, guard),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })

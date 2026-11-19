@@ -29,6 +29,7 @@ import type { AddressInfo } from "net";
 import {
   decideReport,
   handleReportRoutes,
+  shotReaderOf,
   type GhResult,
   type ReportRouteDeps,
 } from "../../../src/ui/server/report-routes.js";
@@ -39,6 +40,10 @@ import {
   PERSON_ONLY_SETTINGS,
   patchCliRows,
 } from "../../../src/shared/settings-cli-rows.js";
+import {
+  checkRequest,
+  type GuardContext,
+} from "../../../src/ui/server/request-guard.js";
 import { DeviceFlows } from "../../../src/ui/server/device-flows.js";
 import type { GithubDeviceClient } from "../../../src/shared/github-device.js";
 
@@ -117,6 +122,33 @@ let state = "";
 let server: http.Server;
 let base = "";
 
+/** The guard's view: the person's CLI token, this install's agent, a project's. */
+function guardCtx(): GuardContext {
+  const agent = (workspace: string) => ({
+    kind: "agent" as const,
+    actor: `agent:${workspace}-a` as const,
+    workspace,
+    grants: [],
+    session: { name: workspace },
+  });
+  return {
+    port: Number(new URL(base).port),
+    loopbackNames: ["127.0.0.1", "localhost"],
+    edgeHosts: () => [],
+    verifyBearer: (t) =>
+      t === "den_pt_person"
+        ? "person:pat"
+        : t === "den_at_server"
+          ? agent("den-server")
+          : t === "den_at_project"
+            ? agent("north")
+            : null,
+    csrfToken: "server-start-csrf-token",
+    session: () => null,
+  };
+}
+const PERSON = { authorization: "Bearer den_pt_person" };
+
 const deps: ReportRouteDeps = {
   settings: () =>
     feedbackSettings(
@@ -137,15 +169,8 @@ const deps: ReportRouteDeps = {
       connected ? { url: hubBase, token: "install-token-never-shown" } : null,
     timeoutMs: 2000,
   }),
-  // The test's stand-in for Den's principals: x-den-agent names an agent,
-  // x-den-scope its project ("den-server": the server agent).
-  shotReader: (r) => {
-    const a = r.headers["x-den-agent"] as string | undefined;
-    if (!a) return { ok: true };
-    return r.headers["x-den-scope"] === "den-server"
-      ? { ok: true }
-      : { ok: false, who: `agent:${a}` };
-  },
+  // Den's own check, on the real request guard (tokens below).
+  shotReader: (r) => shotReaderOf(r, checkRequest(r, guardCtx())),
   readBody: (req) =>
     new Promise((ok) => {
       let b = "";
@@ -465,26 +490,36 @@ describe("issue 403: reading a kept screenshot", () => {
     id = r.body.shot.id;
   });
 
-  it("the person (a CLI bearer or the browser): the PNG, base64, with its type", async () => {
-    const r = await call("GET", `/api/report/shots/${id}`);
+  it("the person's command-line token: the PNG, base64, with its type", async () => {
+    const r = await call("GET", `/api/report/shots/${id}`, undefined, PERSON);
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, id, mime: "image/png" });
     expect(Buffer.from(r.body.base64, "base64").equals(PNG)).toBe(true);
   });
 
-  it("this install's own server agent: the PNG", async () => {
+  it("no token (an agent that left its token off): 401, no PNG", async () => {
+    const r = await call("GET", `/api/report/shots/${id}`);
+    expect(r.status).toBe(401);
+    expect(r.body.error).toMatch(/sign in on this page/);
+    expect(r.body.base64).toBeUndefined();
+    const claimed = await call("GET", `/api/report/shots/${id}`, undefined, {
+      "x-den-actor": "agent:north-a",
+    });
+    expect(claimed.status).toBe(401);
+    expect(claimed.body.base64).toBeUndefined();
+  });
+
+  it("this install's own agent, with its token: the PNG", async () => {
     const r = await call("GET", `/api/report/shots/${id}`, undefined, {
-      "x-den-agent": "server",
-      "x-den-scope": "den-server",
+      authorization: "Bearer den_at_server",
     });
     expect(r.status).toBe(200);
     expect(Buffer.from(r.body.base64, "base64").equals(PNG)).toBe(true);
   });
 
-  it("a project agent: refused, naming who can", async () => {
+  it("a project agent, with its token: refused, naming who can", async () => {
     const r = await call("GET", `/api/report/shots/${id}`, undefined, {
-      "x-den-agent": "builder",
-      "x-den-scope": "north",
+      authorization: "Bearer den_at_project",
     });
     expect(r.status).toBe(403);
     expect(r.body.error).toMatch(/person who runs this install/);
@@ -494,7 +529,14 @@ describe("issue 403: reading a kept screenshot", () => {
 
   it("an unknown id: 404", async () => {
     expect(
-      (await call("GET", "/api/report/shots/ffffffffffffffff")).status,
+      (
+        await call(
+          "GET",
+          "/api/report/shots/ffffffffffffffff",
+          undefined,
+          PERSON,
+        )
+      ).status,
     ).toBe(404);
   });
 });

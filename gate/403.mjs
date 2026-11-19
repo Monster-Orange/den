@@ -40,6 +40,19 @@ export async function run(ctx) {
   r.keepDays = settings?.reports?.screenshot_keep_days ?? null;
   // An id no report has: the operator gets 404 (allowed, nothing kept), never 403.
   r.shotStatus = (await ctx.fetch("/api/report/shots/ffffffffffffffff")).status;
+  // An agent that leaves its token off (loopback, no credential, a claimed
+  // name only) and one with a token this install never minted: both refused
+  // before any lookup (401), so the unknown id never answers 404 to them.
+  const bare = await fetch(
+    new URL("/api/report/shots/ffffffffffffffff", ctx.url),
+    { headers: { "x-den-actor": "agent:gate-403-probe" } },
+  );
+  r.noTokenStatus = bare.status;
+  r.otherTokenStatus = (
+    await ctx.fetch("/api/report/shots/ffffffffffffffff", {
+      headers: { authorization: "Bearer den_at_gate403notatoken" },
+    })
+  ).status;
   if (!r.enabled) return r;
 
   // Count clipboard writes; nothing may copy the screenshot on its own.
@@ -150,17 +163,30 @@ export function expect(cells) {
               (r) => `GET /api/report/shots/<unknown> → ${r.shotStatus}`,
             ),
           }
-        : i === 5
+        : i === 4
           ? {
               clause: c,
-              ok: all((r) => r.keepDays === 30 || Number.isInteger(r.keepDays)),
-              detail: d((r) => `reports.screenshot_keep_days ${r.keepDays}`),
+              ok: all(
+                (r) => r.noTokenStatus === 401 && r.otherTokenStatus === 401,
+              ),
+              detail: d(
+                (r) =>
+                  `no token → ${r.noTokenStatus}, a token never minted → ${r.otherTokenStatus}`,
+              ),
             }
-          : skipRow(
-              c,
-              "needs-reports-on",
-              "feedback.enabled is false on this bed",
-            ),
+          : i === 5
+            ? {
+                clause: c,
+                ok: all(
+                  (r) => r.keepDays === 30 || Number.isInteger(r.keepDays),
+                ),
+                detail: d((r) => `reports.screenshot_keep_days ${r.keepDays}`),
+              }
+            : skipRow(
+                c,
+                "needs-reports-on",
+                "feedback.enabled is false on this bed",
+              ),
     );
   return [
     {
@@ -212,11 +238,14 @@ export function expect(cells) {
           `GET /api/report/shots/<unknown id> as the operator → ${r.shotStatus} (404: allowed, none kept)`,
       ),
     },
-    skipRow(
-      clauses[4],
-      "needs-project-agent-token",
-      "the bed's harness has no project agent's token to call with",
-    ),
+    {
+      clause: clauses[4],
+      ok: all((r) => r.noTokenStatus === 401 && r.otherTokenStatus === 401),
+      detail: d(
+        (r) =>
+          `no token (a claimed agent name only) → ${r.noTokenStatus}, a token this install never minted → ${r.otherTokenStatus} (a project agent's own token: 403, in the unit tests)`,
+      ),
+    },
     {
       clause: clauses[5],
       ok: all((r) => r.keepDays === 30 || Number.isInteger(r.keepDays)),

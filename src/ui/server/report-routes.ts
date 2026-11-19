@@ -37,7 +37,10 @@
  *                                    ({ share, recipient }), for Review
  *   GET    /api/report/shots/<id>   issue 403: a filed report's kept
  *                                    screenshot (base64 PNG): the person
- *                                    or this install's server agent only
+ *                                    (CLI token, or a signed-in browser
+ *                                    with its approval key) or this
+ *                                    install's own agent; 401 with no
+ *                                    proof, 403 a project agent (shotReaderOf)
  *
  * Issue 403: a send (either way) may carry `shot`, the masked PNG as a
  * data URL, and `shareShot`. The PNG is kept here, keyed by the report id
@@ -71,6 +74,9 @@ import {
   shotStore,
 } from "../../shared/report-shots.js";
 import type { ReportShotHub, UploadWhy } from "./report-shot-hub.js";
+import type { GuardResult } from "./request-guard.js";
+import { approverAllowed } from "./approvals.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
 
 export interface GhResult {
   code: number;
@@ -107,18 +113,45 @@ export interface ReportRouteDeps {
    */
   shotHub?: Pick<ReportShotHub, "preflight" | "upload">;
   /**
-   * Issue 403: whether this caller may read a kept screenshot: the person
-   * or this install's own server agent; else who it is, for the refusal.
-   * Absent: the person only.
+   * Issue 403: whether this caller may read a kept screenshot
+   * (shotReaderOf with the request's guard). Absent: nobody may.
    */
-  shotReader?: (
-    req: http.IncomingMessage,
-  ) => { ok: true } | { ok: false; who: string };
+  shotReader?: (req: http.IncomingMessage) => ShotReader;
   /** An open issue with this title, read without a token (F5), or null. */
   searchOpen?: (
     repo: string,
     title: string,
   ) => Promise<{ number: number; url: string; title: string } | null>;
+}
+
+/** Who may read a kept screenshot (issue 403), or why not. */
+export type ShotReader =
+  | { ok: true }
+  | { ok: false; status: 401 | 403; who?: string };
+
+/**
+ * Issue 403: whether this request may read a kept screenshot. The route is
+ * readonly, so on loopback the guard lets an anonymous request through;
+ * that is never the person here (a project agent can leave its token off,
+ * and report ids are in public issues). The person proves it as approvals
+ * ask: their command-line token, or a signed-in browser with its CSRF
+ * token and approval key (approverAllowed, "read"). This install's own
+ * agent reads with its token; a project agent's token gets 403. Anything
+ * else: 401.
+ */
+export function shotReaderOf(
+  req: http.IncomingMessage,
+  guard: GuardResult,
+): ShotReader {
+  if (!guard.ok) return { ok: false, status: 401 };
+  const p = guard.principal;
+  if (p?.kind === "agent")
+    return isServerScope(p.workspace)
+      ? { ok: true }
+      : { ok: false, status: 403, who: p.actor };
+  if (p?.kind === "person") return { ok: true };
+  if (approverAllowed(req, guard, "read").ok) return { ok: true };
+  return { ok: false, status: 401 };
 }
 
 /**
@@ -769,19 +802,20 @@ export function handleReportRoutes(
   const sm = SHOT_PATH.exec(pathname);
   if (sm && req.method === "GET")
     return run(async () => {
-      const who = d.shotReader
+      const who: ShotReader = d.shotReader
         ? d.shotReader(req)
-        : d.agentOf(req)
-          ? { ok: false as const, who: `agent:${d.agentOf(req)}` }
-          : { ok: true as const };
+        : { ok: false, status: 401 };
       if (!who.ok)
         return d.sendJson(
           res,
           {
             ok: false,
-            error: `a report's screenshot is read by the person who runs this install, or by this install's own agent; ${who.who} is neither. Ask that agent for report_screenshot(${sm[1]}).`,
+            error:
+              who.status === 403
+                ? `a report's screenshot is read by the person who runs this install, or by this install's own agent; ${who.who ?? "this agent"} is neither. Ask that agent for report_screenshot(${sm[1]}).`
+                : `a report's screenshot needs the person who runs this install: sign in on this page, or use your command-line token. Or ask this install's own agent for report_screenshot(${sm[1]}).`,
           },
-          403,
+          who.status,
         );
       const got = shotStore(d.stateDir()).get(sm[1]!);
       if (!got)
