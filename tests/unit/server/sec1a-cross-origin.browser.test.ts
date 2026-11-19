@@ -96,6 +96,10 @@ beforeAll(async () => {
     await fetch(${JSON.stringify(den)} + "/api/settings", {
       method: "POST",
       mode: "no-cors",
+      // With the person's cookie: another port on localhost is the same
+      // site, so the Lax cookie goes, and Origin is what refuses it, not
+      // sign-in (0.4.71). fetch's default sends no cookie here (a 401).
+      credentials: "include",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ editor: "emacs" }),
     }).catch(() => {});

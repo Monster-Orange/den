@@ -146,7 +146,16 @@ async function page(signIn: boolean): Promise<Page> {
   p.on("pageerror", (e) => errors.push(String(e)));
   // A refused poll is a console error; the dialog's polling must make none.
   p.on("console", (m) => {
-    if (m.type() === "error") errors.push(`console: ${m.text()}`);
+    if (m.type() !== "error") return;
+    // A signed-out page's refused read or write (401) is expected (0.4.71):
+    // only that line, and only on the signed-out page.
+    if (
+      !signIn &&
+      m.text() ===
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    )
+      return;
+    errors.push(`console: ${m.text()}`);
   });
   if (signIn) {
     await p.goto(claimLink(base(), mintClaimCode(readWebSecret(stateDir)!)));

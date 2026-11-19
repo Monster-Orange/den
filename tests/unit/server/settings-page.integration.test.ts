@@ -28,6 +28,7 @@ import * as path from "path";
 import * as yaml from "yaml";
 import type { Browser, Page } from "playwright";
 import { spawnServer, stopServer } from "../../child-servers.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = process.cwd();
 const PORT = 23876 + Math.floor(Math.random() * 1000);
@@ -198,6 +199,8 @@ async function open(
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  // The person's browser, signed in as `web up` does (0.4.71).
+  await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
   const p = await ctx.newPage();
   const posts: { url: string; body: unknown }[] = [];
   p.on("request", (r) => {
@@ -555,6 +558,8 @@ describe("the Settings page's rows (R21)", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1440, height: 900 },
       });
+      // Signed in, as `web up` does (0.4.71).
+      await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
       const p = await ctx.newPage();
       await p.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
       await p.goto(BASE + "/local-dev");
@@ -848,6 +853,8 @@ describe("one h1 per page (the brand is not a heading)", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1440, height: 900 },
       });
+      // Signed in, as `web up` does (0.4.71).
+      await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
       const p = await ctx.newPage();
       await p.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
       await p.goto(BASE + url);

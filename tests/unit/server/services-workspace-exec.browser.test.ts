@@ -134,7 +134,11 @@ async function open(url: string): Promise<{ p: Page; execs: string[] }> {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 800 },
   });
-  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("acme-changelog-seen", v);

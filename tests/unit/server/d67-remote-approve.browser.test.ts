@@ -331,7 +331,7 @@ describe("D67: approve from another computer, in browsers only", () => {
           };
         }
       ).denShell
-        .api("POST", "/api/notifications/read", {})
+        .api("POST", "/api/notifications/read", { all: true })
         .then(
           () => "ok",
           (e: { status?: number }) => String(e?.status),

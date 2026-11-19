@@ -154,6 +154,9 @@ async function allowInPopUp(p: Page, f: Frame): Promise<void> {
   await btn.waitFor({ timeout: 15_000 });
   const [pop] = await Promise.all([p.waitForEvent("popup"), btn.click()]);
   await pop.locator("#emc-allow").click();
+  // It closes itself once it has handed the key back; the next Sign in to
+  // Den opens a new one (a window still open by that name would be reused).
+  if (!pop.isClosed()) await pop.waitForEvent("close", { timeout: 10_000 });
 }
 
 const isConnected = () =>
@@ -355,10 +358,10 @@ describe("issue 103: a listed origin frames the pane", () => {
         r.url,
         false,
       ]);
+    // The key came from Den's own pop-up (signed in); the frame only uses it.
     expect(sent.map((r) => r.url)).toEqual(
       expect.arrayContaining([
         expect.stringContaining("/embed/p/north/agents/scout"),
-        expect.stringContaining("/api/embed/keys"),
         expect.stringContaining("/api/embed/say"),
       ]),
     );
@@ -566,8 +569,11 @@ describe("issue 103: share this page", () => {
         "This page is 3 KB, more than the 1 KB limit, so it was not added. Settings › Embedding sets the limit.",
       );
       expect(await f.locator(".agc-chip").count()).toBe(0);
-      const err = (await got(p)).find((m) => m.data?.type === "den:error")!
-        .data as unknown as { code: string; limit: number };
+      const err = (await got(p)).find(
+        (m) =>
+          m.data?.type === "den:error" &&
+          (m.data as { code?: string }).code !== "signin_required",
+      )!.data as unknown as { code: string; limit: number };
       expect(err.code).toBe("context_too_large");
       expect(err.limit).toBe(1024);
       await p.context().close();

@@ -141,7 +141,11 @@ async function open(
     viewport: { width, height: 800 },
     permissions: ["clipboard-read", "clipboard-write"],
   });
-  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("acme-changelog-seen", v);

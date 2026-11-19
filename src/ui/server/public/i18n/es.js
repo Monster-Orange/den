@@ -2867,7 +2867,7 @@
     "set.cli.web_port.d":
       "web.port en config/local/user.yml tiene prioridad sobre el de la distribución. Se aplica la próxima vez que se inicie el servidor web.", // words-ok: the en string's own word, translated
     "set.cli.signin.d":
-      "Cada navegador inicia sesión una vez, también en esta máquina, y la sesión se mantiene. Aquí, __DEN_CLI__ web up abre un enlace de inicio de sesión de un solo uso; un navegador sin sesión puede mirar pero no cambiar nada. Desde otra máquina: Iniciar sesión con GitHub o un enlace de un solo uso (__DEN_CLI__ web login). Ajustes › Acceso lista los navegadores con la sesión iniciada.", // words-ok: "iniciar sesión" is how Spanish says sign in
+      "Cada navegador inicia sesión una vez, también en esta máquina, y la sesión se mantiene. Aquí, __DEN_CLI__ web up abre un enlace de acceso de un solo uso; un navegador que no ha iniciado sesión puede mirar pero no cambiar nada. Desde otra máquina: Iniciar sesión con GitHub o un enlace de un solo uso (__DEN_CLI__ web login). Ajustes › Acceso lista los navegadores con la sesión iniciada.", // words-ok: "iniciar sesión" is how Spanish says sign in
     "set.cli.sudo.d":
       "Solo se usa cuando un comando que ejecuta Den necesita sudo, y solo se pide entonces. No es un inicio de sesión: nada más lo necesita.",
     "set.cli.op_token.d":

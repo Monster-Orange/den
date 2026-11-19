@@ -50,7 +50,7 @@ function write(p: Page): Promise<string> {
         denShell: { api(m: string, u: string, b: unknown): Promise<unknown> };
       }
     ).denShell
-      .api("POST", "/api/notifications/read", {})
+      .api("POST", "/api/notifications/read", { all: true })
       .then(
         () => "ok",
         (e: { status?: number }) => String(e?.status),

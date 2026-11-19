@@ -350,7 +350,9 @@ function githubBlock(s, t) {
  */
 function claimBlock(s, t) {
   const g = s.github;
-  if (!g || g.state !== "claim" || s.localhost) return "";
+  // On this computer (0.4.71) the button would only come back here: the
+  // page signs in first (the code, or `web up`), then the claim goes on.
+  if (!g || g.state !== "claim" || s.localhost || s.local) return "";
   const host = s.machine || "";
   const back = location.origin + location.pathname + location.search;
   const here = g.attest ? `${g.attest}?return=${encodeURIComponent(back)}` : "";

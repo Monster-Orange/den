@@ -200,7 +200,11 @@ async function open(
   before?: (ctx: BrowserContext) => Promise<void>,
 ): Promise<Page> {
   const ctx = await browser!.newContext({ viewport });
-  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await before?.(ctx);
   await ctx.addInitScript((v) => {
     try {
@@ -1068,7 +1072,7 @@ describe("0.4.17: the Tests module picker", () => {
     });
     await signIn(
       ctx,
-      path.join(tmp, "home", ".den"),
+      path.join(tmp, "home", ".acme"),
       `http://localhost:${port}`,
     );
     await ctx.addInitScript((v) => {

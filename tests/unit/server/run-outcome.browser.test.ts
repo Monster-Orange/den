@@ -115,7 +115,11 @@ async function testsPage(): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
-  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   // The changelog pop-up stays shut: this version was seen.
   await ctx.addInitScript((v) => {
     try {

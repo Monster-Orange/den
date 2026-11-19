@@ -86,7 +86,11 @@ async function open(url: string): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 800 },
   });
-  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   // No first-visit changelog pop-up over the page: the latest is seen.
   const latest = (
     (await (await fetch(`http://localhost:${port}/api/changelog`)).json()) as {
@@ -167,7 +171,7 @@ describe("the Edge page (PL-SPEC §10)", () => {
     const ctx = await browser.newContext();
     await signIn(
       ctx,
-      path.join(tmp, "home", ".den"),
+      path.join(tmp, "home", ".acme"),
       `http://localhost:${port}`,
     );
     await ctx.route(/\/api\/edge\?probe=1$/, (r) =>
