@@ -365,6 +365,8 @@ describe("the check", () => {
       timeoutMs: 5000,
       retries: 2,
       cacheMs: 60_000,
+      // How many definite failures move a proven address back (the sign-in's).
+      dropAfter: 2,
     });
     expect(
       addressCheckSettings(() => ({
@@ -374,7 +376,7 @@ describe("the check", () => {
           address_check_cache_seconds: 0,
         },
       })),
-    ).toEqual({ timeoutMs: 30_000, retries: 0, cacheMs: 0 });
+    ).toEqual({ timeoutMs: 30_000, retries: 0, cacheMs: 0, dropAfter: 2 });
   });
 });
 

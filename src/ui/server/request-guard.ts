@@ -122,6 +122,12 @@ export interface GuardSession {
   csrf: string;
   /** sha256 of its approval key (approvals.ts); unset before 0.4.15. */
   approveKeyHash?: string;
+  /**
+   * Made on a loopback name. Once Den's own named https address works it
+   * counts on no host: its cookie may have been copied by another local
+   * app (loopbackSessions).
+   */
+  loopback?: boolean;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -443,16 +449,19 @@ export function edgeClient(
 
 /**
  * Whether the request came over HTTPS: the socket's own encryption, or,
- * only for the edge hostname from an edge peer, `X-Forwarded-Proto: https`.
- * A spoofed header on a loopback Host never counts.
+ * only for the edge hostname from an edge peer that carries the edge's
+ * proof (`proved`, H1), `X-Forwarded-Proto: https`. A spoofed header on a
+ * loopback Host, or from a local process without the proof, never counts.
  */
 export function requestIsHttps(
   req: http.IncomingMessage,
   via: Via | null,
+  proved = false,
 ): boolean {
   if ((req.socket as { encrypted?: boolean } | undefined)?.encrypted)
     return true;
-  if (via !== "edge" || !isEdgePeer(req.socket?.remoteAddress)) return false;
+  if (!proved || via !== "edge" || !isEdgePeer(req.socket?.remoteAddress))
+    return false;
   const xfp = header(req, "x-forwarded-proto");
   return xfp?.split(",")[0].trim().toLowerCase() === "https";
 }
@@ -618,12 +627,15 @@ export function checkRequest(
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
-  // A session on a loopback name counts only while Den has no working
-  // named https address (the session lives there then).
-  const session =
-    principal || (via === "loopback" && ctx.loopbackSessions?.() === false)
+  // Once Den's own named https address works, the session lives only
+  // there: none counts on a loopback name, and one made on a loopback name
+  // counts on no host (its cookie may have been copied).
+  const namedOnly = ctx.loopbackSessions?.() === false;
+  const found =
+    principal || (via === "loopback" && namedOnly)
       ? null
       : (ctx.session?.(req, via) ?? null);
+  const session = found?.loopback && namedOnly ? null : found;
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");

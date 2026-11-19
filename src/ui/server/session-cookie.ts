@@ -68,9 +68,10 @@ function cookieValue(raw: string, name: string): string | undefined {
 }
 
 /**
- * The session id a request's Cookie header carries. Over https the
- * `__Host-` one, else the plain one a browser signed in there before kept
- * (host-only and Secure already); over http only the plain one.
+ * The session id a request's Cookie header carries: over https only the
+ * `__Host-` one (a plain-named cookie there could have been planted by a
+ * sibling host with a Domain, or copied from a loopback name); over http
+ * only the plain one.
  */
 export function readSessionCookie(
   raw: string | undefined,
@@ -79,6 +80,5 @@ export function readSessionCookie(
 ): string | undefined {
   if (!raw) return undefined;
   const n = sessionCookieNames(port);
-  if (secure) return cookieValue(raw, n.secure) ?? cookieValue(raw, n.plain);
-  return cookieValue(raw, n.plain);
+  return cookieValue(raw, secure ? n.secure : n.plain);
 }

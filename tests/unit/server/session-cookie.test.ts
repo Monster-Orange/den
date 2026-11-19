@@ -97,7 +97,6 @@ describe("reading the cookie", () => {
 describe("whether the named https address works (sessions live only there)", () => {
   function watch(o: {
     url: string | null;
-    predict?: boolean;
     answer?: NamedAnswer;
     cacheMs?: number;
     dropAfter?: number;
@@ -109,7 +108,6 @@ describe("whether the named https address works (sessions live only there)", () 
     let resolveProbe: (() => void) | null = null;
     const w = new NamedAddressWatch({
       webUrl: () => o.url,
-      predict: () => o.predict ?? false,
       probe: () => {
         probes++;
         return new Promise<NamedAnswer>((r) => {
@@ -142,15 +140,16 @@ describe("whether the named https address works (sessions live only there)", () 
   }
 
   it("no address, or an http one: never (sign-in keeps working where the person is)", () => {
-    expect(watch({ url: null, predict: true }).w.works()).toBe(false);
-    expect(
-      watch({ url: "http://den.acme.test", predict: true }).w.works(),
-    ).toBe(false);
+    expect(watch({ url: null }).w.works()).toBe(false);
+    expect(watch({ url: "http://den.acme.test" }).w.works()).toBe(false);
   });
 
-  it("an https address: its prediction until the first check, then the check", async () => {
-    const t = watch({ url: "https://den.acme.test", predict: true });
-    expect(t.w.works()).toBe(true);
+  // Not until it is proven (no prediction from the config): a fresh
+  // install's sign-in works at once; what it signs in on loopback ends at
+  // the proof.
+  it("an https address: not working until a check proves it", async () => {
+    const t = watch({ url: "https://den.acme.test" });
+    expect(t.w.works()).toBe(false);
     expect(t.probes()).toBe(1);
     await t.settle(); // unknown, never proven: it doesn't work
     expect(t.w.works()).toBe(false);
@@ -159,7 +158,7 @@ describe("whether the named https address works (sessions live only there)", () 
   });
 
   it("the edge's proven https request on the address's host proves it at once; another host doesn't", async () => {
-    const t = watch({ url: "https://den.acme.test", predict: false });
+    const t = watch({ url: "https://den.acme.test" });
     expect(t.w.works()).toBe(false);
     await t.settle();
     t.w.saw("other.acme.test");

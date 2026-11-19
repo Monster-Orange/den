@@ -1931,6 +1931,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ address_check: { cache_seconds: v } }),
   },
   {
+    // The sign-in lives on __DEN_TITLE__'s own address once it is proven:
+    // how many definite failures in a row move it back.
+    id: "server.address_check_drop_after",
+    category: "server",
+    label: "Address failures before sign-in moves back",
+    description:
+      "Once __DEN_TITLE__'s https address is proven, the sign-in lives only there. How many checks in a row must find something else, or nothing, answering at that address before sign-in works on this machine's own name again. A check that can't tell is ignored. __DEN_CLI__ config web.address_check_drop_after=2",
+    keywords: ["address", "check", "edge", "sign-in", "cookie", "failures"],
+    scope: "user",
+    keys: ["address_check.drop_after"],
+    control: { type: "number", min: 1, max: 100, step: 1 },
+    read: (ctx) => ctx.data.address_check?.drop_after ?? 2,
+    write: (v, ctx) => ctx.post({ address_check: { drop_after: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",

@@ -1,17 +1,25 @@
 /**
  * Whether Den's own named https address works, so the session lives only
  * there (session-cookie.ts): a loopback name then gets no session, and a
- * session cookie presented on one doesn't count (request-guard.ts).
+ * session made on one counts on no host (request-guard.ts).
  *
- * It works when the address (web.url) is https and either:
+ * The address (web.url) must be https. It is proven when:
  *  - the address check (address-check.ts, the identity probe through the
- *    address) found this Den there, or
- *  - the edge just brought a proven https request for that host here.
- * Each counts for web.address_check_cache_seconds; a stale answer is
- * checked again in the background, one check at a time. Before the first
- * check: a prediction from the config (the address is an https edge route
- * here). Anything else, it doesn't work: sign-in stays where the person
- * is, so an install with no working https address is never locked out.
+ *    address) finds this Den there, or
+ *  - the edge brings a proven https request for that host here.
+ * Proven is sticky. A check that can't tell (a timeout) keeps it, so a
+ * stalled check can't reopen loopback. Only a definite failure (another
+ * server, or nothing, answers), seen web.address_check_drop_after times in
+ * a row, moves it back. The check runs again in the background every
+ * web.address_check_cache_seconds, one at a time.
+ *
+ * Never proven: it doesn't work, and sign-in stays where the person is,
+ * so an install with no working https address (or one whose first check
+ * hasn't answered yet) is never locked out. What was signed in on a
+ * loopback name meanwhile ends at the proof (onProven).
+ *
+ * onProven runs each time it becomes proven: the server ends every
+ * session made on a loopback name then.
  */
 
 /** How the address answered the check (address-check.ts's WantedAnswer). */
@@ -20,12 +28,14 @@ export type NamedAnswer = "den" | "other" | "nothing" | "unknown";
 export interface NamedWatchDeps {
   /** web.url now, or null. */
   webUrl: () => string | null;
-  /** Before any check: whether the config says it should work. */
-  predict: (url: string) => boolean;
   /** Check the address now. */
   probe: (url: string) => Promise<NamedAnswer>;
   /** web.address_check_cache_seconds, in ms. */
   cacheMs: () => number;
+  /** web.address_check_drop_after. */
+  dropAfter: () => number;
+  /** It just became proven. */
+  onProven?: () => void;
   now?: () => number;
 }
 
@@ -41,9 +51,12 @@ export function httpsAddress(url: string | null): URL | null {
 }
 
 export class NamedAddressWatch {
-  private checked: { url: string; at: number; answer: NamedAnswer } | null =
-    null;
-  private seen: { host: string; at: number } | null = null;
+  /** The address this state is about (a new web.url starts over). */
+  private url: string | null = null;
+  private proven = false;
+  private failures = 0;
+  /** When the last check completed, or null before the first. */
+  private checkedAt: number | null = null;
   private running = false;
 
   constructor(private readonly d: NamedWatchDeps) {}
@@ -52,22 +65,30 @@ export class NamedAddressWatch {
     return (this.d.now ?? Date.now)();
   }
 
+  /** The current https address, its state reset when it changed. */
+  private current(): URL | null {
+    const u = httpsAddress(this.d.webUrl());
+    const url = u?.origin ?? null;
+    if (url !== this.url) {
+      this.url = url;
+      this.proven = false;
+      this.failures = 0;
+      this.checkedAt = null;
+    }
+    return u;
+  }
+
   /** The named https address's origin when it works now; else null. */
   address(): string | null {
-    const u = httpsAddress(this.d.webUrl());
+    const u = this.current();
     if (!u) return null;
     const url = u.origin;
-    const now = this.now();
-    const ttl = this.d.cacheMs();
-    const c = this.checked?.url === url ? this.checked : null;
-    if (!c || now - c.at > ttl) this.check(url);
     if (
-      this.seen?.host === u.hostname.toLowerCase() &&
-      now - this.seen.at <= ttl
+      this.checkedAt === null ||
+      this.now() - this.checkedAt > this.d.cacheMs()
     )
-      return url;
-    if (c) return c.answer === "den" ? url : null;
-    return this.d.predict(url) ? url : null;
+      this.check(url);
+    return this.proven ? url : null;
   }
 
   /** Whether the named https address works now. */
@@ -77,18 +98,40 @@ export class NamedAddressWatch {
 
   /** The edge brought a proven https request for `host` (its Host header). */
   saw(host: string): void {
-    const u = httpsAddress(this.d.webUrl());
+    const u = this.current();
     const h = host.toLowerCase().replace(/:\d+$/, "");
-    if (u && u.hostname.toLowerCase() === h)
-      this.seen = { host: h, at: this.now() };
+    if (u && u.hostname.toLowerCase() === h) this.prove();
+  }
+
+  private prove(): void {
+    this.failures = 0;
+    if (this.proven) return;
+    this.proven = true;
+    try {
+      this.d.onProven?.();
+    } catch {
+      /* the caller logs its own */
+    }
+  }
+
+  private answer(url: string, a: NamedAnswer): void {
+    if (url !== this.url) return; // web.url changed meanwhile
+    this.checkedAt = this.now();
+    if (a === "den") return this.prove();
+    if (a === "unknown") return;
+    this.failures++;
+    if (this.proven && this.failures >= Math.max(1, this.d.dropAfter())) {
+      this.proven = false;
+      this.failures = 0;
+    }
   }
 
   private check(url: string): void {
     if (this.running) return;
     this.running = true;
-    const done = (answer: NamedAnswer) => {
-      this.checked = { url, at: this.now(), answer };
+    const done = (a: NamedAnswer) => {
       this.running = false;
+      this.answer(url, a);
     };
     let p: Promise<NamedAnswer>;
     try {

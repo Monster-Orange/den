@@ -47,6 +47,12 @@ export const ADDRESS_CHECK_LIMITS = {
   timeout_seconds: { min: 0.5, max: 600, default: 5 },
   retries: { min: 0, max: 20, default: 2 },
   cache_seconds: { min: 0, max: 86_400, default: 60 },
+  /**
+   * How many definite failures in a row (another server, or nothing,
+   * answers) move an address proven to reach this Den back to not working
+   * (named-address.ts). A check that can't tell never counts.
+   */
+  drop_after: { min: 1, max: 100, default: 2 },
 } as const;
 
 export interface AddressCheckSettings {
@@ -54,6 +60,8 @@ export interface AddressCheckSettings {
   retries: number;
   /** How long the page reuses the last check (web.address_check_cache_seconds). */
   cacheMs: number;
+  /** web.address_check_drop_after (the probe itself doesn't use it). */
+  dropAfter?: number;
 }
 
 function limited(v: unknown, l: { min: number; max: number; default: number }) {
@@ -62,7 +70,7 @@ function limited(v: unknown, l: { min: number; max: number; default: number }) {
     : l.default;
 }
 
-/** user.yml web.address_check_timeout_seconds, _retries and _cache_seconds. */
+/** user.yml web.address_check_timeout_seconds, _retries, _cache_seconds and _drop_after. */
 export function addressCheckSettings(
   read: () => UserConfig = readUserConfig,
 ): AddressCheckSettings {
@@ -87,6 +95,9 @@ export function addressCheckSettings(
         web.address_check_cache_seconds,
         ADDRESS_CHECK_LIMITS.cache_seconds,
       ) * 1000,
+    dropAfter: Math.round(
+      limited(web.address_check_drop_after, ADDRESS_CHECK_LIMITS.drop_after),
+    ),
   };
 }
 

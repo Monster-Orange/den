@@ -969,7 +969,9 @@ export function sessionHostLines(
       "",
       `${title} doctor: Sign-in`,
       "",
-      `  sign-in  ${named ? "✓" : "⚠"}  ${detail}`,
+      // An https address that doesn't reach this Den yet: "!", as the
+      // address check beside it says it (not an install-wide ⚠).
+      `  sign-in  ${named ? "✓" : w?.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
     ],
     check: {
       id: "signin_host",

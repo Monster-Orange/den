@@ -2154,18 +2154,28 @@ the session cookie is set only there, and `localhost`, `127.0.0.1` and
 
 - `web up` and `web open` open the https address. `/auth` and `/signin` on
   a loopback name answer with a plain redirect to the same path there.
-- A session cookie a browser kept on a loopback name no longer counts for a
-  change. Plain reads there stay open, and the CLI's token
+- Every sign-in made on a loopback name ends when the address is proven,
+  and one made there counts on no host after (its cookie may have been
+  copied). Sign-out ends the session its cookie names, even one that no
+  longer counts. Plain reads on loopback stay open, and the CLI's token
   (`web token --print`), the MCP and agents' tokens work on loopback as
   before.
-- "Works" means Den's own check of the address found this Den there (the
-  same check `doctor` and `web up` make, kept for
-  `web.address_check_cache_seconds`), or the edge just brought an https
-  request for it. Until then, and on an install with no https address (the
-  edge off, its port taken, a fresh install), sign-in stays on the address
-  the browser uses, so nothing locks you out. `doctor` then warns: other
-  apps you open on that address could see the sign-in, and it says how to
-  set up the https address.
+- **This is my computer** (`/attest`) on a loopback name goes to the
+  address. There, a signed-in browser the edge places on this machine gets
+  its code at once; one it can't place goes through `localhost` once, with
+  a link that works once for 2 minutes. A browser not signed in gets the
+  sign-in page there.
+- "Proven" means Den's own check of the address found this Den there (the
+  same check `doctor` and `web up` make, every
+  `web.address_check_cache_seconds`), or the edge brought an https request
+  for it with its proof. It stays proven through checks that can't tell (a
+  timeout). Only a definite failure (another server, or nothing, answers),
+  `web.address_check_drop_after` times in a row (2 unless set; 1 to 100),
+  moves sign-in back to the address the browser uses. Before it is proven,
+  and on an install with no https address (the edge off, its port taken, a
+  fresh install), sign-in stays where the browser is, so nothing locks you
+  out. `doctor` then warns: other apps you open on that address could see
+  the sign-in, and it says how to set up the https address.
 
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
@@ -2213,10 +2223,10 @@ user, and the CLI does that for you:
   person's click on a link from another site lands signed in; that site's
   own requests carry no cookie) and Path=/. Over HTTPS through the edge it
   is `__Host-den_session_<port>` and Secure, so the browser sends it to
-  that address only, over https only (a browser that signed in there
-  before 0.4.72 keeps its `den_session_<port>` cookie, which moves to the
-  new name on its next page load). Over plain http it is
-  `den_session_<port>`. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
+  that address only, over https only. Over https only that name counts (a
+  browser that signed in there before 0.4.72 signs in once more). Over
+  plain http it is `den_session_<port>`. The edge's `X-Forwarded-Proto`
+  counts only with the edge's proof. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
   browser allows. Each signed-in page load sends it again (the same value),

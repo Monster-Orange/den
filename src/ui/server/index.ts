@@ -296,6 +296,7 @@ import {
   signinMessage,
   type GuardContext,
   type GuardResult,
+  type Via,
 } from "./request-guard.js";
 import {
   clientRequestId,
@@ -1472,7 +1473,16 @@ function spendAttest(req: http.IncomingMessage, code: string): boolean {
  * browser on this machine reaches it there). A 303 back to `return`, one of
  * this server's own edge hosts, with a short-lived code in the fragment.
  * Anything else: an error page, and no code.
+ *
+ * Once Den's own named https address works, the sign-in lives there, so
+ * loopback /attest sends the browser there (sendToNamedAddress). On the
+ * address, a signed-in browser the edge places on this machine gets its
+ * code at once; one it can't place goes to localhost once with a hop (a
+ * code minted for ATTEST_HOP, 2 minutes, used once), which proves the
+ * browser is here. A browser not signed in gets the sign-in page there:
+ * never a redirect back, so no loop.
  */
+const ATTEST_HOP = "den-attest-hop";
 function handleAttest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -1490,11 +1500,76 @@ function handleAttest(
       code: status === 403 ? "not_this_computer" : "bad_return",
       requestId,
     });
+  const named = NAMED.address();
+  const onNamed =
+    guard.ok &&
+    guard.via === "edge" &&
+    !!named &&
+    new URL(named).hostname === hostNameOf(req);
+  if (onNamed) {
+    if (!guard.session && guard.principal?.kind !== "person")
+      return sendSignedOut(req, res, {
+        pathname: "/attest",
+        search: url.search,
+        scope: "den",
+        requestId,
+        message: signinMessage("den", product().cli, product().title),
+      });
+    const raw = url.searchParams.get("return");
+    const ret = attestReturn(raw, denEdgeHosts());
+    const secret = webSecret.current();
+    if (!ret || !raw || !secret)
+      return refuse(
+        400,
+        "That address isn't one of this Den's own. Open this Den at its own address and try again.",
+      );
+    // The edge places the browser on this machine: the code at once.
+    if (!guard.beyond) {
+      res.writeHead(303, {
+        Location: attestRedirect(ret, mintAttestCode(secret, ret.host)),
+      });
+      res.end();
+      return;
+    }
+    // It can't: through localhost once, which only this machine reaches.
+    const hop = new URLSearchParams({
+      return: raw,
+      hop: mintAttestCode(secret, ATTEST_HOP),
+    });
+    res.writeHead(303, {
+      Location: `${localhostOrigin(PORT)}/attest?${hop.toString()}`,
+    });
+    res.end();
+    return;
+  }
   if (!guard.ok || guard.via !== "loopback" || guard.beyond)
     return refuse(
       403,
       "This works only on the computer this Den runs on, at localhost.",
     );
+  // The hop from the named address: it proves a browser signed in there
+  // asked, and this request proves the browser is here. Once, in its time.
+  const hop = url.searchParams.get("hop");
+  if (hop !== null) {
+    const secret = webSecret.current();
+    const c = secret ? checkAttestCode(hop, secret, ATTEST_HOP) : null;
+    if (!c?.ok || !ATTEST_NONCES.consume(c.nonce, c.expiresAt))
+      return refuse(
+        403,
+        `That link was used or has expired. Open ${product().title} at its own address and press This is my computer again.`,
+      );
+    const ret = attestReturn(url.searchParams.get("return"), denEdgeHosts());
+    if (!ret || !secret)
+      return refuse(
+        400,
+        "That address isn't one of this Den's own. Open this Den at its own address and try again.",
+      );
+    res.writeHead(303, {
+      Location: attestRedirect(ret, mintAttestCode(secret, ret.host)),
+    });
+    res.end();
+    return;
+  }
   // 0.4.71: and only for a browser signed in there (or the person's CLI):
   // the code it hands out may make its holder the owner.
   if (!guard.session && guard.principal?.kind !== "person")
@@ -1653,8 +1728,6 @@ function webUrlNow(): string | null {
  */
 const NAMED = new NamedAddressWatch({
   webUrl: webUrlNow,
-  predict: (url) =>
-    edgeFronted() && denEdgeHosts().includes(new URL(url).hostname),
   probe: async (url): Promise<NamedAnswer> => {
     const s = webSecret.current();
     const st = await checkAddress({
@@ -1667,11 +1740,44 @@ const NAMED = new NamedAddressWatch({
     return st.wantedAnswer;
   },
   cacheMs: () => addressCheckSettings().cacheMs,
+  dropAfter: () => addressCheckSettings().dropAfter ?? 2,
+  // Proven: every session made on a loopback name ends now (its cookie may
+  // have been copied by another local app), its terminals with it.
+  onProven: () => {
+    try {
+      const ended = webSessions.endWhere(madeOnLoopback);
+      closeSessionSockets(ended);
+      if (ended.length)
+        serverLog(
+          `  ${product().title}'s address is proven: the sign-in lives there now; ${ended.length} sign-in(s) made on this machine's own name ended`,
+          "lifecycle",
+        );
+    } catch (e) {
+      serverLog(
+        `  ⚠ sign-ins made on this machine's own name could not be ended: ${(e as Error).message}`,
+        "warn",
+      );
+    }
+  },
 });
+
+/**
+ * Whether a session was made on a loopback name: its record says so, or
+ * (a session from before 0.4.72) its Host was one.
+ */
+function madeOnLoopback(s: { reach?: string; host: string }): boolean {
+  if (s.reach) return s.reach === "loopback";
+  const h = s.host.toLowerCase().replace(/:\d+$/, "");
+  return GUARD.loopbackNames.includes(h);
+}
 
 const LAN_HOSTS = lanHosts();
 /** H1: the edge's state folder (its proof's), re-read at most every 10 s. */
 let EDGE_DIR = { at: 0, dir: null as string | null };
+/** HTTPS: the edge's X-Forwarded-Proto counts only with its proof (H1). */
+function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
+  return requestIsHttps(req, via, EDGE_PROVED(req));
+}
 const EDGE_PROVED = edgeProofChecker(() => {
   if (Date.now() - EDGE_DIR.at > 10_000) {
     let dir: string | null = null;
@@ -1795,8 +1901,10 @@ const GUARD: GuardContext = {
     const secret = webSecret.current();
     return secret ? verifyPersonToken(token, secret) : null;
   },
-  session: (req, via) =>
-    webSessions.lookup(sessionCookie(req, requestIsHttps(req, via))),
+  session: (req, via) => {
+    const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
+    return s ? { ...s, loopback: madeOnLoopback(s) } : null;
+  },
   // Once Den's own named https address works, the session lives there.
   loopbackSessions: () => !NAMED.works(),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
@@ -1968,13 +2076,14 @@ function startSession(
   const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
+    ...(named ? { reach: named } : {}),
     via,
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
     ...(login && name ? { name } : {}),
   });
   return {
-    cookie: sessionSetCookie(id, requestIsHttps(req, named)),
+    cookie: sessionSetCookie(id, httpsOf(req, named)),
     approveKey,
   };
 }
@@ -2122,8 +2231,14 @@ function sendToNamedAddress(
 ): boolean {
   if (!guard.ok || guard.via !== "loopback") return false;
   const method = (req.method ?? "GET").toUpperCase();
+  const get = method === "GET" || method === "HEAD";
+  // /auth on every method it answers (a code's POST too: it mints a
+  // session); /signin; /attest unless it carries the address's hop
+  // (handleAttest), which it answers itself.
   const page =
-    SIGNIN_PAGES.has(url.pathname) && (method === "GET" || method === "HEAD");
+    (url.pathname === "/auth" && (get || method === "POST")) ||
+    (SIGNIN_PAGES.has(url.pathname) && get) ||
+    (url.pathname === "/attest" && get && !url.searchParams.has("hop"));
   if (!page && !SIGNIN_APIS.test(url.pathname)) return false;
   const there = NAMED.address();
   if (!there) return false;
@@ -2182,7 +2297,7 @@ function sendSignedOut(
   const via = GUARD.edgeHosts().includes(host.replace(/:\d+$/, ""))
     ? "edge"
     : "other";
-  const origin = `${requestIsHttps(req, via === "edge" ? "edge" : null) ? "https" : "http"}://${host}`;
+  const origin = `${httpsOf(req, via === "edge" ? "edge" : null) ? "https" : "http"}://${host}`;
   const bin = printedCli();
   const loginArgs =
     toLocal || host === `localhost:${PORT}` ? [] : ["--origin", origin];
@@ -3465,6 +3580,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         timeout_seconds: a.timeoutMs / 1000,
         retries: a.retries,
         cache_seconds: a.cacheMs / 1000,
+        drop_after: a.dropAfter,
       };
     })(),
     // 0.4.46: how a terminal pane reconnects on its own (panes.*).
@@ -3567,18 +3683,13 @@ async function handleRequest(
     req.headers["sec-fetch-dest"] === "document" &&
     !res.headersSent
   ) {
-    const https = requestIsHttps(req, guard.via);
+    const https = httpsOf(req, guard.via);
     const id = sessionCookie(req, https);
     if (id) res.setHeader("Set-Cookie", sessionSetCookie(id, https));
   }
   // The edge brought a proven https request for Den's own address: it
   // works now, so the session lives only there (NAMED).
-  if (
-    guard.ok &&
-    guard.via === "edge" &&
-    requestIsHttps(req, "edge") &&
-    EDGE_PROVED(req)
-  )
+  if (guard.ok && guard.via === "edge" && httpsOf(req, "edge"))
     NAMED.saw(hostNameOf(req));
   if (sendToNamedAddress(req, res, url, guard)) return;
   // SEC-1c (R8): an agent's request never passes the lock.
@@ -6253,12 +6364,15 @@ async function handleRequest(
   // Sign out: this browser's session ends and its cookie is cleared.
   if (pathname === "/api/session/logout" && req.method === "POST") {
     const g = guard.ok ? guard : null;
-    const ended = g?.session ? webSessions.end(g.session.key) : false;
-    if (g?.session) closeSessionSockets([g.session.key]);
-    res.setHeader(
-      "Set-Cookie",
-      clearSessionCookies(PORT, requestIsHttps(req, g?.via ?? null)),
-    );
+    const https = httpsOf(req, g?.via ?? null);
+    // The session the cookie names, even one that no longer counts here
+    // (made on a loopback name once the address works): it ends too, so a
+    // copy of its cookie elsewhere ends with it.
+    const named =
+      g?.session ?? webSessions.lookup(sessionCookie(req, https)) ?? null;
+    const ended = named ? webSessions.end(named.key) : false;
+    if (named) closeSessionSockets([named.key]);
+    res.setHeader("Set-Cookie", clearSessionCookies(PORT, https));
     return sendJson(res, { ok: true, ended });
   }
   // `<cli> web sessions` (shell-grade: the person's bearer, or a session).
