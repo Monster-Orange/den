@@ -763,6 +763,17 @@ const POP_PROPS = [
   "white-space",
 ];
 
+/**
+ * One spelling for the system face. The token names BlinkMacSystemFont;
+ * Chromium on macOS reports it back as "system-ui", Chromium on Linux keeps
+ * the name. The same face either way, so the stored look matches on both.
+ */
+function oneFontName(v: unknown): unknown {
+  return JSON.parse(
+    JSON.stringify(v).replace(/\\"system-ui\\"/g, "BlinkMacSystemFont"),
+  );
+}
+
 describe("the kit's own menus look as they did (◐ ▾)", () => {
   it("every row's style and height, light and dark, at 1280 and 390", async () => {
     if (skip()) return;
@@ -783,6 +794,6 @@ describe("the kit's own menus look as they did (◐ ▾)", () => {
       return;
     }
     const want = JSON.parse(fs.readFileSync(POPOVERS, "utf-8"));
-    expect(got).toEqual(want);
+    expect(oneFontName(got)).toEqual(oneFontName(want));
   });
 });
