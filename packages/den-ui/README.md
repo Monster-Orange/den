@@ -474,7 +474,7 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
-## The panel fold toggle, its edge strip and the switch (0.7.7)
+## The panel fold toggle, its edge strip and the switch
 
 - `src/panel-fold.js`, `src/panel-fold.css` (exports `./panel-fold`,
   `./panel-fold.css`): a side panel that folds away so the main column
