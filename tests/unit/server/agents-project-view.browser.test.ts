@@ -338,6 +338,17 @@ describe("#80: scope wins", () => {
     expect(await frontId(p)).toBe(sid.bo);
     expect(param(p, "project")).toBe("south");
     expect(await toLine(p)).toBe("To bo · south");
+    // The To line paints before the terminal loads and connects: a key
+    // typed before then has no terminal to go to. Type once bo's terminal
+    // is live: its screen came back over its connection.
+    await p.waitForFunction(
+      (id) =>
+        document
+          .querySelector(`.pane[data-id="${id}"]:not([hidden]) .xterm-rows`)
+          ?.textContent?.includes("bo ready") ?? false,
+      sid.bo,
+      { timeout: 20_000 },
+    );
     await p.click(".pane:not([hidden]) .term");
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
