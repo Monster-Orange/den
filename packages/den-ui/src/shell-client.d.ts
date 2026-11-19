@@ -3,6 +3,7 @@ import type {
   AppearanceMenu,
   BellItem,
   BellPanelOptions,
+  PageMenuItem,
   WaitingOptions,
 } from "./shell-html.js";
 
@@ -141,6 +142,18 @@ export interface AppearanceHandle {
 export declare function hydrateAppearance(
   button: HTMLElement,
   opts?: AppearanceHydrateOptions,
+): AppearanceHandle;
+export interface PageMenuHydrateOptions {
+  /** The items, or a function giving them each time the menu opens. */
+  items: PageMenuItem[] | (() => PageMenuItem[]);
+  /** A pick of an item with no onSelect of its own. */
+  onSelect?: (id: string, item: PageMenuItem) => void;
+  lang?: string | (() => string);
+}
+/** The page action menu on the button pageMenuButtonHtml drew. */
+export declare function hydratePageMenu(
+  button: HTMLElement,
+  opts: PageMenuHydrateOptions,
 ): AppearanceHandle;
 /** The update-waiting pill after the version chip; null hides it. */
 export declare function setWaiting(
