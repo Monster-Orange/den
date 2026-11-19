@@ -207,6 +207,19 @@ function addressSection(out: string): string {
   return end > 0 ? rest.slice(0, end) : rest;
 }
 
+/**
+ * `web up` agrees with doctor and web.log: Visit gives the checked address,
+ * then one line names the edge address as not checked yet, in web.log's
+ * words.
+ */
+function expectVisitChecked(out: string, i: Install): void {
+  expect(out).toContain(`Visit: ${LOCAL}:${i.webPort}`);
+  expect(out).not.toContain(`Visit: ${i.wanted}`);
+  expect(out.match(/The edge address [^\n]*/g) ?? []).toEqual([
+    `The edge address ${i.wanted} isn't checked yet: it hasn't answered as this Den.`,
+  ]);
+}
+
 /** The start line's address, the last time the server started. */
 async function startLine(i: Install): Promise<string> {
   const deadline = Date.now() + 30_000;
@@ -239,7 +252,7 @@ describe("another server answers at the edge address (it holds the port)", () =>
     expect(up.out).toContain(
       `Den is at ${LOCAL}:${i.webPort} until port ${i.edgePort} is free.`,
     );
-    expect(up.out).not.toContain(`Visit: ${i.wanted}`);
+    expectVisitChecked(up.out, i);
   });
 
   it("doctor's Address row gives the checked address, and says the edge one isn't checked yet", async () => {
@@ -298,6 +311,7 @@ describe("something holds the edge port and never answers", () => {
     expect(lines).toEqual([
       `Not reachable yet: nothing answers at ${i.wanted}.`,
     ]);
+    expectVisitChecked(up.out, i);
     // It returns within the probe's limits (1 s, no retry, two targets).
     expect(up.ms).toBeLessThan(60_000);
   }, 150_000);
@@ -321,6 +335,7 @@ describe("nothing listens at the edge address", () => {
     const up = await den(i, ["web", "up", "--no-open"]);
     expect(up.code).toBe(0);
     expect(up.out.match(/Not reachable yet: [^\n]*/g) ?? []).toHaveLength(1);
+    expectVisitChecked(up.out, i);
     const sec = addressSection((await den(i, ["doctor"])).out);
     const row = sec.split("\n").find((l) => /^\s+address\s/.test(l)) ?? "";
     expect(row).toContain(`${LOCAL}:${i.webPort}`);
