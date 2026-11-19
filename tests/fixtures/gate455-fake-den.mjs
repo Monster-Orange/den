@@ -1,9 +1,15 @@
 /**
  * A fake bed for gate/455.mjs: the identity route, the address, doctor and
  * the edge routes answer as a working Den does, unless `broken` names one
- * part to break. Pages are Playwright-like stubs.
+ * part to break. Pages are Playwright-like stubs. `address` sets what Den's
+ * address does: null (it works), "nothing" (nothing answers at it) or
+ * "held" (another server answers it).
  */
-export function fakeBed({ broken = null } = {}) {
+export function fakeBed({ broken = null, address = null } = {}) {
+  const wanted = "http://den.acme.localhost";
+  // eslint-disable-next-line no-restricted-syntax -- the address Den gives
+  const direct = "http://localhost:7777";
+  const unreachable = `Not reachable yet: nothing answers at ${wanted}.`;
   const answer = "a".repeat(64);
   const json = (status, body) => ({ status, body: JSON.stringify(body) });
   const ctx = {
@@ -14,6 +20,14 @@ export function fakeBed({ broken = null } = {}) {
       return json(200, { den: "identity", answer });
     },
     async api(p) {
+      if (p === "/api/edge/address" && address)
+        return {
+          address: direct,
+          wanted,
+          wantedAnswer: address === "held" ? "other" : "nothing",
+          answeredAs: address === "held" ? "nginx" : null,
+          directOk: true,
+        };
       if (p === "/api/edge/address")
         return {
           address: "https://den.example.test",
@@ -24,6 +38,17 @@ export function fakeBed({ broken = null } = {}) {
       return null;
     },
     cli(args) {
+      if (args[0] === "doctor" && address)
+        return {
+          code: 0,
+          out:
+            (address === "held"
+              ? "  ! Edge: not running. Port 80 is held by nginx.\n      Options: free port 80, or add Den to that proxy (route below).\n"
+              : broken === "unreachable-cli"
+                ? ""
+                : `  ! ${unreachable}\n`) +
+            `      Den answers at ${direct}. That address was checked just now: it is this Den.\n`,
+        };
       if (args[0] === "doctor")
         return {
           code: 0,
@@ -55,7 +80,24 @@ export function fakeBed({ broken = null } = {}) {
       return {
         async waitForSelector() {},
         async evaluate() {
-          return { card: false, banner: false, hScroll: false };
+          if (!address) return { card: false, banner: false, hScroll: false };
+          const held = address === "held";
+          return {
+            card: true,
+            banner: false,
+            hScroll: false,
+            cardText: held
+              ? "Den's proxy is not running: port 80 is in use"
+              : broken === "unreachable-page"
+                ? "Den's address doesn't answer yet"
+                : `Den's address doesn't answer yet ${unreachable}`,
+            sub:
+              broken === "sub-running"
+                ? "acme / acme-edge · running"
+                : held
+                  ? "acme / acme-edge · not running: port 80 is in use"
+                  : "acme / acme-edge · not reachable yet",
+          };
         },
       };
     },
