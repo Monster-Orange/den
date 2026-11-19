@@ -151,6 +151,10 @@ describe("the classes", () => {
       "/api/service/taillog",
       "/api/service/history",
       "/api/logs/search",
+      // They run gh as the person (a private repo's name, the API quota).
+      "/api/github/branches",
+      "/api/github/repos",
+      "/api/report/mine",
     ]) {
       expect([p, routeClass("GET", p)]).toEqual([p, "mutating"]);
       expect([p, isMutatingGet("GET", p)]).toEqual([p, true]);
