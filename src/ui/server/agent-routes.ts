@@ -356,7 +356,12 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
   if (e instanceof HostError) {
     sendJson(
       res,
-      { ok: false, error: e.message, code: "session_host" },
+      {
+        ok: false,
+        error: e.message,
+        // Issue 503: no PTY to open (the page has its own words for it).
+        code: e.code === "spawn" ? "pty_open" : "session_host",
+      },
       e.code === "cap" ? 429 : 503,
     );
     return;

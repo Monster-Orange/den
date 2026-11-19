@@ -13,7 +13,8 @@
  *                                           each time it changes
  *
  * ops: hello, start, list, attach, detach, write, resize, signal,
- * scrollback, forget, shutdown. A request whose `v` is not the host's is
+ * scrollback, forget, access, ptys (issue 503: the PTY masters the host
+ * holds), shutdown. A request whose `v` is not the host's is
  * refused with code "protocol", except `shutdown`, which every version
  * takes, so an older host can always be stopped.
  *

@@ -12,6 +12,7 @@
  * The host only ever sees PtyFactory, so tests run a scripted or piped
  * stand-in and never need the module.
  */
+import * as fs from "fs";
 import { createRequire } from "module";
 import * as path from "path";
 import { getEngineRoot } from "../paths.js";
@@ -39,6 +40,11 @@ export interface PtyProcess {
   resize(cols: number, rows: number): void;
   /** `signal` is a Node signal name ("SIGTERM"). */
   kill(signal: string): void;
+  /**
+   * Issue 503: close the master once the process has exited. Safe to call
+   * more than once. Optional: a stand-in without a master has none.
+   */
+  close?(): void;
 }
 
 export type PtyFactory = (
@@ -54,6 +60,8 @@ export type PtyLoad =
 /** The subset of the module's API that is used. */
 interface NativePty {
   pid: number;
+  /** The module's read stream over the master (unix; internal). */
+  _socket?: { destroyed?: boolean; destroy(): void };
   onData(fn: (d: string | Buffer) => void): unknown;
   onExit(fn: (e: { exitCode: number; signal?: number }) => void): unknown;
   write(d: string | Buffer): void;
@@ -101,8 +109,60 @@ function wrap(mod: NativeModule): PtyFactory {
           }
         }
       },
+      // Issue 503: the module destroys its stream over the master at the
+      // exit (or 200 ms after); this makes sure, and never signals (the pid
+      // may be another process's by now).
+      close: () => {
+        const sock = p._socket;
+        if (sock && !sock.destroyed)
+          try {
+            sock.destroy();
+          } catch {
+            /* gone */
+          }
+      },
     };
   };
+}
+
+/** A device number's major, as the platform packs it. */
+function major(rdev: number, platform: NodeJS.Platform): number {
+  if (platform === "darwin") return Math.floor(rdev / 2 ** 24) & 0xff;
+  // Linux: glibc's gnu_dev_major.
+  return (
+    (Math.floor(rdev / 2 ** 8) & 0xfff) | (Math.floor(rdev / 2 ** 32) & ~0xfff)
+  );
+}
+
+/**
+ * Issue 503: how many PTY masters this process holds: its open fds that
+ * are character devices with /dev/ptmx's major (on macOS each master has
+ * its own minor; on Linux they share /dev/ptmx's). Read only, never a
+ * close. null where it can't be told (no /dev/ptmx or /dev/fd).
+ */
+export function countPtyMasters(
+  platform: NodeJS.Platform = process.platform,
+): number | null {
+  let want: number;
+  let fds: string[];
+  try {
+    want = major(fs.statSync("/dev/ptmx").rdev, platform);
+    fds = fs.readdirSync("/dev/fd");
+  } catch {
+    return null;
+  }
+  let n = 0;
+  for (const f of fds) {
+    const fd = Number(f);
+    if (!Number.isInteger(fd)) continue;
+    try {
+      const st = fs.fstatSync(fd);
+      if (st.isCharacterDevice() && major(st.rdev, platform) === want) n++;
+    } catch {
+      /* the listing's own fd, closed since */
+    }
+  }
+  return n;
 }
 
 let memo: PtyLoad | null = null;

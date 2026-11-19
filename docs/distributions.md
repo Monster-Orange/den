@@ -3265,6 +3265,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
     max_concurrent: 4
   ```
 
+- Issue 503: each terminal holds one PTY, and a machine has a fixed
+  number of them (macOS: `kern.tty.ptmx_max`, 511 by default). An exited
+  session gives its PTY back `sessions.pty_close_seconds` after its
+  process ends (default 0: at once); it stays listed as exited and its
+  scrollback still replays. A start the machine can't give a PTY to is
+  refused with the reason, which the terminal host logs and the Agents
+  page shows. `<cli> doctor` shows how many PTYs the terminal host holds
+  and how many the machine uses of its limit, and fails above
+  `sessions.pty_warn_above` (default 400) or at
+  `sessions.pty_machine_warn_percent` of the limit (default 90).
+
+  ```yaml
+  sessions:
+    pty_close_seconds: 0
+    pty_warn_above: 400
+    pty_machine_warn_percent: 90
+  ```
+
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
   optional dependency (prebuilt binaries for macOS, Linux and Windows,
   nothing downloaded at install). Without it (`npm install

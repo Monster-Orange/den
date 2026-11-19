@@ -2027,15 +2027,40 @@ export interface SessionsConfig {
    * `sessions kill` with no --signal) before it gets KILL (default 5).
    */
   close_grace_seconds?: number;
+  /**
+   * Issue 503: how long after a process exits its PTY closes, in seconds
+   * (default 0: at once). Its scrollback stays readable either way.
+   */
+  pty_close_seconds?: number;
+  /** Issue 503: doctor fails above this many PTYs held by the host (400). */
+  pty_warn_above?: number;
+  /**
+   * Issue 503: doctor fails when the machine's PTYs in use reach this
+   * percent of its limit (90).
+   */
+  pty_machine_warn_percent?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+export const DEFAULT_PTY_WARN_ABOVE = 400;
+export const DEFAULT_PTY_MACHINE_WARN_PERCENT = 90;
 
 /** `sessions:` with its defaults applied. */
 export interface ResolvedSessionsConfig {
   maxConcurrent: number;
   closeGraceSeconds: number;
+  ptyCloseSeconds: number;
+  ptyWarnAbove: number;
+  ptyMachineWarnPercent: number;
 }
+
+const SESSIONS_KEYS = [
+  "max_concurrent",
+  "close_grace_seconds",
+  "pty_close_seconds",
+  "pty_warn_above",
+  "pty_machine_warn_percent",
+];
 
 /**
  * The effective sessions config. Anything malformed throws, naming the key,
@@ -2052,14 +2077,51 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
   if (!isMapping(raw))
     throw new Error(`sessions: must be a mapping (got ${JSON.stringify(raw)})`);
   for (const k of Object.keys(raw))
-    if (k !== "max_concurrent" && k !== "close_grace_seconds")
+    if (!SESSIONS_KEYS.includes(k))
       throw new Error(
-        `sessions.${k}: unknown key (sessions: takes max_concurrent, close_grace_seconds)`, // words-ok: the config key is sessions:
+        `sessions.${k}: unknown key (sessions: takes ${SESSIONS_KEYS.join(", ")})`, // words-ok: the config key is sessions:
       );
   const out: ResolvedSessionsConfig = {
     maxConcurrent: DEFAULT_SESSIONS_MAX_CONCURRENT,
     closeGraceSeconds: 5,
+    ptyCloseSeconds: 0,
+    ptyWarnAbove: DEFAULT_PTY_WARN_ABOVE,
+    ptyMachineWarnPercent: DEFAULT_PTY_MACHINE_WARN_PERCENT,
   };
+  const ptyClose = raw.pty_close_seconds;
+  if (ptyClose !== undefined) {
+    if (
+      typeof ptyClose !== "number" ||
+      !Number.isFinite(ptyClose) ||
+      ptyClose < 0 ||
+      ptyClose > 86_400
+    )
+      throw new Error(
+        `sessions.pty_close_seconds: must be a number of seconds, 0 to 86400 (got ${JSON.stringify(ptyClose)})`,
+      );
+    out.ptyCloseSeconds = ptyClose;
+  }
+  const warn = raw.pty_warn_above;
+  if (warn !== undefined) {
+    if (typeof warn !== "number" || !Number.isInteger(warn) || warn < 1)
+      throw new Error(
+        `sessions.pty_warn_above: must be a whole number of at least 1 (got ${JSON.stringify(warn)})`,
+      );
+    out.ptyWarnAbove = warn;
+  }
+  const pct = raw.pty_machine_warn_percent;
+  if (pct !== undefined) {
+    if (
+      typeof pct !== "number" ||
+      !Number.isFinite(pct) ||
+      pct <= 0 ||
+      pct > 100
+    )
+      throw new Error(
+        `sessions.pty_machine_warn_percent: must be a percent, above 0 and up to 100 (got ${JSON.stringify(pct)})`,
+      );
+    out.ptyMachineWarnPercent = pct;
+  }
   const grace = raw.close_grace_seconds;
   if (grace !== undefined) {
     if (

@@ -1367,6 +1367,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ...(await whereRows(await defaultWhereDeps())).map(whereCheck),
     );
     {
+      // Issue 503: the terminal host's PTYs, and the machine's.
+      const { ptyLines, defaultPtyDeps } = await import("./doctor-ptys.js");
+      const pt = await ptyLines(
+        readBrand().name,
+        defaultPtyDeps(getStateDir()),
+      );
+      r.checks.push(pt.check);
+      if (pt.problem) r.ok = false;
+    }
+    {
       const { hubStatus } = await import("../../shared/hub.js");
       const st = await hubStatus();
       const h = hubLines(st, readBrand().name);
@@ -1433,6 +1443,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     readBrand().name,
   ))
     console.log(l);
+  // Issue 503: the terminal host's PTYs, and the machine's.
+  const { ptyLines, defaultPtyDeps } = await import("./doctor-ptys.js");
+  const pty = await ptyLines(readBrand().name, defaultPtyDeps(getStateDir()));
+  for (const l of pty.lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
@@ -1483,6 +1497,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     return rows.some((r) => r.problem) ||
       held.problem ||
       ownerProblem ||
+      pty.problem ||
       cfg.problem ||
       sign.problem ||
       addr.problem
@@ -1509,6 +1524,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   return rows.some((r) => r.problem) ||
     held.problem ||
     ownerProblem ||
+    pty.problem ||
     cfg.problem ||
     found
     ? 1
