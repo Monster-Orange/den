@@ -12,6 +12,9 @@
  */
 import type { UiLanguage } from "../../ui/server/ui-language.js";
 
+/** A language these words come in (the CLI names it without a server import). */
+export type SigningLanguage = UiLanguage;
+
 export type SigningWord =
   | "noKey"
   | "notAgentsKey"
