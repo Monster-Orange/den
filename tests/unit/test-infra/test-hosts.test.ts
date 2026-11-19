@@ -58,7 +58,9 @@ const alive = (pid: number): boolean => {
 
 describe("the tag on a host's command line", () => {
   it("DEN_HOST_TAG goes on `sessions host` as --tag", () => {
-    expect(hostArgs({ DEN_HOST_TAG: "den-test-42@tests/unit/a.test.ts~o1" })).toEqual([
+    expect(
+      hostArgs({ DEN_HOST_TAG: "den-test-42@tests/unit/a.test.ts~o1" }),
+    ).toEqual([
       "sessions",
       "host",
       "--tag=den-test-42@tests/unit/a.test.ts~o1",

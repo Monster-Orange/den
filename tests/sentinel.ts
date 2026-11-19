@@ -13,6 +13,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { hostTag, tagFor, testRun } from "./test-hosts.js";
 
 export const SENTINEL_BINS = [
   "claude",
@@ -185,7 +186,21 @@ function guardOpts(a: unknown): unknown {
   // /usr/bin/sudo): an env that leaves it out keeps the sentinel's.
   if (process.env.DEN_SYSTEM_SUDO && !env.DEN_SYSTEM_SUDO)
     env.DEN_SYSTEM_SUDO = process.env.DEN_SYSTEM_SUDO;
+  tagHosts(env);
   return { ...o, env };
+}
+
+/**
+ * Issue 501: a session host started from this spawn (by a Den server or
+ * CLI, through DEN_HOST_TAG) carries this run's id and the test file
+ * running now (tests/test-hosts.ts). An env that names an owner keeps its
+ * tag; one with no tag, or the run's alone, gets the file's.
+ */
+function tagHosts(env: NodeJS.ProcessEnv): void {
+  const run = testRun();
+  if (!run) return;
+  if (env.DEN_HOST_TAG && env.DEN_HOST_TAG !== hostTag(run)) return;
+  env.DEN_HOST_TAG = tagFor() ?? undefined;
 }
 
 /**

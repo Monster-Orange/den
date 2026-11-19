@@ -3,7 +3,12 @@
  * Runs before each test suite
  */
 
-import { afterAll, expect } from "@jest/globals";
+import { afterAll, afterEach, beforeEach, expect } from "@jest/globals";
+import {
+  markTest,
+  setCurrentTestFile,
+  stopOwnedHosts,
+} from "./test-hosts.js";
 import childProcess from "child_process";
 import { guardSpawns, sentinelCalls, sentinelMark } from "./sentinel";
 import * as fs from "fs";
@@ -114,6 +119,21 @@ if (!(process.env.PATH ?? "").split(path.delimiter).includes(stubs)) {
 // Every spawn keeps it, even one whose env sets its own PATH.
 guardSpawns(childProcess);
 const sentinelBefore = sentinelMark();
+
+// Issue 501: a session host a test starts carries this file's name
+// (test-hosts.ts), and one a helper owns ends with the test that started
+// it, or with this file when a hook started it, even when the test throws
+// first. Global teardown fails the run for any host still alive.
+setCurrentTestFile(
+  path.relative(process.cwd(), expect.getState().testPath ?? "") ||
+    "an unnamed test file",
+);
+beforeEach(() => markTest(true));
+afterEach(async () => {
+  markTest(false);
+  await stopOwnedHosts("test");
+});
+afterAll(() => stopOwnedHosts("file"));
 afterAll(() => {
   const calls = sentinelCalls(sentinelBefore);
   if (!calls.length) return;

@@ -21,23 +21,27 @@ const PIPE_HOST = path.join(
   "../../unit/sessions/helpers/pipe-host.ts",
 );
 
-it.failing("starts a host and throws before its teardown", async () => {
-  if (!out || !dir) throw new Error("not in the child run");
-  startTestHost(PIPE_HOST, dir);
-  const end = Date.now() + 30_000;
-  for (;;) {
-    try {
-      const c = await connectHost(sessionPaths(dir).socket);
-      fs.writeFileSync(out, String(c.hostPid));
-      c.close();
-      break;
-    } catch (e) {
-      if (Date.now() > end) throw e;
-      await new Promise((r) => setTimeout(r, 100));
+it.failing(
+  "starts a host and throws before its teardown",
+  async () => {
+    if (!out || !dir) throw new Error("not in the child run");
+    startTestHost(PIPE_HOST, dir);
+    const end = Date.now() + 30_000;
+    for (;;) {
+      try {
+        const c = await connectHost(sessionPaths(dir).socket);
+        fs.writeFileSync(out, String(c.hostPid));
+        c.close();
+        break;
+      } catch (e) {
+        if (Date.now() > end) throw e;
+        await new Promise((r) => setTimeout(r, 100));
+      }
     }
-  }
-  throw new Error("thrown before the host is stopped");
-}, 60_000);
+    throw new Error("thrown before the host is stopped");
+  },
+  60_000,
+);
 
 it("the host it started is gone once that test ended", () => {
   if (!out) return;

@@ -6,7 +6,7 @@
  * starts a new one (ensureHost's spawnHost seam). Never launchctl.
  */
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as net from "net";
 import * as os from "os";
@@ -37,9 +37,8 @@ import {
   type UpdateWait,
 } from "../../../src/ui/server/update-check.js";
 import { updateDen } from "../../../src/ui/server/den-update.js";
+import { startTestHost } from "../../test-hosts.js";
 
-const ENGINE = path.resolve(__dirname, "../../..");
-const LOADER = path.join(ENGINE, "node_modules/tsx/dist/loader.mjs");
 const HELPER = path.join(__dirname, "helpers", "module-host.ts");
 
 let tmp = "";
@@ -122,21 +121,16 @@ function startHost(
   state: string,
   env: { pty?: PtyModuleInfo | null; den?: string; code?: string },
 ): void {
-  const child = spawn(
-    process.execPath,
-    ["--import", `file://${LOADER}`, HELPER, state],
-    {
-      cwd: tmp,
-      stdio: "ignore",
-      detached: true,
-      env: {
-        ...process.env,
-        ...(env.pty ? { DEN_TEST_PTY: JSON.stringify(env.pty) } : {}),
-        ...(env.den !== undefined ? { DEN_TEST_DEN: env.den } : {}),
-        ...(env.code !== undefined ? { DEN_TEST_CODE: env.code } : {}),
-      },
+  // Issue 501: it ends with the test that started it.
+  const { child } = startTestHost(HELPER, state, {
+    cwd: tmp,
+    env: {
+      ...process.env,
+      ...(env.pty ? { DEN_TEST_PTY: JSON.stringify(env.pty) } : {}),
+      ...(env.den !== undefined ? { DEN_TEST_DEN: env.den } : {}),
+      ...(env.code !== undefined ? { DEN_TEST_CODE: env.code } : {}),
     },
-  );
+  });
   child.unref();
   children.push(child);
 }
