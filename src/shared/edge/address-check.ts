@@ -281,6 +281,63 @@ export function givenAddress(s: AddressState): string | null {
 }
 
 /**
+ * Whether the address people are given was asked and didn't answer: nothing
+ * listens there, or something holds its port and gave no answer within the
+ * probe's limits (a proxy with no route for it). After 0.4.68 the second
+ * case said nothing at all: `web up` went quiet after it started.
+ */
+export function notReachable(s: AddressState): boolean {
+  if (s.wantedAnswer === "nothing") return true;
+  // Unknown: asked only when Den's own port answered (checkAddress).
+  return s.wantedAnswer === "unknown" && s.directOk;
+}
+
+/**
+ * The edge address: one served on this machine by Den's edge (a loopback
+ * name such as den.acme.localhost, or a name under the edge's domains).
+ */
+export function isEdgeAddress(
+  url: string | null,
+  domains: readonly string[] = [],
+): boolean {
+  if (!url) return false;
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (isLoopbackName(host)) return true;
+  return domains.some((d) => {
+    const dom = d.toLowerCase();
+    return !!dom && (host === dom || host.endsWith(`.${dom}`));
+  });
+}
+
+/**
+ * The address Den states, and the edge address it can't state yet (issue
+ * 455, after 0.4.68: no address is shown before it is checked). An edge
+ * address that hasn't answered as this Den is never the address: Den's own
+ * port is, when it answered; otherwise none is. Any other address (D80: one
+ * this machine may not reach, such as a name only other machines resolve)
+ * stays the address, as before.
+ */
+export function statedAddress(
+  s: AddressState,
+  edge: boolean,
+): { address: string | null; unchecked: string | null } {
+  if (!s.wanted) return { address: s.address, unchecked: null };
+  if (s.wantedAnswer === "den" || !edge)
+    return { address: s.wanted, unchecked: null };
+  return { address: s.directOk ? s.direct : null, unchecked: s.wanted };
+}
+
+/** "The edge address … isn't checked yet: …". */
+export function edgeUncheckedLine(wanted: string, w: NoticeWords): string {
+  return addressWord(w.lang, "edgeUnchecked", { wanted, title: w.title });
+}
+
+/**
  * Next to the address Den gives, when nothing answers it (issue 455,
  * Vision): it is still the one given (D80), and the CLI says so plainly.
  * "The edge isn't running." and its next step only when Den knows the
@@ -291,7 +348,7 @@ export function upAddressLines(
   w: NoticeWords,
   edgeDown: boolean | null,
 ): string[] {
-  if (!s.wanted || s.wantedAnswer !== "nothing") return [];
+  if (!s.wanted || !notReachable(s)) return [];
   if (givenAddress(s) !== s.wanted) return [];
   const out = [addressWord(w.lang, "unreachable", { address: s.wanted })];
   if (edgeDown === true)
@@ -374,12 +431,10 @@ export function doctorAddressLines(
     wanted: s.wanted ?? "",
     owner: s.answeredAs ?? "",
     name: s.owner?.name ?? "",
-    kind:
-      s.owner?.kind === "container"
-        ? "container"
-        : s.owner
-          ? addressWord(w.lang, "kind.process")
-          : "",
+    // The Edge card's words for it ("Docker container"), not a short form.
+    kind: s.owner
+      ? addressWord(w.lang, `kind.${s.owner.kind}` as AddressWord)
+      : "",
   };
   if (!s.directOk && s.wantedAnswer !== "den")
     return {

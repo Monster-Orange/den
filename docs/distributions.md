@@ -3335,20 +3335,31 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 
 - Issue 563: the terminal host is a process of its own, so a web
   restart (and a self-update's) leaves it running the version it
-  started on. When the web server starts, it asks the host which Den it
-  runs and which native terminal module it loaded. A host on another
-  version, holding a module that is no longer the installed one (npm
-  deletes the old one's folder at an update, and new terminals then fail
-  with `posix_spawnp failed`), or too old to say, is restarted the way
-  `<cli> sessions host --stop` does. Agents mid-turn are waited for, up
-  to `sessions.host_restart_wait_seconds` (default 900); then it restarts
-  anyway. The agents that were running resume; open terminals end; the
-  bell and the audit say so. `<cli> doctor`'s Host row shows what the
-  host runs, ✗ with the restart command when it isn't current.
+  started on. When the web server starts, it asks the host which code it
+  runs (a hash of its own files: `src/shared/sessions/host.ts` and what
+  it imports) and which native terminal module it loaded. A host whose
+  code differs from the installed one, holding a module that is no
+  longer the installed one (npm deletes the old one's folder at an
+  update, and new terminals then fail with `posix_spawnp failed`), or
+  too old to say, is restarted the way `<cli> sessions host --stop`
+  does. Issue 597: another Den version alone is no reason: when the code
+  and the module are the same, the host is told the new version and
+  kept, with its agents, and the audit says "host kept: code
+  unchanged". Agents mid-turn are waited for, up to
+  `sessions.host_restart_wait_seconds` (default 900); then it restarts
+  anyway. The agents that were running resume; open terminals end. An
+  agent the restart cut mid-turn gets one line as its next input, "Den
+  restarted while you were working; check your last step and carry on."
+  (`sessions.host_restart_note`, default true). The bell names the
+  agents resumed and the ones cut; the audit row has the counts first
+  and every agent in its `agents` field. `<cli> doctor`'s Host row says
+  "current", or "restart needed: host code changed" / "terminal module
+  changed" with the restart command.
 
   ```yaml
   sessions:
     host_restart_wait_seconds: 900
+    host_restart_note: true
   ```
 
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an

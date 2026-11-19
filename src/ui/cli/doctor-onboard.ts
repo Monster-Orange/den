@@ -61,6 +61,8 @@ export interface OnboardCheck {
     pid: number | null;
     startedAt: string | null;
     den: string | null;
+    /** Issue 597: the id of the code the host runs (null: unknown). */
+    code?: string | null;
     pty: { path: string; version: string | null; id: string | null } | null;
   };
 }

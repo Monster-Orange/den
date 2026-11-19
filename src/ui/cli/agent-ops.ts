@@ -7321,17 +7321,25 @@ export async function busyAgentIds(
 /**
  * Issue 563: resume agent `id` after its terminal host restarted (a
  * rotated one relaunches from its handoff, as after a restart).
+ * Issue 597: `note` (an agent the restart cut mid-turn) is typed in as its
+ * next input once it is ready, the way a first instruction is; a relaunch
+ * has its handoff as its first prompt instead. Not waited for.
  */
 export async function resumeAfterHostRestart(
   d: AgentsResolved,
   id: string,
+  note: string | null = null,
+  send: typeof sendFirstInstruction = sendFirstInstruction,
 ): Promise<void> {
   const rec = readRecord(d.stateDir(), id);
   if (!rec) throw new Error(`no agent "${id}"`);
-  const r = rotationOf(d, rec)?.ready
+  const rotated = Boolean(rotationOf(d, rec)?.ready);
+  const r = rotated
     ? await relaunchAgent(d, rec.id)
     : await resumeAgent(d, rec.id);
   if (r.early) throw new Error("exited at once");
+  if (note && !rotated)
+    void send(d, r.info.ref.id, r.rec.runtime, note).catch(() => false);
 }
 
 /**

@@ -17,6 +17,7 @@ import {
 import type { OnboardCheck } from "./doctor-onboard.js";
 import { engineVersion } from "../../shared/paths.js";
 import { installedPtyModule } from "../../shared/sessions/pty.js";
+import { hostCodeId } from "../../shared/sessions/host-code.js";
 
 export interface PtySettings {
   warnAbove: number;
@@ -157,7 +158,9 @@ export async function ptyLines(
  * module. The host says what it runs and which module it loaded (its
  * `hello`); ✗ when that isn't what is installed (an update it outlived),
  * the module it loaded is gone from disk, or it is too old to say. No
- * host running, or one that loaded no module yet, is fine.
+ * host running, or one that loaded no module yet, is fine. Issue 597:
+ * "current", or "restart needed: host code changed" / "terminal module
+ * changed"; another Den version with the same code is current.
  */
 export interface HostModuleDeps {
   /** What the running host says (null: none runs). */
@@ -192,6 +195,7 @@ export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
     },
     installed: () => ({
       den: engineVersion() ?? null,
+      code: hostCodeId(),
       pty: installedPtyModule(),
     }),
   };
@@ -201,7 +205,7 @@ export async function hostModuleLines(
   cli: string,
   d: HostModuleDeps,
 ): Promise<{ lines: string[]; check: OnboardCheck; problem: boolean }> {
-  const { hostStale } = await import("../../shared/sessions/host-refresh.js");
+  const { hostCheck } = await import("../../shared/sessions/host-refresh.js");
   let h: Awaited<ReturnType<HostModuleDeps["host"]>> = null;
   try {
     h = await d.host();
@@ -215,14 +219,14 @@ export async function hostModuleLines(
     detail =
       "no terminal host runs (it starts with the first agent or terminal)";
   else {
-    const why = hostStale(h, d.installed());
-    if (why) {
+    const need = hostCheck(h, d.installed());
+    if (need) {
       fail = true;
-      detail = `${why}: new agents and terminals may fail to start; restart the terminal host: ${fix}`;
+      detail = `restart needed: ${need.restart === "code" ? "host code changed" : "terminal module changed"} (${need.why}): new agents and terminals may fail to start; restart the terminal host: ${fix}`;
     } else
       detail = h.pty
-        ? `the terminal host runs the installed version and terminal module (${h.pty.path})`
-        : "the terminal host runs the installed version (no terminal module loaded yet)";
+        ? `current: the terminal host runs the installed code and terminal module (${h.pty.path})`
+        : "current: the terminal host runs the installed code (no terminal module loaded yet)";
   }
   return {
     lines: [`  Host  ${fail ? "✗" : "✓"}  ${detail}`],
@@ -238,6 +242,7 @@ export async function hostModuleLines(
               pid: h.pid ?? null,
               startedAt: h.startedAt ?? null,
               den: h.den ?? null,
+              code: h.code ?? null,
               pty: h.pty,
             },
           }

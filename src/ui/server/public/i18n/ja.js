@@ -880,6 +880,9 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
+    "set.server.owner_name_timeout.d":
+      "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
@@ -1080,6 +1083,11 @@
     "hubgh.none": "なし (アクセスなし)",
     "hubgh.give": "Den Hub にアクセスを許可",
     "hubgh.change": "リポジトリを変更",
+    "hubgh.error":
+      "Den Hub は GitHub で {org} を確認できませんでした: {reason}。後でもう一度お試しください。",
+    "hubgh.errorNoReason":
+      "Den Hub は GitHub で {org} を確認できませんでした。後でもう一度お試しください。",
+    "hubgh.retry": "もう一度確認",
     "set.distribution.hub_github": "Den Hub の GitHub アクセス",
     "set.agents.hub_github": "Den Hub の GitHub アクセス",
     "hubla.noProjects": "まだプロジェクトがありません。",
@@ -1793,6 +1801,10 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。実行中のエージェントはありませんでした。終了したターミナル: {terminals} 件。",
     "bell.m.hostRestartedNone":
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。実行中のエージェントもターミナルもありませんでした。",
+    "bell.m.hostRestartedCut":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
+    "bell.m.hostRestartedAgentsCut":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
@@ -2940,7 +2952,7 @@
       "ポート {port} は {owner} が使っているため、{host} は {owner} に届きます。",
     "edgeAddr.banner.unknown":
       "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
-    "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",
+    "edgeAddr.banner.none": "まだ届きません: {host} では何も応答していません。",
     "edgeAddr.banner.fix": "Edge で直す",
     "edgeAddr.banner.dismiss": "閉じる",
     "edgeAddr.card.title":
@@ -2953,7 +2965,9 @@
     "edgeAddr.card.unknown":
       "__DEN_TITLE__ が特定できない何かが使っています。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
     "edgeAddr.card.none":
-      "{wanted} ではまだ何も応答しません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+      "まだ届きません: {wanted} では何も応答していません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.sub.held": "停止中: ポート {port} は使用中です",
+    "edgeAddr.sub.none": "まだ届きません",
     "edgeAddr.kind.container": "Docker コンテナ",
     "edgeAddr.kind.process": "プロセス",
     "edgeAddr.what": "どうしますか？",

@@ -52,6 +52,11 @@ export class HostClient extends EventEmitter {
    * undefined when the host is too old to say.
    */
   hostDen: string | null | undefined = undefined;
+  /**
+   * Issue 597: the id of the host's code (null: it can't tell), or
+   * undefined when the host is too old to say.
+   */
+  hostCode: string | null | undefined = undefined;
   /** Issue 563: the native PTY module the host loaded (null: none yet). */
   hostPty: { path: string; version: string | null; id: string | null } | null =
     null;
@@ -190,6 +195,21 @@ export class HostClient extends EventEmitter {
     }
   }
 
+  /**
+   * Issue 597: tell the host it runs Den `den` now (an update that left its
+   * code and module alone). False from a host without the op.
+   */
+  async adopt(den: string): Promise<boolean> {
+    try {
+      await this.request("adopt", { den });
+      this.hostDen = den;
+      return true;
+    } catch (e) {
+      if (e instanceof HostError && e.code === "bad-request") return false;
+      throw e;
+    }
+  }
+
   async hello(): Promise<void> {
     const r = await this.request("hello");
     this.hostPid = Number(r.pid);
@@ -197,6 +217,8 @@ export class HostClient extends EventEmitter {
     this.hostLaunchd = typeof r.launchd === "string" ? r.launchd : null;
     this.hostDen =
       "den" in r ? (typeof r.den === "string" ? r.den : null) : undefined;
+    this.hostCode =
+      "code" in r ? (typeof r.code === "string" ? r.code : null) : undefined;
     const p = r.pty as { path?: unknown; version?: unknown; id?: unknown };
     this.hostPty =
       p && typeof p === "object" && typeof p.path === "string"

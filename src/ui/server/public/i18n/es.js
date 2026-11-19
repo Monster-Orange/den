@@ -903,6 +903,10 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout":
+      "Consulta del nombre en GitHub al arrancar, en segundos",
+    "set.server.owner_name_timeout.d":
+      "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
@@ -1108,6 +1112,11 @@
     "hubgh.none": "ningún repo (sin acceso)",
     "hubgh.give": "Dar acceso a Den Hub",
     "hubgh.change": "Cambiar repos",
+    "hubgh.error":
+      "Den Hub no pudo comprobar {org} en GitHub: {reason}. Inténtalo más tarde.",
+    "hubgh.errorNoReason":
+      "Den Hub no pudo comprobar {org} en GitHub. Inténtalo más tarde.",
+    "hubgh.retry": "Comprobar de nuevo",
     "set.distribution.hub_github": "Acceso de Den Hub a GitHub",
     "set.agents.hub_github": "Acceso de Den Hub a GitHub",
     "hubla.noProjects": "Aún no hay proyectos.",
@@ -1844,6 +1853,10 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. No había ningún agente en marcha. Terminales que terminaron: {terminals}.",
     "bell.m.hostRestartedNone":
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. No había ningún agente ni terminal en marcha.",
+    "bell.m.hostRestartedCut":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. Terminales que terminaron: {terminals}. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
+    "bell.m.hostRestartedAgentsCut":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
@@ -3013,7 +3026,7 @@
       "El puerto {port} lo ocupa {owner}, así que {host} va a {owner}.",
     "edgeAddr.banner.unknown":
       "El puerto {port} lo usa algo que __DEN_TITLE__ no sabe nombrar, así que {host} va allí.",
-    "edgeAddr.banner.none": "Todavía nada responde en {host}.",
+    "edgeAddr.banner.none": "Aún no se puede llegar: nada responde en {host}.",
     "edgeAddr.banner.fix": "Arréglalo en Edge",
     "edgeAddr.banner.dismiss": "Descartar",
     "edgeAddr.card.title":
@@ -3027,7 +3040,9 @@
     "edgeAddr.card.unknown":
       "Lo ocupa algo que __DEN_TITLE__ no sabe nombrar. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
     "edgeAddr.card.none":
-      "Todavía nada responde en {wanted}. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+      "Aún no se puede llegar: nada responde en {wanted}. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+    "edgeAddr.sub.held": "no está en marcha: el puerto {port} está en uso",
+    "edgeAddr.sub.none": "aún no se puede llegar",
     "edgeAddr.kind.container": "contenedor de Docker",
     "edgeAddr.kind.process": "proceso",
     "edgeAddr.what": "¿Qué quieres hacer?",

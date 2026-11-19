@@ -417,7 +417,7 @@
           initLogBadge,
           initWorkspacePill,
         } from "/header.js";
-        import { mountEdge } from "/edge-page.js";
+        import { edgeSub, mountEdge } from "/edge-page.js";
         import { mountAddressCard } from "/address-card.js";
         void Promise.all([
           initHealth(),
@@ -425,11 +425,26 @@
           applyDenConfig(),
           initChangelog(),
         ]).then(initLogBadge);
+        // Issue 455: the sub line follows the address card's state (one
+        // fetch of /api/edge/address feeds both), and Check again's too.
+        const sub = document.getElementById("edge-sub");
+        let edge = null;
+        const onState = (s) => {
+          if (edge && !edge.unreachable) sub.textContent = edgeSub(edge, s);
+        };
+        const card = mountAddressCard(
+          document.getElementById("edge-address"),
+          undefined,
+          onState,
+        );
         void mountEdge(
           document.getElementById("edge-body"),
-          document.getElementById("edge-sub"),
-        );
-        void mountAddressCard(document.getElementById("edge-address"));
+          sub,
+          fetch,
+          card,
+        ).then((st) => {
+          edge = st;
+        });
       </script>
     </main>
   </body>

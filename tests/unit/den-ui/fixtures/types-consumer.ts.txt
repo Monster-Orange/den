@@ -38,6 +38,20 @@ import {
   localPreview,
 } from "@kit/report.js";
 import { rectOf, masked } from "@kit/report-shot.js";
+import { buttonHtml, buttonClass } from "@kit/button.js";
+import {
+  menuRowHtml,
+  pageMenuButtonHtml,
+  pageMenuHtml,
+  type PageMenuItem,
+} from "@kit/shell-html.js";
+import { hydratePageMenu } from "@kit/shell-client.js";
+import {
+  settingRowHtml,
+  mountSettingRow,
+  hydrateSettingRow,
+  type SettingRow,
+} from "@kit/setting-row.js";
 import {
   busyAction,
   registerActions,
@@ -58,6 +72,22 @@ import {
   SAVE_AFTER_MS,
   type SaveStateChange,
 } from "@kit/savestate.js";
+import {
+  foldToggleHtml,
+  edgeStripHtml,
+  hydrateFoldToggle,
+  hydrateEdgeStrip,
+  type EdgeStripCountKind,
+} from "@kit/panel-fold.js";
+import { switchHtml, hydrateSwitch } from "@kit/switch.js";
+import {
+  chosenCount,
+  filterBarHtml,
+  mountFilterBar,
+  type FilterChange,
+  type FilterFacet,
+} from "@kit/filter-bar.js";
+import { bulkBarHtml, mountBulkBar, type BulkAction } from "@kit/bulk-bar.js";
 
 const model: ShellModel = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -255,3 +285,87 @@ const viaKit = DenUI.saveState(document.createElement("p"), {
 });
 viaKit.destroy();
 void (SAVE_AFTER_MS + 0);
+
+// The panel fold toggle, its edge strip and the switch: data and callbacks.
+const foldBtn: string = foldToggleHtml({ pressed: true, controls: "side", lang: "ja" });
+const kind: EdgeStripCountKind = "waiting";
+const stripHtml: string = edgeStripHtml({ count: 2, what: kind, controls: "side" });
+const fold = hydrateFoldToggle(document.querySelector<HTMLElement>(".den-fold"), {
+  onToggle: (next: boolean) => void next,
+});
+fold.set(!fold.pressed());
+const strip = hydrateEdgeStrip(document.querySelector<HTMLElement>(".den-strip"), {
+  onShow: () => fold.set(true),
+});
+strip.setCount(3, "open");
+strip.destroy();
+const swHtml: string = switchHtml({ label: "Notes", on: true, help: "Kept here." });
+const sw = hydrateSwitch(document.querySelector<HTMLElement>(".den-switch"), {
+  onChange: (on: boolean) => void on,
+});
+sw.set(!sw.on());
+sw.setDisabled(false);
+sw.destroy();
+void (foldBtn + stripHtml + swHtml);
+
+// The filter bar: the host's facets, counts and choices; the kit's words.
+const facets: FilterFacet[] = [
+  { id: "status", label: "Status", options: [{ value: "draft", label: "Draft", count: 2 }] },
+];
+const fbHtml: string = filterBarHtml({ id: "f", facets, selected: { status: ["draft"] }, lang: "es" });
+void fbHtml;
+const fb = mountFilterBar(document.createElement("div"), {
+  facets,
+  selected: {},
+  start: document.createElement("input"),
+  end: [document.createElement("button")],
+  onChange: (sel, change: FilterChange) =>
+    void (chosenCount(sel) + ("clear" in change ? 0 : Number(change.on))),
+});
+fb.update({ selected: { status: [] } });
+fb.open();
+fb.destroy();
+DenUI.filterBar(document.createElement("div"), { facets }).close();
+
+// The bulk bar: the count and the host's actions; a host's own dialog.
+const acts: BulkAction[] = [{ id: "pause", label: "Pause", count: 3, disabled: false }];
+const bbHtml: string = bulkBarHtml({ count: 3, actions: acts });
+void bbHtml;
+const bb = mountBulkBar(document.createElement("div"), {
+  count: 3,
+  actions: acts,
+  onAction: (id, button) => void askConfirm({ title: id, message: "", opener: button }),
+  onClear: () => undefined,
+  returnFocus: () => document.body,
+});
+bb.update({ count: 0 });
+DenUI.bulkBar(document.createElement("div"), { count: 1 }).destroy();
+
+// The general button, the page action menu and the settings row (issues 554-556).
+const kbtn: string = buttonHtml({ label: "Go", variant: "primary", size: "sm", attrs: { "data-x": 1 } });
+void (kbtn + buttonClass("secondary", "md"));
+void menuRowHtml({ label: "A", disabled: true, describedBy: "n" });
+const pitems: PageMenuItem[] = [
+  { id: "edit", label: "Edit", href: "/e" },
+  { hr: true },
+  { id: "dl", label: { key: "app.dl" }, disabled: true, note: "Off", noteHref: "/s", onSelect: () => undefined },
+];
+const more = document.createElement("div");
+more.innerHTML = pageMenuButtonHtml({ id: "more", lang: "en" }) + pageMenuHtml({ id: "more", items: pitems });
+const pm = hydratePageMenu(more.firstElementChild as HTMLElement, {
+  items: () => pitems,
+  onSelect: (id: string) => void id.length,
+});
+pm.close(true);
+const viaKitMenu = DenUI.pageMenu(more.firstElementChild as HTMLElement, { items: pitems });
+void viaKitMenu.isOpen();
+void settingRowHtml({ id: "r", label: "On", checked: true, who: ["Admins"], last: { by: "@a", at: "2026-01-01T00:00:00Z" }, state: "saved", form: { action: "/s", csrf: "t" } });
+const sr: SettingRow = mountSettingRow(document.createElement("div"), {
+  id: "r",
+  label: "On",
+  onSave: async (on: boolean) => void on,
+});
+sr.set("error");
+void sr.checked();
+hydrateSettingRow(document.createElement("div"), { onSave: () => undefined }).destroy();
+DenUI.settingRow(document.createElement("div"), { id: "r", label: "On" }).destroy();

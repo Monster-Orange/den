@@ -359,7 +359,11 @@ import { identityKey } from "../../shared/den-identity.js";
 import {
   addressCheckSettings,
   checkAddress,
+  cliLanguage,
+  edgeUncheckedLine,
+  isEdgeAddress,
   portState,
+  statedAddress,
 } from "../../shared/edge/address-check.js";
 import { containerState } from "../../shared/edge/runtime.js";
 import { sh as edgeSh } from "../../shared/edge/exec.js";
@@ -411,6 +415,7 @@ import {
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
+import { ownerNameFromGithub } from "../../shared/owner-github.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
 import { DeviceFlows, type Decide } from "./device-flows.js";
 import {
@@ -1245,6 +1250,7 @@ import { sweepAccessLog } from "../../shared/edge/access-sweep.js";
 /** #63: how often the edge's raw access log is masked and emptied. */
 const EDGE_ACCESS_SWEEP_MS = 1000;
 import {
+  edgeDomains,
   edgeHttps,
   edgeNames,
   webRouteHosts,
@@ -2140,6 +2146,24 @@ function ownerIdentity(): {
     ...(w.ownerGithubName ? { name: w.ownerGithubName } : {}),
     role: "owner",
   };
+}
+
+/**
+ * Issue 406: a GitHub sign-in's display name: the session's own, else (a
+ * session from before names were kept) the linked owner's, when it is the
+ * owner's login (only the owner signs in with GitHub). Undefined: none.
+ */
+function githubSessionName(rec: {
+  login?: string;
+  name?: string;
+}): string | undefined {
+  if (rec.name) return rec.name;
+  const owner = readWebOwner(getStateDir());
+  return owner?.name &&
+    rec.login &&
+    owner.login.toLowerCase() === rec.login.toLowerCase()
+    ? owner.name
+    : undefined;
 }
 
 /** A local browser's identity (GET /api/session): local, with the owner's when known. */
@@ -3576,6 +3600,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         probeSeconds:
           typeof w.bridge_probe_seconds === "number"
             ? w.bridge_probe_seconds
+            : 10,
+      };
+    })(),
+    // Issue 406: the start's wait for the owner's GitHub name.
+    web_github: (() => {
+      const w = (user.web ?? {}) as Record<string, unknown>;
+      return {
+        ownerNameTimeoutSeconds:
+          typeof w.owner_name_timeout_seconds === "number"
+            ? w.owner_name_timeout_seconds
             : 10,
       };
     })(),
@@ -6367,6 +6401,7 @@ async function handleRequest(
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
       const github = rec?.via === "github" && !!rec.login;
+      const name = github ? githubSessionName(rec) : undefined;
       return sendJson(res, {
         csrf: g.session.csrf,
         actor: "person-browser",
@@ -6380,7 +6415,7 @@ async function handleRequest(
                 kind: github ? "github" : "device",
                 via: rec?.via ?? "link",
                 ...(github ? { login: rec.login } : {}),
-                ...(github && rec.name ? { name: rec.name } : {}),
+                ...(name ? { name } : {}),
                 // A link or a code (no GitHub sign-in of its own): no
                 // GitHub identity, never the owner's. It may be someone
                 // else's device.
@@ -7331,6 +7366,7 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          web_github?: unknown;
           web_ready?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
@@ -7366,6 +7402,7 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            web_github: body.web_github,
             web_ready: body.web_ready,
             agents_list: body.agents_list,
             agent_context: body.agent_context,
@@ -8374,11 +8411,21 @@ void CRASH_GATE.then(() =>
 );
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
-    printBanner(ADDRESS ?? readWebUrl());
+    void printBanner(ADDRESS ?? readWebUrl());
     // SRV-1a: back from a restart the server agent asked for: tell it.
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
+    // Issue 406: an owner linked before names were kept: GitHub's public
+    // profile name, once (the account entry's first line).
+    // web.owner_name_timeout_seconds: how long it waits.
+    void ownerNameFromGithub({
+      api: GITHUB.api,
+      fake: GITHUB.fake,
+      timeoutMs: WEB_AUTH.ownerNameTimeoutSeconds * 1000,
+    }).then((n) => {
+      if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
+    });
     // 0.4.48: on Linux, the Docker bridge too, for the edge.
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),
@@ -8935,8 +8982,58 @@ function startUpdateCheck(): void {
   });
 }
 
+/**
+ * The start line's address (issue 455, after 0.4.68: no address is shown
+ * before it is checked). web.url (D80), once it answers as this Den. When
+ * it is the edge address and it doesn't yet, the address that was checked
+ * (Den's own port), and a line that says the edge one isn't checked yet.
+ * An address that isn't the edge's is given as it is (D80).
+ */
+async function bannerAddressLines(
+  address: { url: string } | null,
+): Promise<string[]> {
+  if (!address) return [`  Web UI  →  ${notSetLine(product().cli)}`];
+  let domains: string[] = [];
+  try {
+    domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+  } catch {
+    domains = [];
+  }
+  if (!isEdgeAddress(address.url, domains))
+    return [`  Web UI  →  ${address.url}`];
+  const words = {
+    lang: cliLanguage(),
+    title: readBrand().name,
+    cli: product().cli,
+  };
+  let said: ReturnType<typeof statedAddress> = {
+    address: null,
+    unchecked: address.url,
+  };
+  try {
+    const secret = webSecret.current();
+    said = statedAddress(
+      await checkAddress({
+        webPort: PORT,
+        wanted: address.url,
+        key: secret ? identityKey(secret) : null,
+        cli: product().cli,
+        settings: addressCheckSettings(),
+      }),
+      true,
+    );
+  } catch {
+    /* not checked: said so below */
+  }
+  if (!said.unchecked) return [`  Web UI  →  ${said.address ?? address.url}`];
+  const why = edgeUncheckedLine(said.unchecked, words);
+  return said.address
+    ? [`  Web UI  →  ${said.address}`, `  ${why}`]
+    : [`  Web UI  →  ${why}`];
+}
+
 /** The start banner: the install's address (D80), never localhost. */
-function printBanner(address: { url: string } | null): void {
+async function printBanner(address: { url: string } | null): Promise<void> {
   const pkgVersion = engineVersion() ?? "?";
 
   console.log();
@@ -8947,9 +9044,7 @@ function printBanner(address: { url: string } | null): void {
   console.log(`  ${DEN_SUBTITLE.trim()}`);
   console.log(`  v${pkgVersion}`);
   console.log();
-  console.log(
-    `  Web UI  →  ${address ? address.url : notSetLine(product().cli)}`,
-  );
+  for (const line of await bannerAddressLines(address)) console.log(line);
   console.log();
   // Once per start: a secrets config that leaves Den's own features off.
   for (const w of secretsConfigWarnings()) serverLog(`  ⚠ ${w}`);
