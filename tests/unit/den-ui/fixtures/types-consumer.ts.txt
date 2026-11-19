@@ -53,6 +53,14 @@ import {
   type SettingRow,
 } from "@kit/setting-row.js";
 import {
+  accountAreaHtml,
+  accountAreaHref,
+  accountSectionOf,
+  hydrateAccountArea,
+  openAccountArea,
+  type AccountArea,
+} from "@kit/account-area.js";
+import {
   busyAction,
   registerActions,
   configureBusy,
@@ -369,3 +377,15 @@ sr.set("error");
 void sr.checked();
 hydrateSettingRow(document.createElement("div"), { onSave: () => undefined }).destroy();
 DenUI.settingRow(document.createElement("div"), { id: "r", label: "On" }).destroy();
+void accountAreaHtml({ current: "devices", profile: { login: "a", how: "github", signOut: true }, devices: { list: [{ id: "x", name: "Safari on Mac", current: true, lastSeenAt: "2026-01-01T00:00:00Z" }], waiting: [{ code: "K7QX-92MD" }] }, settings: { href: "/settings" } });
+void accountAreaHref("/a?b=1", accountSectionOf("?account=access"));
+const aa: AccountArea = hydrateAccountArea(document.createElement("div"), {
+  onAction: async (act, info) => void [act, info.id],
+  onToggle: (id: string, on: boolean) => void [id, on],
+});
+aa.select("profile");
+aa.toast("Signed out");
+const ao = openAccountArea({ access: { github: null, pair: true }, onClosed: () => undefined });
+ao.close();
+DenUI.accountArea({ notifications: { items: [{ id: "n", label: "New releases", on: false }] } }).close();
+void DenUI.accountAreaHtml({ profile: { login: "a" } });

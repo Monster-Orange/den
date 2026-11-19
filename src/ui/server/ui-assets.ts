@@ -101,6 +101,10 @@ export const UI_MODULES: readonly string[] = [
   "/report-den.js",
   // Issue 95: Den's adapter for the kit's client entry (/kit/kit.js).
   "/den-kit.js",
+  // Issue 310: Den on the kit's Account area, and a device's name in the
+  // page's words (shared with Settings › Access).
+  "/account-den.js",
+  "/device-words.js",
   // FB (den#81): the Report button in every pop-up's footer.
   "/report-inject.js",
   "/ws-delete-agents.js",
@@ -176,6 +180,9 @@ export const KIT_FILES: readonly string[] = [
   "button.css",
   "setting-row.js",
   "setting-row.css",
+  // Issue 310: the Account area (one place for "me", apart from Settings).
+  "account-area.js",
+  "account-area.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.

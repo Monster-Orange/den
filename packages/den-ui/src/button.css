@@ -21,6 +21,16 @@
   border-color: var(--accent-fill);
   color: var(--on-accent);
 }
+/* Issue 310: an in-row action with no box (the Account area's rows):
+   the accent's text on nothing. */
+.den-btn.ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--accent-text);
+}
+.den-btn.ghost:hover {
+  border-color: var(--border);
+}
 .den-btn.sm {
   padding: 2px 9px;
   font-size: 12.5px;

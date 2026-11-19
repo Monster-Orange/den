@@ -116,6 +116,24 @@ describe("denAccountData", () => {
     expect(d.access.pair).toBe(false);
   });
 
+  it("GitHub has no name: Hub's, when Hub's login is the same (as the rail entry)", () => {
+    const base = {
+      identity: { kind: "github", via: "github", login: "sam" },
+      owner: OWNER,
+      sessions: SESSIONS,
+      waiting: [],
+      pairHosts: [],
+    };
+    expect(
+      denAccountData({ ...base, hub: { name: "Sam Hub", login: "SAM" } })
+        .profile.name,
+    ).toBe("Sam Hub");
+    expect(
+      denAccountData({ ...base, hub: { name: "Other", login: "other" } })
+        .profile.name,
+    ).toBeUndefined();
+  });
+
   it("a device signed in with a code: no person, how it came in", () => {
     const d = denAccountData({
       identity: { kind: "device", via: "code" },

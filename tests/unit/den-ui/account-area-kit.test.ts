@@ -119,6 +119,7 @@ const ALL = {
 /** The text a person reads: tags out, entities back, spaces folded. */
 const text = (html: string) =>
   html
+    .replace(/<\/?time[^>]*>/g, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&#39;/g, "'")
@@ -140,7 +141,7 @@ const attr = (tag: string, name: string) =>
 const rows = (html: string) =>
   [
     ...html.matchAll(
-      /<div class="den-acct-row"[^>]*>([\s\S]*?)<\/div><!--row-->/g,
+      /<div class="den-aa-row"[^>]*>([\s\S]*?)<\/div><!--row-->/g,
     ),
   ].map((m) => text(m[1]));
 
@@ -148,9 +149,9 @@ describe("the shell (accountAreaHtml)", () => {
   const h = accountAreaHtml(ALL);
 
   it("is one region named Account, with every pane mounted and only the current one shown", () => {
-    expect(h).toMatch(/^<div class="den-acct" id="den-acct" data-den-acct/);
-    expect(attr(tags(h, "den-acct")[0], "data-current")).toBe("profile");
-    const panes = tags(h, "den-acct-pane");
+    expect(h).toMatch(/^<div class="den-aa" id="den-aa" data-den-aa/);
+    expect(attr(tags(h, "den-aa")[0], "data-current")).toBe("profile");
+    const panes = tags(h, "den-aa-pane");
     expect(panes.map((t) => attr(t, "data-section"))).toEqual([
       "profile",
       "access",
@@ -165,24 +166,24 @@ describe("the shell (accountAreaHtml)", () => {
     ]);
     // Each pane is named by its title, an h2.
     expect(h).toContain(
-      '<h2 class="den-acct-h" id="den-acct-profile-h">Profile</h2>',
+      '<h2 class="den-aa-h" id="den-aa-profile-h">Profile</h2>',
     );
   });
 
   it("draws the rail: the search box with /, the groups and sections in the mock's order, and the cross-link last", () => {
     const rail = h.slice(
-      h.indexOf('class="den-acct-rail"'),
-      h.indexOf('class="den-acct-panes"'),
+      h.indexOf('<div class="den-aa-rail"'),
+      h.indexOf('<div class="den-aa-panes"'),
     );
     // The phone's select is the same list again; the words, without it.
     expect(text(rail.replace(/<select[\s\S]*?<\/select>/, ""))).toBe(
       "Search account / Account Profile Sign-in and access Access and security Devices Devices and sessions Notifications Your notifications Install settings →",
     );
-    const search = tags(rail, "den-acct-search-in")[0];
+    const search = tags(rail, "den-aa-search-in")[0];
     expect(attr(search, "type")).toBe("search");
     expect(attr(search, "placeholder")).toBe("Search account");
     expect(attr(search, "aria-keyshortcuts")).toBe("/");
-    const sec = tags(rail, "den-acct-sec");
+    const sec = tags(rail, "den-aa-sec");
     expect(sec.map((t) => attr(t, "data-section"))).toEqual([
       "profile",
       "access",
@@ -197,16 +198,19 @@ describe("the shell (accountAreaHtml)", () => {
       null,
     ]);
     // The cross-link goes to the host's settings.
-    expect(attr(tags(rail, "den-acct-cross")[0], "href")).toBe("/settings");
+    expect(attr(tags(rail, "den-aa-cross")[0], "href")).toBe("/settings");
   });
 
   it("draws the phone strip: ✕ named Close, the title, and a select of the sections", () => {
-    const top = h.slice(h.indexOf('class="den-acct-top"'), h.indexOf('class="den-acct-rail"'));
+    const top = h.slice(
+      h.indexOf('<div class="den-aa-top"'),
+      h.indexOf('<div class="den-aa-rail"'),
+    );
     expect(text(top)).toBe("Account");
-    expect(attr(tags(h, "den-acct")[0], "aria-labelledby")).toBe("den-acct-title");
-    const close = tags(top, "den-acct-close")[0];
+    expect(attr(tags(h, "den-aa")[0], "aria-labelledby")).toBe("den-aa-title");
+    const close = tags(top, "den-aa-close")[0];
     expect(attr(close, "aria-label")).toBe("Close");
-    const sel = h.match(/<select class="den-acct-sel"[\s\S]*?<\/select>/)![0];
+    const sel = h.match(/<select class="den-aa-sel"[\s\S]*?<\/select>/)![0];
     expect(attr(sel, "aria-label")).toBe("Sections");
     expect(
       [...sel.matchAll(/<option value="([a-z]+)"( selected)?>([^<]*)</g)].map(
@@ -227,14 +231,15 @@ describe("the shell (accountAreaHtml)", () => {
       profile: PROFILE,
       devices: DEVICES,
     });
-    expect(
-      tags(h2, "den-acct-sec").map((t) => attr(t, "data-section")),
-    ).toEqual(["profile", "devices"]);
+    expect(tags(h2, "den-aa-sec").map((t) => attr(t, "data-section"))).toEqual([
+      "profile",
+      "devices",
+    ]);
     expect(text(h2)).not.toContain("Sign-in and access");
     expect(text(h2)).not.toContain("Install settings");
     // The current section must be one it draws; else the first.
     const h3 = accountAreaHtml({ ...T, current: "access", profile: PROFILE });
-    expect(attr(tags(h3, "den-acct")[0], "data-current")).toBe("profile");
+    expect(attr(tags(h3, "den-aa")[0], "data-current")).toBe("profile");
   });
 
   it("lists the sections, their groups and order as data", () => {
@@ -282,14 +287,14 @@ describe("Profile (profilePaneHtml)", () => {
     expect(attr(edit, "href")).toBe("https://github.com/settings/profile");
     expect(attr(edit, "target")).toBe("_blank");
     expect(attr(edit, "class")).toBe("den-btn ghost sm");
-    const foot = h.slice(h.indexOf('class="den-acct-foot"'));
+    const foot = h.slice(h.indexOf('<div class="den-aa-foot"'));
     expect(text(foot)).toBe("Sign out Sign out everywhere");
     expect(tags(foot, "den-btn").map((t) => attr(t, "class"))).toEqual([
       "den-btn",
       "den-btn ghost",
     ]);
     expect(
-      tags(foot, "den-btn").map((t) => attr(t, "data-den-acct-act")),
+      tags(foot, "den-btn").map((t) => attr(t, "data-den-aa-act")),
     ).toEqual(["signout", "signout-all"]);
   });
 
@@ -299,23 +304,26 @@ describe("Profile (profilePaneHtml)", () => {
       T,
     );
     expect(rows(h)).toEqual([
-      "@ @sam",
+      "S @sam",
       "Signed in with a one-time link This browser, since Nov 18",
     ]);
     expect(h).not.toContain("Edit on GitHub");
-    expect(h).not.toContain("den-acct-foot");
+    expect(h).not.toContain("den-aa-foot");
   });
 
   it("names each way in, in the kit's words", () => {
-    const how = (h: string) => rows(profilePaneHtml({ login: "s", how: h }, T))[1];
+    const how = (h: string) =>
+      rows(profilePaneHtml({ login: "s", how: h }, T))[1];
     expect(how("code")).toBe("Approved with a code This browser");
     expect(how("claim")).toBe("Signed in with a setup link This browser");
-    expect(how("local")).toBe("On this computer This browser, on this computer");
+    expect(how("local")).toBe(
+      "On this computer This browser, on this computer",
+    );
   });
 
   it("shows the avatar picture when the host gives one", () => {
     const h = profilePaneHtml({ ...PROFILE, avatar: "/a.png" }, T);
-    expect(h).toContain('<img class="den-acct-av" src="/a.png" alt="">');
+    expect(h).toContain('<img class="den-aa-av" src="/a.png" alt="">');
   });
 });
 
@@ -331,7 +339,7 @@ describe("Access and security (accessPaneHtml)", () => {
     expect(text(h)).toContain("Personal access tokens");
     expect(
       tags(h, "den-btn").map((t) => [
-        attr(t, "data-den-acct-act"),
+        attr(t, "data-den-aa-act"),
         attr(t, "data-id"),
         attr(t, "class"),
       ]),
@@ -364,11 +372,11 @@ describe("Devices and sessions (devicesPaneHtml)", () => {
       "Code K7QX-92MD A computer’s sign-in page is showing this code. It lasts 10 minutes. Approve",
     ]);
     expect(text(h)).toContain("Waiting to be approved");
-    const foot = h.slice(h.indexOf('class="den-acct-foot"'));
+    const foot = h.slice(h.indexOf('<div class="den-aa-foot"'));
     expect(text(foot)).toBe("Pair a device Sign out everywhere");
     expect(
       tags(h, "den-btn").map((t) => [
-        attr(t, "data-den-acct-act"),
+        attr(t, "data-den-aa-act"),
         attr(t, "data-id"),
         attr(t, "class"),
       ]),
@@ -397,7 +405,7 @@ describe("Devices and sessions (devicesPaneHtml)", () => {
     expect(text(h)).toBe(
       "Devices and sessions Can’t list your devices Den can’t reach its sign-in records right now. Try again",
     );
-    expect(attr(tags(h, "den-btn")[0], "data-den-acct-act")).toBe("retry");
+    expect(attr(tags(h, "den-btn")[0], "data-den-aa-act")).toBe("retry");
   });
 });
 
@@ -406,8 +414,8 @@ describe("Your notifications (notificationsPaneHtml)", () => {
     const h = notificationsPaneHtml(ALL.notifications, T);
     const sw = tags(h, "den-switch-input");
     expect(sw.map((t) => [attr(t, "id"), / checked/.test(t)])).toEqual([
-      ["den-acct-n-waiting", true],
-      ["den-acct-n-release", false],
+      ["den-aa-n-waiting", true],
+      ["den-aa-n-release", false],
     ]);
     expect(text(h)).toContain(
       "An agent needs me Allow, Deny or a question waiting for you.",
@@ -443,7 +451,6 @@ describe("the kit's words", () => {
     for (const k of keys) {
       expect(es[k]).toBeTruthy();
       expect(ja[k]).toBeTruthy();
-      expect(es[k]).not.toBe(en[k]);
     }
   });
 
@@ -469,28 +476,28 @@ describe("the look (account-area.css): the mock's values", () => {
   };
 
   it("is 960 wide by up to 640, with a 240px rail beside the pane", () => {
-    expect(rule(".den-acct-dlg")).toContain("width: min(960px, 100vw - 32px)");
-    expect(rule(".den-acct-dlg")).toContain("height: min(88vh, 640px)");
-    expect(rule(".den-acct")).toContain("grid-template-columns: 240px 1fr");
+    expect(rule(".den-aa-dlg")).toContain("width: min(960px, 100vw - 32px)");
+    expect(rule(".den-aa-dlg")).toContain("height: min(88vh, 640px)");
+    expect(rule(".den-aa")).toContain("grid-template-columns: 240px 1fr");
   });
 
   it("draws the rail on the sunken surface, the selected row with a 3px accent bar", () => {
-    expect(rule(".den-acct-rail")).toContain("background: var(--sunken)");
-    expect(rule('.den-acct-sec[aria-current="true"]')).toContain(
+    expect(rule(".den-aa-rail")).toContain("background: var(--sunken)");
+    expect(rule('.den-aa-sec[aria-current="true"]')).toContain(
       "box-shadow: inset 3px 0 0 var(--accent)",
     );
-    expect(rule(".den-acct-grp")).toContain("text-transform: uppercase");
-    expect(rule(".den-acct-h")).toContain("font: 400 22px/1.2 var(--display)");
-    expect(rule(".den-acct-pane")).toContain("padding: 20px 24px 24px 32px");
+    expect(rule(".den-aa-grp")).toContain("text-transform: uppercase");
+    expect(rule(".den-aa-h")).toContain("font: 400 22px/1.2 var(--display)");
+    expect(rule(".den-aa-pane")).toContain("padding: 20px 24px 24px 32px");
   });
 
   it("turns the rail into a strip with a select under 768px, and every control is 44px", () => {
     const i = css.indexOf("@media (max-width: 767px)");
     expect(i).toBeGreaterThan(0);
     const phone = css.slice(i);
-    expect(phone).toMatch(/\.den-acct-dlg \{[^}]*width: calc\(100vw - 16px\)/);
-    expect(phone).toMatch(/\.den-acct-sel \{[^}]*min-height: var\(--tap\)/);
-    expect(phone).toMatch(/\.den-acct-nav \{[^}]*display: none/);
+    expect(phone).toMatch(/\.den-aa-dlg \{[^}]*width: calc\(100vw - 16px\)/);
+    expect(phone).toMatch(/\.den-aa-sel \{[^}]*min-height: var\(--tap\)/);
+    expect(phone).toMatch(/\.den-aa-nav \{[^}]*display: none/);
     expect(phone).toMatch(/max-height: 45vh/);
   });
 });

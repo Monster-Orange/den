@@ -4,7 +4,7 @@
  *
  *   buttonHtml({
  *     label,                       the host's words (escaped)
- *     variant: "secondary" | "primary",   default secondary (the base)
+ *     variant: "secondary" | "primary" | "ghost",   default secondary
  *     size: "md" | "sm",           default md
  *     href,                        a link drawn as a button
  *     type: "button" | "submit" | "reset",   default button
@@ -19,7 +19,7 @@
  */
 import { esc } from "./strings.js";
 
-const VARIANTS = { secondary: "", primary: "primary" };
+const VARIANTS = { secondary: "", primary: "primary", ghost: "ghost" };
 const SIZES = { md: "", sm: "sm" };
 const TYPES = ["button", "submit", "reset"];
 

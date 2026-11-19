@@ -163,15 +163,15 @@ describe("the shell's source", () => {
     // Every page href in shell.js is one registry entry's `href:`, and the
     // pages themselves draw no rail links.
     const all = [...SHELL.matchAll(/href: "(\/[^"]*)"/g)].map((m) => m[1]);
-    // A link into a page's section (SEC-2a's identity chip opens
-    // /settings#access) is no page of its own: its page is a registry entry.
+    // A link into a page's section (Settings › Agents › Hub) is no page of
+    // its own: its page is a registry entry. (The identity chip opens the
+    // Account area since issue 310: a button, no href.)
     // D73: an entry that opens a page asking it to do something (the rail's
     // Terminal: /agents?terminal=1) is that page's, too.
     const hrefs = all.filter((h) => !h.includes("#") && !h.includes("?"));
     for (const h of all.filter((x) => x.includes("#") || x.includes("?")))
       expect([h, hrefs.includes(h.split(/[#?]/)[0])]).toEqual([h, true]);
     expect(all.filter((h) => h.includes("#")).sort()).toEqual([
-      "/settings#access",
       "/settings#agents.hub",
     ]);
     expect(all.filter((h) => h.includes("?"))).toEqual(["/agents?terminal=1"]);

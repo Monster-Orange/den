@@ -62,6 +62,12 @@ import type {
   SettingRowOptions,
   settingRowHtml,
 } from "./setting-row.js";
+import type {
+  AccountArea,
+  AccountAreaHydrateOptions,
+  AccountAreaOptions,
+  accountAreaHtml,
+} from "./account-area.js";
 import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
@@ -197,6 +203,10 @@ export declare function settingRow(
   el: HTMLElement,
   opts: SettingRowHydrateOptions & Partial<SettingRowOptions>,
 ): SettingRow;
+/** The Account area in a pop-up, in the kit's language (issue 310). */
+export declare function accountArea(
+  opts: AccountAreaOptions & AccountAreaHydrateOptions,
+): AccountArea & { close(): void; dialog: HTMLDialogElement };
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
@@ -257,6 +267,8 @@ export interface DenUIKit {
   pageMenu: typeof pageMenu;
   settingRowHtml: typeof settingRowHtml;
   settingRow: typeof settingRow;
+  accountAreaHtml: typeof accountAreaHtml;
+  accountArea: typeof accountArea;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

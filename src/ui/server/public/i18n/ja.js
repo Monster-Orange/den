@@ -1117,6 +1117,9 @@
     "set.cli.signin": "ブラウザのサインイン",
     "set.cli.sudo": "管理者パスワード",
     "set.cli.op_token": "1Password トークンの取得元",
+    "set.access.account": "自分のアカウント",  // words-ok: the approved Account area mock's own word (issue 310)
+    "set.access.account.d": "プロフィール、このブラウザーのサインイン方法、デバイスとセッションは、設定とは別のアカウントエリアにあります。",  // words-ok: the approved Account area mock's own word (issue 310)
+    "set.ui.yourAccount": "自分のアカウント →",  // words-ok: the approved Account area mock's own word (issue 310)
     "set.access.owner": "オーナー",
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",
