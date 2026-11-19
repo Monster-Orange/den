@@ -35,13 +35,33 @@ export function shellGroups(rows, used = {}) {
 }
 
 /**
- * A row's second line: "<project> · <folder>" in All projects, the folder
- * alone in one project (it is the same for every row).
+ * A row's second line: "<project> · <folder>" (issue 169, Den Design's
+ * option a: the project, then the folder, in one project too).
  */
-export function shellMeta(r, { showProject, projName }) {
-  return [showProject ? projName(r.workspace) : "", r.folder ?? ""]
-    .filter(Boolean)
-    .join(" · ");
+export function shellMeta(r, { projName }) {
+  return [projName(r.workspace), r.folder ?? ""].filter(Boolean).join(" · ");
+}
+
+/** A terminal's own name, this release's or an older one's: its number. */
+const TERMINAL_NAME = /^(?:terminal-([1-9]\d{0,8})|shell(?:-([1-9]\d{0,8}))?)$/;
+
+/**
+ * Issue 169 (Den Design, option a): a terminal's title everywhere it is
+ * named: "Terminal N" (t("tm.title")). N: the server's number for the row
+ * (terminalNo, per project), else its name's own ("shell" is 1, "shell-2"
+ * and "terminal-2" are 2). A name a person gave it wins, and so does a
+ * name that isn't a terminal's. `r`: a row, or { label } when only the
+ * session's name is known.
+ */
+export function terminalTitle(r, t) {
+  const own = (r?.displayName ?? "").trim();
+  if (own) return own;
+  let n = Number.isInteger(r?.terminalNo) ? r.terminalNo : null;
+  if (n === null) {
+    const m = TERMINAL_NAME.exec(r?.label ?? "");
+    if (m) n = Number(m[1] ?? m[2] ?? 1);
+  }
+  return n === null ? (r?.label ?? r?.name ?? "") : t("tm.title", { n });
 }
 
 /** A row's own buttons: an exited shell's Restart and Remove; else none. */

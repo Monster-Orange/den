@@ -185,24 +185,28 @@ describe.each(["chromium", "webkit"] as const)("issue 169 in %s", (name) => {
   it.each([
     ["es", "Terminal 2", "Abrir north / Terminal 2"],
     ["ja", "ターミナル 2", "north / ターミナル 2 を開く"],
-  ])("%s: the row and the title bar say %s", async (lang, want, aria) => {
-    if (skip()) return;
-    expect(await s!.settings({ language: lang })).toBe(200);
-    try {
-      const p = await open("/terminals");
-      await row(p, old).waitFor();
-      expect(await title(p, old)).toBe(want);
-      expect(
-        await row(p, old).locator("button.agr").getAttribute("aria-label"),
-      ).toBe(aria);
-      await row(p, old).locator("button.agr").click();
-      const bar = p.locator(`.pane[data-id="${old}"] .tm-title b`);
-      await bar.waitFor();
-      expect((await bar.textContent())?.trim()).toBe(want);
-    } finally {
-      await s!.settings({ language: null });
-    }
-  }, 90_000);
+  ])(
+    "%s: the row and the title bar say %s",
+    async (lang, want, aria) => {
+      if (skip()) return;
+      expect(await s!.settings({ language: lang })).toBe(200);
+      try {
+        const p = await open("/terminals");
+        await row(p, old).waitFor();
+        expect(await title(p, old)).toBe(want);
+        expect(
+          await row(p, old).locator("button.agr").getAttribute("aria-label"),
+        ).toBe(aria);
+        await row(p, old).locator("button.agr").click();
+        const bar = p.locator(`.pane[data-id="${old}"] .tm-title b`);
+        await bar.waitFor();
+        expect((await bar.textContent())?.trim()).toBe(want);
+      } finally {
+        await s!.settings({ language: null });
+      }
+    },
+    90_000,
+  );
 });
 
 it("no page errors", () => {

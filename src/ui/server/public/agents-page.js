@@ -103,6 +103,7 @@ import {
   shellGroups,
   shellMeta,
   startProject,
+  terminalTitle,
 } from "/terminals-list.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
@@ -457,7 +458,8 @@ function stateText(state) {
 }
 
 function displayName(r) {
-  if (r.kind !== "agent") return r.label;
+  // Issue 169: a terminal is "Terminal N" everywhere it is named.
+  if (r.kind !== "agent") return terminalTitle(r, t);
   return r.displayName || (r.persona ?? r.label);
 }
 
@@ -490,7 +492,21 @@ function sessionExtra(r) {
 // A pane's title and its Close: the agent's display name (AG-10.8), else
 // its id, never the persona. There is no display name before AG-10.
 function paneName(r) {
-  return r.kind === "agent" ? r.displayName || r.agent || r.label : r.label;
+  return r.kind === "agent"
+    ? r.displayName || r.agent || r.label
+    : terminalTitle(r, t);
+}
+
+/**
+ * Pane `id`'s name when its row may not be known yet: its row's
+ * (paneName), else the name its session said (issue 169: an older
+ * "shell-2" still reads "Terminal 2"), else its id.
+ */
+function nameOfPane(id) {
+  const r = rowOf(id);
+  if (r) return paneName(r);
+  const label = st.panes.get(id)?.label;
+  return (label && terminalTitle({ label }, t)) || id;
 }
 
 /** An agent that isn't running: stopped, interrupted or exited (AG-14). */
@@ -801,7 +817,7 @@ function stoppedHtml(r, wsTag = false) {
  * click opens its pane, where its last output still reads.
  */
 function exitedShellHtml(r, wsTag = false) {
-  const label = r.label || r.name;
+  const label = terminalTitle(r, t);
   return (
     `<div class="agst agst1" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"` +
@@ -931,7 +947,7 @@ function rowHtml(r) {
   const nm =
     r.kind === "agent"
       ? nameHtml(r)
-      : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
+      : `${esc(displayName(r))} <span class="sbdg">${esc(t("ag.session"))}</span>`;
   const right = r.waiting
     ? `<span class="wbdg">${esc(waitingText(r))}</span>`
     : `<span class="st">${esc(stateText(r.state))}</span>`;
@@ -1152,7 +1168,8 @@ function terminalRowHtml(r, showProject) {
   const meta = shellMeta(r, { showProject, projName });
   const used = shellUsedAtIso(r);
   const acts = rowActions(r);
-  const label = r.label || r.name;
+  // Issue 169: "Terminal N", here and wherever the terminal is named.
+  const label = terminalTitle(r, t);
   return (
     `<div class="agst tmr${r.exited ? " dim" : ""}" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${sel ? ' aria-current="true"' : ""}>` +
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"` +
@@ -1817,7 +1834,7 @@ function retarget(p, row) {
   if (st.side.delete(old)) st.side.add(row.id);
   if (st.cur === old) st.cur = row.id;
   p.el.dataset.id = row.id;
-  p.el.setAttribute("aria-label", row.label ?? row.id);
+  p.el.setAttribute("aria-label", paneName(row) || row.id);
   p.exited = false;
   p.lost = false;
   p.term?.write(
@@ -1914,10 +1931,10 @@ function tabWords(id) {
   const p = st.panes.get(id);
   const wsName = (ws) =>
     !ws ? "" : ws === SERVER_WS ? t("ag.server") : projName(ws);
-  if (!r) return { name: p?.label || id, meta: wsName(p?.workspace) };
+  if (!r) return { name: nameOfPane(id), meta: wsName(p?.workspace) };
   if (r.kind !== "agent")
     return {
-      name: r.label,
+      name: paneName(r),
       meta: [t("ag.session"), wsName(r.workspace)].join(" · "),
     };
   return {
@@ -2429,7 +2446,7 @@ function barFind(bar, k) {
  * Remove are in the pane's body (endedHtml).
  */
 function terminalBarHtml(p, r) {
-  const name = r ? paneName(r) : p.label || p.id;
+  const name = r ? paneName(r) : nameOfPane(p.id);
   const tone = r ? stateTone(r) : p.exited ? "off" : "pending";
   const stop =
     r && !r.exited && !p.exited
@@ -2500,7 +2517,7 @@ function paintBar(p) {
     if (to) to.hidden = true;
     return;
   }
-  const name = r ? paneName(r) : p.label || p.id;
+  const name = r ? paneName(r) : nameOfPane(p.id);
   // AG-4b: the session's name last, when it says more. The workspace is a
   // link to it on Workspaces (0.4.17).
   const ws = r ? r.workspace : p.workspace || "";
@@ -3165,9 +3182,7 @@ async function openPane(id, { front = true } = {}) {
   if (front) st.cur = id;
   if (st.open.length >= MAX_PANES) {
     const oldest = st.open[0];
-    window.denShell?.toast?.(
-      t("ag.cap", { id: rowOf(oldest)?.label ?? oldest }),
-    );
+    window.denShell?.toast?.(t("ag.cap", { id: nameOfPane(oldest) }));
     closePane(oldest, { quiet: true });
   }
   const el = document.createElement("section");
@@ -3205,7 +3220,7 @@ async function openPane(id, { front = true } = {}) {
   paintLayout();
   writeUrl();
   paintList();
-  el.setAttribute("aria-label", rowOf(id)?.label ?? id);
+  el.setAttribute("aria-label", nameOfPane(id));
   let lib;
   try {
     lib = await loadXterm();
@@ -3351,13 +3366,13 @@ function dropOpts(p) {
     csrf,
     name: () => {
       const r = rowOf(p.id);
-      return r ? paneName(r) : p.label || p.id;
+      return r ? paneName(r) : nameOfPane(p.id);
     },
     // A live session only: its terminal is open and it is running.
     can: () => attachable(p),
     why: () => {
       const r = rowOf(p.id);
-      const name = r ? paneName(r) : p.label || p.id;
+      const name = r ? paneName(r) : nameOfPane(p.id);
       return p.exited || p.closed || (r && isStopped(r))
         ? t("ag.up.cant", { name })
         : t("ag.up.cantConn", { name });
@@ -3400,9 +3415,7 @@ function closePane(id, { quiet = false } = {}) {
   p.term?.dispose();
   p.el.remove();
   if (!quiet)
-    window.denShell?.toast?.(
-      t("ag.detached", { id: rowOf(id)?.label ?? p.label ?? id }),
-    );
+    window.denShell?.toast?.(t("ag.detached", { id: nameOfPane(id) }));
   paintLayout();
   writeUrl();
   paintList();
@@ -3448,7 +3461,7 @@ async function closeShell(p, button, keep = false) {
     );
     // Quiet: the pane's own "it keeps running" toast would be wrong here.
     if (!keep) closePane(p.id, { quiet: true });
-    window.denShell?.toast?.(t("ag.shellClosed", { id: r.label ?? r.name }));
+    window.denShell?.toast?.(t("ag.shellClosed", { id: displayName(r) }));
   } catch (err) {
     button.disabled = false;
     window.denShell?.errorToast?.(err);
@@ -4103,7 +4116,11 @@ async function removeShell(r, button) {
   try {
     await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
     if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
-    window.denShell?.toast?.(t("ag.removed", { id: r.label || r.name }));
+    window.denShell?.toast?.(
+      t("ag.removed", {
+        id: r.kind === "agent" ? r.label || r.name : terminalTitle(r, t),
+      }),
+    );
   } catch (err) {
     if (button) button.disabled = false;
     window.denShell?.errorToast?.(err);

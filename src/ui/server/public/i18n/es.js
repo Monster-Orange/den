@@ -1773,6 +1773,7 @@
     "tm.restart": "Reiniciar",
     "tm.restartName": "Reiniciar {id}",
     "tm.openName": "Abrir {id}",
+    "tm.title": "Terminal {n}",
     "tm.ended.h": "Esta terminal terminó",
     "tm.ended.code": "Terminó con código {code}, {when}.",
     "tm.ended.when": "Terminó {when}.",

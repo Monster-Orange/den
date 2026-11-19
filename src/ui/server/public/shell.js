@@ -2598,6 +2598,8 @@
     "tm.restart": "Restart",
     "tm.restartName": "Restart {id}",
     "tm.openName": "Open {id}",
+    // Issue 169: a terminal's title, everywhere it is named.
+    "tm.title": "Terminal {n}",
     "tm.ended.h": "This terminal ended",
     "tm.ended.code": "It exited with code {code}, {when}.",
     "tm.ended.when": "It exited {when}.",

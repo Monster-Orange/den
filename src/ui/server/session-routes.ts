@@ -89,6 +89,7 @@ import {
   type HostClient,
 } from "../../shared/sessions/client.js";
 import { parseSessionName } from "../../shared/sessions/names.js";
+import { terminalNumbers } from "../../shared/sessions/terminal-names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
@@ -400,6 +401,12 @@ export interface ListedSession {
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
   cwd?: string;
+  /**
+   * Issue 169: a plain terminal's number in its project, shown as
+   * "Terminal N" (terminal-names.ts terminalNumbers). Absent for an agent
+   * and for a name that isn't a terminal's.
+   */
+  terminalNo?: number;
   /** Issue 482: a shell's folder, the home folder as "~" (Terminals' rows). */
   folder?: string;
   /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
@@ -734,10 +741,28 @@ export function listedSessions(
       })(),
     });
   }
+  // Issue 169 (Den Design, option a): each plain terminal's number in its
+  // project, shown as "Terminal N".
+  const plainByWs = new Map<
+    string,
+    { id: string; name: string; startedAt?: string }[]
+  >();
   for (const s of mine) {
     if (agentSessions.has(s.ref.id)) continue;
     const p = parseSessionName(s.name, dist)!;
+    const list = plainByWs.get(p.workspace) ?? [];
+    list.push({ id: s.ref.id, name: p.name, startedAt: s.startedAt });
+    plainByWs.set(p.workspace, list);
+  }
+  const terminalNo = new Map<string, number>();
+  for (const list of plainByWs.values())
+    for (const [id, n] of terminalNumbers(list)) terminalNo.set(id, n);
+  for (const s of mine) {
+    if (agentSessions.has(s.ref.id)) continue;
+    const p = parseSessionName(s.name, dist)!;
+    const no = terminalNo.get(s.ref.id);
     out.push({
+      ...(no !== undefined ? { terminalNo: no } : {}),
       id: s.ref.id,
       name: s.name,
       workspace: p.workspace,

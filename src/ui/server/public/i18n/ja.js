@@ -1731,6 +1731,7 @@
     "tm.restart": "再起動",
     "tm.restartName": "{id} を再起動",
     "tm.openName": "{id} を開く",
+    "tm.title": "ターミナル {n}",
     "tm.ended.h": "このターミナルは終了しました",
     "tm.ended.code": "コード {code} で終了しました ({when})。",
     "tm.ended.when": "終了しました ({when})。",

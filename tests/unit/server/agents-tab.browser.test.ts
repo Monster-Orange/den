@@ -445,7 +445,7 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
-  it("⌘K offers a terminal as Terminals › <ws> / Terminal N (issue 169: an older "shell" reads Terminal 1), never under Agents, and Start agent…", async () => {
+  it("⌘K offers a terminal as Terminals › <ws> / Terminal N (issue 169: an older shell-named one reads Terminal 1), never under Agents, and Start agent…", async () => {
     if (skip()) return;
     const p = await page("/agents");
     await p.click("#den-search");

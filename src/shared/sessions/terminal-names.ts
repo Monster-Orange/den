@@ -1,62 +1,68 @@
 /**
- * Issue 169 (T2): a project's terminals are named "terminal-1",
- * "terminal-2", ... (shown as "Terminal 1", "Terminal 2"). A number is
- * never given twice in one project: the last one given is kept in
- * `<stateDir>/sessions/terminal-names.json` ({ "<project>": n }), so a
- * terminal that closed doesn't hand its name to the next one.
+ * Issue 169 (T2, Den Design's ruling, option a): a project's terminals are
+ * named "terminal-1", "terminal-2", ... and shown as "Terminal N". N is per
+ * project and the lowest number no listed terminal there holds (exited
+ * ones the host still lists included), so it is stable for the session's
+ * life and comes back only once the terminal that had it was removed.
+ * An older release's names count: "shell" is 1, "shell-2" is 2.
  */
-import * as fs from "fs";
-import * as path from "path";
 
-const PREFIX = "terminal-";
-const RE = /^terminal-([1-9]\d{0,8})$/;
+const RE = /^(?:terminal-([1-9]\d{0,8})|shell(?:-([1-9]\d{0,8}))?)$/;
 
-/** The number in a terminal's own name ("terminal-3" -> 3); else null. */
+/**
+ * The number in a terminal's own name: "terminal-3" and "shell-3" are 3,
+ * "shell" is 1. Else null (a name that isn't a terminal's).
+ */
 export function terminalNumber(name: string): number | null {
   const m = RE.exec(name);
-  return m ? Number(m[1]) : null;
+  if (!m) return null;
+  return Number(m[1] ?? m[2] ?? 1);
 }
 
-function countFile(stateDir: string): string {
-  return path.join(stateDir, "sessions", "terminal-names.json");
-}
-
-function readCounts(stateDir: string): Record<string, number> {
-  try {
-    const v: unknown = JSON.parse(fs.readFileSync(countFile(stateDir), "utf-8"));
-    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
-    const out: Record<string, number> = {};
-    for (const [k, n] of Object.entries(v as Record<string, unknown>))
-      if (typeof n === "number" && Number.isSafeInteger(n) && n > 0) out[k] = n;
-    return out;
-  } catch {
-    return {};
-  }
+/** The lowest number from 1 not in `taken`. */
+function lowestFree(taken: Set<number>): number {
+  let n = 1;
+  while (taken.has(n)) n++;
+  return n;
 }
 
 /**
- * The next terminal name in project `ws`: one above both the last number
- * given there and every live terminal name in `live` (the project's own
- * session names, without the `<dist>-<ws>:` part). Records it.
+ * The next terminal name in a project: the lowest number no name in
+ * `live` holds (every session the host lists there, exited ones too,
+ * without the `<dist>-<ws>:` part).
  */
-export function nextTerminalName(
-  stateDir: string,
-  ws: string,
-  live: Iterable<string>,
-): string {
-  const counts = readCounts(stateDir);
-  let n = counts[ws] ?? 0;
-  for (const name of live) n = Math.max(n, terminalNumber(name) ?? 0);
-  n += 1;
-  counts[ws] = n;
-  const file = countFile(stateDir);
-  try {
-    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(counts) + "\n", { mode: 0o600 });
-    fs.renameSync(tmp, file);
-  } catch {
-    // Unwritten: the live names still keep this one from repeating now.
+export function nextTerminalName(live: Iterable<string>): string {
+  const taken = new Set<number>();
+  for (const name of live) {
+    const n = terminalNumber(name);
+    if (n !== null) taken.add(n);
   }
-  return `${PREFIX}${n}`;
+  return `terminal-${lowestFree(taken)}`;
+}
+
+/**
+ * The number each of one project's terminals shows (id to N): its name's
+ * own, unless one started earlier holds it (an older "shell" and a new
+ * "terminal-1"); then the lowest free. A name that isn't a terminal's
+ * gets none: it is shown as it is.
+ */
+export function terminalNumbers(
+  rows: readonly { id: string; name: string; startedAt?: string }[],
+): Map<string, number> {
+  const withNo = rows
+    .map((r) => ({ r, n: terminalNumber(r.name) }))
+    .filter((x): x is { r: (typeof rows)[number]; n: number } => x.n !== null)
+    .sort(
+      (a, b) =>
+        (a.r.startedAt ?? "").localeCompare(b.r.startedAt ?? "") ||
+        a.r.id.localeCompare(b.r.id),
+    );
+  const out = new Map<string, number>();
+  const taken = new Set<number>();
+  for (const { r, n } of withNo) {
+    const got = taken.has(n) ? lowestFree(taken) : n;
+    taken.add(got);
+    out.set(r.id, got);
+  }
+  return out;
 }

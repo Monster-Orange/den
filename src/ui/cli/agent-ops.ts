@@ -7639,18 +7639,15 @@ export async function startPlainSession(
     }
   const { plainSessionEnv } = await import("./sessions-command.js");
   return withClient(d, async (c) => {
-    // Issue 169: terminal-1, terminal-2, ...; a number is never given
-    // twice in a project, even after the one that had it closed.
+    // Issue 169 (Den Design, option a): terminal-1, terminal-2, ...; the
+    // lowest number no session the host lists in this project holds
+    // (exited ones too), an older "shell-2" counted as 2.
     const live: string[] = [];
     for (const s of await c.list()) {
       const p = parseSessionName(s.name, d.dist);
       if (p?.workspace === ws) live.push(p.name);
     }
-    const name = sessionName(
-      d.dist,
-      ws,
-      nextTerminalName(d.stateDir(), ws, live),
-    );
+    const name = sessionName(d.dist, ws, nextTerminalName(live));
     const info = await c
       .start(
         {
