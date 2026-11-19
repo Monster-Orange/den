@@ -1859,7 +1859,7 @@
       "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.address_check_drop_after":
       "Address failures before sign-in moves back",
-    "set.server.address_unknown_keep": "Address kept while checks can't tell",
+    "set.server.address_unknown_keep": "Address held while checks can't tell",
     "set.server.address_unknown_keep.d":
       "Once __DEN_TITLE__'s https address is proven, how long checks that can't tell (no answer in time) keep sign-in there, from its last answer. After that they count as failures, so sign-in comes back on this machine's own name. Keep it short. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
     "set.server.address_check_drop_after.d":

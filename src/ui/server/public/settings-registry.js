@@ -1948,7 +1948,7 @@ export const DEN_SETTINGS = [
   {
     id: "server.address_unknown_keep",
     category: "server",
-    label: "Address kept while checks can't tell",
+    label: "Address held while checks can't tell",
     description:
       "Once __DEN_TITLE__'s https address is proven, how long checks that can't tell (no answer in time) keep sign-in there, from its last answer. After that they count as failures, so sign-in comes back on this machine's own name. Keep it short. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
     keywords: ["address", "check", "edge", "sign-in", "timeout", "window"],
