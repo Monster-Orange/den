@@ -2,7 +2,9 @@
  * Issue 563's live check, run as the bed runs it (runLikeBed) on a fake
  * bed: a Den whose web start restarted the terminal host passes; one that
  * left the host from before the update running fails; without the bed's
- * keep-host mark every clause is skipped with its reason.
+ * keep-host mark every clause is skipped with its reason. Issue 597: one
+ * that kept the host because its code didn't change (told the new
+ * version, audit "host kept: code unchanged") passes too.
  */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
@@ -10,7 +12,7 @@ import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
-function runGate(kind: "fixed" | "unfixed" | "no-keep-host") {
+function runGate(kind: "fixed" | "kept" | "unfixed" | "no-keep-host") {
   const js = `
     const g = await import("./gate/563.mjs");
     const { runLikeBed } = await import("./tests/fixtures/gate-runner-like.mjs");
@@ -19,21 +21,24 @@ function runGate(kind: "fixed" | "unfixed" | "no-keep-host") {
     else delete process.env.BG_HOST_BEFORE;
     const PTY = "/bed/node_modules/@lydell/node-pty-darwin-arm64/prebuilds/darwin-arm64/pty.node";
     let started = false;
+    const pty = () => started ? { path: PTY, version: "1.2.0-beta.18", id: "sha256:x" } : null;
     const host = () => kind === "fixed"
-      ? { pid: 222, startedAt: "2026-11-19T04:00:00.000Z", den: "0.4.71", pty: started ? { path: PTY, version: "1.2.0-beta.18", id: "sha256:x" } : null }
-      : null;
+      ? { pid: 222, startedAt: "2026-11-19T04:00:00.000Z", den: "0.4.71", code: "sha256:b", pty: pty() }
+      : kind === "kept"
+        ? { pid: 111, startedAt: new Date(1700000000 * 1000).toISOString(), den: "0.4.71", code: "sha256:a", pty: pty() }
+        : null;
     const ctx = {
       notes: [], log(...a) { this.notes.push(a.join(" ")); },
       async sleep() {}, async until(fn) { return (await fn()) ? 0 : null; },
       cli(args) {
         const checks = [{ id: "terminal_host_ptys", status: "ok", detail: "" }];
         // An unfixed Den has no such row: its host can't say what it runs.
-        if (kind === "fixed") checks.push({ id: "terminal_host_module", status: "ok", detail: "current", host: host() });
+        if (kind === "fixed" || kind === "kept") checks.push({ id: "terminal_host_module", status: "ok", detail: "current", host: host() });
         return { code: 0, out: JSON.stringify({ ok: true, checks }), err: "" };
       },
       readBed(rel) {
         if (rel === "node_modules/@monster-orange/den/package.json") return JSON.stringify({ version: "0.4.71" });
-        if (rel === "audit.jsonl") return kind === "fixed" ? '{"verb":"terminal-host","detail":"terminal host restarted (pid 111 → 222)"}\\n' : "";
+        if (rel === "audit.jsonl") return kind === "fixed" ? '{"verb":"terminal-host","detail":"terminal host restarted (pid 111 → 222)"}\\n' : kind === "kept" ? '{"verb":"terminal-host","detail":"host kept: code unchanged (0.4.70 → 0.4.71)"}\\n' : "";
         return null;
       },
       listBed(rel) { return rel === "node_modules/@lydell/node-pty-darwin-arm64/prebuilds/darwin-arm64" ? ["pty.node", "spawn-helper"] : null; },
@@ -61,6 +66,12 @@ const row = (r: ReturnType<typeof runGate>, i: number) =>
 describe("gate/563.mjs as the bed runs it", () => {
   it("a Den whose web start restarted the terminal host passes every clause", () => {
     const r = runGate("fixed");
+    expect(r.error).toBeUndefined();
+    for (const i of [0, 1, 2, 3]) expect(row(r, i)?.ok).toBe(true);
+  });
+
+  it("issue 597: a Den that kept the host, its code unchanged, passes every clause", () => {
+    const r = runGate("kept");
     expect(r.error).toBeUndefined();
     for (const i of [0, 1, 2, 3]) expect(row(r, i)?.ok).toBe(true);
   });

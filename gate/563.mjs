@@ -8,12 +8,18 @@
 // The case of a host holding a native module npm deleted (the failure
 // customers hit) is proven in the PR's tests (host-refresh*.test.ts): the
 // bed's two versions share the same terminal module.
+//
+// Issue 597: the host restarts only when its own code (or module) changed.
+// When the two versions' host code is the same, the web start keeps the
+// host from before and tells it the new version; the audit says "host
+// kept: code unchanged". Either way is a pass, as long as the host, the
+// audit and the bell agree on which one happened.
 export const issue = 563;
 export const clauses = [
-  "after the update, the terminal host runs the installed Den, and is not the host from before the web start",
+  "after the update, the terminal host runs the installed Den: restarted (not the host from before the web start), or kept because its code is unchanged",
   "the terminal module the host loaded is on disk and is the installed one",
-  "a new agent starts in the restarted host",
-  "the bell or the audit says the terminal host was restarted",
+  "a new agent starts in the terminal host",
+  "the bell or the audit says the terminal host was restarted, or kept with its code unchanged",
 ];
 export const timeoutMs = 180000;
 
@@ -77,6 +83,10 @@ export async function run(ctx, s) {
   out.audit = /"verb":"terminal-host","detail":"terminal host restarted/.test(
     audit,
   );
+  // Issue 597: kept, its code unchanged.
+  out.kept = /"verb":"terminal-host","detail":"host kept: code unchanged/.test(
+    audit,
+  );
   ctx.log?.(`563: ${JSON.stringify(out)}`);
   return out;
 }
@@ -101,13 +111,15 @@ export function expect(r) {
     (h.pid !== b.pid ||
       !Number.isFinite(startedEpoch) ||
       Math.abs(startedEpoch - b.epoch) > 1);
-  const c1 = !!h && h.den === res.installed && other;
+  // Restarted: another host, and said so. Kept (issue 597): the same
+  // host, and the audit says its code was unchanged.
+  const c1 = !!h && h.den === res.installed && (other || res.kept === true);
   const after = res.after ?? {};
   const c2 =
     after.status === "ok" && !!after.host?.pty?.path && res.ptyListed === true;
   const c3 =
     res.start === 0 && res.runningMs !== null && res.runningMs !== undefined;
-  const c4 = res.bell === true || res.audit === true;
+  const c4 = res.bell === true || res.audit === true || res.kept === true;
   const note = (ok, s) => (ok ? {} : { note: s });
   return [
     {
@@ -134,7 +146,7 @@ export function expect(r) {
     {
       clause: clauses[3],
       ok: c4,
-      ...note(c4, `bell ${res.bell}, audit ${res.audit}`),
+      ...note(c4, `bell ${res.bell}, audit ${res.audit}, kept ${res.kept}`),
     },
   ];
 }

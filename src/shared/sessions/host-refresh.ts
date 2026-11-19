@@ -19,52 +19,104 @@
  * sessions.host_restart_wait_seconds; then it restarts anyway (a host
  * that can't spawn is worse than an interrupted turn). The agents that
  * were running resume; open terminals end.
+ *
+ * Issue 597: another Den version alone is no reason. The host says the id
+ * of its own code (host-code.ts) and the module it loaded; when both match
+ * what is installed it is told the new version (`adopt`) and kept, with
+ * its agents. An agent the restart cut mid-turn gets HOST_RESTART_NOTE as
+ * its next input (sessions.host_restart_note).
  */
 import * as fs from "fs";
 import type { HostClient } from "./client.js";
 import { fileIdentity, type PtyModuleInfo } from "./pty.js";
 
+/**
+ * Issue 597: the line an agent the restart cut mid-turn gets as its next
+ * input, so it carries on by itself.
+ */
+export const HOST_RESTART_NOTE =
+  "Den restarted while you were working; check your last step and carry on.";
+
 /** What a running host says it runs (its `hello`). */
 export interface HostRuns {
   /** undefined: a host too old to say. */
   den: string | null | undefined;
+  /** Issue 597: its code's id; undefined (or left out): too old to say. */
+  code?: string | null;
   pty: PtyModuleInfo | null;
 }
 
 /** What is installed now. */
 export interface Installed {
   den: string | null;
+  /** Issue 597: the installed host code's id (hostCodeId; null: unknown). */
+  code: string | null;
   pty: PtyModuleInfo | null;
+}
+
+/** Issue 597: why a host must restart: its code, or its terminal module. */
+export interface HostRestartNeed {
+  restart: "code" | "module";
+  why: string;
+}
+
+const short = (id: string | null | undefined): string =>
+  id ? id.replace(/^sha256:/, "").slice(0, 12) : "unknown";
+
+/**
+ * Issue 597: whether a host that runs `h` must restart to be current with
+ * what is installed, and why; null when it needn't (another Den version
+ * alone is no reason). An answer it can't give counts as different.
+ */
+export function hostCheck(
+  h: HostRuns,
+  inst: Installed,
+): HostRestartNeed | null {
+  const code = (why: string): HostRestartNeed => ({ restart: "code", why });
+  const mod = (why: string): HostRestartNeed => ({ restart: "module", why });
+  if (h.den === undefined || h.code === undefined)
+    return code(
+      "the terminal host is from an older version that can't say what code it runs",
+    );
+  if (!h.code || !inst.code || h.code !== inst.code)
+    return code(
+      `the terminal host runs code ${short(h.code)}, ${short(inst.code)} is installed`,
+    );
+  if (!h.pty) return null; // none loaded yet: it loads the installed one
+  if (fileIdentity(h.pty.path) === null)
+    return mod(
+      `the terminal module the host loaded (${h.pty.path}) is no longer on disk`,
+    );
+  if (!inst.pty)
+    return mod(
+      `the terminal host loaded ${h.pty.path}, and no terminal module is installed now`,
+    );
+  if (h.pty.path !== inst.pty.path)
+    return mod(
+      `the terminal host loaded ${h.pty.path}, ${inst.pty.path} is installed`,
+    );
+  if (h.pty.version !== inst.pty.version)
+    return mod(
+      `the terminal host loaded terminal module ${h.pty.version ?? "?"}, ${inst.pty.version ?? "?"} is installed`,
+    );
+  if (h.pty.id && inst.pty.id && h.pty.id !== inst.pty.id)
+    return mod(
+      `the terminal module at ${h.pty.path} was replaced after the host loaded it`,
+    );
+  return null;
 }
 
 /**
  * Why a host that runs `h` is not current with what is installed, or null
- * when it is. An answer it can't give counts as different.
+ * when it is (hostCheck's reason).
  */
 export function hostStale(h: HostRuns, inst: Installed): string | null {
-  if (h.den === undefined)
-    return "the terminal host is from an older version that can't say what it runs";
-  // null: a current host that couldn't read its own version: not, alone,
-  // a reason (its module is still compared below).
-  if (inst.den && h.den !== null && h.den !== inst.den)
-    return `the terminal host runs ${h.den ?? "an unknown version"}, ${inst.den} is installed`;
-  if (!h.pty) return null; // none loaded yet: it loads the installed one
-  if (fileIdentity(h.pty.path) === null)
-    return `the terminal module the host loaded (${h.pty.path}) is no longer on disk`;
-  if (!inst.pty)
-    return `the terminal host loaded ${h.pty.path}, and no terminal module is installed now`;
-  if (h.pty.path !== inst.pty.path)
-    return `the terminal host loaded ${h.pty.path}, ${inst.pty.path} is installed`;
-  if (h.pty.version !== inst.pty.version)
-    return `the terminal host loaded terminal module ${h.pty.version ?? "?"}, ${inst.pty.version ?? "?"} is installed`;
-  if (h.pty.id && inst.pty.id && h.pty.id !== inst.pty.id)
-    return `the terminal module at ${h.pty.path} was replaced after the host loaded it`;
-  return null;
+  return hostCheck(h, inst)?.why ?? null;
 }
 
 /** What a connected client's `hello` said. */
 export function hostRuns(c: HostClient): HostRuns {
-  return { den: c.hostDen, pty: c.hostPty };
+  return { den: c.hostDen, code: c.hostCode, pty: c.hostPty };
 }
 
 /**
@@ -106,14 +158,25 @@ export interface RefreshDeps {
   /** sessions.host_restart_wait_seconds, in ms. */
   waitMs: number;
   pollMs?: number;
-  /** Resume agent `id` (its conversation; a rotated one from its handoff). */
-  resume(id: string): Promise<void>;
+  /**
+   * Resume agent `id` (its conversation; a rotated one from its handoff).
+   * Issue 597: `note`, when set, is its next input once it is back (an
+   * agent the restart cut mid-turn).
+   */
+  resume(id: string, note: string | null): Promise<void>;
+  /**
+   * Issue 597: the line a cut agent gets (HOST_RESTART_NOTE), or null
+   * (sessions.host_restart_note off). Default: the line.
+   */
+  cutNote?: string | null;
   log(line: string): void;
 }
 
 export type RefreshResult =
   | { did: "none" }
   | { did: "current" }
+  /** Issue 597: another version, the same code and module: kept. */
+  | { did: "kept"; from: string | null; to: string | null }
   | {
       did: "restarted";
       why: string;
@@ -121,7 +184,10 @@ export type RefreshResult =
       to: number;
       /** How long it waited for agents mid-turn. */
       waitedMs: number;
-      /** Agents still mid-turn when the wait ran out (restarted anyway). */
+      /**
+       * Agents still mid-turn when the wait ran out (restarted anyway):
+       * the ones it cut (issue 597).
+       */
       busy: string[];
       resumed: string[];
       failed: { agent: string; why: string }[];
@@ -144,9 +210,30 @@ export async function refreshSessionHost(
     d.log(`terminal host: no answer to hello: ${(e as Error).message}`);
   }
   if (!c) return { did: "none" };
-  const why = hostStale(hostRuns(c), d.installed());
+  const runs = hostRuns(c);
+  const inst = d.installed();
+  const need = hostCheck(runs, inst);
+  if (!need) {
+    // Issue 597: its code and module are the installed ones: it is told
+    // the new version and kept, with every agent in it.
+    const from = runs.den ?? null;
+    if (!inst.den || from === inst.den) {
+      c.close();
+      return { did: "current" };
+    }
+    try {
+      await c.adopt(inst.den);
+    } catch (e) {
+      d.log(
+        `terminal host: kept, but it didn't take the new version: ${(e as Error).message}`,
+      );
+    } finally {
+      c.close();
+    }
+    return { did: "kept", from, to: inst.den };
+  }
   c.close();
-  if (!why) return { did: "current" };
+  const why = need.why;
   d.log(`terminal host: ${why}: it restarts once no agent is mid-turn`);
 
   // The web restart's rule: never mid-turn, bounded by the setting.
@@ -192,9 +279,11 @@ export async function refreshSessionHost(
   }
   const resumed: string[] = [];
   const failed: { agent: string; why: string }[] = [];
+  const note = d.cutNote === undefined ? HOST_RESTART_NOTE : d.cutNote;
+  const cut = new Set(busy);
   for (const id of running)
     try {
-      await d.resume(id);
+      await d.resume(id, note && cut.has(id) ? note : null);
       resumed.push(id);
     } catch (e) {
       failed.push({ agent: id, why: (e as Error).message });

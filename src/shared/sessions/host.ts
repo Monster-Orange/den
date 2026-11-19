@@ -37,6 +37,7 @@ import {
   type PtyProcess,
 } from "./pty.js";
 import { engineVersion } from "../paths.js";
+import { hostCodeId } from "./host-code.js";
 import { launchdSession } from "../launchd-session.js";
 import {
   SESSION_POOLS,
@@ -90,6 +91,11 @@ export interface SessionHostOptions {
    * loadPty loaded; null: none yet), for `hello`.
    */
   ptyModule?: () => PtyModuleInfo | null;
+  /**
+   * Issue 597: the id of the code it runs (default: hostCodeId of its
+   * engine, as it starts; null: it can't tell), for `hello`.
+   */
+  codeId?: string | null;
 }
 
 interface Session {
@@ -251,8 +257,13 @@ export class SessionHost {
   private closed = false;
   /** D20: where it runs; stamped on every session it starts. */
   private readonly launchd: string | null;
-  /** Issue 563: the Den version it runs, as it started. */
-  private readonly denVersion: string | null;
+  /**
+   * Issue 563: the Den version it runs, as it started; issue 597: or the
+   * one an update that left its code alone recorded (`adopt`).
+   */
+  private denVersion: string | null;
+  /** Issue 597: the id of its code, as it started. */
+  private readonly codeId: string | null;
 
   constructor(private readonly opts: SessionHostOptions) {
     this.paths = sessionPaths(opts.stateDir);
@@ -271,6 +282,8 @@ export class SessionHost {
         v = null;
       }
     this.denVersion = v;
+    this.codeId =
+      opts.codeId !== undefined ? opts.codeId : (hostCodeId() ?? null);
   }
 
   private log(line: string): void {
@@ -566,6 +579,9 @@ export class SessionHost {
           launchd: this.launchd,
           // Issue 563: what it runs, so a client can tell it is current.
           den: this.denVersion,
+          // Issue 597: the code it runs (it restarts only when that or its
+          // module changed).
+          code: this.codeId,
           pty: (() => {
             try {
               return (this.opts.ptyModule ?? loadedPtyModule)();
@@ -654,6 +670,15 @@ export class SessionHost {
           );
         this.forget(s);
         return {};
+      }
+      case "adopt": {
+        // Issue 597: an update that left its code and module alone: it
+        // runs the installed version now, without a restart.
+        const den = req.den;
+        if (typeof den !== "string" || !den || den.length > 64)
+          throw new Refusal("bad-request", "adopt needs den: a version");
+        this.denVersion = den;
+        return { den };
       }
       case "ptys":
         // Issue 503: the PTY masters it holds (doctor shows them).
