@@ -80,7 +80,7 @@ describe("the Edge page's sub line follows the card's state", () => {
     expect(edgeSub(EDGE)).toBe("acme / acme-edge · running");
   });
 
-  it("mountEdge waits for the address state before it writes the sub line", async () => {
+  it("mountEdge draws the page at once, then gives the sub line the card's state", async () => {
     const root = {
       innerHTML: "",
       removeAttribute: () => {},

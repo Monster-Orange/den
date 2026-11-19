@@ -260,7 +260,9 @@ export function edgeSub(st, addr = null) {
 /**
  * Fetch /api/edge and draw the page into `root` (the header's sub line too).
  * `address`: the address card's state (a promise of /api/edge/address's
- * answer), which the sub line waits for.
+ * answer). The check behind it can take a while, so the page doesn't wait
+ * for it: the sub line gives the container's state until the card is drawn,
+ * then the card's (issue 455), so the two never disagree on screen.
  */
 export async function mountEdge(root, sub, fetchFn = fetch, address = null) {
   let st;
@@ -271,14 +273,13 @@ export async function mountEdge(root, sub, fetchFn = fetch, address = null) {
     // The browser's own error ("Failed to fetch") is not a word of Den's.
     st = { configured: false, unreachable: true };
   }
-  const addr = address
-    ? await Promise.resolve(address).catch(() => null)
-    : null;
   if (sub)
-    sub.textContent = st.unreachable
-      ? t("edge.unreachable")
-      : edgeSub(st, addr);
+    sub.textContent = st.unreachable ? t("edge.unreachable") : edgeSub(st);
   root.innerHTML = edgeView(st);
   root.removeAttribute("aria-busy");
+  if (address && sub && !st.unreachable) {
+    const addr = await Promise.resolve(address).catch(() => null);
+    sub.textContent = edgeSub(st, addr);
+  }
   return st;
 }

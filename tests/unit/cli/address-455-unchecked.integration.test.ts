@@ -65,6 +65,8 @@ async function install(stand: Stand): Promise<Install> {
   const edgePort = await freePort();
   const webPort = await freePort();
   let server: net.Server | null = null;
+  // The silent stand-in's open sockets: close() waits for them otherwise.
+  const held = new Set<net.Socket>();
   if (stand === "other") {
     // Another server: answers every request, as nginx, with a 404.
     server = http.createServer((_q, s) => {
@@ -73,7 +75,7 @@ async function install(stand: Stand): Promise<Install> {
     });
   } else if (stand === "silent") {
     // Holds the port and never answers (a proxy with no route for it).
-    server = net.createServer(() => {});
+    server = net.createServer((sock) => held.add(sock));
   }
   // On the wildcard, the way Docker publishes a port.
   if (server) await new Promise<void>((r) => server.listen(edgePort, r));
@@ -141,7 +143,11 @@ async function install(stand: Stand): Promise<Install> {
     wanted,
     pids: [],
     close: () =>
-      new Promise<void>((r) => (server ? server.close(() => r()) : r())),
+      new Promise<void>((r) => {
+        for (const sock of held) sock.destroy();
+        if (server) server.close(() => r());
+        else r();
+      }),
   };
 }
 
@@ -223,7 +229,7 @@ describe("another server answers at the edge address (it holds the port)", () =>
     i = await install("other");
     up = await den(i, ["web", "up", "--no-open"]);
   }, 150_000);
-  afterAll(() => stop(i), 60_000);
+  afterAll(() => stop(i), 150_000);
 
   it("web up starts, says what holds the port once, and returns", () => {
     expect(up.code).toBe(0);
@@ -282,7 +288,7 @@ describe("something holds the edge port and never answers", () => {
   beforeAll(async () => {
     i = await install("silent");
   }, 30_000);
-  afterAll(() => stop(i), 60_000);
+  afterAll(() => stop(i), 150_000);
 
   it("web up says it isn't reachable yet, once, and returns", async () => {
     const up = await den(i, ["web", "up", "--no-open"]);
@@ -309,7 +315,7 @@ describe("nothing listens at the edge address", () => {
   beforeAll(async () => {
     i = await install("none");
   }, 30_000);
-  afterAll(() => stop(i), 60_000);
+  afterAll(() => stop(i), 150_000);
 
   it("web up says it isn't reachable yet, once; doctor and web.log give the checked address", async () => {
     const up = await den(i, ["web", "up", "--no-open"]);
