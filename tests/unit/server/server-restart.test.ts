@@ -352,9 +352,13 @@ describe("issue 251: a second restart during a self-update", () => {
       update: { fromVersion: "0.4.41", reason: "update Den 0.4.41 → 0.4.42" },
     });
     const line = backMessage(m, "0.4.42", 333);
-    expect(line).toMatch(/^Den is back on 0\.4\.42 \(pid 333\) \(it was 0\.4\.41\)\./);
+    expect(line).toMatch(
+      /^Den is back on 0\.4\.42 \(pid 333\) \(it was 0\.4\.41\)\./,
+    );
     expect(line).toMatch(/Den commits and pushes the new pin itself/);
-    expect(line).toMatch(/It restarted again since: reload my tools\. Carry on from where you were\.$/);
+    expect(line).toMatch(
+      /It restarted again since: reload my tools\. Carry on from where you were\.$/,
+    );
     finishRestartMarker(dir);
     expect(takeRestartMarker(dir)).toBeNull();
   });

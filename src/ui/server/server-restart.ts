@@ -13,6 +13,14 @@
  * session, so its turn or plan carries on in the same conversation. Each
  * step is an audit row: the ask and the Allow (approval-routes.ts), the
  * restart, and the return.
+ *
+ * Issue 251: the marker is told once, not read once. Taking it moves it
+ * aside (restart.telling.json) until its note is typed
+ * (finishRestartMarker), so a server that restarts again before then
+ * leaves it for the next start. A restart of the same agent in between
+ * carries Den's own update in its marker (`update`), so the pin line is
+ * still typed; a rollback replaces it. The back row has the typed note and
+ * the agent's input state at that moment (backAudit).
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -38,6 +46,13 @@ export interface RestartMarker {
    * agent, which keeps the pin, is told all the same.
    */
   by?: "den";
+  /**
+   * Issue 251: Den's own update this restart came after, not yet told
+   * (a second restart before its note was typed).
+   */
+  update?: { fromVersion: string; reason: string; at: string };
+  /** Issue 251: taken by an earlier start that didn't type its note. */
+  again?: boolean;
 }
 
 /** A marker older than this is a restart that never came back: ignored. */
@@ -49,32 +64,28 @@ export function restartMarkerPath(stateDir: string): string {
 
 /** Leave the marker the next server takes (0600, in a 0700 folder). */
 export function writeRestartMarker(stateDir: string, m: RestartMarker): void {
-  const p = restartMarkerPath(stateDir);
+  writeMarkerFile(restartMarkerPath(stateDir), m);
+}
+
+function writeMarkerFile(p: string, m: RestartMarker): void {
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
   const tmp = `${p}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(m) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, p);
 }
 
-/**
- * The marker a restart left, removed as it is read (it is told once).
- * Null: none, unreadable, or older than MARKER_MAX_AGE_MS.
- */
-export function takeRestartMarker(
-  stateDir: string,
-  now: number = Date.now(),
-): RestartMarker | null {
-  const p = restartMarkerPath(stateDir);
+/** Issue 251: a taken marker whose note isn't typed yet. */
+export function tellingMarkerPath(stateDir: string): string {
+  return path.join(stateDir, "server-agent", "restart.telling.json");
+}
+
+/** One marker file, checked; null when none, unreadable or stale. */
+function readMarker(p: string, now: number): RestartMarker | null {
   let raw: string;
   try {
     raw = fs.readFileSync(p, "utf8");
   } catch {
     return null;
-  }
-  try {
-    fs.unlinkSync(p);
-  } catch {
-    /* gone already: still told once, by whoever read it */
   }
   try {
     const m = JSON.parse(raw) as Partial<RestartMarker>;
@@ -86,6 +97,7 @@ export function takeRestartMarker(
       return null;
     const at = Date.parse(m.at);
     if (!Number.isFinite(at) || now - at > MARKER_MAX_AGE_MS) return null;
+    const u = m.update;
     return {
       id: m.id,
       reason: m.reason,
@@ -98,9 +110,79 @@ export function takeRestartMarker(
       at: m.at,
       ...(m.rolledBack === true ? { rolledBack: true } : {}),
       ...(m.by === "den" ? { by: "den" as const } : {}),
+      ...(u &&
+      typeof u.fromVersion === "string" &&
+      typeof u.reason === "string" &&
+      typeof u.at === "string"
+        ? {
+            update: {
+              fromVersion: u.fromVersion,
+              reason: u.reason,
+              at: u.at,
+            },
+          }
+        : {}),
     };
   } catch {
     return null;
+  }
+}
+
+/** Issue 251: the self-update a marker still has to tell, or null. */
+function selfUpdateOf(m: RestartMarker): RestartMarker["update"] | null {
+  if (m.rolledBack) return null;
+  if (m.by === "den")
+    return { fromVersion: m.fromVersion, reason: m.reason, at: m.at };
+  return m.update ?? null;
+}
+
+/**
+ * The marker a restart left, for this start to tell. Issue 251: it stays
+ * (aside) until finishRestartMarker, so a start that ends first leaves it
+ * to the next one (`again`). A fresh marker of the same agent's restart
+ * carries an untold self-update (`update`); a rollback, or Den's own
+ * marker, replaces it. Null: none, unreadable, or older than
+ * MARKER_MAX_AGE_MS.
+ */
+export function takeRestartMarker(
+  stateDir: string,
+  now: number = Date.now(),
+): RestartMarker | null {
+  const p = restartMarkerPath(stateDir);
+  const t = tellingMarkerPath(stateDir);
+  const fresh = readMarker(p, now);
+  const pending = readMarker(t, now);
+  let m: RestartMarker | null;
+  if (fresh) {
+    const carried = pending ? selfUpdateOf(pending) : null;
+    m =
+      carried &&
+      fresh.by !== "den" &&
+      !fresh.rolledBack &&
+      (fresh.agent ?? pending!.agent) === pending!.agent
+        ? { ...fresh, agent: pending!.agent, update: carried }
+        : fresh;
+  } else m = pending ? { ...pending, again: true } : null;
+  try {
+    if (m) writeMarkerFile(t, m);
+    else fs.rmSync(t, { force: true });
+  } catch {
+    /* can't set it aside: told this once */
+  }
+  try {
+    fs.unlinkSync(p);
+  } catch {
+    /* gone already */
+  }
+  return m;
+}
+
+/** Issue 251: its note is typed (or there was nobody to tell): done. */
+export function finishRestartMarker(stateDir: string): void {
+  try {
+    fs.rmSync(tellingMarkerPath(stateDir), { force: true });
+  } catch {
+    /* best effort: a stale one ages out (MARKER_MAX_AGE_MS) */
   }
 }
 
@@ -153,6 +235,22 @@ export function backMessage(
   pid: number,
   update?: LastUpdate | null,
 ): string {
+  // Issue 251: Den's own update, then this restart before it was told.
+  if (m.update && !m.by && !m.rolledBack)
+    return (
+      backMessage(
+        {
+          ...m,
+          by: "den",
+          fromVersion: m.update.fromVersion,
+          reason: m.update.reason,
+        },
+        version,
+        pid,
+        update,
+      ) +
+      ` It restarted again since: ${m.reason}. Carry on from where you were.`
+    );
   if (m.by === "den")
     return m.rolledBack
       ? `Den is back on ${version} (pid ${pid}), rolled back: ${m.reason}. ` +
@@ -204,17 +302,80 @@ export async function tellBack(
   text: string,
   d: TellDeps,
 ): Promise<"told" | "missing" | "stopped" | "not_typed"> {
+  return (await tellBackDetail(text, d)).told;
+}
+
+/** Issue 251: what tellBack did, and the agent's input state then. */
+export interface Told {
+  told: "told" | "missing" | "stopped" | "not_typed";
+  /** The last state read: idle, or busy when the wait ran out. */
+  state: "missing" | "stopped" | "busy" | "idle";
+}
+
+/** tellBack, with the input state at the moment it typed (issue 251). */
+export async function tellBackDetail(text: string, d: TellDeps): Promise<Told> {
   const now = d.now ?? Date.now;
   const sleep =
     d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const until = now() + d.waitMs;
+  let s: Told["state"] = "busy";
   for (;;) {
-    const s = await d.state();
-    if (s === "missing" || s === "stopped") return s;
+    s = await d.state();
+    if (s === "missing" || s === "stopped") return { told: s, state: s };
     if (s === "idle" || now() >= until) break;
     await sleep(d.pollMs ?? 1000);
   }
-  return (await d.type(text)) ? "told" : "not_typed";
+  return { told: (await d.type(text)) ? "told" : "not_typed", state: s };
+}
+
+/**
+ * Issue 251: the server-back audit row: a short detail (the trail's
+ * line), and in `agents` the exact note typed and the agent's input state
+ * at that moment, in full. `told` is a Told, or why nobody was told.
+ */
+export function backAudit(
+  m: RestartMarker,
+  version: string,
+  pid: number,
+  text: string,
+  told: Told | string,
+): { detail: string; agents?: Record<string, unknown> } {
+  const who = m.agent ? `agent:${m.agent}` : "the asker";
+  const how =
+    typeof told === "string"
+      ? told
+      : told.told === "told" || told.told === "not_typed"
+        ? `${told.told} (typed while ${told.state})`
+        : told.told;
+  const detail =
+    `on ${version} (pid ${pid}), was ${m.fromVersion}${m.fromPid ? ` (pid ${m.fromPid})` : ""}: ${m.reason} [${m.id}]; ${who} ${how}` +
+    (m.update ? `; carries Den's update from ${m.update.fromVersion}` : "") +
+    (m.again ? "; kept from an earlier start that didn't type it" : "");
+  return {
+    detail: detail.slice(0, 400),
+    ...(m.agent && typeof told !== "string"
+      ? {
+          agents: {
+            [m.agent]: { told: told.told, state: told.state, typed: text },
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * Issue 251: the line Den types again when the pin of `version` isn't
+ * committed `minutes` after the update.
+ */
+export function pinReminder(
+  version: string,
+  folder: string,
+  minutes: number,
+): string {
+  return (
+    `Den ${version} runs here, but its new pin (package.json, package-lock.json) in ${folder} is still not committed ${minutes} min after the update. ` +
+    "Commit and push it now, or tell your person why you can't."
+  );
 }
 
 /**

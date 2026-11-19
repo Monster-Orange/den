@@ -1288,6 +1288,12 @@ export interface ServerAgentConfig {
    * before it restarts anyway (seconds, default 900; 0: no wait).
    */
   update_restart_wait_seconds?: number;
+  /**
+   * Issue 251: how long after Den comes back on a self-updated version
+   * its pin may stay uncommitted before Den types the note again, and as
+   * long again before the bell and doctor say so (minutes, default 60).
+   */
+  pin_commit_wait_minutes?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1329,7 +1335,12 @@ export interface ResolvedServerAgentConfig {
   securityUpdateSkipsBusy: boolean;
   /** Issue 562 review: server_agent.update_restart_wait_seconds, in ms. */
   updateRestartWaitMs: number;
+  /** Issue 251: server_agent.pin_commit_wait_minutes, in ms. */
+  pinCommitWaitMs: number;
 }
+
+/** Issue 251: server_agent.pin_commit_wait_minutes when unset. */
+export const PIN_COMMIT_WAIT_MINUTES_DEFAULT = 60;
 
 /** Issue 562 review: server_agent.update_restart_wait_seconds when unset. */
 export const UPDATE_RESTART_WAIT_SECONDS_DEFAULT = 900;
@@ -1424,6 +1435,14 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.update_restart_wait_seconds: seconds, 0 or more (got ${JSON.stringify(rw)})`,
     );
+  const pw = sa.pin_commit_wait_minutes;
+  if (
+    pw !== undefined &&
+    (typeof pw !== "number" || !Number.isFinite(pw) || pw < 0)
+  )
+    throw new Error(
+      `server_agent.pin_commit_wait_minutes: minutes, 0 or more (got ${JSON.stringify(pw)})`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1449,6 +1468,9 @@ export function readServerAgentConfig(
     securityUpdateSkipsBusy: ssb ?? true,
     updateRestartWaitMs: Math.round(
       (rw ?? UPDATE_RESTART_WAIT_SECONDS_DEFAULT) * 1000,
+    ),
+    pinCommitWaitMs: Math.round(
+      (pw ?? PIN_COMMIT_WAIT_MINUTES_DEFAULT) * 60_000,
     ),
   };
 }

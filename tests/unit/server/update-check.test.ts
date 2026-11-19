@@ -300,9 +300,9 @@ describe("issue 251: the pin check's wait and doctor's warning", () => {
     expect(readServerAgentConfig(cfg(0), undefined, {}).pinCommitWaitMs).toBe(
       0,
     );
-    expect(
-      readServerAgentConfig(cfg(240), undefined, {}).pinCommitWaitMs,
-    ).toBe(240 * 60_000);
+    expect(readServerAgentConfig(cfg(240), undefined, {}).pinCommitWaitMs).toBe(
+      240 * 60_000,
+    );
     for (const bad of [-1, "30", Number.NaN])
       expect(() => readServerAgentConfig(cfg(bad), undefined, {})).toThrow(
         /server_agent\.pin_commit_wait_minutes/,
@@ -331,7 +331,12 @@ describe("issue 251: the pin check's wait and doctor's warning", () => {
       last: { at: at(18, 34), did: "current" as const },
       pin,
     };
-    const r = selfUpdateSummary(cfg, state, "acme.config.yml", Date.parse(at(18, 40)));
+    const r = selfUpdateSummary(
+      cfg,
+      state,
+      "acme.config.yml",
+      Date.parse(at(18, 40)),
+    );
     expect(r.status).toBe("warn");
     expect(r.detail).toMatch(
       /; Den 1\.2\.0's new pin isn't committed in \/srv\/dist 120 min after the update, and the Den agent was told twice: commit it, or see the bell$/,

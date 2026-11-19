@@ -1899,6 +1899,10 @@
       "__DEN_TITLE__ {v}: confirmar su versión fijada espera tu permiso",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.pinNotCommittedLate":
+      "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada en {folder} {min} min después de la actualización, y al agente de __DEN_TITLE__ se le avisó dos veces",
+    "bell.m.pinNotCommittedLateAllow":
+      "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada en {folder} {min} min después de la actualización: el agente de __DEN_TITLE__ espera tu permiso",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",

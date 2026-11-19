@@ -2718,6 +2718,10 @@
       "__DEN_TITLE__ {v}: committing its pin waits for your Allow",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.pinNotCommittedLate":
+      "__DEN_TITLE__ {v} runs here, but its new pin isn't committed in {folder} {min} min after the update, and the __DEN_TITLE__ agent was told twice",
+    "bell.m.pinNotCommittedLateAllow":
+      "__DEN_TITLE__ {v} runs here, but its new pin isn't committed in {folder} {min} min after the update: the __DEN_TITLE__ agent is waiting on your Allow",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",

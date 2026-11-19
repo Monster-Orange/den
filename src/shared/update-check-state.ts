@@ -27,6 +27,20 @@ export type UpdateTick =
   | { did: "failed"; version: string; why: string };
 
 /**
+ * Issue 251: a self-updated version's pin, not committed yet: since when
+ * (Den came back on it), when the note went again, and when Den flagged
+ * it (the bell and doctor), with the minutes then and the folder.
+ */
+export interface PinCheck {
+  version: string;
+  since: string;
+  resent?: string;
+  flagged?: string;
+  minutes?: number;
+  folder?: string;
+}
+
+/**
  * SRV-P6 (0.4.48): the update check's last pass and next one, written by
  * the running Den after each pass so doctor (its own process) and
  * Settings can say them.
@@ -38,6 +52,8 @@ export interface CheckState {
   next: string | null;
   /** The last pass, absent before the first. */
   last?: { at: string } & UpdateTick;
+  /** Issue 251: the running version's uncommitted pin, if any. */
+  pin?: PinCheck;
 }
 
 export const updateCheckFile = (stateDir: string): string =>
@@ -61,6 +77,11 @@ export function readCheckState(stateDir: string): CheckState | null {
       everyMinutes: s.everyMinutes,
       next: typeof s.next === "string" ? s.next : null,
       ...(s.last && typeof s.last.at === "string" ? { last: s.last } : {}),
+      ...(s.pin &&
+      typeof s.pin.version === "string" &&
+      typeof s.pin.since === "string"
+        ? { pin: s.pin }
+        : {}),
     };
   } catch {
     return null;
@@ -117,6 +138,23 @@ export function selfUpdateSummary(
         ? `from ${orgFile}, copied to config/local/user.yml at the next start`
         : "the default (nothing set in config/local/user.yml)";
   const head = `self_update: ${cfg.selfUpdate}, ${from}`;
+  // Issue 251: a pin Den flagged (the bell has it too) warns.
+  const p = check?.pin;
+  if (p?.flagged) {
+    const r = selfUpdateSummary(
+      cfg,
+      { ...check!, pin: undefined },
+      orgFile,
+      now,
+    );
+    return {
+      status: "warn",
+      detail:
+        `${r.detail}; Den ${p.version}'s new pin isn't committed in ${p.folder ?? "the distribution's folder"}` +
+        `${p.minutes !== undefined ? ` ${p.minutes} min after the update` : ""}` +
+        `${p.resent ? ", and the Den agent was told twice" : ""}: commit it, or see the bell`,
+    };
+  }
   if (!cfg.updateCheckMs)
     return {
       status: "ok",

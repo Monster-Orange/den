@@ -23,8 +23,12 @@
  *     the update goes on, and at the first pass after a restart (the
  *     process that posted it is gone).
  *   - #251: after a self-update, the new pin must be committed in the
- *     distribution's folder. Two passes in a row with it uncommitted: the
- *     log, and one bell item.
+ *     distribution's folder. Still uncommitted
+ *     server_agent.pin_commit_wait_minutes after Den came back on that
+ *     version (default 60): Den types the note to the server agent once
+ *     more. As long again after that: the log, one bell item and doctor's
+ *     warning (pinStatus, kept in the check's state file so a restart
+ *     neither sends the note twice nor forgets it). All go when it lands.
  *   - #176: Den commits and pushes that pin itself (pin-commit.ts), on the
  *     lead install only, once the new version is verified (the watch wrote
  *     "good" and this Den runs it). The server agent's state doesn't
@@ -61,7 +65,11 @@ import type { UpdateState } from "./den-update.js";
 import type { PinStep } from "./pin-commit.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import type { UpdateTick } from "../../shared/update-check-state.js";
-import { UPDATE_WAIT_CHECKS_DEFAULT } from "../../shared/den-config.js";
+import {
+  PIN_COMMIT_WAIT_MINUTES_DEFAULT,
+  UPDATE_WAIT_CHECKS_DEFAULT,
+} from "../../shared/den-config.js";
+import type { PinCheck } from "../../shared/update-check-state.js";
 
 // The state file and doctor's line live in src/shared (the CLI reads them).
 export {
@@ -71,6 +79,7 @@ export {
   updateCheckFile,
   writeCheckState,
   type CheckState,
+  type PinCheck,
   type UpdateTick,
 } from "../../shared/update-check-state.js";
 
@@ -337,9 +346,24 @@ export interface UpdateCheckDeps {
    * in its folder: null when Den can't tell (no git).
    */
   pinState?(): Promise<"committed" | "uncommitted" | null>;
-  /** #251: the one bell item while the pin of `version` isn't committed. */
-  pinNote?(version: string, why: UpdateWait | null): void;
+  /**
+   * #251: the one bell item while the pin of `version` isn't committed;
+   * `info`: how many minutes after the update (issue 251).
+   */
+  pinNote?(
+    version: string,
+    why: UpdateWait | null,
+    info?: { minutes: number },
+  ): void;
   pinDone?(): void;
+  /** Issue 251: server_agent.pin_commit_wait_minutes, in ms. */
+  pinWaitMs?(): number;
+  /** Issue 251: type the pin note to the server agent again (once). */
+  pinResend?(version: string, minutes: number): Promise<void> | void;
+  /** Issue 251: the pin check a Den before a restart left, or null. */
+  pinBefore?(): PinCheck | null;
+  /** The clock (tests fake it). */
+  now?(): number;
   /**
    * #176: commit and push the pin of `version` (pin-commit.ts commitPin),
    * or push a commit an earlier pass couldn't. Absent: the pin is left to
@@ -372,6 +396,8 @@ export interface UpdateCheckDeps {
 
 export interface UpdateCheck {
   tick(): Promise<UpdateTick>;
+  /** Issue 251: the running version's uncommitted pin, or null. */
+  pinStatus(): PinCheck | null;
 }
 
 /** Whether `want` is a version above `have` (both semver). */
@@ -397,8 +423,7 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   let turnRead = false;
   const waitWhy = async (): Promise<UpdateWait | null> => {
     turnRead = false;
-    if (!d.waitWhy)
-      return (await d.idle().catch(() => false)) ? null : "busy";
+    if (!d.waitWhy) return (await d.idle().catch(() => false)) ? null : "busy";
     try {
       const w = await d.waitWhy();
       turnRead = w === "busy";
@@ -454,9 +479,34 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
       return false;
     }
   };
-  let pinUncommitted = 0;
-  let pinNoted: string | null = null;
-  /** #251: the running version's pin committed? Two passes: say so. */
+  const now = () => (d.now ?? Date.now)();
+  /** Issue 251: the running version's uncommitted pin, as it stands. */
+  let pin: PinCheck | null = (() => {
+    try {
+      return d.pinBefore?.() ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const pinWait = (): number => {
+    try {
+      return Math.max(
+        0,
+        d.pinWaitMs?.() ?? PIN_COMMIT_WAIT_MINUTES_DEFAULT * 60_000,
+      );
+    } catch {
+      return PIN_COMMIT_WAIT_MINUTES_DEFAULT * 60_000;
+    }
+  };
+  /** When Den came back on `have`: its verified update, or first seen. */
+  const pinSince = (have: string): number => {
+    const last = d.last();
+    const at =
+      last && last.to === have && last.state === "good"
+        ? Date.parse(last.at)
+        : NaN;
+    return Number.isFinite(at) ? at : now();
+  };
   /**
    * #176: the version whose pin is on its way another way (a pull request,
    * a held Allow): its uncommitted files are expected, not said again.
@@ -466,24 +516,44 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
     if (!d.pinState || d.pinned() !== have || pinElsewhere === have) return;
     const st = await d.pinState().catch(() => null);
     if (st !== "uncommitted") {
-      pinUncommitted = 0;
-      if (pinNoted) {
-        pinNoted = null;
+      const was = pin;
+      pin = null;
+      if (was?.flagged) {
         d.pinDone?.();
         if (st === "committed")
           d.log?.(`update check: the pin of ${have} is committed`);
       }
       return;
     }
-    pinUncommitted += 1;
-    if (pinUncommitted < 2 || pinNoted === have) return;
-    pinNoted = have;
+    if (pin?.version !== have)
+      pin = { version: have, since: new Date(pinSince(have)).toISOString() };
+    if (pin.flagged) return;
+    const wait = pinWait();
+    const t = now();
+    const minutes = Math.round((t - Date.parse(pin.since)) / 60_000);
+    if (!pin.resent) {
+      if (t - Date.parse(pin.since) < wait) return;
+      pin = { ...pin, resent: new Date(t).toISOString() };
+      if (d.pinResend) {
+        d.log?.(
+          `update check: Den ${have} runs, but its pin isn't committed ${minutes} min after the update: the Den agent is told again`,
+        );
+        try {
+          await d.pinResend(have, minutes);
+        } catch {
+          /* its own audit row says why */
+        }
+        return;
+      }
+    } else if (t - Date.parse(pin.resent) < wait) return;
+    pin = { ...pin, flagged: new Date(t).toISOString(), minutes };
     const why = await waitWhy();
     d.log?.(
-      `update check: Den ${have} runs, but its pin isn't committed in the distribution's folder` +
+      `update check: Den ${have} runs, but its pin isn't committed in the distribution's folder ${minutes} min after the update` +
+        (d.pinResend ? ", after the Den agent was told twice" : "") +
         (waitsOnPerson(why) ? ` (${WAIT_TEXT[why!]})` : ""),
     );
-    d.pinNote?.(have, why);
+    d.pinNote?.(have, why, { minutes });
   };
   /**
    * #176: the lead install's verified version: Den commits and pushes its
@@ -553,6 +623,7 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
     }
   };
   return {
+    pinStatus: () => pin,
     async tick() {
       const have = d.running();
       if (!have) return { did: "current" };

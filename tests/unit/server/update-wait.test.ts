@@ -128,7 +128,8 @@ describe("the pin after a self-update", () => {
         at: "2026-11-19T10:00:00Z",
       }),
       pinResend: async (v, min) => void resent.push(`${v} ${min}`),
-      pinNote: (v, why, info) => void pins.push(`pin ${v} ${why} ${info?.minutes}`),
+      pinNote: (v, why, info) =>
+        void pins.push(`pin ${v} ${why} ${info?.minutes}`),
       pinDone: () => void pins.push("pin done"),
     });
     f.setPin("uncommitted");
