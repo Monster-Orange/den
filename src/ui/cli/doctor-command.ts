@@ -51,7 +51,6 @@ import {
   lostFiles,
   lostMarkLines,
 } from "../../shared/agents/guardrails/lost-marks.js";
-import { uiLanguage } from "../server/ui-language.js";
 import {
   readCheckState,
   selfUpdateSummary,
@@ -1235,7 +1234,7 @@ export function attentionLostLines(
     lang = undefined;
   }
   return lostMarkLines(lostFiles(stateDir), {
-    lang: uiLanguage(lang),
+    lang,
     title,
   });
 }

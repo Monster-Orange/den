@@ -94,7 +94,8 @@ const say = (lang: Lang, k: Word, vars: Record<string, string | number>) =>
  */
 export function lostMarkLines(
   files: string | string[],
-  o: { now?: Date; lang?: Lang; title: string },
+  /** lang: the person's language (user.yml language); others: English. */
+  o: { now?: Date; lang?: unknown; title: string },
 ): {
   lines: string[];
   checks: { id: string; status: "warn"; detail: string }[];
@@ -127,7 +128,7 @@ export function lostMarkLines(
     by.set(r.agent, b);
   }
   if (!by.size) return { lines: [], checks: [] };
-  const lang = o.lang ?? "en";
+  const lang: Lang = o.lang === "es" || o.lang === "ja" ? o.lang : "en";
   const checks = [...by.keys()].sort().map((agent) => {
     const b = by.get(agent)!;
     return {
