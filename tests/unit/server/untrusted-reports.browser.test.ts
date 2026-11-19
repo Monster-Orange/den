@@ -20,6 +20,7 @@ import {
   type FrameServer,
 } from "./helpers/error-frame-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
@@ -63,7 +64,9 @@ describe("a report a test run wrote", () => {
     "%s runs in an opaque origin: it can't read Den's localStorage",
     async (p) => {
       if (!browser) return;
-      const page = await browser.newPage();
+      const context = await browser.newContext();
+      await signIn(context, path.join(s!.tmp, "den-home"), s!.base);
+      const page = await context.newPage();
       // Den's page holds an approval key.
       await page.goto(`${s!.base}/services`);
       await page.evaluate(() =>
@@ -84,7 +87,7 @@ describe("a report a test run wrote", () => {
         read: string;
       };
       expect(got).toEqual({ origin: "null", read: "blocked" });
-      await page.close();
+      await context.close();
     },
     60_000,
   );

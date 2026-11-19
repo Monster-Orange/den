@@ -2131,12 +2131,16 @@ outside a service manager.
 
 ## Signing in
 
-On localhost nothing asks you to sign in: every page, the agents and the
-terminal work as they are, and the admin password (R8) is the only prompt,
-asked only when a command Den runs needs sudo. Through the edge, a browser
-the edge shows is on this machine asks for nothing either. Signing in is
-for everything else: the edge for a client it can't place here (0.4.5), a
-LAN address, or a bind that isn't loopback (`DEN_BIND_HOST`). From another
+Every browser signs in once, on this machine too (0.4.71), and stays
+signed in. On this machine `web up` and `web open` open a one-time sign-in
+link, so you do nothing more. A browser there that isn't signed in (a
+bookmark, a tab from before) can look at every page but change nothing:
+each page says so in one line, with a Sign in button. Through the edge, a
+browser the edge shows is on this machine is treated the same way. The
+admin password (R8) is no sign-in: it is asked only when a command Den
+runs needs sudo. Beyond this machine (the edge for a client it can't place
+here (0.4.5), a LAN address, or a bind that isn't loopback,
+`DEN_BIND_HOST`) every page needs a sign-in, reads included. From another
 device, sign in with GitHub as the Den's owner, approve the computer with
 the code its page shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
@@ -2260,8 +2264,9 @@ user, and the CLI does that for you:
   device".
 - **The edge counts as local only when it shows the client is.** A
   request for the edge hostname from the edge (an edge peer, below) is
-  treated as loopback (no sign-in on any route, the agents and the
-  terminal included) when the client the edge reports is this machine.
+  treated as loopback (reads need no sign-in; a change, an agent or a
+  terminal does, as on localhost) when the client the edge reports is
+  this machine.
   Host, Origin, CSRF and the agent-token rules still apply. Who the client
   is comes from the right-most `X-Forwarded-For` entry, the one the edge
   itself appended (anything left of it came from the client, and is never
@@ -4098,10 +4103,10 @@ agent of the projects in view, and their terminals in the browser.
   one's to change it.
 - Terminals need the optional PTY module (`<cli> doctor`); without it the
   page lists what there is and says so.
-- **Who can open one.** The terminal is shell-grade: on localhost the
-  page's own Origin and CSRF token, beyond loopback a signed-in browser
-  (the list says "Sign in to open terminals" otherwise), and an agent's
-  token only its own session's. Each attach and detach is in the server
+- **Who can open one.** The terminal is shell-grade: a signed-in browser,
+  on localhost too (0.4.71), with the page's own Origin and CSRF token
+  (the list says "Sign in to open terminals" otherwise); the person's
+  token from the CLI; and an agent's token only its own session's. Each attach and detach is in the server
   log's activity, with its actor.
 
 The routes: `GET /api/sessions` (`{ sessions, projects, host, backend,

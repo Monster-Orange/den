@@ -1,7 +1,9 @@
 /**
  * SEC-1a (SEC-1 spec §3, §5, §7) on a real server: the Host allowlist, the
  * Origin and CSRF checks on every mutation, the person token, and
- * web.secret, which no HTTP response ever carries.
+ * web.secret, which no HTTP response ever carries. A write needs a sign-in
+ * on this machine too (0.4.71): a session or a bearer, then Origin and the
+ * session's own CSRF token, so those checks are shown with a session.
  *
  * A throwaway distribution with an edge block (org acme, so Den's route is
  * den.acme.localhost); POST /api/settings is the harmless mutation (its
@@ -21,6 +23,7 @@ import {
 } from "../../../src/shared/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -93,13 +96,13 @@ const settings = (headers: Record<string, string>, editor: string) =>
 const editorNow = () =>
   fs.existsSync(userYml) ? fs.readFileSync(userYml, "utf-8") : "";
 const origin = () => `http://localhost:${port}`;
-async function csrf(): Promise<string> {
-  const r = await call("GET", "/api/session", {
-    "sec-fetch-site": "same-origin",
-  });
-  expect(r.status).toBe(200);
-  return String(json(r).csrf);
+let signed: SignedIn | null = null;
+/** A signed-in browser of this server: its cookie and its session's CSRF token. */
+async function session(): Promise<SignedIn> {
+  signed ??= await signedIn(stateDir, origin());
+  return signed;
 }
+const cookie = async () => ({ cookie: (await session()).cookie });
 
 function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -277,29 +280,56 @@ describe("UK-2: GET /requests/<id> is checked as /api is", () => {
 });
 
 describe("Origin, CSRF and the bearer on a mutation (POST /api/settings)", () => {
-  it("another site's Origin: 403 origin_rejected, and nothing written", async () => {
+  it("signed in, another site's Origin: 403 origin_rejected, and nothing written", async () => {
     const before = editorNow();
-    const r = await settings({ origin: "http://evil.example" }, "evil");
+    const r = await settings(
+      { ...(await cookie()), origin: "http://evil.example" },
+      "evil",
+    );
     expect(r.status).toBe(403);
     expect(json(r)).toMatchObject({ ok: false, code: "origin_rejected" });
     expect(editorNow()).toBe(before);
   });
 
-  it("an allowed Origin without X-Den-CSRF: 403 csrf, and nothing written", async () => {
+  it("signed in, an allowed Origin without X-Den-CSRF: 403 csrf, and nothing written", async () => {
     const before = editorNow();
-    const r = await settings({ origin: origin() }, "nocsrf");
+    const r = await settings(
+      { ...(await cookie()), origin: origin() },
+      "nocsrf",
+    );
     expect(r.status).toBe(403);
     expect(json(r)).toMatchObject({ ok: false, code: "csrf" });
     expect(editorNow()).toBe(before);
   });
 
-  it("an allowed Origin with the token /api/session hands out reaches the route", async () => {
-    const r = await settings(
-      { origin: origin(), "x-den-csrf": await csrf() },
-      "vim",
-    );
+  it("a write needs a sign-in on this machine too (0.4.71): with no session /api/session hands out no token, and the write is 401 signin_required", async () => {
+    const before = editorNow();
+    const me = await call("GET", "/api/session", {
+      "sec-fetch-site": "same-origin",
+    });
+    expect(me.status).toBe(200);
+    expect(json(me)).toMatchObject({ csrf: null, signedIn: false });
+    expect(typeof json(me).reason).toBe("string");
+    const r = await settings({ origin: origin(), "x-den-csrf": "" }, "anon");
+    expect([r.status, json(r).code]).toEqual([401, "signin_required"]);
+    expect(editorNow()).toBe(before);
+  });
+
+  it("signed in, an allowed Origin with that session's token reaches the route", async () => {
+    const r = await settings((await session()).headers, "vim");
     expect(r.status).toBe(200);
     expect(editorNow()).toMatch(/editor: vim/);
+  });
+
+  it("another session's token is refused: 403 csrf", async () => {
+    const before = editorNow();
+    const other = await signedIn(stateDir, origin());
+    const r = await settings(
+      { ...(await session()).headers, "x-den-csrf": other.csrf },
+      "swapped",
+    );
+    expect([r.status, json(r).code]).toEqual([403, "csrf"]);
+    expect(editorNow()).toBe(before);
   });
 
   it("/api/session answers a same-origin caller only", async () => {
@@ -317,9 +347,17 @@ describe("Origin, CSRF and the bearer on a mutation (POST /api/settings)", () =>
     });
   });
 
-  it("no Origin and no Authorization: 403", async () => {
+  it("no Origin and no Authorization: 401 signin_required (a write needs a sign-in on this machine too, 0.4.71)", async () => {
     const before = editorNow();
     const r = await settings({}, "bare");
+    expect(r.status).toBe(401);
+    expect(json(r)).toMatchObject({ code: "signin_required" });
+    expect(editorNow()).toBe(before);
+  });
+
+  it("signed in, no Origin and no Authorization: 403 origin_rejected", async () => {
+    const before = editorNow();
+    const r = await settings(await cookie(), "bare");
     expect(r.status).toBe(403);
     expect(json(r)).toMatchObject({ code: "origin_rejected" });
     expect(editorNow()).toBe(before);
@@ -385,14 +423,17 @@ describe("the audit actor comes from the credential", () => {
       "/api/activity",
       {
         ...agent,
-        origin: origin(),
-        "x-den-csrf": await csrf(),
+        ...(await session()).headers,
         "x-den-principal": "person:root",
       },
       report,
     );
     expect(b.status).toBe(200);
-    expect((await entries())[0]).not.toHaveProperty("principal");
+    // A signed-in page's call is the person's, from its session: never
+    // the principal a header claims.
+    expect((await entries())[0]).toMatchObject({
+      principal: `person:${os.userInfo().username}`,
+    });
   });
 });
 
@@ -405,21 +446,23 @@ describe("a GET that runs something (shell-grade: /api/service/exec)", () => {
         .entries as unknown[]
     ).length;
 
-  it("curl with no headers: 403; another site: 403 cross_site; nothing runs", async () => {
+  it("curl with no headers: 401 signin_required (a run needs a sign-in on this machine too, 0.4.71); signed in from another site: 403 cross_site; nothing runs", async () => {
     const bare = await call("GET", exec("curl"));
-    expect(bare.status).toBe(403);
-    expect(json(bare)).toMatchObject({ code: "origin_rejected" });
+    expect(bare.status).toBe(401);
+    expect(json(bare)).toMatchObject({ code: "signin_required" });
     const cross = await call("GET", exec("curl"), {
+      ...(await cookie()),
       "sec-fetch-site": "cross-site",
     });
     expect(json(cross)).toMatchObject({ code: "cross_site" });
     expect(await count("curl")).toBe(0);
   });
 
-  it("the CLI's bearer, or this server's own page, runs the route", async () => {
+  it("the CLI's bearer, or this server's own signed-in page, runs the route", async () => {
     expect((await call("GET", exec("cli"), bearer())).status).toBe(200);
     expect(await count("cli")).toBe(1);
     const page = await call("GET", exec("page"), {
+      ...(await cookie()),
       "sec-fetch-site": "same-origin",
     });
     expect(page.status).toBe(200);

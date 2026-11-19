@@ -21,6 +21,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -195,6 +196,7 @@ async function lightPage(url: string): Promise<Page> {
     reducedMotion: "reduce",
     colorScheme: "light",
   });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   // What's new stays shut: this release counts as seen.
   const latest =
     (

@@ -145,18 +145,10 @@ export function restartDen({
         if (!post) return Promise.resolve({});
         const api = window.denShell?.api;
         const body = from ? { from } : {};
+        // 0.4.71: only through the shell, which carries this browser's
+        // session (a restart needs a sign-in); never a bare request.
         if (api) return api("POST", "/api/web/restart", body, { headers });
-        return fetch("/api/web/restart", {
-          method: "POST",
-          headers: { ...headers, "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(4000),
-        }).then(
-          (r) => r.json().catch(() => ({})),
-          () => {
-            throw { network: true };
-          },
-        );
+        return Promise.reject(new Error("restart needs the page's shell"));
       },
       { before: was ?? undefined },
     );

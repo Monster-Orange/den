@@ -26,8 +26,11 @@ import { product } from "../../shared/product.js";
 // (basename + origin remote) must not depend on where the server was started.
 const ROOT = getDistRoot();
 
-/** Strict owner/repo format — rejects shell metacharacters. */
-const SLUG_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+/**
+ * Strict owner/repo format: rejects shell metacharacters, and a `.` or
+ * `..` segment (0.4.71), which would reach another GitHub API path.
+ */
+const SLUG_RE = /^(?!\.{1,2}\/)[a-zA-Z0-9._-]+\/(?!\.{1,2}$)[a-zA-Z0-9._-]+$/;
 
 export interface GitHubRepo {
   name: string;

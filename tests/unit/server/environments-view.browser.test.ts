@@ -23,6 +23,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -60,6 +61,7 @@ async function page(): Promise<Page> {
     viewport: { width: 1440, height: 900 },
     reducedMotion: "no-preference",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   // What's new stays shut: it would cover the controls.
   await ctx.addInitScript((v) => {
     try {

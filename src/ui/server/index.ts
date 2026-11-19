@@ -289,7 +289,6 @@ import {
   isLoopbackAddress,
   isLoopbackBind,
   localNet,
-  newCsrfToken,
   principalOf,
   requestIsHttps,
   sessionRequestAllowed,
@@ -1492,6 +1491,16 @@ function handleAttest(
       403,
       "This works only on the computer this Den runs on, at localhost.",
     );
+  // 0.4.71: and only for a browser signed in there (or the person's CLI):
+  // the code it hands out may make its holder the owner.
+  if (!guard.session && guard.principal?.kind !== "person")
+    return sendSignedOut(req, res, {
+      pathname: "/attest",
+      search: url.search,
+      scope: "den",
+      requestId,
+      message: signinMessage("den", product().cli, product().title),
+    });
   const ret = attestReturn(url.searchParams.get("return"), denEdgeHosts());
   const secret = webSecret.current();
   if (!ret || !secret)
@@ -1752,7 +1761,6 @@ const GUARD: GuardContext = {
     const secret = webSecret.current();
     return secret ? verifyPersonToken(token, secret) : null;
   },
-  csrfToken: newCsrfToken(),
   session: (req) => webSessions.lookup(sessionCookie(req)),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
   // The edge hostname only from the edge's own peers (loopback, Docker).
@@ -2112,6 +2120,11 @@ function sendSignedOut(
   const loginArgs =
     toLocal || host === `localhost:${PORT}` ? [] : ["--origin", origin];
   const cmd = cliCommand(bin, "web", "login", ...loginArgs);
+  // 0.4.71: a browser on this machine (localhost, from a loopback peer):
+  // the page words it for here, and its fallback is `web up`.
+  const local =
+    host === `localhost:${PORT}` &&
+    isLoopbackAddress(req.socket?.remoteAddress);
   const ssh = sshTargetOf(req);
   const user = sshUserNow();
   const gh = githubSignin();
@@ -2126,6 +2139,7 @@ function sendSignedOut(
       scope: opts.scope,
       name: product().title,
       cmd,
+      ...(local ? { local: true, up: cliCommand(bin, "web", "up") } : {}),
       // SEC-2a: which machine runs the commands, and how to reach it.
       machine: machineName(),
       ssh: {
@@ -2379,6 +2393,19 @@ async function handleAuth(
   // server running): it signs in when opened, once, as before.
   if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
     return gone();
+  // 0.4.71: `web up` sends an open tab here each time; a browser already
+  // signed in keeps its session (the code is spent), so Linked devices
+  // doesn't fill with one per run.
+  const already = checkRequest(req, GUARD, product().cli, product().title);
+  if (already.ok && already.session) {
+    res.writeHead(303, {
+      Location: safeNext(url.searchParams.get("next")),
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end();
+    return;
+  }
   const s = startSession(req, "link");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -3553,15 +3580,19 @@ async function handleRequest(
     (req.method === "GET" || req.method === "HEAD")
   ) {
     // Read-only and sign-in free (§6b.3): it checks the session itself.
-    // Signed in, or on loopback (no sign-in there), it goes on to a
-    // same-origin `next`; signed out beyond loopback, it is the signed-out
-    // page (the `web login` hint, never a form for the secret).
+    // Signed in, it goes on to a same-origin `next`; signed out, here on
+    // this machine too (0.4.71), it is the signed-out page (never a form
+    // for the secret).
     // D67: `again=1` (the approvals banner's Sign in): the sign-in page
     // even with a session, or on loopback: approving needs a signed-in
     // browser with an approval key, which a browser without one (signed
     // in before 0.4.15, its storage cleared, or never) gets here.
     const again = url.searchParams.get("again") === "1";
-    if (guard.ok && (guard.session || !guard.beyond) && !again) {
+    if (
+      guard.ok &&
+      (guard.session || guard.principal?.kind === "person") &&
+      !again
+    ) {
       res.writeHead(303, {
         Location: safeNext(url.searchParams.get("next")),
         "Cache-Control": "no-store",
@@ -6107,14 +6138,20 @@ async function handleRequest(
         csrf: g.session.csrf,
         actor: "person-browser",
         signedIn: true,
-        identity: {
-          kind: github ? "github" : "device",
-          via: rec?.via ?? "link",
-          ...(github ? { login: rec.login } : {}),
-          ...(github && rec.name ? { name: rec.name } : {}),
-          // A link or a code (no GitHub sign-in of its own): no GitHub
-          // identity, never the owner's. It may be someone else's device.
-        },
+        // 0.4.71: a browser on this machine, signed in with a link or a
+        // code, is the local browser it always was (the owner's chip).
+        identity:
+          !github && !g.beyond
+            ? localIdentity()
+            : {
+                kind: github ? "github" : "device",
+                via: rec?.via ?? "link",
+                ...(github ? { login: rec.login } : {}),
+                ...(github && rec.name ? { name: rec.name } : {}),
+                // A link or a code (no GitHub sign-in of its own): no
+                // GitHub identity, never the owner's. It may be someone
+                // else's device.
+              },
         ...(webSessions.takeWelcome(g.session.key)
           ? {
               justSignedIn: true,
@@ -6124,17 +6161,19 @@ async function handleRequest(
           : {}),
       });
     }
+    // 0.4.71: no session, no token, here too: a browser on this machine
+    // signs in (`web up` opens the one-time link) before it changes
+    // anything. It reads as before.
     return sendJson(res, {
-      csrf: g?.beyond ? null : GUARD.csrfToken,
+      csrf: null,
       actor: null,
       signedIn: false,
-      // A browser on this machine: the install owner's GitHub identity
-      // (the account entry), when Den knows it.
-      ...(g && !g.beyond ? { identity: localIdentity() } : {}),
+      reason: `Sign in to make changes here: run \`${product().cli} web up\` (it opens a one-time sign-in link), or open /signin.`,
+      signin: `/signin?next=${encodeURIComponent("/")}`,
       // SEC-2a-UX: the signed-out page watches this, so Sign in with
       // GitHub appears once an owner is linked, with no reload. The
       // owner's login is what that page shows anyway.
-      ...(g?.beyond || !g ? { github: githubSignin() } : {}),
+      github: githubSignin(),
     });
   }
   // Sign out: this browser's session ends and its cookie is cleared.

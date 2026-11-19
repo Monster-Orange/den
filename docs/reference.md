@@ -113,8 +113,10 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   project's checkout, with an MCP server pinned to that project and a
   token of its own. The web UI's Agents tab lists them and opens their
   terminals.
-- **Browser sign-in beyond loopback.** On localhost no route needs a sign-in,
-  nor through the edge when it shows the browser is on this machine.
+- **Browser sign-in, on this machine too.** On localhost (and through the
+  edge when it shows the browser is on this machine) a browser that isn't
+  signed in can read, but every change, agent and terminal needs a sign-in;
+  `web up` and `web open` open a one-time sign-in link for it.
   Anywhere else, every route needs one: Sign in with GitHub as the Den's
   owner (`<cli> web owner link` links the account once), approving the
   computer with the code its page shows (`<cli> web approve <code>`, or
