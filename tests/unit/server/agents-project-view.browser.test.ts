@@ -301,8 +301,12 @@ describe("#80: scope wins", () => {
     await p.context().close();
   }, 60_000);
 
-  it("stop-ship: typing reaches exactly the To line's agent after a project switch, a tab switch and a reload", async () => {
-    if (!browser) return;
+  /**
+   * Stop-ship: a project switch, a tab switch, a reload, then typing
+   * `mark`: exactly bo's PTY gets it. `slow`: the terminal's code loads
+   * late after the reload.
+   */
+  async function stopShip(slow: boolean, mark: string): Promise<void> {
     if (!sid.bo) await run("bo", "south", "2026-11-13T09:05:00.000Z");
     // Issue 482: a second south agent for the tab switch (a shell has no
     // tab on Agents any more). It started last, so it may come in front.
@@ -321,7 +325,13 @@ describe("#80: scope wins", () => {
     if (await boTab.count()) await boTab.click();
     else await p.click(`#agl .agr[data-id="${sid.bo}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
-    // … and a reload.
+    // … and a reload (slow: its terminal code comes 1.5 s late, as on a
+    // busy machine).
+    if (slow)
+      await p.route("**/vendor/xterm.mjs*", async (r) => {
+        await new Promise((ok) => setTimeout(ok, 1500));
+        await r.continue();
+      });
     await p.reload();
     await p.waitForSelector(".pane:not([hidden]) .agto:not(:empty)");
     // The reload keeps bo in front, and the To line names it and south.
@@ -331,12 +341,10 @@ describe("#80: scope wins", () => {
     await p.click(".pane:not([hidden]) .term");
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
-    await p.keyboard.type("zz-stop-ship");
+    await p.keyboard.type(mark);
     const reached = () =>
       s!.made.filter((x, i) =>
-        Buffer.concat(x.writes.slice(from[i]))
-          .toString()
-          .includes("zz-stop-ship"),
+        Buffer.concat(x.writes.slice(from[i])).toString().includes(mark),
       );
     // A slow runner: wait for the typing to land, then a moment for any
     // stray copy elsewhere.
@@ -346,5 +354,15 @@ describe("#80: scope wins", () => {
     const got = reached();
     expect(got).toEqual([ptys.bo]);
     await p.context().close();
+  }
+
+  it("stop-ship: typing reaches exactly the To line's agent after a project switch, a tab switch and a reload", async () => {
+    if (!browser) return;
+    await stopShip(false, "zz-stop-ship");
+  }, 90_000);
+
+  it("stop-ship, slow load: typing still reaches exactly the To line's agent when the terminal's code comes late", async () => {
+    if (!browser) return;
+    await stopShip(true, "zz-slow-ship");
   }, 90_000);
 });
