@@ -8,7 +8,41 @@ export const clauses = [
   "otherwise it says who must approve and links on its own when they do",
   "the same works from the server agent (a held write)",
   "a person links a Den project to a new Hub project from Den alone, and agents in that project see it",
+  "the picker's words have en, es and ja text",
 ];
+const LANGS = ["en", "es", "ja"];
+
+/** Den's settings through the bed's signed-in API (the person's token). */
+async function settingsApi(ctx, body) {
+  const r = await ctx.api(
+    "/api/settings",
+    body
+      ? {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : undefined,
+  );
+  if (r && r.ok === false) throw new Error(`/api/settings: HTTP ${r.status}`);
+  return typeof r?.json === "function" ? r.json() : r;
+}
+
+/** The Hub project row's words on the page now: its label, the first option, the button. */
+const readWords = (page) =>
+  page.evaluate(() => {
+    const host = document.querySelector(
+      '.set-row[data-setting="workspace.hub"]',
+    );
+    const t = (e) => (e?.textContent || "").trim();
+    return {
+      html: document.documentElement.lang || null,
+      label: t(host?.querySelector(".l")),
+      first: t(host?.querySelector("#hubp-sel")?.options?.[0]),
+      name: host?.querySelector("#hubp-new")?.value ?? null,
+      button: t(host?.querySelector("[data-hubp-action]")),
+    };
+  });
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000;
 
@@ -48,7 +82,85 @@ export async function run(ctx) {
   });
   await row.scrollIntoViewIfNeeded().catch(() => {});
   await ctx.shot(`hub-project-${ctx.browser}-${ctx.width}`);
+  // The same row in en, es and ja (Den's language, put back), when it
+  // offers Create.
+  if (r.row && r.firstValue === "__create") {
+    r.words = {};
+    let was = null;
+    try {
+      was = (await settingsApi(ctx))?.language ?? null;
+      for (const lang of LANGS) {
+        await settingsApi(ctx, { language: lang });
+        await ctx.goto(ctx.page, "/settings");
+        await ctx.page
+          .waitForSelector('.set-row[data-setting="workspace.hub"] #hubp-sel', {
+            timeout: 20000,
+          })
+          .catch(() => {});
+        r.words[lang] = await readWords(ctx.page);
+        await ctx.shot(`hub-project-${lang}-${ctx.browser}-${ctx.width}`);
+      }
+    } catch (e) {
+      r.words.error = String(e?.message ?? e);
+    } finally {
+      await settingsApi(ctx, { language: was }).catch(() => {});
+    }
+  }
   return r;
+}
+
+/** en/es/ja: in each language the page is in it, the words are there, es and ja not English. */
+function wordsRow(cells, first) {
+  if (first.ok === null)
+    return {
+      clause: clauses[5],
+      ok: null,
+      skip: first.skip,
+      detail: first.detail,
+    };
+  const bad = [];
+  for (const { cell, result } of cells) {
+    const w = result.words;
+    const at = `${cell.browser} ${cell.width}`;
+    if (!w) {
+      bad.push(`${at}: not read`);
+      continue;
+    }
+    if (w.error) bad.push(`${at}: ${w.error}`);
+    for (const lang of LANGS) {
+      const x = w[lang];
+      if (!x) {
+        bad.push(`${at} ${lang}: not read`);
+        continue;
+      }
+      if (x.html !== lang) bad.push(`${at} ${lang}: page in ${x.html}`);
+      if (!x.label || !x.first || !x.button || /^hubp\./.test(x.first))
+        bad.push(`${at} ${lang}: no words ("${x.first}")`);
+      if (x.name && !x.first.includes(x.name))
+        bad.push(`${at} ${lang}: "${x.first}" doesn't name ${x.name}`);
+      if (lang !== "en" && w.en) {
+        if (x.first === w.en.first || x.label === w.en.label)
+          bad.push(`${at} ${lang}: English ("${x.first}")`);
+      }
+    }
+  }
+  return {
+    clause: clauses[5],
+    ok: bad.length === 0,
+    detail: bad.length
+      ? bad.join("; ")
+      : cells
+          .map(({ cell, result }) =>
+            LANGS.map(
+              (l) =>
+                `${cell.browser} ${cell.width} ${l}: "${result.words?.[l]?.first}"`,
+            ).join("; "),
+          )
+          .join(" | "),
+    evidence: cells.flatMap(({ cell }) =>
+      LANGS.map((l) => `hub-project-${l}-${cell.browser}-${cell.width}.png`),
+    ),
+  };
 }
 
 export function expect(cells) {
@@ -118,5 +230,6 @@ export function expect(cells) {
       skip: "person",
       detail: "a person links the project and an owner allows it in Hub",
     },
+    wordsRow(cells, first),
   ];
 }
