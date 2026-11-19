@@ -29,16 +29,19 @@ function signinRow(out) {
   }
 }
 
-/** A loopback GET with nothing: its status, Location, and whether it set a cookie. */
+/** A loopback GET with nothing: its status, Location, whether it set a
+ * cookie, and whether it answered with a page. */
 async function loopback(port, path) {
   try {
     const r = await fetch(`http://127.0.0.1:${port}${path}`, {
       redirect: "manual",
     });
+    const body = await r.text().catch(() => "");
     return {
       status: r.status,
       location: r.headers.get("location") ?? "",
       cookie: /den_session/i.test(r.headers.get("set-cookie") ?? ""),
+      page: /<html/i.test(body),
     };
   } catch (e) {
     return {
@@ -112,6 +115,18 @@ export async function run(ctx) {
   return seen;
 }
 
+/** Signed out, the sign-in page answers 401 with the page (since 0.4.71),
+ * or 200: either is the page served where the browser is, not sent away. */
+function served(x) {
+  return (
+    !!x &&
+    !x.error &&
+    (x.status === 200 || x.status === 401) &&
+    !x.location &&
+    x.page !== false
+  );
+}
+
 export function expect(cells) {
   const r = (Array.isArray(cells) ? cells[0]?.result : cells) ?? {};
   const toAddress =
@@ -152,8 +167,8 @@ export function expect(cells) {
         }
       : {
           clause: clauses[2],
-          ok: r.signin?.status === 200,
-          note: `loopback /signin → ${r.signin?.status}`,
+          ok: served(r.signin),
+          note: `loopback /signin → ${r.signin?.status}${r.signin?.location ? " to " + r.signin.location : ""}${r.signin?.page ? ", the page" : ""}`,
         },
     {
       clause: clauses[3],
@@ -173,7 +188,7 @@ export function expect(cells) {
           }
         : {
             clause: clauses[4],
-            ok: r.afterDead.status === 200 && !r.afterDead.error,
+            ok: served(r.afterDead),
             note: r.afterDead.error
               ? `addressDead failed: ${r.afterDead.error}`
               : `loopback /signin → ${r.afterDead.status} after ${r.afterDead.waitedMs} ms`,
