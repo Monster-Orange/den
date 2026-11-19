@@ -16,11 +16,15 @@ import {
   type HeldActionDeps,
 } from "../../../src/ui/server/held-actions.js";
 import {
+  backAudit,
   backMessage,
+  finishRestartMarker,
   MARKER_MAX_AGE_MS,
+  pinReminder,
   restartMarkerPath,
   takeRestartMarker,
   tellBack,
+  tellBackDetail,
   writeRestartMarker,
   type RestartMarker,
 } from "../../../src/ui/server/server-restart.js";
@@ -142,10 +146,11 @@ describe("the restart marker", () => {
     );
   });
 
-  it("taken once: the second start finds nothing", () => {
+  it("told once: once its note is typed (finished), the next start finds nothing", () => {
     const m = marker();
     writeRestartMarker(dir, m);
     expect(takeRestartMarker(dir)).toEqual(m);
+    finishRestartMarker(dir);
     expect(takeRestartMarker(dir)).toBeNull();
     expect(fs.existsSync(restartMarkerPath(dir))).toBe(false);
   });
@@ -300,5 +305,145 @@ describe("server_agent.self_update", () => {
         server_agent: { self_update: "yes" },
       }),
     ).toThrow(/server_agent\.self_update/);
+  });
+});
+
+/**
+ * Issue 251: on one install the pin note was lost to a second restart.
+ * The first new server took the self-update marker (removing it), the
+ * server agent was mid-turn, and the server restarted again before the
+ * note was typed: the second start found only "carry on", or nothing.
+ */
+describe("issue 251: a second restart during a self-update", () => {
+  const den = () =>
+    marker({
+      id: "",
+      by: "den",
+      reason: "update Den 0.4.41 → 0.4.42",
+      fromVersion: "0.4.41",
+    });
+
+  it("a start that ends before the note is typed leaves it for the next start", () => {
+    writeRestartMarker(dir, den());
+    expect(takeRestartMarker(dir)).toMatchObject({ by: "den" });
+    // No finish: this server went before it typed the note.
+    const again = takeRestartMarker(dir);
+    expect(again).toMatchObject({
+      by: "den",
+      fromVersion: "0.4.41",
+      again: true,
+    });
+    expect(backMessage(again!, "0.4.42", 333)).toMatch(
+      /Den updated itself: update Den 0\.4\.41 → 0\.4\.42\. Den commits and pushes the new pin itself/,
+    );
+  });
+
+  it("the server agent's own restart in between keeps the pin note, and says the restart too", () => {
+    writeRestartMarker(dir, den());
+    takeRestartMarker(dir);
+    // The second restart: asked from 0.4.42, by the server agent.
+    writeRestartMarker(
+      dir,
+      marker({ id: "r2", reason: "reload my tools", fromVersion: "0.4.42" }),
+    );
+    const m = takeRestartMarker(dir)!;
+    expect(m).toMatchObject({
+      agent: "server",
+      update: { fromVersion: "0.4.41", reason: "update Den 0.4.41 → 0.4.42" },
+    });
+    const line = backMessage(m, "0.4.42", 333);
+    expect(line).toMatch(
+      /^Den is back on 0\.4\.42 \(pid 333\) \(it was 0\.4\.41\)\./,
+    );
+    expect(line).toMatch(/Den commits and pushes the new pin itself/);
+    expect(line).toMatch(
+      /It restarted again since: reload my tools\. Carry on from where you were\.$/,
+    );
+    finishRestartMarker(dir);
+    expect(takeRestartMarker(dir)).toBeNull();
+  });
+
+  it("a restart with no marker of its own (the page's) keeps it too", () => {
+    writeRestartMarker(dir, den());
+    takeRestartMarker(dir);
+    takeRestartMarker(dir);
+    expect(takeRestartMarker(dir)).toMatchObject({ by: "den" });
+  });
+
+  it("a rollback replaces it: there is no pin to commit", () => {
+    writeRestartMarker(dir, den());
+    takeRestartMarker(dir);
+    writeRestartMarker(
+      dir,
+      marker({ by: "den", rolledBack: true, fromVersion: "0.4.42" }),
+    );
+    const m = takeRestartMarker(dir)!;
+    expect(m.rolledBack).toBe(true);
+    expect(m).not.toHaveProperty("update");
+  });
+
+  it("a told note isn't carried", () => {
+    writeRestartMarker(dir, den());
+    takeRestartMarker(dir);
+    finishRestartMarker(dir);
+    writeRestartMarker(dir, marker({ fromVersion: "0.4.42" }));
+    expect(takeRestartMarker(dir)).not.toHaveProperty("update");
+  });
+});
+
+describe("issue 251: the audit row says what was typed, and the agent's state", () => {
+  it("the input state at the moment it typed: idle, or busy when the wait ran out", async () => {
+    let clock = 0;
+    const deps = (states: string[]) => ({
+      state: async () => (states.shift() ?? "busy") as never,
+      type: async () => true,
+      waitMs: 3000,
+      pollMs: 1000,
+      now: () => clock,
+      sleep: async (ms: number) => {
+        clock += ms;
+      },
+    });
+    expect(await tellBackDetail("x", deps(["busy", "idle"]))).toEqual({
+      told: "told",
+      state: "idle",
+    });
+    clock = 0;
+    expect(await tellBackDetail("x", deps([]))).toEqual({
+      told: "told",
+      state: "busy",
+    });
+    expect(await tellBackDetail("x", deps(["stopped"]))).toEqual({
+      told: "stopped",
+      state: "stopped",
+    });
+  });
+
+  it("the row has the exact note and the state, in full beside the short detail", () => {
+    const text = backMessage(marker({ by: "den" }), "0.4.42", 222);
+    const row = backAudit(marker({ by: "den" }), "0.4.42", 222, text, {
+      told: "told",
+      state: "busy",
+    });
+    expect(row.detail).toMatch(
+      /^on 0\.4\.42 \(pid 222\), was 0\.4\.41 \(pid 111\): new pin \[req-1\]; agent:server told \(typed while busy\)/,
+    );
+    expect(row.agents).toEqual({
+      server: { told: "told", state: "busy", typed: text },
+    });
+    const kept = backAudit(
+      { ...marker({ by: "den" }), again: true },
+      "0.4.42",
+      222,
+      text,
+      { told: "told", state: "idle" },
+    );
+    expect(kept.detail).toMatch(/kept from an earlier start/);
+  });
+
+  it("the pin reminder names the version, the folder and the wait", () => {
+    expect(pinReminder("0.4.42", "/srv/dist", 60)).toBe(
+      "Den 0.4.42 runs here, but its new pin (package.json, package-lock.json) in /srv/dist is still not committed 60 min after the update. Commit and push it now, or tell your person why you can't.",
+    );
   });
 });

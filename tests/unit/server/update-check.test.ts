@@ -285,3 +285,77 @@ describe("doctor and Settings say it (SRV-P6)", () => {
     }
   });
 });
+
+describe("issue 251: the pin check's wait and doctor's warning", () => {
+  it("server_agent.pin_commit_wait_minutes: 60 by default, 0 or more", async () => {
+    const { readServerAgentConfig } =
+      await import("../../../src/shared/den-config.js");
+    const cfg = (v?: unknown) =>
+      (v === undefined
+        ? {}
+        : { server_agent: { pin_commit_wait_minutes: v } }) as never;
+    expect(readServerAgentConfig(cfg(), undefined, {}).pinCommitWaitMs).toBe(
+      60 * 60_000,
+    );
+    expect(readServerAgentConfig(cfg(0), undefined, {}).pinCommitWaitMs).toBe(
+      0,
+    );
+    expect(readServerAgentConfig(cfg(240), undefined, {}).pinCommitWaitMs).toBe(
+      240 * 60_000,
+    );
+    for (const bad of [-1, "30", Number.NaN])
+      expect(() => readServerAgentConfig(cfg(bad), undefined, {})).toThrow(
+        /server_agent\.pin_commit_wait_minutes/,
+      );
+  });
+
+  it("a pin Den flagged warns in doctor, naming the version, the folder and the wait; the state file keeps it", () => {
+    const cfg = {
+      selfUpdate: "auto" as const,
+      selfUpdateFrom: "user" as const,
+      updateCheckMs: 30 * 60_000,
+    };
+    const at = (h: number, m: number) =>
+      new Date(2026, 10, 14, h, m).toISOString();
+    const pin = {
+      version: "1.2.0",
+      since: at(16, 0),
+      resent: at(17, 0),
+      flagged: at(18, 0),
+      minutes: 120,
+      folder: "/srv/dist",
+    };
+    const state = {
+      everyMinutes: 30,
+      next: at(19, 4),
+      last: { at: at(18, 34), did: "current" as const },
+      pin,
+    };
+    const r = selfUpdateSummary(
+      cfg,
+      state,
+      "acme.config.yml",
+      Date.parse(at(18, 40)),
+    );
+    expect(r.status).toBe("warn");
+    expect(r.detail).toMatch(
+      /; Den 1\.2\.0's new pin isn't committed in \/srv\/dist 120 min after the update, and the Den agent was told twice: commit it, or see the bell$/,
+    );
+    // Not flagged yet: no warning.
+    expect(
+      selfUpdateSummary(
+        cfg,
+        { ...state, pin: { version: "1.2.0", since: at(16, 0) } },
+        "acme.config.yml",
+        Date.parse(at(18, 40)),
+      ).status,
+    ).toBe("ok");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-pin-check-"));
+    try {
+      writeCheckState(dir, state);
+      expect(readCheckState(dir)?.pin).toEqual(pin);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

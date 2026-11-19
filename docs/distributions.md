@@ -3583,9 +3583,20 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   by default it runs at once; with `approvals.writes.den_pin_commit: ask`
   (or `approvals.policy: ask`) in `user.yml`, Den holds it for your Allow,
   once per version, with one bell item, and commits nothing until then. With `update_check_minutes: 0` there are no
-  checks, so Den commits no pin either. A pin still uncommitted two passes
-  in a row: a log line and one bell item, which says when the server
-  agent is waiting on your Allow. A version that rolled back here is not tried
+  checks, so Den commits no pin either. Issue 251: Den checks the pin
+  itself. Still uncommitted `server_agent.pin_commit_wait_minutes` (org
+  config, default 60; 0 or more) after Den came back on the new version,
+  Den types the note to the server agent once more. Still uncommitted as
+  long again after that: a log line, one bell item naming the version,
+  the folder and the minutes (or that the server agent is waiting on your
+  Allow), and a warning on doctor's "New versions" line. All of them go
+  once the pin is committed. A restart in between keeps where the check
+  was (`check.json`). A second restart before the server agent was told
+  of the update keeps that note: the restart marker stays aside
+  (`server-agent/restart.telling.json`) until its note is typed, and a
+  restart the server agent asks for in between carries it. Each typed
+  note's audit row (`server-back`, `den-pin-reminder`) keeps the exact
+  note and the agent's input state at that moment (`agents`). A version that rolled back here is not tried
   again; a newer one is. A failed update and a rollback each put a notice
   in the bell. A Den run from a checkout is skipped. Settings › Server ›
   New versions sets `self_update` (a person's only). Doctor's "New

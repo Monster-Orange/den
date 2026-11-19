@@ -1845,6 +1845,10 @@
       "__DEN_TITLE__ {v}: 固定バージョンのコミットはあなたの許可を待っています",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.pinNotCommittedLate":
+      "__DEN_TITLE__ {v} はここで動いていますが、更新から {min} 分たっても新しい固定バージョンが {folder} にコミットされていません。__DEN_TITLE__ エージェントには 2 回伝えました",
+    "bell.m.pinNotCommittedLateAllow":
+      "__DEN_TITLE__ {v} はここで動いていますが、更新から {min} 分たっても新しい固定バージョンが {folder} にコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",

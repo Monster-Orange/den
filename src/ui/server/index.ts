@@ -1163,12 +1163,16 @@ import {
   watchPeer,
 } from "./token-binding.js";
 import {
+  backAudit,
   backMessage,
+  finishRestartMarker,
+  pinReminder,
   recordPageRestart,
   restartMarkerPath,
   takeRestartMarker,
-  tellBack,
+  tellBackDetail,
   writeRestartMarker,
+  type Told,
 } from "./server-restart.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
@@ -8542,13 +8546,13 @@ async function serverBack(): Promise<void> {
     /* no update record: the line says none was kept */
   }
   const text = backMessage(m, version, process.pid, update);
-  let told = "nobody to tell";
+  let told: Told | string = "nobody to tell";
   if (m.agent === SERVER_AGENT_ID) {
     try {
       const ops = await import("../cli/agent-ops.js");
       const { webDeps } = await import("./agent-routes.js");
       const d = webDeps();
-      told = await tellBack(text, {
+      told = await tellBackDetail(text, {
         state: () => ops.serverAgentInputState(d),
         type: (t) => ops.typeIntoAgent(d, SERVER_AGENT_ID, t),
         waitMs: restartWaitSeconds() * 1000,
@@ -8557,15 +8561,19 @@ async function serverBack(): Promise<void> {
       told = `not told: ${(e as Error).message}`;
     }
   }
+  // Issue 251: told (or not) at this start: the next start has nothing.
+  finishRestartMarker(getStateDir());
+  // Issue 251: the row keeps the exact note and the agent's input state.
+  const row = backAudit(m, version, process.pid, text, told);
   recordAction(
     null,
-    {
-      verb: "server-back",
-      detail: `on ${version} (pid ${process.pid}), was ${m.fromVersion}${m.fromPid ? ` (pid ${m.fromPid})` : ""}: ${m.reason} [${m.id}]; ${m.agent ? `agent:${m.agent}` : "the asker"} ${told}`,
-    },
+    { verb: "server-back", ...row },
     m.agent ? `agent:${m.agent}` : undefined,
   );
-  serverLog(`  Back from a restart: ${m.reason} (${told})`, "lifecycle");
+  serverLog(
+    `  Back from a restart: ${m.reason} (${typeof told === "string" ? told : told.told})`,
+    "lifecycle",
+  );
   // SRV-P6c: a rollback is the person's news too, whoever asked.
   if (m.rolledBack)
     try {
@@ -8628,16 +8636,22 @@ function startUpdateCheck(): void {
     return;
   }
   const everyMinutes = Math.round(every / 60_000);
+  let check: import("./update-check.js").UpdateCheck | undefined;
   // SRV-P6: doctor and Settings say the last pass and the next.
   const noteState = (last?: import("./update-check.js").CheckState["last"]) =>
     void import("./update-check.js")
       .then((m) => {
         // At a start, the pass before the restart stays the last one.
-        const was = last ?? m.readCheckState(getStateDir())?.last;
+        const before = m.readCheckState(getStateDir());
+        const was = last ?? before?.last;
+        // Issue 251: the uncommitted pin (doctor warns once it's flagged);
+        // at a start, the one the Den before left.
+        const pin = check ? check.pinStatus() : (before?.pin ?? null);
         m.writeCheckState(getStateDir(), {
           everyMinutes,
           next: every ? new Date(Date.now() + every).toISOString() : null,
           ...(was ? { last: was } : {}),
+          ...(pin ? { pin: { ...pin, folder: getDistRoot() } } : {}),
         });
       })
       .catch(() => {
@@ -8818,28 +8832,88 @@ function startUpdateCheck(): void {
                 ),
             ),
           ),
-        pinNote: (version, why) => {
+        pinNote: (version, why, info) => {
           try {
             const allow = why === "permission" || why === "approval";
+            const t = product().title;
+            const folder = getDistRoot();
+            // Issue 251: the timed check names the folder and the wait.
+            const text = info
+              ? allow
+                ? `${t} ${version} runs here, but its new pin isn't committed in ${folder} ${info.minutes} min after the update: the ${t} agent is waiting on your Allow`
+                : `${t} ${version} runs here, but its new pin isn't committed in ${folder} ${info.minutes} min after the update, and the ${t} agent was told twice`
+              : allow
+                ? `${t} ${version} runs here, but its new pin isn't committed: the ${t} agent is waiting on your Allow`
+                : `${t} ${version} runs here, but its new pin isn't committed in the distribution's folder`;
             notificationDeps().store.add({
               kind: "service",
               subject: "record:den-pin",
               scope: "workspace/den-server",
-              text: allow
-                ? `${product().title} ${version} runs here, but its new pin isn't committed: the ${product().title} agent is waiting on your Allow`
-                : `${product().title} ${version} runs here, but its new pin isn't committed in the distribution's folder`,
-              msg: {
-                key: allow
-                  ? "bell.m.pinNotCommittedAllow"
-                  : "bell.m.pinNotCommitted",
-                vars: { v: version },
-              },
+              text,
+              msg: info
+                ? {
+                    key: allow
+                      ? "bell.m.pinNotCommittedLateAllow"
+                      : "bell.m.pinNotCommittedLate",
+                    vars: { v: version, folder, min: info.minutes },
+                  }
+                : {
+                    key: allow
+                      ? "bell.m.pinNotCommittedAllow"
+                      : "bell.m.pinNotCommitted",
+                    vars: { v: version },
+                  },
               link: "/server-agent",
             });
           } catch {
             /* best effort */
           }
         },
+        // Issue 251: server_agent.pin_commit_wait_minutes.
+        pinWaitMs: () => readServerAgentConfig().pinCommitWaitMs,
+        pinBefore: () => readCheckStateSync(getStateDir())?.pin ?? null,
+        // Issue 251: the note once more, typed when the server agent is at
+        // its prompt; its audit row has the note and the agent's state.
+        pinResend: (version, minutes) =>
+          void (async () => {
+            const text = pinReminder(version, getDistRoot(), minutes);
+            let told: Told | string;
+            try {
+              const ops = await import("../cli/agent-ops.js");
+              const { webDeps } = await import("./agent-routes.js");
+              const d = webDeps();
+              told = await tellBackDetail(text, {
+                state: () => ops.serverAgentInputState(d),
+                type: (t) => ops.typeIntoAgent(d, SERVER_AGENT_ID, t),
+                waitMs: restartWaitSeconds() * 1000,
+              });
+            } catch (e) {
+              told = `not told: ${(e as Error).message}`;
+            }
+            const how =
+              typeof told === "string"
+                ? told
+                : `${told.told} (typed while ${told.state})`;
+            recordAction(
+              null,
+              {
+                verb: "den-pin-reminder",
+                detail: `the pin of ${version} isn't committed ${minutes} min after the update: agent:${SERVER_AGENT_ID} ${how}`,
+                ...(typeof told === "string"
+                  ? {}
+                  : {
+                      agents: {
+                        [SERVER_AGENT_ID]: {
+                          told: told.told,
+                          state: told.state,
+                          typed: text,
+                        },
+                      },
+                    }),
+              },
+              `agent:${SERVER_AGENT_ID}`,
+            );
+          })(),
         pinDone: () => {
           try {
             notificationDeps().store.withdraw("record:den-pin", "service");
@@ -8963,7 +9037,6 @@ function startUpdateCheck(): void {
       busy = false;
     }
   };
-  let check: import("./update-check.js").UpdateCheck | undefined;
   setInterval(() => void tick(), every).unref();
   // #176: just after an update to this version, one pass as soon as the
   // watch says it is verified ("good"), so the pin is committed and pushed

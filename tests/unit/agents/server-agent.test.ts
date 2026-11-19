@@ -321,6 +321,7 @@ describe("its folder (SRV-1b)", () => {
         securityUpdateSkipsQuestions: true,
         securityUpdateSkipsBusy: true,
         updateRestartWaitMs: 900_000,
+        pinCommitWaitMs: 3_600_000,
       });
       expect(
         readServerAgentConfig(
@@ -353,6 +354,7 @@ describe("its folder (SRV-1b)", () => {
         securityUpdateSkipsQuestions: true,
         securityUpdateSkipsBusy: true,
         updateRestartWaitMs: 900_000,
+        pinCommitWaitMs: 3_600_000,
       });
       for (const bad of [0, 0.4, 61, "2", Number.NaN])
         expect(() =>
