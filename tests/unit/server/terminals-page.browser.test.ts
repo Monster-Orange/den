@@ -258,14 +258,16 @@ describe.each(["chromium", "webkit"] as const)("issue 482 in %s", (name) => {
     expect(await row(p, s1).locator(".when").textContent()).toMatch(
       /^Last used /,
     );
-    // One project: only its shells, and no project name on a row.
+    // One project: only its shells.
     await scope("north");
     try {
       const q = await open("/terminals?project=north");
       await row(q, n1).waitFor();
       expect(await q.locator("#agl .tmr").count()).toBe(2);
       const m = (await row(q, n1).locator(".meta").first().textContent()) ?? "";
-      expect(m).not.toMatch(/^north · /);
+      // Issue 169 (Den Design, option a): line 2 is the project, then the
+      // folder, in one project too.
+      expect(m).toMatch(/^north · /);
       expect((await q.locator("#ag-sub").textContent())?.trim()).toBe(
         "Terminals in north. Switch the project at the top to see others.",
       );

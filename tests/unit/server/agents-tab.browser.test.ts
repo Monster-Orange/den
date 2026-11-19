@@ -445,15 +445,15 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
-  it("⌘K offers a terminal as Terminals › <ws> / <name>, never under Agents, and Start agent…", async () => {
+  it("⌘K offers a terminal as Terminals › <ws> / Terminal N (issue 169: an older "shell" reads Terminal 1), never under Agents, and Start agent…", async () => {
     if (skip()) return;
     const p = await page("/agents");
     await p.click("#den-search");
-    await p.fill("#den-pal-q", "north / shell");
+    await p.fill("#den-pal-q", "north / terminal 1");
     await p.waitForSelector('#den-pal-list li[role="option"]');
     const first = p.locator('#den-pal-list li[role="option"]').first();
     expect(await first.locator(".den-pal-l").textContent()).toBe(
-      "Terminals › north / shell",
+      "Terminals › north / Terminal 1",
     );
     expect(await first.locator(".den-kind").textContent()).toBe("Terminal");
     // Issue 482: Agents › … is for agents only.
@@ -461,14 +461,14 @@ describe("the Agents tab", () => {
       await p.$$eval("#den-pal-list .den-pal-l", (xs) =>
         xs.map((x) => x.textContent ?? ""),
       ),
-    ).not.toContain("Agents › north / shell");
+    ).not.toContain("Agents › north / Terminal 1");
     await p.fill("#den-pal-q", "start agent");
     await p.waitForFunction(() =>
       [...document.querySelectorAll("#den-pal-list .den-pal-l")].some(
         (e) => e.textContent === "Start agent…",
       ),
     );
-    await p.fill("#den-pal-q", "north / shell");
+    await p.fill("#den-pal-q", "north / terminal 1");
     await p.waitForSelector('#den-pal-list li[role="option"]');
     await p.keyboard.press("Enter");
     // Issue 482: a shell opens on Terminals (the old link is moved there).

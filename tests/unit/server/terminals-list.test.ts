@@ -106,13 +106,13 @@ describe("issue 482: the order (mock v3, 'What the developers build')", () => {
 });
 
 describe("issue 482: what a row says (clause 2)", () => {
-  it("All projects names the project; one project leaves it out", () => {
+  it("issue 169 (Den Design, option a): line 2 is the project, then the folder, in one project too", () => {
     const r = sh("n1", "north", "10:00", { folder: "~/north/api" });
     expect(shellMeta(r, { showProject: true, projName: (w) => w })).toBe(
       "north · ~/north/api",
     );
     expect(shellMeta(r, { showProject: false, projName: (w) => w })).toBe(
-      "~/north/api",
+      "north · ~/north/api",
     );
   });
   it("a project's own name, not its slug; no folder: the project alone", () => {
