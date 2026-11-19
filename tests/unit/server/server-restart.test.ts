@@ -261,6 +261,88 @@ describe("telling the agent", () => {
     expect((await run(["missing"])).typed).toEqual([]);
     expect((await run(["stopped"])).told).toBe("stopped");
   });
+  /** A dialog for its person stays open for `open` reads, then is answered. */
+  const runDialog = async (open: number, after: string[] = []) => {
+    let clock = 0;
+    let reads = 0;
+    const typed: string[] = [];
+    const bell: string[] = [];
+    const states = [...after];
+    const told = await tellBack("back", {
+      state: async () =>
+        (reads < open ? "busy" : (states.shift() ?? "busy")) as never,
+      dialog: async () => reads++ < open,
+      type: async (t) => {
+        typed.push(t);
+        return true;
+      },
+      held: () => bell.push("held"),
+      cleared: () => bell.push("cleared"),
+      waitMs: 3000,
+      pollMs: 1000,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    return { told, typed, bell, clock };
+  };
+
+  it("a dialog for its person still open when the wait runs out: nothing typed; the note is kept, the bell says so, and it is typed once the dialog is answered", async () => {
+    const r = await runDialog(10, ["idle"]);
+    expect(r.told).toBe("told");
+    expect(r.typed).toEqual(["back"]);
+    expect(r.bell).toEqual(["held", "cleared"]);
+    expect(r.clock).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("never typed while the dialog is open, however long", async () => {
+    let clock = 0;
+    const typed: string[] = [];
+    let open = true;
+    const p = tellBack("back", {
+      state: async () => "busy" as never,
+      dialog: async () => open,
+      type: async (t) => {
+        typed.push(t);
+        return true;
+      },
+      waitMs: 3000,
+      pollMs: 1000,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+        if (clock >= 600_000) open = false;
+      },
+    });
+    const told = await p;
+    expect(clock).toBeGreaterThanOrEqual(600_000);
+    expect([told, typed]).toEqual(["told", ["back"]]);
+  });
+
+  it("the agent stops while its dialog is open: nothing typed, the bell item goes", async () => {
+    let clock = 0;
+    let n = 0;
+    const bell: string[] = [];
+    const typed: string[] = [];
+    const told = await tellBack("back", {
+      state: async () => (n++ < 6 ? "busy" : "stopped") as never,
+      dialog: async () => true,
+      type: async (t) => {
+        typed.push(t);
+        return true;
+      },
+      held: () => bell.push("held"),
+      cleared: () => bell.push("cleared"),
+      waitMs: 3000,
+      pollMs: 1000,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    expect([told, typed, bell]).toEqual(["stopped", [], ["held", "cleared"]]);
+  });
 });
 
 describe("server_agent.self_update", () => {

@@ -11,8 +11,10 @@ import {
   agentInputState,
   busyAgentIds,
   resolveAgentsDeps,
+  sendFirstInstruction,
   typeIntoAgent,
 } from "../../../src/ui/cli/agent-ops.js";
+import { typeMessage } from "../../../src/ui/server/agent-say.js";
 import type { SessionInfo } from "../../../src/shared/sessions/types.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
@@ -331,5 +333,45 @@ describe("a dialog waiting for the person: Den never types into it", () => {
     expect(
       await agentInputState(resolveAgentsDeps(q.deps), "planner", new Set(), 200),
     ).toBe("busy");
+  }, 30_000);
+
+  it("a message from the page or Hub with a dialog open: refused 409 dialog_open, nothing typed", async () => {
+    const r = await rig();
+    await started(r, ask);
+    r.made[0].emit(DIALOG);
+    await settle();
+    const before = r.made[0].writes.length;
+    const d = resolveAgentsDeps(r.deps);
+    const rec = JSON.parse(
+      fs.readFileSync(path.join(r.stateDir, "agents", "planner.json"), "utf-8"),
+    );
+    await expect(typeMessage(d, rec, "hello")).rejects.toMatchObject({
+      status: 409,
+      code: "dialog_open",
+    });
+    await settle();
+    expect(r.made[0].writes.length).toBe(before);
+  }, 30_000);
+
+  it("a first instruction (no quiet wait) with a dialog open: not typed, and its caller hears why", async () => {
+    const r = await rig();
+    await started(r, null);
+    r.made[0].emit(TRUST);
+    await settle();
+    const before = r.made[0].writes.length;
+    const d = resolveAgentsDeps(r.deps);
+    const sid = (record(r, "planner").session as { id: string }).id;
+    let held = false;
+    const rt = record(r, "planner").runtime as string;
+    const sent = await sendFirstInstruction(d, sid, rt, "go", {
+      quietMs: 0,
+      maxMs: 0,
+      onDialog: () => {
+        held = true;
+      },
+    });
+    expect([sent, held]).toEqual([false, true]);
+    await settle();
+    expect(r.made[0].writes.length).toBe(before);
   }, 30_000);
 });
