@@ -3454,6 +3454,18 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   the server agent was waiting on you; its question is still open".
   `server_agent.security_update_skips_questions` (org config, default
   `true`): `false` makes a security release wait like any other.
+- **The restart looks again after the install** (issue 562). The install
+  takes a while, and a turn may start meanwhile (the person answers the
+  question). Once an auto update is installed and its doctor has run,
+  Den reads the wait again before it restarts: a security release goes
+  past the server agent's question or prompt, any other release doesn't.
+  A working turn or a pending Allow holds the restart, read again every
+  few seconds, for at most `server_agent.update_restart_wait_seconds`
+  (org config, default 900). Then Den restarts anyway, since the new
+  version is installed and the old one is still running. The log says
+  why, and the bell says "Den restarted to finish an update while the
+  server agent was working". An update the person or an agent asked for
+  restarts as before.
 - **Den commits and pushes the new pin itself** (#176). Once an update
   is verified (the watch saw the new version answer, `state: good`) and
   this Den runs it, the lead install's update check commits the pin and

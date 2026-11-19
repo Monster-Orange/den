@@ -39,6 +39,12 @@
  *     Allow and for the turn's end, and the bell says the question is
  *     still open. server_agent.security_update_skips_questions: false
  *     turns it off. An unreadable mark is no mark.
+ *   - Issue 562 review: the install takes a while, so once it is done the
+ *     restart reads the wait again (holdRestart): a security release
+ *     waitPast, any other the plain check. A working turn or a pending
+ *     Allow holds it, every few seconds, at most
+ *     server_agent.update_restart_wait_seconds; then it restarts anyway
+ *     (the new version is installed), says why, and leaves a bell line.
  *
  * Every input is a function (tests fake each); the server wires them.
  */
@@ -174,6 +180,64 @@ export function securityUpdateNote(
   });
 }
 
+/** Issue 562 review: the bell line after a restart that stopped waiting. */
+export const RESTARTED_WORKING_SUBJECT = "record:den-update-restarted-working";
+
+/** Issue 562 review: Den restarted to finish an update while `agent` worked. */
+export function restartedWhileWorkingNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  version: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: RESTARTED_WORKING_SUBJECT,
+    scope: "workspace/den-server",
+    text: `${title} restarted to finish an update while ${agent} was working`,
+    msg: { key: "bell.m.restartedWhileWorking", vars: { agent, v: version } },
+    link: "/server-agent",
+  });
+}
+
+/** Issue 562 review: how often holdRestart reads the wait again. */
+export const RESTART_HOLD_EVERY_MS = 5_000;
+
+/**
+ * Issue 562 review: hold an installed update's restart until `waitWhy`
+ * says null (a read that fails counts as working), re-reading every
+ * `everyMs`, at most `maxMs`. Then it goes anyway: `timedOut` is why it
+ * still waited (logged, and `timedOut()` called once).
+ */
+export async function holdRestart(d: {
+  waitWhy(): Promise<UpdateWait | null>;
+  maxMs: number;
+  everyMs?: number;
+  now?(): number;
+  sleep?(ms: number): Promise<void>;
+  log?(line: string): void;
+  timedOut?(why: UpdateWait): void;
+}): Promise<{ heldMs: number; timedOut: UpdateWait | null }> {
+  const now = d.now ?? Date.now;
+  const sleep =
+    d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const every = Math.max(1, d.everyMs ?? RESTART_HOLD_EVERY_MS);
+  const start = now();
+  for (;;) {
+    const why = await d.waitWhy().catch(() => "busy" as const);
+    const held = now() - start;
+    if (!why) return { heldMs: held, timedOut: null };
+    if (held >= d.maxMs) {
+      d.log?.(
+        `update check: the update's restart waited ${Math.round(held / 1000)} s (${WAIT_TEXT[why]}): it restarts anyway after ${Math.round(d.maxMs / 1000)} s, server_agent.update_restart_wait_seconds`,
+      );
+      d.timedOut?.(why);
+      return { heldMs: held, timedOut: why };
+    }
+    await sleep(Math.min(every, d.maxMs - held));
+  }
+}
+
 /** #142: a bell item asking the person to Allow a Den update. */
 export function isUpdateAsk(n: {
   subject: string;
@@ -267,10 +331,14 @@ export interface UpdateCheckDeps {
   pinCommit?(version: string): Promise<PinStep>;
   /** #176: the bell: the pin pushed, or (once) why it isn't. */
   pinNotice?(step: PinStep): void;
-  /** Run the update now (auto). */
+  /**
+   * Run the update now (auto). Issue 562 review: `security`: it goes past
+   * the agent's question, so its restart reads waitPast again.
+   */
   update(
     version: string,
     reason: string,
+    opts?: { security: boolean },
   ): Promise<{ ok: boolean; error?: string }>;
   /** Hold "update Den to X" for the person; false when it couldn't. */
   ask(version: string, reason: string): Promise<boolean> | boolean;
@@ -533,10 +601,12 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         d.log?.(
           `update check: Den ${want} is a security release: it updates past ${WAIT_TEXT[past]}`,
         );
-      const r = await d.update(want, reason).catch((e: unknown) => ({
-        ok: false,
-        error: e instanceof Error ? e.message : String(e),
-      }));
+      const r = await d
+        .update(want, reason, { security: !!past })
+        .catch((e: unknown) => ({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        }));
       if (r.ok) {
         if (!past) return { did: "updating", version: want };
         d.securityNote?.(want, past);

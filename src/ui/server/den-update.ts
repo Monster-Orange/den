@@ -49,6 +49,12 @@ export interface UpdateDeps {
   watch: (script: string, plan: string) => number | undefined;
   /** SRV-1a's note for the next server (written): its path and contents. */
   note: (reason: string) => { path: string; marker: Record<string, unknown> };
+  /**
+   * Issue 562 review: after the install and doctor, before the watch
+   * starts and Den restarts: wait for a quiet moment again (the install
+   * takes a while, and a turn may have started). It always resolves.
+   */
+  beforeRestart?: () => Promise<void>;
   /** Restart this Den (D64's path, after this answer goes out). */
   restart: () => void;
   port: number;
@@ -354,6 +360,13 @@ export async function updateDen(
       `the update to ${to} stopped: ${(e as Error).message}`,
     );
   }
+
+  // Issue 562 review: a turn may have started during the install. The
+  // watch's clock starts after this, so a long hold isn't a rollback.
+  if (d.beforeRestart)
+    await d.beforeRestart().catch(() => {
+      /* never stops the update: it restarts */
+    });
 
   // Until the watch starts, a failure here is still this run's to roll back.
   const plan = path.join(dir, "plan.json");
