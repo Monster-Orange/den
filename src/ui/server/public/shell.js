@@ -5203,10 +5203,22 @@
         : id.kind === "local" && id.owner && id.owner.login
           ? id.owner
           : null;
+    // Issue 406: GitHub has no name: Hub's, when Hub's login is the same one.
+    var h = state.hub;
+    var hubName =
+      gh &&
+      h &&
+      h.state === "connected" &&
+      typeof h.name === "string" &&
+      h.name &&
+      typeof h.login === "string" &&
+      h.login.toLowerCase() === String(gh.login).toLowerCase()
+        ? h.name
+        : undefined;
     var who = gh
       ? {
           login: gh.login,
-          name: gh.name || undefined,
+          name: gh.name || hubName || undefined,
           role:
             gh.role === "owner" ? t("acct.roleOwner") : gh.role || undefined,
         }
@@ -7693,6 +7705,9 @@
                     team: b.team,
                     teamUrl: b.teamUrl,
                     unread: b.unread,
+                    // Issue 406: who Hub says this is, for the account entry.
+                    login: b.login,
+                    name: b.name,
                   }
                 : null;
             var k = JSON.stringify(h);
