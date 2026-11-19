@@ -243,7 +243,8 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   sync: [],
   // The only override for an edge another state dir owns; a typo'd one
   // must not be ignored.
-  edge: ["--take-over", "--rotate-proof"],
+  // `edge route --for <proxy>` (issue 455) also takes `--for=<proxy>`.
+  edge: ["--take-over", "--rotate-proof", "--for"],
 };
 
 /**
@@ -264,6 +265,7 @@ export function unknownCommandFlags(command: string, args: string[]): string[] {
       !allowed.includes(a) &&
       // `--app=<name>` and `-w=`/`--workspace=` also take the = form.
       !(allowed.includes("--app") && a.startsWith("--app=")) &&
+      !(allowed.includes("--for") && a.startsWith("--for=")) &&
       !(allowed.includes("--workspace") && /^(-w|--workspace)=/.test(a)),
   );
 }

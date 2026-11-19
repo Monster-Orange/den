@@ -239,6 +239,8 @@ describe("a web app's server key, on a real server", () => {
     expect(m.status).toBe(403);
   }, 30_000);
 
+  // 0.4.71: on this machine, with no session, no bearer and no Origin, the
+  // app key is the proof: a web app's server keeps working.
   it("say with the key: held for the agent (202), audited with its length, never its text", async () => {
     const { key } = keys.create({
       project: "north",

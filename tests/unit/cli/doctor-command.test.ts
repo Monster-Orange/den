@@ -489,6 +489,55 @@ describe("hubGithubLines (H5)", () => {
     expect(r.checks.map((c) => c.status)).toEqual(["ok", "warn", "warn"]);
   });
 
+  it("issue 526: an org Hub couldn't check says so, with no link, even when one is sent", () => {
+    const r = hubGithubLines({
+      orgs: [
+        {
+          org: "initech",
+          access: "error",
+          covered: 0,
+          total: 5,
+          error: "GitHub answered 503",
+          installUrl: "https://github.com/apps/den-hub/installations/new",
+          manageUrl:
+            "https://github.com/organizations/initech/settings/installations/9",
+        },
+        { org: "umbrella", access: "error", covered: 0, total: 1 },
+      ],
+    });
+    expect(r.lines[0]).toMatch(
+      /⚠ {2}Den Hub couldn't check initech on GitHub: GitHub answered 503\. Try again later\.$/,
+    );
+    expect(r.lines[1]).toMatch(
+      /⚠ {2}Den Hub couldn't check umbrella on GitHub\. Try again later\.$/,
+    );
+    expect(r.lines.join("\n")).not.toMatch(/https?:|Give Den Hub access/);
+    expect(r.checks[0]).toEqual({
+      id: "hub:github:initech",
+      status: "warn",
+      detail:
+        "Den Hub couldn't check initech on GitHub: GitHub answered 503. Try again later.",
+    });
+  });
+
+  it("issue 526: none with only a manage link offers Change repos", () => {
+    const r = hubGithubLines({
+      orgs: [
+        {
+          org: "globex",
+          access: "none",
+          covered: 0,
+          total: 2,
+          manageUrl:
+            "https://github.com/organizations/Globex/settings/installations/7",
+        },
+      ],
+    });
+    expect(r.lines[0]).toContain(
+      "globex: Den Hub can read no repos (no access). Change repos: https://github.com/organizations/Globex/settings/installations/7",
+    );
+  });
+
   it("Hub couldn't answer: one warning in words", () => {
     expect(
       hubGithubLines({ error: "Hub did not answer in 5000 ms" }).checks[0],

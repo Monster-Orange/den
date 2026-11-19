@@ -22,6 +22,7 @@ import * as path from "path";
 import type { Browser, BrowserContextOptions, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -128,6 +129,7 @@ async function graph(o: BrowserContextOptions = {}): Promise<Page> {
     viewport: { width: 1440, height: 900 },
     ...o,
   });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);

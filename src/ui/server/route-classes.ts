@@ -3,24 +3,24 @@
  * One source for the request checks (request-guard.ts) and for which routes
  * need a signed-in session (SEC-1b).
  *
- *   readonly     reads state. On loopback a GET passes with the Host check
- *                alone (§6), even when it runs a read-only probe (a health
- *                check, a `git rev-parse`, a `docker logs` tail).
- *   mutating     changes state or runs a declared lifecycle command: config,
- *                workspaces, the lock, a deploy, a service's up/down, a test
- *                run, a sync, an SSO login (§4: "up, down, restart, …").
- *                Origin and CSRF; the session's CSRF when one is signed in.
+ *   readonly     reads state, and starts no process on the request. On
+ *                loopback a GET passes with the Host check alone (§6). A
+ *                GET that starts a process (a `tail`, a `docker logs`, a
+ *                probe command) is `mutating`, never `readonly` (0.4.71).
+ *   mutating     changes state or runs something: config, workspaces, the
+ *                lock, a deploy, a service's up/down, a test run, a sync,
+ *                an SSO login (§4: "up, down, restart, …"), a log tail.
+ *                A sign-in (a session or a bearer), then Origin and the
+ *                session's CSRF.
  *   shell-grade  a shell for the caller, or what manages them: an agent's
  *                start or resume (a runtime in a PTY), the browser
- *                sessions, and (AG-4a-term) /api/sessions/*. On loopback
- *                Origin and CSRF, as mutating, and no sign-in (Ward,
- *                2026-11-06); an agent's token never reaches one but its
- *                own session's.
+ *                sessions, and (AG-4a-term) /api/sessions/*. As mutating;
+ *                an agent's token never reaches one but its own session's.
  *
  * Beyond loopback (the edge hostname, or a peer that isn't loopback) every
- * class needs a signed-in session or a bearer (§4); SIGNIN_FREE lists the
- * only routes that don't (how a browser gets a session, and what it asks
- * first).
+ * class needs a signed-in session or a bearer (§4); on loopback every class
+ * but `readonly` does (0.4.71). SIGNIN_FREE lists the only routes that
+ * never do (how a browser gets a session, and what it asks first).
  *
  * POST, PUT, PATCH and DELETE are checked as mutations by method, whatever
  * the table says; they are listed so SEC-1b reads one table. A GET that is
@@ -133,14 +133,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/security/plan",
     "/api/stacks",
     "/api/edge",
+    // Issue 455: the address check (banner, Edge) and the
+    // identity probe's other end.
+    "/api/edge/address",
+    "/api/den-identity",
     "/api/activity",
     "/api/server-log",
     "/api/perf-report/current",
     "/api/health/stream",
     "/api/services",
     "/api/service/daemons",
-    "/api/service/history",
-    "/api/logs/search",
     "/api/catalog",
     "/api/:cli/config",
     "/api/session",
@@ -170,13 +172,9 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/report/drafts",
     "/api/report/drafts/:id",
     "/api/report/github-send/:id",
-    // My reports: live from GitHub as the person (an agent gets 403).
-    "/api/report/mine",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
-    "/api/github/branches",
-    "/api/github/repos",
     "/api/workspaces/available-repos",
     "/api/workspaces/services",
     "/api/workspaces/settings",
@@ -248,7 +246,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R("/api/health", "runs the manifests' health probes: read-only checks"),
   R("/api/test-sources", "git rev-parse in each repo: read-only"),
-  R("/api/manifest/validate", "GET validates a file at a path: read-only"),
+  M(
+    ["GET", "HEAD"],
+    "/api/manifest/validate",
+    "reads a file at a path, inside a repo: Den's own page or a token",
+  ),
   // ON-3 (onboard-routes.ts): reads only; nothing written, no repo tool run.
   R("/api/onboard/status", "what's set up and the next step (file reads)"),
   R(
@@ -273,8 +275,36 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/approvals/:id/decide",
     "the person's Allow runs the held write once; Deny runs nothing",
   ),
-  R("/api/service/logs", "reads (and follows) a service's log"),
-  R("/api/service/taillog", "tails a service's log (tail, docker logs)"),
+  // 0.4.71: each starts a process for its output (a log command, `tail`,
+  // `docker logs`, `grep`): a sign-in, as every GET that runs something.
+  M(
+    ["GET", "HEAD"],
+    "/api/service/logs",
+    "follows a service's log: runs its log command",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/service/taillog",
+    "tails a service's log (tail, docker logs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/service/history",
+    "a service's log history (docker ps, docker logs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/logs/search",
+    "searches the logs (grep, docker logs)",
+  ),
+  // They run gh as the person: what its sign-in can see, and its quota.
+  M(["GET", "HEAD"], "/api/github/branches", "lists a repo's branches (gh)"),
+  M(["GET", "HEAD"], "/api/github/repos", "lists the person's repos (gh)"),
+  M(
+    ["GET", "HEAD"],
+    "/api/report/mine",
+    "the person's own reports, live (gh; an agent gets 403)",
+  ),
   R(
     "/api/release/deploy",
     "GET attaches to a deploy session's log; it starts nothing",
@@ -403,6 +433,16 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/edge/up",
     "issue 395: Settings' Start the edge runs `edge up` (docker); a person's only, never an agent's token",
+  ),
+  S(
+    ["POST"],
+    "/api/edge/address/check",
+    "issue 455: Check again; may set edge.publish: false for the person (user.yml); a person's only",
+  ),
+  S(
+    ["POST"],
+    "/api/edge/address/take-over",
+    "issue 455: Take over stops an old Den edge holding the port and starts Den's own (docker); a person's only",
   ),
 
   // ── Mutations (checked by method) ───────────────────────────────────────
@@ -866,6 +906,9 @@ export const SIGNIN_FREE: readonly string[] = [
   // MODE-5: the address check comes back in through the edge with no
   // cookie; it answers 204 or 404 for a one-time token, nothing else.
   "/api/web-url/probe",
+  // Issue 455: the identity probe comes in through another proxy with no
+  // cookie; it answers a challenge with this Den's proof, nothing else.
+  "/api/den-identity",
   // Issue 103: the embedded pane has no cookie. Its page holds no data,
   // and its Send carries its own key (embed-keys.ts).
   "/embed/p/:project/agents/:id",
